@@ -68,12 +68,16 @@ export type ScriptRunArgs = {
 };
 
 export type ScriptRunResult = {
+  runtime: "bash" | "codemode";
   eventId: string;
   scriptId: string;
   exitCode: number;
   stdout: string;
   stderr: string;
+  logs?: string[];
+  result?: unknown;
   commandCalls: BashAutomationCommandResult[];
+  toolCalls?: unknown[];
 };
 
 export type ScriptRunnerRuntime = {

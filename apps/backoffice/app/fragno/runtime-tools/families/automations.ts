@@ -11,20 +11,18 @@ import type {
   ScriptRunArgs,
   ScriptRunnerRuntime,
 } from "@/fragno/automation/commands/types";
+import {
+  automationIdentityBindingRecordSchema,
+  type AutomationIdentityBindingRecord,
+} from "@/fragno/automation/identity";
 
-import { defineBackofficeRuntimeTool } from "../runtime-tools";
+import {
+  defineBackofficeRuntimeTool,
+  type BackofficeRuntimeTool,
+  type BackofficeToolContext,
+} from "../runtime-tools";
 
-export type AutomationIdentityBindingRecord = {
-  id?: unknown;
-  source: string;
-  key: string;
-  value: string;
-  description?: string | null;
-  status: string;
-  linkedAt?: unknown;
-  createdAt?: unknown;
-  updatedAt?: unknown;
-};
+export type { AutomationIdentityBindingRecord };
 
 export type AutomationsBashRuntime = {
   lookupBinding: (
@@ -35,7 +33,19 @@ export type AutomationsBashRuntime = {
 
 export type { ScriptRunnerRuntime };
 
+type AutomationsToolContext = BackofficeToolContext<
+  { automations?: AutomationsBashRuntime },
+  ScriptRunnerRuntime
+>;
+
 const nonEmptyString = z.string().trim().min(1);
+
+const defineAutomationRuntimeTool = <
+  TInputSchema extends z.ZodType,
+  TOutputSchema extends z.ZodType,
+>(
+  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, AutomationsToolContext>,
+) => defineBackofficeRuntimeTool(tool);
 
 const parseLookupBindingArgs = (args: string[]): IdentityLookupBindingArgs => {
   const parsed = parseCliTokens(args);
@@ -66,21 +76,25 @@ const parseScriptRunArgs = (args: string[]): ScriptRunArgs => {
   };
 };
 
-const getAutomationsRuntime = (runtime: unknown): AutomationsBashRuntime => {
+const getAutomationsRuntime = (
+  runtime: AutomationsToolContext["runtimes"]["automations"],
+): AutomationsBashRuntime => {
   if (!runtime) {
     throw new Error("Automations runtime is not available in this execution context");
   }
-  return runtime as AutomationsBashRuntime;
+  return runtime;
 };
 
-const getScriptRunner = (scriptRunner: unknown): ScriptRunnerRuntime => {
+const getScriptRunner = (
+  scriptRunner: AutomationsToolContext["scriptRunner"],
+): ScriptRunnerRuntime => {
   if (!scriptRunner) {
     throw new Error("scripts.run is not available in this execution context");
   }
-  return scriptRunner as ScriptRunnerRuntime;
+  return scriptRunner;
 };
 
-const lookupBindingTool = defineBackofficeRuntimeTool({
+const lookupBindingTool = defineAutomationRuntimeTool({
   id: "automations.identity.lookup-binding",
   namespace: "automations",
   name: "lookupBinding",
@@ -89,19 +103,7 @@ const lookupBindingTool = defineBackofficeRuntimeTool({
     source: nonEmptyString,
     key: nonEmptyString,
   }),
-  outputSchema: z
-    .object({
-      id: z.unknown().optional(),
-      source: z.string(),
-      key: z.string(),
-      value: z.string(),
-      description: z.string().nullable().optional(),
-      status: z.string(),
-      linkedAt: z.unknown().optional(),
-      createdAt: z.unknown().optional(),
-      updatedAt: z.unknown().optional(),
-    })
-    .nullable(),
+  outputSchema: automationIdentityBindingRecordSchema.nullable(),
   execute: async (input, context) =>
     getAutomationsRuntime(context.runtimes.automations).lookupBinding(input),
   bash: {
@@ -135,7 +137,7 @@ const lookupBindingTool = defineBackofficeRuntimeTool({
   },
 });
 
-const bindActorTool = defineBackofficeRuntimeTool({
+const bindActorTool = defineAutomationRuntimeTool({
   id: "automations.identity.bind-actor",
   namespace: "automations",
   name: "bindActor",
@@ -146,17 +148,7 @@ const bindActorTool = defineBackofficeRuntimeTool({
     value: nonEmptyString,
     description: z.string().optional(),
   }),
-  outputSchema: z.object({
-    id: z.unknown().optional(),
-    source: z.string(),
-    key: z.string(),
-    value: z.string(),
-    description: z.string().nullable().optional(),
-    status: z.string(),
-    linkedAt: z.unknown().optional(),
-    createdAt: z.unknown().optional(),
-    updatedAt: z.unknown().optional(),
-  }),
+  outputSchema: automationIdentityBindingRecordSchema,
   execute: async (input, context) =>
     getAutomationsRuntime(context.runtimes.automations).bindActor(input),
   bash: {
@@ -202,7 +194,7 @@ const bindActorTool = defineBackofficeRuntimeTool({
   },
 });
 
-const scriptRunTool = defineBackofficeRuntimeTool({
+const scriptRunTool = defineAutomationRuntimeTool({
   id: "scripts.run",
   namespace: "automations",
   name: "runScript",
@@ -212,11 +204,14 @@ const scriptRunTool = defineBackofficeRuntimeTool({
     event: nonEmptyString,
   }),
   outputSchema: z.object({
+    runtime: z.enum(["bash", "codemode"]),
     eventId: z.string(),
     scriptId: z.string(),
     exitCode: z.number(),
     stdout: z.string(),
     stderr: z.string(),
+    logs: z.array(z.string()).optional(),
+    result: z.unknown().optional(),
     commandCalls: z.array(
       z.object({
         command: z.string(),
@@ -224,13 +219,14 @@ const scriptRunTool = defineBackofficeRuntimeTool({
         exitCode: z.number(),
       }),
     ),
+    toolCalls: z.array(z.unknown()).optional(),
   }),
   execute: async (input, context) => getScriptRunner(context.scriptRunner).runScript(input),
   bash: {
     command: "scripts.run",
     help: {
       summary:
-        "scripts.run executes a script against an event fixture from an interactive shell context for manual testing.",
+        "scripts.run executes a bash or codemode automation script against an event fixture from an interactive shell context for manual testing.",
       options: [
         {
           name: "script",
@@ -238,7 +234,7 @@ const scriptRunTool = defineBackofficeRuntimeTool({
           valueRequired: true,
           valueName: "path",
           description:
-            "Path to the script file. Relative paths resolve under /workspace/automations/; absolute paths resolve against the master filesystem",
+            "Path to the script file. Relative paths resolve under /workspace/automations/; absolute paths resolve against the master filesystem. *.cm.js files run through codemode; other files run through bash",
         },
         {
           name: "event",
@@ -251,6 +247,7 @@ const scriptRunTool = defineBackofficeRuntimeTool({
       ],
       examples: [
         "scripts.run --script scripts/my-script.sh --event /events/2026-03-25/2026-03-25T10:00:00.000Z_hook-id.json",
+        "scripts.run --script scripts/my-script.cm.js --event /events/2026-03-25/2026-03-25T10:00:00.000Z_hook-id.json --format json",
         "scripts.run --script /workspace/automations/scripts/my-script.sh --event /events/2026-03-25/2026-03-25T10:00:00.000Z_hook-id.json --format json",
       ],
     },
@@ -258,10 +255,14 @@ const scriptRunTool = defineBackofficeRuntimeTool({
     format: (result, options) => {
       const hasExplicitFormat = options.format === "json" || !!options.print;
       const data = {
+        runtime: result.runtime,
         exitCode: result.exitCode,
         stdout: result.stdout,
         stderr: result.stderr,
+        ...(result.logs ? { logs: result.logs } : {}),
+        ...(result.result !== undefined ? { result: result.result } : {}),
         commandCalls: result.commandCalls,
+        ...(result.toolCalls ? { toolCalls: result.toolCalls } : {}),
       };
 
       if (result.exitCode !== 0) {

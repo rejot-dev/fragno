@@ -19,9 +19,12 @@ import type {
   BashAutomationCommandResult,
 } from "@/fragno/automation/commands/types";
 
-export type BackofficeToolContext = {
-  runtimes: Record<string, unknown>;
-  scriptRunner?: unknown;
+export type BackofficeToolContext<
+  TRuntimes extends Record<string, unknown> = Record<string, unknown>,
+  TScriptRunner = unknown,
+> = {
+  runtimes: TRuntimes;
+  scriptRunner?: TScriptRunner;
 };
 
 export type BackofficeRuntimeToolCall = {
@@ -37,6 +40,7 @@ export type BackofficeRuntimeToolCall = {
 export type BackofficeRuntimeTool<
   TInputSchema extends z.ZodType = z.ZodType,
   TOutputSchema extends z.ZodType = z.ZodType,
+  TContext extends BackofficeToolContext = BackofficeToolContext,
 > = {
   id: string;
   namespace: string;
@@ -44,10 +48,7 @@ export type BackofficeRuntimeTool<
   description: string;
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
-  execute(
-    input: z.output<TInputSchema>,
-    context: BackofficeToolContext,
-  ): Promise<z.output<TOutputSchema>>;
+  execute(input: z.output<TInputSchema>, context: TContext): Promise<z.output<TOutputSchema>>;
   bash?: {
     command: string;
     help: AutomationCommandHelp;
@@ -59,14 +60,17 @@ export type BackofficeRuntimeTool<
   };
 };
 
-export type AnyBackofficeRuntimeTool = BackofficeRuntimeTool<z.ZodType, z.ZodType>;
+export type AnyBackofficeRuntimeTool<
+  TContext extends BackofficeToolContext = BackofficeToolContext,
+> = BackofficeRuntimeTool<z.ZodType, z.ZodType, TContext>;
 
 export const defineBackofficeRuntimeTool = <
   TInputSchema extends z.ZodType,
   TOutputSchema extends z.ZodType,
+  TContext extends BackofficeToolContext = BackofficeToolContext,
 >(
-  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema>,
-): BackofficeRuntimeTool<TInputSchema, TOutputSchema> => tool;
+  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, TContext>,
+): BackofficeRuntimeTool<TInputSchema, TOutputSchema, TContext> => tool;
 
 type CodemodeToolDescriptor = {
   description?: string;
@@ -92,22 +96,23 @@ const summarizeToolValue = (value: unknown) => {
 const executeBackofficeRuntimeTool = async <
   TInputSchema extends z.ZodType,
   TOutputSchema extends z.ZodType,
+  TContext extends BackofficeToolContext,
 >(
-  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema>,
+  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, TContext>,
   input: z.input<TInputSchema>,
-  context: BackofficeToolContext,
+  context: TContext,
 ): Promise<z.output<TOutputSchema>> => {
   const output = await tool.execute(tool.inputSchema.parse(input), context);
   return tool.outputSchema.parse(output);
 };
 
-export const createBackofficeCodemodeProviders = ({
+export const createBackofficeCodemodeProviders = <TContext extends BackofficeToolContext>({
   tools,
   context,
   toolCalls,
 }: {
-  tools: readonly AnyBackofficeRuntimeTool[];
-  context: BackofficeToolContext;
+  tools: readonly AnyBackofficeRuntimeTool<TContext>[];
+  context: TContext;
   toolCalls?: BackofficeRuntimeToolCall[];
 }): ToolProvider[] => {
   const grouped = new Map<string, Record<string, CodemodeToolDescriptor>>();
@@ -146,13 +151,13 @@ export const createBackofficeCodemodeProviders = ({
   return [...grouped].map(([name, providerTools]) => ({ name, tools: providerTools }));
 };
 
-export const createBackofficeBashCommands = ({
+export const createBackofficeBashCommands = <TContext extends BackofficeToolContext>({
   tools,
   context,
   commandCallsResult,
 }: {
-  tools: readonly AnyBackofficeRuntimeTool[];
-  context: BackofficeToolContext;
+  tools: readonly AnyBackofficeRuntimeTool<TContext>[];
+  context: TContext;
   commandCallsResult: BashAutomationCommandResult[];
 }) =>
   tools.flatMap((tool) => {

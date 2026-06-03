@@ -257,6 +257,8 @@ export default function BackofficeDashboard() {
             <ul className="mt-2 space-y-2 text-sm text-[var(--bo-muted)]">
               <li>• ls, cat, find, pwd</li>
               <li>• pi.session.get / pi.session.create / pi.session.turn</li>
+              <li>• scripts.run --script scripts/foo.sh --event /workspace/events/example.json</li>
+              <li>• scripts.run also supports codemode scripts/foo.cm.js</li>
               <li>• automations.identity.* and otp.identity.* commands</li>
               <li>• telegram.file.get / telegram.file.download</li>
             </ul>

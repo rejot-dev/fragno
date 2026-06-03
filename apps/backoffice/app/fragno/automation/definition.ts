@@ -5,7 +5,7 @@ import { withDatabase, type TxResult } from "@fragno-dev/db";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
 import { MasterFileSystem } from "@/files/master-file-system";
-import { executeBashAutomation } from "@/fragno/bash-runtime/bash-host";
+import { executeAutomationScript } from "@/fragno/bash-runtime/bash-host";
 
 import type { AutomationFileSystemConfig, AutomationFileSystemResolverInput } from "./catalog";
 import {
@@ -15,7 +15,7 @@ import {
 } from "./catalog";
 import type { AutomationEvent } from "./contracts";
 import {
-  createAutomationBashCommandContext,
+  createAutomationExecutionContext,
   createAutomationBashRuntime,
   type AutomationPiBashContext,
 } from "./engine/bash";
@@ -105,34 +105,38 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
             throw new Error(binding.scriptLoadError);
           }
 
-          const result = await executeBashAutomation({
+          const context = createAutomationExecutionContext({
+            event: payload,
+            binding: {
+              id: binding.id,
+              source: binding.source,
+              eventType: binding.eventType,
+              scriptId: binding.scriptId,
+              scriptKey: binding.scriptKey,
+              scriptName: binding.scriptName,
+              scriptPath: binding.scriptPath,
+              scriptVersion: binding.scriptVersion,
+              scriptEnv: binding.scriptEnv,
+              triggerOrder: binding.triggerOrder ?? undefined,
+            },
+            idempotencyKey: this.idempotencyKey,
+            runtime,
+            env: config.env,
+            pi: pi ?? null,
+          });
+
+          const result = await executeAutomationScript({
+            engine: binding.scriptEngine,
             script: binding.scriptBody,
             masterFs,
-            context: createAutomationBashCommandContext({
-              event: payload,
-              binding: {
-                id: binding.id,
-                source: binding.source,
-                eventType: binding.eventType,
-                scriptId: binding.scriptId,
-                scriptKey: binding.scriptKey,
-                scriptName: binding.scriptName,
-                scriptPath: binding.scriptPath,
-                scriptVersion: binding.scriptVersion,
-                scriptEnv: binding.scriptEnv,
-                triggerOrder: binding.triggerOrder ?? undefined,
-              },
-              idempotencyKey: this.idempotencyKey,
-              runtime,
-              env: config.env,
-              pi: pi ?? null,
-            }),
+            context,
+            env: config.env,
           });
 
           if (result.exitCode !== 0) {
             throw new Error(
               [
-                `Automation bash script ${binding.scriptId} failed for event ${payload.id} with exit code ${result.exitCode}.`,
+                `Automation ${binding.scriptEngine} script ${binding.scriptId} failed for event ${payload.id} with exit code ${result.exitCode}.`,
                 result.stderr.trim() || result.stdout.trim(),
               ]
                 .filter(Boolean)

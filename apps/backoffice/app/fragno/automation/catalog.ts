@@ -34,10 +34,14 @@ export type AutomationFileSystemConfig = {
   getAutomationFileSystem?: AutomationFileSystemResolver;
 };
 
+const automationScriptEngineSchema = z.enum(["bash", "codemode"]);
+
+export type AutomationScriptEngine = z.infer<typeof automationScriptEngineSchema>;
+
 const manifestScriptSchema = z.object({
   key: z.string().trim().min(1),
   name: z.string().trim().min(1),
-  engine: z.literal("bash"),
+  engine: automationScriptEngineSchema,
   path: z.string().trim().min(1),
   version: z.number().int().min(1).default(1),
   agent: z.string().trim().min(1).nullable().optional().default(null),
@@ -61,21 +65,26 @@ const automationManifestSchema = z.object({
 export type AutomationManifest = z.infer<typeof automationManifestSchema>;
 export type AutomationManifestBinding = AutomationManifest["bindings"][number];
 
-export type AutomationManifestScriptEntry = {
+type AutomationScriptMetadata = {
   id: string;
   key: string;
   name: string;
-  engine: "bash";
+  engine: AutomationScriptEngine;
   path: string;
   absolutePath: string;
   version: number;
+};
+
+type AutomationScriptBindingStats = {
   bindingIds: string[];
   bindingCount: number;
   enabledBindingCount: number;
   enabled: boolean;
 };
 
-export type AutomationManifestBindingEntry = {
+export type AutomationManifestScriptEntry = AutomationScriptMetadata & AutomationScriptBindingStats;
+
+type AutomationBindingMetadata = {
   id: string;
   source: string;
   eventType: string;
@@ -87,9 +96,11 @@ export type AutomationManifestBindingEntry = {
   scriptPath: string;
   absoluteScriptPath: string;
   scriptVersion: number;
-  scriptEngine: "bash";
+  scriptEngine: AutomationScriptEngine;
   scriptEnv: Record<string, string>;
 };
+
+export type AutomationManifestBindingEntry = AutomationBindingMetadata;
 
 export type AutomationManifestSummary = {
   version: 1;
@@ -98,36 +109,16 @@ export type AutomationManifestSummary = {
   scripts: AutomationManifestScriptEntry[];
 };
 
-export type AutomationScriptCatalogEntry = {
-  id: string;
-  key: string;
-  name: string;
-  engine: "bash";
-  path: string;
-  absolutePath: string;
-  version: number;
+type AutomationScriptSource = {
   body: string;
   scriptLoadError?: string | null;
-  bindingIds: string[];
-  bindingCount: number;
-  enabledBindingCount: number;
-  enabled: boolean;
 };
 
-export type AutomationBindingCatalogEntry = {
-  id: string;
-  source: string;
-  eventType: string;
-  enabled: boolean;
-  triggerOrder: number | null;
-  scriptId: string;
-  scriptKey: string;
-  scriptName: string;
-  scriptPath: string;
-  absoluteScriptPath: string;
-  scriptVersion: number;
-  scriptEngine: "bash";
-  scriptEnv: Record<string, string>;
+export type AutomationScriptCatalogEntry = AutomationScriptMetadata &
+  AutomationScriptSource &
+  AutomationScriptBindingStats;
+
+export type AutomationBindingCatalogEntry = AutomationBindingMetadata & {
   scriptBody: string;
   scriptLoadError?: string | null;
 };
@@ -142,11 +133,38 @@ export type AutomationCatalog = {
 export type AutomationWorkspaceScriptEntry = {
   path: string;
   absolutePath: string;
-  engine: "bash";
+  engine: AutomationScriptEngine;
 };
 
 const resolveTriggerOrder = (value: number | null | undefined) =>
   value == null ? AUTOMATION_TRIGGER_ORDER_LAST : value;
+
+const validateScriptPathForEngine = ({
+  engine,
+  scriptPath,
+  bindingId,
+}: {
+  engine: AutomationScriptEngine;
+  scriptPath: string;
+  bindingId: string;
+}) => {
+  const isCodemodeScriptPath = scriptPath.endsWith(".cm.js");
+
+  if (engine === "codemode" && !isCodemodeScriptPath) {
+    throw new Error(
+      `Automation binding '${bindingId}' uses codemode script '${scriptPath}', but codemode scripts must end in .cm.js.`,
+    );
+  }
+
+  if (engine === "bash" && isCodemodeScriptPath) {
+    throw new Error(
+      `Automation binding '${bindingId}' uses bash script '${scriptPath}', but .cm.js scripts must set engine to codemode.`,
+    );
+  }
+};
+
+const inferWorkspaceScriptEngine = (path: string): AutomationScriptEngine =>
+  path.endsWith(".cm.js") ? "codemode" : "bash";
 
 const normalizeScriptRelativePath = (value: string, bindingId: string): string => {
   const trimmed = value.trim();
@@ -225,9 +243,76 @@ const resolveBindingScriptEnv = (binding: AutomationManifestBinding): Record<str
   return scriptEnv;
 };
 
-const compareScriptEntries = (
-  left: AutomationScriptCatalogEntry,
-  right: AutomationScriptCatalogEntry,
+type ResolvedAutomationManifestBinding = {
+  binding: AutomationManifestBinding;
+  script: AutomationScriptMetadata;
+  entry: AutomationManifestBindingEntry;
+};
+
+const resolveManifestBinding = (
+  binding: AutomationManifestBinding,
+): ResolvedAutomationManifestBinding => {
+  const scriptPath = normalizeScriptRelativePath(binding.script.path, binding.id);
+  validateScriptPathForEngine({
+    engine: binding.script.engine,
+    scriptPath,
+    bindingId: binding.id,
+  });
+
+  const absoluteScriptPath = toAbsoluteAutomationPath(scriptPath);
+  const scriptId = createScriptId(binding, scriptPath);
+  const scriptEnv = resolveBindingScriptEnv(binding);
+  const script: AutomationScriptMetadata = {
+    id: scriptId,
+    key: binding.script.key,
+    name: binding.script.name,
+    engine: binding.script.engine,
+    path: scriptPath,
+    absolutePath: absoluteScriptPath,
+    version: binding.script.version,
+  };
+
+  return {
+    binding,
+    script,
+    entry: {
+      id: binding.id,
+      source: binding.source,
+      eventType: binding.eventType,
+      enabled: binding.enabled !== false,
+      triggerOrder: binding.triggerOrder ?? null,
+      scriptId,
+      scriptKey: script.key,
+      scriptName: script.name,
+      scriptPath,
+      absoluteScriptPath,
+      scriptVersion: script.version,
+      scriptEngine: script.engine,
+      scriptEnv,
+    },
+  };
+};
+
+const resolveManifestBindings = (
+  manifest: AutomationManifest,
+): ResolvedAutomationManifestBinding[] => {
+  const bindingIds = new Set<string>();
+
+  return manifest.bindings.map((binding) => {
+    if (bindingIds.has(binding.id)) {
+      throw new Error(`Automation manifest contains duplicate binding id '${binding.id}'.`);
+    }
+    bindingIds.add(binding.id);
+
+    return resolveManifestBinding(binding);
+  });
+};
+
+const compareScriptEntries = <
+  TScript extends Pick<AutomationScriptMetadata, "name" | "key" | "path">,
+>(
+  left: TScript,
+  right: TScript,
 ) => {
   const nameOrder = left.name.localeCompare(right.name);
   if (nameOrder !== 0) {
@@ -279,12 +364,9 @@ const compareWorkspaceScriptEntries = (
   return left.absolutePath.localeCompare(right.absolutePath);
 };
 
-const assertCompatibleScriptEntry = (
-  existing: AutomationScriptCatalogEntry,
-  next: Omit<
-    AutomationScriptCatalogEntry,
-    "bindingIds" | "bindingCount" | "enabledBindingCount" | "enabled"
-  >,
+const assertCompatibleScriptMetadata = (
+  existing: AutomationScriptMetadata,
+  next: AutomationScriptMetadata,
   bindingId: string,
 ) => {
   if (
@@ -293,9 +375,22 @@ const assertCompatibleScriptEntry = (
     existing.engine !== next.engine ||
     existing.path !== next.path ||
     existing.absolutePath !== next.absolutePath ||
-    existing.version !== next.version ||
-    existing.body !== next.body
+    existing.version !== next.version
   ) {
+    throw new Error(
+      `Automation binding '${bindingId}' reuses script identity '${existing.id}' with conflicting script metadata.`,
+    );
+  }
+};
+
+const assertCompatibleScriptSource = (
+  existing: AutomationScriptMetadata & AutomationScriptSource,
+  next: AutomationScriptMetadata & AutomationScriptSource,
+  bindingId: string,
+) => {
+  assertCompatibleScriptMetadata(existing, next, bindingId);
+
+  if (existing.body !== next.body) {
     throw new Error(
       `Automation binding '${bindingId}' reuses script identity '${existing.id}' with conflicting script metadata.`,
     );
@@ -351,99 +446,40 @@ const readAutomationWorkspaceTextFile = async (
 const buildAutomationManifestSummary = (
   manifest: AutomationManifest,
 ): AutomationManifestSummary => {
-  const bindingIds = new Set<string>();
   const scriptsById = new Map<string, AutomationManifestScriptEntry>();
   const bindings = [] as AutomationManifestBindingEntry[];
 
-  for (const binding of manifest.bindings) {
-    if (bindingIds.has(binding.id)) {
-      throw new Error(`Automation manifest contains duplicate binding id '${binding.id}'.`);
-    }
-    bindingIds.add(binding.id);
-
-    const scriptPath = normalizeScriptRelativePath(binding.script.path, binding.id);
-    const absoluteScriptPath = toAbsoluteAutomationPath(scriptPath);
-    const scriptId = createScriptId(binding, scriptPath);
-    const scriptEnv = resolveBindingScriptEnv(binding);
-    const existingScript = scriptsById.get(scriptId);
+  for (const resolved of resolveManifestBindings(manifest)) {
+    const existingScript = scriptsById.get(resolved.script.id);
 
     if (existingScript) {
-      if (
-        existingScript.key !== binding.script.key ||
-        existingScript.name !== binding.script.name ||
-        existingScript.engine !== binding.script.engine ||
-        existingScript.path !== scriptPath ||
-        existingScript.absolutePath !== absoluteScriptPath ||
-        existingScript.version !== binding.script.version
-      ) {
-        throw new Error(
-          `Automation binding '${binding.id}' reuses script identity '${existingScript.id}' with conflicting script metadata.`,
-        );
-      }
-
-      existingScript.bindingIds.push(binding.id);
+      assertCompatibleScriptMetadata(existingScript, resolved.script, resolved.binding.id);
+      existingScript.bindingIds.push(resolved.binding.id);
       existingScript.bindingCount += 1;
-      if (binding.enabled !== false) {
+      if (resolved.entry.enabled) {
         existingScript.enabledBindingCount += 1;
         existingScript.enabled = true;
       }
     } else {
-      scriptsById.set(scriptId, {
-        id: scriptId,
-        key: binding.script.key,
-        name: binding.script.name,
-        engine: binding.script.engine,
-        path: scriptPath,
-        absolutePath: absoluteScriptPath,
-        version: binding.script.version,
-        bindingIds: [binding.id],
+      scriptsById.set(resolved.script.id, {
+        ...resolved.script,
+        bindingIds: [resolved.binding.id],
         bindingCount: 1,
-        enabledBindingCount: binding.enabled !== false ? 1 : 0,
-        enabled: binding.enabled !== false,
+        enabledBindingCount: resolved.entry.enabled ? 1 : 0,
+        enabled: resolved.entry.enabled,
       });
     }
 
-    bindings.push({
-      id: binding.id,
-      source: binding.source,
-      eventType: binding.eventType,
-      enabled: binding.enabled !== false,
-      triggerOrder: binding.triggerOrder ?? null,
-      scriptId,
-      scriptKey: binding.script.key,
-      scriptName: binding.script.name,
-      scriptPath,
-      absoluteScriptPath,
-      scriptVersion: binding.script.version,
-      scriptEngine: binding.script.engine,
-      scriptEnv,
-    });
+    bindings.push(resolved.entry);
   }
-
-  const scripts = Array.from(scriptsById.values())
-    .map((script) => ({
-      ...script,
-      bindingIds: script.bindingIds.slice().sort(),
-    }))
-    .sort((left, right) => {
-      const nameOrder = left.name.localeCompare(right.name);
-      if (nameOrder !== 0) {
-        return nameOrder;
-      }
-
-      const keyOrder = left.key.localeCompare(right.key);
-      if (keyOrder !== 0) {
-        return keyOrder;
-      }
-
-      return left.path.localeCompare(right.path);
-    });
 
   return {
     version: manifest.version,
     manifestPath: AUTOMATION_BINDINGS_MANIFEST_PATH,
     bindings: bindings.sort(compareBindingEntries),
-    scripts,
+    scripts: Array.from(scriptsById.values())
+      .map((script) => ({ ...script, bindingIds: script.bindingIds.slice().sort() }))
+      .sort(compareScriptEntries),
   } satisfies AutomationManifestSummary;
 };
 
@@ -587,7 +623,7 @@ export const listAutomationWorkspaceScripts = async (
     .map((absolutePath) => ({
       path: toAutomationWorkspaceRelativePath(absolutePath),
       absolutePath,
-      engine: "bash" as const,
+      engine: inferWorkspaceScriptEngine(toAutomationWorkspaceRelativePath(absolutePath)),
     }))
     .sort(compareWorkspaceScriptEntries);
 };
@@ -604,7 +640,7 @@ export const readAutomationWorkspaceScript = async (
     id: normalizedPath,
     key: normalizedPath.replace(/^scripts\//, "").replace(/\.[^.]+$/, ""),
     name: normalizedPath,
-    engine: "bash",
+    engine: inferWorkspaceScriptEngine(normalizedPath),
     path: normalizedPath,
     absolutePath,
     version: 1,
@@ -641,124 +677,69 @@ export const loadAutomationCatalog = async (
     "Automation manifest",
   );
   const manifest = parseAutomationManifest(manifestContent);
-
-  const bindingIds = new Set<string>();
-  const scriptsById = new Map<
-    string,
-    Omit<
-      AutomationScriptCatalogEntry,
-      "bindingCount" | "bindingIds" | "enabledBindingCount" | "enabled"
-    >
-  >();
+  const scriptsById = new Map<string, AutomationScriptMetadata & AutomationScriptSource>();
   const scriptBindingIds = new Map<string, string[]>();
   const scriptEnabledBindingCounts = new Map<string, number>();
-
   const bindings = [] as AutomationBindingCatalogEntry[];
 
-  for (const binding of manifest.bindings) {
-    if (bindingIds.has(binding.id)) {
-      throw new Error(`Automation manifest contains duplicate binding id '${binding.id}'.`);
-    }
-    bindingIds.add(binding.id);
-
-    const scriptPath = normalizeScriptRelativePath(binding.script.path, binding.id);
-    const absoluteScriptPath = toAbsoluteAutomationPath(scriptPath);
-    const scriptId = createScriptId(binding, scriptPath);
-    const scriptEnv = resolveBindingScriptEnv(binding);
-
-    const existingScript = scriptsById.get(scriptId);
-
-    let scriptBody: string;
-    let scriptLoadError: string | null = null;
+  for (const resolved of resolveManifestBindings(manifest)) {
+    const existingScript = scriptsById.get(resolved.script.id);
+    let scriptSource: AutomationScriptSource;
 
     if (existingScript) {
-      scriptBody = existingScript.body;
-      scriptLoadError = existingScript.scriptLoadError ?? null;
-
-      assertCompatibleScriptEntry(
-        {
-          ...existingScript,
-          bindingIds: [],
-          bindingCount: 0,
-          enabledBindingCount: 0,
-          enabled: false,
-        },
-        {
-          id: scriptId,
-          key: binding.script.key,
-          name: binding.script.name,
-          engine: binding.script.engine,
-          path: scriptPath,
-          absolutePath: absoluteScriptPath,
-          version: binding.script.version,
-          body: scriptBody,
-          scriptLoadError,
-        } satisfies Omit<
-          AutomationScriptCatalogEntry,
-          "bindingCount" | "bindingIds" | "enabledBindingCount" | "enabled"
-        >,
-        binding.id,
+      scriptSource = {
+        body: existingScript.body,
+        scriptLoadError: existingScript.scriptLoadError ?? null,
+      };
+      assertCompatibleScriptSource(
+        existingScript,
+        { ...resolved.script, ...scriptSource },
+        resolved.binding.id,
       );
     } else {
       try {
-        scriptBody = await readRequiredFile(
-          fileSystem,
-          absoluteScriptPath,
-          `Automation script for binding '${binding.id}'`,
-        );
+        scriptSource = {
+          body: await readRequiredFile(
+            fileSystem,
+            resolved.script.absolutePath,
+            `Automation script for binding '${resolved.binding.id}'`,
+          ),
+          scriptLoadError: null,
+        };
       } catch (error) {
-        scriptBody = "";
-        scriptLoadError = error instanceof Error ? error.message : "Failed to read script file.";
+        scriptSource = {
+          body: "",
+          scriptLoadError: error instanceof Error ? error.message : "Failed to read script file.",
+        };
       }
 
-      scriptsById.set(scriptId, {
-        id: scriptId,
-        key: binding.script.key,
-        name: binding.script.name,
-        engine: binding.script.engine,
-        path: scriptPath,
-        absolutePath: absoluteScriptPath,
-        version: binding.script.version,
-        body: scriptBody,
-        scriptLoadError,
-      });
+      scriptsById.set(resolved.script.id, { ...resolved.script, ...scriptSource });
     }
 
-    const bindingsForScript = scriptBindingIds.get(scriptId) ?? [];
-    bindingsForScript.push(binding.id);
-    scriptBindingIds.set(scriptId, bindingsForScript);
+    scriptBindingIds.set(resolved.script.id, [
+      ...(scriptBindingIds.get(resolved.script.id) ?? []),
+      resolved.binding.id,
+    ]);
     scriptEnabledBindingCounts.set(
-      scriptId,
-      (scriptEnabledBindingCounts.get(scriptId) ?? 0) + (binding.enabled !== false ? 1 : 0),
+      resolved.script.id,
+      (scriptEnabledBindingCounts.get(resolved.script.id) ?? 0) + (resolved.entry.enabled ? 1 : 0),
     );
 
     bindings.push({
-      id: binding.id,
-      source: binding.source,
-      eventType: binding.eventType,
-      enabled: binding.enabled !== false,
-      triggerOrder: binding.triggerOrder ?? null,
-      scriptId,
-      scriptKey: binding.script.key,
-      scriptName: binding.script.name,
-      scriptPath: scriptPath,
-      absoluteScriptPath,
-      scriptVersion: binding.script.version,
-      scriptEngine: binding.script.engine,
-      scriptEnv,
-      scriptBody,
-      scriptLoadError,
+      ...resolved.entry,
+      scriptBody: scriptSource.body,
+      scriptLoadError: scriptSource.scriptLoadError,
     });
   }
 
   const scripts = Array.from(scriptsById.values())
     .map((script) => {
-      const bindingIdsForScript = (scriptBindingIds.get(script.id) ?? []).slice().sort();
+      const bindingIds = (scriptBindingIds.get(script.id) ?? []).slice().sort();
       const enabledBindingCount = scriptEnabledBindingCounts.get(script.id) ?? 0;
       return {
         ...script,
-        bindingIds: bindingIdsForScript,
-        bindingCount: bindingIdsForScript.length,
+        bindingIds,
+        bindingCount: bindingIds.length,
         enabledBindingCount,
         enabled: enabledBindingCount > 0,
       } satisfies AutomationScriptCatalogEntry;

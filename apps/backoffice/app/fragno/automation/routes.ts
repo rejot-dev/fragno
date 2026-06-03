@@ -8,24 +8,13 @@ import {
 } from "../bash-runtime/automations-bash-runtime";
 import { loadAutomationCatalogFromConfig, resolveAutomationFileSystem } from "./catalog";
 import { automationFragmentDefinition } from "./definition";
+import { automationIdentityBindingRecordSchema } from "./identity";
 import {
   listAutomationScenarios,
   resolveAutomationScenarioPath,
   runAutomationScenarioFile,
 } from "./scenario";
 import { automationFragmentSchema } from "./schema";
-
-const identityBindingOutputSchema = z.object({
-  id: z.unknown().optional(),
-  source: z.string(),
-  key: z.string(),
-  value: z.string(),
-  description: z.string().nullable().optional(),
-  status: z.string(),
-  linkedAt: z.unknown().optional(),
-  createdAt: z.unknown().optional(),
-  updatedAt: z.unknown().optional(),
-});
 
 const getOrgIdFromRequestQuery = (query: URLSearchParams) =>
   query.get("orgId")?.trim() || undefined;
@@ -37,6 +26,12 @@ const isAutomationScenarioNotFoundError = (cause: unknown): cause is Error =>
 
 export const automationFragmentRoutes = defineRoutes(automationFragmentDefinition).create(
   ({ defineRoute, config }) => {
+    const loadRouteCatalog = (query: URLSearchParams) =>
+      loadAutomationCatalogFromConfig(config, {
+        orgId: getOrgIdFromRequestQuery(query),
+        purpose: "route",
+      });
+
     return [
       defineRoute({
         method: "GET",
@@ -44,12 +39,7 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
         outputSchema: z.array(z.record(z.string(), z.unknown())),
         handler: async function ({ query }, { json, error }) {
           try {
-            const catalog = await loadAutomationCatalogFromConfig(config, {
-              orgId: getOrgIdFromRequestQuery(query),
-              purpose: "route",
-            });
-
-            return json(catalog.scripts);
+            return json((await loadRouteCatalog(query)).scripts);
           } catch (cause) {
             return error(
               {
@@ -68,12 +58,7 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
         outputSchema: z.array(z.record(z.string(), z.unknown())),
         handler: async function ({ query }, { json, error }) {
           try {
-            const catalog = await loadAutomationCatalogFromConfig(config, {
-              orgId: getOrgIdFromRequestQuery(query),
-              purpose: "route",
-            });
-
-            return json(catalog.bindings);
+            return json((await loadRouteCatalog(query)).bindings);
           } catch (cause) {
             return error(
               {
@@ -188,7 +173,7 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
       defineRoute({
         method: "GET",
         path: "/identity-bindings/lookup",
-        outputSchema: identityBindingOutputSchema,
+        outputSchema: automationIdentityBindingRecordSchema,
         handler: async function ({ query }, { json, error }) {
           const source = query.get("source")?.trim();
           const key = query.get("key")?.trim();
@@ -240,7 +225,7 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
           value: z.string().trim().min(1),
           description: z.string().optional(),
         }),
-        outputSchema: identityBindingOutputSchema,
+        outputSchema: automationIdentityBindingRecordSchema,
         handler: async function ({ input }, { json }) {
           const payload = await input.valid();
           const binding = await bindAutomationIdentityActor(this, payload);

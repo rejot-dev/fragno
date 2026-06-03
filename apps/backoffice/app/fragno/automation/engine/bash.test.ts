@@ -21,7 +21,7 @@ import type {
 } from "../commands/types";
 import type { AutomationEvent } from "../contracts";
 import {
-  createAutomationBashCommandContext,
+  createAutomationExecutionContext as createRuntimeAutomationExecutionContext,
   createAutomationBashRuntime,
   type AutomationBashRuntime,
 } from "./bash";
@@ -100,14 +100,14 @@ const createDeferred = <T = void>() => {
   return { promise, resolve, reject };
 };
 
-const createAutomationExecutionContext = ({
+const createTestAutomationExecutionContext = ({
   event,
   runtime: automationRuntime,
 }: {
   event: AutomationEvent;
   runtime: AutomationBashRuntime;
 }) =>
-  createAutomationBashCommandContext({
+  createRuntimeAutomationExecutionContext({
     event,
     binding: {
       source: event.source,
@@ -555,7 +555,7 @@ describe("bash command runner", () => {
 
     const { bash, commandCallsResult } = createBashHost({
       fs: new InMemoryFs(),
-      context: createAutomationBashCommandContext({
+      context: createRuntimeAutomationExecutionContext({
         event,
         binding: {
           source: "telegram",
@@ -706,6 +706,7 @@ describe("bash command runner", () => {
                 event: "/events/2026-03-26/evt-1.json",
               });
               return {
+                runtime: "bash",
                 eventId: "evt-1",
                 scriptId: "manual:/automations/test.sh",
                 exitCode: 0,
@@ -751,6 +752,7 @@ describe("bash command runner", () => {
           },
           scriptRunner: {
             runScript: async () => ({
+              runtime: "bash",
               eventId: "evt-1",
               scriptId: "manual:/automations/test.sh",
               exitCode: 0,
@@ -775,6 +777,7 @@ describe("bash command runner", () => {
     expect(result.exitCode).toBe(0);
     const parsed = JSON.parse(result.stdout!.trim());
     expect(parsed).toEqual({
+      runtime: "bash",
       exitCode: 0,
       stdout: "echoed output\n",
       stderr: "",
@@ -794,6 +797,7 @@ describe("bash command runner", () => {
           },
           scriptRunner: {
             runScript: async () => ({
+              runtime: "bash",
               eventId: "evt-1",
               scriptId: "manual:/automations/fail.sh",
               exitCode: 1,
@@ -853,7 +857,7 @@ describe("bash command runner", () => {
     const result = await executeBashAutomation({
       script: 'printf "event=%s\\n" "$(cat /context/event.json)"',
       masterFs: new MasterFileSystem({ mounts: [] }),
-      context: createAutomationBashCommandContext({
+      context: createRuntimeAutomationExecutionContext({
         event,
         binding: {
           source: "telegram",
@@ -891,7 +895,7 @@ describe("bash command runner", () => {
     const result = await executeBashAutomation({
       script: 'echo "discarded" >/dev/null && echo "kept"',
       masterFs: new MasterFileSystem({ mounts: [] }),
-      context: createAutomationBashCommandContext({
+      context: createRuntimeAutomationExecutionContext({
         event: {
           id: "dev-null-event",
           source: "telegram",
@@ -931,7 +935,7 @@ describe("bash command runner", () => {
     await executeBashAutomation({
       script: "echo ok",
       masterFs,
-      context: createAutomationBashCommandContext({
+      context: createRuntimeAutomationExecutionContext({
         event: {
           id: "cleanup-event",
           source: "telegram",
@@ -975,7 +979,7 @@ describe("bash command runner", () => {
       script:
         'event.emit --event-type overlap.wait --source test >/dev/null\nprintf "run-a=%s\\n" "$(cat /context/event.json)"',
       masterFs,
-      context: createAutomationExecutionContext({
+      context: createTestAutomationExecutionContext({
         event: firstEvent,
         runtime: createAutomationRuntime({
           emitEvent: async (input) => {
@@ -1001,7 +1005,7 @@ describe("bash command runner", () => {
         "event.emit --event-type overlap.read --source test >/dev/null\n" +
         'printf "after=%s\\n" "$(cat /context/event.json)"',
       masterFs,
-      context: createAutomationExecutionContext({
+      context: createTestAutomationExecutionContext({
         event: secondEvent,
         runtime: createAutomationRuntime(),
       }),
@@ -1045,7 +1049,7 @@ describe("bash command runner", () => {
       script:
         "event.emit --event-type cleanup.wait-a --source test >/dev/null\necho first-run-complete",
       masterFs,
-      context: createAutomationExecutionContext({
+      context: createTestAutomationExecutionContext({
         event: firstEvent,
         runtime: createAutomationRuntime({
           emitEvent: async (input) => {
@@ -1073,7 +1077,7 @@ describe("bash command runner", () => {
         "echo kept >/dev/null\n" +
         'printf "after=%s\\n" "$(cat /context/event.json)"',
       masterFs,
-      context: createAutomationExecutionContext({
+      context: createTestAutomationExecutionContext({
         event: secondEvent,
         runtime: createAutomationRuntime({
           emitEvent: async (input) => {
@@ -1143,7 +1147,7 @@ describe("bash command runner", () => {
     await executeBashAutomation({
       script: "echo ok",
       masterFs,
-      context: createAutomationBashCommandContext({
+      context: createRuntimeAutomationExecutionContext({
         event: {
           id: "existing-dev-event",
           source: "telegram",

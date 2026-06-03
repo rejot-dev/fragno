@@ -179,6 +179,7 @@ describe("automation catalog", () => {
 
   test("lists workspace scripts even when they are not referenced by bindings.json", async () => {
     const fileSystem = await createAutomationFileSystem({
+      "automations/scripts/unbound-codemode.cm.js": "async () => true",
       "automations/scripts/unbound-workspace-script.sh": 'echo "hello from workspace"',
     });
 
@@ -187,8 +188,14 @@ describe("automation catalog", () => {
     expect(scripts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          path: "scripts/unbound-codemode.cm.js",
+          absolutePath: `${AUTOMATION_WORKSPACE_ROOT}/scripts/unbound-codemode.cm.js`,
+          engine: "codemode",
+        }),
+        expect.objectContaining({
           path: "scripts/unbound-workspace-script.sh",
           absolutePath: `${AUTOMATION_WORKSPACE_ROOT}/scripts/unbound-workspace-script.sh`,
+          engine: "bash",
         }),
       ]),
     );
@@ -246,6 +253,92 @@ describe("automation catalog", () => {
 
     await expect(loadAutomationCatalog(fileSystem)).rejects.toThrow(
       `Automation manifest '${AUTOMATION_BINDINGS_MANIFEST_PATH}' is not valid JSON`,
+    );
+  });
+
+  test("rejects manifest bindings without an explicit script engine", async () => {
+    const fileSystem = await createAutomationFileSystem({
+      [STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH]: JSON.stringify({
+        version: 1,
+        bindings: [
+          {
+            id: "missing-engine",
+            source: AUTOMATION_SOURCES.telegram,
+            eventType: AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived,
+            enabled: true,
+            script: {
+              key: "missing-engine",
+              name: "Missing engine",
+              path: "scripts/missing-engine.sh",
+              version: 1,
+              agent: null,
+              env: {},
+            },
+          },
+        ],
+      }),
+    });
+
+    await expect(loadAutomationCatalog(fileSystem)).rejects.toThrow("script.engine");
+  });
+
+  test("rejects codemode manifest scripts without the .cm.js suffix", async () => {
+    const fileSystem = await createAutomationFileSystem({
+      [STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH]: JSON.stringify({
+        version: 1,
+        bindings: [
+          {
+            id: "bad-codemode-path",
+            source: AUTOMATION_SOURCES.telegram,
+            eventType: AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived,
+            enabled: true,
+            script: {
+              key: "bad-codemode-path",
+              name: "Bad codemode path",
+              engine: "codemode",
+              path: "scripts/bad-codemode-path.js",
+              version: 1,
+              agent: null,
+              env: {},
+            },
+          },
+        ],
+      }),
+      "automations/scripts/bad-codemode-path.js": "async () => true",
+    });
+
+    await expect(loadAutomationCatalog(fileSystem)).rejects.toThrow(
+      "codemode scripts must end in .cm.js",
+    );
+  });
+
+  test("rejects bash manifest scripts with the .cm.js suffix", async () => {
+    const fileSystem = await createAutomationFileSystem({
+      [STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH]: JSON.stringify({
+        version: 1,
+        bindings: [
+          {
+            id: "bad-bash-path",
+            source: AUTOMATION_SOURCES.telegram,
+            eventType: AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived,
+            enabled: true,
+            script: {
+              key: "bad-bash-path",
+              name: "Bad bash path",
+              engine: "bash",
+              path: "scripts/bad-bash-path.cm.js",
+              version: 1,
+              agent: null,
+              env: {},
+            },
+          },
+        ],
+      }),
+      "automations/scripts/bad-bash-path.cm.js": "async () => true",
+    });
+
+    await expect(loadAutomationCatalog(fileSystem)).rejects.toThrow(
+      ".cm.js scripts must set engine to codemode",
     );
   });
 
