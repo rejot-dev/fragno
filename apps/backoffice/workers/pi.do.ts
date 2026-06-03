@@ -12,6 +12,7 @@ import {
   type PiRuntimeFragments,
   type PiSessionFileSystemContext,
 } from "@/fragno/pi/pi";
+import { createPiCodemodeRuntime } from "@/fragno/pi/pi-codemode";
 import {
   PI_TOOL_IDS,
   resolvePiHarnesses,
@@ -239,6 +240,7 @@ export class Pi extends DurableObject<CloudflareEnv> {
       config,
       state: this.#state,
       env: this.#env,
+      codemode: createPiCodemodeRuntime(this.#env),
       sessionFileSystems: this.#sessionFileSystems,
       sessionFileSystemContext,
       bashCommandContext: createPiBashCommandContext({

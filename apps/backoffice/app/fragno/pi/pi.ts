@@ -1,6 +1,7 @@
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
 import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
+import { Type, type TSchema } from "typebox";
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 import {
@@ -27,8 +28,12 @@ import type { PiBashRuntime } from "../bash-runtime/pi-bash-runtime";
 import type { ResendBashRuntime } from "../bash-runtime/resend-bash-runtime";
 import type { Reson8BashRuntime } from "../bash-runtime/reson8-bash-runtime";
 import type { TelegramBashRuntime } from "../bash-runtime/telegram-bash-runtime";
+import type {
+  BackofficeCodemodeEnv,
+  BackofficeCodemodeResult,
+  RunBackofficeCodemodeInput,
+} from "../codemode/execute";
 import type { AutomationsBashRuntime } from "../runtime-tools/families/automations";
-import { bashParametersSchema } from "./pi-schema";
 import {
   PI_MODEL_CATALOG,
   PI_PROVIDER_TO_MODEL_PROVIDER,
@@ -39,6 +44,7 @@ import {
   type PiToolId,
   type StoredPiConfig,
 } from "./pi-shared";
+import { withSinclairSchema } from "./typebox-compat";
 
 export type PiRuntimeFragments = {
   piFragment: ReturnType<typeof createPiFragment>;
@@ -71,6 +77,37 @@ export type PiSessionFileSystemContext = {
   env: Pick<CloudflareEnv, "UPLOAD" | "RESEND" | "AUTOMATIONS">;
 };
 
+export type PiCodemodeRuntime = {
+  env: BackofficeCodemodeEnv;
+  execute(input: RunBackofficeCodemodeInput): Promise<BackofficeCodemodeResult>;
+};
+
+export const bashParametersSchema = withSinclairSchema(
+  Type.Object({
+    script: Type.String({
+      minLength: 1,
+      description: "Shell script or command to execute in the sandboxed environment.",
+    }),
+    cwd: Type.Optional(
+      Type.String({ description: "Optional working directory within the virtual filesystem." }),
+    ),
+  }),
+);
+
+export const runStateCodeParametersSchema = withSinclairSchema(
+  Type.Object({
+    code: Type.String({
+      minLength: 1,
+      description:
+        "Standalone async arrow function to execute in an isolated dynamic Worker with state.* filesystem tools.",
+    }),
+  }),
+);
+
+const defineTool = <TParameters extends TSchema, TDetails>(
+  tool: AgentTool<TParameters, TDetails>,
+): AgentTool<TParameters, TDetails> => tool;
+
 function createPiAdapter(state: DurableObjectState) {
   return new SqlAdapter({
     dialect: new DurableObjectDialect({ ctx: state }),
@@ -84,69 +121,114 @@ const createBashTool = (
   context: PiBashCommandContext,
   env: CloudflareEnv,
   orgId: string,
-): AgentTool => ({
-  name: "bash",
-  label: "Bash",
-  description: "Execute bash commands in the combined Pi session filesystem.",
-  parameters: bashParametersSchema,
-  execute: async (_toolCallId, params, signal) => {
-    const { script, cwd } = params as { script: string; cwd?: string };
-    if (signal?.aborted) {
-      throw new Error("Bash execution aborted.");
-    }
+): AgentTool =>
+  defineTool({
+    name: "bash",
+    label: "Bash",
+    description: "Execute bash commands in the combined Pi session filesystem.",
+    parameters: bashParametersSchema,
+    execute: async (_toolCallId, params, signal) => {
+      const { script, cwd } = params;
+      if (signal?.aborted) {
+        throw new Error("Bash execution aborted.");
+      }
 
-    const scriptPreview = script.length > 120 ? `${script.slice(0, 117)}...` : script;
-    console.info("Pi bash tool start", {
-      sessionId,
-      cwd,
-      length: script.length,
-      preview: scriptPreview,
-    });
-
-    const { bash, commandCallsResult } = createInteractiveBashHost({
-      fs,
-      env,
-      orgId,
-      sessionId,
-      context,
-    });
-    let result: Awaited<ReturnType<typeof bash.exec>>;
-    try {
-      result = await bash.exec(script, cwd ? { cwd } : { cwd: "/" });
-    } catch (error) {
-      console.warn("Pi bash tool error", {
+      const scriptPreview = script.length > 120 ? `${script.slice(0, 117)}...` : script;
+      console.info("Pi bash tool start", {
         sessionId,
         cwd,
-        error: error instanceof Error ? error.message : String(error),
+        length: script.length,
+        preview: scriptPreview,
       });
-      throw error;
-    }
 
-    const stdout = result.stdout?.trimEnd() ?? "";
-    const stderr = result.stderr?.trimEnd() ?? "";
-    const exitCode = result.exitCode ?? 0;
+      const { bash, commandCallsResult } = createInteractiveBashHost({
+        fs,
+        env,
+        orgId,
+        sessionId,
+        context,
+      });
+      let result: Awaited<ReturnType<typeof bash.exec>>;
+      try {
+        result = await bash.exec(script, cwd ? { cwd } : { cwd: "/" });
+      } catch (error) {
+        console.warn("Pi bash tool error", {
+          sessionId,
+          cwd,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
 
-    const outputLines = [stdout, stderr].filter(Boolean);
-    if (outputLines.length === 0) {
-      outputLines.push(`Command finished with exit code ${exitCode}.`);
-    }
+      const stdout = result.stdout?.trimEnd() ?? "";
+      const stderr = result.stderr?.trimEnd() ?? "";
+      const exitCode = result.exitCode ?? 0;
 
-    console.info("Pi bash tool end", {
-      sessionId,
-      exitCode,
-    });
+      const outputLines = [stdout, stderr].filter(Boolean);
+      if (outputLines.length === 0) {
+        outputLines.push(`Command finished with exit code ${exitCode}.`);
+      }
 
-    return {
-      content: [{ type: "text", text: outputLines.join("\n") }],
-      details: {
-        stdout,
-        stderr,
+      console.info("Pi bash tool end", {
+        sessionId,
         exitCode,
-        commandCalls: commandCallsResult,
-      },
-    };
-  },
-});
+      });
+
+      return {
+        content: [{ type: "text", text: outputLines.join("\n") }],
+        details: {
+          stdout,
+          stderr,
+          exitCode,
+          commandCalls: commandCallsResult,
+        },
+      };
+    },
+  });
+
+const createRunStateCodeTool = (
+  fs: MasterFileSystem,
+  sessionId: string,
+  codemode: PiCodemodeRuntime | undefined,
+): AgentTool =>
+  defineTool({
+    name: "runStateCode",
+    label: "Run State Code",
+    description:
+      "Execute a standalone async arrow function in an isolated dynamic Worker with state.* filesystem tools.",
+    parameters: runStateCodeParametersSchema,
+    execute: async (_toolCallId, params, signal) => {
+      const { code } = params;
+      if (signal?.aborted) {
+        throw new Error("Codemode execution aborted.");
+      }
+
+      if (!codemode) {
+        throw new Error("runStateCode is not configured for this Pi runtime.");
+      }
+
+      const result = await codemode.execute({
+        code,
+        fs,
+        env: codemode.env,
+      });
+
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      const logs = result.logs ?? [];
+      const outputLines = [...logs, `Result: ${JSON.stringify(result.result)}`];
+
+      return {
+        content: [{ type: "text", text: outputLines.join("\n") }],
+        details: {
+          result: result.result,
+          logs,
+        },
+      };
+    },
+  });
 
 const getSessionFs = async (
   cache: Map<string, Promise<MasterFileSystem>>,
@@ -177,14 +259,20 @@ export const createPiToolRegistry = ({
   sessionFileSystems,
   sessionFileSystemContext,
   env,
+  codemode,
   bashCommandContext,
 }: {
   sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
   sessionFileSystemContext: PiSessionFileSystemContext;
-  env: CloudflareEnv;
-  bashCommandContext: PiBashCommandContext;
+  env?: CloudflareEnv;
+  codemode?: PiCodemodeRuntime;
+  bashCommandContext?: PiBashCommandContext;
 }): Record<PiToolId, PiTool> => ({
   bash: async ({ session }) => {
+    if (!bashCommandContext || !env) {
+      throw new Error("bash is not configured for this Pi runtime.");
+    }
+
     const fileSystem = await getSessionFs(sessionFileSystems, session.id, sessionFileSystemContext);
     return createBashTool(
       fileSystem,
@@ -193,6 +281,10 @@ export const createPiToolRegistry = ({
       env,
       sessionFileSystemContext.orgId,
     );
+  },
+  runStateCode: async ({ session }) => {
+    const fileSystem = await getSessionFs(sessionFileSystems, session.id, sessionFileSystemContext);
+    return createRunStateCodeTool(fileSystem, session.id, codemode);
   },
 });
 
@@ -212,6 +304,7 @@ const resolveApiKey = (config: StoredPiConfig, provider: string): string | undef
 const createBackofficePiBuilder = (tools: Record<PiToolId, PiTool>) =>
   createPi()
     .withTool("bash", tools.bash)
+    .withTool("runStateCode", tools.runStateCode)
     .withWorkflow(interactiveChatWorkflow)
     .logging({ enabled: true, level: "debug" });
 
@@ -289,12 +382,14 @@ export const createPiRuntime = (options: {
   sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
   sessionFileSystemContext: PiSessionFileSystemContext;
   bashCommandContext: PiBashCommandContext;
+  codemode?: PiCodemodeRuntime;
 }): PiRuntimeFragments => {
   const adapter = createPiAdapter(options.state);
   const tools = createPiToolRegistry({
     sessionFileSystems: options.sessionFileSystems,
     sessionFileSystemContext: options.sessionFileSystemContext,
     env: options.env,
+    codemode: options.codemode,
     bashCommandContext: options.bashCommandContext,
   });
   const pi = buildPiRuntime(options.config, tools);

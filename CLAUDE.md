@@ -1,6 +1,4 @@
-# CLAUDE.md
-
-## Project Overview
+# Fragno
 
 Fragno is a framework-agnostic, type-safe full-stack TypeScript framework that enables building
 portable full-stack libraries called "fragments". It follows a core + adapters pattern where
