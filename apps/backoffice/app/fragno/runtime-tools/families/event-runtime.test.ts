@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { AutomationEvent } from "../automation/contracts";
-import { createEventBashRuntime } from "./event-bash-runtime";
+import type { AutomationEvent } from "../../automation/contracts";
+import { createEventRuntime } from "./event-runtime";
 
 const createEvent = (overrides: Partial<AutomationEvent> = {}): AutomationEvent => ({
   id: "event-1",
@@ -18,7 +18,7 @@ const createEvent = (overrides: Partial<AutomationEvent> = {}): AutomationEvent 
   ...overrides,
 });
 
-describe("createEventBashRuntime.emitEvent", () => {
+describe("createEventRuntime.emitEvent", () => {
   it("normalizes array payloads to an empty object", async () => {
     const triggerIngestEvent = vi.fn(async () => undefined);
     const env = {
@@ -29,7 +29,7 @@ describe("createEventBashRuntime.emitEvent", () => {
         })),
       },
     } as unknown as CloudflareEnv;
-    const runtime = createEventBashRuntime({
+    const runtime = createEventRuntime({
       env,
       event: createEvent(),
     });
@@ -61,7 +61,7 @@ describe("createEventBashRuntime.emitEvent", () => {
         })),
       },
     } as unknown as CloudflareEnv;
-    const runtime = createEventBashRuntime({
+    const runtime = createEventRuntime({
       env,
       event: createEvent(),
     });

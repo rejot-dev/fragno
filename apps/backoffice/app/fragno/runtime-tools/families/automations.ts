@@ -19,6 +19,7 @@ import { automationRunResultSchema } from "@/fragno/automation/run-result";
 
 import {
   defineBackofficeRuntimeTool,
+  defineBackofficeRuntimeToolFamily,
   type BackofficeRuntimeTool,
   type BackofficeToolContext,
 } from "../runtime-tools";
@@ -107,34 +108,36 @@ const lookupBindingTool = defineAutomationRuntimeTool({
   outputSchema: automationIdentityBindingRecordSchema.nullable(),
   execute: async (input, context) =>
     getAutomationsRuntime(context.runtimes.automations).lookupBinding(input),
-  bash: {
-    command: "automations.identity.lookup-binding",
-    help: {
-      summary:
-        "automations.identity.lookup-binding checks whether a key is already present in automation identity bindings.",
-      options: [
-        {
-          name: "source",
-          required: true,
-          valueRequired: true,
-          valueName: "source",
-          description: "Identity source name (e.g. telegram)",
-        },
-        {
-          name: "key",
-          required: true,
-          valueRequired: true,
-          valueName: "key",
-          description: "Storage key for this source (e.g. external chat id)",
-        },
-      ],
-      examples: [
-        "automations.identity.lookup-binding --source telegram --key chat-123 --print value",
-      ],
+  adapters: {
+    bash: {
+      command: "automations.identity.lookup-binding",
+      help: {
+        summary:
+          "automations.identity.lookup-binding checks whether a key is already present in automation identity bindings.",
+        options: [
+          {
+            name: "source",
+            required: true,
+            valueRequired: true,
+            valueName: "source",
+            description: "Identity source name (e.g. telegram)",
+          },
+          {
+            name: "key",
+            required: true,
+            valueRequired: true,
+            valueName: "key",
+            description: "Storage key for this source (e.g. external chat id)",
+          },
+        ],
+        examples: [
+          "automations.identity.lookup-binding --source telegram --key chat-123 --print value",
+        ],
+      },
+      parse: parseLookupBindingArgs,
+      format: (binding) =>
+        !binding || binding.status !== "linked" ? { exitCode: 1 } : { data: binding },
     },
-    parse: parseLookupBindingArgs,
-    format: (binding) =>
-      !binding || binding.status !== "linked" ? { exitCode: 1 } : { data: binding },
   },
 });
 
@@ -152,46 +155,48 @@ const bindActorTool = defineAutomationRuntimeTool({
   outputSchema: automationIdentityBindingRecordSchema,
   execute: async (input, context) =>
     getAutomationsRuntime(context.runtimes.automations).bindActor(input),
-  bash: {
-    command: "automations.identity.bind-actor",
-    help: {
-      summary: "automations.identity.bind-actor creates or updates a key/value identity binding.",
-      options: [
-        {
-          name: "source",
-          required: true,
-          valueRequired: true,
-          valueName: "source",
-          description: "Identity source name (e.g. telegram)",
-        },
-        {
-          name: "key",
-          required: true,
-          valueRequired: true,
-          valueName: "key",
-          description: "Storage key for this source",
-        },
-        {
-          name: "value",
-          required: true,
-          valueRequired: true,
-          valueName: "value",
-          description: "Value to store (e.g. Fragno user id)",
-        },
-        {
-          name: "description",
-          valueRequired: true,
-          valueName: "text",
-          description: "Optional human-readable description of this binding",
-        },
-      ],
-      examples: [
-        "automations.identity.bind-actor --source telegram --key chat-123 --value user-55",
-        'automations.identity.bind-actor --source telegram --key chat-123 --value user-55 --description "Primary device"',
-      ],
+  adapters: {
+    bash: {
+      command: "automations.identity.bind-actor",
+      help: {
+        summary: "automations.identity.bind-actor creates or updates a key/value identity binding.",
+        options: [
+          {
+            name: "source",
+            required: true,
+            valueRequired: true,
+            valueName: "source",
+            description: "Identity source name (e.g. telegram)",
+          },
+          {
+            name: "key",
+            required: true,
+            valueRequired: true,
+            valueName: "key",
+            description: "Storage key for this source",
+          },
+          {
+            name: "value",
+            required: true,
+            valueRequired: true,
+            valueName: "value",
+            description: "Value to store (e.g. Fragno user id)",
+          },
+          {
+            name: "description",
+            valueRequired: true,
+            valueName: "text",
+            description: "Optional human-readable description of this binding",
+          },
+        ],
+        examples: [
+          "automations.identity.bind-actor --source telegram --key chat-123 --value user-55",
+          'automations.identity.bind-actor --source telegram --key chat-123 --value user-55 --description "Primary device"',
+        ],
+      },
+      parse: parseBindActorArgs,
+      format: (binding) => ({ data: binding }),
     },
-    parse: parseBindActorArgs,
-    format: (binding) => ({ data: binding }),
   },
 });
 
@@ -206,65 +211,79 @@ const scriptRunTool = defineAutomationRuntimeTool({
   }),
   outputSchema: automationRunResultSchema,
   execute: async (input, context) => getScriptRunner(context.scriptRunner).runScript(input),
-  bash: {
-    command: "scripts.run",
-    help: {
-      summary:
-        "scripts.run executes a bash or codemode automation script against an event fixture from an interactive shell context for manual testing.",
-      options: [
-        {
-          name: "script",
-          required: true,
-          valueRequired: true,
-          valueName: "path",
-          description:
-            "Path to the script file. Relative paths resolve under /workspace/automations/; absolute paths resolve against the master filesystem. *.cm.js files run through codemode; other files run through bash",
-        },
-        {
-          name: "event",
-          required: true,
-          valueRequired: true,
-          valueName: "path",
-          description:
-            "Path to an event JSON file (e.g. /events/2026-03-25/...json). The current interactive orgId is injected when the fixture omits orgId; mismatches are rejected",
-        },
-      ],
-      examples: [
-        "scripts.run --script scripts/my-script.sh --event /events/2026-03-25/2026-03-25T10:00:00.000Z_hook-id.json",
-        "scripts.run --script scripts/my-script.cm.js --event /events/2026-03-25/2026-03-25T10:00:00.000Z_hook-id.json --format json",
-        "scripts.run --script /workspace/automations/scripts/my-script.sh --event /events/2026-03-25/2026-03-25T10:00:00.000Z_hook-id.json --format json",
-      ],
-    },
-    parse: parseScriptRunArgs,
-    format: (result, options) => {
-      const hasExplicitFormat = options.format === "json" || !!options.print;
-      const data = {
-        runtime: result.runtime,
-        exitCode: result.exitCode,
-        stdout: result.stdout,
-        stderr: result.stderr,
-        logs: result.logs,
-        ...(result.result !== undefined ? { result: result.result } : {}),
-        commandCalls: result.commandCalls,
-        toolCalls: result.toolCalls,
-      };
+  adapters: {
+    bash: {
+      command: "scripts.run",
+      help: {
+        summary:
+          "scripts.run executes a bash or codemode automation script against an event fixture from an interactive shell context for manual testing.",
+        options: [
+          {
+            name: "script",
+            required: true,
+            valueRequired: true,
+            valueName: "path",
+            description:
+              "Path to the script file. Relative paths resolve under /workspace/automations/; absolute paths resolve against the master filesystem. *.cm.js files run through codemode; other files run through bash",
+          },
+          {
+            name: "event",
+            required: true,
+            valueRequired: true,
+            valueName: "path",
+            description:
+              "Path to an event JSON file (e.g. /events/2026-03-25/...json). The current interactive orgId is injected when the fixture omits orgId; mismatches are rejected",
+          },
+        ],
+        examples: [
+          "scripts.run --script scripts/my-script.sh --event /events/2026-03-25/2026-03-25T10:00:00.000Z_hook-id.json",
+          "scripts.run --script scripts/my-script.cm.js --event /events/2026-03-25/2026-03-25T10:00:00.000Z_hook-id.json --format json",
+          "scripts.run --script /workspace/automations/scripts/my-script.sh --event /events/2026-03-25/2026-03-25T10:00:00.000Z_hook-id.json --format json",
+        ],
+      },
+      parse: parseScriptRunArgs,
+      format: (result, options) => {
+        const hasExplicitFormat = options.format === "json" || !!options.print;
+        const data = {
+          runtime: result.runtime,
+          exitCode: result.exitCode,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          logs: result.logs,
+          ...(result.result !== undefined ? { result: result.result } : {}),
+          commandCalls: result.commandCalls,
+          toolCalls: result.toolCalls,
+        };
 
-      if (result.exitCode !== 0) {
+        if (result.exitCode !== 0) {
+          return {
+            data,
+            ...(!hasExplicitFormat ? { stdout: result.stdout } : {}),
+            stderr: result.stderr || `Script exited with code ${result.exitCode}`,
+            exitCode: result.exitCode,
+          };
+        }
+
         return {
           data,
           ...(!hasExplicitFormat ? { stdout: result.stdout } : {}),
-          stderr: result.stderr || `Script exited with code ${result.exitCode}`,
-          exitCode: result.exitCode,
         };
-      }
-
-      return {
-        data,
-        ...(!hasExplicitFormat ? { stdout: result.stdout } : {}),
-      };
+      },
     },
   },
 });
 
 export const automationsRuntimeTools = [lookupBindingTool, bindActorTool, scriptRunTool] as const;
 export const automationIdentityRuntimeTools = [lookupBindingTool, bindActorTool] as const;
+
+export const automationsToolFamily = defineBackofficeRuntimeToolFamily({
+  namespace: "automations",
+  tools: automationsRuntimeTools,
+  isAvailable: (context: AutomationsToolContext) => !!context.runtimes.automations,
+});
+
+export const automationIdentityToolFamily = defineBackofficeRuntimeToolFamily({
+  namespace: "automations",
+  tools: automationIdentityRuntimeTools,
+  isAvailable: (context: AutomationsToolContext) => !!context.runtimes.automations,
+});

@@ -52,17 +52,6 @@ export {
   readAutomationWorkspaceScript,
   resolveAutomationFileSystem,
 } from "./catalog";
-export {
-  AUTOMATION_SIMULATION_ROOT,
-  AUTOMATION_SIMULATION_SCENARIOS_ROOT,
-  automationScenarioSchema,
-  defineAutomationScenario,
-  listAutomationScenarios,
-  loadAutomationScenarioFile,
-  resolveAutomationScenarioPath,
-  runAutomationScenarioFile,
-  simulateAutomationScenario,
-} from "./scenario";
 export type {
   AutomationBindingCatalogEntry,
   AutomationCatalog,
@@ -91,26 +80,6 @@ export type {
   AutomationEventTypeForSource,
   AutomationSource,
 } from "./contracts";
-export type {
-  AutomationScenarioCatalogEntry,
-  AutomationScenarioCatalogStepEntry,
-  AutomationScenarioCommandMock,
-  AutomationScenarioCommandName,
-  AutomationScenarioDefinition,
-  AutomationScenarioMockResult,
-  AutomationScenarioStep,
-  AutomationSimulationBindingTranscript,
-  AutomationSimulationClaim,
-  AutomationSimulationCommandTranscript,
-  AutomationSimulationIdentityBinding,
-  AutomationSimulationPiSession,
-  AutomationSimulationReply,
-  AutomationSimulationResult,
-  AutomationSimulationState,
-  AutomationSimulationStepTranscript,
-  RunAutomationScenarioFileOptions,
-  SimulateAutomationScenarioOptions,
-} from "./scenario";
 export {
   bindAutomationIdentityActor,
   createAutomationsRuntime,
@@ -118,12 +87,12 @@ export {
   createStorageBackedAutomationsRuntime,
   lookupAutomationIdentityBinding,
 } from "./identity-runtime";
-export { createEventBashRuntime } from "../bash-runtime/event-bash-runtime";
-export { createOtpBashRuntime } from "../bash-runtime/otp-bash-runtime";
+export { createEventRuntime } from "../runtime-tools/families/event-runtime";
+export { createOtpRuntime } from "../runtime-tools/families/otp-runtime";
 export {
-  createTelegramBashRuntime,
-  createUnavailableTelegramBashRuntime,
-} from "../bash-runtime/telegram-bash-runtime";
+  createTelegramRuntime,
+  createUnavailableTelegramRuntime,
+} from "../runtime-tools/families/telegram-runtime";
 export { createAutomationExecutionContext, createAutomationRuntime } from "./engine/runtime";
 export { executeAutomationScript, executeBashAutomation } from "../bash-runtime/bash-host";
 export { createAutomationRunResult, formatAutomationResultAsStdout } from "./run-result";
@@ -140,9 +109,9 @@ export type {
   AutomationRunRuntime,
 } from "./run-result";
 export type { AutomationsRuntime } from "../runtime-tools/families/automations";
-export type { EventBashRuntime } from "../bash-runtime/event-bash-runtime";
-export type { OtpBashRuntime } from "../bash-runtime/otp-bash-runtime";
+export type { EventRuntime } from "../runtime-tools/families/event-runtime";
+export type { OtpRuntime } from "../runtime-tools/families/otp-runtime";
 export type {
   TelegramAutomationFileMetadata,
-  TelegramBashRuntime,
-} from "../bash-runtime/telegram-bash-runtime";
+  TelegramRuntime,
+} from "../runtime-tools/families/telegram-runtime";

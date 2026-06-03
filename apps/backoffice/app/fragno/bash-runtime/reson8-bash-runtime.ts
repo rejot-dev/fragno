@@ -28,13 +28,13 @@ import type {
   BashAutomationCommandResult,
   ParsedCommand,
 } from "../automation/commands/types";
-import type { BashCommandFactoryInput } from "./bash-host";
 import {
   NotConfiguredError,
   createOrganisationNotConfiguredMessage,
   isSuccessStatus,
   throwOnRouteRuntimeError,
-} from "./runtime-errors";
+} from "../runtime-tools/runtime-errors";
+import type { BashCommandFactoryInput } from "./bash-host";
 
 const RESON8_COMMAND_NAMES = ["reson8.prerecorded.transcribe"] as const;
 

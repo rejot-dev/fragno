@@ -10,6 +10,7 @@ import type { EventEmitArgs } from "@/fragno/automation/commands/types";
 
 import {
   defineBackofficeRuntimeTool,
+  defineBackofficeRuntimeToolFamily,
   type BackofficeRuntimeTool,
   type BackofficeToolContext,
 } from "../runtime-tools";
@@ -80,57 +81,65 @@ const emitEventTool = defineEventRuntimeTool({
   inputSchema: eventEmitInputSchema,
   outputSchema: eventEmitOutputSchema,
   execute: async (input, context) => getEventRuntime(context.runtimes.event).emitEvent(input),
-  bash: {
-    command: "event.emit",
-    help: {
-      summary: "event.emit triggers another Fragno automation event.",
-      options: [
-        {
-          name: "event-type",
-          required: true,
-          valueRequired: true,
-          valueName: "event-type",
-          description: "Event type to emit",
-        },
-        {
-          name: "source",
-          valueRequired: true,
-          valueName: "source",
-          description: "Event source override. Defaults to current source",
-        },
-        {
-          name: "external-actor-id",
-          valueRequired: true,
-          valueName: "external-actor-id",
-          description: "Actor external id override",
-        },
-        {
-          name: "actor-type",
-          valueRequired: true,
-          valueName: "actor-type",
-          description: "Actor type for emitted event",
-        },
-        {
-          name: "subject-user-id",
-          valueRequired: true,
-          valueName: "subject-user-id",
-          description: "Subject user id for emitted event",
-        },
-        {
-          name: "payload-json",
-          valueRequired: true,
-          valueName: "json",
-          description: "Event payload as JSON object",
-        },
-      ],
-      examples: [
-        "event.emit --event-type identity.binding.completed --source otp --format json",
-        'event.emit --event-type identity.bound --payload-json \'{"plan":"basic"}\'',
-      ],
+  adapters: {
+    bash: {
+      command: "event.emit",
+      help: {
+        summary: "event.emit triggers another Fragno automation event.",
+        options: [
+          {
+            name: "event-type",
+            required: true,
+            valueRequired: true,
+            valueName: "event-type",
+            description: "Event type to emit",
+          },
+          {
+            name: "source",
+            valueRequired: true,
+            valueName: "source",
+            description: "Event source override. Defaults to current source",
+          },
+          {
+            name: "external-actor-id",
+            valueRequired: true,
+            valueName: "external-actor-id",
+            description: "Actor external id override",
+          },
+          {
+            name: "actor-type",
+            valueRequired: true,
+            valueName: "actor-type",
+            description: "Actor type for emitted event",
+          },
+          {
+            name: "subject-user-id",
+            valueRequired: true,
+            valueName: "subject-user-id",
+            description: "Subject user id for emitted event",
+          },
+          {
+            name: "payload-json",
+            valueRequired: true,
+            valueName: "json",
+            description: "Event payload as JSON object",
+          },
+        ],
+        examples: [
+          "event.emit --event-type identity.binding.completed --source otp --format json",
+          'event.emit --event-type identity.bound --payload-json \'{"plan":"basic"}\'',
+        ],
+      },
+      parse: parseEventEmitArgs,
+      format: (result) => ({ data: result }),
     },
-    parse: parseEventEmitArgs,
-    format: (result) => ({ data: result }),
   },
 });
 
 export const eventRuntimeTools = [emitEventTool] as const;
+
+export const eventToolFamily = defineBackofficeRuntimeToolFamily({
+  namespace: "event",
+  tools: eventRuntimeTools,
+  isAvailable: (context: EventToolContext) => !!context.runtimes.event,
+});

@@ -117,10 +117,12 @@ describe("createBackofficeBashCommands", () => {
           calls.push(input);
           return input;
         },
-        bash: {
-          command: "test.echo",
-          help: { summary: "Echo a value.", options: [] },
-          parse: () => ({ value: "ok" }),
+        adapters: {
+          bash: {
+            command: "test.echo",
+            help: { summary: "Echo a value.", options: [] },
+            parse: () => ({ value: "ok" }),
+          },
         },
       }),
     ]);
@@ -147,10 +149,12 @@ describe("createBackofficeBashCommands", () => {
           calls.push(input);
           return input;
         },
-        bash: {
-          command: "test.echo",
-          help: { summary: "Echo a value.", options: [] },
-          parse: () => ({ value: "" }),
+        adapters: {
+          bash: {
+            command: "test.echo",
+            help: { summary: "Echo a value.", options: [] },
+            parse: () => ({ value: "" }),
+          },
         },
       }),
     ]);
@@ -169,11 +173,13 @@ describe("createBackofficeBashCommands", () => {
         inputSchema: z.object({ value: z.string().min(1) }),
         outputSchema: z.object({ value: z.string().min(1) }),
         execute: async (input) => ({ ...input, value: "" }),
-        bash: {
-          command: "test.echo",
-          help: { summary: "Echo a value.", options: [] },
-          parse: () => ({ value: "ok" }),
-          format: (output) => ({ data: output }),
+        adapters: {
+          bash: {
+            command: "test.echo",
+            help: { summary: "Echo a value.", options: [] },
+            parse: () => ({ value: "ok" }),
+            format: (output) => ({ data: output }),
+          },
         },
       }),
     ]);

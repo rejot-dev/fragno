@@ -38,6 +38,47 @@ export type BackofficeRuntimeToolCall = {
   error?: string;
 };
 
+export type BackofficeBashShellContext = {
+  cwd: string;
+  fs: {
+    resolvePath(cwd: string, path: string): string;
+    writeFile(path: string, content: string | Uint8Array): Promise<void> | void;
+  };
+};
+
+export type BackofficeRuntimeToolBashAdapter<
+  TInputSchema extends z.ZodType = z.ZodType,
+  TOutputSchema extends z.ZodType = z.ZodType,
+  TContext extends BackofficeToolContext = BackofficeToolContext,
+> = {
+  command: string;
+  help: AutomationCommandHelp;
+  parse: (args: string[]) => z.input<TInputSchema>;
+  outputOptions?(args: string[], parsed: ParsedCliTokens): AutomationCommandOutputOptions;
+  format?(
+    output: z.output<TOutputSchema>,
+    options: AutomationCommandOutputOptions,
+  ): AutomationCommandExecutionResult;
+  execute?(options: {
+    input: z.input<TInputSchema>;
+    args: string[];
+    context: TContext;
+    commandOutput: AutomationCommandOutputOptions;
+    shell: BackofficeBashShellContext;
+  }):
+    | Promise<AutomationCommandExecutionResult | unknown>
+    | AutomationCommandExecutionResult
+    | unknown;
+};
+
+export type BackofficeRuntimeToolAdapters<
+  TInputSchema extends z.ZodType = z.ZodType,
+  TOutputSchema extends z.ZodType = z.ZodType,
+  TContext extends BackofficeToolContext = BackofficeToolContext,
+> = {
+  bash?: BackofficeRuntimeToolBashAdapter<TInputSchema, TOutputSchema, TContext>;
+};
+
 export type BackofficeRuntimeTool<
   TInputSchema extends z.ZodType = z.ZodType,
   TOutputSchema extends z.ZodType = z.ZodType,
@@ -50,21 +91,20 @@ export type BackofficeRuntimeTool<
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
   execute(input: z.output<TInputSchema>, context: TContext): Promise<z.output<TOutputSchema>>;
-  bash?: {
-    command: string;
-    help: AutomationCommandHelp;
-    parse: (args: string[]) => z.input<TInputSchema>;
-    outputOptions?(args: string[], parsed: ParsedCliTokens): AutomationCommandOutputOptions;
-    format?(
-      output: z.output<TOutputSchema>,
-      options: AutomationCommandOutputOptions,
-    ): AutomationCommandExecutionResult;
-  };
+  adapters?: BackofficeRuntimeToolAdapters<TInputSchema, TOutputSchema, TContext>;
 };
 
-export type AnyBackofficeRuntimeTool<
-  TContext extends BackofficeToolContext = BackofficeToolContext,
-> = BackofficeRuntimeTool<z.ZodType, z.ZodType, TContext>;
+export type AnyBackofficeRuntimeTool = BackofficeRuntimeTool<
+  z.ZodType,
+  z.ZodType,
+  BackofficeToolContext
+>;
+
+export type BackofficeRuntimeToolFamily = {
+  namespace: string;
+  tools: readonly AnyBackofficeRuntimeTool[];
+  isAvailable?: (context: BackofficeToolContext) => boolean;
+};
 
 export const defineBackofficeRuntimeTool = <
   TInputSchema extends z.ZodType,
@@ -73,6 +113,39 @@ export const defineBackofficeRuntimeTool = <
 >(
   tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, TContext>,
 ): BackofficeRuntimeTool<TInputSchema, TOutputSchema, TContext> => tool;
+
+export const defineBackofficeRuntimeToolFamily = <
+  TContext extends BackofficeToolContext = BackofficeToolContext,
+>({
+  namespace,
+  tools,
+  isAvailable,
+}: {
+  namespace: string;
+  tools: readonly BackofficeRuntimeTool<z.ZodType, z.ZodType, TContext>[];
+  isAvailable?: (context: TContext) => boolean;
+}): BackofficeRuntimeToolFamily => ({
+  namespace,
+  tools: tools as readonly AnyBackofficeRuntimeTool[],
+  ...(isAvailable
+    ? { isAvailable: (context: BackofficeToolContext) => isAvailable(context as TContext) }
+    : {}),
+});
+
+export const getAvailableRuntimeTools = ({
+  families,
+  context,
+}: {
+  families: readonly BackofficeRuntimeToolFamily[];
+  context: BackofficeToolContext;
+}): AnyBackofficeRuntimeTool[] => {
+  return families.flatMap((family) => {
+    if (family.isAvailable && !family.isAvailable(context)) {
+      return [];
+    }
+    return [...family.tools];
+  });
+};
 
 type CodemodeToolDescriptor = {
   description?: string;
@@ -95,26 +168,22 @@ const summarizeToolValue = (value: unknown) => {
   return summary.length > 500 ? `${summary.slice(0, 497)}...` : summary;
 };
 
-const executeBackofficeRuntimeTool = async <
-  TInputSchema extends z.ZodType,
-  TOutputSchema extends z.ZodType,
-  TContext extends BackofficeToolContext,
->(
-  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, TContext>,
-  input: z.input<TInputSchema>,
-  context: TContext,
-): Promise<z.output<TOutputSchema>> => {
+const executeBackofficeRuntimeTool = async (
+  tool: AnyBackofficeRuntimeTool,
+  input: unknown,
+  context: BackofficeToolContext,
+): Promise<unknown> => {
   const output = await tool.execute(tool.inputSchema.parse(input), context);
   return tool.outputSchema.parse(output);
 };
 
-export const createBackofficeCodemodeProviders = <TContext extends BackofficeToolContext>({
+export const createBackofficeCodemodeProviders = ({
   tools,
   context,
   toolCalls,
 }: {
-  tools: readonly AnyBackofficeRuntimeTool<TContext>[];
-  context: TContext;
+  tools: readonly AnyBackofficeRuntimeTool[];
+  context: BackofficeToolContext;
   toolCalls?: BackofficeRuntimeToolCall[];
 }): ToolProvider[] => {
   const grouped = new Map<string, Record<string, CodemodeToolDescriptor>>();
@@ -153,22 +222,22 @@ export const createBackofficeCodemodeProviders = <TContext extends BackofficeToo
   return [...grouped].map(([name, providerTools]) => ({ name, tools: providerTools }));
 };
 
-export const createBackofficeBashCommands = <TContext extends BackofficeToolContext>({
+export const createBackofficeBashCommands = ({
   tools,
   context,
   commandCallsResult,
 }: {
-  tools: readonly AnyBackofficeRuntimeTool<TContext>[];
-  context: TContext;
+  tools: readonly AnyBackofficeRuntimeTool[];
+  context: BackofficeToolContext;
   commandCallsResult: BashAutomationCommandResult[];
 }) =>
   tools.flatMap((tool) => {
-    if (!tool.bash) {
+    const bash = tool.adapters?.bash;
+    if (!bash) {
       return [];
     }
 
-    const bash = tool.bash;
-    return defineCommand(bash.command, async (args) => {
+    return defineCommand(bash.command, async (args, shell) => {
       const parsed = parseCliTokens(args);
 
       if (hasHelpOption(parsed)) {
@@ -197,10 +266,18 @@ export const createBackofficeBashCommands = <TContext extends BackofficeToolCont
         const commandOutput = bash.outputOptions
           ? bash.outputOptions(args, parsed)
           : readOutputOptions(parsed);
-        const output = await executeBackofficeRuntimeTool(tool, input, context);
-        const result = normalizeExecutionResult(
-          bash.format ? bash.format(output, commandOutput) : { data: output },
-        );
+        const rawResult = bash.execute
+          ? await bash.execute({
+              input,
+              args,
+              context,
+              commandOutput,
+              shell: shell as BackofficeBashShellContext,
+            })
+          : bash.format
+            ? bash.format(await executeBackofficeRuntimeTool(tool, input, context), commandOutput)
+            : { data: await executeBackofficeRuntimeTool(tool, input, context) };
+        const result = normalizeExecutionResult(rawResult);
         const stdout = formatCommandStdout(commandOutput, result);
         const stderr = typeof result.stderr === "string" ? result.stderr : "";
         const exitCode = typeof result.exitCode === "number" ? result.exitCode : 0;

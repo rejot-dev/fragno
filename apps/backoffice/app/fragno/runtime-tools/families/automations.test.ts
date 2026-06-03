@@ -7,7 +7,7 @@ import { automationIdentityRuntimeTools, automationsRuntimeTools } from "./autom
 describe("automation runtime tools", () => {
   test("derive automation bash commands from runtime tools", () => {
     expect(AUTOMATIONS_COMMAND_SPEC_LIST.map((spec) => spec.name)).toEqual(
-      automationsRuntimeTools.map((tool) => tool.bash?.command),
+      automationsRuntimeTools.map((tool) => tool.adapters?.bash?.command),
     );
   });
 
@@ -17,7 +17,7 @@ describe("automation runtime tools", () => {
     expect(lookupBinding.name).toBe("lookupBinding");
     expect(
       lookupBinding.inputSchema.parse(
-        lookupBinding.bash!.parse(["--source", "telegram", "--key", "chat-123"]),
+        lookupBinding.adapters!.bash!.parse(["--source", "telegram", "--key", "chat-123"]),
       ),
     ).toEqual({ source: "telegram", key: "chat-123" });
   });
@@ -28,7 +28,7 @@ describe("automation runtime tools", () => {
     expect(bindActor.name).toBe("bindActor");
     expect(
       bindActor.inputSchema.parse(
-        bindActor.bash!.parse([
+        bindActor.adapters!.bash!.parse([
           "--source",
           "telegram",
           "--key",

@@ -12,11 +12,7 @@ vi.mock("@/files", async (importOriginal) => {
   };
 });
 
-import {
-  loadAutomationScenariosForScript,
-  loadAutomationScriptSource,
-  loadAutomationWorkspaceData,
-} from "./data";
+import { loadAutomationScriptSource, loadAutomationWorkspaceData } from "./data";
 
 const mockContext = { get: () => ({ env: {} }) } as never;
 
@@ -121,42 +117,6 @@ describe("automation backoffice workspace data", () => {
     expect(result.bindings).toEqual([]);
     expect(result.bindingsError).toContain("Automation manifest");
     expect(result.scriptsError).toContain("Automation manifest");
-  });
-
-  test("surfaces manifest load errors when listing scenarios for a script", async () => {
-    const fileSystem = createStubAutomationFileSystem({
-      "/workspace/automations/bindings.json": "{not-json}",
-      "/workspace/automations/scripts/recoverable.sh": 'echo "still here"',
-      "/workspace/automations/simulator/scenarios/recoverable.json": JSON.stringify({
-        version: 1,
-        name: "Recoverable",
-        steps: [
-          {
-            event: {
-              id: "event-1",
-              source: "telegram",
-              eventType: "message.received",
-              occurredAt: "2026-01-01T00:00:00.000Z",
-              payload: {},
-            },
-          },
-        ],
-      }),
-    });
-    createOrgFileSystemMock.mockResolvedValue(fileSystem.fs);
-
-    const result = await loadAutomationScenariosForScript({
-      context: mockContext,
-      orgId: "acme-org",
-      scriptId: "workspace-script:scripts/recoverable.sh",
-    });
-
-    expect(result.scenarios).toEqual([]);
-    expect(result.scenariosError).toContain("Automation manifest");
-    expect(fileSystem.readFileCalls).toContain("/workspace/automations/bindings.json");
-    expect(fileSystem.readFileCalls).toContain(
-      "/workspace/automations/simulator/scenarios/recoverable.json",
-    );
   });
 
   test("reads the selected script source only when the user opens it", async () => {

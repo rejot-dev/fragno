@@ -23,26 +23,22 @@ import {
   createRouteBackedInteractiveBashContext,
   type InteractiveBashCommandContext,
 } from "../bash-runtime/bash-host";
-import type { OtpBashRuntime } from "../bash-runtime/otp-bash-runtime";
 import type { PiBashRuntime } from "../bash-runtime/pi-bash-runtime";
 import type { ResendBashRuntime } from "../bash-runtime/resend-bash-runtime";
 import type { Reson8BashRuntime } from "../bash-runtime/reson8-bash-runtime";
-import type { TelegramBashRuntime } from "../bash-runtime/telegram-bash-runtime";
 import type {
   BackofficeCodemodeEnv,
   BackofficeCodemodeExecuteResult,
   RunBackofficeCodemodeInput,
 } from "../codemode/execute";
+import type { AutomationsRuntime } from "../runtime-tools/families/automations";
+import type { OtpRuntime } from "../runtime-tools/families/otp-runtime";
+import type { TelegramRuntime } from "../runtime-tools/families/telegram-runtime";
 import {
-  automationIdentityRuntimeTools,
-  type AutomationsRuntime,
-} from "../runtime-tools/families/automations";
-import { otpRuntimeTools } from "../runtime-tools/families/otp";
-import { telegramRuntimeTools } from "../runtime-tools/families/telegram";
-import type {
-  AnyBackofficeRuntimeTool,
-  BackofficeToolContext,
+  getAvailableRuntimeTools,
+  type BackofficeToolContext,
 } from "../runtime-tools/runtime-tools";
+import { piCodemodeRuntimeToolFamilies } from "../runtime-tools/tool-families";
 import {
   PI_MODEL_CATALOG,
   PI_PROVIDER_TO_MODEL_PROVIDER,
@@ -65,7 +61,7 @@ export type PiBashCommandContext = InteractiveBashCommandContext & {
     runtime: AutomationsRuntime;
   };
   otp: {
-    runtime: OtpBashRuntime;
+    runtime: OtpRuntime;
   };
   pi: {
     runtime: PiBashRuntime;
@@ -77,7 +73,7 @@ export type PiBashCommandContext = InteractiveBashCommandContext & {
     runtime: ResendBashRuntime;
   };
   telegram: {
-    runtime: TelegramBashRuntime;
+    runtime: TelegramRuntime;
   };
 };
 
@@ -88,8 +84,8 @@ export type PiSessionFileSystemContext = {
 
 type PiCodemodeToolContext = BackofficeToolContext<{
   automations?: AutomationsRuntime;
-  otp?: OtpBashRuntime;
-  telegram?: TelegramBashRuntime;
+  otp?: OtpRuntime;
+  telegram?: TelegramRuntime;
 }>;
 
 export type PiCodemodeRuntime = {
@@ -242,11 +238,6 @@ const createExecCodeModeTool = (
         throw new Error("execCodeMode is not configured for this Pi runtime.");
       }
 
-      const tools: AnyBackofficeRuntimeTool<PiCodemodeToolContext>[] = [
-        ...automationIdentityRuntimeTools,
-        ...(bashCommandContext?.otp ? otpRuntimeTools : []),
-        ...(bashCommandContext?.telegram ? telegramRuntimeTools : []),
-      ];
       const context: PiCodemodeToolContext = {
         runtimes: {
           automations: bashCommandContext?.automations.runtime,
@@ -254,6 +245,11 @@ const createExecCodeModeTool = (
           telegram: bashCommandContext?.telegram?.runtime,
         },
       };
+
+      const tools = getAvailableRuntimeTools({
+        families: piCodemodeRuntimeToolFamilies,
+        context,
+      });
 
       const result = await codemode.execute({
         code,

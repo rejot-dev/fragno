@@ -13,11 +13,12 @@ import {
 } from "./types";
 
 const toCommandSpec = (tool: AnyBackofficeRuntimeTool) => {
-  if (!tool.bash) {
+  const bash = tool.adapters?.bash;
+  if (!bash) {
     throw new Error(`Runtime tool ${tool.id} does not define a bash command`);
   }
 
-  const { command, help, parse } = tool.bash;
+  const { command, help, parse } = bash;
   return {
     name: command,
     help,

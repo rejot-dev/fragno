@@ -7,7 +7,7 @@ import { eventRuntimeTools } from "./event";
 describe("event runtime tools", () => {
   test("derive event bash commands from runtime tools", () => {
     expect(EVENT_COMMAND_SPEC_LIST.map((spec) => spec.name)).toEqual(
-      eventRuntimeTools.map((tool) => tool.bash?.command),
+      eventRuntimeTools.map((tool) => tool.adapters?.bash?.command),
     );
   });
 
@@ -17,7 +17,7 @@ describe("event runtime tools", () => {
     expect(emit.name).toBe("emit");
     expect(
       emit.inputSchema.parse(
-        emit.bash!.parse([
+        emit.adapters!.bash!.parse([
           "--event-type",
           "identity.bound",
           "--source",

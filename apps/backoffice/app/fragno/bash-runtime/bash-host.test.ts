@@ -5,8 +5,8 @@ import { InMemoryFs } from "just-bash";
 import { MasterFileSystem } from "@/files/master-file-system";
 import { normalizeMountedFileSystem } from "@/files/mounted-file-system";
 
+import type { OtpRuntime } from "../runtime-tools/families/otp-runtime";
 import { createBashHost, createInteractiveBashHost } from "./bash-host";
-import type { OtpBashRuntime } from "./otp-bash-runtime";
 import type { PiBashRuntime } from "./pi-bash-runtime";
 import type { ResendBashRuntime } from "./resend-bash-runtime";
 import type { Reson8BashRuntime } from "./reson8-bash-runtime";
@@ -26,7 +26,7 @@ const createAutomationsRuntime = () => ({
   }),
 });
 
-const createOtpRuntime = (): OtpBashRuntime => ({
+const createOtpRuntime = (): OtpRuntime => ({
   createClaim: async ({ source, externalActorId }) => ({
     url: `https://example.com/${source}/${externalActorId}`,
     externalId: externalActorId,

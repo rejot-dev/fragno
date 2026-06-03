@@ -3,11 +3,11 @@ import { z } from "zod";
 
 import type { TelegramFragmentConfig } from "@fragno-dev/telegram-fragment";
 
-import type { TelegramAutomationFileMetadata } from "@/fragno/bash-runtime/telegram-bash-runtime";
 import {
   type DurableHookQueueOptions,
   type DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
+import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import {
   buildTelegramAutomationEvent,
   createTelegramServer,

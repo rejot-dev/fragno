@@ -2,24 +2,14 @@ import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 
-import { loadAutomationCatalogFromConfig, resolveAutomationFileSystem } from "./catalog";
+import { loadAutomationCatalogFromConfig } from "./catalog";
 import { automationFragmentDefinition } from "./definition";
 import { automationIdentityBindingRecordSchema } from "./identity";
 import { bindAutomationIdentityActor, lookupAutomationIdentityBinding } from "./identity-runtime";
-import {
-  listAutomationScenarios,
-  resolveAutomationScenarioPath,
-  runAutomationScenarioFile,
-} from "./scenario";
 import { automationFragmentSchema } from "./schema";
 
 const getOrgIdFromRequestQuery = (query: URLSearchParams) =>
   query.get("orgId")?.trim() || undefined;
-
-const isAutomationScenarioNotFoundError = (cause: unknown): cause is Error =>
-  cause instanceof Error &&
-  cause.message.startsWith("Automation scenario file '") &&
-  cause.message.includes("' was not found:");
 
 export const automationFragmentRoutes = defineRoutes(automationFragmentDefinition).create(
   ({ defineRoute, config }) => {
@@ -62,88 +52,6 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
                 message:
                   cause instanceof Error ? cause.message : "Failed to load automation bindings.",
                 code: "AUTOMATION_CATALOG_INVALID",
-              },
-              500,
-            );
-          }
-        },
-      }),
-      defineRoute({
-        method: "GET",
-        path: "/scenarios",
-        outputSchema: z.array(z.record(z.string(), z.unknown())),
-        handler: async function ({ query }, { json, error }) {
-          try {
-            const fileSystem = await resolveAutomationFileSystem(config, {
-              orgId: getOrgIdFromRequestQuery(query),
-              purpose: "route",
-            });
-
-            return json(await listAutomationScenarios(fileSystem));
-          } catch (cause) {
-            return error(
-              {
-                message:
-                  cause instanceof Error ? cause.message : "Failed to load automation scenarios.",
-                code: "AUTOMATION_SCENARIOS_INVALID",
-              },
-              500,
-            );
-          }
-        },
-      }),
-      defineRoute({
-        method: "POST",
-        path: "/scenarios/run",
-        inputSchema: z.object({
-          path: z.string().trim().min(1),
-        }),
-        outputSchema: z.record(z.string(), z.unknown()),
-        handler: async function ({ input, query }, { json, error }) {
-          const payload = await input.valid();
-
-          let scenarioPath: string;
-          try {
-            scenarioPath = resolveAutomationScenarioPath(payload.path);
-          } catch (cause) {
-            return error(
-              {
-                message:
-                  cause instanceof Error ? cause.message : "Invalid automation scenario path.",
-                code: "AUTOMATION_SCENARIO_PATH_INVALID",
-              },
-              400,
-            );
-          }
-
-          try {
-            const fileSystem = await resolveAutomationFileSystem(config, {
-              orgId: getOrgIdFromRequestQuery(query),
-              purpose: "route",
-            });
-
-            return json(
-              await runAutomationScenarioFile({
-                fileSystem,
-                path: scenarioPath,
-              }),
-            );
-          } catch (cause) {
-            if (isAutomationScenarioNotFoundError(cause)) {
-              return error(
-                {
-                  message: cause.message,
-                  code: "AUTOMATION_SCENARIO_NOT_FOUND",
-                },
-                404,
-              );
-            }
-
-            return error(
-              {
-                message:
-                  cause instanceof Error ? cause.message : "Failed to run automation scenario.",
-                code: "AUTOMATION_SCENARIO_RUN_FAILED",
               },
               500,
             );

@@ -1,20 +1,15 @@
 import type { MasterFileSystem } from "@/files/master-file-system";
 import type { AutomationExecutionContext } from "@/fragno/bash-runtime/bash-host";
 import { runBackofficeCodemode, type BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
+import type { AutomationsRuntime } from "@/fragno/runtime-tools/families/automations";
+import type { EventRuntime } from "@/fragno/runtime-tools/families/event";
+import type { OtpRuntime } from "@/fragno/runtime-tools/families/otp";
+import type { TelegramRuntime } from "@/fragno/runtime-tools/families/telegram";
 import {
-  automationIdentityRuntimeTools,
-  type AutomationsRuntime,
-} from "@/fragno/runtime-tools/families/automations";
-import { eventRuntimeTools, type EventRuntime } from "@/fragno/runtime-tools/families/event";
-import { otpRuntimeTools, type OtpRuntime } from "@/fragno/runtime-tools/families/otp";
-import {
-  telegramRuntimeTools,
-  type TelegramRuntime,
-} from "@/fragno/runtime-tools/families/telegram";
-import type {
-  AnyBackofficeRuntimeTool,
-  BackofficeToolContext,
+  getAvailableRuntimeTools,
+  type BackofficeToolContext,
 } from "@/fragno/runtime-tools/runtime-tools";
+import { automationRuntimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import { createAutomationRunResult, type AutomationRunResult } from "../run-result";
 import { createAutomationExecutionFileSystem } from "./execution-file-system";
@@ -53,12 +48,10 @@ export const executeCodemodeAutomation = async ({
     eventJson: JSON.stringify(context.automation.event),
   });
   const toolContext = createAutomationToolRuntimeContext(context);
-  const tools: AnyBackofficeRuntimeTool<AutomationCodemodeToolContext>[] = [
-    ...(context.automations ? automationIdentityRuntimeTools : []),
-    ...eventRuntimeTools,
-    ...(context.otp ? otpRuntimeTools : []),
-    ...(context.telegram ? telegramRuntimeTools : []),
-  ];
+  const tools = getAvailableRuntimeTools({
+    families: automationRuntimeToolFamilies,
+    context: toolContext,
+  });
   const result = await runBackofficeCodemode({
     code: script,
     fs: executionFs,

@@ -10,6 +10,7 @@ import type { IdentityCreateClaimArgs } from "@/fragno/automation/commands/types
 
 import {
   defineBackofficeRuntimeTool,
+  defineBackofficeRuntimeToolFamily,
   type BackofficeRuntimeTool,
   type BackofficeToolContext,
 } from "../runtime-tools";
@@ -79,41 +80,49 @@ const createClaimTool = defineOtpRuntimeTool({
   inputSchema: createClaimInputSchema,
   outputSchema: identityClaimRecordSchema,
   execute: async (input, context) => getOtpRuntime(context.runtimes.otp).createClaim(input),
-  bash: {
-    command: "otp.identity.create-claim",
-    help: {
-      summary:
-        "otp.identity.create-claim creates a short-lived identity claim URL for an external actor.",
-      options: [
-        {
-          name: "source",
-          required: true,
-          valueRequired: true,
-          valueName: "source",
-          description: "Identity source name (e.g. telegram)",
-        },
-        {
-          name: "external-actor-id",
-          required: true,
-          valueRequired: true,
-          valueName: "external-actor-id",
-          description: "External actor identifier from the source",
-        },
-        {
-          name: "ttl-minutes",
-          valueRequired: true,
-          valueName: "minutes",
-          description: "Optional claim TTL, in minutes",
-        },
-      ],
-      examples: [
-        "otp.identity.create-claim --source telegram --external-actor-id chat-123",
-        "otp.identity.create-claim --source telegram --external-actor-id chat-123 --ttl-minutes 15 --print url",
-      ],
+  adapters: {
+    bash: {
+      command: "otp.identity.create-claim",
+      help: {
+        summary:
+          "otp.identity.create-claim creates a short-lived identity claim URL for an external actor.",
+        options: [
+          {
+            name: "source",
+            required: true,
+            valueRequired: true,
+            valueName: "source",
+            description: "Identity source name (e.g. telegram)",
+          },
+          {
+            name: "external-actor-id",
+            required: true,
+            valueRequired: true,
+            valueName: "external-actor-id",
+            description: "External actor identifier from the source",
+          },
+          {
+            name: "ttl-minutes",
+            valueRequired: true,
+            valueName: "minutes",
+            description: "Optional claim TTL, in minutes",
+          },
+        ],
+        examples: [
+          "otp.identity.create-claim --source telegram --external-actor-id chat-123",
+          "otp.identity.create-claim --source telegram --external-actor-id chat-123 --ttl-minutes 15 --print url",
+        ],
+      },
+      parse: parseOtpIdentityCreateClaim,
+      format: (result) => ({ data: result }),
     },
-    parse: parseOtpIdentityCreateClaim,
-    format: (result) => ({ data: result }),
   },
 });
 
 export const otpRuntimeTools = [createClaimTool] as const;
+
+export const otpToolFamily = defineBackofficeRuntimeToolFamily({
+  namespace: "otp",
+  tools: otpRuntimeTools,
+  isAvailable: (context: OtpToolContext) => !!context.runtimes.otp,
+});
