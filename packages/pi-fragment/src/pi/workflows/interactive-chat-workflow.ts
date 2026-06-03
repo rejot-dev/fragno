@@ -224,7 +224,7 @@ export const interactiveChatWorkflow = definePiWorkflow(
         continue;
       }
 
-      const result = await ctx.agent(params.agentName).run(stepName, {
+      const result = await ctx.agentStep(params.agentName).run(stepName, {
         mode: toRunMode(command),
         input: toPromptInput(command),
         messages,
