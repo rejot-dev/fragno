@@ -470,7 +470,7 @@ Implemented:
 - Replaced the local duplicate unique-constraint matcher with `isUniqueConstraintError` from
   `@fragno-dev/db`.
 
-### Slice 3: Pi codemode harness with filesystem-only `runStateCode`
+### [x] Slice 3: Pi codemode harness with filesystem-only `runStateCode`
 
 Goal: ship a separately selectable Pi codemode harness even before every domain tool is migrated.
 
@@ -487,6 +487,21 @@ Tests:
 - Pi tool test runs `runStateCode` against a session filesystem and verifies file writes persist.
 - Prompt/config test verifies the codemode harness guidance mentions `state.*`, camelCase tools, and
   no `import()` assumption.
+
+Implemented:
+
+- Added `runStateCode` to `PI_TOOL_IDS` and registered it in the backoffice Pi builder.
+- Split the built-in fallback harness configuration into separate `bash` and `codemode` harnesses.
+  The bash harness exposes only `bash`; the codemode harness exposes only `runStateCode`.
+- Added `runStateCodeParametersSchema` and a Pi tool factory that runs standalone async arrow
+  functions through `runBackofficeCodemode(...)` against the same cached session filesystem used by
+  bash.
+- Kept the codemode import lazy inside the tool execution path so Node-only Pi tests do not load the
+  Cloudflare dynamic-worker modules.
+- Added codemode harness prompt guidance for `state.*`, camelCase domain tools, no `import()`
+  assumption, and standalone async arrow functions.
+- Added a colocated Cloudflare test that executes `runStateCode`, writes through `state.*`, and
+  verifies the write persists in the Pi session filesystem.
 
 ### Slice 4: Pi codemode harness with one domain tool family
 

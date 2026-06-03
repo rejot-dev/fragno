@@ -89,22 +89,45 @@ export const PI_MODEL_CATALOG: PiModelOption[] = [
   { provider: "gemini", name: "gemini-3-pro-preview", label: "Gemini 3 Pro (Preview)" },
 ];
 
-export const PI_TOOL_IDS = ["bash"] as const;
+export const PI_TOOL_IDS = ["bash", "runStateCode"] as const;
 export type PiToolId = (typeof PI_TOOL_IDS)[number];
 
-export const DEFAULT_PI_HARNESS: PiHarnessConfig = {
-  id: "default",
-  label: "Default",
-  description: "Built-in harness with bash access and the combined session filesystem.",
-  systemPrompt: `SYSTEM.md (agent guidance):\n\n${DEFAULT_SYSTEM_PROMPT}`,
-  tools: ["bash"],
-};
+const BASH_HARNESS_PROMPT = `SYSTEM.md (agent guidance):\n\n${DEFAULT_SYSTEM_PROMPT}`;
+
+const CODEMODE_HARNESS_PROMPT = `${BASH_HARNESS_PROMPT}
+
+Codemode harness guidance:
+
+- Use runStateCode for coordinated filesystem work in the combined session filesystem.
+- Use state.* APIs from inside runStateCode for multi-file operations.
+- Prefer camelCase domain tools when they are available in codemode contexts.
+- Do not assume import() or module loading is available inside dynamic Worker code.
+- Write codemode automation scripts as standalone async arrow functions, for example: async () => { return await state.readFile("/workspace/file.txt"); }`;
+
+export const DEFAULT_PI_HARNESSES: PiHarnessConfig[] = [
+  {
+    id: "bash",
+    label: "Bash",
+    description: "Built-in harness with bash access and the combined session filesystem.",
+    systemPrompt: BASH_HARNESS_PROMPT,
+    tools: ["bash"],
+  },
+  {
+    id: "codemode",
+    label: "Codemode",
+    description: "Built-in harness with runStateCode access to the combined session filesystem.",
+    systemPrompt: CODEMODE_HARNESS_PROMPT,
+    tools: ["runStateCode"],
+  },
+];
+
+export const DEFAULT_PI_HARNESS: PiHarnessConfig = DEFAULT_PI_HARNESSES[0] as PiHarnessConfig;
 
 export const resolvePiHarnesses = (harnesses?: PiHarnessConfig[] | null): PiHarnessConfig[] => {
   if (Array.isArray(harnesses) && harnesses.length > 0) {
     return harnesses;
   }
-  return [DEFAULT_PI_HARNESS];
+  return DEFAULT_PI_HARNESSES;
 };
 
 export const createPiAgentName = (options: {

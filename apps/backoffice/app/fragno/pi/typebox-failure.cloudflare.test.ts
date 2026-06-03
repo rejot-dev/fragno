@@ -5,7 +5,7 @@ import { env } from "cloudflare:workers";
 
 import { validateToolArguments } from "@earendil-works/pi-ai";
 
-import { bashParametersSchema } from "@/fragno/pi/pi-schema";
+import { bashParametersSchema } from "@/fragno/pi/pi";
 
 describe("typebox failure reproduction", () => {
   it("eval is blocked in the workers test runtime", () => {
