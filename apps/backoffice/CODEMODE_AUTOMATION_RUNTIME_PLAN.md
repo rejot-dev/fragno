@@ -567,7 +567,7 @@ Implemented:
 - Added Cloudflare coverage for a `.cm.js` automation reading `/context/event.json` and writing a
   workspace output file.
 
-### Slice 6: Codemode automation with domain tools
+### [x] Slice 6: Codemode automation with domain tools
 
 Goal: prove automations and Pi sessions use the same domain tool definitions.
 
@@ -583,6 +583,22 @@ Tests:
 - Scenario test verifies the same tool definition works through bash and codemode.
 - Failure test verifies failed codemode execution causes the durable hook to fail with a useful
   message.
+
+Implemented:
+
+- Added `AutomationRunResult` as the shared normalized result shape for bash and codemode runs.
+- Normalized bash automation results to include `logs`, `result`, and `toolCalls` alongside existing
+  command-call metadata.
+- Wired codemode automation execution to the migrated automation identity runtime tools, exposing
+  `automations.lookupBinding(...)` and `automations.bindActor(...)` from the same definitions used
+  by generated bash commands.
+- Reused the existing storage-backed automation runtime from hook execution, so codemode automations
+  mutate automation identity state directly in durable hook contexts.
+- Kept manual `scripts.run` on the same path: `.cm.js` manual runs get route-backed or injected
+  automation identity runtimes from the interactive dashboard context.
+- Added Cloudflare coverage for codemode `automations.bindActor(...)`, shared bash/codemode tool
+  definition behavior, and failed codemode domain-tool validation surfacing as a failed automation
+  run with recorded tool-call metadata.
 
 ### Slice 7: Migrate remaining tool families one by one
 

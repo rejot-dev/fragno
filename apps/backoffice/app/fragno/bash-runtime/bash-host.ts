@@ -10,16 +10,20 @@ import {
 } from "@/fragno/automation/catalog";
 import type { ScriptRunArgs } from "@/fragno/automation/commands/types";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
-import type { BashAutomationRunResult } from "@/fragno/automation/engine/bash";
 import { createAutomationExecutionFileSystem } from "@/fragno/automation/engine/execution-file-system";
+import { createRouteBackedAutomationsRuntime } from "@/fragno/automation/identity-runtime";
+import {
+  createAutomationRunResult,
+  type AutomationRunResult,
+} from "@/fragno/automation/run-result";
+import { automationsRuntimeTools } from "@/fragno/runtime-tools/families/automations";
+import type {
+  AutomationsRuntime,
+  ScriptRunnerRuntime,
+} from "@/fragno/runtime-tools/families/automations";
+import { createBackofficeBashCommands } from "@/fragno/runtime-tools/runtime-tools";
 
 import type { BashAutomationCommandResult } from "../automation/commands/types";
-import {
-  createAutomationsBashCommands,
-  createRouteBackedAutomationsBashRuntime,
-  type RegisteredAutomationsBashCommandContext,
-  type ScriptRunnerRuntime,
-} from "./automations-bash-runtime";
 import {
   createEventBashCommands,
   createEventBashRuntime,
@@ -54,6 +58,11 @@ import {
 // ---------------------------------------------------------------------------
 // Low-level bash host
 // ---------------------------------------------------------------------------
+
+export type RegisteredAutomationsBashCommandContext = {
+  runtime: AutomationsRuntime;
+  scriptRunner?: ScriptRunnerRuntime;
+};
 
 export type BashHostContext = {
   automation: RegisteredEventBashCommandContext | null;
@@ -106,6 +115,24 @@ export type BashCommandFactoryInput = {
   sessionId?: string;
   commandCallsResult: BashAutomationCommandResult[];
   context: BashHostContext;
+};
+
+const createAutomationsBashCommands = (input: BashCommandFactoryInput) => {
+  const automationsContext = input.context.automations;
+  if (!automationsContext) {
+    return [];
+  }
+
+  return createBackofficeBashCommands({
+    tools: automationsRuntimeTools,
+    context: {
+      runtimes: {
+        automations: automationsContext.runtime,
+      },
+      scriptRunner: automationsContext.scriptRunner,
+    },
+    commandCallsResult: input.commandCallsResult,
+  });
 };
 
 type BashHostModuleId = keyof BashHostContext;
@@ -173,7 +200,7 @@ export const createRouteBackedInteractiveBashContext = ({
 }): InteractiveBashCommandContext => ({
   automation: null,
   automations: {
-    runtime: createRouteBackedAutomationsBashRuntime({ env, orgId }),
+    runtime: createRouteBackedAutomationsRuntime({ env, orgId }),
   },
   otp: {
     runtime: createOtpBashRuntime({ env, orgId }),
@@ -228,7 +255,7 @@ export const executeBashAutomation = async ({
   script: string;
   context: AutomationExecutionContext;
   masterFs: MasterFileSystem;
-}): Promise<BashAutomationRunResult> => {
+}): Promise<AutomationRunResult<"bash">> => {
   const eventJson = JSON.stringify(context.automation.event);
   const executionFs = createAutomationExecutionFileSystem({
     masterFs,
@@ -247,7 +274,7 @@ export const executeBashAutomation = async ({
   });
   const result = await bash.exec(script);
 
-  return {
+  return createAutomationRunResult({
     runtime: "bash",
     eventId: context.automation.event.id,
     scriptId: context.automation.binding.scriptId,
@@ -255,7 +282,7 @@ export const executeBashAutomation = async ({
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? "",
     commandCalls: commandCallsResult,
-  };
+  });
 };
 
 export const executeAutomationScript = async ({

@@ -15,6 +15,7 @@ import {
   automationIdentityBindingRecordSchema,
   type AutomationIdentityBindingRecord,
 } from "@/fragno/automation/identity";
+import { automationRunResultSchema } from "@/fragno/automation/run-result";
 
 import {
   defineBackofficeRuntimeTool,
@@ -24,7 +25,7 @@ import {
 
 export type { AutomationIdentityBindingRecord };
 
-export type AutomationsBashRuntime = {
+export type AutomationsRuntime = {
   lookupBinding: (
     input: IdentityLookupBindingArgs,
   ) => Promise<AutomationIdentityBindingRecord | null>;
@@ -34,7 +35,7 @@ export type AutomationsBashRuntime = {
 export type { ScriptRunnerRuntime };
 
 type AutomationsToolContext = BackofficeToolContext<
-  { automations?: AutomationsBashRuntime },
+  { automations?: AutomationsRuntime },
   ScriptRunnerRuntime
 >;
 
@@ -78,7 +79,7 @@ const parseScriptRunArgs = (args: string[]): ScriptRunArgs => {
 
 const getAutomationsRuntime = (
   runtime: AutomationsToolContext["runtimes"]["automations"],
-): AutomationsBashRuntime => {
+): AutomationsRuntime => {
   if (!runtime) {
     throw new Error("Automations runtime is not available in this execution context");
   }
@@ -203,24 +204,7 @@ const scriptRunTool = defineAutomationRuntimeTool({
     script: nonEmptyString,
     event: nonEmptyString,
   }),
-  outputSchema: z.object({
-    runtime: z.enum(["bash", "codemode"]),
-    eventId: z.string(),
-    scriptId: z.string(),
-    exitCode: z.number(),
-    stdout: z.string(),
-    stderr: z.string(),
-    logs: z.array(z.string()).optional(),
-    result: z.unknown().optional(),
-    commandCalls: z.array(
-      z.object({
-        command: z.string(),
-        output: z.string(),
-        exitCode: z.number(),
-      }),
-    ),
-    toolCalls: z.array(z.unknown()).optional(),
-  }),
+  outputSchema: automationRunResultSchema,
   execute: async (input, context) => getScriptRunner(context.scriptRunner).runScript(input),
   bash: {
     command: "scripts.run",
@@ -259,10 +243,10 @@ const scriptRunTool = defineAutomationRuntimeTool({
         exitCode: result.exitCode,
         stdout: result.stdout,
         stderr: result.stderr,
-        ...(result.logs ? { logs: result.logs } : {}),
+        logs: result.logs,
         ...(result.result !== undefined ? { result: result.result } : {}),
         commandCalls: result.commandCalls,
-        ...(result.toolCalls ? { toolCalls: result.toolCalls } : {}),
+        toolCalls: result.toolCalls,
       };
 
       if (result.exitCode !== 0) {

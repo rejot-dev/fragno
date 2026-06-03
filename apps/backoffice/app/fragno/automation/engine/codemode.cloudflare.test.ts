@@ -2,8 +2,9 @@ import { describe, expect, test } from "vitest";
 
 import { env } from "cloudflare:workers";
 
-import type { AutomationBashHostContext, AutomationBashRuntime } from "@/fragno/automation";
+import type { AutomationRuntimeHostContext, AutomationRuntime } from "@/fragno/automation";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
+import { executeBashAutomation } from "@/fragno/bash-runtime/bash-host";
 
 import { executeCodemodeAutomation } from "./codemode";
 import { createTestMasterFileSystem } from "./test-master-file-system.test-utils";
@@ -50,11 +51,158 @@ describe("executeCodemodeAutomation", () => {
       JSON.stringify({ id: "event-codemode-1", text: "hello" }),
     );
   });
+
+  test("exposes automation identity tools to codemode automations", async () => {
+    const calls: unknown[] = [];
+    const runtime = createRecordingAutomationRuntime(calls);
+    const event: AutomationEvent = {
+      id: "event-codemode-bind-actor",
+      orgId: "org-1",
+      source: "telegram",
+      eventType: "message.received",
+      occurredAt: "2026-06-03T00:00:00.000Z",
+      payload: { chatId: "chat-123" },
+    };
+
+    const result = await executeCodemodeAutomation({
+      env,
+      masterFs: createTestMasterFileSystem({}),
+      context: createAutomationContext(event, runtime),
+      script: `async () => {
+        const event = JSON.parse(await state.readFile("/context/event.json"));
+        return await automations.bindActor({
+          source: event.source,
+          key: event.payload.chatId,
+          value: "user-55",
+          description: "Linked from codemode",
+        });
+      }`,
+    });
+
+    expect(result).toMatchObject({
+      runtime: "codemode",
+      eventId: "event-codemode-bind-actor",
+      exitCode: 0,
+      stderr: "",
+      result: {
+        source: "telegram",
+        key: "chat-123",
+        value: "user-55",
+        description: "Linked from codemode",
+        status: "linked",
+      },
+      commandCalls: [],
+      toolCalls: [
+        {
+          providerName: "automations",
+          toolName: "bindActor",
+          toolId: "automations.identity.bind-actor",
+          inputSummary:
+            '{"source":"telegram","key":"chat-123","value":"user-55","description":"Linked from codemode"}',
+          status: "success",
+        },
+      ],
+    });
+    expect(calls).toEqual([
+      [
+        "bindActor",
+        {
+          source: "telegram",
+          key: "chat-123",
+          value: "user-55",
+          description: "Linked from codemode",
+        },
+      ],
+    ]);
+  });
+
+  test("uses the same automation identity tool definition through bash and codemode", async () => {
+    const calls: unknown[] = [];
+    const runtime = createRecordingAutomationRuntime(calls);
+    const event: AutomationEvent = {
+      id: "event-shared-tool-definition",
+      orgId: "org-1",
+      source: "telegram",
+      eventType: "message.received",
+      occurredAt: "2026-06-03T00:00:00.000Z",
+      payload: {},
+    };
+    const context = createAutomationContext(event, runtime);
+
+    const bashResult = await executeBashAutomation({
+      masterFs: createTestMasterFileSystem({}),
+      context,
+      script: "automations.identity.bind-actor --source telegram --key bash-chat --value user-bash",
+    });
+    const codemodeResult = await executeCodemodeAutomation({
+      env,
+      masterFs: createTestMasterFileSystem({}),
+      context,
+      script: `async () => {
+        return await automations.bindActor({
+          source: "telegram",
+          key: "codemode-chat",
+          value: "user-codemode",
+        });
+      }`,
+    });
+
+    expect(bashResult).toMatchObject({
+      runtime: "bash",
+      exitCode: 0,
+      logs: [],
+      toolCalls: [],
+    });
+    expect(codemodeResult).toMatchObject({
+      runtime: "codemode",
+      exitCode: 0,
+      commandCalls: [],
+      toolCalls: [{ toolId: "automations.identity.bind-actor", status: "success" }],
+    });
+    expect(calls).toEqual([
+      ["bindActor", { source: "telegram", key: "bash-chat", value: "user-bash" }],
+      ["bindActor", { source: "telegram", key: "codemode-chat", value: "user-codemode" }],
+    ]);
+  });
+
+  test("returns a useful failed result when a codemode automation domain call is invalid", async () => {
+    const calls: unknown[] = [];
+    const event: AutomationEvent = {
+      id: "event-codemode-invalid-tool-call",
+      orgId: "org-1",
+      source: "telegram",
+      eventType: "message.received",
+      occurredAt: "2026-06-03T00:00:00.000Z",
+      payload: {},
+    };
+
+    const result = await executeCodemodeAutomation({
+      env,
+      masterFs: createTestMasterFileSystem({}),
+      context: createAutomationContext(event, createRecordingAutomationRuntime(calls)),
+      script: `async () => {
+        return await automations.bindActor({ source: "telegram", key: "chat-123", value: "" });
+      }`,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Too small");
+    expect(result.toolCalls).toMatchObject([
+      {
+        providerName: "automations",
+        toolName: "bindActor",
+        toolId: "automations.identity.bind-actor",
+        status: "error",
+      },
+    ]);
+    expect(calls).toEqual([]);
+  });
 });
 
-const createAutomationContext = (event: AutomationEvent): AutomationBashHostContext => {
-  const runtime = createUnusedAutomationRuntime();
-
+const createAutomationContext = (
+  event: AutomationEvent,
+  runtime: AutomationRuntime = createUnusedAutomationRuntime(),
+): AutomationRuntimeHostContext => {
   return {
     automation: {
       event,
@@ -83,12 +231,35 @@ const createAutomationContext = (event: AutomationEvent): AutomationBashHostCont
   };
 };
 
-const createUnusedAutomationRuntime = (): AutomationBashRuntime => ({
+const createUnusedAutomationRuntime = (): AutomationRuntime => ({
   lookupBinding: async () => {
     throw new Error("lookupBinding should not be called in this test.");
   },
   bindActor: async () => {
     throw new Error("bindActor should not be called in this test.");
+  },
+  createClaim: async () => {
+    throw new Error("createClaim should not be called in this test.");
+  },
+  emitEvent: async () => {
+    throw new Error("emitEvent should not be called in this test.");
+  },
+});
+
+const createRecordingAutomationRuntime = (calls: unknown[]): AutomationRuntime => ({
+  lookupBinding: async (input) => {
+    calls.push(["lookupBinding", input]);
+    return null;
+  },
+  bindActor: async (input) => {
+    calls.push(["bindActor", input]);
+    return {
+      source: input.source,
+      key: input.key,
+      value: input.value,
+      description: input.description,
+      status: "linked",
+    };
   },
   createClaim: async () => {
     throw new Error("createClaim should not be called in this test.");

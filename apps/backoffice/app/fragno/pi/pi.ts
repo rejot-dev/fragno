@@ -35,7 +35,7 @@ import type {
 } from "../codemode/execute";
 import {
   automationIdentityRuntimeTools,
-  type AutomationsBashRuntime,
+  type AutomationsRuntime,
 } from "../runtime-tools/families/automations";
 import {
   PI_MODEL_CATALOG,
@@ -56,7 +56,7 @@ export type PiRuntimeFragments = {
 
 export type PiBashCommandContext = InteractiveBashCommandContext & {
   automations: {
-    runtime: AutomationsBashRuntime;
+    runtime: AutomationsRuntime;
   };
   otp: {
     runtime: OtpBashRuntime;

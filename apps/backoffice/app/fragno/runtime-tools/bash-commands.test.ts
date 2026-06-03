@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { Bash, InMemoryFs } from "just-bash";
 import { z } from "zod";
 
-import type { AutomationsBashRuntime } from "./families/automations";
+import type { AutomationsRuntime } from "./families/automations";
 import { automationIdentityRuntimeTools } from "./families/automations";
 import { createBackofficeBashCommands } from "./runtime-tools";
 import { defineBackofficeRuntimeTool } from "./runtime-tools";
@@ -12,7 +12,7 @@ describe("createBackofficeBashCommands", () => {
   test("routes generated bash commands through semantic runtime tools", async () => {
     const calls: unknown[] = [];
     const commandCallsResult: { command: string; output: string; exitCode: number }[] = [];
-    const automationsRuntime: AutomationsBashRuntime = {
+    const automationsRuntime: AutomationsRuntime = {
       lookupBinding: async (input) => {
         calls.push(["lookupBinding", input]);
         return {

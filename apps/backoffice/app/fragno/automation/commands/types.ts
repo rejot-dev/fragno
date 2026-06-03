@@ -1,4 +1,5 @@
 import type { AutomationBashEnvironment, AutomationEvent } from "../contracts";
+import type { AutomationCommandCallResult, AutomationRunResult } from "../run-result";
 
 export type AutomationCommandFormat = "text" | "json";
 
@@ -67,18 +68,7 @@ export type ScriptRunArgs = {
   event: string;
 };
 
-export type ScriptRunResult = {
-  runtime: "bash" | "codemode";
-  eventId: string;
-  scriptId: string;
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-  logs?: string[];
-  result?: unknown;
-  commandCalls: BashAutomationCommandResult[];
-  toolCalls?: unknown[];
-};
+export type ScriptRunResult = AutomationRunResult;
 
 export type ScriptRunnerRuntime = {
   runScript: (input: ScriptRunArgs) => Promise<ScriptRunResult>;
@@ -130,11 +120,7 @@ export type AutomationCommandSpecs<
   };
 };
 
-export type BashAutomationCommandResult = {
-  command: string;
-  output: string;
-  exitCode: number;
-};
+export type BashAutomationCommandResult = AutomationCommandCallResult;
 
 export type AutomationTriggerBinding = {
   id?: string;
