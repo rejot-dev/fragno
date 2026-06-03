@@ -8,6 +8,13 @@ import {
 } from "@/cloudflare/cloudflare-utils";
 import type { GitHubFragment } from "@/fragno/github";
 
+import {
+  booleanActionResultFromCaughtError,
+  booleanActionResultFromRouteResponse,
+  nullableDataActionResultFromCaughtError,
+  nullableDataActionResultFromRouteResponse,
+  type RouteActionResponse,
+} from "../../action-result";
 import type { GitHubAdminConfigState } from "./shared";
 
 export type GitHubInstallationSummary = {
@@ -100,6 +107,22 @@ const createGitHubRouteCaller = (
   });
 };
 
+const gitHubReposResultFromRouteResponse = (
+  response: RouteActionResponse,
+  failureMessage: string,
+): GitHubReposResult => {
+  const result = nullableDataActionResultFromRouteResponse<GitHubRepositorySummary[]>({
+    response,
+    failureMessage,
+  });
+  return { repos: result.result ?? [], reposError: result.error };
+};
+
+const gitHubReposResultFromCaughtError = (error: unknown, fallback: string): GitHubReposResult => ({
+  repos: [],
+  reposError: error instanceof Error ? error.message : fallback,
+});
+
 export async function fetchGitHubAdminConfig(
   context: Readonly<RouterContextProvider>,
   _orgId: string,
@@ -176,26 +199,9 @@ export async function fetchGitHubInstallationRepos(
       query,
     });
 
-    if (response.type === "json") {
-      return { repos: response.data as GitHubRepositorySummary[], reposError: null };
-    }
-
-    if (response.type === "error") {
-      return {
-        repos: [],
-        reposError: response.error.message,
-      };
-    }
-
-    return {
-      repos: [],
-      reposError: `Failed to fetch repositories (${response.status}).`,
-    };
+    return gitHubReposResultFromRouteResponse(response, "Failed to fetch repositories");
   } catch (error) {
-    return {
-      repos: [],
-      reposError: error instanceof Error ? error.message : "Failed to load repositories.",
-    };
+    return gitHubReposResultFromCaughtError(error, "Failed to load repositories.");
   }
 }
 
@@ -208,26 +214,9 @@ export async function fetchGitHubLinkedRepositories(
     const callRoute = createGitHubRouteCaller(request, context, orgId);
     const response = await callRoute("GET", "/repositories/linked");
 
-    if (response.type === "json") {
-      return { repos: response.data as GitHubRepositorySummary[], reposError: null };
-    }
-
-    if (response.type === "error") {
-      return {
-        repos: [],
-        reposError: response.error.message,
-      };
-    }
-
-    return {
-      repos: [],
-      reposError: `Failed to fetch linked repositories (${response.status}).`,
-    };
+    return gitHubReposResultFromRouteResponse(response, "Failed to fetch linked repositories");
   } catch (error) {
-    return {
-      repos: [],
-      reposError: error instanceof Error ? error.message : "Failed to load linked repositories.",
-    };
+    return gitHubReposResultFromCaughtError(error, "Failed to load linked repositories.");
   }
 }
 
@@ -302,26 +291,12 @@ export async function linkGitHubRepository(
     const callRoute = createGitHubRouteCaller(request, context, orgId);
     const response = await callRoute("POST", "/repositories/link", { body: payload });
 
-    if (response.type === "json") {
-      return { result: response.data as GitHubLinkResponse, error: null };
-    }
-
-    if (response.type === "error") {
-      return {
-        result: null,
-        error: response.error.message,
-      };
-    }
-
-    return {
-      result: null,
-      error: `Failed to link repository (${response.status}).`,
-    };
+    return nullableDataActionResultFromRouteResponse<GitHubLinkResponse>({
+      response,
+      failureMessage: "Failed to link repository",
+    });
   } catch (error) {
-    return {
-      result: null,
-      error: error instanceof Error ? error.message : "Failed to link repository.",
-    };
+    return nullableDataActionResultFromCaughtError(error, "Failed to link repository.");
   }
 }
 
@@ -335,25 +310,11 @@ export async function unlinkGitHubRepository(
     const callRoute = createGitHubRouteCaller(request, context, orgId);
     const response = await callRoute("POST", "/repositories/unlink", { body: payload });
 
-    if (response.type === "json") {
-      return { ok: Boolean(response.data?.ok), error: null };
-    }
-
-    if (response.type === "error") {
-      return {
-        ok: false,
-        error: response.error.message,
-      };
-    }
-
-    return {
-      ok: false,
-      error: `Failed to unlink repository (${response.status}).`,
-    };
+    return booleanActionResultFromRouteResponse({
+      response,
+      failureMessage: "Failed to unlink repository",
+    });
   } catch (error) {
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : "Failed to unlink repository.",
-    };
+    return booleanActionResultFromCaughtError(error, "Failed to unlink repository.");
   }
 }

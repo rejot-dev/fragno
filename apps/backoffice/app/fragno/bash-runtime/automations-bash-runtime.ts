@@ -32,6 +32,19 @@ export type RegisteredAutomationsBashCommandContext = {
 
 export type AutomationIdentityStorageContext = Pick<HookContext, "handlerTx">;
 
+type AutomationIdentityRetrieveScope = Parameters<
+  Parameters<ReturnType<AutomationIdentityStorageContext["handlerTx"]>["retrieve"]>[0]
+>[0];
+
+const findIdentityBindingBySourceKey =
+  (source: string, key: string) =>
+  ({ forSchema }: AutomationIdentityRetrieveScope) =>
+    forSchema(automationFragmentSchema).findFirst("identity_binding", (b) =>
+      b.whereIndex("idx_identity_binding_source_key", (eb) =>
+        eb.and(eb("source", "=", source), eb("key", "=", key)),
+      ),
+    );
+
 export const createAutomationsBashCommands = (input: BashCommandFactoryInput) => {
   const automationsContext = input.context.automations;
   if (!automationsContext) {
@@ -56,13 +69,7 @@ export const lookupAutomationIdentityBinding = async (
 ): Promise<AutomationIdentityBindingRecord | null> => {
   return await context
     .handlerTx()
-    .retrieve(({ forSchema }) =>
-      forSchema(automationFragmentSchema).findFirst("identity_binding", (b) =>
-        b.whereIndex("idx_identity_binding_source_key", (eb) =>
-          eb.and(eb("source", "=", source), eb("key", "=", key)),
-        ),
-      ),
-    )
+    .retrieve(findIdentityBindingBySourceKey(source, key))
     .transformRetrieve(([binding]) => (binding?.status === "linked" ? binding : null))
     .execute();
 };
@@ -75,13 +82,7 @@ export const bindAutomationIdentityActor = async (
     try {
       return await context
         .handlerTx()
-        .retrieve(({ forSchema }) =>
-          forSchema(automationFragmentSchema).findFirst("identity_binding", (b) =>
-            b.whereIndex("idx_identity_binding_source_key", (eb) =>
-              eb.and(eb("source", "=", source), eb("key", "=", key)),
-            ),
-          ),
-        )
+        .retrieve(findIdentityBindingBySourceKey(source, key))
         .mutate(({ forSchema, retrieveResult: [existing] }) => {
           const uow = forSchema(automationFragmentSchema);
           const now = uow.now();

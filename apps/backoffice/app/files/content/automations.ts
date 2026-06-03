@@ -265,7 +265,7 @@ Use the scenario DSL in this folder to run the real automation workspace files a
 ## What it uses
 
 - \`../bindings.json\`
-- \`../scripts/*.sh\`
+- \`../scripts/*.sh\` bash scripts and \`../scripts/*.cm.js\` codemode scripts
 - plain JSON scenarios under \`./scenarios\`
 
 ## Scenario shape
@@ -287,10 +287,28 @@ Useful optional fields:
 
 The simulator keeps state across steps, records a normalized transcript, and stops a step when a binding exits non-zero.
 
-Scripts read event data from \`/context/event.json\` using \`jq\`. For example, to get the Telegram message text:
+You can manually run either script kind from the interactive dashboard terminal with \`scripts.run\`:
+
+\`\`\`bash
+scripts.run --script scripts/example.sh --event /workspace/events/example.json
+scripts.run --script scripts/example.cm.js --event /workspace/events/example.json --format json
+\`\`\`
+
+Scripts read event data from \`/context/event.json\`.
+
+Bash scripts usually use \`jq\`:
 
 \`\`\`bash
 text="$(jq -r '.payload.text // ""' /context/event.json)"
+\`\`\`
+
+Codemode scripts use \`state.readFile\` and must be standalone async arrow functions:
+
+\`\`\`js
+async () => {
+  const event = JSON.parse(await state.readFile("/context/event.json"));
+  return { text: event.payload.text ?? "" };
+}
 \`\`\`
 
 To bridge an external automation event into an existing Pi session, use \`pi.session.turn\` with a stable session binding and print the final assistant text:

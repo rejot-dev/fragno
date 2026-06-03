@@ -2,16 +2,16 @@ import { Bash } from "just-bash";
 
 import type { IFileSystem } from "@/files/interface";
 import { MasterFileSystem } from "@/files/master-file-system";
-import { normalizeMountedFileSystem } from "@/files/mounted-file-system";
-import type { ResolvedFileMount } from "@/files/types";
 import {
   AUTOMATION_WORKSPACE_ROOT,
   resolveAutomationFileSystem,
   type AutomationFileSystemConfig,
+  type AutomationScriptEngine,
 } from "@/fragno/automation/catalog";
 import type { ScriptRunArgs } from "@/fragno/automation/commands/types";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
 import type { BashAutomationRunResult } from "@/fragno/automation/engine/bash";
+import { createAutomationExecutionFileSystem } from "@/fragno/automation/engine/execution-file-system";
 
 import type { BashAutomationCommandResult } from "../automation/commands/types";
 import {
@@ -216,118 +216,8 @@ export const createBashHost = (input: CreateBashHostInput): BashHost => {
 // Automation bash execution (isolates per-run /context and /dev mounts)
 // ---------------------------------------------------------------------------
 
-const TEXT_ENCODER = new TextEncoder();
-const TEXT_DECODER = new TextDecoder();
-
-/**
- * Creates a read-only mount containing a single `/context/event.json` file.
- * Uses a plain-object filesystem (no InMemoryFs) to avoid `this`-binding issues
- * when methods are wrapped by `normalizeMountedFileSystem`.
- */
-const createContextMount = (eventJson: string): ResolvedFileMount => {
-  const buf = TEXT_ENCODER.encode(eventJson);
-  const now = new Date();
-  const EVENT_FILE = "/context/event.json";
-  const MOUNT = "/context";
-
-  return {
-    id: "automation-context",
-    kind: "custom",
-    mountPoint: MOUNT,
-    title: "Automation Context",
-    readOnly: true,
-    persistence: "session",
-    fs: normalizeMountedFileSystem(
-      {
-        readFile: async () => eventJson,
-        readFileBuffer: async () => buf,
-        stat: async (path) => ({
-          isFile: path === EVENT_FILE,
-          isDirectory: path === MOUNT,
-          isSymbolicLink: false,
-          mode: 0o444,
-          size: path === EVENT_FILE ? buf.length : 0,
-          mtime: now,
-        }),
-        readdir: async () => ["event.json"],
-        getAllPaths: () => [MOUNT, EVENT_FILE],
-      },
-      { readOnly: true },
-    ),
-  };
-};
-
-/**
- * Creates a writable `/dev` mount with `/dev/null` and `/dev/zero`.
- *
- * `/dev/stdin`, `/dev/stdout`, `/dev/stderr` are intentionally omitted: just-bash
- * treats them as plain files (not wired to the shell's I/O streams), so including
- * them would silently swallow output that the script author meant for stderr/stdout.
- * The standard `>&2` redirection works without these files.
- */
-const DEV_ENTRIES = ["null", "zero"] as const;
-
-const createDevMount = (): ResolvedFileMount => {
-  const files = new Map<string, Uint8Array>(
-    DEV_ENTRIES.map((name) => [`/dev/${name}`, new Uint8Array(0)]),
-  );
-  const now = new Date();
-
-  return {
-    id: "dev",
-    kind: "custom",
-    mountPoint: "/dev",
-    title: "Device Files",
-    readOnly: false,
-    persistence: "session",
-    fs: normalizeMountedFileSystem(
-      {
-        readFile: async (path) => TEXT_DECODER.decode(files.get(path) ?? new Uint8Array(0)),
-        readFileBuffer: async (path) => files.get(path) ?? new Uint8Array(0),
-        writeFile: async (path, content) => {
-          if (path === "/dev/null") {
-            return;
-          }
-          files.set(path, typeof content === "string" ? TEXT_ENCODER.encode(content) : content);
-        },
-        stat: async (path) => ({
-          isFile: files.has(path),
-          isDirectory: path === "/dev",
-          isSymbolicLink: false,
-          mode: 0o666,
-          size: files.get(path)?.length ?? 0,
-          mtime: now,
-        }),
-        readdir: async () => [...DEV_ENTRIES],
-        mkdir: async () => {},
-        getAllPaths: () => ["/dev", ...files.keys()],
-      },
-      { readOnly: false },
-    ),
-  };
-};
-
-type ExecutableAutomationBashHostContext = BashHostContext & {
+export type AutomationExecutionContext = BashHostContext & {
   automation: NonNullable<BashHostContext["automation"]>;
-};
-
-const createExecutionFileSystem = ({
-  masterFs,
-  eventJson,
-}: {
-  masterFs: MasterFileSystem;
-  eventJson: string;
-}): MasterFileSystem => {
-  const baseMounts = masterFs.mounts.filter((mount) => mount.mountPoint !== "/context");
-  const executionFs = new MasterFileSystem({ mounts: [...baseMounts] });
-
-  executionFs.mount(createContextMount(eventJson));
-
-  if (!baseMounts.some((mount) => mount.mountPoint === "/dev")) {
-    executionFs.mount(createDevMount());
-  }
-
-  return executionFs;
 };
 
 export const executeBashAutomation = async ({
@@ -336,11 +226,15 @@ export const executeBashAutomation = async ({
   masterFs,
 }: {
   script: string;
-  context: ExecutableAutomationBashHostContext;
+  context: AutomationExecutionContext;
   masterFs: MasterFileSystem;
 }): Promise<BashAutomationRunResult> => {
   const eventJson = JSON.stringify(context.automation.event);
-  const executionFs = createExecutionFileSystem({ masterFs, eventJson });
+  const executionFs = createAutomationExecutionFileSystem({
+    masterFs,
+    eventJson,
+    includeDevMount: true,
+  });
 
   const { bash, commandCallsResult } = createBashHost({
     fs: executionFs,
@@ -354,6 +248,7 @@ export const executeBashAutomation = async ({
   const result = await bash.exec(script);
 
   return {
+    runtime: "bash",
     eventId: context.automation.event.id,
     scriptId: context.automation.binding.scriptId,
     exitCode: result.exitCode ?? 0,
@@ -361,6 +256,33 @@ export const executeBashAutomation = async ({
     stderr: result.stderr ?? "",
     commandCalls: commandCallsResult,
   };
+};
+
+export const executeAutomationScript = async ({
+  engine,
+  script,
+  context,
+  masterFs,
+  env,
+}: {
+  engine: AutomationScriptEngine;
+  script: string;
+  context: AutomationExecutionContext;
+  masterFs: MasterFileSystem;
+  env?: CloudflareEnv;
+}) => {
+  switch (engine) {
+    case "bash":
+      return executeBashAutomation({ script, context, masterFs });
+    case "codemode": {
+      if (!env?.LOADER) {
+        throw new Error("Codemode automation requires the Cloudflare Worker Loader.");
+      }
+
+      const { executeCodemodeAutomation } = await import("@/fragno/automation/engine/codemode");
+      return executeCodemodeAutomation({ script, context, masterFs, env });
+    }
+  }
 };
 
 // ---------------------------------------------------------------------------
@@ -374,6 +296,9 @@ const resolveScriptPath = (scriptArg: string): string => {
   }
   return `${AUTOMATION_WORKSPACE_ROOT}/${trimmed}`;
 };
+
+const inferInteractiveScriptRunEngine = (scriptPath: string): AutomationScriptEngine =>
+  scriptPath.endsWith(".cm.js") ? "codemode" : "bash";
 
 export type CreateScriptRunnerRuntimeOptions = {
   fileSystemConfig: AutomationFileSystemConfig;
@@ -424,7 +349,7 @@ const createInteractiveScriptRunContext = ({
   idempotencyKey: string;
   env?: CloudflareEnv;
   parentContext: BashHostContext;
-}): ExecutableAutomationBashHostContext => ({
+}): AutomationExecutionContext => ({
   automation: {
     event,
     orgId: event.orgId?.trim() || undefined,
@@ -515,11 +440,17 @@ export const createScriptRunnerRuntime = (
 
     if (!(fileSystem instanceof MasterFileSystem)) {
       throw new Error(
-        "executeBashAutomation requires a MasterFileSystem but received a different filesystem type.",
+        "scripts.run requires a MasterFileSystem but received a different filesystem type.",
       );
     }
 
-    return executeBashAutomation({ script: scriptBody, context, masterFs: fileSystem });
+    return executeAutomationScript({
+      engine: inferInteractiveScriptRunEngine(absoluteScriptPath),
+      script: scriptBody,
+      context,
+      masterFs: fileSystem,
+      env: options.env,
+    });
   },
 });
 

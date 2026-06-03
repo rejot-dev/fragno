@@ -48,6 +48,7 @@ export type AutomationPiBashContext = {
 };
 
 export type BashAutomationRunResult = {
+  runtime: "bash";
   eventId: string;
   scriptId: string;
   exitCode: number;
@@ -127,7 +128,7 @@ export const createAutomationBashRuntime = ({
   };
 };
 
-export const createAutomationBashCommandContext = ({
+export const createAutomationExecutionContext = ({
   event,
   binding,
   idempotencyKey,

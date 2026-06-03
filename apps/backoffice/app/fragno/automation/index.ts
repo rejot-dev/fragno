@@ -124,8 +124,8 @@ export {
   createTelegramBashRuntime,
   createUnavailableTelegramBashRuntime,
 } from "../bash-runtime/telegram-bash-runtime";
-export { createAutomationBashCommandContext, createAutomationBashRuntime } from "./engine/bash";
-export { executeBashAutomation } from "../bash-runtime/bash-host";
+export { createAutomationExecutionContext, createAutomationBashRuntime } from "./engine/bash";
+export { executeAutomationScript, executeBashAutomation } from "../bash-runtime/bash-host";
 export type {
   AutomationBashCommandContext,
   AutomationBashHostContext,

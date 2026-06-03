@@ -531,7 +531,7 @@ Implemented:
 - Added Cloudflare tests for successful Pi domain-tool calls, zod validation errors, and structured
   tool-call metadata.
 
-### Slice 5: Codemode automation with no domain effects
+### [x] Slice 5: Codemode automation with no domain effects
 
 Goal: run a real automation binding through the codemode runtime using only `state.*` and
 `/context/event.json`.
@@ -552,6 +552,20 @@ Tests:
 - Scenario test runs a `.cm.js` automation that reads `/context/event.json` and writes an output
   file.
 - Existing bash automation tests still pass after adding explicit `engine: "bash"` to fixtures.
+
+Implemented:
+
+- Changed automation manifest script engines to the explicit `"bash" | "codemode"` union.
+- Added `.cm.js` validation for manifest-backed codemode scripts.
+- Inferred workspace script engine from the `.cm.js` suffix for unbound filesystem scripts.
+- Extracted shared automation execution filesystem creation so bash and codemode both mount
+  `/context/event.json`; bash still adds `/dev`.
+- Added `executeCodemodeAutomation(...)`, which runs scripts through `runBackofficeCodemode(...)`
+  against the shared execution filesystem and normalizes result text, logs, errors, and tool calls.
+- Updated automation ingestion to dispatch by `binding.scriptEngine`, with a lazy codemode import so
+  Node-only tests do not load Cloudflare dynamic-worker modules.
+- Added Cloudflare coverage for a `.cm.js` automation reading `/context/event.json` and writing a
+  workspace output file.
 
 ### Slice 6: Codemode automation with domain tools
 

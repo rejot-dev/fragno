@@ -16,6 +16,12 @@ import {
   type AutomationWorkspaceScriptEntry,
   type createAutomationFragment,
 } from "@/fragno/automation";
+import type { AutomationScriptEngine } from "@/fragno/automation/catalog";
+
+import {
+  booleanActionResultFromCaughtError,
+  booleanActionResultFromRouteResponse,
+} from "../action-result";
 
 type AutomationFragment = ReturnType<typeof createAutomationFragment>;
 
@@ -32,7 +38,7 @@ export type AutomationScriptRecord = {
   id: string;
   key: string;
   name: string;
-  engine: "bash";
+  engine: AutomationScriptEngine;
   path: string;
   absolutePath: string;
   version: number | null;
@@ -445,22 +451,12 @@ export async function revokeAutomationIdentityBinding(
       pathParams: { bindingId },
     });
 
-    if (response.type === "json" && isSuccessStatus(response.status)) {
-      return { ok: Boolean(response.data?.ok), error: null };
-    }
-
-    if (response.type === "error") {
-      return { ok: false, error: response.error.message };
-    }
-
-    return {
-      ok: false,
-      error: `Failed to revoke identity binding (${response.status}).`,
-    };
+    return booleanActionResultFromRouteResponse({
+      response,
+      failureMessage: "Failed to revoke identity binding",
+      requireSuccessStatus: true,
+    });
   } catch (error) {
-    return {
-      ok: false,
-      error: formatErrorMessage(error, "Failed to revoke identity binding."),
-    };
+    return booleanActionResultFromCaughtError(error, "Failed to revoke identity binding.");
   }
 }
