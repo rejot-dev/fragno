@@ -64,7 +64,7 @@ Workflows are executed via the workflows fragment durable hook dispatcher. For a
 
 Pi workflows are durable TypeScript workflows over the workflows fragment. Use stable step names,
 pass message history explicitly between agent runs, and wrap concurrent branches in a named parent
-`ctx.step.do(...)` step so replay can recover the same step tree.
+`ctx.do(...)` step so replay can recover the same step tree.
 
 ### Sequential research → write → approve
 
@@ -78,11 +78,11 @@ const researchWriteApprove = definePiWorkflow(
     schema: z.object({ topic: z.string() }),
   },
   async (ctx) => {
-    const research = await ctx.agent("researcher").prompt("research", {
+    const research = await ctx.agentStep("researcher").prompt("research", {
       input: { text: `Research ${ctx.params.topic}.` },
     });
 
-    const draft = await ctx.agent("writer").prompt("draft", {
+    const draft = await ctx.agentStep("writer").prompt("draft", {
       input: { text: "Write a concise answer using the research." },
       messages: research.messages,
     });
@@ -92,7 +92,7 @@ const researchWriteApprove = definePiWorkflow(
     });
 
     if (approval.kind === "prompt") {
-      const revision = await ctx.agent("writer").prompt("revise", {
+      const revision = await ctx.agentStep("writer").prompt("revise", {
         input: approval.input,
         messages: draft.messages,
       });
@@ -154,7 +154,7 @@ const classifyRequest = definePiTool({
 const triageWorkflow = definePiWorkflow(
   { name: "triage-request", schema: z.object({ request: z.string() }) },
   async (ctx) => {
-    const triage = await ctx.agent("triage").prompt("triage", {
+    const triage = await ctx.agentStep("triage").prompt("triage", {
       input: { text: ctx.params.request },
       stopOnTools: [classifyRequest],
     });
@@ -163,17 +163,17 @@ const triageWorkflow = definePiWorkflow(
 
     switch (classification.details.kind) {
       case "bug":
-        return ctx.agent("debugger").prompt("debug", {
+        return ctx.agentStep("debugger").prompt("debug", {
           input: { text: ctx.params.request },
           messages: triage.messages,
         });
       case "feature":
-        return ctx.agent("planner").prompt("plan", {
+        return ctx.agentStep("planner").prompt("plan", {
           input: { text: ctx.params.request },
           messages: triage.messages,
         });
       case "question":
-        return ctx.agent("support").prompt("answer", {
+        return ctx.agentStep("support").prompt("answer", {
           input: { text: ctx.params.request },
           messages: triage.messages,
         });
@@ -191,21 +191,21 @@ uses its own stable child step name.
 const parallelReviewWorkflow = definePiWorkflow(
   { name: "parallel-review", schema: z.object({ draft: z.string() }) },
   async (ctx) => {
-    const [security, clarity, correctness] = await ctx.step.do("parallel-reviews", async () =>
+    const [security, clarity, correctness] = await ctx.do("parallel-reviews", async () =>
       Promise.all([
-        ctx.agent("security-reviewer").prompt("security-review", {
+        ctx.agentStep("security-reviewer").prompt("security-review", {
           input: { text: ctx.params.draft },
         }),
-        ctx.agent("clarity-reviewer").prompt("clarity-review", {
+        ctx.agentStep("clarity-reviewer").prompt("clarity-review", {
           input: { text: ctx.params.draft },
         }),
-        ctx.agent("correctness-reviewer").prompt("correctness-review", {
+        ctx.agentStep("correctness-reviewer").prompt("correctness-review", {
           input: { text: ctx.params.draft },
         }),
       ]),
     );
 
-    return ctx.agent("editor").prompt("merge-reviews", {
+    return ctx.agentStep("editor").prompt("merge-reviews", {
       input: { text: "Merge reviewer feedback into a final answer." },
       messages: [...security.messages, ...clarity.messages, ...correctness.messages],
     });
@@ -219,7 +219,7 @@ const parallelReviewWorkflow = definePiWorkflow(
   Do not use random IDs, current time, or partial streamed LLM output in step names.
 - Agent calls do not mutate shared workflow-level message state. Pass `messages` into each step and
   use the returned `messages` when composing later steps.
-- Concurrent combinators must be nested under a parent `ctx.step.do("stable-name", ...)` step.
+- Concurrent combinators must be nested under a parent `ctx.do("stable-name", ...)` step.
 - Handoff/decision tools should set `handoff: true` and normally return `terminate: true`; pass them
   through `stopOnTools` when a workflow branch needs the first structured tool result.
 

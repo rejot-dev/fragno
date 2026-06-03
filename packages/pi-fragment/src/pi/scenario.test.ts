@@ -54,7 +54,7 @@ describe("Pi workflow scenarios", () => {
     const restoreWorkflow = definePiWorkflow(
       { name: "pi-restore-prompt-in-flight", schema: z.object({}) },
       async (ctx) => {
-        const result = await ctx.agent("default").prompt("ask", {
+        const result = await ctx.agentStep("default").prompt("ask", {
           input: { text: "hello" },
         });
         return {
@@ -186,7 +186,7 @@ describe("Pi workflow scenarios", () => {
     const restoreWorkflow = definePiWorkflow(
       { name: "pi-restore-completed-in-flight", schema: z.object({}) },
       async (ctx) => {
-        const result = await ctx.agent("default").prompt("ask", {
+        const result = await ctx.agentStep("default").prompt("ask", {
           input: { text: "hello" },
         });
         return {
@@ -305,7 +305,7 @@ describe("Pi workflow scenarios", () => {
     const handoffWorkflow = definePiWorkflow(
       { name: "pi-tool-handoff", schema: z.object({}), outputSchema: handoffOutputSchema },
       async (ctx) => {
-        const result = await ctx.agent("default").prompt("classify-request", {
+        const result = await ctx.agentStep("default").prompt("classify-request", {
           input: { text: "classify this" },
           stopOnTools: [classifyTool.name],
         });

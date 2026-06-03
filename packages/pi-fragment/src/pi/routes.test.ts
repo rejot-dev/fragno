@@ -181,7 +181,7 @@ describe("pi-fragment Pi-shaped routes", () => {
     let piServices: TestHarness["fragments"]["pi"]["services"];
     const child = definePiWorkflow({ name: "child" }, () => ({ ok: true }));
     const parent = definePiWorkflow({ name: "parent" }, async (ctx) => {
-      await ctx.step.do("start-child", (tx) => {
+      await ctx.do("start-child", (tx) => {
         const childSessionId = createId();
         const createdAt = new Date();
         tx.serviceCalls(() => [

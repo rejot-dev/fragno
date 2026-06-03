@@ -14,6 +14,14 @@ import type { TSchema as TypeBoxSchema } from "typebox";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 
 import { createPiWorkflows } from "./factory";
+import {
+  PiSkillDefinitionBuilder,
+  renderPiSkillCatalogXml,
+  renderPiSkillInvocationContext,
+  type PiSkillDefinition,
+  type PiSkillDefinitionInput,
+  type PiSkillRegistry,
+} from "./skills";
 import type {
   PiAgentDefinition,
   PiAgentRegistry,
@@ -30,10 +38,11 @@ import {
   type PiAgentStepResult,
 } from "./workflow/pi-agent-step";
 
-export type PiWorkflowAgentHandle = {
+export type PiWorkflowAgentStepHandle = {
   run(name: string, options: PiWorkflowAgentRunOptions): Promise<PiAgentStepResult>;
   prompt(name: string, options: PiWorkflowAgentPromptOptions): Promise<PiAgentStepResult>;
   continue(name: string, options?: PiWorkflowAgentStepOptions): Promise<PiAgentStepResult>;
+  skill(name: string, options: PiWorkflowAgentSkillOptions): Promise<PiAgentStepResult>;
 };
 
 export type PiWorkflowAgentRunOptions = PiWorkflowAgentStepOptions & {
@@ -45,9 +54,16 @@ export type PiWorkflowAgentPromptOptions = PiWorkflowAgentStepOptions & {
   input: PiPromptInput;
 };
 
+export type PiWorkflowAgentSkillOptions = PiWorkflowAgentStepOptions & {
+  skill: string | PiSkillDefinition;
+  input?: PiPromptInput;
+};
+
 export type PiWorkflowAgentStepOptions = {
   messages?: AgentMessage[];
   systemPrompt?: string;
+  skill?: string | PiSkillDefinition;
+  extraInstructions?: string;
   step?: WorkflowStepConfig;
   controls?: Array<"abort" | "steer">;
   stopOnTools?: Array<string | PiToolDefinition>;
@@ -55,25 +71,22 @@ export type PiWorkflowAgentStepOptions = {
   turnId?: string;
 };
 
-export type PiWorkflowContext<TParams = unknown> = {
+export type PiWorkflowCommandWaitOptions = {
+  allowed?: PiSessionCommandPayload["kind"][];
+  timeout?: WorkflowDuration;
+  onConsume?: (tx: WorkflowStepConsumeTx, command: PiSessionCommandPayload) => Promise<void> | void;
+};
+
+export type PiWorkflowContext<TParams = unknown> = Omit<WorkflowStep, "waitForEvent"> & {
   params: TParams;
   sessionId: string;
   event: WorkflowEvent<TParams>;
   step: WorkflowStep;
-  agent(name: string): PiWorkflowAgentHandle;
+  agentStep(name: string): PiWorkflowAgentStepHandle;
   waitForEvent(
     name: string,
-    options?: {
-      allowed?: PiSessionCommandPayload["kind"][];
-      timeout?: WorkflowDuration;
-      onConsume?: (
-        tx: WorkflowStepConsumeTx,
-        command: PiSessionCommandPayload,
-      ) => Promise<void> | void;
-    },
+    options?: PiWorkflowCommandWaitOptions,
   ): Promise<PiSessionCommandPayload>;
-  sleep(name: string, duration: WorkflowDuration): Promise<void>;
-  sleepUntil(name: string, timestamp: Date | number): Promise<void>;
 };
 
 export type PiWorkflowRunFn<TParams = unknown, TOutput = unknown> = (
@@ -152,11 +165,98 @@ export function definePiWorkflow<TName extends string>(
 export type CompilePiWorkflowOptions = {
   agents?: PiAgentRegistry;
   tools?: PiToolRegistry;
+  skills?: PiSkillRegistry;
   agentRunner?: PiAgentRunner;
 };
 
 const stopOnToolNames = (tools: Array<string | PiToolDefinition> | undefined) =>
   tools?.map((tool) => (typeof tool === "string" ? tool : tool.name));
+
+const PI_SKILL_CATALOG_SYSTEM_PROMPT_INTRO =
+  "The following skills provide specialized instructions for specific tasks. " +
+  "When a task matches a skill's description, use that skill before proceeding.";
+
+const resolveAgentSkills = (
+  agent: PiAgentDefinition,
+  skills: PiSkillRegistry | undefined,
+): PiSkillDefinition[] => {
+  if (!agent.skills?.length) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  return agent.skills.flatMap((name) => {
+    if (seen.has(name)) {
+      return [];
+    }
+    seen.add(name);
+
+    const skill = skills?.[name];
+    if (!skill) {
+      throw new NonRetryableError(`Skill '${name}' not found.`);
+    }
+    return [skill];
+  });
+};
+
+const appendSkillCatalogToSystemPrompt = (
+  systemPrompt: string,
+  skills: readonly PiSkillDefinition[],
+) => {
+  const skillCatalog = renderPiSkillCatalogXml(skills);
+  if (!skillCatalog) {
+    return systemPrompt;
+  }
+
+  return `${systemPrompt.trimEnd()}\n\n${PI_SKILL_CATALOG_SYSTEM_PROMPT_INTRO}\n${skillCatalog}`;
+};
+
+const resolveSkillInvocation = (input: {
+  skill: string | PiSkillDefinition;
+  agentName: string;
+  agentSkills: readonly PiSkillDefinition[];
+}): PiSkillDefinition => {
+  if (typeof input.skill !== "string") {
+    return input.skill;
+  }
+
+  const skill = input.agentSkills.find((agentSkill) => agentSkill.name === input.skill);
+  if (!skill) {
+    throw new NonRetryableError(
+      `Skill '${input.skill}' is not available to agent '${input.agentName}'.`,
+    );
+  }
+  return skill;
+};
+
+const appendSkillInvocationMessage = (input: {
+  messages: AgentMessage[];
+  agentName: string;
+  agentSkills: readonly PiSkillDefinition[];
+  runOptions: PiWorkflowAgentRunOptions;
+}): AgentMessage[] => {
+  if (!input.runOptions.skill) {
+    return input.messages;
+  }
+
+  const skill = resolveSkillInvocation({
+    skill: input.runOptions.skill,
+    agentName: input.agentName,
+    agentSkills: input.agentSkills,
+  });
+  const text = renderPiSkillInvocationContext(skill, {
+    extraUserInstructions: input.runOptions.extraInstructions,
+  });
+
+  return [
+    ...input.messages,
+    {
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: 0,
+    },
+  ];
+};
 
 export const compilePiWorkflow = <
   TName extends string,
@@ -169,77 +269,105 @@ export const compilePiWorkflow = <
   options: CompilePiWorkflowOptions = {},
 ): WorkflowDefinition<TParams, TOutput, TInputSchema, TOutputSchema, TName> => {
   const run = (event: WorkflowEvent<TParams>, step: WorkflowStep) => {
+    const agentStep = (agentName: string): PiWorkflowAgentStepHandle => {
+      const agent = options.agents?.[agentName];
+      if (!agent) {
+        throw new NonRetryableError(`Agent ${agentName} not found.`);
+      }
+
+      const runAgentStep = (name: string, runOptions: PiWorkflowAgentRunOptions) => {
+        const agentSkills = resolveAgentSkills(agent, options.skills);
+        const systemPrompt = agentSkills.length
+          ? appendSkillCatalogToSystemPrompt(
+              runOptions.systemPrompt ?? agent.systemPrompt,
+              agentSkills,
+            )
+          : runOptions.systemPrompt;
+        const messages = appendSkillInvocationMessage({
+          messages: runOptions.messages ?? [],
+          agentName,
+          agentSkills,
+          runOptions,
+        });
+
+        return runPiAgentStep(
+          { mode: runOptions.mode, promptInput: runOptions.input },
+          {
+            event,
+            step,
+            stepName: name,
+            agent,
+            agentRunner: options.agentRunner,
+            session: {
+              sessionId: event.instanceId,
+              agentName,
+              workflowName: definition.name,
+              systemPrompt,
+            },
+            turn: {
+              tools: options.tools ?? {},
+              messages,
+              turnId: runOptions.turnId ?? `${event.instanceId}:${name}`,
+            },
+          },
+          {
+            step: runOptions.step,
+            controls: runOptions.controls,
+            stopOnTools: stopOnToolNames(runOptions.stopOnTools),
+            toolExecution: runOptions.toolExecution,
+          },
+        );
+      };
+
+      return {
+        run: runAgentStep,
+        prompt: (name, promptOptions) => runAgentStep(name, { ...promptOptions, mode: "prompt" }),
+        continue: (name, continueOptions = {}) =>
+          runAgentStep(name, { ...continueOptions, mode: "continue" }),
+        skill: (name, skillOptions) =>
+          runAgentStep(name, {
+            ...skillOptions,
+            mode: skillOptions.input ? "prompt" : "continue",
+          }),
+      };
+    };
+
+    const waitForCommand = async (
+      name: string,
+      waitOptions?: PiWorkflowCommandWaitOptions,
+    ): Promise<PiSessionCommandPayload> => {
+      for (let ignoredCommands = 0; ; ignoredCommands += 1) {
+        const commandEvent = await step.waitForEvent<PiSessionCommandPayload>(
+          ignoredCommands === 0 ? name : `${name}-${ignoredCommands}`,
+          {
+            type: "command",
+            timeout: waitOptions?.timeout,
+            onConsume: waitOptions?.onConsume
+              ? (tx, event) => {
+                  if (!waitOptions.allowed || waitOptions.allowed.includes(event.payload.kind)) {
+                    return waitOptions.onConsume?.(tx, event.payload);
+                  }
+                }
+              : undefined,
+          },
+        );
+        const command = commandEvent.payload;
+        if (!waitOptions?.allowed || waitOptions.allowed.includes(command.kind)) {
+          return command;
+        }
+      }
+    };
+
     return definition.run({
       params: event.payload,
       sessionId: event.instanceId,
       event,
       step,
-      agent: (agentName) => {
-        const agent = options.agents?.[agentName];
-        if (!agent) {
-          throw new NonRetryableError(`Agent ${agentName} not found.`);
-        }
-
-        const runAgentStep = (name: string, runOptions: PiWorkflowAgentRunOptions) =>
-          runPiAgentStep(
-            { mode: runOptions.mode, promptInput: runOptions.input },
-            {
-              event,
-              step,
-              stepName: name,
-              agent,
-              agentRunner: options.agentRunner,
-              session: {
-                sessionId: event.instanceId,
-                agentName,
-                workflowName: definition.name,
-                systemPrompt: runOptions.systemPrompt,
-              },
-              turn: {
-                tools: options.tools ?? {},
-                messages: runOptions.messages ?? [],
-                turnId: runOptions.turnId ?? `${event.instanceId}:${name}`,
-              },
-            },
-            {
-              step: runOptions.step,
-              controls: runOptions.controls,
-              stopOnTools: stopOnToolNames(runOptions.stopOnTools),
-              toolExecution: runOptions.toolExecution,
-            },
-          );
-
-        return {
-          run: runAgentStep,
-          prompt: (name, promptOptions) => runAgentStep(name, { ...promptOptions, mode: "prompt" }),
-          continue: (name, continueOptions = {}) =>
-            runAgentStep(name, { ...continueOptions, mode: "continue" }),
-        };
-      },
-      waitForEvent: async (name, options) => {
-        for (let ignoredCommands = 0; ; ignoredCommands += 1) {
-          const commandEvent = await step.waitForEvent<PiSessionCommandPayload>(
-            ignoredCommands === 0 ? name : `${name}-${ignoredCommands}`,
-            {
-              type: "command",
-              timeout: options?.timeout,
-              onConsume: options?.onConsume
-                ? (tx, event) => {
-                    if (!options.allowed || options.allowed.includes(event.payload.kind)) {
-                      return options.onConsume?.(tx, event.payload);
-                    }
-                  }
-                : undefined,
-            },
-          );
-          const command = commandEvent.payload;
-          if (!options?.allowed || options.allowed.includes(command.kind)) {
-            return command;
-          }
-        }
-      },
-      sleep: (name, duration) => step.sleep(name, duration),
-      sleepUntil: (name, timestamp) => step.sleepUntil(name, timestamp),
+      do: step.do.bind(step) as WorkflowStep["do"],
+      sleep: step.sleep.bind(step),
+      sleepUntil: step.sleepUntil.bind(step),
+      agentStep,
+      waitForEvent: waitForCommand,
     });
   };
 
@@ -251,6 +379,22 @@ export const compilePiWorkflow = <
   };
 };
 
+export {
+  createPiSkillActivationTool,
+  PiSkillDefinitionBuilder,
+  renderPiSkillCatalogXml,
+  renderPiSkillInvocationContext,
+} from "./skills";
+export type {
+  CreatePiSkillActivationToolOptions,
+  PiSkillActivationDetails,
+  PiSkillCatalogXmlInput,
+  PiSkillDefinition,
+  PiSkillDefinitionInput,
+  PiSkillInvocationContextOptions,
+  PiSkillRegistry,
+  PiSkillResource,
+} from "./skills";
 export type { PiTool, PiToolContext, PiToolDefinition, PiToolResultSchema } from "./types";
 
 export function definePiTool<TParameters extends TypeBoxSchema, TDetails>(
@@ -259,11 +403,12 @@ export function definePiTool<TParameters extends TypeBoxSchema, TDetails>(
   return tool;
 }
 
-export type PiAgentDefinitionInput<TToolName extends string = string> = Omit<
-  PiAgentDefinition,
-  "name" | "tools"
-> & {
+export type PiAgentDefinitionInput<
+  TToolName extends string = string,
+  TSkillName extends string = string,
+> = Omit<PiAgentDefinition, "name" | "tools" | "skills"> & {
   tools?: readonly TToolName[];
+  skills?: readonly TSkillName[];
 };
 
 export type PiNamedAgentDefinition<
@@ -271,13 +416,19 @@ export type PiNamedAgentDefinition<
   TDefinition extends PiAgentDefinitionInput = PiAgentDefinitionInput,
 > = TDefinition & { name: TName };
 
+export type PiNamedSkillDefinition<TName extends string = string> = PiSkillDefinition & {
+  name: TName;
+};
+
 export type PiRuntime<
   TAgents extends PiAgentRegistry = PiAgentRegistry,
   TTools extends PiToolRegistry = PiToolRegistry,
+  TSkills extends PiSkillRegistry = PiSkillRegistry,
 > = {
-  config: Omit<PiFragmentConfig, "agents" | "tools"> & {
+  config: Omit<PiFragmentConfig, "agents" | "tools" | "skills"> & {
     agents: TAgents;
     tools: TTools;
+    skills: TSkills;
   };
   workflows: WorkflowsRegistry;
 };
@@ -285,35 +436,84 @@ export type PiRuntime<
 type ReplaceRegistryEntry<TRegistry, TName extends string, TValue> = Omit<TRegistry, TName> &
   Record<TName, TValue>;
 
-export class PiBuilder<TAgents extends PiAgentRegistry = {}, TTools extends PiToolRegistry = {}> {
+type PiSkillBuilderCallback<TName extends string> = (
+  builder: PiSkillDefinitionBuilder<TName>,
+) => PiSkillDefinitionBuilder<TName> | PiSkillDefinition | PiSkillDefinitionInput | void;
+
+const materializeSkillDefinition = <TName extends string>(
+  name: TName,
+  definition: PiSkillDefinition | PiSkillDefinitionInput | PiSkillBuilderCallback<TName>,
+): PiNamedSkillDefinition<TName> => {
+  const builder = new PiSkillDefinitionBuilder(name);
+  const result = typeof definition === "function" ? (definition(builder) ?? builder) : definition;
+  const skill = result instanceof PiSkillDefinitionBuilder ? result.build() : { ...result, name };
+
+  if (!skill.description) {
+    throw new Error(`Skill '${name}' must define a description.`);
+  }
+
+  return { ...skill, name };
+};
+
+export class PiBuilder<
+  TAgents extends PiAgentRegistry = {},
+  TTools extends PiToolRegistry = {},
+  TSkills extends PiSkillRegistry = {},
+> {
   readonly #agents: PiAgentRegistry = {};
   readonly #tools: PiToolRegistry = {};
+  readonly #skills: PiSkillRegistry = {};
   readonly #workflows: Record<string, PiWorkflowDefinition> = {};
   #logging: PiFragmentConfig["logging"];
 
   withAgent<
     TName extends string,
-    const TDefinition extends PiAgentDefinitionInput<Extract<keyof TTools, string>>,
+    const TDefinition extends PiAgentDefinitionInput<
+      Extract<keyof TTools, string>,
+      Extract<keyof TSkills, string>
+    >,
   >(
     name: TName,
     definition: TDefinition,
   ): PiBuilder<
     ReplaceRegistryEntry<TAgents, TName, PiNamedAgentDefinition<TName, TDefinition>>,
-    TTools
+    TTools,
+    TSkills
   > {
     this.#agents[name] = { ...definition, name };
     return this as unknown as PiBuilder<
       ReplaceRegistryEntry<TAgents, TName, PiNamedAgentDefinition<TName, TDefinition>>,
-      TTools
+      TTools,
+      TSkills
     >;
   }
 
   withTool<TName extends string, TTool extends PiTool>(
     name: TName,
     tool: TTool,
-  ): PiBuilder<TAgents, ReplaceRegistryEntry<TTools, TName, TTool>> {
+  ): PiBuilder<TAgents, ReplaceRegistryEntry<TTools, TName, TTool>, TSkills> {
     this.#tools[name] = tool;
-    return this as unknown as PiBuilder<TAgents, ReplaceRegistryEntry<TTools, TName, TTool>>;
+    return this as unknown as PiBuilder<
+      TAgents,
+      ReplaceRegistryEntry<TTools, TName, TTool>,
+      TSkills
+    >;
+  }
+
+  withSkill<TName extends string>(
+    name: TName,
+    definition: PiSkillDefinition | PiSkillDefinitionInput | PiSkillBuilderCallback<TName>,
+  ): PiBuilder<
+    TAgents,
+    TTools,
+    ReplaceRegistryEntry<TSkills, TName, PiNamedSkillDefinition<TName>>
+  > {
+    this.#skills[name] = materializeSkillDefinition(name, definition);
+    return this as unknown as PiBuilder<
+      TAgents,
+      TTools,
+      ReplaceRegistryEntry<TSkills, TName, PiNamedSkillDefinition<TName>>
+    >;
   }
 
   withWorkflow<
@@ -324,23 +524,25 @@ export class PiBuilder<TAgents extends PiAgentRegistry = {}, TTools extends PiTo
     TOutputSchema extends StandardSchemaV1 | undefined,
   >(
     definition: PiWorkflowDefinition<TName, TParams, TOutput, TInputSchema, TOutputSchema>,
-  ): PiBuilder<TAgents, TTools> {
+  ): PiBuilder<TAgents, TTools, TSkills> {
     this.#workflows[definition.name] = definition as unknown as PiWorkflowDefinition;
     return this;
   }
 
-  logging(config: PiFragmentConfig["logging"]): PiBuilder<TAgents, TTools> {
+  logging(config: PiFragmentConfig["logging"]): PiBuilder<TAgents, TTools, TSkills> {
     this.#logging = config;
     return this;
   }
 
-  build(): PiRuntime<TAgents, TTools> {
+  build(): PiRuntime<TAgents, TTools, TSkills> {
     const agents = { ...this.#agents } as TAgents;
     const tools = { ...this.#tools } as TTools;
+    const skills = { ...this.#skills } as TSkills;
     const workflows = Object.values(this.#workflows);
     const config = {
       agents,
       tools,
+      skills,
       workflows,
       logging: this.#logging,
     };
@@ -350,6 +552,7 @@ export class PiBuilder<TAgents extends PiAgentRegistry = {}, TTools extends PiTo
       workflows: createPiWorkflows({
         agents,
         tools,
+        skills,
         logging: this.#logging,
         workflows,
       }),

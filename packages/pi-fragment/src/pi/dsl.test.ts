@@ -14,13 +14,15 @@ import {
   createPi,
   definePiTool,
   definePiWorkflow,
+  renderPiSkillCatalogXml,
   type PiAgentDefinitionInput,
   type PiRuntime,
+  type PiSkillDefinition,
   type PiTool,
   type PiToolDefinition,
   type PiWorkflowDefinition,
 } from "./dsl";
-import { createPiWorkflows } from "./factory";
+import { createPiWorkflows, type PiAgentRunner } from "./factory";
 import { createAssistantStreamScript, mockModel } from "./pi-test-utils";
 import type { PiFragmentConfig } from "./types";
 import { projectSessionDetailFromWorkflowHistory } from "./workflow/reconstruct-session";
@@ -99,6 +101,32 @@ describe("pi builder types", () => {
       tools: ["grep"],
     });
   });
+
+  it("preserves literal skill names and requires agents to reference registered skills", () => {
+    createPi()
+      .withSkill("fragno", { description: "Use when working on Fragno fragments." })
+      .withAgent("author", {
+        systemPrompt: "You author fragments.",
+        model: mockModel,
+        skills: ["fragno"],
+      });
+
+    createPi()
+      .withSkill("fragno", { description: "Use when working on Fragno fragments." })
+      .withAgent("author", {
+        systemPrompt: "You author fragments.",
+        model: mockModel,
+        // @ts-expect-error - missing is not in the registered skill names.
+        skills: ["missing"],
+      });
+
+    createPi().withAgent("author", {
+      systemPrompt: "You author fragments.",
+      model: mockModel,
+      // @ts-expect-error - fragno must be registered before an agent can reference it.
+      skills: ["fragno"],
+    });
+  });
 });
 
 describe("createPi builder", () => {
@@ -116,6 +144,97 @@ describe("createPi builder", () => {
     expect(runtime.config.agents).toEqual({ default: { ...agent, name: "default" } });
     expect(runtime.config.tools).toEqual({ search: tool });
     expect(runtime.workflows).toEqual({});
+  });
+
+  it("registers manually defined skills", () => {
+    const directSkill = {
+      name: "fragno",
+      description: "Use when working on Fragno fragments.",
+      body: "Follow Fragno conventions.",
+      location: "/repo/.agents/skills/fragno/SKILL.md",
+      resources: [
+        {
+          path: "references/fragment-authoring.md",
+          description: "Fragment authoring reference.",
+          content: "Reference content.",
+          mimeType: "text/markdown",
+          metadata: { kind: "reference" },
+        },
+      ],
+      metadata: { source: "manual" },
+    } satisfies PiSkillDefinition;
+
+    const runtime = createPi().withSkill("fragno", directSkill).build();
+
+    expectTypeOf(runtime.config.skills["fragno"].name).toEqualTypeOf<"fragno">();
+    expect(runtime.config.skills["fragno"]).toEqual(directSkill);
+  });
+
+  it("builds manual skills with the withSkill builder callback", () => {
+    const runtime = createPi()
+      .withSkill("fragno", (skill) =>
+        skill
+          .description("Use when working on Fragno fragments.")
+          .body("Follow Fragno conventions.")
+          .location("/repo/.agents/skills/fragno/SKILL.md")
+          .resource("references/fragment-authoring.md", {
+            description: "Fragment authoring reference.",
+            content: "Reference content.",
+            mimeType: "text/markdown",
+            metadata: { kind: "reference" },
+          })
+          .metadata({ source: "manual" })
+          .metadataValue("enabled", true),
+      )
+      .build();
+
+    expect(runtime.config.skills["fragno"]).toEqual({
+      name: "fragno",
+      description: "Use when working on Fragno fragments.",
+      body: "Follow Fragno conventions.",
+      location: "/repo/.agents/skills/fragno/SKILL.md",
+      resources: [
+        {
+          path: "references/fragment-authoring.md",
+          description: "Fragment authoring reference.",
+          content: "Reference content.",
+          mimeType: "text/markdown",
+          metadata: { kind: "reference" },
+        },
+      ],
+      metadata: { source: "manual", enabled: true },
+    });
+  });
+
+  it("rejects skills without descriptions", () => {
+    expect(() => createPi().withSkill("fragno", {} as PiSkillDefinition)).toThrow(
+      "Skill 'fragno' must define a description.",
+    );
+    expect(() => createPi().withSkill("fragno", (skill) => skill)).toThrow(
+      "Skill 'fragno' must define a description.",
+    );
+  });
+
+  it("renders a deterministic XML skill catalog", () => {
+    const runtime = createPi()
+      .withSkill("z-review", { description: 'Review <code> & explain "risks".' })
+      .withSkill("a-author", { description: "Author Fragno fragments." })
+      .build();
+
+    expect(renderPiSkillCatalogXml(runtime.config.skills)).toBe(`<available_skills>
+  <skill>
+    <name>a-author</name>
+    <description>Author Fragno fragments.</description>
+  </skill>
+  <skill>
+    <name>z-review</name>
+    <description>Review &lt;code&gt; &amp; explain &quot;risks&quot;.</description>
+  </skill>
+</available_skills>`);
+  });
+
+  it("renders an empty string when there are no skills", () => {
+    expect(renderPiSkillCatalogXml({})).toBe("");
   });
 
   it("lets later registrations replace earlier registrations with the same name", () => {
@@ -269,12 +388,294 @@ describe("definePiWorkflow", () => {
     >();
   });
 
+  it("adds skill invocation context to agent runs", async () => {
+    const observedRuns: Array<{ mode: string; messages: readonly unknown[] }> = [];
+    const agentRunner: PiAgentRunner = async (operation, runtime) => {
+      observedRuns.push({ mode: operation.mode, messages: runtime.turn.messages });
+      return {
+        stopReason: "stop",
+        messages: runtime.turn.messages,
+        events: [],
+        errorMessage: null,
+      };
+    };
+    const config: PiFragmentConfig = {
+      agents: {
+        default: {
+          name: "default",
+          systemPrompt: "Base prompt.",
+          model: mockModel,
+          skills: ["fragno"],
+        },
+      },
+      tools: {},
+      skills: {
+        fragno: {
+          name: "fragno",
+          description: "Use when working on Fragno fragments.",
+          body: "Follow Fragno conventions.",
+          location: "/repo/.agents/skills/fragno/SKILL.md",
+          resources: [{ path: "references/authoring.md" }],
+        },
+      },
+    };
+    const workflow = compilePiWorkflow(
+      definePiWorkflow({ name: "pi-skill-invocation-context" }, async (ctx) => {
+        await ctx.agentStep("default").skill("invoke-fragno", {
+          skill: "fragno",
+          extraInstructions: "Focus on the Pi DSL.",
+        });
+        await ctx.agentStep("default").run("run-with-skill", {
+          mode: "continue",
+          skill: "fragno",
+          extraInstructions: "Explain tradeoffs.",
+        });
+        return { ok: true };
+      }),
+      {
+        agents: config.agents,
+        tools: config.tools,
+        skills: config.skills,
+        agentRunner,
+      },
+    );
+
+    await runScenario(
+      defineScenario({
+        name: "pi-skill-invocation-context",
+        workflows: { custom: workflow },
+        harness: {
+          configureFragments: (harness) => ({
+            pi: instantiate(piFragmentDefinition)
+              .withConfig(config)
+              .withServices({ workflows: harness.fragment.services }),
+          }),
+        },
+        runners: ["worker"],
+        steps: ({ runners, workflow }) => [
+          runners.worker.initializeAndRunUntilIdle({ workflow: "custom", id: "session-1" }),
+          workflow.read({
+            read: (ctx) => ctx.state.getStatus("custom", "session-1"),
+            assert: (status) => {
+              expect(status.status).toBe("complete");
+              expect(observedRuns.map((run) => run.mode)).toEqual(["continue", "continue"]);
+              const [firstRun, secondRun] = observedRuns;
+              assert(firstRun);
+              assert(secondRun);
+              expect(firstRun.messages).toHaveLength(1);
+              expect(secondRun.messages).toHaveLength(1);
+              const firstMessage = firstRun.messages[0] as {
+                role: string;
+                content: Array<{ type: string; text: string }>;
+              };
+              const secondMessage = secondRun.messages[0] as {
+                role: string;
+                content: Array<{ type: string; text: string }>;
+              };
+              expect(firstMessage.role).toBe("user");
+              expect(firstMessage.content[0]?.text).toContain('<skill_content name="fragno">');
+              expect(firstMessage.content[0]?.text).toContain("Follow Fragno conventions.");
+              expect(firstMessage.content[0]?.text).toContain(
+                "<directory>/repo/.agents/skills/fragno</directory>",
+              );
+              expect(firstMessage.content[0]?.text).toContain(
+                "<resource_path_note>Resource file paths are relative to the skill itself.</resource_path_note>",
+              );
+              expect(firstMessage.content[0]?.text).toContain(
+                "<path>references/authoring.md</path>",
+              );
+              expect(firstMessage.content[0]?.text).toContain("\n\nFocus on the Pi DSL.");
+              expect(secondMessage.content[0]?.text).toContain("\n\nExplain tradeoffs.");
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("runs skill invocations in prompt mode when input is provided", async () => {
+    const observedRuns: Array<{
+      mode: string;
+      promptInput?: unknown;
+      messages: readonly unknown[];
+    }> = [];
+    const agentRunner: PiAgentRunner = async (operation, runtime) => {
+      observedRuns.push({
+        mode: operation.mode,
+        promptInput: operation.promptInput,
+        messages: runtime.turn.messages,
+      });
+      return {
+        stopReason: "stop",
+        messages: runtime.turn.messages,
+        events: [],
+        errorMessage: null,
+      };
+    };
+    const config: PiFragmentConfig = {
+      agents: {
+        default: {
+          name: "default",
+          systemPrompt: "Base prompt.",
+          model: mockModel,
+          skills: ["pdf-processing"],
+        },
+      },
+      tools: {},
+      skills: {
+        "pdf-processing": {
+          name: "pdf-processing",
+          description: "Use when working with PDF files.",
+          body: "Prefer robust PDF extraction.",
+          directory: "/home/user/.agents/skills/pdf-processing",
+          resources: [{ path: "scripts/extract.py" }],
+        },
+      },
+    };
+    const workflow = compilePiWorkflow(
+      definePiWorkflow({ name: "pi-skill-prompt-mode" }, async (ctx) => {
+        await ctx.agentStep("default").skill("pdf-task", {
+          skill: "pdf-processing",
+          input: { text: "Extract the report title." },
+          extraInstructions: "Use OCR if embedded text is missing.",
+        });
+        return { ok: true };
+      }),
+      {
+        agents: config.agents,
+        tools: config.tools,
+        skills: config.skills,
+        agentRunner,
+      },
+    );
+
+    await runScenario(
+      defineScenario({
+        name: "pi-skill-prompt-mode",
+        workflows: { custom: workflow },
+        harness: {
+          configureFragments: (harness) => ({
+            pi: instantiate(piFragmentDefinition)
+              .withConfig(config)
+              .withServices({ workflows: harness.fragment.services }),
+          }),
+        },
+        runners: ["worker"],
+        steps: ({ runners, workflow }) => [
+          runners.worker.initializeAndRunUntilIdle({ workflow: "custom", id: "session-1" }),
+          workflow.read({
+            read: (ctx) => ctx.state.getStatus("custom", "session-1"),
+            assert: (status) => {
+              expect(status.status).toBe("complete");
+              expect(observedRuns).toHaveLength(1);
+              const run = observedRuns[0];
+              assert(run);
+              expect(run.mode).toBe("prompt");
+              expect(run.promptInput).toEqual({ text: "Extract the report title." });
+              expect(run.messages).toHaveLength(1);
+              const skillMessage = run.messages[0] as {
+                role: string;
+                content: Array<{ type: string; text: string }>;
+              };
+              expect(skillMessage.role).toBe("user");
+              expect(skillMessage.content[0]?.text).toContain(
+                '<skill_content name="pdf-processing">',
+              );
+              expect(skillMessage.content[0]?.text).toContain(
+                "<directory>/home/user/.agents/skills/pdf-processing</directory>",
+              );
+              expect(skillMessage.content[0]?.text).toContain(
+                "<resource_path_note>Resource file paths are relative to the skill itself.</resource_path_note>",
+              );
+              expect(skillMessage.content[0]?.text).toContain(
+                "\n\nUse OCR if embedded text is missing.",
+              );
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("appends the selected skill catalog to the agent system prompt", async () => {
+    let observedSystemPrompt: string | undefined;
+    const agentRunner: PiAgentRunner = async (_operation, runtime) => {
+      observedSystemPrompt = runtime.session.systemPrompt;
+      return {
+        stopReason: "stop",
+        messages: runtime.turn.messages,
+        events: [],
+        errorMessage: null,
+      };
+    };
+    const config: PiFragmentConfig = {
+      agents: {
+        default: {
+          name: "default",
+          systemPrompt: "Base prompt.",
+          model: mockModel,
+          skills: ["fragno"],
+        },
+      },
+      tools: {},
+      skills: {
+        fragno: { name: "fragno", description: "Use when working on Fragno fragments." },
+        unused: { name: "unused", description: "Should not be shown." },
+      },
+    };
+    const workflow = compilePiWorkflow(
+      definePiWorkflow({ name: "pi-skill-system-prompt" }, async (ctx) => {
+        await ctx.agentStep("default").prompt("ask", { input: { text: "hello" } });
+        return { ok: true };
+      }),
+      {
+        agents: config.agents,
+        tools: config.tools,
+        skills: config.skills,
+        agentRunner,
+      },
+    );
+
+    await runScenario(
+      defineScenario({
+        name: "pi-skill-system-prompt",
+        workflows: { custom: workflow },
+        harness: {
+          configureFragments: (harness) => ({
+            pi: instantiate(piFragmentDefinition)
+              .withConfig(config)
+              .withServices({ workflows: harness.fragment.services }),
+          }),
+        },
+        runners: ["worker"],
+        steps: ({ runners, workflow }) => [
+          runners.worker.initializeAndRunUntilIdle({ workflow: "custom", id: "session-1" }),
+          workflow.read({
+            read: (ctx) => ctx.state.getStatus("custom", "session-1"),
+            assert: (status) => {
+              expect(status.status).toBe("complete");
+              expect(observedSystemPrompt).toBe(`Base prompt.
+
+The following skills provide specialized instructions for specific tasks. When a task matches a skill's description, use that skill before proceeding.
+<available_skills>
+  <skill>
+    <name>fragno</name>
+    <description>Use when working on Fragno fragments.</description>
+  </skill>
+</available_skills>`);
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
   it("compiles context primitives to workflow steps", async () => {
     const workflow = compilePiWorkflow(
       definePiWorkflow(
         { name: "pi-context-primitives", schema: z.object({ sessionId: z.string() }) },
         async (ctx) => {
-          await ctx.step.do("emit-ready", (tx) => tx.emit({ type: "ready" }));
+          await ctx.do("emit-ready", (tx) => tx.emit({ type: "ready" }));
           const command = await ctx.waitForEvent("next-command", {
             allowed: ["prompt"],
             timeout: "1 hour",
@@ -406,15 +807,19 @@ describe("definePiWorkflow", () => {
 
   it("exposes all agent handle methods in workflow context types", () => {
     definePiWorkflow({ name: "agent-handle-types" }, (ctx) => {
-      expectTypeOf(ctx.agent("agent").run).parameters.toExtend<
+      expectTypeOf(ctx.agentStep("agent").run).parameters.toExtend<
         [string, { mode: "prompt" | "continue" }]
       >();
-      expectTypeOf(ctx.agent("agent").prompt).parameters.toExtend<
+      expectTypeOf(ctx.agentStep("agent").prompt).parameters.toExtend<
         [string, { input: { text: string } }]
       >();
-      expectTypeOf(ctx.agent("agent").continue).parameters.toExtend<
+      expectTypeOf(ctx.agentStep("agent").continue).parameters.toExtend<
         [string, { messages?: unknown[] }?]
       >();
+      expectTypeOf(ctx.agentStep("agent").skill).toBeFunction();
+      expectTypeOf(ctx).not.toHaveProperty("agent");
+      expectTypeOf(ctx.do).toEqualTypeOf(ctx.step.do);
+      expectTypeOf(ctx.waitForEvent).toBeFunction();
     });
   });
 
@@ -442,9 +847,9 @@ describe("definePiWorkflow", () => {
       definePiWorkflow(
         { name: "pi-parallel-agents", schema: z.object({ draft: z.string() }) },
         async (ctx) => {
-          const [security, clarity] = await ctx.step.do("parallel-reviews", () =>
+          const [security, clarity] = await ctx.do("parallel-reviews", () =>
             Promise.all([
-              ctx.agent("security").prompt("security-review", {
+              ctx.agentStep("security").prompt("security-review", {
                 input: { text: `Security review: ${ctx.params.draft}` },
                 messages: [
                   {
@@ -454,7 +859,7 @@ describe("definePiWorkflow", () => {
                   },
                 ],
               }),
-              ctx.agent("clarity").prompt("clarity-review", {
+              ctx.agentStep("clarity").prompt("clarity-review", {
                 input: { text: `Clarity review: ${ctx.params.draft}` },
                 messages: [
                   {
@@ -545,14 +950,14 @@ describe("definePiWorkflow", () => {
   it("runs a custom workflow race inside a named parent step", async () => {
     const workflow = compilePiWorkflow(
       definePiWorkflow({ name: "pi-approval-race" }, async (ctx) => {
-        const result = await ctx.step.do("approval-race", () =>
+        const result = await ctx.do("approval-race", () =>
           Promise.race([
             ctx
               .waitForEvent("approval", {
                 allowed: ["complete", "abort"],
               })
               .then((command) => ({ kind: command.kind })),
-            ctx.step.do("timeout-branch", async () => {
+            ctx.do("timeout-branch", async () => {
               await ctx.sleep("approval-timeout", "2 hours");
               return { kind: "timeout" as const };
             }),
@@ -606,13 +1011,13 @@ describe("definePiWorkflow", () => {
   it("runs a custom workflow first-success step inside a named parent step", async () => {
     const workflow = compilePiWorkflow(
       definePiWorkflow({ name: "pi-first-success" }, async (ctx) => {
-        const first = await ctx.step.do("first-success", () =>
+        const first = await ctx.do("first-success", () =>
           Promise.any([
-            ctx.step.do("slow-branch", async () => {
+            ctx.do("slow-branch", async () => {
               await ctx.sleep("ready-delay", "1 hour");
               return { kind: "slept" as const };
             }),
-            ctx.step.do("fast-branch", async () => ({ kind: "fast" as const })),
+            ctx.do("fast-branch", async () => ({ kind: "fast" as const })),
           ]),
         );
         return first;
@@ -677,15 +1082,15 @@ describe("definePiWorkflow", () => {
       definePiWorkflow(
         { name: "pi-sequential-agents", schema: z.object({ topic: z.string() }) },
         async (ctx) => {
-          const research = await ctx.agent("researcher").run("research", {
+          const research = await ctx.agentStep("researcher").run("research", {
             mode: "prompt",
             input: { text: ctx.params.topic },
           });
-          const draft = await ctx.agent("writer").prompt("draft", {
+          const draft = await ctx.agentStep("writer").prompt("draft", {
             input: { text: "write" },
             messages: research.messages,
           });
-          const review = await ctx.agent("reviewer").continue("review", {
+          const review = await ctx.agentStep("reviewer").continue("review", {
             messages: [
               {
                 role: "user",
