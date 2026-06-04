@@ -25,7 +25,11 @@ export {
   createReson8RealtimeTranscriberStore,
 } from "./client/client";
 export { reson8FragmentDefinition } from "./definition";
-export { reson8RoutesFactory } from "./routes";
+export {
+  reson8PrerecordedTranscriptionSchema,
+  reson8PrerecordedWordSchema,
+  reson8RoutesFactory,
+} from "./routes";
 export type { Reson8FragmentConfig } from "./definition";
 export type {
   CreateReson8AccessTokenStoreOptions,
