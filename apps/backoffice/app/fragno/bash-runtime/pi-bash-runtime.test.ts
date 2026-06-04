@@ -5,8 +5,8 @@ import { InMemoryFs } from "just-bash";
 import type { AutomationsRuntime } from "../runtime-tools/families/automations";
 import { createBashHost } from "./bash-host";
 import {
-  createPiRouteBashRuntime,
-  type PiBashRuntime,
+  createPiRouteRuntime,
+  type PiRuntime,
   type PiSessionCreateArgs,
   type PiSessionGetArgs,
   type PiSessionListArgs,
@@ -61,7 +61,7 @@ const createTurnResult = (sessionId: string, assistantText = "assistant:hello") 
   };
 };
 
-const createPiRuntime = (overrides: Partial<PiBashRuntime> = {}): PiBashRuntime => ({
+const createPiRuntime = (overrides: Partial<PiRuntime> = {}): PiRuntime => ({
   createSession: async ({ agent, name, metadata, tags, steeringMode }) => {
     if (agent === "missing") {
       throw new Error("Pi fragment returned 404: Agent not found");
@@ -164,7 +164,7 @@ const createAutomationsRuntime = (): AutomationsRuntime => ({
   }),
 });
 
-const createPiHost = (piRuntime: PiBashRuntime = createPiRuntime()) => {
+const createPiHost = (piRuntime: PiRuntime = createPiRuntime()) => {
   return createBashHost({
     fs: new InMemoryFs(),
     sessionId: "session-host",
@@ -687,7 +687,7 @@ describe("pi bash command registration", () => {
   });
 });
 
-describe("createPiRouteBashRuntime", () => {
+describe("createPiRouteRuntime", () => {
   it("calls Pi routes with the expected payloads and query params", async () => {
     const requests: Array<{
       url: string;
@@ -873,7 +873,7 @@ describe("createPiRouteBashRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteBashRuntime({ env, orgId: "acme" });
+    const runtime = createPiRouteRuntime({ env, orgId: "acme" });
 
     const created = await runtime.createSession({
       agent: "assistant",
@@ -1066,7 +1066,7 @@ describe("createPiRouteBashRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteBashRuntime({ env, orgId: "acme" });
+    const runtime = createPiRouteRuntime({ env, orgId: "acme" });
     const turned = await withTimeout(
       runtime.runTurn({ sessionId: "session-2", text: "hello" }),
       "runTurn should not wait for the live events stream to close",
@@ -1113,7 +1113,7 @@ describe("createPiRouteBashRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteBashRuntime({ env, orgId: "acme" });
+    const runtime = createPiRouteRuntime({ env, orgId: "acme" });
 
     await expect(runtime.createSession({ agent: "missing" })).rejects.toThrow(
       "Pi fragment returned 404: Agent not found",
@@ -1158,7 +1158,7 @@ describe("createPiRouteBashRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteBashRuntime({ env, orgId: "acme" });
+    const runtime = createPiRouteRuntime({ env, orgId: "acme" });
 
     await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(
       "session events route did not return a jsonStream response",
@@ -1211,7 +1211,7 @@ describe("createPiRouteBashRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteBashRuntime({ env, orgId: "acme" });
+    const runtime = createPiRouteRuntime({ env, orgId: "acme" });
 
     await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(
       "Pi fragment returned 409: Session not ready",
@@ -1275,7 +1275,7 @@ describe("createPiRouteBashRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteBashRuntime({ env, orgId: "acme" });
+    const runtime = createPiRouteRuntime({ env, orgId: "acme" });
 
     await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(
       "Pi fragment returned 500: Detail unavailable",

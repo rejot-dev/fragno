@@ -4,7 +4,7 @@ import {
   NotConfiguredError,
   buildResendThreadMarkdown,
   createRouteBackedResendRuntime,
-  type ResendBashRuntime,
+  type ResendRuntime,
 } from "@/fragno/bash-runtime/resend-bash-runtime";
 
 import { normalizeMountedFileSystem } from "../mounted-file-system";
@@ -233,7 +233,7 @@ export const resendFileContributor: FileContributor = {
   },
 };
 
-const createResendRuntime = (ctx: FilesContext): ResendBashRuntime | null => {
+const createResendRuntime = (ctx: FilesContext): ResendRuntime | null => {
   if (!ctx.resendRuntime) {
     return null;
   }
@@ -246,7 +246,7 @@ const createResendRuntime = (ctx: FilesContext): ResendBashRuntime | null => {
 };
 
 const loadAllThreadSummaries = async (
-  runtime: ResendBashRuntime,
+  runtime: ResendRuntime,
 ): Promise<Map<string, ResendThreadSummary>> => {
   const map = new Map<string, ResendThreadSummary>();
   let cursor: string | undefined;
@@ -273,7 +273,7 @@ const loadAllThreadSummaries = async (
 };
 
 const fetchThreadMessages = async (
-  runtime: ResendBashRuntime,
+  runtime: ResendRuntime,
   threadId: string,
 ): Promise<ResendThreadMessage[]> => {
   const messages: ResendThreadMessage[] = [];

@@ -40,20 +40,14 @@ import {
   createTelegramRuntime,
   type RegisteredTelegramCommandContext,
 } from "../runtime-tools/families/telegram-runtime";
+import { createPiRouteRuntime, type RegisteredPiCommandContext } from "./pi-bash-runtime";
 import {
-  createPiBashCommands,
-  createPiRouteBashRuntime,
-  type RegisteredPiBashCommandContext,
-} from "./pi-bash-runtime";
-import {
-  createResendBashCommands,
-  createResendRouteBashRuntime,
-  type RegisteredResendBashCommandContext,
+  createResendRouteRuntime,
+  type RegisteredResendCommandContext,
 } from "./resend-bash-runtime";
 import {
-  createReson8BashCommands,
-  createReson8RouteBashRuntime,
-  type RegisteredReson8BashCommandContext,
+  createReson8RouteRuntime,
+  type RegisteredReson8CommandContext,
 } from "./reson8-bash-runtime";
 
 // ---------------------------------------------------------------------------
@@ -73,9 +67,9 @@ export type BashHostContext = {
   automation: RegisteredEventBashCommandContext | null;
   automations: RegisteredAutomationsBashCommandContext | null;
   otp: RegisteredOtpCommandContext | null;
-  pi: RegisteredPiBashCommandContext | null;
-  reson8: RegisteredReson8BashCommandContext | null;
-  resend: RegisteredResendBashCommandContext | null;
+  pi: RegisteredPiCommandContext | null;
+  reson8: RegisteredReson8CommandContext | null;
+  resend: RegisteredResendCommandContext | null;
   telegram: RegisteredTelegramCommandContext | null;
 };
 
@@ -127,6 +121,9 @@ const createBashToolContext = (context: BashHostContext): BackofficeToolContext 
     automations: context.automations?.runtime,
     event: context.automation?.runtime,
     otp: context.otp?.runtime,
+    pi: context.pi?.runtime,
+    resend: context.resend?.runtime,
+    reson8: context.reson8?.runtime,
     telegram: context.telegram?.runtime,
   },
   scriptRunner: context.automations?.scriptRunner,
@@ -154,18 +151,6 @@ const BASH_HOST_MODULES: BashHostModule[] = [
     id: "runtime-tools",
     createCommands: createRuntimeFamilyBashCommands,
   },
-  {
-    id: "pi",
-    createCommands: createPiBashCommands,
-  },
-  {
-    id: "reson8",
-    createCommands: createReson8BashCommands,
-  },
-  {
-    id: "resend",
-    createCommands: createResendBashCommands,
-  },
 ];
 
 const createRegisteredBashCommands = (input: BashCommandFactoryInput) =>
@@ -186,13 +171,13 @@ export const createRouteBackedInteractiveBashContext = ({
     runtime: createOtpRuntime({ env, orgId }),
   },
   pi: {
-    runtime: createPiRouteBashRuntime({ env, orgId }),
+    runtime: createPiRouteRuntime({ env, orgId }),
   },
   reson8: {
-    runtime: createReson8RouteBashRuntime({ env, orgId }),
+    runtime: createReson8RouteRuntime({ env, orgId }),
   },
   resend: {
-    runtime: createResendRouteBashRuntime({ env, orgId }),
+    runtime: createResendRouteRuntime({ env, orgId }),
   },
   telegram: {
     runtime: createTelegramRuntime({ env, orgId }),

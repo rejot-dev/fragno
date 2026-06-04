@@ -4,6 +4,9 @@ import { runBackofficeCodemode, type BackofficeCodemodeEnv } from "@/fragno/code
 import type { AutomationsRuntime } from "@/fragno/runtime-tools/families/automations";
 import type { EventRuntime } from "@/fragno/runtime-tools/families/event";
 import type { OtpRuntime } from "@/fragno/runtime-tools/families/otp";
+import type { PiRuntime } from "@/fragno/runtime-tools/families/pi";
+import type { ResendRuntime } from "@/fragno/runtime-tools/families/resend";
+import type { Reson8Runtime } from "@/fragno/runtime-tools/families/reson8";
 import type { TelegramRuntime } from "@/fragno/runtime-tools/families/telegram";
 import {
   getAvailableRuntimeTools,
@@ -18,6 +21,9 @@ type AutomationCodemodeToolContext = BackofficeToolContext<{
   automations?: AutomationsRuntime;
   event?: EventRuntime;
   otp?: OtpRuntime;
+  pi?: PiRuntime;
+  resend?: ResendRuntime;
+  reson8?: Reson8Runtime;
   telegram?: TelegramRuntime;
 }>;
 
@@ -28,6 +34,9 @@ const createAutomationToolRuntimeContext = (
     automations: context.automations?.runtime,
     event: context.automation.runtime,
     otp: context.otp?.runtime,
+    pi: context.pi?.runtime,
+    resend: context.resend?.runtime,
+    reson8: context.reson8?.runtime,
     telegram: context.telegram?.runtime,
   },
 });

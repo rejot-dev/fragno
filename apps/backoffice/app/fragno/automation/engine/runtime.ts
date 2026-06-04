@@ -1,13 +1,13 @@
-import type { PiBashRuntime } from "@/fragno/bash-runtime/pi-bash-runtime";
+import type { PiRuntime } from "@/fragno/bash-runtime/pi-bash-runtime";
 import {
-  createResendRouteBashRuntime,
-  createUnavailableResendBashRuntime,
-  type ResendBashRuntime,
+  createResendRouteRuntime,
+  createUnavailableResendRuntime,
+  type ResendRuntime,
 } from "@/fragno/bash-runtime/resend-bash-runtime";
 import {
-  createReson8RouteBashRuntime,
-  createUnavailableReson8BashRuntime,
-  type Reson8BashRuntime,
+  createReson8RouteRuntime,
+  createUnavailableReson8Runtime,
+  type Reson8Runtime,
 } from "@/fragno/bash-runtime/reson8-bash-runtime";
 import {
   createTelegramRuntime,
@@ -39,7 +39,7 @@ import {
 const normalizeOrgId = (orgId: string | undefined) => orgId?.trim() || undefined;
 
 export type AutomationPiBashContext = {
-  runtime: PiBashRuntime;
+  runtime: PiRuntime;
   defaultAgent?: string;
 };
 
@@ -58,13 +58,13 @@ export type AutomationRuntimeHostContext = {
     runtime: OtpRuntime;
   };
   pi: {
-    runtime: PiBashRuntime;
+    runtime: PiRuntime;
   } | null;
   reson8: {
-    runtime: Reson8BashRuntime;
+    runtime: Reson8Runtime;
   };
   resend: {
-    runtime: ResendBashRuntime;
+    runtime: ResendRuntime;
   };
   telegram: {
     runtime: TelegramRuntime;
@@ -159,12 +159,12 @@ export const createAutomationExecutionContext = ({
     pi: pi ? { runtime: pi.runtime } : null,
     reson8:
       env && orgId
-        ? { runtime: createReson8RouteBashRuntime({ env, orgId }) }
-        : { runtime: createUnavailableReson8BashRuntime() },
+        ? { runtime: createReson8RouteRuntime({ env, orgId }) }
+        : { runtime: createUnavailableReson8Runtime() },
     resend:
       env && orgId
-        ? { runtime: createResendRouteBashRuntime({ env, orgId }) }
-        : { runtime: createUnavailableResendBashRuntime() },
+        ? { runtime: createResendRouteRuntime({ env, orgId }) }
+        : { runtime: createUnavailableResendRuntime() },
     telegram:
       env && orgId
         ? { runtime: createTelegramRuntime({ env, orgId }) }

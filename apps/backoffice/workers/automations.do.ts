@@ -16,7 +16,7 @@ import {
   type DurableHookQueueOptions,
   type DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
-import { createPiRouteBashRuntime } from "@/fragno/pi/pi";
+import { createPiRouteRuntime } from "@/fragno/pi/pi";
 import {
   PI_MODEL_CATALOG,
   createPiAgentName,
@@ -123,7 +123,7 @@ export class Automations extends DurableObject<CloudflareEnv> {
     }
 
     return {
-      runtime: createPiRouteBashRuntime({ env: this.#env, orgId }),
+      runtime: createPiRouteRuntime({ env: this.#env, orgId }),
       defaultAgent,
     };
   }

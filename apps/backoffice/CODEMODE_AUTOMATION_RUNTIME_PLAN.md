@@ -617,9 +617,9 @@ Suggested order:
 - [x] `event`
 - [x] `otp`
 - [x] `telegram`
-- [ ] `resend`
-- [ ] `reson8`
-- [ ] `pi`
+- [x] `resend`
+- [x] `reson8`
+- [x] `pi`
 
 Tests per family:
 
@@ -657,6 +657,15 @@ Progress:
   codemode operation is shared through `telegramRuntimeTools`.
 - `executeCodemodeAutomation(...)` and Pi `execCodeMode` now expose OTP and Telegram tools when
   those runtimes are present in the execution context.
+- Migrated the `resend` family to `app/fragno/runtime-tools/families/resend.ts`, including codemode
+  `resend.getThread(...)`, `resend.listThreads(...)`, and `resend.replyToThread(...)`; legacy bash
+  commands are now generated from the shared runtime tools.
+- Migrated the `reson8` family to `app/fragno/runtime-tools/families/reson8.ts`, including codemode
+  `reson8.transcribePrerecorded(...)`; legacy bash file reads are preserved with a custom
+  `adapters.bash.execute(...)` implementation.
+- Migrated the `pi` family to `app/fragno/runtime-tools/families/pi.ts`, including codemode
+  `pi.createSession(...)`, `pi.getSession(...)`, `pi.listSessions(...)`, and `pi.runTurn(...)`;
+  legacy bash commands are now generated from the shared runtime tools.
 
 Guidance for the next families:
 
@@ -689,12 +698,10 @@ Implement:
 
 - Replace `BASH_HOST_MODULES` with generated command registration from the runtime tool registry.
 - Remove obsolete command maps and `ParsedCommandByName` types.
-- Rename remaining route-backed APIs away from `BashRuntime` where they are no longer bash-specific
-  (`resend`, `reson8`, `pi`) as those families are ported.
-- Move `resend`, `reson8`, and `pi` runtime factories/types out of `bash-runtime/` as part of their
-  family migrations.
-- Delete the old `automation/commands/*` command-spec/handler compatibility layer after all families
-  have `BackofficeRuntimeTool` definitions.
+- Rename/move remaining route-backed runtime factory modules out of `bash-runtime/` now that all
+  runtime tool families are ported.
+- Delete the old `automation/commands/*` command-spec/handler compatibility layer after remaining
+  tests have been moved to `runtime-tools` coverage.
 
 Tests:
 
