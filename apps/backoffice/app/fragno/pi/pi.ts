@@ -26,8 +26,8 @@ import type {
 import {
   createInteractiveBashHost,
   createRouteBackedInteractiveBashContext,
-  type InteractiveBashCommandContext,
-} from "../runtime-tools/bash-host";
+} from "../runtime-tools/automation-host";
+import type { InteractiveBashCommandContext } from "../runtime-tools/bash-host";
 import type { AutomationsRuntime } from "../runtime-tools/families/automations";
 import type { OtpRuntime } from "../runtime-tools/families/otp-runtime";
 import type { PiRuntime } from "../runtime-tools/families/pi";

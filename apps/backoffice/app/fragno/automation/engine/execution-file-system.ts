@@ -11,10 +11,22 @@ const TEXT_DECODER = new TextDecoder();
  * Uses a plain-object filesystem (no InMemoryFs) to avoid `this`-binding issues
  * when methods are wrapped by `normalizeMountedFileSystem`.
  */
-export const createAutomationContextMount = (eventJson: string): ResolvedFileMount => {
-  const buf = TEXT_ENCODER.encode(eventJson);
+export const createAutomationContextMount = ({
+  eventJson,
+  envJson,
+}: {
+  eventJson: string;
+  envJson?: string;
+}): ResolvedFileMount => {
+  const files = new Map<string, { content: string; bytes: Uint8Array }>([
+    ["/context/event.json", { content: eventJson, bytes: TEXT_ENCODER.encode(eventJson) }],
+  ]);
+
+  if (typeof envJson === "string") {
+    files.set("/context/env.json", { content: envJson, bytes: TEXT_ENCODER.encode(envJson) });
+  }
+
   const now = new Date();
-  const EVENT_FILE = "/context/event.json";
   const MOUNT = "/context";
   const throwContextPathNotFound = (operation: string, path: string): never => {
     throw createPathNotFoundFileSystemError(operation, path);
@@ -30,17 +42,18 @@ export const createAutomationContextMount = (eventJson: string): ResolvedFileMou
     fs: normalizeMountedFileSystem(
       {
         readFile: async (path) =>
-          path === EVENT_FILE ? eventJson : throwContextPathNotFound("open", path),
+          files.get(path)?.content ?? throwContextPathNotFound("open", path),
         readFileBuffer: async (path) =>
-          path === EVENT_FILE ? buf : throwContextPathNotFound("open", path),
+          files.get(path)?.bytes ?? throwContextPathNotFound("open", path),
         stat: async (path) => {
-          if (path === EVENT_FILE) {
+          const file = files.get(path);
+          if (file) {
             return {
               isFile: true,
               isDirectory: false,
               isSymbolicLink: false,
               mode: 0o444,
-              size: buf.length,
+              size: file.bytes.length,
               mtime: now,
             };
           }
@@ -59,8 +72,10 @@ export const createAutomationContextMount = (eventJson: string): ResolvedFileMou
           return throwContextPathNotFound("stat", path);
         },
         readdir: async (path) =>
-          path === MOUNT ? ["event.json"] : throwContextPathNotFound("scandir", path),
-        getAllPaths: () => [MOUNT, EVENT_FILE],
+          path === MOUNT
+            ? [...files.keys()].map((filePath) => filePath.slice(`${MOUNT}/`.length))
+            : throwContextPathNotFound("scandir", path),
+        getAllPaths: () => [MOUNT, ...files.keys()],
       },
       { readOnly: true },
     ),
@@ -120,16 +135,18 @@ export const createAutomationDevMount = (): ResolvedFileMount => {
 export const createAutomationExecutionFileSystem = ({
   masterFs,
   eventJson,
+  envJson,
   includeDevMount = false,
 }: {
   masterFs: MasterFileSystem;
   eventJson: string;
+  envJson?: string;
   includeDevMount?: boolean;
 }): MasterFileSystem => {
   const baseMounts = masterFs.mounts.filter((mount) => mount.mountPoint !== "/context");
   const executionFs = new MasterFileSystem({ mounts: [...baseMounts] });
 
-  executionFs.mount(createAutomationContextMount(eventJson));
+  executionFs.mount(createAutomationContextMount({ eventJson, envJson }));
 
   if (includeDevMount && !baseMounts.some((mount) => mount.mountPoint === "/dev")) {
     executionFs.mount(createAutomationDevMount());

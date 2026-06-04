@@ -53,6 +53,7 @@ export const runBackofficeCodemode = async ({
     ),
   ];
 
-  const result = await executor.execute(code, providers);
+  const executableCode = code.trim().replace(/;*$/, "");
+  const result = await executor.execute(executableCode, providers);
   return { ...result, toolCalls };
 };

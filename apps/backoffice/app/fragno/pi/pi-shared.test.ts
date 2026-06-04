@@ -49,8 +49,17 @@ describe("pi-shared helpers", () => {
     expect(harnesses.find((harness) => harness.id === "codemode")?.tools).toEqual(["execCodeMode"]);
   });
 
-  it("guides codemode harnesses toward state APIs and standalone dynamic worker code", () => {
+  it("keeps bash and codemode runtime references isolated by harness", () => {
+    const bashHarness = resolvePiHarnesses([]).find((harness) => harness.id === "bash");
     const codemodeHarness = resolvePiHarnesses([]).find((harness) => harness.id === "codemode");
+
+    expect(bashHarness?.systemPrompt).toContain("## Bash runtime reference");
+    expect(bashHarness?.systemPrompt).toContain("telegram.file.get");
+    expect(bashHarness?.systemPrompt).not.toContain("declare const telegram");
+    expect(bashHarness?.systemPrompt).not.toContain("Available API (TypeScript reference)");
+
+    expect(codemodeHarness?.systemPrompt).not.toContain("## Bash runtime reference");
+    expect(codemodeHarness?.systemPrompt).not.toContain("telegram.file.get --file-id");
     expect(codemodeHarness?.systemPrompt).toContain("state.*");
     expect(codemodeHarness?.systemPrompt).toContain("readFile(path");
     expect(codemodeHarness?.systemPrompt).toContain("readdir(path");
@@ -59,5 +68,8 @@ describe("pi-shared helpers", () => {
     expect(codemodeHarness?.systemPrompt).toContain("camelCase");
     expect(codemodeHarness?.systemPrompt).toContain("import()");
     expect(codemodeHarness?.systemPrompt).toContain("standalone async arrow functions");
+    expect(codemodeHarness?.systemPrompt).toContain("declare const telegram");
+    expect(codemodeHarness?.systemPrompt).toContain("sendMessage(input: TelegramSendMessageInput)");
+    expect(codemodeHarness?.systemPrompt).toContain("declare const pi");
   });
 });

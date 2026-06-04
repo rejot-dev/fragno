@@ -5,7 +5,8 @@ import { InMemoryFs } from "just-bash";
 import { MasterFileSystem } from "@/files/master-file-system";
 import { normalizeMountedFileSystem } from "@/files/mounted-file-system";
 
-import { createBashHost, createInteractiveBashHost } from "./bash-host";
+import { createInteractiveBashHost } from "./automation-host";
+import { createBashHost } from "./bash-host";
 import type { OtpRuntime } from "./families/otp-runtime";
 import type { PiRuntime } from "./families/pi-runtime";
 import type { ResendRuntime } from "./families/resend-runtime";

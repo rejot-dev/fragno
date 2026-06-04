@@ -4,7 +4,8 @@ import { InMemoryFs } from "just-bash";
 
 import { MasterFileSystem } from "@/files/master-file-system";
 import { normalizeMountedFileSystem } from "@/files/mounted-file-system";
-import { createBashHost, executeBashAutomation } from "@/fragno/runtime-tools/bash-host";
+import { executeBashAutomation } from "@/fragno/runtime-tools/automation-host";
+import { createBashHost } from "@/fragno/runtime-tools/bash-host";
 
 import type { AutomationEvent } from "../contracts";
 import {

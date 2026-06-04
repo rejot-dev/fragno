@@ -4,7 +4,13 @@ import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import { BackofficePageHeader } from "@/components/backoffice";
 import { createOrgFileSystem } from "@/files";
 import { getAuthMe } from "@/fragno/auth/auth-server";
-import { createInteractiveBashHost } from "@/fragno/runtime-tools/bash-host";
+import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
+import {
+  createRuntimeToolReferences,
+  renderDashboardCommandGroups,
+} from "@/fragno/runtime-tools/reference";
+import type { BackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
+import { bashRuntimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
 import type { Route } from "./+types/dashboard";
@@ -22,6 +28,25 @@ type Stat = {
   value: string;
   description: string;
 };
+
+const DASHBOARD_COMMAND_REFERENCE_CONTEXT = {
+  runtimes: {
+    automations: {},
+    otp: {},
+    pi: {},
+    reson8: {},
+    resend: {},
+    telegram: {},
+  },
+  scriptRunner: {},
+} as BackofficeToolContext;
+
+const DASHBOARD_COMMAND_GROUPS = renderDashboardCommandGroups(
+  createRuntimeToolReferences({
+    families: bashRuntimeToolFamilies,
+    context: DASHBOARD_COMMAND_REFERENCE_CONTEXT,
+  }),
+);
 
 class DashboardCommandTimeoutError extends Error {
   constructor(timeoutMs: number) {
@@ -207,7 +232,7 @@ export default function BackofficeDashboard() {
         breadcrumbs={[{ label: "Backoffice", to: "/backoffice" }, { label: "Overview" }]}
         eyebrow="Control"
         title="Backoffice overview"
-        description="Run commands in a terminal connected to the same Pi bash runtime used by fragment sessions."
+        description="Run commands in a terminal connected to the generated backoffice runtime-tool bash adapter."
         actions={
           <>
             <Link
@@ -245,8 +270,8 @@ export default function BackofficeDashboard() {
               Connected environment
             </p>
             <p className="mt-2 text-sm text-[var(--bo-muted)]">
-              Runs inside the same filesystem and runtime used by Pi sessions: starter workspace,
-              optional Upload mount, and the PI custom command layer.
+              Runs inside the same filesystem used by Pi sessions with bash commands generated from
+              the shared runtime-tool registry.
             </p>
           </div>
 
@@ -256,11 +281,11 @@ export default function BackofficeDashboard() {
             </p>
             <ul className="mt-2 space-y-2 text-sm text-[var(--bo-muted)]">
               <li>• ls, cat, find, pwd</li>
-              <li>• pi.session.get / pi.session.create / pi.session.turn</li>
-              <li>• scripts.run --script scripts/foo.sh --event /workspace/events/example.json</li>
-              <li>• scripts.run also supports codemode scripts/foo.cm.js</li>
-              <li>• automations.identity.* and otp.identity.* commands</li>
-              <li>• telegram.file.get / telegram.file.download</li>
+              {DASHBOARD_COMMAND_GROUPS.map((group) => (
+                <li key={group.namespace}>
+                  • {group.namespace}: {group.commands.join(" / ")}
+                </li>
+              ))}
             </ul>
           </div>
         </div>

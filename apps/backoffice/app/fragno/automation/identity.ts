@@ -1,15 +1,38 @@
 import { z } from "zod";
 
+const idSchema = z.preprocess((value) => {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value && typeof value === "object" && "valueOf" in value) {
+    const primitive = value.valueOf();
+    if (typeof primitive === "string" || typeof primitive === "number") {
+      return String(primitive);
+    }
+  }
+  return value;
+}, z.string());
+
+const isoTimestampSchema = z.preprocess((value) => {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (value && typeof value === "object" && (value as { tag?: unknown }).tag === "db-now") {
+    return new Date().toISOString();
+  }
+  return value;
+}, z.iso.datetime());
+
 export const automationIdentityBindingRecordSchema = z.object({
-  id: z.unknown().optional(),
+  id: idSchema.optional(),
   source: z.string(),
   key: z.string(),
   value: z.string(),
   description: z.string().nullable().optional(),
   status: z.string(),
-  linkedAt: z.unknown().optional(),
-  createdAt: z.unknown().optional(),
-  updatedAt: z.unknown().optional(),
+  linkedAt: isoTimestampSchema.optional(),
+  createdAt: isoTimestampSchema.optional(),
+  updatedAt: isoTimestampSchema.optional(),
 });
 
 export type AutomationIdentityBindingRecord = z.infer<typeof automationIdentityBindingRecordSchema>;

@@ -1,5 +1,7 @@
 import { afterAll, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { env } from "cloudflare:workers";
+
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
@@ -36,6 +38,7 @@ const telegramGetFileMock = vi.fn(async ({ fileId }: { fileId: string }) => ({
 }));
 const telegramDownloadFileMock = vi.fn(async () => new Response(new Uint8Array([0, 255, 1, 2])));
 const automationEnv = {
+  LOADER: env.LOADER,
   DOCS_PUBLIC_BASE_URL: "https://example.com",
   OTP: {
     idFromName: vi.fn((orgId: string) => `otp:${orgId}`),
@@ -890,9 +893,12 @@ telegram.file.download --file-id "$file_id" > /workspace/telegram-download.bin
   });
 
   test("fails loudly when the starter linking script cannot issue identity claims", async () => {
+    const expectedError =
+      "DOCS_PUBLIC_BASE_URL must be configured before issuing automation identity claims.";
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const noBaseUrlContext = await buildAutomationTestContext({
       env: {
+        LOADER: env.LOADER,
         OTP: automationEnv.OTP,
         TELEGRAM: automationEnv.TELEGRAM,
         RESEND: automationEnv.RESEND,
@@ -935,9 +941,7 @@ telegram.file.download --file-id "$file_id" > /workspace/telegram-download.bin
         expect.objectContaining({
           namespace: "automations",
           hookName: "internalIngestEvent",
-          error: expect.stringContaining(
-            "DOCS_PUBLIC_BASE_URL must be configured before issuing automation identity claims.",
-          ),
+          error: expect.stringContaining(expectedError),
         }),
       );
       expect(issueIdentityClaimMock).not.toHaveBeenCalled();
@@ -1003,8 +1007,9 @@ telegram.file.download --file-id "$file_id" > /workspace/telegram-download.bin
 
   test("prefers persistent overlay automation files over starter script contents", async () => {
     await setAutomationOverlay({
-      [STARTER_AUTOMATION_SCRIPT_PATHS.telegramClaimLinkingStart]:
-        'telegram.chat.send --chat-id chat-1 --text "overlay-start"',
+      [STARTER_AUTOMATION_SCRIPT_PATHS.telegramClaimLinkingStart]: `async () => {
+  await telegram.sendMessage({ chatId: "chat-1", text: "overlay-start" });
+};`,
     });
 
     const result = await ingestEvent({

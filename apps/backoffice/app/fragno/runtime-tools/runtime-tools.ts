@@ -80,6 +80,14 @@ export type BackofficeRuntimeToolAdapters<
   bash?: BackofficeRuntimeToolBashAdapter<TInputSchema, TOutputSchema, TContext>;
 };
 
+export type BackofficeRuntimeToolReferenceHints = {
+  codemode?: {
+    description?: string;
+    inputTypeName?: string;
+    outputTypeName?: string;
+  };
+};
+
 export type BackofficeRuntimeTool<
   TInputSchema extends z.ZodType = z.ZodType,
   TOutputSchema extends z.ZodType = z.ZodType,
@@ -93,6 +101,7 @@ export type BackofficeRuntimeTool<
   outputSchema: TOutputSchema;
   execute(input: z.output<TInputSchema>, context: TContext): Promise<z.output<TOutputSchema>>;
   adapters?: BackofficeRuntimeToolAdapters<TInputSchema, TOutputSchema, TContext>;
+  reference?: BackofficeRuntimeToolReferenceHints;
 };
 
 export type AnyBackofficeRuntimeTool = BackofficeRuntimeTool<

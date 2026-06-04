@@ -94,7 +94,7 @@ export {
   createUnavailableTelegramRuntime,
 } from "../runtime-tools/families/telegram-runtime";
 export { createAutomationExecutionContext, createAutomationRuntime } from "./engine/runtime";
-export { executeAutomationScript, executeBashAutomation } from "../runtime-tools/bash-host";
+export { executeAutomationScript, executeBashAutomation } from "../runtime-tools/automation-host";
 export { createAutomationRunResult, formatAutomationResultAsStdout } from "./run-result";
 export type {
   AutomationRuntimeCommandContext,

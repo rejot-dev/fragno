@@ -80,7 +80,7 @@ const emitEventTool = defineEventRuntimeTool({
   description: "Emit another automation event for the current organisation.",
   inputSchema: eventEmitInputSchema,
   outputSchema: eventEmitOutputSchema,
-  execute: async (input, context) => getEventRuntime(context.runtimes.event).emitEvent(input),
+  execute: async (input, context) => await getEventRuntime(context.runtimes.event).emitEvent(input),
   adapters: {
     bash: {
       command: "event.emit",

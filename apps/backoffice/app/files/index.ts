@@ -103,7 +103,12 @@ export {
   STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH,
   STARTER_AUTOMATION_SCRIPT_PATHS,
 } from "./content/automations";
-export { SYSTEM_FILE_CONTENT, SYSTEM_FILE_ROOT_DESCRIPTION } from "./content/system";
+export {
+  BASH_HARNESS_REFERENCE,
+  SYSTEM_FILE_CONTENT,
+  SYSTEM_FILE_ROOT_DESCRIPTION,
+  SYSTEM_GUIDANCE,
+} from "./content/system";
 export { normalizeMountedFileSystem } from "./mounted-file-system";
 export type { NormalizeMountedFileSystemOptions } from "./mounted-file-system";
 export { MasterFileSystem, createMasterFileSystem } from "./master-file-system";
