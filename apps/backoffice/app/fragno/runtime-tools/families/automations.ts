@@ -107,7 +107,7 @@ const lookupBindingTool = defineAutomationRuntimeTool({
   }),
   outputSchema: automationIdentityBindingRecordSchema.nullable(),
   execute: async (input, context) =>
-    getAutomationsRuntime(context.runtimes.automations).lookupBinding(input),
+    await getAutomationsRuntime(context.runtimes.automations).lookupBinding(input),
   adapters: {
     bash: {
       command: "automations.identity.lookup-binding",
@@ -154,7 +154,7 @@ const bindActorTool = defineAutomationRuntimeTool({
   }),
   outputSchema: automationIdentityBindingRecordSchema,
   execute: async (input, context) =>
-    getAutomationsRuntime(context.runtimes.automations).bindActor(input),
+    await getAutomationsRuntime(context.runtimes.automations).bindActor(input),
   adapters: {
     bash: {
       command: "automations.identity.bind-actor",
@@ -210,7 +210,7 @@ const scriptRunTool = defineAutomationRuntimeTool({
     event: nonEmptyString,
   }),
   outputSchema: automationRunResultSchema,
-  execute: async (input, context) => getScriptRunner(context.scriptRunner).runScript(input),
+  execute: async (input, context) => await getScriptRunner(context.scriptRunner).runScript(input),
   adapters: {
     bash: {
       command: "scripts.run",

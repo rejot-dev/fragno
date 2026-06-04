@@ -10,6 +10,7 @@ import type {
   AutomationIdentityBindingRecord,
   AutomationsRuntime,
 } from "../runtime-tools/families/automations";
+import { automationIdentityBindingRecordSchema } from "./identity";
 import type { createAutomationFragment } from "./index";
 import { automationFragmentSchema } from "./schema";
 
@@ -39,7 +40,9 @@ export const lookupAutomationIdentityBinding = async (
   return await context
     .handlerTx()
     .retrieve(findIdentityBindingBySourceKey(source, key))
-    .transformRetrieve(([binding]) => (binding?.status === "linked" ? binding : null))
+    .transformRetrieve(([binding]) =>
+      binding?.status === "linked" ? automationIdentityBindingRecordSchema.parse(binding) : null,
+    )
     .execute();
 };
 
@@ -114,7 +117,7 @@ export const bindAutomationIdentityActor = async (
             updatedAt: now,
           };
         })
-        .transform(({ mutateResult }) => mutateResult)
+        .transform(({ mutateResult }) => automationIdentityBindingRecordSchema.parse(mutateResult))
         .execute();
     } catch (error) {
       if (attempt === 0 && isUniqueConstraintError(error)) {

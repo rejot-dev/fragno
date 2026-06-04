@@ -3,36 +3,70 @@ import { describe, expect, test, vi } from "vitest";
 import type { BackofficeToolContext } from "../runtime-tools";
 import { resendRuntimeTools, type ResendRuntime } from "./resend";
 
+const now = new Date("2026-06-03T00:00:00.000Z");
+
+const createThread = (id: string) => ({
+  id,
+  subject: "Question",
+  normalizedSubject: "question",
+  participants: [],
+  messageCount: 0,
+  firstMessageAt: now,
+  lastMessageAt: now,
+  lastDirection: null,
+  lastMessagePreview: null,
+  createdAt: now,
+  updatedAt: now,
+  replyToAddress: null,
+});
+
+const createMessage = (threadId: string) => ({
+  id: "message-1",
+  threadId,
+  direction: "outbound" as const,
+  status: "queued",
+  from: "support@example.com",
+  to: ["customer@example.com"],
+  cc: [],
+  bcc: [],
+  replyTo: [],
+  subject: "Question",
+  normalizedSubject: "question",
+  participants: ["support@example.com", "customer@example.com"],
+  messageId: null,
+  inReplyTo: null,
+  references: [],
+  providerEmailId: null,
+  attachments: [],
+  html: null,
+  text: "Thanks",
+  headers: null,
+  occurredAt: now,
+  scheduledAt: null,
+  sentAt: null,
+  lastEventType: null,
+  lastEventAt: null,
+  errorCode: null,
+  errorMessage: null,
+  createdAt: now,
+  updatedAt: now,
+});
+
 const createRuntime = (): ResendRuntime =>
   ({
     listThreads: vi.fn(async () => ({ threads: [], hasNextPage: false })),
-    getThread: vi.fn(async ({ threadId }) => ({
-      id: threadId,
-      subject: "Question",
-      participants: [],
-      messageCount: 0,
-      firstMessageAt: null,
-      lastMessageAt: null,
-      lastDirection: null,
-      replyToAddress: null,
-    })),
+    getThread: vi.fn(async ({ threadId }) => createThread(threadId)),
     listThreadMessages: vi.fn(async () => ({ messages: [], hasNextPage: false })),
     getThreadSnapshot: vi.fn(async ({ threadId }) => ({
-      thread: {
-        id: threadId,
-        subject: "Question",
-        participants: [],
-        messageCount: 0,
-        firstMessageAt: null,
-        lastMessageAt: null,
-        lastDirection: null,
-        replyToAddress: null,
-      },
+      thread: createThread(threadId),
       messages: [],
       hasNextPage: false,
       markdown: "# Question",
     })),
-    replyToThread: vi.fn(async ({ threadId }) => ({ threadId, queued: true })),
+    replyToThread: vi.fn(async ({ threadId }) => ({
+      thread: createThread(threadId),
+      message: createMessage(threadId),
+    })),
   }) as unknown as ResendRuntime;
 
 describe("resend runtime tools", () => {
@@ -69,7 +103,10 @@ describe("resend runtime tools", () => {
 
     await expect(
       resendRuntimeTools[2].execute({ threadId: "thread-1", body: "Thanks" }, context),
-    ).resolves.toEqual({ threadId: "thread-1", queued: true });
+    ).resolves.toMatchObject({
+      thread: { id: "thread-1", firstMessageAt: "2026-06-03T00:00:00.000Z" },
+      message: { threadId: "thread-1", text: "Thanks" },
+    });
     expect(runtime.replyToThread).toHaveBeenCalledWith({ threadId: "thread-1", body: "Thanks" });
   });
 

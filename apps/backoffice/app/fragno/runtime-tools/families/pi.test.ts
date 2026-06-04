@@ -5,17 +5,47 @@ import { piRuntimeTools, type PiRuntime } from "./pi";
 
 const createRuntime = (): PiRuntime =>
   ({
-    createSession: vi.fn(async ({ agent, name }) => ({ id: "session-1", agent, name })),
-    getSession: vi.fn(async ({ sessionId }) => ({ id: sessionId })),
-    listSessions: vi.fn(async () => [{ id: "session-1" }]),
+    createSession: vi.fn(async ({ agent, name }) => ({
+      id: "session-1",
+      name: name ?? null,
+      status: "waiting",
+      agent,
+      workflowName: "interactive-chat-workflow",
+      createdAt: new Date("2026-06-03T00:00:00.000Z"),
+      updatedAt: new Date("2026-06-03T00:00:00.000Z"),
+    })),
+    getSession: vi.fn(async ({ sessionId }) => createSessionDetail(sessionId)),
+    listSessions: vi.fn(async () => [
+      {
+        id: "session-1",
+        name: null,
+        status: "waiting",
+        agent: "assistant",
+        workflowName: "interactive-chat-workflow",
+        createdAt: new Date("2026-06-03T00:00:00.000Z"),
+        updatedAt: new Date("2026-06-03T00:00:00.000Z"),
+      },
+    ]),
     runTurn: vi.fn(async ({ sessionId, text }) => ({
-      id: sessionId,
+      ...createSessionDetail(sessionId),
       assistantText: `echo: ${text}`,
-      messageStatus: "idle",
+      messageStatus: "waiting",
       stream: [],
-      terminalState: {},
+      terminalState: { messages: [] },
     })),
   }) as unknown as PiRuntime;
+
+const createSessionDetail = (sessionId: string) => ({
+  id: sessionId,
+  name: null,
+  status: "waiting",
+  workflowName: "interactive-chat-workflow",
+  createdAt: new Date("2026-06-03T00:00:00.000Z"),
+  updatedAt: new Date("2026-06-03T00:00:00.000Z"),
+  agentName: "assistant",
+  workflow: { status: "waiting" },
+  agent: { state: { messages: [] }, events: [] },
+});
 
 describe("pi runtime tools", () => {
   test("defines camelCase codemode names and legacy bash commands", () => {
@@ -53,6 +83,34 @@ describe("pi runtime tools", () => {
       metadata: { ticket: "123" },
       tags: ["urgent", "customer"],
       steeringMode: "one-at-a-time",
+    });
+  });
+
+  test("accepts serialized runtime dates and exposes ISO date strings", async () => {
+    const [createSession] = piRuntimeTools;
+    const runtime = {
+      createSession: vi.fn(async ({ agent, name }) => ({
+        id: "session-1",
+        name: name ?? null,
+        status: "waiting",
+        agent,
+        workflowName: "interactive-chat-workflow",
+        createdAt: "2026-06-03T00:00:00.000Z",
+        updatedAt: new Date("2026-06-03T00:01:00.000Z"),
+      })),
+    } as unknown as PiRuntime;
+    const context: BackofficeToolContext<{ pi: PiRuntime }> = { runtimes: { pi: runtime } };
+
+    await expect(
+      createSession.execute({ agent: "assistant", name: "Support" }, context),
+    ).resolves.toEqual({
+      id: "session-1",
+      name: "Support",
+      status: "waiting",
+      agent: "assistant",
+      workflowName: "interactive-chat-workflow",
+      createdAt: "2026-06-03T00:00:00.000Z",
+      updatedAt: "2026-06-03T00:01:00.000Z",
     });
   });
 

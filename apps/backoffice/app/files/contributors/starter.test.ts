@@ -50,7 +50,7 @@ describe("starter file contributor", () => {
     expect(readme).toContain("Workspace starter pack");
     expect(bindingsManifest).toContain('"bindings"');
     expect(bindingsManifest).toContain(
-      '"path": "/workspace/automations/scripts/telegram-claim-linking.start.sh"',
+      '"path": "/workspace/automations/scripts/telegram-claim-linking.start.cm.js"',
     );
   });
 

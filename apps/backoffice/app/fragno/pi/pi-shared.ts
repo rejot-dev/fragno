@@ -1,6 +1,7 @@
-import { SYSTEM_FILE_CONTENT } from "@/files";
+import { BASH_HARNESS_REFERENCE, SYSTEM_FILE_CONTENT, SYSTEM_GUIDANCE } from "@/files";
 
-import { STATE_SYSTEM_PROMPT, STATE_TYPES } from "../codemode/state-prompt";
+import { createCodemodeSystemPrompt } from "../codemode/state-prompt";
+import { piCodemodeRuntimeToolFamilies } from "../runtime-tools/tool-families";
 
 export type PiSteeringMode = "all" | "one-at-a-time";
 export type PiThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -65,8 +66,7 @@ export const PI_PROVIDER_TO_MODEL_PROVIDER = {
 
 const DEFAULT_SYSTEM_PROMPT = (() => {
   const systemFile = SYSTEM_FILE_CONTENT["SYSTEM.md"];
-  const fallback =
-    "You are a helpful assistant. You can use the bash tool to run commands in the combined session filesystem. Use /system for read-only guidance, /workspace for starter files layered under persistent organisation overrides when Upload is configured, and /resend for read-only email thread snapshots when Resend is configured. If Upload is unavailable, /workspace remains readable but is read-only.";
+  const fallback = SYSTEM_GUIDANCE;
 
   if (typeof systemFile === "string") {
     return systemFile.trim();
@@ -94,11 +94,13 @@ export const PI_MODEL_CATALOG: PiModelOption[] = [
 export const PI_TOOL_IDS = ["bash", "execCodeMode"] as const;
 export type PiToolId = (typeof PI_TOOL_IDS)[number];
 
-const BASH_HARNESS_PROMPT = `SYSTEM.md (agent guidance):\n\n${DEFAULT_SYSTEM_PROMPT}`;
+const BASH_HARNESS_PROMPT = `SYSTEM.md (agent guidance):\n\n${DEFAULT_SYSTEM_PROMPT}\n\n${BASH_HARNESS_REFERENCE}`;
 
-const STATE_HARNESS_PROMPT = STATE_SYSTEM_PROMPT.replace("{{types}}", STATE_TYPES);
+const STATE_HARNESS_PROMPT = createCodemodeSystemPrompt({
+  families: piCodemodeRuntimeToolFamilies,
+});
 
-const CODEMODE_HARNESS_PROMPT = `${BASH_HARNESS_PROMPT}
+const CODEMODE_HARNESS_PROMPT = `SYSTEM.md (agent guidance):\n\n${DEFAULT_SYSTEM_PROMPT}
 
 Codemode harness guidance:
 

@@ -79,7 +79,7 @@ const createClaimTool = defineOtpRuntimeTool({
   description: "Create a short-lived identity claim URL for an external actor.",
   inputSchema: createClaimInputSchema,
   outputSchema: identityClaimRecordSchema,
-  execute: async (input, context) => getOtpRuntime(context.runtimes.otp).createClaim(input),
+  execute: async (input, context) => await getOtpRuntime(context.runtimes.otp).createClaim(input),
   adapters: {
     bash: {
       command: "otp.identity.create-claim",

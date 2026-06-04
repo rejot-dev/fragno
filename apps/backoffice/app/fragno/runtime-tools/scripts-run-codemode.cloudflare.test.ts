@@ -5,7 +5,8 @@ import { env } from "cloudflare:workers";
 import { createTestMasterFileSystem } from "@/fragno/automation/engine/test-master-file-system.test-utils";
 import type { AutomationsRuntime } from "@/fragno/runtime-tools/families/automations";
 
-import { createBashHost, createScriptRunnerRuntime, type BashHostContext } from "./bash-host";
+import { createScriptRunnerRuntime } from "./automation-host";
+import { createBashHost, type BashHostContext } from "./bash-host";
 
 describe("scripts.run codemode", () => {
   test("runs .cm.js scripts manually from an interactive bash host", async () => {

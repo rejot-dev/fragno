@@ -105,7 +105,7 @@ describe("files service", () => {
       title: "SYSTEM.md",
       contentType: "text/markdown",
     });
-    expect(systemDetail?.textContent).toContain("sessions");
+    expect(systemDetail?.textContent).toContain("Runtime-specific references");
   });
 
   test("preserves upload metadata like content type for overlay-backed workspace files", async () => {

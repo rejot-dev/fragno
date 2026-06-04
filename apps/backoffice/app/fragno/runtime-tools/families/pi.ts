@@ -16,6 +16,7 @@ import type {
   PiSessionTurnArgs,
 } from "@/fragno/runtime-tools/families/pi-runtime";
 
+import { isoDateTimeOutputSchema, normalizeRuntimeOutput } from "../output-schemas";
 import {
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
@@ -26,7 +27,50 @@ import {
 type PiToolContext = BackofficeToolContext<{ pi?: PiRuntime }>;
 
 const nonEmptyString = z.string().trim().min(1);
-const unknownOutputSchema = z.unknown();
+
+const PI_SESSION_STATUSES = [
+  "active",
+  "paused",
+  "errored",
+  "terminated",
+  "complete",
+  "waiting",
+] as const;
+
+const piAgentStateSnapshotOutputSchema = z.object({
+  messages: z.array(z.unknown()),
+  errorMessage: z.string().optional(),
+});
+
+const workflowStatusOutputSchema = z.object({
+  status: z.enum(PI_SESSION_STATUSES),
+  error: z
+    .object({
+      name: z.string(),
+      message: z.string(),
+    })
+    .optional(),
+  output: z.unknown().optional(),
+});
+
+const sessionBaseOutputSchema = z.object({
+  id: z.string(),
+  name: z.string().nullable(),
+  status: z.enum(PI_SESSION_STATUSES),
+  agent: z.string(),
+  workflowName: z.string(),
+  createdAt: isoDateTimeOutputSchema,
+  updatedAt: isoDateTimeOutputSchema,
+});
+
+const sessionDetailBaseOutputSchema = sessionBaseOutputSchema.omit({ agent: true }).extend({
+  agentName: z.string(),
+  workflow: workflowStatusOutputSchema,
+  agent: z.object({
+    state: piAgentStateSnapshotOutputSchema,
+    events: z.array(z.unknown()),
+  }),
+});
 
 const sessionCreateInputSchema = z.object({
   agent: nonEmptyString,
@@ -53,8 +97,26 @@ const sessionTurnInputSchema = z.object({
   text: nonEmptyString,
 });
 
-const definePiRuntimeTool = <TInputSchema extends z.ZodType>(
-  tool: BackofficeRuntimeTool<TInputSchema, typeof unknownOutputSchema, PiToolContext>,
+const sessionExtraOutputSchema = {
+  metadata: z.unknown().optional(),
+  tags: z.array(z.string()).optional(),
+  steeringMode: z.enum(["all", "one-at-a-time"]).optional(),
+};
+
+const sessionOutputSchema = sessionBaseOutputSchema.extend(sessionExtraOutputSchema);
+const sessionDetailOutputSchema = sessionDetailBaseOutputSchema.extend(sessionExtraOutputSchema);
+
+const sessionTurnOutputSchema = sessionDetailOutputSchema.extend({
+  assistantText: z.string(),
+  commandStatus: z.enum(PI_SESSION_STATUSES).optional(),
+  /** @deprecated Use commandStatus. */
+  messageStatus: z.enum(PI_SESSION_STATUSES),
+  stream: z.array(z.unknown()),
+  terminalState: piAgentStateSnapshotOutputSchema,
+});
+
+const definePiRuntimeTool = <TInputSchema extends z.ZodType, TOutputSchema extends z.ZodType>(
+  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, PiToolContext>,
 ) => defineBackofficeRuntimeTool(tool);
 
 const getPiRuntime = (runtime: PiToolContext["runtimes"]["pi"]): PiRuntime => {
@@ -165,8 +227,12 @@ const sessionCreateTool = definePiRuntimeTool({
   name: "createSession",
   description: "Create a new Pi session.",
   inputSchema: sessionCreateInputSchema,
-  outputSchema: unknownOutputSchema,
-  execute: async (input, context) => getPiRuntime(context.runtimes.pi).createSession(input),
+  outputSchema: sessionOutputSchema,
+  execute: async (input, context) => {
+    return sessionOutputSchema.parse(
+      normalizeRuntimeOutput(await getPiRuntime(context.runtimes.pi).createSession(input)),
+    );
+  },
   adapters: {
     bash: {
       command: "pi.session.create",
@@ -230,8 +296,12 @@ const sessionGetTool = definePiRuntimeTool({
   name: "getSession",
   description: "Retrieve a Pi session by id.",
   inputSchema: sessionGetInputSchema,
-  outputSchema: unknownOutputSchema,
-  execute: async (input, context) => getPiRuntime(context.runtimes.pi).getSession(input),
+  outputSchema: sessionDetailOutputSchema,
+  execute: async (input, context) => {
+    return sessionDetailOutputSchema.parse(
+      normalizeRuntimeOutput(await getPiRuntime(context.runtimes.pi).getSession(input)),
+    );
+  },
   adapters: {
     bash: {
       command: "pi.session.get",
@@ -270,8 +340,12 @@ const sessionListTool = definePiRuntimeTool({
   name: "listSessions",
   description: "List Pi sessions ordered by creation time.",
   inputSchema: sessionListInputSchema,
-  outputSchema: unknownOutputSchema,
-  execute: async (input, context) => getPiRuntime(context.runtimes.pi).listSessions(input),
+  outputSchema: z.array(sessionOutputSchema),
+  execute: async (input, context) => {
+    return z
+      .array(sessionOutputSchema)
+      .parse(normalizeRuntimeOutput(await getPiRuntime(context.runtimes.pi).listSessions(input)));
+  },
   adapters: {
     bash: {
       command: "pi.session.list",
@@ -304,8 +378,12 @@ const sessionTurnTool = definePiRuntimeTool({
   name: "runTurn",
   description: "Send one prompt command through a Pi active session and return the settled result.",
   inputSchema: sessionTurnInputSchema,
-  outputSchema: unknownOutputSchema,
-  execute: async (input, context) => getPiRuntime(context.runtimes.pi).runTurn(input),
+  outputSchema: sessionTurnOutputSchema,
+  execute: async (input, context) => {
+    return sessionTurnOutputSchema.parse(
+      normalizeRuntimeOutput(await getPiRuntime(context.runtimes.pi).runTurn(input)),
+    );
+  },
   adapters: {
     bash: {
       command: "pi.session.turn",

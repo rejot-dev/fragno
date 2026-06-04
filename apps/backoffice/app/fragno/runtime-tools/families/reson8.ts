@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { reson8PrerecordedTranscriptionSchema } from "@fragno-dev/reson8-fragment";
+
 import {
   assertNoPositionals,
   ensureTrailingNewline,
@@ -44,10 +46,8 @@ const transcribeInputSchema = z.object({
   includeConfidence: z.boolean().optional(),
 });
 
-const unknownOutputSchema = z.unknown();
-
-const defineReson8RuntimeTool = <TInputSchema extends z.ZodType>(
-  tool: BackofficeRuntimeTool<TInputSchema, typeof unknownOutputSchema, Reson8ToolContext>,
+const defineReson8RuntimeTool = <TInputSchema extends z.ZodType, TOutputSchema extends z.ZodType>(
+  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, Reson8ToolContext>,
 ) => defineBackofficeRuntimeTool(tool);
 
 const getReson8Runtime = (runtime: Reson8ToolContext["runtimes"]["reson8"]): Reson8Runtime => {
@@ -150,7 +150,7 @@ const transcribePrerecordedTool = defineReson8RuntimeTool({
   name: "transcribePrerecorded",
   description: "Transcribe a prerecorded audio file via Reson8.",
   inputSchema: transcribeInputSchema,
-  outputSchema: unknownOutputSchema,
+  outputSchema: reson8PrerecordedTranscriptionSchema,
   execute: async (input, context) => {
     if (!input.audio) {
       throw new Error("reson8.transcribePrerecorded requires audio input");

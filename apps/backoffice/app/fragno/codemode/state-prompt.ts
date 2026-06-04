@@ -1,9 +1,18 @@
+import {
+  createRuntimeToolReferences,
+  renderCodemodeProviderTypes,
+} from "@/fragno/runtime-tools/reference";
+import type {
+  BackofficeRuntimeToolFamily,
+  BackofficeToolContext,
+} from "@/fragno/runtime-tools/runtime-tools";
+
 // Browser-safe copy of @cloudflare/shell state prompt constants.
 // Keep this in sync with @cloudflare/shell's STATE_SYSTEM_PROMPT and STATE_TYPES.
 // The package root import currently pulls Node-only modules into browser bundles.
 
 // prettier-ignore
-export const STATE_TYPES = `// ── Primitive types ───────────────────────────────────────────────────────
+export const STATE_TYPES = `// ── Primitive types 
 type StateEntryType = "file" | "directory" | "symlink";
 
 type StateStat = {
@@ -18,7 +27,7 @@ type StateDirent = {
   type: StateEntryType;
 };
 
-// ── Options ───────────────────────────────────────────────────────────────
+// ── Options ─────
 type StateMkdirOptions   = { recursive?: boolean };
 type StateRmOptions      = { recursive?: boolean; force?: boolean };
 type StateCopyOptions    = { recursive?: boolean };
@@ -59,7 +68,7 @@ type StateFindOptions = {
   mtimeBefore?: string | Date;
 };
 
-// ── Result types ──────────────────────────────────────────────────────────
+// ── Result types 
 type StateTextMatch = {
   line: number;
   column: number;
@@ -152,7 +161,7 @@ type StateCompressionResult = {
   bytesWritten: number;
 };
 
-// ── Edit planning ─────────────────────────────────────────────────────────
+// ── Edit planning ──
 type StateEdit = { path: string; content: string };
 
 type StateEditInstruction =
@@ -187,7 +196,7 @@ type StateApplyEditsResult = {
   totalChanged: number;
 };
 
-// ── state object ──────────────────────────────────────────────────────────
+// ── state object 
 declare const state: {
   // File I/O
   /** Read a file as text. */
@@ -323,3 +332,20 @@ Available API (TypeScript reference):
 \`\`\`typescript
 {{types}}
 \`\`\``;
+
+export const createCodemodeTypes = ({
+  families,
+  context,
+}: {
+  families: readonly BackofficeRuntimeToolFamily[];
+  context?: BackofficeToolContext;
+}) => {
+  const references = createRuntimeToolReferences({ families, context });
+  const providerTypes = references.length ? `\n\n${renderCodemodeProviderTypes(references)}` : "";
+  return `${STATE_TYPES}${providerTypes}`;
+};
+
+export const createCodemodeSystemPrompt = (input: {
+  families: readonly BackofficeRuntimeToolFamily[];
+  context?: BackofficeToolContext;
+}) => STATE_SYSTEM_PROMPT.replace("{{types}}", createCodemodeTypes(input));

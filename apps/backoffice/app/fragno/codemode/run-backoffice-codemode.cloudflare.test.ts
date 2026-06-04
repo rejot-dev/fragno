@@ -322,6 +322,38 @@ describe("runBackofficeCodemode", () => {
     expect(calls).toEqual([]);
   });
 
+  test("returns runtime tool errors without unhandled rejections", async () => {
+    const otpRuntime: OtpRuntime = {
+      createClaim: async () => {
+        throw new Error("runtime tool failed");
+      },
+    };
+
+    const result = await runBackofficeCodemode({
+      env,
+      fs: createTestMasterFileSystem({}),
+      tools: otpRuntimeTools,
+      context: { runtimes: { otp: otpRuntime } },
+      code: `async () => {
+        return await otp.createIdentityClaim({
+          source: "telegram",
+          externalActorId: "chat-123",
+        });
+      }`,
+    });
+
+    expect(result.result).toBeUndefined();
+    expect(result.error).toBe("runtime tool failed");
+    expect(result.toolCalls).toMatchObject([
+      {
+        providerName: "otp",
+        toolName: "createIdentityClaim",
+        status: "error",
+        error: "runtime tool failed",
+      },
+    ]);
+  });
+
   test("blocks direct network access by default", async () => {
     const result = await runBackofficeCodemode({
       env,

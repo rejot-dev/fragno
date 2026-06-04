@@ -279,7 +279,8 @@ export const telegramRuntimeTools = [
     description: "Resolve Telegram attachment metadata.",
     inputSchema: fileGetInputSchema,
     outputSchema: fileMetadataOutputSchema,
-    execute: async (input, context) => getTelegramRuntime(context.runtimes.telegram).getFile(input),
+    execute: async (input, context) =>
+      await getTelegramRuntime(context.runtimes.telegram).getFile(input),
     adapters: {
       bash: {
         command: "telegram.file.get",
@@ -314,7 +315,9 @@ export const telegramRuntimeTools = [
     inputSchema: fileDownloadInputSchema,
     outputSchema: downloadedFileOutputSchema,
     execute: async (input, context) =>
-      readTelegramDownload(await getTelegramRuntime(context.runtimes.telegram).downloadFile(input)),
+      await readTelegramDownload(
+        await getTelegramRuntime(context.runtimes.telegram).downloadFile(input),
+      ),
     adapters: {
       bash: {
         command: "telegram.file.download",
@@ -375,7 +378,7 @@ export const telegramRuntimeTools = [
     inputSchema: sendMessageInputSchema,
     outputSchema: queuedMessageOutputSchema,
     execute: async (input, context) =>
-      getTelegramRuntime(context.runtimes.telegram).sendMessage(input),
+      await getTelegramRuntime(context.runtimes.telegram).sendMessage(input),
     adapters: {
       bash: {
         command: "telegram.chat.send",
@@ -432,7 +435,7 @@ export const telegramRuntimeTools = [
     inputSchema: sendActionInputSchema,
     outputSchema: actionOutputSchema,
     execute: async (input, context) =>
-      getTelegramRuntime(context.runtimes.telegram).sendChatAction(input),
+      await getTelegramRuntime(context.runtimes.telegram).sendChatAction(input),
     adapters: {
       bash: {
         command: "telegram.chat.actions",
@@ -473,7 +476,7 @@ export const telegramRuntimeTools = [
     inputSchema: editMessageInputSchema,
     outputSchema: queuedMessageOutputSchema,
     execute: async (input, context) =>
-      getTelegramRuntime(context.runtimes.telegram).editMessage(input),
+      await getTelegramRuntime(context.runtimes.telegram).editMessage(input),
     adapters: {
       bash: {
         command: "telegram.message.edit",
