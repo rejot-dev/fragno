@@ -4,7 +4,7 @@ import { env } from "cloudflare:workers";
 
 import type { AutomationRuntimeHostContext, AutomationRuntime } from "@/fragno/automation";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
-import { executeBashAutomation } from "@/fragno/bash-runtime/bash-host";
+import { executeBashAutomation } from "@/fragno/runtime-tools/bash-host";
 
 import { executeCodemodeAutomation } from "./codemode";
 import { createTestMasterFileSystem } from "./test-master-file-system.test-utils";

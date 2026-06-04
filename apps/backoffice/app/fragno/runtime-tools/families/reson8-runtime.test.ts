@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { NotConfiguredError, createRouteBackedReson8Runtime } from "./reson8-bash-runtime";
+import { NotConfiguredError, createRouteBackedReson8Runtime } from "./reson8-runtime";
 
 describe("reson8 route-backed runtime", () => {
   it("sends prerecorded audio and returns the JSON transcription", async () => {

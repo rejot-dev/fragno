@@ -1,14 +1,14 @@
 import { describe, expect, test } from "vitest";
 
-import { AUTOMATIONS_COMMAND_SPEC_LIST } from "@/fragno/automation/commands/registry";
-
 import { automationIdentityRuntimeTools, automationsRuntimeTools } from "./automations";
 
 describe("automation runtime tools", () => {
   test("derive automation bash commands from runtime tools", () => {
-    expect(AUTOMATIONS_COMMAND_SPEC_LIST.map((spec) => spec.name)).toEqual(
-      automationsRuntimeTools.map((tool) => tool.adapters?.bash?.command),
-    );
+    expect(automationsRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
+      "automations.identity.lookup-binding",
+      "automations.identity.bind-actor",
+      "scripts.run",
+    ]);
   });
 
   test("parse and validate lookupBinding input", () => {

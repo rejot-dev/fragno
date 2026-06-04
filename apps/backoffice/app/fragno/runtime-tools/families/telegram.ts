@@ -7,7 +7,7 @@ import {
   readOutputOptions,
   readStringOption,
   type ParsedCliTokens,
-} from "@/fragno/automation/commands/cli";
+} from "@/fragno/runtime-tools/bash-cli";
 import {
   createOrganisationNotConfiguredMessage,
   throwOnHttpResponseError,

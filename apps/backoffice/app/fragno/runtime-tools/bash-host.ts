@@ -8,7 +8,6 @@ import {
   type AutomationFileSystemConfig,
   type AutomationScriptEngine,
 } from "@/fragno/automation/catalog";
-import type { ScriptRunArgs } from "@/fragno/automation/commands/types";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
 import { createAutomationExecutionFileSystem } from "@/fragno/automation/engine/execution-file-system";
 import { createRouteBackedAutomationsRuntime } from "@/fragno/automation/identity-runtime";
@@ -16,6 +15,7 @@ import {
   createAutomationRunResult,
   type AutomationRunResult,
 } from "@/fragno/automation/run-result";
+import type { ScriptRunArgs } from "@/fragno/runtime-tools/automation-types";
 import type {
   AutomationsRuntime,
   ScriptRunnerRuntime,
@@ -27,28 +27,22 @@ import {
 } from "@/fragno/runtime-tools/runtime-tools";
 import { bashRuntimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
-import type {
-  AutomationCommandContext,
-  BashAutomationCommandResult,
-} from "../automation/commands/types";
-import { createEventRuntime, type EventRuntime } from "../runtime-tools/families/event-runtime";
-import {
-  createOtpRuntime,
-  type RegisteredOtpCommandContext,
-} from "../runtime-tools/families/otp-runtime";
-import {
-  createTelegramRuntime,
-  type RegisteredTelegramCommandContext,
-} from "../runtime-tools/families/telegram-runtime";
-import { createPiRouteRuntime, type RegisteredPiCommandContext } from "./pi-bash-runtime";
+import type { AutomationCommandContext, BashAutomationCommandResult } from "./automation-types";
+import { createEventRuntime, type EventRuntime } from "./families/event-runtime";
+import { createOtpRuntime, type RegisteredOtpCommandContext } from "./families/otp-runtime";
+import { createPiRouteRuntime, type RegisteredPiCommandContext } from "./families/pi-runtime";
 import {
   createResendRouteRuntime,
   type RegisteredResendCommandContext,
-} from "./resend-bash-runtime";
+} from "./families/resend-runtime";
 import {
   createReson8RouteRuntime,
   type RegisteredReson8CommandContext,
-} from "./reson8-bash-runtime";
+} from "./families/reson8-runtime";
+import {
+  createTelegramRuntime,
+  type RegisteredTelegramCommandContext,
+} from "./families/telegram-runtime";
 
 // ---------------------------------------------------------------------------
 // Low-level bash host
@@ -129,7 +123,7 @@ const createBashToolContext = (context: BashHostContext): BackofficeToolContext 
   scriptRunner: context.automations?.scriptRunner,
 });
 
-const createRuntimeFamilyBashCommands = (input: BashCommandFactoryInput) => {
+const createRegisteredBashCommands = (input: BashCommandFactoryInput) => {
   const context = createBashToolContext(input.context);
   const tools = getAvailableRuntimeTools({ families: bashRuntimeToolFamilies, context });
 
@@ -139,22 +133,6 @@ const createRuntimeFamilyBashCommands = (input: BashCommandFactoryInput) => {
     commandCallsResult: input.commandCallsResult,
   });
 };
-
-type BashHostCustomCommand = ReturnType<typeof createRuntimeFamilyBashCommands>[number];
-type BashHostModule = {
-  id: string;
-  createCommands: (input: BashCommandFactoryInput) => BashHostCustomCommand[];
-};
-
-const BASH_HOST_MODULES: BashHostModule[] = [
-  {
-    id: "runtime-tools",
-    createCommands: createRuntimeFamilyBashCommands,
-  },
-];
-
-const createRegisteredBashCommands = (input: BashCommandFactoryInput) =>
-  BASH_HOST_MODULES.flatMap((module) => module.createCommands(input));
 
 export const createRouteBackedInteractiveBashContext = ({
   env,

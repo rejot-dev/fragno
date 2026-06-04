@@ -3,6 +3,12 @@ import type { z } from "zod";
 
 import type { ToolProvider } from "@cloudflare/codemode";
 
+import type {
+  AutomationCommandExecutionResult,
+  AutomationCommandHelp,
+  AutomationCommandOutputOptions,
+  BashAutomationCommandResult,
+} from "@/fragno/runtime-tools/automation-types";
 import {
   buildCommandHelp,
   ensureTrailingNewline,
@@ -12,13 +18,7 @@ import {
   parseCliTokens,
   readOutputOptions,
   type ParsedCliTokens,
-} from "@/fragno/automation/commands/cli";
-import type {
-  AutomationCommandExecutionResult,
-  AutomationCommandHelp,
-  AutomationCommandOutputOptions,
-  BashAutomationCommandResult,
-} from "@/fragno/automation/commands/types";
+} from "@/fragno/runtime-tools/bash-cli";
 
 export type BackofficeToolContext<
   TRuntimes extends Record<string, unknown> = Record<string, unknown>,

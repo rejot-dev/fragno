@@ -9,11 +9,11 @@ import {
   readIntegerOption,
   readOutputOptions,
   readStringOption,
-} from "@/fragno/automation/commands/cli";
+} from "@/fragno/runtime-tools/bash-cli";
 import type {
   Reson8PrerecordedTranscribeArgs,
   Reson8Runtime,
-} from "@/fragno/bash-runtime/reson8-bash-runtime";
+} from "@/fragno/runtime-tools/families/reson8-runtime";
 
 import {
   defineBackofficeRuntimeTool,

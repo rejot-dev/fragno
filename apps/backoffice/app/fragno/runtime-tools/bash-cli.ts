@@ -2,8 +2,7 @@ import type {
   AutomationCommandExecutionResult,
   AutomationCommandOptionSpec,
   AutomationCommandOutputOptions,
-  AutomationCommandSpec,
-} from "./types";
+} from "./automation-types";
 
 export type ParsedCliTokens = {
   options: Map<string, string | boolean | string[]>;
@@ -264,7 +263,15 @@ export const describeCommandOption = (option: AutomationCommandOptionSpec) => {
   return `${optionLine.padEnd(36)}${description}`;
 };
 
-export const buildCommandHelp = (spec: AutomationCommandSpec) => {
+export const buildCommandHelp = (spec: {
+  name: string;
+  help: {
+    summary: string;
+    options: readonly AutomationCommandOptionSpec[];
+    examples?: readonly string[];
+  };
+  parse?: (args: string[]) => unknown;
+}) => {
   const outputLines: string[] = [];
 
   outputLines.push(`${spec.name}`);

@@ -4,7 +4,7 @@ import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import { BackofficePageHeader } from "@/components/backoffice";
 import { createOrgFileSystem } from "@/files";
 import { getAuthMe } from "@/fragno/auth/auth-server";
-import { createInteractiveBashHost } from "@/fragno/bash-runtime/bash-host";
+import { createInteractiveBashHost } from "@/fragno/runtime-tools/bash-host";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
 import type { Route } from "./+types/dashboard";

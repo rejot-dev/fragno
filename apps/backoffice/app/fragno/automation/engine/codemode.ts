@@ -1,6 +1,6 @@
 import type { MasterFileSystem } from "@/files/master-file-system";
-import type { AutomationExecutionContext } from "@/fragno/bash-runtime/bash-host";
 import { runBackofficeCodemode, type BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
+import type { AutomationExecutionContext } from "@/fragno/runtime-tools/bash-host";
 import type { AutomationsRuntime } from "@/fragno/runtime-tools/families/automations";
 import type { EventRuntime } from "@/fragno/runtime-tools/families/event";
 import type { OtpRuntime } from "@/fragno/runtime-tools/families/otp";

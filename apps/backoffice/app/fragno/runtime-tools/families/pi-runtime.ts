@@ -7,7 +7,7 @@ import type {
   createPiFragment,
 } from "@fragno-dev/pi-fragment";
 
-import { isSuccessStatus, throwOnRouteRuntimeError } from "../runtime-tools/runtime-errors";
+import { isSuccessStatus, throwOnRouteRuntimeError } from "../runtime-errors";
 
 type PiFragment = ReturnType<typeof createPiFragment>;
 

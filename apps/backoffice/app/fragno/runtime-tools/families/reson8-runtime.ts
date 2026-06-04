@@ -12,7 +12,7 @@ import {
   createOrganisationNotConfiguredMessage,
   isSuccessStatus,
   throwOnRouteRuntimeError,
-} from "../runtime-tools/runtime-errors";
+} from "../runtime-errors";
 
 export type Reson8PrerecordedTranscribeArgs = {
   inputPath: string;

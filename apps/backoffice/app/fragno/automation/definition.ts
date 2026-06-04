@@ -5,7 +5,7 @@ import { withDatabase, type TxResult } from "@fragno-dev/db";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
 import { MasterFileSystem } from "@/files/master-file-system";
-import { executeAutomationScript } from "@/fragno/bash-runtime/bash-host";
+import { executeAutomationScript } from "@/fragno/runtime-tools/bash-host";
 
 import type { AutomationFileSystemConfig, AutomationFileSystemResolverInput } from "./catalog";
 import {

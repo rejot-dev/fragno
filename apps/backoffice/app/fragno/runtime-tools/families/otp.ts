@@ -1,12 +1,12 @@
 import { z } from "zod";
 
+import type { IdentityCreateClaimArgs } from "@/fragno/runtime-tools/automation-types";
 import {
   assertNoPositionals,
   parseCliTokens,
   readIntegerOption,
   readStringOption,
-} from "@/fragno/automation/commands/cli";
-import type { IdentityCreateClaimArgs } from "@/fragno/automation/commands/types";
+} from "@/fragno/runtime-tools/bash-cli";
 
 import {
   defineBackofficeRuntimeTool,

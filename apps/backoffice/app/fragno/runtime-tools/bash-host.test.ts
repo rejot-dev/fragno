@@ -5,11 +5,11 @@ import { InMemoryFs } from "just-bash";
 import { MasterFileSystem } from "@/files/master-file-system";
 import { normalizeMountedFileSystem } from "@/files/mounted-file-system";
 
-import type { OtpRuntime } from "../runtime-tools/families/otp-runtime";
 import { createBashHost, createInteractiveBashHost } from "./bash-host";
-import type { PiRuntime } from "./pi-bash-runtime";
-import type { ResendRuntime } from "./resend-bash-runtime";
-import type { Reson8Runtime } from "./reson8-bash-runtime";
+import type { OtpRuntime } from "./families/otp-runtime";
+import type { PiRuntime } from "./families/pi-runtime";
+import type { ResendRuntime } from "./families/resend-runtime";
+import type { Reson8Runtime } from "./families/reson8-runtime";
 
 const createAutomationsRuntime = () => ({
   lookupBinding: async () => ({

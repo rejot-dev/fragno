@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
-import type { AutomationsRuntime } from "../runtime-tools/families/automations";
-import { createBashHost } from "./bash-host";
+import { createBashHost } from "../bash-host";
+import type { AutomationsRuntime } from "./automations";
 import {
   createPiRouteRuntime,
   type PiRuntime,
@@ -11,7 +11,7 @@ import {
   type PiSessionGetArgs,
   type PiSessionListArgs,
   type PiSessionTurnArgs,
-} from "./pi-bash-runtime";
+} from "./pi-runtime";
 
 const now = new Date("2026-01-01T00:00:00.000Z");
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
-import { createBashHost } from "../../bash-runtime/bash-host";
+import { createBashHost } from "../bash-host";
 import { createRouteBackedTelegramRuntime, type TelegramRuntime } from "./telegram-runtime";
 
 const createTelegramRuntime = (overrides: Partial<TelegramRuntime> = {}): TelegramRuntime => ({

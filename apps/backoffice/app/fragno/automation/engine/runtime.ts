@@ -1,20 +1,24 @@
-import type { PiRuntime } from "@/fragno/bash-runtime/pi-bash-runtime";
+import type { PiRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
 import {
   createResendRouteRuntime,
   createUnavailableResendRuntime,
   type ResendRuntime,
-} from "@/fragno/bash-runtime/resend-bash-runtime";
+} from "@/fragno/runtime-tools/families/resend-runtime";
 import {
   createReson8RouteRuntime,
   createUnavailableReson8Runtime,
   type Reson8Runtime,
-} from "@/fragno/bash-runtime/reson8-bash-runtime";
+} from "@/fragno/runtime-tools/families/reson8-runtime";
 import {
   createTelegramRuntime,
   createUnavailableTelegramRuntime,
   type TelegramRuntime,
 } from "@/fragno/runtime-tools/families/telegram-runtime";
 
+import type {
+  AutomationCommandContext,
+  AutomationTriggerBinding,
+} from "../../runtime-tools/automation-types";
 import type {
   AutomationIdentityBindingRecord,
   AutomationsRuntime,
@@ -29,7 +33,6 @@ import {
   type AutomationIdentityClaimRecord,
   type OtpRuntime,
 } from "../../runtime-tools/families/otp-runtime";
-import type { AutomationCommandContext, AutomationTriggerBinding } from "../commands/types";
 import type { AutomationBashEnvironment, AutomationEvent } from "../contracts";
 import {
   createStorageBackedAutomationsRuntime,

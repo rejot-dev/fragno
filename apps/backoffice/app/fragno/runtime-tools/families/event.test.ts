@@ -1,14 +1,10 @@
 import { describe, expect, test } from "vitest";
 
-import { EVENT_COMMAND_SPEC_LIST } from "@/fragno/automation/commands/registry";
-
 import { eventRuntimeTools } from "./event";
 
 describe("event runtime tools", () => {
   test("derive event bash commands from runtime tools", () => {
-    expect(EVENT_COMMAND_SPEC_LIST.map((spec) => spec.name)).toEqual(
-      eventRuntimeTools.map((tool) => tool.adapters?.bash?.command),
-    );
+    expect(eventRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual(["event.emit"]);
   });
 
   test("parse and validate emit input", () => {

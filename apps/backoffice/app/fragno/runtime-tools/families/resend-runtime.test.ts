@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
-import { createBashHost, EMPTY_BASH_HOST_CONTEXT } from "./bash-host";
+import { createBashHost, EMPTY_BASH_HOST_CONTEXT } from "../bash-host";
 import {
   NotConfiguredError,
   createRouteBackedResendRuntime,
   type ResendRuntime,
-} from "./resend-bash-runtime";
+} from "./resend-runtime";
 
 const now = new Date("2026-01-02T12:00:00.000Z");
 
