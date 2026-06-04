@@ -43,7 +43,7 @@ Automation scripts run in one of two runtimes:
 
 - Codemode scripts are standalone async arrow functions executed in an isolated dynamic Worker. They
   use \`state.*\` APIs for filesystem work and read event data from \`/context/event.json\`.
-- Bash scripts run with a tiny Bash runtime built from the files in app/fragno/bash-runtime/*. The
+- Bash scripts run with a tiny Bash adapter generated from app/fragno/runtime-tools/*. The
   host exposes command families only when the matching runtime context is configured.
 
 ### Codemode automation scripts

@@ -6,7 +6,7 @@ import {
   readIntegerOption,
   readOutputOptions,
   readStringOption,
-} from "@/fragno/automation/commands/cli";
+} from "@/fragno/runtime-tools/bash-cli";
 import type {
   ResendRuntime,
   ResendThreadListArgs,
@@ -14,7 +14,7 @@ import type {
   ResendThreadOrder,
   ResendThreadsGetArgs,
   ResendThreadsReplyArgs,
-} from "@/fragno/bash-runtime/resend-bash-runtime";
+} from "@/fragno/runtime-tools/families/resend-runtime";
 
 import {
   defineBackofficeRuntimeTool,

@@ -1,21 +1,21 @@
 import { z } from "zod";
 
 import {
-  assertNoPositionals,
-  parseCliTokens,
-  readStringOption,
-} from "@/fragno/automation/commands/cli";
+  automationIdentityBindingRecordSchema,
+  type AutomationIdentityBindingRecord,
+} from "@/fragno/automation/identity";
+import { automationRunResultSchema } from "@/fragno/automation/run-result";
 import type {
   IdentityBindActorArgs,
   IdentityLookupBindingArgs,
   ScriptRunArgs,
   ScriptRunnerRuntime,
-} from "@/fragno/automation/commands/types";
+} from "@/fragno/runtime-tools/automation-types";
 import {
-  automationIdentityBindingRecordSchema,
-  type AutomationIdentityBindingRecord,
-} from "@/fragno/automation/identity";
-import { automationRunResultSchema } from "@/fragno/automation/run-result";
+  assertNoPositionals,
+  parseCliTokens,
+  readStringOption,
+} from "@/fragno/runtime-tools/bash-cli";
 
 import {
   defineBackofficeRuntimeTool,

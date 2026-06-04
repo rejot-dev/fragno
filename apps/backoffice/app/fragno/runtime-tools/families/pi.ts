@@ -7,14 +7,14 @@ import {
   readJsonOption,
   readOutputOptions,
   readStringOption,
-} from "@/fragno/automation/commands/cli";
+} from "@/fragno/runtime-tools/bash-cli";
 import type {
   PiRuntime,
   PiSessionCreateArgs,
   PiSessionGetArgs,
   PiSessionListArgs,
   PiSessionTurnArgs,
-} from "@/fragno/bash-runtime/pi-bash-runtime";
+} from "@/fragno/runtime-tools/families/pi-runtime";
 
 import {
   defineBackofficeRuntimeTool,

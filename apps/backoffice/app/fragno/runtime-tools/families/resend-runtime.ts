@@ -16,7 +16,7 @@ import {
   createOrganisationNotConfiguredMessage,
   isSuccessStatus,
   throwOnRouteRuntimeError,
-} from "../runtime-tools/runtime-errors";
+} from "../runtime-errors";
 
 const MAX_PAGE_SIZE = 100;
 

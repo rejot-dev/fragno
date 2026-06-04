@@ -3,10 +3,13 @@ import { createRouteCaller } from "@fragno-dev/core/api";
 import { isUniqueConstraintError, type HookContext } from "@fragno-dev/db";
 
 import type {
+  IdentityBindActorArgs,
+  IdentityLookupBindingArgs,
+} from "../runtime-tools/automation-types";
+import type {
   AutomationIdentityBindingRecord,
   AutomationsRuntime,
 } from "../runtime-tools/families/automations";
-import type { IdentityBindActorArgs, IdentityLookupBindingArgs } from "./commands/types";
 import type { createAutomationFragment } from "./index";
 import { automationFragmentSchema } from "./schema";
 

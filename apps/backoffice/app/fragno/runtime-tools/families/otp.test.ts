@@ -1,14 +1,12 @@
 import { describe, expect, test } from "vitest";
 
-import { OTP_COMMAND_SPEC_LIST } from "@/fragno/automation/commands/registry";
-
 import { otpRuntimeTools } from "./otp";
 
 describe("otp runtime tools", () => {
   test("derive otp bash commands from runtime tools", () => {
-    expect(OTP_COMMAND_SPEC_LIST.map((spec) => spec.name)).toEqual(
-      otpRuntimeTools.map((tool) => tool.adapters?.bash?.command),
-    );
+    expect(otpRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
+      "otp.identity.create-claim",
+    ]);
   });
 
   test("parse and validate create identity claim input", () => {

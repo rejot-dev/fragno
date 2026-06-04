@@ -18,16 +18,16 @@ import { getModel } from "@earendil-works/pi-ai";
 
 import { createOrgFileSystem, type MasterFileSystem } from "@/files";
 
-import {
-  createInteractiveBashHost,
-  createRouteBackedInteractiveBashContext,
-  type InteractiveBashCommandContext,
-} from "../bash-runtime/bash-host";
 import type {
   BackofficeCodemodeEnv,
   BackofficeCodemodeExecuteResult,
   RunBackofficeCodemodeInput,
 } from "../codemode/execute";
+import {
+  createInteractiveBashHost,
+  createRouteBackedInteractiveBashContext,
+  type InteractiveBashCommandContext,
+} from "../runtime-tools/bash-host";
 import type { AutomationsRuntime } from "../runtime-tools/families/automations";
 import type { OtpRuntime } from "../runtime-tools/families/otp-runtime";
 import type { PiRuntime } from "../runtime-tools/families/pi";
@@ -470,4 +470,4 @@ export const createPiRuntime = (options: {
   };
 };
 
-export { createPiRouteRuntime } from "../bash-runtime/pi-bash-runtime";
+export { createPiRouteRuntime } from "../runtime-tools/families/pi-runtime";

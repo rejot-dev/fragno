@@ -5,7 +5,7 @@ import {
   buildResendThreadMarkdown,
   createRouteBackedResendRuntime,
   type ResendRuntime,
-} from "@/fragno/bash-runtime/resend-bash-runtime";
+} from "@/fragno/runtime-tools/families/resend-runtime";
 
 import { normalizeMountedFileSystem } from "../mounted-file-system";
 import { normalizeMountPoint } from "../normalize-path";

@@ -1,12 +1,12 @@
 import { z } from "zod";
 
+import type { EventEmitArgs } from "@/fragno/runtime-tools/automation-types";
 import {
   assertNoPositionals,
   parseCliTokens,
   readJsonOption,
   readStringOption,
-} from "@/fragno/automation/commands/cli";
-import type { EventEmitArgs } from "@/fragno/automation/commands/types";
+} from "@/fragno/runtime-tools/bash-cli";
 
 import {
   defineBackofficeRuntimeTool,

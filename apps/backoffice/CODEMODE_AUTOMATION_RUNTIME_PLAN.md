@@ -690,18 +690,33 @@ Cleanup completed during Slice 7:
   `create*BashRuntime`.
 - Simplified the scripts detail page to source + trigger inspection only.
 
-### Slice 8: Remove old bash-runtime architecture
+### [x] Slice 8: Remove old bash-runtime architecture
 
 Goal: complete the breaking refactor once all families have moved.
 
 Implement:
 
-- Replace `BASH_HOST_MODULES` with generated command registration from the runtime tool registry.
-- Remove obsolete command maps and `ParsedCommandByName` types.
-- Rename/move remaining route-backed runtime factory modules out of `bash-runtime/` now that all
-  runtime tool families are ported.
-- Delete the old `automation/commands/*` command-spec/handler compatibility layer after remaining
-  tests have been moved to `runtime-tools` coverage.
+- [x] Replace `BASH_HOST_MODULES` with generated command registration from the runtime tool
+      registry.
+- [x] Remove obsolete command maps and `ParsedCommandByName` types.
+- [x] Rename/move remaining route-backed runtime factory modules out of `bash-runtime/` now that all
+      runtime tool families are ported.
+- [x] Delete the old `automation/commands/*` command-spec/handler compatibility layer after
+      remaining tests have been moved to `runtime-tools` coverage.
+
+Implemented:
+
+- Moved the bash host into `app/fragno/runtime-tools/bash-host.ts`; bash is now explicitly an
+  adapter over central runtime-tool families.
+- Removed the final `BASH_HOST_MODULES` indirection; command registration now directly resolves
+  available tools from `bashRuntimeToolFamilies` and passes them to `createBackofficeBashCommands`.
+- Moved remaining route-backed runtime modules/tests into
+  `app/fragno/runtime-tools/families/*-runtime.ts`: `pi`, `resend`, and `reson8`.
+- Deleted the old `app/fragno/automation/commands/*` compatibility layer. Shared CLI parsing and
+  bash output types now live under `app/fragno/runtime-tools/bash-cli.ts` and
+  `app/fragno/runtime-tools/automation-types.ts`.
+- Removed tests that existed only to exercise old command specs/handlers; retained coverage now
+  exercises generated bash commands and semantic runtime tools directly.
 
 Tests:
 
