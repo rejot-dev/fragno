@@ -23,9 +23,6 @@ import {
   createRouteBackedInteractiveBashContext,
   type InteractiveBashCommandContext,
 } from "../bash-runtime/bash-host";
-import type { PiBashRuntime } from "../bash-runtime/pi-bash-runtime";
-import type { ResendBashRuntime } from "../bash-runtime/resend-bash-runtime";
-import type { Reson8BashRuntime } from "../bash-runtime/reson8-bash-runtime";
 import type {
   BackofficeCodemodeEnv,
   BackofficeCodemodeExecuteResult,
@@ -33,6 +30,9 @@ import type {
 } from "../codemode/execute";
 import type { AutomationsRuntime } from "../runtime-tools/families/automations";
 import type { OtpRuntime } from "../runtime-tools/families/otp-runtime";
+import type { PiRuntime } from "../runtime-tools/families/pi";
+import type { ResendRuntime } from "../runtime-tools/families/resend";
+import type { Reson8Runtime } from "../runtime-tools/families/reson8";
 import type { TelegramRuntime } from "../runtime-tools/families/telegram-runtime";
 import {
   getAvailableRuntimeTools,
@@ -64,13 +64,13 @@ export type PiBashCommandContext = InteractiveBashCommandContext & {
     runtime: OtpRuntime;
   };
   pi: {
-    runtime: PiBashRuntime;
+    runtime: PiRuntime;
   };
   reson8: {
-    runtime: Reson8BashRuntime;
+    runtime: Reson8Runtime;
   };
   resend: {
-    runtime: ResendBashRuntime;
+    runtime: ResendRuntime;
   };
   telegram: {
     runtime: TelegramRuntime;
@@ -85,6 +85,9 @@ export type PiSessionFileSystemContext = {
 type PiCodemodeToolContext = BackofficeToolContext<{
   automations?: AutomationsRuntime;
   otp?: OtpRuntime;
+  pi?: PiRuntime;
+  resend?: ResendRuntime;
+  reson8?: Reson8Runtime;
   telegram?: TelegramRuntime;
 }>;
 
@@ -242,6 +245,9 @@ const createExecCodeModeTool = (
         runtimes: {
           automations: bashCommandContext?.automations.runtime,
           otp: bashCommandContext?.otp?.runtime,
+          pi: bashCommandContext?.pi?.runtime,
+          resend: bashCommandContext?.resend?.runtime,
+          reson8: bashCommandContext?.reson8?.runtime,
           telegram: bashCommandContext?.telegram?.runtime,
         },
       };
@@ -464,4 +470,4 @@ export const createPiRuntime = (options: {
   };
 };
 
-export { createPiRouteBashRuntime } from "../bash-runtime/pi-bash-runtime";
+export { createPiRouteRuntime } from "../bash-runtime/pi-bash-runtime";

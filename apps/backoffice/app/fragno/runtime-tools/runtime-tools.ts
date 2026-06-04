@@ -42,6 +42,7 @@ export type BackofficeBashShellContext = {
   cwd: string;
   fs: {
     resolvePath(cwd: string, path: string): string;
+    readFileBuffer?(path: string): Promise<ArrayBuffer | Uint8Array> | ArrayBuffer | Uint8Array;
     writeFile(path: string, content: string | Uint8Array): Promise<void> | void;
   };
 };
@@ -272,7 +273,7 @@ export const createBackofficeBashCommands = ({
               args,
               context,
               commandOutput,
-              shell: shell as BackofficeBashShellContext,
+              shell: shell as unknown as BackofficeBashShellContext,
             })
           : bash.format
             ? bash.format(await executeBackofficeRuntimeTool(tool, input, context), commandOutput)

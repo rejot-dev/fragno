@@ -6,12 +6,12 @@ import { createBashHost, EMPTY_BASH_HOST_CONTEXT } from "./bash-host";
 import {
   NotConfiguredError,
   createRouteBackedResendRuntime,
-  type ResendBashRuntime,
+  type ResendRuntime,
 } from "./resend-bash-runtime";
 
 const now = new Date("2026-01-02T12:00:00.000Z");
 
-const createResendRuntime = (overrides: Partial<ResendBashRuntime> = {}): ResendBashRuntime => ({
+const createResendRuntime = (overrides: Partial<ResendRuntime> = {}): ResendRuntime => ({
   listThreads: async () => ({
     threads: [],
     hasNextPage: false,

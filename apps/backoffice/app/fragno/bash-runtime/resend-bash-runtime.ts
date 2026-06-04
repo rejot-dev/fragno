@@ -11,36 +11,15 @@ import type {
 
 import type { ResendFragment } from "@/fragno/resend";
 
-import { createAutomationCommands } from "../automation/commands/bash-adapter";
-import {
-  assertNoPositionals,
-  parseCliTokens,
-  readIntegerOption,
-  readOutputOptions,
-  readStringOption,
-} from "../automation/commands/cli";
-import type {
-  AutomationCommandHelp,
-  AutomationCommandHandlersFor,
-  AutomationCommandSpec,
-  ParsedCommand,
-} from "../automation/commands/types";
 import {
   NotConfiguredError,
   createOrganisationNotConfiguredMessage,
   isSuccessStatus,
   throwOnRouteRuntimeError,
 } from "../runtime-tools/runtime-errors";
-import type { BashCommandFactoryInput } from "./bash-host";
 
-const RESEND_COMMAND_NAMES = [
-  "resend.threads.get",
-  "resend.threads.list",
-  "resend.threads.reply",
-] as const;
 const MAX_PAGE_SIZE = 100;
 
-export type ResendCommandName = (typeof RESEND_COMMAND_NAMES)[number];
 export type ResendThreadOrder = "asc" | "desc";
 
 export type ResendThreadListArgs = {
@@ -69,7 +48,7 @@ export type ResendThreadsGetResult = {
   markdown: string;
 };
 
-export type ResendBashRuntime = {
+export type ResendRuntime = {
   listThreads: (args?: ResendThreadListArgs) => Promise<ResendListThreadsOutput>;
   getThread: (args: { threadId: string }) => Promise<ResendThreadDetail>;
   listThreadMessages: (args: ResendThreadMessagesArgs) => Promise<ResendListThreadMessagesOutput>;
@@ -77,125 +56,14 @@ export type ResendBashRuntime = {
   replyToThread: (args: ResendThreadsReplyArgs) => Promise<ResendThreadMutationOutput>;
 };
 
-export type RegisteredResendBashCommandContext = {
-  runtime: ResendBashRuntime;
+export type RegisteredResendCommandContext = {
+  runtime: ResendRuntime;
 };
 
 type CreateRouteBackedResendRuntimeOptions = {
   baseUrl: string;
   headers?: HeadersInit;
   fetch(request: Request): Promise<Response>;
-};
-
-type ResendParsedCommandByName = {
-  "resend.threads.get": ParsedCommand<"resend.threads.get", ResendThreadsGetArgs>;
-  "resend.threads.list": ParsedCommand<"resend.threads.list", ResendThreadListArgs>;
-  "resend.threads.reply": ParsedCommand<"resend.threads.reply", ResendThreadsReplyArgs>;
-};
-
-type ResendCommandHandlers<TContext = unknown> = AutomationCommandHandlersFor<
-  TContext,
-  ResendParsedCommandByName
->;
-
-const HELP: {
-  threadsGet: AutomationCommandHelp;
-  threadsList: AutomationCommandHelp;
-  threadsReply: AutomationCommandHelp;
-} = {
-  threadsGet: {
-    summary:
-      "resend.threads.get loads one Resend thread with its current page of messages and renders a Markdown snapshot by default.",
-    options: [
-      {
-        name: "thread-id",
-        required: true,
-        valueRequired: true,
-        valueName: "thread-id",
-        description: "Resend thread id to retrieve",
-      },
-      {
-        name: "order",
-        valueRequired: true,
-        valueName: "order",
-        description: "Message sort order (asc|desc)",
-      },
-      {
-        name: "page-size",
-        valueRequired: true,
-        valueName: "page-size",
-        description: `Maximum number of messages to return (1-${MAX_PAGE_SIZE})`,
-      },
-      {
-        name: "cursor",
-        valueRequired: true,
-        valueName: "cursor",
-        description: "Opaque message pagination cursor",
-      },
-    ],
-    examples: [
-      "resend.threads.get --thread-id thread-123",
-      "resend.threads.get --thread-id thread-123 --format json",
-      "resend.threads.get --thread-id thread-123 --print thread.reply-to-address",
-    ],
-  },
-  threadsList: {
-    summary: "resend.threads.list lists Resend email threads.",
-    options: [
-      {
-        name: "order",
-        valueRequired: true,
-        valueName: "order",
-        description: "Thread sort order (asc|desc)",
-      },
-      {
-        name: "page-size",
-        valueRequired: true,
-        valueName: "page-size",
-        description: `Maximum number of threads to return (1-${MAX_PAGE_SIZE})`,
-      },
-      {
-        name: "cursor",
-        valueRequired: true,
-        valueName: "cursor",
-        description: "Opaque pagination cursor",
-      },
-    ],
-    examples: [
-      "resend.threads.list",
-      "resend.threads.list --page-size 10 --format json",
-      "resend.threads.list --print threads.0.id",
-    ],
-  },
-  threadsReply: {
-    summary: "resend.threads.reply sends a text reply into an existing Resend thread.",
-    options: [
-      {
-        name: "thread-id",
-        required: true,
-        valueRequired: true,
-        valueName: "thread-id",
-        description: "Resend thread id to reply to",
-      },
-      {
-        name: "subject",
-        valueRequired: true,
-        valueName: "subject",
-        description: "Optional reply subject override",
-      },
-      {
-        name: "body",
-        required: true,
-        valueRequired: true,
-        valueName: "body",
-        description: "Reply body as plain text",
-      },
-    ],
-    examples: [
-      'resend.threads.reply --thread-id thread-123 --body "Thanks, received."',
-      'resend.threads.reply --thread-id thread-123 --subject "Re: Invoice Update" --body "Following up." --format json',
-    ],
-  },
 };
 
 const normalizeOrder = (value: string | undefined): ResendThreadOrder | undefined => {
@@ -220,131 +88,6 @@ const normalizePageSize = (value: number | undefined, optionName = "page-size") 
   }
 
   return value;
-};
-
-const parseResendThreadsGet = (args: string[]): ResendParsedCommandByName["resend.threads.get"] => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "resend.threads.get");
-
-  return {
-    name: "resend.threads.get",
-    args: {
-      threadId: readStringOption(parsed, "thread-id", true)!,
-      order: normalizeOrder(readStringOption(parsed, "order")),
-      pageSize: normalizePageSize(readIntegerOption(parsed, "page-size")),
-      cursor: readStringOption(parsed, "cursor") ?? undefined,
-    },
-    output: readOutputOptions(parsed),
-    rawArgs: args,
-  };
-};
-
-const parseResendThreadsList = (
-  args: string[],
-): ResendParsedCommandByName["resend.threads.list"] => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "resend.threads.list");
-
-  const output = readOutputOptions(parsed);
-
-  return {
-    name: "resend.threads.list",
-    args: {
-      order: normalizeOrder(readStringOption(parsed, "order")),
-      pageSize: normalizePageSize(readIntegerOption(parsed, "page-size")),
-      cursor: readStringOption(parsed, "cursor") ?? undefined,
-    },
-    output: output.print || parsed.options.has("format") ? output : { ...output, format: "json" },
-    rawArgs: args,
-  };
-};
-
-const parseResendThreadsReply = (
-  args: string[],
-): ResendParsedCommandByName["resend.threads.reply"] => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "resend.threads.reply");
-
-  const output = readOutputOptions(parsed);
-
-  return {
-    name: "resend.threads.reply",
-    args: {
-      threadId: readStringOption(parsed, "thread-id", true)!,
-      subject: readStringOption(parsed, "subject") ?? undefined,
-      body: readStringOption(parsed, "body", true)!,
-    },
-    output: output.print || parsed.options.has("format") ? output : { ...output, format: "json" },
-    rawArgs: args,
-  };
-};
-
-const RESEND_COMMAND_SPECS = {
-  "resend.threads.get": {
-    name: "resend.threads.get",
-    help: HELP.threadsGet,
-    parse: parseResendThreadsGet,
-  },
-  "resend.threads.list": {
-    name: "resend.threads.list",
-    help: HELP.threadsList,
-    parse: parseResendThreadsList,
-  },
-  "resend.threads.reply": {
-    name: "resend.threads.reply",
-    help: HELP.threadsReply,
-    parse: parseResendThreadsReply,
-  },
-} satisfies {
-  [TCommandName in ResendCommandName]: AutomationCommandSpec<
-    TCommandName,
-    ResendParsedCommandByName[TCommandName]["args"]
-  > & {
-    parse: (args: string[]) => ResendParsedCommandByName[TCommandName];
-  };
-};
-
-export const RESEND_COMMAND_SPEC_LIST = RESEND_COMMAND_NAMES.map(
-  (name) => RESEND_COMMAND_SPECS[name],
-) as readonly (typeof RESEND_COMMAND_SPECS)[ResendCommandName][];
-
-const resendCommandHandlers: ResendCommandHandlers<RegisteredResendBashCommandContext> = {
-  "resend.threads.get": async (command, context) => {
-    const data = await context.runtime.getThreadSnapshot(command.args);
-
-    if (command.output.format === "json" || command.output.print) {
-      return { data };
-    }
-
-    return {
-      data,
-      stdout: `${data.markdown}\n`,
-    };
-  },
-  "resend.threads.list": async (command, context) => {
-    return {
-      data: await context.runtime.listThreads(command.args),
-    };
-  },
-  "resend.threads.reply": async (command, context) => {
-    return {
-      data: await context.runtime.replyToThread(command.args),
-    };
-  },
-};
-
-export const createResendBashCommands = (input: BashCommandFactoryInput) => {
-  const resendContext = input.context.resend;
-  if (!resendContext) {
-    return [];
-  }
-
-  return createAutomationCommands(
-    RESEND_COMMAND_SPEC_LIST,
-    resendCommandHandlers,
-    resendContext,
-    input.commandCallsResult,
-  );
 };
 
 const createResendRouteCaller = (
@@ -376,7 +119,7 @@ const toQuery = (args: ResendThreadListArgs | undefined): Record<string, string>
 
 export const createRouteBackedResendRuntime = (
   options: CreateRouteBackedResendRuntimeOptions,
-): ResendBashRuntime => {
+): ResendRuntime => {
   const baseUrl = options.baseUrl.trim();
   if (!baseUrl) {
     throw new Error("Resend runtime requires a base URL");
@@ -542,13 +285,13 @@ export const createRouteBackedResendRuntime = (
   };
 };
 
-export const createResendRouteBashRuntime = ({
+export const createResendRouteRuntime = ({
   env,
   orgId,
 }: {
   env: CloudflareEnv;
   orgId: string;
-}): ResendBashRuntime => {
+}): ResendRuntime => {
   const resendDo = env.RESEND.get(env.RESEND.idFromName(orgId));
   return createRouteBackedResendRuntime({
     baseUrl: "https://resend.do",
@@ -558,9 +301,7 @@ export const createResendRouteBashRuntime = ({
 
 const RESEND_NOT_CONFIGURED = createOrganisationNotConfiguredMessage("Resend");
 
-export const createUnavailableResendBashRuntime = (
-  message = RESEND_NOT_CONFIGURED,
-): ResendBashRuntime => ({
+export const createUnavailableResendRuntime = (message = RESEND_NOT_CONFIGURED): ResendRuntime => ({
   listThreads: async () => {
     throw new Error(message);
   },

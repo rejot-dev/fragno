@@ -7,9 +7,9 @@ import { normalizeMountedFileSystem } from "@/files/mounted-file-system";
 
 import type { OtpRuntime } from "../runtime-tools/families/otp-runtime";
 import { createBashHost, createInteractiveBashHost } from "./bash-host";
-import type { PiBashRuntime } from "./pi-bash-runtime";
-import type { ResendBashRuntime } from "./resend-bash-runtime";
-import type { Reson8BashRuntime } from "./reson8-bash-runtime";
+import type { PiRuntime } from "./pi-bash-runtime";
+import type { ResendRuntime } from "./resend-bash-runtime";
+import type { Reson8Runtime } from "./reson8-bash-runtime";
 
 const createAutomationsRuntime = () => ({
   lookupBinding: async () => ({
@@ -34,7 +34,7 @@ const createOtpRuntime = (): OtpRuntime => ({
   }),
 });
 
-const createResendRuntime = (): ResendBashRuntime => ({
+const createResendRuntime = (): ResendRuntime => ({
   listThreads: async () => ({
     threads: [],
     hasNextPage: false,
@@ -125,13 +125,13 @@ const createResendRuntime = (): ResendBashRuntime => ({
   }),
 });
 
-const createReson8Runtime = (): Reson8BashRuntime => ({
+const createReson8Runtime = (): Reson8Runtime => ({
   transcribePrerecorded: async () => ({
     text: "hello world",
   }),
 });
 
-const createPiRuntime = (): PiBashRuntime => ({
+const createPiRuntime = (): PiRuntime => ({
   createSession: async () => ({
     id: "session-1",
     agent: "assistant",
