@@ -6,6 +6,7 @@ export default defineConfig([
     ignoreWatch: ["./dist"],
     entry: [
       "./src/index.ts",
+      "./src/route-schemas.ts",
       "./src/client/react.ts",
       "./src/client/svelte.ts",
       "./src/client/solid.ts",
@@ -22,7 +23,7 @@ export default defineConfig([
   },
   {
     ignoreWatch: ["./dist"],
-    entry: "./src/index.ts",
+    entry: ["./src/index.ts", "./src/route-schemas.ts"],
     dts: true,
     failOnWarn: true,
     platform: "node",

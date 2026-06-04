@@ -27,6 +27,12 @@
       "types": "./dist/node/index.d.ts",
       "default": "./dist/node/index.js"
     },
+    "./route-schemas": {
+      "development": "./src/route-schemas.ts",
+      "types": "./dist/node/route-schemas.d.ts",
+      "browser": "./dist/browser/route-schemas.js",
+      "default": "./dist/node/route-schemas.js"
+    },
     "./react": {
       "development": {
         "browser": "./dist/browser/client/react.js",
