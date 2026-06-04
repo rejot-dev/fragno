@@ -36,6 +36,12 @@
       "types": "./dist/cli/mod.d.ts",
       "default": "./dist/cli/mod.js"
     },
+    "./route-schemas": {
+      "development": "./src/pi/route-schemas.ts",
+      "types": "./dist/node/pi/route-schemas.d.ts",
+      "browser": "./dist/browser/pi/route-schemas.js",
+      "default": "./dist/node/pi/route-schemas.js"
+    },
     "./react": {
       "development": {
         "browser": "./dist/browser/client/react.js",
