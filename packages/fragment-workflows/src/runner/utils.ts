@@ -1,16 +1,6 @@
 // Shared utilities for runner helpers.
 
 import type { AnyTxResult } from "../workflow";
-
-export const NESTED_STEP_SEPARATOR = ">";
-
-export function buildNestedStepKey(parentStepKey: string, childStepKey: string): string {
-  return `${parentStepKey}${NESTED_STEP_SEPARATOR}${childStepKey}`;
-}
-
-export function getOutermostStepKey(stepKey: string): string {
-  return stepKey.split(NESTED_STEP_SEPARATOR)[0]!;
-}
 import { NonRetryableError } from "../workflow";
 
 /**

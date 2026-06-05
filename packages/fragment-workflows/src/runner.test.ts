@@ -127,7 +127,7 @@ describe("Workflows Runner", () => {
     >({ name: "previous-emissions-workflow" }, async (_event, step) => {
       await step.do("recoverable", async (tx) => {
         tx.emit({ type: "current-attempt" });
-        observedPayloads.push(tx.previousEmissions().map((emission) => emission.payload));
+        observedPayloads.push((await tx.previousEmissions()).map((emission) => emission.payload));
       });
       return { ok: true };
     });

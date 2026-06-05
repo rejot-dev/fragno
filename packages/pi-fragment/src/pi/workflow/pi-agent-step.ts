@@ -106,7 +106,7 @@ export const runPiAgentStep = async (
   runtime.step.do(runtime.stepName, behavior.step ?? defaultStepConfig, async (tx) => {
     const runAgent = runtime.agentRunner ?? runAgentTurn;
     const messagesBeforeStep = runtime.turn.messages.length;
-    const previousEmissions = tx.previousEmissions();
+    const previousEmissions = await tx.previousEmissions();
     const committedEpochs = committedEmissionEpochs(previousEmissions);
     const previousEvents = previousEmissions.flatMap((emission): AgentEvent[] => {
       if (committedEpochs.has(emission.epoch)) {
