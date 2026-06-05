@@ -7,8 +7,41 @@ import type { AutomationRuntimeHostContext, AutomationRuntime } from "@/fragno/a
 import type { AutomationEvent } from "@/fragno/automation/contracts";
 import { executeBashAutomation } from "@/fragno/runtime-tools/automation-host";
 
-import { executeCodemodeAutomation } from "./codemode";
+import { executeCodemodeAutomation, renderCodemodeWorkflowToolGlobals } from "./codemode";
 import { createTestMasterFileSystem } from "./test-master-file-system.test-utils";
+
+describe("renderCodemodeWorkflowToolGlobals", () => {
+  test("renders workflow globals grouped by namespace", () => {
+    expect(
+      renderCodemodeWorkflowToolGlobals([
+        { namespace: "automations", name: "lookupBinding" },
+        { namespace: "automations", name: "bindActor" },
+        { namespace: "telegram", name: "sendMessage" },
+      ] as never),
+    ).toMatchInlineSnapshot(`
+      "const automations = {
+        "lookupBinding": (input) => callTool("automations", "lookupBinding", input),
+        "bindActor": (input) => callTool("automations", "bindActor", input)
+      };
+
+      const telegram = {
+        "sendMessage": (input) => callTool("telegram", "sendMessage", input)
+      };"
+    `);
+  });
+
+  test("quotes non-identifier namespace and tool names", () => {
+    expect(
+      renderCodemodeWorkflowToolGlobals([
+        { namespace: "custom-tools", name: "send.message" },
+      ] as never),
+    ).toMatchInlineSnapshot(`
+      "globalThis["custom-tools"] = {
+        "send.message": (input) => callTool("custom-tools", "send.message", input)
+      };"
+    `);
+  });
+});
 
 describe("executeCodemodeAutomation", () => {
   test("runs a .cm.js automation with state.* and /context/event.json", async () => {
@@ -51,6 +84,38 @@ describe("executeCodemodeAutomation", () => {
     await expect(masterFs.readFile("/workspace/output.json")).resolves.toBe(
       JSON.stringify({ id: "event-codemode-1", text: "hello" }),
     );
+  });
+
+  test("captures console.log and console.error output", async () => {
+    const event: AutomationEvent = {
+      id: "event-codemode-console-output",
+      orgId: "org-1",
+      source: "test",
+      eventType: "message.received",
+      occurredAt: "2026-06-03T00:00:00.000Z",
+      payload: {},
+    };
+
+    const result = await executeCodemodeAutomation({
+      env,
+      masterFs: createTestMasterFileSystem({}),
+      context: createAutomationContext(event),
+      script: `async () => {
+        console.log("codemode console.log is visible");
+        console.error("codemode console.error is visible");
+        return { ok: true };
+      }`,
+    });
+
+    expect(result).toMatchObject({
+      runtime: "codemode",
+      eventId: "event-codemode-console-output",
+      exitCode: 0,
+      stderr: "",
+      logs: ["codemode console.log is visible", "[error] codemode console.error is visible"],
+      result: { ok: true },
+      stdout: JSON.stringify({ ok: true }),
+    });
   });
 
   test("exposes automation identity tools to codemode automations", async () => {
@@ -220,68 +285,14 @@ describe("executeCodemodeAutomation", () => {
     ]);
   });
 
-  test("runs the starter Telegram claim linking start automation", async () => {
-    const calls: unknown[] = [];
-    const runtime = createStarterAutomationRuntime(calls, {
-      createClaim: async (input) => {
-        calls.push(["createClaim", input]);
-        return {
-          url: `https://example.com/claims/${input.externalActorId}`,
-          externalId: input.externalActorId,
-          code: "123456",
-          type: "identity",
-        };
-      },
-    });
-    const event: AutomationEvent = {
-      id: "starter-telegram-claim-start-1",
-      orgId: "org-1",
-      source: "telegram",
-      eventType: "message.received",
-      occurredAt: "2026-06-03T00:00:00.000Z",
-      payload: { text: "/start", chatId: "chat-123" },
-      actor: { type: "external", externalId: "chat-123" },
-    };
+  test("defines the starter Telegram claim linking start automation as a workflow", () => {
+    const script = starterAutomationScript("telegramClaimLinkingStart");
 
-    const result = await executeCodemodeAutomation({
-      env,
-      masterFs: createTestMasterFileSystem({}),
-      context: createAutomationContext(event, {
-        runtime,
-        telegramRuntime: createRecordingTelegramRuntime(calls),
-        binding: {
-          scriptId: "script:codemode@1:automations/scripts/telegram-claim-linking.start.cm.js",
-          scriptKey: "telegram-claim-linking.start",
-          scriptName: "Telegram claim linking start",
-          scriptPath: STARTER_AUTOMATION_SCRIPT_PATHS.telegramClaimLinkingStart,
-        },
-      }),
-      script: starterAutomationScript("telegramClaimLinkingStart"),
-    });
-
-    expect(result).toMatchObject({
-      runtime: "codemode",
-      eventId: "starter-telegram-claim-start-1",
-      exitCode: 0,
-      stderr: "",
-    });
-    expect(calls).toEqual([
-      ["lookupBinding", { source: "telegram", key: "chat-123" }],
-      ["createClaim", { source: "telegram", externalActorId: "chat-123" }],
-      [
-        "sendMessage",
-        {
-          chatId: "chat-123",
-          text: "Open this link to finish linking your Telegram account: https://example.com/claims/chat-123",
-          parseMode: "Markdown",
-        },
-      ],
-    ]);
-    expect(result.toolCalls).toMatchObject([
-      { providerName: "automations", toolName: "lookupBinding", status: "success" },
-      { providerName: "otp", toolName: "createIdentityClaim", status: "success" },
-      { providerName: "telegram", toolName: "sendMessage", status: "success" },
-    ]);
+    expect(script).toContain('defineWorkflow({ name: "telegram-claim-linking-start" }');
+    expect(script).toContain('step.do("read event"');
+    expect(script).toContain('step.do("lookup binding"');
+    expect(script).toContain('step.do("create claim"');
+    expect(script).toContain('step.do("send claim link"');
   });
 
   test("runs the starter Telegram claim linking completion automation", async () => {

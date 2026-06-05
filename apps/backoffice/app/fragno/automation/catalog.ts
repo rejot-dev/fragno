@@ -8,6 +8,7 @@ import {
 } from "@/files";
 import { FileSystemError } from "@/files/fs-errors";
 
+import { AUTOMATION_SCRIPT_ENGINES, type AutomationScriptEngine } from "./engines";
 import { AUTOMATION_TRIGGER_ORDER_LAST } from "./schema";
 
 export const AUTOMATION_WORKSPACE_ROOT = "/workspace/automations";
@@ -34,9 +35,13 @@ export type AutomationFileSystemConfig = {
   getAutomationFileSystem?: AutomationFileSystemResolver;
 };
 
-const automationScriptEngineSchema = z.enum(["bash", "codemode"]);
+export type { AutomationScriptEngine };
 
-export type AutomationScriptEngine = z.infer<typeof automationScriptEngineSchema>;
+const automationScriptEngineSchema = z.enum([
+  AUTOMATION_SCRIPT_ENGINES.bash,
+  AUTOMATION_SCRIPT_ENGINES.codemode,
+  AUTOMATION_SCRIPT_ENGINES.codemodeWorkflow,
+]);
 
 const manifestScriptSchema = z.object({
   key: z.string().trim().min(1),
@@ -150,21 +155,25 @@ const validateScriptPathForEngine = ({
 }) => {
   const isCodemodeScriptPath = scriptPath.endsWith(".cm.js");
 
-  if (engine === "codemode" && !isCodemodeScriptPath) {
+  if (
+    (engine === AUTOMATION_SCRIPT_ENGINES.codemode ||
+      engine === AUTOMATION_SCRIPT_ENGINES.codemodeWorkflow) &&
+    !isCodemodeScriptPath
+  ) {
     throw new Error(
       `Automation binding '${bindingId}' uses codemode script '${scriptPath}', but codemode scripts must end in .cm.js.`,
     );
   }
 
-  if (engine === "bash" && isCodemodeScriptPath) {
+  if (engine === AUTOMATION_SCRIPT_ENGINES.bash && isCodemodeScriptPath) {
     throw new Error(
-      `Automation binding '${bindingId}' uses bash script '${scriptPath}', but .cm.js scripts must set engine to codemode.`,
+      `Automation binding '${bindingId}' uses bash script '${scriptPath}', but .cm.js scripts must set engine to codemode or codemode-workflow.`,
     );
   }
 };
 
 const inferWorkspaceScriptEngine = (path: string): AutomationScriptEngine =>
-  path.endsWith(".cm.js") ? "codemode" : "bash";
+  path.endsWith(".cm.js") ? AUTOMATION_SCRIPT_ENGINES.codemode : AUTOMATION_SCRIPT_ENGINES.bash;
 
 const normalizeScriptRelativePath = (value: string, bindingId: string): string => {
   const trimmed = value.trim();

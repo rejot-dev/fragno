@@ -28,9 +28,10 @@ Events are bound to scripts through the manifest file: \`/workspace/automations/
 Each binding's \`script\` object must set an explicit \`engine\`:
 
 - \`engine: "codemode"\` for codemode scripts under \`/workspace/automations/scripts/*.cm.js\`.
+- \`engine: "codemode-workflow"\` for workflow scripts, conventionally under \`/workspace/automations/scripts/*.workflow.cm.js\`.
 - \`engine: "bash"\` for bash scripts, usually under \`/workspace/automations/scripts/*.sh\`.
 
-Prefer codemode for new filesystem/context automations. Use bash when the automation needs shell
+Prefer codemode for new filesystem/context automations and codemode-workflow for durable multi-step automations. Use bash when the automation needs shell
 pipelines or command-style interoperability.
 
 The last 200 ingested events are available as JSON files in: \`/events/YYYY-MM-DD/\`. Errors are
@@ -39,8 +40,8 @@ written to text files in the same directory.
 When the user asks you to create an automation, you should create a new script and update
 bindings.json. You can search past events for guidance and read pre-existing scripts for examples.
 Automation scripts can be tested manually (by you or the user) with the \`scripts.run\` command when
-using the bash harness. \`scripts.run\` executes \`*.cm.js\` files through codemode and all other
-script files through bash.
+using the bash harness. \`scripts.run\` executes \`*.workflow.cm.js\` files as codemode workflows,
+\`*.cm.js\` files through codemode, and all other script files through bash.
 
 Some connections also provide file-oriented views of their data:
 

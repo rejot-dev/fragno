@@ -21,6 +21,7 @@ export default mergeConfig(
     test: {
       name: "cloudflare",
       include: ["app/**/*.cloudflare.test.ts"],
+      globalSetup: ["./vitest.cloudflare.global-setup.ts"],
       deps: {
         optimizer: {
           ssr: {

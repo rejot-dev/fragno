@@ -1,8 +1,10 @@
 import { z } from "zod";
 
 import type { BackofficeRuntimeToolCall } from "../runtime-tools/runtime-tools";
+import { AUTOMATION_SCRIPT_ENGINES } from "./engines";
 
-export type AutomationRunRuntime = "bash" | "codemode";
+export type AutomationRunRuntime =
+  (typeof AUTOMATION_SCRIPT_ENGINES)[keyof typeof AUTOMATION_SCRIPT_ENGINES];
 
 export type AutomationCommandCallResult = {
   command: string;
@@ -43,7 +45,11 @@ export const automationCommandCallResultSchema = z.object({
 });
 
 export const automationRunResultSchema = z.object({
-  runtime: z.enum(["bash", "codemode"]),
+  runtime: z.enum([
+    AUTOMATION_SCRIPT_ENGINES.bash,
+    AUTOMATION_SCRIPT_ENGINES.codemode,
+    AUTOMATION_SCRIPT_ENGINES.codemodeWorkflow,
+  ]),
   eventId: z.string(),
   scriptId: z.string(),
   exitCode: z.number(),

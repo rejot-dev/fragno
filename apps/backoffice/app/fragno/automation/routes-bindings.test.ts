@@ -79,7 +79,7 @@ describe("automation routes /bindings", () => {
             source: "telegram",
             eventType: "message.received",
             scriptKey: "telegram-claim-linking.start",
-            scriptPath: "scripts/telegram-claim-linking.start.cm.js",
+            scriptPath: "scripts/telegram-claim-linking.start.workflow.cm.js",
           }),
           expect.objectContaining({
             id: "telegram-claim-linking-complete",

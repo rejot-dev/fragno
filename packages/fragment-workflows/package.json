@@ -35,6 +35,10 @@
       "types": "./dist/node/instance-ref.d.ts",
       "default": "./dist/node/instance-ref.js"
     },
+    "./dynamic-runtime": {
+      "types": "./dist/node-bundle/dynamic-runtime.d.ts",
+      "default": "./dist/node-bundle/dynamic-runtime.js"
+    },
     "./step-live-pump": {
       "types": "./dist/node/runner/step-live-pump.d.ts",
       "default": "./dist/node/runner/step-live-pump.js"

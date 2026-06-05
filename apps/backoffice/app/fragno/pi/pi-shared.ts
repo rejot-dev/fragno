@@ -110,6 +110,7 @@ Codemode harness guidance:
 - Do not assume import() or module loading is available inside dynamic Worker code.
 - Write codemode automation scripts as standalone async arrow functions, for example: async () => { return await state.readFile("/workspace/file.txt"); }
 - Codemode automation script files must use /workspace/automations/scripts/*.cm.js and bindings.json entries must set script.engine to "codemode".
+- Codemode workflow automation script files should use /workspace/automations/scripts/*.workflow.cm.js and bindings.json entries must set script.engine to "codemode-workflow".
 - Bash automation script files usually use *.sh and bindings.json entries must set script.engine to "bash".
 - Codemode automation scripts read event data from /context/event.json with state.readFile and should return JSON-serializable values.
 - Do not call non-existent aliases like state.listFiles, state.readDirectory, or state.list.

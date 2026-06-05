@@ -1,4 +1,5 @@
 import { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES } from "@/fragno/automation/contracts";
+import { AUTOMATION_SCRIPT_ENGINES } from "@/fragno/automation/engines";
 
 import type { FileSystemArtifact } from "../types";
 
@@ -6,73 +7,83 @@ export const STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH = "automations/bindings.j
 
 /**
  * Full starter automation bindings: trigger metadata, manifest script descriptor (absolute path under /workspace), and file body.
- * Order: telegram claim start → OTP complete → Pi session ensure.
+ * Order: telegram claim start → OTP complete → Telegram /test sleep reply → Pi session ensure.
  */
 const STARTER_AUTOMATION_BINDINGS = [
   {
     id: "telegram-claim-linking-start",
     source: AUTOMATION_SOURCES.telegram,
     eventType: AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived,
-    enabled: true,
+    enabled: false,
     script: {
       key: "telegram-claim-linking.start",
       name: "Telegram claim linking start",
-      engine: "codemode" as const,
-      path: "/workspace/automations/scripts/telegram-claim-linking.start.cm.js",
+      engine: AUTOMATION_SCRIPT_ENGINES.codemodeWorkflow,
+      path: "/workspace/automations/scripts/telegram-claim-linking.start.workflow.cm.js",
       version: 1,
       agent: null,
       env: {},
     },
-    content: `async () => {
-  const event = JSON.parse(await state.readFile("/context/event.json"));
+    content: `defineWorkflow({ name: "telegram-claim-linking-start" }, async ({ payload }, step) => {
+  const event = await step.do("read event", () => payload.event);
   const text = event?.payload?.text ?? "";
   const source = event?.source ?? "";
   const externalActorId = event?.actor?.externalId ?? "";
 
   if (text !== "/start") {
-    return;
+    return { skipped: true, reason: "not-start-command" };
   }
 
-  const linkedUser = await automations.lookupBinding({
-    source,
-    key: externalActorId,
-  });
+  const linkedUser = await step.do("lookup binding", () =>
+    automations.lookupBinding({
+      source,
+      key: externalActorId,
+    }),
+  );
 
   if (linkedUser?.value) {
-    await telegram.sendMessage({
-      chatId: externalActorId,
-      text: "This Telegram chat is already linked.",
-      parseMode: "Markdown",
-    });
-    return;
+    await step.do("send already-linked message", () =>
+      telegram.sendMessage({
+        chatId: externalActorId,
+        text: "This Telegram chat is already linked.",
+        parseMode: "Markdown",
+      }),
+    );
+    return { linked: true };
   }
 
-  const claim = await otp.createIdentityClaim({
-    source,
-    externalActorId,
-  });
+  const claim = await step.do("create claim", () =>
+    otp.createIdentityClaim({
+      source,
+      externalActorId,
+    }),
+  );
 
   if (!claim?.url) {
     throw new Error("otp.createIdentityClaim did not return a URL");
   }
 
-  await telegram.sendMessage({
-    chatId: externalActorId,
-    text: "Open this link to finish linking your Telegram account: " + claim.url,
-    parseMode: "Markdown",
-  });
-};
+  await step.do("send claim link", () =>
+    telegram.sendMessage({
+      chatId: externalActorId,
+      text: "Open this link to finish linking your Telegram account: " + claim.url,
+      parseMode: "Markdown",
+    }),
+  );
+
+  return { linked: false, claimCreated: true };
+});
 `,
   },
   {
     id: "telegram-claim-linking-complete",
     source: AUTOMATION_SOURCES.otp,
     eventType: AUTOMATION_SOURCE_EVENT_TYPES.otp.identityClaimCompleted,
-    enabled: true,
+    enabled: false,
     script: {
       key: "telegram-claim-linking.complete",
       name: "Telegram claim linking completion",
-      engine: "codemode" as const,
+      engine: AUTOMATION_SCRIPT_ENGINES.codemode,
       path: "/workspace/automations/scripts/telegram-claim-linking.complete.cm.js",
       version: 1,
       agent: null,
@@ -123,11 +134,11 @@ const STARTER_AUTOMATION_BINDINGS = [
     id: "telegram-pi-session-ensure",
     source: AUTOMATION_SOURCES.telegram,
     eventType: AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived,
-    enabled: true,
+    enabled: false,
     script: {
       key: "telegram-pi-session.ensure",
       name: "Telegram Pi session ensure (linked chat)",
-      engine: "codemode" as const,
+      engine: AUTOMATION_SCRIPT_ENGINES.codemode,
       path: "/workspace/automations/scripts/telegram-pi-session.ensure.cm.js",
       version: 1,
       agent: null,
@@ -247,6 +258,49 @@ const STARTER_AUTOMATION_BINDINGS = [
 };
 `,
   },
+  {
+    id: "telegram-test-sleep-reply",
+    source: AUTOMATION_SOURCES.telegram,
+    eventType: AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived,
+    enabled: true,
+    triggerOrder: 100,
+    script: {
+      key: "telegram-test.sleep-reply",
+      name: "Telegram /test delayed reply",
+      engine: AUTOMATION_SCRIPT_ENGINES.codemodeWorkflow,
+      path: "/workspace/automations/scripts/telegram-test.sleep-reply.workflow.cm.js",
+      version: 1,
+      agent: null,
+      env: {},
+    },
+    content: `defineWorkflow({ name: "telegram-test-sleep-reply" }, async ({ payload }, step) => {
+  const event = await step.do("read event", () => payload.event);
+  const text = event?.payload?.text ?? "";
+  const externalActorId = event?.actor?.externalId ?? "";
+  const chatId = event?.payload?.chatId ?? externalActorId;
+
+  if (text !== "/test") {
+    return { skipped: true, reason: "not-test-command" };
+  }
+
+  if (!chatId) {
+    throw new Error("Missing Telegram chat id for /test reply");
+  }
+
+  await step.sleep("wait 3 seconds", "3 seconds");
+
+  await step.do("send delayed test reply", () =>
+    telegram.sendMessage({
+      chatId,
+      text: "Delayed /test reply after 3 seconds.",
+      parseMode: "Markdown",
+    }),
+  );
+
+  return { replied: true };
+});
+`,
+  },
 ] as const;
 
 export const STARTER_AUTOMATION_SCRIPT_PATHS = {
@@ -255,6 +309,7 @@ export const STARTER_AUTOMATION_SCRIPT_PATHS = {
     "/workspace/".length,
   ),
   telegramPiSessionEnsure: STARTER_AUTOMATION_BINDINGS[2].script.path.slice("/workspace/".length),
+  telegramTestSleepReply: STARTER_AUTOMATION_BINDINGS[3].script.path.slice("/workspace/".length),
 } as const;
 
 const STARTER_AUTOMATION_MANIFEST = {

@@ -163,7 +163,7 @@ describe("automation catalog", () => {
     expect(catalog.scripts.map((script) => script.path)).toEqual(
       expect.arrayContaining([
         "scripts/telegram-claim-linking.complete.cm.js",
-        "scripts/telegram-claim-linking.start.cm.js",
+        "scripts/telegram-claim-linking.start.workflow.cm.js",
         "scripts/telegram-pi-session.ensure.cm.js",
       ]),
     );

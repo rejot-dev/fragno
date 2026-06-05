@@ -164,7 +164,7 @@ type CodemodeToolDescriptor = {
   execute: (input: unknown) => Promise<unknown>;
 };
 
-const summarizeToolValue = (value: unknown) => {
+export const summarizeToolValue = (value: unknown) => {
   try {
     const summary = JSON.stringify(value);
     if (typeof summary === "string") {
@@ -178,7 +178,7 @@ const summarizeToolValue = (value: unknown) => {
   return summary.length > 500 ? `${summary.slice(0, 497)}...` : summary;
 };
 
-const executeBackofficeRuntimeTool = async (
+export const executeBackofficeRuntimeTool = async (
   tool: AnyBackofficeRuntimeTool,
   input: unknown,
   context: BackofficeToolContext,

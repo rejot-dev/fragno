@@ -36,6 +36,8 @@ export function createAutomationFragment(
 }
 
 export { automationFragmentDefinition } from "./definition";
+export { AUTOMATION_SCRIPT_ENGINES } from "./engines";
+export type { AutomationScriptEngine } from "./engines";
 export { automationFragmentSchema, AUTOMATION_TRIGGER_ORDER_LAST } from "./schema";
 export type { AutomationFragmentConfig, AutomationPiBashContext };
 export {
@@ -94,7 +96,7 @@ export {
   createUnavailableTelegramRuntime,
 } from "../runtime-tools/families/telegram-runtime";
 export { createAutomationExecutionContext, createAutomationRuntime } from "./engine/runtime";
-export { executeAutomationScript, executeBashAutomation } from "../runtime-tools/automation-host";
+export { executeBashAutomation } from "../runtime-tools/automation-host";
 export { createAutomationRunResult, formatAutomationResultAsStdout } from "./run-result";
 export type {
   AutomationRuntimeCommandContext,

@@ -5,7 +5,7 @@ import { withDatabase, type TxResult } from "@fragno-dev/db";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
 import { MasterFileSystem } from "@/files/master-file-system";
-import { executeAutomationScript } from "@/fragno/runtime-tools/automation-host";
+import { createAutomationScriptExecutor } from "@/fragno/runtime-tools/automation-host";
 
 import type { AutomationFileSystemConfig, AutomationFileSystemResolverInput } from "./catalog";
 import {
@@ -13,6 +13,7 @@ import {
   loadAutomationCatalog,
   resolveAutomationFileSystem,
 } from "./catalog";
+import type { CodemodeWorkflowInstanceCreator } from "./codemode-workflow-facet";
 import type { AutomationEvent } from "./contracts";
 import {
   createAutomationExecutionContext,
@@ -49,6 +50,7 @@ export interface AutomationFragmentConfig extends AutomationFileSystemConfig {
     event: AutomationEvent;
     idempotencyKey: string;
   }) => Promise<AutomationPiBashContext | undefined> | AutomationPiBashContext | undefined;
+  createCodemodeWorkflowInstance?: CodemodeWorkflowInstanceCreator;
 }
 
 const buildIngestResult = (event: AutomationEvent): AutomationIngestResult => ({
@@ -96,6 +98,10 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
           env: config.env,
           event: payload,
         });
+        const executeAutomationScript = createAutomationScriptExecutor({
+          env: config.env,
+          createCodemodeWorkflowInstance: config.createCodemodeWorkflowInstance,
+        });
         const pi = await config.createPiAutomationContext?.({
           event: payload,
           idempotencyKey: this.idempotencyKey,
@@ -130,7 +136,6 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
             script: binding.scriptBody,
             masterFs,
             context,
-            env: config.env,
           });
 
           if (result.exitCode !== 0) {

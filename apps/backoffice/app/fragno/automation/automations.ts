@@ -33,7 +33,11 @@ export const createAutomationsRuntime = (
   state: DurableObjectState,
   config: Pick<
     AutomationFragmentConfig,
-    "env" | "createPiAutomationContext" | "automationFileSystem" | "getAutomationFileSystem"
+    | "env"
+    | "createPiAutomationContext"
+    | "createCodemodeWorkflowInstance"
+    | "automationFileSystem"
+    | "getAutomationFileSystem"
   > = {},
 ) => {
   const databaseAdapter = createAutomationsAdapter(state);
@@ -51,6 +55,7 @@ export const createAutomationsRuntime = (
     {
       env: config.env,
       createPiAutomationContext: config.createPiAutomationContext,
+      createCodemodeWorkflowInstance: config.createCodemodeWorkflowInstance,
       automationFileSystem: config.automationFileSystem,
       getAutomationFileSystem: config.getAutomationFileSystem,
     },

@@ -12,6 +12,7 @@ This workspace is the editable side of the combined Files system.
 2. Draft prompts, plans, or scratch output in the folders below.
 3. Manage automation defaults in \`automations/bindings.json\` (with absolute \`/workspace/automations/...\` script paths) and scripts under \`automations/scripts/\`.
    - Use \`*.cm.js\` plus \`engine: "codemode"\` for codemode scripts.
+   - Use \`*.workflow.cm.js\` plus \`engine: "codemode-workflow"\` for durable workflow scripts.
    - Use \`*.sh\` plus \`engine: "bash"\` for bash scripts.
 4. When Upload is configured, persistent files can override these starter files at the same path.
 

@@ -4,10 +4,14 @@ import {
   AUTOMATION_WORKSPACE_ROOT,
   resolveAutomationFileSystem,
   type AutomationFileSystemConfig,
-  type AutomationScriptEngine,
 } from "@/fragno/automation/catalog";
+import type { CodemodeWorkflowInstanceCreator } from "@/fragno/automation/codemode-workflow-facet";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
 import { createAutomationExecutionFileSystem } from "@/fragno/automation/engine/execution-file-system";
+import {
+  AUTOMATION_SCRIPT_ENGINES,
+  type AutomationScriptEngine,
+} from "@/fragno/automation/engines";
 import { createRouteBackedAutomationsRuntime } from "@/fragno/automation/identity-runtime";
 import {
   createAutomationRunResult,
@@ -93,7 +97,7 @@ export const executeBashAutomation = async ({
   const result = await bash.exec(script);
 
   return createAutomationRunResult({
-    runtime: "bash",
+    runtime: AUTOMATION_SCRIPT_ENGINES.bash,
     eventId: context.automation.event.id,
     scriptId: context.automation.binding.scriptId,
     exitCode: result.exitCode ?? 0,
@@ -103,34 +107,45 @@ export const executeBashAutomation = async ({
   });
 };
 
-export const executeAutomationScript = async ({
-  engine,
-  script,
-  context,
-  masterFs,
-  env,
-}: {
+export type AutomationScriptExecutorOptions = {
+  env?: CloudflareEnv;
+  createCodemodeWorkflowInstance?: CodemodeWorkflowInstanceCreator;
+};
+
+export type ExecuteAutomationScriptInput = {
   engine: AutomationScriptEngine;
   script: string;
   context: AutomationExecutionContext;
   masterFs: MasterFileSystem;
-  env?: CloudflareEnv;
-}) => {
-  switch (engine) {
-    case "bash":
-      return executeBashAutomation({ script, context, masterFs });
-    case "codemode": {
-      if (!env?.LOADER) {
-        throw new Error(
-          "Codemode automation requires the Cloudflare Worker Loader. Run codemode execution tests with vitest.cloudflare.config.ts.",
-        );
-      }
-
-      const { executeCodemodeAutomation } = await import("@/fragno/automation/engine/codemode");
-      return executeCodemodeAutomation({ script, context, masterFs, env });
-    }
-  }
 };
+
+export const createAutomationScriptExecutor =
+  ({ env, createCodemodeWorkflowInstance }: AutomationScriptExecutorOptions) =>
+  async ({ engine, script, context, masterFs }: ExecuteAutomationScriptInput) => {
+    switch (engine) {
+      case AUTOMATION_SCRIPT_ENGINES.bash:
+        return executeBashAutomation({ script, context, masterFs });
+      case AUTOMATION_SCRIPT_ENGINES.codemodeWorkflow: {
+        const { executeCodemodeWorkflowAutomation } =
+          await import("@/fragno/automation/engine/codemode");
+        return executeCodemodeWorkflowAutomation({
+          script,
+          context,
+          createCodemodeWorkflowInstance,
+        });
+      }
+      case AUTOMATION_SCRIPT_ENGINES.codemode: {
+        if (!env?.LOADER) {
+          throw new Error(
+            "Codemode automation requires the Cloudflare Worker Loader. Run codemode execution tests with vitest.cloudflare.config.ts.",
+          );
+        }
+
+        const { executeCodemodeAutomation } = await import("@/fragno/automation/engine/codemode");
+        return executeCodemodeAutomation({ script, context, masterFs, env });
+      }
+    }
+  };
 
 // ---------------------------------------------------------------------------
 // Script runner runtime (reads script + event from filesystem, sub-executes)
@@ -145,7 +160,11 @@ const resolveScriptPath = (scriptArg: string): string => {
 };
 
 const inferInteractiveScriptRunEngine = (scriptPath: string): AutomationScriptEngine =>
-  scriptPath.endsWith(".cm.js") ? "codemode" : "bash";
+  scriptPath.endsWith(".workflow.cm.js")
+    ? AUTOMATION_SCRIPT_ENGINES.codemodeWorkflow
+    : scriptPath.endsWith(".cm.js")
+      ? AUTOMATION_SCRIPT_ENGINES.codemode
+      : AUTOMATION_SCRIPT_ENGINES.bash;
 
 export type CreateScriptRunnerRuntimeOptions = {
   fileSystemConfig: AutomationFileSystemConfig;
@@ -291,12 +310,13 @@ export const createScriptRunnerRuntime = (
       );
     }
 
+    const executeAutomationScript = createAutomationScriptExecutor({ env: options.env });
+
     return executeAutomationScript({
       engine: inferInteractiveScriptRunEngine(absoluteScriptPath),
       script: scriptBody,
       context,
       masterFs: fileSystem,
-      env: options.env,
     });
   },
 });
