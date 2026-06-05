@@ -670,6 +670,7 @@ export type WorkflowScenarioCreateStep<
   type: "create";
   workflow: ScenarioInput<(keyof TRegistry & string) | string, TRegistry, TVars>;
   params?: ScenarioInput<unknown, TRegistry, TVars>;
+  remoteWorkflowName?: ScenarioInput<string, TRegistry, TVars>;
   id?: ScenarioInput<string, TRegistry, TVars>;
   storeAs?: (keyof TVars & string) | undefined;
 };
@@ -681,6 +682,7 @@ export type WorkflowScenarioInitializeAndRunUntilIdleStep<
   type: "initializeAndRunUntilIdle";
   workflow: ScenarioInput<(keyof TRegistry & string) | string, TRegistry, TVars>;
   params?: ScenarioInput<unknown, TRegistry, TVars>;
+  remoteWorkflowName?: ScenarioInput<string, TRegistry, TVars>;
   id?: ScenarioInput<string, TRegistry, TVars>;
   timestamp?: ScenarioInput<Date, TRegistry, TVars>;
   maxTicks?: ScenarioInput<number, TRegistry, TVars>;
@@ -695,6 +697,7 @@ export type WorkflowScenarioCreateBatchStep<
   type: "createBatch";
   workflow: ScenarioInput<(keyof TRegistry & string) | string, TRegistry, TVars>;
   instances: ScenarioInput<Array<{ id: string; params?: unknown }>, TRegistry, TVars>;
+  remoteWorkflowName?: ScenarioInput<string, TRegistry, TVars>;
   storeAs?: (keyof TVars & string) | undefined;
 };
 
@@ -2298,9 +2301,13 @@ export async function runScenario<
           );
           const params = step.params ? await resolveScenarioInput(step.params, context) : undefined;
           const id = step.id ? await resolveScenarioInput(step.id, context) : undefined;
+          const remoteWorkflowName = step.remoteWorkflowName
+            ? await resolveScenarioInput(step.remoteWorkflowName, context)
+            : undefined;
           const instanceId = await context.harness.createInstance(workflowName, {
             ...(id ? { id } : {}),
             ...(params ? { params } : {}),
+            ...(remoteWorkflowName ? { remoteWorkflowName } : {}),
           });
           if (step.storeAs) {
             (context.vars as Record<string, unknown>)[step.storeAs] = instanceId;
@@ -2313,9 +2320,13 @@ export async function runScenario<
           );
           const params = step.params ? await resolveScenarioInput(step.params, context) : undefined;
           const id = step.id ? await resolveScenarioInput(step.id, context) : undefined;
+          const remoteWorkflowName = step.remoteWorkflowName
+            ? await resolveScenarioInput(step.remoteWorkflowName, context)
+            : undefined;
           const instanceId = await context.harness.createInstance(workflowName, {
             ...(id ? { id } : {}),
             ...(params ? { params } : {}),
+            ...(remoteWorkflowName ? { remoteWorkflowName } : {}),
           });
           if (step.storeAs) {
             (context.vars as Record<string, unknown>)[step.storeAs] = instanceId;
@@ -2347,7 +2358,14 @@ export async function runScenario<
             String(await resolveScenarioInput(step.workflow, context)),
           );
           const instances = await resolveScenarioInput(step.instances, context);
-          const resultInstances = await context.harness.createBatch(workflowName, instances);
+          const remoteWorkflowName = step.remoteWorkflowName
+            ? await resolveScenarioInput(step.remoteWorkflowName, context)
+            : undefined;
+          const resultInstances = await context.harness.createBatch(
+            workflowName,
+            instances,
+            remoteWorkflowName ? { remoteWorkflowName } : {},
+          );
           if (step.storeAs) {
             (context.vars as Record<string, unknown>)[step.storeAs] = resultInstances;
           }

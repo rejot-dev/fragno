@@ -20,9 +20,11 @@ const instanceStatusSchema = z.enum([
 const createInstanceSchema = z.object({
   id: identifierSchema.optional(),
   params: z.unknown().optional(),
+  remoteWorkflowName: identifierSchema.optional(),
 });
 
 const createBatchSchema = z.object({
+  remoteWorkflowName: identifierSchema.optional(),
   instances: z
     .array(
       z.object({
@@ -72,6 +74,7 @@ const currentStepOutputSchema = z.object({
 
 const instanceMetaOutputSchema = z.object({
   workflowName: z.string(),
+  remoteWorkflowName: z.string().optional(),
   params: z.unknown(),
   createdAt: z.date(),
   updatedAt: z.date(),
@@ -144,7 +147,7 @@ export const workflowsRoutesFactoryClient = defineRoutes().create(({ defineRoute
   defineRoute({
     method: "GET",
     path: "/:workflowName/instances",
-    queryParameters: ["status", "pageSize", "cursor"],
+    queryParameters: ["status", "remoteWorkflowName", "pageSize", "cursor"],
     outputSchema: z.object({
       instances: z.array(
         z.object({
@@ -171,6 +174,8 @@ export const workflowsRoutesFactoryClient = defineRoutes().create(({ defineRoute
       "INVALID_INSTANCE_ID",
       "INSTANCE_ID_ALREADY_EXISTS",
       "WORKFLOW_PARAMS_INVALID",
+      "WORKFLOW_REMOTE_HOST_INVALID",
+      "WORKFLOW_REMOTE_NAME_REQUIRED",
     ],
     handler: stubHandler,
   }),
@@ -186,7 +191,13 @@ export const workflowsRoutesFactoryClient = defineRoutes().create(({ defineRoute
         }),
       ),
     }),
-    errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "WORKFLOW_PARAMS_INVALID"],
+    errorCodes: [
+      "WORKFLOW_NOT_FOUND",
+      "INVALID_INSTANCE_ID",
+      "WORKFLOW_PARAMS_INVALID",
+      "WORKFLOW_REMOTE_HOST_INVALID",
+      "WORKFLOW_REMOTE_NAME_REQUIRED",
+    ],
     handler: stubHandler,
   }),
   defineRoute({

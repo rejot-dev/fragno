@@ -170,20 +170,29 @@ export type WorkflowsTestHarness<
   createInstance: {
     <K extends keyof TRegistry & string>(
       workflowNameOrKey: K,
-      options?: { id?: string; params?: WorkflowParamsFromEntry<TRegistry[K]> },
+      options?: {
+        id?: string;
+        params?: WorkflowParamsFromEntry<TRegistry[K]>;
+        remoteWorkflowName?: string;
+      },
     ): Promise<string>;
-    (workflowNameOrKey: string, options?: { id?: string; params?: unknown }): Promise<string>;
+    (
+      workflowNameOrKey: string,
+      options?: { id?: string; params?: unknown; remoteWorkflowName?: string },
+    ): Promise<string>;
   };
   createBatch: {
     <K extends keyof TRegistry & string>(
       workflowNameOrKey: K,
       instances: { id: string; params?: WorkflowParamsFromEntry<TRegistry[K]> }[],
+      options?: { remoteWorkflowName?: string },
     ): Promise<
       { id: string; details: InstanceStatusWithOutput<WorkflowOutputFromEntry<TRegistry[K]>> }[]
     >;
     (
       workflowNameOrKey: string,
       instances: { id: string; params?: unknown }[],
+      options?: { remoteWorkflowName?: string },
     ): Promise<{ id: string; details: InstanceStatus }[]>;
   };
   sendEvent: {
@@ -639,7 +648,7 @@ export async function createWorkflowsTestHarness<
     test,
     createInstance: (async (
       workflowNameOrKey: (keyof TRegistry & string) | string,
-      instanceOptions?: { id?: string; params?: unknown },
+      instanceOptions?: { id?: string; params?: unknown; remoteWorkflowName?: string },
     ) => {
       const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
       const result = await runWorkflowService<{ id: string }>(() =>
@@ -650,10 +659,11 @@ export async function createWorkflowsTestHarness<
     createBatch: (async (
       workflowNameOrKey: (keyof TRegistry & string) | string,
       instances: { id: string; params?: unknown }[],
+      options?: { remoteWorkflowName?: string },
     ) => {
       const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
       return await runWorkflowService<{ id: string; details: InstanceStatus }[]>(() =>
-        getFragment().services.createBatch(workflowName, instances),
+        getFragment().services.createBatch(workflowName, instances, options),
       );
     }) as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["createBatch"],
     sendEvent: (async (

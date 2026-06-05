@@ -4,6 +4,7 @@ import type { FragnoRuntime } from "@fragno-dev/core";
 import type { HandlerTxContext, HooksMap, TxResult } from "@fragno-dev/db";
 
 import type { WorkflowsLoggerConfig } from "./debug-log";
+import { getRemoteWorkflowStepHost, type RemoteWorkflowStepHost } from "./remote-workflow";
 import type { WorkflowStepLivePumpRegistry } from "./runner/step-live-pump";
 
 /** Relative or absolute durations supported by workflow steps. */
@@ -141,6 +142,7 @@ export type WorkflowInstanceCurrentStep = {
 /** Metadata describing a workflow instance for operators. */
 export type WorkflowInstanceMetadata = {
   workflowName: string;
+  remoteWorkflowName?: string;
   params: unknown;
   createdAt: Date;
   updatedAt: Date;
@@ -206,8 +208,15 @@ export interface WorkflowDefinition<
   name: TName;
   schema?: TInputSchema;
   outputSchema?: TOutputSchema;
+  remote?: boolean;
+  remoteWorkflowName?: string;
   run: WorkflowRunFn<TParams, TOutput>;
 }
+
+export type RemoteWorkflowRunFn<TParams = unknown, TOutput = unknown> = (
+  event: WorkflowEvent<TParams>,
+  remote: RemoteWorkflowStepHost,
+) => Promise<TOutput> | TOutput;
 
 export function defineWorkflow<TName extends string, TParams, TOutput = unknown>(
   options: { name: TName; schema?: undefined; outputSchema?: undefined },
@@ -275,6 +284,31 @@ export function defineWorkflow<TName extends string>(
   TName
 > {
   return { ...options, run };
+}
+
+export function defineRemoteWorkflow<TName extends string, TParams = unknown, TOutput = unknown>(
+  options: { name: TName; schema?: undefined; outputSchema?: undefined },
+  run: RemoteWorkflowRunFn<TParams, TOutput>,
+): WorkflowDefinition<TParams, TOutput, undefined, undefined, TName> & { remote: true };
+export function defineRemoteWorkflow<TName extends string>(
+  options: {
+    name: TName;
+    schema?: StandardSchemaV1;
+    outputSchema?: StandardSchemaV1;
+  },
+  run: RemoteWorkflowRunFn<unknown, unknown>,
+): WorkflowDefinition<
+  unknown,
+  unknown,
+  StandardSchemaV1 | undefined,
+  StandardSchemaV1 | undefined,
+  TName
+> & { remote: true } {
+  return {
+    ...options,
+    remote: true,
+    run: async (event, step) => await run(event, getRemoteWorkflowStepHost(step)),
+  };
 }
 
 /** Workflow registry entry (function-based). */

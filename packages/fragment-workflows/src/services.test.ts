@@ -161,6 +161,42 @@ describe("Workflows Fragment Services", () => {
     expect(seen).toHaveLength(ids.length);
   });
 
+  test("listInstances filters by remote workflow name and status together", async () => {
+    const records = [
+      { id: "remote-a-complete", remoteWorkflowName: "remote-a", status: "complete" },
+      { id: "remote-a-active", remoteWorkflowName: "remote-a", status: "active" },
+      { id: "remote-b-complete", remoteWorkflowName: "remote-b", status: "complete" },
+    ] as const;
+
+    const uow = db.createUnitOfWork("remote-status-filter").forSchema(workflowsSchema);
+    for (const record of records) {
+      uow.create("workflow_instance", {
+        id: buildScopedInstanceRowId("demo-workflow", record.id),
+        instanceId: record.id,
+        workflowName: "demo-workflow",
+        remoteWorkflowName: record.remoteWorkflowName,
+        status: record.status,
+        params: {},
+        startedAt: null,
+        completedAt: record.status === "complete" ? new Date("2026-01-01T00:00:00.000Z") : null,
+        output: null,
+        errorName: null,
+        errorMessage: null,
+      });
+    }
+    expect((await uow.executeMutations()).success).toBe(true);
+
+    const page = await runService<{ instances: { id: string }[] }>(() =>
+      fragment.services.listInstances({
+        workflowName: "demo-workflow",
+        remoteWorkflowName: "remote-a",
+        status: "complete",
+      }),
+    );
+
+    expect(page.instances.map((instance) => instance.id)).toEqual(["remote-a-complete"]);
+  });
+
   test("pause and resume should update status", async () => {
     const created = await runService<{ id: string }>(() =>
       fragment.services.createInstance("demo-workflow", { id: "pause-1" }),

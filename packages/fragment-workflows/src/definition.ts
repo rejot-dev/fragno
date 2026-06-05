@@ -98,6 +98,7 @@ export type WorkflowsHistory = {
 
 type ListInstancesParams = {
   workflowName: string;
+  remoteWorkflowName?: string;
   status?: InstanceStatus["status"];
   pageSize?: number;
   cursor?: Cursor;
@@ -144,6 +145,7 @@ export function buildInstanceStatus(instance: WorkflowInstanceStatusRecord): Ins
 function buildInstanceMetadata(instance: WorkflowInstanceRecord): WorkflowInstanceMetadata {
   return {
     workflowName: instance.workflowName,
+    remoteWorkflowName: instance.remoteWorkflowName ?? undefined,
     params: instance.params ?? {},
     createdAt: instance.createdAt,
     updatedAt: instance.updatedAt,
@@ -333,15 +335,21 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
       return entry;
     };
 
-    const assertWorkflowName = (workflowName: string) => {
-      getWorkflowEntry(workflowName);
-    };
-
     const normalizeEventPayload = (payload: unknown) => payload ?? null;
 
     return defineService({
-      createInstance: function (workflowName: string, options?: { id?: string; params?: unknown }) {
-        assertWorkflowName(workflowName);
+      createInstance: function (
+        workflowName: string,
+        options?: { id?: string; params?: unknown; remoteWorkflowName?: string },
+      ) {
+        const workflow = getWorkflowEntry(workflowName);
+        const remoteWorkflowName = options?.remoteWorkflowName;
+        if (workflow.remote === true && !remoteWorkflowName) {
+          throw new Error("WORKFLOW_REMOTE_NAME_REQUIRED");
+        }
+        if (remoteWorkflowName && workflow.remote !== true) {
+          throw new Error("WORKFLOW_REMOTE_HOST_INVALID");
+        }
         const instanceId = options?.id ?? generateInstanceId(randomUuid);
         const params = options?.params ?? {};
 
@@ -350,6 +358,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
             const instanceRef = uow.create("workflow_instance", {
               id: buildScopedInstanceRowId(workflowName, instanceId),
               workflowName,
+              remoteWorkflowName: remoteWorkflowName ?? null,
               instanceId,
               status: "active",
               params,
@@ -379,8 +388,19 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           })
           .build();
       },
-      createBatch: function (workflowName: string, instances: { id: string; params?: unknown }[]) {
-        assertWorkflowName(workflowName);
+      createBatch: function (
+        workflowName: string,
+        instances: { id: string; params?: unknown }[],
+        options?: { remoteWorkflowName?: string },
+      ) {
+        const workflow = getWorkflowEntry(workflowName);
+        const remoteWorkflowName = options?.remoteWorkflowName;
+        if (workflow.remote === true && !remoteWorkflowName) {
+          throw new Error("WORKFLOW_REMOTE_NAME_REQUIRED");
+        }
+        if (remoteWorkflowName && workflow.remote !== true) {
+          throw new Error("WORKFLOW_REMOTE_HOST_INVALID");
+        }
         if (instances.length === 0) {
           return this.serviceTx(workflowsSchema)
             .transform(() => [])
@@ -417,6 +437,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               const instanceRef = uow.create("workflow_instance", {
                 id: buildScopedInstanceRowId(workflowName, instance.id),
                 workflowName,
+                remoteWorkflowName: remoteWorkflowName ?? null,
                 instanceId: instance.id,
                 status: "active",
                 params: instance.params ?? {},
@@ -450,7 +471,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       getInstanceStatus: function (workflowName: string, instanceId: string) {
-        assertWorkflowName(workflowName);
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
@@ -468,7 +488,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       getInstanceMetadata: function (workflowName: string, instanceId: string) {
-        assertWorkflowName(workflowName);
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
@@ -486,7 +505,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       getInstanceCurrentStep: function (workflowName: string, instanceId: string) {
-        assertWorkflowName(workflowName);
         const instanceRef = buildScopedInstanceRowId(workflowName, instanceId);
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
@@ -507,18 +525,57 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
       },
       listInstances: function ({
         workflowName,
+        remoteWorkflowName,
         status,
         pageSize = DEFAULT_PAGE_SIZE,
         cursor,
         order = "desc",
       }: ListInstancesParams) {
-        assertWorkflowName(workflowName);
         const effectivePageSize = cursor?.pageSize ?? pageSize;
         const effectiveOrder = cursor?.orderDirection ?? order;
 
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findWithCursor("workflow_instance", (b) => {
+              if (remoteWorkflowName && status) {
+                const query = b
+                  .whereIndex(
+                    "idx_workflow_instance_workflowName_remoteWorkflowName_status_instanceId",
+                    (eb) =>
+                      eb.and(
+                        eb("workflowName", "=", workflowName),
+                        eb("remoteWorkflowName", "=", remoteWorkflowName),
+                        eb("status", "=", status),
+                      ),
+                  )
+                  .orderByIndex(
+                    "idx_workflow_instance_workflowName_remoteWorkflowName_status_instanceId",
+                    effectiveOrder,
+                  )
+                  .pageSize(effectivePageSize);
+
+                return cursor ? query.after(cursor) : query;
+              }
+
+              if (remoteWorkflowName) {
+                const query = b
+                  .whereIndex(
+                    "idx_workflow_instance_workflowName_remoteWorkflowName_instanceId",
+                    (eb) =>
+                      eb.and(
+                        eb("workflowName", "=", workflowName),
+                        eb("remoteWorkflowName", "=", remoteWorkflowName),
+                      ),
+                  )
+                  .orderByIndex(
+                    "idx_workflow_instance_workflowName_remoteWorkflowName_instanceId",
+                    effectiveOrder,
+                  )
+                  .pageSize(effectivePageSize);
+
+                return cursor ? query.after(cursor) : query;
+              }
+
               if (status) {
                 const query = b
                   .whereIndex("idx_workflow_instance_workflowName_status_instanceId", (eb) =>
@@ -557,7 +614,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       listHistory: function ({ workflowName, instanceId }: ListHistoryParams) {
-        assertWorkflowName(workflowName);
         const instanceRef = buildScopedInstanceRowId(workflowName, instanceId);
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) => {
@@ -606,7 +662,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       pauseInstance: function (workflowName: string, instanceId: string) {
-        assertWorkflowName(workflowName);
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
@@ -650,7 +705,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       resumeInstance: function (workflowName: string, instanceId: string) {
-        assertWorkflowName(workflowName);
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
@@ -698,7 +752,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .build();
       },
       terminateInstance: function (workflowName: string, instanceId: string) {
-        assertWorkflowName(workflowName);
         return this.serviceTx(workflowsSchema)
           .retrieve((uow) =>
             uow.findFirst("workflow_instance", (b) =>
@@ -740,7 +793,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         instanceId: string;
         handlerTx: DatabaseHandlerTx;
       }) {
-        assertWorkflowName(params.workflowName);
         const handle = deps.stepEmissions.getOrCreate(
           workflowStepLivePumpKey(params.workflowName, params.instanceId),
           () =>
@@ -765,7 +817,6 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         instanceId: string,
         options: { id?: string; type: string; payload?: unknown; createdAt?: Date },
       ) {
-        assertWorkflowName(workflowName);
         const eventId = options.id ?? randomUuid();
         const instanceRef = buildScopedInstanceRowId(workflowName, instanceId);
 

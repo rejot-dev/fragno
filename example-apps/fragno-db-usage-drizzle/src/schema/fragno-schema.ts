@@ -508,6 +508,7 @@ const schema_workflows = pgSchema("workflows");
 export const workflow_instance_workflows = schema_workflows.table("workflow_instance", {
   id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
   workflowName: varchar("workflowName", { length: 191 }).notNull(),
+  remoteWorkflowName: varchar("remoteWorkflowName", { length: 191 }),
   instanceId: varchar("instanceId", { length: 191 }).notNull(),
   status: varchar("status", { length: 191 }).notNull(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -522,7 +523,9 @@ export const workflow_instance_workflows = schema_workflows.table("workflow_inst
   _version: integer("_version").notNull().default(0)
 }, (table) => [
   uniqueIndex("idx_workflow_instance_workflowName_instanceId").on(table.workflowName, table.instanceId),
-  index("idx_workflow_instance_workflowName_status_instanceId").on(table.workflowName, table.status, table.instanceId)
+  index("idx_workflow_instance_workflowName_status_instanceId").on(table.workflowName, table.status, table.instanceId),
+  index("idx_workflow_instance_workflowName_remoteWorkflowName_i236860b6").on(table.workflowName, table.remoteWorkflowName, table.instanceId),
+  index("idx_workflow_instance_workflowName_remoteWorkflowName_sb0276b96").on(table.workflowName, table.remoteWorkflowName, table.status, table.instanceId)
 ])
 
 export const workflow_step_workflows = schema_workflows.table("workflow_step", {
