@@ -234,15 +234,14 @@ describe("Workflows Fragment", () => {
       });
     });
 
-    test("GET /:workflowName/instances should return 404 for unknown workflows", async () => {
+    test("GET /:workflowName/instances should allow dynamic workflow names", async () => {
       const response = await fragment.callRoute("GET", "/:workflowName/instances", {
         pathParams: { workflowName: "missing-workflow" },
       });
 
-      expect(response.type).toBe("error");
-      if (response.type === "error") {
-        expect(response.error.code).toBe("WORKFLOW_NOT_FOUND");
-        expect(response.status).toBe(404);
+      expect(response.type).toBe("json");
+      if (response.type === "json") {
+        expect(response.data.instances).toEqual([]);
       }
     });
 

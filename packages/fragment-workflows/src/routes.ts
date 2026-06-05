@@ -30,6 +30,7 @@ const instanceStatusSchema = z.enum([
 
 const listInstancesQuerySchema = z.object({
   status: instanceStatusSchema.optional(),
+  remoteWorkflowName: identifierSchema.optional(),
   pageSize: z.coerce.number().min(1).max(100).catch(25),
   cursor: z.string().optional(),
 });
@@ -37,9 +38,11 @@ const listInstancesQuerySchema = z.object({
 const createInstanceSchema = z.object({
   id: identifierSchema.optional(),
   params: z.unknown().optional(),
+  remoteWorkflowName: identifierSchema.optional(),
 });
 
 const createBatchSchema = z.object({
+  remoteWorkflowName: identifierSchema.optional(),
   instances: z
     .array(
       z.object({
@@ -90,6 +93,7 @@ const currentStepOutputSchema = z.object({
 
 const instanceMetaOutputSchema = z.object({
   workflowName: z.string(),
+  remoteWorkflowName: z.string().optional(),
   params: z.unknown(),
   createdAt: z.date(),
   updatedAt: z.date(),
@@ -237,6 +241,26 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
         );
       }
 
+      if (err.message === "WORKFLOW_REMOTE_HOST_INVALID") {
+        return error(
+          {
+            message: "Workflow is not a remote workflow host",
+            code: "WORKFLOW_REMOTE_HOST_INVALID" as Code,
+          },
+          400,
+        );
+      }
+
+      if (err.message === "WORKFLOW_REMOTE_NAME_REQUIRED") {
+        return error(
+          {
+            message: "Remote workflow name is required",
+            code: "WORKFLOW_REMOTE_NAME_REQUIRED" as Code,
+          },
+          400,
+        );
+      }
+
       if (err.message === "WORKFLOW_PARAMS_INVALID") {
         return error(
           { message: "Invalid workflow params", code: "WORKFLOW_PARAMS_INVALID" as Code },
@@ -262,7 +286,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
       defineRoute({
         method: "GET",
         path: "/:workflowName/instances",
-        queryParameters: ["status", "pageSize", "cursor"],
+        queryParameters: ["status", "remoteWorkflowName", "pageSize", "cursor"],
         errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_CURSOR"],
         outputSchema: z.object({
           instances: z.array(
@@ -282,6 +306,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
 
           const params = listInstancesQuerySchema.parse({
             status: query.get("status") || undefined,
+            remoteWorkflowName: query.get("remoteWorkflowName") || undefined,
             pageSize: query.get("pageSize"),
             cursor: query.get("cursor") || undefined,
           });
@@ -298,6 +323,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
               .withServiceCalls(() => [
                 services.listInstances({
                   workflowName,
+                  remoteWorkflowName: params.remoteWorkflowName,
                   status: params.status as InstanceStatus["status"] | undefined,
                   pageSize: params.pageSize,
                   cursor,
@@ -329,6 +355,8 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           "INVALID_INSTANCE_ID",
           "INSTANCE_ID_ALREADY_EXISTS",
           "WORKFLOW_PARAMS_INVALID",
+          "WORKFLOW_REMOTE_HOST_INVALID",
+          "WORKFLOW_REMOTE_NAME_REQUIRED",
         ],
         handler: async function (context, { json, error }) {
           const { pathParams, input } = context;
@@ -356,6 +384,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
                 .withServiceCalls(() => [
                   services.createInstance(workflowName, {
                     params,
+                    remoteWorkflowName: payload.remoteWorkflowName,
                   }),
                 ])
                 .transform(({ serviceResult: [createdInstance] }) => createdInstance)
@@ -390,6 +419,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
                 services.createInstance(workflowName, {
                   id: requestedInstanceId,
                   params,
+                  remoteWorkflowName: payload.remoteWorkflowName,
                 }),
               ])
               .transform(({ serviceResult: [createdInstance] }) => createdInstance)
@@ -413,7 +443,13 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
             }),
           ),
         }),
-        errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "WORKFLOW_PARAMS_INVALID"],
+        errorCodes: [
+          "WORKFLOW_NOT_FOUND",
+          "INVALID_INSTANCE_ID",
+          "WORKFLOW_PARAMS_INVALID",
+          "WORKFLOW_REMOTE_HOST_INVALID",
+          "WORKFLOW_REMOTE_NAME_REQUIRED",
+        ],
         handler: async function (context, { json, error }) {
           const { pathParams, input } = context;
           const errorResponder = error as ErrorResponder;
@@ -448,7 +484,11 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
               })),
             );
             const result = await this.handlerTx()
-              .withServiceCalls(() => [services.createBatch(workflowName, validatedInstances)])
+              .withServiceCalls(() => [
+                services.createBatch(workflowName, validatedInstances, {
+                  remoteWorkflowName: payload.remoteWorkflowName,
+                }),
+              ])
               .transform(({ serviceResult: [result] }) => result)
               .execute();
 
@@ -471,13 +511,6 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           const { pathParams } = context;
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
-          if (!getWorkflowNames(config.workflows).includes(workflowName)) {
-            return errorResponder(
-              { message: "Workflow not found", code: "WORKFLOW_NOT_FOUND" },
-              404,
-            );
-          }
-
           const instanceId = pathParams.instanceId;
           const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);
           if (idError) {
@@ -525,6 +558,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
                 };
                 const meta = {
                   workflowName: instance.workflowName,
+                  remoteWorkflowName: instance.remoteWorkflowName ?? undefined,
                   params: instance.params ?? {},
                   createdAt: instance.createdAt,
                   updatedAt: instance.updatedAt,
@@ -578,13 +612,6 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           const errorResponder = error as ErrorResponder;
           const workflowName = pathParams.workflowName;
           const once = parseBooleanQueryValue(query.get("once"));
-
-          if (!getWorkflowNames(config.workflows).includes(workflowName)) {
-            return errorResponder(
-              { message: "Workflow not found", code: "WORKFLOW_NOT_FOUND" },
-              404,
-            );
-          }
 
           const instanceId = pathParams.instanceId;
           const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);

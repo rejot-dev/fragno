@@ -11,8 +11,10 @@ export const workflowsSchema = schema("workflows", (s) => {
           t
             // Opaque row id (idColumn provides external string + internal bigint).
             .addColumn("id", idColumn())
-            // Workflow registry key for routing and list queries.
+            // Public workflow name used for routing and list queries.
             .addColumn("workflowName", column("string"))
+            // Static remote host workflow used for execution, if this is a dynamic remote instance.
+            .addColumn("remoteWorkflowName", column("string").nullable())
             // Public instance id, scoped by workflowName.
             .addColumn("instanceId", column("string"))
             // Current status of the instance (active/waiting/paused/complete/errored/etc).
@@ -51,6 +53,15 @@ export const workflowsSchema = schema("workflows", (s) => {
               "status",
               "instanceId",
             ])
+            .createIndex("idx_workflow_instance_workflowName_remoteWorkflowName_instanceId", [
+              "workflowName",
+              "remoteWorkflowName",
+              "instanceId",
+            ])
+            .createIndex(
+              "idx_workflow_instance_workflowName_remoteWorkflowName_status_instanceId",
+              ["workflowName", "remoteWorkflowName", "status", "instanceId"],
+            )
         );
       })
       // Durable step execution history and wait state.
