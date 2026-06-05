@@ -426,6 +426,9 @@ const scriptRunTool = defineAutomationRuntimeTool({
           stderr: result.stderr,
           logs: result.logs,
           ...(result.result !== undefined ? { result: result.result } : {}),
+          ...(result.workflowDefinition !== undefined
+            ? { workflowDefinition: result.workflowDefinition }
+            : {}),
           commandCalls: result.commandCalls,
           toolCalls: result.toolCalls,
         };

@@ -29,6 +29,7 @@ import {
 } from "../runtime-tools/automation-host";
 import type { InteractiveBashCommandContext } from "../runtime-tools/bash-host";
 import type { AutomationsRuntime } from "../runtime-tools/families/automations";
+import type { WorkflowsRuntime } from "../runtime-tools/families/automations";
 import type { OtpRuntime } from "../runtime-tools/families/otp-runtime";
 import type { PiRuntime } from "../runtime-tools/families/pi";
 import type { ResendRuntime } from "../runtime-tools/families/resend";
@@ -39,6 +40,7 @@ import {
   type BackofficeToolContext,
 } from "../runtime-tools/runtime-tools";
 import { piCodemodeRuntimeToolFamilies } from "../runtime-tools/tool-families";
+import type { PiCodemodeWorkflowParams } from "./pi-codemode-workflow";
 import {
   PI_MODEL_CATALOG,
   PI_PROVIDER_TO_MODEL_PROVIDER,
@@ -84,6 +86,7 @@ export type PiSessionFileSystemContext = {
 
 type PiCodemodeToolContext = BackofficeToolContext<{
   automations?: AutomationsRuntime;
+  workflow?: WorkflowsRuntime;
   otp?: OtpRuntime;
   pi?: PiRuntime;
   resend?: ResendRuntime;
@@ -94,6 +97,7 @@ type PiCodemodeToolContext = BackofficeToolContext<{
 export type PiCodemodeRuntime = {
   env: BackofficeCodemodeEnv;
   execute(input: RunBackofficeCodemodeInput): Promise<BackofficeCodemodeExecuteResult>;
+  workflow?: WorkflowsRuntime;
 };
 
 export const bashParametersSchema = withSinclairSchema(
@@ -222,8 +226,10 @@ const formatExecCodeModeText = (result: BackofficeCodemodeExecuteResult) => {
 
 const createExecCodeModeTool = (
   fs: MasterFileSystem,
+  sessionId: string,
   codemode: PiCodemodeRuntime | undefined,
   bashCommandContext: PiBashCommandContext | undefined,
+  orgId: string,
 ): AgentTool =>
   defineTool({
     name: "execCodeMode",
@@ -244,6 +250,7 @@ const createExecCodeModeTool = (
       const context: PiCodemodeToolContext = {
         runtimes: {
           automations: bashCommandContext?.automations.runtime,
+          workflow: codemode.workflow,
           otp: bashCommandContext?.otp?.runtime,
           pi: bashCommandContext?.pi?.runtime,
           resend: bashCommandContext?.resend?.runtime,
@@ -264,6 +271,22 @@ const createExecCodeModeTool = (
         tools,
         context,
       });
+
+      if (result.workflowDefinition) {
+        if (!codemode.workflow) {
+          throw new Error("execCodeMode workflow definition cannot be scheduled in this runtime.");
+        }
+        result.result = await codemode.workflow.createInstance({
+          workflowName: "pi-codemode-script",
+          instanceId: `${sessionId}--${_toolCallId}`,
+          params: {
+            code,
+            sessionId,
+            toolCallId: _toolCallId,
+            orgId,
+          } satisfies PiCodemodeWorkflowParams,
+        });
+      }
 
       const text = formatExecCodeModeText(result);
 
@@ -332,7 +355,13 @@ export const createPiToolRegistry = ({
   },
   execCodeMode: async ({ session }) => {
     const fileSystem = await getSessionFs(sessionFileSystems, session.id, sessionFileSystemContext);
-    return createExecCodeModeTool(fileSystem, codemode, bashCommandContext);
+    return createExecCodeModeTool(
+      fileSystem,
+      session.id,
+      codemode,
+      bashCommandContext,
+      sessionFileSystemContext.orgId,
+    );
   },
 });
 
@@ -433,11 +462,12 @@ export const createPiRuntime = (options: {
   codemode?: PiCodemodeRuntime;
 }): PiRuntimeFragments => {
   const adapter = createPiAdapter(options.state);
+  const codemode = options.codemode;
   const tools = createPiToolRegistry({
     sessionFileSystems: options.sessionFileSystems,
     sessionFileSystemContext: options.sessionFileSystemContext,
     env: options.env,
-    codemode: options.codemode,
+    codemode,
     bashCommandContext: options.bashCommandContext,
   });
   const pi = buildPiRuntime(options.config, tools);

@@ -10,6 +10,10 @@ import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
 import { createAutomationFragment, type AutomationFragmentConfig } from "@/fragno/automation";
+import {
+  defineAutomationCodemodeWorkflow,
+  definePiCodemodeWorkflow,
+} from "@/fragno/automation/engine/workflow";
 
 export type AutomationsRuntime = {
   workflowsFragment: ReturnType<typeof createWorkflowsFragment>;
@@ -39,7 +43,10 @@ export const createAutomationsRuntime = (
   const databaseAdapter = createAutomationsAdapter(state);
   const workflowsFragment = createWorkflowsFragment(
     {
-      workflows: {},
+      workflows: {
+        AUTOMATION_CODEMODE_SCRIPT: defineAutomationCodemodeWorkflow(config),
+        PI_CODEMODE_SCRIPT: definePiCodemodeWorkflow(config),
+      },
       runtime: defaultFragnoRuntime,
     },
     {

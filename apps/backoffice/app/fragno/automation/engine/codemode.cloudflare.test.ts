@@ -220,7 +220,7 @@ describe("executeCodemodeAutomation", () => {
     ]);
   });
 
-  test("runs the starter Telegram claim linking start automation", async () => {
+  test("detects the starter Telegram claim linking start workflow definition", async () => {
     const calls: unknown[] = [];
     const runtime = createStarterAutomationRuntime(calls, {
       createClaim: async (input) => {
@@ -264,24 +264,10 @@ describe("executeCodemodeAutomation", () => {
       eventId: "starter-telegram-claim-start-1",
       exitCode: 0,
       stderr: "",
+      workflowDefinition: { options: {} },
     });
-    expect(calls).toEqual([
-      ["lookupBinding", { source: "telegram", key: "chat-123" }],
-      ["createClaim", { source: "telegram", externalActorId: "chat-123" }],
-      [
-        "sendMessage",
-        {
-          chatId: "chat-123",
-          text: "Open this link to finish linking your Telegram account: https://example.com/claims/chat-123",
-          parseMode: "Markdown",
-        },
-      ],
-    ]);
-    expect(result.toolCalls).toMatchObject([
-      { providerName: "automations", toolName: "lookupBinding", status: "success" },
-      { providerName: "otp", toolName: "createIdentityClaim", status: "success" },
-      { providerName: "telegram", toolName: "sendMessage", status: "success" },
-    ]);
+    expect(calls).toEqual([]);
+    expect(result.toolCalls).toEqual([]);
   });
 
   test("runs the starter Telegram claim linking completion automation", async () => {
