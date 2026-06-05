@@ -1,9 +1,9 @@
 import {
-  getRemoteWorkflowStepHost,
   RemoteWorkflowSuspendedError,
+  type RemoteWorkflowStepHost,
   type RemoteWorkflowSuspension,
 } from "@fragno-dev/workflows/remote-workflow";
-import type { WorkflowEvent, WorkflowRunFn, WorkflowStep } from "@fragno-dev/workflows/workflow";
+import type { RemoteWorkflowRunFn, WorkflowEvent } from "@fragno-dev/workflows/workflow";
 
 import type { IFileSystem } from "@/files/interface";
 import type {
@@ -22,7 +22,7 @@ import {
   normalizeBackofficeCodemodeCode,
   type BackofficeCodemodeEnv,
 } from "./execute";
-import { createWorkflowStepTarget } from "./workflow-rpc";
+import { WorkflowStepTarget } from "./workflow-rpc";
 
 export type BackofficeCodemodeWorkflowResult<TOutput = unknown> = {
   result?: TOutput;
@@ -48,7 +48,7 @@ const isRemoteWorkflowSuspendedError = (
 type WorkflowWorkerEntrypoint<TParams, TOutput> = {
   run(
     event: WorkflowEvent<TParams>,
-    stepTarget: ReturnType<typeof createWorkflowStepTarget>,
+    stepTarget: WorkflowStepTarget,
     dispatchers: Record<string, unknown>,
   ): Promise<WorkflowWorkerResult<TOutput>>;
 };
@@ -243,7 +243,7 @@ export default class RemoteWorkflowEntrypoint extends WorkerEntrypoint {
 const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = unknown>({
   code,
   event,
-  step,
+  remote,
   env,
   fs,
   tools,
@@ -251,11 +251,10 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
 }: {
   code: string;
   event: WorkflowEvent<TParams>;
-  step: WorkflowStep;
+  remote: RemoteWorkflowStepHost;
   env: BackofficeCodemodeEnv;
 } & BackofficeCodemodeWorkflowOptions): Promise<TOutput> => {
-  const host = getRemoteWorkflowStepHost(step);
-  const stepTarget = createWorkflowStepTarget(host);
+  const stepTarget = new WorkflowStepTarget(remote);
   const executor = new DynamicWorkerExecutor({
     loader: env.LOADER,
     globalOutbound: null,
@@ -285,7 +284,7 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
     run: async (entrypoint, rpcTargets) =>
       await entrypoint.run(
         event,
-        rpcTargets.stepTarget as ReturnType<typeof createWorkflowStepTarget>,
+        rpcTargets.stepTarget as WorkflowStepTarget,
         rpcTargets.dispatchers as Record<string, unknown>,
       ),
   });
@@ -299,7 +298,7 @@ export const runBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput =
   input: {
     code: string;
     event: WorkflowEvent<TParams>;
-    step: WorkflowStep;
+    remote: RemoteWorkflowStepHost;
     env: BackofficeCodemodeEnv;
   } & BackofficeCodemodeWorkflowOptions,
 ): Promise<BackofficeCodemodeWorkflowResult<TOutput>> => {
@@ -317,12 +316,12 @@ export const defineCodemodeWorkflowRun = <TParams = unknown, TOutput = unknown>(
   code: string,
   env: BackofficeCodemodeEnv,
   options: BackofficeCodemodeWorkflowOptions = {},
-): WorkflowRunFn<TParams, TOutput> => {
-  return async (event, step) => {
+): RemoteWorkflowRunFn<TParams, TOutput> => {
+  return async (event, remote) => {
     return await executeBackofficeCodemodeWorkflow<TParams, TOutput>({
       code,
       event,
-      step,
+      remote,
       env,
       ...options,
     });

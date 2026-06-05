@@ -42,6 +42,7 @@ export type WorkflowInstanceStatus = {
 
 export type WorkflowCreateInstanceArgs = {
   workflowName: string;
+  remoteWorkflowName?: string;
   instanceId?: string;
   params?: unknown;
 };
@@ -118,6 +119,7 @@ const parseWorkflowCreateInstanceArgs = (args: string[]): WorkflowCreateInstance
   assertNoPositionals(parsed, "workflow.create-instance");
   return {
     workflowName: readStringOption(parsed, "workflow-name", true)!,
+    remoteWorkflowName: readStringOption(parsed, "remote-workflow-name"),
     instanceId: readStringOption(parsed, "instance-id"),
     params: readJsonOption(parsed, "params-json"),
   };
@@ -279,6 +281,7 @@ const workflowCreateInstanceTool = defineAutomationRuntimeTool({
   description: "Create a durable workflow instance by workflow name.",
   inputSchema: z.object({
     workflowName: nonEmptyString,
+    remoteWorkflowName: nonEmptyString.optional(),
     instanceId: nonEmptyString.optional(),
     params: z.unknown().optional(),
   }),
@@ -302,7 +305,15 @@ const workflowCreateInstanceTool = defineAutomationRuntimeTool({
             required: true,
             valueRequired: true,
             valueName: "name",
-            description: "Registered workflow name.",
+            description:
+              "Workflow name to create or dynamic public workflow name for remote workflows.",
+          },
+          {
+            name: "remote-workflow-name",
+            valueRequired: true,
+            valueName: "name",
+            description:
+              "Optional registered remote host workflow name used to execute this dynamic workflow.",
           },
           {
             name: "instance-id",

@@ -78,10 +78,10 @@ function __stringifyForCodemode(value) {
 function __parseForCodemode(json) {
   return JSON.parse(json, (_key, nested) => __decodeCodemodeValue(nested));
 }
-function defineWorkflow(optionsOrRun, maybeRun) {
-  const hasOptions = typeof optionsOrRun !== "function";
-  const run = hasOptions ? maybeRun : optionsOrRun;
-  const options = hasOptions ? (optionsOrRun ?? {}) : {};
+function defineWorkflow(options, run) {
+  if (!options || typeof options !== "object" || typeof options.name !== "string" || options.name.trim() === "") {
+    throw new Error("defineWorkflow requires a non-empty workflow name.");
+  }
   if (typeof run !== "function") {
     throw new Error("defineWorkflow requires a workflow callback.");
   }
@@ -258,7 +258,7 @@ export class DynamicWorkerExecutor implements Executor {
       `        new Promise((_, reject) => setTimeout(() => reject(new Error("Execution timed out")), ${this.#timeout}))`,
       "      ]);",
       "      if (__isFragnoCodemodeWorkflowDefinition(result)) {",
-      "        return { result: undefined, workflowDefinition: { options: result.options ?? {} }, logs: __logs };",
+      "        return { result: undefined, workflowDefinition: { name: String(result.options.name), options: result.options }, logs: __logs };",
       "      }",
       "      return { result, logs: __logs };",
       "    } catch (err) {",
@@ -299,7 +299,7 @@ export class DynamicWorkerExecutor implements Executor {
     result: unknown;
     error?: string;
     logs?: string[];
-    workflowDefinition?: { options?: unknown };
+    workflowDefinition?: { name: string; options?: unknown };
   }> {
     return await this.runEntrypoint<
       {
@@ -307,14 +307,14 @@ export class DynamicWorkerExecutor implements Executor {
           result: unknown;
           error?: string;
           logs?: string[];
-          workflowDefinition?: { options?: unknown };
+          workflowDefinition?: { name: string; options?: unknown };
         }>;
       },
       {
         result: unknown;
         error?: string;
         logs?: string[];
-        workflowDefinition?: { options?: unknown };
+        workflowDefinition?: { name: string; options?: unknown };
       }
     >({
       mainModule: "executor.js",

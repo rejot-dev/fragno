@@ -1,4 +1,5 @@
-import type { WorkflowEvent, WorkflowStep } from "@fragno-dev/workflows/workflow";
+import type { RemoteWorkflowStepHost } from "@fragno-dev/workflows/remote-workflow";
+import type { WorkflowEvent } from "@fragno-dev/workflows/workflow";
 
 import type { MasterFileSystem } from "@/files/master-file-system";
 import {
@@ -138,14 +139,14 @@ export const executeWorkflowCodemodeAutomation = async ({
   masterFs,
   env,
   workflowEvent,
-  step,
+  remote,
 }: {
   script: string;
   context: AutomationExecutionContext;
   masterFs: MasterFileSystem;
   env: BackofficeCodemodeEnv;
   workflowEvent: WorkflowEvent<unknown>;
-  step: WorkflowStep;
+  remote: RemoteWorkflowStepHost;
 }): Promise<AutomationRunResult<"codemode">> => {
   const executionFs = createAutomationExecutionFileSystem({
     masterFs,
@@ -160,7 +161,7 @@ export const executeWorkflowCodemodeAutomation = async ({
   const result = await runBackofficeCodemodeWorkflow({
     code: script,
     event: workflowEvent,
-    step,
+    remote,
     fs: executionFs,
     env,
     tools,
@@ -175,13 +176,13 @@ export const executePiCodemodeWorkflow = async ({
   masterFs,
   env,
   workflowEvent,
-  step,
+  remote,
 }: {
   params: PiCodemodeWorkflowParams;
   masterFs: MasterFileSystem;
   env: BackofficeCodemodeEnv & CloudflareEnv;
   workflowEvent: WorkflowEvent<unknown>;
-  step: WorkflowStep;
+  remote: RemoteWorkflowStepHost;
 }): Promise<unknown> => {
   const orgId = params.orgId.trim();
   if (!orgId) {
@@ -207,7 +208,7 @@ export const executePiCodemodeWorkflow = async ({
   const result = await runBackofficeCodemodeWorkflow({
     code: params.code,
     event: workflowEvent,
-    step,
+    remote,
     fs: masterFs,
     env,
     tools,
