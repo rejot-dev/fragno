@@ -8,7 +8,11 @@ import {
 import { bashRuntimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import type { AutomationCommandContext, BashAutomationCommandResult } from "./automation-types";
-import type { AutomationsRuntime, ScriptRunnerRuntime } from "./families/automations";
+import type {
+  AutomationsRuntime,
+  ScriptRunnerRuntime,
+  WorkflowsRuntime,
+} from "./families/automations";
 import type { EventRuntime } from "./families/event-runtime";
 import type { RegisteredOtpCommandContext } from "./families/otp-runtime";
 import type { RegisteredPiCommandContext } from "./families/pi-runtime";
@@ -28,6 +32,7 @@ export type RegisteredEventBashCommandContext = AutomationCommandContext & {
 export type BashHostContext = {
   automation: RegisteredEventBashCommandContext | null;
   automations: RegisteredAutomationsBashCommandContext | null;
+  workflow?: { runtime: WorkflowsRuntime } | null;
   otp: RegisteredOtpCommandContext | null;
   pi: RegisteredPiCommandContext | null;
   reson8: RegisteredReson8CommandContext | null;
@@ -38,6 +43,7 @@ export type BashHostContext = {
 export const EMPTY_BASH_HOST_CONTEXT: BashHostContext = {
   automation: null,
   automations: null,
+  workflow: null,
   otp: null,
   pi: null,
   reson8: null,
@@ -48,6 +54,7 @@ export const EMPTY_BASH_HOST_CONTEXT: BashHostContext = {
 export type InteractiveBashCommandContext = Omit<BashHostContext, "automation"> & {
   automation: null;
   automations: NonNullable<BashHostContext["automations"]>;
+  workflow?: BashHostContext["workflow"];
   otp: NonNullable<BashHostContext["otp"]>;
   pi: NonNullable<BashHostContext["pi"]>;
   reson8: NonNullable<BashHostContext["reson8"]>;
@@ -81,6 +88,7 @@ export type BashCommandFactoryInput = {
 export const createBashToolContext = (context: BashHostContext): BackofficeToolContext => ({
   runtimes: {
     automations: context.automations?.runtime,
+    workflow: context.workflow?.runtime,
     event: context.automation?.runtime,
     otp: context.otp?.runtime,
     pi: context.pi?.runtime,

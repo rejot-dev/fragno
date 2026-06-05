@@ -32,6 +32,7 @@ type Stat = {
 const DASHBOARD_COMMAND_REFERENCE_CONTEXT = {
   runtimes: {
     automations: {},
+    workflow: {},
     otp: {},
     pi: {},
     reson8: {},

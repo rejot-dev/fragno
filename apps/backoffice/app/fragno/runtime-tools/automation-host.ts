@@ -8,7 +8,10 @@ import {
 } from "@/fragno/automation/catalog";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
 import { createAutomationExecutionFileSystem } from "@/fragno/automation/engine/execution-file-system";
-import { createRouteBackedAutomationsRuntime } from "@/fragno/automation/identity-runtime";
+import {
+  createRouteBackedAutomationsRuntime,
+  createRouteBackedWorkflowsRuntime,
+} from "@/fragno/automation/identity-runtime";
 import {
   createAutomationRunResult,
   type AutomationRunResult,
@@ -39,6 +42,9 @@ export const createRouteBackedInteractiveBashContext = ({
   automation: null,
   automations: {
     runtime: createRouteBackedAutomationsRuntime({ env, orgId }),
+  },
+  workflow: {
+    runtime: createRouteBackedWorkflowsRuntime({ env, orgId }),
   },
   otp: {
     runtime: createOtpRuntime({ env, orgId }),

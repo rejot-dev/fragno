@@ -14,6 +14,7 @@ import type {
 import {
   assertNoPositionals,
   parseCliTokens,
+  readJsonOption,
   readStringOption,
 } from "@/fragno/runtime-tools/bash-cli";
 
@@ -33,14 +34,57 @@ export type AutomationsRuntime = {
   bindActor: (input: IdentityBindActorArgs) => Promise<AutomationIdentityBindingRecord>;
 };
 
+export type WorkflowInstanceStatus = {
+  status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
+  error?: { name: string; message: string };
+  output?: unknown;
+};
+
+export type WorkflowCreateInstanceArgs = {
+  workflowName: string;
+  instanceId?: string;
+  params?: unknown;
+};
+
+export type WorkflowCreateInstanceResult = {
+  workflowName: string;
+  instanceId: string;
+};
+
+export type WorkflowGetStatusArgs = {
+  workflowName: string;
+  instanceId: string;
+};
+
+export type WorkflowsRuntime = {
+  createInstance: (input: WorkflowCreateInstanceArgs) => Promise<WorkflowCreateInstanceResult>;
+  getStatus: (input: WorkflowGetStatusArgs) => Promise<WorkflowInstanceStatus>;
+};
+
 export type { ScriptRunnerRuntime };
 
 type AutomationsToolContext = BackofficeToolContext<
-  { automations?: AutomationsRuntime },
+  { automations?: AutomationsRuntime; workflow?: WorkflowsRuntime },
   ScriptRunnerRuntime
 >;
 
 const nonEmptyString = z.string().trim().min(1);
+
+const workflowInstanceStatusSchema = z.object({
+  status: z.enum(["active", "paused", "errored", "terminated", "complete", "waiting"]),
+  error: z
+    .object({
+      name: z.string(),
+      message: z.string(),
+    })
+    .optional(),
+  output: z.unknown().optional(),
+});
+
+const workflowCreateInstanceResultSchema = z.object({
+  workflowName: nonEmptyString,
+  instanceId: nonEmptyString,
+});
 
 const defineAutomationRuntimeTool = <
   TInputSchema extends z.ZodType,
@@ -69,6 +113,25 @@ const parseBindActorArgs = (args: string[]): IdentityBindActorArgs => {
   };
 };
 
+const parseWorkflowCreateInstanceArgs = (args: string[]): WorkflowCreateInstanceArgs => {
+  const parsed = parseCliTokens(args);
+  assertNoPositionals(parsed, "workflow.create-instance");
+  return {
+    workflowName: readStringOption(parsed, "workflow-name", true)!,
+    instanceId: readStringOption(parsed, "instance-id"),
+    params: readJsonOption(parsed, "params-json"),
+  };
+};
+
+const parseWorkflowGetStatusArgs = (args: string[]): WorkflowGetStatusArgs => {
+  const parsed = parseCliTokens(args);
+  assertNoPositionals(parsed, "workflow.get-status");
+  return {
+    workflowName: readStringOption(parsed, "workflow-name", true)!,
+    instanceId: readStringOption(parsed, "instance-id", true)!,
+  };
+};
+
 const parseScriptRunArgs = (args: string[]): ScriptRunArgs => {
   const parsed = parseCliTokens(args);
   assertNoPositionals(parsed, "scripts.run");
@@ -94,6 +157,15 @@ const getScriptRunner = (
     throw new Error("scripts.run is not available in this execution context");
   }
   return scriptRunner;
+};
+
+const getWorkflowsRuntime = (
+  runtime: AutomationsToolContext["runtimes"]["workflow"],
+): WorkflowsRuntime => {
+  if (!runtime) {
+    throw new Error("Workflow runtime is not available in this execution context");
+  }
+  return runtime;
 };
 
 const lookupBindingTool = defineAutomationRuntimeTool({
@@ -200,6 +272,109 @@ const bindActorTool = defineAutomationRuntimeTool({
   },
 });
 
+const workflowCreateInstanceTool = defineAutomationRuntimeTool({
+  id: "workflow.create-instance",
+  namespace: "workflow",
+  name: "createInstance",
+  description: "Create a durable workflow instance by workflow name.",
+  inputSchema: z.object({
+    workflowName: nonEmptyString,
+    instanceId: nonEmptyString.optional(),
+    params: z.unknown().optional(),
+  }),
+  outputSchema: workflowCreateInstanceResultSchema,
+  execute: async (input, context) =>
+    await getWorkflowsRuntime(context.runtimes.workflow).createInstance(input),
+  reference: {
+    codemode: {
+      description:
+        "Create a durable workflow instance. Use this for launching named workflows from codemode.",
+    },
+  },
+  adapters: {
+    bash: {
+      command: "workflow.create-instance",
+      help: {
+        summary: "workflow.create-instance creates a durable workflow instance by workflow name.",
+        options: [
+          {
+            name: "workflow-name",
+            required: true,
+            valueRequired: true,
+            valueName: "name",
+            description: "Registered workflow name.",
+          },
+          {
+            name: "instance-id",
+            valueRequired: true,
+            valueName: "id",
+            description: "Optional caller-provided workflow instance id.",
+          },
+          {
+            name: "params-json",
+            valueRequired: true,
+            valueName: "json",
+            description: "Optional workflow params as a JSON object.",
+          },
+        ],
+        examples: [
+          'workflow.create-instance --workflow-name exec-codemode-workflow --instance-id run-1 --params-json "{}"',
+        ],
+      },
+      parse: parseWorkflowCreateInstanceArgs,
+      format: (result) => ({ data: result }),
+    },
+  },
+});
+
+const workflowGetStatusTool = defineAutomationRuntimeTool({
+  id: "workflow.get-status",
+  namespace: "workflow",
+  name: "getStatus",
+  description: "Get the current status for a durable workflow instance.",
+  inputSchema: z.object({
+    workflowName: nonEmptyString,
+    instanceId: nonEmptyString,
+  }),
+  outputSchema: workflowInstanceStatusSchema,
+  execute: async (input, context) =>
+    await getWorkflowsRuntime(context.runtimes.workflow).getStatus(input),
+  reference: {
+    codemode: {
+      description: "Get the current status, output, or error for a durable workflow instance.",
+    },
+  },
+  adapters: {
+    bash: {
+      command: "workflow.get-status",
+      help: {
+        summary: "workflow.get-status returns the current status for a durable workflow instance.",
+        options: [
+          {
+            name: "workflow-name",
+            required: true,
+            valueRequired: true,
+            valueName: "name",
+            description: "Registered workflow name.",
+          },
+          {
+            name: "instance-id",
+            required: true,
+            valueRequired: true,
+            valueName: "id",
+            description: "Workflow instance id.",
+          },
+        ],
+        examples: [
+          "workflow.get-status --workflow-name exec-codemode-workflow --instance-id run-1",
+        ],
+      },
+      parse: parseWorkflowGetStatusArgs,
+      format: (status) => ({ data: status }),
+    },
+  },
+});
+
 const scriptRunTool = defineAutomationRuntimeTool({
   id: "scripts.run",
   namespace: "automations",
@@ -275,6 +450,7 @@ const scriptRunTool = defineAutomationRuntimeTool({
 
 export const automationsRuntimeTools = [lookupBindingTool, bindActorTool, scriptRunTool] as const;
 export const automationIdentityRuntimeTools = [lookupBindingTool, bindActorTool] as const;
+export const workflowRuntimeTools = [workflowCreateInstanceTool, workflowGetStatusTool] as const;
 
 export const automationsToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "automations",
@@ -286,4 +462,10 @@ export const automationIdentityToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "automations",
   tools: automationIdentityRuntimeTools,
   isAvailable: (context: AutomationsToolContext) => !!context.runtimes.automations,
+});
+
+export const workflowToolFamily = defineBackofficeRuntimeToolFamily({
+  namespace: "workflow",
+  tools: workflowRuntimeTools,
+  isAvailable: (context: AutomationsToolContext) => !!context.runtimes.workflow,
 });

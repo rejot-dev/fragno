@@ -1,8 +1,10 @@
 import {
   automationIdentityToolFamily,
   automationsToolFamily,
+  workflowToolFamily,
   type AutomationsRuntime,
   type ScriptRunnerRuntime,
+  type WorkflowsRuntime,
 } from "./families/automations";
 import { eventToolFamily, type EventRuntime } from "./families/event";
 import { otpToolFamily, type OtpRuntime } from "./families/otp";
@@ -18,6 +20,7 @@ import {
 
 export type CoreBackofficeRuntimeMap = {
   automations?: AutomationsRuntime;
+  workflow?: WorkflowsRuntime;
   event?: EventRuntime;
   otp?: OtpRuntime;
   pi?: PiRuntime;
@@ -33,6 +36,7 @@ export type CoreBackofficeToolContext = BackofficeToolContext<
 
 export const automationRuntimeToolFamilies = [
   automationIdentityToolFamily,
+  workflowToolFamily,
   eventToolFamily,
   otpToolFamily,
   piToolFamily,
@@ -43,6 +47,7 @@ export const automationRuntimeToolFamilies = [
 
 export const piCodemodeRuntimeToolFamilies = [
   automationIdentityToolFamily,
+  workflowToolFamily,
   otpToolFamily,
   piToolFamily,
   resendToolFamily,
@@ -52,6 +57,7 @@ export const piCodemodeRuntimeToolFamilies = [
 
 export const bashRuntimeToolFamilies = [
   automationsToolFamily,
+  workflowToolFamily,
   eventToolFamily,
   otpToolFamily,
   piToolFamily,
