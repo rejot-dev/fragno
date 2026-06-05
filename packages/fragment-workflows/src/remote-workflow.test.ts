@@ -11,7 +11,7 @@ import {
 } from "./remote-workflow-message";
 import { defineScenario, runScenario } from "./scenario";
 import { createWorkflowsTestHarness } from "./test";
-import { defineRemoteWorkflow, type WorkflowEvent } from "./workflow";
+import { defineRemoteWorkflow, defineWorkflow, type WorkflowEvent } from "./workflow";
 
 type WorkerMessage = { type: "result"; result: unknown } | { type: "error"; error: string };
 
@@ -42,6 +42,9 @@ const createTxProxy = (txId) => ({
     await request("tx.emit", { txId, payload });
   },
   previousEmissions: async () => await request("tx.previousEmissions", { txId }),
+  workflowServiceCalls: async (factory) => {
+    await request("tx.workflowServiceCalls", { txId, operations: factory() });
+  },
   mutate: () => {
     throw new Error("REMOTE_WORKFLOW_TX_MUTATE_UNSUPPORTED");
   },
@@ -236,6 +239,194 @@ describe("remote workflow step host", () => {
           }),
         ],
       }),
+    );
+  });
+
+  test("remote step tx can create another workflow instance", async () => {
+    const ChildWorkflow = defineWorkflow<
+      "remote-child-workflow",
+      { value: number },
+      { value: number }
+    >({ name: "remote-child-workflow" }, async (event) => ({ value: event.payload.value }));
+    const ParentWorkflow = defineRemoteWorkflow(
+      { name: "remote-parent-workflow" },
+      async (_event, host) => {
+        await host.do(null, "create-child", undefined, async (tx) => {
+          tx.workflowServiceCalls(() => [
+            {
+              type: "createInstance",
+              workflowName: "remote-child-workflow",
+              instanceId: "remote-child-from-step",
+              params: { value: 42 },
+            },
+          ]);
+        });
+        return { childId: "remote-child-from-step" };
+      },
+    );
+    const harness = await createWorkflowsTestHarness({
+      workflows: { PARENT: ParentWorkflow, CHILD: ChildWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const parentId = await harness.createInstance("PARENT", {
+      id: "remote-parent-1",
+      remoteWorkflowName: "remote-parent-body",
+    });
+    await harness.runUntilIdle({
+      workflowName: "remote-parent-workflow",
+      instanceId: parentId,
+      reason: "create",
+    });
+
+    await expect(harness.getStatus("PARENT", parentId)).resolves.toMatchObject({
+      status: "complete",
+      output: { childId: "remote-child-from-step" },
+    });
+    await expect(harness.getStatus("CHILD", "remote-child-from-step")).resolves.toMatchObject({
+      status: "active",
+    });
+  });
+
+  test("supports Promise.all, Promise.race, Promise.any, and Promise.allSettled in remote steps", async () => {
+    const RemotePromiseWorkflow = defineRemoteWorkflow(
+      { name: "remote-promise-combinators" },
+      async (_event, host) => {
+        const all = await Promise.all([
+          host.do(null, "all alpha", undefined, async () => "A"),
+          host.do(null, "all beta", undefined, async () => "B"),
+        ]);
+
+        const raceReturn = await host.do(null, "Promise race", undefined, async (_tx, scope) => {
+          return await Promise.race([
+            host.do(scope, "race slow", undefined, async (_tx, slowScope) => {
+              await host.sleep(slowScope, "race slow delay", 1000);
+              return "slow";
+            }),
+            host.do(scope, "race fast", undefined, async () => "fast"),
+          ]);
+        });
+
+        const anyReturn = await host.do(null, "Promise any", undefined, async (_tx, scope) => {
+          return await Promise.any([
+            host.do(scope, "any slow", undefined, async (_tx, slowScope) => {
+              await host.sleep(slowScope, "any slow delay", 1000);
+              return "slow";
+            }),
+            host.do(scope, "any fast", undefined, async () => "fast"),
+          ]);
+        });
+
+        const settled = await host.do(null, "Promise allSettled", undefined, async (_tx, scope) => {
+          const results = await Promise.allSettled([
+            host.do(scope, "settled ok", undefined, async () => "ok"),
+            host.do(scope, "settled fail", undefined, async () => {
+              throw new Error("EXPECTED_SETTLED_FAILURE");
+            }),
+          ]);
+          return results.map((result) =>
+            result.status === "fulfilled"
+              ? { status: result.status, value: result.value }
+              : {
+                  status: result.status,
+                  reason:
+                    result.reason instanceof Error ? result.reason.message : String(result.reason),
+                },
+          );
+        });
+
+        return { all, raceReturn, anyReturn, settled };
+      },
+    );
+
+    const workflows = { REMOTE_PROMISES: RemotePromiseWorkflow };
+    const harness = await createWorkflowsTestHarness({
+      workflows,
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const instanceId = await harness.createInstance("REMOTE_PROMISES", {
+      id: "remote-promises-1",
+      remoteWorkflowName: "remote-promises-body",
+    });
+    await harness.runUntilIdle({
+      workflowName: "remote-promise-combinators",
+      instanceId,
+      reason: "create",
+    });
+
+    await expect(harness.getStatus("REMOTE_PROMISES", instanceId)).resolves.toMatchObject({
+      status: "complete",
+      output: {
+        all: ["A", "B"],
+        raceReturn: "fast",
+        anyReturn: "fast",
+        settled: [
+          { status: "fulfilled", value: "ok" },
+          { status: "rejected", reason: "EXPECTED_SETTLED_FAILURE" },
+        ],
+      },
+    });
+
+    const history = await harness.getHistory("REMOTE_PROMISES", instanceId);
+    expect(history.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ stepKey: "do:all alpha", status: "completed", result: "A" }),
+        expect.objectContaining({ stepKey: "do:all beta", status: "completed", result: "B" }),
+        expect.objectContaining({
+          stepKey: "do:Promise race",
+          status: "completed",
+          result: "fast",
+        }),
+        expect.objectContaining({
+          stepKey: "do:Promise race>do:race slow",
+          parentStepKey: "do:Promise race",
+          depth: 1,
+          status: "waiting",
+        }),
+        expect.objectContaining({
+          stepKey: "do:Promise race>do:race slow>sleep:race slow delay",
+          parentStepKey: "do:Promise race>do:race slow",
+          depth: 2,
+          status: "waiting",
+        }),
+        expect.objectContaining({
+          stepKey: "do:Promise race>do:race fast",
+          parentStepKey: "do:Promise race",
+          depth: 1,
+          status: "completed",
+          result: "fast",
+        }),
+        expect.objectContaining({ stepKey: "do:Promise any", status: "completed", result: "fast" }),
+        expect.objectContaining({
+          stepKey: "do:Promise any>do:any slow",
+          parentStepKey: "do:Promise any",
+          depth: 1,
+          status: "waiting",
+        }),
+        expect.objectContaining({
+          stepKey: "do:Promise any>do:any fast",
+          parentStepKey: "do:Promise any",
+          depth: 1,
+          status: "completed",
+          result: "fast",
+        }),
+        expect.objectContaining({ stepKey: "do:Promise allSettled", status: "completed" }),
+        expect.objectContaining({
+          stepKey: "do:Promise allSettled>do:settled ok",
+          status: "completed",
+          result: "ok",
+        }),
+        expect.objectContaining({
+          stepKey: "do:Promise allSettled>do:settled fail",
+          status: "errored",
+          error: { message: "EXPECTED_SETTLED_FAILURE", name: "Error" },
+        }),
+      ]),
     );
   });
 

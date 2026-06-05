@@ -2,8 +2,14 @@
 
 import type { HandlerTxContext, HooksMap, IUnitOfWork, TypedUnitOfWork } from "@fragno-dev/db";
 
+import { buildScopedInstanceRowId } from "../instance-ref";
 import { workflowsSchema } from "../schema";
-import type { AnyTxResult } from "../workflow";
+import type {
+  AnyTxResult,
+  WorkflowRegistryEntry,
+  WorkflowStepWorkflowOperation,
+} from "../workflow";
+import { validateAndNormalizeWorkflowOperation } from "../workflow-operation";
 import type { RunnerState } from "./state";
 import type { RunnerStepSuspended } from "./step";
 import type {
@@ -121,10 +127,56 @@ function applyServiceCalls(uow: IUnitOfWork, calls: readonly AnyTxResult[]) {
 }
 
 /**
+ * Apply workflow-only service calls scheduled by workflow steps.
+ * Bigger picture: remote workflow code can compose workflow DB writes without dynamic schemas.
+ */
+function applyWorkflowServiceCalls(
+  uow: IUnitOfWork,
+  calls: readonly WorkflowStepWorkflowOperation[],
+  workflowsByName: ReadonlyMap<string, WorkflowRegistryEntry>,
+) {
+  if (calls.length === 0) {
+    return;
+  }
+
+  const schemaUow = uow.forSchema(workflowsSchema);
+  const namespace = schemaUow.namespace ?? workflowsSchema.name;
+
+  for (const queuedCall of calls) {
+    const call = validateAndNormalizeWorkflowOperation(workflowsByName, queuedCall);
+
+    const instanceRef = schemaUow.create("workflow_instance", {
+      id: buildScopedInstanceRowId(call.workflowName, call.instanceId),
+      workflowName: call.workflowName,
+      remoteWorkflowName: call.remoteWorkflowName ?? null,
+      instanceId: call.instanceId,
+      status: "active",
+      params: call.params ?? {},
+      startedAt: null,
+      completedAt: null,
+      output: null,
+      errorName: null,
+      errorMessage: null,
+    });
+
+    uow.triggerHook(namespace, "onWorkflowEnqueued", {
+      workflowName: call.workflowName,
+      instanceId: call.instanceId,
+      instanceRef: String(instanceRef),
+      reason: "create",
+    });
+  }
+}
+
+/**
  * Translate buffered runner mutations into concrete UOW operations.
  * Bigger picture: this is the only place we touch the database for step/event/log changes.
  */
-export function applyRunnerMutations(uow: IUnitOfWork, state: RunnerState) {
+export function applyRunnerMutations(
+  uow: IUnitOfWork,
+  state: RunnerState,
+  workflowsByName: ReadonlyMap<string, WorkflowRegistryEntry>,
+) {
   const schemaUow = uow.forSchema(workflowsSchema);
 
   for (const [_, draft] of state.mutations.stepCreates) {
@@ -158,6 +210,7 @@ export function applyRunnerMutations(uow: IUnitOfWork, state: RunnerState) {
 
   applyTxMutations(uow, state.mutations.txMutations);
   applyServiceCalls(uow, state.mutations.txServiceCalls);
+  applyWorkflowServiceCalls(uow, state.mutations.workflowServiceCalls, workflowsByName);
 }
 
 /**

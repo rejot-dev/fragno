@@ -50,6 +50,62 @@ describe("Workflows Runner", () => {
     ).toEqual([]);
     registries.length = 0;
   });
+  test("workflow step tx can create another workflow instance", async () => {
+    const ChildWorkflow = defineWorkflow<"child-workflow", { value: number }, { doubled: number }>(
+      { name: "child-workflow" },
+      async (event) => ({ doubled: event.payload.value * 2 }),
+    );
+    const ParentWorkflow = defineWorkflow<"parent-workflow", undefined, { childId: string }>(
+      { name: "parent-workflow" },
+      async (_event, step) => {
+        await step.do("create-child", async (tx) => {
+          tx.workflowServiceCalls(() => [
+            {
+              type: "createInstance",
+              workflowName: "child-workflow",
+              instanceId: "child-from-step",
+              params: { value: 21 },
+            },
+          ]);
+        });
+
+        return { childId: "child-from-step" };
+      },
+    );
+    const harness = await createWorkflowsTestHarness({
+      workflows: { PARENT: ParentWorkflow, CHILD: ChildWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const parentId = await harness.createInstance("PARENT", { id: "parent-1" });
+    await harness.runUntilIdle({
+      workflowName: "parent-workflow",
+      instanceId: parentId,
+      reason: "create",
+    });
+
+    await expect(harness.getStatus("PARENT", parentId)).resolves.toMatchObject({
+      status: "complete",
+      output: { childId: "child-from-step" },
+    });
+    await expect(harness.getStatus("CHILD", "child-from-step")).resolves.toMatchObject({
+      status: "active",
+    });
+
+    await harness.runUntilIdle({
+      workflowName: "child-workflow",
+      instanceId: "child-from-step",
+      reason: "create",
+    });
+
+    await expect(harness.getStatus("CHILD", "child-from-step")).resolves.toMatchObject({
+      status: "complete",
+      output: { doubled: 42 },
+    });
+  });
+
   test("step emission bus can flush while a step callback is still running", async () => {
     const stepEntered = deferred();
     const releaseStep = deferred();

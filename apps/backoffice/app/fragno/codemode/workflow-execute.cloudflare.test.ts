@@ -1,7 +1,11 @@
 import { describe, expect, test } from "vitest";
 
 import { createWorkflowsTestHarness } from "@fragno-dev/workflows/test";
-import { defineRemoteWorkflow, type WorkflowsRegistry } from "@fragno-dev/workflows/workflow";
+import {
+  defineRemoteWorkflow,
+  defineWorkflow,
+  type WorkflowsRegistry,
+} from "@fragno-dev/workflows/workflow";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
 
@@ -437,6 +441,201 @@ describe("codemode workflow execution", () => {
           type: "approval",
           payload: { approved: true },
           consumedByStepKey: "waitForEvent:approval",
+        }),
+      ]),
+    );
+  });
+
+  test("codemode workflow step tx can create another workflow instance", async () => {
+    const ChildWorkflow = defineWorkflow<
+      "codemode-child-created-workflow",
+      { value: number },
+      { value: number }
+    >({ name: "codemode-child-created-workflow" }, async (event) => ({
+      value: event.payload.value,
+    }));
+    const Workflow = defineRemoteWorkflow(
+      { name: "codemode-e2e-create-child" },
+      defineCodemodeWorkflowRun<unknown, { childId: string }>(
+        `async (_event, step) => {
+          await step.do("create-child", async (tx) => {
+            tx.workflowServiceCalls(() => [
+              {
+                type: "createInstance",
+                workflowName: "codemode-child-created-workflow",
+                instanceId: "codemode-child-created-1",
+                params: { value: 42 },
+              },
+            ]);
+          });
+          return { childId: "codemode-child-created-1" };
+        }`,
+        env,
+      ),
+    );
+    const harness = await createHarness({ WORKFLOW: Workflow, CHILD: ChildWorkflow });
+
+    const instanceId = await harness.createInstance("WORKFLOW", {
+      id: "codemode-e2e-create-child-1",
+      remoteWorkflowName: "codemode-e2e-create-child-body",
+    });
+    await harness.runUntilIdle({
+      workflowName: "codemode-e2e-create-child",
+      instanceId,
+      reason: "create",
+    });
+
+    await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
+      status: "complete",
+      output: { childId: "codemode-child-created-1" },
+    });
+    await expect(harness.getStatus("CHILD", "codemode-child-created-1")).resolves.toMatchObject({
+      status: "active",
+    });
+  });
+
+  test("codemode workflow supports Promise.all, Promise.race, Promise.any, and Promise.allSettled in remote steps", async () => {
+    const Workflow = defineRemoteWorkflow(
+      { name: "codemode-e2e-promise-combinators" },
+      defineCodemodeWorkflowRun<
+        unknown,
+        {
+          all: string[];
+          raceReturn: string;
+          anyReturn: string;
+          settled: Array<
+            { status: "fulfilled"; value: unknown } | { status: "rejected"; reason: string }
+          >;
+        }
+      >(
+        `async (_event, step) => {
+          const all = await Promise.all([
+            step.do("all alpha", async () => "A"),
+            step.do("all beta", async () => "B"),
+          ]);
+
+          const raceReturn = await step.do("Promise race", async () => {
+            return await Promise.race([
+              step.do("race slow", async () => {
+                await step.sleep("race slow delay", 1000);
+                return "slow";
+              }),
+              step.do("race fast", async () => "fast"),
+            ]);
+          });
+
+          const anyReturn = await step.do("Promise any", async () => {
+            return await Promise.any([
+              step.do("any slow", async () => {
+                await step.sleep("any slow delay", 1000);
+                return "slow";
+              }),
+              step.do("any fast", async () => "fast"),
+            ]);
+          });
+
+          const settled = await step.do("Promise allSettled", async () => {
+            const results = await Promise.allSettled([
+              step.do("settled ok", async () => "ok"),
+              step.do("settled fail", async () => {
+                throw new Error("EXPECTED_SETTLED_FAILURE");
+              }),
+            ]);
+            return results.map((result) => result.status === "fulfilled"
+              ? { status: result.status, value: result.value }
+              : {
+                  status: result.status,
+                  reason: result.reason instanceof Error ? result.reason.message : String(result.reason),
+                });
+          });
+
+          return { all, raceReturn, anyReturn, settled };
+        }`,
+        env,
+      ),
+    );
+    const harness = await createHarness({ WORKFLOW: Workflow });
+
+    const instanceId = await harness.createInstance("WORKFLOW", {
+      id: "codemode-e2e-promise-combinators-1",
+      remoteWorkflowName: "codemode-e2e-promise-combinators-body",
+    });
+    await harness.runUntilIdle({
+      workflowName: "codemode-e2e-promise-combinators",
+      instanceId,
+      reason: "create",
+    });
+
+    await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
+      status: "complete",
+      output: {
+        all: ["A", "B"],
+        raceReturn: "fast",
+        anyReturn: "fast",
+        settled: [
+          { status: "fulfilled", value: "ok" },
+          { status: "rejected", reason: "EXPECTED_SETTLED_FAILURE" },
+        ],
+      },
+    });
+
+    const history = await harness.getHistory("WORKFLOW", instanceId);
+    expect(history.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ stepKey: "do:all alpha", status: "completed", result: "A" }),
+        expect.objectContaining({ stepKey: "do:all beta", status: "completed", result: "B" }),
+        expect.objectContaining({
+          stepKey: "do:Promise race",
+          status: "completed",
+          result: "fast",
+        }),
+        expect.objectContaining({
+          stepKey: "do:Promise race>do:race slow",
+          parentStepKey: "do:Promise race",
+          depth: 1,
+          status: "waiting",
+        }),
+        expect.objectContaining({
+          stepKey: "do:Promise race>do:race slow>sleep:race slow delay",
+          parentStepKey: "do:Promise race>do:race slow",
+          depth: 2,
+          status: "waiting",
+        }),
+        expect.objectContaining({
+          stepKey: "do:Promise race>do:race fast",
+          parentStepKey: "do:Promise race",
+          depth: 1,
+          status: "completed",
+          result: "fast",
+        }),
+        expect.objectContaining({
+          stepKey: "do:Promise any",
+          status: "completed",
+          result: "fast",
+        }),
+        expect.objectContaining({
+          stepKey: "do:Promise any>do:any slow",
+          parentStepKey: "do:Promise any",
+          depth: 1,
+          status: "waiting",
+        }),
+        expect.objectContaining({
+          stepKey: "do:Promise any>do:any fast",
+          parentStepKey: "do:Promise any",
+          depth: 1,
+          status: "completed",
+          result: "fast",
+        }),
+        expect.objectContaining({ stepKey: "do:Promise allSettled", status: "completed" }),
+        expect.objectContaining({
+          stepKey: "do:Promise allSettled>do:settled ok",
+          status: "completed",
+          result: "ok",
+        }),
+        expect.objectContaining({
+          stepKey: "do:Promise allSettled>do:settled fail",
+          status: "errored",
+          error: { message: "EXPECTED_SETTLED_FAILURE", name: "Error" },
         }),
       ]),
     );

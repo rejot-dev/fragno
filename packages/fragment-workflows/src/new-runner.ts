@@ -366,7 +366,7 @@ async function planRunTask(
     processed: 1,
     operations: [
       (uow) => {
-        applyRunnerMutations(uow, state);
+        applyRunnerMutations(uow, state, ctx.workflowsByName);
         addStepCommittedEmissions(uow, state, ctx.stepEmissionsToPublish);
         applyOutcome(uow, selection.instance, outcome);
       },
@@ -410,6 +410,7 @@ async function runTask(
     handlerTx: ctx.busHandlerTx,
     createEpoch: ctx.createEpoch,
     stepEmissions: ctx.stepEmissions,
+    workflowsByName: ctx.workflowsByName,
   });
   const initialEvent = buildWorkflowEvent(instance, timestamp);
 

@@ -8,6 +8,7 @@ import type {
 } from "./workflow";
 
 export type { WorkflowStepIdentity } from "./step-identity";
+export type { WorkflowStepWorkflowOperation } from "./workflow";
 
 export type RemoteWorkflowStepScope = WorkflowStepIdentity | null;
 

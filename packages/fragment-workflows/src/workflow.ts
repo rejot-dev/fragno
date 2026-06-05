@@ -65,6 +65,14 @@ export type WorkflowStepEmission<TPayload = unknown> = {
   createdAt: Date;
 };
 
+export type WorkflowStepWorkflowOperation = {
+  type: "createInstance";
+  workflowName: string;
+  instanceId: string;
+  params: unknown;
+  remoteWorkflowName?: string | null;
+};
+
 export type WorkflowStepConsumeTx = {
   serviceCalls: (factory: () => readonly AnyTxResult[]) => void;
   mutate: (fn: (ctx: HandlerTxContext<HooksMap>) => void) => void;
@@ -75,6 +83,7 @@ export type WorkflowStepConsumeTx = {
 };
 
 export type WorkflowStepTx = WorkflowStepConsumeTx & {
+  workflowServiceCalls: (factory: () => readonly WorkflowStepWorkflowOperation[]) => void;
   onTerminalError: {
     /**
      * Queue DB mutations that should only commit if the enclosing step ends in a terminal error

@@ -12,6 +12,7 @@ import type {
   WorkflowStepConsumeTx,
   WorkflowStepEvent,
   WorkflowStepTx,
+  WorkflowStepWorkflowOperation,
 } from "./workflow";
 
 export const REMOTE_WORKFLOW_MESSAGE_KEY = "__fragnoRemoteWorkflowMessage";
@@ -28,7 +29,14 @@ type RemoteWorkflowMessageRequest = {
   [REMOTE_WORKFLOW_MESSAGE_KEY]: true;
   type: "request";
   id: number;
-  method: "do" | "sleep" | "sleepUntil" | "waitForEvent" | "tx.emit" | "tx.previousEmissions";
+  method:
+    | "do"
+    | "sleep"
+    | "sleepUntil"
+    | "waitForEvent"
+    | "tx.emit"
+    | "tx.previousEmissions"
+    | "tx.workflowServiceCalls";
   payload: Record<string, unknown>;
 };
 
@@ -77,6 +85,9 @@ const isWorkflowSuspensionError = (
 const returnSuspensionOrThrow = (
   error: unknown,
 ): never | ReturnType<typeof createRemoteWorkflowSuspension> => {
+  if (isRemoteWorkflowSuspension(error)) {
+    return error;
+  }
   if (isWorkflowSuspensionError(error)) {
     return createRemoteWorkflowSuspension(error.reason);
   }
@@ -130,6 +141,14 @@ export class WorkflowStepMessageTxTarget {
 
   async previousEmissions() {
     return await this.#tx.previousEmissions();
+  }
+
+  workflowServiceCalls(operations: readonly WorkflowStepWorkflowOperation[]): void {
+    const workflowServiceCalls = (this.#tx as Partial<WorkflowStepTx>).workflowServiceCalls;
+    if (!workflowServiceCalls) {
+      return unsupportedRemoteTxFeature("WORKFLOW_SERVICE_CALLS");
+    }
+    workflowServiceCalls(() => operations);
   }
 
   onEvent(type: string, handler: (event: WorkflowStepEvent<unknown>) => void | Promise<void>) {
@@ -267,6 +286,13 @@ export class WorkflowStepMessageTarget {
       case "tx.previousEmissions": {
         const tx = this.#getTx(message.payload["txId"]);
         return await tx.previousEmissions();
+      }
+      case "tx.workflowServiceCalls": {
+        const tx = this.#getTx(message.payload["txId"]);
+        tx.workflowServiceCalls(
+          message.payload["operations"] as readonly WorkflowStepWorkflowOperation[],
+        );
+        return undefined;
       }
     }
   }

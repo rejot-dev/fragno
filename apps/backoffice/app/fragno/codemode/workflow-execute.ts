@@ -133,6 +133,7 @@ const createRemoteWorkflowStep = (stepTarget) => {
     return {
       emit: (payload) => queue(txTarget.emit(payload)),
       previousEmissions: async () => await txTarget.previousEmissions(),
+      workflowServiceCalls: (factory) => queue(txTarget.workflowServiceCalls(factory())),
       onEvent: (type, handler) => {
         let active = true;
         const unsubscribePromise = txTarget.onEvent(type, handler);
@@ -171,6 +172,9 @@ const createRemoteWorkflowStep = (stepTarget) => {
             await tx.__flush();
             return result;
           } catch (error) {
+            if (isRemoteWorkflowSuspension(error)) {
+              return error;
+            }
             if (isRemoteWorkflowSuspendedError(error)) {
               return createRemoteWorkflowSuspension(error.reason);
             }
