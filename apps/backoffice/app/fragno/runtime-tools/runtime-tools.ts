@@ -1,8 +1,7 @@
 import { defineCommand } from "just-bash";
 import type { z } from "zod";
 
-import type { ToolProvider } from "@cloudflare/codemode";
-
+import type { ToolProvider } from "@/fragno/codemode/codemode-executor";
 import type {
   AutomationCommandExecutionResult,
   AutomationCommandHelp,
