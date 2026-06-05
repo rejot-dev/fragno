@@ -2,8 +2,9 @@ import { afterAll, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { env } from "cloudflare:workers";
 
-import { instantiate } from "@fragno-dev/core";
+import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
+import { workflowsFragmentDefinition, workflowsRoutesFactory } from "@fragno-dev/workflows";
 
 import {
   STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH,
@@ -20,7 +21,12 @@ import {
 import type { UploadFileRecord } from "@/routes/backoffice/connections/upload/data";
 
 import type { AutomationEvent } from "./contracts";
-import { automationFragmentDefinition, type AutomationPiBashContext } from "./definition";
+import {
+  automationFragmentDefinition,
+  buildAutomationWorkflowInstanceId,
+  type AutomationPiBashContext,
+} from "./definition";
+import { defineAutomationCodemodeWorkflow } from "./engine/workflow";
 import { automationFragmentRoutes } from "./routes";
 
 const telegramSendCalls: Array<{ chatId: string; text: string }> = [];
@@ -347,19 +353,57 @@ const buildAutomationTestContext = async (
     }) => AutomationPiBashContext | undefined;
   } = {},
 ) => {
-  return await buildDatabaseFragmentsTest()
+  const testEnv = config.env ?? automationEnv;
+  const workflowConfig = {
+    env: testEnv,
+    getAutomationFileSystem: async () => currentAutomationFileSystem,
+  };
+  const result = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "in-memory" })
     .withFragment(
-      "automation",
+      "workflows",
+      instantiate(workflowsFragmentDefinition)
+        .withConfig({
+          workflows: {
+            AUTOMATION_CODEMODE_SCRIPT: defineAutomationCodemodeWorkflow(workflowConfig),
+          },
+          runtime: defaultFragnoRuntime,
+        })
+        .withRoutes([workflowsRoutesFactory]),
+    )
+    .withFragmentFactory("automation", automationFragmentDefinition, ({ fragments }) =>
       instantiate(automationFragmentDefinition)
         .withConfig({
-          env: config.env ?? automationEnv,
+          env: testEnv,
           createPiAutomationContext: config.createPiAutomationContext,
           getAutomationFileSystem: async () => currentAutomationFileSystem,
         })
+        .withServices({ workflows: fragments.workflows.services })
         .withRoutes([automationFragmentRoutes]),
     )
     .build();
+
+  testEnv.AUTOMATIONS ??= {
+    idFromName: vi.fn((orgId: string) => `automations:${orgId}`),
+    get: vi.fn(),
+  } as never;
+  testEnv.AUTOMATIONS.get = vi.fn(() => ({
+    fetch: async (request: Request) => {
+      const url = new URL(request.url);
+      const routePath = url.pathname.replace(/^\/api\/automations\/bindings/, "") || "/";
+      const body = request.method === "GET" ? undefined : await request.json();
+      return await result.fragments.automation.fragment.callRouteRaw(
+        request.method as never,
+        routePath,
+        {
+          query: Object.fromEntries(url.searchParams),
+          body,
+        },
+      );
+    },
+  })) as never;
+
+  return result;
 };
 
 const { fragments, test: testContext } = await buildAutomationTestContext();
@@ -390,6 +434,7 @@ describe("automation internalIngestEvent", () => {
     );
 
     await drainDurableHooks(fragment.fragment);
+    await drainDurableHooks(fragments.workflows.fragment);
     return result;
   };
 
@@ -650,7 +695,7 @@ describe("automation internalIngestEvent", () => {
     ]);
   });
 
-  test("uses the starter Telegram Pi automation script from the workspace filesystem for bootstrap + follow-up turns", async () => {
+  test("does not run the disabled starter Telegram Pi automation script", async () => {
     const runTurnMock = vi.fn(async ({ sessionId, text }: { sessionId: string; text: string }) => ({
       id: sessionId,
       name: "Telegram chat-1",
@@ -734,6 +779,7 @@ describe("automation internalIngestEvent", () => {
       );
 
       await drainDurableHooks(starterFragment.fragment);
+      await drainDurableHooks(starterContext.fragments.workflows.fragment);
 
       const followUpResult = await starterFragment.fragment.callServices(() =>
         starterFragment.services.ingestEvent({
@@ -754,6 +800,7 @@ describe("automation internalIngestEvent", () => {
       );
 
       await drainDurableHooks(starterFragment.fragment);
+      await drainDurableHooks(starterContext.fragments.workflows.fragment);
 
       expect(bootstrapResult).toEqual({
         accepted: true,
@@ -787,28 +834,9 @@ describe("automation internalIngestEvent", () => {
         }),
         idempotencyKey: expect.any(String),
       });
-      expect(createPiSessionMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          agent: "default::openai::gpt-5-mini",
-          name: "Telegram chat-1",
-          tags: ["telegram", "auto-session"],
-        }),
-      );
-      expect(runTurnMock).toHaveBeenCalledWith({
-        sessionId: "session-for-default::openai::gpt-5-mini",
-        text: "Hello Pi",
-        steeringMode: undefined,
-      });
-      expect(telegramSendCalls).toEqual([
-        {
-          chatId: "chat-1",
-          text: "Created Pi session: session-for-default::openai::gpt-5-mini",
-        },
-        {
-          chatId: "chat-1",
-          text: "agent:Hello Pi",
-        },
-      ]);
+      expect(createPiSessionMock).not.toHaveBeenCalled();
+      expect(runTurnMock).not.toHaveBeenCalled();
+      expect(telegramSendCalls).toEqual([]);
     } finally {
       await starterContext.test.cleanup();
     }
@@ -877,6 +905,7 @@ telegram.file.download --file-id "$file_id" > /workspace/telegram-download.bin
       );
 
       await drainDurableHooks(telegramAttachmentFragment.fragment);
+      await drainDurableHooks(telegramAttachmentContext.fragments.workflows.fragment);
 
       expect(result).toEqual({
         accepted: true,
@@ -895,12 +924,12 @@ telegram.file.download --file-id "$file_id" > /workspace/telegram-download.bin
   test("fails loudly when the starter linking script cannot issue identity claims", async () => {
     const expectedError =
       "DOCS_PUBLIC_BASE_URL must be configured before issuing automation identity claims.";
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const noBaseUrlContext = await buildAutomationTestContext({
       env: {
         LOADER: env.LOADER,
         OTP: automationEnv.OTP,
         TELEGRAM: automationEnv.TELEGRAM,
+        PI: automationEnv.PI,
         RESEND: automationEnv.RESEND,
         RESON8: automationEnv.RESON8,
       } as unknown as CloudflareEnv,
@@ -936,18 +965,23 @@ telegram.file.download --file-id "$file_id" > /workspace/telegram-download.bin
         eventType: "message.received",
       });
       await drainDurableHooks(noBaseUrlFragment.fragment);
-      expect(errorSpy).toHaveBeenCalledWith(
-        "[fragno-db] Hook failed",
-        expect.objectContaining({
-          namespace: "automations",
-          hookName: "internalIngestEvent",
-          error: expect.stringContaining(expectedError),
-        }),
+      await drainDurableHooks(noBaseUrlContext.fragments.workflows.fragment);
+      const workflowStatus = await noBaseUrlContext.fragments.workflows.fragment.callServices(() =>
+        noBaseUrlContext.fragments.workflows.services.getInstanceStatus(
+          "automation-codemode-script",
+          buildAutomationWorkflowInstanceId(
+            "starter-telegram-missing-base-url-1",
+            "telegram-claim-linking-start",
+          ),
+        ),
       );
+      expect(workflowStatus).toMatchObject({
+        status: "errored",
+        error: { message: expect.stringContaining(expectedError) },
+      });
       expect(issueIdentityClaimMock).not.toHaveBeenCalled();
       expect(telegramSendCalls).toEqual([]);
     } finally {
-      errorSpy.mockRestore();
       await noBaseUrlContext.test.cleanup();
     }
   });

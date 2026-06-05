@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { BackofficeCodemodeWorkflowDefinition } from "../codemode/execute";
 import type { BackofficeRuntimeToolCall } from "../runtime-tools/runtime-tools";
 
 export type AutomationRunRuntime = "bash" | "codemode";
@@ -21,6 +22,7 @@ export type AutomationRunResult<TRuntime extends AutomationRunRuntime = Automati
   result?: unknown;
   commandCalls: AutomationCommandCallResult[];
   toolCalls: BackofficeRuntimeToolCall[];
+  workflowDefinition?: BackofficeCodemodeWorkflowDefinition;
 };
 
 type CreateAutomationRunResultInput<TRuntime extends AutomationRunRuntime> = {
@@ -34,12 +36,17 @@ type CreateAutomationRunResultInput<TRuntime extends AutomationRunRuntime> = {
   result?: unknown;
   commandCalls?: AutomationCommandCallResult[];
   toolCalls?: BackofficeRuntimeToolCall[];
+  workflowDefinition?: BackofficeCodemodeWorkflowDefinition;
 };
 
 export const automationCommandCallResultSchema = z.object({
   command: z.string(),
   output: z.string(),
   exitCode: z.number(),
+});
+
+const automationWorkflowDefinitionSchema = z.object({
+  options: z.unknown().optional(),
 });
 
 export const automationRunResultSchema = z.object({
@@ -51,6 +58,7 @@ export const automationRunResultSchema = z.object({
   stderr: z.string(),
   logs: z.array(z.string()),
   result: z.unknown().optional(),
+  workflowDefinition: automationWorkflowDefinitionSchema.optional(),
   commandCalls: z.array(automationCommandCallResultSchema),
   toolCalls: z.array(
     z.object({
@@ -84,6 +92,7 @@ export const createAutomationRunResult = <TRuntime extends AutomationRunRuntime>
   logs,
   commandCalls,
   toolCalls,
+  workflowDefinition,
   ...input
 }: CreateAutomationRunResultInput<TRuntime>): AutomationRunResult<TRuntime> => {
   const normalized = {
@@ -95,5 +104,6 @@ export const createAutomationRunResult = <TRuntime extends AutomationRunRuntime>
     toolCalls: toolCalls ?? [],
   };
 
-  return result === undefined ? normalized : { ...normalized, result };
+  const withResult = result === undefined ? normalized : { ...normalized, result };
+  return workflowDefinition === undefined ? withResult : { ...withResult, workflowDefinition };
 };

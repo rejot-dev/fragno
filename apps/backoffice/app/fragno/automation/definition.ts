@@ -19,6 +19,7 @@ import {
   createAutomationRuntime,
   type AutomationPiBashContext,
 } from "./engine/runtime";
+import type { AutomationCodemodeWorkflowParams } from "./engine/workflow";
 
 export type { AutomationPiBashContext } from "./engine/runtime";
 import { automationFragmentSchema } from "./schema";
@@ -59,6 +60,11 @@ const buildIngestResult = (event: AutomationEvent): AutomationIngestResult => ({
   eventType: event.eventType,
 });
 
+const toWorkflowIdentifier = (value: string) => value.replaceAll(":", "--");
+
+export const buildAutomationWorkflowInstanceId = (eventId: string, bindingId: string) =>
+  `${toWorkflowIdentifier(eventId)}--${toWorkflowIdentifier(bindingId)}`;
+
 const buildCatalogResolverInput = (event: AutomationEvent): AutomationFileSystemResolverInput => ({
   orgId: event.orgId?.trim() || undefined,
   purpose: "runtime",
@@ -67,7 +73,7 @@ const buildCatalogResolverInput = (event: AutomationEvent): AutomationFileSystem
 export const automationFragmentDefinition = defineFragment<AutomationFragmentConfig>("automations")
   .extend(withDatabase(automationFragmentSchema))
   .usesOptionalService<"workflows", AutomationWorkflowsService>("workflows")
-  .provideHooks(({ defineHook, config }) => {
+  .provideHooks(({ defineHook, config, serviceDeps }) => {
     return {
       internalIngestEvent: defineHook(async function (payload) {
         const resolvedFs = await resolveAutomationFileSystem(
@@ -132,6 +138,33 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
             context,
             env: config.env,
           });
+
+          if ("workflowDefinition" in result && result.workflowDefinition) {
+            if (!serviceDeps.workflows) {
+              throw new Error(
+                `No workflows service available to run workflow automation script ${binding.scriptId}.`,
+              );
+            }
+
+            const workflowParams: AutomationCodemodeWorkflowParams = {
+              automationEvent: payload,
+              binding,
+              idempotencyKey: this.idempotencyKey,
+              script: binding.scriptBody,
+            };
+            await this.handlerTx()
+              .withServiceCalls(
+                () =>
+                  [
+                    serviceDeps.workflows!.createInstance("automation-codemode-script", {
+                      id: buildAutomationWorkflowInstanceId(payload.id, binding.id),
+                      params: workflowParams,
+                    }),
+                  ] as const,
+              )
+              .execute();
+            continue;
+          }
 
           if (result.exitCode !== 0) {
             throw new Error(

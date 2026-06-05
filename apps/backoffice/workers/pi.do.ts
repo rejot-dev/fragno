@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
 import type { MasterFileSystem } from "@/files";
+import { createRouteBackedWorkflowsRuntime } from "@/fragno/automation/identity-runtime";
 import {
   type DurableHookQueueOptions,
   type DurableHookQueueResponse,
@@ -240,7 +241,10 @@ export class Pi extends DurableObject<CloudflareEnv> {
       config,
       state: this.#state,
       env: this.#env,
-      codemode: createPiCodemodeRuntime(this.#env),
+      codemode: {
+        ...createPiCodemodeRuntime(this.#env),
+        workflow: createRouteBackedWorkflowsRuntime({ env: this.#env, orgId }),
+      },
       sessionFileSystems: this.#sessionFileSystems,
       sessionFileSystemContext,
       bashCommandContext: createPiBashCommandContext({
