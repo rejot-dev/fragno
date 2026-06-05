@@ -320,7 +320,7 @@ export const STATE_SYSTEM_PROMPT = `You can write JavaScript code that runs insi
 virtual filesystem through the \`state\` object.
 
 Rules:
-- Write either an async function: \`async () => { ... return result; }\`, or a workflow definition: \`defineWorkflow(async (event, step) => { ... })\`.
+- Write either an async function: \`async () => { ... return result; }\`, or a named workflow definition: \`defineWorkflow({ name: "my-workflow" }, async (event, step) => { ... })\`.
 - Use \`defineWorkflow(...)\` when the work should run durably with workflow steps, retries, sleeps, or event waits.
 - Do NOT use TypeScript syntax — no type annotations, interfaces, or generics in your code.
 - Do NOT use \`import\` statements — all helpers are available through \`state\`.

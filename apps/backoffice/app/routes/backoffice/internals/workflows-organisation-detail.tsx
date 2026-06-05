@@ -160,6 +160,10 @@ export default function BackofficeWorkflowsOrganisationDetail() {
               }
             />
             <DetailItem
+              label="Remote workflow"
+              value={detail.meta.remoteWorkflowName ?? "Not remote"}
+            />
+            <DetailItem
               label="Created"
               value={formatTimestamp(detail.meta.createdAt) || "Unknown"}
             />

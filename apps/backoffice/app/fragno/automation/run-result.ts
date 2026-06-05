@@ -46,6 +46,7 @@ export const automationCommandCallResultSchema = z.object({
 });
 
 const automationWorkflowDefinitionSchema = z.object({
+  name: z.string(),
   options: z.unknown().optional(),
 });
 

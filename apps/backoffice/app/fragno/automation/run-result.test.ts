@@ -9,11 +9,11 @@ describe("automation run result", () => {
       eventId: "event-1",
       scriptId: "script-1",
       exitCode: 0,
-      workflowDefinition: { options: { name: "script-local-name" } },
+      workflowDefinition: { name: "script-local-name", options: { name: "script-local-name" } },
     });
 
     expect(automationRunResultSchema.parse(result)).toMatchObject({
-      workflowDefinition: { options: { name: "script-local-name" } },
+      workflowDefinition: { name: "script-local-name", options: { name: "script-local-name" } },
     });
   });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { createWorkflowsTestHarness } from "@fragno-dev/workflows/test";
-import { defineWorkflow, type WorkflowsRegistry } from "@fragno-dev/workflows/workflow";
+import { defineRemoteWorkflow, type WorkflowsRegistry } from "@fragno-dev/workflows/workflow";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
 
@@ -21,7 +21,7 @@ const createHarness = async <TRegistry extends WorkflowsRegistry>(workflows: TRe
 
 describe("codemode workflow execution", () => {
   test("runs a workflow end-to-end in a dynamic worker with real runner steps", async () => {
-    const Workflow = defineWorkflow(
+    const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-complete" },
       defineCodemodeWorkflowRun<{ value: number }, { nested: number }>(
         `async (event, step) => {
@@ -43,6 +43,7 @@ describe("codemode workflow execution", () => {
 
     const instanceId = await harness.createInstance("WORKFLOW", {
       id: "codemode-e2e-complete-1",
+      remoteWorkflowName: "codemode-e2e-complete-body",
       params: { value: 41 },
     });
     await harness.runUntilIdle({
@@ -80,7 +81,7 @@ describe("codemode workflow execution", () => {
   });
 
   test("runs a defineWorkflow codemode script end-to-end", async () => {
-    const Workflow = defineWorkflow(
+    const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-define-workflow" },
       defineCodemodeWorkflowRun<{ value: number }, { value: number; doubled: number }>(
         `defineWorkflow({ name: "script-local-name" }, async (event, step) => {
@@ -95,6 +96,7 @@ describe("codemode workflow execution", () => {
 
     const instanceId = await harness.createInstance("WORKFLOW", {
       id: "codemode-e2e-define-workflow-1",
+      remoteWorkflowName: "script-local-name",
       params: { value: 41 },
     });
     await harness.runUntilIdle({
@@ -117,25 +119,29 @@ describe("codemode workflow execution", () => {
   });
 
   test("runBackofficeCodemodeWorkflow preserves step suspension for wrapper callers", async () => {
-    const Workflow = defineWorkflow({ name: "codemode-wrapper-sleep" }, async (event, step) => {
-      const result = await runBackofficeCodemodeWorkflow({
-        code: `async (_event, step) => {
+    const Workflow = defineRemoteWorkflow(
+      { name: "codemode-wrapper-sleep" },
+      async (event, remote) => {
+        const result = await runBackofficeCodemodeWorkflow({
+          code: `async (_event, step) => {
           await step.sleep("pause", "3 seconds");
           return "done";
         }`,
-        event,
-        step,
-        env,
-      });
-      if (result.error) {
-        throw new Error(result.error);
-      }
-      return result.result;
-    });
+          event,
+          remote,
+          env,
+        });
+        if (result.error) {
+          throw new Error(result.error);
+        }
+        return result.result;
+      },
+    );
     const harness = await createHarness({ WORKFLOW: Workflow });
 
     const instanceId = await harness.createInstance("WORKFLOW", {
       id: "codemode-wrapper-sleep-1",
+      remoteWorkflowName: "codemode-wrapper-sleep-body",
     });
     await harness.runUntilIdle({
       workflowName: "codemode-wrapper-sleep",
@@ -161,7 +167,7 @@ describe("codemode workflow execution", () => {
   });
 
   test("remote sleep suspends until the wake delay has elapsed", async () => {
-    const Workflow = defineWorkflow(
+    const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-sleep" },
       defineCodemodeWorkflowRun<unknown, string>(
         `async (_event, step) => {
@@ -175,6 +181,7 @@ describe("codemode workflow execution", () => {
 
     const instanceId = await harness.createInstance("WORKFLOW", {
       id: "codemode-e2e-sleep-1",
+      remoteWorkflowName: "codemode-e2e-sleep-body",
     });
     await harness.runUntilIdle({
       workflowName: "codemode-e2e-sleep",
@@ -214,7 +221,7 @@ describe("codemode workflow execution", () => {
   });
 
   test("exposes previous step emissions as an async remote tx method", async () => {
-    const Workflow = defineWorkflow(
+    const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-previous-emissions" },
       defineCodemodeWorkflowRun<unknown, unknown[]>(
         `async (_event, step) => {
@@ -238,6 +245,7 @@ describe("codemode workflow execution", () => {
 
     const instanceId = await harness.createInstance("WORKFLOW", {
       id: "codemode-e2e-previous-emissions-1",
+      remoteWorkflowName: "codemode-e2e-previous-emissions-body",
     });
     await harness.runUntilIdle({
       workflowName: "codemode-e2e-previous-emissions",
@@ -271,7 +279,7 @@ describe("codemode workflow execution", () => {
         return { value: input.value * 2 };
       },
     });
-    const Workflow = defineWorkflow(
+    const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-providers" },
       defineCodemodeWorkflowRun<{ value: number }, { value: number }>(
         `async (event, step) => {
@@ -290,6 +298,7 @@ describe("codemode workflow execution", () => {
 
     const instanceId = await harness.createInstance("WORKFLOW", {
       id: "codemode-e2e-providers-1",
+      remoteWorkflowName: "codemode-e2e-providers-body",
       params: { value: 21 },
     });
     await harness.runUntilIdle({
@@ -306,7 +315,7 @@ describe("codemode workflow execution", () => {
   });
 
   test("restores workflow progress after the dynamic worker environment is discarded", async () => {
-    const Workflow = defineWorkflow(
+    const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-volatile-worker" },
       defineCodemodeWorkflowRun<unknown, { before: number; after: number }>(
         `async (_event, step) => {
@@ -333,6 +342,7 @@ describe("codemode workflow execution", () => {
 
     const instanceId = await harness.createInstance("WORKFLOW", {
       id: "codemode-e2e-volatile-worker-1",
+      remoteWorkflowName: "codemode-e2e-volatile-worker-body",
     });
     await harness.runUntilIdle({
       workflowName: "codemode-e2e-volatile-worker",
@@ -371,7 +381,7 @@ describe("codemode workflow execution", () => {
   });
 
   test("suspends and resumes a codemode workflow through waitForEvent", async () => {
-    const Workflow = defineWorkflow(
+    const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-wait" },
       defineCodemodeWorkflowRun<unknown, { approved: boolean }>(
         `async (_event, step) => {
@@ -383,7 +393,10 @@ describe("codemode workflow execution", () => {
     );
     const harness = await createHarness({ WORKFLOW: Workflow });
 
-    const instanceId = await harness.createInstance("WORKFLOW", { id: "codemode-e2e-wait-1" });
+    const instanceId = await harness.createInstance("WORKFLOW", {
+      id: "codemode-e2e-wait-1",
+      remoteWorkflowName: "codemode-e2e-wait-body",
+    });
     await harness.runUntilIdle({
       workflowName: "codemode-e2e-wait",
       instanceId,
@@ -430,7 +443,7 @@ describe("codemode workflow execution", () => {
   });
 
   test("surfaces unsupported remote tx mutations as workflow errors", async () => {
-    const Workflow = defineWorkflow(
+    const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-mutate-unsupported" },
       defineCodemodeWorkflowRun(
         `async (_event, step) => {
@@ -446,6 +459,7 @@ describe("codemode workflow execution", () => {
 
     const instanceId = await harness.createInstance("WORKFLOW", {
       id: "codemode-e2e-mutate-unsupported-1",
+      remoteWorkflowName: "codemode-e2e-mutate-unsupported-body",
     });
     await harness.runUntilIdle({
       workflowName: "codemode-e2e-mutate-unsupported",

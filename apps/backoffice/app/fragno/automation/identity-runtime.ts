@@ -192,10 +192,10 @@ export const createRouteBackedWorkflowsRuntime = ({
   const callRoute = createWorkflowsRouteCaller(env, normalizedOrgId);
 
   return {
-    createInstance: async ({ workflowName, instanceId, params }) => {
+    createInstance: async ({ workflowName, remoteWorkflowName, instanceId, params }) => {
       const response = await callRoute("POST", "/:workflowName/instances", {
         pathParams: { workflowName },
-        body: { id: instanceId, params },
+        body: { id: instanceId, params, remoteWorkflowName },
       });
 
       if (response.type === "json") {

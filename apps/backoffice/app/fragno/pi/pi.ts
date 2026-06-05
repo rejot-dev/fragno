@@ -278,6 +278,7 @@ const createExecCodeModeTool = (
         }
         result.result = await codemode.workflow.createInstance({
           workflowName: "pi-codemode-script",
+          remoteWorkflowName: result.workflowDefinition.name,
           instanceId: `${sessionId}--${_toolCallId}`,
           params: {
             code,

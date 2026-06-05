@@ -23,7 +23,7 @@ const STARTER_AUTOMATION_BINDINGS = [
       agent: null,
       env: {},
     },
-    content: `defineWorkflow(async (_workflowEvent, step) => {
+    content: `defineWorkflow({ name: "telegram-claim-linking-start" }, async (_workflowEvent, step) => {
   const event = await step.do("read-event", async () => {
     return JSON.parse(await state.readFile("/context/event.json"));
   });
@@ -143,7 +143,7 @@ const STARTER_AUTOMATION_BINDINGS = [
       agent: null,
       env: {},
     },
-    content: `defineWorkflow(async (_workflowEvent, step) => {
+    content: `defineWorkflow({ name: "telegram-delayed-test-reply" }, async (_workflowEvent, step) => {
   const event = await step.do("read-event", async () => {
     return JSON.parse(await state.readFile("/context/event.json"));
   });

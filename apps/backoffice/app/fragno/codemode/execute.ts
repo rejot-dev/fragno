@@ -40,6 +40,7 @@ export type BackofficeCodemodeProvidersInput = {
 };
 
 export type BackofficeCodemodeWorkflowDefinition = {
+  name: string;
   options?: unknown;
 };
 

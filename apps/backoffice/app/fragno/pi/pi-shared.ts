@@ -108,7 +108,7 @@ Codemode harness guidance:
 - Use state.* APIs from inside execCodeMode for multi-file operations.
 - Prefer camelCase domain tools when they are available in codemode contexts.
 - Do not assume import() or module loading is available inside dynamic Worker code.
-- Write codemode as either a standalone async arrow function, for example: async () => { return await state.readFile("/workspace/file.txt"); }, or a workflow definition: defineWorkflow(async (event, step) => { ... }).
+- Write codemode as either a standalone async arrow function, for example: async () => { return await state.readFile("/workspace/file.txt"); }, or a workflow definition: defineWorkflow({ name: "my-workflow" }, async (event, step) => { ... }).
 - Use defineWorkflow(...) when work should run durably with workflow steps, retries, sleeps, or event waits.
 - Codemode automation script files must use /workspace/automations/scripts/*.cm.js and bindings.json entries must set script.engine to "codemode".
 - Bash automation script files usually use *.sh and bindings.json entries must set script.engine to "bash".

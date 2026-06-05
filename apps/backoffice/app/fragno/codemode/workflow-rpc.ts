@@ -162,6 +162,3 @@ export class WorkflowStepTarget extends RpcTarget {
     }
   }
 }
-
-export const createWorkflowStepTarget = (host: RemoteWorkflowStepHost): WorkflowStepTarget =>
-  new WorkflowStepTarget(host);

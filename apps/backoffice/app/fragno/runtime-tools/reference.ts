@@ -431,17 +431,14 @@ type WorkflowStep = {
 };
 
 type CodemodeWorkflowDefinitionOptions = {
-  /** Optional script-local name for humans. The host still schedules its registered generic workflow. */
-  name?: string;
+  /** Required remote workflow name used to identify this durable run. */
+  name: string;
 };
 
 /**
  * Return defineWorkflow(...) from execCodeMode or a codemode automation script to schedule durable
  * workflow execution. The callback runs later with real workflow step controls.
  */
-declare function defineWorkflow<TPayload = unknown, TOutput = unknown>(
-  run: (event: WorkflowEvent<TPayload>, step: WorkflowStep) => Promise<TOutput> | TOutput,
-): unknown;
 declare function defineWorkflow<TPayload = unknown, TOutput = unknown>(
   options: CodemodeWorkflowDefinitionOptions,
   run: (event: WorkflowEvent<TPayload>, step: WorkflowStep) => Promise<TOutput> | TOutput,

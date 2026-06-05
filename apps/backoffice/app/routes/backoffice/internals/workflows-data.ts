@@ -59,6 +59,7 @@ export type WorkflowInstanceDetails = {
   };
   meta: {
     workflowName: string;
+    remoteWorkflowName?: string;
     params: unknown;
     createdAt: string | Date;
     updatedAt: string | Date;
@@ -344,6 +345,7 @@ export async function loadWorkflowInstanceDetail(options: {
     },
     meta: {
       workflowName: instanceResponse.data.meta.workflowName,
+      remoteWorkflowName: instanceResponse.data.meta.remoteWorkflowName,
       params: instanceResponse.data.meta.params,
       createdAt: instanceResponse.data.meta.createdAt,
       updatedAt: instanceResponse.data.meta.updatedAt,

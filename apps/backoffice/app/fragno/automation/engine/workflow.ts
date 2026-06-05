@@ -1,4 +1,4 @@
-import { defineWorkflow } from "@fragno-dev/workflows/workflow";
+import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 
 import { MasterFileSystem } from "@/files/master-file-system";
 import {
@@ -78,7 +78,7 @@ const createWorkflowAutomationContext = ({
 export const defineAutomationCodemodeWorkflow = (
   config: AutomationFileSystemConfig & { env?: CloudflareEnv },
 ) =>
-  defineWorkflow({ name: "automation-codemode-script" }, async (event, step) => {
+  defineRemoteWorkflow({ name: "automation-codemode-script" }, async (event, remote) => {
     if (!config.env?.LOADER) {
       throw new Error("Workflow-backed codemode automation requires the Cloudflare Worker Loader.");
     }
@@ -99,7 +99,7 @@ export const defineAutomationCodemodeWorkflow = (
       masterFs: resolvedFs,
       env: config.env as BackofficeCodemodeEnv,
       workflowEvent: event,
-      step,
+      remote,
     });
 
     if (result.exitCode !== 0) {
@@ -114,7 +114,7 @@ export const defineAutomationCodemodeWorkflow = (
 export const definePiCodemodeWorkflow = (
   config: AutomationFileSystemConfig & { env?: CloudflareEnv },
 ) =>
-  defineWorkflow({ name: "pi-codemode-script" }, async (event, step) => {
+  defineRemoteWorkflow({ name: "pi-codemode-script" }, async (event, remote) => {
     if (!config.env?.LOADER) {
       throw new Error("Pi codemode workflow requires the Cloudflare Worker Loader.");
     }
@@ -139,6 +139,6 @@ export const definePiCodemodeWorkflow = (
       masterFs: resolvedFs,
       env: config.env as BackofficeCodemodeEnv & CloudflareEnv,
       workflowEvent: event,
-      step,
+      remote,
     });
   });

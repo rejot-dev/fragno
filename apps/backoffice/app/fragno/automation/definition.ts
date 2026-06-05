@@ -139,7 +139,19 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
             env: config.env,
           });
 
-          if ("workflowDefinition" in result && result.workflowDefinition) {
+          if (result.exitCode !== 0) {
+            throw new Error(
+              [
+                `Automation ${binding.scriptEngine} script ${binding.scriptId} failed for event ${payload.id} with exit code ${result.exitCode}.`,
+                result.stderr.trim() || result.stdout.trim(),
+              ]
+                .filter(Boolean)
+                .join(" "),
+            );
+          }
+
+          const workflowDefinition = result.workflowDefinition;
+          if (workflowDefinition) {
             if (!serviceDeps.workflows) {
               throw new Error(
                 `No workflows service available to run workflow automation script ${binding.scriptId}.`,
@@ -159,22 +171,11 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                     serviceDeps.workflows!.createInstance("automation-codemode-script", {
                       id: buildAutomationWorkflowInstanceId(payload.id, binding.id),
                       params: workflowParams,
+                      remoteWorkflowName: workflowDefinition.name,
                     }),
                   ] as const,
               )
               .execute();
-            continue;
-          }
-
-          if (result.exitCode !== 0) {
-            throw new Error(
-              [
-                `Automation ${binding.scriptEngine} script ${binding.scriptId} failed for event ${payload.id} with exit code ${result.exitCode}.`,
-                result.stderr.trim() || result.stdout.trim(),
-              ]
-                .filter(Boolean)
-                .join(" "),
-            );
           }
         }
       }),

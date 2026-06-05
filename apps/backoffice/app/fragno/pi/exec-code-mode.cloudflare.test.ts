@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { createWorkflowsTestHarness } from "@fragno-dev/workflows/test";
-import { defineWorkflow } from "@fragno-dev/workflows/workflow";
+import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 import { env } from "cloudflare:workers";
 import { InMemoryFs } from "just-bash";
 
@@ -90,7 +90,7 @@ describe("Pi execCodeMode tool", () => {
     });
 
     expect(result.details).toMatchObject({
-      workflowDefinition: { options: { name: "pi-session-workflow" } },
+      workflowDefinition: { name: "pi-session-workflow", options: { name: "pi-session-workflow" } },
       result: { workflowName: "pi-codemode-script", instanceId: "session-1--tool-call-1" },
     });
     const content = result.content[0];
@@ -106,7 +106,7 @@ describe("Pi execCodeMode tool", () => {
     const sessionFileSystems = new Map<string, Promise<MasterFileSystem>>([
       ["session-1", Promise.resolve(fs)],
     ]);
-    const workflow = defineWorkflow({ name: "pi-codemode-script" }, async (event, step) => {
+    const workflow = defineRemoteWorkflow({ name: "pi-codemode-script" }, async (event, remote) => {
       const params = event.payload as { code: string; sessionId: string };
       const sessionFs = await sessionFileSystems.get(params.sessionId);
       if (!sessionFs) {
@@ -115,7 +115,7 @@ describe("Pi execCodeMode tool", () => {
       const result = await runBackofficeCodemodeWorkflow({
         code: params.code,
         event,
-        step,
+        remote,
         fs: sessionFs,
         env,
         tools: [],
@@ -142,11 +142,12 @@ describe("Pi execCodeMode tool", () => {
       codemode: {
         ...createPiCodemodeRuntime(env),
         workflow: {
-          createInstance: async ({ workflowName, instanceId, params }) => {
+          createInstance: async ({ workflowName, remoteWorkflowName, instanceId, params }) => {
             const resolvedInstanceId = instanceId ?? "generated-instance-id";
-            await harness.createInstance("PI_CODEMODE_SCRIPT", {
+            await harness.createInstance(workflowName, {
               id: resolvedInstanceId,
               params,
+              remoteWorkflowName,
             });
             return { workflowName, instanceId: resolvedInstanceId };
           },
@@ -167,7 +168,7 @@ describe("Pi execCodeMode tool", () => {
     } as never);
 
     const result = await tool.execute("tool-call-1", {
-      code: `defineWorkflow(async (_event, step) => {
+      code: `defineWorkflow({ name: "pi-session-workflow" }, async (_event, step) => {
         return await step.do("write-session-file", async () => {
           await state.writeFile("/workspace/from-workflow.txt", "ran from execCodeMode workflow");
           return await state.readFile("/workspace/from-workflow.txt");
@@ -176,7 +177,7 @@ describe("Pi execCodeMode tool", () => {
     });
 
     expect(result.details).toMatchObject({
-      workflowDefinition: { options: {} },
+      workflowDefinition: { name: "pi-session-workflow", options: { name: "pi-session-workflow" } },
       result: { workflowName: "pi-codemode-script", instanceId: "session-1--tool-call-1" },
     });
     await harness.runUntilIdle({

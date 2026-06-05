@@ -384,10 +384,15 @@ const buildAutomationTestContext = async (
     .build();
 
   testEnv.AUTOMATIONS ??= {
-    idFromName: vi.fn((orgId: string) => `automations:${orgId}`),
-    get: vi.fn(),
+    idFromName: (orgId: string) => `automations:${orgId}`,
+    get: () => ({
+      fetch: async () =>
+        new Response(JSON.stringify({ message: "Not configured", code: "NOT_CONFIGURED" }), {
+          status: 400,
+        }),
+    }),
   } as never;
-  testEnv.AUTOMATIONS.get = vi.fn(() => ({
+  testEnv.AUTOMATIONS.get = (() => ({
     fetch: async (request: Request) => {
       const url = new URL(request.url);
       const routePath = url.pathname.replace(/^\/api\/automations\/bindings/, "") || "/";
