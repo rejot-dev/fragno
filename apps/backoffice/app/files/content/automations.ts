@@ -23,8 +23,10 @@ const STARTER_AUTOMATION_BINDINGS = [
       agent: null,
       env: {},
     },
-    content: `async () => {
-  const event = JSON.parse(await state.readFile("/context/event.json"));
+    content: `defineWorkflow(async (_workflowEvent, step) => {
+  const event = await step.do("read-event", async () => {
+    return JSON.parse(await state.readFile("/context/event.json"));
+  });
   const text = event?.payload?.text ?? "";
   const source = event?.source ?? "";
   const externalActorId = event?.actor?.externalId ?? "";
@@ -33,35 +35,43 @@ const STARTER_AUTOMATION_BINDINGS = [
     return;
   }
 
-  const linkedUser = await automations.lookupBinding({
-    source,
-    key: externalActorId,
+  const linkedUser = await step.do("lookup-existing-link", async () => {
+    return await automations.lookupBinding({
+      source,
+      key: externalActorId,
+    });
   });
 
   if (linkedUser?.value) {
-    await telegram.sendMessage({
-      chatId: externalActorId,
-      text: "This Telegram chat is already linked.",
-      parseMode: "Markdown",
+    await step.do("send-already-linked-message", async () => {
+      await telegram.sendMessage({
+        chatId: externalActorId,
+        text: "This Telegram chat is already linked.",
+        parseMode: "Markdown",
+      });
     });
     return;
   }
 
-  const claim = await otp.createIdentityClaim({
-    source,
-    externalActorId,
+  const claim = await step.do("create-identity-claim", async () => {
+    return await otp.createIdentityClaim({
+      source,
+      externalActorId,
+    });
   });
 
   if (!claim?.url) {
     throw new Error("otp.createIdentityClaim did not return a URL");
   }
 
-  await telegram.sendMessage({
-    chatId: externalActorId,
-    text: "Open this link to finish linking your Telegram account: " + claim.url,
-    parseMode: "Markdown",
+  await step.do("send-claim-link-message", async () => {
+    await telegram.sendMessage({
+      chatId: externalActorId,
+      text: "Open this link to finish linking your Telegram account: " + claim.url,
+      parseMode: "Markdown",
+    });
   });
-};
+});
 `,
   },
   {
@@ -120,10 +130,51 @@ const STARTER_AUTOMATION_BINDINGS = [
 `,
   },
   {
-    id: "telegram-pi-session-ensure",
+    id: "telegram-delayed-test-reply",
     source: AUTOMATION_SOURCES.telegram,
     eventType: AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived,
     enabled: true,
+    script: {
+      key: "telegram-delayed-test.reply",
+      name: "Telegram delayed /test reply",
+      engine: "codemode" as const,
+      path: "/workspace/automations/scripts/telegram-delayed-test.reply.cm.js",
+      version: 1,
+      agent: null,
+      env: {},
+    },
+    content: `defineWorkflow(async (_workflowEvent, step) => {
+  const event = await step.do("read-event", async () => {
+    return JSON.parse(await state.readFile("/context/event.json"));
+  });
+  const text = event?.payload?.text ?? "";
+  const chatId = event?.payload?.chatId ?? event?.actor?.externalId ?? "";
+
+  if (text !== "/test") {
+    return { skipped: true, reason: "not-test-command" };
+  }
+
+  if (!chatId) {
+    throw new Error("Missing Telegram chat id for /test reply");
+  }
+
+  await step.sleep("wait 3 seconds", "3 seconds");
+
+  await step.do("send delayed test reply", () =>
+    telegram.sendMessage({
+      chatId,
+      text: "Delayed /test reply after 3 seconds.",
+      parseMode: "Markdown",
+    }),
+  );
+});
+`,
+  },
+  {
+    id: "telegram-pi-session-ensure",
+    source: AUTOMATION_SOURCES.telegram,
+    eventType: AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived,
+    enabled: false,
     script: {
       key: "telegram-pi-session.ensure",
       name: "Telegram Pi session ensure (linked chat)",
@@ -254,7 +305,8 @@ export const STARTER_AUTOMATION_SCRIPT_PATHS = {
   telegramClaimLinkingComplete: STARTER_AUTOMATION_BINDINGS[1].script.path.slice(
     "/workspace/".length,
   ),
-  telegramPiSessionEnsure: STARTER_AUTOMATION_BINDINGS[2].script.path.slice("/workspace/".length),
+  telegramDelayedTestReply: STARTER_AUTOMATION_BINDINGS[2].script.path.slice("/workspace/".length),
+  telegramPiSessionEnsure: STARTER_AUTOMATION_BINDINGS[3].script.path.slice("/workspace/".length),
 } as const;
 
 const STARTER_AUTOMATION_MANIFEST = {

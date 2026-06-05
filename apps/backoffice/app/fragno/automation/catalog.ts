@@ -152,7 +152,7 @@ const validateScriptPathForEngine = ({
 
   if (engine === "codemode" && !isCodemodeScriptPath) {
     throw new Error(
-      `Automation binding '${bindingId}' uses codemode script '${scriptPath}', but codemode scripts must end in .cm.js.`,
+      `Automation binding '${bindingId}' uses ${engine} script '${scriptPath}', but ${engine} scripts must end in .cm.js.`,
     );
   }
 
