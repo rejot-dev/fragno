@@ -46,7 +46,7 @@ export type RuntimeToolReference = {
   namespace: string;
   description: string;
   codemode: RuntimeToolCodemodeReference;
-  bash?: RuntimeToolBashReference;
+  bash: RuntimeToolBashReference;
 };
 
 export type RuntimeToolFamilyReference = {
@@ -241,6 +241,10 @@ export const toRuntimeToolReference = (tool: AnyBackofficeRuntimeTool): RuntimeT
   const outputTypeName = typeNameFor(tool, "Output");
   const bash = tool.adapters?.bash;
 
+  if (!bash) {
+    throw new Error(`Runtime tool '${tool.id}' is missing a bash adapter.`);
+  }
+
   return {
     id: tool.id,
     namespace: tool.namespace,
@@ -254,16 +258,12 @@ export const toRuntimeToolReference = (tool: AnyBackofficeRuntimeTool): RuntimeT
       inputType: zodSchemaToTypeScript(tool.inputSchema, "input"),
       outputType: zodSchemaToTypeScript(tool.outputSchema, "output"),
     },
-    ...(bash
-      ? {
-          bash: {
-            command: bash.command,
-            summary: bash.help.summary,
-            options: bash.help.options,
-            examples: bash.help.examples ?? [],
-          },
-        }
-      : {}),
+    bash: {
+      command: bash.command,
+      summary: bash.help.summary,
+      options: bash.help.options,
+      examples: bash.help.examples ?? [],
+    },
   };
 };
 
@@ -354,6 +354,98 @@ const renderJSDoc = (value: string, spaces = 0) => {
   }
   return [`${prefix}/**`, ...lines.map((line) => `${prefix} * ${line}`), `${prefix} */`].join("\n");
 };
+
+export const renderCodemodeWorkflowTypes =
+  () => `// ── Workflow helpers ──────────────────────────────────────────────────────
+/** Relative duration. Numbers are milliseconds; strings use duration syntax such as "5 minutes", "30s", or "1 day". */
+type WorkflowDuration = string | number;
+
+type WorkflowEvent<TPayload = unknown> = {
+  payload: Readonly<TPayload>;
+  timestamp: Date;
+  instanceId: string;
+};
+
+type WorkflowStepConfig = {
+  retries?: {
+    limit: number;
+    delay: WorkflowDuration;
+    backoff?: "constant" | "linear" | "exponential";
+  };
+};
+
+type WorkflowStepEmission<TPayload = unknown> = {
+  id: string;
+  actor: string;
+  stepKey: string;
+  epoch: string;
+  sequence: number;
+  payload: TPayload;
+  createdAt: Date;
+};
+
+type WorkflowStepEvent<TPayload = unknown> = {
+  id: string;
+  type: string;
+  payload: Readonly<TPayload>;
+  timestamp: Date;
+  consume(): void;
+};
+
+type WorkflowStepConsumeTx = {
+  /** Persist an outbound workflow-authored step emission. */
+  emit(payload: unknown): void;
+  /** Emissions for this step that were already persisted before the current attempt started. */
+  previousEmissions(): Promise<WorkflowStepEmission[]>;
+};
+
+type WorkflowStepTx = WorkflowStepConsumeTx & {
+  /** Observe durable workflow events while this step is active. */
+  onEvent<TPayload = unknown>(
+    type: string,
+    handler: (event: WorkflowStepEvent<TPayload>) => void | Promise<void>,
+  ): () => void;
+};
+
+type WorkflowStep = {
+  /** Run replay-safe work as a durable workflow step. */
+  do<T>(name: string, callback: (tx: WorkflowStepTx) => Promise<T> | T): Promise<T>;
+  do<T>(
+    name: string,
+    config: WorkflowStepConfig,
+    callback: (tx: WorkflowStepTx) => Promise<T> | T,
+  ): Promise<T>;
+  sleep(name: string, duration: WorkflowDuration): Promise<void>;
+  sleepUntil(name: string, timestamp: Date | number): Promise<void>;
+  waitForEvent<TPayload = unknown>(
+    name: string,
+    options: {
+      type: string;
+      timeout?: WorkflowDuration;
+      onConsume?: (
+        tx: WorkflowStepConsumeTx,
+        event: { type: string; payload: Readonly<TPayload>; timestamp: Date },
+      ) => Promise<void> | void;
+    },
+  ): Promise<{ type: string; payload: Readonly<TPayload>; timestamp: Date }>;
+};
+
+type CodemodeWorkflowDefinitionOptions = {
+  /** Optional script-local name for humans. The host still schedules its registered generic workflow. */
+  name?: string;
+};
+
+/**
+ * Return defineWorkflow(...) from execCodeMode or a codemode automation script to schedule durable
+ * workflow execution. The callback runs later with real workflow step controls.
+ */
+declare function defineWorkflow<TPayload = unknown, TOutput = unknown>(
+  run: (event: WorkflowEvent<TPayload>, step: WorkflowStep) => Promise<TOutput> | TOutput,
+): unknown;
+declare function defineWorkflow<TPayload = unknown, TOutput = unknown>(
+  options: CodemodeWorkflowDefinitionOptions,
+  run: (event: WorkflowEvent<TPayload>, step: WorkflowStep) => Promise<TOutput> | TOutput,
+): unknown;`;
 
 export const renderCodemodeProviderTypes = (references: readonly RuntimeToolReference[]) => {
   const byNamespace = new Map<string, RuntimeToolReference[]>();

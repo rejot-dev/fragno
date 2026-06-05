@@ -1,6 +1,7 @@
 import {
   createRuntimeToolReferences,
   renderCodemodeProviderTypes,
+  renderCodemodeWorkflowTypes,
 } from "@/fragno/runtime-tools/reference";
 import type {
   BackofficeRuntimeToolFamily,
@@ -319,7 +320,8 @@ export const STATE_SYSTEM_PROMPT = `You can write JavaScript code that runs insi
 virtual filesystem through the \`state\` object.
 
 Rules:
-- Write an async function: \`async () => { ... return result; }\`
+- Write either an async function: \`async () => { ... return result; }\`, or a workflow definition: \`defineWorkflow(async (event, step) => { ... })\`.
+- Use \`defineWorkflow(...)\` when the work should run durably with workflow steps, retries, sleeps, or event waits.
 - Do NOT use TypeScript syntax — no type annotations, interfaces, or generics in your code.
 - Do NOT use \`import\` statements — all helpers are available through \`state\`.
 - Always \`return\` the final value you want back.
@@ -342,7 +344,7 @@ export const createCodemodeTypes = ({
 }) => {
   const references = createRuntimeToolReferences({ families, context });
   const providerTypes = references.length ? `\n\n${renderCodemodeProviderTypes(references)}` : "";
-  return `${STATE_TYPES}${providerTypes}`;
+  return `${STATE_TYPES}\n\n${renderCodemodeWorkflowTypes()}${providerTypes}`;
 };
 
 export const createCodemodeSystemPrompt = (input: {
