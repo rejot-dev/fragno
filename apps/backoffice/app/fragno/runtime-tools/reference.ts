@@ -392,6 +392,15 @@ type WorkflowStepEvent<TPayload = unknown> = {
   consume(): void;
 };
 
+type WorkflowStepWorkflowOperation =
+  | {
+      type: "createInstance";
+      workflowName: string;
+      instanceId: string;
+      params: unknown;
+      remoteWorkflowName?: string | null;
+    };
+
 type WorkflowStepConsumeTx = {
   /** Persist an outbound workflow-authored step emission. */
   emit(payload: unknown): void;
@@ -400,6 +409,8 @@ type WorkflowStepConsumeTx = {
 };
 
 type WorkflowStepTx = WorkflowStepConsumeTx & {
+  /** Queue workflow database operations that commit if the enclosing step succeeds. */
+  workflowServiceCalls(factory: () => readonly WorkflowStepWorkflowOperation[]): void;
   /** Observe durable workflow events while this step is active. */
   onEvent<TPayload = unknown>(
     type: string,

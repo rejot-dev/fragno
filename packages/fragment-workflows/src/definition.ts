@@ -31,6 +31,7 @@ import type {
   WorkflowRegistryEntry,
   WorkflowsFragmentConfig,
 } from "./workflow";
+import { validateAndNormalizeWorkflowOperation } from "./workflow-operation";
 
 const DEFAULT_PAGE_SIZE = 25;
 const INSTANCE_STATUSES = new Set<InstanceStatus["status"]>([
@@ -342,16 +343,16 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         workflowName: string,
         options?: { id?: string; params?: unknown; remoteWorkflowName?: string },
       ) {
-        const workflow = getWorkflowEntry(workflowName);
-        const remoteWorkflowName = options?.remoteWorkflowName;
-        if (workflow.remote === true && !remoteWorkflowName) {
-          throw new Error("WORKFLOW_REMOTE_NAME_REQUIRED");
-        }
-        if (remoteWorkflowName && workflow.remote !== true) {
-          throw new Error("WORKFLOW_REMOTE_HOST_INVALID");
-        }
         const instanceId = options?.id ?? generateInstanceId(randomUuid);
-        const params = options?.params ?? {};
+        const operation = validateAndNormalizeWorkflowOperation(deps.workflowsByName, {
+          type: "createInstance",
+          workflowName,
+          instanceId,
+          params: options?.params ?? {},
+          remoteWorkflowName: options?.remoteWorkflowName,
+        });
+        const remoteWorkflowName = operation.remoteWorkflowName;
+        const params = operation.params;
 
         return this.serviceTx(workflowsSchema)
           .mutate(({ uow }) => {
@@ -393,14 +394,15 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
         instances: { id: string; params?: unknown }[],
         options?: { remoteWorkflowName?: string },
       ) {
-        const workflow = getWorkflowEntry(workflowName);
+        getWorkflowEntry(workflowName);
         const remoteWorkflowName = options?.remoteWorkflowName;
-        if (workflow.remote === true && !remoteWorkflowName) {
-          throw new Error("WORKFLOW_REMOTE_NAME_REQUIRED");
-        }
-        if (remoteWorkflowName && workflow.remote !== true) {
-          throw new Error("WORKFLOW_REMOTE_HOST_INVALID");
-        }
+        validateAndNormalizeWorkflowOperation(deps.workflowsByName, {
+          type: "createInstance",
+          workflowName,
+          instanceId: "__validation__",
+          params: {},
+          remoteWorkflowName,
+        });
         if (instances.length === 0) {
           return this.serviceTx(workflowsSchema)
             .transform(() => [])

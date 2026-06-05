@@ -26,12 +26,15 @@ import type {
   WorkflowStepEmission,
   WorkflowStepEmissionsCleanupHookPayload,
   WorkflowStep,
+  WorkflowRegistryEntry,
   WorkflowStepConfig,
   WorkflowStepConsumeTx,
   WorkflowStepEvent,
   WorkflowStepTx,
+  WorkflowStepWorkflowOperation,
 } from "../workflow";
 import { WaitForEventTimeoutError } from "../workflow";
+import { validateAndNormalizeWorkflowOperation } from "../workflow-operation";
 import type { RunnerState, WorkflowStepSnapshot } from "./state";
 import { createWorkflowStepLivePump, workflowStepLivePumpKey } from "./step-live-pump";
 import type { WorkflowStepLivePump, WorkflowStepLivePumpRegistry } from "./step-live-pump";
@@ -64,6 +67,7 @@ type RunnerStepOptions = {
   handlerTx: DatabaseRequestContext["handlerTx"];
   createEpoch: () => string;
   stepEmissions?: WorkflowStepLivePumpRegistry;
+  workflowsByName: Map<string, WorkflowRegistryEntry>;
 };
 
 type StepTxQueue = {
@@ -154,6 +158,7 @@ export class RunnerStep implements WorkflowStep {
   #handlerTx: DatabaseRequestContext["handlerTx"];
   #createEpoch: () => string;
   #stepEmissions: WorkflowStepLivePumpRegistry;
+  #workflowsByName: Map<string, WorkflowRegistryEntry>;
 
   constructor(options: RunnerStepOptions) {
     this.#state = options.state;
@@ -163,6 +168,7 @@ export class RunnerStep implements WorkflowStep {
     this.#handlerTx = options.handlerTx;
     this.#createEpoch = options.createEpoch;
     this.#stepEmissions = options.stepEmissions ?? new BufferedPumpRegistry<WorkflowStepLivePump>();
+    this.#workflowsByName = options.workflowsByName;
   }
 
   #runInStepContext<T>(identity: WorkflowStepIdentity, execute: () => Promise<T> | T): Promise<T> {
@@ -888,9 +894,16 @@ export class RunnerStep implements WorkflowStep {
     this.#state.mutations.stepEmissionCleanupRequests.push(request);
   }
 
+  #validateWorkflowOperation(
+    operation: WorkflowStepWorkflowOperation,
+  ): WorkflowStepWorkflowOperation {
+    return validateAndNormalizeWorkflowOperation(this.#workflowsByName, operation);
+  }
+
   #createStepTxQueue(identity: WorkflowStepIdentity): StepTxQueue {
     const pendingMutations: Array<(ctx: HandlerTxContext<HooksMap>) => void> = [];
     const pendingServiceCalls: AnyTxResult[] = [];
+    const pendingWorkflowServiceCalls: WorkflowStepWorkflowOperation[] = [];
     const pendingTerminalErrorMutations: Array<(ctx: HandlerTxContext<HooksMap>) => void> = [];
 
     const tx: WorkflowStepTx = {
@@ -905,6 +918,12 @@ export class RunnerStep implements WorkflowStep {
       emit: () => {},
       previousEmissions: async () => this.#previousEmissionsFor(identity.stepKey),
       onEvent: () => () => {},
+      workflowServiceCalls: (factory) => {
+        const operations = factory();
+        for (const operation of operations) {
+          pendingWorkflowServiceCalls.push(this.#validateWorkflowOperation(operation));
+        }
+      },
       serviceCalls: (factory) => {
         let calls: readonly AnyTxResult[];
         try {
@@ -930,6 +949,7 @@ export class RunnerStep implements WorkflowStep {
       commitSuccess: () => {
         this.#state.mutations.txMutations.push(...pendingMutations);
         this.#state.mutations.txServiceCalls.push(...pendingServiceCalls);
+        this.#state.mutations.workflowServiceCalls.push(...pendingWorkflowServiceCalls);
       },
       commitTerminalError: () => {
         this.#state.mutations.txMutations.push(...pendingTerminalErrorMutations);

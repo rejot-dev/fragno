@@ -2,7 +2,11 @@
 
 import type { HandlerTxContext, HooksMap } from "@fragno-dev/db";
 
-import type { AnyTxResult, WorkflowStepEmissionsCleanupHookPayload } from "../workflow";
+import type {
+  AnyTxResult,
+  WorkflowStepEmissionsCleanupHookPayload,
+  WorkflowStepWorkflowOperation,
+} from "../workflow";
 import type {
   WorkflowEventRecord,
   WorkflowEventUpdate,
@@ -35,6 +39,7 @@ export type RunnerMutationBuffer = {
   >;
   txMutations: Array<(ctx: HandlerTxContext<HooksMap>) => void>;
   txServiceCalls: AnyTxResult[];
+  workflowServiceCalls: WorkflowStepWorkflowOperation[];
   stepEmissionCleanupRequests: WorkflowStepEmissionsCleanupHookPayload[];
 };
 
@@ -57,6 +62,7 @@ function createMutationBuffer(): RunnerMutationBuffer {
     eventUpdates: new Map(),
     txMutations: [],
     txServiceCalls: [],
+    workflowServiceCalls: [],
     stepEmissionCleanupRequests: [],
   };
 }

@@ -12,6 +12,7 @@ import type {
   WorkflowStepConsumeTx,
   WorkflowStepEvent,
   WorkflowStepTx,
+  WorkflowStepWorkflowOperation,
 } from "@fragno-dev/workflows/workflow";
 import { RpcTarget } from "cloudflare:workers";
 
@@ -37,6 +38,9 @@ const isWorkflowSuspensionError = (
 const returnSuspensionOrThrow = (
   error: unknown,
 ): never | ReturnType<typeof createRemoteWorkflowSuspension> => {
+  if (isRemoteWorkflowSuspension(error)) {
+    return error;
+  }
   if (isWorkflowSuspensionError(error)) {
     return createRemoteWorkflowSuspension(error.reason);
   }
@@ -57,6 +61,14 @@ export class WorkflowStepTxTarget extends RpcTarget {
 
   async previousEmissions() {
     return await this.#tx.previousEmissions();
+  }
+
+  workflowServiceCalls(operations: readonly WorkflowStepWorkflowOperation[]): void {
+    const workflowServiceCalls = (this.#tx as Partial<WorkflowStepTx>).workflowServiceCalls;
+    if (!workflowServiceCalls) {
+      return unsupportedRemoteTxFeature("WORKFLOW_SERVICE_CALLS");
+    }
+    workflowServiceCalls(() => operations);
   }
 
   onEvent(type: string, handler: (event: WorkflowStepEvent<unknown>) => void | Promise<void>) {
@@ -96,11 +108,18 @@ export class WorkflowStepTarget extends RpcTarget {
   ): Promise<T> {
     try {
       return await this.#host.do(parentScope, name, config, async (tx, scope) => {
-        const result = await callback(new WorkflowStepTxTarget(tx), scope);
-        if (isRemoteWorkflowSuspension(result)) {
-          throw new RemoteWorkflowSuspendedError(result.reason);
+        try {
+          const result = await callback(new WorkflowStepTxTarget(tx), scope);
+          if (isRemoteWorkflowSuspension(result)) {
+            throw new RemoteWorkflowSuspendedError(result.reason);
+          }
+          return result;
+        } catch (error) {
+          if (isRemoteWorkflowSuspension(error)) {
+            throw new RemoteWorkflowSuspendedError(error.reason);
+          }
+          throw error;
         }
-        return result;
       });
     } catch (error) {
       return returnSuspensionOrThrow(error) as T;
