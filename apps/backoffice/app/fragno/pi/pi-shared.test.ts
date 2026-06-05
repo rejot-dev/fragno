@@ -67,9 +67,14 @@ describe("pi-shared helpers", () => {
     expect(codemodeHarness?.systemPrompt).toContain("planEdits(instructions");
     expect(codemodeHarness?.systemPrompt).toContain("camelCase");
     expect(codemodeHarness?.systemPrompt).toContain("import()");
-    expect(codemodeHarness?.systemPrompt).toContain("standalone async arrow functions");
+    expect(codemodeHarness?.systemPrompt).toContain("standalone async arrow function");
+    expect(codemodeHarness?.systemPrompt).toContain("workflow definition: defineWorkflow");
+    expect(codemodeHarness?.systemPrompt).toContain("durably with workflow steps");
     expect(codemodeHarness?.systemPrompt).toContain("declare const telegram");
     expect(codemodeHarness?.systemPrompt).toContain("sendMessage(input: TelegramSendMessageInput)");
     expect(codemodeHarness?.systemPrompt).toContain("declare const pi");
+    expect(codemodeHarness?.systemPrompt).toContain("declare function defineWorkflow");
+    expect(codemodeHarness?.systemPrompt).toContain("type WorkflowStep");
+    expect(codemodeHarness?.systemPrompt).toContain("waitForEvent<TPayload");
   });
 });
