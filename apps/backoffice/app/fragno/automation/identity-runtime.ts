@@ -1,6 +1,7 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 
 import { isUniqueConstraintError, type HookContext } from "@fragno-dev/db";
+import type { WorkflowsFragment } from "@fragno-dev/workflows";
 
 import type {
   IdentityBindActorArgs,
@@ -9,6 +10,7 @@ import type {
 import type {
   AutomationIdentityBindingRecord,
   AutomationsRuntime,
+  WorkflowsRuntime,
 } from "../runtime-tools/families/automations";
 import { automationIdentityBindingRecordSchema } from "./identity";
 import type { createAutomationFragment } from "./index";
@@ -16,7 +18,7 @@ import { automationFragmentSchema } from "./schema";
 
 type AutomationFragment = ReturnType<typeof createAutomationFragment>;
 
-export type { AutomationIdentityBindingRecord, AutomationsRuntime };
+export type { AutomationIdentityBindingRecord, AutomationsRuntime, WorkflowsRuntime };
 
 export type AutomationIdentityStorageContext = Pick<HookContext, "handlerTx">;
 
@@ -148,19 +150,80 @@ export const createStorageBackedAutomationsRuntime = ({
     bindActor: async (args) => bindAutomationIdentityActor(hookContext, args),
   });
 
-const createAutomationsRouteCaller = (env: CloudflareEnv, orgId: string) => {
+const createAutomationsDoFetch = (env: CloudflareEnv, orgId: string) => {
   const automationsDo = env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(orgId));
+  return async (outboundRequest: Request) => {
+    const url = new URL(outboundRequest.url);
+    url.searchParams.set("orgId", orgId);
+    return automationsDo.fetch(new Request(url.toString(), outboundRequest));
+  };
+};
 
+const createAutomationsRouteCaller = (env: CloudflareEnv, orgId: string) => {
   return createRouteCaller<AutomationFragment>({
     // Durable Object route helpers still need absolute URLs, so use a synthetic origin.
     baseUrl: "https://automations.do",
     mountRoute: "/api/automations/bindings",
-    fetch: async (outboundRequest) => {
-      const url = new URL(outboundRequest.url);
-      url.searchParams.set("orgId", orgId);
-      return automationsDo.fetch(new Request(url.toString(), outboundRequest));
-    },
+    fetch: createAutomationsDoFetch(env, orgId),
   });
+};
+
+const createWorkflowsRouteCaller = (env: CloudflareEnv, orgId: string) => {
+  return createRouteCaller<WorkflowsFragment>({
+    // Durable Object route helpers still need absolute URLs, so use a synthetic origin.
+    baseUrl: "https://automations.do",
+    mountRoute: "/api/automations",
+    fetch: createAutomationsDoFetch(env, orgId),
+  });
+};
+
+export const createRouteBackedWorkflowsRuntime = ({
+  env,
+  orgId,
+}: {
+  env: CloudflareEnv;
+  orgId: string;
+}): WorkflowsRuntime => {
+  const normalizedOrgId = orgId.trim();
+  if (!normalizedOrgId) {
+    throw new Error("Workflows backend requires an organisation id");
+  }
+
+  const callRoute = createWorkflowsRouteCaller(env, normalizedOrgId);
+
+  return {
+    createInstance: async ({ workflowName, instanceId, params }) => {
+      const response = await callRoute("POST", "/:workflowName/instances", {
+        pathParams: { workflowName },
+        body: { id: instanceId, params },
+      });
+
+      if (response.type === "json") {
+        return { workflowName, instanceId: response.data.id };
+      }
+
+      if (response.type === "error") {
+        throw new Error(`Workflows backend returned ${response.status}: ${response.error.message}`);
+      }
+
+      throw new Error(`Workflows backend returned ${response.status}`);
+    },
+    getStatus: async ({ workflowName, instanceId }) => {
+      const response = await callRoute("GET", "/:workflowName/instances/:instanceId", {
+        pathParams: { workflowName, instanceId },
+      });
+
+      if (response.type === "json") {
+        return response.data.details;
+      }
+
+      if (response.type === "error") {
+        throw new Error(`Workflows backend returned ${response.status}: ${response.error.message}`);
+      }
+
+      throw new Error(`Workflows backend returned ${response.status}`);
+    },
+  };
 };
 
 export const createRouteBackedAutomationsRuntime = ({
