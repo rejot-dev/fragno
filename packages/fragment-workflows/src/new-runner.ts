@@ -7,7 +7,7 @@ import type { DatabaseRequestContext, IUnitOfWork } from "@fragno-dev/db";
 
 import { applyOutcome, applyRunnerMutations, type RunnerTaskOutcome } from "./runner/plan-writes";
 import { createRunnerState, type RunnerState } from "./runner/state";
-import { RunnerStep, RunnerStepSuspended } from "./runner/step";
+import { isRunnerStepSuspended, RunnerStep } from "./runner/step";
 import {
   workflowStepLivePumpKey,
   type WorkflowStepEmission,
@@ -426,7 +426,7 @@ async function runTask(
       throw new WorkflowRunnerConcurrencyConflict(err);
     }
 
-    if (err instanceof RunnerStepSuspended) {
+    if (isRunnerStepSuspended(err)) {
       return { type: "suspended", reason: err.reason };
     }
 

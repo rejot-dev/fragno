@@ -7,6 +7,17 @@ import { BufferedPumpRegistry } from "@fragno-dev/db/buffered-pump";
 import type { DatabaseRequestContext, HandlerTxContext, HooksMap } from "@fragno-dev/db";
 
 import { WorkflowsLogger } from "../debug-log";
+import type {
+  RemoteWorkflowStepHost,
+  RemoteWorkflowStepScope,
+  RemoteWorkflowStepSuspendReason,
+} from "../remote-workflow";
+import {
+  buildNestedStepKey,
+  buildStepKey,
+  ROOT_STEP_SCOPE,
+  type WorkflowStepIdentity,
+} from "../step-identity";
 import { isSystemEventActor } from "../system-events";
 import { parseDurationMs } from "../utils";
 import type {
@@ -31,18 +42,9 @@ import type {
   WorkflowStepCreateDraft,
   WorkflowStepUpdateDraft,
 } from "./types";
-import { buildNestedStepKey, isMutateOnlyTx, isNonRetryableError, toError } from "./utils";
+import { isMutateOnlyTx, isNonRetryableError, toError } from "./utils";
 
-export type RunnerStepSuspendReason =
-  | { type: "sleep"; stepKey: string; delayMs?: number | null; runAt?: Date }
-  | {
-      type: "waitForEvent";
-      stepKey: string;
-      eventType: string;
-      delayMs?: number | null;
-      runAt?: Date;
-    }
-  | { type: "retry"; stepKey: string; delayMs?: number | null };
+export type RunnerStepSuspendReason = RemoteWorkflowStepSuspendReason;
 
 export class RunnerStepSuspended extends Error {
   readonly reason: RunnerStepSuspendReason;
@@ -70,29 +72,9 @@ type StepTxQueue = {
   commitTerminalError: () => void;
 };
 
-type StepIdentity = {
-  stepKey: string;
-  parentStepKey: string | null;
-  depth: number;
-};
-
 type StepExecutionContext = {
-  identity: StepIdentity;
+  identity: WorkflowStepIdentity;
 };
-
-const ROOT_STEP_SCOPE = "$root";
-
-/**
- * Build a deterministic step key from type, name, and optional occurrence.
- * Bigger picture: stable step keys are the identity for replayable workflow steps.
- */
-function buildStepKey(type: string, name: string, occurrence?: number): string {
-  const base = `${type}:${name}`;
-  if (occurrence === undefined || occurrence === 0) {
-    return base;
-  }
-  return `${base}#${occurrence}`;
-}
 
 /**
  * Normalize timestamps to a Date instance.
@@ -141,8 +123,19 @@ function computeBackoffDelayMs(
   }
 }
 
-function isSuspended(error: unknown): error is RunnerStepSuspended {
-  return error instanceof RunnerStepSuspended;
+export function isRunnerStepSuspended(error: unknown): error is RunnerStepSuspended {
+  if (error instanceof RunnerStepSuspended) {
+    return true;
+  }
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  return (
+    "name" in error &&
+    ((error as { name?: unknown }).name === "RunnerStepSuspended" ||
+      (error as { name?: unknown }).name === "RemoteWorkflowSuspendedError") &&
+    "reason" in error
+  );
 }
 
 function buildErrorFromSnapshot(snapshot: WorkflowStepSnapshot): Error {
@@ -172,11 +165,11 @@ export class RunnerStep implements WorkflowStep {
     this.#stepEmissions = options.stepEmissions ?? new BufferedPumpRegistry<WorkflowStepLivePump>();
   }
 
-  #runInStepContext<T>(identity: StepIdentity, execute: () => Promise<T> | T): Promise<T> {
+  #runInStepContext<T>(identity: WorkflowStepIdentity, execute: () => Promise<T> | T): Promise<T> {
     return this.#scopeStorage.run({ identity }, async () => await execute());
   }
 
-  #createStepIdentity(type: string, name: string): StepIdentity {
+  #createStepIdentity(type: string, name: string): WorkflowStepIdentity {
     const parent = this.#scopeStorage.getStore()?.identity ?? null;
     const baseKey = buildStepKey(type, name);
     const scopeKey = parent?.stepKey ?? ROOT_STEP_SCOPE;
@@ -185,7 +178,7 @@ export class RunnerStep implements WorkflowStep {
     this.#stepOccurrences.set(occurrenceKey, occurrence + 1);
 
     const localStepKey = buildStepKey(type, name, occurrence);
-    const identity: StepIdentity = parent
+    const identity: WorkflowStepIdentity = parent
       ? {
           stepKey: buildNestedStepKey(parent.stepKey, localStepKey),
           parentStepKey: parent.stepKey,
@@ -215,7 +208,7 @@ export class RunnerStep implements WorkflowStep {
   }
 
   #prepareWaitingDraft(
-    identity: StepIdentity,
+    identity: WorkflowStepIdentity,
     base: {
       name: string;
       attempts: number;
@@ -268,6 +261,65 @@ export class RunnerStep implements WorkflowStep {
     };
   }
 
+  #runInRemoteParentScope<T>(
+    parentScope: RemoteWorkflowStepScope,
+    execute: () => Promise<T> | T,
+  ): Promise<T> {
+    if (!parentScope) {
+      return Promise.resolve(execute());
+    }
+    return this.#runInStepContext(parentScope, execute);
+  }
+
+  get remote(): RemoteWorkflowStepHost {
+    return {
+      do: async <T>(
+        parentScope: RemoteWorkflowStepScope,
+        name: string,
+        config: WorkflowStepConfig | undefined,
+        callback: (tx: WorkflowStepTx, scope: WorkflowStepIdentity) => Promise<T> | T,
+      ): Promise<T> =>
+        await this.#runInRemoteParentScope(
+          parentScope,
+          async () => await this.#doInternal(name, config, callback),
+        ),
+      sleep: async (
+        parentScope: RemoteWorkflowStepScope,
+        name: string,
+        duration: WorkflowDuration,
+      ): Promise<void> =>
+        await this.#runInRemoteParentScope(
+          parentScope,
+          async () => await this.sleep(name, duration),
+        ),
+      sleepUntil: async (
+        parentScope: RemoteWorkflowStepScope,
+        name: string,
+        timestamp: Date | number,
+      ): Promise<void> =>
+        await this.#runInRemoteParentScope(
+          parentScope,
+          async () => await this.sleepUntil(name, timestamp),
+        ),
+      waitForEvent: async <T = unknown>(
+        parentScope: RemoteWorkflowStepScope,
+        name: string,
+        options: {
+          type: string;
+          timeout?: WorkflowDuration;
+          onConsume?: (
+            tx: WorkflowStepConsumeTx,
+            event: { type: string; payload: Readonly<T>; timestamp: Date },
+          ) => Promise<void> | void;
+        },
+      ): Promise<{ type: string; payload: Readonly<T>; timestamp: Date }> =>
+        await this.#runInRemoteParentScope(
+          parentScope,
+          async () => await this.waitForEvent<T>(name, options),
+        ),
+    };
+  }
+
   async do<T>(name: string, callback: (tx: WorkflowStepTx) => Promise<T> | T): Promise<T>;
   async do<T>(
     name: string,
@@ -290,6 +342,14 @@ export class RunnerStep implements WorkflowStep {
       throw new Error("WORKFLOW_STEP_CALLBACK_REQUIRED");
     }
 
+    return await this.#doInternal(name, config, async (tx) => await callback(tx));
+  }
+
+  async #doInternal<T>(
+    name: string,
+    config: WorkflowStepConfig | undefined,
+    callback: (tx: WorkflowStepTx, identity: WorkflowStepIdentity) => Promise<T> | T,
+  ): Promise<T> {
     const identity = this.#createStepIdentity("do", name);
     const { stepKey } = identity;
     const snapshot = this.#state.stepsByKey.get(stepKey);
@@ -412,7 +472,7 @@ export class RunnerStep implements WorkflowStep {
     try {
       callbackResult = await this.#runInStepContext(
         identity,
-        async () => await callback(tx as WorkflowStepTx),
+        async () => await callback(tx as WorkflowStepTx, identity),
       );
     } catch (error) {
       callbackThrew = true;
@@ -454,7 +514,7 @@ export class RunnerStep implements WorkflowStep {
       return callbackResult as T;
     }
 
-    if (isSuspended(callbackError)) {
+    if (isRunnerStepSuspended(callbackError)) {
       this.#upsertStep(
         stepKey,
         this.#prepareWaitingDraft(
@@ -828,7 +888,7 @@ export class RunnerStep implements WorkflowStep {
     this.#state.mutations.stepEmissionCleanupRequests.push(request);
   }
 
-  #createStepTxQueue(identity: StepIdentity): StepTxQueue {
+  #createStepTxQueue(identity: WorkflowStepIdentity): StepTxQueue {
     const pendingMutations: Array<(ctx: HandlerTxContext<HooksMap>) => void> = [];
     const pendingServiceCalls: AnyTxResult[] = [];
     const pendingTerminalErrorMutations: Array<(ctx: HandlerTxContext<HooksMap>) => void> = [];
@@ -843,7 +903,7 @@ export class RunnerStep implements WorkflowStep {
         },
       },
       emit: () => {},
-      previousEmissions: () => this.#previousEmissionsFor(identity.stepKey),
+      previousEmissions: async () => this.#previousEmissionsFor(identity.stepKey),
       onEvent: () => () => {},
       serviceCalls: (factory) => {
         let calls: readonly AnyTxResult[];

@@ -31,6 +31,14 @@
       "types": "./dist/node/stream-step-emissions.d.ts",
       "default": "./dist/node/stream-step-emissions.js"
     },
+    "./step-identity": {
+      "types": "./dist/node/step-identity.d.ts",
+      "default": "./dist/node/step-identity.js"
+    },
+    "./remote-workflow": {
+      "types": "./dist/node/remote-workflow.d.ts",
+      "default": "./dist/node/remote-workflow.js"
+    },
     "./instance-ref": {
       "types": "./dist/node/instance-ref.d.ts",
       "default": "./dist/node/instance-ref.js"

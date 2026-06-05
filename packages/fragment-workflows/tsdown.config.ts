@@ -9,6 +9,8 @@ export default defineConfig([
       "./src/workflow.ts",
       "./src/debug-log.ts",
       "./src/stream-step-emissions.ts",
+      "./src/step-identity.ts",
+      "./src/remote-workflow.ts",
       "./src/instance-ref.ts",
       "./src/runner/step-live-pump.ts",
       "./src/scenario.ts",

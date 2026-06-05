@@ -70,7 +70,7 @@ export type WorkflowStepConsumeTx = {
   /** Persist an outbound workflow-authored step emission. */
   emit: (payload: unknown) => void;
   /** Emissions for this step that were already persisted before the current attempt started. */
-  previousEmissions: () => WorkflowStepEmission[];
+  previousEmissions: () => Promise<WorkflowStepEmission[]>;
 };
 
 export type WorkflowStepTx = WorkflowStepConsumeTx & {
