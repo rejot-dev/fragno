@@ -12,7 +12,8 @@ import { normalizeMountedFileSystem } from "@/files/mounted-file-system";
 import type { ResolvedFileMount } from "@/files/types";
 
 import { runBackofficeCodemodeWorkflow } from "../codemode/workflow-execute";
-import type { AutomationsRuntime, WorkflowsRuntime } from "../runtime-tools/families/automations";
+import type { AutomationBindingsRuntime } from "../runtime-tools/families/automations-bindings";
+import type { AutomationWorkflowRuntime } from "../runtime-tools/families/automations-workflow";
 import { createPiToolRegistry } from "./pi";
 import { createPiCodemodeRuntime } from "./pi-codemode";
 
@@ -75,6 +76,9 @@ describe("Pi execCodeMode tool", () => {
           instanceId: instanceId ?? "generated-instance-id",
         }),
         getStatus: async () => {
+          throw new Error("unused");
+        },
+        sendEvent: async () => {
           throw new Error("unused");
         },
       },
@@ -153,6 +157,8 @@ describe("Pi execCodeMode tool", () => {
           },
           getStatus: async ({ instanceId }) =>
             await harness.getStatus("PI_CODEMODE_SCRIPT", instanceId),
+          sendEvent: async ({ workflowName, instanceId, type, payload }) =>
+            await harness.sendEvent(workflowName, instanceId, { type, payload }),
         },
       },
     });
@@ -227,6 +233,7 @@ describe("Pi execCodeMode tool", () => {
           status: "complete",
           output: input,
         }),
+        sendEvent: async (input) => input,
       },
     });
 
@@ -252,7 +259,7 @@ describe("Pi execCodeMode tool", () => {
 
   test("calls automation identity domain tools through codemode", async () => {
     const calls: unknown[] = [];
-    const automationsRuntime: AutomationsRuntime = {
+    const automationsRuntime: AutomationBindingsRuntime = {
       lookupBinding: async (input) => {
         calls.push(["lookupBinding", input]);
         return {
@@ -325,7 +332,7 @@ describe("Pi execCodeMode tool", () => {
 
   test("rejects domain tool validation errors so the agent records a failed tool result", async () => {
     const calls: unknown[] = [];
-    const automationsRuntime: AutomationsRuntime = {
+    const automationsRuntime: AutomationBindingsRuntime = {
       lookupBinding: async (input) => {
         calls.push(["lookupBinding", input]);
         return null;
@@ -359,8 +366,8 @@ const createExecCodeModeTool = async ({
   automationsRuntime,
   workflowRuntime,
 }: {
-  automationsRuntime?: AutomationsRuntime;
-  workflowRuntime?: WorkflowsRuntime;
+  automationsRuntime?: AutomationBindingsRuntime;
+  workflowRuntime?: AutomationWorkflowRuntime;
 }) => {
   const fs = createTestMasterFileSystem({});
   const sessionFileSystems = new Map<string, Promise<MasterFileSystem>>([

@@ -48,6 +48,84 @@ export type PiSessionTurnResult = PiSessionDetail & {
   terminalState: PiSessionDetail["agent"]["state"];
 };
 
+const getFramePayload = (frame: PiSessionEventStreamItem): unknown => {
+  if (
+    "kind" in frame &&
+    frame.kind === "step-emission" &&
+    typeof frame.payload === "object" &&
+    frame.payload !== null
+  ) {
+    return frame.payload;
+  }
+
+  return frame;
+};
+
+const isTurnEndFrame = (frame: PiSessionEventStreamItem): boolean => {
+  const payload = getFramePayload(frame);
+  return (
+    typeof payload === "object" &&
+    payload !== null &&
+    "type" in payload &&
+    payload.type === "turn_end"
+  );
+};
+
+const extractMessageText = (
+  message: PiSessionDetail["agent"]["state"]["messages"][number] | undefined,
+): string => {
+  if (!message || message.role !== "assistant" || !Array.isArray(message.content)) {
+    return "";
+  }
+
+  return message.content
+    .filter((block) => typeof block === "object" && block !== null && block.type === "text")
+    .map((block) => ("text" in block && typeof block.text === "string" ? block.text : ""))
+    .join("")
+    .trim();
+};
+
+const extractTurnEndAssistantText = (
+  frames: PiSessionEventStreamItem[],
+): { found: boolean; text: string } => {
+  for (const frame of [...frames].reverse()) {
+    if (!isTurnEndFrame(frame)) {
+      continue;
+    }
+
+    const payload = getFramePayload(frame);
+    if (typeof payload !== "object" || payload === null || !("message" in payload)) {
+      continue;
+    }
+
+    return {
+      found: true,
+      text: extractMessageText(
+        payload.message as PiSessionDetail["agent"]["state"]["messages"][number] | undefined,
+      ),
+    };
+  }
+
+  return { found: false, text: "" };
+};
+
+const isTerminalTurnFrame = (frame: PiSessionEventStreamItem): boolean => {
+  if (!isTurnEndFrame(frame)) {
+    return false;
+  }
+
+  const payload = getFramePayload(frame);
+  if (typeof payload !== "object" || payload === null || !("message" in payload)) {
+    return true;
+  }
+
+  return (
+    extractMessageText(
+      payload.message as PiSessionDetail["agent"]["state"]["messages"][number] | undefined,
+    ).length > 0
+  );
+};
+
 const consumeActiveStream = async (
   stream: AsyncGenerator<PiSessionEventStreamItem>,
 ): Promise<{ frames: PiSessionEventStreamItem[] }> => {
@@ -56,7 +134,7 @@ const consumeActiveStream = async (
   try {
     for await (const frame of stream) {
       frames.push(frame);
-      if ("type" in frame && frame.type === "turn_end") {
+      if (isTerminalTurnFrame(frame)) {
         break;
       }
     }
@@ -95,15 +173,7 @@ const createPiRouteCaller = (env: CloudflareEnv, orgId: string) => {
 
 const extractAssistantText = (messages: PiSessionDetail["agent"]["state"]["messages"]): string => {
   const assistantMessage = [...messages].reverse().find((message) => message.role === "assistant");
-  if (!assistantMessage || !Array.isArray(assistantMessage.content)) {
-    return "";
-  }
-
-  return assistantMessage.content
-    .filter((block) => typeof block === "object" && block !== null && block.type === "text")
-    .map((block) => ("text" in block && typeof block.text === "string" ? block.text : ""))
-    .join("")
-    .trim();
+  return extractMessageText(assistantMessage);
 };
 
 const closeActiveStream = async (stream: AsyncGenerator<PiSessionEventStreamItem>) => {
@@ -269,9 +339,12 @@ export const createPiRouteRuntime = ({
         }
 
         const detail = detailResponse.data;
+        const turnEndAssistantText = extractTurnEndAssistantText(frames);
         return {
           ...detail,
-          assistantText: extractAssistantText(detail.agent.state.messages),
+          assistantText: turnEndAssistantText.found
+            ? turnEndAssistantText.text
+            : extractAssistantText(detail.agent.state.messages),
           commandStatus: promptResponse.data.status,
           messageStatus: promptResponse.data.status,
           stream: frames,

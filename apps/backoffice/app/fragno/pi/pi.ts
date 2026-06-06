@@ -28,8 +28,8 @@ import {
   createRouteBackedInteractiveBashContext,
 } from "../runtime-tools/automation-host";
 import type { InteractiveBashCommandContext } from "../runtime-tools/bash-host";
-import type { AutomationsRuntime } from "../runtime-tools/families/automations";
-import type { WorkflowsRuntime } from "../runtime-tools/families/automations";
+import type { AutomationBindingsRuntime } from "../runtime-tools/families/automations-bindings";
+import type { AutomationWorkflowRuntime } from "../runtime-tools/families/automations-workflow";
 import type { OtpRuntime } from "../runtime-tools/families/otp-runtime";
 import type { PiRuntime } from "../runtime-tools/families/pi";
 import type { ResendRuntime } from "../runtime-tools/families/resend";
@@ -61,7 +61,7 @@ export type PiRuntimeFragments = {
 
 export type PiBashCommandContext = InteractiveBashCommandContext & {
   automations: {
-    runtime: AutomationsRuntime;
+    runtime: AutomationBindingsRuntime;
   };
   otp: {
     runtime: OtpRuntime;
@@ -86,8 +86,8 @@ export type PiSessionFileSystemContext = {
 };
 
 type PiCodemodeToolContext = BackofficeToolContext<{
-  automations?: AutomationsRuntime;
-  workflow?: WorkflowsRuntime;
+  automations?: AutomationBindingsRuntime;
+  workflow?: AutomationWorkflowRuntime;
   otp?: OtpRuntime;
   pi?: PiRuntime;
   resend?: ResendRuntime;
@@ -99,7 +99,7 @@ type PiCodemodeToolContext = BackofficeToolContext<{
 export type PiCodemodeRuntime = {
   env: BackofficeCodemodeEnv;
   execute(input: RunBackofficeCodemodeInput): Promise<BackofficeCodemodeExecuteResult>;
-  workflow?: WorkflowsRuntime;
+  workflow?: AutomationWorkflowRuntime;
 };
 
 export const bashParametersSchema = withSinclairSchema(

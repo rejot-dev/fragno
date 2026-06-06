@@ -7,8 +7,8 @@ import { MasterFileSystem } from "@/files/master-file-system";
 import { normalizeMountedFileSystem } from "@/files/mounted-file-system";
 import type { ResolvedFileMount } from "@/files/types";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
-import type { AutomationsRuntime } from "@/fragno/runtime-tools/families/automations";
-import { automationIdentityRuntimeTools } from "@/fragno/runtime-tools/families/automations";
+import type { AutomationBindingsRuntime } from "@/fragno/runtime-tools/families/automations-bindings";
+import { automationBindingsRuntimeTools } from "@/fragno/runtime-tools/families/automations-bindings";
 import { eventRuntimeTools, type EventRuntime } from "@/fragno/runtime-tools/families/event";
 import { otpRuntimeTools, type OtpRuntime } from "@/fragno/runtime-tools/families/otp";
 import {
@@ -41,7 +41,7 @@ describe("runBackofficeCodemode", () => {
 
   test("calls automation identity tools through codemode providers", async () => {
     const calls: unknown[] = [];
-    const automationsRuntime: AutomationsRuntime = {
+    const automationsRuntime: AutomationBindingsRuntime = {
       lookupBinding: async (input) => {
         calls.push(["lookupBinding", input]);
         return {
@@ -66,7 +66,7 @@ describe("runBackofficeCodemode", () => {
     const result = await runBackofficeCodemode({
       env,
       fs: createTestMasterFileSystem({}),
-      tools: automationIdentityRuntimeTools,
+      tools: automationBindingsRuntimeTools,
       context: { runtimes: { automations: automationsRuntime } },
       code: `async () => {
         const existing = await automations.lookupBinding({ source: "telegram", key: "chat-123" });
@@ -164,6 +164,7 @@ describe("runBackofficeCodemode", () => {
         calls.push(["createClaim", input]);
         return {
           url: `https://example.com/claim/${input.externalActorId}`,
+          otpId: "otp-123",
           externalId: input.externalActorId,
           code: "123456",
           type: "identity",
@@ -188,6 +189,7 @@ describe("runBackofficeCodemode", () => {
     expect(result.error).toBeUndefined();
     expect(result.result).toEqual({
       url: "https://example.com/claim/chat-123",
+      otpId: "otp-123",
       externalId: "chat-123",
       code: "123456",
       type: "identity",
@@ -281,7 +283,7 @@ describe("runBackofficeCodemode", () => {
 
   test("rejects invalid runtime tool input before calling the runtime", async () => {
     const calls: unknown[] = [];
-    const automationsRuntime: AutomationsRuntime = {
+    const automationsRuntime: AutomationBindingsRuntime = {
       lookupBinding: async (input) => {
         calls.push(["lookupBinding", input]);
         return null;
@@ -301,7 +303,7 @@ describe("runBackofficeCodemode", () => {
     const result = await runBackofficeCodemode({
       env,
       fs: createTestMasterFileSystem({}),
-      tools: automationIdentityRuntimeTools,
+      tools: automationBindingsRuntimeTools,
       context: { runtimes: { automations: automationsRuntime } },
       code: `async () => {
         return await automations.bindActor({ source: "telegram", key: "chat-123", value: "" });

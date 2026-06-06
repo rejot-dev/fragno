@@ -153,37 +153,6 @@ describe("prepareSandboxFileSystem", () => {
     expect(handle.mountBucket).not.toHaveBeenCalled();
   });
 
-  test("preloads built-in bootstrap content and skips existing workspace files", async () => {
-    const handle = createMockHandle({
-      exists: async (path) => ({ exists: path === "/workspace/seeded.txt" }),
-    });
-    const fileSystem = await createSandboxFileSystem();
-
-    await prepareSandboxFileSystem({
-      orgId: "acme-org",
-      backend: "sandbox",
-      fileSystem,
-      handle,
-    });
-
-    expect(handle.mkdir).toHaveBeenCalledWith("/system", { recursive: true });
-    expect(handle.mkdir).toHaveBeenCalledWith("/workspace", { recursive: true });
-    expect(handle.writeFile).toHaveBeenCalledWith("/system/SYSTEM.md", expect.any(String), {
-      encoding: "utf-8",
-    });
-    expect(handle.writeFile).toHaveBeenCalledWith(
-      "/workspace/automations/bindings.json",
-      expect.stringContaining('"bindings"'),
-      { encoding: "utf-8" },
-    );
-    expect(handle.writeFile).toHaveBeenCalledWith(
-      BOOTSTRAP_SENTINEL_PATH,
-      expect.stringContaining('"version":1'),
-      { encoding: "utf-8" },
-    );
-    expect(BOOTSTRAP_SENTINEL_PATH.startsWith("/workspace")).toBe(false);
-  });
-
   test("mounts the persistent workspace bucket when the shared filesystem exposes a persistent workspace", async () => {
     const handle = createMockHandle();
     const uploadRuntime = createUploadRuntime();
@@ -214,76 +183,6 @@ describe("prepareSandboxFileSystem", () => {
     expect(handle.mountBucket).toHaveBeenCalledWith("tenant-uploads", "/workspace", {
       endpoint: "https://example.r2.cloudflarestorage.com",
     });
-  });
-
-  test("seeds starter files before mounting a persistent workspace bucket", async () => {
-    const mountedRoots = new Set<string>();
-    const events: string[] = [];
-    const handle = createMockHandle({
-      mountBucket: async (_bucket, mountPoint) => {
-        mountedRoots.add(mountPoint);
-        events.push(`mount:${mountPoint}`);
-      },
-      writeFile: async (path) => {
-        events.push(`write:${path}`);
-        if (path.startsWith("/workspace/") && mountedRoots.has("/workspace")) {
-          throw new Error(`workspace write occurred after mount: ${path}`);
-        }
-      },
-    });
-    const uploadRuntime = createUploadRuntime({
-      "README.md": "custom sandbox readme",
-      "reports/q1.txt": "ready",
-    });
-    const fileSystem = await createSandboxFileSystem({
-      origin: uploadRuntime.baseUrl,
-      uploadConfig: uploadRuntime.uploadConfig,
-      uploadRuntime,
-    });
-    const resolver: ResolveUploadMount = vi.fn(async (root) => {
-      if (root.mountPoint !== "/workspace") {
-        return null;
-      }
-
-      return {
-        bucket: "tenant-uploads",
-        options: { endpoint: "https://example.r2.cloudflarestorage.com" },
-      };
-    });
-
-    await prepareSandboxFileSystem({
-      orgId: "acme-org",
-      backend: "sandbox",
-      fileSystem,
-      handle,
-      resolveUploadMount: resolver,
-    });
-
-    expect(handle.writeFile).toHaveBeenCalledWith("/workspace/README.md", expect.any(String), {
-      encoding: "utf-8",
-    });
-    expect(handle.writeFile).toHaveBeenCalledWith(
-      "/workspace/automations/bindings.json",
-      expect.stringContaining('"bindings"'),
-      { encoding: "utf-8" },
-    );
-    expect(handle.writeFile).not.toHaveBeenCalledWith("/workspace/reports/q1.txt", "ready", {
-      encoding: "utf-8",
-    });
-    expect(handle.writeFile).toHaveBeenCalledWith(
-      BOOTSTRAP_SENTINEL_PATH,
-      expect.stringContaining('"backend":"sandbox"'),
-      { encoding: "utf-8" },
-    );
-    expect(events.indexOf("write:/workspace/README.md")).toBeGreaterThanOrEqual(0);
-    expect(events.indexOf("write:/workspace/automations/bindings.json")).toBeGreaterThanOrEqual(0);
-    expect(events.indexOf("mount:/workspace")).toBeGreaterThanOrEqual(0);
-    expect(events.indexOf("write:/workspace/README.md")).toBeLessThan(
-      events.indexOf("mount:/workspace"),
-    );
-    expect(events.indexOf("write:/workspace/automations/bindings.json")).toBeLessThan(
-      events.indexOf("mount:/workspace"),
-    );
   });
 
   test("throws if a persistent mount exists without a resolver", async () => {

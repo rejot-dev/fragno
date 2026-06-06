@@ -8,11 +8,9 @@ import {
 import { bashRuntimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import type { AutomationCommandContext, BashAutomationCommandResult } from "./automation-types";
-import type {
-  AutomationsRuntime,
-  ScriptRunnerRuntime,
-  WorkflowsRuntime,
-} from "./families/automations";
+import type { AutomationBindingsRuntime } from "./families/automations-bindings";
+import type { ScriptRunnerRuntime } from "./families/automations-codemode";
+import type { AutomationWorkflowRuntime } from "./families/automations-workflow";
 import type { EventRuntime } from "./families/event-runtime";
 import type { RegisteredOtpCommandContext } from "./families/otp-runtime";
 import type { RegisteredPiCommandContext } from "./families/pi-runtime";
@@ -22,7 +20,7 @@ import type { SandboxRuntime } from "./families/sandbox-runtime";
 import type { RegisteredTelegramCommandContext } from "./families/telegram-runtime";
 
 export type RegisteredAutomationsBashCommandContext = {
-  runtime: AutomationsRuntime;
+  runtime: AutomationBindingsRuntime;
   scriptRunner?: ScriptRunnerRuntime;
 };
 
@@ -33,7 +31,7 @@ export type RegisteredEventBashCommandContext = AutomationCommandContext & {
 export type BashHostContext = {
   automation: RegisteredEventBashCommandContext | null;
   automations: RegisteredAutomationsBashCommandContext | null;
-  workflow?: { runtime: WorkflowsRuntime } | null;
+  workflow?: { runtime: AutomationWorkflowRuntime } | null;
   otp: RegisteredOtpCommandContext | null;
   pi: RegisteredPiCommandContext | null;
   reson8: RegisteredReson8CommandContext | null;

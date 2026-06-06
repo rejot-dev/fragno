@@ -2,10 +2,8 @@ import type { RemoteWorkflowStepHost } from "@fragno-dev/workflows/remote-workfl
 import type { WorkflowEvent } from "@fragno-dev/workflows/workflow";
 
 import type { MasterFileSystem } from "@/files/master-file-system";
-import {
-  createRouteBackedAutomationsRuntime,
-  createRouteBackedWorkflowsRuntime,
-} from "@/fragno/automation/identity-runtime";
+import { createRouteBackedAutomationBindingsRuntime } from "@/fragno/automation/bindings-route-runtime";
+import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import {
   runBackofficeCodemode,
   type BackofficeCodemodeEnv,
@@ -14,10 +12,8 @@ import {
 import { runBackofficeCodemodeWorkflow } from "@/fragno/codemode/workflow-execute";
 import type { PiCodemodeWorkflowParams } from "@/fragno/pi/pi-codemode-workflow";
 import type { AutomationExecutionContext } from "@/fragno/runtime-tools/automation-host";
-import type {
-  AutomationsRuntime,
-  WorkflowsRuntime,
-} from "@/fragno/runtime-tools/families/automations";
+import type { AutomationBindingsRuntime } from "@/fragno/runtime-tools/families/automations-bindings";
+import type { AutomationWorkflowRuntime } from "@/fragno/runtime-tools/families/automations-workflow";
 import type { EventRuntime } from "@/fragno/runtime-tools/families/event";
 import type { OtpRuntime } from "@/fragno/runtime-tools/families/otp";
 import { createOtpRuntime } from "@/fragno/runtime-tools/families/otp-runtime";
@@ -45,7 +41,8 @@ import { createAutomationRunResult, type AutomationRunResult } from "../run-resu
 import { createAutomationExecutionFileSystem } from "./execution-file-system";
 
 type AutomationCodemodeToolContext = BackofficeToolContext<{
-  automations?: AutomationsRuntime;
+  automations?: AutomationBindingsRuntime;
+  workflow?: AutomationWorkflowRuntime;
   event?: EventRuntime;
   otp?: OtpRuntime;
   pi?: PiRuntime;
@@ -56,8 +53,8 @@ type AutomationCodemodeToolContext = BackofficeToolContext<{
 }>;
 
 type PiCodemodeToolContext = BackofficeToolContext<{
-  automations?: AutomationsRuntime;
-  workflow?: WorkflowsRuntime;
+  automations?: AutomationBindingsRuntime;
+  workflow?: AutomationWorkflowRuntime;
   otp?: OtpRuntime;
   pi?: PiRuntime;
   resend?: ResendRuntime;
@@ -71,6 +68,7 @@ const createAutomationToolRuntimeContext = (
 ): AutomationCodemodeToolContext => ({
   runtimes: {
     automations: context.automations?.runtime,
+    workflow: context.workflow?.runtime,
     event: context.automation.runtime,
     otp: context.otp?.runtime,
     pi: context.pi?.runtime,
@@ -194,11 +192,11 @@ export const executePiCodemodeWorkflow = async ({
     throw new Error("Pi codemode workflow requires an organisation id.");
   }
 
-  const automationsRuntime = createRouteBackedAutomationsRuntime({ env, orgId });
+  const automationsRuntime = createRouteBackedAutomationBindingsRuntime({ env, orgId });
   const context: PiCodemodeToolContext = {
     runtimes: {
       automations: automationsRuntime,
-      workflow: createRouteBackedWorkflowsRuntime({ env, orgId }),
+      workflow: createRouteBackedAutomationWorkflowRuntime({ env, orgId }),
       otp: createOtpRuntime({ env, orgId }),
       pi: createPiRouteRuntime({ env, orgId }),
       resend: createResendRouteRuntime({ env, orgId }),

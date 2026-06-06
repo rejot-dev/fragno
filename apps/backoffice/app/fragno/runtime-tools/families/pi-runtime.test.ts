@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { InMemoryFs } from "just-bash";
 
 import { createBashHost } from "../bash-host";
-import type { AutomationsRuntime } from "./automations";
+import type { AutomationBindingsRuntime } from "./automations-bindings";
 import {
   createPiRouteRuntime,
   type PiRuntime,
@@ -143,7 +143,7 @@ const createPiRuntime = (overrides: Partial<PiRuntime> = {}): PiRuntime => ({
   ...overrides,
 });
 
-const createAutomationsRuntime = (): AutomationsRuntime => ({
+const createAutomationBindingsRuntime = (): AutomationBindingsRuntime => ({
   lookupBinding: async ({ key }) => {
     if (key !== "actor-1") {
       return null;
@@ -171,7 +171,7 @@ const createPiHost = (piRuntime: PiRuntime = createPiRuntime()) => {
     context: {
       automation: null,
       automations: {
-        runtime: createAutomationsRuntime(),
+        runtime: createAutomationBindingsRuntime(),
       },
       otp: null,
       pi: {
@@ -984,7 +984,7 @@ describe("createPiRouteRuntime", () => {
     ]);
   });
 
-  it("stops pi.session.turn stream consumption at turn_end", async () => {
+  it("stops pi.session.turn stream consumption at raw turn_end", async () => {
     const requests: Array<{ url: string; method: string }> = [];
     const assistantMessage = {
       role: "assistant",
@@ -1078,6 +1078,306 @@ describe("createPiRouteRuntime", () => {
       expect.objectContaining({ type: "message_end" }),
       expect.objectContaining({ type: "turn_end" }),
     ]);
+    expect(requests.map((request) => request.url)).toEqual([
+      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme",
+      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme",
+      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2?orgId=acme",
+    ]);
+  });
+
+  it("stops pi.session.turn stream consumption at wrapped turn_end", async () => {
+    const requests: Array<{ url: string; method: string }> = [];
+    const assistantMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "assistant:wrapped" }],
+      api: "openai-responses",
+      provider: "openai",
+      model: "test-model",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: now.getTime(),
+    };
+
+    const env = {
+      PI: {
+        idFromName: (orgId: string) => `pi:${orgId}`,
+        get: () => ({
+          fetch: async (request: Request) => {
+            requests.push({ url: request.url, method: request.method });
+            const url = new URL(request.url);
+            const path = `${url.pathname}${url.search}`;
+
+            if (
+              path ===
+              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme"
+            ) {
+              return createLongLivedNdjsonResponse([
+                { type: "snapshot", state: { messages: [] } },
+                {
+                  kind: "step-emission",
+                  stepKey: "do:agent turn",
+                  epoch: 1,
+                  payload: { type: "message_end", message: assistantMessage },
+                },
+                {
+                  kind: "step-emission",
+                  stepKey: "do:agent turn",
+                  epoch: 1,
+                  payload: { type: "turn_end" },
+                },
+                {
+                  kind: "step-emission",
+                  stepKey: "do:agent turn",
+                  epoch: 1,
+                  payload: { type: "agent_end" },
+                },
+              ]);
+            }
+
+            if (
+              path ===
+              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme"
+            ) {
+              return new Response(JSON.stringify({ status: "active" }), {
+                status: 200,
+                headers: { "content-type": "application/json" },
+              });
+            }
+
+            if (
+              path === "/api/pi/workflows/interactive-chat-workflow/sessions/session-2?orgId=acme"
+            ) {
+              return new Response(
+                JSON.stringify({
+                  id: "session-2",
+                  agentName: "assistant",
+                  workflowName: "interactive-chat-workflow",
+                  agent: { state: { messages: [assistantMessage] }, events: [] },
+                  status: "waiting",
+                  name: "route-session",
+                  steeringMode: "all",
+                  metadata: null,
+                  tags: [],
+                  createdAt: now.toISOString(),
+                  updatedAt: now.toISOString(),
+                  workflow: { status: "waiting" },
+                }),
+                { status: 200, headers: { "content-type": "application/json" } },
+              );
+            }
+
+            return new Response(JSON.stringify({ message: "unexpected request" }), {
+              status: 500,
+              headers: { "content-type": "application/json" },
+            });
+          },
+        }),
+      },
+    } as unknown as CloudflareEnv;
+
+    const runtime = createPiRouteRuntime({ env, orgId: "acme" });
+    const turned = await withTimeout(
+      runtime.runTurn({ sessionId: "session-2", text: "hello" }),
+      "runTurn should not wait for wrapped live events stream to close",
+    );
+
+    expect(turned.assistantText).toBe("assistant:wrapped");
+    expect(turned.stream).toEqual([
+      expect.objectContaining({ type: "snapshot" }),
+      expect.objectContaining({
+        kind: "step-emission",
+        payload: { type: "message_end", message: assistantMessage },
+      }),
+      expect.objectContaining({ kind: "step-emission", payload: { type: "turn_end" } }),
+    ]);
+    expect(requests.map((request) => request.url)).toEqual([
+      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme",
+      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme",
+      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2?orgId=acme",
+    ]);
+  });
+
+  it("waits for the next assistant text message after tool calls", async () => {
+    const requests: Array<{ url: string; method: string }> = [];
+    const previousAssistantMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "previous answer" }],
+      api: "openai-responses",
+      provider: "openai",
+      model: "test-model",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: now.getTime(),
+    };
+    const toolCallMessage = {
+      role: "assistant",
+      content: [
+        {
+          type: "toolCall",
+          id: "call-1",
+          name: "lookup",
+          arguments: { query: "poem" },
+        },
+      ],
+      api: "openai-responses",
+      provider: "openai",
+      model: "test-model",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "toolUse",
+      timestamp: now.getTime(),
+    };
+    const toolResultMessage = {
+      role: "toolResult",
+      toolCallId: "call-1",
+      content: [{ type: "text", text: "tool output" }],
+      timestamp: now.getTime(),
+    };
+    const finalAssistantMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "new answer after tool" }],
+      api: "openai-responses",
+      provider: "openai",
+      model: "test-model",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: now.getTime(),
+    };
+
+    const env = {
+      PI: {
+        idFromName: (orgId: string) => `pi:${orgId}`,
+        get: () => ({
+          fetch: async (request: Request) => {
+            requests.push({ url: request.url, method: request.method });
+            const url = new URL(request.url);
+            const path = `${url.pathname}${url.search}`;
+
+            if (
+              path ===
+              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme"
+            ) {
+              return createLongLivedNdjsonResponse([
+                { type: "snapshot", state: { messages: [previousAssistantMessage] } },
+                {
+                  kind: "step-emission",
+                  stepKey: "do:agent turn",
+                  epoch: 1,
+                  payload: { type: "message_end", message: toolCallMessage },
+                },
+                {
+                  kind: "step-emission",
+                  stepKey: "do:agent turn",
+                  epoch: 1,
+                  payload: {
+                    type: "turn_end",
+                    message: toolCallMessage,
+                    toolResults: [toolResultMessage],
+                  },
+                },
+                {
+                  kind: "step-emission",
+                  stepKey: "do:agent turn",
+                  epoch: 2,
+                  payload: { type: "message_end", message: finalAssistantMessage },
+                },
+                {
+                  kind: "step-emission",
+                  stepKey: "do:agent turn",
+                  epoch: 2,
+                  payload: {
+                    type: "turn_end",
+                    message: finalAssistantMessage,
+                    toolResults: [],
+                  },
+                },
+              ]);
+            }
+
+            if (
+              path ===
+              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme"
+            ) {
+              return new Response(JSON.stringify({ status: "active" }), {
+                status: 200,
+                headers: { "content-type": "application/json" },
+              });
+            }
+
+            if (
+              path === "/api/pi/workflows/interactive-chat-workflow/sessions/session-2?orgId=acme"
+            ) {
+              return new Response(
+                JSON.stringify({
+                  id: "session-2",
+                  agentName: "assistant",
+                  workflowName: "interactive-chat-workflow",
+                  agent: {
+                    state: {
+                      messages: [
+                        previousAssistantMessage,
+                        toolResultMessage,
+                        finalAssistantMessage,
+                      ],
+                    },
+                    events: [],
+                  },
+                  status: "waiting",
+                  name: "route-session",
+                  steeringMode: "all",
+                  metadata: null,
+                  tags: [],
+                  createdAt: now.toISOString(),
+                  updatedAt: now.toISOString(),
+                  workflow: { status: "waiting" },
+                }),
+                { status: 200, headers: { "content-type": "application/json" } },
+              );
+            }
+
+            return new Response(JSON.stringify({ message: "unexpected request" }), {
+              status: 500,
+              headers: { "content-type": "application/json" },
+            });
+          },
+        }),
+      },
+    } as unknown as CloudflareEnv;
+
+    const runtime = createPiRouteRuntime({ env, orgId: "acme" });
+    const turned = await withTimeout(
+      runtime.runTurn({ sessionId: "session-2", text: "poem" }),
+      "runTurn should not wait for wrapped live events stream to close",
+    );
+
+    expect(turned.assistantText).toBe("new answer after tool");
     expect(requests.map((request) => request.url)).toEqual([
       "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme",
       "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme",

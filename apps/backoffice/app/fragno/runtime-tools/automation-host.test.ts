@@ -30,6 +30,7 @@ const createAutomationsRuntime = () => ({
 const createOtpRuntime = (): OtpRuntime => ({
   createClaim: async ({ source, externalActorId }) => ({
     url: `https://example.com/${source}/${externalActorId}`,
+    otpId: "otp-123",
     externalId: externalActorId,
     code: "123456",
   }),

@@ -1,18 +1,9 @@
 import { Link, useLoaderData, useOutletContext, useSearchParams } from "react-router";
 
-import { AUTOMATION_TRIGGER_ORDER_LAST } from "@/fragno/automation/schema";
-
 import type { Route } from "./+types/scripts";
 import { loadAutomationScriptSource } from "./data";
-import type {
-  AutomationLayoutContext,
-  AutomationScriptItem,
-  AutomationTriggerItem,
-} from "./shared";
+import type { AutomationLayoutContext } from "./shared";
 import { AutomationBadge, AutomationNotice } from "./shared";
-
-const pluralize = (count: number, singular: string, plural = `${singular}s`) =>
-  `${count} ${count === 1 ? singular : plural}`;
 
 const buildScriptLink = ({ basePath, scriptId }: { basePath: string; scriptId: string }) => {
   const params = new URLSearchParams({ script: scriptId });
@@ -42,98 +33,6 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   };
 }
 
-function ScriptTriggerBindingsPanel({
-  script,
-  triggerBindings,
-  triggerBindingsError,
-}: {
-  script: AutomationScriptItem;
-  triggerBindings: AutomationTriggerItem[];
-  triggerBindingsError: string | null;
-}) {
-  const scriptBindings = triggerBindings
-    .filter((binding) => binding.scriptId === script.id)
-    .sort((left, right) => {
-      const leftOrder =
-        left.triggerOrder != null && Number.isFinite(left.triggerOrder)
-          ? left.triggerOrder
-          : AUTOMATION_TRIGGER_ORDER_LAST;
-      const rightOrder =
-        right.triggerOrder != null && Number.isFinite(right.triggerOrder)
-          ? right.triggerOrder
-          : AUTOMATION_TRIGGER_ORDER_LAST;
-
-      return (
-        leftOrder - rightOrder ||
-        left.source.localeCompare(right.source) ||
-        left.eventType.localeCompare(right.eventType) ||
-        left.id.localeCompare(right.id)
-      );
-    });
-
-  if (triggerBindingsError && scriptBindings.length === 0) {
-    return (
-      <AutomationNotice tone="error">
-        <p className="text-[10px] tracking-[0.22em] uppercase">Could not load script triggers</p>
-        <p className="mt-2 text-sm">{triggerBindingsError}</p>
-      </AutomationNotice>
-    );
-  }
-
-  return (
-    <div className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-      <div className="border-b border-[color:var(--bo-border)] px-4 py-3">
-        <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">Triggers</p>
-      </div>
-
-      {scriptBindings.length === 0 ? (
-        <div className="px-4 py-3 text-sm text-[var(--bo-muted)]">
-          This script has no trigger bindings yet.
-        </div>
-      ) : (
-        <ul className="divide-y divide-[color:var(--bo-border)]">
-          {scriptBindings.map((binding) => {
-            const hasScriptError = Boolean(binding.scriptLoadError);
-            const isEnabled = !hasScriptError && binding.enabled;
-
-            return (
-              <li
-                key={binding.id}
-                className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
-              >
-                <span className="min-w-0 font-mono text-[var(--bo-fg)]">
-                  {binding.source}.{binding.eventType}
-                </span>
-                <span
-                  className={`inline-flex items-center gap-2 text-xs ${
-                    hasScriptError
-                      ? "text-red-700 dark:text-red-200"
-                      : isEnabled
-                        ? "text-emerald-700 dark:text-emerald-200"
-                        : "text-[var(--bo-muted)]"
-                  }`}
-                >
-                  <span
-                    className={`h-2 w-2 rounded-full ${
-                      hasScriptError
-                        ? "bg-red-500"
-                        : isEnabled
-                          ? "bg-emerald-500"
-                          : "bg-[var(--bo-muted-2)]"
-                    }`}
-                    aria-hidden="true"
-                  />
-                  {hasScriptError ? "Error" : isEnabled ? "Enabled" : "Disabled"}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 function ScriptSourcePanel({
   source,
 }: {
@@ -156,8 +55,7 @@ function ScriptSourcePanel({
 }
 
 export default function BackofficeOrganisationAutomationScripts() {
-  const { orgId, scripts, scriptsError, triggerBindings, triggerBindingsError } =
-    useOutletContext<AutomationLayoutContext>();
+  const { orgId, scripts, scriptsError } = useOutletContext<AutomationLayoutContext>();
   const loaderData = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
   const selectedScriptId = searchParams.get("script")?.trim() ?? "";
@@ -214,9 +112,8 @@ export default function BackofficeOrganisationAutomationScripts() {
               const status = script.scriptLoadError
                 ? "Error"
                 : script.enabled
-                  ? "Enabled"
-                  : "Disabled";
-              const showStatusBadge = script.scriptLoadError || script.bindingCount > 0;
+                  ? "Auto"
+                  : "Workflow";
 
               return (
                 <Link
@@ -242,20 +139,13 @@ export default function BackofficeOrganisationAutomationScripts() {
                       </p>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-2">
-                      {showStatusBadge ? (
-                        <AutomationBadge
-                          tone={
-                            script.scriptLoadError
-                              ? "error"
-                              : script.enabled
-                                ? "success"
-                                : "neutral"
-                          }
-                        >
-                          {status}
-                        </AutomationBadge>
-                      ) : null}
-                      <AutomationBadge>{pluralize(script.bindingCount, "binding")}</AutomationBadge>
+                      <AutomationBadge
+                        tone={
+                          script.scriptLoadError ? "error" : script.enabled ? "success" : "neutral"
+                        }
+                      >
+                        {status}
+                      </AutomationBadge>
                     </div>
                   </div>
                 </Link>
@@ -281,23 +171,21 @@ export default function BackofficeOrganisationAutomationScripts() {
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <AutomationBadge>{selectedScript.engine}</AutomationBadge>
-                    {selectedScript.scriptLoadError || selectedScript.bindingCount > 0 ? (
-                      <AutomationBadge
-                        tone={
-                          selectedScript.scriptLoadError
-                            ? "error"
-                            : selectedScript.enabled
-                              ? "success"
-                              : "neutral"
-                        }
-                      >
-                        {selectedScript.scriptLoadError
-                          ? "Error"
+                    <AutomationBadge
+                      tone={
+                        selectedScript.scriptLoadError
+                          ? "error"
                           : selectedScript.enabled
-                            ? "Enabled"
-                            : "Disabled"}
-                      </AutomationBadge>
-                    ) : null}
+                            ? "success"
+                            : "neutral"
+                      }
+                    >
+                      {selectedScript.scriptLoadError
+                        ? "Error"
+                        : selectedScript.enabled
+                          ? "Auto"
+                          : "Workflow"}
+                    </AutomationBadge>
                   </div>
                   <div>
                     <h2 className="text-2xl font-semibold text-[var(--bo-fg)]">
@@ -309,7 +197,7 @@ export default function BackofficeOrganisationAutomationScripts() {
                   </div>
                 </div>
 
-                <dl className="grid gap-3 text-sm text-[var(--bo-muted)] sm:grid-cols-4">
+                <dl className="grid gap-3 text-sm text-[var(--bo-muted)] sm:grid-cols-3">
                   <div>
                     <dt className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                       Version
@@ -326,14 +214,6 @@ export default function BackofficeOrganisationAutomationScripts() {
                       {selectedScript.path}
                     </dd>
                   </div>
-                  <div>
-                    <dt className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                      Bindings
-                    </dt>
-                    <dd className="mt-1 font-semibold text-[var(--bo-fg)]">
-                      {selectedScript.enabledBindingCount}/{selectedScript.bindingCount} enabled
-                    </dd>
-                  </div>
                 </dl>
               </div>
 
@@ -348,19 +228,12 @@ export default function BackofficeOrganisationAutomationScripts() {
                 </AutomationNotice>
               ) : null}
 
-              <div className="space-y-4">
-                <ScriptTriggerBindingsPanel
-                  script={selectedScript}
-                  triggerBindings={triggerBindings}
-                  triggerBindingsError={triggerBindingsError}
-                />
-                <ScriptSourcePanel source={loaderData.selectedScriptSource} />
-              </div>
+              <ScriptSourcePanel source={loaderData.selectedScriptSource} />
             </div>
           ) : (
             <div className="space-y-4">
               <div className="border border-dashed border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-6 text-sm text-[var(--bo-muted)]">
-                Select a script to inspect its source and triggers.
+                Select a script to inspect its source.
               </div>
             </div>
           )}

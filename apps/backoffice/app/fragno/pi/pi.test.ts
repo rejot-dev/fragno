@@ -188,38 +188,6 @@ describe("Pi bash tool", () => {
     ]);
   });
 
-  test("exposes starter automation files inside the shared Pi filesystem", async () => {
-    const tools = createPiToolRegistry({
-      sessionFileSystems: new Map(),
-      sessionFileSystemContext: createContext(),
-      env: createMockEnv(),
-      bashCommandContext: createMockBashContext(),
-    });
-
-    const bashFactory = tools["bash"];
-    if (typeof bashFactory !== "function") {
-      throw new Error("Expected bash tool to be registered as a factory.");
-    }
-
-    const tool = await bashFactory({
-      session: { id: "session-automations" },
-      turnId: "turn-1",
-      toolConfig: null,
-      messages: [],
-    } as never);
-
-    const result = await tool.execute("tool-call-automations-1", {
-      script: "cat /workspace/automations/bindings.json",
-    } as never);
-    expect(result.details).toMatchObject({
-      stderr: "",
-      exitCode: 0,
-    });
-    expect((result.details as { stdout: string }).stdout).toContain(
-      '"telegram-claim-linking-start"',
-    );
-  });
-
   test("mounts resend thread snapshots when a resend runtime is available", async () => {
     const tools = createPiToolRegistry({
       sessionFileSystems: new Map(),

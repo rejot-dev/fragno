@@ -39,7 +39,6 @@ export { automationFragmentDefinition } from "./definition";
 export { automationFragmentSchema, AUTOMATION_TRIGGER_ORDER_LAST } from "./schema";
 export type { AutomationFragmentConfig, AutomationPiBashContext };
 export {
-  AUTOMATION_BINDINGS_MANIFEST_PATH,
   AUTOMATION_SCRIPTS_ROOT,
   AUTOMATION_WORKSPACE_ROOT,
   createMinimalFileSystem,
@@ -47,8 +46,6 @@ export {
   listAutomationWorkspaceScripts,
   loadAutomationCatalog,
   loadAutomationCatalogFromConfig,
-  loadAutomationManifest,
-  loadAutomationManifestSummary,
   readAutomationWorkspaceScript,
   resolveAutomationFileSystem,
 } from "./catalog";
@@ -59,11 +56,6 @@ export type {
   AutomationFileSystemResolvePurpose,
   AutomationFileSystemResolver,
   AutomationFileSystemResolverInput,
-  AutomationManifest,
-  AutomationManifestBinding,
-  AutomationManifestBindingEntry,
-  AutomationManifestScriptEntry,
-  AutomationManifestSummary,
   AutomationScriptCatalogEntry,
   AutomationWorkspaceScriptEntry,
 } from "./catalog";
@@ -82,11 +74,12 @@ export type {
 } from "./contracts";
 export {
   bindAutomationIdentityActor,
-  createAutomationsRuntime,
-  createRouteBackedAutomationsRuntime,
-  createStorageBackedAutomationsRuntime,
+  createAutomationBindingsRuntime,
+  createStorageBackedAutomationBindingsRuntime,
   lookupAutomationIdentityBinding,
-} from "./identity-runtime";
+} from "./bindings-storage-runtime";
+export { createRouteBackedAutomationBindingsRuntime } from "./bindings-route-runtime";
+export { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
 export { createEventRuntime } from "../runtime-tools/families/event-runtime";
 export { createOtpRuntime } from "../runtime-tools/families/otp-runtime";
 export {
@@ -108,7 +101,7 @@ export type {
   AutomationRunResult,
   AutomationRunRuntime,
 } from "./run-result";
-export type { AutomationsRuntime } from "../runtime-tools/families/automations";
+export type { AutomationBindingsRuntime } from "../runtime-tools/families/automations-bindings";
 export type { EventRuntime } from "../runtime-tools/families/event-runtime";
 export type { OtpRuntime } from "../runtime-tools/families/otp-runtime";
 export type {

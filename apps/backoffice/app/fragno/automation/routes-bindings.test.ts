@@ -67,38 +67,6 @@ describe("automation routes /bindings", () => {
     });
   });
 
-  test("returns filesystem-backed starter bindings", async () => {
-    const response = await fragment.callRoute("GET", "/bindings");
-
-    expect(response.type).toBe("json");
-    if (response.type === "json") {
-      expect(response.data).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            id: "telegram-claim-linking-start",
-            source: "telegram",
-            eventType: "message.received",
-            scriptKey: "telegram-claim-linking.start",
-            scriptPath: "scripts/telegram-claim-linking.start.cm.js",
-          }),
-          expect.objectContaining({
-            id: "telegram-claim-linking-complete",
-            source: "otp",
-            eventType: "identity.claim.completed",
-            scriptKey: "telegram-claim-linking.complete",
-          }),
-          expect.objectContaining({
-            id: "telegram-pi-session-ensure",
-            source: "telegram",
-            eventType: "message.received",
-            scriptKey: "telegram-pi-session.ensure",
-            scriptPath: "scripts/telegram-pi-session.ensure.cm.js",
-          }),
-        ]),
-      );
-    }
-  });
-
   test("returns empty identity bindings list initially", async () => {
     const response = await fragment.callRoute("GET", "/identity-bindings");
 

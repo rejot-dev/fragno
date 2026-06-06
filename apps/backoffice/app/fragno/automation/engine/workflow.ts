@@ -1,12 +1,11 @@
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 
 import { MasterFileSystem } from "@/files/master-file-system";
-import {
-  createRouteBackedAutomationsRuntime,
-  type AutomationsRuntime,
-} from "@/fragno/automation/identity-runtime";
+import { createRouteBackedAutomationBindingsRuntime } from "@/fragno/automation/bindings-route-runtime";
+import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
 import type { PiCodemodeWorkflowParams } from "@/fragno/pi/pi-codemode-workflow";
+import type { AutomationBindingsRuntime } from "@/fragno/runtime-tools/families/automations-bindings";
 import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
 import { createOtpRuntime } from "@/fragno/runtime-tools/families/otp-runtime";
 import { createPiRouteRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
@@ -14,16 +13,21 @@ import { createResendRouteRuntime } from "@/fragno/runtime-tools/families/resend
 import { createReson8RouteRuntime } from "@/fragno/runtime-tools/families/reson8-runtime";
 import { createTelegramRuntime } from "@/fragno/runtime-tools/families/telegram-runtime";
 
-import type { AutomationFileSystemConfig, AutomationManifestBindingEntry } from "../catalog";
+import {
+  AUTOMATION_WORKSPACE_ROOT,
+  type AutomationBindingCatalogEntry,
+  type AutomationFileSystemConfig,
+} from "../catalog";
 import { resolveAutomationFileSystem } from "../catalog";
 import type { AutomationEvent } from "../contracts";
 import type { AutomationRuntimeHostContext } from "./runtime";
 
 export type AutomationCodemodeWorkflowParams = {
   automationEvent: AutomationEvent;
-  binding: AutomationManifestBindingEntry;
-  idempotencyKey: string;
-  script: string;
+  binding?: AutomationBindingCatalogEntry;
+  idempotencyKey?: string;
+  script?: string;
+  workflowScriptPath?: string;
 };
 
 const createWorkflowAutomationContext = ({
@@ -38,28 +42,49 @@ const createWorkflowAutomationContext = ({
     throw new Error("Workflow-backed automation requires an organisation id.");
   }
 
-  const automationsRuntime: AutomationsRuntime = createRouteBackedAutomationsRuntime({
+  const automationsRuntime: AutomationBindingsRuntime = createRouteBackedAutomationBindingsRuntime({
     env,
     orgId,
   });
+
+  const scriptPath = params.workflowScriptPath ?? params.binding?.scriptPath ?? "workflow.js";
+  const binding = params.binding ?? {
+    id: `workflow:${scriptPath}`,
+    source: "*",
+    eventType: "*",
+    enabled: true,
+    triggerOrder: null,
+    scriptId: `script:${scriptPath}`,
+    scriptKey: scriptPath
+      .replace(/^\/workspace\/automations\//u, "")
+      .replace(/\.workflow\.js$/u, ""),
+    scriptName: scriptPath.split("/").at(-1) ?? scriptPath,
+    scriptPath,
+    absoluteScriptPath: scriptPath.startsWith("/")
+      ? scriptPath
+      : `${AUTOMATION_WORKSPACE_ROOT}/${scriptPath}`,
+    scriptVersion: 1,
+    scriptEngine: "codemode" as const,
+    scriptEnv: {},
+  };
 
   return {
     automation: {
       event: params.automationEvent,
       orgId,
       binding: {
-        source: params.binding.source,
-        eventType: params.binding.eventType,
-        scriptId: params.binding.scriptId,
-        scriptKey: params.binding.scriptKey,
-        scriptName: params.binding.scriptName,
-        scriptPath: params.binding.scriptPath,
-        scriptVersion: params.binding.scriptVersion,
-        scriptEnv: params.binding.scriptEnv,
-        triggerOrder: params.binding.triggerOrder ?? undefined,
+        source: binding.source,
+        eventType: binding.eventType,
+        scriptId: binding.scriptId,
+        scriptKey: binding.scriptKey,
+        scriptName: binding.scriptName,
+        scriptPath: binding.scriptPath,
+        scriptVersion: binding.scriptVersion,
+        scriptEnv: binding.scriptEnv,
+        triggerOrder: binding.triggerOrder ?? undefined,
       },
-      idempotencyKey: params.idempotencyKey,
-      bashEnv: params.binding.scriptEnv,
+      idempotencyKey: params.idempotencyKey ?? params.automationEvent.id,
+      bashEnv: binding.scriptEnv,
       runtime: {
         ...automationsRuntime,
         ...createOtpRuntime({ env, orgId }),
@@ -69,6 +94,7 @@ const createWorkflowAutomationContext = ({
     automations: { runtime: automationsRuntime },
     otp: { runtime: createOtpRuntime({ env, orgId }) },
     pi: { runtime: createPiRouteRuntime({ env, orgId }) },
+    workflow: { runtime: createRouteBackedAutomationWorkflowRuntime({ env, orgId }) },
     reson8: { runtime: createReson8RouteRuntime({ env, orgId }) },
     resend: { runtime: createResendRouteRuntime({ env, orgId }) },
     telegram: { runtime: createTelegramRuntime({ env, orgId }) },
@@ -92,10 +118,20 @@ export const defineAutomationCodemodeWorkflow = (
       throw new Error("Automation filesystem must be a MasterFileSystem.");
     }
 
+    const script =
+      params.script ??
+      (params.workflowScriptPath
+        ? await resolvedFs.readFile(params.workflowScriptPath, "utf-8")
+        : null);
+    if (!script) {
+      throw new Error("Automation codemode workflow requires either script or workflowScriptPath.");
+    }
+
     const { executeWorkflowCodemodeAutomation } = await import("./codemode");
+    const context = createWorkflowAutomationContext({ env: config.env, params });
     const result = await executeWorkflowCodemodeAutomation({
-      script: params.script,
-      context: createWorkflowAutomationContext({ env: config.env, params }),
+      script,
+      context,
       masterFs: resolvedFs,
       env: config.env as BackofficeCodemodeEnv,
       workflowEvent: event,
@@ -104,7 +140,8 @@ export const defineAutomationCodemodeWorkflow = (
 
     if (result.exitCode !== 0) {
       throw new Error(
-        result.stderr || `Automation workflow script ${params.binding.scriptId} failed.`,
+        result.stderr ||
+          `Automation workflow script ${context.automation.binding.scriptId} failed.`,
       );
     }
 
