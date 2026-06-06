@@ -18,6 +18,7 @@ import type { RegisteredOtpCommandContext } from "./families/otp-runtime";
 import type { RegisteredPiCommandContext } from "./families/pi-runtime";
 import type { RegisteredResendCommandContext } from "./families/resend-runtime";
 import type { RegisteredReson8CommandContext } from "./families/reson8-runtime";
+import type { SandboxRuntime } from "./families/sandbox-runtime";
 import type { RegisteredTelegramCommandContext } from "./families/telegram-runtime";
 
 export type RegisteredAutomationsBashCommandContext = {
@@ -37,6 +38,7 @@ export type BashHostContext = {
   pi: RegisteredPiCommandContext | null;
   reson8: RegisteredReson8CommandContext | null;
   resend: RegisteredResendCommandContext | null;
+  sandbox?: { runtime: SandboxRuntime } | null;
   telegram: RegisteredTelegramCommandContext | null;
 };
 
@@ -48,6 +50,7 @@ export const EMPTY_BASH_HOST_CONTEXT: BashHostContext = {
   pi: null,
   reson8: null,
   resend: null,
+  sandbox: null,
   telegram: null,
 };
 
@@ -59,6 +62,7 @@ export type InteractiveBashCommandContext = Omit<BashHostContext, "automation"> 
   pi: NonNullable<BashHostContext["pi"]>;
   reson8: NonNullable<BashHostContext["reson8"]>;
   resend: NonNullable<BashHostContext["resend"]>;
+  sandbox?: BashHostContext["sandbox"];
   telegram: NonNullable<BashHostContext["telegram"]>;
 };
 
@@ -94,6 +98,7 @@ export const createBashToolContext = (context: BashHostContext): BackofficeToolC
     pi: context.pi?.runtime,
     resend: context.resend?.runtime,
     reson8: context.reson8?.runtime,
+    sandbox: context.sandbox?.runtime,
     telegram: context.telegram?.runtime,
   },
   scriptRunner: context.automations?.scriptRunner,

@@ -27,6 +27,8 @@ import type { ResendRuntime } from "@/fragno/runtime-tools/families/resend";
 import { createResendRouteRuntime } from "@/fragno/runtime-tools/families/resend-runtime";
 import type { Reson8Runtime } from "@/fragno/runtime-tools/families/reson8";
 import { createReson8RouteRuntime } from "@/fragno/runtime-tools/families/reson8-runtime";
+import { createSandboxRouteRuntime } from "@/fragno/runtime-tools/families/sandbox-route-runtime";
+import type { SandboxRuntime } from "@/fragno/runtime-tools/families/sandbox-runtime";
 import type { TelegramRuntime } from "@/fragno/runtime-tools/families/telegram";
 import { createTelegramRuntime } from "@/fragno/runtime-tools/families/telegram-runtime";
 import {
@@ -49,6 +51,7 @@ type AutomationCodemodeToolContext = BackofficeToolContext<{
   pi?: PiRuntime;
   resend?: ResendRuntime;
   reson8?: Reson8Runtime;
+  sandbox?: SandboxRuntime;
   telegram?: TelegramRuntime;
 }>;
 
@@ -59,6 +62,7 @@ type PiCodemodeToolContext = BackofficeToolContext<{
   pi?: PiRuntime;
   resend?: ResendRuntime;
   reson8?: Reson8Runtime;
+  sandbox?: SandboxRuntime;
   telegram?: TelegramRuntime;
 }>;
 
@@ -72,6 +76,7 @@ const createAutomationToolRuntimeContext = (
     pi: context.pi?.runtime,
     resend: context.resend?.runtime,
     reson8: context.reson8?.runtime,
+    sandbox: context.sandbox?.runtime,
     telegram: context.telegram?.runtime,
   },
 });
@@ -198,6 +203,7 @@ export const executePiCodemodeWorkflow = async ({
       pi: createPiRouteRuntime({ env, orgId }),
       resend: createResendRouteRuntime({ env, orgId }),
       reson8: createReson8RouteRuntime({ env, orgId }),
+      sandbox: createSandboxRouteRuntime({ env, orgId }),
       telegram: createTelegramRuntime({ env, orgId }),
     },
   };
