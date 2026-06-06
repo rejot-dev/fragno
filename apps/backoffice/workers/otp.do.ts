@@ -33,6 +33,7 @@ export type IssueIdentityClaimInput = {
 
 export type IssueIdentityClaimResult = {
   ok: true;
+  otpId: string;
   externalId: string;
   code: string;
   url: string;
@@ -186,6 +187,7 @@ export class Otp extends DurableObject<CloudflareEnv> {
 
     return {
       ok: true,
+      otpId: issued.id,
       externalId: issued.externalId,
       code: issued.code,
       url: buildIdentityClaimCompletionUrl(

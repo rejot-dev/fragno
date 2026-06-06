@@ -1,5 +1,6 @@
 import type { IFileSystem } from "@/files/interface";
 import { MasterFileSystem } from "@/files/master-file-system";
+import { createRouteBackedAutomationBindingsRuntime } from "@/fragno/automation/bindings-route-runtime";
 import {
   AUTOMATION_WORKSPACE_ROOT,
   resolveAutomationFileSystem,
@@ -9,15 +10,12 @@ import {
 import type { AutomationEvent } from "@/fragno/automation/contracts";
 import { createAutomationExecutionFileSystem } from "@/fragno/automation/engine/execution-file-system";
 import {
-  createRouteBackedAutomationsRuntime,
-  createRouteBackedWorkflowsRuntime,
-} from "@/fragno/automation/identity-runtime";
-import {
   createAutomationRunResult,
   type AutomationRunResult,
 } from "@/fragno/automation/run-result";
+import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import type { ScriptRunArgs } from "@/fragno/runtime-tools/automation-types";
-import type { ScriptRunnerRuntime } from "@/fragno/runtime-tools/families/automations";
+import type { ScriptRunnerRuntime } from "@/fragno/runtime-tools/families/automations-codemode";
 
 import {
   createBashHost,
@@ -42,10 +40,10 @@ export const createRouteBackedInteractiveBashContext = ({
 }): InteractiveBashCommandContext => ({
   automation: null,
   automations: {
-    runtime: createRouteBackedAutomationsRuntime({ env, orgId }),
+    runtime: createRouteBackedAutomationBindingsRuntime({ env, orgId }),
   },
   workflow: {
-    runtime: createRouteBackedWorkflowsRuntime({ env, orgId }),
+    runtime: createRouteBackedAutomationWorkflowRuntime({ env, orgId }),
   },
   otp: {
     runtime: createOtpRuntime({ env, orgId }),
@@ -153,7 +151,7 @@ const resolveScriptPath = (scriptArg: string): string => {
 };
 
 const inferInteractiveScriptRunEngine = (scriptPath: string): AutomationScriptEngine =>
-  scriptPath.endsWith(".cm.js") ? "codemode" : "bash";
+  scriptPath.endsWith(".js") ? "codemode" : "bash";
 
 export type CreateScriptRunnerRuntimeOptions = {
   fileSystemConfig: AutomationFileSystemConfig;

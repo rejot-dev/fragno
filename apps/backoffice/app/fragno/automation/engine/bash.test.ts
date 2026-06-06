@@ -24,6 +24,7 @@ const runtime: AutomationRuntime = {
   }),
   createClaim: async (input) => ({
     url: `https://example.com/${input.externalActorId}`,
+    otpId: "otp-123",
     externalId: input.externalActorId,
     code: "123456",
   }),

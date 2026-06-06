@@ -1,11 +1,15 @@
 import {
-  automationIdentityToolFamily,
-  automationsToolFamily,
-  workflowToolFamily,
-  type AutomationsRuntime,
+  automationBindingsToolFamily,
+  type AutomationBindingsRuntime,
+} from "./families/automations-bindings";
+import {
+  automationScriptToolFamily,
   type ScriptRunnerRuntime,
-  type WorkflowsRuntime,
-} from "./families/automations";
+} from "./families/automations-codemode";
+import {
+  automationWorkflowToolFamily,
+  type AutomationWorkflowRuntime,
+} from "./families/automations-workflow";
 import { eventToolFamily, type EventRuntime } from "./families/event";
 import { otpToolFamily, type OtpRuntime } from "./families/otp";
 import { piToolFamily, type PiRuntime } from "./families/pi";
@@ -20,8 +24,8 @@ import {
 } from "./runtime-tools";
 
 export type CoreBackofficeRuntimeMap = {
-  automations?: AutomationsRuntime;
-  workflow?: WorkflowsRuntime;
+  automations?: AutomationBindingsRuntime;
+  workflow?: AutomationWorkflowRuntime;
   event?: EventRuntime;
   otp?: OtpRuntime;
   pi?: PiRuntime;
@@ -37,8 +41,8 @@ export type CoreBackofficeToolContext = BackofficeToolContext<
 >;
 
 export const automationRuntimeToolFamilies = [
-  automationIdentityToolFamily,
-  workflowToolFamily,
+  automationBindingsToolFamily,
+  automationWorkflowToolFamily,
   eventToolFamily,
   otpToolFamily,
   piToolFamily,
@@ -49,8 +53,8 @@ export const automationRuntimeToolFamilies = [
 ] as const satisfies readonly BackofficeRuntimeToolFamily[];
 
 export const piCodemodeRuntimeToolFamilies = [
-  automationIdentityToolFamily,
-  workflowToolFamily,
+  automationBindingsToolFamily,
+  automationWorkflowToolFamily,
   otpToolFamily,
   piToolFamily,
   resendToolFamily,
@@ -60,8 +64,9 @@ export const piCodemodeRuntimeToolFamilies = [
 ] as const satisfies readonly BackofficeRuntimeToolFamily[];
 
 export const bashRuntimeToolFamilies = [
-  automationsToolFamily,
-  workflowToolFamily,
+  automationBindingsToolFamily,
+  automationScriptToolFamily,
+  automationWorkflowToolFamily,
   eventToolFamily,
   otpToolFamily,
   piToolFamily,

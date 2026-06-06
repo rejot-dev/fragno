@@ -7,9 +7,7 @@ import { createOrgFileSystem } from "@/files";
 import {
   AUTOMATION_WORKSPACE_ROOT,
   listAutomationWorkspaceScripts,
-  loadAutomationManifestSummary,
   readAutomationWorkspaceScript,
-  type AutomationManifestSummary,
   type AutomationWorkspaceScriptEntry,
   type createAutomationFragment,
 } from "@/fragno/automation";
@@ -46,7 +44,20 @@ export type AutomationScriptRecord = {
   enabled: boolean;
 };
 
-export type AutomationTriggerBindingRecord = AutomationManifestSummary["bindings"][number];
+export type AutomationTriggerBindingRecord = {
+  id: string;
+  source: string;
+  eventType: string;
+  scriptPath: string;
+  scriptKey: string;
+  scriptName: string;
+  absoluteScriptPath: string;
+  scriptVersion: number;
+  scriptEngine: AutomationScriptEngine;
+  scriptEnv: Record<string, string>;
+  enabled: boolean;
+  triggerOrder: number | null;
+};
 export type AutomationIdentityBindingRecord = {
   id?: AutomationIdLike;
   source?: string | null;
@@ -137,15 +148,6 @@ const buildAutomationScriptName = (path: string) => {
   return segments.join(" ") || path;
 };
 
-const buildMissingScriptError = ({
-  bindingId,
-  absolutePath,
-}: {
-  bindingId: string;
-  absolutePath: string;
-}) =>
-  `Automation script for binding '${bindingId}' '${absolutePath}' was not found in the automation workspace: File not found.`;
-
 const buildWorkspaceScriptRecord = (
   script: AutomationWorkspaceScriptEntry,
 ): AutomationScriptRecord => ({
@@ -160,55 +162,17 @@ const buildWorkspaceScriptRecord = (
   bindingIds: [],
   bindingCount: 0,
   enabledBindingCount: 0,
-  enabled: false,
+  enabled: script.kind === "script",
 });
 
-const mergeAutomationScripts = ({
-  workspaceScripts,
-  manifest,
-}: {
-  workspaceScripts: AutomationWorkspaceScriptEntry[];
-  manifest: AutomationManifestSummary | null;
-}): AutomationScriptRecord[] => {
-  const scriptsByPath = new Map<string, AutomationScriptRecord>();
-  const workspaceScriptPaths = new Set<string>();
-
-  for (const workspaceScript of workspaceScripts) {
-    const normalizedPath = normalizeAutomationScriptPath(workspaceScript.path);
-    workspaceScriptPaths.add(normalizedPath);
-    scriptsByPath.set(normalizedPath, buildWorkspaceScriptRecord(workspaceScript));
-  }
-
-  for (const manifestScript of manifest?.scripts ?? []) {
-    const normalizedPath = normalizeAutomationScriptPath(manifestScript.path);
-    const existing = scriptsByPath.get(normalizedPath) ?? null;
-    const missingBindingId = manifestScript.bindingIds[0] ?? manifestScript.id;
-
-    scriptsByPath.set(normalizedPath, {
-      id: toAutomationScriptId(manifestScript.path),
-      key: manifestScript.key,
-      name: manifestScript.name,
-      engine: manifestScript.engine,
-      path: normalizedPath,
-      absolutePath: manifestScript.absolutePath,
-      version: manifestScript.version,
-      scriptLoadError: workspaceScriptPaths.has(normalizedPath)
-        ? (existing?.scriptLoadError ?? null)
-        : buildMissingScriptError({
-            bindingId: missingBindingId,
-            absolutePath: manifestScript.absolutePath,
-          }),
-      bindingIds: manifestScript.bindingIds,
-      bindingCount: manifestScript.bindingCount,
-      enabledBindingCount: manifestScript.enabledBindingCount,
-      enabled: manifestScript.enabled,
-    });
-  }
-
-  return Array.from(scriptsByPath.values()).sort(
-    (left, right) => left.name.localeCompare(right.name) || left.path.localeCompare(right.path),
-  );
-};
+const buildWorkspaceScriptRecords = (
+  workspaceScripts: AutomationWorkspaceScriptEntry[],
+): AutomationScriptRecord[] =>
+  workspaceScripts
+    .map(buildWorkspaceScriptRecord)
+    .sort(
+      (left, right) => left.name.localeCompare(right.name) || left.path.localeCompare(right.path),
+    );
 
 export const toAutomationScriptId = (path: string): string =>
   `${AUTOMATION_SCRIPT_ID_PREFIX}${normalizeAutomationScriptPath(path)}`;
@@ -260,19 +224,11 @@ export async function loadAutomationWorkspaceData({
     workspaceScriptsError = formatErrorMessage(error, "Failed to list automation scripts.");
   }
 
-  let manifest: AutomationManifestSummary | null = null;
-  let manifestError: string | null = null;
-  try {
-    manifest = await loadAutomationManifestSummary(fileSystem);
-  } catch (error) {
-    manifestError = formatErrorMessage(error, "Failed to load automation bindings.");
-  }
-
   return {
-    scripts: mergeAutomationScripts({ workspaceScripts, manifest }),
-    scriptsError: workspaceScriptsError ?? manifestError,
-    bindings: manifest?.bindings ?? [],
-    bindingsError: manifestError,
+    scripts: buildWorkspaceScriptRecords(workspaceScripts),
+    scriptsError: workspaceScriptsError,
+    bindings: [],
+    bindingsError: null,
   };
 }
 

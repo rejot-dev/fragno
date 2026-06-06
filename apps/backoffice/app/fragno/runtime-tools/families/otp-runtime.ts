@@ -37,6 +37,7 @@ export const createOtpRuntime = ({
 
     return {
       url: issued.url,
+      otpId: issued.otpId,
       externalId: issued.externalId,
       code: issued.code,
       type: issued.type,

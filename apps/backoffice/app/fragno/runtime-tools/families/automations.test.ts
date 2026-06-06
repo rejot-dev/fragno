@@ -1,18 +1,27 @@
 import { describe, expect, test } from "vitest";
 
-import { automationIdentityRuntimeTools, automationsRuntimeTools } from "./automations";
+import { automationBindingsRuntimeTools } from "./automations-bindings";
+import { automationScriptRuntimeTools } from "./automations-codemode";
+import { automationWorkflowRuntimeTools } from "./automations-workflow";
 
 describe("automation runtime tools", () => {
   test("derive automation bash commands from runtime tools", () => {
-    expect(automationsRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
+    expect(automationBindingsRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
       "automations.identity.lookup-binding",
       "automations.identity.bind-actor",
+    ]);
+    expect(automationScriptRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
       "scripts.run",
+    ]);
+    expect(automationWorkflowRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
+      "workflow.create-instance",
+      "workflow.get-status",
+      "workflow.send-event",
     ]);
   });
 
   test("parse and validate lookupBinding input", () => {
-    const [lookupBinding] = automationIdentityRuntimeTools;
+    const [lookupBinding] = automationBindingsRuntimeTools;
 
     expect(lookupBinding.name).toBe("lookupBinding");
     expect(
@@ -23,7 +32,7 @@ describe("automation runtime tools", () => {
   });
 
   test("parse and validate bindActor input", () => {
-    const [, bindActor] = automationIdentityRuntimeTools;
+    const [, bindActor] = automationBindingsRuntimeTools;
 
     expect(bindActor.name).toBe("bindActor");
     expect(

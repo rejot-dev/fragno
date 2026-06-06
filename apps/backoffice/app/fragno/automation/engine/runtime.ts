@@ -23,8 +23,9 @@ import type {
 } from "../../runtime-tools/automation-types";
 import type {
   AutomationIdentityBindingRecord,
-  AutomationsRuntime,
-} from "../../runtime-tools/families/automations";
+  AutomationBindingsRuntime,
+} from "../../runtime-tools/families/automations-bindings";
+import type { AutomationWorkflowRuntime } from "../../runtime-tools/families/automations-workflow";
 import {
   createEventRuntime,
   type AutomationEmitEventResult,
@@ -35,11 +36,12 @@ import {
   type AutomationIdentityClaimRecord,
   type OtpRuntime,
 } from "../../runtime-tools/families/otp-runtime";
-import type { AutomationBashEnvironment, AutomationEvent } from "../contracts";
 import {
-  createStorageBackedAutomationsRuntime,
+  createStorageBackedAutomationBindingsRuntime,
   type AutomationIdentityStorageContext,
-} from "../identity-runtime";
+} from "../bindings-storage-runtime";
+import type { AutomationBashEnvironment, AutomationEvent } from "../contracts";
+import { createRouteBackedAutomationWorkflowRuntime } from "../workflow-route-runtime";
 
 const normalizeOrgId = (orgId: string | undefined) => orgId?.trim() || undefined;
 
@@ -51,7 +53,7 @@ export type AutomationPiBashContext = {
   defaultAgent?: string;
 };
 
-export type AutomationRuntime = AutomationsRuntime & OtpRuntime & EventRuntime;
+export type AutomationRuntime = AutomationBindingsRuntime & OtpRuntime & EventRuntime;
 
 export type AutomationRuntimeCommandContext = AutomationCommandContext & {
   runtime: AutomationRuntime;
@@ -60,13 +62,16 @@ export type AutomationRuntimeCommandContext = AutomationCommandContext & {
 export type AutomationRuntimeHostContext = {
   automation: AutomationRuntimeCommandContext;
   automations: {
-    runtime: AutomationsRuntime;
+    runtime: AutomationBindingsRuntime;
   };
   otp: {
     runtime: OtpRuntime;
   };
   pi: {
     runtime: PiRuntime;
+  } | null;
+  workflow?: {
+    runtime: AutomationWorkflowRuntime;
   } | null;
   reson8: {
     runtime: Reson8Runtime;
@@ -100,7 +105,7 @@ export const createAutomationRuntime = ({
   const orgId = normalizeOrgId(event.orgId);
 
   return {
-    ...createStorageBackedAutomationsRuntime({ hookContext }),
+    ...createStorageBackedAutomationBindingsRuntime({ hookContext }),
     ...(env && orgId
       ? createOtpRuntime({
           env,
@@ -168,6 +173,8 @@ export const createAutomationExecutionContext = ({
       runtime,
     },
     pi: pi ? { runtime: pi.runtime } : null,
+    workflow:
+      env && orgId ? { runtime: createRouteBackedAutomationWorkflowRuntime({ env, orgId }) } : null,
     reson8:
       env && orgId
         ? { runtime: createReson8RouteRuntime({ env, orgId }) }

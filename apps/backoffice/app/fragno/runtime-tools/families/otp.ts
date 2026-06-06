@@ -17,6 +17,7 @@ import {
 
 export type AutomationIdentityClaimRecord = {
   url: string;
+  otpId: string;
   externalId: string;
   code: string;
   type?: string;
@@ -39,6 +40,7 @@ const createClaimInputSchema = z.object({
 
 const identityClaimRecordSchema = z.object({
   url: nonEmptyString,
+  otpId: nonEmptyString,
   externalId: nonEmptyString,
   code: nonEmptyString,
   type: nonEmptyString.optional(),

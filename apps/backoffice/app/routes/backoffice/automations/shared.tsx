@@ -114,7 +114,7 @@ export function AutomationHeader({
       ]}
       eyebrow="Automations"
       title={`Automations for ${organisationName ?? orgId}`}
-      description="Inspect filesystem-backed automation bindings and shell scripts for this organisation. Edit the underlying files through Backoffice Files under /workspace/automations."
+      description="Inspect filesystem-backed automation scripts for this organisation. Edit the underlying files through Backoffice Files under /workspace/automations."
       actions={
         <Link
           to={`/backoffice/organisations/${orgId}`}

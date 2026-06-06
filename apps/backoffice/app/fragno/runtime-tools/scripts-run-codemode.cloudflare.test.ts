@@ -3,15 +3,19 @@ import { describe, expect, test } from "vitest";
 import { env } from "cloudflare:workers";
 
 import { createTestMasterFileSystem } from "@/fragno/automation/engine/test-master-file-system.test-utils";
-import type { AutomationsRuntime } from "@/fragno/runtime-tools/families/automations";
+import type { AutomationBindingsRuntime } from "@/fragno/runtime-tools/families/automations-bindings";
 
 import { createScriptRunnerRuntime } from "./automation-host";
 import { createBashHost, type BashHostContext } from "./bash-host";
 
 describe("scripts.run codemode", () => {
-  test("runs .cm.js scripts manually from an interactive bash host", async () => {
+  test.each([
+    { label: ".cm.js", scriptPath: "scripts/manual.cm.js" },
+    { label: ".js", scriptPath: "manual.js" },
+  ])("runs $label scripts manually from an interactive bash host", async ({ scriptPath }) => {
+    const absoluteScriptPath = `/workspace/automations/${scriptPath}`;
     const fs = createTestMasterFileSystem({
-      "/workspace/automations/scripts/manual.cm.js": `async () => {
+      [absoluteScriptPath]: `async () => {
         const event = JSON.parse(await state.readFile("/context/event.json"));
         await state.writeFile("/workspace/output/manual-run.txt", event.id);
         console.log("manual codemode run");
@@ -29,7 +33,7 @@ describe("scripts.run codemode", () => {
     const { bash } = createBashHost({ fs, context });
 
     const result = await bash.exec(
-      "scripts.run --script scripts/manual.cm.js --event /workspace/events/event.json --format json",
+      `scripts.run --script ${scriptPath} --event /workspace/events/event.json --format json`,
     );
 
     expect(result.exitCode).toBe(0);
@@ -53,7 +57,7 @@ const createInteractiveContext = ({
 }: {
   fs: ReturnType<typeof createTestMasterFileSystem>;
 }): BashHostContext => {
-  const automationsRuntime: AutomationsRuntime = {
+  const automationsRuntime: AutomationBindingsRuntime = {
     lookupBinding: async () => null,
     bindActor: async (input) => ({
       source: input.source,

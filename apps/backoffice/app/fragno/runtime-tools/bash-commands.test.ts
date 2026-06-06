@@ -3,8 +3,8 @@ import { describe, expect, test } from "vitest";
 import { Bash, InMemoryFs } from "just-bash";
 import { z } from "zod";
 
-import type { AutomationsRuntime } from "./families/automations";
-import { automationIdentityRuntimeTools } from "./families/automations";
+import type { AutomationBindingsRuntime } from "./families/automations-bindings";
+import { automationBindingsRuntimeTools } from "./families/automations-bindings";
 import { eventRuntimeTools, type EventRuntime } from "./families/event";
 import { createBackofficeBashCommands } from "./runtime-tools";
 import { defineBackofficeRuntimeTool } from "./runtime-tools";
@@ -13,7 +13,7 @@ describe("createBackofficeBashCommands", () => {
   test("routes generated bash commands through semantic runtime tools", async () => {
     const calls: unknown[] = [];
     const commandCallsResult: { command: string; output: string; exitCode: number }[] = [];
-    const automationsRuntime: AutomationsRuntime = {
+    const automationsRuntime: AutomationBindingsRuntime = {
       lookupBinding: async (input) => {
         calls.push(["lookupBinding", input]);
         return {
@@ -38,7 +38,7 @@ describe("createBackofficeBashCommands", () => {
     const bash = new Bash({
       fs: new InMemoryFs(),
       customCommands: createBackofficeBashCommands({
-        tools: automationIdentityRuntimeTools,
+        tools: automationBindingsRuntimeTools,
         context: { runtimes: { automations: automationsRuntime } },
         commandCallsResult,
       }),

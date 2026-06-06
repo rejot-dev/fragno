@@ -98,11 +98,7 @@ export {
   uploadFileMount,
 } from "./contributors/upload";
 export { STARTER_WORKSPACE_CONTENT, STARTER_WORKSPACE_ROOT_DESCRIPTION } from "./content/starter";
-export {
-  STARTER_AUTOMATION_CONTENT,
-  STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH,
-  STARTER_AUTOMATION_SCRIPT_PATHS,
-} from "./content/automations";
+export { STARTER_AUTOMATION_CONTENT } from "./content/automations";
 export {
   BASH_HARNESS_REFERENCE,
   SYSTEM_FILE_CONTENT,

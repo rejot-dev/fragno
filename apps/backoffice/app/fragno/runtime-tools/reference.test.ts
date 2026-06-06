@@ -56,7 +56,7 @@ const stringifyFamilyByNamespace = ({
 describe("runtime tool reference generation", () => {
   test.each([
     {
-      namespace: "automations",
+      namespace: "automations-bindings",
       tools: [
         {
           id: "automations.identity.lookup-binding",
@@ -78,6 +78,11 @@ describe("runtime tool reference generation", () => {
           bashCommand: "automations.identity.bind-actor",
           bashOptions: ["source", "key", "value", "description"],
         },
+      ],
+    },
+    {
+      namespace: "automations-codemode",
+      tools: [
         {
           id: "scripts.run",
           namespace: "automations",

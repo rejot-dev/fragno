@@ -2,10 +2,13 @@ import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 
+import {
+  bindAutomationIdentityActor,
+  lookupAutomationIdentityBinding,
+} from "./bindings-storage-runtime";
 import { loadAutomationCatalogFromConfig } from "./catalog";
 import { automationFragmentDefinition } from "./definition";
 import { automationIdentityBindingRecordSchema } from "./identity";
-import { bindAutomationIdentityActor, lookupAutomationIdentityBinding } from "./identity-runtime";
 import { automationFragmentSchema } from "./schema";
 
 const getOrgIdFromRequestQuery = (query: URLSearchParams) =>

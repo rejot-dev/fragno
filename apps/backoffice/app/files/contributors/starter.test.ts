@@ -1,9 +1,6 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  STARTER_FILE_MOUNT_POINT,
-  STARTER_WORKSPACE_CONTENT,
-  createStarterMountedFileSystem,
   normalizeMountedFileSystem,
   starterFileContributor,
   starterFileMount,
@@ -28,30 +25,6 @@ describe("starter file contributor", () => {
       persistence: "session",
     });
     expect(starterFileContributor).toMatchObject(starterFileMount);
-  });
-
-  test("renders and reads the starter workspace pack", async () => {
-    const fs = createStarterMountedFileSystem();
-    const entries = await fs.readdirWithFileTypes?.(STARTER_FILE_MOUNT_POINT);
-    const readme = await fs.readFile?.(`${STARTER_FILE_MOUNT_POINT}/README.md`);
-    const bindingsManifest = await fs.readFile?.(
-      `${STARTER_FILE_MOUNT_POINT}/automations/bindings.json`,
-    );
-
-    expect(entries?.map((entry) => entry.name)).toEqual(
-      expect.arrayContaining(["README.md", "automations", "input", "output", "prompts"]),
-    );
-    expect(fs.getAllPaths?.()).toEqual(
-      expect.arrayContaining([
-        "/workspace",
-        ...Object.keys(STARTER_WORKSPACE_CONTENT).map((path) => `/workspace/${path}`),
-      ]),
-    );
-    expect(readme).toContain("Workspace starter pack");
-    expect(bindingsManifest).toContain('"bindings"');
-    expect(bindingsManifest).toContain(
-      '"path": "/workspace/automations/scripts/telegram-claim-linking.start.cm.js"',
-    );
   });
 
   test("falls back to a read-only starter workspace when Upload is unavailable", async () => {
