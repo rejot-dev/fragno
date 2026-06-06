@@ -37,6 +37,7 @@ const DASHBOARD_COMMAND_REFERENCE_CONTEXT = {
     pi: {},
     reson8: {},
     resend: {},
+    sandbox: {},
     telegram: {},
   },
   scriptRunner: {},

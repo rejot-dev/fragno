@@ -47,7 +47,7 @@ type SandboxSdkClient = {
     namespace: CloudflareSandboxNamespace,
     id: string,
     options?: CloudflareSandboxOptions,
-  ): CloudflareSandboxHandle;
+  ): CloudflareSandboxHandle | Promise<CloudflareSandboxHandle>;
 };
 
 export type CloudflareSandboxManagerOptions = {
@@ -134,7 +134,7 @@ class CloudflareSandboxManager implements SandboxManager {
       throw new Error(parsedSleepAfter.message);
     }
 
-    const sandbox = this.#getSandboxHandle(scopedSandboxId, {
+    const sandbox = await this.#getSandboxHandle(scopedSandboxId, {
       keepAlive: options.keepAlive,
       sleepAfter: parsedSleepAfter.value,
     });
@@ -203,7 +203,7 @@ class CloudflareSandboxManager implements SandboxManager {
   async killInstance(sandboxId: string): Promise<void> {
     const normalizedSandboxId = normalizeSandboxId(sandboxId);
     const scopedSandboxId = this.#toScopedSandboxId(normalizedSandboxId);
-    const sandbox = this.#getSandboxHandle(scopedSandboxId);
+    const sandbox = await this.#getSandboxHandle(scopedSandboxId);
     let shouldUntrack = false;
 
     try {
@@ -236,7 +236,7 @@ class CloudflareSandboxManager implements SandboxManager {
       return null;
     }
 
-    const sandbox = this.#getSandboxHandle(scopedSandboxId);
+    const sandbox = await this.#getSandboxHandle(scopedSandboxId);
     return new CloudflareSandboxHandleProxy({
       id: normalizedSandboxId,
       sandbox,
@@ -279,7 +279,7 @@ class CloudflareSandboxManager implements SandboxManager {
     }
   }
 
-  #getSandboxHandle(
+  async #getSandboxHandle(
     sandboxId: string,
     options?: Pick<StartSandboxOptions, "keepAlive" | "sleepAfter">,
   ) {
@@ -288,7 +288,7 @@ class CloudflareSandboxManager implements SandboxManager {
       sleepAfter: options?.sleepAfter,
     }) as CloudflareSandboxOptions;
 
-    return this.#sdk.getSandbox(this.#sandboxNamespace, sandboxId, sandboxOptions);
+    return await this.#sdk.getSandbox(this.#sandboxNamespace, sandboxId, sandboxOptions);
   }
 
   #toScopedSandboxId(sandboxId: string): string {

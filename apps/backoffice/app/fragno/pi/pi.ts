@@ -34,6 +34,7 @@ import type { OtpRuntime } from "../runtime-tools/families/otp-runtime";
 import type { PiRuntime } from "../runtime-tools/families/pi";
 import type { ResendRuntime } from "../runtime-tools/families/resend";
 import type { Reson8Runtime } from "../runtime-tools/families/reson8";
+import type { SandboxRuntime } from "../runtime-tools/families/sandbox-runtime";
 import type { TelegramRuntime } from "../runtime-tools/families/telegram-runtime";
 import {
   getAvailableRuntimeTools,
@@ -91,6 +92,7 @@ type PiCodemodeToolContext = BackofficeToolContext<{
   pi?: PiRuntime;
   resend?: ResendRuntime;
   reson8?: Reson8Runtime;
+  sandbox?: SandboxRuntime;
   telegram?: TelegramRuntime;
 }>;
 
@@ -255,6 +257,7 @@ const createExecCodeModeTool = (
           pi: bashCommandContext?.pi?.runtime,
           resend: bashCommandContext?.resend?.runtime,
           reson8: bashCommandContext?.reson8?.runtime,
+          sandbox: bashCommandContext?.sandbox?.runtime,
           telegram: bashCommandContext?.telegram?.runtime,
         },
       };

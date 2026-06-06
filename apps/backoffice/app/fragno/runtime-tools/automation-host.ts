@@ -30,6 +30,7 @@ import { createOtpRuntime } from "./families/otp-runtime";
 import { createPiRouteRuntime } from "./families/pi-runtime";
 import { createResendRouteRuntime } from "./families/resend-runtime";
 import { createReson8RouteRuntime } from "./families/reson8-runtime";
+import { createSandboxRouteRuntime } from "./families/sandbox-route-runtime";
 import { createTelegramRuntime } from "./families/telegram-runtime";
 
 export const createRouteBackedInteractiveBashContext = ({
@@ -58,6 +59,7 @@ export const createRouteBackedInteractiveBashContext = ({
   resend: {
     runtime: createResendRouteRuntime({ env, orgId }),
   },
+  sandbox: { runtime: createSandboxRouteRuntime({ env, orgId }) },
   telegram: {
     runtime: createTelegramRuntime({ env, orgId }),
   },
@@ -227,6 +229,7 @@ const createInteractiveScriptRunContext = ({
   pi: parentContext.pi,
   reson8: parentContext.reson8,
   resend: parentContext.resend,
+  sandbox: parentContext.sandbox,
   telegram: parentContext.telegram,
 });
 

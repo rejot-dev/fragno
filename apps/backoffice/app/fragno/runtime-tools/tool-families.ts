@@ -11,6 +11,7 @@ import { otpToolFamily, type OtpRuntime } from "./families/otp";
 import { piToolFamily, type PiRuntime } from "./families/pi";
 import { resendToolFamily, type ResendRuntime } from "./families/resend";
 import { reson8ToolFamily, type Reson8Runtime } from "./families/reson8";
+import { sandboxToolFamily, type SandboxRuntime } from "./families/sandbox";
 import { telegramToolFamily, type TelegramRuntime } from "./families/telegram";
 import {
   getAvailableRuntimeTools,
@@ -26,6 +27,7 @@ export type CoreBackofficeRuntimeMap = {
   pi?: PiRuntime;
   resend?: ResendRuntime;
   reson8?: Reson8Runtime;
+  sandbox?: SandboxRuntime;
   telegram?: TelegramRuntime;
 };
 
@@ -42,6 +44,7 @@ export const automationRuntimeToolFamilies = [
   piToolFamily,
   resendToolFamily,
   reson8ToolFamily,
+  sandboxToolFamily,
   telegramToolFamily,
 ] as const satisfies readonly BackofficeRuntimeToolFamily[];
 
@@ -52,6 +55,7 @@ export const piCodemodeRuntimeToolFamilies = [
   piToolFamily,
   resendToolFamily,
   reson8ToolFamily,
+  sandboxToolFamily,
   telegramToolFamily,
 ] as const satisfies readonly BackofficeRuntimeToolFamily[];
 
@@ -63,6 +67,7 @@ export const bashRuntimeToolFamilies = [
   piToolFamily,
   resendToolFamily,
   reson8ToolFamily,
+  sandboxToolFamily,
   telegramToolFamily,
 ] as const satisfies readonly BackofficeRuntimeToolFamily[];
 

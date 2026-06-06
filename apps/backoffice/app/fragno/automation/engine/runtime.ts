@@ -9,6 +9,8 @@ import {
   createUnavailableReson8Runtime,
   type Reson8Runtime,
 } from "@/fragno/runtime-tools/families/reson8-runtime";
+import { createSandboxRouteRuntime } from "@/fragno/runtime-tools/families/sandbox-route-runtime";
+import type { SandboxRuntime } from "@/fragno/runtime-tools/families/sandbox-runtime";
 import {
   createTelegramRuntime,
   createUnavailableTelegramRuntime,
@@ -41,6 +43,9 @@ import {
 
 const normalizeOrgId = (orgId: string | undefined) => orgId?.trim() || undefined;
 
+const hasSandboxBindings = (env: CloudflareEnv | undefined): env is CloudflareEnv =>
+  Boolean(env?.SANDBOX && env.SANDBOX_REGISTRY);
+
 export type AutomationPiBashContext = {
   runtime: PiRuntime;
   defaultAgent?: string;
@@ -69,6 +74,9 @@ export type AutomationRuntimeHostContext = {
   resend: {
     runtime: ResendRuntime;
   };
+  sandbox?: {
+    runtime: SandboxRuntime;
+  } | null;
   telegram: {
     runtime: TelegramRuntime;
   };
@@ -168,6 +176,10 @@ export const createAutomationExecutionContext = ({
       env && orgId
         ? { runtime: createResendRouteRuntime({ env, orgId }) }
         : { runtime: createUnavailableResendRuntime() },
+    sandbox:
+      hasSandboxBindings(env) && orgId
+        ? { runtime: createSandboxRouteRuntime({ env, orgId }) }
+        : null,
     telegram:
       env && orgId
         ? { runtime: createTelegramRuntime({ env, orgId }) }

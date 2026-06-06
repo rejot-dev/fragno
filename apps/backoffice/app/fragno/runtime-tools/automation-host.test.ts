@@ -132,6 +132,21 @@ const createReson8Runtime = (): Reson8Runtime => ({
   }),
 });
 
+const createSandboxRuntime = () => ({
+  listSandboxes: async () => [{ id: "dev", status: "running" as const }],
+  startSandbox: async ({ id }: { id: string }) => ({ id, status: "running" as const }),
+  killSandbox: async ({ sandboxId }: { sandboxId: string }) => ({
+    sandboxId,
+    killed: true as const,
+  }),
+  executeCommand: async ({ command }: { command: string }) => ({
+    ok: true as const,
+    stdout: `${command}\n`,
+    stderr: "",
+    exitCode: 0,
+  }),
+});
+
 const createPiRuntime = (): PiRuntime => ({
   createSession: async () => ({
     id: "session-1",
@@ -291,6 +306,9 @@ const createInteractiveContext = () => ({
   resend: {
     runtime: createResendRuntime(),
   },
+  sandbox: {
+    runtime: createSandboxRuntime(),
+  },
   telegram: {
     runtime: createTelegramRuntime(),
   },
@@ -422,7 +440,7 @@ const createAutomationContext = () => ({
 });
 
 describe("bash host command assembly", () => {
-  it("loads pi, automations, otp, and resend command families without exposing automation event commands", async () => {
+  it("loads pi, automations, otp, resend, and sandbox command families without exposing automation event commands", async () => {
     const { bash, commandCallsResult } = createBashHost({
       fs: new InMemoryFs(),
       context: {
@@ -442,6 +460,9 @@ describe("bash host command assembly", () => {
         resend: {
           runtime: createResendRuntime(),
         },
+        sandbox: {
+          runtime: createSandboxRuntime(),
+        },
         telegram: null,
       },
     });
@@ -452,6 +473,7 @@ describe("bash host command assembly", () => {
     const resendGetHelp = await bash.exec("resend.threads.get --help");
     const resendListHelp = await bash.exec("resend.threads.list --help");
     const resendReplyHelp = await bash.exec("resend.threads.reply --help");
+    const sandboxHelp = await bash.exec("sandbox.exec --help");
     const missingEvent = await bash.exec("event.emit --event-type test");
 
     expect(piHelp.exitCode).toBe(0);
@@ -466,6 +488,8 @@ describe("bash host command assembly", () => {
     expect(resendListHelp.stdout).toContain("resend.threads.list");
     expect(resendReplyHelp.exitCode).toBe(0);
     expect(resendReplyHelp.stdout).toContain("resend.threads.reply");
+    expect(sandboxHelp.exitCode).toBe(0);
+    expect(sandboxHelp.stdout).toContain("sandbox.exec");
     expect(missingEvent.exitCode).toBe(127);
     expect(missingEvent.stderr).toContain("bash: event.emit: command not found");
     expect(commandCallsResult).toEqual([
@@ -497,6 +521,11 @@ describe("bash host command assembly", () => {
       {
         command: "resend.threads.reply",
         output: expect.stringContaining("resend.threads.reply"),
+        exitCode: 0,
+      },
+      {
+        command: "sandbox.exec",
+        output: expect.stringContaining("sandbox.exec"),
         exitCode: 0,
       },
     ]);
