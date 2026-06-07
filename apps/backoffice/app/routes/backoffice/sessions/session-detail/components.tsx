@@ -14,6 +14,16 @@ export type LiveToolExecution = {
   partialResult: unknown | null;
 };
 
+export type LiveToolCallDraft = {
+  key: string;
+  contentIndex: number;
+  toolCallId: string | null;
+  toolName: string | null;
+  argumentsText: string;
+  argumentsValue: unknown | null;
+  status: "streaming" | "complete";
+};
+
 type ToolResultMessage = Extract<AgentMessage, { role: "toolResult" }>;
 
 type ContentBlock =
@@ -64,6 +74,105 @@ const getCodeArgument = (value: unknown) => {
 
   const { code, ...rest } = value;
   return { code, rest };
+};
+
+const decodeStreamingJsonString = (value: string) => {
+  let result = "";
+  for (let index = 0; index < value.length; index++) {
+    const char = value[index];
+    if (char === '"') {
+      break;
+    }
+    if (char !== "\\") {
+      result += char;
+      continue;
+    }
+
+    const escaped = value[++index];
+    switch (escaped) {
+      case '"':
+      case "\\":
+      case "/":
+        result += escaped;
+        break;
+      case "b":
+        result += "\b";
+        break;
+      case "f":
+        result += "\f";
+        break;
+      case "n":
+        result += "\n";
+        break;
+      case "r":
+        result += "\r";
+        break;
+      case "t":
+        result += "\t";
+        break;
+      case "u": {
+        const hex = value.slice(index + 1, index + 5);
+        if (/^[\da-fA-F]{4}$/.test(hex)) {
+          result += String.fromCharCode(Number.parseInt(hex, 16));
+          index += 4;
+        }
+        break;
+      }
+      case undefined:
+        return result;
+      default:
+        result += escaped;
+    }
+  }
+  return result;
+};
+
+const extractStreamingJsonStringField = (rawText: string | undefined, fieldNames: string[]) => {
+  if (!rawText) {
+    return null;
+  }
+
+  for (const fieldName of fieldNames) {
+    const fieldStart = rawText.indexOf(JSON.stringify(fieldName));
+    if (fieldStart === -1) {
+      continue;
+    }
+
+    const colon = rawText.indexOf(":", fieldStart + fieldName.length + 2);
+    if (colon === -1) {
+      continue;
+    }
+
+    let valueStart = colon + 1;
+    while (/\s/.test(rawText[valueStart] ?? "")) {
+      valueStart++;
+    }
+    if (rawText[valueStart] !== '"') {
+      continue;
+    }
+
+    return decodeStreamingJsonString(rawText.slice(valueStart + 1));
+  }
+
+  return null;
+};
+
+export const formatToolArgumentsDisplayText = ({
+  rawText,
+  value,
+}: {
+  rawText?: string;
+  value: unknown;
+}) => {
+  const codeArgument = getCodeArgument(value);
+  const streamingCode = extractStreamingJsonStringField(rawText, ["code"]);
+  if (streamingCode && streamingCode.length >= (codeArgument ? codeArgument.code.length : 0)) {
+    return streamingCode;
+  }
+  if (codeArgument) {
+    return codeArgument.code;
+  }
+  return rawText && rawText.length > 0 ? rawText : formatJson(value);
 };
 
 export function SessionHeader({
@@ -178,6 +287,7 @@ export function SessionDisplayOptions({
 }
 
 export function SessionConversationPanel({
+  draftToolCalls,
   messages,
   onJumpToLatest,
   onScroll,
@@ -191,6 +301,7 @@ export function SessionConversationPanel({
   showUsage,
   statusText,
 }: {
+  draftToolCalls: LiveToolCallDraft[];
   messages: AgentMessage[];
   onJumpToLatest: () => void;
   onScroll: () => void;
@@ -229,6 +340,7 @@ export function SessionConversationPanel({
               messages.map((message, index) => (
                 <MessageCard
                   key={`${message.role}-${index}`}
+                  draftToolCalls={message === lastMessage ? draftToolCalls : []}
                   message={message}
                   runningTools={runningTools}
                   showToolCalls={showToolCalls}
@@ -241,6 +353,7 @@ export function SessionConversationPanel({
 
             {showPendingAssistant ? (
               <PendingAssistantCard
+                draftToolCalls={draftToolCalls}
                 runningTools={runningTools}
                 showToolCalls={showToolCalls}
                 statusText={statusText}
@@ -401,10 +514,12 @@ export function SessionComposer({
 }
 
 function PendingAssistantCard({
+  draftToolCalls,
   runningTools,
   showToolCalls,
   statusText,
 }: {
+  draftToolCalls: LiveToolCallDraft[];
   runningTools: LiveToolExecution[];
   showToolCalls: boolean;
   statusText: string | null;
@@ -420,8 +535,19 @@ function PendingAssistantCard({
           </span>
         </div>
 
-        {showToolCalls && runningTools.length > 0 ? (
+        {showToolCalls && (draftToolCalls.length > 0 || runningTools.length > 0) ? (
           <div className="mt-3 space-y-2">
+            {draftToolCalls.map((tool) => (
+              <ToolCallBlock
+                key={tool.key}
+                argumentsRawText={tool.argumentsText}
+                argumentsValue={tool.argumentsValue ?? tool.argumentsText}
+                completedToolResult={null}
+                draftTool={tool}
+                liveTool={null}
+                name={tool.toolName ?? "Tool call"}
+              />
+            ))}
             {runningTools.map((tool) => (
               <ToolCallBlock
                 key={tool.toolCallId}
@@ -434,9 +560,9 @@ function PendingAssistantCard({
           </div>
         ) : null}
 
-        {!showToolCalls && runningTools.length > 0 ? (
+        {!showToolCalls && (draftToolCalls.length > 0 || runningTools.length > 0) ? (
           <p className="mt-2 text-xs text-[var(--bo-muted-2)]">
-            {runningTools.length} running tool call(s) hidden.
+            {draftToolCalls.length + runningTools.length} tool call(s) hidden.
           </p>
         ) : null}
       </div>
@@ -489,6 +615,7 @@ function ToggleSwitch({
 }
 
 function MessageCard({
+  draftToolCalls,
   message,
   runningTools,
   showToolCalls,
@@ -496,6 +623,7 @@ function MessageCard({
   showUsage,
   toolResultsByCallId,
 }: {
+  draftToolCalls: LiveToolCallDraft[];
   message: AgentMessage;
   runningTools: LiveToolExecution[];
   showToolCalls: boolean;
@@ -531,15 +659,27 @@ function MessageCard({
   if (message.role === "assistant") {
     const contentBlocks = normalizeContent("content" in message ? message.content : undefined);
     const toolCalls = contentBlocks.filter((block) => block.type === "toolCall");
-    const visibleBlocks = contentBlocks.filter((block) => {
-      if (block.type === "toolCall") {
-        return showToolCalls;
-      }
-      if (block.type === "thinking") {
-        return showThinking;
-      }
-      return true;
-    });
+    const visibleBlocks = contentBlocks
+      .map((block, contentIndex) => ({ block, contentIndex }))
+      .filter(({ block }) => {
+        if (block.type === "toolCall") {
+          return showToolCalls;
+        }
+        if (block.type === "thinking") {
+          return showThinking;
+        }
+        return true;
+      });
+    const unmatchedDraftToolCalls = showToolCalls
+      ? draftToolCalls.filter(
+          (draftTool) =>
+            !contentBlocks.some(
+              (block, contentIndex) =>
+                block.type === "toolCall" &&
+                (draftTool.contentIndex === contentIndex || draftTool.toolCallId === block.id),
+            ),
+        )
+      : [];
 
     return (
       <div className="flex justify-start">
@@ -556,7 +696,7 @@ function MessageCard({
           </div>
 
           <div className="mt-2 space-y-2 text-sm text-[var(--bo-muted)]">
-            {visibleBlocks.length === 0 ? (
+            {visibleBlocks.length === 0 && unmatchedDraftToolCalls.length === 0 ? (
               contentBlocks.length === 0 ? (
                 <span className="inline-flex items-center gap-2 text-xs text-[var(--bo-muted-2)]">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--bo-accent)]" />
@@ -566,20 +706,46 @@ function MessageCard({
                 <p className="text-xs text-[var(--bo-muted-2)]">No visible content.</p>
               )
             ) : (
-              visibleBlocks.map((block, index) => (
-                <ContentBlock
-                  key={`${block.type}-${index}`}
-                  block={block}
-                  completedToolResult={
-                    block.type === "toolCall" ? (toolResultsByCallId.get(block.id) ?? null) : null
-                  }
-                  liveTool={
+              <>
+                {visibleBlocks.map(({ block, contentIndex }, index) => {
+                  const draftTool =
                     block.type === "toolCall"
-                      ? (runningTools.find((tool) => tool.toolCallId === block.id) ?? null)
-                      : null
-                  }
-                />
-              ))
+                      ? (draftToolCalls.find(
+                          (tool) =>
+                            tool.contentIndex === contentIndex ||
+                            (tool.toolCallId !== null && tool.toolCallId === block.id),
+                        ) ?? null)
+                      : null;
+                  return (
+                    <ContentBlock
+                      key={`${block.type}-${index}`}
+                      block={block}
+                      completedToolResult={
+                        block.type === "toolCall"
+                          ? (toolResultsByCallId.get(block.id) ?? null)
+                          : null
+                      }
+                      draftTool={draftTool}
+                      liveTool={
+                        block.type === "toolCall"
+                          ? (runningTools.find((tool) => tool.toolCallId === block.id) ?? null)
+                          : null
+                      }
+                    />
+                  );
+                })}
+                {unmatchedDraftToolCalls.map((tool) => (
+                  <ToolCallBlock
+                    key={tool.key}
+                    argumentsRawText={tool.argumentsText}
+                    argumentsValue={tool.argumentsValue ?? tool.argumentsText}
+                    completedToolResult={null}
+                    draftTool={tool}
+                    liveTool={null}
+                    name={tool.toolName ?? "Tool call"}
+                  />
+                ))}
+              </>
             )}
           </div>
 
@@ -627,11 +793,13 @@ function ScrollablePre({ children }: { children: string }) {
 function ContentBlock({
   block,
   completedToolResult = null,
+  draftTool = null,
   liveTool = null,
   scrollableText = false,
 }: {
   block: ContentBlock;
   completedToolResult?: ToolResultMessage | null;
+  draftTool?: LiveToolCallDraft | null;
   liveTool?: LiveToolExecution | null;
   scrollableText?: boolean;
 }) {
@@ -662,10 +830,12 @@ function ContentBlock({
     case "toolCall":
       return (
         <ToolCallBlock
-          argumentsValue={block.arguments}
+          argumentsRawText={draftTool?.argumentsText}
+          argumentsValue={draftTool?.argumentsValue ?? block.arguments}
           completedToolResult={completedToolResult}
+          draftTool={draftTool}
           liveTool={liveTool}
-          name={block.name}
+          name={draftTool?.toolName ?? block.name}
         />
       );
     default:
@@ -673,11 +843,11 @@ function ContentBlock({
   }
 }
 
-function ToolArgumentsBlock({ value }: { value: unknown }) {
+function ToolArgumentsBlock({ rawText, value }: { rawText?: string; value: unknown }) {
   const codeArgument = getCodeArgument(value);
 
   if (!codeArgument) {
-    return <ScrollablePre>{formatJson(value)}</ScrollablePre>;
+    return <ScrollablePre>{formatToolArgumentsDisplayText({ rawText, value })}</ScrollablePre>;
   }
 
   const restKeys = Object.keys(codeArgument.rest);
@@ -688,19 +858,23 @@ function ToolArgumentsBlock({ value }: { value: unknown }) {
       {restKeys.length > 0 ? (
         <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">Code</p>
       ) : null}
-      <ScrollablePre>{codeArgument.code}</ScrollablePre>
+      <ScrollablePre>{formatToolArgumentsDisplayText({ rawText, value })}</ScrollablePre>
     </div>
   );
 }
 
 function ToolCallBlock({
+  argumentsRawText,
   argumentsValue,
   completedToolResult,
+  draftTool = null,
   liveTool,
   name,
 }: {
+  argumentsRawText?: string;
   argumentsValue: unknown;
   completedToolResult: ToolResultMessage | null;
+  draftTool?: LiveToolCallDraft | null;
   liveTool: LiveToolExecution | null;
   name: string;
 }) {
@@ -710,6 +884,12 @@ function ToolCallBlock({
         <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           Tool call · {name}
         </p>
+        {draftTool && !liveTool ? (
+          <span className="inline-flex items-center gap-2 text-[10px] tracking-[0.22em] text-[var(--bo-accent)] uppercase">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--bo-accent)]" />
+            {draftTool.status === "complete" ? "Ready" : "Writing input"}
+          </span>
+        ) : null}
         {liveTool ? (
           <span className="inline-flex items-center gap-2 text-[10px] tracking-[0.22em] text-[var(--bo-accent)] uppercase">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--bo-accent)]" />
@@ -718,7 +898,7 @@ function ToolCallBlock({
         ) : null}
       </div>
       <div className="mt-1">
-        <ToolArgumentsBlock value={argumentsValue} />
+        <ToolArgumentsBlock rawText={argumentsRawText} value={argumentsValue} />
       </div>
       {liveTool && liveTool.partialResult !== null ? (
         <div className="mt-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2">

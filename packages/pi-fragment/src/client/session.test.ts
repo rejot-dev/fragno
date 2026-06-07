@@ -897,6 +897,219 @@ describe("createPiSessionStore", () => {
     expect(store.get().streamError).toBeUndefined();
   });
 
+  it("exposes draft tool call input while the assistant writes arguments", async () => {
+    const partialMessage = (arguments_: Record<string, unknown>) =>
+      ({
+        role: "assistant",
+        content: [{ type: "toolCall", id: "tool_1", name: "bash", arguments: arguments_ }],
+        timestamp: 1,
+        api: "test",
+        provider: "test",
+        model: "test",
+        usage: { input: 0, output: 0, totalTokens: 0, cost: { total: 0 } },
+        stopReason: "toolUse",
+      }) as unknown as Extract<AgentMessage, { role: "assistant" }>;
+
+    const transport: PiSessionTransport = {
+      openEvents: async ({ signal }) =>
+        (async function* () {
+          yield { type: "snapshot", state: snapshot };
+          yield { type: "message_start", message: partialMessage({}) } as AgentEvent;
+          yield {
+            type: "message_update",
+            message: partialMessage({}),
+            assistantMessageEvent: {
+              type: "toolcall_start",
+              contentIndex: 0,
+              partial: partialMessage({}),
+            },
+          } as AgentEvent;
+          yield {
+            type: "message_update",
+            message: partialMessage({ command: "pnpm test" }),
+            assistantMessageEvent: {
+              type: "toolcall_delta",
+              contentIndex: 0,
+              delta: '{"command":"pnpm test',
+              partial: partialMessage({ command: "pnpm test" }),
+            },
+          } as AgentEvent;
+          await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve()));
+        })(),
+      sendCommand: async () => ({ accepted: true, commandId: "cmd_1", status: "active" }),
+    };
+
+    const store = createStore(transport);
+    const unsubscribe = store.subscribe(() => {});
+
+    await vi.waitFor(() => {
+      expect(store.draftToolCalls.get()).toEqual([
+        {
+          key: "assistant:1:tool:tool_1",
+          contentIndex: 0,
+          toolCallId: "tool_1",
+          toolName: "bash",
+          argumentsText: '{"command":"pnpm test',
+          argumentsValue: { command: "pnpm test" },
+          status: "streaming",
+        },
+      ]);
+    });
+
+    unsubscribe();
+  });
+
+  it("exposes execCodeMode draft input from provider partial JSON before the final tool call", async () => {
+    const partialMessage = (partialJson: string, arguments_: Record<string, unknown> = {}) =>
+      ({
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "tool_1",
+            name: "execCodeMode",
+            arguments: arguments_,
+            partialJson,
+          },
+        ],
+        timestamp: 1,
+        api: "test",
+        provider: "test",
+        model: "test",
+        usage: { input: 0, output: 0, totalTokens: 0, cost: { total: 0 } },
+        stopReason: "toolUse",
+      }) as unknown as Extract<AgentMessage, { role: "assistant" }>;
+
+    const partialCode = 'await state.writeFile("/tmp/streaming.txt", "still writing';
+    const partialJson = JSON.stringify({ code: partialCode }).slice(0, -2);
+
+    const transport: PiSessionTransport = {
+      openEvents: async ({ signal }) =>
+        (async function* () {
+          yield { type: "snapshot", state: snapshot };
+          yield { type: "message_start", message: partialMessage("") } as AgentEvent;
+          yield {
+            type: "message_update",
+            message: partialMessage(""),
+            assistantMessageEvent: {
+              type: "toolcall_start",
+              contentIndex: 0,
+              partial: partialMessage(""),
+            },
+          } as AgentEvent;
+          yield {
+            type: "message_update",
+            message: partialMessage(partialJson),
+            assistantMessageEvent: {
+              type: "toolcall_delta",
+              contentIndex: 0,
+              delta: "",
+              partial: partialMessage(partialJson),
+            },
+          } as AgentEvent;
+          await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve()));
+        })(),
+      sendCommand: async () => ({ accepted: true, commandId: "cmd_1", status: "active" }),
+    };
+
+    const store = createStore(transport);
+    const unsubscribe = store.subscribe(() => {});
+
+    await vi.waitFor(() => {
+      expect(store.messages.get()).toMatchObject([
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "tool_1",
+              name: "execCodeMode",
+              partialJson,
+            },
+          ],
+        },
+      ]);
+    });
+
+    await vi.waitFor(() => {
+      expect(store.draftToolCalls.get()).toMatchObject([
+        {
+          toolCallId: "tool_1",
+          toolName: "execCodeMode",
+          argumentsText: partialJson,
+          argumentsValue: { code: partialCode },
+          status: "streaming",
+        },
+      ]);
+    });
+
+    unsubscribe();
+  });
+
+  it("removes draft tool calls when execution starts", async () => {
+    const assistant = {
+      role: "assistant",
+      content: [{ type: "toolCall", id: "tool_1", name: "bash", arguments: { command: "ls" } }],
+      timestamp: 1,
+      api: "test",
+      provider: "test",
+      model: "test",
+      usage: { input: 0, output: 0, totalTokens: 0, cost: { total: 0 } },
+      stopReason: "toolUse",
+    } as unknown as Extract<AgentMessage, { role: "assistant" }>;
+
+    const transport: PiSessionTransport = {
+      openEvents: async ({ signal }) =>
+        (async function* () {
+          yield { type: "snapshot", state: snapshot };
+          yield { type: "message_start", message: assistant } as AgentEvent;
+          yield {
+            type: "message_update",
+            message: assistant,
+            assistantMessageEvent: {
+              type: "toolcall_end",
+              contentIndex: 0,
+              toolCall: assistant.content[0],
+              partial: assistant,
+            },
+          } as AgentEvent;
+          yield {
+            type: "tool_execution_start",
+            toolCallId: "tool_1",
+            toolName: "bash",
+            args: { command: "ls" },
+          } as AgentEvent;
+          await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve()));
+        })(),
+      sendCommand: async () => ({ accepted: true, commandId: "cmd_1", status: "active" }),
+    };
+
+    const store = createStore(transport);
+    const unsubscribe = store.subscribe(() => {});
+
+    await vi.waitFor(() =>
+      expect(store.runningTools.get()).toMatchObject([
+        { toolCallId: "tool_1", toolName: "bash", args: { command: "ls" } },
+      ]),
+    );
+    expect(store.draftToolCalls.get()).toEqual([]);
+    expect(store.messages.get()).toMatchObject([
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "tool_1",
+            name: "bash",
+            arguments: { command: "ls" },
+          },
+        ],
+      },
+    ]);
+
+    unsubscribe();
+  });
+
   it("exposes live tool execution updates", async () => {
     const transport: PiSessionTransport = {
       openEvents: async ({ signal }) =>
