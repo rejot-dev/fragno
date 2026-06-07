@@ -98,5 +98,22 @@ export const uploadSchema = schema("upload", (s) => {
           unique: true,
         });
     })
-    .noOp("removed obsolete upload_part -> upload addReference history");
+    .noOp("removed obsolete upload_part -> upload addReference history")
+    .addTable("storage_object", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("storageKey", column("string"))
+        .addColumn("body", column("binary"))
+        .addColumn("contentType", column("string"))
+        .addColumn("sizeBytes", column("bigint"))
+        .addColumn(
+          "createdAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .addColumn(
+          "updatedAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .createIndex("idx_storage_object_key", ["storageKey"], { unique: true });
+    });
 });
