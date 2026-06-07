@@ -417,6 +417,168 @@ describe("Pi workflow scenarios", () => {
     );
   });
 
+  test("exposes streaming tool-call partialJson before the tool call completes", async () => {
+    let releaseToolCallEnd!: () => void;
+    const toolCallEndReleased = new Promise<void>((resolve) => {
+      releaseToolCallEnd = resolve;
+    });
+    const classifyTool = definePiTool({
+      name: "classify",
+      label: "Classify",
+      description: "Classify a user request.",
+      parameters: Type.Object({ request: Type.String() }),
+      async execute(_toolCallId, params) {
+        return {
+          content: [{ type: "text", text: `classified:${params.request}` }],
+          details: { request: params.request },
+        };
+      },
+    });
+    const partialArgs = JSON.stringify({ request: "streamed broken" });
+    const { streamFn } = createAssistantStreamScript()
+      .waitBeforeEnd(toolCallEndReleased)
+      .toolCall("classify", {
+        id: "call-1",
+        args: { request: "streamed broken" },
+        deltas: [partialArgs.slice(0, 12), partialArgs.slice(12)],
+      })
+      .text("done")
+      .build();
+    const config: PiFragmentConfig = {
+      agents: {
+        default: {
+          name: "default",
+          systemPrompt: "You are helpful.",
+          model: mockModel,
+          tools: ["classify"],
+          streamFn,
+        },
+      },
+      tools: { classify: classifyTool },
+      workflows: [interactiveChatWorkflow],
+    };
+
+    await runScenario(
+      defineScenario({
+        name: "pi-tool-call-partial-json",
+        workflows: createPiWorkflows({
+          agents: config.agents,
+          tools: config.tools,
+          workflows: config.workflows,
+        }),
+        vars: () => ({
+          sessionId: undefined as string | undefined,
+        }),
+        harness: {
+          configureFragments: (harness) => ({
+            pi: instantiate(piFragmentDefinition)
+              .withConfig(config)
+              .withRoutes([piRoutesFactory])
+              .withServices({ workflows: harness.fragment.services }),
+          }),
+        },
+        clients: ({ clientConfig }) => ({
+          agent: createPiFragmentClient(clientConfig("pi", { runner: "agent" })),
+          user: createPiFragmentClient(clientConfig("pi", { runner: "user" })),
+        }),
+        stores: ({ clients, store }) => ({
+          agentSession: store((ctx) =>
+            clients.agent.useSession({
+              path: { workflowName: interactiveChatWorkflow.name, sessionId: ctx.vars.sessionId! },
+            }),
+          ),
+          userSession: store((ctx) =>
+            clients.user.useSession({
+              path: { workflowName: interactiveChatWorkflow.name, sessionId: ctx.vars.sessionId! },
+            }),
+          ),
+        }),
+        runners: ["agent", "user"],
+        steps: ({ workflow, runners, concurrent, clients, stores }) => [
+          workflow.read({
+            read: async () => {
+              const session = await clients.user.useCreateSession().mutate({
+                path: { workflowName: interactiveChatWorkflow.name },
+                body: {
+                  name: "Scenario Session",
+                  input: { agentName: "default" },
+                },
+              });
+              assert(session && !Array.isArray(session), "expected session response");
+              return session.id;
+            },
+            storeAs: "sessionId",
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "create",
+          }),
+          stores.agentSession.waitFor(
+            (state) => state.connectionStatus === "open" && state.agent !== null,
+          ),
+          stores.userSession.waitFor(
+            (state) => state.connectionStatus === "open" && state.agent !== null,
+          ),
+          concurrent({
+            agent: [
+              stores.agentSession.read(async (session) => {
+                await session.sendCommand({
+                  kind: "prompt",
+                  input: { text: "classify this" },
+                });
+              }),
+              runners.agent.runUntilIdle({
+                workflow: interactiveChatWorkflow.name,
+                instanceId: (ctx) => ctx.vars.sessionId!,
+                reason: "event",
+              }),
+            ],
+            user: [
+              runners.user.waitForEmission({
+                workflow: interactiveChatWorkflow.name,
+                instanceId: (ctx) => ctx.vars.sessionId!,
+                match: (emission) => {
+                  const payload = emission.payload as AgentEvent;
+                  return (
+                    payload.type === "message_update" &&
+                    payload.assistantMessageEvent.type === "toolcall_delta" &&
+                    payload.assistantMessageEvent.partial.content.some(
+                      (block) =>
+                        block.type === "toolCall" &&
+                        "partialJson" in block &&
+                        block.partialJson === partialArgs,
+                    )
+                  );
+                },
+              }),
+              stores.userSession.read(async (session) => {
+                await vi.waitFor(() => {
+                  expect(session.draftToolCalls.get()).toMatchObject([
+                    {
+                      toolCallId: "call-1",
+                      toolName: "classify",
+                      argumentsText: partialArgs,
+                      argumentsValue: { request: "streamed broken" },
+                      status: "streaming",
+                    },
+                  ]);
+                });
+                releaseToolCallEnd();
+              }),
+            ],
+          }),
+          stores.userSession.waitFor(
+            (state) =>
+              state.agent?.messages.some(
+                (message) => message.role === "toolResult" && message.content[0]?.type === "text",
+              ) ?? false,
+          ),
+        ],
+      }),
+    );
+  });
+
   test("aborts an in-flight agent stream", async () => {
     let markStreamStarted!: () => void;
     const streamStarted = new Promise<void>((resolve) => {

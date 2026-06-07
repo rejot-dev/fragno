@@ -3,6 +3,7 @@ import { atom, computed, onMount, type ReadableAtom } from "nanostores";
 import type { z } from "zod";
 
 import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
+import type { AssistantMessage, ToolCall } from "@earendil-works/pi-ai";
 
 import type { commandAckSchema, commandInputSchema } from "../pi/route-schemas";
 import type { PiAgentStateSnapshot, PiSessionDetail, PiSessionEventStreamItem } from "../pi/types";
@@ -17,6 +18,16 @@ export type PiLiveToolExecution = {
   toolName: string;
   args: unknown;
   partialResult: unknown | null;
+};
+
+export type PiLiveToolCallDraft = {
+  key: string;
+  contentIndex: number;
+  toolCallId: string | null;
+  toolName: string | null;
+  argumentsText: string;
+  argumentsValue: unknown | null;
+  status: "streaming" | "complete";
 };
 
 export type PiSessionStoreArgs = {
@@ -398,6 +409,265 @@ export const createStorePiSessionTransport = ({
   sendCommand,
 });
 
+const tryParseJson = (value: string): unknown | null => {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+};
+
+const decodeStreamingJsonString = (value: string, startIndex: number) => {
+  let result = "";
+  let index = startIndex;
+
+  for (; index < value.length; index++) {
+    const char = value[index];
+    if (char === '"') {
+      return { value: result, endIndex: index, complete: true };
+    }
+    if (char !== "\\") {
+      result += char;
+      continue;
+    }
+
+    const escaped = value[++index];
+    switch (escaped) {
+      case '"':
+      case "\\":
+      case "/":
+        result += escaped;
+        break;
+      case "b":
+        result += "\b";
+        break;
+      case "f":
+        result += "\f";
+        break;
+      case "n":
+        result += "\n";
+        break;
+      case "r":
+        result += "\r";
+        break;
+      case "t":
+        result += "\t";
+        break;
+      case "u": {
+        const hex = value.slice(index + 1, index + 5);
+        if (/^[\da-fA-F]{4}$/.test(hex)) {
+          result += String.fromCharCode(Number.parseInt(hex, 16));
+          index += 4;
+        }
+        break;
+      }
+      case undefined:
+        return { value: result, endIndex: index, complete: false };
+      default:
+        result += escaped;
+    }
+  }
+
+  return { value: result, endIndex: index, complete: false };
+};
+
+const parseStreamingJsonObject = (value: string): Record<string, unknown> | null => {
+  const parsed = tryParseJson(value);
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    return parsed as Record<string, unknown>;
+  }
+
+  let index = 0;
+  const skipWhitespace = () => {
+    while (/\s/.test(value[index] ?? "")) {
+      index++;
+    }
+  };
+
+  skipWhitespace();
+  if (value[index] !== "{") {
+    return null;
+  }
+  index++;
+
+  const result: Record<string, unknown> = {};
+  while (index < value.length) {
+    skipWhitespace();
+    if (value[index] === ",") {
+      index++;
+      continue;
+    }
+    if (value[index] === "}") {
+      break;
+    }
+    if (value[index] !== '"') {
+      break;
+    }
+
+    const key = decodeStreamingJsonString(value, index + 1);
+    if (!key.complete) {
+      break;
+    }
+    index = key.endIndex + 1;
+    skipWhitespace();
+    if (value[index] !== ":") {
+      break;
+    }
+    index++;
+    skipWhitespace();
+
+    if (value[index] === '"') {
+      const stringValue = decodeStreamingJsonString(value, index + 1);
+      result[key.value] = stringValue.value;
+      index = stringValue.endIndex + (stringValue.complete ? 1 : 0);
+      continue;
+    }
+
+    const valueStart = index;
+    while (index < value.length && value[index] !== "," && value[index] !== "}") {
+      index++;
+    }
+    const token = value.slice(valueStart, index).trim();
+    if (!token) {
+      break;
+    }
+    const parsedToken = tryParseJson(token);
+    if (parsedToken === null && token !== "null") {
+      break;
+    }
+    result[key.value] = parsedToken;
+  }
+
+  return Object.keys(result).length > 0 ? result : null;
+};
+
+const hasConcreteToolArguments = (value: unknown): boolean => {
+  if (value === null || typeof value === "undefined") {
+    return false;
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return true;
+  }
+  return Object.keys(value).length > 0;
+};
+
+type AssistantToolCallEvent = Extract<
+  Extract<AgentEvent, { type: "message_update" }>["assistantMessageEvent"],
+  { type: "toolcall_start" | "toolcall_delta" | "toolcall_end" }
+>;
+
+type StreamingToolCallBlock = ToolCall & { partialArgs?: string; partialJson?: string };
+
+const toolCallBlockAt = (
+  message: AssistantMessage,
+  contentIndex: number,
+): StreamingToolCallBlock | undefined => {
+  const block = message.content[contentIndex];
+  return block?.type === "toolCall" ? (block as StreamingToolCallBlock) : undefined;
+};
+
+const partialArgumentsTextFromBlock = (block: StreamingToolCallBlock | undefined) => {
+  if (typeof block?.partialJson === "string") {
+    return block.partialJson;
+  }
+  if (typeof block?.partialArgs === "string") {
+    return block.partialArgs;
+  }
+  return null;
+};
+
+const draftKeyFor = (
+  assistantMessageIndex: number,
+  event: AssistantToolCallEvent,
+  block: StreamingToolCallBlock | undefined,
+) => `assistant:${assistantMessageIndex}:tool:${block?.id ?? event.contentIndex}`;
+
+const toolCallDraftsFromEvents = (
+  events: Array<Exclude<PiSessionEventStreamItem, SnapshotFrame>>,
+): PiLiveToolCallDraft[] => {
+  const drafts = new Map<string, PiLiveToolCallDraft>();
+  let assistantMessageIndex = 0;
+  const committedEpochs = committedEpochsByStep(events);
+
+  const removeDraft = (toolCallId: string) => {
+    for (const [key, draft] of drafts) {
+      if (draft.toolCallId === toolCallId) {
+        drafts.delete(key);
+      }
+    }
+  };
+
+  for (const frame of events) {
+    const event = agentEventFromStreamFrame(frame, committedEpochs);
+    if (!event) {
+      continue;
+    }
+
+    if (event.type === "message_start" && event.message.role === "assistant") {
+      assistantMessageIndex++;
+      continue;
+    }
+
+    if (event.type === "tool_execution_start" || event.type === "tool_execution_end") {
+      removeDraft(event.toolCallId);
+      continue;
+    }
+
+    if (event.type !== "message_update") {
+      continue;
+    }
+
+    const assistantMessageEvent = event.assistantMessageEvent;
+    if (
+      !assistantMessageEvent ||
+      (assistantMessageEvent.type !== "toolcall_start" &&
+        assistantMessageEvent.type !== "toolcall_delta" &&
+        assistantMessageEvent.type !== "toolcall_end")
+    ) {
+      continue;
+    }
+
+    const block = toolCallBlockAt(
+      assistantMessageEvent.partial,
+      assistantMessageEvent.contentIndex,
+    );
+    const key = draftKeyFor(assistantMessageIndex, assistantMessageEvent, block);
+    const existing = drafts.get(key);
+    const partialArgumentsText = partialArgumentsTextFromBlock(block);
+    const argumentsText =
+      partialArgumentsText ??
+      (assistantMessageEvent.type === "toolcall_delta"
+        ? `${existing?.argumentsText ?? ""}${assistantMessageEvent.delta}`
+        : (existing?.argumentsText ?? ""));
+    const completedToolCall =
+      assistantMessageEvent.type === "toolcall_end" ? assistantMessageEvent.toolCall : undefined;
+    const parsedArgumentsText = parseStreamingJsonObject(argumentsText);
+    const argumentsValue =
+      completedToolCall?.arguments ??
+      (hasConcreteToolArguments(block?.arguments) ? block?.arguments : parsedArgumentsText) ??
+      parsedArgumentsText ??
+      block?.arguments ??
+      null;
+
+    drafts.set(key, {
+      key,
+      contentIndex: assistantMessageEvent.contentIndex,
+      toolCallId: completedToolCall?.id ?? block?.id ?? existing?.toolCallId ?? null,
+      toolName: completedToolCall?.name ?? block?.name ?? existing?.toolName ?? null,
+      argumentsText:
+        argumentsText ||
+        (completedToolCall
+          ? JSON.stringify(completedToolCall.arguments ?? {})
+          : existing?.argumentsText) ||
+        "",
+      argumentsValue,
+      status: assistantMessageEvent.type === "toolcall_end" ? "complete" : "streaming",
+    });
+  }
+
+  return [...drafts.values()];
+};
+
 const runningToolsFromEvents = (
   events: Array<Exclude<PiSessionEventStreamItem, SnapshotFrame>>,
 ): PiLiveToolExecution[] => {
@@ -608,10 +878,14 @@ export const createPiSessionStore = (args: PiSessionStoreArgs, deps: PiSessionSt
   );
   const events = computed(state, ($state) => $state.events);
   const messages = computed(agentState, ($agent) => $agent.messages);
+  const draftToolCalls = computed(events, toolCallDraftsFromEvents);
   const runningTools = computed(events, runningToolsFromEvents);
   const readyForInput = computed(
-    [state, runningTools],
-    ($state, $runningTools) => $state.connectionStatus === "open" && $runningTools.length === 0,
+    [state, draftToolCalls, runningTools],
+    ($state, $draftToolCalls, $runningTools) =>
+      $state.connectionStatus === "open" &&
+      $draftToolCalls.length === 0 &&
+      $runningTools.length === 0,
   );
   const sending = computed(state, ($state) => $state.command.loading);
   const error = computed(state, ($state) =>
@@ -623,21 +897,27 @@ export const createPiSessionStore = (args: PiSessionStoreArgs, deps: PiSessionSt
   const needsNudge = computed([state, staleCheckNow], ($state, $now) =>
     isPiSessionPossiblyStuck($state, { now: $now }),
   );
-  const statusText = computed([state, runningTools], ($state, $runningTools) => {
-    if ($state.command.loading) {
-      return "Sending…";
-    }
-    if ($state.connectionStatus === "connecting") {
-      return "Connecting…";
-    }
-    if ($state.connectionStatus === "retrying") {
-      return "Reconnecting…";
-    }
-    if ($runningTools.length > 0) {
-      return "Running tool calls…";
-    }
-    return null;
-  });
+  const statusText = computed(
+    [state, draftToolCalls, runningTools],
+    ($state, $draftToolCalls, $runningTools) => {
+      if ($state.command.loading) {
+        return "Sending…";
+      }
+      if ($state.connectionStatus === "connecting") {
+        return "Connecting…";
+      }
+      if ($state.connectionStatus === "retrying") {
+        return "Reconnecting…";
+      }
+      if ($draftToolCalls.length > 0) {
+        return "Writing tool call…";
+      }
+      if ($runningTools.length > 0) {
+        return "Running tool calls…";
+      }
+      return null;
+    },
+  );
   const session = computed([agentState, events, state], ($agent, $events, $state) => {
     const initialData = initialDataForPath({
       workflowName: $state.workflowName,
@@ -688,6 +968,7 @@ export const createPiSessionStore = (args: PiSessionStoreArgs, deps: PiSessionSt
     session,
     messages,
     events,
+    draftToolCalls,
     runningTools,
     readyForInput,
     needsNudge,

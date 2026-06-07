@@ -1,0 +1,66 @@
+import { describe, expect, test } from "vitest";
+
+import { createElement, createRef } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+
+import { formatToolArgumentsDisplayText, SessionConversationPanel } from "./components";
+
+describe("formatToolArgumentsDisplayText", () => {
+  test("renders streaming execCodeMode code input before the JSON argument is complete", () => {
+    expect(
+      formatToolArgumentsDisplayText({
+        rawText:
+          '{"code":"const path = \\"/tmp/example.txt\\";\\nawait state.writeFile(path, \\"hello',
+        value: { code: "" },
+      }),
+    ).toContain('await state.writeFile(path, "hello');
+  });
+});
+
+describe("SessionConversationPanel", () => {
+  test("renders a draft tool call even before the assistant message contains a tool block", () => {
+    const markup = renderToStaticMarkup(
+      createElement(SessionConversationPanel, {
+        draftToolCalls: [
+          {
+            key: "assistant:1:tool:0",
+            contentIndex: 0,
+            toolCallId: null,
+            toolName: "execCodeMode",
+            argumentsText: '{"code":"await state.writeFile(\\"/tmp/file.txt\\", \\"hello',
+            argumentsValue: { code: 'await state.writeFile("/tmp/file.txt", "hello' },
+            status: "streaming",
+          },
+        ],
+        messages: [
+          {
+            role: "assistant",
+            content: [],
+            timestamp: 1,
+            api: "test",
+            provider: "test",
+            model: "test",
+            usage: { input: 0, output: 0, totalTokens: 0, cost: { total: 0 } },
+            stopReason: "toolUse",
+          } as never,
+        ],
+        onJumpToLatest: () => {},
+        onScroll: () => {},
+        readyForInput: false,
+        runningTools: [],
+        scrollContentRef: createRef<HTMLDivElement>(),
+        scrollViewportRef: createRef<HTMLDivElement>(),
+        showJumpToLatest: false,
+        showThinking: true,
+        showToolCalls: true,
+        showUsage: false,
+        statusText: "Writing tool call…",
+      }),
+    );
+
+    expect(markup).toContain("Tool call · execCodeMode");
+    expect(markup).toContain("Writing input");
+    expect(markup).toContain("await state.writeFile(&quot;/tmp/file.txt&quot;, &quot;hello");
+    expect(markup).not.toContain("Assistant is responding");
+  });
+});

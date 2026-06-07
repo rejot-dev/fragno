@@ -11,6 +11,7 @@ import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
+  parseStreamingJson,
   type Api,
   type AssistantMessage,
   type Model,
@@ -61,7 +62,29 @@ const buildAssistantMessage = (
 
 type ScriptedAssistantTurnOptions = {
   waitBeforeStart?: Promise<unknown>;
+  waitBeforeEnd?: Promise<unknown>;
 };
+
+type StreamingToolCall = ToolCall & { partialJson?: string };
+
+type ScriptedToolCallOptions = {
+  id: string;
+  args: Record<string, unknown>;
+  deltas?: string[];
+};
+
+const cloneAssistantMessage = (message: AssistantMessage): AssistantMessage => ({
+  ...message,
+  content: message.content.map((block) =>
+    block.type === "toolCall"
+      ? ({ ...block, arguments: { ...block.arguments } } as ToolCall)
+      : { ...block },
+  ),
+  usage: {
+    ...message.usage,
+    cost: { ...message.usage.cost },
+  },
+});
 
 type ScriptedAssistantTurn =
   | ({
@@ -69,7 +92,7 @@ type ScriptedAssistantTurn =
       text: string;
       stopReason?: Extract<StopReason, "stop" | "length">;
     } & ScriptedAssistantTurnOptions)
-  | ({ type: "toolCall"; toolCall: ToolCall } & ScriptedAssistantTurnOptions);
+  | ({ type: "toolCall"; toolCall: ToolCall; deltas?: string[] } & ScriptedAssistantTurnOptions);
 
 export const createAssistantStreamScript = () => {
   const turns: ScriptedAssistantTurn[] = [];
@@ -84,14 +107,19 @@ export const createAssistantStreamScript = () => {
       nextTurnOptions = { ...nextTurnOptions, waitBeforeStart };
       return builder;
     },
+    waitBeforeEnd(waitBeforeEnd: Promise<unknown>) {
+      nextTurnOptions = { ...nextTurnOptions, waitBeforeEnd };
+      return builder;
+    },
     text(text: string, options: { stopReason?: Extract<StopReason, "stop" | "length"> } = {}) {
       turns.push({ type: "text", text, stopReason: options.stopReason, ...takeNextTurnOptions() });
       return builder;
     },
-    toolCall(name: string, options: { id: string; args: Record<string, unknown> }) {
+    toolCall(name: string, options: ScriptedToolCallOptions) {
       turns.push({
         type: "toolCall",
         toolCall: { type: "toolCall", id: options.id, name, arguments: options.args },
+        deltas: options.deltas,
         ...takeNextTurnOptions(),
       });
       return builder;
@@ -108,42 +136,77 @@ export const createAssistantStreamScript = () => {
           await turn.waitBeforeStart;
 
           const stream = createAssistantMessageEventStream();
-          const message =
-            turn.type === "toolCall"
-              ? buildAssistantMessage([turn.toolCall], "toolUse")
-              : buildAssistantMessage(
-                  [{ type: "text", text: turn.text }],
-                  turn.stopReason ?? "stop",
-                );
 
-          stream.push({ type: "start", partial: message });
-          if (turn.type === "toolCall") {
-            stream.push({ type: "toolcall_start", contentIndex: 0, partial: message });
+          void (async () => {
+            if (turn.type === "toolCall") {
+              const finalMessage = buildAssistantMessage([turn.toolCall], "toolUse");
+              const startMessage = buildAssistantMessage([], "toolUse");
+              const partialToolCall: StreamingToolCall = {
+                type: "toolCall",
+                id: turn.toolCall.id,
+                name: turn.toolCall.name,
+                arguments: {},
+                partialJson: "",
+              };
+              const partialMessage = buildAssistantMessage([partialToolCall], "toolUse");
+
+              stream.push({ type: "start", partial: cloneAssistantMessage(startMessage) });
+              stream.push({
+                type: "toolcall_start",
+                contentIndex: 0,
+                partial: cloneAssistantMessage(partialMessage),
+              });
+
+              for (const delta of turn.deltas ?? []) {
+                partialToolCall.partialJson = `${partialToolCall.partialJson ?? ""}${delta}`;
+                partialToolCall.arguments = parseStreamingJson(partialToolCall.partialJson);
+                stream.push({
+                  type: "toolcall_delta",
+                  contentIndex: 0,
+                  delta,
+                  partial: cloneAssistantMessage(partialMessage),
+                });
+              }
+
+              await turn.waitBeforeEnd;
+              stream.push({
+                type: "toolcall_end",
+                contentIndex: 0,
+                toolCall: turn.toolCall,
+                partial: cloneAssistantMessage(finalMessage),
+              });
+              stream.push({ type: "done", reason: "toolUse", message: finalMessage });
+              return;
+            }
+
+            const message = buildAssistantMessage(
+              [{ type: "text", text: turn.text }],
+              turn.stopReason ?? "stop",
+            );
+
+            stream.push({ type: "start", partial: cloneAssistantMessage(message) });
             stream.push({
-              type: "toolcall_end",
+              type: "text_start",
               contentIndex: 0,
-              toolCall: turn.toolCall,
-              partial: message,
+              partial: cloneAssistantMessage(message),
             });
-            stream.push({ type: "done", reason: "toolUse", message });
-          } else {
-            stream.push({ type: "text_start", contentIndex: 0, partial: message });
             stream.push({
               type: "text_delta",
               contentIndex: 0,
               delta: turn.text,
-              partial: message,
+              partial: cloneAssistantMessage(message),
             });
+            await turn.waitBeforeEnd;
             stream.push({
               type: "text_end",
               contentIndex: 0,
               content: turn.text,
-              partial: message,
+              partial: cloneAssistantMessage(message),
             });
             stream.push({ type: "done", reason: turn.stopReason ?? "stop", message });
-          }
+          })();
 
-          return Object.assign(stream, { result: async () => message });
+          return stream;
         },
       };
     },

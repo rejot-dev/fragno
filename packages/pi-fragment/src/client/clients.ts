@@ -10,6 +10,7 @@ import {
 } from "./session";
 
 export type {
+  PiLiveToolCallDraft,
   PiLiveToolExecution,
   PiSessionCommandInput,
   PiSessionConnectionStatus,

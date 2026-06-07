@@ -76,9 +76,11 @@ export default function BackofficeOrganisationPiSessionDetail() {
         statusText: liveSession.statusText,
         messageCount: liveSession.messages.length,
         eventCount: liveSession.events.length,
+        draftToolCallKeys: liveSession.draftToolCalls.map((tool) => tool.key),
         runningToolIds: liveSession.runningTools.map((tool) => tool.toolCallId),
       }),
     [
+      liveSession.draftToolCalls,
       liveSession.messages.length,
       liveSession.readyForInput,
       liveSession.runningTools,
@@ -147,6 +149,7 @@ export default function BackofficeOrganisationPiSessionDetail() {
       ) : null}
 
       <SessionConversationPanel
+        draftToolCalls={liveSession.draftToolCalls}
         messages={liveSession.messages}
         onJumpToLatest={() => chatScroll.jumpToLatest("smooth")}
         onScroll={chatScroll.onScroll}
