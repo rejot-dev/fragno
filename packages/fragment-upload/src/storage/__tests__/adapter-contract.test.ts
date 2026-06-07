@@ -5,6 +5,12 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { instantiate } from "@fragno-dev/core";
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+
+import { uploadFragmentDefinition } from "../../definition";
+import { uploadRoutes } from "../../routes";
+import { createDatabaseStorageAdapter } from "../db";
 import { createFilesystemStorageAdapter } from "../fs";
 import type { StorageAdapter } from "../types";
 
@@ -16,6 +22,23 @@ type AdapterContractContext = {
   sizeBytes: bigint;
   cleanup?: () => Promise<void>;
   assertDownloadResponse?: (response: Response) => Promise<void> | void;
+};
+
+const schemaExtractionStorage: StorageAdapter = {
+  name: "schema-extraction",
+  capabilities: {
+    directUpload: false,
+    multipartUpload: false,
+    signedDownload: false,
+    proxyUpload: true,
+  },
+  resolveStorageKey: ({ provider, fileKey }) => `${provider}/${fileKey}`,
+  initUpload: async ({ provider, fileKey }) => ({
+    strategy: "proxy",
+    storageKey: `${provider}/${fileKey}`,
+    expiresAt: new Date(Date.now() + 60_000),
+  }),
+  deleteObject: async () => {},
 };
 
 export function describeStorageAdapterContract(
@@ -169,6 +192,46 @@ describeStorageAdapterContract("Filesystem", async () => {
     },
     assertDownloadResponse: (response) => {
       expect(response.headers.get("Content-Type")).toBe("application/octet-stream");
+      expect(response.headers.get("Content-Length")).toBeTruthy();
+    },
+  };
+});
+
+describeStorageAdapterContract("Database", async () => {
+  let adapter!: StorageAdapter;
+  const build = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "drizzle-pglite" })
+    .withFragmentFactory(
+      "upload",
+      uploadFragmentDefinition,
+      ({ adapter: databaseAdapter }) => {
+        adapter = createDatabaseStorageAdapter({
+          databaseAdapter,
+          storageKeyPrefix: "uploads",
+          uploadExpiresInSeconds: 120,
+        });
+
+        return instantiate(uploadFragmentDefinition)
+          .withConfig({ storage: adapter })
+          .withRoutes(uploadRoutes);
+      },
+      { config: { storage: schemaExtractionStorage } },
+    )
+    .build();
+
+  await build.test.resetDatabase();
+
+  return {
+    adapter,
+    provider: adapter.name,
+    fileKey: `users/${randomUUID()}/avatar`,
+    contentType: "text/plain",
+    sizeBytes: 5n,
+    cleanup: async () => {
+      await build.test.cleanup();
+    },
+    assertDownloadResponse: (response) => {
+      expect(response.headers.get("Content-Type")).toBe("text/plain");
       expect(response.headers.get("Content-Length")).toBeTruthy();
     },
   };

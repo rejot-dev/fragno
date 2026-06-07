@@ -35,6 +35,10 @@
       "types": "./dist/cli/index.d.ts",
       "default": "./dist/cli/index.js"
     },
+    "./storage/db": {
+      "types": "./dist/node/storage/db.d.ts",
+      "default": "./dist/node/storage/db.js"
+    },
     "./react": {
       "types": "./dist/browser/client/react.d.ts",
       "default": "./dist/browser/client/react.js"

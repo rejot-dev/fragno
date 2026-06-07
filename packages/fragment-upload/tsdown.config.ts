@@ -12,6 +12,7 @@ export default defineConfig([
       "./src/client/solid.ts",
       "./src/client/vanilla.ts",
       "./src/client/vue.ts",
+      "./src/storage/db.ts",
     ],
     dts: true,
     platform: "node",
