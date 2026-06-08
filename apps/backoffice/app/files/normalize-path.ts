@@ -19,6 +19,37 @@ export const normalizePathSegments = (value: string): string[] => {
   return segments;
 };
 
+export const normalizeAbsolutePath = (value: string): string => {
+  const segments = normalizePathSegments(value);
+  return segments.length === 0 ? "/" : `/${segments.join("/")}`;
+};
+
+export const stripTrailingSlash = (value: string): string => {
+  if (value === "/") {
+    return value;
+  }
+
+  return value.replace(/\/+$/, "");
+};
+
+export const ensureFolderPath = (value: string): string => {
+  if (value === "/") {
+    return value;
+  }
+
+  return value.endsWith("/") ? value : `${value}/`;
+};
+
+export const normalizeFolderPath = (value: string): string =>
+  ensureFolderPath(normalizeAbsolutePath(value));
+
+export const normalizeDirectoryPath = (value: string): string => {
+  const normalized = normalizeAbsolutePath(value);
+  return normalized === "/" || !value.trim().endsWith("/")
+    ? normalized
+    : ensureFolderPath(normalized);
+};
+
 export const normalizeMountPoint = (mountPoint: string): string => {
   const trimmed = mountPoint.trim();
   if (trimmed.length === 0) {
@@ -90,4 +121,35 @@ export const isExactMountPointMatch = (left: string, right: string): boolean => 
   }
 
   return true;
+};
+
+export const isPathWithin = (path: string, parent: string): boolean => {
+  const normalizedPath = stripTrailingSlash(normalizeAbsolutePath(path)) || "/";
+  const normalizedParent = stripTrailingSlash(normalizeAbsolutePath(parent)) || "/";
+
+  return (
+    normalizedPath === normalizedParent ||
+    (normalizedParent === "/" && normalizedPath !== "/") ||
+    normalizedPath.startsWith(`${normalizedParent}/`)
+  );
+};
+
+export const resolvePath = (base: string, path: string): string => {
+  if (path.startsWith("/")) {
+    return normalizeAbsolutePath(path);
+  }
+
+  const resolved = normalizeAbsolutePath(base).split("/").filter(Boolean);
+  for (const segment of path.replaceAll("\\", "/").split("/")) {
+    if (!segment || segment === ".") {
+      continue;
+    }
+    if (segment === "..") {
+      resolved.pop();
+      continue;
+    }
+    resolved.push(segment);
+  }
+
+  return `/${resolved.join("/")}`;
 };

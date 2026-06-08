@@ -36,7 +36,7 @@ describe("createMasterFileSystem", () => {
 
     expect(resolved.mounts.map((mount) => mount.mountPoint)).toEqual([
       "/system",
-      "/workspace",
+      "/starter",
       "/docs",
       "/examples",
       "/tmp",
@@ -51,7 +51,7 @@ describe("createMasterFileSystem", () => {
     const resolved = await createMasterFileSystem({ ...context, orgId: "  org_123  " });
     expect(resolved.mounts.map((mount) => mount.mountPoint)).toEqual([
       "/system",
-      "/workspace",
+      "/starter",
       "/tmp",
     ]);
   });
@@ -63,46 +63,15 @@ describe("createMasterFileSystem", () => {
     await expect(createMasterFileSystem(context)).rejects.toThrow(/Duplicate file mount point/);
   });
 
-  test("uses longest-prefix routing for nested mounts and synthesizes parent directories", async () => {
-    registerFileContributor({
-      ...makeContributor("archive", "/system/archive"),
-      stat: async (path) => {
-        if (path === "/system/archive" || path === "/system/archive/file.txt") {
-          return {
-            isFile: path.endsWith("file.txt"),
-            isDirectory: !path.endsWith("file.txt"),
-            isSymbolicLink: false,
-            mode: path.endsWith("file.txt") ? 0o644 : 0o755,
-            size: path.endsWith("file.txt") ? 4 : 0,
-            mtime: new Date(0),
-          } satisfies FsStat;
-        }
+  test("rejects nested mount points instead of longest-prefix routing", async () => {
+    registerFileContributor(makeContributor("archive", "/system/archive"));
 
-        throw new Error("Path not found.");
-      },
-      readdir: async (path) => (path === "/system/archive" ? ["file.txt"] : []),
-      readFile: async () => "test",
-      getAllPaths: () => ["/system/archive", "/system/archive/file.txt"],
-    });
-
-    const master = await createMasterFileSystem(context);
-
-    expect(master.getMountForPath("/system/archive/file.txt")?.id).toBe("archive");
-    expect(master.getMountForPath("/outside")).toBeNull();
-    await expect(master.stat("/")).resolves.toMatchObject({ isDirectory: true });
-    await expect(master.stat("/system")).resolves.toMatchObject({ isDirectory: true });
-    await expect(master.stat("/system/archive")).resolves.toMatchObject({ isDirectory: true });
-    await expect(master.readFile("/system/archive/file.txt")).resolves.toBe("test");
-    await expect(master.readdir("/")).resolves.toEqual(
-      expect.arrayContaining(["system", "workspace"]),
-    );
-    await expect(master.readdir("/system")).resolves.toEqual(expect.arrayContaining(["archive"]));
-    expect(master.getAllPaths()).toEqual(
-      expect.arrayContaining(["/", "/system", "/system/archive", "/system/archive/file.txt"]),
+    await expect(createMasterFileSystem(context)).rejects.toThrow(
+      /Overlapping file mount points are not supported: '\/system\/archive' and '\/system'/,
     );
   });
 
-  test("synthesizes writable and read-only virtual parent directories for nested mounts", async () => {
+  test("synthesizes virtual parent directories for deep standalone mounts", async () => {
     const { contributor: projectContributor } = await createInMemoryContributor({
       id: "project",
       mountPoint: "/project",
@@ -113,18 +82,13 @@ describe("createMasterFileSystem", () => {
     });
 
     registerFileContributor(projectContributor);
-    registerFileContributor(makeContributor("generated", "/project/generated/deep"));
-    registerFileContributor(makeContributor("systemArchive", "/system/archive/deep"));
+    registerFileContributor(makeContributor("generated", "/generated/deep"));
 
     const master = await createMasterFileSystem(context);
 
-    await expect(master.stat("/project/generated")).resolves.toMatchObject({
+    await expect(master.stat("/generated")).resolves.toMatchObject({
       isDirectory: true,
       mode: 0o755,
-    });
-    await expect(master.stat("/system/archive")).resolves.toMatchObject({
-      isDirectory: true,
-      mode: 0o555,
     });
   });
 
@@ -139,16 +103,17 @@ describe("createMasterFileSystem", () => {
     });
 
     registerFileContributor(projectContributor);
-    registerFileContributor(makeContributor("generated", "/project/generated/deep"));
+    registerFileContributor(makeContributor("generated", "/generated/deep"));
 
     const master = await createMasterFileSystem(context);
-    const entries = await master.readdirWithFileTypes("/project");
+    const rootEntries = await master.readdirWithFileTypes("/");
+    const projectEntries = await master.readdirWithFileTypes("/project");
 
-    expect(entries).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "docs", isDirectory: true }),
-        expect.objectContaining({ name: "generated", isDirectory: true }),
-      ]),
+    expect(rootEntries).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "generated", isDirectory: true })]),
+    );
+    expect(projectEntries).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "docs", isDirectory: true })]),
     );
   });
 
@@ -313,22 +278,20 @@ describe("createMasterFileSystem", () => {
     );
   });
 
-  test("rejects writes to virtual-only directories created by mount routing", async () => {
+  test("rejects writes to synthetic parent directories outside mounted filesystems", async () => {
     const { contributor: projectContributor } = await createInMemoryContributor({
       id: "project",
       mountPoint: "/project",
     });
 
     registerFileContributor(projectContributor);
-    registerFileContributor(makeContributor("generated", "/project/generated/deep"));
+    registerFileContributor(makeContributor("generated", "/generated/deep"));
 
     const master = await createMasterFileSystem(context);
 
-    await expect(master.mkdir("/project/generated")).rejects.toThrow(
-      /virtual directory created by mount routing/,
-    );
-    await expect(master.writeFile("/project/generated", "nope")).rejects.toThrow(
-      /virtual directory created by mount routing/,
+    await expect(master.mkdir("/generated")).rejects.toThrow(/not inside a mounted filesystem/);
+    await expect(master.writeFile("/generated", "nope")).rejects.toThrow(
+      /not inside a mounted filesystem/,
     );
   });
 
@@ -419,11 +382,11 @@ describe("createMasterFileSystem", () => {
     });
 
     registerFileContributor(projectContributor);
-    registerFileContributor(makeContributor("generated", "/project/generated/deep"));
+    registerFileContributor(makeContributor("generated", "/generated/deep"));
 
     const master = await createMasterFileSystem(context);
 
-    await expect(master.realpath("/project/generated/")).resolves.toBe("/project/generated");
+    await expect(master.realpath("/generated/")).resolves.toBe("/generated");
     await expect(master.realpath("/project/README.md")).resolves.toBe("/project/README.md");
   });
 
@@ -487,7 +450,7 @@ describe("createMasterFileSystem", () => {
     const mount = {
       id: "dup",
       kind: "custom" as const,
-      mountPoint: "/workspace",
+      mountPoint: "/starter",
       title: "Dup",
       readOnly: false,
       persistence: "session" as const,
@@ -495,6 +458,23 @@ describe("createMasterFileSystem", () => {
     };
 
     expect(() => master.mount(mount)).toThrow(/Duplicate file mount point/);
+  });
+
+  test("rejects overlapping dynamic mount points", async () => {
+    const master = await createMasterFileSystem(context);
+    const fs = normalizeMountedFileSystem(new InMemoryFs(), { readOnly: false });
+
+    expect(() =>
+      master.mount({
+        id: "starter-child",
+        kind: "custom",
+        mountPoint: "/starter/examples",
+        title: "Starter Child",
+        readOnly: false,
+        persistence: "session",
+        fs,
+      }),
+    ).toThrow(/Overlapping file mount points are not supported/);
   });
 
   test("rejects unmount of non-existent mount point", async () => {

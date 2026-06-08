@@ -1,13 +1,15 @@
 import { getRegisteredFileContributors, registerFileContributor } from "../registry";
 import { automationHooksFileContributor } from "./durable-hooks";
 import { resendFileContributor } from "./resend";
-import { starterFileContributor } from "./starter";
 import { staticFileContributor } from "./static";
+import { staticStarterFileContributor } from "./static-starter";
 import { tmpFileContributor } from "./tmp";
+import { uploadFileContributor } from "./upload";
 
 const BUILT_IN_FILE_CONTRIBUTORS = [
   staticFileContributor,
-  starterFileContributor,
+  staticStarterFileContributor,
+  uploadFileContributor,
   tmpFileContributor,
   resendFileContributor,
   automationHooksFileContributor,

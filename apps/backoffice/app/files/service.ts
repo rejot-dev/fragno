@@ -6,12 +6,11 @@ import {
 } from "./explorer-types";
 import type { DirentEntry, FsStat } from "./interface";
 import type { MasterFileSystem } from "./master-file-system";
-import { normalizePathSegments } from "./normalize-path";
+import { ensureFolderPath, normalizeAbsolutePath, stripTrailingSlash } from "./normalize-path";
 import type { FileEntryDescriptor, ResolvedFileMount } from "./types";
 
 const NODE_SORTER = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 const TEXT_ENCODER = new TextEncoder();
-const TEXT_DECODER = new TextDecoder();
 const UNKNOWN_MTIME = new Date(0);
 
 export type ResolvedFilesTarget = {
@@ -160,33 +159,18 @@ const describePath = async (
   path: string,
   fallbackStat?: FsStat,
 ): Promise<FileEntryDescriptor | null> => {
-  const describedWithoutStat = await readDescriptor(mount, path, null);
-  if (describedWithoutStat) {
-    const stat = (await readStat(master, path)) ?? fallbackStat ?? null;
-    return normalizeEntry(mount, enrichDescriptorWithStat(path, describedWithoutStat, stat));
-  }
-
-  if (mount.fs.exists) {
-    try {
-      if (!(await mount.fs.exists(path))) {
-        return null;
-      }
-    } catch {
-      return null;
-    }
-  }
-
-  const stat = (await readStat(master, path)) ?? fallbackStat ?? null;
-  const describedWithStat = await readDescriptor(mount, path, stat);
-  if (describedWithStat) {
-    return normalizeEntry(mount, enrichDescriptorWithStat(path, describedWithStat, stat));
-  }
-
+  const stat = fallbackStat ?? (await readStat(master, path));
   if (!stat) {
     return null;
   }
 
-  return normalizeEntry(mount, createDescriptorFromStat(path, stat));
+  const described = await readDescriptor(mount, path, stat);
+  return normalizeEntry(
+    mount,
+    described
+      ? enrichDescriptorWithStat(path, described, stat)
+      : createDescriptorFromStat(path, stat),
+  );
 };
 
 const readStat = async (master: MasterFileSystem, path: string): Promise<FsStat | null> => {
@@ -333,18 +317,7 @@ const createCapabilities = (
 
 const readTextContent = async (target: ResolvedFilesTarget): Promise<string | null> => {
   try {
-    if (target.mount.fs.readFile) {
-      return await target.mount.fs.readFile(target.normalizedPath, {
-        encoding: "utf-8",
-      });
-    }
-
-    if (target.mount.fs.readFileBuffer) {
-      const content = await target.mount.fs.readFileBuffer(target.normalizedPath);
-      return TEXT_DECODER.decode(content);
-    }
-
-    return null;
+    return await target.master.readFile(target.normalizedPath, { encoding: "utf-8" });
   } catch {
     return null;
   }
@@ -455,30 +428,8 @@ const normalizeExplorerPath = (value: string): string => {
     throw new Error("Explorer path cannot be empty.");
   }
 
-  const hasTrailingSlash = trimmed.length > 1 && trimmed.endsWith("/");
-  const segments = normalizePathSegments(trimmed);
-  if (segments.length === 0) {
-    return "/";
-  }
-
-  const normalized = `/${segments.join("/")}`;
-  return hasTrailingSlash ? `${normalized}/` : normalized;
-};
-
-const stripTrailingSlash = (value: string): string => {
-  if (value === "/") {
-    return value;
-  }
-
-  return value.replace(/\/+$/, "");
-};
-
-const ensureFolderPath = (value: string): string => {
-  if (value === "/") {
-    return value;
-  }
-
-  return value.endsWith("/") ? value : `${value}/`;
+  const normalized = normalizeAbsolutePath(trimmed);
+  return trimmed.length > 1 && trimmed.endsWith("/") ? ensureFolderPath(normalized) : normalized;
 };
 
 const getLeafSegment = (value: string): string => {

@@ -3,7 +3,7 @@ import type { UploadAdminConfigResponse, UploadProvider } from "@/fragno/upload"
 
 import type { DirentEntry, FsStat, FileContent, IFileSystem } from "./interface";
 
-export const FILE_ROOT_KINDS = ["static", "starter", "upload", "custom"] as const;
+export const FILE_ROOT_KINDS = ["static", "upload", "custom"] as const;
 export type FileRootKind = (typeof FILE_ROOT_KINDS)[number];
 
 export const FILE_ROOT_PERSISTENCE = ["ephemeral", "persistent", "session"] as const;

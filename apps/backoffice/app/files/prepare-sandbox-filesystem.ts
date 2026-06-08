@@ -1,6 +1,5 @@
 import type { MkdirOptions, MountBucketOptions, SandboxHandle } from "@/sandbox/contracts";
 
-import { createStarterMountedFileSystem } from "./contributors/starter";
 import type { MasterFileSystem } from "./master-file-system";
 import { normalizeMountPoint } from "./normalize-path";
 import type {
@@ -81,7 +80,6 @@ export async function prepareSandboxFileSystem(
     bucketMounts,
   });
   await mountBucketRoots({ handle, bucketMounts });
-  await ensureDirectory(handle, "/workspace");
 
   const marker: SandboxBootstrapMarker = {
     version: BOOTSTRAP_MARKER_VERSION,
@@ -187,17 +185,9 @@ const resolveBootstrapMounts = (
   mounts: ReadonlyArray<ResolvedFileMount>,
   bucketBackedMountPoints: ReadonlySet<string>,
 ): SandboxBootstrapMount[] =>
-  mounts.flatMap((mount) => {
-    if (!bucketBackedMountPoints.has(mount.mountPoint)) {
-      return [{ mount, fs: mount.fs }];
-    }
-
-    if (mount.kind !== "starter") {
-      return [];
-    }
-
-    return [{ mount, fs: createStarterMountedFileSystem() }];
-  });
+  mounts
+    .filter((mount) => !bucketBackedMountPoints.has(mount.mountPoint))
+    .map((mount) => ({ mount, fs: mount.fs }));
 
 const materializeMountTree = async ({
   handle,
@@ -236,13 +226,6 @@ const materializeMountTree = async ({
 
   const artifact = await readMountedArtifact(fs, mount, path);
   await ensureDirectory(handle, toParentPath(path));
-
-  if (mount.kind === "starter") {
-    const exists = await handle.exists(path);
-    if (exists.exists) {
-      return;
-    }
-  }
 
   await writeArtifactToSandbox(handle, path, artifact);
 };

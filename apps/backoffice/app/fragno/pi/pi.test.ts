@@ -145,13 +145,13 @@ describe("Pi bash tool", () => {
     expect((lsResult.details as { stdout: string }).stdout.split("\n")).toEqual([
       "events",
       "resend",
+      "starter",
       "system",
       "tmp",
-      "workspace",
     ]);
   });
 
-  test("respects an explicit cwd inside the shared Pi filesystem", async () => {
+  test("respects an explicit cwd inside the static starter filesystem", async () => {
     const tools = createPiToolRegistry({
       sessionFileSystems: new Map(),
       sessionFileSystemContext: createContext(),
@@ -173,7 +173,7 @@ describe("Pi bash tool", () => {
 
     const result = await tool.execute("tool-call-3", {
       script: "ls",
-      cwd: "/workspace",
+      cwd: "/starter",
     } as never);
     expect(result.details).toMatchObject({
       stderr: "",
@@ -186,6 +186,38 @@ describe("Pi bash tool", () => {
       "output",
       "prompts",
     ]);
+  });
+
+  test("exposes starter automation files inside the shared Pi filesystem", async () => {
+    const tools = createPiToolRegistry({
+      sessionFileSystems: new Map(),
+      sessionFileSystemContext: createContext(),
+      env: createMockEnv(),
+      bashCommandContext: createMockBashContext(),
+    });
+
+    const bashFactory = tools["bash"];
+    if (typeof bashFactory !== "function") {
+      throw new Error("Expected bash tool to be registered as a factory.");
+    }
+
+    const tool = await bashFactory({
+      session: { id: "session-automations" },
+      turnId: "turn-1",
+      toolConfig: null,
+      messages: [],
+    } as never);
+
+    const result = await tool.execute("tool-call-automations-1", {
+      script: "cat /starter/automations/bindings.json",
+    } as never);
+    expect(result.details).toMatchObject({
+      stderr: "",
+      exitCode: 0,
+    });
+    expect((result.details as { stdout: string }).stdout).toContain(
+      '"telegram-claim-linking-start"',
+    );
   });
 
   test("mounts resend thread snapshots when a resend runtime is available", async () => {
@@ -227,7 +259,7 @@ describe("Pi bash tool", () => {
     expect((readResult.details as { stdout: string }).stdout).toContain("# Invoice Update");
   });
 
-  test("uses the shared workspace overlay for reads and writes", async () => {
+  test("uses the shared workspace storage for reads and writes", async () => {
     const tools = createPiToolRegistry({
       sessionFileSystems: new Map(),
       sessionFileSystemContext: createContext({
@@ -305,9 +337,11 @@ describe("Pi bash tool", () => {
     } as never);
     expect(parentListResult.details).toMatchObject({
       stdout: "",
-      stderr: "",
-      exitCode: 0,
+      exitCode: 2,
     });
+    expect((parentListResult.details as { stderr: string }).stderr).toContain(
+      "No such file or directory",
+    );
 
     const exactPathResult = await tool.execute("tool-call-deleted-2", {
       script: "ls /workspace/output/result.txt",
@@ -342,7 +376,7 @@ describe("Pi bash tool", () => {
     } as never);
 
     const touchResult = await tool.execute("tool-call-readonly-1", {
-      script: "touch /workspace/README.md",
+      script: "touch /starter/README.md",
     } as never);
     expect(touchResult.details).toMatchObject({
       stdout: "",

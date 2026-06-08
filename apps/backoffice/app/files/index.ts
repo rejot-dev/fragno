@@ -64,13 +64,13 @@ export {
   resendFileMount,
 } from "./contributors/resend";
 export {
-  STARTER_FILE_CONTRIBUTOR_ID,
-  STARTER_FILE_MOUNT_ID,
-  STARTER_FILE_MOUNT_POINT,
-  createStarterMountedFileSystem,
-  starterFileContributor,
-  starterFileMount,
-} from "./contributors/starter";
+  STATIC_STARTER_FILE_CONTRIBUTOR_ID,
+  STATIC_STARTER_FILE_MOUNT_ID,
+  STATIC_STARTER_FILE_MOUNT_POINT,
+  createStaticStarterMountedFileSystem,
+  staticStarterFileContributor,
+  staticStarterFileMount,
+} from "./contributors/static-starter";
 export {
   STATIC_FILE_CONTRIBUTOR_ID,
   STATIC_FILE_MOUNT_ID,
@@ -97,8 +97,13 @@ export {
   uploadFileContributor,
   uploadFileMount,
 } from "./contributors/upload";
-export { STARTER_WORKSPACE_CONTENT, STARTER_WORKSPACE_ROOT_DESCRIPTION } from "./content/starter";
-export { STARTER_AUTOMATION_CONTENT } from "./content/automations";
+export { STATIC_STARTER_CONTENT, STATIC_STARTER_ROOT_DESCRIPTION } from "./content/starter";
+export {
+  STARTER_AUTOMATION_CONTENT,
+  STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH,
+  STARTER_AUTOMATION_SCRIPT_PATHS,
+  STATIC_STARTER_ROOT,
+} from "./content/automations";
 export {
   BASH_HARNESS_REFERENCE,
   SYSTEM_FILE_CONTENT,

@@ -29,8 +29,8 @@ import {
 } from "./upload-markers";
 
 export const UPLOAD_FILE_CONTRIBUTOR_ID = "upload";
-export const UPLOAD_FILE_MOUNT_ID = "uploads";
-export const UPLOAD_FILE_MOUNT_POINT = "/uploads";
+export const UPLOAD_FILE_MOUNT_ID = "workspace";
+export const UPLOAD_FILE_MOUNT_POINT = "/workspace";
 const UNKNOWN_MTIME = new Date(0);
 const TEXT_ENCODER = new TextEncoder();
 const UPLOAD_FS_METADATA_KEY = "__docsFs";
@@ -41,10 +41,11 @@ export const uploadFileMount: FileMountMetadata = {
   id: UPLOAD_FILE_MOUNT_ID,
   kind: "upload",
   mountPoint: UPLOAD_FILE_MOUNT_POINT,
-  title: "Uploads",
+  title: "Workspace",
   readOnly: false,
   persistence: "persistent",
-  description: "Persistent org-scoped uploads routed through the Upload fragment.",
+  description:
+    "Pure persistent org-scoped workspace storage routed through the Upload fragment, with no starter layering or fallback.",
 };
 
 export const uploadFileContributor: FileContributor = {

@@ -49,9 +49,6 @@ export function formatFileRootKind(kind: FileMountMetadata["kind"]) {
     case "static": {
       return "Static";
     }
-    case "starter": {
-      return "Starter";
-    }
     case "upload": {
       return "Upload";
     }

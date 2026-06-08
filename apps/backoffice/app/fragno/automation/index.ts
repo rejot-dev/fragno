@@ -39,6 +39,7 @@ export { automationFragmentDefinition } from "./definition";
 export { automationFragmentSchema, AUTOMATION_TRIGGER_ORDER_LAST } from "./schema";
 export type { AutomationFragmentConfig, AutomationPiBashContext };
 export {
+  AUTOMATION_BINDINGS_MANIFEST_PATH,
   AUTOMATION_SCRIPTS_ROOT,
   AUTOMATION_WORKSPACE_ROOT,
   createMinimalFileSystem,
@@ -52,6 +53,11 @@ export {
 export type {
   AutomationBindingCatalogEntry,
   AutomationCatalog,
+  AutomationManifest,
+  AutomationManifestBinding,
+  AutomationManifestBindingEntry,
+  AutomationManifestScriptEntry,
+  AutomationManifestSummary,
   AutomationFileSystemConfig,
   AutomationFileSystemResolvePurpose,
   AutomationFileSystemResolver,
