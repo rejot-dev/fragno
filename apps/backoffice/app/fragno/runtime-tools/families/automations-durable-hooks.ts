@@ -14,6 +14,8 @@ import {
   type BackofficeToolContext,
 } from "../runtime-tools";
 
+const AUTOMATION_INGEST_EVENT_HOOK_NAME = "internalIngestEvent";
+
 export const durableHookFragmentSchema = z.enum([
   "cloudflare",
   "telegram",
@@ -37,6 +39,15 @@ export type DurableHooksListArgs = {
 
 export type DurableHooksGetArgs = {
   fragment: DurableHookFragment;
+  hookId: string;
+};
+
+export type AutomationEventsListArgs = {
+  cursor?: string;
+  pageSize?: number;
+};
+
+export type AutomationEventsGetArgs = {
   hookId: string;
 };
 
@@ -103,7 +114,7 @@ const readPageSizeOption = (parsed: ReturnType<typeof parseCliTokens>) => {
 
 const parseListHooksArgs = (args: string[]): DurableHooksListArgs => {
   const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "automations.hooks.list");
+  assertNoPositionals(parsed, "hooks.list");
   return {
     fragment: durableHookFragmentSchema.parse(readStringOption(parsed, "fragment", true)),
     cursor: readStringOption(parsed, "cursor"),
@@ -113,17 +124,93 @@ const parseListHooksArgs = (args: string[]): DurableHooksListArgs => {
 
 const parseGetHookArgs = (args: string[]): DurableHooksGetArgs => {
   const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "automations.hooks.get");
+  assertNoPositionals(parsed, "hooks.get");
   return {
     fragment: durableHookFragmentSchema.parse(readStringOption(parsed, "fragment", true)),
     hookId: readStringOption(parsed, "hook-id", true)!,
   };
 };
 
+const parseListAutomationEventsArgs = (args: string[]): AutomationEventsListArgs => {
+  const parsed = parseCliTokens(args);
+  assertNoPositionals(parsed, "automations.events.list");
+  return {
+    cursor: readStringOption(parsed, "cursor"),
+    pageSize: readPageSizeOption(parsed),
+  };
+};
+
+const parseGetAutomationEventArgs = (args: string[]): AutomationEventsGetArgs => {
+  const parsed = parseCliTokens(args);
+  assertNoPositionals(parsed, "automations.events.get");
+  return {
+    hookId: readStringOption(parsed, "hook-id", true)!,
+  };
+};
+
+const isAutomationIngestEventHook = (hook: DurableHookQueueResponse["items"][number]) =>
+  hook.hookName === AUTOMATION_INGEST_EVENT_HOOK_NAME;
+
+const listAutomationEventHooks = async (
+  input: AutomationEventsListArgs,
+  context: DurableHooksToolContext,
+) => {
+  const response = await getDurableHooksRuntime(context.runtimes.durableHooks).listHooks({
+    fragment: "automations",
+    ...input,
+  });
+
+  return {
+    ...response,
+    items: response.items.filter(isAutomationIngestEventHook),
+  };
+};
+
+const getAutomationEventHook = async (
+  input: AutomationEventsGetArgs,
+  context: DurableHooksToolContext,
+) => {
+  const hook = await getDurableHooksRuntime(context.runtimes.durableHooks).getHook({
+    fragment: "automations",
+    hookId: input.hookId,
+  });
+
+  return hook && isAutomationIngestEventHook(hook) ? hook : null;
+};
+
+const formatDurableHookQueue = (result: DurableHookQueueResponse, options: { format?: string }) => {
+  if (options.format === "json") {
+    return { data: result };
+  }
+  const lines = [
+    `configured=${result.configured} hooksEnabled=${result.hooksEnabled} namespace=${result.namespace ?? "unavailable"}`,
+    ...result.items.map(
+      (item) =>
+        `${item.id}\t${item.status}\t${item.hookName}\tattempts=${item.attempts}/${item.maxAttempts}`,
+    ),
+    ...(result.hasNextPage && result.cursor ? [`next cursor: ${result.cursor}`] : []),
+  ];
+  return { stdout: `${lines.join("\n")}\n` };
+};
+
+const formatDurableHookRecord = (
+  result: DurableHookQueueResponse["items"][number] | null,
+  options: { format?: string },
+) => {
+  if (options.format === "json") {
+    return result ? { data: result } : { exitCode: 1 };
+  }
+  return result
+    ? {
+        stdout: `${result.id}\t${result.status}\t${result.hookName}\tattempts=${result.attempts}/${result.maxAttempts}\n`,
+      }
+    : { stderr: "Hook not found", exitCode: 1 };
+};
+
 const listHooksTool = defineDurableHooksTool({
-  id: "automations.hooks.list",
-  namespace: "automations",
-  name: "listHooks",
+  id: "hooks.list",
+  namespace: "hooks",
+  name: "list",
   description: "List durable hook queue entries for a runtime fragment.",
   inputSchema: z.object({
     fragment: durableHookFragmentSchema,
@@ -135,9 +222,9 @@ const listHooksTool = defineDurableHooksTool({
     await getDurableHooksRuntime(context.runtimes.durableHooks).listHooks(input),
   adapters: {
     bash: {
-      command: "automations.hooks.list",
+      command: "hooks.list",
       help: {
-        summary: "automations.hooks.list lists durable hook queue entries.",
+        summary: "hooks.list lists durable hook queue entries.",
         options: [
           {
             name: "fragment",
@@ -160,31 +247,18 @@ const listHooksTool = defineDurableHooksTool({
             description: "Optional page size.",
           },
         ],
-        examples: ["automations.hooks.list --fragment automations --page-size 50 --format json"],
+        examples: ["hooks.list --fragment automations --page-size 50 --format json"],
       },
       parse: parseListHooksArgs,
-      format: (result, options) => {
-        if (options.format === "json") {
-          return { data: result };
-        }
-        const lines = [
-          `configured=${result.configured} hooksEnabled=${result.hooksEnabled} namespace=${result.namespace ?? "unavailable"}`,
-          ...result.items.map(
-            (item) =>
-              `${item.id}\t${item.status}\t${item.hookName}\tattempts=${item.attempts}/${item.maxAttempts}`,
-          ),
-          ...(result.hasNextPage && result.cursor ? [`next cursor: ${result.cursor}`] : []),
-        ];
-        return { stdout: `${lines.join("\n")}\n` };
-      },
+      format: formatDurableHookQueue,
     },
   },
 });
 
 const getHookTool = defineDurableHooksTool({
-  id: "automations.hooks.get",
-  namespace: "automations",
-  name: "getHook",
+  id: "hooks.get",
+  namespace: "hooks",
+  name: "get",
   description: "Get a durable hook queue entry by id.",
   inputSchema: z.object({ fragment: durableHookFragmentSchema, hookId: nonEmptyString }),
   outputSchema: durableHookRecordSchema.nullable(),
@@ -192,9 +266,9 @@ const getHookTool = defineDurableHooksTool({
     await getDurableHooksRuntime(context.runtimes.durableHooks).getHook(input),
   adapters: {
     bash: {
-      command: "automations.hooks.get",
+      command: "hooks.get",
       help: {
-        summary: "automations.hooks.get returns one durable hook entry by id.",
+        summary: "hooks.get returns one durable hook entry by id.",
         options: [
           {
             name: "fragment",
@@ -211,27 +285,101 @@ const getHookTool = defineDurableHooksTool({
             description: "Durable hook id.",
           },
         ],
-        examples: ["automations.hooks.get --fragment automations --hook-id hook_123 --format json"],
+        examples: ["hooks.get --fragment automations --hook-id hook_123 --format json"],
       },
       parse: parseGetHookArgs,
-      format: (result, options) => {
-        if (options.format === "json") {
-          return result ? { data: result } : { exitCode: 1 };
-        }
-        return result
-          ? {
-              stdout: `${result.id}\t${result.status}\t${result.hookName}\tattempts=${result.attempts}/${result.maxAttempts}\n`,
-            }
-          : { stderr: "Hook not found", exitCode: 1 };
-      },
+      format: formatDurableHookRecord,
     },
   },
 });
 
-export const durableHooksRuntimeTools = [listHooksTool, getHookTool] as const;
+const listAutomationEventsTool = defineDurableHooksTool({
+  id: "automations.events.list",
+  namespace: "automations",
+  name: "listEvents",
+  description: "List automation ingest event hook queue entries.",
+  inputSchema: z.object({
+    cursor: nonEmptyString.optional(),
+    pageSize: z.number().int().positive().optional(),
+  }),
+  outputSchema: durableHookQueueResponseSchema,
+  execute: listAutomationEventHooks,
+  adapters: {
+    bash: {
+      command: "automations.events.list",
+      help: {
+        summary:
+          "automations.events.list lists durable hook queue entries for automation ingest events.",
+        options: [
+          {
+            name: "cursor",
+            valueRequired: true,
+            valueName: "cursor",
+            description: "Optional pagination cursor.",
+          },
+          {
+            name: "page-size",
+            valueRequired: true,
+            valueName: "number",
+            description: "Optional page size.",
+          },
+        ],
+        examples: ["automations.events.list --page-size 50 --format json"],
+      },
+      parse: parseListAutomationEventsArgs,
+      format: formatDurableHookQueue,
+    },
+  },
+});
 
-export const durableHooksToolFamily = defineBackofficeRuntimeToolFamily({
-  namespace: "automations-hooks",
-  tools: durableHooksRuntimeTools,
+const getAutomationEventTool = defineDurableHooksTool({
+  id: "automations.events.get",
+  namespace: "automations",
+  name: "getEvent",
+  description: "Get an automation ingest event hook queue entry by durable hook id.",
+  inputSchema: z.object({ hookId: nonEmptyString }),
+  outputSchema: durableHookRecordSchema.nullable(),
+  execute: getAutomationEventHook,
+  adapters: {
+    bash: {
+      command: "automations.events.get",
+      help: {
+        summary:
+          "automations.events.get returns one automation ingest event hook queue entry by id.",
+        options: [
+          {
+            name: "hook-id",
+            required: true,
+            valueRequired: true,
+            valueName: "id",
+            description: "Durable hook id.",
+          },
+        ],
+        examples: ["automations.events.get --hook-id hook_123 --format json"],
+      },
+      parse: parseGetAutomationEventArgs,
+      format: formatDurableHookRecord,
+    },
+  },
+});
+
+export const hooksRuntimeTools = [listHooksTool, getHookTool] as const;
+export const automationEventsRuntimeTools = [
+  listAutomationEventsTool,
+  getAutomationEventTool,
+] as const;
+export const durableHooksRuntimeTools = hooksRuntimeTools;
+
+export const hooksToolFamily = defineBackofficeRuntimeToolFamily({
+  namespace: "hooks",
+  tools: hooksRuntimeTools,
   isAvailable: (context: DurableHooksToolContext) => !!context.runtimes.durableHooks,
 });
+
+export const automationEventsToolFamily = defineBackofficeRuntimeToolFamily({
+  namespace: "automations-events",
+  tools: automationEventsRuntimeTools,
+  isAvailable: (context: DurableHooksToolContext) => !!context.runtimes.durableHooks,
+});
+
+export const durableHooksToolFamily = hooksToolFamily;
