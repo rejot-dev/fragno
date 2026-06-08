@@ -294,6 +294,67 @@ describe("upload file routes", async () => {
     expect(response.data.files[0]?.fileKey.startsWith("users/1/")).toBe(true);
   });
 
+  it("GET /files supports larger explicit page sizes", async () => {
+    const response = await fragment.callRoute("GET", "/files", {
+      query: { pageSize: "200" },
+    });
+
+    assert(response.type === "json");
+    expect(response.status).toBe(200);
+    expect(response.data.files).toEqual([]);
+  });
+
+  it("GET /files rejects invalid page sizes", async () => {
+    const response = await fragment.callRoute("GET", "/files", {
+      query: { pageSize: "501" },
+    });
+
+    assert(response.type === "error");
+    expect(response.status).toBe(400);
+    expect(response.error.code).toBe("INVALID_REQUEST");
+  });
+
+  it("GET /files supports delimiter directory listings", async () => {
+    const createForm = (name: string, keyParts: (string | number)[]) => {
+      const form = new FormData();
+      const file = new File([Buffer.from(name)], `${name}.txt`, {
+        type: "text/plain",
+      });
+      form.set("file", file);
+      form.set("provider", provider);
+      form.set("keyParts", JSON.stringify(keyParts));
+      return form;
+    };
+
+    await fragment.callRoute("POST", "/files", {
+      body: createForm("one", ["users", 1, "one"]),
+    });
+    await fragment.callRoute("POST", "/files", {
+      body: createForm("two", ["users", 1, "nested", "two"]),
+    });
+    await fragment.callRoute("POST", "/files", {
+      body: createForm("other", ["users", 2, "other"]),
+    });
+
+    const response = await fragment.callRoute("GET", "/files", {
+      query: {
+        prefix: "users/1/",
+        delimiter: "/",
+        pageSize: "20",
+      },
+    });
+
+    assert(response.type === "json");
+    expect(response.data.files.map((file) => file.fileKey)).toEqual(["users/1/one"]);
+    expect(response.data.directories).toMatchObject([
+      {
+        name: "nested",
+        prefix: "users/1/nested/",
+      },
+    ]);
+    expect(response.data.hasNextPage).toBe(false);
+  });
+
   it("GET /files rejects an empty provider filter", async () => {
     const response = await fragment.callRoute("GET", "/files", {
       query: { provider: "" },
