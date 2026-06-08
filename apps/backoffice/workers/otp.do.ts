@@ -7,11 +7,7 @@ import { z } from "zod";
 
 import type { ResolvedOtpConfirmedHookPayload } from "@fragno-dev/otp-fragment";
 
-import {
-  loadDurableHookQueue,
-  type DurableHookQueueOptions,
-  type DurableHookQueueResponse,
-} from "@/fragno/durable-hooks";
+import { createDurableHookRepository, type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import {
   DEFAULT_IDENTITY_LINK_EXPIRY_MINUTES,
   IDENTITY_LINK_TYPE,
@@ -226,8 +222,8 @@ export class Otp extends DurableObject<CloudflareEnv> {
     };
   }
 
-  async getHookQueue(options?: DurableHookQueueOptions): Promise<DurableHookQueueResponse> {
-    return await loadDurableHookQueue(this.#getFragment(), options);
+  getDurableHookRepository() {
+    return createDurableHookRepository<DurableHookQueueOptions>(() => this.#getFragment());
   }
 
   async alarm(): Promise<void> {

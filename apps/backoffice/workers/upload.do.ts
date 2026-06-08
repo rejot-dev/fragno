@@ -6,9 +6,11 @@ import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
 import {
-  loadDurableHookQueue,
+  createDurableHookRepository,
+  createDurableHookRepositoryRpcTarget,
+  createEmptyDurableHookRepository,
   type DurableHookQueueOptions,
-  type DurableHookQueueResponse,
+  type DurableHookRepository,
 } from "@/fragno/durable-hooks";
 import {
   UPLOAD_ADMIN_CONFIG_KEY,
@@ -86,17 +88,41 @@ type UploadRuntime = {
   fragmentsByProvider: Map<UploadProvider, UploadFragment>;
 };
 
+export type UploadDurableHookDependencies = {
+  createRepository: <TOptions extends DurableHookQueueOptions = DurableHookQueueOptions>(
+    fragment: (options: TOptions | undefined) => UploadFragment,
+  ) => DurableHookRepository<TOptions>;
+  createRpcTarget: <TOptions extends DurableHookQueueOptions = DurableHookQueueOptions>(
+    repository: DurableHookRepository<TOptions>,
+  ) => DurableHookRepository<TOptions>;
+  createEmptyRepository: <
+    TOptions extends DurableHookQueueOptions = DurableHookQueueOptions,
+  >() => DurableHookRepository<TOptions>;
+};
+
+const defaultDurableHookDependencies: UploadDurableHookDependencies = {
+  createRepository: createDurableHookRepository,
+  createRpcTarget: createDurableHookRepositoryRpcTarget,
+  createEmptyRepository: createEmptyDurableHookRepository,
+};
+
 export class Upload extends DurableObject<CloudflareEnv> {
   #state: DurableObjectState;
   #env: CloudflareEnv;
   #host: FragmentDurableObjectHost<StoredUploadAdminConfig, UploadRuntime>;
   #runtime: UploadRuntime | null = null;
   #runtimeConfigHash: string | null = null;
+  #durableHooks: UploadDurableHookDependencies;
 
-  constructor(state: DurableObjectState, env: CloudflareEnv) {
+  constructor(
+    state: DurableObjectState,
+    env: CloudflareEnv,
+    durableHooks: UploadDurableHookDependencies = defaultDurableHookDependencies,
+  ) {
     super(state, env);
     this.#state = state;
     this.#env = env;
+    this.#durableHooks = durableHooks;
     this.#host = createFragmentDurableObjectHost<
       CloudflareEnv,
       StoredUploadAdminConfig,
@@ -289,45 +315,25 @@ export class Upload extends DurableObject<CloudflareEnv> {
     return buildUploadAdminConfigResponse(resolved.config);
   }
 
-  async getHookQueue(options?: DurableHookQueueOptions): Promise<DurableHookQueueResponse> {
-    const parsedOptions = hookQueueOptionsSchema.parse(options);
+  async getDurableHookRepository() {
     const runtime = await this.#ensureRuntime();
     if (!runtime) {
-      return {
-        configured: false,
-        hooksEnabled: false,
-        namespace: null,
-        items: [],
-        cursor: undefined,
-        hasNextPage: false,
-      };
+      return this.#durableHooks.createEmptyRepository();
     }
 
     const provider = resolveHooksProvider(runtime.response);
-    if (!provider) {
-      return {
-        configured: false,
-        hooksEnabled: false,
-        namespace: null,
-        items: [],
-        cursor: undefined,
-        hasNextPage: false,
-      };
-    }
-
-    const fragment = runtime.fragmentsByProvider.get(provider);
+    const fragment = provider ? runtime.fragmentsByProvider.get(provider) : undefined;
     if (!fragment) {
-      return {
-        configured: false,
-        hooksEnabled: false,
-        namespace: null,
-        items: [],
-        cursor: undefined,
-        hasNextPage: false,
-      };
+      return this.#durableHooks.createEmptyRepository();
     }
 
-    return await loadDurableHookQueue(fragment, parsedOptions);
+    const repository = this.#durableHooks.createRepository<DurableHookQueueOptions>(() => fragment);
+    return this.#durableHooks.createRpcTarget({
+      getHookQueue: async (options?: DurableHookQueueOptions) =>
+        await repository.getHookQueue(hookQueueOptionsSchema.parse(options)),
+      getHook: async (hookId: string, options?: DurableHookQueueOptions) =>
+        await repository.getHook(hookId, hookQueueOptionsSchema.parse(options)),
+    });
   }
 
   async alarm(): Promise<void> {

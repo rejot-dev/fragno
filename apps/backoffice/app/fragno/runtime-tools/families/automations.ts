@@ -11,6 +11,12 @@ export {
   type ScriptRunnerRuntime,
 } from "./automations-codemode";
 export {
+  durableHooksRuntimeTools,
+  durableHooksToolFamily,
+  type DurableHookFragment,
+  type DurableHooksRuntime,
+} from "./automations-durable-hooks";
+export {
   automationWorkflowRuntimeTools,
   automationWorkflowToolFamily,
   type AutomationWorkflowRuntime,
@@ -18,5 +24,11 @@ export {
   type WorkflowCreateInstanceResult,
   type WorkflowGetStatusArgs,
   type WorkflowInstanceStatus,
+  type WorkflowListResult,
+  type WorkflowListInstancesArgs,
+  type WorkflowListInstancesResult,
+  type WorkflowGetInstanceArgs,
+  type WorkflowInstanceDetails,
+  type WorkflowHistory,
   type WorkflowSendEventArgs,
 } from "./automations-workflow";

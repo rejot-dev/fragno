@@ -267,6 +267,17 @@ export const toRuntimeToolReference = (tool: AnyBackofficeRuntimeTool): RuntimeT
   };
 };
 
+export const createRuntimeToolReferenceContext = (): BackofficeToolContext => ({
+  runtimes: new Proxy<Record<string, unknown>>(
+    {},
+    {
+      get: () => ({}),
+      has: () => true,
+    },
+  ),
+  scriptRunner: {},
+});
+
 export const createRuntimeToolFamilyReference = ({
   family,
   context,

@@ -12,9 +12,9 @@ import {
   type AutomationsRuntime,
 } from "@/fragno/automation/automations";
 import {
-  loadDurableHookQueue,
+  createDurableHookRepository,
+  createEmptyDurableHookRepository,
   type DurableHookQueueOptions,
-  type DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
 import { createPiRouteRuntime } from "@/fragno/pi/pi";
 import {
@@ -104,8 +104,7 @@ export class Automations extends DurableObject<CloudflareEnv> {
     return createOrgFileSystem({
       orgId: normalizedOrgId,
       env: this.#env,
-      automationHookQueue: (opts) =>
-        this.getHookQueue({ ...opts, fragment: "automation" as const }),
+      automationHookQueue: (opts) => this.getDurableHookRepository("automation").getHookQueue(opts),
     });
   }
 
@@ -148,27 +147,17 @@ export class Automations extends DurableObject<CloudflareEnv> {
     await this.#host.alarm();
   }
 
-  async getHookQueue(
-    options?: DurableHookQueueOptions & {
-      fragment?: "workflows" | "automation";
-    },
-  ): Promise<DurableHookQueueResponse> {
+  getDurableHookRepository(fragment?: "workflows" | "automation") {
+    type Options = DurableHookQueueOptions & { fragment?: "workflows" | "automation" };
     if (!this.#runtime?.workflowsFragment || !this.#runtime?.automationFragment) {
-      return {
-        configured: false,
-        hooksEnabled: false,
-        namespace: null,
-        items: [],
-        cursor: undefined,
-        hasNextPage: false,
-      };
+      return createEmptyDurableHookRepository<Options>();
     }
 
-    const targetFragment =
-      options?.fragment === "workflows"
-        ? this.#runtime.workflowsFragment
-        : this.#runtime.automationFragment;
-    return loadDurableHookQueue(targetFragment, options);
+    return createDurableHookRepository<Options>((options) =>
+      (options?.fragment ?? fragment) === "workflows"
+        ? this.#runtime!.workflowsFragment
+        : this.#runtime!.automationFragment,
+    );
   }
 
   async fetch(request: Request): Promise<Response> {

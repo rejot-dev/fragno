@@ -9,9 +9,10 @@ import {
 import type { AnyFragnoInstantiatedDatabaseFragment } from "@fragno-dev/db/durable-hooks";
 
 import {
-  loadDurableHookQueue,
+  createDurableHookRepository,
+  createEmptyDurableHookRepository,
   type DurableHookQueueOptions,
-  type DurableHookQueueResponse,
+  type DurableHookRepository,
 } from "@/fragno/durable-hooks";
 
 /**
@@ -156,28 +157,18 @@ export type BackofficeFragmentDurableObject<TStored, TSource, TRuntime> = {
   /** Fetch through the configured runtime/mounts, including not-configured and org-bound checks. */
   fetch: (request: Request, context?: FragmentDurableObjectFetchContext) => Promise<Response>;
   /**
-   * Load a page of durable hooks for a selected fragment.
+   * Return durable hook accessors for a selected fragment.
    *
    * Multi-fragment runtimes choose the target fragment with `selectFragment`; single-fragment
    * runtimes usually return `state.runtime`.
    */
-  getHookQueue: <TOptions extends DurableHookQueueOptions>(
-    options: TOptions | undefined,
+  getDurableHookRepository: <TOptions extends DurableHookQueueOptions>(
     selectFragment: (
       state: ConfiguredRuntimeState<TStored, TSource, TRuntime>,
       options: TOptions | undefined,
     ) => AnyFragnoInstantiatedDatabaseFragment,
-  ) => Promise<DurableHookQueueResponse>;
+  ) => DurableHookRepository<TOptions>;
 };
-
-const emptyHookQueue = (): DurableHookQueueResponse => ({
-  configured: false,
-  hooksEnabled: false,
-  namespace: null,
-  items: [],
-  cursor: undefined,
-  hasNextPage: false,
-});
 
 const defaultConfigKey = (name: string) => `${name.toLowerCase()}-config`;
 
@@ -389,12 +380,14 @@ export function createBackofficeFragmentDurableObject<TStored, TSource = TStored
         ...context,
       });
     },
-    async getHookQueue(queueOptions, selectFragment) {
+    getDurableHookRepository(selectFragment) {
       if (!current.configured) {
-        return emptyHookQueue();
+        return createEmptyDurableHookRepository();
       }
 
-      return await loadDurableHookQueue(selectFragment(current, queueOptions), queueOptions);
+      return createDurableHookRepository((queueOptions) =>
+        selectFragment(current as ConfiguredRuntimeState<TStored, TSource, TRuntime>, queueOptions),
+      );
     },
   };
 }

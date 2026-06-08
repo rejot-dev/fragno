@@ -7,6 +7,10 @@ import {
   type ScriptRunnerRuntime,
 } from "./families/automations-codemode";
 import {
+  durableHooksToolFamily,
+  type DurableHooksRuntime,
+} from "./families/automations-durable-hooks";
+import {
   automationWorkflowToolFamily,
   type AutomationWorkflowRuntime,
 } from "./families/automations-workflow";
@@ -26,6 +30,7 @@ import {
 export type CoreBackofficeRuntimeMap = {
   automations?: AutomationBindingsRuntime;
   workflow?: AutomationWorkflowRuntime;
+  durableHooks?: DurableHooksRuntime;
   event?: EventRuntime;
   otp?: OtpRuntime;
   pi?: PiRuntime;
@@ -43,6 +48,7 @@ export type CoreBackofficeToolContext = BackofficeToolContext<
 export const automationRuntimeToolFamilies = [
   automationBindingsToolFamily,
   automationWorkflowToolFamily,
+  durableHooksToolFamily,
   eventToolFamily,
   otpToolFamily,
   piToolFamily,
@@ -55,6 +61,7 @@ export const automationRuntimeToolFamilies = [
 export const piCodemodeRuntimeToolFamilies = [
   automationBindingsToolFamily,
   automationWorkflowToolFamily,
+  durableHooksToolFamily,
   otpToolFamily,
   piToolFamily,
   resendToolFamily,
@@ -67,6 +74,7 @@ export const bashRuntimeToolFamilies = [
   automationBindingsToolFamily,
   automationScriptToolFamily,
   automationWorkflowToolFamily,
+  durableHooksToolFamily,
   eventToolFamily,
   otpToolFamily,
   piToolFamily,

@@ -6,10 +6,10 @@ import { createOrgFileSystem } from "@/files";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import {
+  createRuntimeToolReferenceContext,
   createRuntimeToolReferences,
   renderDashboardCommandGroups,
 } from "@/fragno/runtime-tools/reference";
-import type { BackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
 import { bashRuntimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
@@ -29,24 +29,10 @@ type Stat = {
   description: string;
 };
 
-const DASHBOARD_COMMAND_REFERENCE_CONTEXT = {
-  runtimes: {
-    automations: {},
-    workflow: {},
-    otp: {},
-    pi: {},
-    reson8: {},
-    resend: {},
-    sandbox: {},
-    telegram: {},
-  },
-  scriptRunner: {},
-} as BackofficeToolContext;
-
 const DASHBOARD_COMMAND_GROUPS = renderDashboardCommandGroups(
   createRuntimeToolReferences({
     families: bashRuntimeToolFamilies,
-    context: DASHBOARD_COMMAND_REFERENCE_CONTEXT,
+    context: createRuntimeToolReferenceContext(),
   }),
 );
 

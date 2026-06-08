@@ -185,9 +185,14 @@ export const readJsonOption = (
 export const readOutputOptions = (parsed: ParsedCliTokens): AutomationCommandOutputOptions => {
   const print = readStringOption(parsed, "print");
   const format = readStringOption(parsed, "format");
+  const jsonFlag = getSingleOption(parsed.options, "json");
+
+  if (typeof jsonFlag === "string") {
+    throw new Error("--json does not accept a value");
+  }
 
   if (typeof format === "undefined") {
-    return { format: "text", ...(print ? { print } : {}) };
+    return { format: jsonFlag ? "json" : "text", ...(print ? { print } : {}) };
   }
 
   if (format !== "text" && format !== "json") {

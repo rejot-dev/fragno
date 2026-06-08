@@ -10,9 +10,9 @@ import {
 } from "@fragno-dev/github-app-fragment";
 
 import {
-  loadDurableHookQueue,
+  createDurableHookRepository,
+  createEmptyDurableHookRepository,
   type DurableHookQueueOptions,
-  type DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
 import { createGitHubServer, type GitHubFragment } from "@/fragno/github";
 
@@ -90,19 +90,12 @@ export class GitHub extends DurableObject<CloudflareEnv> {
     await this.#host.alarm();
   }
 
-  async getHookQueue(options?: DurableHookQueueOptions): Promise<DurableHookQueueResponse> {
+  getDurableHookRepository() {
     if (!this.#fragment) {
-      return {
-        configured: false,
-        hooksEnabled: false,
-        namespace: null,
-        items: [],
-        cursor: undefined,
-        hasNextPage: false,
-      };
+      return createEmptyDurableHookRepository();
     }
 
-    return await loadDurableHookQueue(this.#fragment, options);
+    return createDurableHookRepository<DurableHookQueueOptions>(() => this.#fragment!);
   }
 
   async redeliverFailedInstallationWebhooks(installationId: string): Promise<void> {
