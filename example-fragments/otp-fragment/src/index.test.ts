@@ -186,6 +186,39 @@ describe("otp fragment", async () => {
     expect(storedOtp?.confirmedAt).toBeInstanceOf(Date);
   });
 
+  it("treats repeated confirmation of an already confirmed OTP as idempotent", async () => {
+    const issueResponse = await fragments.otp.callRoute("POST", "/otp/issue", {
+      body: { externalId: "user-idempotent", type: "password_reset" },
+    });
+    assert(issueResponse.type === "json");
+
+    const firstConfirmResponse = await fragments.otp.callRoute("POST", "/otp/confirm", {
+      body: {
+        externalId: "user-idempotent",
+        type: "password_reset",
+        code: issueResponse.data.code,
+        confirmationPayload: { subjectUserId: "user_auth_1" },
+      },
+    });
+    assert(firstConfirmResponse.type === "json");
+
+    const repeatedConfirmResponse = await fragments.otp.callRoute("POST", "/otp/confirm", {
+      body: {
+        externalId: "user-idempotent",
+        type: "password_reset",
+        code: issueResponse.data.code,
+        confirmationPayload: { subjectUserId: "user_auth_2" },
+      },
+    });
+    assert(repeatedConfirmResponse.type === "json");
+
+    expect(repeatedConfirmResponse.data.confirmed).toBe(true);
+    expect(repeatedConfirmResponse.data.confirmedAt).toBeTruthy();
+
+    await drainDurableHooks(fragments.otp.fragment);
+    expect(onOtpConfirmed).toHaveBeenCalledTimes(1);
+  });
+
   it("returns OTP_EXPIRED for expired OTPs and resolves expiry hook dates", async () => {
     const { test: expiringTest, fragments: expiringFragments } = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "kysely-sqlite" })
