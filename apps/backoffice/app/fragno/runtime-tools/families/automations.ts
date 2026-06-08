@@ -5,12 +5,6 @@ export {
   type AutomationIdentityBindingRecord,
 } from "./automations-bindings";
 export {
-  automationScriptRuntimeTools,
-  automationScriptToolFamily,
-  type AutomationScriptRuntime,
-  type ScriptRunnerRuntime,
-} from "./automations-codemode";
-export {
   durableHooksRuntimeTools,
   durableHooksToolFamily,
   type DurableHookFragment,

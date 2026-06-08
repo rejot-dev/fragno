@@ -112,7 +112,6 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
         }
 
         const runtime = createAutomationRuntime({
-          hookContext: this,
           env: config.env,
           event: payload,
         });

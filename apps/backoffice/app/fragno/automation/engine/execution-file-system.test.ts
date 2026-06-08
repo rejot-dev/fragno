@@ -8,8 +8,10 @@ describe("createAutomationExecutionFileSystem", () => {
   test("exposes automation context files under /context", async () => {
     const fs = createAutomationExecutionFileSystem({
       masterFs: new MasterFileSystem({ mounts: [] }),
-      eventJson: JSON.stringify({ id: "event-1" }),
-      envJson: JSON.stringify({ PI_DEFAULT_AGENT: "agent-1" }),
+      contextFiles: {
+        "event.json": JSON.stringify({ id: "event-1" }),
+        "env.json": JSON.stringify({ PI_DEFAULT_AGENT: "agent-1" }),
+      },
     });
 
     await expect(fs.readFile("/context/event.json")).resolves.toBe('{"id":"event-1"}');

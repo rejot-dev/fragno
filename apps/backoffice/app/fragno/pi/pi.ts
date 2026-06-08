@@ -23,10 +23,7 @@ import type {
   BackofficeCodemodeExecuteResult,
   RunBackofficeCodemodeInput,
 } from "../codemode/execute";
-import {
-  createInteractiveBashHost,
-  createRouteBackedInteractiveBashContext,
-} from "../runtime-tools/automation-host";
+import { createInteractiveBashHost } from "../runtime-tools/automation-host";
 import type { InteractiveBashCommandContext } from "../runtime-tools/bash-host";
 import type { AutomationBindingsRuntime } from "../runtime-tools/families/automations-bindings";
 import type { AutomationWorkflowRuntime } from "../runtime-tools/families/automations-workflow";
@@ -34,13 +31,14 @@ import type { OtpRuntime } from "../runtime-tools/families/otp-runtime";
 import type { PiRuntime } from "../runtime-tools/families/pi";
 import type { ResendRuntime } from "../runtime-tools/families/resend";
 import type { Reson8Runtime } from "../runtime-tools/families/reson8";
-import type { SandboxRuntime } from "../runtime-tools/families/sandbox-runtime";
 import type { TelegramRuntime } from "../runtime-tools/families/telegram-runtime";
+import { createRouteBackedRuntimeContext } from "../runtime-tools/route-backed-runtime-context";
 import {
   getAvailableRuntimeTools,
   type BackofficeToolContext,
 } from "../runtime-tools/runtime-tools";
-import { piCodemodeRuntimeToolFamilies } from "../runtime-tools/tool-families";
+import { createBackofficeToolContext } from "../runtime-tools/tool-context";
+import { runtimeToolFamilies } from "../runtime-tools/tool-families";
 import type { PiCodemodeWorkflowParams } from "./pi-codemode-workflow";
 import {
   PI_MODEL_CATALOG,
@@ -84,17 +82,6 @@ export type PiSessionFileSystemContext = {
   orgId: string;
   env: Pick<CloudflareEnv, "UPLOAD" | "RESEND" | "AUTOMATIONS">;
 };
-
-type PiCodemodeToolContext = BackofficeToolContext<{
-  automations?: AutomationBindingsRuntime;
-  workflow?: AutomationWorkflowRuntime;
-  otp?: OtpRuntime;
-  pi?: PiRuntime;
-  resend?: ResendRuntime;
-  reson8?: Reson8Runtime;
-  sandbox?: SandboxRuntime;
-  telegram?: TelegramRuntime;
-}>;
 
 export type PiCodemodeRuntime = {
   env: BackofficeCodemodeEnv;
@@ -249,21 +236,17 @@ const createExecCodeModeTool = (
         throw new Error("execCodeMode is not configured for this Pi runtime.");
       }
 
-      const context: PiCodemodeToolContext = {
-        runtimes: {
-          automations: bashCommandContext?.automations.runtime,
-          workflow: codemode.workflow,
-          otp: bashCommandContext?.otp?.runtime,
-          pi: bashCommandContext?.pi?.runtime,
-          resend: bashCommandContext?.resend?.runtime,
-          reson8: bashCommandContext?.reson8?.runtime,
-          sandbox: bashCommandContext?.sandbox?.runtime,
-          telegram: bashCommandContext?.telegram?.runtime,
-        },
-      };
+      const context: BackofficeToolContext = bashCommandContext
+        ? createBackofficeToolContext({
+            ...bashCommandContext,
+            workflow: codemode.workflow
+              ? { runtime: codemode.workflow }
+              : bashCommandContext.workflow,
+          })
+        : { runtimes: { workflow: codemode.workflow } };
 
       const tools = getAvailableRuntimeTools({
-        families: piCodemodeRuntimeToolFamilies,
+        families: runtimeToolFamilies,
         context,
       });
 
@@ -454,7 +437,7 @@ export const createPiBashCommandContext = ({
 }: {
   env: CloudflareEnv;
   orgId: string;
-}): PiBashCommandContext => createRouteBackedInteractiveBashContext({ env, orgId });
+}): PiBashCommandContext => createRouteBackedRuntimeContext({ env, orgId });
 
 export const createPiRuntime = (options: {
   config: StoredPiConfig;
