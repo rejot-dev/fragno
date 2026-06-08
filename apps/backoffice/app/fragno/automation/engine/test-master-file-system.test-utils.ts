@@ -8,7 +8,12 @@ export const createTestMasterFileSystem = (
   files: Record<string, string | Uint8Array>,
 ): MasterFileSystem =>
   new MasterFileSystem({
-    mounts: [createTestMount("workspace", "/workspace", files)],
+    mounts: [
+      ...(hasMountedFiles(files, "/starter")
+        ? [createTestMount("starter", "/starter", files)]
+        : []),
+      createTestMount("workspace", "/workspace", files),
+    ],
   });
 
 export const createTestMount = (
@@ -52,3 +57,6 @@ const createMountedInMemoryFs = (files: Record<string, string | Uint8Array>) => 
     utimes: (path: string, atime: Date, mtime: Date) => fs.utimes(path, atime, mtime),
   };
 };
+
+const hasMountedFiles = (files: Record<string, string | Uint8Array>, mountPoint: string): boolean =>
+  Object.keys(files).some((path) => path === mountPoint || path.startsWith(`${mountPoint}/`));

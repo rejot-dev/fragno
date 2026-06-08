@@ -48,14 +48,14 @@ describe("backoffice files download route", () => {
     const response = toResponse(
       await loader(
         createLoaderArgs(
-          "https://example.com/backoffice/files/org_123/download?path=%2Fworkspace%2Fprompts%2Ftask.md",
+          "https://example.com/backoffice/files/org_123/download?path=%2Fstarter%2Fprompts%2Ftask.md",
         ),
       ),
     );
 
     expect(response.status).toBe(302);
     expect(response.headers.get("Location")).toBe(
-      `https://example.com${buildBackofficeLoginPath("/backoffice/files/org_123/download?path=%2Fworkspace%2Fprompts%2Ftask.md")}`,
+      `https://example.com${buildBackofficeLoginPath("/backoffice/files/org_123/download?path=%2Fstarter%2Fprompts%2Ftask.md")}`,
     );
   });
 
@@ -65,7 +65,7 @@ describe("backoffice files download route", () => {
     const response = toResponse(
       await loader(
         createLoaderArgs(
-          "https://example.com/backoffice/files/org_123/download?path=%2Fworkspace%2Fprompts%2Ftask.md",
+          "https://example.com/backoffice/files/org_123/download?path=%2Fstarter%2Fprompts%2Ftask.md",
         ),
       ),
     );
@@ -141,7 +141,7 @@ describe("backoffice files download route", () => {
     await expect(
       loader(
         createLoaderArgs(
-          "https://example.com/backoffice/files/org_123/download?path=%2Fworkspace%2Fprompts%2Fmissing.md",
+          "https://example.com/backoffice/files/org_123/download?path=%2Fstarter%2Fprompts%2Fmissing.md",
         ),
       ),
     ).rejects.toMatchObject({
@@ -189,7 +189,7 @@ describe("backoffice files download route", () => {
     await expect(
       loader(
         createLoaderArgs(
-          "https://example.com/backoffice/files/org_123/download?path=%2Fworkspace%2Fprompts",
+          "https://example.com/backoffice/files/org_123/download?path=%2Fstarter%2Fprompts",
         ),
       ),
     ).rejects.toMatchObject({

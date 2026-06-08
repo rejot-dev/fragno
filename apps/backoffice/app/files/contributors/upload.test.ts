@@ -47,7 +47,7 @@ beforeEach(() => {
 });
 
 describe("upload file contributor", () => {
-  test("omits the uploads mount when upload is not configured", () => {
+  test("omits the workspace mount when upload is not configured", () => {
     expect(resolveUploadFileMount(null)).toBeNull();
     expect(
       resolveUploadFileMount({
@@ -58,7 +58,7 @@ describe("upload file contributor", () => {
     ).toBeNull();
   });
 
-  test("builds uploads mount metadata for configured org storage", () => {
+  test("builds workspace mount metadata for configured org storage", () => {
     const mount = resolveUploadFileMount(
       createUploadConfig({
         defaultProvider: UPLOAD_PROVIDER_R2_BINDING,
@@ -83,10 +83,10 @@ describe("upload file contributor", () => {
     );
 
     expect(mount).toMatchObject({
-      id: "uploads",
+      id: "workspace",
       kind: "upload",
-      mountPoint: "/uploads",
-      title: "Uploads",
+      mountPoint: "/workspace",
+      title: "Workspace",
       readOnly: false,
       persistence: "persistent",
       uploadProvider: UPLOAD_PROVIDER_R2_BINDING,
@@ -136,6 +136,7 @@ describe("upload file contributor", () => {
 
     expect(getRegisteredFileContributors().map((contributor) => contributor.id)).toEqual([
       "system",
+      "static-starter",
       "workspace",
       "tmp",
       "resend",
@@ -154,8 +155,8 @@ describe("upload file contributor", () => {
       "reports/q2.json": { content: '{"ok":true}' },
     });
 
-    await expect(fs.readdir?.("/uploads")).resolves.toEqual(["images", "reports"]);
-    await expect(fs.readdirWithFileTypes?.("/uploads/reports/")).resolves.toEqual([
+    await expect(fs.readdir?.("/workspace")).resolves.toEqual(["images", "reports"]);
+    await expect(fs.readdirWithFileTypes?.("/workspace/reports/")).resolves.toEqual([
       {
         name: "config",
         isFile: true,
@@ -176,17 +177,17 @@ describe("upload file contributor", () => {
       },
     ]);
 
-    await expect(fs.exists?.("/uploads/reports/q1.txt")).resolves.toBe(true);
-    await expect(fs.stat?.("/uploads/reports/q1.txt")).resolves.toMatchObject({
+    await expect(fs.exists?.("/workspace/reports/q1.txt")).resolves.toBe(true);
+    await expect(fs.stat?.("/workspace/reports/q1.txt")).resolves.toMatchObject({
       isFile: true,
       isDirectory: false,
       mode: 0o644,
       size: 5,
     });
 
-    await expect(fs.describeEntry?.("/uploads/reports/q1.txt")).resolves.toMatchObject({
+    await expect(fs.describeEntry?.("/workspace/reports/q1.txt")).resolves.toMatchObject({
       kind: "file",
-      path: "/uploads/reports/q1.txt",
+      path: "/workspace/reports/q1.txt",
       metadata: {
         fileKey: "reports/q1.txt",
         previewUrl:
@@ -194,12 +195,12 @@ describe("upload file contributor", () => {
       },
     });
 
-    await expect(fs.readFile?.("/uploads/reports/config")).resolves.toBe('{"ok":true}');
-    await expect(fs.readFile?.("/uploads/reports/q1.txt")).resolves.toBe("ready");
-    await expect(fs.readFileBuffer?.("/uploads/images/logo.png")).resolves.toEqual(
+    await expect(fs.readFile?.("/workspace/reports/config")).resolves.toBe('{"ok":true}');
+    await expect(fs.readFile?.("/workspace/reports/q1.txt")).resolves.toBe("ready");
+    await expect(fs.readFileBuffer?.("/workspace/images/logo.png")).resolves.toEqual(
       new Uint8Array([137, 80, 78, 71]),
     );
-    await expect(fs.readFile?.("/uploads/images/logo.png")).rejects.toThrow(
+    await expect(fs.readFile?.("/workspace/images/logo.png")).rejects.toThrow(
       /Binary files cannot be read as text/,
     );
     expect(runtime.requests).toContain(
@@ -222,7 +223,7 @@ describe("upload file contributor", () => {
       throw new Error("Expected upload filesystem to support read streams.");
     }
 
-    const stream = await fs.readFileStream("/uploads/reports/q1.txt");
+    const stream = await fs.readFileStream("/workspace/reports/q1.txt");
     await expect(readStream(stream)).resolves.toBe("ready");
     expect(runtime.requests).toContain(
       "GET /api/upload/files/by-key/content?provider=r2&key=reports%2Fq1.txt",
@@ -232,34 +233,34 @@ describe("upload file contributor", () => {
     );
   });
 
-  test("can mount the upload-backed filesystem at /workspace", async () => {
+  test("can mount the upload-backed filesystem at a custom mount point", async () => {
     const { context } = createUploadFs({
       "README.md": { content: "custom readme" },
     });
     const fs = createUploadMountedFileSystem(context, {
-      mountPoint: "/workspace",
+      mountPoint: "/scratch",
     });
 
-    await expect(fs.readdir?.("/workspace")).resolves.toEqual(["README.md"]);
-    await expect(fs.readFile?.("/workspace/README.md")).resolves.toBe("custom readme");
+    await expect(fs.readdir?.("/scratch")).resolves.toEqual(["README.md"]);
+    await expect(fs.readFile?.("/scratch/README.md")).resolves.toBe("custom readme");
 
-    await fs.writeFile?.("/workspace/output/generated.txt", "hello");
-    await expect(fs.readFile?.("/workspace/output/generated.txt")).resolves.toBe("hello");
+    await fs.writeFile?.("/scratch/output/generated.txt", "hello");
+    await expect(fs.readFile?.("/scratch/output/generated.txt")).resolves.toBe("hello");
   });
 
   test("treats shell scripts with octet-stream content types as text files", async () => {
     const { fs } = createUploadFs({
-      "automations/scripts/telegram-file-store.sh": {
+      "scripts/telegram-file-store.sh": {
         content: 'echo "hello"',
         contentType: "application/octet-stream",
       },
     });
 
+    await expect(fs.readFile?.("/workspace/scripts/telegram-file-store.sh")).resolves.toBe(
+      'echo "hello"',
+    );
     await expect(
-      fs.readFile?.("/uploads/automations/scripts/telegram-file-store.sh"),
-    ).resolves.toBe('echo "hello"');
-    await expect(
-      fs.describeEntry?.("/uploads/automations/scripts/telegram-file-store.sh"),
+      fs.describeEntry?.("/workspace/scripts/telegram-file-store.sh"),
     ).resolves.toMatchObject({
       contentType: "text/x-shellscript",
     });
@@ -311,9 +312,9 @@ describe("upload file contributor", () => {
       provider: UPLOAD_PROVIDER_R2_BINDING,
     });
 
-    await expect(fs.readdir?.("/uploads/reports")).resolves.toEqual(["binding.txt"]);
-    await expect(fs.exists?.("/uploads/reports/binding.txt")).resolves.toBe(true);
-    await expect(fs.exists?.("/uploads/reports/credentials.txt")).resolves.toBe(false);
+    await expect(fs.readdir?.("/workspace/reports")).resolves.toEqual(["binding.txt"]);
+    await expect(fs.exists?.("/workspace/reports/binding.txt")).resolves.toBe(true);
+    await expect(fs.exists?.("/workspace/reports/credentials.txt")).resolves.toBe(false);
   });
 
   test("avoids provider-discovery scans for single-file operations", async () => {
@@ -334,9 +335,9 @@ describe("upload file contributor", () => {
 
     runtime.requests.length = 0;
 
-    await expect(fs.readFile?.("/uploads/reports/q1.txt")).resolves.toBe("ready");
-    await fs.writeFile?.("/uploads/reports/q1.txt", "updated");
-    await fs.rm?.("/uploads/reports/q1.txt", { force: true });
+    await expect(fs.readFile?.("/workspace/reports/q1.txt")).resolves.toBe("ready");
+    await fs.writeFile?.("/workspace/reports/q1.txt", "updated");
+    await fs.rm?.("/workspace/reports/q1.txt", { force: true });
 
     expect(runtime.requests.some((request) => request.startsWith("GET /api/upload/files?"))).toBe(
       false,
@@ -365,18 +366,18 @@ describe("upload file contributor", () => {
       "reports/q1.txt": { content: "ready" },
     });
 
-    await fs.writeFile?.("/uploads/reports/q1.txt", "updated");
-    await expect(fs.readFile?.("/uploads/reports/q1.txt")).resolves.toBe("updated");
+    await fs.writeFile?.("/workspace/reports/q1.txt", "updated");
+    await expect(fs.readFile?.("/workspace/reports/q1.txt")).resolves.toBe("updated");
 
-    await fs.writeFile?.("/uploads/notes/todo.md", "- ship it");
+    await fs.writeFile?.("/workspace/notes/todo.md", "- ship it");
     expect(runtime.files.has(composeStorageKey(UPLOAD_PROVIDER_R2, "notes/todo.md"))).toBe(true);
-    await expect(fs.readFile?.("/uploads/notes/todo.md")).resolves.toBe("- ship it");
+    await expect(fs.readFile?.("/workspace/notes/todo.md")).resolves.toBe("- ship it");
 
-    await fs.rm?.("/uploads/reports/", { recursive: true });
-    await expect(fs.exists?.("/uploads/reports/q1.txt")).resolves.toBe(false);
+    await fs.rm?.("/workspace/reports/", { recursive: true });
+    await expect(fs.exists?.("/workspace/reports/q1.txt")).resolves.toBe(false);
 
-    await fs.rm?.("/uploads", { recursive: true });
-    await expect(fs.readdir?.("/uploads")).resolves.toEqual([]);
+    await fs.rm?.("/workspace", { recursive: true });
+    await expect(fs.readdir?.("/workspace")).resolves.toEqual([]);
   });
 
   test("treats deleted upload records as missing for exact-path lookups", async () => {
@@ -387,13 +388,13 @@ describe("upload file contributor", () => {
       },
     });
 
-    await expect(fs.describeEntry?.("/uploads/reports/q1.txt")).resolves.toBe(null);
-    await expect(fs.exists?.("/uploads/reports/q1.txt")).resolves.toBe(false);
-    await expect(fs.stat?.("/uploads/reports/q1.txt")).rejects.toThrow("Path not found.");
-    await expect(fs.readFile?.("/uploads/reports/q1.txt")).rejects.toThrow(
-      "ENOENT: no such file or directory, read '/uploads/reports/q1.txt'",
+    await expect(fs.describeEntry?.("/workspace/reports/q1.txt")).resolves.toBe(null);
+    await expect(fs.exists?.("/workspace/reports/q1.txt")).resolves.toBe(false);
+    await expect(fs.stat?.("/workspace/reports/q1.txt")).rejects.toThrow("Path not found.");
+    await expect(fs.readFile?.("/workspace/reports/q1.txt")).rejects.toThrow(
+      "ENOENT: no such file or directory, read '/workspace/reports/q1.txt'",
     );
-    await expect(fs.readdir?.("/uploads/reports")).resolves.toEqual([]);
+    await expect(fs.readdir?.("/workspace/reports")).resolves.toEqual([]);
   });
 
   test("stores cosmetic chmod and utimes metadata for upload-backed files and folders", async () => {
@@ -402,19 +403,19 @@ describe("upload file contributor", () => {
     });
 
     const fileMtime = new Date("2020-01-02T03:04:05.000Z");
-    await fs.chmod?.("/uploads/reports/q1.txt", 0o600);
-    await fs.utimes?.("/uploads/reports/q1.txt", new Date(0), fileMtime);
+    await fs.chmod?.("/workspace/reports/q1.txt", 0o600);
+    await fs.utimes?.("/workspace/reports/q1.txt", new Date(0), fileMtime);
 
-    await fs.mkdir?.("/uploads/archive", { recursive: true });
+    await fs.mkdir?.("/workspace/archive", { recursive: true });
     const folderMtime = new Date("2021-02-03T04:05:06.000Z");
-    await fs.chmod?.("/uploads/archive", 0o700);
-    await fs.utimes?.("/uploads/archive", new Date(0), folderMtime);
+    await fs.chmod?.("/workspace/archive", 0o700);
+    await fs.utimes?.("/workspace/archive", new Date(0), folderMtime);
 
-    await expect(fs.stat?.("/uploads/reports/q1.txt")).resolves.toMatchObject({
+    await expect(fs.stat?.("/workspace/reports/q1.txt")).resolves.toMatchObject({
       mode: 0o600,
       mtime: fileMtime,
     });
-    await expect(fs.stat?.("/uploads/archive/")).resolves.toMatchObject({
+    await expect(fs.stat?.("/workspace/archive/")).resolves.toMatchObject({
       mode: 0o700,
       mtime: folderMtime,
     });
@@ -445,10 +446,14 @@ describe("upload file contributor", () => {
       "reports/q1.txt": { content: "ready" },
     });
 
-    await fs.chmod?.("/uploads/reports/q1.txt", 0o600);
-    await fs.utimes?.("/uploads/reports/q1.txt", new Date(0), new Date("2020-01-02T03:04:05.000Z"));
+    await fs.chmod?.("/workspace/reports/q1.txt", 0o600);
+    await fs.utimes?.(
+      "/workspace/reports/q1.txt",
+      new Date(0),
+      new Date("2020-01-02T03:04:05.000Z"),
+    );
 
-    await fs.writeFile?.("/uploads/reports/q1.txt", "updated");
+    await fs.writeFile?.("/workspace/reports/q1.txt", "updated");
 
     expect(
       runtime.files.get(composeStorageKey(UPLOAD_PROVIDER_R2, "reports/q1.txt"))?.metadata,
@@ -471,8 +476,8 @@ describe("upload file contributor", () => {
       "reports/q1.txt": { content: "ready" },
     });
 
-    await expect(fs.chmod?.("/uploads", 0o700)).rejects.toThrow(/operation not supported/i);
-    await expect(fs.utimes?.("/uploads", new Date(0), new Date())).rejects.toThrow(
+    await expect(fs.chmod?.("/workspace", 0o700)).rejects.toThrow(/operation not supported/i);
+    await expect(fs.utimes?.("/workspace", new Date(0), new Date())).rejects.toThrow(
       /operation not supported/i,
     );
   });
@@ -480,7 +485,7 @@ describe("upload file contributor", () => {
   test("mkdir persists empty upload-backed folders and keeps them visible", async () => {
     const { fs, runtime } = createUploadFs({});
 
-    await fs.mkdir?.("/uploads/reports/2026", { recursive: true });
+    await fs.mkdir?.("/workspace/reports/2026", { recursive: true });
 
     expect(
       runtime.files.has(
@@ -493,38 +498,38 @@ describe("upload file contributor", () => {
       ),
     ).toBe(true);
 
-    await expect(fs.exists?.("/uploads/reports/")).resolves.toBe(true);
-    await expect(fs.exists?.("/uploads/reports/2026/")).resolves.toBe(true);
-    await expect(fs.stat?.("/uploads/reports/2026/")).resolves.toMatchObject({
+    await expect(fs.exists?.("/workspace/reports/")).resolves.toBe(true);
+    await expect(fs.exists?.("/workspace/reports/2026/")).resolves.toBe(true);
+    await expect(fs.stat?.("/workspace/reports/2026/")).resolves.toMatchObject({
       isDirectory: true,
       isFile: false,
     });
-    await expect(fs.readdir?.("/uploads")).resolves.toEqual(["reports"]);
-    await expect(fs.readdir?.("/uploads/reports/")).resolves.toEqual(["2026"]);
-    await expect(fs.readdir?.("/uploads/reports/2026/")).resolves.toEqual([]);
+    await expect(fs.readdir?.("/workspace")).resolves.toEqual(["reports"]);
+    await expect(fs.readdir?.("/workspace/reports/")).resolves.toEqual(["2026"]);
+    await expect(fs.readdir?.("/workspace/reports/2026/")).resolves.toEqual([]);
   });
 
   test("deleting the last file keeps an explicitly created upload folder visible", async () => {
     const { fs } = createUploadFs({});
 
-    await fs.mkdir?.("/uploads/reports", { recursive: true });
-    await fs.writeFile?.("/uploads/reports/q1.txt", "ready");
-    await fs.rm?.("/uploads/reports/q1.txt", { force: true });
+    await fs.mkdir?.("/workspace/reports", { recursive: true });
+    await fs.writeFile?.("/workspace/reports/q1.txt", "ready");
+    await fs.rm?.("/workspace/reports/q1.txt", { force: true });
 
-    await expect(fs.exists?.("/uploads/reports/")).resolves.toBe(true);
-    await expect(fs.readdir?.("/uploads")).resolves.toEqual(["reports"]);
-    await expect(fs.readdir?.("/uploads/reports/")).resolves.toEqual([]);
+    await expect(fs.exists?.("/workspace/reports/")).resolves.toBe(true);
+    await expect(fs.readdir?.("/workspace")).resolves.toEqual(["reports"]);
+    await expect(fs.readdir?.("/workspace/reports/")).resolves.toEqual([]);
   });
 
   test("recursive folder deletion removes upload directory markers too", async () => {
     const { fs, runtime } = createUploadFs({});
 
-    await fs.mkdir?.("/uploads/reports/2026", { recursive: true });
-    await fs.writeFile?.("/uploads/reports/2026/q1.txt", "ready");
-    await fs.rm?.("/uploads/reports/", { recursive: true });
+    await fs.mkdir?.("/workspace/reports/2026", { recursive: true });
+    await fs.writeFile?.("/workspace/reports/2026/q1.txt", "ready");
+    await fs.rm?.("/workspace/reports/", { recursive: true });
 
-    await expect(fs.exists?.("/uploads/reports/")).resolves.toBe(false);
-    await expect(fs.readdir?.("/uploads")).resolves.toEqual([]);
+    await expect(fs.exists?.("/workspace/reports/")).resolves.toBe(false);
+    await expect(fs.readdir?.("/workspace")).resolves.toEqual([]);
     expect(
       runtime.files.has(
         composeStorageKey(UPLOAD_PROVIDER_R2, toUploadDirectoryMarkerFileKey("reports")),
@@ -542,10 +547,10 @@ describe("upload file contributor", () => {
       "reports/.fragno/dir-marker": { content: "user file", metadata: null },
     });
 
-    await expect(fs.readdir?.("/uploads/reports/")).resolves.toEqual([".fragno"]);
-    await expect(fs.readdir?.("/uploads/reports/.fragno/")).resolves.toEqual(["dir-marker"]);
-    await expect(fs.exists?.("/uploads/reports/.fragno/dir-marker")).resolves.toBe(true);
-    await expect(fs.readFile?.("/uploads/reports/.fragno/dir-marker")).resolves.toBe("user file");
+    await expect(fs.readdir?.("/workspace/reports/")).resolves.toEqual([".fragno"]);
+    await expect(fs.readdir?.("/workspace/reports/.fragno/")).resolves.toEqual(["dir-marker"]);
+    await expect(fs.exists?.("/workspace/reports/.fragno/dir-marker")).resolves.toBe(true);
+    await expect(fs.readFile?.("/workspace/reports/.fragno/dir-marker")).resolves.toBe("user file");
   });
 
   test("contributor createFileSystem returns null when uploads are unavailable", async () => {

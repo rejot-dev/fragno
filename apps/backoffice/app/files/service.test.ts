@@ -55,6 +55,7 @@ describe("files service", () => {
       master.mounts.map((mount) => [mount.mountPoint, mount.id, mount.uploadProvider ?? null]),
     ).toEqual([
       ["/system", "system", null],
+      ["/starter", "static-starter", null],
       ["/workspace", "workspace", UPLOAD_PROVIDER_R2],
       ["/tmp", "tmp", null],
     ]);
@@ -72,14 +73,10 @@ describe("files service", () => {
     } satisfies FilesContext);
 
     const tree = await listFilesTree(master);
-    expect(tree.map((node) => node.path)).toEqual(["/system", "/workspace", "/tmp"]);
+    expect(tree.map((node) => node.path)).toEqual(["/system", "/starter", "/workspace", "/tmp"]);
 
     const workspaceChildren = await listFilesChildren(master, "/workspace");
     expect(workspaceChildren.map((node) => [node.kind, node.path, node.title])).toEqual([
-      ["folder", "/workspace/automations/", "automations"],
-      ["folder", "/workspace/input/", "input"],
-      ["folder", "/workspace/output/", "output"],
-      ["folder", "/workspace/prompts/", "prompts"],
       ["file", "/workspace/README.md", "README.md"],
     ]);
 
@@ -108,7 +105,7 @@ describe("files service", () => {
     expect(systemDetail?.textContent).toContain("Runtime-specific references");
   });
 
-  test("preserves upload metadata like content type for overlay-backed workspace files", async () => {
+  test("preserves upload metadata like content type for upload-backed workspace files", async () => {
     const runtime = createUploadRuntime({
       "hello/logo.png": {
         content: new Uint8Array([137, 80, 78, 71]),
@@ -163,22 +160,25 @@ describe("files service", () => {
     });
   });
 
-  test("returns a read-only starter workspace when Upload is unavailable", async () => {
+  test("returns a read-only static starter mount when Upload is unavailable", async () => {
     const master = await createMasterFileSystem({
       orgId: "org_123",
       backend: "backoffice",
       uploadConfig: null,
     } satisfies FilesContext);
 
-    const detail = await getFilesNodeDetail(master, "/workspace/README.md");
-    expect(detail?.textContent).toContain("Workspace starter pack");
+    const tree = await listFilesTree(master);
+    expect(tree.map((node) => node.path)).toEqual(["/system", "/starter", "/tmp"]);
+
+    const detail = await getFilesNodeDetail(master, "/starter/README.md");
+    expect(detail?.textContent).toContain("Static starter content");
     expect(detail?.capabilities).toMatchObject({
       canCreateFolder: false,
       canWriteText: false,
       canDelete: false,
     });
     expect(detail?.fields).toEqual(
-      expect.arrayContaining([{ label: "Persistence", value: "session" }]),
+      expect.arrayContaining([{ label: "Persistence", value: "persistent" }]),
     );
   });
 

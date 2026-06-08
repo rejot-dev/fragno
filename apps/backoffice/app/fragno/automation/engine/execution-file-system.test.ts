@@ -19,7 +19,7 @@ describe("createAutomationExecutionFileSystem", () => {
     await expect(fs.readdir("/context")).resolves.toEqual(["env.json", "event.json"]);
     await expect(fs.readFile("/context/typo.json")).rejects.toThrow("ENOENT");
     await expect(fs.exists("/context/typo.json")).resolves.toBe(false);
-    await expect(fs.stat("/context/typo.json")).rejects.toThrow("was not found");
+    await expect(fs.stat("/context/typo.json")).rejects.toThrow("ENOENT");
     await expect(fs.readdir("/context/event.json")).rejects.toThrow("not a directory");
   });
 });

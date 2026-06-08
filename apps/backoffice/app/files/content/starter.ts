@@ -1,22 +1,20 @@
 import type { FileSystemArtifact } from "../types";
 import { STARTER_AUTOMATION_CONTENT } from "./automations";
 
-export const STARTER_WORKSPACE_CONTENT = {
-  "README.md": `# Workspace starter pack
+export const STATIC_STARTER_CONTENT = {
+  "README.md": `# Static starter content
 
-This workspace is the editable side of the combined Files system.
+This read-only starter tree contains example files and default automation content.
 
 ## Suggested flow
 
-1. Capture inputs and constraints in \`input/notes.md\`.
-2. Draft prompts, plans, or scratch output in the folders below.
-3. Manage automation scripts under \`automations/\`.
-   - Use \`*.js\` for codemode event-router scripts.
-   - Use \`*.workflow.js\` for durable codemode workflows.
-   - Use \`*.sh\` for bash scripts.
-4. When Upload is configured, persistent files can override these starter files at the same path.
+1. Review example inputs and constraints in \`input/notes.md\`.
+2. Use the files below as templates for prompts, plans, or scratch output.
+3. Review automation defaults in \`automations/bindings.json\` (with absolute \`/starter/automations/...\` script paths) and scripts under \`automations/scripts/\`.
+   - Use \`*.cm.js\` plus \`engine: "codemode"\` for codemode scripts.
+   - Use \`*.sh\` plus \`engine: "bash"\` for bash scripts.
 
-Starter files should be seeded only when missing so later runtime bootstraps do not overwrite your work.
+Copy anything you want to edit into writable workspace storage.
 `,
   "input/notes.md": `# Notes
 
@@ -35,5 +33,5 @@ Describe the task you want to work on here.
   ...STARTER_AUTOMATION_CONTENT,
 } satisfies Record<string, FileSystemArtifact>;
 
-export const STARTER_WORKSPACE_ROOT_DESCRIPTION =
-  "Starter workspace files, including filesystem-backed automation bash/codemode scripts, layered under an optional persistent Upload-backed override. Bootstrap uses if-missing semantics so starter content remains the fallback source of truth.";
+export const STATIC_STARTER_ROOT_DESCRIPTION =
+  "Read-only static starter files, including filesystem-backed automation manifests plus bash/codemode scripts under /starter.";

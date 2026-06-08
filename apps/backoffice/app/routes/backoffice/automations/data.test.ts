@@ -21,12 +21,34 @@ beforeEach(() => {
 });
 
 describe("automation backoffice workspace data", () => {
-  test("shows workspace scripts directly from the automation directory", async () => {
+  test("shows unbound workspace scripts alongside manifest-backed scripts", async () => {
     const fileSystem = createStubAutomationFileSystem({
-      "/workspace/automations/router.js": "async () => true",
-      "/workspace/automations/scripts/recoverable.sh": 'echo "still here"',
-      "/workspace/automations/telegram-claim-linking.workflow.js":
-        "defineWorkflow({ name: 'x' }, async () => true)",
+      "/starter/automations/bindings.json": JSON.stringify(
+        {
+          version: 1,
+          bindings: [
+            {
+              id: "bound-script",
+              source: "telegram",
+              eventType: "message.received",
+              enabled: true,
+              script: {
+                key: "bound-script",
+                name: "Bound script",
+                engine: "bash",
+                path: "scripts/bound.sh",
+                version: 2,
+                agent: null,
+                env: {},
+              },
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      "/starter/automations/scripts/bound.sh": 'echo "bound"',
+      "/starter/automations/scripts/unbound.sh": 'echo "unbound"',
     });
     createOrgFileSystemMock.mockResolvedValue(fileSystem.fs);
 
@@ -37,34 +59,29 @@ describe("automation backoffice workspace data", () => {
 
     expect(result.scriptsError).toBeNull();
     expect(result.bindingsError).toBeNull();
-    expect(result.bindings).toEqual([]);
+    expect(result.bindings).toEqual([
+      expect.objectContaining({
+        id: "bound-script",
+        scriptPath: "scripts/bound.sh",
+      }),
+    ]);
     expect(result.scripts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "workspace-script:router.js",
-          key: "router",
-          name: "Router",
-          path: "router.js",
-          version: null,
-          bindingCount: 0,
-          enabledBindingCount: 0,
+          id: "workspace-script:scripts/bound.sh",
+          key: "bound-script",
+          name: "Bound script",
+          path: "scripts/bound.sh",
+          version: 2,
+          bindingCount: 1,
+          enabledBindingCount: 1,
           enabled: true,
         }),
         expect.objectContaining({
-          id: "workspace-script:scripts/recoverable.sh",
-          key: "recoverable",
-          name: "Recoverable",
-          path: "scripts/recoverable.sh",
-          version: null,
-          bindingCount: 0,
-          enabledBindingCount: 0,
-          enabled: true,
-        }),
-        expect.objectContaining({
-          id: "workspace-script:telegram-claim-linking.workflow.js",
-          key: "telegram-claim-linking.workflow",
-          name: "Telegram Claim Linking Workflow",
-          path: "telegram-claim-linking.workflow.js",
+          id: "workspace-script:scripts/unbound.sh",
+          key: "unbound",
+          name: "Unbound",
+          path: "scripts/unbound.sh",
           version: null,
           bindingCount: 0,
           enabledBindingCount: 0,
@@ -72,12 +89,40 @@ describe("automation backoffice workspace data", () => {
         }),
       ]),
     );
-    expect(fileSystem.readFileCalls).toEqual([]);
+    expect(fileSystem.readFileCalls).toEqual(["/starter/automations/bindings.json"]);
+  });
+
+  test("keeps filesystem scripts visible when bindings.json is invalid", async () => {
+    const fileSystem = createStubAutomationFileSystem({
+      "/starter/automations/bindings.json": "{not-json}",
+      "/starter/automations/scripts/recoverable.sh": 'echo "still here"',
+    });
+    createOrgFileSystemMock.mockResolvedValue(fileSystem.fs);
+
+    const result = await loadAutomationWorkspaceData({
+      context: mockContext,
+      orgId: "acme-org",
+    });
+
+    expect(result.scripts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "workspace-script:scripts/recoverable.sh",
+          path: "scripts/recoverable.sh",
+          bindingCount: 0,
+        }),
+      ]),
+    );
+    expect(fileSystem.readFileCalls).toEqual(["/starter/automations/bindings.json"]);
+    expect(result.bindings).toEqual([]);
+    expect(result.bindingsError).toContain("Automation manifest");
+    expect(result.scriptsError).toContain("Automation manifest");
   });
 
   test("reads the selected script source only when the user opens it", async () => {
     const fileSystem = createStubAutomationFileSystem({
-      "/workspace/automations/scripts/lazy.sh": 'echo "lazy"',
+      "/starter/automations/bindings.json": JSON.stringify({ version: 1, bindings: [] }),
+      "/starter/automations/scripts/lazy.sh": 'echo "lazy"',
     });
     createOrgFileSystemMock.mockResolvedValue(fileSystem.fs);
 
@@ -91,12 +136,12 @@ describe("automation backoffice workspace data", () => {
       script: 'echo "lazy"',
       scriptError: null,
     });
-    expect(fileSystem.readFileCalls).toEqual(["/workspace/automations/scripts/lazy.sh"]);
+    expect(fileSystem.readFileCalls).toEqual(["/starter/automations/scripts/lazy.sh"]);
   });
 });
 
 function createStubAutomationFileSystem(files: Record<string, string>) {
-  const directories = new Set<string>(["/", "/workspace", "/workspace/automations"]);
+  const directories = new Set<string>(["/", "/workspace", "/starter/automations"]);
 
   for (const filePath of Object.keys(files)) {
     const segments = filePath.split("/").filter(Boolean);

@@ -1,6 +1,7 @@
 import { ensureBuiltInFileContributorsRegistered } from "./contributors";
 import {
   createReadOnlyFileSystemError,
+  createPathNotFoundFileSystemError,
   createUnsupportedOperationFileSystemError,
 } from "./fs-errors";
 import type {
@@ -16,7 +17,15 @@ import type {
   WriteFileOptions,
 } from "./interface";
 import { normalizeMountedFileSystem } from "./mounted-file-system";
-import { normalizeMountPoint, normalizePathSegments } from "./normalize-path";
+import {
+  normalizeAbsolutePath,
+  normalizeDirectoryPath,
+  isPathWithin,
+  normalizeMountPoint,
+  normalizePathSegments,
+  resolvePath as resolveFilePath,
+  stripTrailingSlash,
+} from "./normalize-path";
 import { getRegisteredFileContributors } from "./registry";
 import type {
   FileContributor,
@@ -28,8 +37,7 @@ import type {
   ResolvedFileMount,
 } from "./types";
 
-const STANDARD_MOUNT_POINT_ORDER = ["/system", "/workspace"] as const;
-const TEXT_ENCODER = new TextEncoder();
+const STANDARD_MOUNT_POINT_ORDER = ["/system", "/starter", "/workspace"] as const;
 const ROOT_DIR_MODE = 0o755;
 const FILE_SYSTEM_SORTER = new Intl.Collator("en", {
   numeric: true,
@@ -44,21 +52,18 @@ export type MasterFileSystemOptions = {
  * Central router for the mounted files architecture.
  *
  * It is the single entrypoint higher layers should use when working with the combined files view.
- * Routing is based on longest-prefix mount matching. The master filesystem also synthesizes `/`
- * and any parent directories implied by nested mount points, so callers can browse the combined
- * namespace without needing each mount to materialize those directories itself.
+ * Routing is based on mount ownership. Mount points must not overlap, and the master filesystem
+ * synthesizes `/` plus parent directories implied by deep mount points so callers can browse the
+ * combined namespace without needing each mount to materialize those directories itself.
  */
 export class MasterFileSystem implements IFileSystem {
   #mounts: ResolvedFileMount[];
-  #routingMounts: ResolvedFileMount[];
 
   constructor(options: MasterFileSystemOptions) {
-    this.#mounts = options.mounts
+    const mounts = normalizeAndValidateMounts(options.mounts);
+    this.#mounts = mounts
       .slice()
       .sort((left, right) => compareMountDisplayOrder(left.mountPoint, right.mountPoint));
-    this.#routingMounts = options.mounts
-      .slice()
-      .sort((left, right) => right.mountPoint.length - left.mountPoint.length);
   }
 
   get mounts(): ReadonlyArray<ResolvedFileMount> {
@@ -67,15 +72,10 @@ export class MasterFileSystem implements IFileSystem {
 
   mount(mount: ResolvedFileMount): void {
     const mountPoint = normalizeMountPoint(mount.mountPoint);
-    if (this.#mounts.some((m) => m.mountPoint === mountPoint)) {
-      throw new Error(`Duplicate file mount point '${mountPoint}' is already registered.`);
-    }
-
+    assertMountPointAvailable(mountPoint, this.#mounts);
     const resolved = { ...mount, mountPoint };
     this.#mounts.push(resolved);
     this.#mounts.sort((left, right) => compareMountDisplayOrder(left.mountPoint, right.mountPoint));
-    this.#routingMounts.push(resolved);
-    this.#routingMounts.sort((left, right) => right.mountPoint.length - left.mountPoint.length);
   }
 
   unmount(mountPoint: string): void {
@@ -86,10 +86,6 @@ export class MasterFileSystem implements IFileSystem {
     }
 
     this.#mounts.splice(mountIndex, 1);
-    const routingIndex = this.#routingMounts.findIndex((m) => m.mountPoint === normalized);
-    if (routingIndex !== -1) {
-      this.#routingMounts.splice(routingIndex, 1);
-    }
   }
 
   async readFile(path: string, options?: ReadFileOptions | BufferEncoding): Promise<string> {
@@ -127,9 +123,10 @@ export class MasterFileSystem implements IFileSystem {
     content: FileContent,
     options?: WriteFileOptions | BufferEncoding,
   ): Promise<void> {
-    const existing = (await this.exists(path)) ? await this.readFileBuffer(path) : new Uint8Array();
-    const appended = concatBytes(existing, toUint8Array(content));
-    await this.writeFile(path, appended, options);
+    const target = this.#resolveWriteTarget(path);
+    this.#assertWritable(target.mount, path, "append");
+
+    await target.fs.appendFile(path, content, options);
   }
 
   async exists(path: string): Promise<boolean> {
@@ -159,19 +156,7 @@ export class MasterFileSystem implements IFileSystem {
 
     const target = this.#resolveMountOrThrow(normalizedPath);
 
-    try {
-      return await target.fs.stat(normalizedPath);
-    } catch {
-      // Fall through to descriptor-based metadata below when mounts choose not to expose stat
-      // for a path they can still describe.
-    }
-
-    const described = await this.#describePath(target, normalizedPath);
-    if (described) {
-      return createSyntheticStatFromDescriptor(described, target.readOnly);
-    }
-
-    throw new Error(`Path '${normalizedPath}' was not found.`);
+    return target.fs.stat(normalizedPath);
   }
 
   async lstat(path: string): Promise<FsStat> {
@@ -232,51 +217,22 @@ export class MasterFileSystem implements IFileSystem {
   }
 
   async cp(src: string, dest: string, options?: CpOptions): Promise<void> {
-    this.#assertSameMount(src, dest, "copy");
+    const mount = this.#assertSameMount(src, dest, "copy");
+    this.#assertWritable(mount, dest, "copy");
 
-    const sourceStat = await this.stat(src);
-    if (sourceStat.isDirectory) {
-      if (!options?.recursive) {
-        throw new Error("Recursive copy required for directories.");
-      }
-
-      await this.mkdir(dest, { recursive: true });
-      for (const entry of await this.readdir(src)) {
-        await this.cp(this.resolvePath(src, entry), this.resolvePath(dest, entry), options);
-      }
-      return;
-    }
-
-    await this.writeFile(dest, await this.readFileBuffer(src));
+    await mount.fs.cp(src, dest, options);
   }
 
   async mv(src: string, dest: string): Promise<void> {
-    this.#assertSameMount(src, dest, "move");
-    await this.cp(src, dest, { recursive: true });
-    await this.rm(src, { recursive: true, force: true });
+    const mount = this.#assertSameMount(src, dest, "move");
+    this.#assertWritable(mount, src, "move");
+    this.#assertWritable(mount, dest, "move");
+
+    await mount.fs.mv(src, dest);
   }
 
   resolvePath(base: string, path: string): string {
-    if (path.startsWith("/")) {
-      return normalizeAbsolutePath(path);
-    }
-
-    const baseSegments = normalizeAbsolutePath(base).split("/").filter(Boolean);
-    const pathSegments = path.replaceAll("\\", "/").split("/");
-    const resolved = [...baseSegments];
-
-    for (const segment of pathSegments) {
-      if (!segment || segment === ".") {
-        continue;
-      }
-      if (segment === "..") {
-        resolved.pop();
-        continue;
-      }
-      resolved.push(segment);
-    }
-
-    return `/${resolved.join("/")}`;
+    return resolveFilePath(base, path);
   }
 
   getAllPaths(): string[] {
@@ -290,7 +246,7 @@ export class MasterFileSystem implements IFileSystem {
 
       for (const path of mount.fs.getAllPaths()) {
         const normalizedPath = normalizeAbsolutePath(path);
-        if (isWithinMount(normalizedPath, mount.mountPoint)) {
+        if (isPathWithin(normalizedPath, mount.mountPoint)) {
           paths.add(normalizedPath);
         }
       }
@@ -373,24 +329,18 @@ export class MasterFileSystem implements IFileSystem {
       throw new Error(`Path '${normalizedPath}' is not inside a mounted filesystem.`);
     }
 
-    if (this.#isVirtualOnlyDirectory(normalizedPath, mount)) {
-      throw new Error(`Path '${normalizedPath}' is a virtual directory created by mount routing.`);
-    }
-
     return { mount, fs: mount.fs };
   }
 
   #resolveMount(path: string): ResolvedFileMount | null {
     const normalizedPath = normalizeAbsolutePath(path);
-    return (
-      this.#routingMounts.find((mount) => isWithinMount(normalizedPath, mount.mountPoint)) ?? null
-    );
+    return this.#mounts.find((mount) => isPathWithin(normalizedPath, mount.mountPoint)) ?? null;
   }
 
   #resolveMountOrThrow(path: string): ResolvedFileMount {
     const mount = this.#resolveMount(path);
     if (!mount) {
-      throw new Error(`Path '${normalizeAbsolutePath(path)}' is not inside a mounted filesystem.`);
+      throw createPathNotFoundFileSystemError("resolve", normalizeAbsolutePath(path));
     }
 
     return mount;
@@ -399,18 +349,6 @@ export class MasterFileSystem implements IFileSystem {
   #assertWritable(mount: ResolvedFileMount, path: string, operation: string): void {
     if (mount.readOnly) {
       throw createReadOnlyFileSystemError(operation, normalizeAbsolutePath(path));
-    }
-  }
-
-  async #describePath(mount: ResolvedFileMount, path: string, stat?: FsStat | null) {
-    if (!mount.fs.describeEntry) {
-      return null;
-    }
-
-    try {
-      return await mount.fs.describeEntry(path, stat);
-    } catch {
-      return null;
     }
   }
 
@@ -434,7 +372,7 @@ export class MasterFileSystem implements IFileSystem {
     const childNames = new Set<string>();
 
     for (const mount of this.mounts) {
-      if (!isAncestorPath(normalizedPath, mount.mountPoint)) {
+      if (!isPathWithin(mount.mountPoint, normalizedPath) || normalizedPath === mount.mountPoint) {
         continue;
       }
 
@@ -455,18 +393,10 @@ export class MasterFileSystem implements IFileSystem {
       return true;
     }
 
-    return this.mounts.some((mount) => isAncestorOrExactPath(normalizedPath, mount.mountPoint));
+    return this.mounts.some((mount) => isPathWithin(mount.mountPoint, normalizedPath));
   }
 
-  #isVirtualOnlyDirectory(path: string, owningMount: ResolvedFileMount): boolean {
-    const normalizedPath = stripTrailingSlash(normalizeAbsolutePath(path)) || "/";
-    return (
-      normalizedPath !== owningMount.mountPoint &&
-      this.#getSyntheticChildNames(normalizedPath).length > 0
-    );
-  }
-
-  #assertSameMount(src: string, dest: string, verb: string): void {
+  #assertSameMount(src: string, dest: string, verb: string): ResolvedFileMount {
     const sourceMount = this.#resolveMount(src);
     const destinationMount = this.#resolveMount(dest);
 
@@ -479,6 +409,8 @@ export class MasterFileSystem implements IFileSystem {
         `Cross-mount ${verb} is not supported yet. Source '${normalizeAbsolutePath(src)}' and destination '${normalizeAbsolutePath(dest)}' must resolve to the same mount.`,
       );
     }
+
+    return sourceMount;
   }
 }
 
@@ -492,7 +424,6 @@ export const createMasterFileSystem = async (context: FilesContext): Promise<Mas
 
   const contributors = getRegisteredFileContributors();
   const mounts = [] as ResolvedFileMount[];
-  const mountPoints = new Set<string>();
 
   for (const contributor of contributors) {
     const resolvedMount = await resolveMountedFileSystem(contributor, {
@@ -510,11 +441,7 @@ export const createMasterFileSystem = async (context: FilesContext): Promise<Mas
       ? resolvedMount.mount
       : undefined;
     const mountPoint = normalizeMountPoint(resolvedMountMeta?.mountPoint ?? contributor.mountPoint);
-    if (mountPoints.has(mountPoint)) {
-      throw new Error(`Duplicate file mount point '${mountPoint}' is already registered.`);
-    }
-
-    mountPoints.add(mountPoint);
+    assertMountPointAvailable(mountPoint, mounts);
     const readOnly = resolvedMountMeta?.readOnly ?? contributor.readOnly;
 
     mounts.push({
@@ -560,22 +487,6 @@ const createSyntheticDirectoryStat = (readOnly: boolean): FsStat => ({
   mtime: new Date(0),
 });
 
-const createSyntheticStatFromDescriptor = (
-  descriptor: {
-    kind: "file" | "folder";
-    sizeBytes?: number | null;
-    updatedAt?: string | Date | null;
-  },
-  readOnly: boolean,
-): FsStat => ({
-  isFile: descriptor.kind === "file",
-  isDirectory: descriptor.kind === "folder",
-  isSymbolicLink: false,
-  mode: descriptor.kind === "folder" ? (readOnly ? 0o555 : 0o755) : readOnly ? 0o444 : 0o644,
-  size: descriptor.kind === "file" ? (descriptor.sizeBytes ?? 0) : 0,
-  mtime: descriptor.updatedAt ? new Date(descriptor.updatedAt) : new Date(0),
-});
-
 const compareMountDisplayOrder = (left: string, right: string): number => {
   const leftRank = getStandardMountPointOrder(left);
   const rightRank = getStandardMountPointOrder(right);
@@ -592,6 +503,41 @@ const getStandardMountPointOrder = (mountPoint: string): number => {
   );
   return rank === -1 ? STANDARD_MOUNT_POINT_ORDER.length : rank;
 };
+
+const normalizeAndValidateMounts = (
+  mounts: ReadonlyArray<ResolvedFileMount>,
+): ResolvedFileMount[] => {
+  const normalizedMounts: ResolvedFileMount[] = [];
+
+  for (const mount of mounts) {
+    const mountPoint = normalizeMountPoint(mount.mountPoint);
+    assertMountPointAvailable(mountPoint, normalizedMounts);
+    normalizedMounts.push({ ...mount, mountPoint });
+  }
+
+  return normalizedMounts;
+};
+
+const assertMountPointAvailable = (
+  mountPoint: string,
+  existingMounts: ReadonlyArray<ResolvedFileMount>,
+): void => {
+  for (const existingMount of existingMounts) {
+    const existingMountPoint = normalizeMountPoint(existingMount.mountPoint);
+    if (existingMountPoint === mountPoint) {
+      throw new Error(`Duplicate file mount point '${mountPoint}' is already registered.`);
+    }
+
+    if (isOverlappingMountPoint(existingMountPoint, mountPoint)) {
+      throw new Error(
+        `Overlapping file mount points are not supported: '${existingMountPoint}' and '${mountPoint}'.`,
+      );
+    }
+  }
+};
+
+const isOverlappingMountPoint = (left: string, right: string): boolean =>
+  isPathWithin(left, right) || isPathWithin(right, left);
 
 const comparePaths = (left: string, right: string): number => {
   const leftSegments = normalizeAbsolutePath(left).split("/").filter(Boolean);
@@ -628,33 +574,6 @@ const getMountAncestors = (mountPoint: string): string[] => {
   return ancestors;
 };
 
-const isWithinMount = (path: string, mountPoint: string): boolean => {
-  const normalizedPath = normalizeAbsolutePath(path);
-  const normalizedMountPoint = normalizeMountPoint(mountPoint);
-  return (
-    normalizedPath === normalizedMountPoint || normalizedPath.startsWith(`${normalizedMountPoint}/`)
-  );
-};
-
-const isAncestorOrExactPath = (candidateAncestor: string, path: string): boolean => {
-  const normalizedAncestor = stripTrailingSlash(normalizeAbsolutePath(candidateAncestor)) || "/";
-  const normalizedPath = stripTrailingSlash(normalizeAbsolutePath(path)) || "/";
-  return (
-    normalizedAncestor === normalizedPath || normalizedPath.startsWith(`${normalizedAncestor}/`)
-  );
-};
-
-const isAncestorPath = (candidateAncestor: string, path: string): boolean => {
-  const normalizedAncestor = stripTrailingSlash(normalizeAbsolutePath(candidateAncestor)) || "/";
-  const normalizedPath = stripTrailingSlash(normalizeAbsolutePath(path)) || "/";
-
-  if (normalizedAncestor === "/") {
-    return normalizedPath !== "/";
-  }
-
-  return normalizedPath.startsWith(`${normalizedAncestor}/`);
-};
-
 const getRelativeMountRemainder = (ancestorPath: string, path: string): string => {
   const normalizedAncestor = stripTrailingSlash(normalizeAbsolutePath(ancestorPath)) || "/";
   const normalizedPath = stripTrailingSlash(normalizeAbsolutePath(path)) || "/";
@@ -664,37 +583,4 @@ const getRelativeMountRemainder = (ancestorPath: string, path: string): string =
   }
 
   return normalizedPath.slice(normalizedAncestor.length + 1);
-};
-
-const normalizeAbsolutePath = (value: string): string => {
-  const normalized = value.trim().replaceAll("\\", "/");
-  const segments = normalized.split("/").filter(Boolean);
-  return segments.length === 0 ? "/" : `/${segments.join("/")}`;
-};
-
-const normalizeDirectoryPath = (value: string): string => {
-  const normalized = normalizeAbsolutePath(value);
-  return normalized === "/"
-    ? normalized
-    : value.trim().endsWith("/")
-      ? `${stripTrailingSlash(normalized)}/`
-      : normalized;
-};
-
-const stripTrailingSlash = (value: string): string => {
-  if (value === "/") {
-    return value;
-  }
-
-  return value.replace(/\/+$/, "");
-};
-
-const toUint8Array = (content: FileContent): Uint8Array =>
-  content instanceof Uint8Array ? content : TEXT_ENCODER.encode(content);
-
-const concatBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
-  const combined = new Uint8Array(left.length + right.length);
-  combined.set(left, 0);
-  combined.set(right, left.length);
-  return combined;
 };

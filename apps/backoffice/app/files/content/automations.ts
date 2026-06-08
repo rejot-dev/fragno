@@ -1,350 +1,339 @@
-export const STARTER_AUTOMATION_CONTENT = {
-  "automations/router.js": `async () => {
+import { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES } from "@/fragno/automation/contracts";
+
+import type { FileSystemArtifact } from "../types";
+
+export const STATIC_STARTER_ROOT = "/starter";
+const STATIC_STARTER_ROOT_PREFIX = `${STATIC_STARTER_ROOT}/`;
+export const STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH = "automations/bindings.json";
+
+/**
+ * Full starter automation bindings: trigger metadata, manifest script descriptor (absolute path under /starter), and file body.
+ * Order: telegram claim start → OTP complete → Pi session ensure.
+ */
+const STARTER_AUTOMATION_BINDINGS = [
+  {
+    id: "telegram-claim-linking-start",
+    source: AUTOMATION_SOURCES.telegram,
+    eventType: AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived,
+    enabled: true,
+    script: {
+      key: "telegram-claim-linking.start",
+      name: "Telegram claim linking start",
+      engine: "codemode" as const,
+      path: "/starter/automations/scripts/telegram-claim-linking.start.cm.js",
+      version: 1,
+      agent: null,
+      env: {},
+    },
+    content: `defineWorkflow({ name: "telegram-claim-linking-start" }, async (_workflowEvent, step) => {
+  const event = await step.do("read-event", async () => {
+    return JSON.parse(await state.readFile("/context/event.json"));
+  });
+  const text = event?.payload?.text ?? "";
+  const source = event?.source ?? "";
+  const externalActorId = event?.actor?.externalId ?? "";
+
+  if (text !== "/start") {
+    return;
+  }
+
+  const linkedUser = await step.do("lookup-existing-link", async () => {
+    return await automations.lookupBinding({
+      source,
+      key: externalActorId,
+    });
+  });
+
+  if (linkedUser?.value) {
+    await step.do("send-already-linked-message", async () => {
+      await telegram.sendMessage({
+        chatId: externalActorId,
+        text: "This Telegram chat is already linked.",
+        parseMode: "Markdown",
+      });
+    });
+    return;
+  }
+
+  const claim = await step.do("create-identity-claim", async () => {
+    return await otp.createIdentityClaim({
+      source,
+      externalActorId,
+    });
+  });
+
+  if (!claim?.url) {
+    throw new Error("otp.createIdentityClaim did not return a URL");
+  }
+
+  await step.do("send-claim-link-message", async () => {
+    await telegram.sendMessage({
+      chatId: externalActorId,
+      text: "Open this link to finish linking your Telegram account: " + claim.url,
+      parseMode: "Markdown",
+    });
+  });
+});
+`,
+  },
+  {
+    id: "telegram-claim-linking-complete",
+    source: AUTOMATION_SOURCES.otp,
+    eventType: AUTOMATION_SOURCE_EVENT_TYPES.otp.identityClaimCompleted,
+    enabled: true,
+    script: {
+      key: "telegram-claim-linking.complete",
+      name: "Telegram claim linking completion",
+      engine: "codemode" as const,
+      path: "/starter/automations/scripts/telegram-claim-linking.complete.cm.js",
+      version: 1,
+      agent: null,
+      env: {},
+    },
+    content: `async () => {
+  const event = JSON.parse(await state.readFile("/context/event.json"));
+  const linkSource = event?.payload?.linkSource ?? "";
+  const externalActorId = event?.payload?.externalActorId ?? "";
+  const subjectUserId = event?.subject?.userId ?? "";
+
+  const replyLinkingStatus = async (text) => {
+    await telegram.sendMessage({
+      chatId: externalActorId,
+      text,
+      parseMode: "Markdown",
+    });
+  };
+
+  if (linkSource !== "telegram") {
+    return;
+  }
+
+  if (!externalActorId) {
+    throw new Error("Missing externalActorId in identity claim payload");
+  }
+
+  if (!subjectUserId) {
+    await replyLinkingStatus("We couldn't link your Telegram chat. Please try again.");
+    throw new Error("Missing subject.userId in event");
+  }
+
+  try {
+    await automations.bindActor({
+      source: linkSource,
+      key: externalActorId,
+      value: subjectUserId,
+    });
+    await replyLinkingStatus("Your Telegram chat is now linked.");
+  } catch (error) {
+    await replyLinkingStatus("We couldn't link your Telegram chat. Please try again.");
+    throw error;
+  }
+};
+`,
+  },
+  {
+    id: "telegram-delayed-test-reply",
+    source: AUTOMATION_SOURCES.telegram,
+    eventType: AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived,
+    enabled: true,
+    script: {
+      key: "telegram-delayed-test.reply",
+      name: "Telegram delayed /test reply",
+      engine: "codemode" as const,
+      path: "/starter/automations/scripts/telegram-delayed-test.reply.cm.js",
+      version: 1,
+      agent: null,
+      env: {},
+    },
+    content: `defineWorkflow({ name: "telegram-delayed-test-reply" }, async (_workflowEvent, step) => {
+  const event = await step.do("read-event", async () => {
+    return JSON.parse(await state.readFile("/context/event.json"));
+  });
+  const text = event?.payload?.text ?? "";
+  const chatId = event?.payload?.chatId ?? event?.actor?.externalId ?? "";
+
+  if (text !== "/test") {
+    return { skipped: true, reason: "not-test-command" };
+  }
+
+  if (!chatId) {
+    throw new Error("Missing Telegram chat id for /test reply");
+  }
+
+  await step.sleep("wait 3 seconds", "3 seconds");
+
+  await step.do("send delayed test reply", () =>
+    telegram.sendMessage({
+      chatId,
+      text: "Delayed /test reply after 3 seconds.",
+      parseMode: "Markdown",
+    }),
+  );
+});
+`,
+  },
+  {
+    id: "telegram-pi-session-ensure",
+    source: AUTOMATION_SOURCES.telegram,
+    eventType: AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived,
+    enabled: false,
+    script: {
+      key: "telegram-pi-session.ensure",
+      name: "Telegram Pi session ensure (linked chat)",
+      engine: "codemode" as const,
+      path: "/starter/automations/scripts/telegram-pi-session.ensure.cm.js",
+      version: 1,
+      agent: null,
+      env: {},
+    },
+    content: `async () => {
+  if (typeof pi === "undefined") {
+    return;
+  }
+
   const [event, env] = await Promise.all([
     state.readFile("/context/event.json").then(JSON.parse),
     state.readFile("/context/env.json").then(JSON.parse),
   ]);
 
-  const instanceIdForEvent = (prefix) => {
-    return prefix + "-" + event.id.replace(/[^a-zA-Z0-9-_]/g, "-");
-  };
+  const defaultAgent = env?.PI_DEFAULT_AGENT ?? "";
+  if (!defaultAgent) {
+    return;
+  }
 
-  if (
-    event.source === "telegram" &&
-    event.eventType === "message.received" &&
-    typeof event.payload.text === "string"
-  ) {
-    const text = event.payload.text;
+  const externalActorId = event?.actor?.externalId ?? "";
+  const text = event?.payload?.text ?? "";
+  const chatId = event?.payload?.chatId ?? "";
+  const telegramChatId = chatId || externalActorId;
 
-    if (text === "/start") {
-      const instanceId = instanceIdForEvent("telegram-link");
-      await workflow.createInstance({
-        workflowName: "automation-codemode-script",
-        remoteWorkflowName: "telegram-claim-linking",
-        instanceId,
-        params: {
-          automationEvent: event,
-          workflowInstanceId: instanceId,
-          workflowScriptPath:
-            "/workspace/automations/telegram-claim-linking.workflow.js",
-        },
-      });
-    }
+  // Only bootstrap Pi sessions for identity-linked Telegram chats.
+  const linkedBinding = await automations.lookupBinding({
+    source: "telegram",
+    key: externalActorId,
+  });
+  const linkedUser = linkedBinding?.value ?? "";
 
-    if (text === "/test") {
-      const instanceId = instanceIdForEvent("telegram-test");
-      await workflow.createInstance({
-        workflowName: "automation-codemode-script",
-        remoteWorkflowName: "telegram-delayed-test-reply",
-        instanceId,
-        params: {
-          automationEvent: event,
-          workflowScriptPath:
-            "/workspace/automations/telegram-delayed-test-reply.workflow.js",
-        },
-      });
-    }
+  if (!linkedUser) {
+    return;
+  }
 
-    if ((text === "/pi" || !text.startsWith("/")) && env.PI_DEFAULT_AGENT) {
-      const instanceId = instanceIdForEvent("telegram-pi");
-      await workflow.createInstance({
-        workflowName: "automation-codemode-script",
-        remoteWorkflowName: "telegram-pi-session",
-        instanceId,
-        params: {
-          automationEvent: event,
-          env,
-          workflowScriptPath:
-            "/workspace/automations/telegram-pi-session.workflow.js",
-        },
-      });
+  const bindingSource = "telegram-pi-session";
+  // Use the linked user id as the storage key so sessions are per-user (not per-chat).
+  const bindingKey = linkedUser;
+
+  const piSessionBinding = await automations.lookupBinding({
+    source: bindingSource,
+    key: bindingKey,
+  });
+  let piSessionId = piSessionBinding?.value ?? "";
+
+  let terminalSession = false;
+  if (piSessionId) {
+    try {
+      const session = await pi.getSession({ sessionId: piSessionId });
+      const sessionStatus = session?.workflow?.status ?? session?.status ?? "";
+
+      if (["terminated", "complete", "errored", ""].includes(sessionStatus)) {
+        terminalSession = true;
+      }
+    } catch {
+      terminalSession = true;
     }
   }
 
-  if (event.source === "otp" && event.eventType === "identity.claim.completed") {
-    const linkSource = event.payload.linkSource;
-    const otpId = event.payload.otpId;
+  if (!piSessionId || terminalSession) {
+    const sessionName = "Telegram " + telegramChatId;
+    const session = await pi.createSession({
+      agent: defaultAgent,
+      name: sessionName,
+      tags: ["telegram", "auto-session"],
+      systemMessage:
+        "IMPORTANT:ALL non-tool call output will AUTOMATICALLY be forwarded to Telegram in Markdown parse mode.",
+    });
+    const newSessionId = session?.id ?? "";
 
-    if (linkSource === "telegram") {
-      const workflowBinding = await automations.lookupBinding({
-        source: "telegram-claim-workflow",
-        key: otpId,
-      });
-      const instanceId = workflowBinding?.value ?? "";
-
-      if (instanceId) {
-        await workflow.sendEvent({
-          workflowName: "automation-codemode-script",
-          instanceId,
-          type: "identity-claim-completed",
-          payload: event,
-        });
-      }
+    if (!newSessionId) {
+      throw new Error("pi.createSession did not return a session id");
     }
+
+    await automations.bindActor({
+      source: bindingSource,
+      key: bindingKey,
+      value: newSessionId,
+      description: "Pi session for Telegram chat " + externalActorId,
+    });
+
+    piSessionId = newSessionId;
+
+    if (text === "/pi") {
+      await telegram.sendMessage({
+        chatId: telegramChatId,
+        text: "Created Pi session: " + newSessionId,
+        parseMode: "Markdown",
+      });
+      return;
+    }
+  }
+
+  if (!text || text === "/pi") {
+    return;
+  }
+
+  await telegram.sendChatAction({
+    chatId: telegramChatId,
+    action: "typing",
+  });
+
+  const turn = await pi.runTurn({
+    sessionId: piSessionId,
+    text,
+  });
+  const assistantText = turn?.assistantText ?? "";
+
+  if (assistantText) {
+    await telegram.sendMessage({
+      chatId: telegramChatId,
+      text: assistantText,
+      parseMode: "Markdown",
+    });
   }
 };
 `,
-  "automations/telegram-claim-linking.workflow.js": `defineWorkflow(
-  { name: "telegram-claim-linking" },
-  async (event, step) => {
-    const automationEvent = event.payload.automationEvent;
-    const workflowInstanceId = event.payload.workflowInstanceId;
-    const chatId = automationEvent.payload.chatId;
-
-    const linkedUser = await step.do("lookup existing link", async () => {
-      return await automations.lookupBinding({
-        source: "telegram",
-        key: chatId,
-      });
-    });
-
-    const alreadyLinkedReply = await step.do(
-      "send already linked message if needed",
-      async () => {
-        if (!linkedUser?.value) {
-          return { sent: false };
-        }
-
-        await telegram.sendMessage({
-          chatId,
-          text: "This Telegram chat is already linked.",
-          parseMode: "Markdown",
-        });
-        return { sent: true };
-      },
-    );
-
-    if (alreadyLinkedReply.sent) {
-      return {
-        linked: true,
-        alreadyLinked: true,
-        userId: linkedUser.value,
-      };
-    }
-
-    const claim = await step.do("create identity claim", async () => {
-      const claim = await otp.createIdentityClaim({
-        source: "telegram",
-        externalActorId: chatId,
-      });
-
-      await automations.bindActor({
-        source: "telegram-claim-workflow",
-        key: claim.otpId,
-        value: workflowInstanceId,
-        description: "Telegram claim workflow for chat " + chatId,
-      });
-      await telegram.sendMessage({
-        chatId,
-        text: "Open this link to finish linking your Telegram account: " +
-          claim.url,
-        parseMode: "Markdown",
-      });
-      return claim;
-    });
-
-    const completed = await step.waitForEvent("identity-claim-completed", {
-      type: "identity-claim-completed",
-      timeout: "15 minutes",
-    });
-    const completedEvent = completed.payload;
-    const completedOtpId = completedEvent.payload.otpId;
-    const linkSource = completedEvent.payload.linkSource;
-    const externalActorId = completedEvent.payload.externalActorId;
-    const subjectUserId = completedEvent.subject.userId;
-
-    if (completedOtpId !== claim.otpId) {
-      return { linked: false, reason: "claim-mismatch" };
-    }
-
-    if (linkSource !== "telegram") {
-      return { linked: false, reason: "not-telegram" };
-    }
-
-    return await step.do("bind telegram actor", async () => {
-      try {
-        await automations.bindActor({
-          source: linkSource,
-          key: externalActorId,
-          value: subjectUserId,
-        });
-        await telegram.sendMessage({
-          chatId: externalActorId,
-          text: "Your Telegram chat is now linked.",
-          parseMode: "Markdown",
-        });
-        return { linked: true, userId: subjectUserId, otpId: claim.otpId };
-      } catch (error) {
-        await telegram.sendMessage({
-          chatId: externalActorId,
-          text: "We couldn't link your Telegram chat. Please try again.",
-          parseMode: "Markdown",
-        });
-        throw error;
-      }
-    });
   },
-);
-`,
-  "automations/telegram-delayed-test-reply.workflow.js": `defineWorkflow(
-  { name: "telegram-delayed-test-reply" },
-  async (event, step) => {
-    const automationEvent = event.payload.automationEvent;
-    const text = automationEvent.payload.text;
-    const chatId = automationEvent.payload.chatId;
+] as const;
 
-    if (text !== "/test") {
-      return { skipped: true, reason: "not-test-command" };
-    }
+export const STARTER_AUTOMATION_SCRIPT_PATHS = {
+  telegramClaimLinkingStart: STARTER_AUTOMATION_BINDINGS[0].script.path.slice(
+    STATIC_STARTER_ROOT_PREFIX.length,
+  ),
+  telegramClaimLinkingComplete: STARTER_AUTOMATION_BINDINGS[1].script.path.slice(
+    STATIC_STARTER_ROOT_PREFIX.length,
+  ),
+  telegramDelayedTestReply: STARTER_AUTOMATION_BINDINGS[2].script.path.slice(
+    STATIC_STARTER_ROOT_PREFIX.length,
+  ),
+  telegramPiSessionEnsure: STARTER_AUTOMATION_BINDINGS[3].script.path.slice(
+    STATIC_STARTER_ROOT_PREFIX.length,
+  ),
+} as const;
 
-    await step.sleep("wait 3 seconds", "3 seconds");
+const STARTER_AUTOMATION_MANIFEST = {
+  version: 1 as const,
+  bindings: STARTER_AUTOMATION_BINDINGS.map((b) => ({
+    id: b.id,
+    source: b.source,
+    eventType: b.eventType,
+    enabled: b.enabled,
+    script: b.script,
+  })),
+};
 
-    await step.do("send delayed test reply", async () => {
-      await telegram.sendMessage({
-        chatId,
-        text: "Delayed /test reply after 3 seconds.",
-        parseMode: "Markdown",
-      });
-    });
-
-    return { sent: true };
-  },
-);
-`,
-  "automations/telegram-pi-session.workflow.js": `defineWorkflow(
-  { name: "telegram-pi-session" },
-  async (event, step) => {
-    const automationEvent = event.payload.automationEvent;
-    const env = event.payload.env;
-    const defaultAgent = env.PI_DEFAULT_AGENT ?? "";
-    const text = automationEvent.payload.text ?? "";
-    const chatId = automationEvent.payload.chatId;
-    const externalActorId = automationEvent.actor.externalId;
-
-    const linkedBinding = await step.do("lookup linked user", async () => {
-      return await automations.lookupBinding({
-        source: "telegram",
-        key: externalActorId,
-      });
-    });
-    const linkedUser = linkedBinding?.value ?? "";
-
-    if (!linkedUser) {
-      return { skipped: true, reason: "telegram-chat-not-linked" };
-    }
-
-    if (!defaultAgent) {
-      return { skipped: true, reason: "missing-default-agent" };
-    }
-
-    const piSessionBinding = await step.do("lookup pi session", async () => {
-      return await automations.lookupBinding({
-        source: "telegram-pi-session",
-        key: linkedUser,
-      });
-    });
-
-    const reusableSession = await step.do(
-      "check existing pi session",
-      async () => {
-        const sessionId = piSessionBinding?.value ?? "";
-        if (!sessionId) {
-          return { reusable: false, sessionId: "" };
-        }
-
-        try {
-          const session = await pi.getSession({ sessionId });
-          const status = session.workflow?.status ?? session.status ?? "";
-          if (["terminated", "complete", "errored", ""].includes(status)) {
-            return { reusable: false, sessionId: "" };
-          }
-
-          return { reusable: true, sessionId };
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          const isMissingSession =
-            message.includes("Pi fragment returned 404:") &&
-            message.includes("Session ") &&
-            message.includes(" not found.");
-          if (!isMissingSession) {
-            throw error;
-          }
-          return { reusable: false, sessionId: "" };
-        }
-      },
-    );
-
-    const piSession = await step.do("ensure pi session", async () => {
-      if (reusableSession.reusable) {
-        return { created: false, sessionId: reusableSession.sessionId };
-      }
-
-      const session = await pi.createSession({
-        agent: defaultAgent,
-        name: "Telegram " + chatId,
-        tags: ["telegram", "auto-session"],
-        systemMessage:
-          "IMPORTANT:ALL non-tool call output will AUTOMATICALLY be " +
-          "forwarded to Telegram in Markdown parse mode.",
-      });
-
-      await automations.bindActor({
-        source: "telegram-pi-session",
-        key: linkedUser,
-        value: session.id,
-        description: "Pi session for Telegram chat " + externalActorId,
-      });
-
-      return { created: true, sessionId: session.id };
-    });
-
-    const commandReply = await step.do("reply to pi command if needed", async () => {
-      if (text !== "/pi") {
-        return { sent: false };
-      }
-
-      const prefix = piSession.created ? "Created Pi session: " : "Pi session: ";
-      await telegram.sendMessage({
-        chatId,
-        text: prefix + piSession.sessionId,
-        parseMode: "Markdown",
-      });
-      return { sent: true };
-    });
-
-    const assistantText = await step.do("run pi turn if needed", async () => {
-      if (commandReply.sent || !text) {
-        return "";
-      }
-
-      await telegram.sendChatAction({
-        chatId,
-        action: "typing",
-      });
-
-      const resp = await pi.runTurn({
-        sessionId: piSession.sessionId,
-        text,
-      });
-
-      return resp.assistantText;
-    });
-
-    await step.do("send pi response if needed", async () => {
-      if (!assistantText) {
-        return { sent: false };
-      }
-
-      await telegram.sendMessage({
-        chatId,
-        text: assistantText,
-        parseMode: "Markdown",
-      });
-      return { sent: true };
-    });
-
-    return { sessionId: piSession.sessionId };
-  },
-);
-`,
+export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
+  [STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH]: `${JSON.stringify(STARTER_AUTOMATION_MANIFEST, null, 2)}\n`,
+  ...Object.fromEntries(
+    STARTER_AUTOMATION_BINDINGS.map((b) => [
+      b.script.path.slice(STATIC_STARTER_ROOT_PREFIX.length),
+      b.content,
+    ]),
+  ),
 };
