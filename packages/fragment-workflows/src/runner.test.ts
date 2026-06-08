@@ -1231,6 +1231,92 @@ describe("Workflows Runner", () => {
     });
   });
 
+  test("retry route reopens an errored step and resumes from completed steps", async () => {
+    let stableRuns = 0;
+    let flakyRuns = 0;
+    const ManualRetryWorkflow = defineWorkflow(
+      { name: "manual-retry-workflow" },
+      async (_event, step) => {
+        const stable = await step.do("stable", () => {
+          stableRuns += 1;
+          return "stable";
+        });
+        const flaky = await step.do("flaky", () => {
+          flakyRuns += 1;
+          if (flakyRuns === 1) {
+            throw new Error("MANUAL_RETRY");
+          }
+          return "ok";
+        });
+        return { stable, flaky };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { MANUAL_RETRY: ManualRetryWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const instanceId = await harness.createInstance("MANUAL_RETRY", { id: "manual-retry-1" });
+    await harness.runUntilIdle({
+      workflowName: "manual-retry-workflow",
+      instanceId,
+      reason: "create",
+    });
+
+    await expect(harness.getStatus("MANUAL_RETRY", instanceId)).resolves.toMatchObject({
+      status: "errored",
+      error: { message: "MANUAL_RETRY" },
+    });
+    expect(stableRuns).toBe(1);
+    expect(flakyRuns).toBe(1);
+
+    const retryResponse = await harness.fragment.callRoute(
+      "POST",
+      "/:workflowName/instances/:instanceId/retry",
+      {
+        pathParams: { workflowName: "manual-retry-workflow", instanceId },
+        body: { stepKey: "do:flaky" },
+      },
+    );
+    if (retryResponse.type !== "json") {
+      throw new Error(`Expected retry route to return json, got ${retryResponse.type}`);
+    }
+    expect(retryResponse.data).toMatchObject({
+      accepted: true,
+      instance: { id: instanceId, details: { status: "waiting" } },
+      retry: { stepKey: "do:flaky", attempts: 1, maxAttempts: 2 },
+    });
+
+    await harness.runUntilIdle({
+      workflowName: "manual-retry-workflow",
+      instanceId,
+      reason: "retry",
+    });
+
+    await expect(harness.getStatus("MANUAL_RETRY", instanceId)).resolves.toMatchObject({
+      status: "complete",
+      output: { stable: "stable", flaky: "ok" },
+    });
+    expect(stableRuns).toBe(1);
+    expect(flakyRuns).toBe(2);
+
+    const steps = (await harness.getHistory("MANUAL_RETRY", instanceId)).steps;
+    expect(steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ stepKey: "do:stable", status: "completed", attempts: 1 }),
+        expect.objectContaining({
+          stepKey: "do:flaky",
+          status: "completed",
+          attempts: 2,
+          maxAttempts: 2,
+        }),
+      ]),
+    );
+  });
+
   test("pausing during an in-flight tick pauses on the next tick", async () => {
     // report: pausing mid-tick should not interrupt the current work but should take effect next tick.
     let runs = 0;

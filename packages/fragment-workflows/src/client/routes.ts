@@ -40,6 +40,17 @@ const sendEventSchema = z.object({
   payload: z.unknown().optional(),
 });
 
+const retryInstanceSchema = z.object({
+  stepKey: z.string().min(1).max(512).optional(),
+  delayMs: z
+    .number()
+    .int()
+    .min(0)
+    .max(30 * 24 * 60 * 60 * 1000)
+    .optional(),
+  reason: z.string().min(1).max(512).optional(),
+});
+
 const instanceStatusOutputSchema = z.object({
   status: instanceStatusSchema,
   error: z
@@ -133,6 +144,20 @@ const historyOutputSchema = z.object({
   emissions: z.array(historyEmissionSchema),
 });
 
+const retryInstanceOutputSchema = z.object({
+  accepted: z.literal(true),
+  instance: z.object({
+    id: z.string(),
+    details: instanceStatusOutputSchema,
+  }),
+  retry: z.object({
+    stepKey: z.string(),
+    attempts: z.number(),
+    maxAttempts: z.number(),
+    scheduledAt: z.date(),
+  }),
+});
+
 const stubHandler = async () => new Response();
 
 export const workflowsRoutesFactoryClient = defineRoutes().create(({ defineRoute }) => [
@@ -224,6 +249,19 @@ export const workflowsRoutesFactoryClient = defineRoutes().create(({ defineRoute
     path: "/:workflowName/instances/:instanceId/history",
     outputSchema: historyOutputSchema,
     errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
+    handler: stubHandler,
+  }),
+  defineRoute({
+    method: "POST",
+    path: "/:workflowName/instances/:instanceId/retry",
+    inputSchema: retryInstanceSchema,
+    outputSchema: retryInstanceOutputSchema,
+    errorCodes: [
+      "WORKFLOW_NOT_FOUND",
+      "INVALID_INSTANCE_ID",
+      "INSTANCE_NOT_FOUND",
+      "STEP_NOT_FOUND",
+    ],
     handler: stubHandler,
   }),
   defineRoute({

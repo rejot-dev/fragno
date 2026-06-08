@@ -86,6 +86,25 @@ export function createWorkflowsClients(fragnoConfig: FragnoPublicClientConfig = 
     useInstance: builder.createHook("/:workflowName/instances/:instanceId"),
     useCurrentStepEmissions: currentStepEmissions,
     useInstanceHistory: builder.createHook("/:workflowName/instances/:instanceId/history"),
+    useRetryInstance: builder.createMutator(
+      "POST",
+      "/:workflowName/instances/:instanceId/retry",
+      (invalidate, params) => {
+        const { workflowName, instanceId } = params.pathParams;
+        if (!workflowName || !instanceId) {
+          return;
+        }
+        invalidate("GET", "/:workflowName/instances/:instanceId", {
+          pathParams: { workflowName, instanceId },
+        });
+        invalidate("GET", "/:workflowName/instances", {
+          pathParams: { workflowName },
+        });
+        invalidate("GET", "/:workflowName/instances/:instanceId/history", {
+          pathParams: { workflowName, instanceId },
+        });
+      },
+    ),
     usePauseInstance: builder.createMutator(
       "POST",
       "/:workflowName/instances/:instanceId/pause",

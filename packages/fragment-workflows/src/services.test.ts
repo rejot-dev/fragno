@@ -353,6 +353,174 @@ describe("Workflows Fragment Services", () => {
     await drainDurableHooks(fragment);
   });
 
+  test("retryInstance should reopen an errored do step and enqueue retry", async () => {
+    const instanceRef = await (async () => {
+      const uow = db.createUnitOfWork("create-retry-instance").forSchema(workflowsSchema);
+      uow.create("workflow_instance", {
+        id: buildScopedInstanceRowId("demo-workflow", "retry-1"),
+        instanceId: "retry-1",
+        workflowName: "demo-workflow",
+        status: "errored",
+        params: {},
+        startedAt: new Date("2026-01-01T00:00:00.000Z"),
+        completedAt: new Date("2026-01-01T00:00:01.000Z"),
+        output: null,
+        errorName: "Error",
+        errorMessage: "boom",
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create retry instance");
+      }
+      const id = uow.getCreatedIds()[0];
+      if (!id) {
+        throw new Error("Missing retry instance id");
+      }
+      return id;
+    })();
+
+    await (async () => {
+      const uow = db.createUnitOfWork("create-retry-step").forSchema(workflowsSchema);
+      uow.create("workflow_step", {
+        instanceRef,
+        stepKey: "do:flaky",
+        name: "flaky",
+        type: "do",
+        status: "errored",
+        attempts: 1,
+        maxAttempts: 1,
+        timeoutMs: null,
+        nextRetryAt: null,
+        wakeAt: null,
+        waitEventType: null,
+        result: null,
+        errorName: "Error",
+        errorMessage: "boom",
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create retry step");
+      }
+    })();
+
+    const result = await runService<{
+      accepted: true;
+      instance: { id: string; details: { status: string } };
+      retry: { stepKey: string; attempts: number; maxAttempts: number; scheduledAt: Date };
+    }>(() =>
+      fragment.services.retryInstance("demo-workflow", "retry-1", {
+        stepKey: "do:flaky",
+        delayMs: 1_000,
+      }),
+    );
+
+    expect(result).toMatchObject({
+      accepted: true,
+      instance: { id: "retry-1", details: { status: "waiting" } },
+      retry: { stepKey: "do:flaky", attempts: 1, maxAttempts: 2 },
+    });
+    expect(result.retry.scheduledAt).toBeInstanceOf(Date);
+
+    const [instance] = (
+      await db
+        .createUnitOfWork("read-retry-instance")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    expect(instance).toMatchObject({
+      status: "waiting",
+      output: null,
+      errorName: null,
+      errorMessage: null,
+      completedAt: null,
+    });
+
+    const [step] = (
+      await db
+        .createUnitOfWork("read-retry-step")
+        .forSchema(workflowsSchema)
+        .find("workflow_step", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    expect(step).toMatchObject({
+      stepKey: "do:flaky",
+      status: "waiting",
+      attempts: 1,
+      maxAttempts: 2,
+      waitEventType: null,
+      wakeAt: null,
+    });
+    expect(step.nextRetryAt).toBeInstanceOf(Date);
+  });
+
+  test("retryInstance should accept non-do steps", async () => {
+    const instanceRef = await (async () => {
+      const uow = db.createUnitOfWork("create-wait-retry-instance").forSchema(workflowsSchema);
+      uow.create("workflow_instance", {
+        id: buildScopedInstanceRowId("demo-workflow", "retry-wait"),
+        instanceId: "retry-wait",
+        workflowName: "demo-workflow",
+        status: "waiting",
+        params: {},
+        startedAt: null,
+        completedAt: null,
+        output: null,
+        errorName: null,
+        errorMessage: null,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create wait retry instance");
+      }
+      const id = uow.getCreatedIds()[0];
+      if (!id) {
+        throw new Error("Missing wait retry instance id");
+      }
+      return id;
+    })();
+
+    await (async () => {
+      const uow = db.createUnitOfWork("create-wait-retry-step").forSchema(workflowsSchema);
+      uow.create("workflow_step", {
+        instanceRef,
+        stepKey: "waitForEvent:approval",
+        name: "approval",
+        type: "waitForEvent",
+        status: "waiting",
+        attempts: 0,
+        maxAttempts: 1,
+        timeoutMs: null,
+        nextRetryAt: null,
+        wakeAt: null,
+        waitEventType: "approval",
+        result: null,
+        errorName: null,
+        errorMessage: null,
+      });
+      const { success } = await uow.executeMutations();
+      if (!success) {
+        throw new Error("Failed to create wait retry step");
+      }
+    })();
+
+    const result = await runService<{
+      accepted: true;
+      instance: { id: string; details: { status: string } };
+      retry: { stepKey: string; attempts: number; maxAttempts: number; scheduledAt: Date };
+    }>(() =>
+      fragment.services.retryInstance("demo-workflow", "retry-wait", {
+        stepKey: "waitForEvent:approval",
+      }),
+    );
+
+    expect(result).toMatchObject({
+      accepted: true,
+      instance: { id: "retry-wait", details: { status: "waiting" } },
+      retry: { stepKey: "waitForEvent:approval", attempts: 0, maxAttempts: 1 },
+    });
+  });
+
   test("sendEvent should buffer and wake waiting instance", async () => {
     const created = await runService<{ id: string }>(() =>
       fragment.services.createInstance("demo-workflow", { id: "event-1" }),

@@ -59,6 +59,17 @@ const sendEventSchema = z.object({
   payload: z.unknown().optional(),
 });
 
+const retryInstanceSchema = z.object({
+  stepKey: z.string().min(1).max(512).optional(),
+  delayMs: z
+    .number()
+    .int()
+    .min(0)
+    .max(30 * 24 * 60 * 60 * 1000)
+    .optional(),
+  reason: z.string().min(1).max(512).optional(),
+});
+
 const instanceStatusOutputSchema = z.object({
   status: instanceStatusSchema,
   error: z
@@ -144,6 +155,20 @@ const historyEmissionSchema = z.object({
   actor: z.string(),
   payload: z.unknown().nullable(),
   createdAt: z.date(),
+});
+
+const retryInstanceOutputSchema = z.object({
+  accepted: z.literal(true),
+  instance: z.object({
+    id: z.string(),
+    details: instanceStatusOutputSchema,
+  }),
+  retry: z.object({
+    stepKey: z.string(),
+    attempts: z.number(),
+    maxAttempts: z.number(),
+    scheduledAt: z.date(),
+  }),
 });
 
 const LIVE_STEP_EMISSION_STREAM_TIMEOUT_MS = 60_000;
@@ -232,6 +257,10 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           { message: "Event id belongs to another instance", code: "EVENT_ID_CONFLICT" as Code },
           409,
         );
+      }
+
+      if (err.message === "STEP_NOT_FOUND") {
+        return error({ message: "Step not found", code: "STEP_NOT_FOUND" as Code }, 404);
       }
 
       if (isUniqueConstraintError(err)) {
@@ -722,6 +751,45 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
               events: result.events,
               emissions: result.emissions,
             });
+          } catch (err) {
+            return handleServiceError(err, errorResponder);
+          }
+        },
+      }),
+      defineRoute({
+        method: "POST",
+        path: "/:workflowName/instances/:instanceId/retry",
+        inputSchema: retryInstanceSchema,
+        outputSchema: retryInstanceOutputSchema,
+        errorCodes: [
+          "WORKFLOW_NOT_FOUND",
+          "INVALID_INSTANCE_ID",
+          "INSTANCE_NOT_FOUND",
+          "STEP_NOT_FOUND",
+        ],
+        handler: async function (context, { json, error }) {
+          const { pathParams, input } = context;
+          const errorResponder = error as ErrorResponder;
+          const workflowName = pathParams.workflowName;
+          const payload = await input.valid();
+
+          const instanceId = pathParams.instanceId;
+          const idError = assertIdentifier(instanceId, "INVALID_INSTANCE_ID", errorResponder);
+          if (idError) {
+            return idError;
+          }
+
+          try {
+            const result = await this.handlerTx()
+              .withServiceCalls(() => [
+                services.retryInstance(workflowName, instanceId, {
+                  stepKey: payload.stepKey,
+                  delayMs: payload.delayMs,
+                }),
+              ])
+              .transform(({ serviceResult: [result] }) => result)
+              .execute();
+            return json(result);
           } catch (err) {
             return handleServiceError(err, errorResponder);
           }

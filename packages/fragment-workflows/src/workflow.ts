@@ -160,12 +160,19 @@ export type WorkflowInstanceMetadata = {
   currentStep?: WorkflowInstanceCurrentStep;
 };
 
+export type WorkflowInstanceRetryOptions = {
+  stepKey?: string;
+  delayMs?: number;
+  reason?: string;
+};
+
 /** Handle for a workflow instance returned by the management API. */
 export interface WorkflowInstance<TOutput = unknown> {
   id: string;
   status(): Promise<InstanceStatusWithOutput<TOutput>>;
   pause(): Promise<void>;
   resume(): Promise<void>;
+  retry(options?: WorkflowInstanceRetryOptions): Promise<void>;
   terminate(): Promise<void>;
   sendEvent(options: { type: string; payload?: unknown }): Promise<void>;
 }

@@ -38,6 +38,7 @@ import type {
   InstanceStatusWithOutput,
   WorkflowDuration,
   WorkflowEnqueuedHookPayload,
+  WorkflowInstanceRetryOptions,
   WorkflowOutputFromEntry,
   WorkflowParamsFromEntry,
   WorkflowRegistryEntry,
@@ -231,6 +232,18 @@ export type WorkflowsTestHarness<
       instanceId: string,
     ): Promise<InstanceStatusWithOutput<WorkflowOutputFromEntry<TRegistry[K]>>>;
     (workflowNameOrKey: string, instanceId: string): Promise<InstanceStatus>;
+  };
+  retryInstance: {
+    <K extends keyof TRegistry & string>(
+      workflowNameOrKey: K,
+      instanceId: string,
+      options?: WorkflowInstanceRetryOptions,
+    ): Promise<InstanceStatusWithOutput<WorkflowOutputFromEntry<TRegistry[K]>>>;
+    (
+      workflowNameOrKey: string,
+      instanceId: string,
+      options?: WorkflowInstanceRetryOptions,
+    ): Promise<InstanceStatus>;
   };
   terminateInstance: {
     <K extends keyof TRegistry & string>(
@@ -709,6 +722,17 @@ export async function createWorkflowsTestHarness<
         getFragment().services.resumeInstance(workflowName, instanceId),
       );
     }) as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["resumeInstance"],
+    retryInstance: (async (
+      workflowNameOrKey: (keyof TRegistry & string) | string,
+      instanceId: string,
+      options?: WorkflowInstanceRetryOptions,
+    ) => {
+      const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
+      const result = await runWorkflowService<{ instance: { details: InstanceStatus } }>(() =>
+        getFragment().services.retryInstance(workflowName, instanceId, options),
+      );
+      return result.instance.details;
+    }) as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["retryInstance"],
     terminateInstance: (async (
       workflowNameOrKey: (keyof TRegistry & string) | string,
       instanceId: string,
