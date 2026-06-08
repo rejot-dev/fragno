@@ -3,10 +3,7 @@ import { z } from "zod";
 
 import type { TelegramFragmentConfig } from "@fragno-dev/telegram-fragment";
 
-import {
-  type DurableHookQueueOptions,
-  type DurableHookQueueResponse,
-} from "@/fragno/durable-hooks";
+import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import {
   buildTelegramAutomationEvent,
@@ -442,8 +439,8 @@ export class Telegram extends DurableObject<CloudflareEnv> {
     return { ...buildConfigResponse(stored), webhook: webhookResult };
   }
 
-  async getHookQueue(options?: DurableHookQueueOptions): Promise<DurableHookQueueResponse> {
-    return await this.#host.getHookQueue(options, ({ runtime }) => runtime);
+  getDurableHookRepository() {
+    return this.#host.getDurableHookRepository<DurableHookQueueOptions>(({ runtime }) => runtime);
   }
 
   async fetch(request: Request): Promise<Response> {

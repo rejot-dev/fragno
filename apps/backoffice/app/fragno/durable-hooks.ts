@@ -4,6 +4,8 @@ import {
   type DurableHookRecord,
   type DurableHookStatus,
 } from "@fragno-dev/db/durable-hooks";
+import type { FragnoId } from "@fragno-dev/db/schema";
+import { RpcTarget } from "cloudflare:workers";
 
 export type DurableHookQueueEntry = {
   id: string;
@@ -32,6 +34,13 @@ export type DurableHookPayload = Rpc.Serializable<unknown>;
 export type DurableHookQueueOptions = {
   cursor?: string;
   pageSize?: number;
+};
+
+export type DurableHookRepository<
+  TOptions extends DurableHookQueueOptions = DurableHookQueueOptions,
+> = {
+  getHookQueue(options?: TOptions): Promise<DurableHookQueueResponse>;
+  getHook(hookId: string, options?: TOptions): Promise<DurableHookQueueEntry | null>;
 };
 
 const DEFAULT_PAGE_SIZE = 50;
@@ -102,3 +111,80 @@ export const loadDurableHookQueue = async (
     hasNextPage: page.hasNextPage,
   };
 };
+
+export const loadDurableHook = async (
+  fragment: AnyFragnoInstantiatedDatabaseFragment,
+  hookId: string,
+): Promise<DurableHookQueueEntry | null> => {
+  const { hookService, hooksEnabled, namespace } = getDurableHooksService(fragment);
+
+  if (!hooksEnabled) {
+    return null;
+  }
+
+  const record = await fragment.inContext(async function () {
+    return await this.handlerTx()
+      .withServiceCalls(() => [hookService.getHookById(hookId as unknown as FragnoId)] as const)
+      .transform(({ serviceResult: [result] }) => result)
+      .execute();
+  });
+
+  if (!record || record.namespace !== namespace) {
+    return null;
+  }
+
+  return serializeHookRecord(record);
+};
+
+export class DurableHookRepositoryRpcTarget<
+  TOptions extends DurableHookQueueOptions = DurableHookQueueOptions,
+>
+  extends RpcTarget
+  implements DurableHookRepository<TOptions>
+{
+  readonly #repository: DurableHookRepository<TOptions>;
+
+  constructor(repository: DurableHookRepository<TOptions>) {
+    super();
+    this.#repository = repository;
+  }
+
+  async getHookQueue(options?: TOptions): Promise<DurableHookQueueResponse> {
+    return await this.#repository.getHookQueue(options);
+  }
+
+  async getHook(hookId: string, options?: TOptions): Promise<DurableHookQueueEntry | null> {
+    return await this.#repository.getHook(hookId, options);
+  }
+}
+
+export const createDurableHookRepository = <
+  TOptions extends DurableHookQueueOptions = DurableHookQueueOptions,
+>(
+  fragment: (options: TOptions | undefined) => AnyFragnoInstantiatedDatabaseFragment,
+): DurableHookRepository<TOptions> =>
+  new DurableHookRepositoryRpcTarget({
+    getHookQueue: async (options) => await loadDurableHookQueue(fragment(options), options),
+    getHook: async (hookId, options) => await loadDurableHook(fragment(options), hookId),
+  });
+
+export const createDurableHookRepositoryRpcTarget = <
+  TOptions extends DurableHookQueueOptions = DurableHookQueueOptions,
+>(
+  repository: DurableHookRepository<TOptions>,
+): DurableHookRepositoryRpcTarget<TOptions> => new DurableHookRepositoryRpcTarget(repository);
+
+export const createEmptyDurableHookRepository = <
+  TOptions extends DurableHookQueueOptions = DurableHookQueueOptions,
+>(): DurableHookRepository<TOptions> =>
+  createDurableHookRepositoryRpcTarget({
+    getHookQueue: async () => ({
+      configured: false,
+      hooksEnabled: false,
+      namespace: null,
+      items: [],
+      cursor: undefined,
+      hasNextPage: false,
+    }),
+    getHook: async () => null,
+  });

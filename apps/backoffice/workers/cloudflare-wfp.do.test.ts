@@ -4,13 +4,11 @@ const {
   migrateMock,
   createDurableHooksProcessorMock,
   createCloudflareServerMock,
-  loadDurableHookQueueMock,
   resolveCloudflareDispatchNamespaceNameMock,
 } = vi.hoisted(() => ({
   migrateMock: vi.fn(async () => undefined),
   createDurableHooksProcessorMock: vi.fn(),
   createCloudflareServerMock: vi.fn(),
-  loadDurableHookQueueMock: vi.fn(),
   resolveCloudflareDispatchNamespaceNameMock: vi.fn(() => "staging"),
 }));
 
@@ -19,7 +17,9 @@ vi.mock("cloudflare:workers", () => {
     constructor(_state: unknown, _env: unknown) {}
   }
 
-  return { DurableObject: MockDurableObject };
+  class MockRpcTarget {}
+
+  return { DurableObject: MockDurableObject, RpcTarget: MockRpcTarget };
 });
 
 vi.mock("@fragno-dev/cloudflare-fragment", () => ({
@@ -36,10 +36,6 @@ vi.mock("@fragno-dev/db/dispatchers/cloudflare-do", () => ({
 
 vi.mock("@/fragno/cloudflare", () => ({
   createCloudflareServer: createCloudflareServerMock,
-}));
-
-vi.mock("@/fragno/durable-hooks", () => ({
-  loadDurableHookQueue: loadDurableHookQueueMock,
 }));
 
 import { CloudflareWorkers } from "./cloudflare-wfp.do";
@@ -75,7 +71,6 @@ describe("CloudflareWorkers Durable Object", () => {
     migrateMock.mockClear();
     createDurableHooksProcessorMock.mockReset();
     createCloudflareServerMock.mockReset();
-    loadDurableHookQueueMock.mockReset();
     resolveCloudflareDispatchNamespaceNameMock.mockClear();
   });
 
@@ -83,12 +78,16 @@ describe("CloudflareWorkers Durable Object", () => {
     const state = createState();
     const workers = new CloudflareWorkers(state, {} as CloudflareEnv);
 
-    await expect(workers.getHookQueue({ orgId: "  acme  " })).resolves.toEqual(EMPTY_QUEUE);
+    await expect(
+      workers.getDurableHookRepository().getHookQueue({ orgId: "  acme  " }),
+    ).resolves.toEqual(EMPTY_QUEUE);
 
     expect(state.storage.put).toHaveBeenCalledTimes(1);
     expect(state.storage.put).toHaveBeenCalledWith(CONFIG_KEY, { orgId: "acme" });
 
-    await expect(workers.getHookQueue({ orgId: "other-org" })).rejects.toThrowError(
+    await expect(
+      workers.getDurableHookRepository().getHookQueue({ orgId: "other-org" }),
+    ).rejects.toThrowError(
       'Cloudflare Workers Durable Object is already bound to organisation "acme".',
     );
 
@@ -99,7 +98,9 @@ describe("CloudflareWorkers Durable Object", () => {
     const state = createState({ [CONFIG_KEY]: { orgId: "acme" } });
     const workers = new CloudflareWorkers(state, {} as CloudflareEnv);
 
-    await expect(workers.getHookQueue({ orgId: " acme " })).resolves.toEqual(EMPTY_QUEUE);
+    await expect(
+      workers.getDurableHookRepository().getHookQueue({ orgId: " acme " }),
+    ).resolves.toEqual(EMPTY_QUEUE);
 
     expect(state.storage.get).toHaveBeenCalledWith(CONFIG_KEY);
     expect(state.storage.put).not.toHaveBeenCalled();
@@ -109,7 +110,9 @@ describe("CloudflareWorkers Durable Object", () => {
     const state = createState({ [CONFIG_KEY]: { orgId: "acme" } });
     const workers = new CloudflareWorkers(state, {} as CloudflareEnv);
 
-    await expect(workers.getHookQueue({ orgId: "other-org" })).rejects.toThrowError(
+    await expect(
+      workers.getDurableHookRepository().getHookQueue({ orgId: "other-org" }),
+    ).rejects.toThrowError(
       'Cloudflare Workers Durable Object is already bound to organisation "acme".',
     );
 

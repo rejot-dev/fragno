@@ -90,55 +90,69 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   try {
     const queueData = await (async (): Promise<DurableHookQueueResponse> => {
       switch (fragment) {
-        case "cloudflare":
-          return await getCloudflareWorkersDurableObject(context, params.orgId).getHookQueue({
-            orgId: params.orgId,
-            cursor,
-            pageSize,
-          });
-        case "telegram":
-          return await getTelegramDurableObject(context, params.orgId).getHookQueue({
-            cursor,
-            pageSize,
-          });
-        case "otp":
-          return await getOtpDurableObject(context, params.orgId).getHookQueue({
-            cursor,
-            pageSize,
-          });
-        case "resend":
-          return await getResendDurableObject(context, params.orgId).getHookQueue({
-            cursor,
-            pageSize,
-          });
-        case "github":
-          return await getGitHubDurableObject(context, params.orgId).getHookQueue({
-            cursor,
-            pageSize,
-          });
-        case "upload":
-          return await getUploadDurableObject(context, params.orgId).getHookQueue({
-            cursor,
-            pageSize,
-          });
-        case "automations":
-          return await getAutomationsDurableObject(context, params.orgId).getHookQueue({
-            cursor,
-            pageSize,
-            fragment: "automation",
-          });
-        case "pi":
-          return await getPiDurableObject(context, params.orgId).getHookQueue({
-            cursor,
-            pageSize,
-            fragment: "pi",
-          });
-        case "pi-workflows":
-          return await getPiDurableObject(context, params.orgId).getHookQueue({
-            cursor,
-            pageSize,
-            fragment: "workflows",
-          });
+        case "cloudflare": {
+          const repository = await getCloudflareWorkersDurableObject(
+            context,
+            params.orgId,
+          ).getDurableHookRepository();
+          return await repository.getHookQueue({ orgId: params.orgId, cursor, pageSize });
+        }
+        case "telegram": {
+          const repository = await getTelegramDurableObject(
+            context,
+            params.orgId,
+          ).getDurableHookRepository();
+          return await repository.getHookQueue({ cursor, pageSize });
+        }
+        case "otp": {
+          const repository = await getOtpDurableObject(
+            context,
+            params.orgId,
+          ).getDurableHookRepository();
+          return await repository.getHookQueue({ cursor, pageSize });
+        }
+        case "resend": {
+          const repository = await getResendDurableObject(
+            context,
+            params.orgId,
+          ).getDurableHookRepository();
+          return await repository.getHookQueue({ cursor, pageSize });
+        }
+        case "github": {
+          const repository = await getGitHubDurableObject(
+            context,
+            params.orgId,
+          ).getDurableHookRepository();
+          return await repository.getHookQueue({ cursor, pageSize });
+        }
+        case "upload": {
+          const repository = await getUploadDurableObject(
+            context,
+            params.orgId,
+          ).getDurableHookRepository();
+          return await repository.getHookQueue({ cursor, pageSize });
+        }
+        case "automations": {
+          const repository = await getAutomationsDurableObject(
+            context,
+            params.orgId,
+          ).getDurableHookRepository("automation");
+          return await repository.getHookQueue({ cursor, pageSize });
+        }
+        case "pi": {
+          const repository = await getPiDurableObject(
+            context,
+            params.orgId,
+          ).getDurableHookRepository("pi");
+          return await repository.getHookQueue({ cursor, pageSize });
+        }
+        case "pi-workflows": {
+          const repository = await getPiDurableObject(
+            context,
+            params.orgId,
+          ).getDurableHookRepository("workflows");
+          return await repository.getHookQueue({ cursor, pageSize });
+        }
       }
     })();
 

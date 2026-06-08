@@ -44,10 +44,50 @@ export type WorkflowSendEventArgs = {
   payload?: unknown;
 };
 
+export type WorkflowListResult = { workflows: Array<{ name: string }> };
+
+export type WorkflowListInstancesArgs = {
+  workflowName: string;
+  status?: WorkflowInstanceStatus["status"];
+  remoteWorkflowName?: string;
+  pageSize?: number;
+  cursor?: string;
+};
+
+export type WorkflowInstanceSummary = {
+  id: string;
+  details: WorkflowInstanceStatus;
+  createdAt: string | Date;
+};
+
+export type WorkflowListInstancesResult = {
+  instances: WorkflowInstanceSummary[];
+  nextCursor?: string;
+  hasNextPage: boolean;
+};
+
+export type WorkflowGetInstanceArgs = WorkflowGetStatusArgs;
+
+export type WorkflowInstanceDetails = {
+  id: string;
+  details: WorkflowInstanceStatus;
+  meta: Record<string, unknown>;
+};
+
+export type WorkflowHistory = {
+  steps: unknown[];
+  events: unknown[];
+  emissions: unknown[];
+};
+
 export type AutomationWorkflowRuntime = {
   createInstance: (input: WorkflowCreateInstanceArgs) => Promise<WorkflowCreateInstanceResult>;
   getStatus: (input: WorkflowGetStatusArgs) => Promise<WorkflowInstanceStatus>;
   sendEvent: (input: WorkflowSendEventArgs) => Promise<unknown>;
+  listWorkflows?: () => Promise<WorkflowListResult>;
+  listInstances?: (input: WorkflowListInstancesArgs) => Promise<WorkflowListInstancesResult>;
+  getInstance?: (input: WorkflowGetInstanceArgs) => Promise<WorkflowInstanceDetails>;
+  getHistory?: (input: WorkflowGetInstanceArgs) => Promise<WorkflowHistory>;
 };
 
 export type AutomationWorkflowToolContext = BackofficeToolContext<{
@@ -67,6 +107,34 @@ const workflowCreateInstanceResultSchema = z.object({
   instanceId: nonEmptyString,
 });
 
+const workflowListResultSchema = z.object({
+  workflows: z.array(z.object({ name: nonEmptyString })),
+});
+
+const workflowListInstancesResultSchema = z.object({
+  instances: z.array(
+    z.object({
+      id: nonEmptyString,
+      details: workflowInstanceStatusSchema,
+      createdAt: z.union([z.string(), z.date()]),
+    }),
+  ),
+  nextCursor: z.string().optional(),
+  hasNextPage: z.boolean(),
+});
+
+const workflowInstanceDetailsSchema = z.object({
+  id: nonEmptyString,
+  details: workflowInstanceStatusSchema,
+  meta: z.record(z.string(), z.unknown()),
+});
+
+const workflowHistorySchema = z.object({
+  steps: z.array(z.unknown()),
+  events: z.array(z.unknown()),
+  emissions: z.array(z.unknown()),
+});
+
 const defineAutomationWorkflowTool = <
   TInputSchema extends z.ZodType,
   TOutputSchema extends z.ZodType,
@@ -81,6 +149,19 @@ const getAutomationWorkflowRuntime = (
     throw new Error("Automation workflow runtime is not available in this execution context");
   }
   return runtime;
+};
+
+const getWorkflowRuntimeMethod = <TMethod extends keyof AutomationWorkflowRuntime>(
+  runtime: AutomationWorkflowRuntime,
+  method: TMethod,
+): NonNullable<AutomationWorkflowRuntime[TMethod]> => {
+  const fn = runtime[method];
+  if (!fn) {
+    throw new Error(
+      `Workflow runtime method ${String(method)} is not available in this execution context`,
+    );
+  }
+  return fn as NonNullable<AutomationWorkflowRuntime[TMethod]>;
 };
 
 const parseWorkflowCreateInstanceArgs = (args: string[]): WorkflowCreateInstanceArgs => {
@@ -101,6 +182,66 @@ const parseWorkflowGetStatusArgs = (args: string[]): WorkflowGetStatusArgs => {
     workflowName: readStringOption(parsed, "workflow-name", true)!,
     instanceId: readStringOption(parsed, "instance-id", true)!,
   };
+};
+
+const readPageSizeOption = (parsed: ReturnType<typeof parseCliTokens>) => {
+  const value = readStringOption(parsed, "page-size");
+  if (!value) {
+    return undefined;
+  }
+  if (!/^\d+$/.test(value)) {
+    throw new Error("--page-size must be a positive integer");
+  }
+  const parsedValue = Number(value);
+  if (!Number.isSafeInteger(parsedValue) || parsedValue <= 0) {
+    throw new Error("--page-size must be a positive integer");
+  }
+  return parsedValue;
+};
+
+const parseWorkflowListInstancesArgs = (args: string[]): WorkflowListInstancesArgs => {
+  const parsed = parseCliTokens(args);
+  assertNoPositionals(parsed, "workflow.instances.list");
+  return {
+    workflowName: readStringOption(parsed, "workflow-name", true)!,
+    status: readStringOption(parsed, "status") as WorkflowInstanceStatus["status"] | undefined,
+    remoteWorkflowName: readStringOption(parsed, "remote-workflow-name"),
+    pageSize: readPageSizeOption(parsed),
+    cursor: readStringOption(parsed, "cursor"),
+  };
+};
+
+const parseWorkflowGetInstanceArgs =
+  (command: string) =>
+  (args: string[]): WorkflowGetInstanceArgs => {
+    const parsed = parseCliTokens(args);
+    assertNoPositionals(parsed, command);
+    return {
+      workflowName: readStringOption(parsed, "workflow-name", true)!,
+      instanceId: readStringOption(parsed, "instance-id", true)!,
+    };
+  };
+
+const formatWorkflowStatusSummary = (status: WorkflowInstanceStatus) =>
+  status.error ? `${status.status} (${status.error.name}: ${status.error.message})` : status.status;
+
+const formatWorkflowListText = (result: WorkflowListResult) => {
+  const lines = result.workflows.map((workflow) => workflow.name);
+  return `${lines.length ? lines.join("\n") : "(no workflows)"}\n`;
+};
+
+const formatWorkflowInstancesText = (result: WorkflowListInstancesResult) => {
+  const lines = result.instances.map((instance) =>
+    [
+      instance.id,
+      formatWorkflowStatusSummary(instance.details),
+      new Date(instance.createdAt).toISOString(),
+    ].join("\t"),
+  );
+  if (result.hasNextPage && result.nextCursor) {
+    lines.push(`next cursor: ${result.nextCursor}`);
+  }
+  return `${lines.length ? lines.join("\n") : "(no instances)"}\n`;
 };
 
 const parseWorkflowSendEventArgs = (args: string[]): WorkflowSendEventArgs => {
@@ -168,7 +309,10 @@ const workflowCreateInstanceTool = defineAutomationWorkflowTool({
         ],
       },
       parse: parseWorkflowCreateInstanceArgs,
-      format: (result) => ({ data: result }),
+      format: (result, options) =>
+        options.format === "json"
+          ? { data: result }
+          : { stdout: `${result.workflowName}\t${result.instanceId}\n` },
     },
   },
 });
@@ -213,7 +357,10 @@ const workflowGetStatusTool = defineAutomationWorkflowTool({
         ],
       },
       parse: parseWorkflowGetStatusArgs,
-      format: (status) => ({ data: status }),
+      format: (status, options) =>
+        options.format === "json"
+          ? { data: status }
+          : { stdout: `${formatWorkflowStatusSummary(status)}\n` },
     },
   },
 });
@@ -272,7 +419,198 @@ const workflowSendEventTool = defineAutomationWorkflowTool({
         ],
       },
       parse: parseWorkflowSendEventArgs,
-      format: (result) => ({ data: result }),
+      format: (result, options) =>
+        options.format === "json" ? { data: result } : { stdout: "event sent\n" },
+    },
+  },
+});
+
+const workflowListTool = defineAutomationWorkflowTool({
+  id: "workflow.list",
+  namespace: "workflow",
+  name: "listWorkflows",
+  description: "List registered durable workflows.",
+  inputSchema: z.object({}),
+  outputSchema: workflowListResultSchema,
+  execute: async (_input, context) => {
+    const runtime = getAutomationWorkflowRuntime(context.runtimes.workflow);
+    return await getWorkflowRuntimeMethod(runtime, "listWorkflows")();
+  },
+  adapters: {
+    bash: {
+      command: "workflow.list",
+      help: {
+        summary: "workflow.list lists registered durable workflows.",
+        options: [],
+        examples: ["workflow.list --format json"],
+      },
+      parse: (args) => {
+        const parsed = parseCliTokens(args);
+        assertNoPositionals(parsed, "workflow.list");
+        return {};
+      },
+      format: (result, options) =>
+        options.format === "json" ? { data: result } : { stdout: formatWorkflowListText(result) },
+    },
+  },
+});
+
+const workflowListInstancesTool = defineAutomationWorkflowTool({
+  id: "workflow.instances.list",
+  namespace: "workflow",
+  name: "listInstances",
+  description: "List durable workflow instances.",
+  inputSchema: z.object({
+    workflowName: nonEmptyString,
+    status: workflowInstanceStatusSchema.shape.status.optional(),
+    remoteWorkflowName: nonEmptyString.optional(),
+    pageSize: z.number().int().positive().optional(),
+    cursor: nonEmptyString.optional(),
+  }),
+  outputSchema: workflowListInstancesResultSchema,
+  execute: async (input, context) => {
+    const runtime = getAutomationWorkflowRuntime(context.runtimes.workflow);
+    return await getWorkflowRuntimeMethod(runtime, "listInstances")(input);
+  },
+  adapters: {
+    bash: {
+      command: "workflow.instances.list",
+      help: {
+        summary: "workflow.instances.list lists instances for a durable workflow.",
+        options: [
+          {
+            name: "workflow-name",
+            required: true,
+            valueRequired: true,
+            valueName: "name",
+            description: "Registered workflow name.",
+          },
+          {
+            name: "status",
+            valueRequired: true,
+            valueName: "status",
+            description: "Optional status filter.",
+          },
+          {
+            name: "remote-workflow-name",
+            valueRequired: true,
+            valueName: "name",
+            description: "Optional remote workflow name filter.",
+          },
+          {
+            name: "page-size",
+            valueRequired: true,
+            valueName: "number",
+            description: "Optional page size.",
+          },
+          {
+            name: "cursor",
+            valueRequired: true,
+            valueName: "cursor",
+            description: "Optional pagination cursor.",
+          },
+        ],
+        examples: [
+          "workflow.instances.list --workflow-name automation-codemode-script --format json",
+        ],
+      },
+      parse: parseWorkflowListInstancesArgs,
+      format: (result, options) =>
+        options.format === "json"
+          ? { data: result }
+          : { stdout: formatWorkflowInstancesText(result) },
+    },
+  },
+});
+
+const workflowGetInstanceTool = defineAutomationWorkflowTool({
+  id: "workflow.instances.get",
+  namespace: "workflow",
+  name: "getInstance",
+  description: "Get durable workflow instance details.",
+  inputSchema: z.object({ workflowName: nonEmptyString, instanceId: nonEmptyString }),
+  outputSchema: workflowInstanceDetailsSchema,
+  execute: async (input, context) => {
+    const runtime = getAutomationWorkflowRuntime(context.runtimes.workflow);
+    return await getWorkflowRuntimeMethod(runtime, "getInstance")(input);
+  },
+  adapters: {
+    bash: {
+      command: "workflow.instances.get",
+      help: {
+        summary: "workflow.instances.get gets durable workflow instance details.",
+        options: [
+          {
+            name: "workflow-name",
+            required: true,
+            valueRequired: true,
+            valueName: "name",
+            description: "Registered workflow name.",
+          },
+          {
+            name: "instance-id",
+            required: true,
+            valueRequired: true,
+            valueName: "id",
+            description: "Workflow instance id.",
+          },
+        ],
+        examples: [
+          "workflow.instances.get --workflow-name automation-codemode-script --instance-id run-1 --format json",
+        ],
+      },
+      parse: parseWorkflowGetInstanceArgs("workflow.instances.get"),
+      format: (result, options) =>
+        options.format === "json"
+          ? { data: result }
+          : { stdout: `${result.id}\t${formatWorkflowStatusSummary(result.details)}\n` },
+    },
+  },
+});
+
+const workflowHistoryTool = defineAutomationWorkflowTool({
+  id: "workflow.instances.history",
+  namespace: "workflow",
+  name: "getHistory",
+  description: "Get durable workflow step, event, and emission history.",
+  inputSchema: z.object({ workflowName: nonEmptyString, instanceId: nonEmptyString }),
+  outputSchema: workflowHistorySchema,
+  execute: async (input, context) => {
+    const runtime = getAutomationWorkflowRuntime(context.runtimes.workflow);
+    return await getWorkflowRuntimeMethod(runtime, "getHistory")(input);
+  },
+  adapters: {
+    bash: {
+      command: "workflow.instances.history",
+      help: {
+        summary: "workflow.instances.history gets durable workflow history.",
+        options: [
+          {
+            name: "workflow-name",
+            required: true,
+            valueRequired: true,
+            valueName: "name",
+            description: "Registered workflow name.",
+          },
+          {
+            name: "instance-id",
+            required: true,
+            valueRequired: true,
+            valueName: "id",
+            description: "Workflow instance id.",
+          },
+        ],
+        examples: [
+          "workflow.instances.history --workflow-name automation-codemode-script --instance-id run-1 --format json",
+        ],
+      },
+      parse: parseWorkflowGetInstanceArgs("workflow.instances.history"),
+      format: (result, options) =>
+        options.format === "json"
+          ? { data: result }
+          : {
+              stdout: `steps=${result.steps.length}\tevents=${result.events.length}\temissions=${result.emissions.length}\n`,
+            },
     },
   },
 });
@@ -281,6 +619,10 @@ export const automationWorkflowRuntimeTools = [
   workflowCreateInstanceTool,
   workflowGetStatusTool,
   workflowSendEventTool,
+  workflowListTool,
+  workflowListInstancesTool,
+  workflowGetInstanceTool,
+  workflowHistoryTool,
 ] as const;
 
 export const automationWorkflowToolFamily = defineBackofficeRuntimeToolFamily({

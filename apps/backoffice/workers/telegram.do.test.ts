@@ -5,6 +5,7 @@ const {
   createDurableHooksProcessorMock,
   createTelegramServerMock,
   loadDurableHookQueueMock,
+  loadDurableHookMock,
   handlerMock,
   dispatcherAlarmMock,
 } = vi.hoisted(() => ({
@@ -12,6 +13,7 @@ const {
   createDurableHooksProcessorMock: vi.fn(),
   createTelegramServerMock: vi.fn(),
   loadDurableHookQueueMock: vi.fn(),
+  loadDurableHookMock: vi.fn(),
   handlerMock: vi.fn(async () => new Response("ok", { status: 200 })),
   dispatcherAlarmMock: vi.fn(async () => undefined),
 }));
@@ -38,6 +40,12 @@ vi.mock("@/fragno/telegram", () => ({
 
 vi.mock("@/fragno/durable-hooks", () => ({
   loadDurableHookQueue: loadDurableHookQueueMock,
+  loadDurableHook: loadDurableHookMock,
+  createDurableHookRepository: (selectFragment: (options: unknown) => unknown) => ({
+    getHookQueue: (options: unknown) => loadDurableHookQueueMock(selectFragment(options), options),
+    getHook: (hookId: string, options: unknown) =>
+      loadDurableHookMock(selectFragment(options), hookId),
+  }),
 }));
 
 import { Telegram } from "./telegram.do";
@@ -79,6 +87,7 @@ describe("Telegram Durable Object", () => {
     createDurableHooksProcessorMock.mockReset();
     createTelegramServerMock.mockReset();
     loadDurableHookQueueMock.mockReset();
+    loadDurableHookMock.mockReset();
     handlerMock.mockReset();
     dispatcherAlarmMock.mockReset();
 

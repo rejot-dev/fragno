@@ -7,11 +7,7 @@ import { DurableObject } from "cloudflare:workers";
 import { migrate } from "@fragno-dev/db";
 
 import { createAuthServer, type AuthFragment } from "@/fragno/auth/auth";
-import {
-  loadDurableHookQueue,
-  type DurableHookQueueOptions,
-  type DurableHookQueueResponse,
-} from "@/fragno/durable-hooks";
+import { createDurableHookRepository, type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 
 const resolveAuthBaseUrl = (request: Request): string => {
   const requestUrl = new URL(request.url);
@@ -100,9 +96,8 @@ export class Auth extends DurableObject<CloudflareEnv> {
     }
   }
 
-  async getHookQueue(options?: DurableHookQueueOptions): Promise<DurableHookQueueResponse> {
-    const fragment = this.#ensureFragment();
-    return await loadDurableHookQueue(fragment, options);
+  getDurableHookRepository() {
+    return createDurableHookRepository<DurableHookQueueOptions>(() => this.#ensureFragment());
   }
 
   async fetch(request: Request): Promise<Response> {

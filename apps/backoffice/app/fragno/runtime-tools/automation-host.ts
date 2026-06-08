@@ -8,6 +8,7 @@ import {
   type AutomationScriptEngine,
 } from "@/fragno/automation/catalog";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
+import { createRouteBackedDurableHooksRuntime } from "@/fragno/automation/durable-hooks-route-runtime";
 import { createAutomationExecutionFileSystem } from "@/fragno/automation/engine/execution-file-system";
 import {
   createAutomationRunResult,
@@ -44,6 +45,9 @@ export const createRouteBackedInteractiveBashContext = ({
   },
   workflow: {
     runtime: createRouteBackedAutomationWorkflowRuntime({ env, orgId }),
+  },
+  durableHooks: {
+    runtime: createRouteBackedDurableHooksRuntime({ env, orgId }),
   },
   otp: {
     runtime: createOtpRuntime({ env, orgId }),
@@ -223,6 +227,8 @@ const createInteractiveScriptRunContext = ({
         runtime: parentContext.automations.runtime,
       }
     : null,
+  workflow: parentContext.workflow,
+  durableHooks: parentContext.durableHooks,
   otp: parentContext.otp,
   pi: parentContext.pi,
   reson8: parentContext.reson8,

@@ -25,7 +25,7 @@ export function DashboardTerminalPanel({
   });
 
   return (
-    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+    <div className="min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-2">
           <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
@@ -43,10 +43,10 @@ export function DashboardTerminalPanel({
 
       <div
         ref={terminal.terminalRef}
-        className="backoffice-scroll mt-4 max-h-[28rem] overflow-auto rounded border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 font-mono text-xs leading-6 text-[var(--bo-fg)]"
+        className="backoffice-scroll mt-4 max-h-[28rem] max-w-full min-w-0 overflow-auto rounded border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 font-mono text-xs leading-6 text-[var(--bo-fg)]"
       >
         {terminal.terminalHistory.map((entry) => (
-          <div key={entry.id} className="mb-4 last:mb-0">
+          <div key={entry.id} className="mb-4 w-max min-w-full last:mb-0">
             <p className="text-[var(--bo-muted-2)]">
               [{new Date(entry.timestamp).toLocaleTimeString()}]
             </p>
@@ -55,9 +55,7 @@ export function DashboardTerminalPanel({
               <span className="text-[var(--bo-muted)]"> $ </span>
               <span className="text-[var(--bo-fg)]">{entry.command || "(system)"}</span>
             </p>
-            <pre
-              className={`whitespace-pre-wrap ${entry.ok ? "text-[var(--bo-fg)]" : "text-red-400"}`}
-            >
+            <pre className={`whitespace-pre ${entry.ok ? "text-[var(--bo-fg)]" : "text-red-400"}`}>
               {entry.output}
             </pre>
             <p className="mt-1 text-[10px] text-[var(--bo-muted-2)] uppercase">

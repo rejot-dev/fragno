@@ -4,8 +4,8 @@ import { z } from "zod";
 import type { MasterFileSystem } from "@/files";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import {
+  createDurableHookRepositoryRpcTarget,
   type DurableHookQueueOptions,
-  type DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
 import {
   createPiBashCommandContext,
@@ -29,10 +29,10 @@ import {
   type BackofficeFragmentDurableObject,
 } from "./lib/backoffice-fragment-durable-object";
 
-type PiHookQueueFragment = "pi" | "workflows";
+type PiHookFragment = "pi" | "workflows";
 
 type PiHookQueueOptions = DurableHookQueueOptions & {
-  fragment?: PiHookQueueFragment;
+  fragment?: PiHookFragment;
 };
 
 const apiKeySchema = z
@@ -301,11 +301,21 @@ export class Pi extends DurableObject<CloudflareEnv> {
     return buildConfigState(stored);
   }
 
-  async getHookQueue(options?: PiHookQueueOptions): Promise<DurableHookQueueResponse> {
-    const parsedOptions = hookQueueOptionsSchema.parse(options) ?? {};
-    return await this.#host.getHookQueue(parsedOptions, ({ runtime }, queueOptions) =>
-      queueOptions?.fragment === "workflows" ? runtime.workflowsFragment : runtime.piFragment,
+  getDurableHookRepository(fragment?: PiHookFragment) {
+    const repository = this.#host.getDurableHookRepository<PiHookQueueOptions>(
+      ({ runtime }, queueOptions) =>
+        queueOptions?.fragment === "workflows" ? runtime.workflowsFragment : runtime.piFragment,
     );
+
+    const withFragment = (options?: PiHookQueueOptions) =>
+      hookQueueOptionsSchema.parse({ ...options, fragment: options?.fragment ?? fragment }) ?? {};
+
+    return createDurableHookRepositoryRpcTarget({
+      getHookQueue: async (options?: PiHookQueueOptions) =>
+        await repository.getHookQueue(withFragment(options)),
+      getHook: async (hookId: string, options?: PiHookQueueOptions) =>
+        await repository.getHook(hookId, withFragment(options)),
+    });
   }
 
   async fetch(request: Request): Promise<Response> {

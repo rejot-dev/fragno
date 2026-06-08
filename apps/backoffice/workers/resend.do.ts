@@ -4,10 +4,7 @@ import { z } from "zod";
 
 import type { ResendFragmentConfig } from "@fragno-dev/resend-fragment";
 
-import {
-  type DurableHookQueueOptions,
-  type DurableHookQueueResponse,
-} from "@/fragno/durable-hooks";
+import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import { createResendServer, type ResendConfig, type ResendFragment } from "@/fragno/resend";
 
 import {
@@ -394,8 +391,8 @@ export class Resend extends DurableObject<CloudflareEnv> {
     });
   }
 
-  async getHookQueue(options?: DurableHookQueueOptions): Promise<DurableHookQueueResponse> {
-    return await this.#host.getHookQueue(options, ({ runtime }) => runtime);
+  getDurableHookRepository() {
+    return this.#host.getDurableHookRepository<DurableHookQueueOptions>(({ runtime }) => runtime);
   }
 
   async fetch(request: Request): Promise<Response> {

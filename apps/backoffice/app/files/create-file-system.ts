@@ -47,8 +47,10 @@ export const createOrgFileSystem = async (
       contributorId: automationHooksFileContributor.id,
       getHookQueue: options.automationHookQueue
         ? (opts?: DurableHookQueueOptions) => options.automationHookQueue!(opts)
-        : (opts?: DurableHookQueueOptions) =>
-            automationsDo!.getHookQueue({ ...opts, fragment: "automation" as const }),
+        : async (opts?: DurableHookQueueOptions) => {
+            const repository = await automationsDo!.getDurableHookRepository("automation");
+            return await repository.getHookQueue(opts);
+          },
     },
   ];
 

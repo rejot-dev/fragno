@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { automationBindingsRuntimeTools } from "./automations-bindings";
 import { automationScriptRuntimeTools } from "./automations-codemode";
+import { durableHooksRuntimeTools } from "./automations-durable-hooks";
 import { automationWorkflowRuntimeTools } from "./automations-workflow";
 
 describe("automation runtime tools", () => {
@@ -17,6 +18,14 @@ describe("automation runtime tools", () => {
       "workflow.create-instance",
       "workflow.get-status",
       "workflow.send-event",
+      "workflow.list",
+      "workflow.instances.list",
+      "workflow.instances.get",
+      "workflow.instances.history",
+    ]);
+    expect(durableHooksRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
+      "automations.hooks.list",
+      "automations.hooks.get",
     ]);
   });
 

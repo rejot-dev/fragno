@@ -5,8 +5,8 @@ import type { CloudflareFragmentConfig } from "@fragno-dev/cloudflare-fragment";
 
 import { createCloudflareServer, type CloudflareFragment } from "@/fragno/cloudflare";
 import {
+  createDurableHookRepositoryRpcTarget,
   type DurableHookQueueOptions,
-  type DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
 
 import {
@@ -186,13 +186,25 @@ export class CloudflareWorkers extends DurableObject<CloudflareEnv> {
     await this.#host.alarm();
   }
 
-  async getHookQueue(input: CloudflareWorkersHookQueueInput): Promise<DurableHookQueueResponse> {
-    const parsed = hookQueueInputSchema.parse(input);
-    await this.#state.blockConcurrencyWhile(async () => {
-      await this.#configureOrgIfNeeded(parsed.orgId);
-    });
+  getDurableHookRepository() {
+    const repository = this.#host.getDurableHookRepository<CloudflareWorkersHookQueueInput>(
+      ({ runtime }) => runtime,
+    );
 
-    return await this.#host.getHookQueue(parsed, ({ runtime }) => runtime);
+    const parseAndConfigure = async (input: CloudflareWorkersHookQueueInput) => {
+      const parsed = hookQueueInputSchema.parse(input);
+      await this.#state.blockConcurrencyWhile(async () => {
+        await this.#configureOrgIfNeeded(parsed.orgId);
+      });
+      return parsed;
+    };
+
+    return createDurableHookRepositoryRpcTarget({
+      getHookQueue: async (input: CloudflareWorkersHookQueueInput) =>
+        await repository.getHookQueue(await parseAndConfigure(input)),
+      getHook: async (hookId: string, input: CloudflareWorkersHookQueueInput) =>
+        await repository.getHook(hookId, await parseAndConfigure(input)),
+    });
   }
 
   async fetch(request: Request): Promise<Response> {

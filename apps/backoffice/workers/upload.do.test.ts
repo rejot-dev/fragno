@@ -5,6 +5,7 @@ const {
   createDurableHooksProcessorMock,
   createUploadServerForProviderMock,
   loadDurableHookQueueMock,
+  loadDurableHookMock,
   dispatcherNotifyMock,
   dispatcherAlarmMock,
 } = vi.hoisted(() => ({
@@ -12,6 +13,7 @@ const {
   createDurableHooksProcessorMock: vi.fn(),
   createUploadServerForProviderMock: vi.fn(),
   loadDurableHookQueueMock: vi.fn(),
+  loadDurableHookMock: vi.fn(),
   dispatcherNotifyMock: vi.fn(async () => undefined),
   dispatcherAlarmMock: vi.fn(async () => undefined),
 }));
@@ -21,7 +23,9 @@ vi.mock("cloudflare:workers", () => {
     constructor(_state: unknown, _env: unknown) {}
   }
 
-  return { DurableObject: MockDurableObject };
+  class MockRpcTarget {}
+
+  return { DurableObject: MockDurableObject, RpcTarget: MockRpcTarget };
 });
 
 vi.mock("@fragno-dev/db", () => ({
@@ -40,11 +44,7 @@ vi.mock("@/fragno/upload-server", () => ({
   createUploadServerForProvider: createUploadServerForProviderMock,
 }));
 
-vi.mock("@/fragno/durable-hooks", () => ({
-  loadDurableHookQueue: loadDurableHookQueueMock,
-}));
-
-import { Upload } from "./upload.do";
+import { Upload, type UploadDurableHookDependencies } from "./upload.do";
 
 const createState = () => {
   const store = new Map<string, unknown>();
@@ -79,12 +79,34 @@ const VALID_R2_BINDING_PAYLOAD = {
   bindingName: "UPLOAD_BUCKET",
 };
 
+const testDurableHookDependencies: UploadDurableHookDependencies = {
+  createEmptyRepository: () => ({
+    getHookQueue: async () => ({
+      configured: false,
+      hooksEnabled: false,
+      namespace: null,
+      items: [],
+      cursor: undefined,
+      hasNextPage: false,
+    }),
+    getHook: async () => null,
+  }),
+  createRepository: <TOptions>(selectFragment: (options: TOptions | undefined) => unknown) => ({
+    getHookQueue: (options?: TOptions) =>
+      loadDurableHookQueueMock(selectFragment(options), options),
+    getHook: (hookId: string, options?: TOptions) =>
+      loadDurableHookMock(selectFragment(options), hookId),
+  }),
+  createRpcTarget: (repository) => repository,
+};
+
 describe("Upload Durable Object", () => {
   beforeEach(() => {
     migrateMock.mockClear();
     createDurableHooksProcessorMock.mockReset();
     createUploadServerForProviderMock.mockReset();
     loadDurableHookQueueMock.mockReset();
+    loadDurableHookMock.mockReset();
     dispatcherNotifyMock.mockReset();
     dispatcherAlarmMock.mockReset();
     createDurableHooksProcessorMock.mockImplementation(() => {
@@ -220,9 +242,9 @@ describe("Upload Durable Object", () => {
 
   test("returns empty queue when upload is not configured", async () => {
     const state = createState();
-    const upload = new Upload(state, {} as CloudflareEnv);
+    const upload = new Upload(state, {} as CloudflareEnv, testDurableHookDependencies);
 
-    const queue = await upload.getHookQueue();
+    const queue = await upload.getDurableHookRepository().then((repo) => repo.getHookQueue());
 
     expect(queue).toEqual({
       configured: false,
@@ -248,10 +270,12 @@ describe("Upload Durable Object", () => {
       hasNextPage: false,
     });
 
-    const upload = new Upload(state, {} as CloudflareEnv);
+    const upload = new Upload(state, {} as CloudflareEnv, testDurableHookDependencies);
     await upload.setAdminConfig(VALID_R2_PAYLOAD, "acme");
 
-    const queue = await upload.getHookQueue({ pageSize: 10 });
+    const queue = await upload
+      .getDurableHookRepository()
+      .then((repo) => repo.getHookQueue({ pageSize: 10 }));
 
     expect(queue).toMatchObject({
       configured: true,

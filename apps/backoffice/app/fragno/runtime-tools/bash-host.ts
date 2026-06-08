@@ -10,6 +10,7 @@ import { bashRuntimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 import type { AutomationCommandContext, BashAutomationCommandResult } from "./automation-types";
 import type { AutomationBindingsRuntime } from "./families/automations-bindings";
 import type { ScriptRunnerRuntime } from "./families/automations-codemode";
+import type { DurableHooksRuntime } from "./families/automations-durable-hooks";
 import type { AutomationWorkflowRuntime } from "./families/automations-workflow";
 import type { EventRuntime } from "./families/event-runtime";
 import type { RegisteredOtpCommandContext } from "./families/otp-runtime";
@@ -32,6 +33,7 @@ export type BashHostContext = {
   automation: RegisteredEventBashCommandContext | null;
   automations: RegisteredAutomationsBashCommandContext | null;
   workflow?: { runtime: AutomationWorkflowRuntime } | null;
+  durableHooks?: { runtime: DurableHooksRuntime } | null;
   otp: RegisteredOtpCommandContext | null;
   pi: RegisteredPiCommandContext | null;
   reson8: RegisteredReson8CommandContext | null;
@@ -44,6 +46,7 @@ export const EMPTY_BASH_HOST_CONTEXT: BashHostContext = {
   automation: null,
   automations: null,
   workflow: null,
+  durableHooks: null,
   otp: null,
   pi: null,
   reson8: null,
@@ -91,6 +94,7 @@ export const createBashToolContext = (context: BashHostContext): BackofficeToolC
   runtimes: {
     automations: context.automations?.runtime,
     workflow: context.workflow?.runtime,
+    durableHooks: context.durableHooks?.runtime,
     event: context.automation?.runtime,
     otp: context.otp?.runtime,
     pi: context.pi?.runtime,
