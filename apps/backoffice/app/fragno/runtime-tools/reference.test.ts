@@ -10,13 +10,9 @@ import {
   toRuntimeToolReference,
   type RuntimeToolFamilyReferenceTarget,
 } from "./reference";
-import {
-  automationRuntimeToolFamilies,
-  bashRuntimeToolFamilies,
-  piCodemodeRuntimeToolFamilies,
-} from "./tool-families";
+import { runtimeToolFamilies } from "./tool-families";
 
-const summarizeFamilyReference = (family: (typeof bashRuntimeToolFamilies)[number]) => {
+const summarizeFamilyReference = (family: (typeof runtimeToolFamilies)[number]) => {
   const reference = createRuntimeToolFamilyReference({ family });
   return {
     namespace: reference.namespace,
@@ -34,7 +30,7 @@ const summarizeFamilyReference = (family: (typeof bashRuntimeToolFamilies)[numbe
 };
 
 const findBashFamily = (namespace: string) => {
-  const family = bashRuntimeToolFamilies.find((candidate) => candidate.namespace === namespace);
+  const family = runtimeToolFamilies.find((candidate) => candidate.namespace === namespace);
   if (!family) {
     throw new Error(`Missing bash family '${namespace}'`);
   }
@@ -77,21 +73,6 @@ describe("runtime tool reference generation", () => {
           outputType: "AutomationsBindActorOutput",
           bashCommand: "automations.identity.bind-actor",
           bashOptions: ["source", "key", "value", "description"],
-        },
-      ],
-    },
-    {
-      namespace: "automations-codemode",
-      tools: [
-        {
-          id: "scripts.run",
-          namespace: "automations",
-          codemodeProvider: "automations",
-          codemodeTool: "runScript",
-          inputType: "AutomationsRunScriptInput",
-          outputType: "AutomationsRunScriptOutput",
-          bashCommand: "scripts.run",
-          bashOptions: ["script", "event"],
         },
       ],
     },
@@ -440,7 +421,7 @@ describe("runtime tool reference generation", () => {
 
   test("renders the automation codemode target family list", () => {
     const types = renderCodemodeProviderTypes(
-      createRuntimeToolReferences({ families: automationRuntimeToolFamilies }),
+      createRuntimeToolReferences({ families: runtimeToolFamilies }),
     );
 
     expect(types).toContain("declare const automations");
@@ -452,7 +433,7 @@ describe("runtime tool reference generation", () => {
   });
 
   test("renders codemode prompt types from the pi codemode target family list", () => {
-    const types = createCodemodeTypes({ families: piCodemodeRuntimeToolFamilies });
+    const types = createCodemodeTypes({ families: runtimeToolFamilies });
     const domainProviderTypes = types.slice(
       types.indexOf("// ── Backoffice domain tool providers"),
     );

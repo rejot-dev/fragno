@@ -1,17 +1,10 @@
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 
 import { MasterFileSystem } from "@/files/master-file-system";
-import { createRouteBackedAutomationBindingsRuntime } from "@/fragno/automation/bindings-route-runtime";
-import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
 import type { PiCodemodeWorkflowParams } from "@/fragno/pi/pi-codemode-workflow";
-import type { AutomationBindingsRuntime } from "@/fragno/runtime-tools/families/automations-bindings";
 import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
-import { createOtpRuntime } from "@/fragno/runtime-tools/families/otp-runtime";
-import { createPiRouteRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
-import { createResendRouteRuntime } from "@/fragno/runtime-tools/families/resend-runtime";
-import { createReson8RouteRuntime } from "@/fragno/runtime-tools/families/reson8-runtime";
-import { createTelegramRuntime } from "@/fragno/runtime-tools/families/telegram-runtime";
+import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 import {
   AUTOMATION_WORKSPACE_ROOT,
@@ -42,10 +35,13 @@ const createWorkflowAutomationContext = ({
     throw new Error("Workflow-backed automation requires an organisation id.");
   }
 
-  const automationsRuntime: AutomationBindingsRuntime = createRouteBackedAutomationBindingsRuntime({
-    env,
-    orgId,
-  });
+  const runtimeContext = createRouteBackedRuntimeContext({ env, orgId });
+  const eventRuntime = createEventRuntime({ env, event: params.automationEvent });
+  const automationRuntime = {
+    ...runtimeContext.automations.runtime,
+    ...runtimeContext.otp.runtime,
+    ...eventRuntime,
+  };
 
   const scriptPath = params.workflowScriptPath ?? params.binding?.scriptPath ?? "workflow.js";
   const binding = params.binding ?? {
@@ -85,19 +81,22 @@ const createWorkflowAutomationContext = ({
       },
       idempotencyKey: params.idempotencyKey ?? params.automationEvent.id,
       bashEnv: binding.scriptEnv,
-      runtime: {
-        ...automationsRuntime,
-        ...createOtpRuntime({ env, orgId }),
-        ...createEventRuntime({ env, event: params.automationEvent }),
-      },
+      runtime: automationRuntime,
     },
-    automations: { runtime: automationsRuntime },
-    otp: { runtime: createOtpRuntime({ env, orgId }) },
-    pi: { runtime: createPiRouteRuntime({ env, orgId }) },
-    workflow: { runtime: createRouteBackedAutomationWorkflowRuntime({ env, orgId }) },
-    reson8: { runtime: createReson8RouteRuntime({ env, orgId }) },
-    resend: { runtime: createResendRouteRuntime({ env, orgId }) },
-    telegram: { runtime: createTelegramRuntime({ env, orgId }) },
+    automations: {
+      ...runtimeContext.automations,
+      runtime: automationRuntime,
+    },
+    workflow: runtimeContext.workflow,
+    durableHooks: runtimeContext.durableHooks,
+    otp: {
+      runtime: automationRuntime,
+    },
+    pi: runtimeContext.pi,
+    reson8: runtimeContext.reson8,
+    resend: runtimeContext.resend,
+    sandbox: runtimeContext.sandbox,
+    telegram: runtimeContext.telegram,
   };
 };
 
@@ -139,42 +138,24 @@ export const defineAutomationCodemodeWorkflow = (
     });
 
     if (result.exitCode !== 0) {
-      throw new Error(
-        result.stderr ||
-          `Automation workflow script ${context.automation.binding.scriptId} failed.`,
-      );
+      throw new Error(result.stderr || "Workflow-backed codemode automation failed.");
     }
 
-    return result;
+    return result.result;
   });
 
-export const definePiCodemodeWorkflow = (
-  config: AutomationFileSystemConfig & { env?: CloudflareEnv },
-) =>
+export const definePiCodemodeWorkflow = (config: { env?: BackofficeCodemodeEnv & CloudflareEnv }) =>
   defineRemoteWorkflow({ name: "pi-codemode-script" }, async (event, remote) => {
     if (!config.env?.LOADER) {
       throw new Error("Pi codemode workflow requires the Cloudflare Worker Loader.");
     }
 
     const params = event.payload as PiCodemodeWorkflowParams;
-    const orgId = params.orgId?.trim();
-    if (!orgId) {
-      throw new Error("Pi codemode workflow requires an organisation id.");
-    }
-
-    const resolvedFs = await resolveAutomationFileSystem(config, {
-      orgId,
-      purpose: "runtime",
-    });
-    if (!(resolvedFs instanceof MasterFileSystem)) {
-      throw new Error("Pi codemode workflow filesystem must be a MasterFileSystem.");
-    }
-
     const { executePiCodemodeWorkflow } = await import("./codemode");
     return await executePiCodemodeWorkflow({
       params,
-      masterFs: resolvedFs,
-      env: config.env as BackofficeCodemodeEnv & CloudflareEnv,
+      masterFs: new MasterFileSystem({ mounts: [] }),
+      env: config.env,
       workflowEvent: event,
       remote,
     });

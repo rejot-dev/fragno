@@ -20,7 +20,6 @@ import { isoDateTimeOutputSchema, normalizeRuntimeOutput } from "../output-schem
 import {
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
-  type BackofficeRuntimeTool,
   type BackofficeToolContext,
 } from "../runtime-tools";
 
@@ -114,10 +113,6 @@ const sessionTurnOutputSchema = sessionDetailOutputSchema.extend({
   stream: z.array(z.unknown()),
   terminalState: piAgentStateSnapshotOutputSchema,
 });
-
-const definePiRuntimeTool = <TInputSchema extends z.ZodType, TOutputSchema extends z.ZodType>(
-  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, PiToolContext>,
-) => defineBackofficeRuntimeTool(tool);
 
 const getPiRuntime = (runtime: PiToolContext["runtimes"]["pi"]): PiRuntime => {
   if (!runtime) {
@@ -221,14 +216,14 @@ const jsonByDefaultOutputOptions = (args: string[]) => {
     : { ...output, format: "json" as const };
 };
 
-const sessionCreateTool = definePiRuntimeTool({
+const sessionCreateTool = defineBackofficeRuntimeTool({
   id: "pi.session.create",
   namespace: "pi",
   name: "createSession",
   description: "Create a new Pi session.",
   inputSchema: sessionCreateInputSchema,
   outputSchema: sessionOutputSchema,
-  execute: async (input, context) => {
+  execute: async (input, context: PiToolContext) => {
     return sessionOutputSchema.parse(
       normalizeRuntimeOutput(await getPiRuntime(context.runtimes.pi).createSession(input)),
     );
@@ -290,14 +285,14 @@ const sessionCreateTool = definePiRuntimeTool({
   },
 });
 
-const sessionGetTool = definePiRuntimeTool({
+const sessionGetTool = defineBackofficeRuntimeTool({
   id: "pi.session.get",
   namespace: "pi",
   name: "getSession",
   description: "Retrieve a Pi session by id.",
   inputSchema: sessionGetInputSchema,
   outputSchema: sessionDetailOutputSchema,
-  execute: async (input, context) => {
+  execute: async (input, context: PiToolContext) => {
     return sessionDetailOutputSchema.parse(
       normalizeRuntimeOutput(await getPiRuntime(context.runtimes.pi).getSession(input)),
     );
@@ -334,14 +329,14 @@ const sessionGetTool = definePiRuntimeTool({
   },
 });
 
-const sessionListTool = definePiRuntimeTool({
+const sessionListTool = defineBackofficeRuntimeTool({
   id: "pi.session.list",
   namespace: "pi",
   name: "listSessions",
   description: "List Pi sessions ordered by creation time.",
   inputSchema: sessionListInputSchema,
   outputSchema: z.array(sessionOutputSchema),
-  execute: async (input, context) => {
+  execute: async (input, context: PiToolContext) => {
     return z
       .array(sessionOutputSchema)
       .parse(normalizeRuntimeOutput(await getPiRuntime(context.runtimes.pi).listSessions(input)));
@@ -372,14 +367,14 @@ const sessionListTool = definePiRuntimeTool({
   },
 });
 
-const sessionTurnTool = definePiRuntimeTool({
+const sessionTurnTool = defineBackofficeRuntimeTool({
   id: "pi.session.turn",
   namespace: "pi",
   name: "runTurn",
   description: "Send one prompt command through a Pi active session and return the settled result.",
   inputSchema: sessionTurnInputSchema,
   outputSchema: sessionTurnOutputSchema,
-  execute: async (input, context) => {
+  execute: async (input, context: PiToolContext) => {
     return sessionTurnOutputSchema.parse(
       normalizeRuntimeOutput(await getPiRuntime(context.runtimes.pi).runTurn(input)),
     );

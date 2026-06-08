@@ -12,7 +12,6 @@ import type { StartSandboxOptions } from "@/sandbox/contracts";
 import {
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
-  type BackofficeRuntimeTool,
   type BackofficeToolContext,
 } from "../runtime-tools";
 import type { SandboxExecuteCommandArgs, SandboxKillArgs, SandboxRuntime } from "./sandbox-runtime";
@@ -65,10 +64,6 @@ const getSandboxRuntime = (runtime: SandboxToolContext["runtimes"]["sandbox"]): 
   }
   return runtime;
 };
-
-const defineSandboxRuntimeTool = <TInputSchema extends z.ZodType, TOutputSchema extends z.ZodType>(
-  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, SandboxToolContext>,
-) => defineBackofficeRuntimeTool(tool);
 
 const readBooleanOption = (parsed: ReturnType<typeof parseCliTokens>, name: string) => {
   const value = parsed.options.get(name);
@@ -131,14 +126,14 @@ const jsonDefault = (args: string[]) => {
   return output.print || parsed.options.has("format") ? output : { format: "json" as const };
 };
 
-const startSandboxTool = defineSandboxRuntimeTool({
+const startSandboxTool = defineBackofficeRuntimeTool({
   id: "sandbox.start",
   namespace: "sandbox",
   name: "startSandbox",
   description: "Start a Cloudflare sandbox for the current organisation.",
   inputSchema: startInputSchema,
   outputSchema: sandboxSummarySchema,
-  execute: async (input, context) =>
+  execute: async (input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).startSandbox(input),
   adapters: {
     bash: {
@@ -187,14 +182,14 @@ const startSandboxTool = defineSandboxRuntimeTool({
   },
 });
 
-const listSandboxesTool = defineSandboxRuntimeTool({
+const listSandboxesTool = defineBackofficeRuntimeTool({
   id: "sandbox.list",
   namespace: "sandbox",
   name: "listSandboxes",
   description: "List Cloudflare sandboxes for the current organisation.",
   inputSchema: listInputSchema,
   outputSchema: z.array(sandboxSummarySchema),
-  execute: async (_input, context) =>
+  execute: async (_input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).listSandboxes(),
   adapters: {
     bash: {
@@ -211,14 +206,14 @@ const listSandboxesTool = defineSandboxRuntimeTool({
   },
 });
 
-const killSandboxTool = defineSandboxRuntimeTool({
+const killSandboxTool = defineBackofficeRuntimeTool({
   id: "sandbox.kill",
   namespace: "sandbox",
   name: "killSandbox",
   description: "Kill a Cloudflare sandbox for the current organisation.",
   inputSchema: killInputSchema,
   outputSchema: killOutputSchema,
-  execute: async (input, context) =>
+  execute: async (input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).killSandbox(input),
   adapters: {
     bash: {
@@ -243,14 +238,14 @@ const killSandboxTool = defineSandboxRuntimeTool({
   },
 });
 
-const executeCommandTool = defineSandboxRuntimeTool({
+const executeCommandTool = defineBackofficeRuntimeTool({
   id: "sandbox.exec",
   namespace: "sandbox",
   name: "executeCommand",
   description: "Execute a command in a Cloudflare sandbox.",
   inputSchema: execInputSchema,
   outputSchema: commandResultSchema,
-  execute: async (input, context) =>
+  execute: async (input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).executeCommand(input),
   adapters: {
     bash: {

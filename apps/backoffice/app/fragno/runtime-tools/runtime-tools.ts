@@ -21,10 +21,8 @@ import {
 
 export type BackofficeToolContext<
   TRuntimes extends Record<string, unknown> = Record<string, unknown>,
-  TScriptRunner = unknown,
 > = {
   runtimes: TRuntimes;
-  scriptRunner?: TScriptRunner;
 };
 
 export type BackofficeRuntimeToolCall = {

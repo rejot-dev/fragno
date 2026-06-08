@@ -275,7 +275,6 @@ export const createRuntimeToolReferenceContext = (): BackofficeToolContext => ({
       has: () => true,
     },
   ),
-  scriptRunner: {},
 });
 
 export const createRuntimeToolFamilyReference = ({

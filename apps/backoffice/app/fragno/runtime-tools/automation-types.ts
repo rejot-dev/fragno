@@ -1,5 +1,5 @@
 import type { AutomationBashEnvironment, AutomationEvent } from "../automation/contracts";
-import type { AutomationCommandCallResult, AutomationRunResult } from "../automation/run-result";
+import type { AutomationCommandCallResult } from "../automation/run-result";
 
 export type AutomationCommandFormat = "text" | "json";
 
@@ -41,17 +41,6 @@ export type EventEmitArgs = {
   actorType?: string;
   subjectUserId?: string;
   payload?: Record<string, unknown>;
-};
-
-export type ScriptRunArgs = {
-  script: string;
-  event: string;
-};
-
-export type ScriptRunResult = AutomationRunResult;
-
-export type ScriptRunnerRuntime = {
-  runScript: (input: ScriptRunArgs) => Promise<ScriptRunResult>;
 };
 
 export type AutomationCommandOptionSpec = {

@@ -3,10 +3,6 @@ import {
   type AutomationBindingsRuntime,
 } from "./families/automations-bindings";
 import {
-  automationScriptToolFamily,
-  type ScriptRunnerRuntime,
-} from "./families/automations-codemode";
-import {
   durableHooksToolFamily,
   type DurableHooksRuntime,
 } from "./families/automations-durable-hooks";
@@ -40,39 +36,10 @@ export type CoreBackofficeRuntimeMap = {
   telegram?: TelegramRuntime;
 };
 
-export type CoreBackofficeToolContext = BackofficeToolContext<
-  CoreBackofficeRuntimeMap,
-  ScriptRunnerRuntime
->;
+export type CoreBackofficeToolContext = BackofficeToolContext<CoreBackofficeRuntimeMap>;
 
-export const automationRuntimeToolFamilies = [
+export const runtimeToolFamilies = [
   automationBindingsToolFamily,
-  automationWorkflowToolFamily,
-  durableHooksToolFamily,
-  eventToolFamily,
-  otpToolFamily,
-  piToolFamily,
-  resendToolFamily,
-  reson8ToolFamily,
-  sandboxToolFamily,
-  telegramToolFamily,
-] as const satisfies readonly BackofficeRuntimeToolFamily[];
-
-export const piCodemodeRuntimeToolFamilies = [
-  automationBindingsToolFamily,
-  automationWorkflowToolFamily,
-  durableHooksToolFamily,
-  otpToolFamily,
-  piToolFamily,
-  resendToolFamily,
-  reson8ToolFamily,
-  sandboxToolFamily,
-  telegramToolFamily,
-] as const satisfies readonly BackofficeRuntimeToolFamily[];
-
-export const bashRuntimeToolFamilies = [
-  automationBindingsToolFamily,
-  automationScriptToolFamily,
   automationWorkflowToolFamily,
   durableHooksToolFamily,
   eventToolFamily,
@@ -85,4 +52,4 @@ export const bashRuntimeToolFamilies = [
 ] as const satisfies readonly BackofficeRuntimeToolFamily[];
 
 export const getAvailableBackofficeRuntimeTools = (context: BackofficeToolContext) =>
-  getAvailableRuntimeTools({ families: automationRuntimeToolFamilies, context });
+  getAvailableRuntimeTools({ families: runtimeToolFamilies, context });

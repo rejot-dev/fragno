@@ -20,7 +20,6 @@ import type {
 import {
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
-  type BackofficeRuntimeTool,
   type BackofficeToolContext,
 } from "../runtime-tools";
 
@@ -45,10 +44,6 @@ const transcribeInputSchema = z.object({
   includeWords: z.boolean().optional(),
   includeConfidence: z.boolean().optional(),
 });
-
-const defineReson8RuntimeTool = <TInputSchema extends z.ZodType, TOutputSchema extends z.ZodType>(
-  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, Reson8ToolContext>,
-) => defineBackofficeRuntimeTool(tool);
 
 const getReson8Runtime = (runtime: Reson8ToolContext["runtimes"]["reson8"]): Reson8Runtime => {
   if (!runtime) {
@@ -144,14 +139,14 @@ const toPrerecordedQuery = (
   return query;
 };
 
-const transcribePrerecordedTool = defineReson8RuntimeTool({
+const transcribePrerecordedTool = defineBackofficeRuntimeTool({
   id: "reson8.prerecorded.transcribe",
   namespace: "reson8",
   name: "transcribePrerecorded",
   description: "Transcribe a prerecorded audio file via Reson8.",
   inputSchema: transcribeInputSchema,
   outputSchema: reson8PrerecordedTranscriptionSchema,
-  execute: async (input, context) => {
+  execute: async (input, context: Reson8ToolContext) => {
     if (!input.audio) {
       throw new Error("reson8.transcribePrerecorded requires audio input");
     }

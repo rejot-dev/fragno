@@ -1,7 +1,7 @@
 import { BASH_HARNESS_REFERENCE, SYSTEM_FILE_CONTENT, SYSTEM_GUIDANCE } from "@/files";
 
 import { createCodemodeSystemPrompt } from "../codemode/state-prompt";
-import { piCodemodeRuntimeToolFamilies } from "../runtime-tools/tool-families";
+import { runtimeToolFamilies } from "../runtime-tools/tool-families";
 
 export type PiSteeringMode = "all" | "one-at-a-time";
 export type PiThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -97,7 +97,7 @@ export type PiToolId = (typeof PI_TOOL_IDS)[number];
 const BASH_HARNESS_PROMPT = `SYSTEM.md (agent guidance):\n\n${DEFAULT_SYSTEM_PROMPT}\n\n${BASH_HARNESS_REFERENCE}`;
 
 const STATE_HARNESS_PROMPT = createCodemodeSystemPrompt({
-  families: piCodemodeRuntimeToolFamilies,
+  families: runtimeToolFamilies,
 });
 
 const CODEMODE_HARNESS_PROMPT = `SYSTEM.md (agent guidance):\n\n${DEFAULT_SYSTEM_PROMPT}
@@ -122,18 +122,18 @@ ${STATE_HARNESS_PROMPT}`;
 
 export const DEFAULT_PI_HARNESSES: PiHarnessConfig[] = [
   {
-    id: "bash",
-    label: "Bash",
-    description: "Built-in harness with bash access and the combined session filesystem.",
-    systemPrompt: BASH_HARNESS_PROMPT,
-    tools: ["bash"],
-  },
-  {
     id: "codemode",
     label: "Codemode",
     description: "Built-in harness with execCodeMode access to the combined session filesystem.",
     systemPrompt: CODEMODE_HARNESS_PROMPT,
     tools: ["execCodeMode"],
+  },
+  {
+    id: "bash",
+    label: "Bash",
+    description: "Built-in harness with bash access and the combined session filesystem.",
+    systemPrompt: BASH_HARNESS_PROMPT,
+    tools: ["bash"],
   },
 ];
 

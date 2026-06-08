@@ -20,7 +20,6 @@ import { isoDateTimeOutputSchema, nullableIsoDateTimeOutputSchema } from "../out
 import {
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
-  type BackofficeRuntimeTool,
   type BackofficeToolContext,
 } from "../runtime-tools";
 
@@ -126,10 +125,6 @@ const threadSnapshotOutputSchema = z.object({
   markdown: z.string(),
 });
 
-const defineResendRuntimeTool = <TInputSchema extends z.ZodType, TOutputSchema extends z.ZodType>(
-  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, ResendToolContext>,
-) => defineBackofficeRuntimeTool(tool);
-
 const getResendRuntime = (runtime: ResendToolContext["runtimes"]["resend"]): ResendRuntime => {
   if (!runtime) {
     throw new Error("Resend runtime is not available in this execution context");
@@ -199,14 +194,14 @@ const jsonByDefaultOutputOptions = (args: string[]) => {
     : { ...output, format: "json" as const };
 };
 
-const threadsGetTool = defineResendRuntimeTool({
+const threadsGetTool = defineBackofficeRuntimeTool({
   id: "resend.threads.get",
   namespace: "resend",
   name: "getThread",
   description: "Load a Resend thread with a page of messages and a Markdown snapshot.",
   inputSchema: threadMessagesInputSchema,
   outputSchema: threadSnapshotOutputSchema,
-  execute: async (input, context) => {
+  execute: async (input, context: ResendToolContext) => {
     return threadSnapshotOutputSchema.parse(
       await getResendRuntime(context.runtimes.resend).getThreadSnapshot(input),
     );
@@ -261,14 +256,14 @@ const threadsGetTool = defineResendRuntimeTool({
   },
 });
 
-const threadsListTool = defineResendRuntimeTool({
+const threadsListTool = defineBackofficeRuntimeTool({
   id: "resend.threads.list",
   namespace: "resend",
   name: "listThreads",
   description: "List Resend email threads.",
   inputSchema: threadListInputSchema,
   outputSchema: resendListThreadsOutputSchema,
-  execute: async (input, context) => {
+  execute: async (input, context: ResendToolContext) => {
     return resendListThreadsOutputSchema.parse(
       await getResendRuntime(context.runtimes.resend).listThreads(input),
     );
@@ -311,14 +306,14 @@ const threadsListTool = defineResendRuntimeTool({
   },
 });
 
-const threadsReplyTool = defineResendRuntimeTool({
+const threadsReplyTool = defineBackofficeRuntimeTool({
   id: "resend.threads.reply",
   namespace: "resend",
   name: "replyToThread",
   description: "Send a text reply into an existing Resend thread.",
   inputSchema: threadReplyInputSchema,
   outputSchema: resendThreadMutationOutputSchema,
-  execute: async (input, context) => {
+  execute: async (input, context: ResendToolContext) => {
     return resendThreadMutationOutputSchema.parse(
       await getResendRuntime(context.runtimes.resend).replyToThread(input),
     );

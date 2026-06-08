@@ -11,7 +11,6 @@ import {
 import {
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
-  type BackofficeRuntimeTool,
   type BackofficeToolContext,
 } from "../runtime-tools";
 
@@ -48,10 +47,6 @@ const eventEmitOutputSchema = z.object({
   eventType: nonEmptyString,
 });
 
-const defineEventRuntimeTool = <TInputSchema extends z.ZodType, TOutputSchema extends z.ZodType>(
-  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, EventToolContext>,
-) => defineBackofficeRuntimeTool(tool);
-
 const getEventRuntime = (runtime: EventToolContext["runtimes"]["event"]): EventRuntime => {
   if (!runtime) {
     throw new Error("Event runtime is not available in this execution context");
@@ -73,14 +68,15 @@ const parseEventEmitArgs = (args: string[]): EventEmitArgs => {
   };
 };
 
-const emitEventTool = defineEventRuntimeTool({
+const emitEventTool = defineBackofficeRuntimeTool({
   id: "event.emit",
   namespace: "event",
   name: "emit",
   description: "Emit another automation event for the current organisation.",
   inputSchema: eventEmitInputSchema,
   outputSchema: eventEmitOutputSchema,
-  execute: async (input, context) => await getEventRuntime(context.runtimes.event).emitEvent(input),
+  execute: async (input, context: EventToolContext) =>
+    await getEventRuntime(context.runtimes.event).emitEvent(input),
   adapters: {
     bash: {
       command: "event.emit",

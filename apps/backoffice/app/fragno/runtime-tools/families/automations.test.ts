@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest";
 
 import { automationBindingsRuntimeTools } from "./automations-bindings";
-import { automationScriptRuntimeTools } from "./automations-codemode";
 import { durableHooksRuntimeTools } from "./automations-durable-hooks";
 import { automationWorkflowRuntimeTools } from "./automations-workflow";
 
@@ -10,9 +9,6 @@ describe("automation runtime tools", () => {
     expect(automationBindingsRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
       "automations.identity.lookup-binding",
       "automations.identity.bind-actor",
-    ]);
-    expect(automationScriptRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
-      "scripts.run",
     ]);
     expect(automationWorkflowRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
       "workflow.create-instance",

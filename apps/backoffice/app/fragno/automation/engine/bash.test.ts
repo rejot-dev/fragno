@@ -1,16 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { InMemoryFs } from "just-bash";
-
 import { MasterFileSystem } from "@/files/master-file-system";
 import { normalizeMountedFileSystem } from "@/files/mounted-file-system";
 import { executeBashAutomation } from "@/fragno/runtime-tools/automation-host";
-import { createBashHost } from "@/fragno/runtime-tools/bash-host";
 
 import type { AutomationEvent } from "../contracts";
 import {
   createAutomationExecutionContext as createRuntimeAutomationExecutionContext,
-  createAutomationRuntime as createStorageBackedAutomationRuntime,
+  createAutomationRuntime as createRouteBackedAutomationRuntime,
   type AutomationRuntime,
 } from "./runtime";
 
@@ -75,149 +72,6 @@ const createTestAutomationExecutionContext = ({
   });
 
 describe("bash command runner", () => {
-  it("forwards sub-script stdout through scripts.run", async () => {
-    const { bash, commandCallsResult } = createBashHost({
-      fs: new InMemoryFs(),
-      context: {
-        automation: null,
-        automations: {
-          runtime: {
-            lookupBinding: runtime.lookupBinding,
-            bindActor: runtime.bindActor,
-          },
-          scriptRunner: {
-            runScript: async (args) => {
-              expect(args).toEqual({
-                script: "/automations/test.sh",
-                event: "/events/2026-03-26/evt-1.json",
-              });
-              return {
-                runtime: "bash",
-                eventId: "evt-1",
-                scriptId: "manual:/automations/test.sh",
-                exitCode: 0,
-                stdout: "hello from sub-script\n",
-                stderr: "",
-                logs: [],
-                commandCalls: [],
-                toolCalls: [],
-              };
-            },
-          },
-        },
-        otp: null,
-        pi: null,
-        reson8: null,
-        resend: null,
-        telegram: null,
-      },
-    });
-
-    const result = await bash.exec(
-      "scripts.run --script /automations/test.sh --event /events/2026-03-26/evt-1.json",
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("hello from sub-script");
-    expect(commandCallsResult).toEqual([
-      {
-        command: "scripts.run",
-        output: "hello from sub-script",
-        exitCode: 0,
-      },
-    ]);
-  });
-
-  it("returns structured data with --format json for scripts.run", async () => {
-    const { bash } = createBashHost({
-      fs: new InMemoryFs(),
-      context: {
-        automation: null,
-        automations: {
-          runtime: {
-            lookupBinding: runtime.lookupBinding,
-            bindActor: runtime.bindActor,
-          },
-          scriptRunner: {
-            runScript: async () => ({
-              runtime: "bash",
-              eventId: "evt-1",
-              scriptId: "manual:/automations/test.sh",
-              exitCode: 0,
-              stdout: "echoed output\n",
-              stderr: "",
-              logs: [],
-              commandCalls: [{ command: "event.emit", output: "", exitCode: 0 }],
-              toolCalls: [],
-            }),
-          },
-        },
-        otp: null,
-        pi: null,
-        reson8: null,
-        resend: null,
-        telegram: null,
-      },
-    });
-
-    const result = await bash.exec(
-      "scripts.run --script /automations/test.sh --event /events/2026-03-26/evt-1.json --format json",
-    );
-
-    expect(result.exitCode).toBe(0);
-    const parsed = JSON.parse(result.stdout!.trim());
-    expect(parsed).toEqual({
-      runtime: "bash",
-      exitCode: 0,
-      stdout: "echoed output\n",
-      stderr: "",
-      logs: [],
-      commandCalls: [{ command: "event.emit", output: "", exitCode: 0 }],
-      toolCalls: [],
-    });
-  });
-
-  it("forwards stderr and exit code for failed sub-scripts", async () => {
-    const { bash } = createBashHost({
-      fs: new InMemoryFs(),
-      context: {
-        automation: null,
-        automations: {
-          runtime: {
-            lookupBinding: runtime.lookupBinding,
-            bindActor: runtime.bindActor,
-          },
-          scriptRunner: {
-            runScript: async () => ({
-              runtime: "bash",
-              eventId: "evt-1",
-              scriptId: "manual:/automations/fail.sh",
-              exitCode: 1,
-              stdout: "partial output\n",
-              stderr: "something went wrong\n",
-              logs: [],
-              commandCalls: [],
-              toolCalls: [],
-            }),
-          },
-        },
-        otp: null,
-        pi: null,
-        reson8: null,
-        resend: null,
-        telegram: null,
-      },
-    });
-
-    const result = await bash.exec(
-      "scripts.run --script /automations/fail.sh --event /events/2026-03-26/evt-1.json",
-    );
-
-    expect(result.exitCode).toBe(1);
-    expect(result.stdout).toContain("partial output");
-    expect(result.stderr).toContain("something went wrong");
-  });
-
   it("provides /context/event.json for automation runs", async () => {
     const event: AutomationEvent = {
       id: "event-123",
@@ -240,12 +94,7 @@ describe("bash command runner", () => {
       },
     };
 
-    const automationRuntime = createStorageBackedAutomationRuntime({
-      hookContext: {
-        handlerTx: (() => {
-          throw new Error("handlerTx should not be used in this test");
-        }) as never,
-      },
+    const automationRuntime = createRouteBackedAutomationRuntime({
       event,
     });
     const result = await executeBashAutomation({
@@ -271,12 +120,7 @@ describe("bash command runner", () => {
   });
 
   it("mounts /dev/null so scripts can discard output", async () => {
-    const automationRuntime = createStorageBackedAutomationRuntime({
-      hookContext: {
-        handlerTx: (() => {
-          throw new Error("handlerTx should not be used in this test");
-        }) as never,
-      },
+    const automationRuntime = createRouteBackedAutomationRuntime({
       event: {
         id: "dev-null-event",
         source: "telegram",
@@ -311,12 +155,7 @@ describe("bash command runner", () => {
   it("keeps the shared master filesystem mount list unchanged after execution", async () => {
     const masterFs = new MasterFileSystem({ mounts: [] });
 
-    const automationRuntime = createStorageBackedAutomationRuntime({
-      hookContext: {
-        handlerTx: (() => {
-          throw new Error("handlerTx should not be used in this test");
-        }) as never,
-      },
+    const automationRuntime = createRouteBackedAutomationRuntime({
       event: {
         id: "cleanup-event",
         source: "telegram",
@@ -523,12 +362,7 @@ describe("bash command runner", () => {
       ),
     });
 
-    const automationRuntime = createStorageBackedAutomationRuntime({
-      hookContext: {
-        handlerTx: (() => {
-          throw new Error("handlerTx should not be used in this test");
-        }) as never,
-      },
+    const automationRuntime = createRouteBackedAutomationRuntime({
       event: {
         id: "existing-dev-event",
         source: "telegram",

@@ -11,7 +11,6 @@ import {
 import {
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
-  type BackofficeRuntimeTool,
   type BackofficeToolContext,
 } from "../runtime-tools";
 
@@ -47,10 +46,6 @@ const identityClaimRecordSchema = z.object({
   expiresAt: nonEmptyString.optional(),
 });
 
-const defineOtpRuntimeTool = <TInputSchema extends z.ZodType, TOutputSchema extends z.ZodType>(
-  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, OtpToolContext>,
-) => defineBackofficeRuntimeTool(tool);
-
 const getOtpRuntime = (runtime: OtpToolContext["runtimes"]["otp"]): OtpRuntime => {
   if (!runtime) {
     throw new Error("OTP runtime is not available in this execution context");
@@ -74,14 +69,15 @@ const parseOtpIdentityCreateClaim = (args: string[]): IdentityCreateClaimArgs =>
   };
 };
 
-const createClaimTool = defineOtpRuntimeTool({
+const createClaimTool = defineBackofficeRuntimeTool({
   id: "otp.identity.create-claim",
   namespace: "otp",
   name: "createIdentityClaim",
   description: "Create a short-lived identity claim URL for an external actor.",
   inputSchema: createClaimInputSchema,
   outputSchema: identityClaimRecordSchema,
-  execute: async (input, context) => await getOtpRuntime(context.runtimes.otp).createClaim(input),
+  execute: async (input, context: OtpToolContext) =>
+    await getOtpRuntime(context.runtimes.otp).createClaim(input),
   adapters: {
     bash: {
       command: "otp.identity.create-claim",

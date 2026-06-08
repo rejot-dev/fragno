@@ -1,71 +1,14 @@
 import type { IFileSystem } from "@/files/interface";
 import { MasterFileSystem } from "@/files/master-file-system";
-import { createRouteBackedAutomationBindingsRuntime } from "@/fragno/automation/bindings-route-runtime";
-import {
-  AUTOMATION_WORKSPACE_ROOT,
-  resolveAutomationFileSystem,
-  type AutomationFileSystemConfig,
-  type AutomationScriptEngine,
-} from "@/fragno/automation/catalog";
-import type { AutomationEvent } from "@/fragno/automation/contracts";
-import { createRouteBackedDurableHooksRuntime } from "@/fragno/automation/durable-hooks-route-runtime";
+import type { AutomationScriptEngine } from "@/fragno/automation/catalog";
 import { createAutomationExecutionFileSystem } from "@/fragno/automation/engine/execution-file-system";
 import {
   createAutomationRunResult,
   type AutomationRunResult,
 } from "@/fragno/automation/run-result";
-import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
-import type { ScriptRunArgs } from "@/fragno/runtime-tools/automation-types";
-import type { ScriptRunnerRuntime } from "@/fragno/runtime-tools/families/automations-codemode";
 
-import {
-  createBashHost,
-  type BashHost,
-  type BashHostContext,
-  type InteractiveBashCommandContext,
-} from "./bash-host";
-import { createEventRuntime } from "./families/event-runtime";
-import { createOtpRuntime } from "./families/otp-runtime";
-import { createPiRouteRuntime } from "./families/pi-runtime";
-import { createResendRouteRuntime } from "./families/resend-runtime";
-import { createReson8RouteRuntime } from "./families/reson8-runtime";
-import { createSandboxRouteRuntime } from "./families/sandbox-route-runtime";
-import { createTelegramRuntime } from "./families/telegram-runtime";
-
-export const createRouteBackedInteractiveBashContext = ({
-  env,
-  orgId,
-}: {
-  env: CloudflareEnv;
-  orgId: string;
-}): InteractiveBashCommandContext => ({
-  automation: null,
-  automations: {
-    runtime: createRouteBackedAutomationBindingsRuntime({ env, orgId }),
-  },
-  workflow: {
-    runtime: createRouteBackedAutomationWorkflowRuntime({ env, orgId }),
-  },
-  durableHooks: {
-    runtime: createRouteBackedDurableHooksRuntime({ env, orgId }),
-  },
-  otp: {
-    runtime: createOtpRuntime({ env, orgId }),
-  },
-  pi: {
-    runtime: createPiRouteRuntime({ env, orgId }),
-  },
-  reson8: {
-    runtime: createReson8RouteRuntime({ env, orgId }),
-  },
-  resend: {
-    runtime: createResendRouteRuntime({ env, orgId }),
-  },
-  sandbox: { runtime: createSandboxRouteRuntime({ env, orgId }) },
-  telegram: {
-    runtime: createTelegramRuntime({ env, orgId }),
-  },
-});
+import { createBashHost, type BashHost, type BashHostContext } from "./bash-host";
+import { createRouteBackedRuntimeContext } from "./route-backed-runtime-context";
 
 // ---------------------------------------------------------------------------
 // Automation execution (bash + codemode)
@@ -84,10 +27,9 @@ export const executeBashAutomation = async ({
   context: AutomationExecutionContext;
   masterFs: MasterFileSystem;
 }): Promise<AutomationRunResult<"bash">> => {
-  const eventJson = JSON.stringify(context.automation.event);
   const executionFs = createAutomationExecutionFileSystem({
     masterFs,
-    eventJson,
+    contextFiles: { "event.json": JSON.stringify(context.automation.event) },
     includeDevMount: true,
   });
 
@@ -143,207 +85,8 @@ export const executeAutomationScript = async ({
 };
 
 // ---------------------------------------------------------------------------
-// Script runner runtime (reads script + event from filesystem, sub-executes)
-// ---------------------------------------------------------------------------
-
-const resolveScriptPath = (scriptArg: string): string => {
-  const trimmed = scriptArg.trim();
-  if (trimmed.startsWith("/")) {
-    return trimmed;
-  }
-  return `${AUTOMATION_WORKSPACE_ROOT}/${trimmed}`;
-};
-
-const inferInteractiveScriptRunEngine = (scriptPath: string): AutomationScriptEngine =>
-  scriptPath.endsWith(".js") ? "codemode" : "bash";
-
-export type CreateScriptRunnerRuntimeOptions = {
-  fileSystemConfig: AutomationFileSystemConfig;
-  env?: CloudflareEnv;
-  parentOrgId: string;
-  parentContext: BashHostContext;
-};
-
-const normalizeInteractiveScriptRunEvent = ({
-  event,
-  eventPath,
-  parentOrgId,
-}: {
-  event: AutomationEvent;
-  eventPath: string;
-  parentOrgId: string;
-}): AutomationEvent => {
-  const normalizedParentOrgId = parentOrgId.trim();
-  const fixtureOrgId = event.orgId?.trim() || undefined;
-
-  if (!normalizedParentOrgId) {
-    throw new Error("scripts.run requires an interactive organisation id");
-  }
-
-  if (fixtureOrgId && fixtureOrgId !== normalizedParentOrgId) {
-    throw new Error(
-      `Event file '${eventPath}' has orgId '${fixtureOrgId}', but scripts.run is scoped to interactive org '${normalizedParentOrgId}'.`,
-    );
-  }
-
-  return {
-    ...event,
-    orgId: normalizedParentOrgId,
-  };
-};
-
-const createInteractiveScriptRunContext = ({
-  event,
-  absoluteScriptPath,
-  scriptArg,
-  idempotencyKey,
-  env,
-  parentContext,
-}: {
-  event: AutomationEvent;
-  absoluteScriptPath: string;
-  scriptArg: string;
-  idempotencyKey: string;
-  env?: CloudflareEnv;
-  parentContext: BashHostContext;
-}): AutomationExecutionContext => ({
-  automation: {
-    event,
-    orgId: event.orgId?.trim() || undefined,
-    binding: {
-      source: event.source,
-      eventType: event.eventType,
-      scriptId: `manual:${absoluteScriptPath}`,
-      scriptKey: scriptArg,
-      scriptName: scriptArg,
-      scriptPath: absoluteScriptPath,
-    },
-    idempotencyKey,
-    bashEnv: {},
-    runtime: createEventRuntime({ env, event }),
-  },
-  automations: parentContext.automations
-    ? {
-        runtime: parentContext.automations.runtime,
-      }
-    : null,
-  workflow: parentContext.workflow,
-  durableHooks: parentContext.durableHooks,
-  otp: parentContext.otp,
-  pi: parentContext.pi,
-  reson8: parentContext.reson8,
-  resend: parentContext.resend,
-  sandbox: parentContext.sandbox,
-  telegram: parentContext.telegram,
-});
-
-export const createScriptRunnerRuntime = (
-  options: CreateScriptRunnerRuntimeOptions,
-): ScriptRunnerRuntime => ({
-  runScript: async ({ script, event: eventPath }: ScriptRunArgs) => {
-    const absoluteScriptPath = resolveScriptPath(script);
-
-    const fileSystem = await resolveAutomationFileSystem(options.fileSystemConfig, {
-      orgId: undefined,
-      purpose: "runtime",
-    });
-
-    let eventContent: string;
-    try {
-      eventContent = await fileSystem.readFile(eventPath, "utf-8");
-    } catch (error) {
-      throw new Error(
-        `Failed to read event file '${eventPath}': ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-
-    let parsedEvent: AutomationEvent;
-    try {
-      parsedEvent = JSON.parse(eventContent) as AutomationEvent;
-    } catch (error) {
-      throw new Error(
-        `Event file '${eventPath}' is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-
-    if (!parsedEvent.id || !parsedEvent.source || !parsedEvent.eventType) {
-      throw new Error(
-        `Event file '${eventPath}' is missing required fields (id, source, eventType)`,
-      );
-    }
-
-    const normalizedEvent = normalizeInteractiveScriptRunEvent({
-      event: parsedEvent,
-      eventPath,
-      parentOrgId: options.parentOrgId,
-    });
-
-    let scriptBody: string;
-    try {
-      scriptBody = await fileSystem.readFile(absoluteScriptPath, "utf-8");
-    } catch (error) {
-      throw new Error(
-        `Failed to read script file '${absoluteScriptPath}': ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-
-    const idempotencyKey = `script-run:${normalizedEvent.id}:${crypto.randomUUID()}`;
-
-    const context = createInteractiveScriptRunContext({
-      event: normalizedEvent,
-      absoluteScriptPath,
-      scriptArg: script,
-      idempotencyKey,
-      env: options.env,
-      parentContext: options.parentContext,
-    });
-
-    if (!(fileSystem instanceof MasterFileSystem)) {
-      throw new Error(
-        "scripts.run requires a MasterFileSystem but received a different filesystem type.",
-      );
-    }
-
-    return executeAutomationScript({
-      engine: inferInteractiveScriptRunEngine(absoluteScriptPath),
-      script: scriptBody,
-      context,
-      masterFs: fileSystem,
-      env: options.env,
-    });
-  },
-});
-
-// ---------------------------------------------------------------------------
 // Interactive bash host (dashboard / Pi sessions)
 // ---------------------------------------------------------------------------
-
-export type CreateInteractiveBashContextInput = {
-  fs: IFileSystem;
-  env: CloudflareEnv;
-  orgId: string;
-  context?: BashHostContext;
-};
-
-export const createInteractiveBashContext = (
-  input: CreateInteractiveBashContextInput,
-): BashHostContext => {
-  const baseContext =
-    input.context ??
-    createRouteBackedInteractiveBashContext({ env: input.env, orgId: input.orgId });
-
-  const scriptRunner = createScriptRunnerRuntime({
-    fileSystemConfig: { automationFileSystem: input.fs },
-    env: input.env,
-    parentOrgId: input.orgId,
-    parentContext: baseContext,
-  });
-
-  return {
-    ...baseContext,
-    automations: baseContext.automations ? { ...baseContext.automations, scriptRunner } : null,
-  };
-};
 
 export type CreateInteractiveBashHostInput = {
   fs: IFileSystem;
@@ -357,6 +100,7 @@ export const createInteractiveBashHost = (input: CreateInteractiveBashHostInput)
   return createBashHost({
     fs: input.fs,
     sessionId: input.sessionId,
-    context: createInteractiveBashContext(input),
+    context:
+      input.context ?? createRouteBackedRuntimeContext({ env: input.env, orgId: input.orgId }),
   });
 };

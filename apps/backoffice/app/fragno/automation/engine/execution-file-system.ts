@@ -12,18 +12,19 @@ const TEXT_DECODER = new TextDecoder();
  * when methods are wrapped by `normalizeMountedFileSystem`.
  */
 export const createAutomationContextMount = ({
-  eventJson,
-  envJson,
+  contextFiles,
 }: {
-  eventJson: string;
-  envJson?: string;
+  contextFiles: Record<string, string>;
 }): ResolvedFileMount => {
-  const files = new Map<string, { content: string; bytes: Uint8Array }>([
-    ["/context/event.json", { content: eventJson, bytes: TEXT_ENCODER.encode(eventJson) }],
-  ]);
+  const files = new Map<string, { content: string; bytes: Uint8Array }>();
 
-  if (typeof envJson === "string") {
-    files.set("/context/env.json", { content: envJson, bytes: TEXT_ENCODER.encode(envJson) });
+  for (const [name, content] of Object.entries(contextFiles)) {
+    const normalizedName = name.trim().replace(/^\/+/, "");
+    if (!normalizedName || normalizedName.includes("/") || normalizedName === ".") {
+      throw new Error(`Invalid automation context file name: ${name}`);
+    }
+    const path = `/context/${normalizedName}`;
+    files.set(path, { content, bytes: TEXT_ENCODER.encode(content) });
   }
 
   const now = new Date();
@@ -134,19 +135,19 @@ export const createAutomationDevMount = (): ResolvedFileMount => {
 
 export const createAutomationExecutionFileSystem = ({
   masterFs,
-  eventJson,
-  envJson,
+  contextFiles,
   includeDevMount = false,
 }: {
   masterFs: MasterFileSystem;
-  eventJson: string;
-  envJson?: string;
+  contextFiles?: Record<string, string>;
   includeDevMount?: boolean;
 }): MasterFileSystem => {
   const baseMounts = masterFs.mounts.filter((mount) => mount.mountPoint !== "/context");
   const executionFs = new MasterFileSystem({ mounts: [...baseMounts] });
 
-  executionFs.mount(createAutomationContextMount({ eventJson, envJson }));
+  if (contextFiles && Object.keys(contextFiles).length > 0) {
+    executionFs.mount(createAutomationContextMount({ contextFiles }));
+  }
 
   if (includeDevMount && !baseMounts.some((mount) => mount.mountPoint === "/dev")) {
     executionFs.mount(createAutomationDevMount());
