@@ -1,5 +1,6 @@
 import type { FilesNodeDetail } from "./explorer-types";
 import type { MasterFileSystem } from "./master-file-system";
+import { ensureFolderPath, stripTrailingSlash } from "./normalize-path";
 import { getFilesNodeDetail, getTextArtifactSize, resolveFilesTarget } from "./service";
 
 const containsControlCharacters = (value: string): boolean => {
@@ -62,10 +63,6 @@ const performCreateFolderAction = async (
     return readOnlyAction("create-folder", target.normalizedPath);
   }
 
-  if (!target.mount.fs.capabilities.mkdir) {
-    return unsupportedAction("create-folder", "Folder creation is unavailable for this mount.");
-  }
-
   const resolved = resolveChildFolderPath(target.normalizedPath, folderName);
   if (resolved.error !== null) {
     return unsupportedAction("create-folder", resolved.error);
@@ -95,10 +92,6 @@ const performWriteTextAction = async (
     return readOnlyAction("write-text", target.normalizedPath);
   }
 
-  if (!target.mount.fs.capabilities.writeFile) {
-    return unsupportedAction("write-text", "Text editing is unavailable for this mount.");
-  }
-
   const previousDetail = await getFilesNodeDetail(master, target.normalizedPath);
 
   await target.mount.fs.writeFile(target.normalizedPath, content, {
@@ -125,10 +118,6 @@ const performDeleteAction = async (
 
   if (target.isRoot) {
     return unsupportedAction("delete", "Roots cannot be deleted.");
-  }
-
-  if (!target.mount.fs.capabilities.rm) {
-    return unsupportedAction("delete", "Delete is unavailable for this mount.");
   }
 
   await target.mount.fs.rm(target.normalizedPath, {
@@ -222,22 +211,6 @@ const unsupportedAction = (intent: FilesActionIntent, message: string): FilesAct
   intent,
   message,
 });
-
-const stripTrailingSlash = (value: string): string => {
-  if (value === "/") {
-    return value;
-  }
-
-  return value.replace(/\/+$/, "");
-};
-
-const ensureFolderPath = (value: string): string => {
-  if (value === "/") {
-    return value;
-  }
-
-  return value.endsWith("/") ? value : `${value}/`;
-};
 
 const formatBytesValue = (value: number): string => {
   if (value === 0) {

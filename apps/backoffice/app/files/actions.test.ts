@@ -2,9 +2,8 @@ import { beforeEach, describe, expect, test } from "vitest";
 
 import {
   createMasterFileSystem,
+  createUnsupportedFileSystem,
   performFilesAction,
-  registerFileContributor,
-  resetFileContributorsForTest,
   type FileContributor,
   type FileEntryDescriptor,
   type FilesContext,
@@ -16,8 +15,17 @@ const context: FilesContext = {
   uploadConfig: null,
 };
 
+const contributors: FileContributor[] = [];
+
+const registerFileContributor = (contributor: FileContributor): void => {
+  contributors.push(contributor);
+};
+
+const createTestMasterFileSystem = (): ReturnType<typeof createMasterFileSystem> =>
+  createMasterFileSystem(context, { contributors });
+
 beforeEach(() => {
-  resetFileContributorsForTest();
+  contributors.length = 0;
 });
 
 describe("files actions", () => {
@@ -28,7 +36,7 @@ describe("files actions", () => {
     } as Record<string, string>;
 
     registerFileContributor(createMutableMemoryContributor(files));
-    const master = await createMasterFileSystem(context);
+    const master = await createTestMasterFileSystem();
 
     const folderResult = await performFilesAction(master, {
       intent: "create-folder",
@@ -75,6 +83,7 @@ describe("files actions", () => {
       title: "Read only",
       readOnly: true,
       persistence: "persistent",
+      ...createUnsupportedFileSystem((operation, path) => new Error(`${operation} ${path}`)),
       mkdir: async () => undefined,
       stat: async () => ({
         isFile: false,
@@ -86,7 +95,7 @@ describe("files actions", () => {
       }),
       readdir: async () => [],
     });
-    const master = await createMasterFileSystem(context);
+    const master = await createTestMasterFileSystem();
 
     const result = await performFilesAction(master, {
       intent: "create-folder",
@@ -109,12 +118,7 @@ describe("files actions", () => {
       title: "Project",
       readOnly: false,
       persistence: "session",
-      describeEntry: async (path) => ({
-        kind: "file",
-        path,
-        title: "README.md",
-        contentType: "text/plain",
-      }),
+      ...createUnsupportedFileSystem((operation, path) => new Error(`${operation} ${path}`)),
       stat: async () => ({
         isFile: true,
         isDirectory: false,
@@ -125,19 +129,15 @@ describe("files actions", () => {
       }),
       readFile: async () => "hello",
     });
-    const master = await createMasterFileSystem(context);
+    const master = await createTestMasterFileSystem();
 
-    const result = await performFilesAction(master, {
-      intent: "write-text",
-      path: "/project/README.md",
-      content: "updated",
-    });
-
-    expect(result).toMatchObject({
-      ok: false,
-      intent: "write-text",
-      message: "Text editing is unavailable for this mount.",
-    });
+    await expect(
+      performFilesAction(master, {
+        intent: "write-text",
+        path: "/project/README.md",
+        content: "updated",
+      }),
+    ).rejects.toThrow(/write/);
   });
 });
 
@@ -224,7 +224,7 @@ function createMutableMemoryContributor(files: Record<string, string>): FileCont
     title: "Project",
     readOnly: false,
     persistence: "session",
-    describeEntry: async (path) => findEntry(buildTree(mountPoint), path),
+    ...createUnsupportedFileSystem((operation, path) => new Error(`${operation} ${path}`)),
     getAllPaths: () => [mountPoint, ...folders, ...Object.keys(files)],
     readdir: async (path) => {
       const tree = buildTree(mountPoint);

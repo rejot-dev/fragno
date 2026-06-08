@@ -1,6 +1,10 @@
-import { createPathNotFoundFileSystemError } from "@/files/fs-errors";
+import {
+  createPathNotFoundFileSystemError,
+  createReadOnlyFileSystemError,
+  createUnsupportedOperationFileSystemError,
+} from "@/files/fs-errors";
+import { createUnsupportedFileSystem } from "@/files/interface";
 import { MasterFileSystem } from "@/files/master-file-system";
-import { normalizeMountedFileSystem } from "@/files/mounted-file-system";
 import type { ResolvedFileMount } from "@/files/types";
 
 const TEXT_ENCODER = new TextEncoder();
@@ -8,8 +12,6 @@ const TEXT_DECODER = new TextDecoder();
 
 /**
  * Creates a read-only mount containing a single `/context/event.json` file.
- * Uses a plain-object filesystem (no InMemoryFs) to avoid `this`-binding issues
- * when methods are wrapped by `normalizeMountedFileSystem`.
  */
 export const createAutomationContextMount = ({
   contextFiles,
@@ -40,46 +42,42 @@ export const createAutomationContextMount = ({
     title: "Automation Context",
     readOnly: true,
     persistence: "session",
-    fs: normalizeMountedFileSystem(
-      {
-        readFile: async (path) =>
-          files.get(path)?.content ?? throwContextPathNotFound("open", path),
-        readFileBuffer: async (path) =>
-          files.get(path)?.bytes ?? throwContextPathNotFound("open", path),
-        stat: async (path) => {
-          const file = files.get(path);
-          if (file) {
-            return {
-              isFile: true,
-              isDirectory: false,
-              isSymbolicLink: false,
-              mode: 0o444,
-              size: file.bytes.length,
-              mtime: now,
-            };
-          }
+    fs: createUnsupportedFileSystem(createReadOnlyFileSystemError, {
+      readFile: async (path) => files.get(path)?.content ?? throwContextPathNotFound("open", path),
+      readFileBuffer: async (path) =>
+        files.get(path)?.bytes ?? throwContextPathNotFound("open", path),
+      stat: async (path) => {
+        const file = files.get(path);
+        if (file) {
+          return {
+            isFile: true,
+            isDirectory: false,
+            isSymbolicLink: false,
+            mode: 0o444,
+            size: file.bytes.length,
+            mtime: now,
+          };
+        }
 
-          if (path === MOUNT) {
-            return {
-              isFile: false,
-              isDirectory: true,
-              isSymbolicLink: false,
-              mode: 0o555,
-              size: 0,
-              mtime: now,
-            };
-          }
+        if (path === MOUNT) {
+          return {
+            isFile: false,
+            isDirectory: true,
+            isSymbolicLink: false,
+            mode: 0o555,
+            size: 0,
+            mtime: now,
+          };
+        }
 
-          return throwContextPathNotFound("stat", path);
-        },
-        readdir: async (path) =>
-          path === MOUNT
-            ? [...files.keys()].map((filePath) => filePath.slice(`${MOUNT}/`.length))
-            : throwContextPathNotFound("scandir", path),
-        getAllPaths: () => [MOUNT, ...files.keys()],
+        return throwContextPathNotFound("stat", path);
       },
-      { readOnly: true },
-    ),
+      readdir: async (path) =>
+        path === MOUNT
+          ? [...files.keys()].map((filePath) => filePath.slice(`${MOUNT}/`.length))
+          : throwContextPathNotFound("scandir", path),
+      getAllPaths: () => [MOUNT, ...files.keys()],
+    }),
   };
 };
 
@@ -106,30 +104,27 @@ export const createAutomationDevMount = (): ResolvedFileMount => {
     title: "Device Files",
     readOnly: false,
     persistence: "session",
-    fs: normalizeMountedFileSystem(
-      {
-        readFile: async (path) => TEXT_DECODER.decode(files.get(path) ?? new Uint8Array(0)),
-        readFileBuffer: async (path) => files.get(path) ?? new Uint8Array(0),
-        writeFile: async (path, content) => {
-          if (path === "/dev/null") {
-            return;
-          }
-          files.set(path, typeof content === "string" ? TEXT_ENCODER.encode(content) : content);
-        },
-        stat: async (path) => ({
-          isFile: files.has(path),
-          isDirectory: path === "/dev",
-          isSymbolicLink: false,
-          mode: 0o666,
-          size: files.get(path)?.length ?? 0,
-          mtime: now,
-        }),
-        readdir: async () => [...DEV_ENTRIES],
-        mkdir: async () => {},
-        getAllPaths: () => ["/dev", ...files.keys()],
+    fs: createUnsupportedFileSystem(createUnsupportedOperationFileSystemError, {
+      readFile: async (path) => TEXT_DECODER.decode(files.get(path) ?? new Uint8Array(0)),
+      readFileBuffer: async (path) => files.get(path) ?? new Uint8Array(0),
+      writeFile: async (path, content) => {
+        if (path === "/dev/null") {
+          return;
+        }
+        files.set(path, typeof content === "string" ? TEXT_ENCODER.encode(content) : content);
       },
-      { readOnly: false },
-    ),
+      stat: async (path) => ({
+        isFile: files.has(path),
+        isDirectory: path === "/dev",
+        isSymbolicLink: false,
+        mode: 0o666,
+        size: files.get(path)?.length ?? 0,
+        mtime: now,
+      }),
+      readdir: async () => [...DEV_ENTRIES],
+      mkdir: async () => {},
+      getAllPaths: () => ["/dev", ...files.keys()],
+    }),
   };
 };
 

@@ -14,21 +14,29 @@ vi.mock("@/files", async (importOriginal) => {
 
 import {
   createMasterFileSystem,
-  registerFileContributor,
-  resetFileContributorsForTest,
+  createUnsupportedFileSystem,
+  getBuiltInFileContributors,
   type FileContributor,
-  type FileEntryDescriptor,
 } from "@/files";
 
 import { handleFilesExplorerAction, loadFilesExplorerData } from "./data";
 
 const mockContext = { get: () => ({ env: {} }) } as never;
 
+const contributors: FileContributor[] = [];
+
+const registerFileContributor = (contributor: FileContributor): void => {
+  contributors.push(contributor);
+};
+
 beforeEach(() => {
-  resetFileContributorsForTest();
+  contributors.length = 0;
   createOrgFileSystemMock.mockReset();
   createOrgFileSystemMock.mockImplementation(() =>
-    createMasterFileSystem({ orgId: "acme-org", uploadConfig: null }),
+    createMasterFileSystem(
+      { orgId: "acme-org", uploadConfig: null },
+      { contributors: [...getBuiltInFileContributors(), ...contributors] },
+    ),
   );
 });
 
@@ -142,10 +150,6 @@ describe("files explorer route data", () => {
         "/project/input",
         "/project/output",
       ],
-      describedChildren: {
-        "/project/input/": [{ kind: "file", path: "/project/input/notes.md", title: "notes.md" }],
-        "/project/output/": [{ kind: "file", path: "/project/output/.gitkeep", title: ".gitkeep" }],
-      },
     });
     registerFileContributor(contributor);
 
@@ -171,11 +175,11 @@ describe("files explorer route data", () => {
       "/project/output/",
     ]);
     expect(helloFolder?.children).toBeUndefined();
-    expect(inputFolder?.children?.map((node) => node.path)).toEqual(["/project/input/notes.md"]);
-    expect(outputFolder?.children?.map((node) => node.path)).toEqual(["/project/output/.gitkeep"]);
+    expect(inputFolder?.children).toBeUndefined();
+    expect(outputFolder?.children).toBeUndefined();
   });
 
-  test("expands the selected folder branch while preserving eager sibling children", async () => {
+  test("expands the selected folder branch without descriptor-provided sibling children", async () => {
     const { contributor } = createMutableProjectContributor({
       files: [
         ["/project/hello/world/task.md", "deep file"],
@@ -189,10 +193,6 @@ describe("files explorer route data", () => {
         "/project/input",
         "/project/output",
       ],
-      describedChildren: {
-        "/project/input/": [{ kind: "file", path: "/project/input/notes.md", title: "notes.md" }],
-        "/project/output/": [{ kind: "file", path: "/project/output/.gitkeep", title: ".gitkeep" }],
-      },
     });
     registerFileContributor(contributor);
 
@@ -213,27 +213,20 @@ describe("files explorer route data", () => {
     );
 
     expect(helloFolder?.children?.map((node) => node.path)).toEqual(["/project/hello/world/"]);
-    expect(inputFolder?.children?.map((node) => node.path)).toEqual(["/project/input/notes.md"]);
-    expect(outputFolder?.children?.map((node) => node.path)).toEqual(["/project/output/.gitkeep"]);
+    expect(inputFolder?.children).toBeUndefined();
+    expect(outputFolder?.children).toBeUndefined();
   });
 });
 
 function createMutableProjectContributor(options?: {
   files?: Array<[path: string, content: string]>;
   folders?: string[];
-  describedChildren?: Record<string, FileEntryDescriptor[]>;
 }): {
   contributor: FileContributor;
   folders: Set<string>;
 } {
   const files = new Map<string, string>(options?.files ?? [["/project/README.md", "hello"]]);
   const folders = new Set<string>(options?.folders ?? ["/project", "/project/src"]);
-  const describedChildren = new Map(
-    Object.entries(options?.describedChildren ?? {}).map(([path, children]) => [
-      ensureFolderPath(path),
-      children,
-    ]),
-  );
 
   const contributor: FileContributor = {
     id: "project",
@@ -242,6 +235,7 @@ function createMutableProjectContributor(options?: {
     title: "Project",
     readOnly: false,
     persistence: "session",
+    ...createUnsupportedFileSystem((operation, path) => new Error(`${operation} ${path}`)),
     async exists(path) {
       return files.has(path) || folders.has(normalizeDirectory(path));
     },
@@ -270,29 +264,6 @@ function createMutableProjectContributor(options?: {
       }
 
       throw new Error("Path not found.");
-    },
-    async describeEntry(path) {
-      const normalizedDirectory = normalizeDirectory(path);
-      if (files.has(path)) {
-        return {
-          kind: "file",
-          path,
-          title: path.split("/").at(-1) ?? path,
-          sizeBytes: files.get(path)?.length ?? 0,
-          contentType: "text/plain",
-        };
-      }
-
-      if (folders.has(normalizedDirectory)) {
-        return {
-          kind: "folder",
-          path: ensureFolderPath(path),
-          title: normalizedDirectory.split("/").at(-1) ?? normalizedDirectory,
-          children: describedChildren.get(ensureFolderPath(path)),
-        };
-      }
-
-      return null;
     },
     async readdir(path) {
       const directory = normalizeDirectory(path);
@@ -371,4 +342,3 @@ function createMutableProjectContributor(options?: {
 }
 
 const normalizeDirectory = (path: string) => path.replace(/\/+$/, "") || "/";
-const ensureFolderPath = (path: string) => (path.endsWith("/") ? path : `${path}/`);

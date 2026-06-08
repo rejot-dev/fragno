@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   STATIC_STARTER_CONTENT,
   STATIC_STARTER_FILE_MOUNT_POINT,
-  createStaticStarterMountedFileSystem,
+  createStaticStarterFileSystem,
   staticStarterFileContributor,
   staticStarterFileMount,
 } from "@/files";
@@ -22,11 +22,11 @@ describe("static starter file contributor", () => {
   });
 
   test("renders and reads the static starter pack", async () => {
-    const fs = createStaticStarterMountedFileSystem();
-    const entries = await fs.readdirWithFileTypes(STATIC_STARTER_FILE_MOUNT_POINT);
+    const fs = createStaticStarterFileSystem();
+    const entries = await fs.readdirWithFileTypes!(STATIC_STARTER_FILE_MOUNT_POINT);
     const readme = await fs.readFile(`${STATIC_STARTER_FILE_MOUNT_POINT}/README.md`);
-    const bindingsManifest = await fs.readFile(
-      `${STATIC_STARTER_FILE_MOUNT_POINT}/automations/bindings.json`,
+    const router = await fs.readFile(
+      `${STATIC_STARTER_FILE_MOUNT_POINT}/automations/scripts/router.cm.js`,
     );
 
     expect(entries.map((entry) => entry.name)).toEqual(
@@ -39,14 +39,12 @@ describe("static starter file contributor", () => {
       ]),
     );
     expect(readme).toContain("Static starter content");
-    expect(bindingsManifest).toContain('"bindings"');
-    expect(bindingsManifest).toContain(
-      '"path": "/starter/automations/scripts/telegram-claim-linking.start.cm.js"',
-    );
+    expect(router).toContain("workflow.createInstance");
+    expect(router).toContain("telegram-claim-linking.workflow.js");
   });
 
   test("is always read-only and independent of Upload", async () => {
-    const fs = createStaticStarterMountedFileSystem();
+    const fs = createStaticStarterFileSystem();
 
     await expect(fs.readFile("/starter/README.md")).resolves.toContain("Static starter content");
     await expect(fs.writeFile("/starter/new.md", "hello")).rejects.toThrow(/read-only/i);

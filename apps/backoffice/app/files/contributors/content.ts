@@ -1,11 +1,109 @@
-import type { DirentEntry, FsStat } from "../interface";
-import { normalizeMountPoint, normalizeRelativePath } from "../normalize-path";
+import {
+  createInvalidArgumentFileSystemError,
+  createPathNotFoundFileSystemError,
+  createReadOnlyFileSystemError,
+  createUnsupportedOperationFileSystemError,
+} from "../fs-errors";
+import type { CpOptions, DirentEntry, FsStat, IFileSystem } from "../interface";
+import {
+  ensureFolderPath,
+  normalizeMountPoint,
+  normalizeRelativePath,
+  resolvePath,
+  stripTrailingSlash,
+} from "../normalize-path";
 import type { FileEntryDescriptor, FileSystemArtifact } from "../types";
 
 const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
 const ENTRY_SORTER = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 const UNKNOWN_MTIME = new Date(0);
+
+export const createReadOnlyContentFileSystem = (
+  mountPoint: string,
+  artifacts: Record<string, FileSystemArtifact>,
+): IFileSystem => ({
+  async readFile(path) {
+    const artifact = readContentText(mountPoint, artifacts, path);
+    if (artifact === null) {
+      throw createPathNotFoundFileSystemError("read", path);
+    }
+    return artifact;
+  },
+  async readFileBuffer(path) {
+    const artifact = readContentBuffer(mountPoint, artifacts, path);
+    if (artifact === null) {
+      throw createPathNotFoundFileSystemError("read", path);
+    }
+    return artifact;
+  },
+  async writeFile(path) {
+    throw createReadOnlyFileSystemError("write", path);
+  },
+  async appendFile(path) {
+    throw createReadOnlyFileSystemError("append", path);
+  },
+  async exists(path) {
+    return statContentEntry(mountPoint, artifacts, path, true) !== null;
+  },
+  async stat(path) {
+    const stat = statContentEntry(mountPoint, artifacts, path, true);
+    if (!stat) {
+      throw createPathNotFoundFileSystemError("stat", path);
+    }
+    return stat;
+  },
+  async mkdir(path) {
+    throw createReadOnlyFileSystemError("mkdir", path);
+  },
+  async readdir(path) {
+    return listContentChildNames(mountPoint, artifacts, path);
+  },
+  async readdirWithFileTypes(path) {
+    return listContentDirents(mountPoint, artifacts, path);
+  },
+  async rm(path) {
+    throw createReadOnlyFileSystemError("rm", path);
+  },
+  async cp(src: string, _dest: string, options?: CpOptions) {
+    const stat = await this.stat(src);
+    if (stat.isDirectory && !options?.recursive) {
+      throw createInvalidArgumentFileSystemError("copy", src);
+    }
+    throw createReadOnlyFileSystemError("copy", src);
+  },
+  async mv(src) {
+    throw createReadOnlyFileSystemError("move", src);
+  },
+  resolvePath,
+  getAllPaths() {
+    return [mountPoint, ...Object.keys(artifacts).map((path) => `${mountPoint}/${path}`)];
+  },
+  async chmod(path) {
+    throw createReadOnlyFileSystemError("chmod", path);
+  },
+  async symlink(_target: string, linkPath: string) {
+    throw createReadOnlyFileSystemError("symlink", linkPath);
+  },
+  async link(_existingPath: string, newPath: string) {
+    throw createReadOnlyFileSystemError("link", newPath);
+  },
+  async readlink(path) {
+    throw createUnsupportedOperationFileSystemError("readlink", path);
+  },
+  async lstat(path) {
+    return this.stat(path);
+  },
+  async realpath(path) {
+    if (!(await this.exists(path))) {
+      throw createPathNotFoundFileSystemError("realpath", path);
+    }
+    return stripTrailingSlash(path) || "/";
+  },
+  async utimes(path) {
+    throw createReadOnlyFileSystemError("utimes", path);
+  },
+});
 
 type MutableFolderEntry = FileEntryDescriptor & { kind: "folder"; children: FileEntryDescriptor[] };
 
@@ -276,19 +374,6 @@ const getParentFolderPath = (path: string, mountPoint: string): string | null =>
 
   const parentPath = `/${segments.slice(0, -1).join("/")}`;
   return parentPath === mountPoint ? null : ensureFolderPath(parentPath);
-};
-
-const ensureFolderPath = (path: string): string => {
-  const normalizedPath = normalizeMountPoint(path);
-  return normalizedPath.endsWith("/") ? normalizedPath : `${normalizedPath}/`;
-};
-
-const stripTrailingSlash = (path: string): string => {
-  if (path === "/") {
-    return path;
-  }
-
-  return path.replace(/\/+$/, "");
 };
 
 const getLeafSegment = (path: string): string => {

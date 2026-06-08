@@ -11,14 +11,24 @@ import {
   createPathNotFoundFileSystemError,
   createUnsupportedOperationFileSystemError,
 } from "../fs-errors";
-import type { FileContent, FsStat } from "../interface";
-import { normalizeMountedFileSystem } from "../mounted-file-system";
+import {
+  createUnsupportedFileSystem,
+  type CpOptions,
+  type FileContent,
+  type FsStat,
+  type IFileSystem,
+} from "../interface";
+import {
+  ensureFolderPath,
+  normalizeAbsolutePath,
+  resolvePath as resolveUploadPath,
+  stripTrailingSlash,
+} from "../normalize-path";
 import type {
   FileContributor,
   FileEntryDescriptor,
   FileMountMetadata,
   FilesContext,
-  MountedFileSystem,
 } from "../types";
 import {
   createUploadDirectoryMarkerMetadata,
@@ -33,9 +43,27 @@ export const UPLOAD_FILE_MOUNT_ID = "workspace";
 export const UPLOAD_FILE_MOUNT_POINT = "/workspace";
 const UNKNOWN_MTIME = new Date(0);
 const TEXT_ENCODER = new TextEncoder();
+const toUint8Array = (content: FileContent): Uint8Array =>
+  typeof content === "string" ? TEXT_ENCODER.encode(content) : content;
+const concatBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
+  const result = new Uint8Array(left.byteLength + right.byteLength);
+  result.set(left);
+  result.set(right, left.byteLength);
+  return result;
+};
 const UPLOAD_FS_METADATA_KEY = "__docsFs";
 const DEFAULT_FILE_MODE = 0o644;
 const DEFAULT_FOLDER_MODE = 0o755;
+const UPLOAD_DIRECTORY_LIST_PAGE_SIZE = "500";
+const RESERVED_UPLOAD_DIRECTORY_NAMES = new Set([".fragno"]);
+
+type UploadDirectoryRecord = {
+  name: string;
+  prefix: string;
+  updatedAt?: string | Date | null;
+  contentType?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
 
 export const uploadFileMount: FileMountMetadata = {
   id: UPLOAD_FILE_MOUNT_ID,
@@ -50,6 +78,7 @@ export const uploadFileMount: FileMountMetadata = {
 
 export const uploadFileContributor: FileContributor = {
   ...uploadFileMount,
+  ...createUnsupportedFileSystem(createUnsupportedOperationFileSystemError),
   async createFileSystem(ctx) {
     if (!isUploadConfigured(ctx.uploadConfig)) {
       return null;
@@ -57,13 +86,13 @@ export const uploadFileContributor: FileContributor = {
 
     const provider = resolveBoundUploadProvider(ctx.uploadConfig);
     return {
-      fs: createUploadMountedFileSystem(ctx, { provider }),
+      fs: createUploadFileSystem(ctx, { provider }),
       mount: resolveUploadFileMount(ctx.uploadConfig, { provider }) ?? undefined,
     };
   },
 };
 
-export type CreateUploadMountedFileSystemOptions = {
+export type CreateUploadFileSystemOptions = {
   mountPoint?: string;
   provider?: UploadProvider;
 };
@@ -111,69 +140,70 @@ const resolveUploadReadContentType = (response: Response, fileKey: string): stri
   });
 };
 
-export const createUploadMountedFileSystem = (
+export const createUploadFileSystem = (
   ctx: FilesContext,
-  options: CreateUploadMountedFileSystemOptions = {},
-): MountedFileSystem => {
+  options: CreateUploadFileSystemOptions = {},
+): IFileSystem => {
   const mountPoint = normalizeAbsolutePath(options.mountPoint ?? UPLOAD_FILE_MOUNT_POINT);
   const provider = resolveBoundUploadProvider(ctx.uploadConfig, options.provider);
 
-  return normalizeMountedFileSystem({
-    async describeEntry(path) {
-      const normalizedPath = path.endsWith("/") ? ensureFolderPath(path) : stripTrailingSlash(path);
-      const relativePath = stripLeadingSlash(stripTrailingSlash(path).slice(mountPoint.length));
+  const getEntry = async (path: string): Promise<FileEntryDescriptor | null> => {
+    const normalizedPath = path.endsWith("/") ? ensureFolderPath(path) : stripTrailingSlash(path);
+    const relativePath = stripLeadingSlash(stripTrailingSlash(path).slice(mountPoint.length));
 
-      if (!path.endsWith("/") && relativePath) {
-        const result = await fetchUploadFileFromRuntime(ctx, provider, relativePath);
-        if (result && !isUploadDirectoryMarker(result)) {
-          return toFileDescriptor(mountPoint, result, buildUploadContentUrl(ctx, result));
-        }
+    if (!path.endsWith("/") && relativePath) {
+      const result = await fetchUploadFileFromRuntime(ctx, provider, relativePath);
+      if (result && !isUploadDirectoryMarker(result)) {
+        return toFileDescriptor(mountPoint, result, buildUploadContentUrl(ctx, result));
       }
+    }
 
-      const tree = buildUploadTree(mountPoint, await listAllUploadFiles(ctx, provider));
-      return findEntry(tree, normalizedPath);
-    },
+    if (relativePath && (await uploadDirectoryExists(ctx, provider, relativePath))) {
+      const marker = await fetchUploadDirectoryMarker(ctx, provider, relativePath);
+      const markerMtime = marker ? readUploadMtime(marker) : null;
+      const markerMode = marker ? readUploadMode(marker) : undefined;
+      return {
+        kind: "folder",
+        path: ensureFolderPath(normalizedPath),
+        title: getLeafSegment(stripTrailingSlash(normalizedPath)),
+        updatedAt: markerMtime,
+        metadata: marker?.metadata ?? null,
+        fs: {
+          mode: markerMode,
+          mtime: markerMtime,
+        },
+      };
+    }
+
+    return null;
+  };
+
+  const fs: IFileSystem = {
     async exists(path) {
       if (stripTrailingSlash(path) === mountPoint) {
         return true;
       }
 
-      return (await this.describeEntry?.(path)) !== null;
+      return (await getEntry(path)) !== null;
     },
     async stat(path) {
       if (stripTrailingSlash(path) === mountPoint) {
         return createRootStat();
       }
 
-      const entry = await this.describeEntry?.(path);
+      const entry = await getEntry(path);
       if (!entry) {
-        throw new Error("Path not found.");
+        throw createPathNotFoundFileSystemError("stat", path);
       }
 
       return toFsStat(entry, false);
     },
     async readdir(path) {
-      const tree = buildUploadTree(mountPoint, await listAllUploadFiles(ctx, provider));
-      if (stripTrailingSlash(path) === mountPoint) {
-        return tree.map((entry) => getLeafSegment(stripTrailingSlash(entry.path)));
-      }
-
-      const node = findEntry(tree, ensureFolderPath(path));
-      return node?.kind === "folder"
-        ? (node.children ?? []).map((entry) => getLeafSegment(stripTrailingSlash(entry.path)))
-        : [];
+      const entries = await listUploadDirectoryEntries(ctx, provider, mountPoint, path);
+      return entries.map((entry) => getLeafSegment(stripTrailingSlash(entry.path)));
     },
     async readdirWithFileTypes(path) {
-      const tree = buildUploadTree(mountPoint, await listAllUploadFiles(ctx, provider));
-      const directory =
-        stripTrailingSlash(path) === mountPoint ? null : findEntry(tree, ensureFolderPath(path));
-      const entries =
-        stripTrailingSlash(path) === mountPoint
-          ? tree
-          : directory?.kind === "folder"
-            ? (directory.children ?? [])
-            : [];
-
+      const entries = await listUploadDirectoryEntries(ctx, provider, mountPoint, path);
       return entries.map((entry) => ({
         name: getLeafSegment(stripTrailingSlash(entry.path)),
         isFile: entry.kind === "file",
@@ -321,7 +351,7 @@ export const createUploadMountedFileSystem = (
         if (options?.force) {
           return;
         }
-        throw new Error("File not found.");
+        throw createPathNotFoundFileSystemError("read", path);
       }
 
       const directFile = !isDirectoryPath
@@ -340,7 +370,7 @@ export const createUploadMountedFileSystem = (
         if (options?.force) {
           return;
         }
-        throw new Error("File not found.");
+        throw createPathNotFoundFileSystemError("read", path);
       }
 
       if (!options?.recursive) {
@@ -380,10 +410,58 @@ export const createUploadMountedFileSystem = (
         }),
       });
     },
+    async appendFile(path, content, options) {
+      const existing = (await fs.exists(path)) ? await fs.readFileBuffer(path) : new Uint8Array();
+      const next = concatBytes(existing, toUint8Array(content));
+      await fs.writeFile(path, next, options);
+    },
+    async cp(src: string, dest: string, options?: CpOptions) {
+      const stat = await fs.stat(src);
+      if (stat.isDirectory) {
+        if (!options?.recursive) {
+          throw createInvalidArgumentFileSystemError("copy", src);
+        }
+        await fs.mkdir(dest, { recursive: true });
+        for (const entry of await fs.readdir(src)) {
+          await fs.cp(
+            `${stripTrailingSlash(src)}/${entry}`,
+            `${stripTrailingSlash(dest)}/${entry}`,
+            options,
+          );
+        }
+        return;
+      }
+      await fs.writeFile(dest, await fs.readFileBuffer(src));
+    },
+    async mv(src: string, dest: string) {
+      await fs.cp(src, dest, { recursive: true });
+      await fs.rm(src, { recursive: true, force: true });
+    },
+    resolvePath: resolveUploadPath,
     getAllPaths() {
       return [mountPoint];
     },
-  });
+    async symlink(_target: string, linkPath: string) {
+      throw createUnsupportedOperationFileSystemError("symlink", linkPath);
+    },
+    async link(_existingPath: string, newPath: string) {
+      throw createUnsupportedOperationFileSystemError("link", newPath);
+    },
+    async readlink(path: string) {
+      throw createUnsupportedOperationFileSystemError("readlink", path);
+    },
+    async lstat(path: string) {
+      return fs.stat(path);
+    },
+    async realpath(path: string) {
+      if (!(await fs.exists(path))) {
+        throw createPathNotFoundFileSystemError("realpath", path);
+      }
+      return stripTrailingSlash(path) || "/";
+    },
+  };
+
+  return fs;
 };
 
 export type ResolveUploadFileMountOptions = {
@@ -478,44 +556,6 @@ export const resolveBoundUploadProvider = (
   return provider;
 };
 
-export type ResolveUploadMountConfigOptions = {
-  provider?: UploadProvider | null;
-};
-
-export const resolveUploadMountConfig = (
-  uploadConfig?: UploadAdminConfigResponse | null,
-  options: ResolveUploadMountConfigOptions = {},
-) => {
-  const provider =
-    options.provider !== undefined && options.provider !== null
-      ? resolveBoundUploadProvider(uploadConfig, options.provider)
-      : resolvePreferredUploadProvider(uploadConfig);
-  if (!provider || provider !== UPLOAD_PROVIDER_R2) {
-    return null;
-  }
-
-  const providerConfig = uploadConfig?.providers[provider];
-  if (!providerConfig?.configured || !providerConfig.config) {
-    return null;
-  }
-
-  const bucket = providerConfig.config.bucket;
-  const endpoint = providerConfig.config.endpoint;
-  if (!bucket || !endpoint) {
-    return null;
-  }
-
-  return {
-    bucket,
-    options: {
-      endpoint,
-      pathStyle: providerConfig.config.pathStyle,
-      region: providerConfig.config.region ?? undefined,
-      provider,
-    },
-  };
-};
-
 const deleteUploadRecord = async (ctx: FilesContext, file: UploadFileRecord) => {
   const response = await requestUpload(ctx, "DELETE", "/files/by-key", {
     query: {
@@ -596,7 +636,7 @@ const listAllUploadFiles = async (
     const response = await requestUpload(ctx, "GET", "/files", {
       query: {
         provider,
-        pageSize: "200",
+        pageSize: UPLOAD_DIRECTORY_LIST_PAGE_SIZE,
         status: "ready",
         ...(cursor ? { cursor } : {}),
       },
@@ -622,6 +662,129 @@ const listAllUploadFiles = async (
   }
 
   return files;
+};
+
+const uploadDirectoryExists = async (
+  ctx: FilesContext,
+  provider: UploadProvider,
+  folderKey: string,
+): Promise<boolean> => {
+  const response = await requestUpload(ctx, "GET", "/files", {
+    query: {
+      provider,
+      prefix: ensureFolderPrefix(folderKey),
+      delimiter: "/",
+      pageSize: "1",
+      status: "ready",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(await readResponseMessage(response, "Failed to resolve folder."));
+  }
+
+  const payload = (await response.json()) as {
+    files?: UploadFileRecord[];
+    directories?: UploadDirectoryRecord[];
+  };
+
+  return Boolean((payload.files?.length ?? 0) > 0 || (payload.directories?.length ?? 0) > 0);
+};
+
+const listUploadDirectoryEntries = async (
+  ctx: FilesContext,
+  provider: UploadProvider,
+  mountPoint: string,
+  path: string,
+): Promise<FileEntryDescriptor[]> => {
+  const { fileKey, isRoot } = toRelativeUploadPath(mountPoint, path);
+  const prefix = isRoot ? "" : ensureFolderPrefix(fileKey);
+  const entries = new Map<string, FileEntryDescriptor>();
+  let cursor: string | undefined;
+
+  while (true) {
+    const response = await requestUpload(ctx, "GET", "/files", {
+      query: {
+        provider,
+        prefix,
+        delimiter: "/",
+        pageSize: UPLOAD_DIRECTORY_LIST_PAGE_SIZE,
+        status: "ready",
+        ...(cursor ? { cursor } : {}),
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(await readResponseMessage(response, "Failed to list files."));
+    }
+
+    const payload = (await response.json()) as {
+      files?: UploadFileRecord[];
+      directories?: UploadDirectoryRecord[];
+      cursor?: string;
+      hasNextPage?: boolean;
+    };
+
+    for (const directory of payload.directories ?? []) {
+      if (isUploadDirectoryMarkerDirectory(directory)) {
+        continue;
+      }
+
+      const descriptor = toDirectoryDescriptor(mountPoint, directory);
+      entries.set(descriptor.path, descriptor);
+    }
+
+    for (const file of payload.files ?? []) {
+      if (file.status === "deleted" || isUploadDirectoryMarker(file)) {
+        continue;
+      }
+
+      const descriptor = toFileDescriptor(mountPoint, file, buildUploadContentUrl(ctx, file));
+      entries.set(descriptor.path, descriptor);
+    }
+
+    if (!payload.hasNextPage || !payload.cursor) {
+      break;
+    }
+
+    cursor = payload.cursor;
+  }
+
+  return Array.from(entries.values()).sort((left, right) => {
+    const leftOrder = left.kind === "folder" ? 0 : 1;
+    const rightOrder = right.kind === "folder" ? 0 : 1;
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+
+    return (left.title ?? left.path).localeCompare(right.title ?? right.path);
+  });
+};
+
+const fetchUploadDirectoryMarker = async (
+  ctx: FilesContext,
+  provider: UploadProvider,
+  folderKey: string,
+): Promise<UploadFileRecord | null> => {
+  const marker = await fetchUploadFileFromRuntime(
+    ctx,
+    provider,
+    toUploadDirectoryMarkerFileKey(folderKey),
+  );
+  return marker && isUploadDirectoryMarker(marker) ? marker : null;
+};
+
+const isUploadDirectoryMarkerDirectory = (directory: UploadDirectoryRecord): boolean => {
+  if (!RESERVED_UPLOAD_DIRECTORY_NAMES.has(directory.name)) {
+    return false;
+  }
+
+  const markerKey = `${stripTrailingSlash(directory.prefix)}/${getUploadDirectoryMarkerFilename()}`;
+  return isUploadDirectoryMarker({
+    fileKey: markerKey,
+    contentType: directory.contentType,
+    metadata: directory.metadata,
+  });
 };
 
 type UploadFsMetadata = {
@@ -732,7 +895,7 @@ const normalizeUploadMtime = (mtime: Date, path: string): string => {
 };
 
 const resolveUploadMetadataMutationTarget = async (
-  fs: Pick<MountedFileSystem, "describeEntry">,
+  fs: Pick<IFileSystem, "stat">,
   ctx: FilesContext,
   provider: UploadProvider,
   mountPoint: string,
@@ -744,17 +907,13 @@ const resolveUploadMetadataMutationTarget = async (
     throw createUnsupportedOperationFileSystemError(operation, normalizedPath);
   }
 
-  const descriptor = await fs.describeEntry?.(path);
-  if (!descriptor) {
-    throw createPathNotFoundFileSystemError(operation, normalizedPath);
-  }
-
+  const stat = await fs.stat(path);
   const { fileKey } = toRelativeUploadPath(mountPoint, normalizedPath);
   if (!fileKey) {
     throw createUnsupportedOperationFileSystemError(operation, normalizedPath);
   }
 
-  if (descriptor.kind === "file") {
+  if (stat.isFile) {
     const file = await fetchUploadFileFromRuntime(ctx, provider, fileKey);
     if (!file || isUploadDirectoryMarker(file)) {
       throw createPathNotFoundFileSystemError(operation, normalizedPath);
@@ -946,6 +1105,20 @@ const toFileDescriptor = (
     ...(previewUrl ? { previewUrl } : {}),
   },
 });
+
+const toDirectoryDescriptor = (
+  mountPoint: string,
+  directory: UploadDirectoryRecord,
+): FileEntryDescriptor => {
+  const folderKey = stripTrailingSlash(directory.prefix);
+  return {
+    kind: "folder",
+    path: ensureFolderPath(`${mountPoint}/${folderKey}`),
+    title: directory.name || getLeafSegment(folderKey),
+    updatedAt: directory.updatedAt ?? null,
+    metadata: directory.metadata ?? null,
+  };
+};
 
 const findEntry = (entries: FileEntryDescriptor[], path: string): FileEntryDescriptor | null => {
   for (const entry of entries) {
@@ -1243,16 +1416,7 @@ const toUploadProviderLabel = (provider: UploadProvider): string => {
 
   return "R2 credentials";
 };
-
-const normalizeAbsolutePath = (value: string): string => {
-  const normalized = value.trim().replaceAll("\\", "/");
-  const segments = normalized.split("/").filter(Boolean);
-  return `/${segments.join("/")}`;
-};
-
-const stripTrailingSlash = (value: string): string => value.replace(/\/+$/, "");
 const stripLeadingSlash = (value: string): string => value.replace(/^\/+/, "");
-const ensureFolderPath = (value: string): string => (value.endsWith("/") ? value : `${value}/`);
 const ensureFolderPrefix = (value: string): string =>
   value ? `${stripTrailingSlash(value)}/` : "";
 const getLeafSegment = (value: string): string => value.split("/").filter(Boolean).at(-1) ?? value;

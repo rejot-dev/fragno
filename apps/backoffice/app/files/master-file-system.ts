@@ -1,5 +1,6 @@
-import { ensureBuiltInFileContributorsRegistered } from "./contributors";
+import { getBuiltInFileContributors } from "./contributors";
 import {
+  FileSystemError,
   createReadOnlyFileSystemError,
   createPathNotFoundFileSystemError,
   createUnsupportedOperationFileSystemError,
@@ -16,7 +17,6 @@ import type {
   RmOptions,
   WriteFileOptions,
 } from "./interface";
-import { normalizeMountedFileSystem } from "./mounted-file-system";
 import {
   normalizeAbsolutePath,
   normalizeDirectoryPath,
@@ -26,14 +26,11 @@ import {
   resolvePath as resolveFilePath,
   stripTrailingSlash,
 } from "./normalize-path";
-import { getRegisteredFileContributors } from "./registry";
 import type {
   FileContributor,
   FileMountMetadata,
   FilesContext,
-  MountedFileSystem,
-  MountedFileSystemInput,
-  MountedFileSystemResolution,
+  FileSystemResolution,
   ResolvedFileMount,
 } from "./types";
 
@@ -133,8 +130,12 @@ export class MasterFileSystem implements IFileSystem {
     try {
       await this.stat(path);
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      if (error instanceof FileSystemError && error.code === "ENOENT") {
+        return false;
+      }
+
+      throw error;
     }
   }
 
@@ -306,7 +307,7 @@ export class MasterFileSystem implements IFileSystem {
 
   #resolveReadTarget(path: string): {
     mount: ResolvedFileMount;
-    fs: MountedFileSystem;
+    fs: IFileSystem;
   } {
     const normalizedPath = normalizeAbsolutePath(path);
 
@@ -320,7 +321,7 @@ export class MasterFileSystem implements IFileSystem {
 
   #resolveWriteTarget(path: string): {
     mount: ResolvedFileMount;
-    fs: MountedFileSystem;
+    fs: IFileSystem;
   } {
     const normalizedPath = normalizeAbsolutePath(path);
     const mount = this.#resolveMount(normalizedPath);
@@ -354,7 +355,21 @@ export class MasterFileSystem implements IFileSystem {
 
   async #readMountedDirents(mount: ResolvedFileMount, path: string): Promise<DirentEntry[]> {
     try {
-      return await mount.fs.readdirWithFileTypes(path);
+      if (mount.fs.readdirWithFileTypes) {
+        return await mount.fs.readdirWithFileTypes(path);
+      }
+
+      return Promise.all(
+        (await mount.fs.readdir(path)).map(async (name) => {
+          const stat = await mount.fs.stat(resolveFilePath(path, name));
+          return {
+            name,
+            isFile: stat.isFile,
+            isDirectory: stat.isDirectory,
+            isSymbolicLink: stat.isSymbolicLink,
+          };
+        }),
+      );
     } catch {
       return [];
     }
@@ -414,19 +429,24 @@ export class MasterFileSystem implements IFileSystem {
   }
 }
 
-export const createMasterFileSystem = async (context: FilesContext): Promise<MasterFileSystem> => {
-  ensureBuiltInFileContributorsRegistered();
+export type CreateMasterFileSystemOptions = {
+  contributors?: ReadonlyArray<FileContributor>;
+};
 
+export const createMasterFileSystem = async (
+  context: FilesContext,
+  options: CreateMasterFileSystemOptions = {},
+): Promise<MasterFileSystem> => {
   const normalizedContextOrgId = context.orgId.trim();
   if (!normalizedContextOrgId) {
     throw new Error("Missing organisation id in file system context.");
   }
 
-  const contributors = getRegisteredFileContributors();
+  const contributors = options.contributors ?? getBuiltInFileContributors();
   const mounts = [] as ResolvedFileMount[];
 
   for (const contributor of contributors) {
-    const resolvedMount = await resolveMountedFileSystem(contributor, {
+    const resolvedMount = await resolveFileSystem(contributor, {
       ...context,
       orgId: normalizedContextOrgId,
     });
@@ -434,10 +454,8 @@ export const createMasterFileSystem = async (context: FilesContext): Promise<Mas
       continue;
     }
 
-    const resolvedFs = isResolvedMountedFileSystemWithOverrides(resolvedMount)
-      ? resolvedMount.fs
-      : resolvedMount;
-    const resolvedMountMeta = isResolvedMountedFileSystemWithOverrides(resolvedMount)
+    const resolvedFs = hasFileSystemOverrides(resolvedMount) ? resolvedMount.fs : resolvedMount;
+    const resolvedMountMeta = hasFileSystemOverrides(resolvedMount)
       ? resolvedMount.mount
       : undefined;
     const mountPoint = normalizeMountPoint(resolvedMountMeta?.mountPoint ?? contributor.mountPoint);
@@ -453,28 +471,28 @@ export const createMasterFileSystem = async (context: FilesContext): Promise<Mas
       persistence: resolvedMountMeta?.persistence ?? contributor.persistence,
       description: resolvedMountMeta?.description ?? contributor.description,
       uploadProvider: resolvedMountMeta?.uploadProvider ?? contributor.uploadProvider,
-      fs: normalizeMountedFileSystem(resolvedFs, { readOnly }),
+      fs: resolvedFs,
     });
   }
 
   return new MasterFileSystem({ mounts });
 };
 
-const resolveMountedFileSystem = async (
+const resolveFileSystem = async (
   contributor: FileContributor,
   context: FilesContext,
-): Promise<MountedFileSystemResolution | null> => {
+): Promise<FileSystemResolution | null> => {
   if (contributor.createFileSystem) {
     return contributor.createFileSystem(context);
   }
 
-  return contributor;
+  return contributor as IFileSystem;
 };
 
-const isResolvedMountedFileSystemWithOverrides = (
-  value: MountedFileSystemResolution,
+const hasFileSystemOverrides = (
+  value: FileSystemResolution,
 ): value is {
-  fs: MountedFileSystemInput;
+  fs: IFileSystem;
   mount?: Partial<FileMountMetadata>;
 } => typeof value === "object" && value !== null && "fs" in value;
 

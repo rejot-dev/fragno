@@ -4,14 +4,14 @@ import type {
   DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
 
-import { normalizeMountedFileSystem } from "../mounted-file-system";
+import {
+  createPathNotFoundFileSystemError,
+  createReadOnlyFileSystemError,
+  createUnsupportedOperationFileSystemError,
+} from "../fs-errors";
+import { createUnsupportedFileSystem, type IFileSystem } from "../interface";
 import { normalizeMountPoint } from "../normalize-path";
-import type {
-  FileContributor,
-  FileEntryDescriptor,
-  FilesContext,
-  MountedFileSystem,
-} from "../types";
+import type { FileContributor, FilesContext } from "../types";
 
 const PAGE_SIZE = 200;
 const UNKNOWN_MTIME = new Date(0);
@@ -74,6 +74,7 @@ export const createDurableHooksFileContributor = (
     description:
       options.description ??
       `Read-only terminal hook events for ${options.title}. Organized by day with JSON (completed) or text (failed) files.`,
+    ...createUnsupportedFileSystem(createUnsupportedOperationFileSystemError),
     createFileSystem(ctx) {
       const runtime = resolveRuntime(ctx, options.id);
       if (!runtime) {
@@ -143,49 +144,7 @@ export const createDurableHooksFileContributor = (
         return match ? { kind: "file", resolved: match } : null;
       };
 
-      const fileDescriptor = (resolved: ResolvedEntry): FileEntryDescriptor => {
-        const content = entryContent(resolved.entry);
-        const isFailed = resolved.entry.status === "failed";
-        return {
-          kind: "file",
-          path: `${fileRoot}/${resolved.day}/${resolved.fileName}`,
-          title: resolved.fileName,
-          sizeBytes: content.length,
-          contentType: isFailed ? "text/plain" : "application/json",
-          updatedAt:
-            toDate(resolved.entry.lastAttemptAt) ??
-            toDate(resolved.entry.createdAt) ??
-            UNKNOWN_MTIME,
-          metadata: {
-            hookId: resolved.entry.id,
-            hookName: resolved.entry.hookName,
-            status: resolved.entry.status,
-            attempts: resolved.entry.attempts,
-            maxAttempts: resolved.entry.maxAttempts,
-          },
-        };
-      };
-
-      const fs: MountedFileSystem = normalizeMountedFileSystem({
-        async describeEntry(path, stat) {
-          const normalizedPath = normalizePath(path);
-          const found = await findByPath(normalizedPath);
-
-          if (!found) {
-            return stat
-              ? { kind: stat.isDirectory ? "folder" : ("file" as const), path: normalizedPath }
-              : null;
-          }
-
-          switch (found.kind) {
-            case "root":
-              return { kind: "folder", path: fileRoot, updatedAt: UNKNOWN_MTIME };
-            case "day":
-              return { kind: "folder", path: `${fileRoot}/${found.day}`, updatedAt: UNKNOWN_MTIME };
-            case "file":
-              return fileDescriptor(found.resolved);
-          }
-        },
+      const fs: IFileSystem = createUnsupportedFileSystem(createReadOnlyFileSystemError, {
         async exists(path) {
           return (await findByPath(normalizePath(path))) !== null;
         },
@@ -193,7 +152,7 @@ export const createDurableHooksFileContributor = (
           const normalizedPath = normalizePath(path);
           const found = await findByPath(normalizedPath);
           if (!found) {
-            throw new Error("Path not found.");
+            throw createPathNotFoundFileSystemError("stat", path);
           }
 
           if (found.kind === "root" || found.kind === "day") {
@@ -259,7 +218,7 @@ export const createDurableHooksFileContributor = (
         async readFile(path) {
           const found = await findByPath(normalizePath(path));
           if (!found || found.kind !== "file") {
-            throw new Error("File not found.");
+            throw createPathNotFoundFileSystemError("read", path);
           }
 
           return entryContent(found.resolved.entry);
@@ -267,18 +226,13 @@ export const createDurableHooksFileContributor = (
         async readFileBuffer(path) {
           const found = await findByPath(normalizePath(path));
           if (!found || found.kind !== "file") {
-            throw new Error("File not found.");
+            throw createPathNotFoundFileSystemError("read", path);
           }
 
           return TEXT_ENCODER.encode(entryContent(found.resolved.entry));
         },
         getAllPaths() {
           return [fileRoot];
-        },
-        capabilities: {
-          writeFile: false,
-          mkdir: false,
-          rm: false,
         },
       });
 

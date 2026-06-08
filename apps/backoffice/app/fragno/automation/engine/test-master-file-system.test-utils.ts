@@ -1,7 +1,6 @@
 import { InMemoryFs } from "just-bash";
 
 import { MasterFileSystem } from "@/files/master-file-system";
-import { normalizeMountedFileSystem } from "@/files/mounted-file-system";
 import type { ResolvedFileMount } from "@/files/types";
 
 export const createTestMasterFileSystem = (
@@ -27,7 +26,7 @@ export const createTestMount = (
   title: id,
   readOnly: false,
   persistence: "session",
-  fs: normalizeMountedFileSystem(createMountedInMemoryFs(files), { readOnly: false }),
+  fs: createMountedInMemoryFs(files),
 });
 
 const createMountedInMemoryFs = (files: Record<string, string | Uint8Array>) => {
@@ -36,10 +35,25 @@ const createMountedInMemoryFs = (files: Record<string, string | Uint8Array>) => 
   return {
     readFile: (path: string) => fs.readFile(path),
     readFileBuffer: (path: string) => fs.readFileBuffer(path),
-    writeFile: (path: string, content: string | Uint8Array) => fs.writeFile(path, content),
+    writeFile: async (path: string, content: string | Uint8Array) => {
+      await fs.mkdir(parentPath(path), { recursive: true });
+      await fs.writeFile(path, content);
+    },
     appendFile: (path: string, content: string | Uint8Array) => fs.appendFile(path, content),
     exists: (path: string) => fs.exists(path),
-    stat: (path: string) => fs.stat(path),
+    stat: async (path: string) => {
+      if (!(await fs.exists(path))) {
+        return {
+          isFile: false,
+          isDirectory: false,
+          isSymbolicLink: false,
+          mode: 0,
+          size: 0,
+          mtime: new Date(0),
+        };
+      }
+      return fs.stat(path);
+    },
     mkdir: (path: string, options?: { recursive?: boolean }) => fs.mkdir(path, options),
     readdir: (path: string) => fs.readdir(path),
     readdirWithFileTypes: (path: string) => fs.readdirWithFileTypes(path),
@@ -56,6 +70,11 @@ const createMountedInMemoryFs = (files: Record<string, string | Uint8Array>) => 
     realpath: (path: string) => fs.realpath(path),
     utimes: (path: string, atime: Date, mtime: Date) => fs.utimes(path, atime, mtime),
   };
+};
+
+const parentPath = (path: string): string => {
+  const segments = path.split("/").filter(Boolean);
+  return segments.length <= 1 ? "/" : `/${segments.slice(0, -1).join("/")}`;
 };
 
 const hasMountedFiles = (files: Record<string, string | Uint8Array>, mountPoint: string): boolean =>

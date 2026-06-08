@@ -15,6 +15,7 @@ import {
   createAutomationRuntime,
   type AutomationPiBashContext,
 } from "./engine/runtime";
+import type { AutomationCodemodeWorkflowParams } from "./engine/workflow";
 
 export type { AutomationPiBashContext } from "./engine/runtime";
 import { automationFragmentSchema } from "./schema";
@@ -60,23 +61,6 @@ const toWorkflowIdentifier = (value: string) => value.replaceAll(":", "--");
 export const buildAutomationWorkflowInstanceId = (eventId: string, bindingId: string) =>
   `${toWorkflowIdentifier(eventId)}--${toWorkflowIdentifier(bindingId)}`;
 
-const buildScriptExecutionBinding = (
-  script: Awaited<ReturnType<typeof loadAutomationCatalog>>["scripts"][number],
-) => ({
-  id: script.id,
-  source: "*",
-  eventType: "*",
-  scriptId: script.id,
-  scriptKey: script.key,
-  scriptName: script.name,
-  scriptPath: script.path,
-  absoluteScriptPath: script.absolutePath,
-  scriptVersion: script.version,
-  scriptEngine: script.engine,
-  scriptEnv: {},
-  triggerOrder: undefined,
-});
-
 const buildCatalogResolverInput = (event: AutomationEvent): AutomationFileSystemResolverInput => ({
   orgId: event.orgId?.trim() || undefined,
   purpose: "runtime",
@@ -85,7 +69,7 @@ const buildCatalogResolverInput = (event: AutomationEvent): AutomationFileSystem
 export const automationFragmentDefinition = defineFragment<AutomationFragmentConfig>("automations")
   .extend(withDatabase(automationFragmentSchema))
   .usesOptionalService<"workflows", AutomationWorkflowsService>("workflows")
-  .provideHooks(({ defineHook, config }) => {
+  .provideHooks(({ defineHook, config, serviceDeps }) => {
     return {
       internalIngestEvent: defineHook(async function (payload) {
         const resolvedFs = await resolveAutomationFileSystem(
@@ -97,9 +81,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
         }
         const masterFs = resolvedFs;
         const catalog = await loadAutomationCatalog(masterFs);
-        const scripts = catalog.scripts
-          .slice()
-          .sort((left, right) => left.path.localeCompare(right.path));
+        const scripts = catalog.scripts.filter((script) => script.enabled);
 
         if (scripts.length === 0) {
           console.warn("No automation scripts configured for event", {
@@ -119,63 +101,78 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
           event: payload,
           idempotencyKey: this.idempotencyKey,
         });
-        const failures: Error[] = [];
         for (const script of scripts) {
-          const binding = buildScriptExecutionBinding(script);
-          try {
-            if (script.scriptLoadError) {
-              throw new Error(script.scriptLoadError);
+          if (script.scriptLoadError) {
+            throw new Error(script.scriptLoadError);
+          }
+
+          const binding = {
+            id: script.id,
+            source: "*",
+            eventType: "*",
+            scriptId: script.id,
+            scriptKey: script.key,
+            scriptName: script.name,
+            scriptPath: script.path,
+            scriptVersion: script.version,
+            scriptEnv: {},
+          };
+
+          const context = createAutomationExecutionContext({
+            event: payload,
+            binding,
+            idempotencyKey: this.idempotencyKey,
+            runtime,
+            env: config.env,
+            pi: pi ?? null,
+          });
+
+          const result = await executeAutomationScript({
+            engine: script.engine,
+            script: script.body,
+            masterFs,
+            context,
+            env: config.env,
+          });
+
+          if (result.exitCode !== 0) {
+            throw new Error(
+              [
+                `Automation ${script.engine} script ${script.id} failed for event ${payload.id} with exit code ${result.exitCode}.`,
+                result.stderr.trim() || result.stdout.trim(),
+              ]
+                .filter(Boolean)
+                .join(" "),
+            );
+          }
+
+          const workflowDefinition = result.workflowDefinition;
+          if (workflowDefinition) {
+            if (!serviceDeps.workflows) {
+              throw new Error(
+                `No workflows service available to run workflow automation script ${script.id}.`,
+              );
             }
 
-            const context = createAutomationExecutionContext({
-              event: payload,
+            const workflowParams: AutomationCodemodeWorkflowParams = {
+              automationEvent: payload,
               binding,
               idempotencyKey: this.idempotencyKey,
-              runtime,
-              env: config.env,
-              pi: pi ?? null,
-            });
-
-            const result = await executeAutomationScript({
-              engine: script.engine,
               script: script.body,
-              masterFs,
-              context,
-              env: config.env,
-            });
-
-            if (result.workflowDefinition) {
-              throw new Error(
-                "Automation script returned defineWorkflow(...). Rename it to `*.workflow.js` and start it with `workflow.createInstance`.",
-              );
-            }
-
-            if (result.exitCode !== 0) {
-              throw new Error(
-                [
-                  `Automation ${script.engine} script ${script.id} failed for event ${payload.id} with exit code ${result.exitCode}.`,
-                  result.stderr.trim() || result.stdout.trim(),
-                ]
-                  .filter(Boolean)
-                  .join(" "),
-              );
-            }
-          } catch (error) {
-            const failure = error instanceof Error ? error : new Error(String(error));
-            console.error("Automation script failed", {
-              scriptId: script.id,
-              eventId: payload.id,
-              error: failure.message,
-            });
-            failures.push(failure);
+            };
+            await this.handlerTx()
+              .withServiceCalls(
+                () =>
+                  [
+                    serviceDeps.workflows!.createInstance("automation-codemode-script", {
+                      id: buildAutomationWorkflowInstanceId(payload.id, binding.id),
+                      params: workflowParams,
+                      remoteWorkflowName: workflowDefinition.name,
+                    }),
+                  ] as const,
+              )
+              .execute();
           }
-        }
-
-        if (failures.length > 0) {
-          throw new AggregateError(
-            failures,
-            `${failures.length} automation script(s) failed for event ${payload.id}.`,
-          );
         }
       }),
     };

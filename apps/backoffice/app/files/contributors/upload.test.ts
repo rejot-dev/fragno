@@ -1,12 +1,9 @@
-import { beforeEach, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import {
-  createUploadMountedFileSystem,
-  ensureBuiltInFileContributorsRegistered,
-  getRegisteredFileContributors,
-  resetFileContributorsForTest,
+  createUploadFileSystem,
+  getBuiltInFileContributors,
   resolveUploadFileMount,
-  resolveUploadMountConfig,
   uploadFileContributor,
   type FilesContext,
 } from "@/files";
@@ -40,10 +37,6 @@ const createUploadConfig = (
     },
   },
   ...overrides,
-});
-
-beforeEach(() => {
-  resetFileContributorsForTest();
 });
 
 describe("upload file contributor", () => {
@@ -95,46 +88,8 @@ describe("upload file contributor", () => {
     expect(mount?.description).toContain("Configured providers");
   });
 
-  test("resolves sandbox mount config only for credential-based R2 uploads", () => {
-    expect(
-      resolveUploadMountConfig(createUploadConfig(), {
-        provider: UPLOAD_PROVIDER_R2,
-      }),
-    ).toMatchObject({
-      bucket: "org-uploads",
-      options: {
-        endpoint: "https://example.r2.cloudflarestorage.com",
-        provider: UPLOAD_PROVIDER_R2,
-        region: "auto",
-      },
-    });
-
-    expect(
-      resolveUploadMountConfig(
-        createUploadConfig({
-          defaultProvider: UPLOAD_PROVIDER_R2_BINDING,
-          providers: {
-            [UPLOAD_PROVIDER_R2_BINDING]: {
-              provider: UPLOAD_PROVIDER_R2_BINDING,
-              configured: true,
-              config: {
-                bindingName: "UPLOAD_BUCKET",
-              },
-            },
-          },
-        }),
-        {
-          provider: UPLOAD_PROVIDER_R2_BINDING,
-        },
-      ),
-    ).toBeNull();
-  });
-
-  test("registers built-in contributors idempotently", () => {
-    ensureBuiltInFileContributorsRegistered();
-    ensureBuiltInFileContributorsRegistered();
-
-    expect(getRegisteredFileContributors().map((contributor) => contributor.id)).toEqual([
+  test("exposes built-in contributors in deterministic order", () => {
+    expect(getBuiltInFileContributors().map((contributor) => contributor.id)).toEqual([
       "system",
       "static-starter",
       "workspace",
@@ -185,16 +140,6 @@ describe("upload file contributor", () => {
       size: 5,
     });
 
-    await expect(fs.describeEntry?.("/workspace/reports/q1.txt")).resolves.toMatchObject({
-      kind: "file",
-      path: "/workspace/reports/q1.txt",
-      metadata: {
-        fileKey: "reports/q1.txt",
-        previewUrl:
-          "https://docs.example.test/api/upload/acme-org/files/by-key/content?provider=r2&key=reports%2Fq1.txt",
-      },
-    });
-
     await expect(fs.readFile?.("/workspace/reports/config")).resolves.toBe('{"ok":true}');
     await expect(fs.readFile?.("/workspace/reports/q1.txt")).resolves.toBe("ready");
     await expect(fs.readFileBuffer?.("/workspace/images/logo.png")).resolves.toEqual(
@@ -237,7 +182,7 @@ describe("upload file contributor", () => {
     const { context } = createUploadFs({
       "README.md": { content: "custom readme" },
     });
-    const fs = createUploadMountedFileSystem(context, {
+    const fs = createUploadFileSystem(context, {
       mountPoint: "/scratch",
     });
 
@@ -259,10 +204,8 @@ describe("upload file contributor", () => {
     await expect(fs.readFile?.("/workspace/scripts/telegram-file-store.sh")).resolves.toBe(
       'echo "hello"',
     );
-    await expect(
-      fs.describeEntry?.("/workspace/scripts/telegram-file-store.sh"),
-    ).resolves.toMatchObject({
-      contentType: "text/x-shellscript",
+    await expect(fs.stat("/workspace/scripts/telegram-file-store.sh")).resolves.toMatchObject({
+      isFile: true,
     });
   });
 
@@ -308,7 +251,7 @@ describe("upload file contributor", () => {
       uploadRuntime: runtime,
       request: new Request("https://docs.example.test/backoffice/files"),
     } satisfies FilesContext;
-    const fs = createUploadMountedFileSystem(context, {
+    const fs = createUploadFileSystem(context, {
       provider: UPLOAD_PROVIDER_R2_BINDING,
     });
 
@@ -329,7 +272,7 @@ describe("upload file contributor", () => {
       uploadRuntime: runtime,
       request: new Request("https://docs.example.test/backoffice/files"),
     } satisfies FilesContext;
-    const fs = createUploadMountedFileSystem(context, {
+    const fs = createUploadFileSystem(context, {
       provider: UPLOAD_PROVIDER_R2,
     });
 
@@ -355,7 +298,7 @@ describe("upload file contributor", () => {
     } satisfies FilesContext;
 
     expect(() =>
-      createUploadMountedFileSystem(context, {
+      createUploadFileSystem(context, {
         provider: UPLOAD_PROVIDER_R2_BINDING,
       }),
     ).toThrow("Upload provider 'r2-binding' is not configured.");
@@ -388,9 +331,9 @@ describe("upload file contributor", () => {
       },
     });
 
-    await expect(fs.describeEntry?.("/workspace/reports/q1.txt")).resolves.toBe(null);
+    await expect(fs.stat("/workspace/reports/q1.txt")).rejects.toThrow("ENOENT");
     await expect(fs.exists?.("/workspace/reports/q1.txt")).resolves.toBe(false);
-    await expect(fs.stat?.("/workspace/reports/q1.txt")).rejects.toThrow("Path not found.");
+    await expect(fs.stat?.("/workspace/reports/q1.txt")).rejects.toThrow("ENOENT");
     await expect(fs.readFile?.("/workspace/reports/q1.txt")).rejects.toThrow(
       "ENOENT: no such file or directory, read '/workspace/reports/q1.txt'",
     );
@@ -589,7 +532,7 @@ const createUploadFs = (
   return {
     runtime,
     context,
-    fs: createUploadMountedFileSystem(context),
+    fs: createUploadFileSystem(context),
   };
 };
 
@@ -658,11 +601,54 @@ const createUploadRuntime = (
       if (request.method === "GET" && url.pathname === "/api/upload/files") {
         const provider = url.searchParams.get("provider");
         const status = url.searchParams.get("status");
+        const prefix = url.searchParams.get("prefix") ?? "";
+        const delimiter = url.searchParams.get("delimiter");
+        const matchedFiles = Array.from(files.values()).filter(
+          (file) =>
+            (!provider || file.provider === provider) &&
+            (!status || file.status === status) &&
+            file.fileKey.startsWith(prefix),
+        );
+
+        if (delimiter === "/") {
+          const directories = new Map<
+            string,
+            {
+              name: string;
+              prefix: string;
+              updatedAt: string;
+              contentType: string | null;
+              metadata: Record<string, unknown> | null;
+            }
+          >();
+          const directFiles: UploadFileRecord[] = [];
+          for (const file of matchedFiles) {
+            const remainder = file.fileKey.slice(prefix.length);
+            const delimiterIndex = remainder.indexOf("/");
+            if (delimiterIndex === -1) {
+              directFiles.push(file);
+              continue;
+            }
+
+            const name = remainder.slice(0, delimiterIndex);
+            directories.set(`${prefix}${name}/`, {
+              name,
+              prefix: `${prefix}${name}/`,
+              updatedAt: String(file.updatedAt ?? now),
+              contentType: file.contentType ?? null,
+              metadata: file.metadata ?? null,
+            });
+          }
+
+          return Response.json({
+            files: directFiles,
+            directories: Array.from(directories.values()),
+            hasNextPage: false,
+          });
+        }
+
         return Response.json({
-          files: Array.from(files.values()).filter(
-            (file) =>
-              (!provider || file.provider === provider) && (!status || file.status === status),
-          ),
+          files: matchedFiles,
           hasNextPage: false,
         });
       }

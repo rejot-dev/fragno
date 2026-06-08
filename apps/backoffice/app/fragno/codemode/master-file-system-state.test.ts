@@ -5,7 +5,6 @@ import { InMemoryFs } from "just-bash";
 import { FileSystemStateBackend } from "@cloudflare/shell";
 
 import { MasterFileSystem } from "@/files/master-file-system";
-import { normalizeMountedFileSystem } from "@/files/mounted-file-system";
 import type { ResolvedFileMount } from "@/files/types";
 
 import { BackofficeStateFileSystem } from "./master-file-system-state";
@@ -161,7 +160,7 @@ const createMount = (
   title: id,
   readOnly,
   persistence: "session",
-  fs: normalizeMountedFileSystem(createMountedInMemoryFs(files), { readOnly }),
+  fs: createMountedInMemoryFs(files),
 });
 
 const createMountedInMemoryFs = (files: Record<string, string | Uint8Array>) => {

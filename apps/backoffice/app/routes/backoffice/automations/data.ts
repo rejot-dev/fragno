@@ -38,26 +38,9 @@ export type AutomationScriptRecord = {
   absolutePath: string;
   version: number | null;
   scriptLoadError?: string | null;
-  bindingIds: string[];
-  bindingCount: number;
-  enabledBindingCount: number;
   enabled: boolean;
 };
 
-export type AutomationTriggerBindingRecord = {
-  id: string;
-  source: string;
-  eventType: string;
-  scriptPath: string;
-  scriptKey: string;
-  scriptName: string;
-  absoluteScriptPath: string;
-  scriptVersion: number;
-  scriptEngine: AutomationScriptEngine;
-  scriptEnv: Record<string, string>;
-  enabled: boolean;
-  triggerOrder: number | null;
-};
 export type AutomationIdentityBindingRecord = {
   id?: AutomationIdLike;
   source?: string | null;
@@ -159,20 +142,8 @@ const buildWorkspaceScriptRecord = (
   absolutePath: script.absolutePath,
   version: null,
   scriptLoadError: null,
-  bindingIds: [],
-  bindingCount: 0,
-  enabledBindingCount: 0,
   enabled: script.kind === "script",
 });
-
-const buildWorkspaceScriptRecords = (
-  workspaceScripts: AutomationWorkspaceScriptEntry[],
-): AutomationScriptRecord[] =>
-  workspaceScripts
-    .map(buildWorkspaceScriptRecord)
-    .sort(
-      (left, right) => left.name.localeCompare(right.name) || left.path.localeCompare(right.path),
-    );
 
 export const toAutomationScriptId = (path: string): string =>
   `${AUTOMATION_SCRIPT_ID_PREFIX}${normalizeAutomationScriptPath(path)}`;
@@ -211,8 +182,6 @@ export async function loadAutomationWorkspaceData({
 }): Promise<{
   scripts: AutomationScriptRecord[];
   scriptsError: string | null;
-  bindings: AutomationTriggerBindingRecord[];
-  bindingsError: string | null;
 }> {
   const fileSystem = await createBackofficeAutomationFileSystem({ context, orgId });
 
@@ -225,10 +194,12 @@ export async function loadAutomationWorkspaceData({
   }
 
   return {
-    scripts: buildWorkspaceScriptRecords(workspaceScripts),
+    scripts: workspaceScripts
+      .map(buildWorkspaceScriptRecord)
+      .sort(
+        (left, right) => left.name.localeCompare(right.name) || left.path.localeCompare(right.path),
+      ),
     scriptsError: workspaceScriptsError,
-    bindings: [],
-    bindingsError: null,
   };
 }
 

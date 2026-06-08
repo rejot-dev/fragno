@@ -6,18 +6,15 @@ import type { PiCodemodeWorkflowParams } from "@/fragno/pi/pi-codemode-workflow"
 import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
-import {
-  AUTOMATION_WORKSPACE_ROOT,
-  type AutomationBindingCatalogEntry,
-  type AutomationFileSystemConfig,
-} from "../catalog";
+import type { AutomationTriggerBinding } from "../../runtime-tools/automation-types";
+import { AUTOMATION_WORKSPACE_ROOT, type AutomationFileSystemConfig } from "../catalog";
 import { resolveAutomationFileSystem } from "../catalog";
 import type { AutomationEvent } from "../contracts";
 import type { AutomationRuntimeHostContext } from "./runtime";
 
 export type AutomationCodemodeWorkflowParams = {
   automationEvent: AutomationEvent;
-  binding?: AutomationBindingCatalogEntry;
+  binding?: AutomationTriggerBinding;
   idempotencyKey?: string;
   script?: string;
   workflowScriptPath?: string;
@@ -80,7 +77,7 @@ const createWorkflowAutomationContext = ({
         triggerOrder: binding.triggerOrder ?? undefined,
       },
       idempotencyKey: params.idempotencyKey ?? params.automationEvent.id,
-      bashEnv: binding.scriptEnv,
+      bashEnv: binding.scriptEnv ?? {},
       runtime: automationRuntime,
     },
     automations: {

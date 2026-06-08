@@ -10,9 +10,10 @@ This read-only starter tree contains example files and default automation conten
 
 1. Review example inputs and constraints in \`input/notes.md\`.
 2. Use the files below as templates for prompts, plans, or scratch output.
-3. Review automation defaults in \`automations/bindings.json\` (with absolute \`/starter/automations/...\` script paths) and scripts under \`automations/scripts/\`.
-   - Use \`*.cm.js\` plus \`engine: "codemode"\` for codemode scripts.
-   - Use \`*.sh\` plus \`engine: "bash"\` for bash scripts.
+3. Review automation defaults under \`automations/scripts/\`.
+   - Use \`*.cm.js\` for codemode scripts.
+   - Use \`*.sh\` for bash scripts.
+   - Use \`*.workflow.js\` for durable codemode workflows started by scripts.
 
 Copy anything you want to edit into writable workspace storage.
 `,
@@ -34,4 +35,4 @@ Describe the task you want to work on here.
 } satisfies Record<string, FileSystemArtifact>;
 
 export const STATIC_STARTER_ROOT_DESCRIPTION =
-  "Read-only static starter files, including filesystem-backed automation manifests plus bash/codemode scripts under /starter.";
+  "Read-only static starter files, including filesystem-backed automation bash/codemode scripts under /starter.";

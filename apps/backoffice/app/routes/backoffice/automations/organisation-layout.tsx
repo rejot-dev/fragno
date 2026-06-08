@@ -5,13 +5,8 @@ import { getAuthMe } from "@/fragno/auth/auth-server";
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import { throwOrganisationNotFound } from "../route-errors";
 import type { Route } from "./+types/organisation-layout";
-import {
-  fetchAutomationIdentityBindings,
-  loadAutomationWorkspaceData,
-  toAutomationScriptId,
-  toExternalId,
-} from "./data";
-import type { AutomationIdentityItem, AutomationScriptItem, AutomationTriggerItem } from "./shared";
+import { fetchAutomationIdentityBindings, loadAutomationWorkspaceData, toExternalId } from "./data";
+import type { AutomationIdentityItem, AutomationScriptItem } from "./shared";
 import {
   AutomationErrorBoundary,
   AutomationHeader,
@@ -33,49 +28,11 @@ const normalizeScripts = (
       absolutePath: script.absolutePath,
       version: script.version,
       scriptLoadError: script.scriptLoadError ?? null,
-      bindingIds: script.bindingIds,
-      bindingCount: script.bindingCount,
-      enabledBindingCount: script.enabledBindingCount,
       enabled: script.enabled,
     }))
     .sort(
       (left, right) => left.name.localeCompare(right.name) || left.path.localeCompare(right.path),
     );
-};
-
-const normalizeTriggerBindings = (
-  bindings: Awaited<ReturnType<typeof loadAutomationWorkspaceData>>["bindings"],
-): AutomationTriggerItem[] => {
-  return bindings
-    .map((binding) => ({
-      id: binding.id,
-      source: binding.source,
-      eventType: binding.eventType,
-      scriptId: toAutomationScriptId(binding.scriptPath),
-      scriptKey: binding.scriptKey,
-      scriptName: binding.scriptName,
-      scriptPath: binding.scriptPath,
-      absoluteScriptPath: binding.absoluteScriptPath,
-      scriptVersion: binding.scriptVersion,
-      scriptEngine: binding.scriptEngine,
-      scriptEnv: binding.scriptEnv,
-      enabled: binding.enabled,
-      scriptLoadError: null,
-      triggerOrder: binding.triggerOrder,
-    }))
-    .sort((left, right) => {
-      const sourceOrder = left.source.localeCompare(right.source);
-      if (sourceOrder !== 0) {
-        return sourceOrder;
-      }
-
-      const eventOrder = left.eventType.localeCompare(right.eventType);
-      if (eventOrder !== 0) {
-        return eventOrder;
-      }
-
-      return left.id.localeCompare(right.id);
-    });
 };
 
 const normalizeIdentityBindings = (
@@ -126,17 +83,14 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   ]);
 
   const scripts = normalizeScripts(workspaceResult.scripts);
-  const triggerBindings = normalizeTriggerBindings(workspaceResult.bindings);
   const identityBindings = normalizeIdentityBindings(identityResult.identityBindings);
 
   return {
     orgId: params.orgId,
     organisation,
     scripts,
-    triggerBindings,
     identityBindings,
     scriptsError: workspaceResult.scriptsError,
-    triggerBindingsError: workspaceResult.bindingsError,
     identityBindingsError: identityResult.identityBindingsError,
   };
 }

@@ -1,11 +1,10 @@
-import { beforeEach, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import {
   createMasterFileSystem,
   getFilesNodeDetail,
   listFilesChildren,
   listFilesTree,
-  resetFileContributorsForTest,
   type FilesContext,
 } from "@/files";
 import {
@@ -35,10 +34,6 @@ const createUploadConfig = (
     },
   },
   ...overrides,
-});
-
-beforeEach(() => {
-  resetFileContributorsForTest();
 });
 
 describe("files service", () => {
@@ -100,12 +95,11 @@ describe("files service", () => {
       kind: "file",
       path: "/system/SYSTEM.md",
       title: "SYSTEM.md",
-      contentType: "text/markdown",
     });
     expect(systemDetail?.textContent).toContain("Runtime-specific references");
   });
 
-  test("preserves upload metadata like content type for upload-backed workspace files", async () => {
+  test("renders upload-backed workspace file stats", async () => {
     const runtime = createUploadRuntime({
       "hello/logo.png": {
         content: new Uint8Array([137, 80, 78, 71]),
@@ -121,11 +115,10 @@ describe("files service", () => {
     } satisfies FilesContext);
 
     const detail = await getFilesNodeDetail(master, "/workspace/hello/logo.png");
-    expect(detail?.node.contentType).toBe("image/png");
-    expect(detail?.metadata).toMatchObject({
-      fileKey: "hello/logo.png",
-      previewUrl:
-        "https://docs.example.test/api/upload/org_123/files/by-key/content?provider=r2&key=hello%2Flogo.png",
+    expect(detail?.node).toMatchObject({
+      kind: "file",
+      path: "/workspace/hello/logo.png",
+      sizeBytes: 4,
     });
   });
 
@@ -237,7 +230,50 @@ const createUploadRuntime = (
       const url = new URL(request.url);
 
       if (request.method === "GET" && url.pathname === "/api/upload/files") {
-        return Response.json({ files: Array.from(files.values()), hasNextPage: false });
+        const prefix = url.searchParams.get("prefix") ?? "";
+        const delimiter = url.searchParams.get("delimiter");
+        const matchedFiles = Array.from(files.values()).filter((file) =>
+          file.fileKey.startsWith(prefix),
+        );
+
+        if (delimiter === "/") {
+          const directories = new Map<
+            string,
+            {
+              name: string;
+              prefix: string;
+              updatedAt: string;
+              contentType: string | null;
+              metadata: Record<string, unknown> | null;
+            }
+          >();
+          const directFiles: UploadFileRecord[] = [];
+          for (const file of matchedFiles) {
+            const remainder = file.fileKey.slice(prefix.length);
+            const delimiterIndex = remainder.indexOf("/");
+            if (delimiterIndex === -1) {
+              directFiles.push(file);
+              continue;
+            }
+
+            const name = remainder.slice(0, delimiterIndex);
+            directories.set(`${prefix}${name}/`, {
+              name,
+              prefix: `${prefix}${name}/`,
+              updatedAt: String(file.updatedAt ?? now),
+              contentType: file.contentType ?? null,
+              metadata: file.metadata ?? null,
+            });
+          }
+
+          return Response.json({
+            files: directFiles,
+            directories: Array.from(directories.values()),
+            hasNextPage: false,
+          });
+        }
+
+        return Response.json({ files: matchedFiles, hasNextPage: false });
       }
 
       if (request.method === "GET" && url.pathname === "/api/upload/files/by-key") {
