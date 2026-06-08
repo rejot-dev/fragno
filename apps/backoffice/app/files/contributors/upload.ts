@@ -1,4 +1,5 @@
 import {
+  UPLOAD_PROVIDER_DATABASE,
   UPLOAD_PROVIDER_R2,
   UPLOAD_PROVIDER_R2_BINDING,
   type UploadAdminConfigResponse,
@@ -41,6 +42,10 @@ import {
 export const UPLOAD_FILE_CONTRIBUTOR_ID = "upload";
 export const UPLOAD_FILE_MOUNT_ID = "workspace";
 export const UPLOAD_FILE_MOUNT_POINT = "/workspace";
+export const UPLOAD_R2_BINDING_FILE_MOUNT_ID = "r2";
+export const UPLOAD_R2_BINDING_FILE_MOUNT_POINT = "/r2";
+export const UPLOAD_R2_REMOTE_FILE_MOUNT_ID = "r2-remote";
+export const UPLOAD_R2_REMOTE_FILE_MOUNT_POINT = "/r2-remote";
 const UNKNOWN_MTIME = new Date(0);
 const TEXT_ENCODER = new TextEncoder();
 const toUint8Array = (content: FileContent): Uint8Array =>
@@ -65,32 +70,81 @@ type UploadDirectoryRecord = {
   metadata?: Record<string, unknown> | null;
 };
 
-export const uploadFileMount: FileMountMetadata = {
+export const uploadFileMount: FileMountMetadata & {
+  uploadProvider: typeof UPLOAD_PROVIDER_DATABASE;
+} = {
   id: UPLOAD_FILE_MOUNT_ID,
   kind: "upload",
   mountPoint: UPLOAD_FILE_MOUNT_POINT,
   title: "Workspace",
   readOnly: false,
   persistence: "persistent",
+  uploadProvider: UPLOAD_PROVIDER_DATABASE,
   description:
     "Pure persistent org-scoped workspace storage routed through the Upload fragment, with no starter layering or fallback.",
 };
 
-export const uploadFileContributor: FileContributor = {
-  ...uploadFileMount,
+export const uploadR2BindingFileMount: FileMountMetadata & {
+  uploadProvider: typeof UPLOAD_PROVIDER_R2_BINDING;
+} = {
+  id: UPLOAD_R2_BINDING_FILE_MOUNT_ID,
+  kind: "upload",
+  mountPoint: UPLOAD_R2_BINDING_FILE_MOUNT_POINT,
+  title: "R2",
+  readOnly: false,
+  persistence: "persistent",
+  uploadProvider: UPLOAD_PROVIDER_R2_BINDING,
+  description: "Persistent org-scoped uploads routed through the Upload fragment via R2 binding.",
+};
+
+export const uploadR2RemoteFileMount: FileMountMetadata & {
+  uploadProvider: typeof UPLOAD_PROVIDER_R2;
+} = {
+  id: UPLOAD_R2_REMOTE_FILE_MOUNT_ID,
+  kind: "upload",
+  mountPoint: UPLOAD_R2_REMOTE_FILE_MOUNT_POINT,
+  title: "R2 Keys",
+  readOnly: false,
+  persistence: "persistent",
+  uploadProvider: UPLOAD_PROVIDER_R2,
+  description:
+    "Persistent org-scoped uploads routed through the Upload fragment via R2 credentials.",
+};
+
+const createUploadProviderContributor = (
+  mount: FileMountMetadata & { uploadProvider: UploadProvider },
+): FileContributor => ({
+  ...mount,
   ...createUnsupportedFileSystem(createUnsupportedOperationFileSystemError),
   async createFileSystem(ctx) {
     if (!isUploadConfigured(ctx.uploadConfig)) {
       return null;
     }
 
-    const provider = resolveBoundUploadProvider(ctx.uploadConfig);
+    if (!ctx.uploadConfig.providers[mount.uploadProvider]?.configured) {
+      return null;
+    }
+
     return {
-      fs: createUploadFileSystem(ctx, { provider }),
-      mount: resolveUploadFileMount(ctx.uploadConfig, { provider }) ?? undefined,
+      fs: createUploadFileSystem(ctx, {
+        mountPoint: mount.mountPoint,
+        provider: mount.uploadProvider,
+      }),
+      mount: resolveUploadFileMount(ctx.uploadConfig, {
+        mountPoint: mount.mountPoint,
+        provider: mount.uploadProvider,
+      }) ?? {
+        ...mount,
+      },
     };
   },
-};
+});
+
+export const uploadFileContributor = createUploadProviderContributor(uploadFileMount);
+export const uploadR2BindingFileContributor =
+  createUploadProviderContributor(uploadR2BindingFileMount);
+export const uploadR2RemoteFileContributor =
+  createUploadProviderContributor(uploadR2RemoteFileMount);
 
 export type CreateUploadFileSystemOptions = {
   mountPoint?: string;
@@ -469,6 +523,18 @@ export type ResolveUploadFileMountOptions = {
   provider?: UploadProvider | null;
 };
 
+const getUploadFileMountForProvider = (provider: UploadProvider): FileMountMetadata => {
+  if (provider === UPLOAD_PROVIDER_DATABASE) {
+    return uploadFileMount;
+  }
+
+  if (provider === UPLOAD_PROVIDER_R2_BINDING) {
+    return uploadR2BindingFileMount;
+  }
+
+  return uploadR2RemoteFileMount;
+};
+
 export const resolveUploadFileMount = (
   uploadConfig?: UploadAdminConfigResponse | null,
   options: ResolveUploadFileMountOptions = {},
@@ -486,10 +552,11 @@ export const resolveUploadFileMount = (
   }
 
   const configuredProviders = getConfiguredUploadProviders(uploadConfig);
+  const baseMount = getUploadFileMountForProvider(provider);
 
   return {
-    ...uploadFileMount,
-    mountPoint: normalizeAbsolutePath(options.mountPoint ?? uploadFileMount.mountPoint),
+    ...baseMount,
+    mountPoint: normalizeAbsolutePath(options.mountPoint ?? baseMount.mountPoint),
     uploadProvider: provider,
     description: describeUploadRoot(provider, configuredProviders),
   };
@@ -503,6 +570,10 @@ export const getConfiguredUploadProviders = (
   }
 
   const providers: UploadProvider[] = [];
+
+  if (uploadConfig.providers[UPLOAD_PROVIDER_DATABASE]?.configured) {
+    providers.push(UPLOAD_PROVIDER_DATABASE);
+  }
 
   if (uploadConfig.providers[UPLOAD_PROVIDER_R2_BINDING]?.configured) {
     providers.push(UPLOAD_PROVIDER_R2_BINDING);
@@ -1410,6 +1481,10 @@ const describeUploadRoot = (
 };
 
 const toUploadProviderLabel = (provider: UploadProvider): string => {
+  if (provider === UPLOAD_PROVIDER_DATABASE) {
+    return "Database";
+  }
+
   if (provider === UPLOAD_PROVIDER_R2_BINDING) {
     return "R2 binding";
   }

@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import {
   UPLOAD_ADMIN_CONFIG_KEY,
+  UPLOAD_PROVIDER_DATABASE,
   UPLOAD_PROVIDER_R2,
   UPLOAD_PROVIDER_R2_BINDING,
   buildUploadAdminConfigResponse,
@@ -32,7 +33,11 @@ type ProviderResolution = {
   invalidProvider: string | null;
 };
 
-const uploadProviderSchema = z.enum([UPLOAD_PROVIDER_R2, UPLOAD_PROVIDER_R2_BINDING]);
+const uploadProviderSchema = z.enum([
+  UPLOAD_PROVIDER_DATABASE,
+  UPLOAD_PROVIDER_R2,
+  UPLOAD_PROVIDER_R2_BINDING,
+]);
 
 const uploadProviderInputSchema = z.string().trim().pipe(uploadProviderSchema);
 
@@ -66,6 +71,9 @@ const parseUploadProviderInput = (value: string): ProviderResolution => {
 
 const configuredProvidersFromResponse = (response: UploadAdminConfigResponse): UploadProvider[] => {
   const providers: UploadProvider[] = [];
+  if (response.providers[UPLOAD_PROVIDER_DATABASE]?.configured) {
+    providers.push(UPLOAD_PROVIDER_DATABASE);
+  }
   if (response.providers[UPLOAD_PROVIDER_R2_BINDING]?.configured) {
     providers.push(UPLOAD_PROVIDER_R2_BINDING);
   }

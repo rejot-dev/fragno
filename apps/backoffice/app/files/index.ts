@@ -79,6 +79,10 @@ export {
   UPLOAD_FILE_CONTRIBUTOR_ID,
   UPLOAD_FILE_MOUNT_ID,
   UPLOAD_FILE_MOUNT_POINT,
+  UPLOAD_R2_BINDING_FILE_MOUNT_ID,
+  UPLOAD_R2_BINDING_FILE_MOUNT_POINT,
+  UPLOAD_R2_REMOTE_FILE_MOUNT_ID,
+  UPLOAD_R2_REMOTE_FILE_MOUNT_POINT,
   createUploadFileSystem,
   getConfiguredUploadProviders,
   isUploadConfigured,
@@ -87,6 +91,10 @@ export {
   resolveUploadFileMount,
   uploadFileContributor,
   uploadFileMount,
+  uploadR2BindingFileContributor,
+  uploadR2BindingFileMount,
+  uploadR2RemoteFileContributor,
+  uploadR2RemoteFileMount,
 } from "./contributors/upload";
 export { STATIC_STARTER_CONTENT, STATIC_STARTER_ROOT_DESCRIPTION } from "./content/starter";
 export {

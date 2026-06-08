@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 
 import * as files from "@/files";
-import { UPLOAD_PROVIDER_R2, type UploadAdminConfigResponse } from "@/fragno/upload";
+import { UPLOAD_PROVIDER_DATABASE, type UploadAdminConfigResponse } from "@/fragno/upload";
 import type { UploadFileRecord } from "@/routes/backoffice/connections/upload/data";
 
 import {
@@ -499,16 +499,12 @@ const createEmptyStub = () => ({
 
 const createUploadConfig = (): UploadAdminConfigResponse => ({
   configured: true,
-  defaultProvider: UPLOAD_PROVIDER_R2,
+  defaultProvider: UPLOAD_PROVIDER_DATABASE,
   providers: {
-    [UPLOAD_PROVIDER_R2]: {
-      provider: UPLOAD_PROVIDER_R2,
+    [UPLOAD_PROVIDER_DATABASE]: {
+      provider: UPLOAD_PROVIDER_DATABASE,
       configured: true,
-      config: {
-        bucket: "org-uploads",
-        endpoint: "https://example.r2.cloudflarestorage.com",
-        region: "auto",
-      },
+      config: {},
     },
   },
 });
@@ -537,7 +533,7 @@ const createUploadStub = (seed: UploadSeed) => {
         ? normalizedInput.content
         : new TextEncoder().encode(normalizedInput.content);
     files.set(fileKey, {
-      provider: UPLOAD_PROVIDER_R2,
+      provider: UPLOAD_PROVIDER_DATABASE,
       fileKey,
       status: normalizedInput.status ?? "ready",
       sizeBytes: bytes.byteLength,
@@ -560,11 +556,15 @@ const createUploadStub = (seed: UploadSeed) => {
       const url = new URL(request.url);
 
       if (request.method === "GET" && url.pathname === "/api/upload/files") {
+        const provider = url.searchParams.get("provider");
         const status = url.searchParams.get("status");
         const prefix = url.searchParams.get("prefix") ?? "";
         const delimiter = url.searchParams.get("delimiter");
         const matchedFiles = Array.from(files.values()).filter(
-          (file) => (!status || file.status === status) && file.fileKey.startsWith(prefix),
+          (file) =>
+            (!provider || file.provider === provider) &&
+            (!status || file.status === status) &&
+            file.fileKey.startsWith(prefix),
         );
 
         if (delimiter === "/") {

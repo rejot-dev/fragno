@@ -11,7 +11,7 @@ const DEFAULT_UPLOAD_EXPIRES_IN_SECONDS = 60 * 60;
 const DEFAULT_CONTENT_TYPE = "application/octet-stream";
 
 export type DatabaseStorageAdapterOptions = {
-  databaseAdapter: DatabaseAdapter<unknown>;
+  databaseAdapter: DatabaseAdapter<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   databaseNamespace?: string | null;
   providerName?: string;
   storageKeyPrefix?: string;

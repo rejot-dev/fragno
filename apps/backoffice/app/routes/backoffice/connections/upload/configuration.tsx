@@ -9,7 +9,11 @@ import {
 
 import { getUploadDurableObject } from "@/cloudflare/cloudflare-utils";
 import { ByteUnitField, FormContainer, FormField, TimeUnitField } from "@/components/backoffice";
-import { UPLOAD_R2_DEFAULT_BINDING_NAME, type UploadAdminSetConfigPayload } from "@/fragno/upload";
+import {
+  UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
+  UPLOAD_R2_DEFAULT_BINDING_NAME,
+  type UploadAdminSetConfigPayload,
+} from "@/fragno/upload";
 
 import {
   UploadProviderTabs,
@@ -75,8 +79,12 @@ const DEFAULT_LIMIT_VALUES: Record<UploadLimitPayloadField, string> = {
   maxMetadataBytes: String(8_192),
 };
 
-const toProviderLabel = (provider: UploadConfigurableProvider) =>
-  provider === "r2-binding" ? "R2 binding" : "R2 credentials";
+const toProviderLabel = (provider: UploadConfigurableProvider) => {
+  if (provider === "database") {
+    return "Database";
+  }
+  return provider === "r2-binding" ? "R2 binding" : "R2 credentials";
+};
 
 const resolveAllowedBindingName = (value?: string | null) => {
   if (!value) {
@@ -156,6 +164,21 @@ const getProviderFormValues = (
   configState: UploadConfigState | null,
   provider: UploadConfigurableProvider,
 ): Partial<UploadConfigForm> => {
+  if (provider === "database") {
+    const config = configState?.providers.database?.config;
+    return {
+      storageKeySuffix: config?.storageKeySuffix ?? "",
+      uploadExpiresInSeconds: toInputValue(
+        config?.limits?.uploadExpiresInSeconds,
+        DEFAULT_LIMIT_VALUES.uploadExpiresInSeconds,
+      ),
+      maxSingleUploadBytes: toInputValue(
+        config?.limits?.maxSingleUploadBytes,
+        String(UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES),
+      ),
+    };
+  }
+
   if (provider === "r2") {
     const config = configState?.providers.r2?.config;
     return {
@@ -246,7 +269,7 @@ const normalizeUploadConfigInput = (
       ok: false;
       message: string;
     } => {
-  const provider = input.provider === "r2" ? "r2" : "r2-binding";
+  const provider = input.provider;
   const defaultProvider = provider;
   const bindingName = input.bindingName.trim();
   const bucket = input.bucket.trim();
@@ -319,7 +342,9 @@ const normalizeUploadConfigInput = (
     storageKeySuffix: storageKeySuffix || null,
   };
 
-  if (provider === "r2-binding") {
+  if (provider === "database") {
+    // No external credentials are required for database-backed storage.
+  } else if (provider === "r2-binding") {
     if (!bindingName) {
       return {
         ok: false,
@@ -399,9 +424,15 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     return typeof value === "string" ? value : "";
   };
 
+  const providerValue = getValue("provider");
+  const provider: UploadConfigurableProvider =
+    providerValue === "r2" || providerValue === "r2-binding" || providerValue === "database"
+      ? providerValue
+      : "database";
+
   const formInput: UploadConfigForm = {
-    provider: getValue("provider") === "r2" ? "r2" : "r2-binding",
-    defaultProvider: getValue("defaultProvider") === "r2" ? "r2" : "r2-binding",
+    provider,
+    defaultProvider: provider,
     bindingName: getValue("bindingName"),
     bucket: getValue("bucket"),
     endpoint: getValue("endpoint"),
@@ -454,8 +485,8 @@ export default function BackofficeOrganisationUploadConfiguration() {
   const saving = navigation.state === "submitting";
   const [localError, setLocalError] = useState<string | null>(null);
   const [formState, setFormState] = useState<UploadConfigForm>({
-    provider: "r2-binding",
-    defaultProvider: "r2-binding",
+    provider: "database",
+    defaultProvider: "database",
     bindingName: DEFAULT_UPLOAD_BINDING_NAME,
     bucket: "",
     endpoint: "",
@@ -470,7 +501,7 @@ export default function BackofficeOrganisationUploadConfiguration() {
     multipartPartSizeBytes: DEFAULT_LIMIT_VALUES.multipartPartSizeBytes,
     uploadExpiresInSeconds: DEFAULT_LIMIT_VALUES.uploadExpiresInSeconds,
     signedUrlExpiresInSeconds: DEFAULT_LIMIT_VALUES.signedUrlExpiresInSeconds,
-    maxSingleUploadBytes: DEFAULT_LIMIT_VALUES.maxSingleUploadBytes,
+    maxSingleUploadBytes: String(UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES),
     maxMultipartUploadBytes: DEFAULT_LIMIT_VALUES.maxMultipartUploadBytes,
     maxMetadataBytes: DEFAULT_LIMIT_VALUES.maxMetadataBytes,
   });
@@ -529,7 +560,7 @@ export default function BackofficeOrganisationUploadConfiguration() {
   const statusTone = configState?.configured
     ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
     : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]";
-  const configuredProviders = (["r2-binding", "r2"] as const).filter(
+  const configuredProviders = (["database", "r2-binding", "r2"] as const).filter(
     (provider) => configState?.providers[provider]?.configured,
   );
   const activeProviderConfig = configState?.providers[formState.provider]?.config;
@@ -625,7 +656,7 @@ export default function BackofficeOrganisationUploadConfiguration() {
         <FormContainer
           title="Provider status"
           eyebrow="Scope"
-          description="R2 binding and R2 credentials can be configured side-by-side. Saving the active tab also makes it the default provider."
+          description="Database, R2 binding, and R2 credentials can be configured side-by-side. Saving the active tab also makes it the default provider."
         >
           <div className="space-y-2 text-sm text-[var(--bo-muted)]">
             <p>
@@ -634,7 +665,7 @@ export default function BackofficeOrganisationUploadConfiguration() {
             </p>
             {(configuredProviders.length > 0
               ? configuredProviders
-              : (["r2-binding", "r2"] as const)
+              : (["database", "r2-binding", "r2"] as const)
             ).map((provider) => {
               const providerState = configState?.providers[provider];
               return (
@@ -785,10 +816,15 @@ export default function BackofficeOrganisationUploadConfiguration() {
                   Use path-style addressing
                 </label>
               </>
-            ) : (
+            ) : formState.provider === "r2-binding" ? (
               <div className="rounded border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-xs text-[var(--bo-muted)]">
                 R2 binding mode uses the Worker binding directly, so endpoint and credentials are
                 not required.
+              </div>
+            ) : (
+              <div className="rounded border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-xs text-[var(--bo-muted)]">
+                Database mode stores upload bytes in the Upload fragment database. It only supports
+                proxied uploads and is best for small org-scoped files.
               </div>
             )}
 

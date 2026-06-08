@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
   buildUploadAdminConfigResponse,
   normalizeStoredUploadAdminConfig,
   resolveUploadAdminConfigInput,
@@ -45,6 +46,57 @@ describe("upload admin contract", () => {
     expect(result.config.providers.r2?.r2.endpoint).toBe("https://123456.r2.cloudflarestorage.com");
     expect(result.config.providers.r2?.r2.limits?.maxMetadataBytes).toBe(0);
     expect(result.config.providers.r2?.r2.limits?.uploadExpiresInSeconds).toBe(3600);
+  });
+
+  test("resolves a database-backed config payload", () => {
+    const result = resolveUploadAdminConfigInput({
+      orgId: "acme-dev",
+      now: "2026-03-08T10:00:00.000Z",
+      payload: {
+        provider: "database",
+        defaultProvider: "database",
+        storageKeySuffix: "workspace",
+        maxSingleUploadBytes: 10485760,
+        uploadExpiresInSeconds: 1800,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error(result.message);
+    }
+
+    expect(result.config.defaultProvider).toBe("database");
+    expect(result.config.providers.database?.database.storageKeySuffix).toBe("workspace");
+    expect(result.config.providers.database?.database.limits).toMatchObject({
+      maxSingleUploadBytes: 10485760,
+      uploadExpiresInSeconds: 1800,
+    });
+
+    const response = buildUploadAdminConfigResponse(result.config);
+    expect(response.configured).toBe(true);
+    expect(response.defaultProvider).toBe("database");
+    expect(response.providers.database?.config?.storageKeyPrefix).toBe("org/acme-dev/workspace");
+  });
+
+  test("applies a safe database object-size limit when omitted", () => {
+    const result = resolveUploadAdminConfigInput({
+      orgId: "acme-dev",
+      now: "2026-03-08T10:00:00.000Z",
+      payload: {
+        provider: "database",
+        defaultProvider: "database",
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error(result.message);
+    }
+
+    expect(result.config.providers.database?.database.limits?.maxSingleUploadBytes).toBe(
+      UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
+    );
   });
 
   test("supports configuring multiple providers in one organisation", () => {
@@ -101,7 +153,7 @@ describe("upload admin contract", () => {
     if (result.ok) {
       throw new Error("Expected failure");
     }
-    expect(result.message).toContain("Only providers 'r2' and 'r2-binding'");
+    expect(result.message).toContain("Only providers 'database', 'r2', and 'r2-binding'");
   });
 
   test("rejects default provider when it is not configured", () => {

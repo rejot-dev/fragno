@@ -35,6 +35,12 @@ import {
 import { Collapsible, Progress } from "@base-ui/react";
 
 import { formatBytes } from "@/components/backoffice";
+import {
+  UPLOAD_PROVIDER_DATABASE,
+  UPLOAD_PROVIDER_R2,
+  UPLOAD_PROVIDER_R2_BINDING,
+  type UploadProvider,
+} from "@/fragno/upload";
 import { createUploadClient } from "@/fragno/upload-client";
 
 import {
@@ -89,8 +95,17 @@ type UploadQueueItem = {
   bytesUploaded: number;
   totalBytes: number;
   status: UploadQueueStatus;
+  targetProvider: string;
   targetPrefix: string;
   errorMessage?: string;
+};
+
+type UploadProviderTree = {
+  provider: UploadProvider;
+  label: string;
+  root: UploadTreeFolderNode;
+  foldersByPrefix: Map<string, UploadTreeFolderNode>;
+  allFolderPrefixes: string[];
 };
 
 type UploadTreeFolderNode = {
@@ -114,6 +129,38 @@ type MutableUploadTreeFolderNode = {
 
 const FILE_PAGE_SIZE = 200;
 const SORT_COLLATOR = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+const UPLOAD_PROVIDER_ORDER: readonly UploadProvider[] = [
+  UPLOAD_PROVIDER_DATABASE,
+  UPLOAD_PROVIDER_R2_BINDING,
+  UPLOAD_PROVIDER_R2,
+];
+
+const toProviderLabel = (provider: string) => {
+  if (provider === UPLOAD_PROVIDER_DATABASE) {
+    return "Workspace";
+  }
+  if (provider === UPLOAD_PROVIDER_R2_BINDING) {
+    return "R2";
+  }
+  if (provider === UPLOAD_PROVIDER_R2) {
+    return "R2 remote";
+  }
+  return provider;
+};
+
+const getConfiguredUploadProviders = (
+  configState: UploadConfigState | null | undefined,
+): UploadProvider[] =>
+  UPLOAD_PROVIDER_ORDER.filter((provider) => configState?.providers[provider]?.configured);
+
+const isConfiguredUploadProvider = (
+  configState: UploadConfigState | null | undefined,
+  provider: string | null,
+): provider is UploadProvider =>
+  Boolean(provider && UPLOAD_PROVIDER_ORDER.includes(provider as UploadProvider)) &&
+  Boolean(configState?.providers[provider as UploadProvider]?.configured);
+
+const composeVirtualFolderKey = (provider: string, prefix: string) => `${provider}\u0000${prefix}`;
 const hasControlCharacters = (value: string): boolean => {
   for (let index = 0; index < value.length; index += 1) {
     const code = value.charCodeAt(index);
@@ -338,9 +385,11 @@ const buildSelectionHref = (
   selection:
     | {
         kind: "root";
+        provider?: string | null;
       }
     | {
         kind: "folder";
+        provider: string;
         prefix: string;
       }
     | {
@@ -353,8 +402,12 @@ const buildSelectionHref = (
 
   if (selection.kind === "root") {
     searchParams.set("node", "root");
+    if (selection.provider) {
+      searchParams.set("provider", selection.provider);
+    }
   } else if (selection.kind === "folder") {
     searchParams.set("node", "folder");
+    searchParams.set("provider", selection.provider);
     if (selection.prefix) {
       searchParams.set("prefix", stripTrailingSlash(selection.prefix));
     }
@@ -490,8 +543,9 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   if (!params.orgId) {
     throw new Response("Not Found", { status: 404 });
   }
+  const orgId = params.orgId;
 
-  const { configState, configError } = await fetchUploadConfig(context, params.orgId);
+  const { configState, configError } = await fetchUploadConfig(context, orgId);
   if (configError) {
     return {
       configState,
@@ -516,19 +570,32 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   let selectedPrefix = normalizeFolderPrefix(url.searchParams.get("prefix"));
   const requestedFileKey = url.searchParams.get("fileKey")?.trim() || null;
   const requestedProvider = url.searchParams.get("provider")?.trim() || null;
+  const selectedProvider = isConfiguredUploadProvider(configState, requestedProvider)
+    ? requestedProvider
+    : null;
 
-  if (selectedNodeKind === "folder" && !selectedPrefix) {
-    selectedNodeKind = "root";
+  if (selectedNodeKind === "folder" && (!selectedPrefix || !selectedProvider)) {
+    selectedNodeKind = selectedProvider ? "root" : "root";
   }
 
   if (selectedNodeKind === "file" && !requestedFileKey) {
     selectedNodeKind = selectedPrefix ? "folder" : "root";
   }
 
-  const filesResult = await fetchUploadFiles(request, context, params.orgId, {
-    pageSize: FILE_PAGE_SIZE,
-    status: "ready",
-  });
+  const configuredProviders = getConfiguredUploadProviders(configState);
+  const filesResults = await Promise.all(
+    configuredProviders.map((provider) =>
+      fetchUploadFiles(request, context, orgId, {
+        pageSize: FILE_PAGE_SIZE,
+        status: "ready",
+        provider,
+      }),
+    ),
+  );
+  const filesResult = {
+    files: filesResults.flatMap((result) => result.files),
+    filesError: filesResults.find((result) => result.filesError)?.filesError ?? null,
+  };
 
   if (selectedNodeKind !== "file" || !requestedFileKey) {
     return {
@@ -538,7 +605,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
       files: filesResult.files,
       selectedFile: null,
       selectedFileError: null,
-      selectedFileProvider: null,
+      selectedFileProvider: selectedProvider,
       selectedFileKey: null,
       selectedNodeKind,
       selectedPrefix,
@@ -546,7 +613,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   }
 
   const providerForSelection =
-    requestedProvider ??
+    selectedProvider ??
     filesResult.files.find((file) => file.fileKey === requestedFileKey)?.provider ??
     null;
 
@@ -568,7 +635,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const selected = await fetchUploadFile(
     request,
     context,
-    params.orgId,
+    orgId,
     providerForSelection,
     requestedFileKey,
   );
@@ -733,8 +800,11 @@ export default function BackofficeOrganisationUploadFiles() {
     selectedFileProvider,
   });
   const selectedProvider = selectedFile?.provider ?? selectedFileProvider ?? null;
-  const supportsSignedDownload = selectedProvider === "r2";
-  const defaultProvider = configState?.defaultProvider;
+  const supportsSignedDownload = selectedProvider === UPLOAD_PROVIDER_R2;
+  const configuredProviders = useMemo(
+    () => getConfiguredUploadProviders(configState),
+    [configState],
+  );
   const actionBusy = navigation.state === "submitting";
   const refreshing = revalidator.state === "loading";
   const selectedExplorerPrefix =
@@ -742,50 +812,86 @@ export default function BackofficeOrganisationUploadFiles() {
       ? getParentPrefix(selectedFile?.fileKey ?? selectedFileKey ?? "")
       : selectedPrefix;
   const extraFolderPrefixes = useMemo(() => {
-    const prefixes = new Set(virtualFolders);
+    if (!selectedProvider) {
+      return [];
+    }
+
+    const prefixes = new Set<string>();
+    for (const key of virtualFolders) {
+      const [provider, prefix] = key.split("\u0000", 2);
+      if (provider === selectedProvider && prefix) {
+        prefixes.add(prefix);
+      }
+    }
     if (selectedExplorerPrefix) {
       prefixes.add(selectedExplorerPrefix);
     }
 
     return [...prefixes].sort(SORT_COLLATOR.compare);
-  }, [selectedExplorerPrefix, virtualFolders]);
-  const {
-    root: fileTree,
-    foldersByPrefix,
-    allFolderPrefixes,
-  } = useMemo(() => buildUploadFileTree(files, extraFolderPrefixes), [extraFolderPrefixes, files]);
+  }, [selectedExplorerPrefix, selectedProvider, virtualFolders]);
+  const providerTrees = useMemo<UploadProviderTree[]>(
+    () =>
+      configuredProviders.map((provider) => {
+        const tree = buildUploadFileTree(
+          files.filter((file) => file.provider === provider),
+          provider === selectedProvider ? extraFolderPrefixes : [],
+        );
+        return {
+          provider,
+          label: toProviderLabel(provider),
+          ...tree,
+        };
+      }),
+    [configuredProviders, extraFolderPrefixes, files, selectedProvider],
+  );
+  const selectedProviderTree = providerTrees.find((tree) => tree.provider === selectedProvider);
+  const allFolderPrefixes = providerTrees.flatMap((tree) =>
+    tree.allFolderPrefixes.map((prefix) => composeVirtualFolderKey(tree.provider, prefix)),
+  );
   const [openFolders, setOpenFolders] = useState<Set<string>>(() => new Set(allFolderPrefixes));
   const knownFolderPrefixesRef = useRef<Set<string>>(new Set(allFolderPrefixes));
   const selectedNodeKey =
     selectedNodeKind === "file" && selectedFileKey
       ? `file:${selectedFileProvider ?? "unknown"}:${selectedFileKey}`
-      : selectedNodeKind === "folder"
-        ? `folder:${selectedPrefix}`
-        : "root";
+      : selectedNodeKind === "folder" && selectedProvider
+        ? `folder:${selectedProvider}:${selectedPrefix}`
+        : selectedNodeKind === "root" && selectedProvider
+          ? `root:${selectedProvider}`
+          : "root";
   const selectedFolderNode =
-    selectedNodeKind === "root"
-      ? fileTree
-      : selectedNodeKind === "folder"
-        ? (foldersByPrefix.get(selectedPrefix) ?? createSyntheticFolderNode(selectedPrefix))
+    selectedNodeKind === "root" && selectedProvider
+      ? (selectedProviderTree?.root ?? null)
+      : selectedNodeKind === "folder" && selectedProvider
+        ? (selectedProviderTree?.foldersByPrefix.get(selectedPrefix) ??
+          createSyntheticFolderNode(selectedPrefix))
         : null;
+  const uploadTargetProvider = selectedNodeKind === "file" ? null : selectedProvider;
   const uploadTargetPrefix =
-    selectedNodeKind === "root" ? "" : selectedNodeKind === "folder" ? selectedPrefix : null;
+    uploadTargetProvider && selectedNodeKind === "root"
+      ? ""
+      : uploadTargetProvider && selectedNodeKind === "folder"
+        ? selectedPrefix
+        : null;
   const folderQueue =
-    uploadTargetPrefix === null
+    uploadTargetProvider === null || uploadTargetPrefix === null
       ? []
-      : uploadQueue.filter((item) => item.targetPrefix === uploadTargetPrefix);
+      : uploadQueue.filter(
+          (item) =>
+            item.targetProvider === uploadTargetProvider &&
+            item.targetPrefix === uploadTargetPrefix,
+        );
   const hasFailedUploads = folderQueue.some((item) => item.status === "failed");
   const hasFinishedUploads = folderQueue.some(
     (item) => item.status === "completed" || item.status === "failed",
   );
-  const nextQueuedUploadPrefix =
-    uploadQueue.find((item) => item.status === "queued")?.targetPrefix ?? null;
+  const nextQueuedUpload = uploadQueue.find((item) => item.status === "queued") ?? null;
   const pendingUploadsElsewhere =
-    uploadTargetPrefix === null
+    uploadTargetProvider === null || uploadTargetPrefix === null
       ? 0
       : uploadQueue.filter(
           (item) =>
-            item.targetPrefix !== uploadTargetPrefix &&
+            (item.targetProvider !== uploadTargetProvider ||
+              item.targetPrefix !== uploadTargetPrefix) &&
             (item.status === "queued" || item.status === "uploading" || item.status === "failed"),
         ).length;
   const downloadUrl =
@@ -797,12 +903,18 @@ export default function BackofficeOrganisationUploadFiles() {
       : null;
   const missingFileParentHref = buildSelectionHref(
     orgId,
-    selectedPrefix ? { kind: "folder", prefix: selectedPrefix } : { kind: "root" },
+    selectedProvider && selectedPrefix
+      ? { kind: "folder", provider: selectedProvider, prefix: selectedPrefix }
+      : { kind: "root", provider: selectedProvider },
   );
   const isDragActive = dragDepth > 0;
 
   const startUploads = useCallback(
-    async (targetPrefix: string, options: { includeFailed?: boolean } = {}) => {
+    async (
+      targetProvider: string,
+      targetPrefix: string,
+      options: { includeFailed?: boolean } = {},
+    ) => {
       if (uploadingFiles) {
         return;
       }
@@ -810,15 +922,11 @@ export default function BackofficeOrganisationUploadFiles() {
       const includeFailed = options.includeFailed ?? true;
       const candidates = uploadQueue.filter(
         (item) =>
+          item.targetProvider === targetProvider &&
           item.targetPrefix === targetPrefix &&
           (item.status === "queued" || (includeFailed && item.status === "failed")),
       );
       if (candidates.length === 0) {
-        return;
-      }
-
-      if (!defaultProvider) {
-        setUploadError("Select and configure a default provider before uploading files.");
         return;
       }
 
@@ -844,7 +952,7 @@ export default function BackofficeOrganisationUploadFiles() {
 
           try {
             await uploadHelpers.createUploadAndTransfer(item.file, {
-              provider: defaultProvider,
+              provider: item.targetProvider,
               fileKey: createReadableUploadKey(item.targetPrefix, item.filename),
               filename: item.filename,
               contentType: item.file.type || "application/octet-stream",
@@ -900,20 +1008,22 @@ export default function BackofficeOrganisationUploadFiles() {
         revalidator.revalidate();
       }
     },
-    [defaultProvider, revalidator, uploadHelpers, uploadingFiles, uploadQueue],
+    [revalidator, uploadHelpers, uploadingFiles, uploadQueue],
   );
 
   useEffect(() => {
     setOpenFolders((previous) => {
       const next = new Set(previous);
 
-      for (const prefix of getAncestorPrefixes(selectedPrefix)) {
-        next.add(prefix);
+      if (selectedProvider) {
+        for (const prefix of getAncestorPrefixes(selectedPrefix)) {
+          next.add(composeVirtualFolderKey(selectedProvider, prefix));
+        }
       }
 
       return next;
     });
-  }, [selectedPrefix]);
+  }, [selectedPrefix, selectedProvider]);
 
   useEffect(() => {
     setOpenFolders((previous) => {
@@ -942,21 +1052,21 @@ export default function BackofficeOrganisationUploadFiles() {
   }, [selectedNodeKind, selectedPrefix, selectedFileKey, selectedFileProvider]);
 
   useEffect(() => {
-    const nextUploadTargetPrefix = nextQueuedUploadPrefix;
-
     if (
       !shouldAutoStartUploads({
         uploadingFiles,
-        defaultProvider,
-        nextQueuedUploadPrefix: nextUploadTargetPrefix,
+        defaultProvider: nextQueuedUpload?.targetProvider,
+        nextQueuedUploadPrefix: nextQueuedUpload?.targetPrefix ?? null,
       }) ||
-      nextUploadTargetPrefix === null
+      !nextQueuedUpload
     ) {
       return;
     }
 
-    void startUploads(nextUploadTargetPrefix, { includeFailed: false });
-  }, [defaultProvider, nextQueuedUploadPrefix, startUploads, uploadingFiles]);
+    void startUploads(nextQueuedUpload.targetProvider, nextQueuedUpload.targetPrefix, {
+      includeFailed: false,
+    });
+  }, [nextQueuedUpload, startUploads, uploadingFiles]);
 
   if (configError) {
     return (
@@ -964,13 +1074,12 @@ export default function BackofficeOrganisationUploadFiles() {
     );
   }
 
-  const queueFilesForPrefix = (incomingFiles: File[], targetPrefix: string) => {
+  const queueFilesForPrefix = (
+    incomingFiles: File[],
+    targetProvider: string,
+    targetPrefix: string,
+  ) => {
     if (incomingFiles.length === 0) {
-      return;
-    }
-
-    if (!defaultProvider) {
-      setUploadError("Select and configure a default provider before uploading files.");
       return;
     }
 
@@ -985,28 +1094,37 @@ export default function BackofficeOrganisationUploadFiles() {
         bytesUploaded: 0,
         totalBytes: file.size,
         status: "queued" as const,
+        targetProvider,
         targetPrefix,
       })),
     ]);
   };
 
   const handleBrowseSelection = (event: ChangeEvent<HTMLInputElement>) => {
-    if (uploadTargetPrefix === null) {
+    if (!uploadTargetProvider || uploadTargetPrefix === null) {
       return;
     }
 
-    queueFilesForPrefix(Array.from(event.target.files ?? []), uploadTargetPrefix);
+    queueFilesForPrefix(
+      Array.from(event.target.files ?? []),
+      uploadTargetProvider,
+      uploadTargetPrefix,
+    );
     event.target.value = "";
   };
 
   const handleDropFiles = (event: DragEvent<HTMLDivElement>) => {
-    if (uploadTargetPrefix === null) {
+    if (!uploadTargetProvider || uploadTargetPrefix === null) {
       return;
     }
 
     event.preventDefault();
     setDragDepth(0);
-    queueFilesForPrefix(Array.from(event.dataTransfer.files ?? []), uploadTargetPrefix);
+    queueFilesForPrefix(
+      Array.from(event.dataTransfer.files ?? []),
+      uploadTargetProvider,
+      uploadTargetPrefix,
+    );
   };
 
   const handleDragEnter = (event: DragEvent<HTMLDivElement>) => {
@@ -1036,10 +1154,11 @@ export default function BackofficeOrganisationUploadFiles() {
     setDragDepth((current) => Math.max(0, current - 1));
   };
 
-  const clearFinishedUploads = (targetPrefix: string) => {
+  const clearFinishedUploads = (targetProvider: string, targetPrefix: string) => {
     setUploadQueue((previous) =>
       previous.filter(
         (item) =>
+          item.targetProvider !== targetProvider ||
           item.targetPrefix !== targetPrefix ||
           (item.status !== "completed" && item.status !== "failed"),
       ),
@@ -1047,7 +1166,7 @@ export default function BackofficeOrganisationUploadFiles() {
   };
 
   const createFolder = () => {
-    if (uploadTargetPrefix === null) {
+    if (!uploadTargetProvider || uploadTargetPrefix === null) {
       return;
     }
 
@@ -1061,29 +1180,37 @@ export default function BackofficeOrganisationUploadFiles() {
     setFolderCreateError(null);
     setPendingFolderName("");
 
-    if (!foldersByPrefix.has(nextPrefix)) {
+    if (!selectedProviderTree?.foldersByPrefix.has(nextPrefix)) {
       setVirtualFolders((previous) => {
-        if (previous.has(nextPrefix)) {
+        const virtualFolderKey = composeVirtualFolderKey(uploadTargetProvider, nextPrefix);
+        if (previous.has(virtualFolderKey)) {
           return previous;
         }
 
         const next = new Set(previous);
-        next.add(nextPrefix);
+        next.add(virtualFolderKey);
         return next;
       });
     }
 
-    navigate(buildSelectionHref(orgId, { kind: "folder", prefix: nextPrefix }));
+    navigate(
+      buildSelectionHref(orgId, {
+        kind: "folder",
+        provider: uploadTargetProvider,
+        prefix: nextPrefix,
+      }),
+    );
   };
 
-  const setFolderOpen = (prefix: string, open: boolean) => {
+  const setFolderOpen = (provider: string, prefix: string, open: boolean) => {
     setOpenFolders((previous) => {
       const next = new Set(previous);
+      const key = composeVirtualFolderKey(provider, prefix);
 
       if (open) {
-        next.add(prefix);
+        next.add(key);
       } else {
-        next.delete(prefix);
+        next.delete(key);
       }
 
       return next;
@@ -1156,35 +1283,27 @@ export default function BackofficeOrganisationUploadFiles() {
             >
               <span className="flex min-w-0 items-center gap-2">
                 <FolderOpen className="h-4 w-4 shrink-0" />
-                <span className="truncate text-sm font-semibold">Root</span>
+                <span className="truncate text-sm font-semibold">Upload roots</span>
               </span>
               <span className="shrink-0 text-[11px] tracking-[0.22em] text-current/70 uppercase">
-                {fileTree.fileCount} files
+                {files.length} files
               </span>
             </Link>
 
-            {fileTree.folders.length === 0 && fileTree.files.length === 0 ? (
+            {providerTrees.length === 0 ? (
               <p className="mt-4 text-sm text-[var(--bo-muted)]">
-                No files found yet. Select root and drop files to start populating the tree.
+                No upload providers are configured yet.
               </p>
             ) : (
-              <div className="mt-3 space-y-1">
-                {fileTree.folders.map((folder) => (
-                  <UploadFolderTreeNode
-                    key={folder.prefix}
-                    folder={folder}
+              <div className="mt-3 space-y-2">
+                {providerTrees.map((providerTree) => (
+                  <UploadProviderRootTree
+                    key={providerTree.provider}
+                    providerTree={providerTree}
                     orgId={orgId}
                     selectedNodeKey={selectedNodeKey}
                     openPrefixes={openFolders}
                     onOpenChange={setFolderOpen}
-                  />
-                ))}
-                {fileTree.files.map((file) => (
-                  <UploadFileTreeLeaf
-                    key={`${file.provider}:${file.fileKey}`}
-                    file={file}
-                    orgId={orgId}
-                    selectedNodeKey={selectedNodeKey}
                   />
                 ))}
               </div>
@@ -1335,16 +1454,23 @@ export default function BackofficeOrganisationUploadFiles() {
                           getLeafLabel(stripTrailingSlash(selectedPrefix)))}
                     </p>
                     <p className="mt-1 text-xs text-[var(--bo-muted)]">
-                      Uploads land under{" "}
-                      <span className="font-semibold text-[var(--bo-fg)]">
-                        {formatPrefixLabel(uploadTargetPrefix ?? "")}
-                      </span>{" "}
-                      using readable collision-safe keys.
+                      {uploadTargetProvider ? (
+                        <>
+                          Uploads land under{" "}
+                          <span className="font-semibold text-[var(--bo-fg)]">
+                            {formatPrefixLabel(uploadTargetPrefix ?? "")}
+                          </span>{" "}
+                          using readable collision-safe keys.
+                        </>
+                      ) : (
+                        "Select a configured upload root to browse, create folders, or upload files."
+                      )}
                     </p>
                   </div>
 
                   <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
-                    Uploads via: {defaultProvider ?? "not set"}
+                    Uploads via:{" "}
+                    {selectedProvider ? toProviderLabel(selectedProvider) : "select a root"}
                   </span>
                 </div>
 
@@ -1411,7 +1537,7 @@ export default function BackofficeOrganisationUploadFiles() {
                   />
                   <button
                     type="submit"
-                    disabled={!pendingFolderName.trim()}
+                    disabled={!uploadTargetProvider || !pendingFolderName.trim()}
                     className="inline-flex items-center justify-center gap-2 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
                   >
                     <Folder className="h-3.5 w-3.5" />
@@ -1466,6 +1592,7 @@ export default function BackofficeOrganisationUploadFiles() {
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
+                      disabled={!uploadTargetProvider}
                       className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       <Upload className="h-3.5 w-3.5" />
@@ -1475,9 +1602,13 @@ export default function BackofficeOrganisationUploadFiles() {
                       <button
                         type="button"
                         onClick={() =>
-                          uploadTargetPrefix !== null && void startUploads(uploadTargetPrefix)
+                          uploadTargetProvider &&
+                          uploadTargetPrefix !== null &&
+                          void startUploads(uploadTargetProvider, uploadTargetPrefix)
                         }
-                        disabled={uploadingFiles || uploadTargetPrefix === null}
+                        disabled={
+                          uploadingFiles || !uploadTargetProvider || uploadTargetPrefix === null
+                        }
                         className="inline-flex items-center gap-2 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
                       >
                         <RefreshCcw className="h-3.5 w-3.5" />
@@ -1489,10 +1620,15 @@ export default function BackofficeOrganisationUploadFiles() {
                     <button
                       type="button"
                       onClick={() =>
-                        uploadTargetPrefix !== null && clearFinishedUploads(uploadTargetPrefix)
+                        uploadTargetProvider &&
+                        uploadTargetPrefix !== null &&
+                        clearFinishedUploads(uploadTargetProvider, uploadTargetPrefix)
                       }
                       disabled={
-                        !hasFinishedUploads || uploadingFiles || uploadTargetPrefix === null
+                        !hasFinishedUploads ||
+                        uploadingFiles ||
+                        !uploadTargetProvider ||
+                        uploadTargetPrefix === null
                       }
                       className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
                     >
@@ -1582,25 +1718,95 @@ function UploadQueueCard({ item }: { item: UploadQueueItem }) {
   );
 }
 
+function UploadProviderRootTree({
+  providerTree,
+  orgId,
+  selectedNodeKey,
+  openPrefixes,
+  onOpenChange,
+}: {
+  providerTree: UploadProviderTree;
+  orgId: string;
+  selectedNodeKey: string;
+  openPrefixes: ReadonlySet<string>;
+  onOpenChange: (provider: string, prefix: string, open: boolean) => void;
+}) {
+  const root = providerTree.root;
+  const isSelected = selectedNodeKey === `root:${providerTree.provider}`;
+
+  return (
+    <div className="space-y-1">
+      <Link
+        to={buildSelectionHref(orgId, { kind: "root", provider: providerTree.provider })}
+        aria-current={isSelected ? "page" : undefined}
+        className={
+          isSelected
+            ? "flex min-w-0 items-center justify-between gap-3 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[var(--bo-fg)]"
+            : "flex min-w-0 items-center justify-between gap-3 rounded-sm border border-transparent bg-transparent px-3 py-2 text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border)] hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)]"
+        }
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <FolderOpen className="h-4 w-4 shrink-0" />
+          <span className="truncate text-sm font-semibold">{providerTree.label}</span>
+        </span>
+        <span className="shrink-0 text-[11px] tracking-[0.22em] text-current/70 uppercase">
+          {root.fileCount} files
+        </span>
+      </Link>
+
+      {root.folders.length === 0 && root.files.length === 0 ? (
+        <p className="px-3 py-2 text-xs text-[var(--bo-muted-2)]">No files in this root yet.</p>
+      ) : (
+        <div className="space-y-1 border-l border-[color:var(--bo-border)] pl-4">
+          {root.folders.map((folder) => (
+            <UploadFolderTreeNode
+              key={`${providerTree.provider}:${folder.prefix}`}
+              provider={providerTree.provider}
+              folder={folder}
+              orgId={orgId}
+              selectedNodeKey={selectedNodeKey}
+              openPrefixes={openPrefixes}
+              onOpenChange={onOpenChange}
+            />
+          ))}
+          {root.files.map((file) => (
+            <UploadFileTreeLeaf
+              key={`${file.provider}:${file.fileKey}`}
+              file={file}
+              orgId={orgId}
+              selectedNodeKey={selectedNodeKey}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function UploadFolderTreeNode({
+  provider,
   folder,
   orgId,
   selectedNodeKey,
   openPrefixes,
   onOpenChange,
 }: {
+  provider: string;
   folder: UploadTreeFolderNode;
   orgId: string;
   selectedNodeKey: string;
   openPrefixes: ReadonlySet<string>;
-  onOpenChange: (prefix: string, open: boolean) => void;
+  onOpenChange: (provider: string, prefix: string, open: boolean) => void;
 }) {
-  const isOpen = openPrefixes.has(folder.prefix);
-  const isSelected = selectedNodeKey === `folder:${folder.prefix}`;
+  const isOpen = openPrefixes.has(composeVirtualFolderKey(provider, folder.prefix));
+  const isSelected = selectedNodeKey === `folder:${provider}:${folder.prefix}`;
   const hasChildren = folder.folders.length > 0 || folder.files.length > 0;
 
   return (
-    <Collapsible.Root open={isOpen} onOpenChange={(open) => onOpenChange(folder.prefix, open)}>
+    <Collapsible.Root
+      open={isOpen}
+      onOpenChange={(open) => onOpenChange(provider, folder.prefix, open)}
+    >
       <div className="space-y-1">
         <div className="flex items-center gap-2">
           {hasChildren ? (
@@ -1617,7 +1823,7 @@ function UploadFolderTreeNode({
           )}
 
           <Link
-            to={buildSelectionHref(orgId, { kind: "folder", prefix: folder.prefix })}
+            to={buildSelectionHref(orgId, { kind: "folder", provider, prefix: folder.prefix })}
             aria-current={isSelected ? "page" : undefined}
             className={
               isSelected
@@ -1645,7 +1851,8 @@ function UploadFolderTreeNode({
             <div className="space-y-1 border-l border-[color:var(--bo-border)] pl-4">
               {folder.folders.map((childFolder) => (
                 <UploadFolderTreeNode
-                  key={childFolder.prefix}
+                  key={`${provider}:${childFolder.prefix}`}
+                  provider={provider}
                   folder={childFolder}
                   orgId={orgId}
                   selectedNodeKey={selectedNodeKey}

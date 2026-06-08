@@ -9,6 +9,7 @@ import {
 } from "@/files";
 import { toUploadDirectoryMarkerFileKey } from "@/files/contributors/upload-markers";
 import {
+  UPLOAD_PROVIDER_DATABASE,
   UPLOAD_PROVIDER_R2,
   UPLOAD_PROVIDER_R2_BINDING,
   type UploadAdminConfigResponse,
@@ -19,8 +20,13 @@ const createUploadConfig = (
   overrides: Partial<UploadAdminConfigResponse> = {},
 ): UploadAdminConfigResponse => ({
   configured: true,
-  defaultProvider: UPLOAD_PROVIDER_R2,
+  defaultProvider: UPLOAD_PROVIDER_DATABASE,
   providers: {
+    [UPLOAD_PROVIDER_DATABASE]: {
+      provider: UPLOAD_PROVIDER_DATABASE,
+      configured: true,
+      config: {},
+    },
     [UPLOAD_PROVIDER_R2]: {
       provider: UPLOAD_PROVIDER_R2,
       configured: true,
@@ -54,8 +60,13 @@ describe("upload file contributor", () => {
   test("builds workspace mount metadata for configured org storage", () => {
     const mount = resolveUploadFileMount(
       createUploadConfig({
-        defaultProvider: UPLOAD_PROVIDER_R2_BINDING,
+        defaultProvider: UPLOAD_PROVIDER_DATABASE,
         providers: {
+          [UPLOAD_PROVIDER_DATABASE]: {
+            provider: UPLOAD_PROVIDER_DATABASE,
+            configured: true,
+            config: {},
+          },
           [UPLOAD_PROVIDER_R2]: {
             provider: UPLOAD_PROVIDER_R2,
             configured: true,
@@ -82,9 +93,9 @@ describe("upload file contributor", () => {
       title: "Workspace",
       readOnly: false,
       persistence: "persistent",
-      uploadProvider: UPLOAD_PROVIDER_R2_BINDING,
+      uploadProvider: UPLOAD_PROVIDER_DATABASE,
     });
-    expect(mount?.description).toContain("R2 binding");
+    expect(mount?.description).toContain("Database");
     expect(mount?.description).toContain("Configured providers");
   });
 
@@ -93,6 +104,8 @@ describe("upload file contributor", () => {
       "system",
       "static-starter",
       "workspace",
+      "r2",
+      "r2-remote",
       "tmp",
       "resend",
       "durable-hooks-automation",
@@ -149,13 +162,13 @@ describe("upload file contributor", () => {
       /Binary files cannot be read as text/,
     );
     expect(runtime.requests).toContain(
-      "GET /api/upload/files/by-key/content?provider=r2&key=reports%2Fq1.txt",
+      "GET /api/upload/files/by-key/content?provider=database&key=reports%2Fq1.txt",
     );
     expect(runtime.requests).toContain(
-      "GET /api/upload/files/by-key/content?provider=r2&key=images%2Flogo.png",
+      "GET /api/upload/files/by-key/content?provider=database&key=images%2Flogo.png",
     );
     expect(runtime.requests).not.toContain(
-      "GET /api/upload/files/by-key?provider=r2&key=images%2Flogo.png",
+      "GET /api/upload/files/by-key?provider=database&key=images%2Flogo.png",
     );
   });
 
@@ -171,10 +184,10 @@ describe("upload file contributor", () => {
     const stream = await fs.readFileStream("/workspace/reports/q1.txt");
     await expect(readStream(stream)).resolves.toBe("ready");
     expect(runtime.requests).toContain(
-      "GET /api/upload/files/by-key/content?provider=r2&key=reports%2Fq1.txt",
+      "GET /api/upload/files/by-key/content?provider=database&key=reports%2Fq1.txt",
     );
     expect(runtime.requests).not.toContain(
-      "GET /api/upload/files/by-key?provider=r2&key=reports%2Fq1.txt",
+      "GET /api/upload/files/by-key?provider=database&key=reports%2Fq1.txt",
     );
   });
 
@@ -262,7 +275,7 @@ describe("upload file contributor", () => {
 
   test("avoids provider-discovery scans for single-file operations", async () => {
     const runtime = createUploadRuntime({
-      "reports/q1.txt": { content: "ready" },
+      "reports/q1.txt": { provider: UPLOAD_PROVIDER_R2, content: "ready" },
     });
     const context = {
       orgId: "acme-org",
@@ -313,7 +326,9 @@ describe("upload file contributor", () => {
     await expect(fs.readFile?.("/workspace/reports/q1.txt")).resolves.toBe("updated");
 
     await fs.writeFile?.("/workspace/notes/todo.md", "- ship it");
-    expect(runtime.files.has(composeStorageKey(UPLOAD_PROVIDER_R2, "notes/todo.md"))).toBe(true);
+    expect(runtime.files.has(composeStorageKey(UPLOAD_PROVIDER_DATABASE, "notes/todo.md"))).toBe(
+      true,
+    );
     await expect(fs.readFile?.("/workspace/notes/todo.md")).resolves.toBe("- ship it");
 
     await fs.rm?.("/workspace/reports/", { recursive: true });
@@ -364,7 +379,7 @@ describe("upload file contributor", () => {
     });
 
     expect(
-      runtime.files.get(composeStorageKey(UPLOAD_PROVIDER_R2, "reports/q1.txt"))?.metadata,
+      runtime.files.get(composeStorageKey(UPLOAD_PROVIDER_DATABASE, "reports/q1.txt"))?.metadata,
     ).toMatchObject({
       __docsFs: {
         mode: 0o600,
@@ -373,7 +388,7 @@ describe("upload file contributor", () => {
     });
     expect(
       runtime.files.get(
-        composeStorageKey(UPLOAD_PROVIDER_R2, toUploadDirectoryMarkerFileKey("archive")),
+        composeStorageKey(UPLOAD_PROVIDER_DATABASE, toUploadDirectoryMarkerFileKey("archive")),
       )?.metadata,
     ).toMatchObject({
       __docsDirectoryMarker: true,
@@ -399,14 +414,14 @@ describe("upload file contributor", () => {
     await fs.writeFile?.("/workspace/reports/q1.txt", "updated");
 
     expect(
-      runtime.files.get(composeStorageKey(UPLOAD_PROVIDER_R2, "reports/q1.txt"))?.metadata,
+      runtime.files.get(composeStorageKey(UPLOAD_PROVIDER_DATABASE, "reports/q1.txt"))?.metadata,
     ).toMatchObject({
       __docsFs: {
         mode: 0o600,
       },
     });
     expect(
-      runtime.files.get(composeStorageKey(UPLOAD_PROVIDER_R2, "reports/q1.txt"))?.metadata,
+      runtime.files.get(composeStorageKey(UPLOAD_PROVIDER_DATABASE, "reports/q1.txt"))?.metadata,
     ).not.toMatchObject({
       __docsFs: {
         mtime: expect.any(String),
@@ -432,12 +447,12 @@ describe("upload file contributor", () => {
 
     expect(
       runtime.files.has(
-        composeStorageKey(UPLOAD_PROVIDER_R2, toUploadDirectoryMarkerFileKey("reports")),
+        composeStorageKey(UPLOAD_PROVIDER_DATABASE, toUploadDirectoryMarkerFileKey("reports")),
       ),
     ).toBe(true);
     expect(
       runtime.files.has(
-        composeStorageKey(UPLOAD_PROVIDER_R2, toUploadDirectoryMarkerFileKey("reports/2026")),
+        composeStorageKey(UPLOAD_PROVIDER_DATABASE, toUploadDirectoryMarkerFileKey("reports/2026")),
       ),
     ).toBe(true);
 
@@ -475,12 +490,12 @@ describe("upload file contributor", () => {
     await expect(fs.readdir?.("/workspace")).resolves.toEqual([]);
     expect(
       runtime.files.has(
-        composeStorageKey(UPLOAD_PROVIDER_R2, toUploadDirectoryMarkerFileKey("reports")),
+        composeStorageKey(UPLOAD_PROVIDER_DATABASE, toUploadDirectoryMarkerFileKey("reports")),
       ),
     ).toBe(false);
     expect(
       runtime.files.has(
-        composeStorageKey(UPLOAD_PROVIDER_R2, toUploadDirectoryMarkerFileKey("reports/2026")),
+        composeStorageKey(UPLOAD_PROVIDER_DATABASE, toUploadDirectoryMarkerFileKey("reports/2026")),
       ),
     ).toBe(false);
   });
@@ -563,7 +578,7 @@ const createUploadRuntime = (
       status?: UploadFileRecord["status"];
     },
   ) => {
-    const provider = input.provider ?? UPLOAD_PROVIDER_R2;
+    const provider = input.provider ?? uploadConfig.defaultProvider ?? UPLOAD_PROVIDER_DATABASE;
     const bytes =
       input.content instanceof Uint8Array ? input.content : new TextEncoder().encode(input.content);
     const contentType = input.contentType ?? guessContentType(fileKey);
