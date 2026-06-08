@@ -2,8 +2,6 @@ import type { RemoteWorkflowStepHost } from "@fragno-dev/workflows/remote-workfl
 import type { WorkflowEvent } from "@fragno-dev/workflows/workflow";
 
 import type { MasterFileSystem } from "@/files/master-file-system";
-import { createRouteBackedAutomationBindingsRuntime } from "@/fragno/automation/bindings-route-runtime";
-import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import {
   runBackofficeCodemode,
   type BackofficeCodemodeEnv,
@@ -12,63 +10,27 @@ import {
 import { runBackofficeCodemodeWorkflow } from "@/fragno/codemode/workflow-execute";
 import type { PiCodemodeWorkflowParams } from "@/fragno/pi/pi-codemode-workflow";
 import type { AutomationExecutionContext } from "@/fragno/runtime-tools/automation-host";
-import type { AutomationBindingsRuntime } from "@/fragno/runtime-tools/families/automations-bindings";
-import type { AutomationWorkflowRuntime } from "@/fragno/runtime-tools/families/automations-workflow";
-import type { EventRuntime } from "@/fragno/runtime-tools/families/event";
-import type { OtpRuntime } from "@/fragno/runtime-tools/families/otp";
-import { createOtpRuntime } from "@/fragno/runtime-tools/families/otp-runtime";
-import type { PiRuntime } from "@/fragno/runtime-tools/families/pi";
-import { createPiRouteRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
-import type { ResendRuntime } from "@/fragno/runtime-tools/families/resend";
-import { createResendRouteRuntime } from "@/fragno/runtime-tools/families/resend-runtime";
-import type { Reson8Runtime } from "@/fragno/runtime-tools/families/reson8";
-import { createReson8RouteRuntime } from "@/fragno/runtime-tools/families/reson8-runtime";
-import { createSandboxRouteRuntime } from "@/fragno/runtime-tools/families/sandbox-route-runtime";
-import type { SandboxRuntime } from "@/fragno/runtime-tools/families/sandbox-runtime";
-import type { TelegramRuntime } from "@/fragno/runtime-tools/families/telegram";
-import { createTelegramRuntime } from "@/fragno/runtime-tools/families/telegram-runtime";
+import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import {
   getAvailableRuntimeTools,
   type BackofficeRuntimeToolCall,
-  type BackofficeToolContext,
 } from "@/fragno/runtime-tools/runtime-tools";
+import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import {
-  automationRuntimeToolFamilies,
-  piCodemodeRuntimeToolFamilies,
+  runtimeToolFamilies,
+  type CoreBackofficeToolContext,
 } from "@/fragno/runtime-tools/tool-families";
 
 import { createAutomationRunResult, type AutomationRunResult } from "../run-result";
 import { createAutomationExecutionFileSystem } from "./execution-file-system";
 
-type AutomationCodemodeToolContext = BackofficeToolContext<{
-  automations?: AutomationBindingsRuntime;
-  workflow?: AutomationWorkflowRuntime;
-  event?: EventRuntime;
-  otp?: OtpRuntime;
-  pi?: PiRuntime;
-  resend?: ResendRuntime;
-  reson8?: Reson8Runtime;
-  sandbox?: SandboxRuntime;
-  telegram?: TelegramRuntime;
-}>;
-
-type PiCodemodeToolContext = BackofficeToolContext<{
-  automations?: AutomationBindingsRuntime;
-  workflow?: AutomationWorkflowRuntime;
-  otp?: OtpRuntime;
-  pi?: PiRuntime;
-  resend?: ResendRuntime;
-  reson8?: Reson8Runtime;
-  sandbox?: SandboxRuntime;
-  telegram?: TelegramRuntime;
-}>;
-
 const createAutomationToolRuntimeContext = (
   context: AutomationExecutionContext,
-): AutomationCodemodeToolContext => ({
+): CoreBackofficeToolContext => ({
   runtimes: {
     automations: context.automations?.runtime,
     workflow: context.workflow?.runtime,
+    durableHooks: context.durableHooks?.runtime,
     event: context.automation.runtime,
     otp: context.otp?.runtime,
     pi: context.pi?.runtime,
@@ -117,12 +79,14 @@ export const executeCodemodeAutomation = async ({
 }): Promise<AutomationRunResult<"codemode">> => {
   const executionFs = createAutomationExecutionFileSystem({
     masterFs,
-    eventJson: JSON.stringify(context.automation.event),
-    envJson: JSON.stringify(context.automation.bashEnv),
+    contextFiles: {
+      "event.json": JSON.stringify(context.automation.event),
+      "env.json": JSON.stringify(context.automation.bashEnv),
+    },
   });
   const toolContext = createAutomationToolRuntimeContext(context);
   const tools = getAvailableRuntimeTools({
-    families: automationRuntimeToolFamilies,
+    families: runtimeToolFamilies,
     context: toolContext,
   });
   const result = await runBackofficeCodemode({
@@ -153,12 +117,14 @@ export const executeWorkflowCodemodeAutomation = async ({
 }): Promise<AutomationRunResult<"codemode">> => {
   const executionFs = createAutomationExecutionFileSystem({
     masterFs,
-    eventJson: JSON.stringify(context.automation.event),
-    envJson: JSON.stringify(context.automation.bashEnv),
+    contextFiles: {
+      "event.json": JSON.stringify(context.automation.event),
+      "env.json": JSON.stringify(context.automation.bashEnv),
+    },
   });
   const toolContext = createAutomationToolRuntimeContext(context);
   const tools = getAvailableRuntimeTools({
-    families: automationRuntimeToolFamilies,
+    families: runtimeToolFamilies,
     context: toolContext,
   });
   const result = await runBackofficeCodemodeWorkflow({
@@ -192,21 +158,10 @@ export const executePiCodemodeWorkflow = async ({
     throw new Error("Pi codemode workflow requires an organisation id.");
   }
 
-  const automationsRuntime = createRouteBackedAutomationBindingsRuntime({ env, orgId });
-  const context: PiCodemodeToolContext = {
-    runtimes: {
-      automations: automationsRuntime,
-      workflow: createRouteBackedAutomationWorkflowRuntime({ env, orgId }),
-      otp: createOtpRuntime({ env, orgId }),
-      pi: createPiRouteRuntime({ env, orgId }),
-      resend: createResendRouteRuntime({ env, orgId }),
-      reson8: createReson8RouteRuntime({ env, orgId }),
-      sandbox: createSandboxRouteRuntime({ env, orgId }),
-      telegram: createTelegramRuntime({ env, orgId }),
-    },
-  };
+  const runtimeContext = createRouteBackedRuntimeContext({ env, orgId });
+  const context = createBackofficeToolContext(runtimeContext);
   const tools = getAvailableRuntimeTools({
-    families: piCodemodeRuntimeToolFamilies,
+    families: runtimeToolFamilies,
     context,
   });
   const result = await runBackofficeCodemodeWorkflow({

@@ -10,7 +10,7 @@ import {
   createRuntimeToolReferences,
   renderDashboardCommandGroups,
 } from "@/fragno/runtime-tools/reference";
-import { bashRuntimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
+import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
 import type { Route } from "./+types/dashboard";
@@ -31,7 +31,7 @@ type Stat = {
 
 const DASHBOARD_COMMAND_GROUPS = renderDashboardCommandGroups(
   createRuntimeToolReferences({
-    families: bashRuntimeToolFamilies,
+    families: runtimeToolFamilies,
     context: createRuntimeToolReferenceContext(),
   }),
 );

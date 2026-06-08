@@ -3,13 +3,12 @@ import { Bash } from "just-bash";
 import {
   createBackofficeBashCommands,
   getAvailableRuntimeTools,
-  type BackofficeToolContext,
 } from "@/fragno/runtime-tools/runtime-tools";
-import { bashRuntimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
+import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
+import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import type { AutomationCommandContext, BashAutomationCommandResult } from "./automation-types";
 import type { AutomationBindingsRuntime } from "./families/automations-bindings";
-import type { ScriptRunnerRuntime } from "./families/automations-codemode";
 import type { DurableHooksRuntime } from "./families/automations-durable-hooks";
 import type { AutomationWorkflowRuntime } from "./families/automations-workflow";
 import type { EventRuntime } from "./families/event-runtime";
@@ -22,7 +21,6 @@ import type { RegisteredTelegramCommandContext } from "./families/telegram-runti
 
 export type RegisteredAutomationsBashCommandContext = {
   runtime: AutomationBindingsRuntime;
-  scriptRunner?: ScriptRunnerRuntime;
 };
 
 export type RegisteredEventBashCommandContext = AutomationCommandContext & {
@@ -59,6 +57,7 @@ export type InteractiveBashCommandContext = Omit<BashHostContext, "automation"> 
   automation: null;
   automations: NonNullable<BashHostContext["automations"]>;
   workflow?: BashHostContext["workflow"];
+  durableHooks?: BashHostContext["durableHooks"];
   otp: NonNullable<BashHostContext["otp"]>;
   pi: NonNullable<BashHostContext["pi"]>;
   reson8: NonNullable<BashHostContext["reson8"]>;
@@ -90,25 +89,9 @@ export type BashCommandFactoryInput = {
   context: BashHostContext;
 };
 
-export const createBashToolContext = (context: BashHostContext): BackofficeToolContext => ({
-  runtimes: {
-    automations: context.automations?.runtime,
-    workflow: context.workflow?.runtime,
-    durableHooks: context.durableHooks?.runtime,
-    event: context.automation?.runtime,
-    otp: context.otp?.runtime,
-    pi: context.pi?.runtime,
-    resend: context.resend?.runtime,
-    reson8: context.reson8?.runtime,
-    sandbox: context.sandbox?.runtime,
-    telegram: context.telegram?.runtime,
-  },
-  scriptRunner: context.automations?.scriptRunner,
-});
-
 const createRegisteredBashCommands = (input: BashCommandFactoryInput) => {
-  const context = createBashToolContext(input.context);
-  const tools = getAvailableRuntimeTools({ families: bashRuntimeToolFamilies, context });
+  const context = createBackofficeToolContext(input.context);
+  const tools = getAvailableRuntimeTools({ families: runtimeToolFamilies, context });
 
   return createBackofficeBashCommands({
     tools,

@@ -2,12 +2,12 @@ import {
   createRuntimeToolReferences,
   renderBashCommandReferenceMarkdown,
 } from "@/fragno/runtime-tools/reference";
-import { bashRuntimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
+import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import type { FileSystemArtifact } from "../types";
 
 export const BASH_COMMAND_REFERENCE = renderBashCommandReferenceMarkdown(
-  createRuntimeToolReferences({ families: bashRuntimeToolFamilies }),
+  createRuntimeToolReferences({ families: runtimeToolFamilies }),
 );
 
 export const SYSTEM_GUIDANCE = `# System guidance
@@ -37,8 +37,8 @@ written to text files in the same directory.
 
 When the user asks you to create an automation, create a new \`*.js\`, \`*.sh\`, or \`*.workflow.js\` file
 under \`/workspace/automations/\`. You can search past events for guidance and read pre-existing
-scripts for examples. Automation scripts can be tested manually (by you or the user) with the
-\`scripts.run\` command when using the bash harness.
+scripts for examples. Automation scripts run when matching events are ingested. There is no generic
+manual \`scripts.run\` harness command in the runtime tool surface.
 
 Some connections also provide file-oriented views of their data:
 
