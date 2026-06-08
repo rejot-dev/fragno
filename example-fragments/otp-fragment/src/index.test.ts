@@ -219,6 +219,78 @@ describe("otp fragment", async () => {
     expect(onOtpConfirmed).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects replay of a confirmed code after a newer challenge is issued", async () => {
+    const { test: replayTest, fragments: replayFragments } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "kysely-sqlite" })
+      .withFragment(
+        "otp",
+        instantiate(otpFragmentDefinition)
+          .withConfig({
+            alphabet: "ABCDEF",
+            codeLength: 1,
+          })
+          .withRoutes(otpRoutes),
+      )
+      .build();
+
+    try {
+      const firstIssueResponse = await replayFragments.otp.callRoute("POST", "/otp/issue", {
+        body: { externalId: "user-replay", type: "password_reset" },
+      });
+      assert(firstIssueResponse.type === "json");
+
+      const firstConfirmResponse = await replayFragments.otp.callRoute("POST", "/otp/confirm", {
+        body: {
+          externalId: "user-replay",
+          type: "password_reset",
+          code: firstIssueResponse.data.code,
+        },
+      });
+      assert(firstConfirmResponse.type === "json");
+      expect(firstConfirmResponse.data.confirmed).toBe(true);
+
+      let latestCode: string | null = null;
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const issueResponse = await replayFragments.otp.callRoute("POST", "/otp/issue", {
+          body: { externalId: "user-replay", type: "password_reset" },
+        });
+        assert(issueResponse.type === "json");
+
+        if (issueResponse.data.code !== firstIssueResponse.data.code) {
+          latestCode = issueResponse.data.code;
+          break;
+        }
+      }
+
+      if (!latestCode) {
+        throw new Error("Could not issue a different replay test code.");
+      }
+
+      const replayResponse = await replayFragments.otp.callRoute("POST", "/otp/confirm", {
+        body: {
+          externalId: "user-replay",
+          type: "password_reset",
+          code: firstIssueResponse.data.code,
+        },
+      });
+      assert(replayResponse.type === "error");
+      expect(replayResponse.status).toBe(401);
+      expect(replayResponse.error.code).toBe("OTP_INVALID");
+
+      const latestConfirmResponse = await replayFragments.otp.callRoute("POST", "/otp/confirm", {
+        body: {
+          externalId: "user-replay",
+          type: "password_reset",
+          code: latestCode,
+        },
+      });
+      assert(latestConfirmResponse.type === "json");
+      expect(latestConfirmResponse.data.confirmed).toBe(true);
+    } finally {
+      await replayTest.cleanup();
+    }
+  });
+
   it("returns OTP_EXPIRED for expired OTPs and resolves expiry hook dates", async () => {
     const { test: expiringTest, fragments: expiringFragments } = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "kysely-sqlite" })
