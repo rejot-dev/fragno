@@ -5,8 +5,14 @@ export {
   type AutomationIdentityBindingRecord,
 } from "./automations-bindings";
 export {
+  automationEventsRuntimeTools,
+  automationEventsToolFamily,
   durableHooksRuntimeTools,
   durableHooksToolFamily,
+  hooksRuntimeTools,
+  hooksToolFamily,
+  type AutomationEventsGetArgs,
+  type AutomationEventsListArgs,
   type DurableHookFragment,
   type DurableHooksRuntime,
 } from "./automations-durable-hooks";

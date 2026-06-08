@@ -3,7 +3,8 @@ import {
   type AutomationBindingsRuntime,
 } from "./families/automations-bindings";
 import {
-  durableHooksToolFamily,
+  automationEventsToolFamily,
+  hooksToolFamily,
   type DurableHooksRuntime,
 } from "./families/automations-durable-hooks";
 import {
@@ -41,7 +42,8 @@ export type CoreBackofficeToolContext = BackofficeToolContext<CoreBackofficeRunt
 export const runtimeToolFamilies = [
   automationBindingsToolFamily,
   automationWorkflowToolFamily,
-  durableHooksToolFamily,
+  hooksToolFamily,
+  automationEventsToolFamily,
   eventToolFamily,
   otpToolFamily,
   piToolFamily,

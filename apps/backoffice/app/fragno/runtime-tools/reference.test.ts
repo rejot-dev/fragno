@@ -77,6 +77,31 @@ describe("runtime tool reference generation", () => {
       ],
     },
     {
+      namespace: "automations-events",
+      tools: [
+        {
+          id: "automations.events.list",
+          namespace: "automations",
+          codemodeProvider: "automations",
+          codemodeTool: "listEvents",
+          inputType: "AutomationsListEventsInput",
+          outputType: "AutomationsListEventsOutput",
+          bashCommand: "automations.events.list",
+          bashOptions: ["cursor", "page-size"],
+        },
+        {
+          id: "automations.events.get",
+          namespace: "automations",
+          codemodeProvider: "automations",
+          codemodeTool: "getEvent",
+          inputType: "AutomationsGetEventInput",
+          outputType: "AutomationsGetEventOutput",
+          bashCommand: "automations.events.get",
+          bashOptions: ["hook-id"],
+        },
+      ],
+    },
+    {
       namespace: "event",
       tools: [
         {
@@ -95,6 +120,31 @@ describe("runtime tool reference generation", () => {
             "subject-user-id",
             "payload-json",
           ],
+        },
+      ],
+    },
+    {
+      namespace: "hooks",
+      tools: [
+        {
+          id: "hooks.list",
+          namespace: "hooks",
+          codemodeProvider: "hooks",
+          codemodeTool: "list",
+          inputType: "HooksListInput",
+          outputType: "HooksListOutput",
+          bashCommand: "hooks.list",
+          bashOptions: ["fragment", "cursor", "page-size"],
+        },
+        {
+          id: "hooks.get",
+          namespace: "hooks",
+          codemodeProvider: "hooks",
+          codemodeTool: "get",
+          inputType: "HooksGetInput",
+          outputType: "HooksGetOutput",
+          bashCommand: "hooks.get",
+          bashOptions: ["fragment", "hook-id"],
         },
       ],
     },
