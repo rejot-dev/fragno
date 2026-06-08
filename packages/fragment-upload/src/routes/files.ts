@@ -21,9 +21,18 @@ const listQuerySchema = z.object({
   provider: providerNamespaceSchema.optional(),
   prefix: z.string().optional(),
   cursor: z.string().optional(),
-  pageSize: z.coerce.number().min(1).max(100).catch(25),
+  pageSize: z.coerce.number().min(1).max(500).optional().default(25),
   status: z.enum(["ready", "deleted"]).optional(),
   uploaderId: z.string().optional(),
+  delimiter: z.literal("/").optional(),
+});
+
+const directoryMetadataSchema = z.object({
+  name: z.string(),
+  prefix: z.string(),
+  updatedAt: z.string().nullable(),
+  contentType: z.string().nullable(),
+  metadata: z.record(z.string(), z.unknown()).nullable(),
 });
 
 const byKeyQuerySchema = z.object({
@@ -150,6 +159,62 @@ const assertFileAvailable = <T extends { status: string }>(file: T) => {
   return file;
 };
 
+type DirectoryMetadata = z.infer<typeof directoryMetadataSchema>;
+
+type FileMetadataForDirectoryList = ReturnType<typeof toFileMetadata>;
+
+const buildDelimitedFileList = (
+  files: FileMetadataForDirectoryList[],
+  prefix: string,
+  delimiter: string,
+): { files: FileMetadataForDirectoryList[]; directories: DirectoryMetadata[] } => {
+  const directFiles: FileMetadataForDirectoryList[] = [];
+  const directories = new Map<string, DirectoryMetadata>();
+
+  for (const file of files) {
+    const remainder = file.fileKey.slice(prefix.length);
+    if (!remainder) {
+      directFiles.push(file);
+      continue;
+    }
+
+    const delimiterIndex = remainder.indexOf(delimiter);
+    if (delimiterIndex === -1) {
+      directFiles.push(file);
+      continue;
+    }
+
+    const name = remainder.slice(0, delimiterIndex);
+    if (!name) {
+      continue;
+    }
+
+    const directoryPrefix = `${prefix}${name}${delimiter}`;
+    const existing = directories.get(directoryPrefix);
+    if (!existing) {
+      directories.set(directoryPrefix, {
+        name,
+        prefix: directoryPrefix,
+        updatedAt: file.updatedAt,
+        contentType: file.contentType,
+        metadata: file.metadata,
+      });
+      continue;
+    }
+
+    if (file.updatedAt > (existing.updatedAt ?? "")) {
+      existing.updatedAt = file.updatedAt;
+    }
+  }
+
+  return {
+    files: directFiles,
+    directories: Array.from(directories.values()).sort((left, right) =>
+      left.prefix.localeCompare(right.prefix),
+    ),
+  };
+};
+
 export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
   ({ services, defineRoute, config }) => {
     const getResolvedConfig = () => resolveUploadFragmentConfig(config);
@@ -159,9 +224,10 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         provider: query.has("provider") ? query.get("provider") : undefined,
         prefix: query.get("prefix") || undefined,
         cursor: query.get("cursor") || undefined,
-        pageSize: query.get("pageSize"),
+        pageSize: query.has("pageSize") ? query.get("pageSize") : undefined,
         status: query.get("status") || undefined,
         uploaderId: query.get("uploaderId") || undefined,
+        delimiter: query.get("delimiter") || undefined,
       });
       if (!result.success) {
         throw new Error("INVALID_REQUEST");
@@ -389,9 +455,18 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
       defineRoute({
         method: "GET",
         path: "/files",
-        queryParameters: ["provider", "prefix", "cursor", "pageSize", "status", "uploaderId"],
+        queryParameters: [
+          "provider",
+          "prefix",
+          "cursor",
+          "pageSize",
+          "status",
+          "uploaderId",
+          "delimiter",
+        ],
         outputSchema: z.object({
           files: z.array(fileMetadataSchema),
+          directories: z.array(directoryMetadataSchema).optional(),
           cursor: z.string().optional(),
           hasNextPage: z.boolean(),
         }),
@@ -418,8 +493,19 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             .transform(({ serviceResult: [files] }) => files)
             .execute();
 
+          const files = result.items.map(toFileMetadata);
+          if (params.delimiter) {
+            const delimited = buildDelimitedFileList(files, params.prefix ?? "", params.delimiter);
+            return json({
+              files: delimited.files,
+              directories: delimited.directories,
+              cursor: result.cursor?.encode(),
+              hasNextPage: result.hasNextPage,
+            });
+          }
+
           return json({
-            files: result.items.map(toFileMetadata),
+            files,
             cursor: result.cursor?.encode(),
             hasNextPage: result.hasNextPage,
           });
