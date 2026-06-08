@@ -320,6 +320,7 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
                     eb("type", "=", type),
                     eb("status", "=", "pending"),
                     eb("code", "=", normalizedCode),
+                    eb("expiresAt", ">", eb.now()),
                   ),
                 ),
               )
@@ -341,32 +342,47 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
                     eb("type", "=", type),
                     eb("status", "=", "confirmed"),
                     eb("code", "=", normalizedCode),
+                    eb("expiresAt", ">", eb.now()),
                   ),
                 ),
+              )
+              .findFirst("otp", (b) =>
+                b
+                  .whereIndex("idx_otp_externalId_type_createdAt", (eb) =>
+                    eb.and(eb("externalId", "=", externalId), eb("type", "=", type)),
+                  )
+                  .orderByIndex("idx_otp_externalId_type_createdAt", "desc"),
               ),
           )
-          .mutate(({ uow, retrieveResult: [otp, expiredOtp, confirmedOtp] }) => {
-            if (!otp && !expiredOtp && !confirmedOtp) {
+          .mutate(({ uow, retrieveResult: [otp, expiredOtp, confirmedOtp, latestOtp] }) => {
+            const isLatestOtp = (candidate: typeof otp) => {
+              return candidate && latestOtp && candidate.id.valueOf() === latestOtp.id.valueOf();
+            };
+            const latestPendingOtp = isLatestOtp(otp) ? otp : null;
+            const latestExpiredOtp = isLatestOtp(expiredOtp) ? expiredOtp : null;
+            const latestConfirmedOtp = isLatestOtp(confirmedOtp) ? confirmedOtp : null;
+
+            if (!latestPendingOtp && !latestExpiredOtp && !latestConfirmedOtp) {
               return {
                 confirmed: false,
                 error: "OTP_INVALID" as const,
               };
             }
 
-            if (expiredOtp) {
+            if (latestExpiredOtp) {
               const expiredAt = uow.now();
               const issuedPayload = buildIssuedPayload({
-                id: expiredOtp.id.valueOf(),
-                externalId: expiredOtp.externalId,
-                type: expiredOtp.type as OtpType,
-                code: expiredOtp.code,
-                expiresAt: expiredOtp.expiresAt,
-                createdAt: expiredOtp.createdAt,
-                payload: normalizeOtpPayload(expiredOtp.payload),
+                id: latestExpiredOtp.id.valueOf(),
+                externalId: latestExpiredOtp.externalId,
+                type: latestExpiredOtp.type as OtpType,
+                code: latestExpiredOtp.code,
+                expiresAt: latestExpiredOtp.expiresAt,
+                createdAt: latestExpiredOtp.createdAt,
+                payload: normalizeOtpPayload(latestExpiredOtp.payload),
               });
               const payload = buildExpiredPayload(issuedPayload, expiredAt);
 
-              uow.update("otp", expiredOtp.id, (b) =>
+              uow.update("otp", latestExpiredOtp.id, (b) =>
                 b
                   .set({
                     status: "expired",
@@ -383,11 +399,11 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
               };
             }
 
-            if (!otp) {
-              return confirmedOtp
+            if (!latestPendingOtp) {
+              return latestConfirmedOtp
                 ? {
                     confirmed: true,
-                    confirmedAt: confirmedOtp.confirmedAt ?? undefined,
+                    confirmedAt: latestConfirmedOtp.confirmedAt ?? undefined,
                   }
                 : {
                     confirmed: false,
@@ -397,13 +413,13 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
 
             const confirmedAt = uow.now();
             const issuedPayload = buildIssuedPayload({
-              id: otp.id.valueOf(),
-              externalId: otp.externalId,
-              type: otp.type as OtpType,
-              code: otp.code,
-              expiresAt: otp.expiresAt,
-              createdAt: otp.createdAt,
-              payload: normalizeOtpPayload(otp.payload),
+              id: latestPendingOtp.id.valueOf(),
+              externalId: latestPendingOtp.externalId,
+              type: latestPendingOtp.type as OtpType,
+              code: latestPendingOtp.code,
+              expiresAt: latestPendingOtp.expiresAt,
+              createdAt: latestPendingOtp.createdAt,
+              payload: normalizeOtpPayload(latestPendingOtp.payload),
             });
             const payload = buildConfirmedPayload(
               issuedPayload,
@@ -411,7 +427,7 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
               confirmationPayload ?? undefined,
             );
 
-            uow.update("otp", otp.id, (b) =>
+            uow.update("otp", latestPendingOtp.id, (b) =>
               b
                 .set({
                   status: "confirmed",
