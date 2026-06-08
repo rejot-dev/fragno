@@ -8,6 +8,7 @@ import {
   type FilesContext,
 } from "@/files";
 import {
+  UPLOAD_PROVIDER_DATABASE,
   UPLOAD_PROVIDER_R2,
   UPLOAD_PROVIDER_R2_BINDING,
   type UploadAdminConfigResponse,
@@ -18,8 +19,13 @@ const createUploadConfig = (
   overrides: Partial<UploadAdminConfigResponse> = {},
 ): UploadAdminConfigResponse => ({
   configured: true,
-  defaultProvider: UPLOAD_PROVIDER_R2,
+  defaultProvider: UPLOAD_PROVIDER_DATABASE,
   providers: {
+    [UPLOAD_PROVIDER_DATABASE]: {
+      provider: UPLOAD_PROVIDER_DATABASE,
+      configured: true,
+      config: {},
+    },
     [UPLOAD_PROVIDER_R2]: {
       provider: UPLOAD_PROVIDER_R2,
       configured: true,
@@ -51,7 +57,8 @@ describe("files service", () => {
     ).toEqual([
       ["/system", "system", null],
       ["/starter", "static-starter", null],
-      ["/workspace", "workspace", UPLOAD_PROVIDER_R2],
+      ["/workspace", "workspace", UPLOAD_PROVIDER_DATABASE],
+      ["/r2-remote", "r2-remote", UPLOAD_PROVIDER_R2],
       ["/tmp", "tmp", null],
     ]);
   });
@@ -68,7 +75,13 @@ describe("files service", () => {
     } satisfies FilesContext);
 
     const tree = await listFilesTree(master);
-    expect(tree.map((node) => node.path)).toEqual(["/system", "/starter", "/workspace", "/tmp"]);
+    expect(tree.map((node) => node.path)).toEqual([
+      "/system",
+      "/starter",
+      "/workspace",
+      "/r2-remote",
+      "/tmp",
+    ]);
 
     const workspaceChildren = await listFilesChildren(master, "/workspace");
     expect(workspaceChildren.map((node) => [node.kind, node.path, node.title])).toEqual([
@@ -201,7 +214,7 @@ const createUploadRuntime = (
     fileKey: string,
     input: { provider?: string; content: string | Uint8Array; contentType?: string },
   ) => {
-    const provider = input.provider ?? UPLOAD_PROVIDER_R2;
+    const provider = input.provider ?? UPLOAD_PROVIDER_DATABASE;
     const bytes =
       input.content instanceof Uint8Array ? input.content : new TextEncoder().encode(input.content);
     contents.set(composeStorageKey(provider, fileKey), bytes);
@@ -230,10 +243,11 @@ const createUploadRuntime = (
       const url = new URL(request.url);
 
       if (request.method === "GET" && url.pathname === "/api/upload/files") {
+        const provider = url.searchParams.get("provider");
         const prefix = url.searchParams.get("prefix") ?? "";
         const delimiter = url.searchParams.get("delimiter");
-        const matchedFiles = Array.from(files.values()).filter((file) =>
-          file.fileKey.startsWith(prefix),
+        const matchedFiles = Array.from(files.values()).filter(
+          (file) => (!provider || file.provider === provider) && file.fileKey.startsWith(prefix),
         );
 
         if (delimiter === "/") {

@@ -1,12 +1,18 @@
 export const UPLOAD_PROVIDER_R2 = "r2" as const;
 export const UPLOAD_PROVIDER_R2_BINDING = "r2-binding" as const;
+export const UPLOAD_PROVIDER_DATABASE = "database" as const;
 export const UPLOAD_ADMIN_CONFIG_KEY = "upload-config" as const;
 export const UPLOAD_R2_DEFAULT_BINDING_NAME = "UPLOAD_BUCKET" as const;
+export const UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES = 10 * 1024 * 1024;
 const ORG_PREFIX_ROOT = "org" as const;
 
-export type UploadProvider = typeof UPLOAD_PROVIDER_R2 | typeof UPLOAD_PROVIDER_R2_BINDING;
+export type UploadProvider =
+  | typeof UPLOAD_PROVIDER_DATABASE
+  | typeof UPLOAD_PROVIDER_R2
+  | typeof UPLOAD_PROVIDER_R2_BINDING;
 
 const UPLOAD_PROVIDERS: readonly UploadProvider[] = [
+  UPLOAD_PROVIDER_DATABASE,
   UPLOAD_PROVIDER_R2_BINDING,
   UPLOAD_PROVIDER_R2,
 ] as const;
@@ -44,6 +50,11 @@ export type UploadR2BindingConfig = {
   limits?: UploadR2Limits;
 };
 
+export type UploadDatabaseConfig = {
+  storageKeySuffix?: string;
+  limits?: UploadR2Limits;
+};
+
 export type UploadNamespaceConfig = {
   orgId: string;
   orgPrefix: string;
@@ -64,11 +75,18 @@ export type StoredUploadProviderConfigR2Binding = StoredUploadProviderConfigBase
   r2Binding: UploadR2BindingConfig;
 };
 
+export type StoredUploadProviderConfigDatabase = StoredUploadProviderConfigBase & {
+  provider: typeof UPLOAD_PROVIDER_DATABASE;
+  database: UploadDatabaseConfig;
+};
+
 export type StoredUploadProviderConfig =
   | StoredUploadProviderConfigR2
-  | StoredUploadProviderConfigR2Binding;
+  | StoredUploadProviderConfigR2Binding
+  | StoredUploadProviderConfigDatabase;
 
 export type UploadProviderConfigMap = Partial<{
+  [UPLOAD_PROVIDER_DATABASE]: StoredUploadProviderConfigDatabase;
   [UPLOAD_PROVIDER_R2]: StoredUploadProviderConfigR2;
   [UPLOAD_PROVIDER_R2_BINDING]: StoredUploadProviderConfigR2Binding;
 }>;
@@ -155,7 +173,14 @@ export type UploadAdminProviderResponseR2Binding = {
   };
 };
 
+export type UploadAdminProviderResponseDatabase = {
+  provider: typeof UPLOAD_PROVIDER_DATABASE;
+  configured: boolean;
+  config?: UploadAdminProviderConfigBase;
+};
+
 type UploadAdminProviderMap = Partial<{
+  [UPLOAD_PROVIDER_DATABASE]: UploadAdminProviderResponseDatabase;
   [UPLOAD_PROVIDER_R2]: UploadAdminProviderResponseR2;
   [UPLOAD_PROVIDER_R2_BINDING]: UploadAdminProviderResponseR2Binding;
 }>;
@@ -230,7 +255,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const isUploadProvider = (value: string): value is UploadProvider =>
-  value === UPLOAD_PROVIDER_R2 || value === UPLOAD_PROVIDER_R2_BINDING;
+  value === UPLOAD_PROVIDER_DATABASE ||
+  value === UPLOAD_PROVIDER_R2 ||
+  value === UPLOAD_PROVIDER_R2_BINDING;
 
 const maskSecret = (value: string) => {
   if (!value) {
@@ -600,6 +627,29 @@ const parseUploadR2BindingConfig = (value: unknown): UploadR2BindingConfig | nul
   };
 };
 
+const parseUploadDatabaseConfig = (value: unknown): UploadDatabaseConfig | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  let storageKeySuffix: string | undefined;
+  try {
+    storageKeySuffix =
+      typeof value.storageKeySuffix === "string"
+        ? (normalizeStorageKeySuffix(value.storageKeySuffix) ?? undefined)
+        : undefined;
+  } catch {
+    return null;
+  }
+
+  const limits = parseLimits(value.limits);
+
+  return {
+    ...(storageKeySuffix ? { storageKeySuffix } : {}),
+    ...(limits ? { limits } : {}),
+  };
+};
+
 const parseNamespace = (value: unknown): UploadNamespaceConfig | null => {
   if (!isRecord(value) || typeof value.orgId !== "string") {
     return null;
@@ -684,6 +734,34 @@ const parseStoredR2BindingProviderConfig = (
   };
 };
 
+const parseStoredDatabaseProviderConfig = (
+  value: unknown,
+  timestamps: { createdAt: string; updatedAt: string },
+): StoredUploadProviderConfigDatabase | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  if (value.provider !== UPLOAD_PROVIDER_DATABASE || !hasOwn(value, "database")) {
+    return null;
+  }
+
+  const parsedDatabase = parseUploadDatabaseConfig(value.database);
+  if (!parsedDatabase) {
+    return null;
+  }
+
+  const createdAt = typeof value.createdAt === "string" ? value.createdAt : timestamps.createdAt;
+  const updatedAt = typeof value.updatedAt === "string" ? value.updatedAt : timestamps.updatedAt;
+
+  return {
+    provider: UPLOAD_PROVIDER_DATABASE,
+    database: parsedDatabase,
+    createdAt,
+    updatedAt,
+  };
+};
+
 const isProviderConfigConfigured = (
   orgId: string,
   providerConfig: StoredUploadProviderConfig | undefined | null,
@@ -693,6 +771,12 @@ const isProviderConfigConfigured = (
   }
 
   try {
+    if (providerConfig.provider === UPLOAD_PROVIDER_DATABASE) {
+      return Boolean(
+        resolveUploadStorageKeyPrefix(orgId, providerConfig.database.storageKeySuffix),
+      );
+    }
+
     if (providerConfig.provider === UPLOAD_PROVIDER_R2) {
       if (
         !providerConfig.r2.bucket ||
@@ -752,6 +836,14 @@ export const normalizeStoredUploadAdminConfig = (
   if (isRecord(value.providers)) {
     const providers: UploadProviderConfigMap = {};
 
+    const database = parseStoredDatabaseProviderConfig(value.providers[UPLOAD_PROVIDER_DATABASE], {
+      createdAt,
+      updatedAt,
+    });
+    if (database) {
+      providers[UPLOAD_PROVIDER_DATABASE] = database;
+    }
+
     const r2 = parseStoredR2ProviderConfig(value.providers[UPLOAD_PROVIDER_R2], {
       createdAt,
       updatedAt,
@@ -790,6 +882,10 @@ export const normalizeStoredUploadAdminConfig = (
   }
 
   if (typeof value.provider !== "string" || !isUploadProvider(value.provider)) {
+    return null;
+  }
+
+  if (value.provider === UPLOAD_PROVIDER_DATABASE) {
     return null;
   }
 
@@ -844,9 +940,11 @@ export const resolveUploadProviderStorageKeyPrefix = (
   }
 
   const suffix =
-    providerConfig.provider === UPLOAD_PROVIDER_R2
-      ? providerConfig.r2.storageKeySuffix
-      : providerConfig.r2Binding.storageKeySuffix;
+    providerConfig.provider === UPLOAD_PROVIDER_DATABASE
+      ? providerConfig.database.storageKeySuffix
+      : providerConfig.provider === UPLOAD_PROVIDER_R2
+        ? providerConfig.r2.storageKeySuffix
+        : providerConfig.r2Binding.storageKeySuffix;
 
   return resolveUploadStorageKeyPrefix(config.namespace.orgId, suffix);
 };
@@ -877,11 +975,11 @@ export const resolveUploadAdminConfigInput = (input: {
 
   const providerValue = providerField.provided
     ? (providerField.value ?? "")
-    : (existing?.defaultProvider ?? UPLOAD_PROVIDER_R2_BINDING);
+    : (existing?.defaultProvider ?? UPLOAD_PROVIDER_DATABASE);
   if (!isUploadProvider(providerValue)) {
     return {
       ok: false,
-      message: "Only providers 'r2' and 'r2-binding' are supported.",
+      message: "Only providers 'database', 'r2', and 'r2-binding' are supported.",
     };
   }
   const provider = providerValue;
@@ -896,7 +994,7 @@ export const resolveUploadAdminConfigInput = (input: {
     if (!defaultProviderField.value || !isUploadProvider(defaultProviderField.value)) {
       return {
         ok: false,
-        message: "Field 'defaultProvider' must be either 'r2' or 'r2-binding'.",
+        message: "Field 'defaultProvider' must be either 'database', 'r2', or 'r2-binding'.",
       };
     }
     requestedDefaultProvider = defaultProviderField.value;
@@ -918,7 +1016,58 @@ export const resolveUploadAdminConfigInput = (input: {
   const now = input.now ?? new Date().toISOString();
   const providers: UploadProviderConfigMap = { ...existing?.providers };
 
-  if (provider === UPLOAD_PROVIDER_R2_BINDING) {
+  if (provider === UPLOAD_PROVIDER_DATABASE) {
+    const existingDatabase = existing?.providers[UPLOAD_PROVIDER_DATABASE];
+
+    const limits: UploadR2Limits = { ...existingDatabase?.database.limits };
+    for (const field of UPLOAD_LIMIT_FIELDS) {
+      const parsed = readOptionalIntegerField(record, field);
+      if (!parsed.ok) {
+        return parsed;
+      }
+      if (!parsed.provided) {
+        continue;
+      }
+      if (parsed.value === null) {
+        delete limits[field];
+        continue;
+      }
+      limits[field] = parsed.value;
+    }
+
+    const storageKeySuffixField = readOptionalStringField(record, "storageKeySuffix");
+    if (!storageKeySuffixField.ok) {
+      return storageKeySuffixField;
+    }
+
+    const storageKeySuffixRaw = storageKeySuffixField.provided
+      ? storageKeySuffixField.value
+      : (existingDatabase?.database.storageKeySuffix ?? null);
+
+    let storageKeySuffix: string | undefined;
+    try {
+      storageKeySuffix = normalizeStorageKeySuffix(storageKeySuffixRaw) ?? undefined;
+    } catch (error) {
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : "Storage key suffix is invalid.",
+      };
+    }
+
+    if (limits.maxSingleUploadBytes === undefined) {
+      limits.maxSingleUploadBytes = UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES;
+    }
+
+    providers[UPLOAD_PROVIDER_DATABASE] = {
+      provider: UPLOAD_PROVIDER_DATABASE,
+      database: {
+        ...(storageKeySuffix ? { storageKeySuffix } : {}),
+        limits,
+      },
+      createdAt: existingDatabase?.createdAt ?? now,
+      updatedAt: now,
+    };
+  } else if (provider === UPLOAD_PROVIDER_R2_BINDING) {
     const existingBinding = existing?.providers[UPLOAD_PROVIDER_R2_BINDING];
 
     const limits: UploadR2Limits = { ...existingBinding?.r2Binding.limits };
@@ -1158,7 +1307,29 @@ export const resolveUploadAdminConfigInput = (input: {
 const buildProviderResponse = (
   namespace: UploadNamespaceConfig,
   providerConfig: StoredUploadProviderConfig,
-): UploadAdminProviderResponseR2 | UploadAdminProviderResponseR2Binding => {
+):
+  | UploadAdminProviderResponseDatabase
+  | UploadAdminProviderResponseR2
+  | UploadAdminProviderResponseR2Binding => {
+  if (providerConfig.provider === UPLOAD_PROVIDER_DATABASE) {
+    const storageKeyPrefix = resolveUploadStorageKeyPrefix(
+      namespace.orgId,
+      providerConfig.database.storageKeySuffix,
+    );
+    return {
+      provider: UPLOAD_PROVIDER_DATABASE,
+      configured: isProviderConfigConfigured(namespace.orgId, providerConfig),
+      config: {
+        orgPrefix: namespace.orgPrefix,
+        storageKeyPrefix,
+        storageKeySuffix: providerConfig.database.storageKeySuffix ?? null,
+        limits: providerConfig.database.limits,
+        createdAt: providerConfig.createdAt,
+        updatedAt: providerConfig.updatedAt,
+      },
+    };
+  }
+
   if (providerConfig.provider === UPLOAD_PROVIDER_R2_BINDING) {
     const storageKeyPrefix = resolveUploadStorageKeyPrefix(
       namespace.orgId,
@@ -1223,7 +1394,9 @@ export const buildUploadAdminConfigResponse = (
       continue;
     }
     const providerResponse = buildProviderResponse(normalized.namespace, providerConfig);
-    if (provider === UPLOAD_PROVIDER_R2) {
+    if (provider === UPLOAD_PROVIDER_DATABASE) {
+      providers[UPLOAD_PROVIDER_DATABASE] = providerResponse as UploadAdminProviderResponseDatabase;
+    } else if (provider === UPLOAD_PROVIDER_R2) {
       providers[UPLOAD_PROVIDER_R2] = providerResponse as UploadAdminProviderResponseR2;
     } else {
       providers[UPLOAD_PROVIDER_R2_BINDING] =

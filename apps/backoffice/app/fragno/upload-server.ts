@@ -1,6 +1,7 @@
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
 import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
+import { createDatabaseStorageAdapter } from "@fragno-dev/upload/storage/db";
 import { AwsClient } from "aws4fetch";
 
 import {
@@ -13,6 +14,8 @@ import {
 } from "@fragno-dev/upload";
 
 import {
+  UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
+  UPLOAD_PROVIDER_DATABASE,
   UPLOAD_PROVIDER_R2,
   resolveUploadProviderStorageKeyPrefix,
   type StoredUploadAdminConfig,
@@ -118,47 +121,59 @@ export function createUploadServerForProvider(
 ): ReturnType<typeof createUploadFragment> {
   const providerConfig = getProviderConfig(config, provider);
   const limits =
-    providerConfig.provider === UPLOAD_PROVIDER_R2
-      ? (providerConfig.r2.limits ?? {})
-      : (providerConfig.r2Binding.limits ?? {});
+    providerConfig.provider === UPLOAD_PROVIDER_DATABASE
+      ? (providerConfig.database.limits ?? {})
+      : providerConfig.provider === UPLOAD_PROVIDER_R2
+        ? (providerConfig.r2.limits ?? {})
+        : (providerConfig.r2Binding.limits ?? {});
   const storageKeyPrefix = resolveUploadProviderStorageKeyPrefix(config, provider);
+  const databaseAdapter = createAdapter(state);
 
   const storage =
-    providerConfig.provider === UPLOAD_PROVIDER_R2
-      ? createR2StorageAdapter({
-          bucket: providerConfig.r2.bucket,
-          endpoint: providerConfig.r2.endpoint,
-          pathStyle: providerConfig.r2.pathStyle,
+    providerConfig.provider === UPLOAD_PROVIDER_DATABASE
+      ? createDatabaseStorageAdapter({
+          databaseAdapter,
+          providerName: UPLOAD_PROVIDER_DATABASE,
           storageKeyPrefix,
-          signer: createR2Signer(providerConfig.r2.signer),
-          ...withDefined(limits, [
-            "directUploadThresholdBytes",
-            "multipartThresholdBytes",
-            "multipartPartSizeBytes",
-            "uploadExpiresInSeconds",
-            "signedUrlExpiresInSeconds",
-            "maxSingleUploadBytes",
-            "maxMultipartUploadBytes",
-            "maxMetadataBytes",
-          ]),
+          uploadExpiresInSeconds: limits.uploadExpiresInSeconds,
+          maxObjectBytes:
+            limits.maxSingleUploadBytes ?? UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
         })
-      : createR2BindingStorageAdapter({
-          bucket: resolveR2BindingBucket(
-            env as unknown as Record<string, unknown>,
-            providerConfig.r2Binding.bindingName,
-          ),
-          storageKeyPrefix,
-          ...withDefined(limits, [
-            "directUploadThresholdBytes",
-            "multipartThresholdBytes",
-            "multipartPartSizeBytes",
-            "uploadExpiresInSeconds",
-            "signedUrlExpiresInSeconds",
-            "maxSingleUploadBytes",
-            "maxMultipartUploadBytes",
-            "maxMetadataBytes",
-          ]),
-        });
+      : providerConfig.provider === UPLOAD_PROVIDER_R2
+        ? createR2StorageAdapter({
+            bucket: providerConfig.r2.bucket,
+            endpoint: providerConfig.r2.endpoint,
+            pathStyle: providerConfig.r2.pathStyle,
+            storageKeyPrefix,
+            signer: createR2Signer(providerConfig.r2.signer),
+            ...withDefined(limits, [
+              "directUploadThresholdBytes",
+              "multipartThresholdBytes",
+              "multipartPartSizeBytes",
+              "uploadExpiresInSeconds",
+              "signedUrlExpiresInSeconds",
+              "maxSingleUploadBytes",
+              "maxMultipartUploadBytes",
+              "maxMetadataBytes",
+            ]),
+          })
+        : createR2BindingStorageAdapter({
+            bucket: resolveR2BindingBucket(
+              env as unknown as Record<string, unknown>,
+              providerConfig.r2Binding.bindingName,
+            ),
+            storageKeyPrefix,
+            ...withDefined(limits, [
+              "directUploadThresholdBytes",
+              "multipartThresholdBytes",
+              "multipartPartSizeBytes",
+              "uploadExpiresInSeconds",
+              "signedUrlExpiresInSeconds",
+              "maxSingleUploadBytes",
+              "maxMultipartUploadBytes",
+              "maxMetadataBytes",
+            ]),
+          });
 
   return createUploadFragment(
     {
@@ -174,7 +189,7 @@ export function createUploadServerForProvider(
       ]),
     },
     {
-      databaseAdapter: createAdapter(state),
+      databaseAdapter,
       mountRoute: "/api/upload",
     },
   );

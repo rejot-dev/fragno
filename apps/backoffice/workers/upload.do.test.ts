@@ -80,6 +80,11 @@ const VALID_R2_BINDING_PAYLOAD = {
   bindingName: "UPLOAD_BUCKET",
 };
 
+const VALID_DATABASE_PAYLOAD = {
+  provider: "database",
+  defaultProvider: "database",
+};
+
 const testDurableHookDependencies: BackofficeDurableHookDependencies = {
   createEmptyRepository: () => ({
     getHookQueue: async () => ({
@@ -237,7 +242,28 @@ describe("Upload Durable Object", () => {
     const upload = new Upload(state, {} as CloudflareEnv);
 
     await expect(upload.setAdminConfig({ provider: "s3" }, "acme")).rejects.toThrowError(
-      "Only providers 'r2' and 'r2-binding' are supported.",
+      "Only providers 'database', 'r2', and 'r2-binding' are supported.",
+    );
+  });
+
+  test("stores database config and routes requests by provider", async () => {
+    const state = createState();
+    const upload = new Upload(state, {} as CloudflareEnv);
+
+    const config = await upload.setAdminConfig(VALID_DATABASE_PAYLOAD, "acme");
+
+    expect(config.defaultProvider).toBe("database");
+    expect(config.providers.database?.configured).toBe(true);
+
+    const response = await upload.fetch(new Request("https://example.com/api/upload/files"));
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe("fragment-database");
+    expect(createUploadServerForProviderMock).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultProvider: "database" }),
+      "database",
+      state,
+      expect.any(Object),
     );
   });
 

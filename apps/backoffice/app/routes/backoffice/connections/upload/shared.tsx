@@ -22,9 +22,9 @@ export type UploadLayoutContext = {
   setConfigError: Dispatch<SetStateAction<string | null>>;
 };
 
-export type UploadProviderTab = "r2-binding" | "r2" | "s3" | "direct";
+export type UploadProviderTab = "database" | "r2-binding" | "r2" | "s3" | "direct";
 export type UploadTab = "files" | "configuration";
-export type UploadConfigurableProvider = "r2-binding" | "r2";
+export type UploadConfigurableProvider = "database" | "r2-binding" | "r2";
 
 export const formatTimestamp = (value?: string | Date | null) => {
   if (!value) {
@@ -137,6 +137,12 @@ export function UploadProviderTabs({
   onSelect?: (provider: UploadConfigurableProvider) => void;
 }) {
   const tabs = [
+    {
+      id: "database" as const,
+      label: "Database",
+      description: null,
+      disabled: false,
+    },
     {
       id: "r2-binding" as const,
       label: "R2 Binding",

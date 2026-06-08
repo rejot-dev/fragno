@@ -3,12 +3,18 @@ import { resendFileContributor } from "./resend";
 import { staticFileContributor } from "./static";
 import { staticStarterFileContributor } from "./static-starter";
 import { tmpFileContributor } from "./tmp";
-import { uploadFileContributor } from "./upload";
+import {
+  uploadFileContributor,
+  uploadR2BindingFileContributor,
+  uploadR2RemoteFileContributor,
+} from "./upload";
 
 export const BUILT_IN_FILE_CONTRIBUTORS = [
   staticFileContributor,
   staticStarterFileContributor,
   uploadFileContributor,
+  uploadR2BindingFileContributor,
+  uploadR2RemoteFileContributor,
   tmpFileContributor,
   resendFileContributor,
   automationHooksFileContributor,

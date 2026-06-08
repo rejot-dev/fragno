@@ -349,6 +349,7 @@ export async function fetchUploadFiles(
     cursor?: string;
     status?: string;
     uploaderId?: string;
+    provider?: string;
   } = {},
 ): Promise<UploadFilesResult> {
   try {
@@ -362,6 +363,9 @@ export async function fetchUploadFiles(
     const query: Record<string, string> = {
       pageSize: String(pageSize),
     };
+    if (options.provider) {
+      query.provider = options.provider;
+    }
     if (options.prefix) {
       query.prefix = options.prefix;
     }
