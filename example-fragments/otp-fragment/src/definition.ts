@@ -333,10 +333,20 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
                     eb("expiresAt", "<=", eb.now()),
                   ),
                 ),
+              )
+              .findFirst("otp", (b) =>
+                b.whereIndex("idx_otp_externalId_type_status_code_expiresAt", (eb) =>
+                  eb.and(
+                    eb("externalId", "=", externalId),
+                    eb("type", "=", type),
+                    eb("status", "=", "confirmed"),
+                    eb("code", "=", normalizedCode),
+                  ),
+                ),
               ),
           )
-          .mutate(({ uow, retrieveResult: [otp, expiredOtp] }) => {
-            if (!otp && !expiredOtp) {
+          .mutate(({ uow, retrieveResult: [otp, expiredOtp, confirmedOtp] }) => {
+            if (!otp && !expiredOtp && !confirmedOtp) {
               return {
                 confirmed: false,
                 error: "OTP_INVALID" as const,
@@ -374,10 +384,15 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
             }
 
             if (!otp) {
-              return {
-                confirmed: false,
-                error: "OTP_INVALID" as const,
-              };
+              return confirmedOtp
+                ? {
+                    confirmed: true,
+                    confirmedAt: confirmedOtp.confirmedAt ?? undefined,
+                  }
+                : {
+                    confirmed: false,
+                    error: "OTP_INVALID" as const,
+                  };
             }
 
             const confirmedAt = uow.now();
