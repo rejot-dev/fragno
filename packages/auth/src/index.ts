@@ -39,6 +39,7 @@ import { createOAuthServices } from "./oauth/oauth-services";
 import { oauthRoutesFactory } from "./oauth/routes";
 import type { AuthOAuthConfig } from "./oauth/types";
 import { createActiveOrganizationServices } from "./organization/active-organization";
+import { createAdminOrganizationServices } from "./organization/admin-organization-services";
 import { createOrganizationInvitationServices } from "./organization/invitation-services";
 import { createOrganizationMemberServices } from "./organization/member-services";
 import { createOrganizationServices } from "./organization/organization-services";
@@ -288,6 +289,7 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
       ...createUserServices(autoCreateOptions, config.beforeCreateUser),
       ...createSessionServices(config.cookieOptions),
       ...createUserOverviewServices(),
+      ...createAdminOrganizationServices(),
       ...createOrganizationServices({
         organizationConfig: organizationConfigResolved,
       }),
