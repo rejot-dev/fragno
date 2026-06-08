@@ -477,7 +477,8 @@ describe("runtime tool reference generation", () => {
     expect(types).toContain("declare const automations");
     expect(types).toContain("declare const workflow");
     expect(types).toContain("createInstance(input: WorkflowCreateInstanceInput)");
-    expect(types).toContain("getStatus(input: WorkflowGetStatusInput)");
+    expect(types).toContain("getInstance(input: WorkflowGetInstanceInput)");
+    expect(types).toContain("retryInstance(input: WorkflowRetryInstanceInput)");
     expect(types).toContain("declare const event");
     expect(types).toContain("declare const telegram");
   });
@@ -491,7 +492,8 @@ describe("runtime tool reference generation", () => {
     expect(domainProviderTypes).toContain("declare const automations");
     expect(domainProviderTypes).toContain("declare const workflow");
     expect(domainProviderTypes).toContain("createInstance(input: WorkflowCreateInstanceInput)");
-    expect(domainProviderTypes).toContain("getStatus(input: WorkflowGetStatusInput)");
+    expect(domainProviderTypes).toContain("getInstance(input: WorkflowGetInstanceInput)");
+    expect(domainProviderTypes).toContain("retryInstance(input: WorkflowRetryInstanceInput)");
     expect(domainProviderTypes).toContain("declare const otp");
     expect(domainProviderTypes).toContain("declare const pi");
     expect(domainProviderTypes).toContain("declare const telegram");
