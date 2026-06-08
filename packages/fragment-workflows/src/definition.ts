@@ -111,6 +111,22 @@ type ListHistoryParams = {
   instanceId: string;
 };
 
+type RetryInstanceParams = {
+  stepKey?: string;
+  delayMs?: number;
+};
+
+type RetryInstanceResult = {
+  accepted: true;
+  instance: InstanceDetails;
+  retry: {
+    stepKey: string;
+    attempts: number;
+    maxAttempts: number;
+    scheduledAt: Date;
+  };
+};
+
 type InstanceDetails = { id: string; details: InstanceStatus };
 
 function generateInstanceId(randomUuid: () => string) {
@@ -236,6 +252,14 @@ function buildEmissionHistoryEntry(emission: WorkflowStepEmissionRecord): Workfl
 
 function isTerminalStatus(status: InstanceStatus["status"]) {
   return TERMINAL_STATUSES.has(status);
+}
+
+function isRetryTaskStep(step: WorkflowStepRecord) {
+  return step.type === "do";
+}
+
+function getRetryHookReason(step: WorkflowStepRecord): WorkflowEnqueuedHookPayload["reason"] {
+  return isRetryTaskStep(step) ? "retry" : "wake";
 }
 
 export const validateWorkflowParams = async (
@@ -787,6 +811,107 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
               errorName: instance.errorName,
               errorMessage: instance.errorMessage,
             });
+          })
+          .build();
+      },
+      retryInstance: function (
+        workflowName: string,
+        instanceId: string,
+        options?: RetryInstanceParams,
+      ) {
+        getWorkflowEntry(workflowName);
+
+        const instanceRef = buildScopedInstanceRowId(workflowName, instanceId);
+        const delayMs = options?.delayMs ?? 0;
+        const scheduledAt = new Date(config.runtime.time.now().getTime() + delayMs);
+
+        return this.serviceTx(workflowsSchema)
+          .retrieve((uow) =>
+            uow
+              .findFirst("workflow_instance", (b) =>
+                b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+                  eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+                ),
+              )
+              .find("workflow_step", (b) =>
+                b
+                  .whereIndex("idx_workflow_step_instanceRef_createdAt", (eb) =>
+                    eb("instanceRef", "=", instanceRef),
+                  )
+                  .orderByIndex("idx_workflow_step_instanceRef_createdAt", "desc"),
+              ),
+          )
+          .mutate(({ uow, retrieveResult: [instance, steps] }): RetryInstanceResult => {
+            if (!instance) {
+              throw new Error("INSTANCE_NOT_FOUND");
+            }
+
+            const step = options?.stepKey
+              ? steps.find((candidate) => candidate.stepKey === options.stepKey)
+              : steps[0];
+
+            if (!step) {
+              throw new Error("STEP_NOT_FOUND");
+            }
+
+            const isRetryTask = isRetryTaskStep(step);
+            const maxAttempts = isRetryTask
+              ? Math.max(step.maxAttempts, step.attempts + 1)
+              : step.maxAttempts;
+
+            uow.update("workflow_step", step.id, (b) =>
+              b
+                .set({
+                  status: "waiting",
+                  maxAttempts,
+                  result: null,
+                  nextRetryAt: isRetryTask ? scheduledAt : null,
+                  wakeAt: isRetryTask ? null : scheduledAt,
+                  updatedAt: b.now(),
+                })
+                .check(),
+            );
+            uow.update("workflow_instance", instance.id, (b) =>
+              b
+                .set({
+                  status: "waiting",
+                  output: null,
+                  errorName: null,
+                  errorMessage: null,
+                  completedAt: null,
+                  updatedAt: b.now(),
+                })
+                .check(),
+            );
+            uow.triggerHook(
+              "onWorkflowEnqueued",
+              {
+                workflowName,
+                instanceId: instance.instanceId,
+                instanceRef: String(instance.id),
+                reason: getRetryHookReason(step),
+              },
+              { processAt: scheduledAt },
+            );
+
+            return {
+              accepted: true,
+              instance: {
+                id: instance.instanceId,
+                details: buildInstanceStatus({
+                  status: "waiting",
+                  output: null,
+                  errorName: null,
+                  errorMessage: null,
+                }),
+              },
+              retry: {
+                stepKey: step.stepKey,
+                attempts: step.attempts,
+                maxAttempts,
+                scheduledAt,
+              },
+            };
           })
           .build();
       },

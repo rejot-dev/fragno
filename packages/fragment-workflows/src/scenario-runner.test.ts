@@ -3785,6 +3785,82 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
+  test("management retry step reopens errored steps", async () => {
+    let stableRuns = 0;
+    let flakyRuns = 0;
+    const RetryWorkflow = defineWorkflow(
+      { name: "scenario-management-retry-workflow" },
+      async (_event, step) => {
+        const stable = await step.do("stable", () => {
+          stableRuns += 1;
+          return "stable";
+        });
+        const flaky = await step.do("flaky", () => {
+          flakyRuns += 1;
+          if (flakyRuns === 1) {
+            throw new Error("MANUAL_RETRY");
+          }
+          return "ok";
+        });
+        return { stable, flaky };
+      },
+    );
+
+    const workflows = { RETRY_MANAGEMENT: RetryWorkflow };
+
+    const scenario = defineScenario<typeof workflows, { retryStatus?: InstanceStatus }>({
+      name: "management-retry",
+      workflows,
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "RETRY_MANAGEMENT", id: "retry-1" }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("RETRY_MANAGEMENT", "retry-1"),
+          assert: (status) => {
+            expect(status?.status).toBe("errored");
+            expect(status?.error?.message).toBe("MANUAL_RETRY");
+          },
+        }),
+        workflow.retry({
+          workflow: "RETRY_MANAGEMENT",
+          instanceId: "retry-1",
+          stepKey: "do:flaky",
+          storeAs: "retryStatus",
+        }),
+        runner.retryAndRunUntilIdle({ workflow: "RETRY_MANAGEMENT", instanceId: "retry-1" }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("RETRY_MANAGEMENT", "retry-1"),
+          assert: (status) => {
+            expect(status?.status).toBe("complete");
+            expect(status?.output).toEqual({ stable: "stable", flaky: "ok" });
+          },
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getSteps("RETRY_MANAGEMENT", "retry-1"),
+          assert: (steps) => {
+            expect(steps).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({ stepKey: "do:stable", attempts: 1 }),
+                expect.objectContaining({
+                  stepKey: "do:flaky",
+                  status: "completed",
+                  attempts: 2,
+                  maxAttempts: 2,
+                }),
+              ]),
+            );
+          },
+        }),
+        workflow.assert((ctx) => {
+          expect(ctx.vars.retryStatus?.status).toBe("waiting");
+          expect(stableRuns).toBe(1);
+          expect(flakyRuns).toBe(2);
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
   test("does not retry before nextRetryAt", async () => {
     let attempts = 0;
     const RetryWorkflow = defineWorkflow({ name: "retry-early-workflow" }, async (_event, step) => {

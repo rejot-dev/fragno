@@ -640,6 +640,7 @@ export type WorkflowScenarioStep<
   | WorkflowScenarioEventAndRunUntilIdleStep<TRegistry, TVars>
   | WorkflowScenarioPauseStep<TRegistry, TVars>
   | WorkflowScenarioResumeStep<TRegistry, TVars>
+  | WorkflowScenarioRetryStep<TRegistry, TVars>
   | WorkflowScenarioResumeAndRunUntilIdleStep<TRegistry, TVars>
   | WorkflowScenarioTerminateStep<TRegistry, TVars>
   | WorkflowScenarioRunCreateUntilIdleStep<TRegistry, TVars>
@@ -754,6 +755,19 @@ export type WorkflowScenarioResumeStep<
   type: "resume";
   workflow: ScenarioInput<(keyof TRegistry & string) | string, TRegistry, TVars>;
   instanceId: ScenarioInput<string, TRegistry, TVars>;
+  storeAs?: (keyof TVars & string) | undefined;
+};
+
+export type WorkflowScenarioRetryStep<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+> = {
+  type: "retry";
+  workflow: ScenarioInput<(keyof TRegistry & string) | string, TRegistry, TVars>;
+  instanceId: ScenarioInput<string, TRegistry, TVars>;
+  stepKey?: ScenarioInput<string, TRegistry, TVars>;
+  delayMs?: ScenarioInput<number, TRegistry, TVars>;
+  reason?: ScenarioInput<string, TRegistry, TVars>;
   storeAs?: (keyof TVars & string) | undefined;
 };
 
@@ -1088,6 +1102,7 @@ const createScenarioWorkflowSteps = <
     event: raw.event,
     pause: raw.pause,
     resume: raw.resume,
+    retry: raw.retry,
     terminate: raw.terminate,
     read: raw.read,
     assert: raw.assert,
@@ -1306,6 +1321,12 @@ const createRawScenarioStepBuilders = <
     input: StepInput<WorkflowScenarioResumeStep<TRegistry, TVars>>,
   ): WorkflowScenarioResumeStep<TRegistry, TVars> => ({
     type: "resume",
+    ...input,
+  }),
+  retry: (
+    input: StepInput<WorkflowScenarioRetryStep<TRegistry, TVars>>,
+  ): WorkflowScenarioRetryStep<TRegistry, TVars> => ({
+    type: "retry",
     ...input,
   }),
   resumeAndRunUntilIdle: (
@@ -2444,6 +2465,28 @@ export async function runScenario<
           );
           const instanceId = await resolveScenarioInput(step.instanceId, context);
           const status = await context.harness.resumeInstance(workflowName, instanceId);
+          if (step.storeAs) {
+            (context.vars as Record<string, unknown>)[step.storeAs] = status;
+          }
+          break;
+        }
+        case "retry": {
+          const workflowName = resolver.resolveName(
+            String(await resolveScenarioInput(step.workflow, context)),
+          );
+          const instanceId = await resolveScenarioInput(step.instanceId, context);
+          const stepKey = step.stepKey
+            ? await resolveScenarioInput(step.stepKey, context)
+            : undefined;
+          const delayMs = step.delayMs
+            ? await resolveScenarioInput(step.delayMs, context)
+            : undefined;
+          const reason = step.reason ? await resolveScenarioInput(step.reason, context) : undefined;
+          const status = await context.harness.retryInstance(workflowName, instanceId, {
+            stepKey,
+            delayMs,
+            reason,
+          });
           if (step.storeAs) {
             (context.vars as Record<string, unknown>)[step.storeAs] = status;
           }
