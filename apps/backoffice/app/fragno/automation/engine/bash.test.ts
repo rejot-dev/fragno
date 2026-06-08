@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { createUnsupportedOperationFileSystemError } from "@/files/fs-errors";
+import { createUnsupportedFileSystem } from "@/files/interface";
 import { MasterFileSystem } from "@/files/master-file-system";
-import { normalizeMountedFileSystem } from "@/files/mounted-file-system";
 import { executeBashAutomation } from "@/fragno/runtime-tools/automation-host";
 
 import type { AutomationEvent } from "../contracts";
@@ -352,14 +353,11 @@ describe("bash command runner", () => {
       title: "Existing /dev",
       readOnly: false,
       persistence: "session",
-      fs: normalizeMountedFileSystem(
-        {
-          readFile: async () => "",
-          readdir: async () => [],
-          getAllPaths: () => ["/dev"],
-        },
-        { readOnly: false },
-      ),
+      fs: createUnsupportedFileSystem(createUnsupportedOperationFileSystemError, {
+        readFile: async () => "",
+        readdir: async () => [],
+        getAllPaths: () => ["/dev"],
+      }),
     });
 
     const automationRuntime = createRouteBackedAutomationRuntime({

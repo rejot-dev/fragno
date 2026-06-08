@@ -1,5 +1,7 @@
 import { InMemoryFs } from "just-bash";
 
+import { createUnsupportedOperationFileSystemError } from "../fs-errors";
+import { createUnsupportedFileSystem } from "../interface";
 import type { FileContributor, FileMountMetadata } from "../types";
 
 export const TMP_FILE_CONTRIBUTOR_ID = "tmp";
@@ -18,6 +20,7 @@ export const tmpFileMount: FileMountMetadata = {
 
 export const tmpFileContributor: FileContributor = {
   ...tmpFileMount,
+  ...createUnsupportedFileSystem(createUnsupportedOperationFileSystemError),
   async createFileSystem() {
     const fs = new InMemoryFs();
     await fs.mkdir(TMP_FILE_MOUNT_POINT, { recursive: true });

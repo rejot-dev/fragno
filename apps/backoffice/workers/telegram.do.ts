@@ -121,13 +121,6 @@ const automationFileInputSchema = z.object({
   fileId: z.string().trim().min(1, "Telegram automation file access requires a non-empty fileId."),
 });
 
-const automationReplyInputSchema = z.object({
-  chatId: z.string().trim().min(1, "chatId and text are required."),
-  text: z.string().refine((value) => value.trim().length > 0, {
-    message: "chatId and text are required.",
-  }),
-});
-
 const buildConfigResponse = (config: StoredTelegramConfig | null): ConfigResponse => {
   if (!config) {
     return { configured: false };
@@ -382,25 +375,6 @@ export class Telegram extends DurableObject<CloudflareEnv> {
 
   async alarm() {
     await this.#host.alarm();
-  }
-
-  async sendAutomationReply(input: {
-    chatId: string;
-    text: string;
-  }): Promise<{ ok: boolean; queued: boolean }> {
-    const { runtime } = this.#host.requireConfigured();
-    const { chatId, text } = automationReplyInputSchema.parse(input);
-
-    const response = await runtime.callRoute("POST", "/chats/:chatId/send", {
-      pathParams: { chatId },
-      body: { text },
-    });
-
-    if (response.type !== "json" || !response.data.ok) {
-      throw new Error("Failed to queue Telegram reply.");
-    }
-
-    return response.data;
   }
 
   async getAdminConfig(): Promise<ConfigResponse> {

@@ -8,7 +8,6 @@ import { workflowsFragmentDefinition, workflowsRoutesFactory } from "@fragno-dev
 
 import {
   STATIC_STARTER_CONTENT,
-  STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH,
   STARTER_AUTOMATION_SCRIPT_PATHS,
   createMasterFileSystem,
   type FilesContext,
@@ -16,11 +15,7 @@ import {
 } from "@/files";
 
 import type { AutomationEvent } from "./contracts";
-import {
-  automationFragmentDefinition,
-  buildAutomationWorkflowInstanceId,
-  type AutomationPiBashContext,
-} from "./definition";
+import { automationFragmentDefinition, type AutomationPiBashContext } from "./definition";
 import { createTestMasterFileSystem } from "./engine/test-master-file-system.test-utils";
 import { defineAutomationCodemodeWorkflow } from "./engine/workflow";
 import { automationFragmentRoutes } from "./routes";
@@ -28,6 +23,7 @@ import { automationFragmentRoutes } from "./routes";
 const telegramSendCalls: Array<{ chatId: string; text: string }> = [];
 const issueIdentityClaimMock = vi.fn(async ({ externalActorId }: { externalActorId: string }) => ({
   url: `https://example.com/claims/${externalActorId}`,
+  otpId: `otp-${externalActorId}`,
   externalId: externalActorId,
   code: "123456",
   type: "otp",
@@ -88,7 +84,6 @@ const automationEnv = {
       }),
       getAutomationFile: telegramGetFileMock,
       downloadAutomationFile: telegramDownloadFileMock,
-      sendAutomationReply: vi.fn(),
     })),
   },
   PI: {
@@ -170,41 +165,6 @@ const createAutomationFileSystem = async (
   );
 };
 
-const buildManifest = (
-  bindings: Array<{
-    id: string;
-    source?: string;
-    eventType?: string;
-    enabled?: boolean;
-    triggerOrder?: number | null;
-    script: {
-      key: string;
-      name: string;
-      path: string;
-      version?: number;
-      agent?: string | null;
-      env?: Record<string, string>;
-    };
-  }>,
-) =>
-  `${JSON.stringify(
-    {
-      version: 1,
-      bindings: bindings.map((binding) => ({
-        ...binding,
-        script: {
-          engine: "bash",
-          version: 1,
-          agent: null,
-          env: {},
-          ...binding.script,
-        },
-      })),
-    },
-    null,
-    2,
-  )}\n`;
-
 let currentAutomationFileSystem = await createAutomationFileSystem();
 
 const buildAutomationTestContext = async (
@@ -258,16 +218,56 @@ const buildAutomationTestContext = async (
   testEnv.AUTOMATIONS.get = (() => ({
     fetch: async (request: Request) => {
       const url = new URL(request.url);
-      const routePath = url.pathname.replace(/^\/api\/automations\/bindings/, "") || "/";
       const body = request.method === "GET" ? undefined : await request.json();
-      return await result.fragments.automation.fragment.callRouteRaw(
-        request.method as never,
-        routePath,
-        {
-          query: Object.fromEntries(url.searchParams),
-          body,
-        },
-      );
+
+      if (url.pathname.startsWith("/api/automations/bindings")) {
+        const routePath = url.pathname.replace(/^\/api\/automations\/bindings/u, "") || "/";
+        return await result.fragments.automation.fragment.callRouteRaw(
+          request.method as never,
+          routePath,
+          {
+            query: Object.fromEntries(url.searchParams),
+            body,
+          },
+        );
+      }
+
+      if (url.pathname.startsWith("/api/automations")) {
+        const segments = url.pathname.replace(/^\/api\/automations\/?/u, "").split("/");
+        const [workflowName, instancesSegment, instanceId, suffix] = segments;
+
+        if (request.method === "POST" && workflowName && instancesSegment === "instances") {
+          if (!instanceId) {
+            const response = await result.fragments.workflows.fragment.callRoute(
+              "POST",
+              "/:workflowName/instances",
+              {
+                pathParams: { workflowName },
+                body: body as { id?: string; params?: unknown; remoteWorkflowName?: string },
+              },
+            );
+            return Response.json(response.type === "json" ? response.data : response, {
+              status: response.status ?? 200,
+            });
+          }
+
+          if (suffix === "events") {
+            const response = await result.fragments.workflows.fragment.callRoute(
+              "POST",
+              "/:workflowName/instances/:instanceId/events",
+              {
+                pathParams: { workflowName, instanceId },
+                body: body as { type: string; payload?: unknown },
+              },
+            );
+            return Response.json(response.type === "json" ? response.data : response, {
+              status: response.status ?? 200,
+            });
+          }
+        }
+      }
+
+      return Response.json({ message: "Not found", code: "NOT_FOUND" }, { status: 404 });
     },
   })) as never;
 
@@ -317,250 +317,6 @@ describe("automation internalIngestEvent", () => {
 
   afterAll(async () => {
     await testContext.cleanup();
-  });
-
-  test("warns and exits when no matching bindings exist", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    try {
-      await setAutomationFiles({
-        [STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH]: buildManifest([]),
-      });
-
-      const result = await ingestEvent();
-
-      expect(result).toEqual({
-        accepted: true,
-        eventId: "event-123",
-        orgId: undefined,
-        source,
-        eventType,
-      });
-      expect(telegramSendCalls).toEqual([]);
-      expect(warn).toHaveBeenCalledWith(
-        "No automation binding configured for event",
-        expect.objectContaining({
-          eventId: "event-123",
-          source,
-          eventType,
-          orgId: undefined,
-        }),
-      );
-    } finally {
-      warn.mockRestore();
-    }
-  });
-
-  test("executes matching filesystem-backed bindings in trigger order and skips disabled bindings", async () => {
-    await setAutomationFiles({
-      [STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH]: buildManifest([
-        {
-          id: "second",
-          source,
-          eventType,
-          triggerOrder: 20,
-          enabled: true,
-          script: {
-            key: "second",
-            name: "Second",
-            path: "scripts/second.sh",
-          },
-        },
-        {
-          id: "disabled",
-          source,
-          eventType,
-          triggerOrder: 15,
-          enabled: false,
-          script: {
-            key: "disabled",
-            name: "Disabled",
-            path: "scripts/disabled.sh",
-          },
-        },
-        {
-          id: "first",
-          source,
-          eventType,
-          triggerOrder: 10,
-          enabled: true,
-          script: {
-            key: "first",
-            name: "First",
-            path: "scripts/first.sh",
-          },
-        },
-      ]),
-      "automations/scripts/first.sh": 'telegram.chat.send --chat-id actor-1 --text "from-first"',
-      "automations/scripts/second.sh": 'telegram.chat.send --chat-id actor-1 --text "from-second"',
-      "automations/scripts/disabled.sh":
-        'telegram.chat.send --chat-id actor-1 --text "should-not-run"',
-    });
-
-    const result = await ingestEvent({ orgId: "org-1" });
-
-    expect(result).toEqual({
-      accepted: true,
-      eventId: "event-123",
-      orgId: "org-1",
-      source,
-      eventType,
-    });
-    expect(telegramSendCalls).toEqual([
-      { chatId: "actor-1", text: "from-first" },
-      { chatId: "actor-1", text: "from-second" },
-    ]);
-  });
-
-  test("stops executing later bindings after an earlier filesystem script failure", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-    try {
-      await setAutomationFiles({
-        [STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH]: buildManifest([
-          {
-            id: "failing",
-            source,
-            eventType,
-            triggerOrder: 1,
-            enabled: true,
-            script: {
-              key: "failing",
-              name: "Failing",
-              path: "scripts/failing.sh",
-            },
-          },
-          {
-            id: "skipped",
-            source,
-            eventType,
-            triggerOrder: 2,
-            enabled: true,
-            script: {
-              key: "skipped",
-              name: "Skipped",
-              path: "scripts/skipped.sh",
-            },
-          },
-        ]),
-        "automations/scripts/failing.sh": ['echo "boom" >&2', "exit 9"].join("\n"),
-        "automations/scripts/skipped.sh":
-          'telegram.chat.send --chat-id actor-1 --text "should-not-run"',
-      });
-
-      const result = await ingestEvent({ orgId: "org-1" });
-
-      expect(result).toEqual({
-        accepted: true,
-        eventId: "event-123",
-        orgId: "org-1",
-        source,
-        eventType,
-      });
-      expect(telegramSendCalls).toEqual([]);
-      expect(errorSpy).toHaveBeenCalledWith(
-        "[fragno-db] Hook failed",
-        expect.objectContaining({
-          namespace: "automations",
-          hookName: "internalIngestEvent",
-          error: expect.stringContaining(
-            "Automation bash script script:failing@1:scripts/failing.sh failed for event event-123 with exit code 9.",
-          ),
-        }),
-      );
-    } finally {
-      errorSpy.mockRestore();
-    }
-  });
-
-  test("runs the starter Telegram linking flow from filesystem-backed automation files", async () => {
-    const firstTelegramResult = await ingestEvent({
-      id: "event-telegram-1",
-      orgId: "org-1",
-      payload: { text: "/start", chatId: "chat-1" },
-      actor: {
-        type: "external",
-        externalId: "chat-1",
-      },
-    });
-
-    expect(firstTelegramResult).toEqual({
-      accepted: true,
-      eventId: "event-telegram-1",
-      orgId: "org-1",
-      source,
-      eventType,
-    });
-    expect(issueIdentityClaimMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orgId: "org-1",
-        linkSource: "telegram",
-        externalActorId: "chat-1",
-        publicBaseUrl: "https://example.com",
-      }),
-    );
-    expect(telegramSendCalls).toEqual([
-      {
-        chatId: "chat-1",
-        text: "Open this link to finish linking your Telegram account: https://example.com/claims/chat-1",
-      },
-    ]);
-
-    const otpResult = await ingestEvent({
-      id: "event-otp-1",
-      orgId: "org-1",
-      source: "otp",
-      eventType: "identity.claim.completed",
-      payload: {
-        linkSource: "telegram",
-        externalActorId: "chat-1",
-      },
-      actor: null,
-      subject: {
-        userId: "user-1",
-      },
-    });
-
-    expect(otpResult).toEqual({
-      accepted: true,
-      eventId: "event-otp-1",
-      orgId: "org-1",
-      source: "otp",
-      eventType: "identity.claim.completed",
-    });
-
-    const secondTelegramResult = await ingestEvent({
-      id: "event-telegram-2",
-      orgId: "org-1",
-      payload: { text: "/start", chatId: "chat-1" },
-      actor: {
-        type: "external",
-        externalId: "chat-1",
-      },
-    });
-
-    expect(secondTelegramResult).toEqual({
-      accepted: true,
-      eventId: "event-telegram-2",
-      orgId: "org-1",
-      source,
-      eventType,
-    });
-    expect(issueIdentityClaimMock).toHaveBeenCalledTimes(1);
-    expect(telegramSendCalls).toEqual([
-      {
-        chatId: "chat-1",
-        text: "Open this link to finish linking your Telegram account: https://example.com/claims/chat-1",
-      },
-      {
-        chatId: "chat-1",
-        text: "Your Telegram chat is now linked.",
-      },
-      {
-        chatId: "chat-1",
-        text: "This Telegram chat is already linked.",
-      },
-    ]);
   });
 
   test("does not run the disabled starter Telegram Pi automation script", async () => {
@@ -724,18 +480,6 @@ describe("automation internalIngestEvent", () => {
 
     try {
       await setAutomationFiles({
-        [STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH]: buildManifest([
-          {
-            id: "telegram-attachment-download",
-            source: "telegram",
-            eventType: "message.received",
-            script: {
-              key: "telegram-attachment-download",
-              name: "telegram-attachment-download",
-              path: "scripts/telegram-attachment-download.sh",
-            },
-          },
-        ]),
         "automations/scripts/telegram-attachment-download.sh": `file_id="$(jq -r '.payload.attachments[0].fileId // ""' /context/event.json)"
 if [ -z "$file_id" ]; then
   echo "Missing attachment fileId in /context/event.json" >&2
@@ -786,124 +530,6 @@ telegram.file.download --file-id "$file_id" > /workspace/telegram-download.bin
       expect(telegramDownloadFileMock).toHaveBeenCalledWith({ fileId: "telegram-file-1" });
     } finally {
       await telegramAttachmentContext.test.cleanup();
-    }
-  });
-
-  test("fails loudly when the starter linking script cannot issue identity claims", async () => {
-    const expectedError =
-      "DOCS_PUBLIC_BASE_URL must be configured before issuing automation identity claims.";
-    const noBaseUrlContext = await buildAutomationTestContext({
-      env: {
-        LOADER: env.LOADER,
-        OTP: automationEnv.OTP,
-        TELEGRAM: automationEnv.TELEGRAM,
-        PI: automationEnv.PI,
-        RESEND: automationEnv.RESEND,
-        RESON8: automationEnv.RESON8,
-      } as unknown as CloudflareEnv,
-    });
-
-    try {
-      currentAutomationFileSystem = await createAutomationFileSystem();
-      const noBaseUrlFragment = noBaseUrlContext.fragments.automation;
-
-      const result = await noBaseUrlFragment.fragment.callServices(() =>
-        noBaseUrlFragment.services.ingestEvent({
-          id: "starter-telegram-missing-base-url-1",
-          orgId: "org-1",
-          source: "telegram",
-          eventType: "message.received",
-          occurredAt: new Date("2026-01-01T00:00:00.000Z").toISOString(),
-          payload: {
-            text: "/start",
-            chatId: "chat-1",
-          },
-          actor: {
-            type: "external",
-            externalId: "chat-1",
-          },
-        }),
-      );
-
-      expect(result).toEqual({
-        accepted: true,
-        eventId: "starter-telegram-missing-base-url-1",
-        orgId: "org-1",
-        source: "telegram",
-        eventType: "message.received",
-      });
-      await drainDurableHooks(noBaseUrlFragment.fragment);
-      await drainDurableHooks(noBaseUrlContext.fragments.workflows.fragment);
-      const workflowStatus = await noBaseUrlContext.fragments.workflows.fragment.callServices(() =>
-        noBaseUrlContext.fragments.workflows.services.getInstanceStatus(
-          "automation-codemode-script",
-          buildAutomationWorkflowInstanceId(
-            "starter-telegram-missing-base-url-1",
-            "telegram-claim-linking-start",
-          ),
-        ),
-      );
-      expect(workflowStatus).toMatchObject({
-        status: "errored",
-        error: { message: expect.stringContaining(expectedError) },
-      });
-      expect(issueIdentityClaimMock).not.toHaveBeenCalled();
-      expect(telegramSendCalls).toEqual([]);
-    } finally {
-      await noBaseUrlContext.test.cleanup();
-    }
-  });
-
-  test("starter OTP completion script replies with a failure message when linking cannot complete", async () => {
-    await ingestEvent({
-      id: "starter-telegram-failure-1",
-      orgId: "org-1",
-      payload: {
-        text: "/start",
-        chatId: "chat-1",
-      },
-      actor: {
-        type: "external",
-        externalId: "chat-1",
-      },
-    });
-
-    const otpResult = await ingestEvent({
-      id: "starter-otp-failure-1",
-      orgId: "org-1",
-      source: "otp",
-      eventType: "identity.claim.completed",
-      payload: {
-        linkSource: "telegram",
-        externalActorId: "chat-1",
-      },
-      actor: null,
-      subject: null,
-    });
-
-    expect(otpResult).toEqual({
-      accepted: true,
-      eventId: "starter-otp-failure-1",
-      orgId: "org-1",
-      source: "otp",
-      eventType: "identity.claim.completed",
-    });
-    expect(telegramSendCalls).toEqual([
-      {
-        chatId: "chat-1",
-        text: "Open this link to finish linking your Telegram account: https://example.com/claims/chat-1",
-      },
-      {
-        chatId: "chat-1",
-        text: "We couldn't link your Telegram chat. Please try again.",
-      },
-    ]);
-
-    const identityBindingsResponse = await fragment.fragment.callRoute("GET", "/identity-bindings");
-
-    expect(identityBindingsResponse.type).toBe("json");
-    if (identityBindingsResponse.type === "json") {
-      expect(identityBindingsResponse.data).toEqual([]);
     }
   });
 

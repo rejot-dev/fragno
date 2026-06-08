@@ -44,25 +44,6 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
       }),
       defineRoute({
         method: "GET",
-        path: "/bindings",
-        outputSchema: z.array(z.record(z.string(), z.unknown())),
-        handler: async function ({ query }, { json, error }) {
-          try {
-            return json((await loadRouteCatalog(query)).bindings);
-          } catch (cause) {
-            return error(
-              {
-                message:
-                  cause instanceof Error ? cause.message : "Failed to load automation bindings.",
-                code: "AUTOMATION_CATALOG_INVALID",
-              },
-              500,
-            );
-          }
-        },
-      }),
-      defineRoute({
-        method: "GET",
         path: "/identity-bindings",
         outputSchema: z.array(z.record(z.string(), z.unknown())),
         handler: async function (_, { json }) {

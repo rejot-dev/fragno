@@ -18,27 +18,7 @@ export type AutomationScriptItem = {
   absolutePath: string;
   version: number | null;
   scriptLoadError?: string | null;
-  bindingIds: string[];
-  bindingCount: number;
-  enabledBindingCount: number;
   enabled: boolean;
-};
-
-export type AutomationTriggerItem = {
-  id: string;
-  source: string;
-  eventType: string;
-  scriptId: string;
-  scriptKey: string;
-  scriptName: string;
-  scriptPath: string;
-  absoluteScriptPath: string;
-  scriptVersion: number;
-  scriptEngine: string;
-  scriptEnv: Record<string, string>;
-  enabled: boolean;
-  scriptLoadError?: string | null;
-  triggerOrder?: number | null;
 };
 
 export type AutomationIdentityItem = {
@@ -57,10 +37,8 @@ export type AutomationLayoutContext = {
   orgId: string;
   organisation: BackofficeOrganisation;
   scripts: AutomationScriptItem[];
-  triggerBindings: AutomationTriggerItem[];
   identityBindings: AutomationIdentityItem[];
   scriptsError: string | null;
-  triggerBindingsError: string | null;
   identityBindingsError: string | null;
 };
 
@@ -114,7 +92,7 @@ export function AutomationHeader({
       ]}
       eyebrow="Automations"
       title={`Automations for ${organisationName ?? orgId}`}
-      description="Inspect filesystem-backed automation bindings and shell scripts for this organisation. Edit the underlying files through Backoffice Files under /starter/automations."
+      description="Inspect filesystem-backed automation scripts for this organisation. Edit the underlying files through Backoffice Files under /starter/automations."
       actions={
         <Link
           to={`/backoffice/organisations/${orgId}`}

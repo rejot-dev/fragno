@@ -65,6 +65,6 @@ describe("pi-shared helpers", () => {
     expect(codemodeHarness?.systemPrompt).toContain("declare const telegram");
     expect(codemodeHarness?.systemPrompt).toContain("declare const pi");
     expect(codemodeHarness?.systemPrompt).toContain("declare function defineWorkflow");
-    expect(codemodeHarness?.systemPrompt).toContain("/workspace/automations/");
+    expect(codemodeHarness?.systemPrompt).toContain("/starter/automations/scripts/");
   });
 });

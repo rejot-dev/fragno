@@ -1,7 +1,6 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import * as files from "@/files";
-import { resetFileContributorsForTest } from "@/files";
 import { UPLOAD_PROVIDER_R2, type UploadAdminConfigResponse } from "@/fragno/upload";
 import type { UploadFileRecord } from "@/routes/backoffice/connections/upload/data";
 
@@ -102,10 +101,6 @@ const createMockBashContext = (): PiBashCommandContext => ({
 });
 
 describe("Pi bash tool", () => {
-  beforeEach(() => {
-    resetFileContributorsForTest();
-  });
-
   test("defaults just-bash to the shared filesystem root so pwd and ls work without an explicit cwd", async () => {
     const tools = createPiToolRegistry({
       sessionFileSystems: new Map(),
@@ -209,15 +204,13 @@ describe("Pi bash tool", () => {
     } as never);
 
     const result = await tool.execute("tool-call-automations-1", {
-      script: "cat /starter/automations/bindings.json",
+      script: "cat /starter/automations/scripts/router.cm.js",
     } as never);
     expect(result.details).toMatchObject({
       stderr: "",
       exitCode: 0,
     });
-    expect((result.details as { stdout: string }).stdout).toContain(
-      '"telegram-claim-linking-start"',
-    );
+    expect((result.details as { stdout: string }).stdout).toContain("workflow.createInstance");
   });
 
   test("mounts resend thread snapshots when a resend runtime is available", async () => {
@@ -568,8 +561,51 @@ const createUploadStub = (seed: UploadSeed) => {
 
       if (request.method === "GET" && url.pathname === "/api/upload/files") {
         const status = url.searchParams.get("status");
+        const prefix = url.searchParams.get("prefix") ?? "";
+        const delimiter = url.searchParams.get("delimiter");
+        const matchedFiles = Array.from(files.values()).filter(
+          (file) => (!status || file.status === status) && file.fileKey.startsWith(prefix),
+        );
+
+        if (delimiter === "/") {
+          const directories = new Map<
+            string,
+            {
+              name: string;
+              prefix: string;
+              updatedAt: string;
+              contentType: string | null;
+              metadata: Record<string, unknown> | null;
+            }
+          >();
+          const directFiles: UploadFileRecord[] = [];
+          for (const file of matchedFiles) {
+            const remainder = file.fileKey.slice(prefix.length);
+            const delimiterIndex = remainder.indexOf("/");
+            if (delimiterIndex === -1) {
+              directFiles.push(file);
+              continue;
+            }
+
+            const name = remainder.slice(0, delimiterIndex);
+            directories.set(`${prefix}${name}/`, {
+              name,
+              prefix: `${prefix}${name}/`,
+              updatedAt: String(file.updatedAt ?? now),
+              contentType: file.contentType ?? null,
+              metadata: file.metadata ?? null,
+            });
+          }
+
+          return Response.json({
+            files: directFiles,
+            directories: Array.from(directories.values()),
+            hasNextPage: false,
+          });
+        }
+
         return Response.json({
-          files: Array.from(files.values()).filter((file) => !status || file.status === status),
+          files: matchedFiles,
           hasNextPage: false,
         });
       }

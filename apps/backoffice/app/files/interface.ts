@@ -1,3 +1,5 @@
+import { FileSystemError } from "./fs-errors";
+
 /**
  * Supported buffer encodings
  */
@@ -280,6 +282,85 @@ export type LazyFileProvider = () => string | Uint8Array | Promise<string | Uint
  * Initial files can be simple content, extended options with metadata, or lazy providers
  */
 export type InitialFiles = Record<string, FileContent | FileInit | LazyFileProvider>;
+
+export const createUnsupportedFileSystem = (
+  operation: (name: string, path: string) => Error,
+  overrides: Partial<IFileSystem> = {},
+): IFileSystem => ({
+  async readFile(path) {
+    throw operation("read", path);
+  },
+  async readFileBuffer(path) {
+    throw operation("read", path);
+  },
+  async writeFile(path) {
+    throw operation("write", path);
+  },
+  async appendFile(path) {
+    throw operation("append", path);
+  },
+  async exists(path) {
+    try {
+      await this.stat(path);
+      return true;
+    } catch (error) {
+      if (error instanceof FileSystemError && error.code === "ENOENT") {
+        return false;
+      }
+
+      throw error;
+    }
+  },
+  async stat(path) {
+    throw operation("stat", path);
+  },
+  async mkdir(path) {
+    throw operation("mkdir", path);
+  },
+  async readdir(path) {
+    throw operation("readdir", path);
+  },
+  async rm(path) {
+    throw operation("rm", path);
+  },
+  async cp(src) {
+    throw operation("copy", src);
+  },
+  async mv(src) {
+    throw operation("move", src);
+  },
+  resolvePath(base, path) {
+    return path.startsWith("/") ? path : `${base.replace(/\/$/, "")}/${path}`;
+  },
+  getAllPaths() {
+    return [];
+  },
+  async chmod(path) {
+    throw operation("chmod", path);
+  },
+  async symlink(_target, linkPath) {
+    throw operation("symlink", linkPath);
+  },
+  async link(_existingPath, newPath) {
+    throw operation("link", newPath);
+  },
+  async readlink(path) {
+    throw operation("readlink", path);
+  },
+  async lstat(path) {
+    return this.stat(path);
+  },
+  async realpath(path) {
+    if (!(await this.exists(path))) {
+      throw operation("realpath", path);
+    }
+    return path;
+  },
+  async utimes(path) {
+    throw operation("utimes", path);
+  },
+  ...overrides,
+});
 
 /**
  * Factory function type for creating filesystem instances

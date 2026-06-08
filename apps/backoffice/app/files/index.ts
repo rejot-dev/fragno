@@ -8,10 +8,7 @@ export type {
   FilesBackend,
   FilesContext,
   FileSystemArtifact,
-  MountedFileSystem,
-  MountedFileSystemCapabilities,
-  MountedFileSystemInput,
-  MountedFileSystemResolution,
+  FileSystemResolution,
   ResolvedFileMount,
 } from "./types";
 
@@ -36,6 +33,7 @@ export type {
   SymlinkEntry,
   WriteFileOptions,
 } from "./interface";
+export { createUnsupportedFileSystem } from "./interface";
 
 export { FILE_BACKEND, FILE_ENTRY_KINDS, FILE_ROOT_KINDS, FILE_ROOT_PERSISTENCE } from "./types";
 export type {
@@ -49,13 +47,7 @@ export type {
 export { FILES_EXPLORER_NODE_KINDS } from "./explorer-types";
 export type { FilesActionIntent, FilesActionResult } from "./actions";
 export { FILES_ACTION_INTENTS, performFilesAction } from "./actions";
-export {
-  getRegisteredFileContributor,
-  getRegisteredFileContributors,
-  registerFileContributor,
-  resetFileContributorsForTest,
-} from "./registry";
-export { ensureBuiltInFileContributorsRegistered } from "./contributors";
+export { BUILT_IN_FILE_CONTRIBUTORS, getBuiltInFileContributors } from "./contributors";
 export {
   RESEND_FILE_CONTRIBUTOR_ID,
   RESEND_FILE_MOUNT_ID,
@@ -67,7 +59,7 @@ export {
   STATIC_STARTER_FILE_CONTRIBUTOR_ID,
   STATIC_STARTER_FILE_MOUNT_ID,
   STATIC_STARTER_FILE_MOUNT_POINT,
-  createStaticStarterMountedFileSystem,
+  createStaticStarterFileSystem,
   staticStarterFileContributor,
   staticStarterFileMount,
 } from "./contributors/static-starter";
@@ -87,20 +79,18 @@ export {
   UPLOAD_FILE_CONTRIBUTOR_ID,
   UPLOAD_FILE_MOUNT_ID,
   UPLOAD_FILE_MOUNT_POINT,
-  createUploadMountedFileSystem,
+  createUploadFileSystem,
   getConfiguredUploadProviders,
   isUploadConfigured,
   resolveBoundUploadProvider,
   resolvePreferredUploadProvider,
   resolveUploadFileMount,
-  resolveUploadMountConfig,
   uploadFileContributor,
   uploadFileMount,
 } from "./contributors/upload";
 export { STATIC_STARTER_CONTENT, STATIC_STARTER_ROOT_DESCRIPTION } from "./content/starter";
 export {
   STARTER_AUTOMATION_CONTENT,
-  STARTER_AUTOMATION_MANIFEST_RELATIVE_PATH,
   STARTER_AUTOMATION_SCRIPT_PATHS,
   STATIC_STARTER_ROOT,
 } from "./content/automations";
@@ -110,9 +100,8 @@ export {
   SYSTEM_FILE_ROOT_DESCRIPTION,
   SYSTEM_GUIDANCE,
 } from "./content/system";
-export { normalizeMountedFileSystem } from "./mounted-file-system";
-export type { NormalizeMountedFileSystemOptions } from "./mounted-file-system";
 export { MasterFileSystem, createMasterFileSystem } from "./master-file-system";
+export type { CreateMasterFileSystemOptions } from "./master-file-system";
 export { createOrgFileSystem } from "./create-file-system";
 export type { CreateOrgFileSystemOptions } from "./create-file-system";
 export {
@@ -122,21 +111,15 @@ export {
   resolveFilesTarget,
 } from "./service";
 export {
+  ensureFolderPath,
   isExactMountPointMatch,
   isMountPointParentOf,
+  normalizeAbsolutePath,
+  normalizeDirectoryPath,
+  normalizeFolderPath,
   normalizeMountPoint,
   normalizePathSegments,
   normalizeRelativePath,
+  resolvePath,
+  stripTrailingSlash,
 } from "./normalize-path";
-export {
-  BOOTSTRAP_SENTINEL_PATH,
-  hasBootstrapSentinel,
-  prepareSandboxFileSystem,
-  writeArtifactToSandbox,
-} from "./prepare-sandbox-filesystem";
-export type {
-  PrepareSandboxFileSystemOptions,
-  ResolveUploadMount,
-  SandboxBootstrapMarker,
-  UploadMountConfig,
-} from "./prepare-sandbox-filesystem";

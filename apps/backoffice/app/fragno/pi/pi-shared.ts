@@ -110,8 +110,8 @@ Codemode harness guidance:
 - Do not assume import() or module loading is available inside dynamic Worker code.
 - Write codemode as either a standalone async arrow function, for example: async () => { return await state.readFile("/workspace/file.txt"); }, or a workflow definition: defineWorkflow({ name: "my-workflow" }, async (event, step) => { ... }).
 - Use defineWorkflow(...) when work should run durably with workflow steps, retries, sleeps, or event waits.
-- Codemode automation script files must use /starter/automations/scripts/*.cm.js and bindings.json entries must set script.engine to "codemode".
-- Bash automation script files usually use *.sh and bindings.json entries must set script.engine to "bash".
+- Codemode automation script files must use /starter/automations/scripts/*.cm.js.
+- Bash automation script files usually use /starter/automations/scripts/*.sh.
 - Codemode automation scripts read event data from /context/event.json with state.readFile and should return JSON-serializable values.
 - Do not call non-existent aliases like state.listFiles, state.readDirectory, or state.list.
 
@@ -119,18 +119,18 @@ ${STATE_HARNESS_PROMPT}`;
 
 export const DEFAULT_PI_HARNESSES: PiHarnessConfig[] = [
   {
-    id: "bash",
-    label: "Bash",
-    description: "Built-in harness with bash access and the combined session filesystem.",
-    systemPrompt: BASH_HARNESS_PROMPT,
-    tools: ["bash"],
-  },
-  {
     id: "codemode",
     label: "Codemode",
     description: "Built-in harness with execCodeMode access to the combined session filesystem.",
     systemPrompt: CODEMODE_HARNESS_PROMPT,
     tools: ["execCodeMode"],
+  },
+  {
+    id: "bash",
+    label: "Bash",
+    description: "Built-in harness with bash access and the combined session filesystem.",
+    systemPrompt: BASH_HARNESS_PROMPT,
+    tools: ["bash"],
   },
 ];
 

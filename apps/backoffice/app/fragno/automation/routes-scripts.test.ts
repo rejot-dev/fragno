@@ -2,12 +2,11 @@ import { beforeEach, describe, expect, test } from "vitest";
 
 import { InMemoryAdapter } from "@fragno-dev/db";
 
+import { STARTER_AUTOMATION_SCRIPT_PATHS } from "@/files";
+
 import type { AutomationWorkflowsService } from "./definition";
-import {
-  AUTOMATION_BINDINGS_MANIFEST_PATH,
-  createAutomationFragment,
-  createMinimalFileSystem,
-} from "./index";
+import { createTestMasterFileSystem } from "./engine/test-master-file-system.test-utils";
+import { createAutomationFragment, createMinimalFileSystem } from "./index";
 
 const createAutomation = (options?: {
   automationFileSystem?: Awaited<ReturnType<typeof createMinimalFileSystem>>;
@@ -44,7 +43,7 @@ describe("automation routes /scripts", () => {
     });
   });
 
-  test("lists static starter scripts derived from the filesystem manifest", async () => {
+  test("lists static starter scripts from the filesystem", async () => {
     const response = await fragment.callRoute("GET", "/scripts");
 
     expect(response.type).toBe("json");
@@ -53,134 +52,37 @@ describe("automation routes /scripts", () => {
       expect(response.data).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            key: "telegram-claim-linking.start",
-            name: "Telegram claim linking start",
+            path: STARTER_AUTOMATION_SCRIPT_PATHS.router.replace(/^automations\//u, ""),
+            engine: "codemode",
+            enabled: true,
           }),
           expect.objectContaining({
-            key: "telegram-claim-linking.complete",
-            name: "Telegram claim linking completion",
-          }),
-          expect.objectContaining({
-            key: "telegram-pi-session.ensure",
-            name: "Telegram Pi session ensure (linked chat)",
+            path: STARTER_AUTOMATION_SCRIPT_PATHS.telegramClaimLinking.replace(
+              /^automations\//u,
+              "",
+            ),
+            enabled: false,
           }),
         ]),
       );
     }
   });
 
-  test("fails clearly when the automation manifest is malformed", async () => {
-    const readInvalidFile = async (path: string) => {
-      if (path === AUTOMATION_BINDINGS_MANIFEST_PATH) {
-        return "{not-json}";
-      }
-
-      throw new Error(`Unexpected path: ${path}`);
-    };
-    const invalidFileSystem = {
-      readFile: readInvalidFile,
-      async readFileBuffer(path: string) {
-        return new TextEncoder().encode(await readInvalidFile(path));
-      },
-      getAllPaths() {
-        return [AUTOMATION_BINDINGS_MANIFEST_PATH];
-      },
-    } as Awaited<ReturnType<typeof createMinimalFileSystem>>;
-
-    const invalidFragment = createAutomation({
-      automationFileSystem: invalidFileSystem,
+  test("loads scripts from a custom filesystem", async () => {
+    const fileSystem = await createTestMasterFileSystem({
+      "/starter/automations/scripts/present.sh": "#!/usr/bin/env bash\necho ok",
+      "/starter/automations/scripts/present.cm.js": "async () => true",
     });
-
-    const response = await invalidFragment.callRoute("GET", "/scripts");
-
-    expect(response.type).toBe("error");
-    if (response.type === "error") {
-      expect(response.status).toBe(500);
-      expect(response.error.message).toContain("Automation manifest");
-      expect(response.error.message).toContain("not valid JSON");
-    }
-  });
-
-  test("loads scripts list even when one script is missing", async () => {
-    const manifest = {
-      version: 1,
-      bindings: [
-        {
-          id: "present-script",
-          source: "telegram",
-          eventType: "messageReceived",
-          enabled: true,
-          script: {
-            key: "present-script",
-            name: "Present script",
-            engine: "bash",
-            path: "scripts/present.sh",
-            version: 1,
-            agent: null,
-            env: {},
-          },
-        },
-        {
-          id: "missing-script",
-          source: "telegram",
-          eventType: "messageReceived",
-          enabled: true,
-          script: {
-            key: "missing-script",
-            name: "Missing script",
-            engine: "bash",
-            path: "scripts/missing.sh",
-            version: 1,
-            agent: null,
-            env: {},
-          },
-        },
-      ],
-    } as const;
-
-    const readFile = async (path: string) => {
-      if (path === AUTOMATION_BINDINGS_MANIFEST_PATH) {
-        return JSON.stringify(manifest);
-      }
-
-      if (path === "/starter/automations/scripts/present.sh") {
-        return "#!/usr/bin/env bash\necho ok";
-      }
-
-      throw new Error(`Unexpected path: ${path}`);
-    };
-
-    const fileSystem = {
-      readFile,
-      async readFileBuffer(path: string) {
-        return new TextEncoder().encode(await readFile(path));
-      },
-      getAllPaths() {
-        return [AUTOMATION_BINDINGS_MANIFEST_PATH, "/starter/automations/scripts/present.sh"];
-      },
-    } as Awaited<ReturnType<typeof createMinimalFileSystem>>;
-
-    const partialFragment = createAutomation({
-      automationFileSystem: fileSystem,
-    });
+    const partialFragment = createAutomation({ automationFileSystem: fileSystem });
 
     const response = await partialFragment.callRoute("GET", "/scripts");
 
     expect(response.type).toBe("json");
     if (response.type === "json") {
-      expect(response.data.length).toBe(2);
       expect(response.data).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({
-            key: "present-script",
-            scriptLoadError: null,
-          }),
-          expect.objectContaining({
-            key: "missing-script",
-            scriptLoadError: expect.stringContaining(
-              "Automation script for binding 'missing-script'",
-            ),
-          }),
+          expect.objectContaining({ key: "present", engine: "bash", scriptLoadError: null }),
+          expect.objectContaining({ key: "present.cm", engine: "codemode" }),
         ]),
       );
     }

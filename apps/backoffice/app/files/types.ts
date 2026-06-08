@@ -1,7 +1,7 @@
 import type { DurableHookQueueOptions, DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import type { UploadAdminConfigResponse, UploadProvider } from "@/fragno/upload";
 
-import type { DirentEntry, FsStat, FileContent, IFileSystem } from "./interface";
+import type { FileContent, IFileSystem } from "./interface";
 
 export const FILE_ROOT_KINDS = ["static", "upload", "custom"] as const;
 export type FileRootKind = (typeof FILE_ROOT_KINDS)[number];
@@ -72,66 +72,19 @@ export type FilesContext = {
   request?: Request;
 };
 
-export type MountedFileSystemCapabilities = {
-  writeFile: boolean;
-  mkdir: boolean;
-  rm: boolean;
-};
-
-/**
- * Fully-resolved filesystem contract exposed by mounted filesystems.
- *
- * Resolved mounts always provide the full filesystem surface. Operations that a mount cannot
- * support must throw when called. Higher layers should use `capabilities` when they need to know
- * whether a mount supports a user-facing mutation without probing by calling the method.
- *
- * getAllPaths() is advisory: implementations may return a sparse subset of known paths and callers
- * must not rely on the result being exhaustive.
- */
-export interface MountedFileSystem extends IFileSystem {
-  readdirWithFileTypes(path: string): Promise<DirentEntry[]>;
-  capabilities: MountedFileSystemCapabilities;
-  describeEntry?(
-    path: string,
-    stat?: FsStat | null,
-  ): Promise<FileEntryDescriptor | null> | FileEntryDescriptor | null;
-}
-
-/**
- * Author-facing mounted filesystem input.
- *
- * Individual mounts may provide only the operations they can implement directly. The master router
- * normalizes these partial inputs into a full MountedFileSystem by supplying generic fallbacks and
- * throwing implementations for unsupported methods.
- */
-export interface MountedFileSystemInput extends Partial<IFileSystem> {
-  readdirWithFileTypes?(path: string): Promise<DirentEntry[]>;
-  capabilities?: Partial<MountedFileSystemCapabilities>;
-  describeEntry?(
-    path: string,
-    stat?: FsStat | null,
-  ): Promise<FileEntryDescriptor | null> | FileEntryDescriptor | null;
-}
-
-/**
- * Registered contributor for a single mount.
- *
- * Contributors may implement filesystem methods directly, or provide createFileSystem() when the
- * mounted filesystem must be bound to request/org-specific runtime state.
- */
-export type MountedFileSystemResolution =
-  | MountedFileSystemInput
+export type FileSystemResolution =
+  | IFileSystem
   | {
-      fs: MountedFileSystemInput;
+      fs: IFileSystem;
       mount?: Partial<FileMountMetadata>;
     };
 
-export interface FileContributor extends FileMountMetadata, MountedFileSystemInput {
+export interface FileContributor extends FileMountMetadata, IFileSystem {
   createFileSystem?(
     ctx: FilesContext,
-  ): Promise<MountedFileSystemResolution | null> | MountedFileSystemResolution | null;
+  ): Promise<FileSystemResolution | null> | FileSystemResolution | null;
 }
 
 export type ResolvedFileMount = FileMountMetadata & {
-  fs: MountedFileSystem;
+  fs: IFileSystem;
 };

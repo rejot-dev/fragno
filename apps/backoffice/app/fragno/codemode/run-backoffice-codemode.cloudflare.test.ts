@@ -4,7 +4,6 @@ import { env } from "cloudflare:workers";
 import { InMemoryFs } from "just-bash";
 
 import { MasterFileSystem } from "@/files/master-file-system";
-import { normalizeMountedFileSystem } from "@/files/mounted-file-system";
 import type { ResolvedFileMount } from "@/files/types";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import type { AutomationBindingsRuntime } from "@/fragno/runtime-tools/families/automations-bindings";
@@ -388,7 +387,7 @@ const createMount = (
   title: id,
   readOnly: false,
   persistence: "session",
-  fs: normalizeMountedFileSystem(createMountedInMemoryFs(files), { readOnly: false }),
+  fs: createMountedInMemoryFs(files),
 });
 
 const createMountedInMemoryFs = (files: Record<string, string | Uint8Array>) => {

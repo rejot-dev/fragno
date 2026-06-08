@@ -2,12 +2,12 @@ import { beforeEach, describe, expect, test } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
-import type { FileContent, FsStat } from "./interface";
+import { getBuiltInFileContributors } from "./contributors";
+import { createReadOnlyFileSystemError } from "./fs-errors";
+import { createUnsupportedFileSystem, type FileContent, type FsStat } from "./interface";
 import { createMasterFileSystem, MasterFileSystem } from "./master-file-system";
-import { normalizeMountedFileSystem } from "./mounted-file-system";
 import { isMountPointParentOf, normalizeMountPoint, normalizeRelativePath } from "./normalize-path";
-import { registerFileContributor, resetFileContributorsForTest } from "./registry";
-import type { FileContributor, FilesContext, MountedFileSystem } from "./types";
+import type { FileContributor, FilesContext } from "./types";
 
 const context = {
   orgId: "org_123",
@@ -23,16 +23,35 @@ const DIRECTORY_STAT: FsStat = {
   mtime: new Date(0),
 };
 
+const extraContributors: FileContributor[] = [];
+
+const registerFileContributor = (contributor: FileContributor): void => {
+  extraContributors.push(contributor);
+};
+
+const createTestMasterFileSystem = (ctx: FilesContext = context): Promise<MasterFileSystem> =>
+  createMasterFileSystem(ctx, {
+    contributors: [...getBuiltInFileContributors(), ...extraContributors],
+  });
+
 beforeEach(() => {
-  resetFileContributorsForTest();
+  extraContributors.length = 0;
 });
 
 describe("createMasterFileSystem", () => {
-  test("auto-registers built-ins and keeps deterministic display order", async () => {
+  test("uses explicit contributors without implicit built-ins", async () => {
+    const resolved = await createMasterFileSystem(context, {
+      contributors: [makeContributor("project", "/project")],
+    });
+
+    expect(resolved.mounts.map((mount) => mount.mountPoint)).toEqual(["/project"]);
+  });
+
+  test("uses built-ins by default and keeps deterministic display order", async () => {
     registerFileContributor(makeContributor("docs", "/docs"));
     registerFileContributor(makeContributor("examples", "/examples"));
 
-    const resolved = await createMasterFileSystem(context);
+    const resolved = await createTestMasterFileSystem();
 
     expect(resolved.mounts.map((mount) => mount.mountPoint)).toEqual([
       "/system",
@@ -44,11 +63,11 @@ describe("createMasterFileSystem", () => {
   });
 
   test("trims org ids and rejects missing org ids", async () => {
-    await expect(createMasterFileSystem({ ...context, orgId: "   " })).rejects.toThrow(
+    await expect(createTestMasterFileSystem({ ...context, orgId: "   " })).rejects.toThrow(
       /Missing organisation id in file system context/,
     );
 
-    const resolved = await createMasterFileSystem({ ...context, orgId: "  org_123  " });
+    const resolved = await createTestMasterFileSystem({ ...context, orgId: "  org_123  " });
     expect(resolved.mounts.map((mount) => mount.mountPoint)).toEqual([
       "/system",
       "/starter",
@@ -60,14 +79,14 @@ describe("createMasterFileSystem", () => {
     registerFileContributor(makeContributor("a", "/custom"));
     registerFileContributor(makeContributor("b", "/custom"));
 
-    await expect(createMasterFileSystem(context)).rejects.toThrow(/Duplicate file mount point/);
+    await expect(createTestMasterFileSystem()).rejects.toThrow(/Duplicate file mount point/);
   });
 
   test("rejects nested mount points instead of longest-prefix routing", async () => {
     registerFileContributor(makeContributor("archive", "/system/archive"));
 
-    await expect(createMasterFileSystem(context)).rejects.toThrow(
-      /Overlapping file mount points are not supported: '\/system\/archive' and '\/system'/,
+    await expect(createTestMasterFileSystem()).rejects.toThrow(
+      /Overlapping file mount points are not supported: '\/system' and '\/system\/archive'/,
     );
   });
 
@@ -84,7 +103,7 @@ describe("createMasterFileSystem", () => {
     registerFileContributor(projectContributor);
     registerFileContributor(makeContributor("generated", "/generated/deep"));
 
-    const master = await createMasterFileSystem(context);
+    const master = await createTestMasterFileSystem();
 
     await expect(master.stat("/generated")).resolves.toMatchObject({
       isDirectory: true,
@@ -105,7 +124,7 @@ describe("createMasterFileSystem", () => {
     registerFileContributor(projectContributor);
     registerFileContributor(makeContributor("generated", "/generated/deep"));
 
-    const master = await createMasterFileSystem(context);
+    const master = await createTestMasterFileSystem();
     const rootEntries = await master.readdirWithFileTypes("/");
     const projectEntries = await master.readdirWithFileTypes("/project");
 
@@ -117,7 +136,7 @@ describe("createMasterFileSystem", () => {
     );
   });
 
-  test("falls back between text and binary read methods", async () => {
+  test("does not synthesize missing text and binary read methods", async () => {
     const { contributor: binaryContributor } = await createInMemoryContributor({
       id: "binary",
       mountPoint: "/binary",
@@ -138,12 +157,10 @@ describe("createMasterFileSystem", () => {
     registerFileContributor(binaryContributor);
     registerFileContributor(textContributor);
 
-    const master = await createMasterFileSystem(context);
+    const master = await createTestMasterFileSystem();
 
-    await expect(master.readFile("/binary/data.txt")).resolves.toBe("hello");
-    await expect(master.readFileBuffer("/notes/todo.md")).resolves.toEqual(
-      new TextEncoder().encode("ship it"),
-    );
+    await expect(master.readFile("/binary/data.txt")).rejects.toThrow(/read/);
+    await expect(master.readFileBuffer("/notes/todo.md")).rejects.toThrow(/read/);
   });
 
   test("delegates read streams and surfaces unsupported stream mounts", async () => {
@@ -187,7 +204,7 @@ describe("createMasterFileSystem", () => {
     );
     registerFileContributor(textContributor);
 
-    const master = await createMasterFileSystem(context);
+    const master = await createTestMasterFileSystem();
 
     await expect(readStream(await master.readFileStream("/streams/big.bin"))).resolves.toBe(
       "stream me",
@@ -212,7 +229,7 @@ describe("createMasterFileSystem", () => {
 
     registerFileContributor(projectContributor);
 
-    const master = await createMasterFileSystem(context);
+    const master = await createTestMasterFileSystem();
 
     await master.appendFile("/project/README.md", " world");
     await master.appendFile("/project/notes.txt", "fresh");
@@ -240,7 +257,7 @@ describe("createMasterFileSystem", () => {
 
     registerFileContributor(projectContributor);
 
-    const master = await createMasterFileSystem(context);
+    const master = await createTestMasterFileSystem();
 
     await expect(master.cp("/system/SYSTEM.md", "/project/README.md")).rejects.toThrow(
       /Cross-mount copy/,
@@ -250,11 +267,12 @@ describe("createMasterFileSystem", () => {
     );
   });
 
-  test("treats recursive mkdir on existing paths as a no-op when mounts omit mkdir", async () => {
+  test("delegates mkdir support to the mounted filesystem", async () => {
     registerFileContributor(
       makeContributor("project", "/project", {
         readOnly: false,
         persistence: "session",
+        ...createUnsupportedFileSystem((operation, path) => new Error(`${operation} ${path}`)),
         stat: async (path) => {
           if (path === "/project" || path === "/project/existing") {
             return DIRECTORY_STAT;
@@ -270,12 +288,10 @@ describe("createMasterFileSystem", () => {
       }),
     );
 
-    const master = await createMasterFileSystem(context);
+    const master = await createTestMasterFileSystem();
 
-    await expect(master.mkdir("/project/existing", { recursive: true })).resolves.toBeUndefined();
-    await expect(master.mkdir("/project/new-folder")).rejects.toThrow(
-      /does not support creating directories/,
-    );
+    await expect(master.mkdir("/project/existing", { recursive: true })).rejects.toThrow(/mkdir/);
+    await expect(master.mkdir("/project/new-folder")).rejects.toThrow(/mkdir/);
   });
 
   test("rejects writes to synthetic parent directories outside mounted filesystems", async () => {
@@ -287,7 +303,7 @@ describe("createMasterFileSystem", () => {
     registerFileContributor(projectContributor);
     registerFileContributor(makeContributor("generated", "/generated/deep"));
 
-    const master = await createMasterFileSystem(context);
+    const master = await createTestMasterFileSystem();
 
     await expect(master.mkdir("/generated")).rejects.toThrow(/not inside a mounted filesystem/);
     await expect(master.writeFile("/generated", "nope")).rejects.toThrow(
@@ -352,7 +368,7 @@ describe("createMasterFileSystem", () => {
       }),
     );
 
-    const master = await createMasterFileSystem(context);
+    const master = await createTestMasterFileSystem();
 
     await master.chmod("/ops/file.txt", 0o600);
     await master.symlink("/ops/file.txt", "/ops/link.txt");
@@ -384,7 +400,7 @@ describe("createMasterFileSystem", () => {
     registerFileContributor(projectContributor);
     registerFileContributor(makeContributor("generated", "/generated/deep"));
 
-    const master = await createMasterFileSystem(context);
+    const master = await createTestMasterFileSystem();
 
     await expect(master.realpath("/generated/")).resolves.toBe("/generated");
     await expect(master.realpath("/project/README.md")).resolves.toBe("/project/README.md");
@@ -402,7 +418,7 @@ describe("createMasterFileSystem", () => {
   });
 
   test("dynamically mounts and unmounts filesystems", async () => {
-    const master = await createMasterFileSystem(context);
+    const master = await createTestMasterFileSystem();
     const initialMountCount = master.mounts.length;
 
     const eventJson = '{"id":"test"}';
@@ -414,23 +430,20 @@ describe("createMasterFileSystem", () => {
       title: "Context",
       readOnly: true,
       persistence: "session",
-      fs: normalizeMountedFileSystem(
-        {
-          readFile: async () => eventJson,
-          readFileBuffer: async () => new TextEncoder().encode(eventJson),
-          stat: async () => ({
-            isFile: true,
-            isDirectory: false,
-            isSymbolicLink: false,
-            mode: 0o444,
-            size: eventJson.length,
-            mtime: new Date(0),
-          }),
-          readdir: async () => ["event.json"],
-          getAllPaths: () => ["/context", "/context/event.json"],
-        },
-        { readOnly: true },
-      ),
+      fs: createUnsupportedFileSystem(createReadOnlyFileSystemError, {
+        readFile: async () => eventJson,
+        readFileBuffer: async () => new TextEncoder().encode(eventJson),
+        stat: async () => ({
+          isFile: true,
+          isDirectory: false,
+          isSymbolicLink: false,
+          mode: 0o444,
+          size: eventJson.length,
+          mtime: new Date(0),
+        }),
+        readdir: async () => ["event.json"],
+        getAllPaths: () => ["/context", "/context/event.json"],
+      }),
     });
 
     expect(master.mounts.length).toBe(initialMountCount + 1);
@@ -444,7 +457,7 @@ describe("createMasterFileSystem", () => {
   });
 
   test("rejects duplicate dynamic mount points", async () => {
-    const master = await createMasterFileSystem(context);
+    const master = await createTestMasterFileSystem();
 
     const fs = new InMemoryFs();
     const mount = {
@@ -454,15 +467,15 @@ describe("createMasterFileSystem", () => {
       title: "Dup",
       readOnly: false,
       persistence: "session" as const,
-      fs: normalizeMountedFileSystem(fs, { readOnly: false }),
+      fs: fs,
     };
 
     expect(() => master.mount(mount)).toThrow(/Duplicate file mount point/);
   });
 
   test("rejects overlapping dynamic mount points", async () => {
-    const master = await createMasterFileSystem(context);
-    const fs = normalizeMountedFileSystem(new InMemoryFs(), { readOnly: false });
+    const master = await createTestMasterFileSystem();
+    const fs = new InMemoryFs();
 
     expect(() =>
       master.mount({
@@ -478,7 +491,7 @@ describe("createMasterFileSystem", () => {
   });
 
   test("rejects unmount of non-existent mount point", async () => {
-    const master = await createMasterFileSystem(context);
+    const master = await createTestMasterFileSystem();
     expect(() => master.unmount("/nonexistent")).toThrow(/No mount found/);
   });
 
@@ -492,23 +505,20 @@ describe("createMasterFileSystem", () => {
       title: "Temp",
       readOnly: true,
       persistence: "session",
-      fs: normalizeMountedFileSystem(
-        {
-          readFile: async () => "hello",
-          readFileBuffer: async () => new TextEncoder().encode("hello"),
-          stat: async () => ({
-            isFile: true,
-            isDirectory: false,
-            isSymbolicLink: false,
-            mode: 0o444,
-            size: 5,
-            mtime: new Date(0),
-          }),
-          readdir: async () => ["data.txt"],
-          getAllPaths: () => ["/temp", "/temp/data.txt"],
-        },
-        { readOnly: true },
-      ),
+      fs: createUnsupportedFileSystem(createReadOnlyFileSystemError, {
+        readFile: async () => "hello",
+        readFileBuffer: async () => new TextEncoder().encode("hello"),
+        stat: async () => ({
+          isFile: true,
+          isDirectory: false,
+          isSymbolicLink: false,
+          mode: 0o444,
+          size: 5,
+          mtime: new Date(0),
+        }),
+        readdir: async () => ["data.txt"],
+        getAllPaths: () => ["/temp", "/temp/data.txt"],
+      }),
     });
 
     await expect(master.readFile("/temp/data.txt")).resolves.toBe("hello");
@@ -524,6 +534,7 @@ const MOUNT_TEMPLATE = {
   title: "Root",
   readOnly: true,
   persistence: "persistent" as const,
+  ...createUnsupportedFileSystem((operation, path) => new Error(`${operation} ${path}`)),
   stat: async () => DIRECTORY_STAT,
   readdir: async () => [],
 };
@@ -602,11 +613,12 @@ async function createInMemoryContributor(options: InMemoryContributorOptions) {
     title: options.title ?? options.id,
     readOnly: options.readOnly ?? false,
     persistence: options.persistence ?? "session",
+    ...createUnsupportedFileSystem((operation, path) => new Error(`${operation} ${path}`)),
     stat: fs.stat.bind(fs),
     readdir: fs.readdir.bind(fs),
-    ...(typeof (fs as unknown as MountedFileSystem).readdirWithFileTypes === "function"
+    ...(typeof fs.readdirWithFileTypes === "function"
       ? {
-          readdirWithFileTypes: (fs as unknown as MountedFileSystem).readdirWithFileTypes.bind(fs),
+          readdirWithFileTypes: fs.readdirWithFileTypes.bind(fs),
         }
       : {}),
     ...(options.includeReadFile === false ? {} : { readFile: fs.readFile.bind(fs) }),
@@ -637,10 +649,12 @@ async function createInMemoryContributor(options: InMemoryContributorOptions) {
             removePath(path);
           },
         }),
-    ...(options.includeRealpath === false ||
-    typeof (fs as unknown as MountedFileSystem).realpath !== "function"
+    appendFile: fs.appendFile.bind(fs),
+    cp: fs.cp.bind(fs),
+    mv: fs.mv.bind(fs),
+    ...(options.includeRealpath === false || typeof fs.realpath !== "function"
       ? {}
-      : { realpath: (fs as unknown as MountedFileSystem).realpath.bind(fs) }),
+      : { realpath: fs.realpath.bind(fs) }),
     getAllPaths: () => Array.from(knownPaths).sort(),
   };
 

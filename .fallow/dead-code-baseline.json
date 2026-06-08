@@ -348,7 +348,6 @@
     "apps/backoffice/workers/sandbox-registry.do.ts:SandboxRegistry.trackInstance",
     "apps/backoffice/workers/sandbox-registry.do.ts:SandboxRegistry.untrackInstance",
     "apps/backoffice/workers/telegram.do.ts:Telegram.alarm",
-    "apps/backoffice/workers/telegram.do.ts:Telegram.sendAutomationReply",
     "apps/backoffice/workers/telegram.do.ts:Telegram.getAdminConfig",
     "apps/backoffice/workers/telegram.do.ts:Telegram.getHookQueue",
     "apps/backoffice/workers/upload.do.ts:Upload.getAdminConfig",

@@ -21,34 +21,12 @@ beforeEach(() => {
 });
 
 describe("automation backoffice workspace data", () => {
-  test("shows unbound workspace scripts alongside manifest-backed scripts", async () => {
+  test("shows filesystem scripts directly", async () => {
     const fileSystem = createStubAutomationFileSystem({
-      "/starter/automations/bindings.json": JSON.stringify(
-        {
-          version: 1,
-          bindings: [
-            {
-              id: "bound-script",
-              source: "telegram",
-              eventType: "message.received",
-              enabled: true,
-              script: {
-                key: "bound-script",
-                name: "Bound script",
-                engine: "bash",
-                path: "scripts/bound.sh",
-                version: 2,
-                agent: null,
-                env: {},
-              },
-            },
-          ],
-        },
-        null,
-        2,
-      ),
-      "/starter/automations/scripts/bound.sh": 'echo "bound"',
+      "/starter/automations/scripts/router.cm.js": "async () => true",
       "/starter/automations/scripts/unbound.sh": 'echo "unbound"',
+      "/starter/automations/scripts/workflow.workflow.js":
+        "defineWorkflow({ name: 'x' }, async () => {})",
     });
     createOrgFileSystemMock.mockResolvedValue(fileSystem.fs);
 
@@ -58,70 +36,32 @@ describe("automation backoffice workspace data", () => {
     });
 
     expect(result.scriptsError).toBeNull();
-    expect(result.bindingsError).toBeNull();
-    expect(result.bindings).toEqual([
-      expect.objectContaining({
-        id: "bound-script",
-        scriptPath: "scripts/bound.sh",
-      }),
-    ]);
     expect(result.scripts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "workspace-script:scripts/bound.sh",
-          key: "bound-script",
-          name: "Bound script",
-          path: "scripts/bound.sh",
-          version: 2,
-          bindingCount: 1,
-          enabledBindingCount: 1,
+          id: "workspace-script:scripts/router.cm.js",
+          key: "router.cm",
+          path: "scripts/router.cm.js",
           enabled: true,
         }),
         expect.objectContaining({
           id: "workspace-script:scripts/unbound.sh",
           key: "unbound",
-          name: "Unbound",
           path: "scripts/unbound.sh",
-          version: null,
-          bindingCount: 0,
-          enabledBindingCount: 0,
+          enabled: true,
+        }),
+        expect.objectContaining({
+          id: "workspace-script:scripts/workflow.workflow.js",
+          path: "scripts/workflow.workflow.js",
           enabled: false,
         }),
       ]),
     );
-    expect(fileSystem.readFileCalls).toEqual(["/starter/automations/bindings.json"]);
-  });
-
-  test("keeps filesystem scripts visible when bindings.json is invalid", async () => {
-    const fileSystem = createStubAutomationFileSystem({
-      "/starter/automations/bindings.json": "{not-json}",
-      "/starter/automations/scripts/recoverable.sh": 'echo "still here"',
-    });
-    createOrgFileSystemMock.mockResolvedValue(fileSystem.fs);
-
-    const result = await loadAutomationWorkspaceData({
-      context: mockContext,
-      orgId: "acme-org",
-    });
-
-    expect(result.scripts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "workspace-script:scripts/recoverable.sh",
-          path: "scripts/recoverable.sh",
-          bindingCount: 0,
-        }),
-      ]),
-    );
-    expect(fileSystem.readFileCalls).toEqual(["/starter/automations/bindings.json"]);
-    expect(result.bindings).toEqual([]);
-    expect(result.bindingsError).toContain("Automation manifest");
-    expect(result.scriptsError).toContain("Automation manifest");
+    expect(fileSystem.readFileCalls).toEqual([]);
   });
 
   test("reads the selected script source only when the user opens it", async () => {
     const fileSystem = createStubAutomationFileSystem({
-      "/starter/automations/bindings.json": JSON.stringify({ version: 1, bindings: [] }),
       "/starter/automations/scripts/lazy.sh": 'echo "lazy"',
     });
     createOrgFileSystemMock.mockResolvedValue(fileSystem.fs);
@@ -153,107 +93,62 @@ function createStubAutomationFileSystem(files: Record<string, string>) {
     }
   }
 
-  const listChildren = (path: string) => {
-    const normalized = normalizeDirectory(path);
-    const children = new Set<string>();
+  const readFileCalls: string[] = [];
+  const fs = {
+    async readFile(path: string) {
+      readFileCalls.push(path);
+      const content = files[path];
+      if (content === undefined) {
+        throw new Error(`File not found: ${path}`);
+      }
+      return content;
+    },
+    async readFileBuffer(path: string) {
+      return new TextEncoder().encode(await this.readFile(path));
+    },
+    async readdir(path: string) {
+      const prefix = path.endsWith("/") ? path : `${path}/`;
+      const names = new Set<string>();
 
-    for (const directoryPath of directories) {
-      if (directoryPath === normalized.replace(/\/+$/, "")) {
-        continue;
+      for (const directory of directories) {
+        if (directory === path || !directory.startsWith(prefix)) {
+          continue;
+        }
+        const child = directory.slice(prefix.length).split("/")[0];
+        if (child) {
+          names.add(child);
+        }
       }
 
-      if (!directoryPath.startsWith(`${normalized}`)) {
-        continue;
+      for (const filePath of Object.keys(files)) {
+        if (!filePath.startsWith(prefix)) {
+          continue;
+        }
+        const child = filePath.slice(prefix.length).split("/")[0];
+        if (child) {
+          names.add(child);
+        }
       }
 
-      const remainder = directoryPath.slice(normalized.length);
-      const nextSegment = remainder.split("/").filter(Boolean)[0];
-      if (nextSegment) {
-        children.add(nextSegment);
-      }
-    }
-
-    for (const filePath of Object.keys(files)) {
-      if (!filePath.startsWith(normalized)) {
-        continue;
-      }
-
-      const remainder = filePath.slice(normalized.length);
-      const nextSegment = remainder.split("/").filter(Boolean)[0];
-      if (nextSegment) {
-        children.add(nextSegment);
-      }
-    }
-
-    return Array.from(children).sort((left, right) => left.localeCompare(right));
+      return [...names].sort();
+    },
+    async stat(path: string) {
+      return {
+        isFile: Object.hasOwn(files, path),
+        isDirectory: directories.has(path),
+        isSymbolicLink: false,
+        mode: Object.hasOwn(files, path) ? 0o644 : 0o755,
+        size: files[path]?.length ?? 0,
+        mtime: new Date(0),
+      };
+    },
+    resolvePath(base: string, child: string) {
+      return `${base.replace(/\/$/u, "")}/${child}`;
+    },
+    getAllPaths() {
+      return [...directories, ...Object.keys(files)].sort();
+    },
   };
 
-  const readFileCalls = [] as string[];
-
-  return {
-    readFileCalls,
-    fs: {
-      async readFile(path: string) {
-        readFileCalls.push(path);
-        if (!(path in files)) {
-          throw new Error(`File not found: ${path}`);
-        }
-
-        return files[path]!;
-      },
-      async readFileBuffer(path: string) {
-        readFileCalls.push(path);
-        if (!(path in files)) {
-          throw new Error(`File not found: ${path}`);
-        }
-
-        return new TextEncoder().encode(files[path]!);
-      },
-      async stat(path: string) {
-        if (path in files) {
-          return {
-            isFile: true,
-            isDirectory: false,
-            isSymbolicLink: false,
-            mode: 0o644,
-            size: files[path]!.length,
-            mtime: new Date(0),
-          };
-        }
-
-        if (
-          directories.has(path.replace(/\/+$/, "")) ||
-          directories.has(normalizeDirectory(path))
-        ) {
-          return {
-            isFile: false,
-            isDirectory: true,
-            isSymbolicLink: false,
-            mode: 0o755,
-            size: 0,
-            mtime: new Date(0),
-          };
-        }
-
-        throw new Error(`Path not found: ${path}`);
-      },
-      async readdir(path: string) {
-        return listChildren(path);
-      },
-      resolvePath(base: string, path: string) {
-        const normalizedBase = base.replace(/\/+$/, "");
-        const normalizedChild = path.replace(/^\/+/, "");
-        return normalizedBase ? `${normalizedBase}/${normalizedChild}` : `/${normalizedChild}`;
-      },
-      getAllPaths() {
-        return [...directories, ...Object.keys(files)].sort((left, right) =>
-          left.localeCompare(right),
-        );
-      },
-    } as never,
-  };
-}
-
-function normalizeDirectory(path: string) {
-  return path === "/" ? path : `${path.replace(/\/+$/, "")}/`;
+  return { fs, readFileCalls };
 }

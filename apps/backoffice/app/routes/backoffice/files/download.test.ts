@@ -19,8 +19,8 @@ vi.mock("@/files", async (importOriginal) => {
 
 import {
   createMasterFileSystem,
-  registerFileContributor,
-  resetFileContributorsForTest,
+  createUnsupportedFileSystem,
+  getBuiltInFileContributors,
   type FileContributor,
 } from "@/files";
 
@@ -28,13 +28,22 @@ import { buildBackofficeLoginPath } from "../auth-navigation";
 import * as filesData from "./data";
 import { loader, MAX_BUFFERED_DOWNLOAD_BYTES } from "./download";
 
+const contributors: FileContributor[] = [];
+
+const registerFileContributor = (contributor: FileContributor): void => {
+  contributors.push(contributor);
+};
+
 describe("backoffice files download route", () => {
   beforeEach(() => {
-    resetFileContributorsForTest();
+    contributors.length = 0;
     getAuthMeMock.mockReset();
     createOrgFileSystemMock.mockReset();
     createOrgFileSystemMock.mockImplementation(() =>
-      createMasterFileSystem({ orgId: "org_123", uploadConfig: null }),
+      createMasterFileSystem(
+        { orgId: "org_123", uploadConfig: null },
+        { contributors: [...getBuiltInFileContributors(), ...contributors] },
+      ),
     );
   });
 
@@ -235,6 +244,7 @@ const createDisappearingFileContributor = (): FileContributor => ({
   title: "Volatile",
   readOnly: true,
   persistence: "session",
+  ...createUnsupportedFileSystem((operation, path) => new Error(`${operation} ${path}`)),
   async stat(path) {
     if (path !== "/volatile/gone.txt") {
       throw new Error("Path not found.");
@@ -271,6 +281,7 @@ const createStreamingFileContributor = ({
   title: "Streaming",
   readOnly: true,
   persistence: "session",
+  ...createUnsupportedFileSystem((operation, path) => new Error(`${operation} ${path}`)),
   async stat(candidatePath) {
     if (candidatePath !== path) {
       throw new Error("Path not found.");
@@ -304,6 +315,7 @@ const createBufferOnlyFileContributor = ({
   title: "Buffered",
   readOnly: true,
   persistence: "session",
+  ...createUnsupportedFileSystem((operation, path) => new Error(`${operation} ${path}`)),
   async stat(candidatePath) {
     if (candidatePath !== path) {
       throw new Error("Path not found.");

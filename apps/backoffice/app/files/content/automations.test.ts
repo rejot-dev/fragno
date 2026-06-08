@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { AUTOMATION_SOURCE_EVENT_TYPES } from "@/fragno/automation/contracts";
 
-import { STARTER_AUTOMATION_CONTENT } from "./automations";
+import { STARTER_AUTOMATION_CONTENT, STARTER_AUTOMATION_SCRIPT_PATHS } from "./automations";
 
 type StarterAutomationPath = keyof typeof STARTER_AUTOMATION_CONTENT;
 
@@ -29,7 +29,7 @@ describe("starter automation content", () => {
   });
 
   test("workflow starter scripts use the flat codemode provider APIs", () => {
-    const workflow = readStarterAutomation("automations/telegram-claim-linking.workflow.js");
+    const workflow = readStarterAutomation(STARTER_AUTOMATION_SCRIPT_PATHS.telegramClaimLinking);
     const unsupportedNestedProviderCalls = Array.from(
       workflow.matchAll(/\b(?:otp|automations)\.identity\.[A-Za-z_$][\w$]*/gu),
       (match) => match[0],
@@ -47,8 +47,8 @@ describe("starter automation content", () => {
   });
 
   test("starter router starts event-id keyed workflows and routes OTP completions by OTP id", () => {
-    const router = readStarterAutomation("automations/router.js");
-    const workflow = readStarterAutomation("automations/telegram-claim-linking.workflow.js");
+    const router = readStarterAutomation(STARTER_AUTOMATION_SCRIPT_PATHS.router);
+    const workflow = readStarterAutomation(STARTER_AUTOMATION_SCRIPT_PATHS.telegramClaimLinking);
     const identityClaimCompleted = AUTOMATION_SOURCE_EVENT_TYPES.otp.identityClaimCompleted;
 
     expect({
@@ -62,10 +62,10 @@ describe("starter automation content", () => {
       workflowWaitsForWorkflowSafeEvent: workflow.includes('type: "identity-claim-completed"'),
       routerStartsDelayedTestWorkflow:
         router.includes("workflowScriptPath:") &&
-        router.includes('"/workspace/automations/telegram-delayed-test-reply.workflow.js"'),
+        router.includes('"/starter/automations/scripts/telegram-delayed-test-reply.workflow.js"'),
       routerStartsPiWorkflow:
         router.includes('remoteWorkflowName: "telegram-pi-session"') &&
-        router.includes('"/workspace/automations/telegram-pi-session.workflow.js"'),
+        router.includes('"/starter/automations/scripts/telegram-pi-session.workflow.js"'),
     }).toEqual({
       routerHandlesContractEvent: true,
       routerFiltersTelegramClaims: true,

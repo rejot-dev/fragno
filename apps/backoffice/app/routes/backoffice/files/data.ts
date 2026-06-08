@@ -3,11 +3,13 @@ import type { RouterContextProvider } from "react-router";
 import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import {
   createOrgFileSystem,
+  ensureFolderPath,
   getFilesNodeDetail,
   listFilesChildren,
   listFilesTree,
   performFilesAction,
   resolveFilesTarget,
+  stripTrailingSlash,
   type FilesActionResult,
   type FilesExplorerTreeNode,
   type FilesNodeDetail,
@@ -222,20 +224,4 @@ function getExpandedFolderPaths(mountPoint: string, normalizedPath: string): str
   }
 
   return expanded;
-}
-
-function stripTrailingSlash(path: string) {
-  if (path === "/") {
-    return path;
-  }
-
-  return path.replace(/\/+$/, "");
-}
-
-function ensureFolderPath(path: string) {
-  if (path === "/") {
-    return path;
-  }
-
-  return path.endsWith("/") ? path : `${path}/`;
 }

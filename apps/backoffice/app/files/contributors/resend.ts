@@ -7,15 +7,14 @@ import {
   type ResendRuntime,
 } from "@/fragno/runtime-tools/families/resend-runtime";
 
-import { normalizeMountedFileSystem } from "../mounted-file-system";
+import {
+  createPathNotFoundFileSystemError,
+  createReadOnlyFileSystemError,
+  createUnsupportedOperationFileSystemError,
+} from "../fs-errors";
+import { createUnsupportedFileSystem, type IFileSystem } from "../interface";
 import { normalizeMountPoint } from "../normalize-path";
-import type {
-  FileContributor,
-  FileEntryDescriptor,
-  FileMountMetadata,
-  FilesContext,
-  MountedFileSystem,
-} from "../types";
+import type { FileContributor, FileMountMetadata, FilesContext } from "../types";
 
 export const RESEND_FILE_CONTRIBUTOR_ID = "resend";
 export const RESEND_FILE_MOUNT_ID = "resend";
@@ -40,6 +39,7 @@ const FILE_ROOT = normalizeMountPoint(RESEND_FILE_MOUNT_POINT);
 
 export const resendFileContributor: FileContributor = {
   ...resendFileMount,
+  ...createUnsupportedFileSystem(createUnsupportedOperationFileSystemError),
   createFileSystem(ctx) {
     const runtime = createResendRuntime(ctx);
     if (!runtime) {
@@ -92,29 +92,7 @@ export const resendFileContributor: FileContributor = {
       return index.get(threadId) ?? null;
     };
 
-    const fs: MountedFileSystem = normalizeMountedFileSystem({
-      async describeEntry(path, stat) {
-        const normalizedPath = normalizePath(path);
-        if (normalizedPath === FILE_ROOT) {
-          return {
-            kind: "folder",
-            path: FILE_ROOT,
-            updatedAt: UNKNOWN_MTIME,
-          };
-        }
-
-        const thread = await getThreadByPath(normalizedPath);
-        if (!thread) {
-          return stat
-            ? {
-                kind: stat.isDirectory ? "folder" : "file",
-                path: normalizedPath,
-              }
-            : null;
-        }
-
-        return threadDescriptor(thread);
-      },
+    const fs: IFileSystem = createUnsupportedFileSystem(createReadOnlyFileSystemError, {
       async exists(path) {
         const normalizedPath = normalizePath(path);
         if (normalizedPath === FILE_ROOT) {
@@ -139,7 +117,7 @@ export const resendFileContributor: FileContributor = {
 
         const thread = await getThreadByPath(normalizedPath);
         if (!thread) {
-          throw new Error("Path not found.");
+          throw createPathNotFoundFileSystemError("stat", path);
         }
 
         return {
@@ -181,7 +159,7 @@ export const resendFileContributor: FileContributor = {
         const normalizedPath = normalizePath(path);
         const thread = await getThreadByPath(normalizedPath);
         if (!thread) {
-          throw new Error("File not found.");
+          throw createPathNotFoundFileSystemError("read", path);
         }
 
         return getThreadContent(thread);
@@ -189,7 +167,7 @@ export const resendFileContributor: FileContributor = {
       async readFileBuffer(path) {
         const content = await getThreadByPath(normalizePath(path));
         if (!content) {
-          throw new Error("File not found.");
+          throw createPathNotFoundFileSystemError("read", path);
         }
 
         const markdown = await getThreadContent(content);
@@ -198,34 +176,7 @@ export const resendFileContributor: FileContributor = {
       getAllPaths() {
         return [FILE_ROOT];
       },
-      capabilities: {
-        writeFile: false,
-        mkdir: false,
-        rm: false,
-      },
     });
-
-    const threadDescriptor = (thread: ResendThreadSummary): FileEntryDescriptor => {
-      return {
-        kind: "file",
-        path: threadFilePath(thread.id),
-        title: thread.subject ?? `Thread ${thread.id}`,
-        sizeBytes: thread.messageCount * 120,
-        contentType: "text/markdown",
-        updatedAt:
-          toDate(thread.lastMessageAt) ??
-          toDate(thread.updatedAt) ??
-          toDate(thread.createdAt) ??
-          UNKNOWN_MTIME,
-        metadata: {
-          threadId: thread.id,
-          subject: thread.subject,
-          participants: thread.participants,
-          messageCount: thread.messageCount,
-          lastDirection: thread.lastDirection,
-        },
-      };
-    };
 
     return {
       fs,
@@ -323,8 +274,6 @@ const parseThreadIdFromPath = (path: string): string | null => {
 };
 
 const threadFileName = (threadId: string) => `${encodeURIComponent(threadId)}.md`;
-
-const threadFilePath = (threadId: string) => `${FILE_ROOT}/${threadFileName(threadId)}`;
 
 const normalizePath = (path: string): string => {
   const replaced = path.trim().replaceAll("\\", "/");

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { type MountedFileSystem } from "@/files";
+import type { IFileSystem } from "@/files";
 
 import { resendFileContributor } from "./resend";
 
@@ -191,7 +191,7 @@ describe("resend file contributor", () => {
       throw new Error("Expected contributor filesystem to be resolved.");
     }
 
-    const fs = ("fs" in resolved ? resolved.fs : resolved) as MountedFileSystem;
+    const fs = ("fs" in resolved ? resolved.fs : resolved) as IFileSystem;
     await expect(fs.readdir("/resend")).resolves.toEqual(["thread-1.md"]);
   });
 
@@ -209,7 +209,7 @@ describe("resend file contributor", () => {
       throw new Error("Expected contributor filesystem to be resolved.");
     }
 
-    const fs = ("fs" in resolved ? resolved.fs : resolved) as MountedFileSystem;
+    const fs = ("fs" in resolved ? resolved.fs : resolved) as IFileSystem;
     const markdown = await fs.readFile("/resend/thread-1.md");
     await expect(fs.readdir("/resend")).resolves.toEqual(["thread-1.md"]);
 
@@ -219,14 +219,9 @@ describe("resend file contributor", () => {
     expect(markdown).toContain("- **From:** support@example.com");
     expect(markdown).toContain("- **From:** customer@example.com");
 
-    const detail = await fs.describeEntry?.("/resend/thread-1.md");
-    expect(detail).toMatchObject({
-      kind: "file",
-      path: "/resend/thread-1.md",
-      metadata: {
-        messageCount: 2,
-        threadId: "thread-1",
-      },
+    await expect(fs.stat("/resend/thread-1.md")).resolves.toMatchObject({
+      isFile: true,
+      size: 240,
     });
     expect(fs.getAllPaths()).toEqual(["/resend"]);
   });
@@ -246,7 +241,7 @@ describe("resend file contributor", () => {
       throw new Error("Expected contributor filesystem to be resolved.");
     }
 
-    const fs = ("fs" in resolved ? resolved.fs : resolved) as MountedFileSystem;
+    const fs = ("fs" in resolved ? resolved.fs : resolved) as IFileSystem;
 
     await expect(fs.readdir("/resend")).resolves.toEqual(["thread-1.md"]);
     await expect(fs.readFile("/resend/thread-1.md")).resolves.toContain("Thanks for the update");

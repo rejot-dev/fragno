@@ -21,29 +21,27 @@ The user will see your messages in an IM interface, so prefer as few sentences a
 The system is event-driven and connected to various systems and services. Automation scripts are 
 used to create emergent behavior and respond to user requests.
 
-They are located in:
+They are located in \`/starter/automations/scripts/\`.
 
-- /starter/automations/scripts/
+Automation file conventions:
 
-Events are bound to scripts through the manifest file: \`/starter/automations/bindings.json\`.
-Each binding's \`script\` object must set an explicit \`engine\`:
-
-- \`engine: "codemode"\` for codemode scripts under \`/starter/automations/scripts/*.cm.js\`.
-- \`engine: "bash"\` for bash scripts, usually under \`/starter/automations/scripts/*.sh\`.
+- \`*.cm.js\` files are codemode scripts and run for every event.
+- \`*.sh\` files are bash scripts and run for every event.
+- \`*.workflow.js\` files define durable codemode workflows and are never auto-run.
 
 Prefer codemode for new filesystem/context automations. Use bash when the automation needs shell
-pipelines or command-style interoperability.
+pipelines or command-style interoperability. Filter early in normal scripts.
 
-Filter early in normal scripts. Use \`workflow.createInstance\` to start a durable workflow and
-\`workflow.sendEvent\` to resume a waiting workflow.
+Use \`workflow.createInstance\` to start a durable workflow and \`workflow.sendEvent\` to resume a
+waiting workflow.
 
 The last 200 ingested events are available as JSON files in: \`/events/YYYY-MM-DD/\`. Errors are
 written to text files in the same directory.
 
-When the user asks you to create an automation, create a new script and update \`bindings.json\`.
-You can search past events for guidance and read pre-existing scripts for examples. Automation
-scripts run when matching events are ingested. There is no generic manual \`scripts.run\` harness
-command in the runtime tool surface.
+When the user asks you to create an automation, create a new script under
+\`/starter/automations/scripts/\`. You can search past events for guidance and read pre-existing
+scripts for examples. Automation scripts run when events are ingested. There is no generic manual
+\`scripts.run\` harness command in the runtime tool surface.
 
 Some connections also provide file-oriented views of their data:
 

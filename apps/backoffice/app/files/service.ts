@@ -43,13 +43,6 @@ export async function listFilesChildren(
     return [];
   }
 
-  if (!target.isRoot) {
-    const entry = await describePath(target.master, target.mount, target.normalizedPath);
-    if (!entry || entry.kind !== "folder") {
-      return [];
-    }
-  }
-
   const children = await describeDirectoryEntries(
     target.master,
     target.mount,
@@ -160,38 +153,12 @@ const describePath = async (
   fallbackStat?: FsStat,
 ): Promise<FileEntryDescriptor | null> => {
   const stat = fallbackStat ?? (await readStat(master, path));
-  if (!stat) {
-    return null;
-  }
-
-  const described = await readDescriptor(mount, path, stat);
-  return normalizeEntry(
-    mount,
-    described
-      ? enrichDescriptorWithStat(path, described, stat)
-      : createDescriptorFromStat(path, stat),
-  );
+  return stat ? createDescriptorFromStat(path, stat) : null;
 };
 
 const readStat = async (master: MasterFileSystem, path: string): Promise<FsStat | null> => {
   try {
     return await master.stat(path);
-  } catch {
-    return null;
-  }
-};
-
-const readDescriptor = async (
-  mount: ResolvedFileMount,
-  path: string,
-  stat?: FsStat | null,
-): Promise<FileEntryDescriptor | null> => {
-  if (!mount.fs.describeEntry) {
-    return null;
-  }
-
-  try {
-    return await mount.fs.describeEntry(path, stat);
   } catch {
     return null;
   }
@@ -310,9 +277,9 @@ const createCapabilities = (
   mount: ResolvedFileMount,
   nodeKind: FilesExplorerNode["kind"],
 ): FilesNodeCapabilities => ({
-  canCreateFolder: !mount.readOnly && nodeKind !== "file" && mount.fs.capabilities.mkdir,
-  canWriteText: !mount.readOnly && nodeKind === "file" && mount.fs.capabilities.writeFile,
-  canDelete: !mount.readOnly && nodeKind !== "root" && mount.fs.capabilities.rm,
+  canCreateFolder: !mount.readOnly && nodeKind !== "file",
+  canWriteText: !mount.readOnly && nodeKind === "file",
+  canDelete: !mount.readOnly && nodeKind !== "root",
 });
 
 const readTextContent = async (target: ResolvedFilesTarget): Promise<string | null> => {
@@ -321,32 +288,6 @@ const readTextContent = async (target: ResolvedFilesTarget): Promise<string | nu
   } catch {
     return null;
   }
-};
-
-const normalizeEntry = (
-  mount: ResolvedFileMount,
-  entry: FileEntryDescriptor,
-): FileEntryDescriptor => {
-  const normalizedPath = normalizeEntryPath(mount.mountPoint, entry.path, entry.kind);
-  return {
-    ...entry,
-    path: normalizedPath,
-    title: entry.title ?? getLeafSegment(stripTrailingSlash(normalizedPath)),
-    children: entry.children
-      ? entry.children.map((child) => normalizeEntry(mount, child)).sort(compareEntries)
-      : undefined,
-  };
-};
-
-const normalizeEntryPath = (
-  mountPoint: string,
-  value: string,
-  kind: FileEntryDescriptor["kind"],
-): string => {
-  const normalized = normalizeExplorerPath(
-    value.startsWith("/") ? value : `${mountPoint}/${value}`,
-  );
-  return kind === "folder" ? ensureFolderPath(normalized) : stripTrailingSlash(normalized);
 };
 
 const compareEntries = (left: FileEntryDescriptor, right: FileEntryDescriptor): number => {
@@ -392,18 +333,6 @@ const createSyntheticStat = (entry: DirentEntry): FsStat => ({
   mode: entry.isDirectory ? 0o755 : 0o644,
   size: 0,
   mtime: UNKNOWN_MTIME,
-});
-
-const enrichDescriptorWithStat = (
-  path: string,
-  entry: FileEntryDescriptor,
-  stat?: FsStat | null,
-): FileEntryDescriptor => ({
-  ...entry,
-  path,
-  kind: entry.kind ?? (stat?.isDirectory ? "folder" : "file"),
-  sizeBytes: entry.sizeBytes ?? (stat?.isFile ? stat.size : undefined),
-  updatedAt: entry.updatedAt ?? stat?.mtime ?? undefined,
 });
 
 const createDescriptorFromStat = (path: string, stat: FsStat): FileEntryDescriptor => ({
