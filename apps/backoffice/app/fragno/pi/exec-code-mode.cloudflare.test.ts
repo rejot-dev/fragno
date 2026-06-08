@@ -228,9 +228,11 @@ describe("Pi execCodeMode tool", () => {
         createInstance: async () => {
           throw new Error("unused");
         },
-        getStatus: async (input) => ({
-          status: "complete",
-          output: input,
+        getStatus: async () => ({ status: "complete" }),
+        getInstance: async (input) => ({
+          id: input.instanceId,
+          details: { status: "complete", output: input },
+          meta: {},
         }),
         sendEvent: async (input) => input,
       },
@@ -238,7 +240,7 @@ describe("Pi execCodeMode tool", () => {
 
     const result = await tool.execute("tool-call-1", {
       code: `async () => {
-        return await workflow.getStatus({
+        return await workflow.getInstance({
           workflowName: "pi-codemode-script",
           instanceId: "instance-1",
         });
@@ -247,10 +249,13 @@ describe("Pi execCodeMode tool", () => {
 
     expect(result.details).toMatchObject({
       result: {
-        status: "complete",
-        output: {
-          workflowName: "pi-codemode-script",
-          instanceId: "instance-1",
+        id: "instance-1",
+        details: {
+          status: "complete",
+          output: {
+            workflowName: "pi-codemode-script",
+            instanceId: "instance-1",
+          },
         },
       },
     });

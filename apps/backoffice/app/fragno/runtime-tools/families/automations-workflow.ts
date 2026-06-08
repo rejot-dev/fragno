@@ -37,6 +37,14 @@ export type WorkflowGetStatusArgs = {
   instanceId: string;
 };
 
+export type WorkflowRetryInstanceArgs = {
+  workflowName: string;
+  instanceId: string;
+  stepKey?: string;
+  delayMs?: number;
+  reason?: string;
+};
+
 export type WorkflowSendEventArgs = {
   workflowName: string;
   instanceId: string;
@@ -74,6 +82,20 @@ export type WorkflowInstanceDetails = {
   meta: Record<string, unknown>;
 };
 
+export type WorkflowRetryInstanceResult = {
+  accepted: true;
+  instance: {
+    id: string;
+    details: WorkflowInstanceStatus;
+  };
+  retry: {
+    stepKey: string;
+    attempts: number;
+    maxAttempts: number;
+    scheduledAt: string | Date;
+  };
+};
+
 export type WorkflowHistory = {
   steps: unknown[];
   events: unknown[];
@@ -87,6 +109,7 @@ export type AutomationWorkflowRuntime = {
   listWorkflows?: () => Promise<WorkflowListResult>;
   listInstances?: (input: WorkflowListInstancesArgs) => Promise<WorkflowListInstancesResult>;
   getInstance?: (input: WorkflowGetInstanceArgs) => Promise<WorkflowInstanceDetails>;
+  retryInstance?: (input: WorkflowRetryInstanceArgs) => Promise<WorkflowRetryInstanceResult>;
   getHistory?: (input: WorkflowGetInstanceArgs) => Promise<WorkflowHistory>;
 };
 
@@ -129,6 +152,20 @@ const workflowInstanceDetailsSchema = z.object({
   meta: z.record(z.string(), z.unknown()),
 });
 
+const workflowRetryInstanceResultSchema = z.object({
+  accepted: z.literal(true),
+  instance: z.object({
+    id: nonEmptyString,
+    details: workflowInstanceStatusSchema,
+  }),
+  retry: z.object({
+    stepKey: nonEmptyString,
+    attempts: z.number(),
+    maxAttempts: z.number(),
+    scheduledAt: z.union([z.string(), z.date()]),
+  }),
+});
+
 const workflowHistorySchema = z.object({
   steps: z.array(z.unknown()),
   events: z.array(z.unknown()),
@@ -166,21 +203,12 @@ const getWorkflowRuntimeMethod = <TMethod extends keyof AutomationWorkflowRuntim
 
 const parseWorkflowCreateInstanceArgs = (args: string[]): WorkflowCreateInstanceArgs => {
   const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "workflow.create-instance");
+  assertNoPositionals(parsed, "workflow.instances.create");
   return {
     workflowName: readStringOption(parsed, "workflow-name", true)!,
     remoteWorkflowName: readStringOption(parsed, "remote-workflow-name"),
     instanceId: readStringOption(parsed, "instance-id"),
     params: readJsonOption(parsed, "params-json"),
-  };
-};
-
-const parseWorkflowGetStatusArgs = (args: string[]): WorkflowGetStatusArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "workflow.get-status");
-  return {
-    workflowName: readStringOption(parsed, "workflow-name", true)!,
-    instanceId: readStringOption(parsed, "instance-id", true)!,
   };
 };
 
@@ -195,6 +223,24 @@ const readPageSizeOption = (parsed: ReturnType<typeof parseCliTokens>) => {
   const parsedValue = Number(value);
   if (!Number.isSafeInteger(parsedValue) || parsedValue <= 0) {
     throw new Error("--page-size must be a positive integer");
+  }
+  return parsedValue;
+};
+
+const readNonNegativeIntegerOption = (
+  parsed: ReturnType<typeof parseCliTokens>,
+  name: string,
+): number | undefined => {
+  const value = readStringOption(parsed, name);
+  if (!value) {
+    return undefined;
+  }
+  if (!/^\d+$/.test(value)) {
+    throw new Error(`--${name} must be a non-negative integer`);
+  }
+  const parsedValue = Number(value);
+  if (!Number.isSafeInteger(parsedValue) || parsedValue < 0) {
+    throw new Error(`--${name} must be a non-negative integer`);
   }
   return parsedValue;
 };
@@ -244,9 +290,9 @@ const formatWorkflowInstancesText = (result: WorkflowListInstancesResult) => {
   return `${lines.length ? lines.join("\n") : "(no instances)"}\n`;
 };
 
-const parseWorkflowSendEventArgs = (args: string[]): WorkflowSendEventArgs => {
+const parseWorkflowInstanceSendEventArgs = (args: string[]): WorkflowSendEventArgs => {
   const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "workflow.send-event");
+  assertNoPositionals(parsed, "workflow.instances.send-event");
   return {
     workflowName: readStringOption(parsed, "workflow-name", true)!,
     instanceId: readStringOption(parsed, "instance-id", true)!,
@@ -255,8 +301,20 @@ const parseWorkflowSendEventArgs = (args: string[]): WorkflowSendEventArgs => {
   };
 };
 
-const workflowCreateInstanceTool = defineAutomationWorkflowTool({
-  id: "workflow.create-instance",
+const parseWorkflowRetryInstanceArgs = (args: string[]): WorkflowRetryInstanceArgs => {
+  const parsed = parseCliTokens(args);
+  assertNoPositionals(parsed, "workflow.instances.retry");
+  return {
+    workflowName: readStringOption(parsed, "workflow-name", true)!,
+    instanceId: readStringOption(parsed, "instance-id", true)!,
+    stepKey: readStringOption(parsed, "step-key"),
+    delayMs: readNonNegativeIntegerOption(parsed, "delay-ms"),
+    reason: readStringOption(parsed, "reason"),
+  };
+};
+
+const workflowInstanceCreateTool = defineAutomationWorkflowTool({
+  id: "workflow.instances.create",
   namespace: "workflow",
   name: "createInstance",
   description: "Create a durable workflow instance by workflow name.",
@@ -272,9 +330,9 @@ const workflowCreateInstanceTool = defineAutomationWorkflowTool({
   reference: { codemode: { description: "Create a durable workflow instance." } },
   adapters: {
     bash: {
-      command: "workflow.create-instance",
+      command: "workflow.instances.create",
       help: {
-        summary: "workflow.create-instance creates a durable workflow instance by workflow name.",
+        summary: "workflow.instances.create creates a durable workflow instance by workflow name.",
         options: [
           {
             name: "workflow-name",
@@ -305,7 +363,7 @@ const workflowCreateInstanceTool = defineAutomationWorkflowTool({
           },
         ],
         examples: [
-          'workflow.create-instance --workflow-name exec-codemode-workflow --instance-id run-1 --params-json "{}"',
+          'workflow.instances.create --workflow-name exec-codemode-workflow --instance-id run-1 --params-json "{}"',
         ],
       },
       parse: parseWorkflowCreateInstanceArgs,
@@ -317,56 +375,8 @@ const workflowCreateInstanceTool = defineAutomationWorkflowTool({
   },
 });
 
-const workflowGetStatusTool = defineAutomationWorkflowTool({
-  id: "workflow.get-status",
-  namespace: "workflow",
-  name: "getStatus",
-  description: "Get the current status for a durable workflow instance.",
-  inputSchema: z.object({ workflowName: nonEmptyString, instanceId: nonEmptyString }),
-  outputSchema: workflowInstanceStatusSchema,
-  execute: async (input, context) =>
-    await getAutomationWorkflowRuntime(context.runtimes.workflow).getStatus(input),
-  reference: {
-    codemode: {
-      description: "Get the current status, output, or error for a durable workflow instance.",
-    },
-  },
-  adapters: {
-    bash: {
-      command: "workflow.get-status",
-      help: {
-        summary: "workflow.get-status returns the current status for a durable workflow instance.",
-        options: [
-          {
-            name: "workflow-name",
-            required: true,
-            valueRequired: true,
-            valueName: "name",
-            description: "Registered workflow name.",
-          },
-          {
-            name: "instance-id",
-            required: true,
-            valueRequired: true,
-            valueName: "id",
-            description: "Workflow instance id.",
-          },
-        ],
-        examples: [
-          "workflow.get-status --workflow-name exec-codemode-workflow --instance-id run-1",
-        ],
-      },
-      parse: parseWorkflowGetStatusArgs,
-      format: (status, options) =>
-        options.format === "json"
-          ? { data: status }
-          : { stdout: `${formatWorkflowStatusSummary(status)}\n` },
-    },
-  },
-});
-
-const workflowSendEventTool = defineAutomationWorkflowTool({
-  id: "workflow.send-event",
+const workflowInstanceSendEventTool = defineAutomationWorkflowTool({
+  id: "workflow.instances.send-event",
   namespace: "workflow",
   name: "sendEvent",
   description: "Send an event to a durable workflow instance.",
@@ -382,9 +392,9 @@ const workflowSendEventTool = defineAutomationWorkflowTool({
   reference: { codemode: { description: "Send an event to a waiting durable workflow instance." } },
   adapters: {
     bash: {
-      command: "workflow.send-event",
+      command: "workflow.instances.send-event",
       help: {
-        summary: "workflow.send-event sends an event to a durable workflow instance.",
+        summary: "workflow.instances.send-event sends an event to a durable workflow instance.",
         options: [
           {
             name: "workflow-name",
@@ -415,12 +425,82 @@ const workflowSendEventTool = defineAutomationWorkflowTool({
           },
         ],
         examples: [
-          'workflow.send-event --workflow-name exec-codemode-workflow --instance-id run-1 --type continue --payload-json "{}"',
+          'workflow.instances.send-event --workflow-name exec-codemode-workflow --instance-id run-1 --type continue --payload-json "{}"',
         ],
       },
-      parse: parseWorkflowSendEventArgs,
+      parse: parseWorkflowInstanceSendEventArgs,
       format: (result, options) =>
         options.format === "json" ? { data: result } : { stdout: "event sent\n" },
+    },
+  },
+});
+
+const workflowInstanceRetryTool = defineAutomationWorkflowTool({
+  id: "workflow.instances.retry",
+  namespace: "workflow",
+  name: "retryInstance",
+  description: "Retry a durable workflow instance from a selected step.",
+  inputSchema: z.object({
+    workflowName: nonEmptyString,
+    instanceId: nonEmptyString,
+    stepKey: nonEmptyString.optional(),
+    delayMs: z.number().int().nonnegative().optional(),
+    reason: nonEmptyString.optional(),
+  }),
+  outputSchema: workflowRetryInstanceResultSchema,
+  execute: async (input, context) => {
+    const runtime = getAutomationWorkflowRuntime(context.runtimes.workflow);
+    return await getWorkflowRuntimeMethod(runtime, "retryInstance")(input);
+  },
+  reference: { codemode: { description: "Retry a durable workflow instance step." } },
+  adapters: {
+    bash: {
+      command: "workflow.instances.retry",
+      help: {
+        summary: "workflow.instances.retry retries a durable workflow instance step.",
+        options: [
+          {
+            name: "workflow-name",
+            required: true,
+            valueRequired: true,
+            valueName: "name",
+            description: "Registered workflow name.",
+          },
+          {
+            name: "instance-id",
+            required: true,
+            valueRequired: true,
+            valueName: "id",
+            description: "Workflow instance id.",
+          },
+          {
+            name: "step-key",
+            valueRequired: true,
+            valueName: "key",
+            description: "Optional step key to retry; defaults to the latest step.",
+          },
+          {
+            name: "delay-ms",
+            valueRequired: true,
+            valueName: "ms",
+            description: "Optional delay before retry processing in milliseconds.",
+          },
+          {
+            name: "reason",
+            valueRequired: true,
+            valueName: "text",
+            description: "Optional human-readable retry reason.",
+          },
+        ],
+        examples: [
+          "workflow.instances.retry --workflow-name automation-codemode-script --instance-id run-1 --step-key do:flaky --format json",
+        ],
+      },
+      parse: parseWorkflowRetryInstanceArgs,
+      format: (result, options) =>
+        options.format === "json"
+          ? { data: result }
+          : { stdout: `${result.instance.id}\t${result.retry.stepKey}\tretry scheduled\n` },
     },
   },
 });
@@ -616,13 +696,13 @@ const workflowHistoryTool = defineAutomationWorkflowTool({
 });
 
 export const automationWorkflowRuntimeTools = [
-  workflowCreateInstanceTool,
-  workflowGetStatusTool,
-  workflowSendEventTool,
   workflowListTool,
+  workflowInstanceCreateTool,
   workflowListInstancesTool,
   workflowGetInstanceTool,
   workflowHistoryTool,
+  workflowInstanceSendEventTool,
+  workflowInstanceRetryTool,
 ] as const;
 
 export const automationWorkflowToolFamily = defineBackofficeRuntimeToolFamily({

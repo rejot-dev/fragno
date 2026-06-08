@@ -121,6 +121,22 @@ export const createRouteBackedAutomationWorkflowRuntime = ({
 
       throw new Error(`Workflows backend returned ${response.status}`);
     },
+    retryInstance: async ({ workflowName, instanceId, stepKey, delayMs, reason }) => {
+      const response = await callRoute("POST", "/:workflowName/instances/:instanceId/retry", {
+        pathParams: { workflowName, instanceId },
+        body: { stepKey, delayMs, reason },
+      });
+
+      if (response.type === "json") {
+        return response.data;
+      }
+
+      if (response.type === "error") {
+        throw new Error(`Workflows backend returned ${response.status}: ${response.error.message}`);
+      }
+
+      throw new Error(`Workflows backend returned ${response.status}`);
+    },
     getHistory: async ({ workflowName, instanceId }) => {
       const response = await callRoute("GET", "/:workflowName/instances/:instanceId/history", {
         pathParams: { workflowName, instanceId },

@@ -30,5 +30,7 @@ export {
   type WorkflowGetInstanceArgs,
   type WorkflowInstanceDetails,
   type WorkflowHistory,
+  type WorkflowRetryInstanceArgs,
+  type WorkflowRetryInstanceResult,
   type WorkflowSendEventArgs,
 } from "./automations-workflow";

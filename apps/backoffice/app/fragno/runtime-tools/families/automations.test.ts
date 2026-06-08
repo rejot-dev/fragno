@@ -6,7 +6,10 @@ import {
   hooksRuntimeTools,
   type DurableHooksRuntime,
 } from "./automations-durable-hooks";
-import { automationWorkflowRuntimeTools } from "./automations-workflow";
+import {
+  automationWorkflowRuntimeTools,
+  type AutomationWorkflowRuntime,
+} from "./automations-workflow";
 
 type DurableHookRecord = NonNullable<Awaited<ReturnType<DurableHooksRuntime["getHook"]>>>;
 
@@ -30,13 +33,13 @@ describe("automation runtime tools", () => {
       "automations.identity.bind-actor",
     ]);
     expect(automationWorkflowRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
-      "workflow.create-instance",
-      "workflow.get-status",
-      "workflow.send-event",
       "workflow.list",
+      "workflow.instances.create",
       "workflow.instances.list",
       "workflow.instances.get",
       "workflow.instances.history",
+      "workflow.instances.send-event",
+      "workflow.instances.retry",
     ]);
     expect(hooksRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
       "hooks.list",
@@ -127,5 +130,68 @@ describe("automation runtime tools", () => {
       value: "user-55",
       description: "Primary device",
     });
+  });
+
+  test("workflow retry tool parses input and calls the runtime", async () => {
+    const retryTool = automationWorkflowRuntimeTools[6];
+    expect(retryTool.id).toBe("workflow.instances.retry");
+
+    const calls: unknown[] = [];
+    const runtime: AutomationWorkflowRuntime = {
+      createInstance: async ({ workflowName, instanceId }) => ({
+        workflowName,
+        instanceId: instanceId ?? "generated",
+      }),
+      getStatus: async () => ({ status: "waiting" }),
+      sendEvent: async () => null,
+      retryInstance: async (input) => {
+        calls.push(input);
+        return {
+          accepted: true,
+          instance: { id: input.instanceId, details: { status: "waiting" } },
+          retry: {
+            stepKey: input.stepKey ?? "do:latest",
+            attempts: 1,
+            maxAttempts: 2,
+            scheduledAt: "2026-01-01T00:00:00.000Z",
+          },
+        };
+      },
+    };
+
+    const input = retryTool.inputSchema.parse(
+      retryTool.adapters!.bash!.parse([
+        "--workflow-name",
+        "demo-workflow",
+        "--instance-id",
+        "run-1",
+        "--step-key",
+        "do:flaky",
+        "--delay-ms",
+        "250",
+        "--reason",
+        "manual retry",
+      ]),
+    );
+
+    await expect(retryTool.execute(input, { runtimes: { workflow: runtime } })).resolves.toEqual({
+      accepted: true,
+      instance: { id: "run-1", details: { status: "waiting" } },
+      retry: {
+        stepKey: "do:flaky",
+        attempts: 1,
+        maxAttempts: 2,
+        scheduledAt: "2026-01-01T00:00:00.000Z",
+      },
+    });
+    expect(calls).toEqual([
+      {
+        workflowName: "demo-workflow",
+        instanceId: "run-1",
+        stepKey: "do:flaky",
+        delayMs: 250,
+        reason: "manual retry",
+      },
+    ]);
   });
 });
