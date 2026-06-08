@@ -23,7 +23,9 @@ vi.mock("cloudflare:workers", () => {
     constructor(_state: unknown, _env: unknown) {}
   }
 
-  return { DurableObject: MockDurableObject };
+  class MockRpcTarget {}
+
+  return { DurableObject: MockDurableObject, RpcTarget: MockRpcTarget };
 });
 
 vi.mock("@fragno-dev/db", () => ({
@@ -45,6 +47,18 @@ vi.mock("@/fragno/durable-hooks", () => ({
     getHookQueue: (options: unknown) => loadDurableHookQueueMock(selectFragment(options), options),
     getHook: (hookId: string, options: unknown) =>
       loadDurableHookMock(selectFragment(options), hookId),
+  }),
+  createDurableHookRepositoryRpcTarget: <T>(repository: T) => repository,
+  createEmptyDurableHookRepository: () => ({
+    getHookQueue: async () => ({
+      configured: false,
+      hooksEnabled: false,
+      namespace: null,
+      items: [],
+      cursor: undefined,
+      hasNextPage: false,
+    }),
+    getHook: async () => null,
   }),
 }));
 

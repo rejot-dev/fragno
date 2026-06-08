@@ -44,7 +44,8 @@ vi.mock("@/fragno/upload-server", () => ({
   createUploadServerForProvider: createUploadServerForProviderMock,
 }));
 
-import { Upload, type UploadDurableHookDependencies } from "./upload.do";
+import type { BackofficeDurableHookDependencies } from "./lib/backoffice-fragment-durable-object";
+import { Upload } from "./upload.do";
 
 const createState = () => {
   const store = new Map<string, unknown>();
@@ -79,7 +80,7 @@ const VALID_R2_BINDING_PAYLOAD = {
   bindingName: "UPLOAD_BUCKET",
 };
 
-const testDurableHookDependencies: UploadDurableHookDependencies = {
+const testDurableHookDependencies: BackofficeDurableHookDependencies = {
   createEmptyRepository: () => ({
     getHookQueue: async () => ({
       configured: false,

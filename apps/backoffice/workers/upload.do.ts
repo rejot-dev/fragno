@@ -1,17 +1,7 @@
-import {
-  createFragmentDurableObjectHost,
-  type FragmentDurableObjectHost,
-} from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
-import {
-  createDurableHookRepository,
-  createDurableHookRepositoryRpcTarget,
-  createEmptyDurableHookRepository,
-  type DurableHookQueueOptions,
-  type DurableHookRepository,
-} from "@/fragno/durable-hooks";
+import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import {
   UPLOAD_ADMIN_CONFIG_KEY,
   UPLOAD_PROVIDER_R2,
@@ -24,6 +14,12 @@ import {
   type UploadProvider,
 } from "@/fragno/upload";
 import { createUploadServerForProvider, type UploadFragment } from "@/fragno/upload-server";
+
+import {
+  createBackofficeFragmentDurableObject,
+  type BackofficeDurableHookDependencies,
+  type BackofficeFragmentDurableObject,
+} from "./lib/backoffice-fragment-durable-object";
 
 const hasOwn = (record: Record<string, unknown>, key: string) =>
   Object.prototype.hasOwnProperty.call(record, key);
@@ -82,55 +78,68 @@ const configuredProvidersFromResponse = (response: UploadAdminConfigResponse): U
 const resolveHooksProvider = (response: UploadAdminConfigResponse): UploadProvider | null =>
   response.defaultProvider ?? configuredProvidersFromResponse(response)[0] ?? null;
 
+const uploadNotConfiguredResponse = () =>
+  Response.json(
+    { message: "Upload is not configured for this organisation.", code: "NOT_CONFIGURED" },
+    { status: 400 },
+  );
+
+const invalidProviderResponse = (provider: string) =>
+  Response.json(
+    {
+      message: `Upload provider '${provider}' is not supported.`,
+      code: "INVALID_PROVIDER",
+    },
+    { status: 400 },
+  );
+
+const providerNotConfiguredResponse = (provider: UploadProvider) =>
+  Response.json(
+    {
+      message: `Upload provider '${provider}' is not configured for this organisation.`,
+      code: "PROVIDER_NOT_CONFIGURED",
+    },
+    { status: 400 },
+  );
+
 type UploadRuntime = {
   config: StoredUploadAdminConfig;
   response: UploadAdminConfigResponse;
   fragmentsByProvider: Map<UploadProvider, UploadFragment>;
 };
 
-export type UploadDurableHookDependencies = {
-  createRepository: <TOptions extends DurableHookQueueOptions = DurableHookQueueOptions>(
-    fragment: (options: TOptions | undefined) => UploadFragment,
-  ) => DurableHookRepository<TOptions>;
-  createRpcTarget: <TOptions extends DurableHookQueueOptions = DurableHookQueueOptions>(
-    repository: DurableHookRepository<TOptions>,
-  ) => DurableHookRepository<TOptions>;
-  createEmptyRepository: <
-    TOptions extends DurableHookQueueOptions = DurableHookQueueOptions,
-  >() => DurableHookRepository<TOptions>;
-};
-
-const defaultDurableHookDependencies: UploadDurableHookDependencies = {
-  createRepository: createDurableHookRepository,
-  createRpcTarget: createDurableHookRepositoryRpcTarget,
-  createEmptyRepository: createEmptyDurableHookRepository,
-};
-
 export class Upload extends DurableObject<CloudflareEnv> {
   #state: DurableObjectState;
   #env: CloudflareEnv;
-  #host: FragmentDurableObjectHost<StoredUploadAdminConfig, UploadRuntime>;
-  #runtime: UploadRuntime | null = null;
-  #runtimeConfigHash: string | null = null;
-  #durableHooks: UploadDurableHookDependencies;
+  #host: BackofficeFragmentDurableObject<
+    StoredUploadAdminConfig,
+    StoredUploadAdminConfig,
+    UploadRuntime
+  >;
 
   constructor(
     state: DurableObjectState,
     env: CloudflareEnv,
-    durableHooks: UploadDurableHookDependencies = defaultDurableHookDependencies,
+    durableHooks?: BackofficeDurableHookDependencies,
   ) {
     super(state, env);
     this.#state = state;
     this.#env = env;
-    this.#durableHooks = durableHooks;
-    this.#host = createFragmentDurableObjectHost<
-      CloudflareEnv,
-      StoredUploadAdminConfig,
-      UploadRuntime
-    >({
+    this.#host = createBackofficeFragmentDurableObject({
       name: "Upload",
       state,
       env,
+      configKey: UPLOAD_ADMIN_CONFIG_KEY,
+      parseStored: (raw) =>
+        normalizeStoredUploadAdminConfig(raw) ?? (raw as StoredUploadAdminConfig),
+      isConfigured: (stored): stored is StoredUploadAdminConfig => {
+        if (!stored) {
+          return false;
+        }
+        return configuredProvidersFromResponse(buildUploadAdminConfigResponse(stored)).length > 0;
+      },
+      getStoredOrgId: (stored) => stored.namespace.orgId,
+      durableHooks,
       createRuntime: (stored) => this.#createRuntime(stored),
       getMigrationFragments: (runtime) => [...runtime.fragmentsByProvider.values()],
       getHookFragments: (runtime) => [...runtime.fragmentsByProvider.values()],
@@ -143,19 +152,10 @@ export class Upload extends DurableObject<CloudflareEnv> {
           ]),
         ),
       }),
-      onProcessError: (error) => {
-        console.error("Upload hook processor error", error);
-      },
-      onDispatcherError: (error) => {
-        console.warn("Upload hook processor disabled", error);
-      },
     });
 
     void state.blockConcurrencyWhile(async () => {
-      const stored = await this.#loadConfig();
-      if (stored) {
-        await this.#initializeFromStored(stored);
-      }
+      await this.#host.initializeFromStored(await this.#loadConfig());
     });
   }
 
@@ -197,24 +197,6 @@ export class Upload extends DurableObject<CloudflareEnv> {
       response,
       fragmentsByProvider,
     };
-  }
-
-  async #initializeFromStored(stored: StoredUploadAdminConfig) {
-    const nextConfigHash = JSON.stringify(stored);
-    if (this.#runtime && this.#runtimeConfigHash === nextConfigHash) {
-      return this.#runtime;
-    }
-
-    const response = buildUploadAdminConfigResponse(stored);
-    if (configuredProvidersFromResponse(response).length === 0) {
-      this.#runtime = null;
-      this.#runtimeConfigHash = null;
-      return null;
-    }
-
-    this.#runtime = await this.#host.initialize(stored);
-    this.#runtimeConfigHash = nextConfigHash;
-    return this.#runtime;
   }
 
   async #resolveProviderFromRequest(
@@ -266,18 +248,29 @@ export class Upload extends DurableObject<CloudflareEnv> {
     return { provider: defaultProvider, invalidProvider: null };
   }
 
-  async #ensureRuntime() {
-    const stored = await this.#loadConfig();
-    const response = buildUploadAdminConfigResponse(stored);
-    const configuredProviders = configuredProvidersFromResponse(response);
+  async #refreshConfigured() {
+    await this.#host.initializeFromStored(await this.#loadConfig());
+    return this.#host.getConfigured();
+  }
 
-    if (!stored || configuredProviders.length === 0) {
-      this.#runtime = null;
-      this.#runtimeConfigHash = null;
-      return null;
+  async #resolveRequestFragment(request: Request, runtime: UploadRuntime) {
+    const providerResolution = await this.#resolveProviderFromRequest(
+      request,
+      runtime.response.defaultProvider,
+    );
+
+    if (providerResolution.invalidProvider) {
+      return invalidProviderResponse(providerResolution.invalidProvider);
     }
 
-    return await this.#initializeFromStored(stored);
+    if (!providerResolution.provider) {
+      return uploadNotConfiguredResponse();
+    }
+
+    return (
+      runtime.fragmentsByProvider.get(providerResolution.provider) ??
+      providerNotConfiguredResponse(providerResolution.provider)
+    );
   }
 
   async getAdminConfig(): Promise<UploadAdminConfigResponse> {
@@ -304,8 +297,7 @@ export class Upload extends DurableObject<CloudflareEnv> {
 
     try {
       await this.#state.blockConcurrencyWhile(async () => {
-        await this.#state.storage.put(UPLOAD_ADMIN_CONFIG_KEY, resolved.config);
-        await this.#initializeFromStored(resolved.config);
+        await this.#host.storeAndInitialize(resolved.config);
       });
     } catch (error) {
       console.log("Upload migration failed", { error });
@@ -316,70 +308,30 @@ export class Upload extends DurableObject<CloudflareEnv> {
   }
 
   async getDurableHookRepository() {
-    const runtime = await this.#ensureRuntime();
-    if (!runtime) {
-      return this.#durableHooks.createEmptyRepository();
-    }
-
-    const provider = resolveHooksProvider(runtime.response);
-    const fragment = provider ? runtime.fragmentsByProvider.get(provider) : undefined;
-    if (!fragment) {
-      return this.#durableHooks.createEmptyRepository();
-    }
-
-    const repository = this.#durableHooks.createRepository<DurableHookQueueOptions>(() => fragment);
-    return this.#durableHooks.createRpcTarget({
-      getHookQueue: async (options?: DurableHookQueueOptions) =>
-        await repository.getHookQueue(hookQueueOptionsSchema.parse(options)),
-      getHook: async (hookId: string, options?: DurableHookQueueOptions) =>
-        await repository.getHook(hookId, hookQueueOptionsSchema.parse(options)),
-    });
+    await this.#refreshConfigured();
+    return this.#host.getDurableHookRepository<DurableHookQueueOptions>(({ runtime }) => {
+      const provider = resolveHooksProvider(runtime.response);
+      if (!provider) {
+        throw new Error("Upload does not have a configured durable hook provider.");
+      }
+      return runtime.fragmentsByProvider.get(provider)!;
+    }, hookQueueOptionsSchema.parse);
   }
 
   async alarm(): Promise<void> {
-    await this.#ensureRuntime();
+    await this.#refreshConfigured();
     await this.#host.alarm();
   }
 
   async fetch(request: Request): Promise<Response> {
-    const runtime = await this.#ensureRuntime();
-    if (!runtime) {
-      return Response.json(
-        { message: "Upload is not configured for this organisation.", code: "NOT_CONFIGURED" },
-        { status: 400 },
-      );
+    const configured = await this.#refreshConfigured();
+    if (!configured) {
+      return uploadNotConfiguredResponse();
     }
 
-    const providerResolution = await this.#resolveProviderFromRequest(
-      request,
-      runtime.response.defaultProvider,
-    );
-    if (providerResolution.invalidProvider) {
-      return Response.json(
-        {
-          message: `Upload provider '${providerResolution.invalidProvider}' is not supported.`,
-          code: "INVALID_PROVIDER",
-        },
-        { status: 400 },
-      );
-    }
-
-    if (!providerResolution.provider) {
-      return Response.json(
-        { message: "Upload is not configured for this organisation.", code: "NOT_CONFIGURED" },
-        { status: 400 },
-      );
-    }
-
-    const fragment = runtime.fragmentsByProvider.get(providerResolution.provider);
-    if (!fragment) {
-      return Response.json(
-        {
-          message: `Upload provider '${providerResolution.provider}' is not configured for this organisation.`,
-          code: "PROVIDER_NOT_CONFIGURED",
-        },
-        { status: 400 },
-      );
+    const fragment = await this.#resolveRequestFragment(request, configured.runtime);
+    if (fragment instanceof Response) {
+      return fragment;
     }
 
     return await fragment.handler(request, {
