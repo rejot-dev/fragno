@@ -174,7 +174,10 @@ export default [
     ]),
   ]),
 
+  route("__dev", "routes/dev/index.ts"),
   route("__dev/workers/:orgId/:appId/*", "routes/dev/cloudflare-worker-proxy.ts"),
+  route("__dev/codemode/AGENTS.md", "routes/dev/codemode-agents.ts"),
+  route("__dev/codemode/:orgId", "routes/dev/codemode.ts"),
 
   ...prefix("api", [
     route("auth/*", "routes/api/auth.ts"),

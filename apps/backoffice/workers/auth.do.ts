@@ -4,6 +4,7 @@ import {
 } from "@fragno-dev/db/dispatchers/cloudflare-do";
 import { DurableObject } from "cloudflare:workers";
 
+import type { Organization } from "@fragno-dev/auth";
 import { migrate } from "@fragno-dev/db";
 
 import { createAuthServer, type AuthFragment } from "@/fragno/auth/auth";
@@ -98,6 +99,16 @@ export class Auth extends DurableObject<CloudflareEnv> {
 
   getDurableHookRepository() {
     return createDurableHookRepository<DurableHookQueueOptions>(() => this.#ensureFragment());
+  }
+
+  async getAllOrganizations(): Promise<Organization[]> {
+    const fragment = this.#ensureFragment();
+    return await fragment.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [fragment.services.getAllOrganizations()])
+        .transform(({ serviceResult: [organizations] }) => organizations)
+        .execute();
+    });
   }
 
   async fetch(request: Request): Promise<Response> {
