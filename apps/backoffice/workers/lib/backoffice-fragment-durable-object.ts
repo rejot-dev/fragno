@@ -10,6 +10,7 @@ import type { AnyFragnoInstantiatedDatabaseFragment } from "@fragno-dev/db/durab
 
 import {
   createDurableHookRepository,
+  createDurableHookRepositoryRpcTarget,
   createEmptyDurableHookRepository,
   type DurableHookQueueOptions,
   type DurableHookRepository,
@@ -68,6 +69,20 @@ type ConfiguredRuntimeState<TStored, TSource, TRuntime> = Extract<
  * admin updates can use `assertSameOrg(...)`, and `fetch(...)` rejects `?orgId=` mismatches with a
  * standard 409 `ORG_ID_MISMATCH` response.
  */
+export type BackofficeDurableHookDependencies = {
+  createRepository: typeof createDurableHookRepository;
+  createRpcTarget: <TOptions extends DurableHookQueueOptions = DurableHookQueueOptions>(
+    repository: DurableHookRepository<TOptions>,
+  ) => DurableHookRepository<TOptions>;
+  createEmptyRepository: typeof createEmptyDurableHookRepository;
+};
+
+const defaultDurableHookDependencies: BackofficeDurableHookDependencies = {
+  createRepository: createDurableHookRepository,
+  createRpcTarget: createDurableHookRepositoryRpcTarget,
+  createEmptyRepository: createEmptyDurableHookRepository,
+};
+
 export type BackofficeFragmentDurableObjectOptions<TStored, TSource, TRuntime> = {
   /** Human-readable fragment/DO name used in logs, errors, and default messages. */
   name: string;
@@ -113,6 +128,8 @@ export type BackofficeFragmentDurableObjectOptions<TStored, TSource, TRuntime> =
   ) => TRuntime | Promise<TRuntime>;
   /** Single-fragment runtimes can omit this; multi-fragment runtimes should provide it. */
   getMigrationFragments?: (runtime: TRuntime) => readonly AnyFragnoInstantiatedDatabaseFragment[];
+  /** Override durable-hook repository construction. Intended for tests that need lightweight repositories. */
+  durableHooks?: BackofficeDurableHookDependencies;
   /** Override which migrated fragments participate in durable-hook alarm processing. */
   getHookFragments?: (
     runtime: TRuntime,
@@ -120,6 +137,8 @@ export type BackofficeFragmentDurableObjectOptions<TStored, TSource, TRuntime> =
   ) => readonly AnyFragnoInstantiatedDatabaseFragment[];
   /** Wrap fragments inside a multi-fragment runtime so direct `callRoute`/`callServices` notify hooks. */
   hostRuntime?: (runtime: TRuntime, context: FragmentDurableObjectRuntimeHostContext) => TRuntime;
+  /** Override how the persisted config's organisation id is read. Defaults to top-level `stored.orgId`. */
+  getStoredOrgId?: (stored: TStored) => string | null;
   /** Request routing table for multi-fragment runtimes. Omit for a single fragment with `handler`. */
   mounts?: readonly FragmentDurableObjectMount<TRuntime>[];
 };
@@ -167,6 +186,7 @@ export type BackofficeFragmentDurableObject<TStored, TSource, TRuntime> = {
       state: ConfiguredRuntimeState<TStored, TSource, TRuntime>,
       options: TOptions | undefined,
     ) => AnyFragnoInstantiatedDatabaseFragment,
+    parseOptions?: (options: TOptions | undefined) => TOptions | undefined,
   ) => DurableHookRepository<TOptions>;
 };
 
@@ -217,6 +237,7 @@ export function createBackofficeFragmentDurableObject<TStored, TSource = TStored
         return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
       }
     });
+  const durableHooks = options.durableHooks ?? defaultDurableHookDependencies;
   const fragmentHost = createFragmentDurableObjectHost({
     name: options.name,
     state: options.state,
@@ -247,7 +268,7 @@ export function createBackofficeFragmentDurableObject<TStored, TSource = TStored
       return null;
     }
 
-    return readDefaultOrgId(stored);
+    return options.getStoredOrgId ? options.getStoredOrgId(stored) : readDefaultOrgId(stored);
   };
 
   const requireStoredOrgId = (stored: TStored) => {
@@ -323,6 +344,32 @@ export function createBackofficeFragmentDurableObject<TStored, TSource = TStored
     return initializing;
   };
 
+  const getDurableHookRepository = <TOptions extends DurableHookQueueOptions>(
+    selectFragment: (
+      state: ConfiguredRuntimeState<TStored, TSource, TRuntime>,
+      options: TOptions | undefined,
+    ) => AnyFragnoInstantiatedDatabaseFragment,
+    parseOptions?: (options: TOptions | undefined) => TOptions | undefined,
+  ): DurableHookRepository<TOptions> => {
+    if (!current.configured) {
+      return durableHooks.createEmptyRepository();
+    }
+
+    const repository = durableHooks.createRepository<TOptions>((queueOptions) =>
+      selectFragment(
+        current as ConfiguredRuntimeState<TStored, TSource, TRuntime>,
+        parseOptions?.(queueOptions) ?? queueOptions,
+      ),
+    );
+
+    return durableHooks.createRpcTarget<TOptions>({
+      getHookQueue: async (options) =>
+        await repository.getHookQueue(parseOptions?.(options) ?? options),
+      getHook: async (hookId, options) =>
+        await repository.getHook(hookId, parseOptions?.(options) ?? options),
+    });
+  };
+
   const assertRequestOrgMatches = (request: Request) => {
     if (!current.configured) {
       return null;
@@ -342,11 +389,10 @@ export function createBackofficeFragmentDurableObject<TStored, TSource = TStored
     loadStored,
     initializeFromStored,
     async storeAndInitialize(stored) {
-      // Callers must invoke this from inside state.blockConcurrencyWhile(...), so the runtime
-      // replacement and storage write are observed as one initialization/update boundary by the DO.
-      const next = await initializeFromStored(stored);
+      // Callers must invoke this from inside state.blockConcurrencyWhile(...), so the storage write
+      // and runtime replacement are observed as one initialization/update boundary by the DO.
       await options.state.storage.put(configKey, stored);
-      return next;
+      return await initializeFromStored(stored);
     },
     getState: () => current,
     getConfigured: () => (current.configured ? current : null),
@@ -380,14 +426,6 @@ export function createBackofficeFragmentDurableObject<TStored, TSource = TStored
         ...context,
       });
     },
-    getDurableHookRepository(selectFragment) {
-      if (!current.configured) {
-        return createEmptyDurableHookRepository();
-      }
-
-      return createDurableHookRepository((queueOptions) =>
-        selectFragment(current as ConfiguredRuntimeState<TStored, TSource, TRuntime>, queueOptions),
-      );
-    },
+    getDurableHookRepository,
   };
 }
