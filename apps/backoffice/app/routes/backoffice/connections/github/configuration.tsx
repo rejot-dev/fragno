@@ -23,6 +23,7 @@ import {
   fetchGitHubInstallationRepos,
   fetchGitHubInstallations,
   linkGitHubRepository,
+  syncGitHubInstallation,
   unlinkGitHubRepository,
   type GitHubInstallationSummary,
   type GitHubRepositorySummary,
@@ -40,6 +41,10 @@ const INSTALL_FLOW_MESSAGES = {
     tone: "warning",
     message:
       "GitHub callback validated, but the installation is not in local state yet. Wait for webhook delivery and refresh this page.",
+  },
+  installed_synced: {
+    tone: "success",
+    message: "GitHub installation callback validated, linked to this organisation, and synced.",
   },
   install_requested: {
     tone: "warning",
@@ -246,10 +251,26 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
         return redirect(buildConfigurationRedirect(request.url, "callback_error"));
       }
 
-      const githubDo = getGitHubDurableObject(context, params.orgId);
-      await githubDo.redeliverFailedInstallationWebhooks(callbackInstallationId);
+      const syncResult = await syncGitHubInstallation(
+        request,
+        context,
+        params.orgId,
+        callbackInstallationId,
+      );
+      if (syncResult.error || !syncResult.result) {
+        console.warn("GitHub install callback mapped installation but sync failed", {
+          orgId: params.orgId,
+          installationId: callbackInstallationId,
+          error: syncResult.error,
+        });
 
-      return redirect(buildConfigurationRedirect(request.url, "installed_pending_webhook"));
+        const githubDo = getGitHubDurableObject(context, params.orgId);
+        await githubDo.redeliverFailedInstallationWebhooks(callbackInstallationId);
+
+        return redirect(buildConfigurationRedirect(request.url, "installed_pending_webhook"));
+      }
+
+      return redirect(buildConfigurationRedirect(request.url, "installed_synced"));
     } catch (error) {
       console.error("GitHub install callback processing threw", {
         orgId: params.orgId,
@@ -371,6 +392,67 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     }
 
     return redirect(install.installUrl);
+  }
+
+  if (intent === "restore-installation") {
+    const installationId = getStringValue(formData, "installationId");
+    if (!isValidInstallationId(installationId)) {
+      return {
+        ok: false,
+        message: "Enter a numeric GitHub installation id.",
+      } satisfies GitHubConfigurationActionData;
+    }
+
+    const me = await getAuthMe(request, context);
+    if (!me?.user) {
+      return {
+        ok: false,
+        message: "You must be signed in before restoring an installation.",
+      } satisfies GitHubConfigurationActionData;
+    }
+    const memberEntry = me.organizations.find((entry) => entry.organization.id === params.orgId);
+    if (!memberEntry) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
+    const githubWebhookRouterDo = getGitHubWebhookRouterDurableObject(context);
+    const existingOrgId = await githubWebhookRouterDo.getInstallationOrg(installationId);
+    if (existingOrgId && existingOrgId !== params.orgId) {
+      return {
+        ok: false,
+        message: "That GitHub installation is already linked to a different organisation.",
+      } satisfies GitHubConfigurationActionData;
+    }
+
+    const mappingResult = await githubWebhookRouterDo.setInstallationOrg(
+      installationId,
+      params.orgId,
+    );
+    if (!mappingResult.ok) {
+      return {
+        ok: false,
+        message:
+          mappingResult.code === "INSTALLATION_ORG_CONFLICT"
+            ? "That GitHub installation is already linked to a different organisation."
+            : mappingResult.message,
+      } satisfies GitHubConfigurationActionData;
+    }
+
+    const syncResult = await syncGitHubInstallation(request, context, params.orgId, installationId);
+    if (syncResult.error || !syncResult.result) {
+      return {
+        ok: false,
+        message: syncResult.error ?? "Failed to sync installation.",
+      } satisfies GitHubConfigurationActionData;
+    }
+
+    const githubDo = getGitHubDurableObject(context, params.orgId);
+    await githubDo.redeliverFailedInstallationWebhooks(installationId);
+
+    return {
+      ok: true,
+      message: `Restored installation ${installationId}. Synced ${syncResult.result.added} added, ${syncResult.result.updated} updated, ${syncResult.result.removed} removed repositories.`,
+    } satisfies GitHubConfigurationActionData;
   }
 
   if (intent === "link-repo") {
@@ -539,6 +621,33 @@ export default function BackofficeOrganisationGitHubConfiguration() {
                     Start installation
                   </button>
                 </Form>
+
+                <div className="mt-4 border-t border-[color:var(--bo-border)] pt-4">
+                  <p className="text-xs text-[var(--bo-muted-2)]">
+                    Already installed in GitHub? Paste the numeric installation id from the GitHub
+                    installation settings URL to restore the local link and sync repositories.
+                  </p>
+                  <Form method="post" className="mt-3 flex flex-wrap items-end gap-2">
+                    <input type="hidden" name="intent" value="restore-installation" />
+                    <label className="flex min-w-56 flex-col gap-1 text-[10px] tracking-[0.18em] text-[var(--bo-muted)] uppercase">
+                      Installation id
+                      <input
+                        name="installationId"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        placeholder="12345678"
+                        className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm tracking-normal text-[var(--bo-fg)] normal-case outline-none focus:border-[color:var(--bo-accent)]"
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+                    >
+                      Restore link
+                    </button>
+                  </Form>
+                </div>
               </>
             )}
           </FormContainer>

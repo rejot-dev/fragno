@@ -1,97 +1,35 @@
-import { Link, useOutletContext } from "react-router";
+import { redirect } from "react-router";
 
-import { BackofficePageHeader } from "@/components/backoffice";
-import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
+import { getAuthMe } from "@/fragno/auth/auth-server";
 
-import { formatTimestamp } from "./shared";
+import { buildBackofficeLoginPath } from "../../auth-navigation";
+import type { Route } from "./+types/index";
 
 export function meta() {
   return [
     { title: "GitHub Connection" },
-    { name: "description", content: "Manage GitHub App connections by organisation." },
+    { name: "description", content: "Manage GitHub App connections." },
   ];
 }
 
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const me = await getAuthMe(request, context);
+  if (!me?.user) {
+    const url = new URL(request.url);
+    return redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
+  }
+
+  const activeOrganizationId = me.activeOrganization?.organization.id;
+  const fallbackOrganizationId = me.organizations[0]?.organization.id;
+  const orgId = activeOrganizationId ?? fallbackOrganizationId;
+
+  if (!orgId) {
+    return redirect("/backoffice/connections");
+  }
+
+  return redirect(`/backoffice/connections/github/${encodeURIComponent(orgId)}`);
+}
+
 export default function BackofficeConnectionsGitHub() {
-  const { me } = useOutletContext<BackofficeLayoutContext>();
-  const organizations = me.organizations ?? [];
-  const activeOrganizationId = me.activeOrganization?.organization.id ?? null;
-
-  return (
-    <div className="space-y-4">
-      <BackofficePageHeader
-        breadcrumbs={[
-          { label: "Backoffice", to: "/backoffice" },
-          { label: "Connections", to: "/backoffice/connections" },
-          { label: "GitHub" },
-        ]}
-        eyebrow="Connections"
-        title="GitHub connection workspace."
-        description="Pick an organisation to configure GitHub App installation and repository linking."
-        actions={
-          <Link
-            to="/backoffice/connections"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-          >
-            Back to connections
-          </Link>
-        }
-      />
-
-      {organizations.length === 0 ? (
-        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-          No organisations are linked to this account yet.
-        </div>
-      ) : (
-        <section className="grid gap-3 md:grid-cols-2">
-          {organizations.map(({ organization, member }) => (
-            <div
-              key={organization.id}
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                    {organization.slug}
-                  </p>
-                  <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
-                    {organization.name}
-                  </h2>
-                </div>
-                <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
-                  {activeOrganizationId === organization.id ? "Active" : "Idle"}
-                </span>
-              </div>
-
-              <div className="mt-4 space-y-2 text-sm text-[var(--bo-muted)]">
-                <p className="flex items-center justify-between">
-                  <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                    Roles
-                  </span>
-                  <span className="font-semibold text-[var(--bo-fg)]">
-                    {member.roles.join(", ") || "Member"}
-                  </span>
-                </p>
-                <p className="flex items-center justify-between">
-                  <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                    Created
-                  </span>
-                  <span>{formatTimestamp(organization.createdAt)}</span>
-                </p>
-              </div>
-
-              <div className="mt-4">
-                <Link
-                  to={`/backoffice/connections/github/${organization.id}`}
-                  className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
-                >
-                  Manage GitHub
-                </Link>
-              </div>
-            </div>
-          ))}
-        </section>
-      )}
-    </div>
-  );
+  return null;
 }
