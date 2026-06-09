@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type {
-  BackofficeCapability,
+  BackofficeConfigurableConnectionCapability,
   ConnectionStatus,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 
@@ -9,6 +9,7 @@ import type { TelegramAdminConfigResponse } from "../../../../workers/telegram.d
 
 const AUTOMATION_SOURCE = "telegram" as const;
 const AUTOMATION_EVENT_MESSAGE_RECEIVED = "message.received" as const;
+const AUTOMATION_EVENT_CAPABILITY_CONFIGURED = "capability.configured" as const;
 
 const optionalTrimmedString = z
   .string()
@@ -52,6 +53,16 @@ const telegramMessageReceivedPayloadSchema = z.object({
   attachments: z.array(z.unknown()).optional(),
 });
 
+const telegramCapabilityConfiguredPayloadSchema = z.object({
+  capabilityId: z.literal("telegram"),
+  capabilityLabel: z.literal("Telegram"),
+});
+
+const telegramCapabilityConfiguredSubjectSchema = z.object({
+  orgId: z.string().trim().min(1),
+  capabilityId: z.literal("telegram"),
+});
+
 const capability = { id: "telegram", label: "Telegram", kind: "connection" } as const;
 const getTelegramDo = (env: CloudflareEnv, orgId: string) =>
   env.TELEGRAM.get(env.TELEGRAM.idFromName(orgId));
@@ -73,7 +84,7 @@ const toTelegramStatus = (response: TelegramAdminConfigResponse): ConnectionStat
   };
 };
 
-export const telegramCapability: BackofficeCapability = {
+export const telegramCapability: BackofficeConfigurableConnectionCapability = {
   ...capability,
   runtimeToolNamespaces: ["telegram"],
   connection: {
@@ -154,6 +165,18 @@ export const telegramCapability: BackofficeCapability = {
         chatId: "123456789",
         fromUserId: "123456789",
         text: "hello",
+      },
+    },
+    {
+      source: AUTOMATION_SOURCE,
+      eventType: AUTOMATION_EVENT_CAPABILITY_CONFIGURED,
+      label: "Telegram configured",
+      description: "Fires after Telegram is configured for an organisation for the first time.",
+      payloadSchema: telegramCapabilityConfiguredPayloadSchema,
+      subjectSchema: telegramCapabilityConfiguredSubjectSchema,
+      example: {
+        capabilityId: "telegram",
+        capabilityLabel: "Telegram",
       },
     },
   ],
