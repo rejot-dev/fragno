@@ -9,12 +9,12 @@ import { listHookScopes } from "@/fragno/backoffice-capabilities/backoffice-capa
 import { backofficeCapabilities } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import type { ConnectionStatus } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import {
-  assertNoPositionals,
+  defineCliArgsParser,
+  defineEmptyArgsParser,
   parseCliTokens,
-  readJsonOption,
   readOutputOptions,
-  readStringOption,
 } from "@/fragno/runtime-tools/bash-cli";
+import { formatJsonSchemaFields } from "@/lib/zod/zod-formatter";
 
 import {
   defineBackofficeRuntimeTool,
@@ -36,7 +36,10 @@ export type BackofficeCapabilitiesRuntime = {
     payload: unknown;
     origin?: string;
   }): Promise<ConnectionStatus>;
-  listAutomationEvents(): Promise<AutomationEventsCatalogOutput>;
+  listAutomationEvents(): Promise<AutomationEventsCatalogListOutput>;
+  getAutomationEvent(
+    input: AutomationEventCatalogGetInput,
+  ): Promise<AutomationEventCatalogEntry | null>;
 };
 
 type BackofficeCapabilitiesToolContext = BackofficeToolContext<{
@@ -125,10 +128,7 @@ const connectionSchemaOutputSchema = z.object({
 });
 export type ConnectionSchemaOutput = z.infer<typeof connectionSchemaOutputSchema>;
 
-const schemaSummarySchema = z.object({
-  type: z.string().optional(),
-  keys: z.array(z.string()),
-});
+const jsonSchemaSchema = z.record(z.string(), z.unknown());
 
 const automationEventDescriptorSchema = z.object({
   source: z.string(),
@@ -136,13 +136,28 @@ const automationEventDescriptorSchema = z.object({
   label: z.string(),
   description: z.string().optional(),
   capabilityId: z.string(),
-  payloadSchema: schemaSummarySchema.optional(),
-  actorSchema: schemaSummarySchema.optional(),
-  subjectSchema: schemaSummarySchema.optional(),
+  payloadSchema: jsonSchemaSchema.optional(),
+  actorSchema: jsonSchemaSchema.optional(),
+  subjectSchema: jsonSchemaSchema.optional(),
   example: z.unknown().optional(),
 });
-const automationEventsCatalogOutputSchema = z.array(automationEventDescriptorSchema);
-export type AutomationEventsCatalogOutput = z.infer<typeof automationEventsCatalogOutputSchema>;
+const automationEventsCatalogListOutputSchema = z.array(
+  automationEventDescriptorSchema.omit({
+    payloadSchema: true,
+    actorSchema: true,
+    subjectSchema: true,
+  }),
+);
+const automationEventCatalogGetInputSchema = z.object({
+  source: nonEmptyString,
+  type: nonEmptyString,
+});
+const automationEventCatalogGetOutputSchema = automationEventDescriptorSchema.nullable();
+export type AutomationEventCatalogEntry = z.infer<typeof automationEventDescriptorSchema>;
+export type AutomationEventsCatalogListOutput = z.infer<
+  typeof automationEventsCatalogListOutputSchema
+>;
+export type AutomationEventCatalogGetInput = z.infer<typeof automationEventCatalogGetInputSchema>;
 
 const getRuntime = (context: BackofficeCapabilitiesToolContext) => {
   if (!context.runtimes.backoffice) {
@@ -151,31 +166,22 @@ const getRuntime = (context: BackofficeCapabilitiesToolContext) => {
   return context.runtimes.backoffice;
 };
 
-const parseIdOnly = (command: string) => (args: string[]) => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, command);
-  return { id: readStringOption(parsed, "id", true)! };
-};
+const parseIdOnly = (command: string) =>
+  defineCliArgsParser<{ id: string }>(command, { id: { required: true } });
 
-const parseReset = (args: string[]) => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "connections.reset");
-  return {
-    id: readStringOption(parsed, "id", true)!,
-    confirm: readStringOption(parsed, "confirm", true)!,
-  };
-};
+const parseReset = defineCliArgsParser<{ id: string; confirm: string }>("connections.reset", {
+  id: { required: true },
+  confirm: { required: true },
+});
 
-const parseConfigure = (args: string[]) => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "connections.configure");
-  const payload = readJsonOption(parsed, "json") ?? {};
-  return {
-    id: readStringOption(parsed, "id", true)!,
-    payload,
-    origin: readStringOption(parsed, "origin"),
-  };
-};
+const parseConfigure = defineCliArgsParser<{ id: string; payload: unknown; origin?: string }>(
+  "connections.configure",
+  {
+    id: { required: true },
+    payload: { kind: "json", option: "json", required: true },
+    origin: {},
+  },
+);
 
 type OutputOptions = ReturnType<typeof readOutputOptions>;
 
@@ -337,8 +343,8 @@ const formatConnectionSetup = (data: ConnectionSetupOutput, options: OutputOptio
           ].join("\n") + "\n",
       };
 
-const formatAutomationEventsCatalog = (
-  data: AutomationEventsCatalogOutput,
+const formatAutomationEventsCatalogList = (
+  data: AutomationEventsCatalogListOutput,
   options: OutputOptions,
 ) =>
   shouldReturnData(options)
@@ -349,6 +355,21 @@ const formatAutomationEventsCatalog = (
           data.map((item) => [item.source, item.eventType, item.capabilityId, item.label]),
         ),
       };
+
+const formatAutomationEventCatalogEntry = (
+  data: AutomationEventCatalogEntry | null,
+  options: OutputOptions,
+) => {
+  if (!data) {
+    return { stderr: "Automation event not found", exitCode: 1 };
+  }
+  if (shouldReturnData(options)) {
+    return dataFormat(data);
+  }
+  return {
+    stdout: `${data.source}:${data.eventType}\n${data.description ?? data.label}\n\npayload\n${formatJsonSchemaFields(data.payloadSchema)}\n\nactor\n${formatJsonSchemaFields(data.actorSchema)}\n\nsubject\n${formatJsonSchemaFields(data.subjectSchema)}\n`,
+  };
+};
 
 const capabilitiesListTool = defineBackofficeRuntimeTool({
   id: "capabilities.list",
@@ -367,11 +388,7 @@ const capabilitiesListTool = defineBackofficeRuntimeTool({
         options: [],
         examples: ["capabilities.list", "capabilities.list --format json"],
       },
-      parse: (args) => {
-        const parsed = parseCliTokens(args);
-        assertNoPositionals(parsed, "capabilities.list");
-        return {};
-      },
+      parse: defineEmptyArgsParser("capabilities.list"),
       outputOptions: readOutput,
       format: formatCapabilitiesList,
     },
@@ -395,11 +412,7 @@ const hookScopesListTool = defineBackofficeRuntimeTool({
         options: [],
         examples: ["hooks.scopes.list", "hooks.scopes.list --format json"],
       },
-      parse: (args) => {
-        const parsed = parseCliTokens(args);
-        assertNoPositionals(parsed, "hooks.scopes.list");
-        return {};
-      },
+      parse: defineEmptyArgsParser("hooks.scopes.list"),
       outputOptions: readOutput,
       format: formatHookScopesList,
     },
@@ -423,11 +436,7 @@ const connectionsListTool = defineBackofficeRuntimeTool({
         options: [],
         examples: ["connections.list", "connections.list --format json"],
       },
-      parse: (args) => {
-        const parsed = parseCliTokens(args);
-        assertNoPositionals(parsed, "connections.list");
-        return {};
-      },
+      parse: defineEmptyArgsParser("connections.list"),
       outputOptions: readOutput,
       format: formatConnectionsList,
     },
@@ -660,31 +669,72 @@ const connectionsConfigureTool = defineBackofficeRuntimeTool({
   },
 });
 
-const automationEventsCatalogTool = defineBackofficeRuntimeTool({
-  id: "events.catalog",
+const automationEventsCatalogListTool = defineBackofficeRuntimeTool({
+  id: "events.catalog.list",
   namespace: "events",
-  name: "eventsCatalog",
+  name: "eventsCatalogList",
   description:
     "List known automation event source/type pairs from the Backoffice capability registry.",
   inputSchema: z.object({}),
-  outputSchema: automationEventsCatalogOutputSchema,
+  outputSchema: automationEventsCatalogListOutputSchema,
   execute: async (_input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).listAutomationEvents(),
   adapters: {
     bash: {
-      command: "events.catalog",
+      command: "events.catalog.list",
       help: {
-        summary: "events.catalog lists known automation event source/type pairs.",
+        summary: "events.catalog.list lists known automation event source/type pairs.",
         options: [],
-        examples: ["events.catalog --format json"],
+        examples: ["events.catalog.list --format json"],
       },
-      parse: (args) => {
-        const parsed = parseCliTokens(args);
-        assertNoPositionals(parsed, "events.catalog");
-        return {};
-      },
+      parse: defineEmptyArgsParser("events.catalog.list"),
       outputOptions: readOutput,
-      format: formatAutomationEventsCatalog,
+      format: formatAutomationEventsCatalogList,
+    },
+  },
+});
+
+const automationEventsCatalogGetTool = defineBackofficeRuntimeTool({
+  id: "events.catalog.get",
+  namespace: "events",
+  name: "eventsCatalogGet",
+  description: "Get one automation event descriptor and its JSON schemas.",
+  inputSchema: automationEventCatalogGetInputSchema,
+  outputSchema: automationEventCatalogGetOutputSchema,
+  execute: async (input, context: BackofficeCapabilitiesToolContext) =>
+    await getRuntime(context).getAutomationEvent(input),
+  adapters: {
+    bash: {
+      command: "events.catalog.get",
+      help: {
+        summary: "events.catalog.get returns one automation event descriptor and its JSON schemas.",
+        options: [
+          {
+            name: "source",
+            required: true,
+            valueRequired: true,
+            valueName: "source",
+            description: "Automation event source.",
+          },
+          {
+            name: "type",
+            required: true,
+            valueRequired: true,
+            valueName: "type",
+            description: "Automation event type.",
+          },
+        ],
+        examples: [
+          "events.catalog.get --source telegram --type message.received",
+          "events.catalog.get --source telegram --type message.received --format json",
+        ],
+      },
+      parse: defineCliArgsParser<AutomationEventCatalogGetInput>("events.catalog.get", {
+        source: { required: true },
+        type: { required: true },
+      }),
+      outputOptions: readOutput,
+      format: formatAutomationEventCatalogEntry,
     },
   },
 });
@@ -850,7 +900,14 @@ export const createBackofficeCapabilitiesRuntime = ({
       payload: parsedPayload,
     });
   },
-  listAutomationEvents: async () => listAutomationEventDescriptors(),
+  listAutomationEvents: async () =>
+    listAutomationEventDescriptors().map(
+      ({ payloadSchema, actorSchema, subjectSchema, ...event }) => event,
+    ),
+  getAutomationEvent: async ({ source, type }) =>
+    listAutomationEventDescriptors().find(
+      (event) => event.source === source && event.eventType === type,
+    ) ?? null,
 });
 
 export const backofficeCapabilitiesRuntimeTools = [
@@ -863,7 +920,8 @@ export const backofficeCapabilitiesRuntimeTools = [
   connectionsVerifyTool,
   connectionsResetTool,
   connectionsConfigureTool,
-  automationEventsCatalogTool,
+  automationEventsCatalogListTool,
+  automationEventsCatalogGetTool,
 ] as const;
 
 export const backofficeCapabilitiesToolFamily = defineBackofficeRuntimeToolFamily({

@@ -10,10 +10,30 @@ import {
   automationWorkflowRuntimeTools,
   type AutomationWorkflowRuntime,
 } from "./automations-workflow";
+import {
+  backofficeCapabilitiesRuntimeTools,
+  type BackofficeCapabilitiesRuntime,
+} from "./backoffice-capabilities";
 
 type DurableHookRecord = NonNullable<Awaited<ReturnType<DurableHooksRuntime["getHook"]>>>;
 
-const createHook = ({ id, hookName }: { id: string; hookName: string }): DurableHookRecord => ({
+const createHook = ({
+  id,
+  hookName,
+  payload = {
+    id: `${id}-event`,
+    orgId: "org-1",
+    source: "telegram",
+    eventType: "message.received",
+    occurredAt: "2026-01-01T00:00:00.000Z",
+    payload: { text: "hello" },
+    actor: { type: "telegram-user", externalId: "user-1" },
+  },
+}: {
+  id: string;
+  hookName: string;
+  payload?: DurableHookRecord["payload"];
+}): DurableHookRecord => ({
   id,
   hookName,
   status: "pending",
@@ -23,7 +43,7 @@ const createHook = ({ id, hookName }: { id: string; hookName: string }): Durable
   nextRetryAt: null,
   createdAt: "2026-01-01T00:00:00.000Z",
   error: null,
-  payload: {},
+  payload,
 });
 
 describe("automation runtime tools", () => {
@@ -48,6 +68,118 @@ describe("automation runtime tools", () => {
     expect(automationEventsRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
       "events.list",
       "events.get",
+    ]);
+    expect(
+      backofficeCapabilitiesRuntimeTools
+        .map((tool) => tool.adapters?.bash?.command)
+        .filter((command) => command?.startsWith("events.catalog")),
+    ).toEqual(["events.catalog.list", "events.catalog.get"]);
+  });
+
+  test("automation event catalog tools list events and get one event with JSON schemas", async () => {
+    const catalogListTool = backofficeCapabilitiesRuntimeTools.find(
+      (tool) => tool.id === "events.catalog.list",
+    )! as (typeof backofficeCapabilitiesRuntimeTools)[9];
+    const catalogGetTool = backofficeCapabilitiesRuntimeTools.find(
+      (tool) => tool.id === "events.catalog.get",
+    )! as (typeof backofficeCapabilitiesRuntimeTools)[10];
+    const event = {
+      source: "telegram",
+      eventType: "message.received",
+      label: "Telegram message received",
+      description: "Received a Telegram message.",
+      capabilityId: "telegram",
+      payloadSchema: {
+        type: "object",
+        properties: { text: { type: "string" } },
+        required: ["text"],
+      },
+      actorSchema: {
+        type: "object",
+        properties: {
+          type: { const: "external" },
+          externalId: { type: "string" },
+        },
+        required: ["type", "externalId"],
+      },
+      subjectSchema: { type: "object", properties: { orgId: { type: "string" } } },
+      example: { payload: { text: "hello" } },
+    };
+    const calls: unknown[] = [];
+    const runtime: BackofficeCapabilitiesRuntime = {
+      listCapabilities: async () => [],
+      listHookScopes: async () => [],
+      listConnections: async () => [],
+      getConnection: async () => {
+        throw new Error("unused");
+      },
+      setupConnection: async () => {
+        throw new Error("unused");
+      },
+      getConnectionSchema: async () => {
+        throw new Error("unused");
+      },
+      verifyConnection: async () => {
+        throw new Error("unused");
+      },
+      resetConnection: async () => {
+        throw new Error("unused");
+      },
+      configureConnection: async () => {
+        throw new Error("unused");
+      },
+      listAutomationEvents: async () => {
+        calls.push(["listAutomationEvents"]);
+        return [
+          { ...event, payloadSchema: undefined, actorSchema: undefined, subjectSchema: undefined },
+        ];
+      },
+      getAutomationEvent: async (input) => {
+        calls.push(["getAutomationEvent", input]);
+        return input.source === event.source && input.type === event.eventType ? event : null;
+      },
+    };
+
+    await expect(
+      catalogListTool.execute({}, { runtimes: { backoffice: runtime } }),
+    ).resolves.toEqual([
+      {
+        source: "telegram",
+        eventType: "message.received",
+        label: "Telegram message received",
+        description: "Received a Telegram message.",
+        capabilityId: "telegram",
+        example: { payload: { text: "hello" } },
+      },
+    ]);
+
+    const getInput = catalogGetTool.inputSchema.parse(
+      catalogGetTool.adapters!.bash!.parse(["--source", "telegram", "--type", "message.received"]),
+    );
+    await expect(
+      catalogGetTool.execute(getInput, { runtimes: { backoffice: runtime } }),
+    ).resolves.toMatchObject({
+      source: "telegram",
+      eventType: "message.received",
+      payloadSchema: { type: "object" },
+      actorSchema: { type: "object" },
+    });
+    await expect(
+      catalogGetTool.execute(
+        { source: "telegram", type: "unknown.event" },
+        { runtimes: { backoffice: runtime } },
+      ),
+    ).resolves.toBeNull();
+
+    const formatted = catalogGetTool.adapters!.bash!.format!(event, { format: "text" });
+    expect(formatted).toMatchObject({ stdout: expect.stringContaining("payload") });
+    const jsonFormatted = catalogGetTool.adapters!.bash!.format!(event, { format: "json" });
+    expect(jsonFormatted).toEqual({ data: event });
+
+    expect(calls).toEqual([
+      ["listAutomationEvents"],
+      ["getAutomationEvent", { source: "telegram", type: "message.received" }],
+      ["getAutomationEvent", { source: "telegram", type: "unknown.event" }],
     ]);
   });
 
@@ -80,7 +212,14 @@ describe("automation runtime tools", () => {
     await expect(
       listEvents.execute({ pageSize: 20 }, { runtimes: { durableHooks: runtime } }),
     ).resolves.toMatchObject({
-      items: [{ id: "event-hook", hookName: "internalIngestEvent" }],
+      items: [
+        {
+          source: "telegram",
+          eventType: "message.received",
+          hookId: "event-hook",
+          actor: { type: "telegram-user", externalId: "user-1" },
+        },
+      ],
     });
     await expect(
       getEvent.execute({ hookId: "event-hook" }, { runtimes: { durableHooks: runtime } }),
@@ -94,6 +233,28 @@ describe("automation runtime tools", () => {
       ["getHook", { fragment: "automations", hookId: "event-hook" }],
       ["getHook", { fragment: "automations", hookId: "other-hook" }],
     ]);
+  });
+
+  test("automation event list fails when an internal ingest hook payload is malformed", async () => {
+    const [listEvents] = automationEventsRuntimeTools;
+    const runtime: DurableHooksRuntime = {
+      listHooks: async () => ({
+        configured: true,
+        hooksEnabled: true,
+        namespace: "events",
+        items: [
+          createHook({
+            id: "bad-event-hook",
+            hookName: "internalIngestEvent",
+            payload: { source: "telegram" },
+          }),
+        ],
+        hasNextPage: false,
+      }),
+      getHook: async () => null,
+    };
+
+    await expect(listEvents.execute({}, { runtimes: { durableHooks: runtime } })).rejects.toThrow();
   });
 
   test("parse and validate lookupBinding input", () => {

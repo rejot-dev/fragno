@@ -83,7 +83,6 @@ export const PI_MODEL_CATALOG: PiModelOption[] = [
   { provider: "openai", name: "gpt-5-nano", label: "GPT-5 nano" },
   { provider: "openai", name: "gpt-5-mini", label: "GPT-5 mini" },
   { provider: "openai", name: "gpt-5.2", label: "GPT-5.2" },
-  { provider: "openai", name: "gpt-5.2-pro", label: "GPT-5.2 Pro" },
   { provider: "anthropic", name: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
   { provider: "anthropic", name: "claude-sonnet-4-5", label: "Claude Sonnet 4.5" },
   { provider: "anthropic", name: "claude-opus-4-5", label: "Claude Opus 4.5" },

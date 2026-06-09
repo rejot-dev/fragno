@@ -5,16 +5,11 @@ import {
   listHookScopes,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import type { DurableHookQueueResponse } from "@/fragno/durable-hooks";
-import {
-  assertNoPositionals,
-  parseCliTokens,
-  readStringOption,
-} from "@/fragno/runtime-tools/bash-cli";
+import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
-  type BackofficeRuntimeTool,
   type BackofficeToolContext,
 } from "../runtime-tools";
 
@@ -87,10 +82,27 @@ const durableHookQueueResponseSchema = z.object({
   cursor: z.string().optional(),
   hasNextPage: z.boolean(),
 });
+const automationEventRecordSchema = z.object({
+  source: z.string(),
+  eventType: z.string(),
+  hookId: z.string(),
+  actor: z
+    .object({
+      type: z.string().optional(),
+      externalId: z.string().optional(),
+    })
+    .nullable()
+    .optional(),
+});
+const automationEventsQueueResponseSchema = durableHookQueueResponseSchema.extend({
+  items: z.array(automationEventRecordSchema),
+});
 
-const defineDurableHooksTool = <TInputSchema extends z.ZodType, TOutputSchema extends z.ZodType>(
-  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, DurableHooksToolContext>,
-) => defineBackofficeRuntimeTool(tool);
+type AutomationEventRecord = z.infer<typeof automationEventRecordSchema>;
+
+type AutomationEventsQueueResponse = Omit<DurableHookQueueResponse, "items"> & {
+  items: AutomationEventRecord[];
+};
 
 const getDurableHooksRuntime = (
   runtime: DurableHooksToolContext["runtimes"]["durableHooks"],
@@ -101,64 +113,10 @@ const getDurableHooksRuntime = (
   return runtime;
 };
 
-const readPageSizeOption = (parsed: ReturnType<typeof parseCliTokens>) => {
-  const value = readStringOption(parsed, "page-size");
-  if (!value) {
-    return undefined;
-  }
-  if (!/^\d+$/.test(value)) {
-    throw new Error("--page-size must be a positive integer");
-  }
-  const parsedValue = Number(value);
-  if (!Number.isSafeInteger(parsedValue) || parsedValue <= 0) {
-    throw new Error("--page-size must be a positive integer");
-  }
-  return parsedValue;
-};
-
-const parseListHooksArgs = (args: string[]): DurableHooksListArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "hooks.list");
-  return {
-    fragment: durableHookFragmentSchema.parse(readStringOption(parsed, "fragment", true)),
-    cursor: readStringOption(parsed, "cursor"),
-    pageSize: readPageSizeOption(parsed),
-  };
-};
-
-const parseGetHookArgs = (args: string[]): DurableHooksGetArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "hooks.get");
-  return {
-    fragment: durableHookFragmentSchema.parse(readStringOption(parsed, "fragment", true)),
-    hookId: readStringOption(parsed, "hook-id", true)!,
-  };
-};
-
-const parseListAutomationEventsArgs = (args: string[]): AutomationEventsListArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "events.list");
-  return {
-    cursor: readStringOption(parsed, "cursor"),
-    pageSize: readPageSizeOption(parsed),
-  };
-};
-
-const parseGetAutomationEventArgs = (args: string[]): AutomationEventsGetArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "events.get");
-  return {
-    hookId: readStringOption(parsed, "hook-id", true)!,
-  };
-};
-
-const isAutomationIngestEventHook = (hook: DurableHookQueueResponse["items"][number]) =>
-  hook.hookName === AUTOMATION_INGEST_EVENT_HOOK_NAME;
-
 const listAutomationEventHooks = async (
   input: AutomationEventsListArgs,
   context: DurableHooksToolContext,
-) => {
+): Promise<AutomationEventsQueueResponse> => {
   const response = await getDurableHooksRuntime(context.runtimes.durableHooks).listHooks({
     fragment: "automations",
     ...input,
@@ -166,7 +124,14 @@ const listAutomationEventHooks = async (
 
   return {
     ...response,
-    items: response.items.filter(isAutomationIngestEventHook),
+    items: response.items
+      .filter((hook) => hook.hookName === AUTOMATION_INGEST_EVENT_HOOK_NAME)
+      .map((hook) =>
+        automationEventRecordSchema.parse({
+          ...(typeof hook.payload === "object" && hook.payload ? hook.payload : {}),
+          hookId: hook.id,
+        }),
+      ),
   };
 };
 
@@ -179,7 +144,7 @@ const getAutomationEventHook = async (
     hookId: input.hookId,
   });
 
-  return hook && isAutomationIngestEventHook(hook) ? hook : null;
+  return hook?.hookName === AUTOMATION_INGEST_EVENT_HOOK_NAME ? hook : null;
 };
 
 const formatDurableHookQueue = (result: DurableHookQueueResponse, options: { format?: string }) => {
@@ -191,6 +156,64 @@ const formatDurableHookQueue = (result: DurableHookQueueResponse, options: { for
     ...result.items.map(
       (item) =>
         `${item.id}\t${item.status}\t${item.hookName}\tattempts=${item.attempts}/${item.maxAttempts}`,
+    ),
+    ...(result.hasNextPage && result.cursor ? [`next cursor: ${result.cursor}`] : []),
+  ];
+  return { stdout: `${lines.join("\n")}\n` };
+};
+
+const pad = (value: string, width: number) => value.padEnd(width, " ");
+
+const formatAutomationEventQueue = (
+  result: AutomationEventsQueueResponse,
+  options: { format?: string },
+) => {
+  if (options.format === "json") {
+    return { data: result };
+  }
+
+  const rows = result.items.map((item) => ({
+    source: item.source,
+    eventType: item.eventType,
+    hookId: item.hookId,
+    actorType: item.actor?.type ?? "-",
+    actorExternalId: item.actor?.externalId ?? "-",
+  }));
+  const widths = {
+    source: Math.max("source".length, ...rows.map((row) => row.source.length)),
+    eventType: Math.max("eventType".length, ...rows.map((row) => row.eventType.length)),
+    hookId: Math.max("hookId".length, ...rows.map((row) => row.hookId.length)),
+    actorType: Math.max("actor.type".length, ...rows.map((row) => row.actorType.length)),
+    actorExternalId: Math.max(
+      "actor.externalId".length,
+      ...rows.map((row) => row.actorExternalId.length),
+    ),
+  };
+
+  const lines = [
+    `configured=${result.configured} hooksEnabled=${result.hooksEnabled} namespace=${result.namespace ?? "unavailable"}`,
+    [
+      pad("source", widths.source),
+      pad("eventType", widths.eventType),
+      pad("hookId", widths.hookId),
+      pad("actor.type", widths.actorType),
+      pad("actor.externalId", widths.actorExternalId),
+    ].join("  "),
+    [
+      "-".repeat(widths.source),
+      "-".repeat(widths.eventType),
+      "-".repeat(widths.hookId),
+      "-".repeat(widths.actorType),
+      "-".repeat(widths.actorExternalId),
+    ].join("  "),
+    ...rows.map((row) =>
+      [
+        pad(row.source, widths.source),
+        pad(row.eventType, widths.eventType),
+        pad(row.hookId, widths.hookId),
+        pad(row.actorType, widths.actorType),
+        pad(row.actorExternalId, widths.actorExternalId),
+      ].join("  "),
     ),
     ...(result.hasNextPage && result.cursor ? [`next cursor: ${result.cursor}`] : []),
   ];
@@ -211,7 +234,7 @@ const formatDurableHookRecord = (
     : { stderr: "Hook not found", exitCode: 1 };
 };
 
-const listHooksTool = defineDurableHooksTool({
+const listHooksTool = defineBackofficeRuntimeTool({
   id: "hooks.list",
   namespace: "hooks",
   name: "list",
@@ -222,7 +245,7 @@ const listHooksTool = defineDurableHooksTool({
     pageSize: z.number().int().positive().optional(),
   }),
   outputSchema: durableHookQueueResponseSchema,
-  execute: async (input, context) =>
+  execute: async (input, context: DurableHooksToolContext) =>
     await getDurableHooksRuntime(context.runtimes.durableHooks).listHooks(input),
   adapters: {
     bash: {
@@ -257,20 +280,24 @@ const listHooksTool = defineDurableHooksTool({
           "hooks.list --fragment automations --page-size 50 --format json",
         ],
       },
-      parse: parseListHooksArgs,
+      parse: defineCliArgsParser<DurableHooksListArgs>("hooks.list", {
+        fragment: { required: true, transform: (value) => durableHookFragmentSchema.parse(value) },
+        cursor: {},
+        pageSize: { kind: "positiveInteger" },
+      }),
       format: formatDurableHookQueue,
     },
   },
 });
 
-const getHookTool = defineDurableHooksTool({
+const getHookTool = defineBackofficeRuntimeTool({
   id: "hooks.get",
   namespace: "hooks",
   name: "get",
   description: "Get a durable hook queue entry by id.",
   inputSchema: z.object({ fragment: durableHookFragmentSchema, hookId: nonEmptyString }),
   outputSchema: durableHookRecordSchema.nullable(),
-  execute: async (input, context) =>
+  execute: async (input, context: DurableHooksToolContext) =>
     await getDurableHooksRuntime(context.runtimes.durableHooks).getHook(input),
   adapters: {
     bash: {
@@ -295,28 +322,31 @@ const getHookTool = defineDurableHooksTool({
         ],
         examples: ["hooks.get --fragment automations --hook-id hook_123 --format json"],
       },
-      parse: parseGetHookArgs,
+      parse: defineCliArgsParser<DurableHooksGetArgs>("hooks.get", {
+        fragment: { required: true, transform: (value) => durableHookFragmentSchema.parse(value) },
+        hookId: { required: true },
+      }),
       format: formatDurableHookRecord,
     },
   },
 });
 
-const listAutomationEventsTool = defineDurableHooksTool({
+const listAutomationEventsTool = defineBackofficeRuntimeTool({
   id: "events.list",
   namespace: "events",
   name: "listEvents",
-  description: "List automation ingest event hook queue entries.",
+  description: "List automation events queued through internal ingest hooks.",
   inputSchema: z.object({
     cursor: nonEmptyString.optional(),
     pageSize: z.number().int().positive().optional(),
   }),
-  outputSchema: durableHookQueueResponseSchema,
+  outputSchema: automationEventsQueueResponseSchema,
   execute: listAutomationEventHooks,
   adapters: {
     bash: {
       command: "events.list",
       help: {
-        summary: "events.list lists durable hook queue entries for automation ingest events.",
+        summary: "events.list lists automation events queued through internal ingest hooks.",
         options: [
           {
             name: "cursor",
@@ -333,13 +363,16 @@ const listAutomationEventsTool = defineDurableHooksTool({
         ],
         examples: ["events.list --page-size 50 --format json"],
       },
-      parse: parseListAutomationEventsArgs,
-      format: formatDurableHookQueue,
+      parse: defineCliArgsParser<AutomationEventsListArgs>("events.list", {
+        cursor: {},
+        pageSize: { kind: "positiveInteger" },
+      }),
+      format: formatAutomationEventQueue,
     },
   },
 });
 
-const getAutomationEventTool = defineDurableHooksTool({
+const getAutomationEventTool = defineBackofficeRuntimeTool({
   id: "events.get",
   namespace: "events",
   name: "getEvent",
@@ -363,7 +396,9 @@ const getAutomationEventTool = defineDurableHooksTool({
         ],
         examples: ["events.get --hook-id hook_123 --format json"],
       },
-      parse: parseGetAutomationEventArgs,
+      parse: defineCliArgsParser<AutomationEventsGetArgs>("events.get", {
+        hookId: { required: true },
+      }),
       format: formatDurableHookRecord,
     },
   },

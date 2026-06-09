@@ -1,6 +1,7 @@
 import type { z } from "zod";
 
 import type { DurableHookQueueOptions, DurableHookRepository } from "@/fragno/durable-hooks";
+import { zodSchemaToJsonSchema } from "@/lib/zod/zod-formatter";
 
 import { authCapability } from "./capabilities/auth";
 import { automationsCapability } from "./capabilities/automations";
@@ -81,15 +82,18 @@ export type BackofficeConnectionSetupGuide = {
   };
 };
 
-export type BackofficeConnectionDescriptor = {
-  configurable: boolean;
-  configureInputSchema?: z.ZodType;
-  configureFields?: readonly BackofficeConnectionConfigureField[];
+type BackofficeConnectionDescriptorBase = {
   setup?: BackofficeConnectionSetupGuide;
   getStatus(input: { env: CloudflareEnv; orgId: string }): Promise<ConnectionStatus>;
   verify?(input: { env: CloudflareEnv; orgId: string }): Promise<ConnectionStatus>;
+};
+
+export type BackofficeConfigurableConnectionDescriptor = BackofficeConnectionDescriptorBase & {
+  configurable: true;
+  configureInputSchema?: z.ZodType;
+  configureFields?: readonly BackofficeConnectionConfigureField[];
   reset?(input: { env: CloudflareEnv; orgId: string }): Promise<ConnectionStatus>;
-  configure?(input: {
+  configure(input: {
     env: CloudflareEnv;
     orgId: string;
     origin: string;
@@ -97,15 +101,46 @@ export type BackofficeConnectionDescriptor = {
   }): Promise<ConnectionStatus>;
 };
 
-export type BackofficeCapability = {
+export type BackofficeManagedConnectionDescriptor = BackofficeConnectionDescriptorBase & {
+  configurable: false;
+  configureInputSchema?: never;
+  configureFields?: never;
+  reset?: never;
+  configure?: never;
+};
+
+export type BackofficeConnectionDescriptor =
+  | BackofficeConfigurableConnectionDescriptor
+  | BackofficeManagedConnectionDescriptor;
+
+type BackofficeCapabilityBase = {
   id: BackofficeCapabilityId;
   label: string;
-  kind: BackofficeCapabilityKind;
   runtimeToolNamespaces?: readonly string[];
-  connection?: BackofficeConnectionDescriptor;
   hooks?: readonly BackofficeHookScope[];
   automationEvents?: readonly BackofficeAutomationEventDescriptor[];
 };
+
+export type BackofficeConfigurableConnectionCapability = BackofficeCapabilityBase & {
+  kind: "connection";
+  connection: BackofficeConfigurableConnectionDescriptor;
+};
+
+export type BackofficeManagedConnectionCapability = BackofficeCapabilityBase & {
+  kind: "connection";
+  connection: BackofficeManagedConnectionDescriptor;
+};
+
+export type BackofficeConnectionCapability =
+  | BackofficeConfigurableConnectionCapability
+  | BackofficeManagedConnectionCapability;
+
+export type BackofficeSystemCapability = BackofficeCapabilityBase & {
+  kind: "system";
+  connection?: never;
+};
+
+export type BackofficeCapability = BackofficeConnectionCapability | BackofficeSystemCapability;
 
 export const backofficeCapabilities: readonly BackofficeCapability[] = [
   telegramCapability,
@@ -186,45 +221,23 @@ export const backofficeConnectionCatalog: readonly BackofficeConnectionCatalogEn
   },
 ];
 
-export const summarizeZodSchema = (schema: z.ZodType | undefined) => {
-  if (!schema) {
-    return undefined;
-  }
-
-  const getSchemaTypeName = (candidate: z.ZodType) => {
-    const def = (candidate as unknown as { _def?: { type?: string; typeName?: string } })._def;
-    return def?.type ?? def?.typeName ?? "unknown";
-  };
-
-  const getObjectKeys = (candidate: z.ZodType) => {
-    const shape = (candidate as unknown as { shape?: unknown }).shape;
-    if (!shape || typeof shape !== "object") {
-      return undefined;
-    }
-    return Object.keys(shape as Record<string, unknown>);
-  };
-
-  return {
-    type: getSchemaTypeName(schema),
-    keys: getObjectKeys(schema) ?? [],
-  };
-};
-
 export const listAutomationEventDescriptors = () =>
   backofficeCapabilities.flatMap((capability) =>
     (capability.automationEvents ?? []).map((event) => ({
       ...event,
       capabilityId: capability.id,
-      payloadSchema: summarizeZodSchema(event.payloadSchema),
-      actorSchema: summarizeZodSchema(event.actorSchema),
-      subjectSchema: summarizeZodSchema(event.subjectSchema),
+      payloadSchema: zodSchemaToJsonSchema(event.payloadSchema),
+      actorSchema: zodSchemaToJsonSchema(event.actorSchema),
+      subjectSchema: zodSchemaToJsonSchema(event.subjectSchema),
     })),
   );
 
+const isConnectionCapability = (
+  capability: BackofficeCapability,
+): capability is BackofficeConnectionCapability => capability.kind === "connection";
+
 export const listConnectionCapabilities = () =>
-  backofficeCapabilities.filter(
-    (capability) => capability.kind === "connection" && capability.connection,
-  );
+  backofficeCapabilities.filter(isConnectionCapability);
 
 export const getConnectionCapability = (id: string) =>
   listConnectionCapabilities().find((capability) => capability.id === id);
@@ -248,6 +261,7 @@ export const getHookScope = (id: string) =>
 export const AUTOMATION_SOURCES = {
   telegram: "telegram",
   otp: "otp",
+  pi: "pi",
 } as const;
 
 export const AUTOMATION_SOURCE_EVENT_TYPES = {
@@ -256,6 +270,9 @@ export const AUTOMATION_SOURCE_EVENT_TYPES = {
   },
   [AUTOMATION_SOURCES.otp]: {
     identityClaimCompleted: "identity.claim.completed",
+  },
+  [AUTOMATION_SOURCES.pi]: {
+    capabilityConfigured: "capability.configured",
   },
 } as const;
 
