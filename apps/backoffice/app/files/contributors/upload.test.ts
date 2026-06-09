@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 
+import { Bash, defineCommand } from "just-bash";
+
 import {
   createUploadFileSystem,
   getBuiltInFileContributors,
@@ -315,6 +317,30 @@ describe("upload file contributor", () => {
         provider: UPLOAD_PROVIDER_R2_BINDING,
       }),
     ).toThrow("Upload provider 'r2-binding' is not configured.");
+  });
+
+  test("preserves binary stdout when bash redirection writes upload-backed files", async () => {
+    const { fs } = createUploadFs({});
+    const originalBytes = new Uint8Array([0, 255, 1, 2]);
+    const binaryStdout = String.fromCharCode(...originalBytes);
+    const bash = new Bash({
+      fs,
+      customCommands: [
+        defineCommand("telegram.file.download", async () => ({
+          stdout: binaryStdout,
+          stdoutEncoding: "binary" as const,
+          stderr: "",
+          exitCode: 0,
+        })),
+      ],
+    });
+
+    const result = await bash.exec(
+      "telegram.file.download --file-id telegram-file-1 > /workspace/audio.oga",
+    );
+
+    expect(result.exitCode).toBe(0);
+    await expect(fs.readFileBuffer("/workspace/audio.oga")).resolves.toEqual(originalBytes);
   });
 
   test("writes and deletes upload-backed files through the mounted filesystem contract", async () => {
