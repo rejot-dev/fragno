@@ -1,11 +1,10 @@
 import { z } from "zod";
 
 import {
-  assertNoPositionals,
+  defineCliArgsParser,
+  defineEmptyArgsParser,
   parseCliTokens,
-  readIntegerOption,
   readOutputOptions,
-  readStringOption,
 } from "@/fragno/runtime-tools/bash-cli";
 import type { StartSandboxOptions } from "@/sandbox/contracts";
 
@@ -65,60 +64,25 @@ const getSandboxRuntime = (runtime: SandboxToolContext["runtimes"]["sandbox"]): 
   return runtime;
 };
 
-const readBooleanOption = (parsed: ReturnType<typeof parseCliTokens>, name: string) => {
-  const value = parsed.options.get(name);
-  if (typeof value === "undefined") {
-    return undefined;
-  }
-  if (Array.isArray(value)) {
-    throw new Error(`--${name} specified multiple times`);
-  }
-  if (typeof value === "boolean") {
-    return value;
-  }
-  const normalized = value.trim().toLowerCase();
-  if (["1", "true", "yes", "on"].includes(normalized)) {
-    return true;
-  }
-  if (["0", "false", "no", "off"].includes(normalized)) {
-    return false;
-  }
-  throw new Error(`--${name} must be true or false`);
-};
+const parseStart = defineCliArgsParser<StartSandboxOptions>("sandbox.start", {
+  id: { required: true },
+  keepAlive: { kind: "boolean" },
+  sleepAfter: {},
+  startupCommand: {},
+  startupTimeoutMs: { kind: "integer" },
+});
 
-const parseStart = (args: string[]): StartSandboxOptions => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "sandbox.start");
-  return {
-    id: readStringOption(parsed, "id", true)!,
-    keepAlive: readBooleanOption(parsed, "keep-alive"),
-    sleepAfter: readStringOption(parsed, "sleep-after"),
-    startupCommand: readStringOption(parsed, "startup-command"),
-    startupTimeoutMs: readIntegerOption(parsed, "startup-timeout-ms"),
-  };
-};
+const parseList = defineEmptyArgsParser("sandbox.list");
 
-const parseList = (args: string[]) => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "sandbox.list");
-  return {};
-};
+const parseKill = defineCliArgsParser<SandboxKillArgs>("sandbox.kill", {
+  sandboxId: { required: true },
+});
 
-const parseKill = (args: string[]): SandboxKillArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "sandbox.kill");
-  return { sandboxId: readStringOption(parsed, "sandbox-id", true)! };
-};
-
-const parseExec = (args: string[]): SandboxExecuteCommandArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "sandbox.exec");
-  return {
-    sandboxId: readStringOption(parsed, "sandbox-id", true)!,
-    command: readStringOption(parsed, "command", true)!,
-    timeoutMs: readIntegerOption(parsed, "timeout-ms"),
-  };
-};
+const parseExec = defineCliArgsParser<SandboxExecuteCommandArgs>("sandbox.exec", {
+  sandboxId: { required: true },
+  command: { required: true },
+  timeoutMs: { kind: "integer" },
+});
 
 const jsonDefault = (args: string[]) => {
   const parsed = parseCliTokens(args);

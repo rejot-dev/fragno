@@ -12,6 +12,8 @@ export type ParsedCliTokens = {
 const kebabToCamel = (value: string) =>
   value.replace(/-([a-z])/g, (_, char: string) => char.toUpperCase());
 
+const camelToKebab = (value: string) => value.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`);
+
 const getSingleOption = (
   options: ParsedCliTokens["options"],
   name: string,
@@ -160,11 +162,83 @@ export const readIntegerOption = (
   return value;
 };
 
+export const readStringArrayOption = (
+  parsed: ParsedCliTokens,
+  name: string,
+): string[] | undefined => {
+  const value = parsed.options.get(name);
+  if (typeof value === "undefined") {
+    return undefined;
+  }
+  const values = Array.isArray(value) ? value : [value];
+  const strings = values.map((item) => {
+    if (typeof item === "boolean") {
+      throw new Error(`--${name} requires a value`);
+    }
+    return item.trim();
+  });
+  const nonEmptyStrings = strings.filter(Boolean);
+  return nonEmptyStrings.length ? nonEmptyStrings : undefined;
+};
+
+export const readBooleanOption = (parsed: ParsedCliTokens, name: string): boolean | undefined => {
+  const value = parsed.options.get(name);
+  if (typeof value === "undefined") {
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    throw new Error(`--${name} specified multiple times`);
+  }
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  throw new Error(`--${name} must be true or false`);
+};
+
+export const readPositiveIntegerOption = (
+  parsed: ParsedCliTokens,
+  name: string,
+  required = false,
+): number | undefined => {
+  const value = readIntegerOption(parsed, name, required);
+  if (typeof value === "undefined") {
+    return undefined;
+  }
+  if (value <= 0) {
+    throw new Error(`--${name} must be a positive integer`);
+  }
+  return value;
+};
+
+export const readNonNegativeIntegerOption = (
+  parsed: ParsedCliTokens,
+  name: string,
+  required = false,
+): number | undefined => {
+  const value = readIntegerOption(parsed, name, required);
+  if (typeof value === "undefined") {
+    return undefined;
+  }
+  if (value < 0) {
+    throw new Error(`--${name} must be a non-negative integer`);
+  }
+  return value;
+};
+
 export const readJsonOption = (
   parsed: ParsedCliTokens,
   name: string,
+  required = false,
 ): Record<string, unknown> | undefined => {
-  const raw = readStringOption(parsed, name);
+  const raw = readStringOption(parsed, name, required);
   if (typeof raw === "undefined") {
     return undefined;
   }
@@ -207,6 +281,105 @@ export const assertNoPositionals = (parsed: ParsedCliTokens, commandName: string
     throw new Error(`${commandName} does not accept positional arguments`);
   }
 };
+
+export type CliArgsReader<TArgs> = (parsed: ParsedCliTokens) => TArgs;
+
+export const parseNoPositionals = <TArgs>(
+  commandName: string,
+  args: string[],
+  readArgs: CliArgsReader<TArgs>,
+): TArgs => {
+  const parsed = parseCliTokens(args);
+  assertNoPositionals(parsed, commandName);
+  return readArgs(parsed);
+};
+
+export const defineNoPositionalsParser =
+  <TArgs>(commandName: string, readArgs: CliArgsReader<TArgs>) =>
+  (args: string[]): TArgs =>
+    parseNoPositionals(commandName, args, readArgs);
+
+export type CliArgsFieldKind =
+  | "string"
+  | "integer"
+  | "positiveInteger"
+  | "nonNegativeInteger"
+  | "boolean"
+  | "json"
+  | "stringArray";
+
+export type CliArgsField<TValue> = {
+  option?: string;
+  kind?: CliArgsFieldKind;
+  required?: boolean;
+  defaultValue?: TValue;
+  read?: (parsed: ParsedCliTokens, optionName: string, required: boolean) => TValue | undefined;
+  transform?: (value: NonNullable<TValue>, parsed: ParsedCliTokens) => TValue | undefined;
+};
+
+export type CliArgsFieldMap<TArgs extends object> = {
+  [K in keyof TArgs]?: CliArgsField<TArgs[K]>;
+};
+
+const readCliArgsField = <TValue>(
+  parsed: ParsedCliTokens,
+  propertyName: string,
+  field: CliArgsField<TValue>,
+): TValue | undefined => {
+  const optionName = field.option ?? camelToKebab(propertyName);
+  const required = Boolean(field.required);
+  const kind = field.kind ?? "string";
+  const rawValue: unknown = field.read
+    ? field.read(parsed, optionName, required)
+    : kind === "integer"
+      ? readIntegerOption(parsed, optionName, required)
+      : kind === "positiveInteger"
+        ? readPositiveIntegerOption(parsed, optionName, required)
+        : kind === "nonNegativeInteger"
+          ? readNonNegativeIntegerOption(parsed, optionName, required)
+          : kind === "boolean"
+            ? readBooleanOption(parsed, optionName)
+            : kind === "stringArray"
+              ? readStringArrayOption(parsed, optionName)
+              : kind === "json"
+                ? readJsonOption(parsed, optionName, required)
+                : readStringOption(parsed, optionName, required);
+
+  const value = (rawValue ?? field.defaultValue) as TValue | undefined;
+  if (typeof value === "undefined") {
+    if (required) {
+      throw new Error(`Missing required option --${optionName}`);
+    }
+    return undefined;
+  }
+
+  return field.transform
+    ? field.transform(value as NonNullable<TValue>, parsed)
+    : (value as TValue);
+};
+
+export const defineCliArgsParser =
+  <TArgs extends object>(
+    commandName: string,
+    fields: CliArgsFieldMap<TArgs>,
+    options: { normalizeArgs?: (args: string[]) => string[] } = {},
+  ) =>
+  (args: string[]): TArgs =>
+    parseNoPositionals(commandName, options.normalizeArgs?.(args) ?? args, (parsed) => {
+      const result: Partial<TArgs> = {};
+      for (const [propertyName, field] of Object.entries(fields) as Array<
+        [keyof TArgs & string, CliArgsField<TArgs[keyof TArgs]>]
+      >) {
+        const value = readCliArgsField(parsed, propertyName, field);
+        if (typeof value !== "undefined") {
+          (result as Record<string, unknown>)[propertyName] = value;
+        }
+      }
+      return result as TArgs;
+    });
+
+export const defineEmptyArgsParser = (commandName: string) =>
+  defineNoPositionalsParser<Record<string, never>>(commandName, () => ({}));
 
 export const normalizeExecutionResult = (
   rawResult: AutomationCommandExecutionResult | unknown,

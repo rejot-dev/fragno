@@ -1,12 +1,7 @@
 import { z } from "zod";
 
 import type { EventEmitArgs } from "@/fragno/runtime-tools/automation-types";
-import {
-  assertNoPositionals,
-  parseCliTokens,
-  readJsonOption,
-  readStringOption,
-} from "@/fragno/runtime-tools/bash-cli";
+import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
   defineBackofficeRuntimeTool,
@@ -54,19 +49,14 @@ const getEventRuntime = (runtime: EventToolContext["runtimes"]["event"]): EventR
   return runtime;
 };
 
-const parseEventEmitArgs = (args: string[]): EventEmitArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "event.emit");
-
-  return {
-    eventType: readStringOption(parsed, "event-type", true)!,
-    source: readStringOption(parsed, "source"),
-    externalActorId: readStringOption(parsed, "external-actor-id"),
-    actorType: readStringOption(parsed, "actor-type"),
-    subjectUserId: readStringOption(parsed, "subject-user-id"),
-    payload: readJsonOption(parsed, "payload-json"),
-  };
-};
+const parseEventEmitArgs = defineCliArgsParser<EventEmitArgs>("event.emit", {
+  eventType: { required: true },
+  source: {},
+  externalActorId: {},
+  actorType: {},
+  subjectUserId: {},
+  payload: { kind: "json", option: "payload-json" },
+});
 
 const emitEventTool = defineBackofficeRuntimeTool({
   id: "event.emit",

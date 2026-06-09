@@ -1,11 +1,8 @@
 import { z } from "zod";
 
 import {
-  assertNoPositionals,
-  parseCliTokens,
-  readIntegerOption,
+  defineCliArgsParser,
   readOutputOptions,
-  readStringOption,
   type ParsedCliTokens,
 } from "@/fragno/runtime-tools/bash-cli";
 import {
@@ -150,85 +147,76 @@ const defaultStructuredOutput = (_args: string[], parsed: ParsedCliTokens) => {
     : { ...output, format: "json" as const };
 };
 
-const readParseMode = (
-  parsed: ParsedCliTokens,
-  name: string,
-): TelegramSendMessageArgs["parseMode"] | undefined => {
-  const value = readStringOption(parsed, name);
-  if (typeof value === "undefined") {
-    return undefined;
-  }
-  return parseModeSchema.parse(value);
+const parseModeField = {
+  option: "parse-mode",
+  transform: (value: string) => parseModeSchema.parse(value),
 };
 
-const parseTelegramFileGet = (args: string[]): TelegramFileGetArgs => {
-  const parsed = parseCliTokens(expandTelegramShortFlags(args));
-  assertNoPositionals(parsed, "telegram.file.get");
+const telegramParserOptions = { normalizeArgs: expandTelegramShortFlags };
 
-  return { fileId: readStringOption(parsed, "file-id", true)! };
-};
+const readFlagPresence = (name: string) => (parsed: ParsedCliTokens) =>
+  parsed.options.has(name) ? true : undefined;
 
-export const parseTelegramFileDownloadBashArgs = (args: string[]): TelegramFileDownloadBashArgs => {
-  const parsed = parseCliTokens(expandTelegramShortFlags(args));
-  assertNoPositionals(parsed, "telegram.file.download");
+const parseTelegramFileGet = defineCliArgsParser<TelegramFileGetArgs>(
+  "telegram.file.get",
+  { fileId: { required: true } },
+  telegramParserOptions,
+);
 
-  return {
-    fileId: readStringOption(parsed, "file-id", true)!,
-    outputPath: readStringOption(parsed, "output"),
-  };
-};
+export const parseTelegramFileDownloadBashArgs = defineCliArgsParser<TelegramFileDownloadBashArgs>(
+  "telegram.file.download",
+  {
+    fileId: { required: true },
+    outputPath: { option: "output" },
+  },
+  telegramParserOptions,
+);
 
 const parseTelegramFileDownload = (args: string[]): TelegramFileDownloadArgs => {
   const { fileId } = parseTelegramFileDownloadBashArgs(args);
   return { fileId };
 };
 
-const parseTelegramChatSend = (args: string[]): TelegramSendMessageArgs => {
-  const parsed = parseCliTokens(expandTelegramShortFlags(args));
-  assertNoPositionals(parsed, "telegram.chat.send");
+const parseTelegramChatSend = defineCliArgsParser<TelegramSendMessageArgs>(
+  "telegram.chat.send",
+  {
+    chatId: { required: true },
+    text: { required: true },
+    parseMode: { ...parseModeField, defaultValue: "Markdown" },
+    disableWebPagePreview: { read: readFlagPresence("disable-web-page-preview") },
+    replyToMessageId: { kind: "integer" },
+  },
+  telegramParserOptions,
+);
 
-  const disableWebPagePreview = parsed.options.has("disable-web-page-preview");
-  const replyToMessageId = readIntegerOption(parsed, "reply-to-message-id");
-  const parseMode = readParseMode(parsed, "parse-mode") ?? "Markdown";
+const parseTelegramChatActions = defineCliArgsParser<TelegramSendActionArgs>(
+  "telegram.chat.actions",
+  {
+    chatId: { required: true },
+    action: {
+      required: true,
+      transform: (value) => {
+        if (value !== "typing") {
+          throw new Error(`Unsupported Telegram chat action: ${value || "(empty)"}`);
+        }
+        return "typing";
+      },
+    },
+  },
+  telegramParserOptions,
+);
 
-  return {
-    chatId: readStringOption(parsed, "chat-id", true)!,
-    text: readStringOption(parsed, "text", true)!,
-    parseMode,
-    ...(disableWebPagePreview ? { disableWebPagePreview: true } : {}),
-    ...(typeof replyToMessageId === "number" ? { replyToMessageId } : {}),
-  };
-};
-
-const parseTelegramChatActions = (args: string[]): TelegramSendActionArgs => {
-  const parsed = parseCliTokens(expandTelegramShortFlags(args));
-  assertNoPositionals(parsed, "telegram.chat.actions");
-
-  const actionRaw = (readStringOption(parsed, "action", true) ?? "").trim();
-  if (actionRaw !== "typing") {
-    throw new Error(`Unsupported Telegram chat action: ${actionRaw || "(empty)"}`);
-  }
-
-  return {
-    chatId: readStringOption(parsed, "chat-id", true)!,
-    action: "typing",
-  };
-};
-
-const parseTelegramMessageEdit = (args: string[]): TelegramEditMessageArgs => {
-  const parsed = parseCliTokens(expandTelegramShortFlags(args));
-  assertNoPositionals(parsed, "telegram.message.edit");
-
-  const disableWebPagePreview = parsed.options.has("disable-web-page-preview");
-
-  return {
-    chatId: readStringOption(parsed, "chat-id", true)!,
-    messageId: readStringOption(parsed, "message-id", true)!,
-    text: readStringOption(parsed, "text", true)!,
-    parseMode: readParseMode(parsed, "parse-mode"),
-    ...(disableWebPagePreview ? { disableWebPagePreview: true } : {}),
-  };
-};
+const parseTelegramMessageEdit = defineCliArgsParser<TelegramEditMessageArgs>(
+  "telegram.message.edit",
+  {
+    chatId: { required: true },
+    messageId: { required: true },
+    text: { required: true },
+    parseMode: parseModeField,
+    disableWebPagePreview: { read: readFlagPresence("disable-web-page-preview") },
+  },
+  telegramParserOptions,
+);
 
 const dataFormat = <T>(result: T) => ({ data: result });
 

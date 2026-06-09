@@ -8,11 +8,7 @@ import type {
   IdentityBindActorArgs,
   IdentityLookupBindingArgs,
 } from "@/fragno/runtime-tools/automation-types";
-import {
-  assertNoPositionals,
-  parseCliTokens,
-  readStringOption,
-} from "@/fragno/runtime-tools/bash-cli";
+import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
   defineBackofficeRuntimeTool,
@@ -43,25 +39,17 @@ const defineAutomationBindingsTool = <
   tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, AutomationBindingsToolContext>,
 ) => defineBackofficeRuntimeTool(tool);
 
-const parseLookupBindingArgs = (args: string[]): IdentityLookupBindingArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "identity.lookup-binding");
-  return {
-    source: readStringOption(parsed, "source", true)!,
-    key: readStringOption(parsed, "key", true)!,
-  };
-};
+const parseLookupBindingArgs = defineCliArgsParser<IdentityLookupBindingArgs>(
+  "identity.lookup-binding",
+  { source: { required: true }, key: { required: true } },
+);
 
-const parseBindActorArgs = (args: string[]): IdentityBindActorArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "identity.bind-actor");
-  return {
-    source: readStringOption(parsed, "source", true)!,
-    key: readStringOption(parsed, "key", true)!,
-    value: readStringOption(parsed, "value", true)!,
-    description: readStringOption(parsed, "description"),
-  };
-};
+const parseBindActorArgs = defineCliArgsParser<IdentityBindActorArgs>("identity.bind-actor", {
+  source: { required: true },
+  key: { required: true },
+  value: { required: true },
+  description: {},
+});
 
 const getAutomationBindingsRuntime = (
   runtime: AutomationBindingsToolContext["runtimes"]["automations"],

@@ -1,11 +1,6 @@
 import { z } from "zod";
 
-import {
-  assertNoPositionals,
-  parseCliTokens,
-  readJsonOption,
-  readStringOption,
-} from "@/fragno/runtime-tools/bash-cli";
+import { defineCliArgsParser, defineEmptyArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
   defineBackofficeRuntimeTool,
@@ -201,72 +196,32 @@ const getWorkflowRuntimeMethod = <TMethod extends keyof AutomationWorkflowRuntim
   return fn as NonNullable<AutomationWorkflowRuntime[TMethod]>;
 };
 
-const parseWorkflowCreateInstanceArgs = (args: string[]): WorkflowCreateInstanceArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "workflow.instances.create");
-  return {
-    workflowName: readStringOption(parsed, "workflow-name", true)!,
-    remoteWorkflowName: readStringOption(parsed, "remote-workflow-name"),
-    instanceId: readStringOption(parsed, "instance-id"),
-    params: readJsonOption(parsed, "params-json"),
-  };
-};
+const parseWorkflowCreateInstanceArgs = defineCliArgsParser<WorkflowCreateInstanceArgs>(
+  "workflow.instances.create",
+  {
+    workflowName: { required: true },
+    remoteWorkflowName: {},
+    instanceId: {},
+    params: { kind: "json", option: "params-json" },
+  },
+);
 
-const readPageSizeOption = (parsed: ReturnType<typeof parseCliTokens>) => {
-  const value = readStringOption(parsed, "page-size");
-  if (!value) {
-    return undefined;
-  }
-  if (!/^\d+$/.test(value)) {
-    throw new Error("--page-size must be a positive integer");
-  }
-  const parsedValue = Number(value);
-  if (!Number.isSafeInteger(parsedValue) || parsedValue <= 0) {
-    throw new Error("--page-size must be a positive integer");
-  }
-  return parsedValue;
-};
+const parseWorkflowListInstancesArgs = defineCliArgsParser<WorkflowListInstancesArgs>(
+  "workflow.instances.list",
+  {
+    workflowName: { required: true },
+    status: {},
+    remoteWorkflowName: {},
+    pageSize: { kind: "positiveInteger" },
+    cursor: {},
+  },
+);
 
-const readNonNegativeIntegerOption = (
-  parsed: ReturnType<typeof parseCliTokens>,
-  name: string,
-): number | undefined => {
-  const value = readStringOption(parsed, name);
-  if (!value) {
-    return undefined;
-  }
-  if (!/^\d+$/.test(value)) {
-    throw new Error(`--${name} must be a non-negative integer`);
-  }
-  const parsedValue = Number(value);
-  if (!Number.isSafeInteger(parsedValue) || parsedValue < 0) {
-    throw new Error(`--${name} must be a non-negative integer`);
-  }
-  return parsedValue;
-};
-
-const parseWorkflowListInstancesArgs = (args: string[]): WorkflowListInstancesArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "workflow.instances.list");
-  return {
-    workflowName: readStringOption(parsed, "workflow-name", true)!,
-    status: readStringOption(parsed, "status") as WorkflowInstanceStatus["status"] | undefined,
-    remoteWorkflowName: readStringOption(parsed, "remote-workflow-name"),
-    pageSize: readPageSizeOption(parsed),
-    cursor: readStringOption(parsed, "cursor"),
-  };
-};
-
-const parseWorkflowGetInstanceArgs =
-  (command: string) =>
-  (args: string[]): WorkflowGetInstanceArgs => {
-    const parsed = parseCliTokens(args);
-    assertNoPositionals(parsed, command);
-    return {
-      workflowName: readStringOption(parsed, "workflow-name", true)!,
-      instanceId: readStringOption(parsed, "instance-id", true)!,
-    };
-  };
+const parseWorkflowGetInstanceArgs = (command: string) =>
+  defineCliArgsParser<WorkflowGetInstanceArgs>(command, {
+    workflowName: { required: true },
+    instanceId: { required: true },
+  });
 
 const formatWorkflowStatusSummary = (status: WorkflowInstanceStatus) =>
   status.error ? `${status.status} (${status.error.name}: ${status.error.message})` : status.status;
@@ -290,28 +245,26 @@ const formatWorkflowInstancesText = (result: WorkflowListInstancesResult) => {
   return `${lines.length ? lines.join("\n") : "(no instances)"}\n`;
 };
 
-const parseWorkflowInstanceSendEventArgs = (args: string[]): WorkflowSendEventArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "workflow.instances.send-event");
-  return {
-    workflowName: readStringOption(parsed, "workflow-name", true)!,
-    instanceId: readStringOption(parsed, "instance-id", true)!,
-    type: readStringOption(parsed, "type", true)!,
-    payload: readJsonOption(parsed, "payload-json"),
-  };
-};
+const parseWorkflowInstanceSendEventArgs = defineCliArgsParser<WorkflowSendEventArgs>(
+  "workflow.instances.send-event",
+  {
+    workflowName: { required: true },
+    instanceId: { required: true },
+    type: { required: true },
+    payload: { kind: "json", option: "payload-json" },
+  },
+);
 
-const parseWorkflowRetryInstanceArgs = (args: string[]): WorkflowRetryInstanceArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "workflow.instances.retry");
-  return {
-    workflowName: readStringOption(parsed, "workflow-name", true)!,
-    instanceId: readStringOption(parsed, "instance-id", true)!,
-    stepKey: readStringOption(parsed, "step-key"),
-    delayMs: readNonNegativeIntegerOption(parsed, "delay-ms"),
-    reason: readStringOption(parsed, "reason"),
-  };
-};
+const parseWorkflowRetryInstanceArgs = defineCliArgsParser<WorkflowRetryInstanceArgs>(
+  "workflow.instances.retry",
+  {
+    workflowName: { required: true },
+    instanceId: { required: true },
+    stepKey: {},
+    delayMs: { kind: "nonNegativeInteger" },
+    reason: {},
+  },
+);
 
 const workflowInstanceCreateTool = defineAutomationWorkflowTool({
   id: "workflow.instances.create",
@@ -524,11 +477,7 @@ const workflowListTool = defineAutomationWorkflowTool({
         options: [],
         examples: ["workflow.list --format json"],
       },
-      parse: (args) => {
-        const parsed = parseCliTokens(args);
-        assertNoPositionals(parsed, "workflow.list");
-        return {};
-      },
+      parse: defineEmptyArgsParser("workflow.list"),
       format: (result, options) =>
         options.format === "json" ? { data: result } : { stdout: formatWorkflowListText(result) },
     },
