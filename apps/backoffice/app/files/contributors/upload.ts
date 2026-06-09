@@ -14,10 +14,12 @@ import {
 } from "../fs-errors";
 import {
   createUnsupportedFileSystem,
+  type BufferEncoding,
   type CpOptions,
   type FileContent,
   type FsStat,
   type IFileSystem,
+  type WriteFileOptions,
 } from "../interface";
 import {
   ensureFolderPath,
@@ -48,8 +50,30 @@ export const UPLOAD_R2_REMOTE_FILE_MOUNT_ID = "r2-remote";
 export const UPLOAD_R2_REMOTE_FILE_MOUNT_POINT = "/r2-remote";
 const UNKNOWN_MTIME = new Date(0);
 const TEXT_ENCODER = new TextEncoder();
-const toUint8Array = (content: FileContent): Uint8Array =>
-  typeof content === "string" ? TEXT_ENCODER.encode(content) : content;
+
+type UploadWriteOptions = WriteFileOptions | BufferEncoding | undefined;
+
+const getWriteEncoding = (options: UploadWriteOptions): BufferEncoding | undefined =>
+  typeof options === "string" ? options : options?.encoding;
+
+const binaryStringToBytes = (value: string): Uint8Array => {
+  const bytes = new Uint8Array(value.length);
+  for (let index = 0; index < value.length; index += 1) {
+    bytes[index] = value.charCodeAt(index) & 0xff;
+  }
+  return bytes;
+};
+
+const toUint8Array = (content: FileContent, options?: UploadWriteOptions): Uint8Array => {
+  if (content instanceof Uint8Array) {
+    return content;
+  }
+
+  const encoding = getWriteEncoding(options);
+  return encoding === "binary" || encoding === "latin1"
+    ? binaryStringToBytes(content)
+    : TEXT_ENCODER.encode(content);
+};
 const concatBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
   const result = new Uint8Array(left.byteLength + right.byteLength);
   result.set(left);
@@ -320,7 +344,7 @@ export const createUploadFileSystem = (
 
       return response.body;
     },
-    async writeFile(path, content) {
+    async writeFile(path, content, options) {
       const { fileKey, isRoot } = toRelativeUploadPath(mountPoint, path);
       if (isRoot || !fileKey) {
         throw new Error(`Cannot write to the mounted upload root '${mountPoint}'.`);
@@ -338,6 +362,7 @@ export const createUploadFileSystem = (
       const blob = toBlob(
         content,
         resolveUploadContentType(existing ?? { fileKey, contentType: null }),
+        options,
       );
       const form = new FormData();
       form.set(
@@ -466,7 +491,7 @@ export const createUploadFileSystem = (
     },
     async appendFile(path, content, options) {
       const existing = (await fs.exists(path)) ? await fs.readFileBuffer(path) : new Uint8Array();
-      const next = concatBytes(existing, toUint8Array(content));
+      const next = concatBytes(existing, toUint8Array(content, options));
       await fs.writeFile(path, next, options);
     },
     async cp(src: string, dest: string, options?: CpOptions) {
@@ -1439,10 +1464,16 @@ const getAncestorFolderKeys = (folderKey: string): string[] => {
   return segments.map((_, index) => segments.slice(0, index + 1).join("/"));
 };
 
-const toBlob = (content: FileContent, contentType: string | null): Blob => {
-  const bytes =
-    content instanceof Uint8Array ? new Uint8Array(content) : TEXT_ENCODER.encode(content);
-  return new Blob([bytes], {
+const toBlob = (
+  content: FileContent,
+  contentType: string | null,
+  options?: UploadWriteOptions,
+): Blob => {
+  const bytes = toUint8Array(content, options);
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+
+  return new Blob([buffer], {
     type: contentType ?? "application/octet-stream",
   });
 };
