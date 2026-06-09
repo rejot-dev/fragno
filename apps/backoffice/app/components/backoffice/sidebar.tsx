@@ -18,7 +18,11 @@ type NavItem = {
   children?: NavItem[];
 };
 
-function createNavItems(): NavItem[] {
+function createNavItems(activeOrganizationId?: string | null): NavItem[] {
+  const githubPath = activeOrganizationId
+    ? `/backoffice/connections/github/${activeOrganizationId}`
+    : "/backoffice/connections/github";
+
   return [
     { label: "Dashboard", to: "/backoffice", end: true },
     { label: "Automations", to: "/backoffice/automations" },
@@ -31,7 +35,7 @@ function createNavItems(): NavItem[] {
         { label: "Telegram", to: "/backoffice/connections/telegram" },
         { label: "Resend", to: "/backoffice/connections/resend" },
         { label: "Reson8", to: "/backoffice/connections/reson8" },
-        { label: "GitHub", to: "/backoffice/connections/github" },
+        { label: "GitHub", to: githubPath },
         { label: "Upload", to: "/backoffice/connections/upload" },
       ],
     },
@@ -96,7 +100,7 @@ function BackofficeSidebarContent({
   const { data: meData, loading: meLoading } = authClient.useMe();
   const effectiveMe = meData ?? me ?? null;
   const activeOrganization = effectiveMe?.activeOrganization?.organization ?? null;
-  const navItems = createNavItems();
+  const navItems = createNavItems(activeOrganization?.id);
   const sessionLoading = isLoading || (!effectiveMe && meLoading);
 
   return (

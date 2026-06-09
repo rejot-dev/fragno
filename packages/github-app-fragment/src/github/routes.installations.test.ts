@@ -151,9 +151,9 @@ describe("github-app installation sync", () => {
       await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
         id: installationId,
         accountId: "1",
-        accountLogin: "octo",
+        accountLogin: "stale-login",
         accountType: "User",
-        status: "active",
+        status: "suspended",
         permissions: {},
         events: [],
       });
@@ -228,6 +228,17 @@ describe("github-app installation sync", () => {
       expect(removedRepo).toBeTruthy();
       expect(removedRepo?.removedAt).not.toBeNull();
 
+      const installations = (
+        await fragments.githubApp.db
+          .createUnitOfWork("read")
+          .forSchema(githubAppSchema)
+          .find("installation", (b) => b.whereIndex("primary"))
+          .executeRetrieve()
+      )[0];
+      expect(installations).toHaveLength(1);
+      expect(installations[0]?.accountLogin).toBe("octo");
+      expect(installations[0]?.status).toBe("active");
+
       const repoLinks = (
         await fragments.githubApp.db
           .createUnitOfWork("read")
@@ -237,9 +248,10 @@ describe("github-app installation sync", () => {
       )[0];
       expect(repoLinks).toHaveLength(0);
 
-      expect(fetchMock.calls.length).toBe(2);
-      expect(fetchMock.calls[0]?.url.pathname).toContain("/access_tokens");
-      expect(fetchMock.calls[1]?.url.pathname).toBe("/installation/repositories");
+      expect(fetchMock.calls.length).toBe(3);
+      expect(fetchMock.calls[0]?.url.pathname).toBe(`/app/installations/${installationId}`);
+      expect(fetchMock.calls[1]?.url.pathname).toContain("/access_tokens");
+      expect(fetchMock.calls[2]?.url.pathname).toBe("/installation/repositories");
     } finally {
       await test.cleanup();
     }

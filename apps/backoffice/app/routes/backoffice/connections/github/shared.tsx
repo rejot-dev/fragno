@@ -59,7 +59,7 @@ export function GitHubHeader({
       breadcrumbs={[
         { label: "Backoffice", to: "/backoffice" },
         { label: "Connections", to: "/backoffice/connections" },
-        { label: "GitHub", to: "/backoffice/connections/github" },
+        { label: "GitHub" },
         { label: organisationName ?? orgId },
       ]}
       eyebrow="Integrations"
@@ -67,10 +67,10 @@ export function GitHubHeader({
       description="Connect your GitHub App installation, link repositories, and inspect pull requests."
       actions={
         <Link
-          to="/backoffice/connections/github"
+          to="/backoffice/connections"
           className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
         >
-          Back to GitHub
+          Back to connections
         </Link>
       }
     />

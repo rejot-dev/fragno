@@ -17,10 +17,12 @@ import {
 import type { WebhookProcessingPayload } from "./github/webhook-processing";
 import { githubAppSchema } from "./schema";
 
+type InstallationRow = TableToColumnValues<(typeof githubAppSchema)["tables"]["installation"]>;
 type InstallationRepoRow = TableToColumnValues<
   (typeof githubAppSchema)["tables"]["installation_repo"]
 >;
 type RepoLinkRow = TableToColumnValues<(typeof githubAppSchema)["tables"]["repo_link"]>;
+type InstallationId = string | FragnoId;
 type RepoId = string | FragnoId;
 type RepoLinkId = string | FragnoId;
 
@@ -53,6 +55,19 @@ const getHttpStatusCode = (value: unknown): number | null => {
   }
   return null;
 };
+
+const toInstallationSyncUpdate = (
+  installation: GitHubInstallationDetails,
+  now: Date,
+): Partial<Omit<InstallationRow, "id" | "createdAt" | "lastWebhookAt">> => ({
+  accountId: installation.accountId,
+  accountLogin: installation.accountLogin,
+  accountType: installation.accountType,
+  status: installation.status,
+  permissions: installation.permissions,
+  events: installation.events,
+  updatedAt: now,
+});
 
 const installationOutputSchema = z.object({
   id: z.string(),
@@ -894,7 +909,6 @@ export const githubAppRoutesFactory = defineRoutes(githubAppFragmentDefinition).
         errorCodes: ["GITHUB_API_ERROR", "INSTALLATION_NOT_FOUND"],
         handler: async function ({ pathParams }, { json, error }) {
           const installationId = pathParams.installationId;
-          let bootstrapInstallation: GitHubInstallationDetails | null = null;
 
           const [existingInstallation, existingRepos] = await this.handlerTx()
             .retrieve(({ forSchema }) => {
@@ -917,19 +931,18 @@ export const githubAppRoutesFactory = defineRoutes(githubAppFragmentDefinition).
             })
             .execute();
 
-          if (!existingInstallation) {
-            try {
-              bootstrapInstallation = await api.getInstallation(installationId);
-            } catch (err) {
-              if (getHttpStatusCode(err) === 404) {
-                return error(
-                  { message: "Installation not found.", code: "INSTALLATION_NOT_FOUND" },
-                  { status: 404 },
-                );
-              }
-              const message = err instanceof Error ? err.message : "GitHub API request failed.";
-              return error({ message, code: "GITHUB_API_ERROR" }, { status: 502 });
+          let installationDetails: GitHubInstallationDetails;
+          try {
+            installationDetails = await api.getInstallation(installationId);
+          } catch (err) {
+            if (getHttpStatusCode(err) === 404) {
+              return error(
+                { message: "Installation not found.", code: "INSTALLATION_NOT_FOUND" },
+                { status: 404 },
+              );
             }
+            const message = err instanceof Error ? err.message : "GitHub API request failed.";
+            return error({ message, code: "GITHUB_API_ERROR" }, { status: 502 });
           }
 
           let response: { repositories: GitHubInstallationRepository[] };
@@ -1024,49 +1037,45 @@ export const githubAppRoutesFactory = defineRoutes(githubAppFragmentDefinition).
             }
           }
 
-          if (
-            bootstrapInstallation ||
-            creates.length > 0 ||
-            updates.length > 0 ||
-            removals.length > 0 ||
-            linksToDelete.length > 0
-          ) {
-            await this.handlerTx()
-              .mutate(({ forSchema }) => {
-                const uow = forSchema(githubAppSchema);
+          await this.handlerTx()
+            .mutate(({ forSchema }) => {
+              const uow = forSchema(githubAppSchema);
 
-                if (bootstrapInstallation) {
-                  uow.create("installation", {
-                    id: bootstrapInstallation.id,
-                    accountId: bootstrapInstallation.accountId,
-                    accountLogin: bootstrapInstallation.accountLogin,
-                    accountType: bootstrapInstallation.accountType,
-                    status: bootstrapInstallation.status,
-                    permissions: bootstrapInstallation.permissions,
-                    events: bootstrapInstallation.events,
-                  });
-                }
+              if (existingInstallation) {
+                uow.update("installation", existingInstallation.id as InstallationId, (b) =>
+                  b.set(toInstallationSyncUpdate(installationDetails, now)),
+                );
+              } else {
+                uow.create("installation", {
+                  id: installationDetails.id,
+                  accountId: installationDetails.accountId,
+                  accountLogin: installationDetails.accountLogin,
+                  accountType: installationDetails.accountType,
+                  status: installationDetails.status,
+                  permissions: installationDetails.permissions,
+                  events: installationDetails.events,
+                });
+              }
 
-                for (const record of creates) {
-                  uow.create("installation_repo", toRepoCreateRecord(record));
-                }
+              for (const record of creates) {
+                uow.create("installation_repo", toRepoCreateRecord(record));
+              }
 
-                for (const update of updates) {
-                  uow.update("installation_repo", update.id, (b) => b.set(update.data));
-                }
+              for (const update of updates) {
+                uow.update("installation_repo", update.id, (b) => b.set(update.data));
+              }
 
-                for (const id of removals) {
-                  uow.update("installation_repo", id, (b) =>
-                    b.set({ removedAt: now, updatedAt: now }),
-                  );
-                }
+              for (const id of removals) {
+                uow.update("installation_repo", id, (b) =>
+                  b.set({ removedAt: now, updatedAt: now }),
+                );
+              }
 
-                for (const id of linksToDelete) {
-                  uow.delete("repo_link", id);
-                }
-              })
-              .execute();
-          }
+              for (const id of linksToDelete) {
+                uow.delete("repo_link", id);
+              }
+            })
+            .execute();
 
           return json({ added, removed, updated });
         },

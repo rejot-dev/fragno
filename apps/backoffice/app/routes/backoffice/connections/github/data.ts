@@ -93,6 +93,11 @@ type GitHubUnlinkResult = {
   error: string | null;
 };
 
+type GitHubSyncResult = {
+  result: { added: number; removed: number; updated: number } | null;
+  error: string | null;
+};
+
 const createGitHubRouteCaller = (
   request: Request,
   context: Readonly<RouterContextProvider>,
@@ -297,6 +302,31 @@ export async function linkGitHubRepository(
     });
   } catch (error) {
     return nullableDataActionResultFromCaughtError(error, "Failed to link repository.");
+  }
+}
+
+export async function syncGitHubInstallation(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+  installationId: string,
+): Promise<GitHubSyncResult> {
+  try {
+    const callRoute = createGitHubRouteCaller(request, context, orgId);
+    const response = await callRoute("POST", "/installations/:installationId/sync", {
+      pathParams: { installationId },
+    });
+
+    return nullableDataActionResultFromRouteResponse<{
+      added: number;
+      removed: number;
+      updated: number;
+    }>({
+      response,
+      failureMessage: "Failed to sync installation",
+    });
+  } catch (error) {
+    return nullableDataActionResultFromCaughtError(error, "Failed to sync installation.");
   }
 }
 
