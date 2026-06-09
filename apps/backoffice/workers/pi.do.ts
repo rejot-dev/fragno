@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import type { MasterFileSystem } from "@/files";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
+import { piConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/pi";
 import {
   createDurableHookRepositoryRpcTarget,
   type DurableHookQueueOptions,
@@ -93,15 +94,8 @@ const storedPiConfigSchema: z.ZodType<StoredPiConfig> = z.object({
   updatedAt: z.string().trim().min(1, "Stored Pi config is missing updatedAt."),
 });
 
-const setAdminConfigInputSchema = z.object({
+const setAdminConfigInputSchema = piConfigureInputSchema.extend({
   orgId: z.string().trim().min(1, "Pi configuration requires an organisation id."),
-  apiKeys: z
-    .object({
-      openai: apiKeySchema,
-      anthropic: apiKeySchema,
-      gemini: apiKeySchema,
-    })
-    .optional(),
   harnesses: harnessesSchema.optional(),
 });
 
@@ -261,6 +255,13 @@ export class Pi extends DurableObject<CloudflareEnv> {
   async getAdminConfig(): Promise<PiConfigState> {
     const config = await this.#host.loadStored();
     return buildConfigState(config);
+  }
+
+  async resetAdminConfig(): Promise<PiConfigState> {
+    await this.#state.blockConcurrencyWhile(async () => {
+      await this.#host.clearConfig();
+    });
+    return buildConfigState(null);
   }
 
   async setAdminConfig(payload: unknown): Promise<PiConfigState> {

@@ -116,8 +116,8 @@ export const createAutomationRuntime = ({
   }
 
   return {
-    lookupBinding: async () => requireOrgRouteBackend("automations.identity.lookup-binding"),
-    bindActor: async () => requireOrgRouteBackend("automations.identity.bind-actor"),
+    lookupBinding: async () => requireOrgRouteBackend("identity.lookup-binding"),
+    bindActor: async () => requireOrgRouteBackend("identity.bind-actor"),
     createClaim: async () => requireOrgRouteBackend("otp.identity.create-claim"),
     ...createEventRuntime({
       env,

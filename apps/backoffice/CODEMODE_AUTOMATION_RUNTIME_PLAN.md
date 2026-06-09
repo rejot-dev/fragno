@@ -433,15 +433,14 @@ Implement:
 - Add `BackofficeRuntimeTool` and `BackofficeToolContext`.
 - Add codemode provider generation with camelCase tool names.
 - Add bash command generation from the same definition.
-- Migrate one low-risk family first, preferably `automations.identity.lookupBinding` and
-  `automations.identity.bindActor`.
+- Migrate one low-risk family first, preferably `identity.lookupBinding` and `identity.bindActor`.
 - Keep the old bash host available, but route this family through the new generated bash commands.
 
 Tests:
 
 - Definition tests validate zod input parsing and output shape.
-- Codemode provider test calls `automations.lookupBinding(...)` / `automations.bindActor(...)`
-  through `runBackofficeCodemode(...)`.
+- Codemode provider test calls `identity.lookupBinding(...)` / `identity.bindActor(...)` through
+  `runBackofficeCodemode(...)`.
 - Bash test calls the generated legacy commands and verifies the same semantic runtime method was
   invoked.
 - Type test or snapshot verifies generated codemode names are camelCase.
@@ -454,8 +453,8 @@ Implemented:
   - `createBackofficeCodemodeProviders(...)` maps runtime tools to codemode providers.
   - `createBackofficeBashCommands(...)` maps the same runtime tools to `just-bash` commands.
 - Migrated the automations family to `app/fragno/runtime-tools/families/automations.ts`.
-  - `automations.identity.lookup-binding` maps to codemode as `automations.lookupBinding(...)`.
-  - `automations.identity.bind-actor` maps to codemode as `automations.bindActor(...)`.
+  - `identity.lookup-binding` maps to codemode as `identity.lookupBinding(...)`.
+  - `identity.bind-actor` maps to codemode as `identity.bindActor(...)`.
   - `scripts.run` was migrated too, so the old `automation/commands/specs/automations.ts` file was
     removed instead of keeping a second automations command source of truth.
 - Removed the separate runtime-tool helper files after consolidation:
@@ -525,7 +524,7 @@ Implemented:
 - `runBackofficeCodemode(...)` now records structured domain tool-call metadata while preserving the
   underlying `@cloudflare/codemode` result shape.
 - Pi `execCodeMode` now exposes the migrated automation identity tools as camelCase codemode APIs:
-  `automations.lookupBinding(...)` and `automations.bindActor(...)`.
+  `identity.lookupBinding(...)` and `identity.bindActor(...)`.
 - Pi `execCodeMode` returns readable text for results, logs, errors, and tool calls instead of
   dropping domain-call context on failures.
 - Added Cloudflare tests for successful Pi domain-tool calls, zod validation errors, and structured
@@ -579,7 +578,7 @@ Implement:
 
 Tests:
 
-- Cloudflare test runs a `.cm.js` automation that calls `automations.bindActor(...)`.
+- Cloudflare test runs a `.cm.js` automation that calls `identity.bindActor(...)`.
 - Cloudflare test verifies the same tool definition works through bash and codemode.
 - Failure test verifies failed codemode execution causes the durable hook to fail with a useful
   message.
@@ -590,13 +589,13 @@ Implemented:
 - Normalized bash automation results to include `logs`, `result`, and `toolCalls` alongside existing
   command-call metadata.
 - Wired codemode automation execution to the migrated automation identity runtime tools, exposing
-  `automations.lookupBinding(...)` and `automations.bindActor(...)` from the same definitions used
-  by generated bash commands.
+  `identity.lookupBinding(...)` and `identity.bindActor(...)` from the same definitions used by
+  generated bash commands.
 - Reused the existing storage-backed automation runtime from hook execution, so codemode automations
   mutate automation identity state directly in durable hook contexts.
 - Kept manual `scripts.run` on the same path: `.cm.js` manual runs get route-backed or injected
   automation identity runtimes from the interactive dashboard context.
-- Added Cloudflare coverage for codemode `automations.bindActor(...)`, shared bash/codemode tool
+- Added Cloudflare coverage for codemode `identity.bindActor(...)`, shared bash/codemode tool
   definition behavior, and failed codemode domain-tool validation surfacing as a failed automation
   run with recorded tool-call metadata.
 

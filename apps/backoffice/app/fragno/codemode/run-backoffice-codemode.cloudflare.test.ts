@@ -68,8 +68,8 @@ describe("runBackofficeCodemode", () => {
       tools: automationBindingsRuntimeTools,
       context: { runtimes: { automations: automationsRuntime } },
       code: `async () => {
-        const existing = await automations.lookupBinding({ source: "telegram", key: "chat-123" });
-        const bound = await automations.bindActor({
+        const existing = await identity.lookupBinding({ source: "telegram", key: "chat-123" });
+        const bound = await identity.bindActor({
           source: "telegram",
           key: "chat-456",
           value: existing.value,
@@ -89,17 +89,17 @@ describe("runBackofficeCodemode", () => {
     ]);
     expect(result.toolCalls).toMatchObject([
       {
-        providerName: "automations",
+        providerName: "identity",
         toolName: "lookupBinding",
-        toolId: "automations.identity.lookup-binding",
+        toolId: "identity.lookup-binding",
         inputSummary: '{"source":"telegram","key":"chat-123"}',
         status: "success",
         resultSummary: '{"source":"telegram","key":"chat-123","value":"user-55","status":"linked"}',
       },
       {
-        providerName: "automations",
+        providerName: "identity",
         toolName: "bindActor",
-        toolId: "automations.identity.bind-actor",
+        toolId: "identity.bind-actor",
         inputSummary: '{"source":"telegram","key":"chat-456","value":"user-55"}',
         status: "success",
       },
@@ -272,7 +272,7 @@ describe("runBackofficeCodemode", () => {
       env,
       fs: createTestMasterFileSystem({}),
       code: `async () => {
-        return await automations.lookupBinding({ source: "telegram", key: "chat-123" });
+        return await identity.lookupBinding({ source: "telegram", key: "chat-123" });
       }`,
     });
 
@@ -305,7 +305,7 @@ describe("runBackofficeCodemode", () => {
       tools: automationBindingsRuntimeTools,
       context: { runtimes: { automations: automationsRuntime } },
       code: `async () => {
-        return await automations.bindActor({ source: "telegram", key: "chat-123", value: "" });
+        return await identity.bindActor({ source: "telegram", key: "chat-123", value: "" });
       }`,
     });
 
@@ -313,7 +313,7 @@ describe("runBackofficeCodemode", () => {
     expect(result.error).toBeTruthy();
     expect(result.toolCalls).toMatchObject([
       {
-        providerName: "automations",
+        providerName: "identity",
         toolName: "bindActor",
         inputSummary: '{"source":"telegram","key":"chat-123","value":""}',
         status: "error",

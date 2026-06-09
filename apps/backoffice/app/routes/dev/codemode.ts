@@ -1,6 +1,9 @@
 import { z } from "zod";
 
+import type { Organization } from "@fragno-dev/auth";
+
 import { CloudflareContext } from "@/cloudflare/cloudflare-context";
+import { getAuthDurableObject } from "@/cloudflare/cloudflare-utils";
 import { createOrgFileSystem } from "@/files/create-file-system";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
@@ -45,6 +48,23 @@ const parseJsonBody = async (request: Request) => {
   }
 };
 
+const assertOrganizationExists = async (context: Route.ActionArgs["context"], orgId: string) => {
+  const authDo = getAuthDurableObject(context) as unknown as {
+    getAllOrganizations(): Promise<Organization[]>;
+  };
+  const organizations = await authDo.getAllOrganizations();
+
+  if (!organizations.some((organization) => organization.id === orgId)) {
+    throw Response.json(
+      {
+        error: "Organization not found",
+        orgId,
+      },
+      { status: 404, headers: { "cache-control": "no-store" } },
+    );
+  }
+};
+
 export async function loader() {
   throw new Response("Method Not Allowed", { status: 405 });
 }
@@ -58,6 +78,8 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   }
 
   const body = await parseJsonBody(request);
+  await assertOrganizationExists(context, orgId);
+
   const { env } = context.get(CloudflareContext);
 
   const fs = await createOrgFileSystem({ orgId, env });

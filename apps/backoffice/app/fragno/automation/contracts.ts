@@ -1,28 +1,15 @@
-export const AUTOMATION_SOURCES = {
-  telegram: "telegram",
-  otp: "otp",
-} as const;
+import {
+  AUTOMATION_SOURCES,
+  AUTOMATION_SOURCE_EVENT_TYPES,
+} from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import type {
+  AutomationEventTypeForSource,
+  AutomationKnownEventType,
+  AutomationSource,
+} from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 
-export const AUTOMATION_SOURCE_EVENT_TYPES = {
-  [AUTOMATION_SOURCES.telegram]: {
-    messageReceived: "message.received",
-  },
-  [AUTOMATION_SOURCES.otp]: {
-    identityClaimCompleted: "identity.claim.completed",
-  },
-} as const;
-
-type ValueOf<T> = T[keyof T];
-
-export type AutomationSource = ValueOf<typeof AUTOMATION_SOURCES>;
-
-export type AutomationEventTypeForSource<S extends AutomationSource> = ValueOf<
-  (typeof AUTOMATION_SOURCE_EVENT_TYPES)[S]
->;
-
-export type AutomationKnownEventType = {
-  [S in AutomationSource]: AutomationEventTypeForSource<S>;
-}[AutomationSource];
+export { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES };
+export type { AutomationKnownEventType, AutomationEventTypeForSource, AutomationSource };
 
 export type AutomationEventPayload = Record<string, unknown>;
 

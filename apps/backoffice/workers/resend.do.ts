@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import type { ResendFragmentConfig } from "@fragno-dev/resend-fragment";
 
+import { resendConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/resend";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import { createResendServer, type ResendConfig, type ResendFragment } from "@/fragno/resend";
 
@@ -125,16 +126,20 @@ const parseConfigInput = async (
         apiKey: string;
         defaultFrom: string;
         defaultReplyTo?: string[] | null;
-        webhookBaseUrl?: string | null;
+        webhookBaseUrl: string;
       };
     }
   | { ok: false; message: string }
 > => {
-  if (!payload || typeof payload !== "object") {
-    return { ok: false, message: "Request body must be a JSON object." };
+  const parsedPayload = resendConfigureInputSchema.safeParse(payload);
+  if (!parsedPayload.success) {
+    return {
+      ok: false,
+      message: parsedPayload.error.issues[0]?.message ?? "Invalid Resend config.",
+    };
   }
 
-  const payloadRecord = payload as Record<string, unknown>;
+  const payloadRecord = parsedPayload.data as Record<string, unknown>;
   const apiKeyRaw = typeof payloadRecord.apiKey === "string" ? payloadRecord.apiKey.trim() : "";
   const defaultFrom =
     typeof payloadRecord.defaultFrom === "string" ? payloadRecord.defaultFrom.trim() : "";
@@ -143,9 +148,7 @@ const parseConfigInput = async (
     typeof payloadRecord.defaultReplyTo === "string" || Array.isArray(payloadRecord.defaultReplyTo)
       ? payloadRecord.defaultReplyTo
       : undefined;
-  const hasWebhookBaseUrl = Object.prototype.hasOwnProperty.call(payloadRecord, "webhookBaseUrl");
-  const webhookBaseUrlRaw =
-    typeof payloadRecord.webhookBaseUrl === "string" ? payloadRecord.webhookBaseUrl.trim() : "";
+  const webhookBaseUrl = parsedPayload.data.webhookBaseUrl;
 
   const apiKey = apiKeyRaw || existing?.apiKey || "";
   const resolvedDefaultFrom = defaultFrom || existing?.defaultFrom || "";
@@ -156,18 +159,6 @@ const parseConfigInput = async (
 
   if (!resolvedDefaultFrom) {
     return { ok: false, message: "Default from address is required." };
-  }
-
-  const webhookBaseUrl = hasWebhookBaseUrl ? webhookBaseUrlRaw || null : undefined;
-  if (webhookBaseUrl) {
-    try {
-      new URL(webhookBaseUrl);
-    } catch {
-      return {
-        ok: false,
-        message: "Webhook base URL must be a valid absolute URL.",
-      };
-    }
   }
 
   const parsedReplyTo = normalizeReplyTo(defaultReplyToRaw) ?? undefined;
@@ -314,6 +305,13 @@ export class Resend extends DurableObject<CloudflareEnv> {
     return buildConfigResponse(config);
   }
 
+  async resetAdminConfig(): Promise<ConfigResponse> {
+    await this.#state.blockConcurrencyWhile(async () => {
+      await this.#host.clearConfig();
+    });
+    return { configured: false };
+  }
+
   async setAdminConfig(payload: unknown, orgId: string, origin: string): Promise<ConfigResponse> {
     const normalizedOrgId = orgId.trim();
     if (!normalizedOrgId) {
@@ -334,10 +332,7 @@ export class Resend extends DurableObject<CloudflareEnv> {
         parsed.data.defaultReplyTo === undefined
           ? existing?.defaultReplyTo
           : (parsed.data.defaultReplyTo ?? undefined);
-      const webhookBaseUrl =
-        parsed.data.webhookBaseUrl === undefined
-          ? existing?.webhookBaseUrl
-          : (parsed.data.webhookBaseUrl ?? undefined);
+      const webhookBaseUrl = parsed.data.webhookBaseUrl;
       const stored: StoredResendConfig = {
         orgId: normalizedOrgId,
         apiKey: parsed.data.apiKey,

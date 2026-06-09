@@ -45,7 +45,7 @@ const defineAutomationBindingsTool = <
 
 const parseLookupBindingArgs = (args: string[]): IdentityLookupBindingArgs => {
   const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "automations.identity.lookup-binding");
+  assertNoPositionals(parsed, "identity.lookup-binding");
   return {
     source: readStringOption(parsed, "source", true)!,
     key: readStringOption(parsed, "key", true)!,
@@ -54,7 +54,7 @@ const parseLookupBindingArgs = (args: string[]): IdentityLookupBindingArgs => {
 
 const parseBindActorArgs = (args: string[]): IdentityBindActorArgs => {
   const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "automations.identity.bind-actor");
+  assertNoPositionals(parsed, "identity.bind-actor");
   return {
     source: readStringOption(parsed, "source", true)!,
     key: readStringOption(parsed, "key", true)!,
@@ -73,8 +73,8 @@ const getAutomationBindingsRuntime = (
 };
 
 const lookupBindingTool = defineAutomationBindingsTool({
-  id: "automations.identity.lookup-binding",
-  namespace: "automations",
+  id: "identity.lookup-binding",
+  namespace: "identity",
   name: "lookupBinding",
   description: "Lookup a linked automation identity binding by source and key.",
   inputSchema: z.object({ source: nonEmptyString, key: nonEmptyString }),
@@ -83,10 +83,10 @@ const lookupBindingTool = defineAutomationBindingsTool({
     await getAutomationBindingsRuntime(context.runtimes.automations).lookupBinding(input),
   adapters: {
     bash: {
-      command: "automations.identity.lookup-binding",
+      command: "identity.lookup-binding",
       help: {
         summary:
-          "automations.identity.lookup-binding checks whether a key is already present in automation identity bindings.",
+          "identity.lookup-binding checks whether a key is already present in automation identity bindings.",
         options: [
           {
             name: "source",
@@ -103,9 +103,7 @@ const lookupBindingTool = defineAutomationBindingsTool({
             description: "Storage key for this source (e.g. external chat id)",
           },
         ],
-        examples: [
-          "automations.identity.lookup-binding --source telegram --key chat-123 --print value",
-        ],
+        examples: ["identity.lookup-binding --source telegram --key chat-123 --print value"],
       },
       parse: parseLookupBindingArgs,
       format: (binding) =>
@@ -115,8 +113,8 @@ const lookupBindingTool = defineAutomationBindingsTool({
 });
 
 const bindActorTool = defineAutomationBindingsTool({
-  id: "automations.identity.bind-actor",
-  namespace: "automations",
+  id: "identity.bind-actor",
+  namespace: "identity",
   name: "bindActor",
   description: "Create or update an automation identity binding.",
   inputSchema: z.object({
@@ -130,9 +128,9 @@ const bindActorTool = defineAutomationBindingsTool({
     await getAutomationBindingsRuntime(context.runtimes.automations).bindActor(input),
   adapters: {
     bash: {
-      command: "automations.identity.bind-actor",
+      command: "identity.bind-actor",
       help: {
-        summary: "automations.identity.bind-actor creates or updates a key/value identity binding.",
+        summary: "identity.bind-actor creates or updates a key/value identity binding.",
         options: [
           {
             name: "source",
@@ -163,8 +161,8 @@ const bindActorTool = defineAutomationBindingsTool({
           },
         ],
         examples: [
-          "automations.identity.bind-actor --source telegram --key chat-123 --value user-55",
-          'automations.identity.bind-actor --source telegram --key chat-123 --value user-55 --description "Primary device"',
+          "identity.bind-actor --source telegram --key chat-123 --value user-55",
+          'identity.bind-actor --source telegram --key chat-123 --value user-55 --description "Primary device"',
         ],
       },
       parse: parseBindActorArgs,
@@ -176,7 +174,7 @@ const bindActorTool = defineAutomationBindingsTool({
 export const automationBindingsRuntimeTools = [lookupBindingTool, bindActorTool] as const;
 
 export const automationBindingsToolFamily = defineBackofficeRuntimeToolFamily({
-  namespace: "automations-bindings",
+  namespace: "identity",
   tools: automationBindingsRuntimeTools,
   isAvailable: (context: AutomationBindingsToolContext) => !!context.runtimes.automations,
 });

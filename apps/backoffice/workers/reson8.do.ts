@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
+import { reson8ConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/reson8";
 import { createReson8Server, type Reson8Fragment } from "@/fragno/reson8";
 
 import {
@@ -52,13 +53,7 @@ const storedReson8ConfigSchema: z.ZodType<StoredReson8Config> = z.object({
   updatedAt: z.string().trim().min(1, "Stored Reson8 config is missing updatedAt."),
 });
 
-const setAdminConfigInputSchema = z.object({
-  apiKey: z
-    .string()
-    .trim()
-    .transform((value) => value || undefined)
-    .optional(),
-});
+const setAdminConfigInputSchema = reson8ConfigureInputSchema;
 
 type Reson8Source = Pick<StoredReson8Config, "apiKey">;
 
@@ -114,6 +109,13 @@ export class Reson8 extends DurableObject<CloudflareEnv> {
   async getAdminConfig(): Promise<ConfigResponse> {
     const config = await this.#host.loadStored();
     return buildConfigResponse(config);
+  }
+
+  async resetAdminConfig(): Promise<ConfigResponse> {
+    await this.#state.blockConcurrencyWhile(async () => {
+      await this.#host.clearConfig();
+    });
+    return { configured: false };
   }
 
   async getRealtimeOriginDiagnostic(origin: string): Promise<Reson8RealtimeOriginDiagnostic> {

@@ -11,6 +11,7 @@ import type { AutomationCommandContext, BashAutomationCommandResult } from "./au
 import type { AutomationBindingsRuntime } from "./families/automations-bindings";
 import type { DurableHooksRuntime } from "./families/automations-durable-hooks";
 import type { AutomationWorkflowRuntime } from "./families/automations-workflow";
+import type { BackofficeCapabilitiesRuntime } from "./families/backoffice-capabilities";
 import type { EventRuntime } from "./families/event-runtime";
 import type { RegisteredOtpCommandContext } from "./families/otp-runtime";
 import type { RegisteredPiCommandContext } from "./families/pi-runtime";
@@ -28,6 +29,7 @@ export type RegisteredEventBashCommandContext = AutomationCommandContext & {
 };
 
 export type BashHostContext = {
+  backoffice?: { runtime: BackofficeCapabilitiesRuntime } | null;
   automation: RegisteredEventBashCommandContext | null;
   automations: RegisteredAutomationsBashCommandContext | null;
   workflow?: { runtime: AutomationWorkflowRuntime } | null;
@@ -41,6 +43,7 @@ export type BashHostContext = {
 };
 
 export const EMPTY_BASH_HOST_CONTEXT: BashHostContext = {
+  backoffice: null,
   automation: null,
   automations: null,
   workflow: null,

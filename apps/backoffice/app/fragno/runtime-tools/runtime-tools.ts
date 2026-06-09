@@ -1,6 +1,7 @@
 import { defineCommand } from "just-bash";
 import type { z } from "zod";
 
+import type { BackofficeCapabilityId } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import type { ToolProvider } from "@/fragno/codemode/codemode-executor";
 import type {
   AutomationCommandExecutionResult,
@@ -93,6 +94,7 @@ export type BackofficeRuntimeTool<
   id: string;
   namespace: string;
   name: string;
+  capabilityId?: BackofficeCapabilityId;
   description: string;
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;

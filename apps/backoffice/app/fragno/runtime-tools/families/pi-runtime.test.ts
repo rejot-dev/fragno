@@ -233,8 +233,8 @@ describe("pi bash command registration", () => {
 
     const result = await bash.exec(
       'session_id="$(pi.session.create --agent assistant --name support --tag urgent --print id)"\n' +
-        'user_id="$(automations.identity.lookup-binding --source telegram --key actor-1 --print value)"\n' +
-        'automations.identity.bind-actor --source telegram --key actor-2 --value "$user_id" >/dev/null\n' +
+        'user_id="$(identity.lookup-binding --source telegram --key actor-1 --print value)"\n' +
+        'identity.bind-actor --source telegram --key actor-2 --value "$user_id" >/dev/null\n' +
         'list_id="$(pi.session.list --limit 1 --print 0.id)"\n' +
         'pi.session.get --session-id "$session_id" --print id >/dev/null\n' +
         'pi.session.turn --session-id "$session_id" --text "hello" --print assistantText',
@@ -249,12 +249,12 @@ describe("pi bash command registration", () => {
         exitCode: 0,
       },
       {
-        command: "automations.identity.lookup-binding",
+        command: "identity.lookup-binding",
         output: "user-1",
         exitCode: 0,
       },
       {
-        command: "automations.identity.bind-actor",
+        command: "identity.bind-actor",
         output: "",
         exitCode: 0,
       },

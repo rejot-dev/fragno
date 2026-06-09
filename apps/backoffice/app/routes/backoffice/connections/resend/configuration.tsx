@@ -61,13 +61,20 @@ const validateOptionalUrl = (value: string, label: string) => {
   return null;
 };
 
+const validateRequiredUrl = (value: string, label: string) => {
+  if (!value) {
+    return `${label} is required.`;
+  }
+  return validateOptionalUrl(value, label);
+};
+
 const normalizeResendConfigInput = (input: ResendConfigForm): ResendConfigValidationResult => {
   const apiKey = input.apiKey.trim();
   const defaultFrom = input.defaultFrom.trim();
   const defaultReplyTo = input.defaultReplyTo.trim();
   const webhookBaseUrl = input.webhookBaseUrl.trim();
 
-  const webhookBaseUrlError = validateOptionalUrl(webhookBaseUrl, "Webhook base URL");
+  const webhookBaseUrlError = validateRequiredUrl(webhookBaseUrl, "Webhook base URL");
   if (webhookBaseUrlError) {
     return { ok: false, message: webhookBaseUrlError };
   }
@@ -147,13 +154,13 @@ export default function BackofficeOrganisationResendConfiguration() {
     apiKey: "",
     defaultFrom: "",
     defaultReplyTo: "",
-    webhookBaseUrl: "",
+    webhookBaseUrl: origin,
   });
 
   const isConfigured = Boolean(configState?.configured);
-  const webhookBaseUrl = formState.webhookBaseUrl.trim() || origin;
+  const webhookBaseUrl = formState.webhookBaseUrl.trim();
   const webhookUrl = `${webhookBaseUrl.replace(/\/+$/, "")}/api/resend/${orgId}/webhook`;
-  const webhookBaseUrlError = validateOptionalUrl(
+  const webhookBaseUrlError = validateRequiredUrl(
     formState.webhookBaseUrl.trim(),
     "Webhook base URL",
   );
@@ -168,9 +175,9 @@ export default function BackofficeOrganisationResendConfiguration() {
       ...prev,
       defaultFrom: prev.defaultFrom || configState.config?.defaultFrom || "",
       defaultReplyTo: prev.defaultReplyTo || configState.config?.defaultReplyTo?.join(", ") || "",
-      webhookBaseUrl: prev.webhookBaseUrl || configState.config?.webhookBaseUrl || "",
+      webhookBaseUrl: configState.config?.webhookBaseUrl?.trim() || prev.webhookBaseUrl || origin,
     }));
-  }, [configState]);
+  }, [configState, origin]);
 
   useEffect(() => {
     if (!actionData?.configState) {
@@ -347,7 +354,10 @@ export default function BackofficeOrganisationResendConfiguration() {
               />
             </FormField>
 
-            <FormField label="Webhook base URL" hint="Optional. Use a tunnel URL when developing.">
+            <FormField
+              label="Webhook base URL"
+              hint="Required. Use the public Backoffice origin or a tunnel URL."
+            >
               <input
                 type="url"
                 name="webhookBaseUrl"
@@ -359,6 +369,7 @@ export default function BackofficeOrganisationResendConfiguration() {
                   }));
                 }}
                 placeholder={origin}
+                required
                 className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
               />
               {webhookBaseUrlError ? (

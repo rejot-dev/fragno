@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+import {
+  getHookScope,
+  listHookScopes,
+} from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import type { DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import {
   assertNoPositionals,
@@ -16,20 +20,20 @@ import {
 
 const AUTOMATION_INGEST_EVENT_HOOK_NAME = "internalIngestEvent";
 
-export const durableHookFragmentSchema = z.enum([
-  "cloudflare",
-  "telegram",
-  "otp",
-  "resend",
-  "github",
-  "upload",
-  "automations",
-  "pi",
-  "pi-workflows",
-  "auth",
-]);
+export const durableHookFragmentSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .superRefine((value, context) => {
+    if (!getHookScope(value)) {
+      context.addIssue({
+        code: "custom",
+        message: `Unknown hook fragment '${value}'. Run hooks.scopes.list to discover available hook scopes.`,
+      });
+    }
+  });
 
-export type DurableHookFragment = z.infer<typeof durableHookFragmentSchema>;
+export type DurableHookFragment = string;
 
 export type DurableHooksListArgs = {
   fragment: DurableHookFragment;
@@ -133,7 +137,7 @@ const parseGetHookArgs = (args: string[]): DurableHooksGetArgs => {
 
 const parseListAutomationEventsArgs = (args: string[]): AutomationEventsListArgs => {
   const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "automations.events.list");
+  assertNoPositionals(parsed, "events.list");
   return {
     cursor: readStringOption(parsed, "cursor"),
     pageSize: readPageSizeOption(parsed),
@@ -142,7 +146,7 @@ const parseListAutomationEventsArgs = (args: string[]): AutomationEventsListArgs
 
 const parseGetAutomationEventArgs = (args: string[]): AutomationEventsGetArgs => {
   const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "automations.events.get");
+  assertNoPositionals(parsed, "events.get");
   return {
     hookId: readStringOption(parsed, "hook-id", true)!,
   };
@@ -231,8 +235,9 @@ const listHooksTool = defineDurableHooksTool({
             required: true,
             valueRequired: true,
             valueName: "fragment",
-            description:
-              "Fragment scope: automations, pi, pi-workflows, auth, telegram, otp, resend, github, upload, cloudflare.",
+            description: `Fragment scope. Run hooks.scopes.list to discover values. Current values: ${listHookScopes()
+              .map((scope) => scope.id)
+              .join(", ")}.`,
           },
           {
             name: "cursor",
@@ -247,7 +252,10 @@ const listHooksTool = defineDurableHooksTool({
             description: "Optional page size.",
           },
         ],
-        examples: ["hooks.list --fragment automations --page-size 50 --format json"],
+        examples: [
+          "hooks.scopes.list --format json",
+          "hooks.list --fragment automations --page-size 50 --format json",
+        ],
       },
       parse: parseListHooksArgs,
       format: formatDurableHookQueue,
@@ -294,8 +302,8 @@ const getHookTool = defineDurableHooksTool({
 });
 
 const listAutomationEventsTool = defineDurableHooksTool({
-  id: "automations.events.list",
-  namespace: "automations",
+  id: "events.list",
+  namespace: "events",
   name: "listEvents",
   description: "List automation ingest event hook queue entries.",
   inputSchema: z.object({
@@ -306,10 +314,9 @@ const listAutomationEventsTool = defineDurableHooksTool({
   execute: listAutomationEventHooks,
   adapters: {
     bash: {
-      command: "automations.events.list",
+      command: "events.list",
       help: {
-        summary:
-          "automations.events.list lists durable hook queue entries for automation ingest events.",
+        summary: "events.list lists durable hook queue entries for automation ingest events.",
         options: [
           {
             name: "cursor",
@@ -324,7 +331,7 @@ const listAutomationEventsTool = defineDurableHooksTool({
             description: "Optional page size.",
           },
         ],
-        examples: ["automations.events.list --page-size 50 --format json"],
+        examples: ["events.list --page-size 50 --format json"],
       },
       parse: parseListAutomationEventsArgs,
       format: formatDurableHookQueue,
@@ -333,8 +340,8 @@ const listAutomationEventsTool = defineDurableHooksTool({
 });
 
 const getAutomationEventTool = defineDurableHooksTool({
-  id: "automations.events.get",
-  namespace: "automations",
+  id: "events.get",
+  namespace: "events",
   name: "getEvent",
   description: "Get an automation ingest event hook queue entry by durable hook id.",
   inputSchema: z.object({ hookId: nonEmptyString }),
@@ -342,10 +349,9 @@ const getAutomationEventTool = defineDurableHooksTool({
   execute: getAutomationEventHook,
   adapters: {
     bash: {
-      command: "automations.events.get",
+      command: "events.get",
       help: {
-        summary:
-          "automations.events.get returns one automation ingest event hook queue entry by id.",
+        summary: "events.get returns one automation ingest event hook queue entry by id.",
         options: [
           {
             name: "hook-id",
@@ -355,7 +361,7 @@ const getAutomationEventTool = defineDurableHooksTool({
             description: "Durable hook id.",
           },
         ],
-        examples: ["automations.events.get --hook-id hook_123 --format json"],
+        examples: ["events.get --hook-id hook_123 --format json"],
       },
       parse: parseGetAutomationEventArgs,
       format: formatDurableHookRecord,
@@ -377,7 +383,7 @@ export const hooksToolFamily = defineBackofficeRuntimeToolFamily({
 });
 
 export const automationEventsToolFamily = defineBackofficeRuntimeToolFamily({
-  namespace: "automations-events",
+  namespace: "events",
   tools: automationEventsRuntimeTools,
   isAvailable: (context: DurableHooksToolContext) => !!context.runtimes.durableHooks,
 });

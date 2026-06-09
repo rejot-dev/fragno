@@ -29,8 +29,8 @@ const createHook = ({ id, hookName }: { id: string; hookName: string }): Durable
 describe("automation runtime tools", () => {
   test("derive automation bash commands from runtime tools", () => {
     expect(automationBindingsRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
-      "automations.identity.lookup-binding",
-      "automations.identity.bind-actor",
+      "identity.lookup-binding",
+      "identity.bind-actor",
     ]);
     expect(automationWorkflowRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
       "workflow.list",
@@ -46,8 +46,8 @@ describe("automation runtime tools", () => {
       "hooks.get",
     ]);
     expect(automationEventsRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
-      "automations.events.list",
-      "automations.events.get",
+      "events.list",
+      "events.get",
     ]);
   });
 
@@ -60,7 +60,7 @@ describe("automation runtime tools", () => {
         return {
           configured: true,
           hooksEnabled: true,
-          namespace: "automation",
+          namespace: "events",
           items: [
             createHook({ id: "event-hook", hookName: "internalIngestEvent" }),
             createHook({ id: "other-hook", hookName: "sendTelegramMessage" }),

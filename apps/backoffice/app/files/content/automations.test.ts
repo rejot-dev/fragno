@@ -37,13 +37,13 @@ describe("starter automation content", () => {
 
     expect(unsupportedNestedProviderCalls).toEqual([]);
     expect(workflow).toContain("otp.createIdentityClaim(");
-    expect(workflow).toContain("automations.lookupBinding(");
+    expect(workflow).toContain("identity.lookupBinding(");
     expect(workflow).toContain("claim.url");
     expect(workflow).toContain("claim.otpId");
     expect(workflow).toContain("Open this link to finish linking your Telegram account:");
     expect(workflow).toContain("completedEvent.subject.userId");
     expect(workflow).toContain("completedOtpId !== claim.otpId");
-    expect(workflow).toContain("automations.bindActor(");
+    expect(workflow).toContain("identity.bindActor(");
   });
 
   test("starter router starts event-id keyed workflows and routes OTP completions by OTP id", () => {

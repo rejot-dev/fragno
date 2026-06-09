@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import type { TelegramFragmentConfig } from "@fragno-dev/telegram-fragment";
 
+import { telegramConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/telegram";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import {
@@ -24,7 +25,7 @@ type StoredTelegramConfig = TelegramConfig & {
   updatedAt: string;
 };
 
-type ConfigResponse = {
+export type TelegramAdminConfigResponse = {
   configured: boolean;
   config?: {
     botUsername?: string | null;
@@ -53,40 +54,8 @@ const maskSecret = (value: string) => {
   return `${value.slice(0, 4)}…${value.slice(-4)}`;
 };
 
-const isAbsoluteUrl = (value: string) => {
-  try {
-    new URL(value);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-const setAdminConfigInputSchema = z.object({
+const setAdminConfigInputSchema = telegramConfigureInputSchema.extend({
   orgId: z.string().trim().min(1, "Missing organisation id."),
-  botToken: z.string().trim().min(1, "Bot token is required."),
-  webhookSecretToken: z.string().trim().min(1, "Webhook secret token is required."),
-  botUsername: z
-    .string()
-    .trim()
-    .transform((value) => value.replace(/^@/, "") || undefined)
-    .optional(),
-  apiBaseUrl: z
-    .string()
-    .trim()
-    .transform((value) => value || undefined)
-    .refine((value) => !value || isAbsoluteUrl(value), {
-      message: "API base URL must be a valid absolute URL.",
-    })
-    .optional(),
-  webhookBaseUrl: z
-    .string()
-    .trim()
-    .transform((value) => value || undefined)
-    .refine((value) => !value || isAbsoluteUrl(value), {
-      message: "Webhook base URL must be a valid absolute URL.",
-    })
-    .optional(),
 });
 
 const telegramApiResponseSchema = z.object({
@@ -121,7 +90,14 @@ const automationFileInputSchema = z.object({
   fileId: z.string().trim().min(1, "Telegram automation file access requires a non-empty fileId."),
 });
 
-const buildConfigResponse = (config: StoredTelegramConfig | null): ConfigResponse => {
+function buildConfigResponse(
+  config: null,
+): Extract<TelegramAdminConfigResponse, { configured: false }>;
+function buildConfigResponse(
+  config: StoredTelegramConfig,
+): Extract<TelegramAdminConfigResponse, { configured: true }>;
+function buildConfigResponse(config: StoredTelegramConfig | null): TelegramAdminConfigResponse;
+function buildConfigResponse(config: StoredTelegramConfig | null): TelegramAdminConfigResponse {
   if (!config) {
     return { configured: false };
   }
@@ -138,7 +114,7 @@ const buildConfigResponse = (config: StoredTelegramConfig | null): ConfigRespons
       updatedAt: config.updatedAt,
     },
   };
-};
+}
 
 const resolveWebhookUrl = (origin: string, orgId: string, baseUrl?: string) => {
   const resolvedOrigin = baseUrl ?? origin;
@@ -377,12 +353,19 @@ export class Telegram extends DurableObject<CloudflareEnv> {
     await this.#host.alarm();
   }
 
-  async getAdminConfig(): Promise<ConfigResponse> {
+  async getAdminConfig(): Promise<TelegramAdminConfigResponse> {
     const config = await this.#host.loadStored();
     return buildConfigResponse(config);
   }
 
-  async setAdminConfig(payload: unknown, origin: string): Promise<ConfigResponse> {
+  async resetAdminConfig(): Promise<TelegramAdminConfigResponse> {
+    await this.#state.blockConcurrencyWhile(async () => {
+      await this.#host.clearConfig();
+    });
+    return { configured: false };
+  }
+
+  async setAdminConfig(payload: unknown, origin: string): Promise<TelegramAdminConfigResponse> {
     const parsed = setAdminConfigInputSchema.parse(payload);
     const normalizedOrgId = parsed.orgId;
 
@@ -393,7 +376,7 @@ export class Telegram extends DurableObject<CloudflareEnv> {
     const stored: StoredTelegramConfig = {
       ...parsed,
       orgId: normalizedOrgId,
-      webhookBaseUrl: parsed.webhookBaseUrl ?? existing?.webhookBaseUrl,
+      webhookBaseUrl: parsed.webhookBaseUrl,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
@@ -410,7 +393,19 @@ export class Telegram extends DurableObject<CloudflareEnv> {
     const webhookUrl = resolveWebhookUrl(origin, normalizedOrgId, stored.webhookBaseUrl);
     const webhookResult = await setTelegramWebhook(stored, webhookUrl, normalizedOrgId);
 
-    return { ...buildConfigResponse(stored), webhook: webhookResult };
+    return {
+      configured: true,
+      config: {
+        botUsername: stored.botUsername ?? null,
+        apiBaseUrl: stored.apiBaseUrl ?? null,
+        webhookBaseUrl: stored.webhookBaseUrl ?? null,
+        botTokenPreview: maskSecret(stored.botToken),
+        webhookSecretTokenPreview: maskSecret(stored.webhookSecretToken),
+        createdAt: stored.createdAt,
+        updatedAt: stored.updatedAt,
+      },
+      webhook: webhookResult,
+    };
   }
 
   getDurableHookRepository() {

@@ -71,6 +71,13 @@ const validateOptionalUrl = (value: string, label: string) => {
   return null;
 };
 
+const validateRequiredUrl = (value: string, label: string) => {
+  if (!value) {
+    return `${label} is required.`;
+  }
+  return validateOptionalUrl(value, label);
+};
+
 const normalizeTelegramConfigInput = (
   input: TelegramConfigForm,
 ): TelegramConfigValidationResult => {
@@ -92,7 +99,7 @@ const normalizeTelegramConfigInput = (
     return { ok: false, message: apiBaseUrlError };
   }
 
-  const webhookBaseUrlError = validateOptionalUrl(webhookBaseUrl, "Webhook base URL");
+  const webhookBaseUrlError = validateRequiredUrl(webhookBaseUrl, "Webhook base URL");
   if (webhookBaseUrlError) {
     return { ok: false, message: webhookBaseUrlError };
   }
@@ -146,7 +153,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
       { ...validation.payload, orgId: params.orgId },
       origin,
     );
-    const webhook = configState.webhook;
+    const webhook = configState.configured ? configState.webhook : undefined;
     if (webhook && !webhook.ok) {
       return {
         ok: false,
@@ -184,13 +191,13 @@ export default function BackofficeOrganisationTelegramConfiguration() {
     webhookSecretToken: "",
     botUsername: "",
     apiBaseUrl: "",
-    webhookBaseUrl: "",
+    webhookBaseUrl: origin,
   });
 
-  const webhookBaseUrl = formState.webhookBaseUrl.trim() || origin;
+  const webhookBaseUrl = formState.webhookBaseUrl.trim();
   const webhookUrl = `${webhookBaseUrl.replace(/\/+$/, "")}/api/telegram/${orgId}/telegram/webhook`;
   const apiBaseUrlError = validateOptionalUrl(formState.apiBaseUrl.trim(), "API base URL");
-  const webhookBaseUrlError = validateOptionalUrl(
+  const webhookBaseUrlError = validateRequiredUrl(
     formState.webhookBaseUrl.trim(),
     "Webhook base URL",
   );
@@ -429,7 +436,10 @@ export default function BackofficeOrganisationTelegramConfiguration() {
               {apiBaseUrlError ? <p className="text-xs text-red-500">{apiBaseUrlError}</p> : null}
             </FormField>
 
-            <FormField label="Webhook base URL" hint="Optional. Use a tunnel URL when developing.">
+            <FormField
+              label="Webhook base URL"
+              hint="Required. Use the public Backoffice origin or a tunnel URL."
+            >
               <input
                 type="url"
                 name="webhookBaseUrl"
@@ -442,6 +452,7 @@ export default function BackofficeOrganisationTelegramConfiguration() {
                   }));
                 }}
                 placeholder={origin}
+                required
                 className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
               />
               {webhookBaseUrlError ? (

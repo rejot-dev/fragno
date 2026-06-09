@@ -1,6 +1,7 @@
 import { createRouteBackedAutomationBindingsRuntime } from "@/fragno/automation/bindings-route-runtime";
 import { createRouteBackedDurableHooksRuntime } from "@/fragno/automation/durable-hooks-route-runtime";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
+import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
 import { createOtpRuntime } from "@/fragno/runtime-tools/families/otp-runtime";
 import { createPiRouteRuntime, type PiRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
 import { createResendRouteRuntime } from "@/fragno/runtime-tools/families/resend-runtime";
@@ -9,6 +10,7 @@ import { createSandboxRouteRuntime } from "@/fragno/runtime-tools/families/sandb
 import { createTelegramRuntime } from "@/fragno/runtime-tools/families/telegram-runtime";
 
 import type { InteractiveBashCommandContext } from "./bash-host";
+import { getRuntimeToolNamespacesByCapability } from "./tool-families";
 
 const normalizeOrgId = (orgId: string | undefined) => orgId?.trim() || undefined;
 
@@ -36,6 +38,13 @@ export const createRouteBackedRuntimeContext = ({
   }
 
   return {
+    backoffice: {
+      runtime: createBackofficeCapabilitiesRuntime({
+        env,
+        orgId: normalizedOrgId,
+        runtimeToolNamespacesByCapability: getRuntimeToolNamespacesByCapability(),
+      }),
+    },
     automation: null,
     automations: {
       runtime: createRouteBackedAutomationBindingsRuntime({ env, orgId: normalizedOrgId }),

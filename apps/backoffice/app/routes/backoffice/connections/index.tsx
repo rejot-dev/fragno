@@ -1,47 +1,10 @@
 import { Link, useOutletContext } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
+import { backofficeConnectionCatalog } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
-const CONNECTIONS = [
-  {
-    id: "telegram",
-    name: "Telegram",
-    description: "Capture chat activity, configure webhooks, and send messages as a bot.",
-    status: "Available",
-  },
-  {
-    id: "resend",
-    name: "Resend",
-    description: "Send emails, register webhooks, and monitor delivery status.",
-    status: "Available",
-  },
-  {
-    id: "upload",
-    name: "Upload",
-    description: "Configure org-scoped storage, inspect files, and run manual upload actions.",
-    status: "Available",
-  },
-  {
-    id: "reson8",
-    name: "Reson8",
-    description: "Transcribe recorded audio, capture realtime speech, and manage custom models.",
-    status: "Available",
-  },
-  {
-    id: "slack",
-    name: "Slack",
-    description: "Sync workspace activity and notify channel subscribers.",
-    status: "Planned",
-    to: null,
-  },
-  {
-    id: "github",
-    name: "GitHub",
-    description: "Track installation webhooks, link repositories, and inspect pull requests.",
-    status: "Available",
-  },
-];
+const CONNECTIONS = backofficeConnectionCatalog;
 
 export function meta() {
   return [
@@ -53,21 +16,6 @@ export function meta() {
 export default function BackofficeConnections() {
   const { me } = useOutletContext<BackofficeLayoutContext>();
   const activeOrganizationId = me.activeOrganization?.organization.id ?? null;
-  const telegramTarget = activeOrganizationId
-    ? `/backoffice/connections/telegram/${activeOrganizationId}`
-    : null;
-  const resendTarget = activeOrganizationId
-    ? `/backoffice/connections/resend/${activeOrganizationId}`
-    : null;
-  const githubTarget = activeOrganizationId
-    ? `/backoffice/connections/github/${activeOrganizationId}`
-    : null;
-  const uploadTarget = activeOrganizationId
-    ? `/backoffice/connections/upload/${activeOrganizationId}`
-    : null;
-  const reson8Target = activeOrganizationId
-    ? `/backoffice/connections/reson8/${activeOrganizationId}`
-    : null;
 
   return (
     <div className="space-y-4">
@@ -87,17 +35,9 @@ export default function BackofficeConnections() {
       <section className="grid gap-3 md:grid-cols-2">
         {CONNECTIONS.map((connection) => {
           const connectionLink =
-            connection.id === "telegram"
-              ? telegramTarget
-              : connection.id === "resend"
-                ? resendTarget
-                : connection.id === "github"
-                  ? githubTarget
-                  : connection.id === "upload"
-                    ? uploadTarget
-                    : connection.id === "reson8"
-                      ? reson8Target
-                      : null;
+            activeOrganizationId && connection.routeSegment
+              ? `/backoffice/connections/${connection.routeSegment}/${activeOrganizationId}`
+              : null;
           const isAvailable = Boolean(connectionLink);
           return (
             <div
@@ -107,10 +47,10 @@ export default function BackofficeConnections() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                    {connection.status}
+                    {connection.configurable ? "Configurable" : "Environment"}
                   </p>
                   <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
-                    {connection.name}
+                    {connection.label}
                   </h2>
                 </div>
                 <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">

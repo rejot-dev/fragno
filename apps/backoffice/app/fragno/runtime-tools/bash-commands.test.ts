@@ -45,14 +45,12 @@ describe("createBackofficeBashCommands", () => {
     });
 
     await expect(
-      bash.exec(
-        "automations.identity.lookup-binding --source telegram --key chat-123 --print value",
-      ),
+      bash.exec("identity.lookup-binding --source telegram --key chat-123 --print value"),
     ).resolves.toMatchObject({ stdout: "user-55\n", exitCode: 0 });
 
     await expect(
       bash.exec(
-        "automations.identity.bind-actor --source telegram --key chat-123 --value user-55 --format json",
+        "identity.bind-actor --source telegram --key chat-123 --value user-55 --format json",
       ),
     ).resolves.toMatchObject({ exitCode: 0 });
 
@@ -61,8 +59,8 @@ describe("createBackofficeBashCommands", () => {
       ["bindActor", { source: "telegram", key: "chat-123", value: "user-55" }],
     ]);
     expect(commandCallsResult.map((call) => call.command)).toEqual([
-      "automations.identity.lookup-binding",
-      "automations.identity.bind-actor",
+      "identity.lookup-binding",
+      "identity.bind-actor",
     ]);
   });
 
