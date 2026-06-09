@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Form, useActionData, useNavigation, useOutletContext } from "react-router";
 
-import { getTelegramDurableObject } from "@/cloudflare/cloudflare-utils";
+import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import { FormContainer, FormField, WizardStepper } from "@/components/backoffice";
+import { telegramCapability } from "@/fragno/backoffice-capabilities/capabilities/telegram";
 
 import type { Route } from "./+types/configuration";
 import {
@@ -146,28 +147,28 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   }
 
   const origin = new URL(request.url).origin;
-  const telegramDo = getTelegramDurableObject(context, params.orgId);
+  const { env } = context.get(CloudflareContext);
 
   try {
-    const configState = await telegramDo.setAdminConfig(
-      { ...validation.payload, orgId: params.orgId },
+    const status = await telegramCapability.connection.configure({
+      env,
+      orgId: params.orgId,
       origin,
-    );
-    const webhook = configState.configured ? configState.webhook : undefined;
-    if (webhook && !webhook.ok) {
+      payload: validation.payload,
+    });
+
+    if (status.verification && !status.verification.ok) {
       return {
         ok: false,
         intent,
-        message: webhook.message,
-        configState,
+        message: status.verification.message,
       } satisfies TelegramConfigActionData;
     }
 
     return {
       ok: true,
       intent,
-      message: webhook?.message ?? "Telegram credentials saved.",
-      configState,
+      message: status.verification?.message ?? "Telegram credentials saved.",
     } satisfies TelegramConfigActionData;
   } catch (error) {
     return {
@@ -179,7 +180,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
 }
 
 export default function BackofficeOrganisationTelegramConfiguration() {
-  const { orgId, origin, configState, configLoading, configError, setConfigState, setConfigError } =
+  const { orgId, origin, configState, configLoading, configError, setConfigError } =
     useOutletContext<TelegramLayoutContext>();
   const [currentStep, setCurrentStep] = useState(0);
   const actionData = useActionData<typeof action>();
@@ -224,19 +225,19 @@ export default function BackofficeOrganisationTelegramConfiguration() {
   }, [configState]);
 
   useEffect(() => {
-    if (actionData?.intent !== "save-config" || !actionData.configState) {
+    if (actionData?.intent !== "save-config") {
       return;
     }
-    setConfigState(actionData.configState);
-    setConfigError(null);
+
     if (actionData.ok) {
+      setConfigError(null);
       setFormState((prev) => ({
         ...prev,
         botToken: "",
         webhookSecretToken: "",
       }));
     }
-  }, [actionData, setConfigError, setConfigState]);
+  }, [actionData, setConfigError]);
 
   const saveError =
     localError ??
