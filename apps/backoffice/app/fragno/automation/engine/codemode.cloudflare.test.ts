@@ -70,7 +70,7 @@ describe("executeCodemodeAutomation", () => {
       context: createAutomationContext(event, runtime),
       script: `async () => {
         const event = JSON.parse(await state.readFile("/context/event.json"));
-        return await automations.bindActor({
+        return await identity.bindActor({
           source: event.source,
           key: event.payload.chatId,
           value: "user-55",
@@ -94,9 +94,9 @@ describe("executeCodemodeAutomation", () => {
       commandCalls: [],
       toolCalls: [
         {
-          providerName: "automations",
+          providerName: "identity",
           toolName: "bindActor",
-          toolId: "automations.identity.bind-actor",
+          toolId: "identity.bind-actor",
           inputSummary:
             '{"source":"telegram","key":"chat-123","value":"user-55","description":"Linked from codemode"}',
           status: "success",
@@ -186,14 +186,14 @@ describe("executeCodemodeAutomation", () => {
     const bashResult = await executeBashAutomation({
       masterFs: createTestMasterFileSystem({}),
       context,
-      script: "automations.identity.bind-actor --source telegram --key bash-chat --value user-bash",
+      script: "identity.bind-actor --source telegram --key bash-chat --value user-bash",
     });
     const codemodeResult = await executeCodemodeAutomation({
       env,
       masterFs: createTestMasterFileSystem({}),
       context,
       script: `async () => {
-        return await automations.bindActor({
+        return await identity.bindActor({
           source: "telegram",
           key: "codemode-chat",
           value: "user-codemode",
@@ -211,7 +211,7 @@ describe("executeCodemodeAutomation", () => {
       runtime: "codemode",
       exitCode: 0,
       commandCalls: [],
-      toolCalls: [{ toolId: "automations.identity.bind-actor", status: "success" }],
+      toolCalls: [{ toolId: "identity.bind-actor", status: "success" }],
     });
     expect(calls).toEqual([
       ["bindActor", { source: "telegram", key: "bash-chat", value: "user-bash" }],
@@ -235,7 +235,7 @@ describe("executeCodemodeAutomation", () => {
       masterFs: createTestMasterFileSystem({}),
       context: createAutomationContext(event, createRecordingAutomationRuntime(calls)),
       script: `async () => {
-        return await automations.bindActor({ source: "telegram", key: "chat-123", value: "" });
+        return await identity.bindActor({ source: "telegram", key: "chat-123", value: "" });
       }`,
     });
 
@@ -243,9 +243,9 @@ describe("executeCodemodeAutomation", () => {
     expect(result.stderr).toContain("Too small");
     expect(result.toolCalls).toMatchObject([
       {
-        providerName: "automations",
+        providerName: "identity",
         toolName: "bindActor",
-        toolId: "automations.identity.bind-actor",
+        toolId: "identity.bind-actor",
         status: "error",
       },
     ]);

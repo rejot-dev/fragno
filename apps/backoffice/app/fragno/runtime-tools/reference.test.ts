@@ -52,51 +52,51 @@ const stringifyFamilyByNamespace = ({
 describe("runtime tool reference generation", () => {
   test.each([
     {
-      namespace: "automations-bindings",
+      namespace: "identity",
       tools: [
         {
-          id: "automations.identity.lookup-binding",
-          namespace: "automations",
-          codemodeProvider: "automations",
+          id: "identity.lookup-binding",
+          namespace: "identity",
+          codemodeProvider: "identity",
           codemodeTool: "lookupBinding",
-          inputType: "AutomationsLookupBindingInput",
-          outputType: "AutomationsLookupBindingOutput",
-          bashCommand: "automations.identity.lookup-binding",
+          inputType: "IdentityLookupBindingInput",
+          outputType: "IdentityLookupBindingOutput",
+          bashCommand: "identity.lookup-binding",
           bashOptions: ["source", "key"],
         },
         {
-          id: "automations.identity.bind-actor",
-          namespace: "automations",
-          codemodeProvider: "automations",
+          id: "identity.bind-actor",
+          namespace: "identity",
+          codemodeProvider: "identity",
           codemodeTool: "bindActor",
-          inputType: "AutomationsBindActorInput",
-          outputType: "AutomationsBindActorOutput",
-          bashCommand: "automations.identity.bind-actor",
+          inputType: "IdentityBindActorInput",
+          outputType: "IdentityBindActorOutput",
+          bashCommand: "identity.bind-actor",
           bashOptions: ["source", "key", "value", "description"],
         },
       ],
     },
     {
-      namespace: "automations-events",
+      namespace: "events",
       tools: [
         {
-          id: "automations.events.list",
-          namespace: "automations",
-          codemodeProvider: "automations",
+          id: "events.list",
+          namespace: "events",
+          codemodeProvider: "events",
           codemodeTool: "listEvents",
-          inputType: "AutomationsListEventsInput",
-          outputType: "AutomationsListEventsOutput",
-          bashCommand: "automations.events.list",
+          inputType: "EventsListEventsInput",
+          outputType: "EventsListEventsOutput",
+          bashCommand: "events.list",
           bashOptions: ["cursor", "page-size"],
         },
         {
-          id: "automations.events.get",
-          namespace: "automations",
-          codemodeProvider: "automations",
+          id: "events.get",
+          namespace: "events",
+          codemodeProvider: "events",
           codemodeTool: "getEvent",
-          inputType: "AutomationsGetEventInput",
-          outputType: "AutomationsGetEventOutput",
-          bashCommand: "automations.events.get",
+          inputType: "EventsGetEventInput",
+          outputType: "EventsGetEventOutput",
+          bashCommand: "events.get",
           bashOptions: ["hook-id"],
         },
       ],
@@ -474,7 +474,7 @@ describe("runtime tool reference generation", () => {
       createRuntimeToolReferences({ families: runtimeToolFamilies }),
     );
 
-    expect(types).toContain("declare const automations");
+    expect(types).toContain("declare const identity");
     expect(types).toContain("declare const workflow");
     expect(types).toContain("createInstance(input: WorkflowCreateInstanceInput)");
     expect(types).toContain("getInstance(input: WorkflowGetInstanceInput)");
@@ -489,7 +489,7 @@ describe("runtime tool reference generation", () => {
       types.indexOf("// ── Backoffice domain tool providers"),
     );
 
-    expect(domainProviderTypes).toContain("declare const automations");
+    expect(domainProviderTypes).toContain("declare const identity");
     expect(domainProviderTypes).toContain("declare const workflow");
     expect(domainProviderTypes).toContain("createInstance(input: WorkflowCreateInstanceInput)");
     expect(domainProviderTypes).toContain("getInstance(input: WorkflowGetInstanceInput)");

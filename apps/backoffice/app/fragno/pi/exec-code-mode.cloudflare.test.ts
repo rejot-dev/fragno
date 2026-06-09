@@ -291,8 +291,8 @@ describe("Pi execCodeMode tool", () => {
 
     const result = await tool.execute("tool-call-1", {
       code: `async () => {
-        const existing = await automations.lookupBinding({ source: "telegram", key: "chat-123" });
-        return await automations.bindActor({
+        const existing = await identity.lookupBinding({ source: "telegram", key: "chat-123" });
+        return await identity.bindActor({
           source: "telegram",
           key: "chat-456",
           value: existing.value,
@@ -305,7 +305,7 @@ describe("Pi execCodeMode tool", () => {
       logs: [],
       toolCalls: [
         {
-          providerName: "automations",
+          providerName: "identity",
           toolName: "lookupBinding",
           inputSummary: '{"source":"telegram","key":"chat-123"}',
           status: "success",
@@ -313,7 +313,7 @@ describe("Pi execCodeMode tool", () => {
             '{"source":"telegram","key":"chat-123","value":"user-55","status":"linked"}',
         },
         {
-          providerName: "automations",
+          providerName: "identity",
           toolName: "bindActor",
           inputSummary: '{"source":"telegram","key":"chat-456","value":"user-55"}',
           status: "success",
@@ -357,7 +357,7 @@ describe("Pi execCodeMode tool", () => {
     await expect(
       tool.execute("tool-call-1", {
         code: `async () => {
-          return await automations.bindActor({ source: "telegram", key: "chat-123", value: "" });
+          return await identity.bindActor({ source: "telegram", key: "chat-123", value: "" });
         }`,
       }),
     ).rejects.toThrow("Too small");

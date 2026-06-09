@@ -71,14 +71,20 @@ const VALID_PAYLOAD = {
   botToken: "123456:telegram-bot-token",
   webhookSecretToken: "telegram-webhook-secret",
   botUsername: "fragno_bot",
+  webhookBaseUrl: "https://example.com",
 };
 
 const createState = (initialEntries?: Array<[string, unknown]>) => {
   const store = new Map<string, unknown>(initialEntries);
+  let alarm: number | null = null;
   const storage = {
     get: vi.fn(async (key: string) => store.get(key)),
     put: vi.fn(async (key: string, value: unknown) => {
       store.set(key, value);
+    }),
+    getAlarm: vi.fn(async () => alarm),
+    setAlarm: vi.fn(async (scheduledTime: number) => {
+      alarm = scheduledTime;
     }),
   };
   const waitUntil = vi.fn();

@@ -161,6 +161,8 @@ export type BackofficeFragmentDurableObject<TStored, TSource, TRuntime> = {
   storeAndInitialize: (
     stored: TStored,
   ) => Promise<BackofficeFragmentRuntimeState<TStored, TSource, TRuntime>>;
+  /** Delete the persisted config and mark the runtime unconfigured. */
+  clearConfig: () => Promise<BackofficeFragmentRuntimeState<TStored, TSource, TRuntime>>;
   /** Return the current cached runtime state without doing storage I/O. */
   getState: () => BackofficeFragmentRuntimeState<TStored, TSource, TRuntime>;
   /** Return the configured runtime state, or `null` if this DO is not currently configured. */
@@ -393,6 +395,10 @@ export function createBackofficeFragmentDurableObject<TStored, TSource = TStored
       // and runtime replacement are observed as one initialization/update boundary by the DO.
       await options.state.storage.put(configKey, stored);
       return await initializeFromStored(stored);
+    },
+    async clearConfig() {
+      await options.state.storage.delete(configKey);
+      return await initializeFromStored(null);
     },
     getState: () => current,
     getConfigured: () => (current.configured ? current : null),

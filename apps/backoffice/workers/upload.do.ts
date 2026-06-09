@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
+import { uploadConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/upload";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import {
   UPLOAD_ADMIN_CONFIG_KEY,
@@ -286,15 +287,26 @@ export class Upload extends DurableObject<CloudflareEnv> {
     return buildUploadAdminConfigResponse(config);
   }
 
+  async resetAdminConfig(): Promise<UploadAdminConfigResponse> {
+    await this.#state.blockConcurrencyWhile(async () => {
+      await this.#host.clearConfig();
+    });
+    return buildUploadAdminConfigResponse(null);
+  }
+
   async setAdminConfig(
     payload: unknown,
     orgId: string,
     _origin?: string,
   ): Promise<UploadAdminConfigResponse> {
     const args = setAdminConfigArgsSchema.parse({ orgId });
+    const parsedPayload = uploadConfigureInputSchema.safeParse(payload);
+    if (!parsedPayload.success) {
+      throw new Error("Only providers 'database', 'r2', and 'r2-binding' are supported.");
+    }
     const existing = await this.#loadConfig();
     const resolved = resolveUploadAdminConfigInput({
-      payload,
+      payload: parsedPayload.data,
       orgId: args.orgId,
       existing,
     });

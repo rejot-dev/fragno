@@ -21,9 +21,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   assertDevOnlyLocalRequest(request);
 
   const authDo = getAuthDurableObject(context) as unknown as {
-    getAllDevOrganizations(): Promise<Organization[]>;
+    getAllOrganizations(): Promise<Organization[]>;
   };
-  const organizations = (await authDo.getAllDevOrganizations()).map((organization) => ({
+  const organizations = (await authDo.getAllOrganizations()).map((organization) => ({
     id: organization.id,
     name: organization.name,
     slug: organization.slug,

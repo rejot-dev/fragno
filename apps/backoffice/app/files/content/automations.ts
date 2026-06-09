@@ -78,7 +78,7 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
     const otpId = event.payload.otpId ?? (event.payload.externalActorId ? "otp-" + event.payload.externalActorId : "");
 
     if (linkSource === "telegram") {
-      const workflowBinding = await automations.lookupBinding({
+      const workflowBinding = await identity.lookupBinding({
         source: "telegram-claim-workflow",
         key: otpId,
       });
@@ -104,7 +104,7 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
     const chatId = automationEvent.payload.chatId;
 
     const linkedUser = await step.do("lookup existing link", async () => {
-      return await automations.lookupBinding({
+      return await identity.lookupBinding({
         source: "telegram",
         key: chatId,
       });
@@ -140,7 +140,7 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
         externalActorId: chatId,
       });
 
-      await automations.bindActor({
+      await identity.bindActor({
         source: "telegram-claim-workflow",
         key: claim.otpId,
         value: workflowInstanceId,
@@ -175,7 +175,7 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
 
     return await step.do("bind telegram actor", async () => {
       try {
-        await automations.bindActor({
+        await identity.bindActor({
           source: linkSource,
           key: externalActorId,
           value: subjectUserId,
@@ -234,7 +234,7 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
     const externalActorId = automationEvent.actor.externalId;
 
     const linkedBinding = await step.do("lookup linked user", async () => {
-      return await automations.lookupBinding({
+      return await identity.lookupBinding({
         source: "telegram",
         key: externalActorId,
       });
@@ -250,7 +250,7 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
     }
 
     const piSessionBinding = await step.do("lookup pi session", async () => {
-      return await automations.lookupBinding({
+      return await identity.lookupBinding({
         source: "telegram-pi-session",
         key: linkedUser,
       });
@@ -300,7 +300,7 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
           "forwarded to Telegram in Markdown parse mode.",
       });
 
-      await automations.bindActor({
+      await identity.bindActor({
         source: "telegram-pi-session",
         key: linkedUser,
         value: session.id,

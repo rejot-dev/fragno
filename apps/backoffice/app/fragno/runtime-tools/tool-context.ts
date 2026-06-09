@@ -5,6 +5,7 @@ export const createBackofficeToolContext = (
   context: BashHostContext,
 ): CoreBackofficeToolContext => ({
   runtimes: {
+    backoffice: context.backoffice?.runtime,
     automations: context.automations?.runtime,
     workflow: context.workflow?.runtime,
     durableHooks: context.durableHooks?.runtime,

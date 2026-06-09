@@ -39,9 +39,17 @@ The last 200 ingested events are available as JSON files in: \`/events/YYYY-MM-D
 written to text files in the same directory.
 
 When the user asks you to create an automation, create a new script under
-\`/starter/automations/scripts/\`. You can search past events for guidance and read pre-existing
-scripts for examples. Automation scripts run when events are ingested. There is no generic manual
-\`scripts.run\` harness command in the runtime tool surface.
+\`/starter/automations/scripts/\`. Start discovery with \`events.catalog\`, then search past events for
+guidance and read pre-existing scripts for examples. Automation scripts run when events are
+ingested. There is no generic manual \`scripts.run\` harness command in the runtime tool surface.
+
+Connection discovery/setup flow for agents:
+
+1. Run \`hooks.scopes.list\` to discover valid hook scopes.
+2. Run \`connections.list\` to inspect configured connections.
+3. Run \`events.catalog\` before creating event-driven automations.
+4. For setup, run \`connections.setup --id <id>\`, collect the required user-provided values, then
+   use \`connections.configure --id <id> --json '{...}'\` and \`connections.verify --id <id>\`.
 
 Some connections also provide file-oriented views of their data:
 
