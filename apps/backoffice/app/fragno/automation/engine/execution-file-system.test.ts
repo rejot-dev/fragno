@@ -10,13 +10,11 @@ describe("createAutomationExecutionFileSystem", () => {
       masterFs: new MasterFileSystem({ mounts: [] }),
       contextFiles: {
         "event.json": JSON.stringify({ id: "event-1" }),
-        "env.json": JSON.stringify({ PI_DEFAULT_AGENT: "agent-1" }),
       },
     });
 
     await expect(fs.readFile("/context/event.json")).resolves.toBe('{"id":"event-1"}');
-    await expect(fs.readFile("/context/env.json")).resolves.toBe('{"PI_DEFAULT_AGENT":"agent-1"}');
-    await expect(fs.readdir("/context")).resolves.toEqual(["env.json", "event.json"]);
+    await expect(fs.readdir("/context")).resolves.toEqual(["event.json"]);
     await expect(fs.readFile("/context/typo.json")).rejects.toThrow("ENOENT");
     await expect(fs.exists("/context/typo.json")).resolves.toBe(false);
     await expect(fs.stat("/context/typo.json")).rejects.toThrow("ENOENT");

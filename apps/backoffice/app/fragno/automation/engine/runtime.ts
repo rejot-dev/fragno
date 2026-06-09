@@ -33,13 +33,12 @@ import {
   type AutomationIdentityClaimRecord,
   type OtpRuntime,
 } from "../../runtime-tools/families/otp-runtime";
-import type { AutomationBashEnvironment, AutomationEvent } from "../contracts";
+import type { AutomationEvent } from "../contracts";
 
 const normalizeOrgId = (orgId: string | undefined) => orgId?.trim() || undefined;
 
 export type AutomationPiBashContext = {
   runtime: PiRuntime;
-  defaultAgent?: string;
 };
 
 export type AutomationRuntime = AutomationBindingsRuntime & OtpRuntime & EventRuntime;
@@ -151,11 +150,6 @@ export const createAutomationExecutionContext = ({
 
   const orgId = normalizedEvent.orgId;
 
-  const bashEnv: AutomationBashEnvironment = {
-    ...binding.scriptEnv,
-    ...(pi?.defaultAgent ? { PI_DEFAULT_AGENT: pi.defaultAgent } : {}),
-  };
-
   const routeBacked =
     env && orgId
       ? createRouteBackedRuntimeContext({
@@ -171,7 +165,6 @@ export const createAutomationExecutionContext = ({
       orgId,
       binding,
       idempotencyKey,
-      bashEnv,
       runtime,
     },
     automations: routeBacked?.automations

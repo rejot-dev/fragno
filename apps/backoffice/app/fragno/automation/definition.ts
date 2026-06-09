@@ -115,7 +115,6 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
             scriptName: script.name,
             scriptPath: script.path,
             scriptVersion: script.version,
-            scriptEnv: {},
           };
 
           const context = createAutomationExecutionContext({

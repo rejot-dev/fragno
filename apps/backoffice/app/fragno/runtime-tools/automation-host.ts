@@ -35,11 +35,7 @@ export const executeBashAutomation = async ({
 
   const { bash, commandCallsResult } = createBashHost({
     fs: executionFs,
-    env: Object.fromEntries(
-      Object.entries(context.automation.bashEnv).filter((entry): entry is [string, string] => {
-        return typeof entry[1] === "string";
-      }),
-    ),
+    env: {},
     context,
   });
   const result = await bash.exec(script);

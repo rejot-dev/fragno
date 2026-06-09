@@ -44,8 +44,6 @@ export type AutomationKnownEvent<S extends AutomationSource = AutomationSource> 
   eventType: AutomationEventTypeForSource<S>;
 };
 
-export type AutomationBashEnvironment = Record<string, string | undefined>;
-
 export type AutomationCreateIdentityClaimInput = {
   orgId?: string;
   source: string;

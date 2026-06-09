@@ -258,7 +258,6 @@ type AutomationContextOptions = {
   otpRuntime?: AutomationRuntimeHostContext["otp"]["runtime"];
   piRuntime?: NonNullable<AutomationRuntimeHostContext["pi"]>["runtime"] | null;
   telegramRuntime?: AutomationRuntimeHostContext["telegram"]["runtime"];
-  bashEnv?: AutomationRuntimeHostContext["automation"]["bashEnv"];
   binding?: Partial<AutomationRuntimeHostContext["automation"]["binding"]>;
 };
 
@@ -283,11 +282,9 @@ const createAutomationContext = (
         scriptName: "Codemode",
         scriptPath: "scripts/context-writer.cm.js",
         scriptVersion: 1,
-        scriptEnv: {},
         ...options.binding,
       },
       idempotencyKey: "idem-codemode",
-      bashEnv: options.bashEnv ?? {},
       runtime,
     },
     automations: { runtime },

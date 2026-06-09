@@ -17,33 +17,6 @@ import {
   type DurableHookQueueOptions,
 } from "@/fragno/durable-hooks";
 import { createPiRouteRuntime } from "@/fragno/pi/pi";
-import {
-  PI_MODEL_CATALOG,
-  createPiAgentName,
-  resolvePiHarnesses,
-  type PiConfigState,
-} from "@/fragno/pi/pi-shared";
-
-const resolveDefaultPiAgent = (configState: PiConfigState) => {
-  if (!configState.configured || !configState.config) {
-    return undefined;
-  }
-
-  const harness = resolvePiHarnesses(configState.config.harnesses)[0];
-  const model = PI_MODEL_CATALOG.find((option) => {
-    return Boolean(configState.config?.apiKeys?.[option.provider]);
-  });
-
-  if (!harness || !model) {
-    return undefined;
-  }
-
-  return createPiAgentName({
-    harnessId: harness.id,
-    provider: model.provider,
-    model: model.name,
-  });
-};
 
 export class Automations extends DurableObject<CloudflareEnv> {
   #env: CloudflareEnv;
@@ -114,16 +87,8 @@ export class Automations extends DurableObject<CloudflareEnv> {
       return undefined;
     }
 
-    const piDo = this.#env.PI.get(this.#env.PI.idFromName(orgId));
-    const configState = await piDo.getAdminConfig();
-    const defaultAgent = resolveDefaultPiAgent(configState);
-    if (!defaultAgent) {
-      return undefined;
-    }
-
     return {
       runtime: createPiRouteRuntime({ env: this.#env, orgId }),
-      defaultAgent,
     };
   }
 

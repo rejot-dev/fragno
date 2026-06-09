@@ -1,4 +1,4 @@
-import type { AutomationBashEnvironment, AutomationEvent } from "../automation/contracts";
+import type { AutomationEvent } from "../automation/contracts";
 import type { AutomationCommandCallResult } from "../automation/run-result";
 
 export type AutomationCommandFormat = "text" | "json";
@@ -68,7 +68,6 @@ export type AutomationTriggerBinding = {
   scriptName?: string;
   scriptPath?: string;
   scriptVersion?: number;
-  scriptEnv?: Record<string, string>;
   /** Default sentinel sorts last among bindings for the same event. */
   triggerOrder?: number;
 };
@@ -78,5 +77,4 @@ export type AutomationCommandContext = {
   orgId: string | undefined;
   binding: AutomationTriggerBinding;
   idempotencyKey: string;
-  bashEnv: AutomationBashEnvironment;
 };

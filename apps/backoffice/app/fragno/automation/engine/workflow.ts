@@ -58,7 +58,6 @@ const createWorkflowAutomationContext = ({
       : `${AUTOMATION_WORKSPACE_ROOT}/${scriptPath}`,
     scriptVersion: 1,
     scriptEngine: "codemode" as const,
-    scriptEnv: {},
   };
 
   return {
@@ -73,11 +72,9 @@ const createWorkflowAutomationContext = ({
         scriptName: binding.scriptName,
         scriptPath: binding.scriptPath,
         scriptVersion: binding.scriptVersion,
-        scriptEnv: binding.scriptEnv,
         triggerOrder: binding.triggerOrder ?? undefined,
       },
       idempotencyKey: params.idempotencyKey ?? params.automationEvent.id,
-      bashEnv: binding.scriptEnv ?? {},
       runtime: automationRuntime,
     },
     automations: {
