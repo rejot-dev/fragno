@@ -1,12 +1,7 @@
 import { z } from "zod";
 
 import type { IdentityCreateClaimArgs } from "@/fragno/runtime-tools/automation-types";
-import {
-  assertNoPositionals,
-  parseCliTokens,
-  readIntegerOption,
-  readStringOption,
-} from "@/fragno/runtime-tools/bash-cli";
+import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
   defineBackofficeRuntimeTool,
@@ -53,21 +48,14 @@ const getOtpRuntime = (runtime: OtpToolContext["runtimes"]["otp"]): OtpRuntime =
   return runtime;
 };
 
-const parseOtpIdentityCreateClaim = (args: string[]): IdentityCreateClaimArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "otp.identity.create-claim");
-
-  const ttlMinutes = readIntegerOption(parsed, "ttl-minutes");
-  if (typeof ttlMinutes !== "undefined" && ttlMinutes <= 0) {
-    throw new Error("--ttl-minutes must be a positive integer");
-  }
-
-  return {
-    source: readStringOption(parsed, "source", true)!,
-    externalActorId: readStringOption(parsed, "external-actor-id", true)!,
-    ...(typeof ttlMinutes !== "undefined" ? { ttlMinutes } : {}),
-  };
-};
+const parseOtpIdentityCreateClaim = defineCliArgsParser<IdentityCreateClaimArgs>(
+  "otp.identity.create-claim",
+  {
+    source: { required: true },
+    externalActorId: { required: true },
+    ttlMinutes: { kind: "positiveInteger" },
+  },
+);
 
 const createClaimTool = defineBackofficeRuntimeTool({
   id: "otp.identity.create-claim",

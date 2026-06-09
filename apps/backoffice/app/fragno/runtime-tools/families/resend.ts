@@ -1,11 +1,9 @@
 import { z } from "zod";
 
 import {
-  assertNoPositionals,
+  defineCliArgsParser,
   parseCliTokens,
-  readIntegerOption,
   readOutputOptions,
-  readStringOption,
 } from "@/fragno/runtime-tools/bash-cli";
 import type {
   ResendRuntime,
@@ -152,39 +150,27 @@ const normalizePageSize = (value: number | undefined, optionName = "page-size") 
   return value;
 };
 
-const parseThreadListArgs = (command: string, args: string[]): ResendThreadListArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, command);
-  return {
-    order: normalizeOrder(readStringOption(parsed, "order")),
-    pageSize: normalizePageSize(readIntegerOption(parsed, "page-size")),
-    cursor: readStringOption(parsed, "cursor") ?? undefined,
-  };
-};
+const threadListArgFields = {
+  order: { transform: (value) => normalizeOrder(value) },
+  pageSize: { kind: "integer", transform: (value) => normalizePageSize(value) },
+  cursor: {},
+} satisfies Parameters<typeof defineCliArgsParser<ResendThreadListArgs>>[1];
 
-const parseThreadsGet = (args: string[]): ResendThreadsGetArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "resend.threads.get");
-  return {
-    threadId: readStringOption(parsed, "thread-id", true)!,
-    order: normalizeOrder(readStringOption(parsed, "order")),
-    pageSize: normalizePageSize(readIntegerOption(parsed, "page-size")),
-    cursor: readStringOption(parsed, "cursor") ?? undefined,
-  };
-};
+const parseThreadsList = defineCliArgsParser<ResendThreadListArgs>(
+  "resend.threads.list",
+  threadListArgFields,
+);
 
-const parseThreadsList = (args: string[]): ResendThreadListArgs =>
-  parseThreadListArgs("resend.threads.list", args);
+const parseThreadsGet = defineCliArgsParser<ResendThreadsGetArgs>("resend.threads.get", {
+  threadId: { required: true },
+  ...threadListArgFields,
+});
 
-const parseThreadsReply = (args: string[]): ResendThreadsReplyArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "resend.threads.reply");
-  return {
-    threadId: readStringOption(parsed, "thread-id", true)!,
-    subject: readStringOption(parsed, "subject") ?? undefined,
-    body: readStringOption(parsed, "body", true)!,
-  };
-};
+const parseThreadsReply = defineCliArgsParser<ResendThreadsReplyArgs>("resend.threads.reply", {
+  threadId: { required: true },
+  subject: {},
+  body: { required: true },
+});
 
 const jsonByDefaultOutputOptions = (args: string[]) => {
   const parsed = parseCliTokens(args);

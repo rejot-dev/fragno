@@ -1,12 +1,9 @@
 import { z } from "zod";
 
 import {
-  assertNoPositionals,
+  defineCliArgsParser,
   parseCliTokens,
-  readIntegerOption,
-  readJsonOption,
   readOutputOptions,
-  readStringOption,
 } from "@/fragno/runtime-tools/bash-cli";
 import type {
   PiRuntime,
@@ -121,41 +118,6 @@ const getPiRuntime = (runtime: PiToolContext["runtimes"]["pi"]): PiRuntime => {
   return runtime;
 };
 
-const parseStringArrayOption = (parsed: ReturnType<typeof parseCliTokens>["options"]) => {
-  const value = parsed.get("tag");
-  if (typeof value === "undefined") {
-    return undefined;
-  }
-  if (typeof value === "boolean") {
-    throw new Error("--tag requires a string value");
-  }
-  return Array.isArray(value) ? value : [value];
-};
-
-const parseBooleanOption = (
-  parsed: ReturnType<typeof parseCliTokens>["options"],
-  name: string,
-): boolean | undefined => {
-  const value = parsed.get(name);
-  if (typeof value === "undefined") {
-    return undefined;
-  }
-  if (Array.isArray(value)) {
-    throw new Error(`--${name} specified multiple times`);
-  }
-  if (typeof value === "boolean") {
-    return value;
-  }
-  const normalized = value.trim().toLowerCase();
-  if (["1", "true", "yes", "on"].includes(normalized)) {
-    return true;
-  }
-  if (["0", "false", "no", "off"].includes(normalized)) {
-    return false;
-  }
-  throw new Error(`--${name} must be true or false`);
-};
-
 const normalizeSteeringMode = (
   value: string | undefined,
   optionName = "steering-mode",
@@ -169,44 +131,30 @@ const normalizeSteeringMode = (
   return value;
 };
 
-const parseSessionCreate = (args: string[]): PiSessionCreateArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "pi.session.create");
-  return {
-    agent: readStringOption(parsed, "agent", true)!,
-    name: readStringOption(parsed, "name") ?? undefined,
-    systemMessage: readStringOption(parsed, "system-message") ?? undefined,
-    metadata: readJsonOption(parsed, "metadata-json"),
-    tags: parseStringArrayOption(parsed.options),
-    steeringMode: normalizeSteeringMode(readStringOption(parsed, "steering-mode")),
-  };
-};
+const parseSessionCreate = defineCliArgsParser<PiSessionCreateArgs>("pi.session.create", {
+  agent: { required: true },
+  name: {},
+  systemMessage: {},
+  metadata: { kind: "json", option: "metadata-json" },
+  tags: { kind: "stringArray", option: "tag" },
+  steeringMode: { transform: (value) => normalizeSteeringMode(value) },
+});
 
-const parseSessionGet = (args: string[]): PiSessionGetArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "pi.session.get");
-  return {
-    sessionId: readStringOption(parsed, "session-id", true)!,
-    events: parseBooleanOption(parsed.options, "events"),
-    trace: parseBooleanOption(parsed.options, "trace"),
-    turns: parseBooleanOption(parsed.options, "turns"),
-  };
-};
+const parseSessionGet = defineCliArgsParser<PiSessionGetArgs>("pi.session.get", {
+  sessionId: { required: true },
+  events: { kind: "boolean" },
+  trace: { kind: "boolean" },
+  turns: { kind: "boolean" },
+});
 
-const parseSessionList = (args: string[]): PiSessionListArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "pi.session.list");
-  return { limit: readIntegerOption(parsed, "limit") };
-};
+const parseSessionList = defineCliArgsParser<PiSessionListArgs>("pi.session.list", {
+  limit: { kind: "integer" },
+});
 
-const parseSessionTurn = (args: string[]): PiSessionTurnArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "pi.session.turn");
-  return {
-    sessionId: readStringOption(parsed, "session-id", true)!,
-    text: readStringOption(parsed, "text", true)!,
-  };
-};
+const parseSessionTurn = defineCliArgsParser<PiSessionTurnArgs>("pi.session.turn", {
+  sessionId: { required: true },
+  text: { required: true },
+});
 
 const jsonByDefaultOutputOptions = (args: string[]) => {
   const parsed = parseCliTokens(args);

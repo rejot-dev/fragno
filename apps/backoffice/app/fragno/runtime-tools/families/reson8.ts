@@ -3,14 +3,12 @@ import { z } from "zod";
 import { reson8PrerecordedTranscriptionSchema } from "@fragno-dev/reson8-fragment";
 
 import {
-  assertNoPositionals,
+  defineCliArgsParser,
   ensureTrailingNewline,
   formatCommandStdout,
   normalizeExecutionResult,
   parseCliTokens,
-  readIntegerOption,
   readOutputOptions,
-  readStringOption,
 } from "@/fragno/runtime-tools/bash-cli";
 import type {
   Reson8PrerecordedTranscribeArgs,
@@ -62,54 +60,19 @@ const normalizeEncoding = (value: string | undefined) => {
   return value;
 };
 
-const normalizePositiveInteger = (value: number | undefined, optionName: string) => {
-  if (typeof value === "undefined") {
-    return undefined;
-  }
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new Error(`--${optionName} must be a positive integer`);
-  }
-  return value;
-};
-
-const readBooleanFlag = (
-  options: ReturnType<typeof parseCliTokens>["options"],
-  name: string,
-): boolean | undefined => {
-  const raw = options.get(name);
-  if (typeof raw === "undefined") {
-    return undefined;
-  }
-  if (Array.isArray(raw)) {
-    throw new Error(`--${name} specified multiple times`);
-  }
-  if (typeof raw === "boolean") {
-    return raw;
-  }
-  const normalized = raw.trim().toLowerCase();
-  if (["1", "true", "yes", "on"].includes(normalized)) {
-    return true;
-  }
-  if (["0", "false", "no", "off"].includes(normalized)) {
-    return false;
-  }
-  throw new Error(`--${name} must be true or false`);
-};
-
-const parsePrerecordedTranscribe = (args: string[]): Reson8PrerecordedTranscribeArgs => {
-  const parsed = parseCliTokens(args);
-  assertNoPositionals(parsed, "reson8.prerecorded.transcribe");
-  return {
-    inputPath: readStringOption(parsed, "input", true)!,
-    encoding: normalizeEncoding(readStringOption(parsed, "encoding")),
-    sampleRate: normalizePositiveInteger(readIntegerOption(parsed, "sample-rate"), "sample-rate"),
-    channels: normalizePositiveInteger(readIntegerOption(parsed, "channels"), "channels"),
-    customModelId: readStringOption(parsed, "custom-model-id") ?? undefined,
-    includeTimestamps: readBooleanFlag(parsed.options, "include-timestamps"),
-    includeWords: readBooleanFlag(parsed.options, "include-words"),
-    includeConfidence: readBooleanFlag(parsed.options, "include-confidence"),
-  };
-};
+const parsePrerecordedTranscribe = defineCliArgsParser<Reson8PrerecordedTranscribeArgs>(
+  "reson8.prerecorded.transcribe",
+  {
+    inputPath: { option: "input", required: true },
+    encoding: { transform: (value) => normalizeEncoding(value) },
+    sampleRate: { kind: "positiveInteger" },
+    channels: { kind: "positiveInteger" },
+    customModelId: {},
+    includeTimestamps: { kind: "boolean" },
+    includeWords: { kind: "boolean" },
+    includeConfidence: { kind: "boolean" },
+  },
+);
 
 const toPrerecordedQuery = (
   args: Partial<Reson8PrerecordedTranscribeArgs>,
