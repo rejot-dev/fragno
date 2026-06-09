@@ -83,7 +83,21 @@ const defaultDurableHookDependencies: BackofficeDurableHookDependencies = {
   createEmptyRepository: createEmptyDurableHookRepository,
 };
 
-export type BackofficeFragmentDurableObjectOptions<TStored, TSource, TRuntime> = {
+export type BackofficeOutboxItem = {
+  id: string;
+  type: string;
+  createdAt: string;
+  dispatchedAt?: string;
+  attempts?: number;
+  lastError?: string;
+};
+
+export type BackofficeFragmentDurableObjectOptions<
+  TStored,
+  TSource,
+  TRuntime,
+  TOutbox extends BackofficeOutboxItem = BackofficeOutboxItem,
+> = {
   /** Human-readable fragment/DO name used in logs, errors, and default messages. */
   name: string;
   /** The Durable Object state from the class constructor. */
@@ -92,6 +106,8 @@ export type BackofficeFragmentDurableObjectOptions<TStored, TSource, TRuntime> =
   env: CloudflareEnv;
   /** Storage key for the persisted config. Defaults to `${name.toLowerCase()}-config`. */
   configKey?: string;
+  /** Storage key for the persisted outbox. Defaults to `${name.toLowerCase()}-outbox`. */
+  outboxKey?: string;
   /** Parse/validate raw storage data. Defaults to a plain cast from unknown to `TStored`. */
   parseStored?: (raw: unknown) => TStored;
   /**
@@ -141,10 +157,20 @@ export type BackofficeFragmentDurableObjectOptions<TStored, TSource, TRuntime> =
   getStoredOrgId?: (stored: TStored) => string | null;
   /** Request routing table for multi-fragment runtimes. Omit for a single fragment with `handler`. */
   mounts?: readonly FragmentDurableObjectMount<TRuntime>[];
+  /** Minimal persisted outbox support. Items are stored separately from config. */
+  outbox?: {
+    dispatch: (item: TOutbox, context: { env: CloudflareEnv; stored: TStored }) => Promise<void>;
+    retryDelayMs?: number;
+  };
 };
 
 /** Runtime controller returned to an individual backoffice Durable Object class. */
-export type BackofficeFragmentDurableObject<TStored, TSource, TRuntime> = {
+export type BackofficeFragmentDurableObject<
+  TStored,
+  TSource,
+  TRuntime,
+  TOutbox extends BackofficeOutboxItem = BackofficeOutboxItem,
+> = {
   /** Load and parse the stored config from DO storage. Does not initialize the runtime. */
   loadStored: () => Promise<TStored | null>;
   /**
@@ -173,7 +199,9 @@ export type BackofficeFragmentDurableObject<TStored, TSource, TRuntime> = {
   getStoredOrgId: (stored: TStored | null) => string | null;
   /** Throw if an admin update attempts to bind this DO to a different org. */
   assertSameOrg: (stored: TStored | null, orgId: string) => void;
-  /** Forward the Durable Object alarm to the current durable-hooks dispatcher, if any. */
+  /** Persist an outbox item and schedule alarm processing. */
+  dispatch: (item: TOutbox) => Promise<void>;
+  /** Forward the Durable Object alarm to the current durable-hooks dispatcher, if any, then process outbox. */
   alarm: () => Promise<void>;
   /** Fetch through the configured runtime/mounts, including not-configured and org-bound checks. */
   fetch: (request: Request, context?: FragmentDurableObjectFetchContext) => Promise<Response>;
@@ -223,10 +251,16 @@ const readDefaultOrgId = (stored: unknown) => {
   return typeof orgId === "string" && orgId.trim() ? orgId.trim() : null;
 };
 
-export function createBackofficeFragmentDurableObject<TStored, TSource = TStored, TRuntime = never>(
-  options: BackofficeFragmentDurableObjectOptions<TStored, TSource, TRuntime>,
-): BackofficeFragmentDurableObject<TStored, TSource, TRuntime> {
+export function createBackofficeFragmentDurableObject<
+  TStored,
+  TSource = TStored,
+  TRuntime = never,
+  TOutbox extends BackofficeOutboxItem = BackofficeOutboxItem,
+>(
+  options: BackofficeFragmentDurableObjectOptions<TStored, TSource, TRuntime, TOutbox>,
+): BackofficeFragmentDurableObject<TStored, TSource, TRuntime, TOutbox> {
   const configKey = options.configKey ?? defaultConfigKey(options.name);
+  const outboxKey = options.outboxKey ?? `${options.name.toLowerCase()}-outbox`;
   const isConfigured =
     options.isConfigured ?? ((stored: TStored | null): stored is TStored => stored !== null);
   const toSource = options.toSource ?? ((stored: TStored) => stored as unknown as TSource);
@@ -372,6 +406,63 @@ export function createBackofficeFragmentDurableObject<TStored, TSource = TStored
     });
   };
 
+  const scheduleOutboxAlarm = async (delayMs: number) => {
+    const alarmAt = Date.now() + delayMs;
+    const existingAlarm = await options.state.storage.getAlarm();
+    if (existingAlarm === null || existingAlarm > alarmAt) {
+      await options.state.storage.setAlarm(alarmAt);
+    }
+  };
+
+  const outboxItemKeyPrefix = `${outboxKey}:`;
+  const getOutboxItemKey = (id: string) => `${outboxItemKeyPrefix}${id}`;
+
+  const loadOutboxItems = async (): Promise<TOutbox[]> => [
+    ...(await options.state.storage.list<TOutbox>({ prefix: outboxItemKeyPrefix })).values(),
+  ];
+
+  const processOutbox = async () => {
+    if (!options.outbox) {
+      return;
+    }
+
+    const stored = await loadStored();
+    if (!stored) {
+      return;
+    }
+
+    const items = await loadOutboxItems();
+    const pending = items.filter((item) => !item.dispatchedAt);
+    if (!pending.length) {
+      return;
+    }
+
+    let shouldRetry = false;
+
+    for (const item of pending) {
+      try {
+        await options.outbox.dispatch(item, { env: options.env, stored });
+        await options.state.storage.put(getOutboxItemKey(item.id), {
+          ...item,
+          dispatchedAt: new Date().toISOString(),
+          lastError: undefined,
+        });
+      } catch (error) {
+        const lastError = error instanceof Error ? error.message : String(error);
+        await options.state.storage.put(getOutboxItemKey(item.id), {
+          ...item,
+          attempts: (item.attempts ?? 0) + 1,
+          lastError,
+        });
+        shouldRetry = true;
+      }
+    }
+
+    if (shouldRetry) {
+      await scheduleOutboxAlarm(options.outbox?.retryDelayMs ?? 30_000);
+    }
+  };
+
   const assertRequestOrgMatches = (request: Request) => {
     if (!current.configured) {
       return null;
@@ -397,7 +488,10 @@ export function createBackofficeFragmentDurableObject<TStored, TSource = TStored
       return await initializeFromStored(stored);
     },
     async clearConfig() {
-      await options.state.storage.delete(configKey);
+      const outboxItemKeys = [
+        ...(await options.state.storage.list<TOutbox>({ prefix: outboxItemKeyPrefix })).keys(),
+      ];
+      await options.state.storage.delete([configKey, outboxKey, ...outboxItemKeys]);
       return await initializeFromStored(null);
     },
     getState: () => current,
@@ -410,12 +504,18 @@ export function createBackofficeFragmentDurableObject<TStored, TSource = TStored
     },
     getStoredOrgId,
     assertSameOrg,
-    alarm: async () => {
-      if (!current.configured) {
-        return;
+    async dispatch(item) {
+      if (!options.outbox) {
+        throw new Error(`${options.name} outbox is not configured.`);
       }
-
-      await fragmentHost.alarm();
+      await options.state.storage.put(getOutboxItemKey(item.id), item);
+      await scheduleOutboxAlarm(0);
+    },
+    alarm: async () => {
+      if (current.configured) {
+        await fragmentHost.alarm();
+      }
+      await processOutbox();
     },
     async fetch(request, context) {
       if (!current.configured) {
