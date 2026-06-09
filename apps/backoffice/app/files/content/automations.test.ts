@@ -50,6 +50,7 @@ describe("starter automation content", () => {
     const router = readStarterAutomation(STARTER_AUTOMATION_SCRIPT_PATHS.router);
     const workflow = readStarterAutomation(STARTER_AUTOMATION_SCRIPT_PATHS.telegramClaimLinking);
     const identityClaimCompleted = AUTOMATION_SOURCE_EVENT_TYPES.otp.identityClaimCompleted;
+    const piCapabilityConfigured = AUTOMATION_SOURCE_EVENT_TYPES.pi.capabilityConfigured;
 
     expect({
       routerHandlesContractEvent: router.includes(
@@ -66,6 +67,14 @@ describe("starter automation content", () => {
       routerStartsPiWorkflow:
         router.includes('remoteWorkflowName: "telegram-pi-session"') &&
         router.includes('"/starter/automations/scripts/telegram-pi-session.workflow.js"'),
+      routerHandlesPiConfigured: router.includes(
+        `event.source === "pi" && event.eventType === "${piCapabilityConfigured}"`,
+      ),
+      routerDerivesDefaultPiAgent:
+        router.includes("event.payload.harnesses") &&
+        router.includes("event.payload.modelCatalog") &&
+        router.includes('key: "pi-default-agent"') &&
+        router.includes('value: harness.id + "::" + model.provider + "::" + model.name'),
     }).toEqual({
       routerHandlesContractEvent: true,
       routerFiltersTelegramClaims: true,
@@ -75,6 +84,8 @@ describe("starter automation content", () => {
       workflowWaitsForWorkflowSafeEvent: true,
       routerStartsDelayedTestWorkflow: true,
       routerStartsPiWorkflow: true,
+      routerHandlesPiConfigured: true,
+      routerDerivesDefaultPiAgent: true,
     });
   });
 });

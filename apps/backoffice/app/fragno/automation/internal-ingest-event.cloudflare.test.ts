@@ -357,7 +357,6 @@ describe("automation internalIngestEvent", () => {
         }),
         runTurn: runTurnMock,
       },
-      defaultAgent: "default::openai::gpt-5-mini",
     }));
 
     const starterContext = await buildAutomationTestContext({

@@ -12,14 +12,25 @@ export const STARTER_AUTOMATION_SCRIPT_PATHS = {
 
 export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
   "automations/scripts/router.cm.js": `async () => {
-  const [event, env] = await Promise.all([
-    state.readFile("/context/event.json").then(JSON.parse),
-    state.readFile("/context/env.json").then(JSON.parse),
-  ]);
+  const event = await state.readFile("/context/event.json").then(JSON.parse);
 
   const instanceIdForEvent = (prefix) => {
     return prefix + "-" + event.id.replace(/[^a-zA-Z0-9-_]/g, "-");
   };
+
+  if (event.source === "pi" && event.eventType === "capability.configured") {
+    const harness = event.payload.harnesses[0];
+    const model = event.payload.modelCatalog[0];
+
+    if (harness && model) {
+      await identity.bindActor({
+        source: "pi",
+        key: "pi-default-agent",
+        value: harness.id + "::" + model.provider + "::" + model.name,
+        description: "Default Pi agent for this organisation.",
+      });
+    }
+  }
 
   if (
     event.source === "telegram" &&
@@ -57,19 +68,26 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
       });
     }
 
-    if ((text === "/pi" || !text.startsWith("/")) && env.PI_DEFAULT_AGENT) {
-      const instanceId = instanceIdForEvent("telegram-pi");
-      await workflow.createInstance({
-        workflowName: "automation-codemode-script",
-        remoteWorkflowName: "telegram-pi-session",
-        instanceId,
-        params: {
-          automationEvent: event,
-          env,
-          workflowScriptPath:
-            "/starter/automations/scripts/telegram-pi-session.workflow.js",
-        },
+    if (text === "/pi" || !text.startsWith("/")) {
+      const defaultAgentBinding = await identity.lookupBinding({
+        source: "pi",
+        key: "pi-default-agent",
       });
+      const defaultAgent = defaultAgentBinding?.value ?? "";
+
+      if (defaultAgent) {
+        const instanceId = instanceIdForEvent("telegram-pi");
+        await workflow.createInstance({
+          workflowName: "automation-codemode-script",
+          remoteWorkflowName: "telegram-pi-session",
+          instanceId,
+          params: {
+            automationEvent: event,
+            workflowScriptPath:
+              "/starter/automations/scripts/telegram-pi-session.workflow.js",
+          },
+        });
+      }
     }
   }
 
@@ -227,8 +245,6 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
   { name: "telegram-pi-session" },
   async (event, step) => {
     const automationEvent = event.payload.automationEvent;
-    const env = event.payload.env;
-    const defaultAgent = env.PI_DEFAULT_AGENT ?? "";
     const text = automationEvent.payload.text ?? "";
     const chatId = automationEvent.payload.chatId;
     const externalActorId = automationEvent.actor.externalId;
@@ -244,6 +260,14 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
     if (!linkedUser) {
       return { skipped: true, reason: "telegram-chat-not-linked" };
     }
+
+    const defaultAgentBinding = await step.do("lookup default pi agent", async () => {
+      return await identity.lookupBinding({
+        source: "pi",
+        key: "pi-default-agent",
+      });
+    });
+    const defaultAgent = defaultAgentBinding?.value ?? "";
 
     if (!defaultAgent) {
       return { skipped: true, reason: "missing-default-agent" };

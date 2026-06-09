@@ -257,7 +257,6 @@ const buildStarterPiTestContext = async () => {
         .withConfig({
           env: testEnv,
           createPiAutomationContext: () => ({
-            defaultAgent: "default::openai::gpt-5-mini",
             runtime: {
               createSession: vi.fn(),
               getSession: vi.fn(),
@@ -326,6 +325,26 @@ describe("starter Pi session automation", () => {
     await drainDurableHooks(context.fragments.workflows.fragment);
   };
 
+  const ingestPiConfigured = async () => {
+    await context.fragments.automation.fragment.callServices(() =>
+      context.fragments.automation.services.ingestEvent({
+        id: "pi-configured-1",
+        orgId: "org-1",
+        source: "pi",
+        eventType: "capability.configured",
+        occurredAt: "2026-06-06T11:21:04.000Z",
+        payload: {
+          capabilityId: "pi",
+          capabilityLabel: "Pi",
+          harnesses: [{ id: "default", label: "Default", tools: ["bash"] }],
+          modelCatalog: [{ provider: "openai", name: "gpt-5-mini", label: "GPT-5 mini" }],
+        },
+        subject: { orgId: "org-1", capabilityId: "pi" },
+      }),
+    );
+    await drainAll();
+  };
+
   beforeEach(async () => {
     telegramSendCalls.length = 0;
     telegramActionCalls.length = 0;
@@ -344,6 +363,7 @@ describe("starter Pi session automation", () => {
     await automation.fragment.callRoute("POST", "/identity-bindings/bind", {
       body: { source: "telegram", key: "chat-1", value: "user-1" },
     });
+    await ingestPiConfigured();
 
     await automation.fragment.callServices(() =>
       automation.services.ingestEvent(telegramEvent("telegram-pi-1", "/pi")),
@@ -372,6 +392,7 @@ describe("starter Pi session automation", () => {
     await automation.fragment.callRoute("POST", "/identity-bindings/bind", {
       body: { source: "telegram", key: "chat-1", value: "user-1" },
     });
+    await ingestPiConfigured();
 
     await automation.fragment.callServices(() =>
       automation.services.ingestEvent(telegramEvent("telegram-pi-1", "/pi")),

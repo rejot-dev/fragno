@@ -81,7 +81,6 @@ export const executeCodemodeAutomation = async ({
     masterFs,
     contextFiles: {
       "event.json": JSON.stringify(context.automation.event),
-      "env.json": JSON.stringify(context.automation.bashEnv),
     },
   });
   const toolContext = createAutomationToolRuntimeContext(context);
@@ -119,7 +118,6 @@ export const executeWorkflowCodemodeAutomation = async ({
     masterFs,
     contextFiles: {
       "event.json": JSON.stringify(context.automation.event),
-      "env.json": JSON.stringify(context.automation.bashEnv),
     },
   });
   const toolContext = createAutomationToolRuntimeContext(context);

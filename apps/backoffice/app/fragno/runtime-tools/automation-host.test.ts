@@ -286,7 +286,6 @@ const createAutomationContext = () => ({
     scriptId: "script-1",
   },
   idempotencyKey: "idem-1",
-  bashEnv: {},
   runtime: {
     emitEvent: async ({ eventType, source }: { eventType: string; source?: string }) => ({
       accepted: true,
