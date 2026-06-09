@@ -47,7 +47,7 @@ export type {
 export { FILES_EXPLORER_NODE_KINDS } from "./explorer-types";
 export type { FilesActionIntent, FilesActionResult } from "./actions";
 export { FILES_ACTION_INTENTS, performFilesAction } from "./actions";
-export { BUILT_IN_FILE_CONTRIBUTORS, getBuiltInFileContributors } from "./contributors";
+export { getBuiltInFileContributors } from "./contributors";
 export {
   RESEND_FILE_CONTRIBUTOR_ID,
   RESEND_FILE_MOUNT_ID,

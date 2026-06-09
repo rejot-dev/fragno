@@ -7,5 +7,5 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["@fragno-dev/docs-rr", "@fragno-private/*"]
+  "ignore": ["@fragno-apps/*", "@fragno-private/*"]
 }

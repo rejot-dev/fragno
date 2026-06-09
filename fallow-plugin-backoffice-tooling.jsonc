@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/plugin-schema.json",
+  "name": "backoffice-tooling",
+  "detection": {
+    "type": "fileExists",
+    "pattern": "apps/backoffice/package.json",
+  },
+  "configPatterns": [
+    "apps/backoffice/vitest.cloudflare.config.ts",
+    "apps/backoffice/vitest.node.config.ts",
+    "apps/backoffice/vitest.shared.ts",
+  ],
+  "alwaysUsed": [
+    "apps/backoffice/shims/ajv-formats.ts",
+    "apps/backoffice/shims/ajv.ts",
+    "apps/backoffice/shims/svix.ts",
+    "apps/backoffice/shims/undici.ts",
+  ],
+}
