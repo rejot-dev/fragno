@@ -9,7 +9,7 @@ import {
   uploadR2RemoteFileContributor,
 } from "./upload";
 
-export const BUILT_IN_FILE_CONTRIBUTORS = [
+const BUILT_IN_FILE_CONTRIBUTORS = [
   staticFileContributor,
   staticStarterFileContributor,
   uploadFileContributor,

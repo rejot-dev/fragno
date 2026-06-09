@@ -1,8 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
 
-  // Public API: workspace packages publish entrypoints for external consumers.
-  "publicPackages": ["@fragno-dev/*", "@fragno-private/*", "@fragno-example/*"],
+  // Public API: workspace packages publish entrypoints for external consumers. Private apps use
+  // @fragno-apps/* so @fragno-dev/* can stay public to Fallow.
+  "publicPackages": ["@fragno-dev/*", "@fragno-example/*"],
 
   // False positive: docs snippets intentionally reference a fictional package name.
   "ignoreDependencies": [
@@ -10,7 +11,11 @@
     "prettier-plugin-astro",
     "prettier-plugin-sql",
     "prettier-plugin-svelte",
-    "prettier-plugin-tailwindcss"
+    "prettier-plugin-tailwindcss",
+
+    // Backoffice Vite/Vitest aliases redirect this package to a local shim; it is not imported
+    // directly from source.
+    "undici",
   ],
 
   // Tooling config: Prettier plugin names are resolved dynamically by Prettier.
@@ -28,8 +33,8 @@
       "packages/fragment-workflows/workflows-smoke-artifacts/**/*.js",
 
       // Generated file: dialect schema snapshots are generated from the same source schema.
-      "example-apps/fragno-db-usage-drizzle/src/schema/fragno-schema*.ts"
-    ]
+      "example-apps/fragno-db-usage-drizzle/src/schema/fragno-schema*.ts",
+    ],
   },
 
   "health": {
@@ -91,14 +96,14 @@
       "packages/pi-fragment/src/cli/mod.ts",
       "packages/resend-fragment/src/routes/threads.ts",
       "packages/stripe/src/routes/subscriptions.ts",
-      "packages/telegram-fragment/src/services.ts"
-    ]
+      "packages/telegram-fragment/src/services.ts",
+    ],
   },
 
   "audit": {
     // Temporary migration debt baselines: only new dead-code / duplication regressions fail audit.
     "deadCodeBaseline": ".fallow/dead-code-baseline.json",
-    "dupesBaseline": ".fallow/dupes-baseline.json"
+    "dupesBaseline": ".fallow/dupes-baseline.json",
   },
 
   "overrides": [
@@ -124,11 +129,11 @@
         "packages/fragment-workflows/workflows-smoke-artifacts/**/*.ts",
         "apps/fragno-cli/bin/dev.js",
         "packages/ts-trace-cli/bin/run.js",
-        "packages/ts-trace-cli/vitest.config.ts"
+        "packages/ts-trace-cli/vitest.config.ts",
       ],
       "rules": {
-        "unresolved-imports": "off"
-      }
-    }
-  ]
+        "unresolved-imports": "off",
+      },
+    },
+  ],
 }
