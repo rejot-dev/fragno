@@ -16,6 +16,7 @@ import {
 } from "@/fragno/pi/pi";
 import { createPiCodemodeRuntime } from "@/fragno/pi/pi-codemode";
 import {
+  PI_MODEL_CATALOG,
   PI_TOOL_IDS,
   resolvePiHarnesses,
   type PiConfigState,
@@ -129,6 +130,18 @@ const maskSecret = (value?: string) => {
   return `${value.slice(0, 4)}…${value.slice(-4)}`;
 };
 
+const buildCapabilityConfiguredPayload = (config: StoredPiConfig) => ({
+  capabilityId: "pi",
+  capabilityLabel: "Pi",
+  harnesses: resolvePiHarnesses(config.harnesses).map((harness) => ({
+    id: harness.id,
+    label: harness.label,
+    description: harness.description,
+    tools: harness.tools,
+  })),
+  modelCatalog: PI_MODEL_CATALOG.filter((option) => Boolean(config.apiKeys[option.provider])),
+});
+
 const isConfigured = (config: StoredPiConfig | null) => {
   if (!config) {
     return false;
@@ -213,6 +226,26 @@ export class Pi extends DurableObject<CloudflareEnv> {
         },
         { id: "pi", target: (runtime) => runtime.piFragment },
       ],
+      outbox: {
+        dispatch: async (item, { env, stored }) => {
+          if (item.type !== "capability.configured") {
+            return;
+          }
+
+          await env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(stored.orgId)).ingestEvent({
+            id: item.id,
+            orgId: stored.orgId,
+            source: "pi",
+            eventType: "capability.configured",
+            occurredAt: item.createdAt,
+            payload: buildCapabilityConfiguredPayload(stored),
+            subject: {
+              orgId: stored.orgId,
+              capabilityId: "pi",
+            },
+          });
+        },
+      },
     });
 
     void state.blockConcurrencyWhile(async () => {
@@ -292,7 +325,16 @@ export class Pi extends DurableObject<CloudflareEnv> {
 
     try {
       await this.#state.blockConcurrencyWhile(async () => {
-        await this.#host.storeAndInitialize(storedPiConfigSchema.parse(stored));
+        const parsedStored = storedPiConfigSchema.parse(stored);
+        await this.#host.storeAndInitialize(parsedStored);
+
+        if (isConfigured(parsedStored)) {
+          await this.#host.dispatch({
+            id: `pi:capability.configured:${normalizedOrgId}:${now}`,
+            type: "capability.configured",
+            createdAt: now,
+          });
+        }
       });
     } catch (error) {
       console.log("Migration failed", { error });

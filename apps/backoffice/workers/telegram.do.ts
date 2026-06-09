@@ -267,6 +267,29 @@ export class Telegram extends DurableObject<CloudflareEnv> {
             },
           },
         }),
+      outbox: {
+        dispatch: async (item, { env, stored }) => {
+          if (item.type !== "capability.configured") {
+            return;
+          }
+
+          await env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(stored.orgId)).ingestEvent({
+            id: item.id,
+            orgId: stored.orgId,
+            source: "telegram",
+            eventType: "capability.configured",
+            occurredAt: item.createdAt,
+            payload: {
+              capabilityId: "telegram",
+              capabilityLabel: "Telegram",
+            },
+            subject: {
+              orgId: stored.orgId,
+              capabilityId: "telegram",
+            },
+          });
+        },
+      },
     });
 
     void state.blockConcurrencyWhile(async () => {
@@ -373,20 +396,25 @@ export class Telegram extends DurableObject<CloudflareEnv> {
     this.#host.assertSameOrg(existing, normalizedOrgId);
 
     const now = new Date().toISOString();
+    const createdAt = existing?.createdAt ?? now;
     const stored: StoredTelegramConfig = {
       ...parsed,
       orgId: normalizedOrgId,
       webhookBaseUrl: parsed.webhookBaseUrl,
-      createdAt: existing?.createdAt ?? now,
+      createdAt,
       updatedAt: now,
     };
 
     try {
       await this.#state.blockConcurrencyWhile(async () => {
         await this.#host.storeAndInitialize(stored);
+        await this.#host.dispatch({
+          id: `telegram:capability.configured:${normalizedOrgId}:${createdAt}`,
+          type: "capability.configured",
+          createdAt,
+        });
       });
-    } catch (error) {
-      console.log("Migration failed", { error });
+    } catch {
       throw new Error("Failed to migrate Telegram schema.");
     }
 
