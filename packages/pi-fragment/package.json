@@ -42,6 +42,11 @@
       "browser": "./dist/browser/pi/route-schemas.js",
       "default": "./dist/node/pi/route-schemas.js"
     },
+    "./skills": {
+      "development": "./src/pi/skills.ts",
+      "types": "./dist/node/pi/skills.d.ts",
+      "default": "./dist/node/pi/skills.js"
+    },
     "./react": {
       "development": {
         "browser": "./dist/browser/client/react.js",

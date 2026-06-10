@@ -62,7 +62,9 @@ export type PiAgentStepRuntime = {
 export type PiAgentStepBehavior = PiAgentTurnBehavior & {
   step?: WorkflowStepConfig;
   controls?: Array<"abort" | "steer">;
-  prepareRuntime?: (runtime: PiAgentStepRuntime) => PiAgentStepRuntime;
+  prepareRuntime?: (
+    runtime: PiAgentStepRuntime,
+  ) => PiAgentStepRuntime | Promise<PiAgentStepRuntime>;
 };
 
 const committedEmissionEpochs = (emissions: WorkflowStepEmission[]) =>
@@ -106,7 +108,7 @@ export const runPiAgentStep = async (
 ): Promise<PiAgentStepResult> =>
   runtime.step.do(runtime.stepName, behavior.step ?? defaultStepConfig, async (tx) => {
     const { prepareRuntime, ...turnBehavior } = behavior;
-    const preparedRuntime = prepareRuntime?.(runtime) ?? runtime;
+    const preparedRuntime = prepareRuntime ? await prepareRuntime(runtime) : runtime;
     const runAgent = preparedRuntime.agentRunner ?? runAgentTurn;
     const messagesBeforeStep = preparedRuntime.turn.messages.length;
     const previousEmissions = await tx.previousEmissions();

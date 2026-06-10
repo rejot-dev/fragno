@@ -14,7 +14,7 @@ import type { Api, Model } from "@earendil-works/pi-ai";
 
 import type { PiLoggerConfig } from "../debug-log";
 import type { PiWorkflowDefinition } from "./dsl";
-import type { PiSkillRegistry } from "./skills";
+import type { PiAgentSkillSelection, PiSkillRegistrySource } from "./skills";
 
 export type PiSessionStatus =
   | "active"
@@ -71,7 +71,7 @@ export type PiAgentDefinition = {
   model: Model<Api>;
   thinkingLevel?: ThinkingLevel;
   tools?: readonly string[];
-  skills?: readonly string[];
+  skills?: PiAgentSkillSelection;
   toolConfig?: unknown;
   maxTraceEvents?: number;
   streamFn?: StreamFn;
@@ -141,7 +141,7 @@ export type PiToolRegistry = Record<string, PiTool>;
 export interface PiFragmentConfig {
   agents: PiAgentRegistry;
   tools: PiToolRegistry;
-  skills?: PiSkillRegistry;
+  skills?: PiSkillRegistrySource;
   workflows?: PiWorkflowDefinition[];
   /**
    * Optional logging config for internal pi-fragment diagnostics.

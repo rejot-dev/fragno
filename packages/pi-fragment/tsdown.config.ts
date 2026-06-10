@@ -23,7 +23,7 @@ export default defineConfig([
   },
   {
     ignoreWatch: ["./dist"],
-    entry: ["./src/index.ts", "./src/pi/route-schemas.ts"],
+    entry: ["./src/index.ts", "./src/pi/route-schemas.ts", "./src/pi/skills.ts"],
     dts: true,
     failOnWarn: true,
     platform: "node",

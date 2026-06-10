@@ -666,6 +666,101 @@ describe("definePiWorkflow", () => {
     );
   });
 
+  it("records dynamic skill resolver failures as agent step errors", async () => {
+    const config: PiFragmentConfig = {
+      agents: {
+        default: {
+          name: "default",
+          systemPrompt: "Base prompt.",
+          model: mockModel,
+          skills: "all",
+        },
+      },
+      tools: {},
+      skills: async ({ sessionId }) => {
+        throw new Error(`Could not load skills for ${sessionId}.`);
+      },
+    };
+    const workflow = compilePiWorkflow(
+      definePiWorkflow({ name: "pi-skill-resolver-error" }, async (ctx) => {
+        await ctx.agentStep("default").prompt("ask", { input: { text: "hello" } });
+        return { ok: true };
+      }),
+      {
+        agents: config.agents,
+        tools: config.tools,
+        skills: config.skills,
+      },
+    );
+
+    await runScenario(
+      defineScenario({
+        name: "pi-skill-resolver-error",
+        workflows: { custom: workflow },
+        harness: {
+          configureFragments: (harness) => ({
+            pi: instantiate(piFragmentDefinition)
+              .withConfig(config)
+              .withServices({ workflows: harness.fragment.services }),
+          }),
+        },
+        runners: ["worker"],
+        steps: ({ runners, workflow }) => [
+          runners.worker.initializeAndRunUntilIdle({ workflow: "custom", id: "session-1" }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus("custom", "session-1"),
+              steps: await ctx.state.getSteps("custom", "session-1"),
+            }),
+            assert: ({ status, steps }) => {
+              expect(status).toMatchObject({
+                status: "waiting",
+                error: undefined,
+              });
+              expect(steps).toContainEqual(
+                expect.objectContaining({
+                  stepKey: "do:ask",
+                  name: "ask",
+                  type: "do",
+                  status: "waiting",
+                  errorName: "Error",
+                  errorMessage: "Could not load skills for session-1.",
+                }),
+              );
+            },
+          }),
+          runners.worker.retryAndRunUntilIdle({ workflow: "custom", instanceId: "session-1" }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus("custom", "session-1"),
+              steps: await ctx.state.getSteps("custom", "session-1"),
+            }),
+            assert: ({ status, steps }) => {
+              expect(status).toMatchObject({
+                status: "errored",
+                error: {
+                  name: "Error",
+                  message: "Could not load skills for session-1.",
+                },
+              });
+              expect(steps).toContainEqual(
+                expect.objectContaining({
+                  stepKey: "do:ask",
+                  name: "ask",
+                  type: "do",
+                  status: "errored",
+                  attempts: 2,
+                  errorName: "Error",
+                  errorMessage: "Could not load skills for session-1.",
+                }),
+              );
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
   it("appends the selected skill catalog to the agent system prompt", async () => {
     let observedSystemPrompt: string | undefined;
     const agentRunner: PiAgentRunner = async (_operation, runtime) => {
@@ -732,6 +827,68 @@ The following skills provide specialized instructions for specific tasks. When a
     <description>Use when working on Fragno fragments.</description>
   </skill>
 </available_skills>`);
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("appends dynamically resolved all-skills catalogs to the agent system prompt", async () => {
+    let observedSystemPrompt: string | undefined;
+    const agentRunner: PiAgentRunner = async (_operation, runtime) => {
+      observedSystemPrompt = runtime.session.systemPrompt;
+      return {
+        stopReason: "stop",
+        messages: runtime.turn.messages,
+        events: [],
+        errorMessage: null,
+      };
+    };
+    const config: PiFragmentConfig = {
+      agents: {
+        default: {
+          name: "default",
+          systemPrompt: "Base prompt.",
+          model: mockModel,
+          skills: "all",
+        },
+      },
+      tools: {},
+      skills: async ({ sessionId }) => ({
+        [`dynamic-${sessionId}`]: {
+          name: `dynamic-${sessionId}`,
+          description: "Loaded from a dynamic source.",
+        },
+      }),
+    };
+    const workflow = compilePiWorkflow(
+      definePiWorkflow({ name: "pi-dynamic-skill-system-prompt" }, async (ctx) => {
+        await ctx.agentStep("default").prompt("ask", { input: { text: "hello" } });
+        return { ok: true };
+      }),
+      { agents: config.agents, tools: config.tools, skills: config.skills, agentRunner },
+    );
+
+    await runScenario(
+      defineScenario({
+        name: "pi-dynamic-skill-system-prompt",
+        workflows: { custom: workflow },
+        harness: {
+          configureFragments: (harness) => ({
+            pi: instantiate(piFragmentDefinition)
+              .withConfig(config)
+              .withServices({ workflows: harness.fragment.services }),
+          }),
+        },
+        runners: ["worker"],
+        steps: ({ runners, workflow }) => [
+          runners.worker.initializeAndRunUntilIdle({ workflow: "custom", id: "session-1" }),
+          workflow.read({
+            read: (ctx) => ctx.state.getStatus("custom", "session-1"),
+            assert: (status) => {
+              expect(status.status).toBe("complete");
+              expect(observedSystemPrompt).toContain("<name>dynamic-session-1</name>");
             },
           }),
         ],
