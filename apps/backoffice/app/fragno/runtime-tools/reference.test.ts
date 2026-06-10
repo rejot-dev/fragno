@@ -52,27 +52,37 @@ const stringifyFamilyByNamespace = ({
 describe("runtime tool reference generation", () => {
   test.each([
     {
-      namespace: "identity",
+      namespace: "store",
       tools: [
         {
-          id: "identity.lookup-binding",
-          namespace: "identity",
-          codemodeProvider: "identity",
-          codemodeTool: "lookupBinding",
-          inputType: "IdentityLookupBindingInput",
-          outputType: "IdentityLookupBindingOutput",
-          bashCommand: "identity.lookup-binding",
-          bashOptions: ["source", "key"],
+          id: "store.get",
+          namespace: "store",
+          codemodeProvider: "store",
+          codemodeTool: "get",
+          inputType: "StoreGetInput",
+          outputType: "StoreGetOutput",
+          bashCommand: "store.get",
+          bashOptions: ["key"],
         },
         {
-          id: "identity.bind-actor",
-          namespace: "identity",
-          codemodeProvider: "identity",
-          codemodeTool: "bindActor",
-          inputType: "IdentityBindActorInput",
-          outputType: "IdentityBindActorOutput",
-          bashCommand: "identity.bind-actor",
-          bashOptions: ["source", "key", "value", "description"],
+          id: "store.set",
+          namespace: "store",
+          codemodeProvider: "store",
+          codemodeTool: "set",
+          inputType: "StoreSetInput",
+          outputType: "StoreSetOutput",
+          bashCommand: "store.set",
+          bashOptions: ["key", "value"],
+        },
+        {
+          id: "store.delete",
+          namespace: "store",
+          codemodeProvider: "store",
+          codemodeTool: "delete",
+          inputType: "StoreDeleteInput",
+          outputType: "StoreDeleteOutput",
+          bashCommand: "store.delete",
+          bashOptions: ["key"],
         },
       ],
     },
@@ -474,7 +484,7 @@ describe("runtime tool reference generation", () => {
       createRuntimeToolReferences({ families: runtimeToolFamilies }),
     );
 
-    expect(types).toContain("declare const identity");
+    expect(types).toContain("declare const store");
     expect(types).toContain("declare const workflow");
     expect(types).toContain("createInstance(input: WorkflowCreateInstanceInput)");
     expect(types).toContain("getInstance(input: WorkflowGetInstanceInput)");
@@ -489,7 +499,7 @@ describe("runtime tool reference generation", () => {
       types.indexOf("// ── Backoffice domain tool providers"),
     );
 
-    expect(domainProviderTypes).toContain("declare const identity");
+    expect(domainProviderTypes).toContain("declare const store");
     expect(domainProviderTypes).toContain("declare const workflow");
     expect(domainProviderTypes).toContain("createInstance(input: WorkflowCreateInstanceInput)");
     expect(domainProviderTypes).toContain("getInstance(input: WorkflowGetInstanceInput)");

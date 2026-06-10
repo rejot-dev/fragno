@@ -37,13 +37,13 @@ describe("starter automation content", () => {
 
     expect(unsupportedNestedProviderCalls).toEqual([]);
     expect(workflow).toContain("otp.createIdentityClaim(");
-    expect(workflow).toContain("identity.lookupBinding(");
+    expect(workflow).toContain("store.get(");
     expect(workflow).toContain("claim.url");
     expect(workflow).toContain("claim.otpId");
     expect(workflow).toContain("Open this link to finish linking your Telegram account:");
     expect(workflow).toContain("completedEvent.subject.userId");
     expect(workflow).toContain("completedOtpId !== claim.otpId");
-    expect(workflow).toContain("identity.bindActor(");
+    expect(workflow).toContain("store.set(");
   });
 
   test("starter router starts event-id keyed workflows and routes OTP completions by OTP id", () => {
@@ -58,7 +58,7 @@ describe("starter automation content", () => {
       ),
       routerFiltersTelegramClaims: router.includes('event.actor?.source === "telegram"'),
       routerUsesEventIdPrefixForStart: router.includes('instanceIdForEvent("telegram-link")'),
-      routerLooksUpOtpWorkflowBinding: router.includes('source: "telegram-claim-workflow"'),
+      routerLooksUpOtpWorkflowBinding: router.includes('key: "telegram-claim-workflow/"'),
       routerSendsWorkflowSafeEvent: router.includes('type: "identity-claim-completed"'),
       workflowWaitsForWorkflowSafeEvent: workflow.includes('type: "identity-claim-completed"'),
       routerStartsDelayedTestWorkflow:
@@ -73,7 +73,7 @@ describe("starter automation content", () => {
       routerDerivesDefaultPiAgent:
         router.includes("event.payload.harnesses") &&
         router.includes("event.payload.modelCatalog") &&
-        router.includes('key: "pi-default-agent"') &&
+        router.includes('key: "pi/pi-default-agent"') &&
         router.includes('value: harness.id + "::" + model.provider + "::" + model.name'),
     }).toEqual({
       routerHandlesContractEvent: true,

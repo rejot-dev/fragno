@@ -24,10 +24,13 @@ const createMockBashContext = (): PiBashCommandContext => ({
   automation: null,
   automations: {
     runtime: {
-      lookupBinding: async () => {
+      get: async () => {
         throw new Error("not available in test");
       },
-      bindActor: async () => {
+      set: async () => {
+        throw new Error("not available in test");
+      },
+      delete: async () => {
         throw new Error("not available in test");
       },
     },

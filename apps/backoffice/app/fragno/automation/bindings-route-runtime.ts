@@ -1,26 +1,24 @@
-import type { AutomationBindingsRuntime } from "../runtime-tools/families/automations-bindings";
-import { createAutomationBindingsRuntime } from "./bindings-storage-runtime";
+import type { AutomationStoreRuntime } from "../runtime-tools/families/automations-bindings";
+import { createAutomationStoreRuntime } from "./bindings-storage-runtime";
 import { createAutomationsRouteCaller } from "./route-callers";
 
-export const createRouteBackedAutomationBindingsRuntime = ({
+export const createRouteBackedAutomationStoreRuntime = ({
   env,
   orgId,
 }: {
   env: CloudflareEnv;
   orgId: string;
-}): AutomationBindingsRuntime => {
+}): AutomationStoreRuntime => {
   const normalizedOrgId = orgId.trim();
   if (!normalizedOrgId) {
-    throw new Error("Automation bindings backend requires an organisation id");
+    throw new Error("Automation store backend requires an organisation id");
   }
 
   const callRoute = createAutomationsRouteCaller(env, normalizedOrgId);
 
-  return createAutomationBindingsRuntime({
-    lookupBinding: async ({ source, key }) => {
-      const response = await callRoute("GET", "/identity-bindings/lookup", {
-        query: { source, key },
-      });
+  return createAutomationStoreRuntime({
+    get: async ({ key }) => {
+      const response = await callRoute("GET", "/store/get", { query: { key } });
 
       if (response.type === "error" && response.status === 404) {
         return null;
@@ -38,8 +36,27 @@ export const createRouteBackedAutomationBindingsRuntime = ({
 
       throw new Error(`Automations backend returned ${response.status}`);
     },
-    bindActor: async (args) => {
-      const response = await callRoute("POST", "/identity-bindings/bind", { body: args });
+    set: async (args) => {
+      const response = await callRoute("POST", "/store/set", { body: args });
+
+      if (response.type === "json") {
+        return response.data;
+      }
+
+      if (response.type === "error") {
+        throw new Error(
+          `Automations backend returned ${response.status}: ${response.error.message}`,
+        );
+      }
+
+      throw new Error(`Automations backend returned ${response.status}`);
+    },
+    delete: async (args) => {
+      const response = await callRoute("POST", "/store/delete", { body: args });
+
+      if (response.type === "error" && response.status === 404) {
+        return null;
+      }
 
       if (response.type === "json") {
         return response.data;

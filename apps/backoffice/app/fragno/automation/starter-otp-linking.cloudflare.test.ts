@@ -287,20 +287,14 @@ describe("starter OTP linking automation", () => {
     );
     await drainAll();
 
-    const bindingResponse = await automation.fragment.callRoute(
-      "GET",
-      "/identity-bindings/lookup",
-      {
-        query: { source: "telegram", key: "chat-1" },
-      },
-    );
+    const bindingResponse = await automation.fragment.callRoute("GET", "/store/get", {
+      query: { key: "telegram/chat-1" },
+    });
     expect(bindingResponse.type).toBe("json");
     if (bindingResponse.type === "json") {
       expect(bindingResponse.data).toMatchObject({
-        source: "telegram",
-        key: "chat-1",
+        key: "telegram/chat-1",
         value: "user-1",
-        status: "linked",
       });
     }
 
@@ -375,8 +369,8 @@ describe("starter OTP linking automation", () => {
   test("does not issue a new claim for an already linked Telegram chat", async () => {
     const { automation } = context.fragments;
 
-    await automation.fragment.callRoute("POST", "/identity-bindings/bind", {
-      body: { source: "telegram", key: "chat-1", value: "user-1" },
+    await automation.fragment.callRoute("POST", "/store/set", {
+      body: { key: "telegram/chat-1", value: "user-1" },
     });
 
     await automation.fragment.callServices(() =>
@@ -402,13 +396,9 @@ describe("starter OTP linking automation", () => {
     );
     await drainAll();
 
-    const bindingResponse = await automation.fragment.callRoute(
-      "GET",
-      "/identity-bindings/lookup",
-      {
-        query: { source: "telegram", key: "chat-1" },
-      },
-    );
+    const bindingResponse = await automation.fragment.callRoute("GET", "/store/get", {
+      query: { key: "telegram/chat-1" },
+    });
     expect(bindingResponse.type).toBe("error");
     expect(telegramSendCalls).toEqual([]);
   });

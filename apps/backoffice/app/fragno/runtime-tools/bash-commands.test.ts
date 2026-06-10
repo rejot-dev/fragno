@@ -3,8 +3,8 @@ import { describe, expect, test } from "vitest";
 import { Bash, InMemoryFs } from "just-bash";
 import { z } from "zod";
 
-import type { AutomationBindingsRuntime } from "./families/automations-bindings";
-import { automationBindingsRuntimeTools } from "./families/automations-bindings";
+import type { AutomationStoreRuntime } from "./families/automations-bindings";
+import { automationStoreRuntimeTools } from "./families/automations-bindings";
 import { eventRuntimeTools, type EventRuntime } from "./families/event";
 import { createBackofficeBashCommands } from "./runtime-tools";
 import { defineBackofficeRuntimeTool } from "./runtime-tools";
@@ -13,54 +13,59 @@ describe("createBackofficeBashCommands", () => {
   test("routes generated bash commands through semantic runtime tools", async () => {
     const calls: unknown[] = [];
     const commandCallsResult: { command: string; output: string; exitCode: number }[] = [];
-    const automationsRuntime: AutomationBindingsRuntime = {
-      lookupBinding: async (input) => {
-        calls.push(["lookupBinding", input]);
+    const automationsRuntime: AutomationStoreRuntime = {
+      get: async (input) => {
+        calls.push(["get", input]);
         return {
-          source: input.source,
           key: input.key,
           value: "user-55",
-          status: "linked",
         };
       },
-      bindActor: async (input) => {
-        calls.push(["bindActor", input]);
+      set: async (input) => {
+        calls.push(["set", input]);
         return {
-          source: input.source,
           key: input.key,
           value: input.value,
-          description: input.description,
-          status: "linked",
         };
+      },
+      delete: async (input) => {
+        calls.push(["delete", input]);
+        return { ok: true, key: input.key };
       },
     };
 
     const bash = new Bash({
       fs: new InMemoryFs(),
       customCommands: createBackofficeBashCommands({
-        tools: automationBindingsRuntimeTools,
+        tools: automationStoreRuntimeTools,
         context: { runtimes: { automations: automationsRuntime } },
         commandCallsResult,
       }),
     });
 
     await expect(
-      bash.exec("identity.lookup-binding --source telegram --key chat-123 --print value"),
+      bash.exec("store.get --key telegram/chat-123 --print value"),
     ).resolves.toMatchObject({ stdout: "user-55\n", exitCode: 0 });
 
     await expect(
-      bash.exec(
-        "identity.bind-actor --source telegram --key chat-123 --value user-55 --format json",
-      ),
+      bash.exec("store.set --key telegram/chat-123 --value user-55 --format json"),
     ).resolves.toMatchObject({ exitCode: 0 });
 
+    await expect(
+      bash.exec("store.delete --key telegram/chat-123 --format json"),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+    });
+
     expect(calls).toEqual([
-      ["lookupBinding", { source: "telegram", key: "chat-123" }],
-      ["bindActor", { source: "telegram", key: "chat-123", value: "user-55" }],
+      ["get", { key: "telegram/chat-123" }],
+      ["set", { key: "telegram/chat-123", value: "user-55" }],
+      ["delete", { key: "telegram/chat-123" }],
     ]);
     expect(commandCallsResult.map((call) => call.command)).toEqual([
-      "identity.lookup-binding",
-      "identity.bind-actor",
+      "store.get",
+      "store.set",
+      "store.delete",
     ]);
   });
 

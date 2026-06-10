@@ -8,7 +8,7 @@ import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import type { AutomationCommandContext, BashAutomationCommandResult } from "./automation-types";
-import type { AutomationBindingsRuntime } from "./families/automations-bindings";
+import type { AutomationStoreRuntime } from "./families/automations-bindings";
 import type { DurableHooksRuntime } from "./families/automations-durable-hooks";
 import type { AutomationWorkflowRuntime } from "./families/automations-workflow";
 import type { BackofficeCapabilitiesRuntime } from "./families/backoffice-capabilities";
@@ -21,7 +21,7 @@ import type { SandboxRuntime } from "./families/sandbox-runtime";
 import type { RegisteredTelegramCommandContext } from "./families/telegram-runtime";
 
 export type RegisteredAutomationsBashCommandContext = {
-  runtime: AutomationBindingsRuntime;
+  runtime: AutomationStoreRuntime;
 };
 
 export type RegisteredEventBashCommandContext = AutomationCommandContext & {

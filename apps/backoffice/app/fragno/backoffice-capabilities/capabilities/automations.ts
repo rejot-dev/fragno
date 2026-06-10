@@ -4,7 +4,7 @@ export const automationsCapability: BackofficeCapability = {
   id: "automations",
   label: "Automations",
   kind: "system",
-  runtimeToolNamespaces: ["identity", "workflow", "hooks", "events"],
+  runtimeToolNamespaces: ["store", "workflow", "hooks", "events"],
   hooks: [
     {
       id: "automations",

@@ -19,8 +19,8 @@ import type {
   AutomationTriggerBinding,
 } from "../../runtime-tools/automation-types";
 import type {
-  AutomationBindingsRuntime,
-  AutomationIdentityBindingRecord,
+  AutomationStoreRuntime,
+  AutomationStoreEntry,
 } from "../../runtime-tools/families/automations-bindings";
 import type { DurableHooksRuntime } from "../../runtime-tools/families/automations-durable-hooks";
 import type { AutomationWorkflowRuntime } from "../../runtime-tools/families/automations-workflow";
@@ -41,7 +41,7 @@ export type AutomationPiBashContext = {
   runtime: PiRuntime;
 };
 
-export type AutomationRuntime = AutomationBindingsRuntime & OtpRuntime & EventRuntime;
+export type AutomationRuntime = AutomationStoreRuntime & OtpRuntime & EventRuntime;
 
 export type AutomationRuntimeCommandContext = AutomationCommandContext & {
   runtime: AutomationRuntime;
@@ -50,7 +50,7 @@ export type AutomationRuntimeCommandContext = AutomationCommandContext & {
 export type AutomationRuntimeHostContext = {
   automation: AutomationRuntimeCommandContext;
   automations: {
-    runtime: AutomationBindingsRuntime;
+    runtime: AutomationStoreRuntime;
   };
   workflow?: {
     runtime: AutomationWorkflowRuntime;
@@ -78,11 +78,7 @@ export type AutomationRuntimeHostContext = {
   };
 };
 
-export type {
-  AutomationEmitEventResult,
-  AutomationIdentityBindingRecord,
-  AutomationIdentityClaimRecord,
-};
+export type { AutomationEmitEventResult, AutomationStoreEntry, AutomationIdentityClaimRecord };
 
 export const createAutomationRuntime = ({
   env,
@@ -115,8 +111,9 @@ export const createAutomationRuntime = ({
   }
 
   return {
-    lookupBinding: async () => requireOrgRouteBackend("identity.lookup-binding"),
-    bindActor: async () => requireOrgRouteBackend("identity.bind-actor"),
+    get: async () => requireOrgRouteBackend("store.get"),
+    set: async () => requireOrgRouteBackend("store.set"),
+    delete: async () => requireOrgRouteBackend("store.delete"),
     createClaim: async () => requireOrgRouteBackend("otp.identity.create-claim"),
     ...createEventRuntime({
       env,

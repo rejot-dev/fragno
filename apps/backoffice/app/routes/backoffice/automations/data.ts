@@ -41,14 +41,10 @@ export type AutomationScriptRecord = {
   enabled: boolean;
 };
 
-export type AutomationIdentityBindingRecord = {
+export type AutomationStoreEntryRecord = {
   id?: AutomationIdLike;
-  source?: string | null;
   key?: string | null;
   value?: string | null;
-  description?: string | null;
-  status?: string | null;
-  linkedAt?: string | Date | null;
   createdAt?: string | Date | null;
   updatedAt?: string | Date | null;
 };
@@ -59,9 +55,10 @@ export type AutomationScriptSourceRecord = {
 };
 
 const AUTOMATION_SCRIPT_ID_PREFIX = "workspace-script:";
-const isSuccessStatus = (status: number) => status >= 200 && status < 300;
 const formatErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
+
+const isSuccessStatus = (status: number) => status >= 200 && status < 300;
 
 const createAutomationsRouteCaller = (
   request: Request,
@@ -231,65 +228,65 @@ export async function loadAutomationScriptSource({
   }
 }
 
-export async function fetchAutomationIdentityBindings(
+export async function fetchAutomationStoreEntries(
   request: Request,
   context: Readonly<RouterContextProvider>,
   orgId: string,
 ): Promise<{
-  identityBindings: AutomationIdentityBindingRecord[];
-  identityBindingsError: string | null;
+  storeEntries: AutomationStoreEntryRecord[];
+  storeEntriesError: string | null;
 }> {
   try {
     const callRoute = createAutomationsRouteCaller(request, context, orgId);
-    const response = await callRoute("GET", "/identity-bindings");
+    const response = await callRoute("GET", "/store");
 
     if (response.type === "json" && isSuccessStatus(response.status)) {
       return {
-        identityBindings: toRecordArray<AutomationIdentityBindingRecord>(response.data),
-        identityBindingsError: null,
+        storeEntries: toRecordArray<AutomationStoreEntryRecord>(response.data),
+        storeEntriesError: null,
       };
     }
 
     if (response.type === "error") {
       return {
-        identityBindings: [],
-        identityBindingsError: response.error.message,
+        storeEntries: [],
+        storeEntriesError: response.error.message,
       };
     }
 
     return {
-      identityBindings: [],
-      identityBindingsError: `Failed to fetch identity bindings (${response.status}).`,
+      storeEntries: [],
+      storeEntriesError: `Failed to fetch automation store entries (${response.status}).`,
     };
   } catch (error) {
     return {
-      identityBindings: [],
-      identityBindingsError: formatErrorMessage(error, "Failed to load identity bindings."),
+      storeEntries: [],
+      storeEntriesError: formatErrorMessage(error, "Failed to load automation store entries."),
     };
   }
 }
 
-export async function revokeAutomationIdentityBinding(
+export async function deleteAutomationStoreEntry(
   request: Request,
   context: Readonly<RouterContextProvider>,
   orgId: string,
-  bindingId: string,
+  key: string,
 ): Promise<{
   ok: boolean;
   error: string | null;
 }> {
   try {
     const callRoute = createAutomationsRouteCaller(request, context, orgId);
-    const response = await callRoute("POST", "/identity-bindings/:bindingId/revoke", {
-      pathParams: { bindingId },
+    const response = await callRoute("POST", "/store/delete", {
+      body: { key },
     });
 
     return booleanActionResultFromRouteResponse({
       response,
-      failureMessage: "Failed to revoke identity binding",
+      failureMessage: "Failed to delete automation store entry",
       requireSuccessStatus: true,
     });
   } catch (error) {
-    return booleanActionResultFromCaughtError(error, "Failed to revoke identity binding.");
+    return booleanActionResultFromCaughtError(error, "Failed to delete automation store entry.");
   }
 }

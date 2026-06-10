@@ -21,16 +21,17 @@ export type IdentityCreateClaimArgs = {
   ttlMinutes?: number;
 };
 
-export type IdentityLookupBindingArgs = {
-  source: string;
+export type StoreGetArgs = {
   key: string;
 };
 
-export type IdentityBindActorArgs = {
-  source: string;
+export type StoreSetArgs = {
   key: string;
   value: string;
-  description?: string;
+};
+
+export type StoreDeleteArgs = {
+  key: string;
 };
 
 export type EventEmitArgs = {

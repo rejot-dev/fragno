@@ -3,13 +3,14 @@ import { z } from "zod";
 import { defineRoutes } from "@fragno-dev/core";
 
 import {
-  bindAutomationIdentityActor,
-  lookupAutomationIdentityBinding,
+  deleteAutomationStoreEntry,
+  getAutomationStoreEntry,
+  listAutomationStoreEntries,
+  setAutomationStoreEntry,
 } from "./bindings-storage-runtime";
 import { loadAutomationCatalogFromConfig } from "./catalog";
 import { automationFragmentDefinition } from "./definition";
-import { automationIdentityBindingRecordSchema } from "./identity";
-import { automationFragmentSchema } from "./schema";
+import { automationStoreDeleteResultSchema, automationStoreEntrySchema } from "./store";
 
 const getOrgIdFromRequestQuery = (query: URLSearchParams) =>
   query.get("orgId")?.trim() || undefined;
@@ -44,38 +45,18 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
       }),
       defineRoute({
         method: "GET",
-        path: "/identity-bindings",
-        outputSchema: z.array(z.record(z.string(), z.unknown())),
+        path: "/store",
+        outputSchema: z.array(automationStoreEntrySchema),
         handler: async function (_, { json }) {
-          const rows = await this.handlerTx()
-            .retrieve(({ forSchema }) =>
-              forSchema(automationFragmentSchema).find("identity_binding", (b) =>
-                b.whereIndex("primary"),
-              ),
-            )
-            .transformRetrieve(([identityBindings]) => identityBindings)
-            .execute();
-
-          return json(rows);
+          return json(await listAutomationStoreEntries(this));
         },
       }),
       defineRoute({
         method: "GET",
-        path: "/identity-bindings/lookup",
-        outputSchema: automationIdentityBindingRecordSchema,
+        path: "/store/get",
+        outputSchema: automationStoreEntrySchema,
         handler: async function ({ query }, { json, error }) {
-          const source = query.get("source")?.trim();
           const key = query.get("key")?.trim();
-
-          if (!source) {
-            return error(
-              {
-                message: "Missing source query parameter.",
-                code: "SOURCE_REQUIRED",
-              },
-              400,
-            );
-          }
 
           if (!key) {
             return error(
@@ -87,82 +68,55 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
             );
           }
 
-          const binding = await lookupAutomationIdentityBinding(this, {
-            source,
-            key,
-          });
+          const entry = await getAutomationStoreEntry(this, { key });
 
-          if (!binding) {
+          if (!entry) {
             return error(
               {
-                message: `Identity binding not found for ${source}:${key}.`,
-                code: "IDENTITY_BINDING_NOT_FOUND",
+                message: `Store entry not found for ${key}.`,
+                code: "STORE_ENTRY_NOT_FOUND",
               },
               404,
             );
           }
 
-          return json(binding);
+          return json(entry);
         },
       }),
       defineRoute({
         method: "POST",
-        path: "/identity-bindings/bind",
+        path: "/store/set",
         inputSchema: z.object({
-          source: z.string().trim().min(1),
           key: z.string().trim().min(1),
           value: z.string().trim().min(1),
-          description: z.string().optional(),
         }),
-        outputSchema: automationIdentityBindingRecordSchema,
+        outputSchema: automationStoreEntrySchema,
         handler: async function ({ input }, { json }) {
           const payload = await input.valid();
-          const binding = await bindAutomationIdentityActor(this, payload);
-          return json(binding);
+          const entry = await setAutomationStoreEntry(this, payload);
+          return json(entry);
         },
       }),
       defineRoute({
         method: "POST",
-        path: "/identity-bindings/:bindingId/revoke",
-        outputSchema: z.object({ ok: z.literal(true), id: z.string() }),
-        handler: async function ({ pathParams }, { json, error }) {
-          const existing = await this.handlerTx()
-            .retrieve(({ forSchema }) =>
-              forSchema(automationFragmentSchema).findFirst("identity_binding", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "=", pathParams.bindingId)),
-              ),
-            )
-            .transformRetrieve(([binding]) => binding)
-            .execute();
+        path: "/store/delete",
+        inputSchema: z.object({
+          key: z.string().trim().min(1),
+        }),
+        outputSchema: automationStoreDeleteResultSchema,
+        handler: async function ({ input }, { json, error }) {
+          const payload = await input.valid();
+          const result = await deleteAutomationStoreEntry(this, payload);
 
-          if (!existing) {
+          if (!result) {
             return error(
               {
-                message: `Identity binding ${pathParams.bindingId} not found.`,
-                code: "IDENTITY_BINDING_NOT_FOUND",
+                message: `Store entry not found for ${payload.key}.`,
+                code: "STORE_ENTRY_NOT_FOUND",
               },
               404,
             );
           }
-
-          const result = await this.handlerTx()
-            .mutate(({ forSchema }) => {
-              const uow = forSchema(automationFragmentSchema);
-              const now = uow.now();
-
-              uow.update("identity_binding", existing.id, (b) =>
-                b
-                  .set({
-                    status: "revoked",
-                    updatedAt: now,
-                  })
-                  .check(),
-              );
-
-              return { ok: true as const, id: pathParams.bindingId };
-            })
-            .transform(({ mutateResult }) => mutateResult)
-            .execute();
 
           return json(result);
         },

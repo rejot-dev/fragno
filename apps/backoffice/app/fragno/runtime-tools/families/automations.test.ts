@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 
-import { automationBindingsRuntimeTools } from "./automations-bindings";
+import { automationStoreRuntimeTools } from "./automations-bindings";
 import {
   automationEventsRuntimeTools,
   hooksRuntimeTools,
@@ -50,9 +50,10 @@ const createHook = ({
 
 describe("automation runtime tools", () => {
   test("derive automation bash commands from runtime tools", () => {
-    expect(automationBindingsRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
-      "identity.lookup-binding",
-      "identity.bind-actor",
+    expect(automationStoreRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
+      "store.get",
+      "store.set",
+      "store.delete",
     ]);
     expect(automationWorkflowRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
       "workflow.list",
@@ -292,40 +293,38 @@ describe("automation runtime tools", () => {
     await expect(listEvents.execute({}, { runtimes: { durableHooks: runtime } })).rejects.toThrow();
   });
 
-  test("parse and validate lookupBinding input", () => {
-    const [lookupBinding] = automationBindingsRuntimeTools;
+  test("parse and validate get input", () => {
+    const [get] = automationStoreRuntimeTools;
 
-    expect(lookupBinding.name).toBe("lookupBinding");
+    expect(get.name).toBe("get");
     expect(
-      lookupBinding.inputSchema.parse(
-        lookupBinding.adapters!.bash!.parse(["--source", "telegram", "--key", "chat-123"]),
-      ),
-    ).toEqual({ source: "telegram", key: "chat-123" });
+      get.inputSchema.parse(get.adapters!.bash!.parse(["--key", "telegram/chat-123"])),
+    ).toEqual({ key: "telegram/chat-123" });
   });
 
-  test("parse and validate bindActor input", () => {
-    const [, bindActor] = automationBindingsRuntimeTools;
+  test("parse and validate set input", () => {
+    const [, set] = automationStoreRuntimeTools;
 
-    expect(bindActor.name).toBe("bindActor");
+    expect(set.name).toBe("set");
     expect(
-      bindActor.inputSchema.parse(
-        bindActor.adapters!.bash!.parse([
-          "--source",
-          "telegram",
-          "--key",
-          "chat-123",
-          "--value",
-          "user-55",
-          "--description",
-          "Primary device",
-        ]),
+      set.inputSchema.parse(
+        set.adapters!.bash!.parse(["--key", "telegram/chat-123", "--value", "user-55"]),
       ),
     ).toEqual({
-      source: "telegram",
-      key: "chat-123",
+      key: "telegram/chat-123",
       value: "user-55",
-      description: "Primary device",
     });
+  });
+
+  test("parse and validate delete input", () => {
+    const [, , deleteEntry] = automationStoreRuntimeTools;
+
+    expect(deleteEntry.name).toBe("delete");
+    expect(
+      deleteEntry.inputSchema.parse(
+        deleteEntry.adapters!.bash!.parse(["--key", "telegram/chat-123"]),
+      ),
+    ).toEqual({ key: "telegram/chat-123" });
   });
 
   test("workflow retry tool parses input and calls the runtime", async () => {

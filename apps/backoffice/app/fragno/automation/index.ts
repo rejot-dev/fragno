@@ -83,12 +83,14 @@ export type {
   AutomationSource,
 } from "./contracts";
 export {
-  bindAutomationIdentityActor,
-  createAutomationBindingsRuntime,
-  createStorageBackedAutomationBindingsRuntime,
-  lookupAutomationIdentityBinding,
+  deleteAutomationStoreEntry,
+  setAutomationStoreEntry,
+  createAutomationStoreRuntime,
+  createStorageBackedAutomationStoreRuntime,
+  getAutomationStoreEntry,
+  listAutomationStoreEntries,
 } from "./bindings-storage-runtime";
-export { createRouteBackedAutomationBindingsRuntime } from "./bindings-route-runtime";
+export { createRouteBackedAutomationStoreRuntime } from "./bindings-route-runtime";
 export { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
 export { createEventRuntime } from "../runtime-tools/families/event-runtime";
 export { createOtpRuntime } from "../runtime-tools/families/otp-runtime";
@@ -104,14 +106,14 @@ export type {
   AutomationRuntimeHostContext,
   AutomationRuntime,
   AutomationEmitEventResult,
-  AutomationIdentityBindingRecord,
+  AutomationStoreEntry,
 } from "./engine/runtime";
 export type {
   AutomationCommandCallResult,
   AutomationRunResult,
   AutomationRunRuntime,
 } from "./run-result";
-export type { AutomationBindingsRuntime } from "../runtime-tools/families/automations-bindings";
+export type { AutomationStoreRuntime } from "../runtime-tools/families/automations-bindings";
 export type { EventRuntime } from "../runtime-tools/families/event-runtime";
 export type { OtpRuntime } from "../runtime-tools/families/otp-runtime";
 export type {
