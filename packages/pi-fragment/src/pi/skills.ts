@@ -26,6 +26,21 @@ export type PiSkillDefinitionInput = Omit<PiSkillDefinition, "name"> & {
 
 export type PiSkillRegistry = Record<string, PiSkillDefinition>;
 
+export type PiAgentSkillSelection = readonly string[] | "all";
+
+export type PiSkillResolverContext = {
+  agentName: string;
+  workflowName: string;
+  sessionId: string;
+  turnId: string;
+};
+
+export type PiSkillRegistryResolver = (
+  context: PiSkillResolverContext,
+) => PiSkillRegistry | Promise<PiSkillRegistry>;
+
+export type PiSkillRegistrySource = PiSkillRegistry | PiSkillRegistryResolver;
+
 export type PiSkillCatalogXmlInput = PiSkillRegistry | readonly PiSkillDefinition[];
 
 export type PiSkillActivationDetails =

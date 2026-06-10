@@ -18,9 +18,11 @@ import {
   PiSkillDefinitionBuilder,
   renderPiSkillCatalogXml,
   renderPiSkillInvocationContext,
+  type PiAgentSkillSelection,
   type PiSkillDefinition,
   type PiSkillDefinitionInput,
   type PiSkillRegistry,
+  type PiSkillRegistrySource,
 } from "./skills";
 import type {
   PiAgentDefinition,
@@ -165,7 +167,7 @@ export function definePiWorkflow<TName extends string>(
 export type CompilePiWorkflowOptions = {
   agents?: PiAgentRegistry;
   tools?: PiToolRegistry;
-  skills?: PiSkillRegistry;
+  skills?: PiSkillRegistrySource;
   agentRunner?: PiAgentRunner;
 };
 
@@ -176,12 +178,42 @@ const PI_SKILL_CATALOG_SYSTEM_PROMPT_INTRO =
   "The following skills provide specialized instructions for specific tasks. " +
   "When a task matches a skill's description, use that skill before proceeding.";
 
-const resolveAgentSkills = (
+const resolveSkillRegistry = async (
+  skills: PiSkillRegistrySource | undefined,
+  context: {
+    agentName: string;
+    workflowName: string;
+    sessionId: string;
+    turnId: string;
+  },
+): Promise<PiSkillRegistry | undefined> => {
+  if (!skills) {
+    return undefined;
+  }
+  return typeof skills === "function" ? await skills(context) : skills;
+};
+
+const resolveAgentSkills = async (
   agent: PiAgentDefinition,
-  skills: PiSkillRegistry | undefined,
-): PiSkillDefinition[] => {
-  if (!agent.skills?.length) {
+  skills: PiSkillRegistrySource | undefined,
+  context: {
+    agentName: string;
+    workflowName: string;
+    sessionId: string;
+    turnId: string;
+  },
+): Promise<PiSkillDefinition[]> => {
+  if (!agent.skills || (Array.isArray(agent.skills) && agent.skills.length === 0)) {
     return [];
+  }
+
+  const registry = await resolveSkillRegistry(skills, context);
+  if (!registry) {
+    return [];
+  }
+
+  if (agent.skills === "all") {
+    return Object.values(registry);
   }
 
   const seen = new Set<string>();
@@ -191,7 +223,7 @@ const resolveAgentSkills = (
     }
     seen.add(name);
 
-    const skill = skills?.[name];
+    const skill = registry[name];
     if (!skill) {
       throw new NonRetryableError(`Skill '${name}' not found.`);
     }
@@ -300,8 +332,13 @@ export const compilePiWorkflow = <
             controls: runOptions.controls,
             stopOnTools: stopOnToolNames(runOptions.stopOnTools),
             toolExecution: runOptions.toolExecution,
-            prepareRuntime: (runtime) => {
-              const agentSkills = resolveAgentSkills(agent, options.skills);
+            prepareRuntime: async (runtime) => {
+              const agentSkills = await resolveAgentSkills(agent, options.skills, {
+                agentName,
+                workflowName: definition.name,
+                sessionId: event.instanceId,
+                turnId: runOptions.turnId ?? `${event.instanceId}:${name}`,
+              });
               const systemPrompt = agentSkills.length
                 ? appendSkillCatalogToSystemPrompt(
                     runOptions.systemPrompt ?? agent.systemPrompt,
@@ -399,12 +436,15 @@ export {
 } from "./skills";
 export type {
   CreatePiSkillActivationToolOptions,
+  PiAgentSkillSelection,
   PiSkillActivationDetails,
   PiSkillCatalogXmlInput,
   PiSkillDefinition,
   PiSkillDefinitionInput,
   PiSkillInvocationContextOptions,
   PiSkillRegistry,
+  PiSkillRegistryResolver,
+  PiSkillRegistrySource,
   PiSkillResource,
 } from "./skills";
 export type { PiTool, PiToolContext, PiToolDefinition, PiToolResultSchema } from "./types";
@@ -420,7 +460,7 @@ export type PiAgentDefinitionInput<
   TSkillName extends string = string,
 > = Omit<PiAgentDefinition, "name" | "tools" | "skills"> & {
   tools?: readonly TToolName[];
-  skills?: readonly TSkillName[];
+  skills?: readonly TSkillName[] | "all";
 };
 
 export type PiNamedAgentDefinition<

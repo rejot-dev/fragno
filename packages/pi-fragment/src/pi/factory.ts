@@ -10,7 +10,7 @@ import { piRoutesFactory } from "../routes";
 import { piFragmentDefinition } from "./definition";
 import type { PiWorkflowDefinition } from "./dsl";
 import { compilePiWorkflow } from "./dsl";
-import type { PiSkillRegistry } from "./skills";
+import type { PiSkillRegistrySource } from "./skills";
 import type { PiAgentRegistry, PiFragmentConfig, PiToolRegistry } from "./types";
 import { type PiAgentRunner } from "./workflow/pi-agent-step";
 
@@ -23,7 +23,7 @@ type PiFragmentServices = {
 type WorkflowsOptions = {
   agents: PiAgentRegistry;
   tools: PiToolRegistry;
-  skills?: PiSkillRegistry;
+  skills?: PiSkillRegistrySource;
   logging?: PiFragmentConfig["logging"];
   agentRunner?: PiAgentRunner;
   workflows?: PiWorkflowDefinition[];
