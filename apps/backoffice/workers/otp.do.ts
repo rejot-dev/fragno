@@ -21,8 +21,12 @@ import {
 
 export type IssueIdentityClaimInput = {
   orgId: string;
-  linkSource: string;
-  externalActorId: string;
+  actor: {
+    scope: "external";
+    source: string;
+    type: string;
+    id: string;
+  };
   expiresInMinutes?: number;
   publicBaseUrl: string;
 };
@@ -53,28 +57,20 @@ export type ConfirmIdentityClaimResult =
     };
 
 const issueIdentityClaimInputSchema = z.object({
-  orgId: z
-    .string()
-    .trim()
-    .min(1, "orgId, linkSource, externalActorId, and publicBaseUrl are required."),
-  linkSource: z
-    .string()
-    .trim()
-    .min(1, "orgId, linkSource, externalActorId, and publicBaseUrl are required."),
-  externalActorId: z
-    .string()
-    .trim()
-    .min(1, "orgId, linkSource, externalActorId, and publicBaseUrl are required."),
+  orgId: z.string().trim().min(1, "orgId, actor, and publicBaseUrl are required."),
+  actor: z.object({
+    scope: z.literal("external"),
+    source: z.string().trim().min(1),
+    type: z.string().trim().min(1),
+    id: z.string().trim().min(1),
+  }),
   expiresInMinutes: z
     .number()
     .refine((value) => Number.isFinite(value), {
       message: "expiresInMinutes must be finite.",
     })
     .optional(),
-  publicBaseUrl: z
-    .string()
-    .trim()
-    .min(1, "orgId, linkSource, externalActorId, and publicBaseUrl are required."),
+  publicBaseUrl: z.string().trim().min(1, "orgId, actor, and publicBaseUrl are required."),
 });
 
 const confirmIdentityClaimInputSchema = z.object({
@@ -174,10 +170,9 @@ export class Otp extends DurableObject<CloudflareEnv> {
         : DEFAULT_IDENTITY_LINK_EXPIRY_MINUTES;
 
     const issued = await fragment.callServices(() =>
-      fragment.services.otp.issueOtp(parsed.externalActorId, IDENTITY_LINK_TYPE, expiresInMinutes, {
+      fragment.services.otp.issueOtp(parsed.actor.id, IDENTITY_LINK_TYPE, expiresInMinutes, {
         orgId: parsed.orgId,
-        linkSource: parsed.linkSource,
-        externalActorId: parsed.externalActorId,
+        actor: parsed.actor,
       }),
     );
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { AutomationExternalEntityDefinition } from "@/fragno/automation/contracts";
 import type {
   BackofficeConfigurableConnectionCapability,
   ConnectionStatus,
@@ -45,12 +46,29 @@ export const telegramConfigureInputSchema = z.object({
   webhookBaseUrl: requiredHttpUrl,
 });
 
+export const telegramAutomationExternalEntities = {
+  chat: {
+    scope: "external",
+    source: AUTOMATION_SOURCE,
+    type: "chat",
+    label: "Telegram chat",
+    description: "Telegram chat or conversation that can send and receive bot messages.",
+  },
+} as const satisfies Record<string, AutomationExternalEntityDefinition<typeof AUTOMATION_SOURCE>>;
+
 const telegramMessageReceivedPayloadSchema = z.object({
   messageId: z.string().min(1),
   chatId: z.string().min(1),
   fromUserId: z.string().min(1).nullable(),
   text: z.string().nullable(),
   attachments: z.array(z.unknown()).optional(),
+});
+
+const telegramMessageReceivedActorSchema = z.object({
+  scope: z.literal("external"),
+  source: z.literal(AUTOMATION_SOURCE),
+  type: z.literal("chat"),
+  id: z.string().min(1),
 });
 
 const telegramCapabilityConfiguredPayloadSchema = z.object({
@@ -87,6 +105,7 @@ const toTelegramStatus = (response: TelegramAdminConfigResponse): ConnectionStat
 export const telegramCapability: BackofficeConfigurableConnectionCapability = {
   ...capability,
   runtimeToolNamespaces: ["telegram"],
+  externalEntities: [telegramAutomationExternalEntities.chat],
   connection: {
     configurable: true,
     configureInputSchema: telegramConfigureInputSchema,
@@ -160,6 +179,7 @@ export const telegramCapability: BackofficeConfigurableConnectionCapability = {
       eventType: AUTOMATION_EVENT_MESSAGE_RECEIVED,
       label: "Telegram message received",
       payloadSchema: telegramMessageReceivedPayloadSchema,
+      actorSchema: telegramMessageReceivedActorSchema,
       example: {
         messageId: "42",
         chatId: "123456789",

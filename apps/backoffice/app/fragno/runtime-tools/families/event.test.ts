@@ -21,7 +21,7 @@ describe("event runtime tools", () => {
           "--external-actor-id",
           "chat-123",
           "--actor-type",
-          "external",
+          "chat",
           "--subject-user-id",
           "user-55",
           "--payload-json",
@@ -32,7 +32,7 @@ describe("event runtime tools", () => {
       eventType: "identity.bound",
       source: "otp",
       externalActorId: "chat-123",
-      actorType: "external",
+      actorType: "chat",
       subjectUserId: "user-55",
       payload: { plan: "basic" },
     });

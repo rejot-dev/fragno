@@ -159,7 +159,7 @@ describe("runtime tool reference generation", () => {
           inputType: "OtpCreateIdentityClaimInput",
           outputType: "OtpCreateIdentityClaimOutput",
           bashCommand: "otp.identity.create-claim",
-          bashOptions: ["source", "external-actor-id", "ttl-minutes"],
+          bashOptions: ["actor-json", "ttl-minutes"],
         },
       ],
     },

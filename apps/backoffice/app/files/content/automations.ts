@@ -92,10 +92,9 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
   }
 
   if (event.source === "otp" && event.eventType === "identity.claim.completed") {
-    const linkSource = event.payload.linkSource;
-    const otpId = event.payload.otpId ?? (event.payload.externalActorId ? "otp-" + event.payload.externalActorId : "");
+    const otpId = event.payload.otpId;
 
-    if (linkSource === "telegram") {
+    if (event.actor?.source === "telegram") {
       const workflowBinding = await identity.lookupBinding({
         source: "telegram-claim-workflow",
         key: otpId,
@@ -154,8 +153,12 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
 
     const claim = await step.do("create identity claim", async () => {
       const claim = await otp.createIdentityClaim({
-        source: "telegram",
-        externalActorId: chatId,
+        actor: {
+          scope: "external",
+          source: "telegram",
+          type: "chat",
+          id: chatId,
+        },
       });
 
       await identity.bindActor({
@@ -179,34 +182,34 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
     });
     const completedEvent = completed.payload;
     const completedOtpId = completedEvent.payload.otpId;
-    const linkSource = completedEvent.payload.linkSource;
-    const externalActorId = completedEvent.payload.externalActorId;
+    const completedActor = completedEvent.actor;
+    const completedActorId = completedActor.id;
     const subjectUserId = completedEvent.subject.userId;
 
     if (completedOtpId !== claim.otpId) {
       return { linked: false, reason: "claim-mismatch" };
     }
 
-    if (linkSource !== "telegram") {
+    if (completedActor.source !== "telegram") {
       return { linked: false, reason: "not-telegram" };
     }
 
     return await step.do("bind telegram actor", async () => {
       try {
         await identity.bindActor({
-          source: linkSource,
-          key: externalActorId,
+          source: completedActor.source,
+          key: completedActorId,
           value: subjectUserId,
         });
         await telegram.sendMessage({
-          chatId: externalActorId,
+          chatId: completedActorId,
           text: "Your Telegram chat is now linked.",
           parseMode: "Markdown",
         });
         return { linked: true, userId: subjectUserId, otpId: claim.otpId };
       } catch (error) {
         await telegram.sendMessage({
-          chatId: externalActorId,
+          chatId: completedActorId,
           text: "We couldn't link your Telegram chat. Please try again.",
           parseMode: "Markdown",
         });
@@ -247,12 +250,12 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
     const automationEvent = event.payload.automationEvent;
     const text = automationEvent.payload.text ?? "";
     const chatId = automationEvent.payload.chatId;
-    const externalActorId = automationEvent.actor.externalId;
+    const automationActorId = automationEvent.actor.id;
 
     const linkedBinding = await step.do("lookup linked user", async () => {
       return await identity.lookupBinding({
         source: "telegram",
-        key: externalActorId,
+        key: automationActorId,
       });
     });
     const linkedUser = linkedBinding?.value ?? "";
@@ -328,7 +331,7 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
         source: "telegram-pi-session",
         key: linkedUser,
         value: session.id,
-        description: "Pi session for Telegram chat " + externalActorId,
+        description: "Pi session for Telegram chat " + automationActorId,
       });
 
       return { created: true, sessionId: session.id };

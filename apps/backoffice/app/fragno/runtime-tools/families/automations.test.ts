@@ -27,7 +27,7 @@ const createHook = ({
     eventType: "message.received",
     occurredAt: "2026-01-01T00:00:00.000Z",
     payload: { text: "hello" },
-    actor: { type: "telegram-user", externalId: "user-1" },
+    actor: { scope: "external", source: "telegram", type: "chat", id: "chat-1" },
   },
 }: {
   id: string;
@@ -97,10 +97,12 @@ describe("automation runtime tools", () => {
       actorSchema: {
         type: "object",
         properties: {
-          type: { const: "external" },
-          externalId: { type: "string" },
+          scope: { const: "external" },
+          source: { const: "telegram" },
+          type: { const: "chat" },
+          id: { type: "string" },
         },
-        required: ["type", "externalId"],
+        required: ["scope", "source", "type", "id"],
       },
       subjectSchema: { type: "object", properties: { orgId: { type: "string" } } },
       example: { payload: { text: "hello" } },
@@ -217,7 +219,7 @@ describe("automation runtime tools", () => {
           source: "telegram",
           eventType: "message.received",
           hookId: "event-hook",
-          actor: { type: "telegram-user", externalId: "user-1" },
+          actor: { scope: "external", source: "telegram", type: "chat", id: "chat-1" },
         },
       ],
     });

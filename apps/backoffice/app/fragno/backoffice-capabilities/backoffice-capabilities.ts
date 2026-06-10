@@ -1,5 +1,6 @@
 import type { z } from "zod";
 
+import type { AutomationExternalEntityDefinition } from "@/fragno/automation/contracts";
 import type { DurableHookQueueOptions, DurableHookRepository } from "@/fragno/durable-hooks";
 import { zodSchemaToJsonSchema } from "@/lib/zod/zod-formatter";
 
@@ -118,6 +119,7 @@ type BackofficeCapabilityBase = {
   label: string;
   runtimeToolNamespaces?: readonly string[];
   hooks?: readonly BackofficeHookScope[];
+  externalEntities?: readonly AutomationExternalEntityDefinition[];
   automationEvents?: readonly BackofficeAutomationEventDescriptor[];
 };
 

@@ -14,6 +14,7 @@ export type AutomationIdentityClaimRecord = {
   otpId: string;
   externalId: string;
   code: string;
+  actor: IdentityCreateClaimArgs["actor"];
   type?: string;
   expiresAt?: string;
 };
@@ -26,9 +27,15 @@ type OtpToolContext = BackofficeToolContext<{ otp?: OtpRuntime }>;
 
 const nonEmptyString = z.string().trim().min(1);
 
-const createClaimInputSchema = z.object({
+const actorSchema = z.object({
+  scope: z.literal("external"),
   source: nonEmptyString,
-  externalActorId: nonEmptyString,
+  type: nonEmptyString,
+  id: nonEmptyString,
+});
+
+const createClaimInputSchema = z.object({
+  actor: actorSchema,
   ttlMinutes: z.number().int().positive().optional(),
 });
 
@@ -37,6 +44,7 @@ const identityClaimRecordSchema = z.object({
   otpId: nonEmptyString,
   externalId: nonEmptyString,
   code: nonEmptyString,
+  actor: actorSchema,
   type: nonEmptyString.optional(),
   expiresAt: nonEmptyString.optional(),
 });
@@ -51,8 +59,7 @@ const getOtpRuntime = (runtime: OtpToolContext["runtimes"]["otp"]): OtpRuntime =
 const parseOtpIdentityCreateClaim = defineCliArgsParser<IdentityCreateClaimArgs>(
   "otp.identity.create-claim",
   {
-    source: { required: true },
-    externalActorId: { required: true },
+    actor: { kind: "json", option: "actor-json", required: true },
     ttlMinutes: { kind: "positiveInteger" },
   },
 );
@@ -74,18 +81,11 @@ const createClaimTool = defineBackofficeRuntimeTool({
           "otp.identity.create-claim creates a short-lived identity claim URL for an external actor.",
         options: [
           {
-            name: "source",
+            name: "actor-json",
             required: true,
             valueRequired: true,
-            valueName: "source",
-            description: "Identity source name (e.g. telegram)",
-          },
-          {
-            name: "external-actor-id",
-            required: true,
-            valueRequired: true,
-            valueName: "external-actor-id",
-            description: "External actor identifier from the source",
+            valueName: "json",
+            description: "Full actor entity ref JSON",
           },
           {
             name: "ttl-minutes",
@@ -95,8 +95,8 @@ const createClaimTool = defineBackofficeRuntimeTool({
           },
         ],
         examples: [
-          "otp.identity.create-claim --source telegram --external-actor-id chat-123",
-          "otp.identity.create-claim --source telegram --external-actor-id chat-123 --ttl-minutes 15 --print url",
+          'otp.identity.create-claim --actor-json \'{"scope":"external","source":"telegram","type":"chat","id":"chat-123"}\'',
+          'otp.identity.create-claim --actor-json \'{"scope":"external","source":"telegram","type":"chat","id":"chat-123"}\' --ttl-minutes 15 --print url',
         ],
       },
       parse: parseOtpIdentityCreateClaim,

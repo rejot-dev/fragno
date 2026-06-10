@@ -58,14 +58,25 @@ export type {
   AutomationScriptCatalogEntry,
   AutomationWorkspaceScriptEntry,
 } from "./catalog";
-export { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES } from "./contracts";
+export {
+  AUTOMATION_INTERNAL_ENTITIES,
+  AUTOMATION_SOURCES,
+  AUTOMATION_SOURCE_EVENT_TYPES,
+} from "./contracts";
 export type { AutomationEvent, AutomationIngestResult };
 export type {
   AutomationCreateIdentityClaimInput,
   AutomationCreateIdentityClaimResult,
+  AutomationEntityDefinition,
+  AutomationEntityRef,
+  AutomationEntityScope,
+  AutomationExternalEntityRef,
   AutomationEventActor,
   AutomationEventPayload,
   AutomationEventSubject,
+  AutomationExternalEntityDefinition,
+  AutomationInternalEntityDefinition,
+  AutomationInternalEntityType,
   AutomationKnownEvent,
   AutomationKnownEventType,
   AutomationEventTypeForSource,

@@ -69,8 +69,10 @@ export const buildTelegramAutomationEvent = (
     ...(payload.attachments.length > 0 ? { attachments: payload.attachments } : {}),
   },
   actor: {
-    type: "external",
-    externalId: payload.chatId,
+    scope: "external",
+    source: AUTOMATION_SOURCES.telegram,
+    type: "chat",
+    id: payload.chatId,
   },
 });
 

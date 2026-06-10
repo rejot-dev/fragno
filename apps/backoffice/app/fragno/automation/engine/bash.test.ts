@@ -21,10 +21,11 @@ const runtime: AutomationRuntime = {
     status: "linked",
   }),
   createClaim: async (input) => ({
-    url: `https://example.com/${input.externalActorId}`,
+    url: `https://example.com/${input.actor.id}`,
     otpId: "otp-123",
-    externalId: input.externalActorId,
+    externalId: input.actor.id,
     code: "123456",
+    actor: input.actor,
   }),
   emitEvent: async (input) => ({
     accepted: true,
@@ -87,8 +88,10 @@ describe("bash command runner", () => {
         text: "/start",
       },
       actor: {
-        type: "external",
-        externalId: "chat-1",
+        scope: "external",
+        source: "telegram",
+        type: "chat",
+        id: "chat-1",
       },
       subject: {
         userId: "user-1",
@@ -116,7 +119,7 @@ describe("bash command runner", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout.trim()).toBe(
-      'event={"id":"event-123","orgId":"org-1","source":"telegram","eventType":"message.received","occurredAt":"2026-01-01T00:00:00.000Z","payload":{"messageId":"message-1","chatId":"chat-1","fromUserId":"from-1","text":"/start"},"actor":{"type":"external","externalId":"chat-1"},"subject":{"userId":"user-1"}}',
+      'event={"id":"event-123","orgId":"org-1","source":"telegram","eventType":"message.received","occurredAt":"2026-01-01T00:00:00.000Z","payload":{"messageId":"message-1","chatId":"chat-1","fromUserId":"from-1","text":"/start"},"actor":{"scope":"external","source":"telegram","type":"chat","id":"chat-1"},"subject":{"userId":"user-1"}}',
     );
   });
 

@@ -13,7 +13,7 @@ export const createOtpRuntime = ({
   env: CloudflareEnv;
   orgId: string;
 }): OtpRuntime => ({
-  createClaim: async ({ source, externalActorId, ttlMinutes }) => {
+  createClaim: async ({ actor, ttlMinutes }) => {
     const normalizedOrgId = orgId.trim();
     if (!normalizedOrgId) {
       throw new Error("otp.identity.create-claim requires an organisation id");
@@ -29,8 +29,7 @@ export const createOtpRuntime = ({
     const otpDo = env.OTP.get(env.OTP.idFromName(normalizedOrgId));
     const issued = await otpDo.issueIdentityClaim({
       orgId: normalizedOrgId,
-      linkSource: source,
-      externalActorId,
+      actor,
       expiresInMinutes: ttlMinutes,
       publicBaseUrl,
     });
@@ -40,6 +39,7 @@ export const createOtpRuntime = ({
       otpId: issued.otpId,
       externalId: issued.externalId,
       code: issued.code,
+      actor,
       type: issued.type,
     };
   },
