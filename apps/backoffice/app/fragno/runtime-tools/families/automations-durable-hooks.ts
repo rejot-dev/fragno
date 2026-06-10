@@ -88,8 +88,10 @@ const automationEventRecordSchema = z.object({
   hookId: z.string(),
   actor: z
     .object({
+      scope: z.string().optional(),
+      source: z.string().optional(),
       type: z.string().optional(),
-      externalId: z.string().optional(),
+      id: z.string().optional(),
     })
     .nullable()
     .optional(),
@@ -176,18 +178,19 @@ const formatAutomationEventQueue = (
     source: item.source,
     eventType: item.eventType,
     hookId: item.hookId,
+    actorScope: item.actor?.scope ?? "-",
+    actorSource: item.actor?.source ?? "-",
     actorType: item.actor?.type ?? "-",
-    actorExternalId: item.actor?.externalId ?? "-",
+    actorId: item.actor?.id ?? "-",
   }));
   const widths = {
     source: Math.max("source".length, ...rows.map((row) => row.source.length)),
     eventType: Math.max("eventType".length, ...rows.map((row) => row.eventType.length)),
     hookId: Math.max("hookId".length, ...rows.map((row) => row.hookId.length)),
+    actorScope: Math.max("actor.scope".length, ...rows.map((row) => row.actorScope.length)),
+    actorSource: Math.max("actor.source".length, ...rows.map((row) => row.actorSource.length)),
     actorType: Math.max("actor.type".length, ...rows.map((row) => row.actorType.length)),
-    actorExternalId: Math.max(
-      "actor.externalId".length,
-      ...rows.map((row) => row.actorExternalId.length),
-    ),
+    actorId: Math.max("actor.id".length, ...rows.map((row) => row.actorId.length)),
   };
 
   const lines = [
@@ -196,23 +199,29 @@ const formatAutomationEventQueue = (
       pad("source", widths.source),
       pad("eventType", widths.eventType),
       pad("hookId", widths.hookId),
+      pad("actor.scope", widths.actorScope),
+      pad("actor.source", widths.actorSource),
       pad("actor.type", widths.actorType),
-      pad("actor.externalId", widths.actorExternalId),
+      pad("actor.id", widths.actorId),
     ].join("  "),
     [
       "-".repeat(widths.source),
       "-".repeat(widths.eventType),
       "-".repeat(widths.hookId),
+      "-".repeat(widths.actorScope),
+      "-".repeat(widths.actorSource),
       "-".repeat(widths.actorType),
-      "-".repeat(widths.actorExternalId),
+      "-".repeat(widths.actorId),
     ].join("  "),
     ...rows.map((row) =>
       [
         pad(row.source, widths.source),
         pad(row.eventType, widths.eventType),
         pad(row.hookId, widths.hookId),
+        pad(row.actorScope, widths.actorScope),
+        pad(row.actorSource, widths.actorSource),
         pad(row.actorType, widths.actorType),
-        pad(row.actorExternalId, widths.actorExternalId),
+        pad(row.actorId, widths.actorId),
       ].join("  "),
     ),
     ...(result.hasNextPage && result.cursor ? [`next cursor: ${result.cursor}`] : []),

@@ -8,8 +8,13 @@ const AUTOMATION_EVENT_IDENTITY_CLAIM_COMPLETED = "identity.claim.completed" as 
 const identityClaimCompletedPayloadSchema = z.object({
   otpId: z.string().trim().min(1),
   claimType: z.string().trim().min(1),
-  linkSource: z.string().trim().min(1),
-  externalActorId: z.string().trim().min(1),
+});
+
+const identityClaimCompletedActorSchema = z.object({
+  scope: z.literal("external"),
+  source: z.string().trim().min(1),
+  type: z.string().trim().min(1),
+  id: z.string().trim().min(1),
 });
 
 const identityClaimCompletedSubjectSchema = z.object({
@@ -35,12 +40,11 @@ export const otpCapability: BackofficeCapability = {
       eventType: AUTOMATION_EVENT_IDENTITY_CLAIM_COMPLETED,
       label: "OTP identity claim completed",
       payloadSchema: identityClaimCompletedPayloadSchema,
+      actorSchema: identityClaimCompletedActorSchema,
       subjectSchema: identityClaimCompletedSubjectSchema,
       example: {
         otpId: "otp_123",
         claimType: "identity_link",
-        linkSource: "telegram",
-        externalActorId: "123456789",
       },
     },
   ],

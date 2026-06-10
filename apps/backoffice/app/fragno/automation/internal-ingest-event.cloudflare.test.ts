@@ -21,13 +21,16 @@ import { defineAutomationCodemodeWorkflow } from "./engine/workflow";
 import { automationFragmentRoutes } from "./routes";
 
 const telegramSendCalls: Array<{ chatId: string; text: string }> = [];
-const issueIdentityClaimMock = vi.fn(async ({ externalActorId }: { externalActorId: string }) => ({
-  url: `https://example.com/claims/${externalActorId}`,
-  otpId: `otp-${externalActorId}`,
-  externalId: externalActorId,
-  code: "123456",
-  type: "otp",
-}));
+const issueIdentityClaimMock = vi.fn(
+  async ({ actor }: { actor: { source?: string; id: string } }) => ({
+    url: `https://example.com/claims/${actor.id}`,
+    otpId: `otp-${actor.id}`,
+    externalId: actor.id,
+    code: "123456",
+    actor,
+    type: "otp",
+  }),
+);
 const telegramGetFileMock = vi.fn(async ({ fileId }: { fileId: string }) => ({
   fileId,
   fileUniqueId: `unique-${fileId}`,
@@ -294,8 +297,10 @@ describe("automation internalIngestEvent", () => {
         occurredAt: new Date("2026-01-01T00:00:00.000Z").toISOString(),
         payload: {},
         actor: {
+          scope: "external",
+          source: "telegram",
           type: "user",
-          externalId: "actor-1",
+          id: "actor-1",
         },
         ...overrides,
       }),
@@ -395,8 +400,10 @@ describe("automation internalIngestEvent", () => {
             chatId: "chat-1",
           },
           actor: {
-            type: "external",
-            externalId: "chat-1",
+            scope: "external",
+            source: "telegram",
+            type: "chat",
+            id: "chat-1",
           },
         }),
       );
@@ -416,8 +423,10 @@ describe("automation internalIngestEvent", () => {
             chatId: "chat-1",
           },
           actor: {
-            type: "external",
-            externalId: "chat-1",
+            scope: "external",
+            source: "telegram",
+            type: "chat",
+            id: "chat-1",
           },
         }),
       );
@@ -509,8 +518,10 @@ telegram.file.download --file-id "$file_id" > /workspace/telegram-download.bin
             ],
           },
           actor: {
-            type: "external",
-            externalId: "chat-1",
+            scope: "external",
+            source: "telegram",
+            type: "chat",
+            id: "chat-1",
           },
         }),
       );
@@ -547,8 +558,10 @@ telegram.file.download --file-id "$file_id" > /workspace/telegram-download.bin
         chatId: "chat-1",
       },
       actor: {
-        type: "external",
-        externalId: "chat-1",
+        scope: "external",
+        source: "telegram",
+        type: "chat",
+        id: "chat-1",
       },
     });
 

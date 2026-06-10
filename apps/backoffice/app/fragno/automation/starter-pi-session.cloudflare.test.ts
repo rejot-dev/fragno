@@ -314,7 +314,7 @@ const telegramEvent = (id: string, text: string) =>
       fromUserId: "chat-1",
       text,
     },
-    actor: { type: "external", externalId: "chat-1" },
+    actor: { scope: "external", source: "telegram", type: "chat", id: "chat-1" },
   }) satisfies AutomationEvent;
 
 describe("starter Pi session automation", () => {

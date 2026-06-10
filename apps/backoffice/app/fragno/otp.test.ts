@@ -8,18 +8,23 @@ import {
   identityClaimPayloadSchema,
 } from "./otp";
 
+const telegramChatActor = {
+  scope: "external" as const,
+  source: "telegram",
+  type: "chat",
+  id: "chat_123",
+};
+
 describe("otp identity claim helpers", () => {
   it("parses valid identity claim payloads", () => {
     expect(
       identityClaimPayloadSchema.parse({
         orgId: " org_123 ",
-        linkSource: " telegram ",
-        externalActorId: " chat_123 ",
+        actor: telegramChatActor,
       }),
     ).toEqual({
       orgId: "org_123",
-      linkSource: "telegram",
-      externalActorId: "chat_123",
+      actor: telegramChatActor,
     });
   });
 
@@ -28,13 +33,24 @@ describe("otp identity claim helpers", () => {
     expect(
       identityClaimPayloadSchema.safeParse({
         orgId: "org_123",
-        linkSource: "telegram",
       }).success,
     ).toBe(false);
     expect(
       identityClaimPayloadSchema.safeParse({
         orgId: "org_123",
-        externalActorId: "chat_123",
+        actor: { scope: "external", source: "telegram", type: "chat" },
+      }).success,
+    ).toBe(false);
+    expect(
+      identityClaimPayloadSchema.safeParse({
+        orgId: "org_123",
+        actor: { scope: "external", type: "chat", id: "chat_123" },
+      }).success,
+    ).toBe(false);
+    expect(
+      identityClaimPayloadSchema.safeParse({
+        orgId: "org_123",
+        actor: { scope: "internal", type: "user", id: "user_123" },
       }).success,
     ).toBe(false);
   });
@@ -73,8 +89,7 @@ describe("otp identity claim helpers", () => {
         orgId: "org_123",
         userId: "user_123",
         claim: {
-          linkSource: "telegram",
-          externalActorId: "chat_123",
+          actor: telegramChatActor,
         },
         otp: {
           id: "otp_123",
@@ -91,9 +106,8 @@ describe("otp identity claim helpers", () => {
       payload: {
         otpId: "otp_123",
         claimType: IDENTITY_LINK_TYPE,
-        linkSource: "telegram",
-        externalActorId: "chat_123",
       },
+      actor: telegramChatActor,
       subject: {
         userId: "user_123",
       },
@@ -106,8 +120,7 @@ describe("otp identity claim helpers", () => {
         orgId: "org_123",
         userId: "user_123",
         claim: {
-          linkSource: "telegram",
-          externalActorId: "chat_123",
+          actor: telegramChatActor,
         },
         otp: {
           id: "otp_123",

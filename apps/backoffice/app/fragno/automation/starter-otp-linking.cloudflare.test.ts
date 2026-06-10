@@ -14,13 +14,16 @@ import { defineAutomationCodemodeWorkflow } from "./engine/workflow";
 import { automationFragmentRoutes } from "./routes";
 
 const telegramSendCalls: Array<{ chatId: string; text: string }> = [];
-const issueIdentityClaimMock = vi.fn(async ({ externalActorId }: { externalActorId: string }) => ({
-  url: `https://example.com/claims/${externalActorId}`,
-  otpId: "otp-1",
-  externalId: externalActorId,
-  code: "123456",
-  type: "otp",
-}));
+const issueIdentityClaimMock = vi.fn(
+  async ({ actor }: { actor: { source?: string; id: string } }) => ({
+    url: `https://example.com/claims/${actor.id}`,
+    otpId: "otp-1",
+    externalId: actor.id,
+    code: "123456",
+    actor,
+    type: "otp",
+  }),
+);
 
 const createAutomationFileSystem = async () =>
   await createMasterFileSystem({
@@ -221,7 +224,7 @@ const telegramStartEvent = {
   eventType: "message.received",
   occurredAt: "2026-06-05T10:00:00.000Z",
   payload: { text: "/start", chatId: "chat-1" },
-  actor: { type: "external", externalId: "chat-1" },
+  actor: { scope: "external", source: "telegram", type: "chat", id: "chat-1" },
   subject: null,
 } satisfies AutomationEvent;
 
@@ -234,10 +237,8 @@ const otpCompletedEvent = {
   payload: {
     otpId: "otp-1",
     claimType: "identity_link",
-    linkSource: "telegram",
-    externalActorId: "chat-1",
   },
-  actor: null,
+  actor: { scope: "external", source: "telegram", type: "chat", id: "chat-1" },
   subject: { userId: "user-1" },
 } satisfies AutomationEvent;
 
@@ -270,8 +271,7 @@ describe("starter OTP linking automation", () => {
     expect(issueIdentityClaimMock).toHaveBeenCalledWith(
       expect.objectContaining({
         orgId: "org-1",
-        linkSource: "telegram",
-        externalActorId: "chat-1",
+        actor: { scope: "external", source: "telegram", type: "chat", id: "chat-1" },
         publicBaseUrl: "https://example.com",
       }),
     );
@@ -397,7 +397,7 @@ describe("starter OTP linking automation", () => {
       automation.services.ingestEvent({
         ...otpCompletedEvent,
         id: "github-otp-complete-1",
-        payload: { ...otpCompletedEvent.payload, linkSource: "github" },
+        actor: { scope: "external", source: "github", type: "actor", id: "chat-1" },
       }),
     );
     await drainAll();

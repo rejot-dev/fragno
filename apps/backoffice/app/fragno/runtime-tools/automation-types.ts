@@ -1,4 +1,4 @@
-import type { AutomationEvent } from "../automation/contracts";
+import type { AutomationEvent, AutomationExternalEntityRef } from "../automation/contracts";
 import type { AutomationCommandCallResult } from "../automation/run-result";
 
 export type AutomationCommandFormat = "text" | "json";
@@ -17,8 +17,7 @@ export type AutomationCommandExecutionResult<TData = unknown> = {
 };
 
 export type IdentityCreateClaimArgs = {
-  source: string;
-  externalActorId: string;
+  actor: AutomationExternalEntityRef;
   ttlMinutes?: number;
 };
 

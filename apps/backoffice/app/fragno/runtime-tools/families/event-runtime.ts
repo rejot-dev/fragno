@@ -27,10 +27,11 @@ export const createEventRuntime = ({ env, event }: CreateEventRuntimeOptions): E
       throw new Error("event.emit requires an organisation id");
     }
 
+    const nextSource = source ?? event.source;
     const nextEvent: AutomationEvent = {
       id: `${event.id}:${eventType}:${crypto.randomUUID()}`,
       orgId,
-      source: source ?? event.source,
+      source: nextSource,
       eventType,
       occurredAt: new Date().toISOString(),
       payload:
@@ -39,8 +40,10 @@ export const createEventRuntime = ({ env, event }: CreateEventRuntimeOptions): E
           : {},
       actor: externalActorId
         ? {
-            type: actorType ?? event.actor?.type ?? "external",
-            externalId: externalActorId,
+            scope: "external",
+            source: nextSource,
+            type: actorType ?? event.actor?.type ?? "actor",
+            id: externalActorId,
           }
         : null,
       subject: subjectUserId ? { userId: subjectUserId } : null,

@@ -9,20 +9,26 @@ import {
   type ResolvedOtpConfirmedHookPayload,
 } from "@fragno-dev/otp-fragment";
 
-import type { AutomationKnownEvent } from "./automation/contracts";
+import type { AutomationExternalEntityRef, AutomationKnownEvent } from "./automation/contracts";
 import { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES } from "./automation/contracts";
 
 export const IDENTITY_LINK_TYPE = "identity_link" as const;
 export const DEFAULT_IDENTITY_LINK_EXPIRY_MINUTES = 15;
 
+const identityClaimActorSchema = z.object({
+  scope: z.literal("external"),
+  source: z.string().trim().min(1),
+  type: z.string().trim().min(1),
+  id: z.string().trim().min(1),
+});
+
 export const identityClaimPayloadSchema = z.object({
   orgId: z.string().trim().min(1),
-  linkSource: z.string().trim().min(1),
-  externalActorId: z.string().trim().min(1),
+  actor: identityClaimActorSchema,
 });
 
 export type IdentityClaimOtpPayload = z.infer<typeof identityClaimPayloadSchema>;
-export type IdentityClaimPayload = Pick<IdentityClaimOtpPayload, "linkSource" | "externalActorId">;
+export type IdentityClaimPayload = Pick<IdentityClaimOtpPayload, "actor">;
 
 export const identityClaimConfirmationPayloadSchema = z.object({
   subjectUserId: z.string().trim().min(1),
@@ -79,9 +85,8 @@ export const buildIdentityClaimCompletedAutomationEvent = (input: {
   payload: {
     otpId: input.otp.id,
     claimType: input.otp.type,
-    linkSource: input.claim.linkSource,
-    externalActorId: input.claim.externalActorId,
   },
+  actor: input.claim.actor as AutomationExternalEntityRef,
   subject: {
     userId: input.userId,
   },

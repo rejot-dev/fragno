@@ -30,8 +30,10 @@ describe("buildTelegramAutomationEvent", () => {
         text: "/start",
       },
       actor: {
-        type: "external",
-        externalId: "chat-1",
+        scope: "external",
+        source: "telegram",
+        type: "chat",
+        id: "chat-1",
       },
     });
   });

@@ -162,10 +162,11 @@ describe("runBackofficeCodemode", () => {
       createClaim: async (input) => {
         calls.push(["createClaim", input]);
         return {
-          url: `https://example.com/claim/${input.externalActorId}`,
+          url: `https://example.com/claim/${input.actor.id}`,
           otpId: "otp-123",
-          externalId: input.externalActorId,
+          externalId: input.actor.id,
           code: "123456",
+          actor: input.actor,
           type: "identity",
         };
       },
@@ -178,8 +179,7 @@ describe("runBackofficeCodemode", () => {
       context: { runtimes: { otp: otpRuntime } },
       code: `async () => {
         return await otp.createIdentityClaim({
-          source: "telegram",
-          externalActorId: "chat-123",
+          actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
           ttlMinutes: 15,
         });
       }`,
@@ -191,10 +191,17 @@ describe("runBackofficeCodemode", () => {
       otpId: "otp-123",
       externalId: "chat-123",
       code: "123456",
+      actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
       type: "identity",
     });
     expect(calls).toEqual([
-      ["createClaim", { source: "telegram", externalActorId: "chat-123", ttlMinutes: 15 }],
+      [
+        "createClaim",
+        {
+          actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
+          ttlMinutes: 15,
+        },
+      ],
     ]);
     expect(result.toolCalls).toMatchObject([
       {
@@ -337,8 +344,7 @@ describe("runBackofficeCodemode", () => {
       context: { runtimes: { otp: otpRuntime } },
       code: `async () => {
         return await otp.createIdentityClaim({
-          source: "telegram",
-          externalActorId: "chat-123",
+          actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
         });
       }`,
     });

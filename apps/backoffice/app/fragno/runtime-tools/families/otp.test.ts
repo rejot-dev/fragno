@@ -16,18 +16,30 @@ describe("otp runtime tools", () => {
     expect(
       createClaim.inputSchema.parse(
         createClaim.adapters!.bash!.parse([
-          "--source",
-          "telegram",
-          "--external-actor-id",
-          "chat-123",
+          "--actor-json",
+          '{"scope":"external","source":"telegram","type":"chat","id":"chat-123"}',
           "--ttl-minutes",
           "15",
         ]),
       ),
     ).toEqual({
-      source: "telegram",
-      externalActorId: "chat-123",
+      actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
       ttlMinutes: 15,
     });
+  });
+
+  test("rejects source-less and internal identity claim actors", () => {
+    const [createClaim] = otpRuntimeTools;
+
+    expect(() =>
+      createClaim.inputSchema.parse({
+        actor: { scope: "external", type: "chat", id: "chat-123" },
+      }),
+    ).toThrow();
+    expect(() =>
+      createClaim.inputSchema.parse({
+        actor: { scope: "internal", type: "user", id: "user-123" },
+      }),
+    ).toThrow();
   });
 });
