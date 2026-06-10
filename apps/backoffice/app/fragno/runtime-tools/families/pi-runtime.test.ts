@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { InMemoryFs } from "just-bash";
 
 import { createBashHost } from "../bash-host";
-import type { AutomationBindingsRuntime } from "./automations-bindings";
+import type { AutomationStoreRuntime } from "./automations-bindings";
 import {
   createPiRouteRuntime,
   type PiRuntime,
@@ -143,25 +143,22 @@ const createPiRuntime = (overrides: Partial<PiRuntime> = {}): PiRuntime => ({
   ...overrides,
 });
 
-const createAutomationBindingsRuntime = (): AutomationBindingsRuntime => ({
-  lookupBinding: async ({ key }) => {
-    if (key !== "actor-1") {
+const createAutomationStoreRuntime = (): AutomationStoreRuntime => ({
+  get: async ({ key }) => {
+    if (key !== "telegram/actor-1") {
       return null;
     }
 
     return {
-      source: "telegram",
       key,
       value: "user-1",
-      status: "linked",
     };
   },
-  bindActor: async ({ source, key, value }) => ({
-    source,
+  set: async ({ key, value }) => ({
     key,
     value,
-    status: "linked",
   }),
+  delete: async ({ key }) => ({ ok: true, key }),
 });
 
 const createPiHost = (piRuntime: PiRuntime = createPiRuntime()) => {
@@ -171,7 +168,7 @@ const createPiHost = (piRuntime: PiRuntime = createPiRuntime()) => {
     context: {
       automation: null,
       automations: {
-        runtime: createAutomationBindingsRuntime(),
+        runtime: createAutomationStoreRuntime(),
       },
       otp: null,
       pi: {
@@ -233,8 +230,8 @@ describe("pi bash command registration", () => {
 
     const result = await bash.exec(
       'session_id="$(pi.session.create --agent assistant --name support --tag urgent --print id)"\n' +
-        'user_id="$(identity.lookup-binding --source telegram --key actor-1 --print value)"\n' +
-        'identity.bind-actor --source telegram --key actor-2 --value "$user_id" >/dev/null\n' +
+        'user_id="$(store.get --key telegram/actor-1 --print value)"\n' +
+        'store.set --key telegram/actor-2 --value "$user_id" >/dev/null\n' +
         'list_id="$(pi.session.list --limit 1 --print 0.id)"\n' +
         'pi.session.get --session-id "$session_id" --print id >/dev/null\n' +
         'pi.session.turn --session-id "$session_id" --text "hello" --print assistantText',
@@ -249,12 +246,12 @@ describe("pi bash command registration", () => {
         exitCode: 0,
       },
       {
-        command: "identity.lookup-binding",
+        command: "store.get",
         output: "user-1",
         exitCode: 0,
       },
       {
-        command: "identity.bind-actor",
+        command: "store.set",
         output: "",
         exitCode: 0,
       },

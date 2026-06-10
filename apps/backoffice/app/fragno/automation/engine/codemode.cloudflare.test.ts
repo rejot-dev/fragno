@@ -70,11 +70,9 @@ describe("executeCodemodeAutomation", () => {
       context: createAutomationContext(event, runtime),
       script: `async () => {
         const event = JSON.parse(await state.readFile("/context/event.json"));
-        return await identity.bindActor({
-          source: event.source,
-          key: event.payload.chatId,
+        return await store.set({
+          key: event.source + "/" + event.payload.chatId,
           value: "user-55",
-          description: "Linked from codemode",
         });
       }`,
     });
@@ -84,33 +82,24 @@ describe("executeCodemodeAutomation", () => {
       eventId: "event-codemode-bind-actor",
       exitCode: 0,
       stderr: "",
-      result: {
-        source: "telegram",
-        key: "chat-123",
-        value: "user-55",
-        description: "Linked from codemode",
-        status: "linked",
-      },
+      result: { key: "telegram/chat-123", value: "user-55" },
       commandCalls: [],
       toolCalls: [
         {
-          providerName: "identity",
-          toolName: "bindActor",
-          toolId: "identity.bind-actor",
-          inputSummary:
-            '{"source":"telegram","key":"chat-123","value":"user-55","description":"Linked from codemode"}',
+          providerName: "store",
+          toolName: "set",
+          toolId: "store.set",
+          inputSummary: '{"key":"telegram/chat-123","value":"user-55"}',
           status: "success",
         },
       ],
     });
     expect(calls).toEqual([
       [
-        "bindActor",
+        "set",
         {
-          source: "telegram",
-          key: "chat-123",
+          key: "telegram/chat-123",
           value: "user-55",
-          description: "Linked from codemode",
         },
       ],
     ]);
@@ -186,16 +175,15 @@ describe("executeCodemodeAutomation", () => {
     const bashResult = await executeBashAutomation({
       masterFs: createTestMasterFileSystem({}),
       context,
-      script: "identity.bind-actor --source telegram --key bash-chat --value user-bash",
+      script: "store.set --key telegram/bash-chat --value user-bash",
     });
     const codemodeResult = await executeCodemodeAutomation({
       env,
       masterFs: createTestMasterFileSystem({}),
       context,
       script: `async () => {
-        return await identity.bindActor({
-          source: "telegram",
-          key: "codemode-chat",
+        return await store.set({
+          key: "telegram/codemode-chat",
           value: "user-codemode",
         });
       }`,
@@ -211,11 +199,11 @@ describe("executeCodemodeAutomation", () => {
       runtime: "codemode",
       exitCode: 0,
       commandCalls: [],
-      toolCalls: [{ toolId: "identity.bind-actor", status: "success" }],
+      toolCalls: [{ toolId: "store.set", status: "success" }],
     });
     expect(calls).toEqual([
-      ["bindActor", { source: "telegram", key: "bash-chat", value: "user-bash" }],
-      ["bindActor", { source: "telegram", key: "codemode-chat", value: "user-codemode" }],
+      ["set", { key: "telegram/bash-chat", value: "user-bash" }],
+      ["set", { key: "telegram/codemode-chat", value: "user-codemode" }],
     ]);
   });
 
@@ -235,7 +223,7 @@ describe("executeCodemodeAutomation", () => {
       masterFs: createTestMasterFileSystem({}),
       context: createAutomationContext(event, createRecordingAutomationRuntime(calls)),
       script: `async () => {
-        return await identity.bindActor({ source: "telegram", key: "chat-123", value: "" });
+        return await store.set({ key: "telegram/chat-123", value: "" });
       }`,
     });
 
@@ -243,9 +231,9 @@ describe("executeCodemodeAutomation", () => {
     expect(result.stderr).toContain("Too small");
     expect(result.toolCalls).toMatchObject([
       {
-        providerName: "identity",
-        toolName: "bindActor",
-        toolId: "identity.bind-actor",
+        providerName: "store",
+        toolName: "set",
+        toolId: "store.set",
         status: "error",
       },
     ]);
@@ -265,8 +253,7 @@ const createAutomationContext = (
   event: AutomationEvent,
   runtimeOrOptions: AutomationRuntime | AutomationContextOptions = createUnusedAutomationRuntime(),
 ): AutomationRuntimeHostContext => {
-  const options =
-    "lookupBinding" in runtimeOrOptions ? { runtime: runtimeOrOptions } : runtimeOrOptions;
+  const options = "get" in runtimeOrOptions ? { runtime: runtimeOrOptions } : runtimeOrOptions;
   const runtime = options.runtime ?? createUnusedAutomationRuntime();
 
   return {
@@ -297,11 +284,14 @@ const createAutomationContext = (
 };
 
 const createUnusedAutomationRuntime = (): AutomationRuntime => ({
-  lookupBinding: async () => {
-    throw new Error("lookupBinding should not be called in this test.");
+  get: async () => {
+    throw new Error("get should not be called in this test.");
   },
-  bindActor: async () => {
-    throw new Error("bindActor should not be called in this test.");
+  set: async () => {
+    throw new Error("set should not be called in this test.");
+  },
+  delete: async () => {
+    throw new Error("delete should not be called in this test.");
   },
   createClaim: async () => {
     throw new Error("createClaim should not be called in this test.");
@@ -312,19 +302,20 @@ const createUnusedAutomationRuntime = (): AutomationRuntime => ({
 });
 
 const createRecordingAutomationRuntime = (calls: unknown[]): AutomationRuntime => ({
-  lookupBinding: async (input) => {
-    calls.push(["lookupBinding", input]);
+  get: async (input) => {
+    calls.push(["get", input]);
     return null;
   },
-  bindActor: async (input) => {
-    calls.push(["bindActor", input]);
+  set: async (input) => {
+    calls.push(["set", input]);
     return {
-      source: input.source,
       key: input.key,
       value: input.value,
-      description: input.description,
-      status: "linked",
     };
+  },
+  delete: async (input) => {
+    calls.push(["delete", input]);
+    return { ok: true, key: input.key };
   },
   createClaim: async () => {
     throw new Error("createClaim should not be called in this test.");

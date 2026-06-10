@@ -11,7 +11,7 @@ import { MasterFileSystem } from "@/files/master-file-system";
 import type { ResolvedFileMount } from "@/files/types";
 
 import { runBackofficeCodemodeWorkflow } from "../codemode/workflow-execute";
-import type { AutomationBindingsRuntime } from "../runtime-tools/families/automations-bindings";
+import type { AutomationStoreRuntime } from "../runtime-tools/families/automations-bindings";
 import type { AutomationWorkflowRuntime } from "../runtime-tools/families/automations-workflow";
 import { createPiToolRegistry } from "./pi";
 import { createPiCodemodeRuntime } from "./pi-codemode";
@@ -263,25 +263,24 @@ describe("Pi execCodeMode tool", () => {
 
   test("calls automation identity domain tools through codemode", async () => {
     const calls: unknown[] = [];
-    const automationsRuntime: AutomationBindingsRuntime = {
-      lookupBinding: async (input) => {
-        calls.push(["lookupBinding", input]);
+    const automationsRuntime: AutomationStoreRuntime = {
+      get: async (input) => {
+        calls.push(["get", input]);
         return {
-          source: input.source,
           key: input.key,
           value: "user-55",
-          status: "linked",
         };
       },
-      bindActor: async (input) => {
-        calls.push(["bindActor", input]);
+      set: async (input) => {
+        calls.push(["set", input]);
         return {
-          source: input.source,
           key: input.key,
           value: input.value,
-          description: input.description,
-          status: "linked",
         };
+      },
+      delete: async (input) => {
+        calls.push(["delete", input]);
+        return { ok: true, key: input.key };
       },
     };
 
@@ -291,31 +290,29 @@ describe("Pi execCodeMode tool", () => {
 
     const result = await tool.execute("tool-call-1", {
       code: `async () => {
-        const existing = await identity.lookupBinding({ source: "telegram", key: "chat-123" });
-        return await identity.bindActor({
-          source: "telegram",
-          key: "chat-456",
+        const existing = await store.get({ key: "telegram/chat-123" });
+        return await store.set({
+          key: "telegram/chat-456",
           value: existing.value,
         });
       }`,
     });
 
     expect(result.details).toMatchObject({
-      result: { source: "telegram", key: "chat-456", value: "user-55", status: "linked" },
+      result: { key: "telegram/chat-456", value: "user-55" },
       logs: [],
       toolCalls: [
         {
-          providerName: "identity",
-          toolName: "lookupBinding",
-          inputSummary: '{"source":"telegram","key":"chat-123"}',
+          providerName: "store",
+          toolName: "get",
+          inputSummary: '{"key":"telegram/chat-123"}',
           status: "success",
-          resultSummary:
-            '{"source":"telegram","key":"chat-123","value":"user-55","status":"linked"}',
+          resultSummary: '{"key":"telegram/chat-123","value":"user-55"}',
         },
         {
-          providerName: "identity",
-          toolName: "bindActor",
-          inputSummary: '{"source":"telegram","key":"chat-456","value":"user-55"}',
+          providerName: "store",
+          toolName: "set",
+          inputSummary: '{"key":"telegram/chat-456","value":"user-55"}',
           status: "success",
         },
       ],
@@ -325,31 +322,30 @@ describe("Pi execCodeMode tool", () => {
     if (content?.type !== "text") {
       throw new Error("Expected text content from execCodeMode.");
     }
-    expect(content.text).toBe(
-      '{"source":"telegram","key":"chat-456","value":"user-55","status":"linked"}',
-    );
+    expect(content.text).toBe('{"key":"telegram/chat-456","value":"user-55"}');
     expect(calls).toEqual([
-      ["lookupBinding", { source: "telegram", key: "chat-123" }],
-      ["bindActor", { source: "telegram", key: "chat-456", value: "user-55" }],
+      ["get", { key: "telegram/chat-123" }],
+      ["set", { key: "telegram/chat-456", value: "user-55" }],
     ]);
   });
 
   test("rejects domain tool validation errors so the agent records a failed tool result", async () => {
     const calls: unknown[] = [];
-    const automationsRuntime: AutomationBindingsRuntime = {
-      lookupBinding: async (input) => {
-        calls.push(["lookupBinding", input]);
+    const automationsRuntime: AutomationStoreRuntime = {
+      get: async (input) => {
+        calls.push(["get", input]);
         return null;
       },
-      bindActor: async (input) => {
-        calls.push(["bindActor", input]);
+      set: async (input) => {
+        calls.push(["set", input]);
         return {
-          source: input.source,
           key: input.key,
           value: input.value,
-          description: input.description,
-          status: "linked",
         };
+      },
+      delete: async (input) => {
+        calls.push(["delete", input]);
+        return { ok: true, key: input.key };
       },
     };
 
@@ -357,7 +353,7 @@ describe("Pi execCodeMode tool", () => {
     await expect(
       tool.execute("tool-call-1", {
         code: `async () => {
-          return await identity.bindActor({ source: "telegram", key: "chat-123", value: "" });
+          return await store.set({ key: "telegram/chat-123", value: "" });
         }`,
       }),
     ).rejects.toThrow("Too small");
@@ -370,7 +366,7 @@ const createExecCodeModeTool = async ({
   automationsRuntime,
   workflowRuntime,
 }: {
-  automationsRuntime?: AutomationBindingsRuntime;
+  automationsRuntime?: AutomationStoreRuntime;
   workflowRuntime?: AutomationWorkflowRuntime;
 }) => {
   const fs = createTestMasterFileSystem({});

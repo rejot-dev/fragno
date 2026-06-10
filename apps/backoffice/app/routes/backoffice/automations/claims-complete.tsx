@@ -81,7 +81,7 @@ export async function loader({
     orgId: params.orgId,
     organisationName: organisation.name,
     message:
-      "Your link was confirmed. The automation has everything it needs to finish the identity binding.",
+      "Your link was confirmed. The automation has everything it needs to finish updating the store.",
   };
 }
 

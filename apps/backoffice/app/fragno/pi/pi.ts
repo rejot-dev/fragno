@@ -27,7 +27,7 @@ import type {
 } from "../codemode/execute";
 import { createInteractiveBashHost } from "../runtime-tools/automation-host";
 import type { InteractiveBashCommandContext } from "../runtime-tools/bash-host";
-import type { AutomationBindingsRuntime } from "../runtime-tools/families/automations-bindings";
+import type { AutomationStoreRuntime } from "../runtime-tools/families/automations-bindings";
 import type { AutomationWorkflowRuntime } from "../runtime-tools/families/automations-workflow";
 import type { OtpRuntime } from "../runtime-tools/families/otp-runtime";
 import type { PiRuntime } from "../runtime-tools/families/pi";
@@ -62,7 +62,7 @@ export type PiRuntimeFragments = {
 
 export type PiBashCommandContext = InteractiveBashCommandContext & {
   automations: {
-    runtime: AutomationBindingsRuntime;
+    runtime: AutomationStoreRuntime;
   };
   otp: {
     runtime: OtpRuntime;

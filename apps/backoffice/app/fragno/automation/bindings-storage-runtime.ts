@@ -1,76 +1,75 @@
 import { isUniqueConstraintError, type HookContext } from "@fragno-dev/db";
 
 import type {
-  IdentityBindActorArgs,
-  IdentityLookupBindingArgs,
+  StoreDeleteArgs,
+  StoreGetArgs,
+  StoreSetArgs,
 } from "../runtime-tools/automation-types";
 import type {
-  AutomationBindingsRuntime,
-  AutomationIdentityBindingRecord,
+  AutomationStoreDeleteResult,
+  AutomationStoreEntry,
+  AutomationStoreRuntime,
 } from "../runtime-tools/families/automations-bindings";
-import { automationIdentityBindingRecordSchema } from "./identity";
 import { automationFragmentSchema } from "./schema";
+import { automationStoreDeleteResultSchema, automationStoreEntrySchema } from "./store";
 
-export type { AutomationBindingsRuntime, AutomationIdentityBindingRecord };
+export type { AutomationStoreDeleteResult, AutomationStoreEntry, AutomationStoreRuntime };
 
-export type AutomationIdentityStorageContext = Pick<HookContext, "handlerTx">;
+export type AutomationStoreStorageContext = Pick<HookContext, "handlerTx">;
 
-type AutomationIdentityRetrieveScope = Parameters<
-  Parameters<ReturnType<AutomationIdentityStorageContext["handlerTx"]>["retrieve"]>[0]
+type AutomationStoreRetrieveScope = Parameters<
+  Parameters<ReturnType<AutomationStoreStorageContext["handlerTx"]>["retrieve"]>[0]
 >[0];
 
-const findIdentityBindingBySourceKey =
-  (source: string, key: string) =>
-  ({ forSchema }: AutomationIdentityRetrieveScope) =>
-    forSchema(automationFragmentSchema).findFirst("identity_binding", (b) =>
-      b.whereIndex("idx_identity_binding_source_key", (eb) =>
-        eb.and(eb("source", "=", source), eb("key", "=", key)),
-      ),
+const findStoreEntryByKey =
+  (key: string) =>
+  ({ forSchema }: AutomationStoreRetrieveScope) =>
+    forSchema(automationFragmentSchema).findFirst("kv_store", (b) =>
+      b.whereIndex("idx_kv_store_key", (eb) => eb("key", "=", key)),
     );
 
-export const lookupAutomationIdentityBinding = async (
-  context: AutomationIdentityStorageContext,
-  { source, key }: IdentityLookupBindingArgs,
-): Promise<AutomationIdentityBindingRecord | null> =>
+export const listAutomationStoreEntries = async (
+  context: AutomationStoreStorageContext,
+): Promise<AutomationStoreEntry[]> =>
   await context
     .handlerTx()
-    .retrieve(findIdentityBindingBySourceKey(source, key))
-    .transformRetrieve(([binding]) =>
-      binding?.status === "linked" ? automationIdentityBindingRecordSchema.parse(binding) : null,
+    .retrieve(({ forSchema }) =>
+      forSchema(automationFragmentSchema).find("kv_store", (b) => b.whereIndex("primary")),
+    )
+    .transformRetrieve(([entries]) =>
+      entries.map((entry) => automationStoreEntrySchema.parse(entry)),
     )
     .execute();
 
-export const bindAutomationIdentityActor = async (
-  context: AutomationIdentityStorageContext,
-  { source, key, value, description }: IdentityBindActorArgs,
-): Promise<AutomationIdentityBindingRecord> => {
+export const getAutomationStoreEntry = async (
+  context: AutomationStoreStorageContext,
+  { key }: StoreGetArgs,
+): Promise<AutomationStoreEntry | null> =>
+  await context
+    .handlerTx()
+    .retrieve(findStoreEntryByKey(key))
+    .transformRetrieve(([entry]) => (entry ? automationStoreEntrySchema.parse(entry) : null))
+    .execute();
+
+export const setAutomationStoreEntry = async (
+  context: AutomationStoreStorageContext,
+  { key, value }: StoreSetArgs,
+): Promise<AutomationStoreEntry> => {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       return await context
         .handlerTx()
-        .retrieve(findIdentityBindingBySourceKey(source, key))
+        .retrieve(findStoreEntryByKey(key))
         .mutate(({ forSchema, retrieveResult: [existing] }) => {
           const uow = forSchema(automationFragmentSchema);
           const now = uow.now();
-          const descriptionValue =
-            typeof description === "string"
-              ? description.trim() !== ""
-                ? description.trim()
-                : null
-              : existing && existing.description != null
-                ? String(existing.description)
-                : null;
 
           if (existing) {
-            uow.update("identity_binding", existing.id, (b) =>
+            uow.update("kv_store", existing.id, (b) =>
               b
                 .set({
-                  source,
                   key,
                   value,
-                  description: descriptionValue,
-                  status: "linked",
-                  linkedAt: now,
                   updatedAt: now,
                 })
                 .check(),
@@ -78,40 +77,28 @@ export const bindAutomationIdentityActor = async (
 
             return {
               ...existing,
-              source,
               key,
               value,
-              description: descriptionValue,
-              status: "linked" as const,
-              linkedAt: now,
               updatedAt: now,
             };
           }
 
-          const createdId = uow.create("identity_binding", {
-            source,
+          const createdId = uow.create("kv_store", {
             key,
             value,
-            description: descriptionValue,
-            status: "linked",
-            linkedAt: now,
             createdAt: now,
             updatedAt: now,
           });
 
           return {
             id: createdId.valueOf(),
-            source,
             key,
             value,
-            description: descriptionValue,
-            status: "linked" as const,
-            linkedAt: now,
             createdAt: now,
             updatedAt: now,
           };
         })
-        .transform(({ mutateResult }) => automationIdentityBindingRecordSchema.parse(mutateResult))
+        .transform(({ mutateResult }) => automationStoreEntrySchema.parse(mutateResult))
         .execute();
     } catch (error) {
       if (attempt === 0 && isUniqueConstraintError(error)) {
@@ -121,20 +108,42 @@ export const bindAutomationIdentityActor = async (
     }
   }
 
-  throw new Error("Failed to bind automation identity actor after retrying a concurrent insert.");
+  throw new Error("Failed to set automation store entry after retrying a concurrent insert.");
 };
 
-export const createAutomationBindingsRuntime = ({
-  lookupBinding,
-  bindActor,
-}: AutomationBindingsRuntime): AutomationBindingsRuntime => ({ lookupBinding, bindActor });
+export const deleteAutomationStoreEntry = async (
+  context: AutomationStoreStorageContext,
+  { key }: StoreDeleteArgs,
+): Promise<AutomationStoreDeleteResult | null> =>
+  await context
+    .handlerTx()
+    .retrieve(findStoreEntryByKey(key))
+    .mutate(({ forSchema, retrieveResult: [existing] }) => {
+      if (!existing) {
+        return null;
+      }
 
-export const createStorageBackedAutomationBindingsRuntime = ({
+      forSchema(automationFragmentSchema).delete("kv_store", existing.id, (b) => b.check());
+      return { ok: true as const, key };
+    })
+    .transform(({ mutateResult }) =>
+      mutateResult ? automationStoreDeleteResultSchema.parse(mutateResult) : null,
+    )
+    .execute();
+
+export const createAutomationStoreRuntime = ({
+  get,
+  set,
+  delete: deleteEntry,
+}: AutomationStoreRuntime): AutomationStoreRuntime => ({ get, set, delete: deleteEntry });
+
+export const createStorageBackedAutomationStoreRuntime = ({
   hookContext,
 }: {
-  hookContext: AutomationIdentityStorageContext;
-}): AutomationBindingsRuntime =>
-  createAutomationBindingsRuntime({
-    lookupBinding: async (args) => lookupAutomationIdentityBinding(hookContext, args),
-    bindActor: async (args) => bindAutomationIdentityActor(hookContext, args),
+  hookContext: AutomationStoreStorageContext;
+}): AutomationStoreRuntime =>
+  createAutomationStoreRuntime({
+    get: async (args) => getAutomationStoreEntry(hookContext, args),
+    set: async (args) => setAutomationStoreEntry(hookContext, args),
+    delete: async (args) => deleteAutomationStoreEntry(hookContext, args),
   });

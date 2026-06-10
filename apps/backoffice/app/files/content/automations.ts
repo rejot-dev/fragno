@@ -23,12 +23,10 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
     const model = event.payload.modelCatalog[0];
 
     if (harness && model) {
-      await identity.bindActor({
-        source: "pi",
-        key: "pi-default-agent",
+      await store.set({
+        key: "pi/pi-default-agent",
         value: harness.id + "::" + model.provider + "::" + model.name,
-        description: "Default Pi agent for this organisation.",
-      });
+        });
     }
   }
 
@@ -69,9 +67,8 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
     }
 
     if (text === "/pi" || !text.startsWith("/")) {
-      const defaultAgentBinding = await identity.lookupBinding({
-        source: "pi",
-        key: "pi-default-agent",
+      const defaultAgentBinding = await store.get({
+        key: "pi/pi-default-agent",
       });
       const defaultAgent = defaultAgentBinding?.value ?? "";
 
@@ -95,9 +92,8 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
     const otpId = event.payload.otpId;
 
     if (event.actor?.source === "telegram") {
-      const workflowBinding = await identity.lookupBinding({
-        source: "telegram-claim-workflow",
-        key: otpId,
+      const workflowBinding = await store.get({
+        key: "telegram-claim-workflow/" + otpId,
       });
       const instanceId = workflowBinding?.value ?? "";
 
@@ -121,9 +117,8 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
     const chatId = automationEvent.payload.chatId;
 
     const linkedUser = await step.do("lookup existing link", async () => {
-      return await identity.lookupBinding({
-        source: "telegram",
-        key: chatId,
+      return await store.get({
+        key: "telegram/" + chatId,
       });
     });
 
@@ -161,12 +156,10 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
         },
       });
 
-      await identity.bindActor({
-        source: "telegram-claim-workflow",
-        key: claim.otpId,
+      await store.set({
+        key: "telegram-claim-workflow/" + claim.otpId,
         value: workflowInstanceId,
-        description: "Telegram claim workflow for chat " + chatId,
-      });
+        });
       await telegram.sendMessage({
         chatId,
         text: "Open this link to finish linking your Telegram account: " +
@@ -196,9 +189,8 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
 
     return await step.do("bind telegram actor", async () => {
       try {
-        await identity.bindActor({
-          source: completedActor.source,
-          key: completedActorId,
+        await store.set({
+          key: completedActor.source + "/" + completedActorId,
           value: subjectUserId,
         });
         await telegram.sendMessage({
@@ -253,9 +245,8 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
     const automationActorId = automationEvent.actor.id;
 
     const linkedBinding = await step.do("lookup linked user", async () => {
-      return await identity.lookupBinding({
-        source: "telegram",
-        key: automationActorId,
+      return await store.get({
+        key: "telegram/" + automationActorId,
       });
     });
     const linkedUser = linkedBinding?.value ?? "";
@@ -265,9 +256,8 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
     }
 
     const defaultAgentBinding = await step.do("lookup default pi agent", async () => {
-      return await identity.lookupBinding({
-        source: "pi",
-        key: "pi-default-agent",
+      return await store.get({
+        key: "pi/pi-default-agent",
       });
     });
     const defaultAgent = defaultAgentBinding?.value ?? "";
@@ -277,9 +267,8 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
     }
 
     const piSessionBinding = await step.do("lookup pi session", async () => {
-      return await identity.lookupBinding({
-        source: "telegram-pi-session",
-        key: linkedUser,
+      return await store.get({
+        key: "telegram-pi-session/" + linkedUser,
       });
     });
 
@@ -327,9 +316,8 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
           "forwarded to Telegram in Markdown parse mode.",
       });
 
-      await identity.bindActor({
-        source: "telegram-pi-session",
-        key: linkedUser,
+      await store.set({
+        key: "telegram-pi-session/" + linkedUser,
         value: session.id,
         description: "Pi session for Telegram chat " + automationActorId,
       });

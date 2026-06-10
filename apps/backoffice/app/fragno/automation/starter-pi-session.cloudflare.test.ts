@@ -360,8 +360,8 @@ describe("starter Pi session automation", () => {
   test("creates a durable Pi session workflow for /pi on a linked chat", async () => {
     const { automation, workflows } = context.fragments;
 
-    await automation.fragment.callRoute("POST", "/identity-bindings/bind", {
-      body: { source: "telegram", key: "chat-1", value: "user-1" },
+    await automation.fragment.callRoute("POST", "/store/set", {
+      body: { key: "telegram/chat-1", value: "user-1" },
     });
     await ingestPiConfigured();
 
@@ -389,8 +389,8 @@ describe("starter Pi session automation", () => {
   test("reuses the stored Pi session for a linked chat message", async () => {
     const { automation } = context.fragments;
 
-    await automation.fragment.callRoute("POST", "/identity-bindings/bind", {
-      body: { source: "telegram", key: "chat-1", value: "user-1" },
+    await automation.fragment.callRoute("POST", "/store/set", {
+      body: { key: "telegram/chat-1", value: "user-1" },
     });
     await ingestPiConfigured();
 

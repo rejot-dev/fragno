@@ -9,18 +9,19 @@ import type { ResendRuntime } from "./families/resend-runtime";
 import type { Reson8Runtime } from "./families/reson8-runtime";
 
 const createAutomationsRuntime = () => ({
-  lookupBinding: async () => ({
+  get: async () => ({
     source: "telegram",
     key: "actor-1",
     value: "user-1",
     status: "linked",
   }),
-  bindActor: async ({ source, key, value }: Record<string, string>) => ({
+  set: async ({ source, key, value }: Record<string, string>) => ({
     source,
     key,
     value,
     status: "linked",
   }),
+  delete: async ({ key }: Record<string, string>) => ({ ok: true as const, key }),
 });
 
 const createOtpRuntime = (): OtpRuntime => ({
@@ -324,7 +325,7 @@ describe("bash host command assembly", () => {
     });
 
     const piHelp = await bash.exec("pi.session.get --help");
-    const automationsHelp = await bash.exec("identity.lookup-binding --help");
+    const automationsHelp = await bash.exec("store.get --help");
     const otpHelp = await bash.exec("otp.identity.create-claim --help");
     const resendGetHelp = await bash.exec("resend.threads.get --help");
     const resendListHelp = await bash.exec("resend.threads.list --help");
@@ -334,7 +335,7 @@ describe("bash host command assembly", () => {
     expect(piHelp.exitCode).toBe(0);
     expect(piHelp.stdout).toContain("pi.session.get");
     expect(automationsHelp.exitCode).toBe(0);
-    expect(automationsHelp.stdout).toContain("identity.lookup-binding");
+    expect(automationsHelp.stdout).toContain("store.get");
     expect(otpHelp.exitCode).toBe(0);
     expect(otpHelp.stdout).toContain("otp.identity.create-claim");
     expect(resendGetHelp.exitCode).toBe(0);
@@ -352,8 +353,8 @@ describe("bash host command assembly", () => {
         exitCode: 0,
       },
       {
-        command: "identity.lookup-binding",
-        output: expect.stringContaining("identity.lookup-binding"),
+        command: "store.get",
+        output: expect.stringContaining("store.get"),
         exitCode: 0,
       },
       {

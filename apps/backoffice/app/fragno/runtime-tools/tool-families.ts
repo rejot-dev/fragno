@@ -1,6 +1,6 @@
 import {
-  automationBindingsToolFamily,
-  type AutomationBindingsRuntime,
+  automationStoreToolFamily,
+  type AutomationStoreRuntime,
 } from "./families/automations-bindings";
 import {
   automationEventsToolFamily,
@@ -30,7 +30,7 @@ import {
 
 export type CoreBackofficeRuntimeMap = {
   backoffice?: BackofficeCapabilitiesRuntime;
-  automations?: AutomationBindingsRuntime;
+  automations?: AutomationStoreRuntime;
   workflow?: AutomationWorkflowRuntime;
   durableHooks?: DurableHooksRuntime;
   event?: EventRuntime;
@@ -46,7 +46,7 @@ export type CoreBackofficeToolContext = BackofficeToolContext<CoreBackofficeRunt
 
 export const runtimeToolFamilies = [
   backofficeCapabilitiesToolFamily,
-  automationBindingsToolFamily,
+  automationStoreToolFamily,
   automationWorkflowToolFamily,
   hooksToolFamily,
   automationEventsToolFamily,
@@ -63,7 +63,7 @@ export const getAvailableBackofficeRuntimeTools = (context: BackofficeToolContex
   getAvailableRuntimeTools({ families: runtimeToolFamilies, context });
 
 const namespaceCapabilityIds = {
-  identity: "automations",
+  store: "automations",
   workflow: "automations",
   hooks: "automations",
   events: "automations",

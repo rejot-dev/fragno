@@ -23,16 +23,18 @@ const isoTimestampSchema = z.preprocess((value) => {
   return value;
 }, z.iso.datetime());
 
-export const automationIdentityBindingRecordSchema = z.object({
+export const automationStoreEntrySchema = z.object({
   id: idSchema.optional(),
-  source: z.string(),
   key: z.string(),
   value: z.string(),
-  description: z.string().nullable().optional(),
-  status: z.string(),
-  linkedAt: isoTimestampSchema.optional(),
   createdAt: isoTimestampSchema.optional(),
   updatedAt: isoTimestampSchema.optional(),
 });
 
-export type AutomationIdentityBindingRecord = z.infer<typeof automationIdentityBindingRecordSchema>;
+export const automationStoreDeleteResultSchema = z.object({
+  ok: z.literal(true),
+  key: z.string(),
+});
+
+export type AutomationStoreEntry = z.infer<typeof automationStoreEntrySchema>;
+export type AutomationStoreDeleteResult = z.infer<typeof automationStoreDeleteResultSchema>;

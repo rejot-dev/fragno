@@ -6,8 +6,8 @@ import { InMemoryFs } from "just-bash";
 import { MasterFileSystem } from "@/files/master-file-system";
 import type { ResolvedFileMount } from "@/files/types";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
-import type { AutomationBindingsRuntime } from "@/fragno/runtime-tools/families/automations-bindings";
-import { automationBindingsRuntimeTools } from "@/fragno/runtime-tools/families/automations-bindings";
+import type { AutomationStoreRuntime } from "@/fragno/runtime-tools/families/automations-bindings";
+import { automationStoreRuntimeTools } from "@/fragno/runtime-tools/families/automations-bindings";
 import { eventRuntimeTools, type EventRuntime } from "@/fragno/runtime-tools/families/event";
 import { otpRuntimeTools, type OtpRuntime } from "@/fragno/runtime-tools/families/otp";
 import {
@@ -40,38 +40,36 @@ describe("runBackofficeCodemode", () => {
 
   test("calls automation identity tools through codemode providers", async () => {
     const calls: unknown[] = [];
-    const automationsRuntime: AutomationBindingsRuntime = {
-      lookupBinding: async (input) => {
-        calls.push(["lookupBinding", input]);
+    const automationsRuntime: AutomationStoreRuntime = {
+      get: async (input) => {
+        calls.push(["get", input]);
         return {
-          source: input.source,
           key: input.key,
           value: "user-55",
-          status: "linked",
         };
       },
-      bindActor: async (input) => {
-        calls.push(["bindActor", input]);
+      set: async (input) => {
+        calls.push(["set", input]);
         return {
-          source: input.source,
           key: input.key,
           value: input.value,
-          description: input.description,
-          status: "linked",
         };
+      },
+      delete: async (input) => {
+        calls.push(["delete", input]);
+        return { ok: true, key: input.key };
       },
     };
 
     const result = await runBackofficeCodemode({
       env,
       fs: createTestMasterFileSystem({}),
-      tools: automationBindingsRuntimeTools,
+      tools: automationStoreRuntimeTools,
       context: { runtimes: { automations: automationsRuntime } },
       code: `async () => {
-        const existing = await identity.lookupBinding({ source: "telegram", key: "chat-123" });
-        const bound = await identity.bindActor({
-          source: "telegram",
-          key: "chat-456",
+        const existing = await store.get({ key: "telegram/chat-123" });
+        const bound = await store.set({
+          key: "telegram/chat-456",
           value: existing.value,
         });
         return { existing, bound };
@@ -80,27 +78,27 @@ describe("runBackofficeCodemode", () => {
 
     expect(result.error).toBeUndefined();
     expect(result.result).toEqual({
-      existing: { source: "telegram", key: "chat-123", value: "user-55", status: "linked" },
-      bound: { source: "telegram", key: "chat-456", value: "user-55", status: "linked" },
+      existing: { key: "telegram/chat-123", value: "user-55" },
+      bound: { key: "telegram/chat-456", value: "user-55" },
     });
     expect(calls).toEqual([
-      ["lookupBinding", { source: "telegram", key: "chat-123" }],
-      ["bindActor", { source: "telegram", key: "chat-456", value: "user-55" }],
+      ["get", { key: "telegram/chat-123" }],
+      ["set", { key: "telegram/chat-456", value: "user-55" }],
     ]);
     expect(result.toolCalls).toMatchObject([
       {
-        providerName: "identity",
-        toolName: "lookupBinding",
-        toolId: "identity.lookup-binding",
-        inputSummary: '{"source":"telegram","key":"chat-123"}',
+        providerName: "store",
+        toolName: "get",
+        toolId: "store.get",
+        inputSummary: '{"key":"telegram/chat-123"}',
         status: "success",
-        resultSummary: '{"source":"telegram","key":"chat-123","value":"user-55","status":"linked"}',
+        resultSummary: '{"key":"telegram/chat-123","value":"user-55"}',
       },
       {
-        providerName: "identity",
-        toolName: "bindActor",
-        toolId: "identity.bind-actor",
-        inputSummary: '{"source":"telegram","key":"chat-456","value":"user-55"}',
+        providerName: "store",
+        toolName: "set",
+        toolId: "store.set",
+        inputSummary: '{"key":"telegram/chat-456","value":"user-55"}',
         status: "success",
       },
     ]);
@@ -279,7 +277,7 @@ describe("runBackofficeCodemode", () => {
       env,
       fs: createTestMasterFileSystem({}),
       code: `async () => {
-        return await identity.lookupBinding({ source: "telegram", key: "chat-123" });
+        return await store.get({ key: "telegram/chat-123" });
       }`,
     });
 
@@ -289,30 +287,31 @@ describe("runBackofficeCodemode", () => {
 
   test("rejects invalid runtime tool input before calling the runtime", async () => {
     const calls: unknown[] = [];
-    const automationsRuntime: AutomationBindingsRuntime = {
-      lookupBinding: async (input) => {
-        calls.push(["lookupBinding", input]);
+    const automationsRuntime: AutomationStoreRuntime = {
+      get: async (input) => {
+        calls.push(["get", input]);
         return null;
       },
-      bindActor: async (input) => {
-        calls.push(["bindActor", input]);
+      set: async (input) => {
+        calls.push(["set", input]);
         return {
-          source: input.source,
           key: input.key,
           value: input.value,
-          description: input.description,
-          status: "linked",
         };
+      },
+      delete: async (input) => {
+        calls.push(["delete", input]);
+        return { ok: true, key: input.key };
       },
     };
 
     const result = await runBackofficeCodemode({
       env,
       fs: createTestMasterFileSystem({}),
-      tools: automationBindingsRuntimeTools,
+      tools: automationStoreRuntimeTools,
       context: { runtimes: { automations: automationsRuntime } },
       code: `async () => {
-        return await identity.bindActor({ source: "telegram", key: "chat-123", value: "" });
+        return await store.set({ key: "telegram/chat-123", value: "" });
       }`,
     });
 
@@ -320,9 +319,9 @@ describe("runBackofficeCodemode", () => {
     expect(result.error).toBeTruthy();
     expect(result.toolCalls).toMatchObject([
       {
-        providerName: "identity",
-        toolName: "bindActor",
-        inputSummary: '{"source":"telegram","key":"chat-123","value":""}',
+        providerName: "store",
+        toolName: "set",
+        inputSummary: '{"key":"telegram/chat-123","value":""}',
         status: "error",
       },
     ]);

@@ -1,4 +1,4 @@
-import { createRouteBackedAutomationBindingsRuntime } from "@/fragno/automation/bindings-route-runtime";
+import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
 import { createRouteBackedDurableHooksRuntime } from "@/fragno/automation/durable-hooks-route-runtime";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
@@ -47,7 +47,7 @@ export const createRouteBackedRuntimeContext = ({
     },
     automation: null,
     automations: {
-      runtime: createRouteBackedAutomationBindingsRuntime({ env, orgId: normalizedOrgId }),
+      runtime: createRouteBackedAutomationStoreRuntime({ env, orgId: normalizedOrgId }),
     },
     workflow: {
       runtime: createRouteBackedAutomationWorkflowRuntime({ env, orgId: normalizedOrgId }),

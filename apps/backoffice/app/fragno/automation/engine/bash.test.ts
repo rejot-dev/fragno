@@ -13,13 +13,12 @@ import {
 } from "./runtime";
 
 const runtime: AutomationRuntime = {
-  lookupBinding: async () => null,
-  bindActor: async (input) => ({
-    source: input.source,
+  get: async () => null,
+  set: async (input) => ({
     key: input.key,
     value: input.value,
-    status: "linked",
   }),
+  delete: async (input) => ({ ok: true, key: input.key }),
   createClaim: async (input) => ({
     url: `https://example.com/${input.actor.id}`,
     otpId: "otp-123",

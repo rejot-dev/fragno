@@ -21,14 +21,10 @@ export type AutomationScriptItem = {
   enabled: boolean;
 };
 
-export type AutomationIdentityItem = {
+export type AutomationStoreItem = {
   id: string;
-  source: string;
   key: string;
   value: string;
-  description?: string | null;
-  status: string;
-  linkedAt?: string | Date | null;
   createdAt?: string | Date | null;
   updatedAt?: string | Date | null;
 };
@@ -37,12 +33,12 @@ export type AutomationLayoutContext = {
   orgId: string;
   organisation: BackofficeOrganisation;
   scripts: AutomationScriptItem[];
-  identityBindings: AutomationIdentityItem[];
+  storeEntries: AutomationStoreItem[];
   scriptsError: string | null;
-  identityBindingsError: string | null;
+  storeEntriesError: string | null;
 };
 
-export type AutomationTab = "scripts" | "identity";
+export type AutomationTab = "scripts" | "store";
 
 export const formatTimestamp = (value?: string | Date | null) => {
   if (!value) {
@@ -114,9 +110,9 @@ export function AutomationTabs({ orgId, activeTab }: { orgId: string; activeTab:
       to: `${basePath}/scripts`,
     },
     {
-      id: "identity" as const,
-      label: "Identity",
-      to: `${basePath}/identity`,
+      id: "store" as const,
+      label: "Store",
+      to: `${basePath}/store`,
     },
   ];
 

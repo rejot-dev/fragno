@@ -5,8 +5,8 @@ import { getAuthMe } from "@/fragno/auth/auth-server";
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import { throwOrganisationNotFound } from "../route-errors";
 import type { Route } from "./+types/organisation-layout";
-import { fetchAutomationIdentityBindings, loadAutomationWorkspaceData, toExternalId } from "./data";
-import type { AutomationIdentityItem, AutomationScriptItem } from "./shared";
+import { fetchAutomationStoreEntries, loadAutomationWorkspaceData, toExternalId } from "./data";
+import type { AutomationScriptItem, AutomationStoreItem } from "./shared";
 import {
   AutomationErrorBoundary,
   AutomationHeader,
@@ -35,26 +35,18 @@ const normalizeScripts = (
     );
 };
 
-const normalizeIdentityBindings = (
-  storedBindings: Awaited<ReturnType<typeof fetchAutomationIdentityBindings>>["identityBindings"],
+const normalizeStoreEntries = (
+  storedEntries: Awaited<ReturnType<typeof fetchAutomationStoreEntries>>["storeEntries"],
 ) => {
-  const bindings: AutomationIdentityItem[] = storedBindings.map((binding, index) => ({
-    id: toExternalId(binding.id) || `identity-binding-${index}`,
-    source: binding.source?.trim() || "unknown",
-    key: binding.key?.trim() || "—",
-    value: binding.value?.trim() || "—",
-    description: binding.description?.trim() || null,
-    status: binding.status?.trim() || "linked",
-    linkedAt: binding.linkedAt ?? null,
-    createdAt: binding.createdAt ?? null,
-    updatedAt: binding.updatedAt ?? null,
+  const entries: AutomationStoreItem[] = storedEntries.map((entry, index) => ({
+    id: toExternalId(entry.id) || `store-entry-${index}`,
+    key: entry.key?.trim() || "—",
+    value: entry.value?.trim() || "—",
+    createdAt: entry.createdAt ?? null,
+    updatedAt: entry.updatedAt ?? null,
   }));
 
-  return bindings.sort((left, right) => {
-    const leftTime = left.linkedAt ? new Date(left.linkedAt).getTime() : 0;
-    const rightTime = right.linkedAt ? new Date(right.linkedAt).getTime() : 0;
-    return rightTime - leftTime;
-  });
+  return entries.sort((left, right) => left.key.localeCompare(right.key));
 };
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
@@ -77,21 +69,21 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     throwOrganisationNotFound(params.orgId);
   }
 
-  const [workspaceResult, identityResult] = await Promise.all([
+  const [workspaceResult, storeResult] = await Promise.all([
     loadAutomationWorkspaceData({ context, orgId: params.orgId }),
-    fetchAutomationIdentityBindings(request, context, params.orgId),
+    fetchAutomationStoreEntries(request, context, params.orgId),
   ]);
 
   const scripts = normalizeScripts(workspaceResult.scripts);
-  const identityBindings = normalizeIdentityBindings(identityResult.identityBindings);
+  const storeEntries = normalizeStoreEntries(storeResult.storeEntries);
 
   return {
     orgId: params.orgId,
     organisation,
     scripts,
-    identityBindings,
+    storeEntries,
     scriptsError: workspaceResult.scriptsError,
-    identityBindingsError: identityResult.identityBindingsError,
+    storeEntriesError: storeResult.storeEntriesError,
   };
 }
 
@@ -112,8 +104,8 @@ export default function BackofficeOrganisationAutomationsLayout({
   const pathSegments = currentPath.split("/").filter(Boolean);
 
   let activeTab: AutomationTab = "scripts";
-  if (pathSegments.includes("identity")) {
-    activeTab = "identity";
+  if (pathSegments.includes("store")) {
+    activeTab = "store";
   }
 
   return (
