@@ -2,7 +2,12 @@ import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
 import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
 
-import { createAuthFragment, github, type AuthOAuthConfig } from "@fragno-dev/auth";
+import {
+  createAuthFragment,
+  github,
+  type AuthOAuthConfig,
+  type OrganizationHooks,
+} from "@fragno-dev/auth";
 
 export function createAdapter(state?: DurableObjectState) {
   const dialect = new DurableObjectDialect({
@@ -27,6 +32,7 @@ export type AuthInit =
 
 type AuthServerOptions = {
   baseUrl?: string;
+  organizationHooks?: OrganizationHooks;
 };
 
 const resolveBaseUrl = (baseUrl?: string) => {
@@ -82,6 +88,7 @@ export function createAuthServer(init: AuthInit, options: AuthServerOptions = {}
       },
       organizations: {
         autoCreateOrganization: {},
+        ...(options.organizationHooks ? { hooks: options.organizationHooks } : {}),
       },
       oauth: oauthConfig,
     },

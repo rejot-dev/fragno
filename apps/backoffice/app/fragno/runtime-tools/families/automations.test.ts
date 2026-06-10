@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 
+import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+
 import { automationBindingsRuntimeTools } from "./automations-bindings";
 import {
   automationEventsRuntimeTools,
@@ -74,6 +76,37 @@ describe("automation runtime tools", () => {
         .map((tool) => tool.adapters?.bash?.command)
         .filter((command) => command?.startsWith("events.catalog")),
     ).toEqual(["events.catalog.list", "events.catalog.get"]);
+  });
+
+  test("auth organization hooks are represented in the automation event catalog", () => {
+    expect(
+      listAutomationEventDescriptors().filter((event) => event.source === "auth"),
+    ).toMatchObject([
+      {
+        source: "auth",
+        eventType: "organization.created",
+        label: "Organization created",
+        capabilityId: "auth",
+        actorSchema: {
+          properties: {
+            scope: { const: "internal" },
+            type: { const: "user" },
+            id: { type: "string" },
+          },
+        },
+        subjectSchema: {
+          properties: {
+            orgId: { type: "string" },
+          },
+        },
+      },
+      {
+        source: "auth",
+        eventType: "organization.updated",
+        label: "Organization updated",
+        capabilityId: "auth",
+      },
+    ]);
   });
 
   test("automation event catalog tools list events and get one event with JSON schemas", async () => {
