@@ -80,8 +80,7 @@ export async function loader({
     ok: true,
     orgId: params.orgId,
     organisationName: organisation.name,
-    message:
-      "Your link was confirmed. The automation has everything it needs to finish updating the store.",
+    message: "Your link was confirmed. Your account link is confirmed and active.",
   };
 }
 

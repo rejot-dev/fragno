@@ -17,8 +17,11 @@ const runtime: AutomationRuntime = {
   set: async (input) => ({
     key: input.key,
     value: input.value,
+    category: input.category ?? [],
+    actor: input.actor,
   }),
   delete: async (input) => ({ ok: true, key: input.key }),
+  list: async () => [],
   createClaim: async (input) => ({
     url: `https://example.com/${input.actor.id}`,
     otpId: "otp-123",

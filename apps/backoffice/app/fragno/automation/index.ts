@@ -82,14 +82,7 @@ export type {
   AutomationEventTypeForSource,
   AutomationSource,
 } from "./contracts";
-export {
-  deleteAutomationStoreEntry,
-  setAutomationStoreEntry,
-  createAutomationStoreRuntime,
-  createStorageBackedAutomationStoreRuntime,
-  getAutomationStoreEntry,
-  listAutomationStoreEntries,
-} from "./bindings-storage-runtime";
+export { createAutomationStoreServices } from "./bindings-storage-runtime";
 export { createRouteBackedAutomationStoreRuntime } from "./bindings-route-runtime";
 export { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
 export { createEventRuntime } from "../runtime-tools/families/event-runtime";

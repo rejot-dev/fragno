@@ -40,12 +40,15 @@ describe("runBackofficeCodemode", () => {
 
   test("calls automation identity tools through codemode providers", async () => {
     const calls: unknown[] = [];
+    const actor = { scope: "external", source: "telegram", type: "chat", id: "chat-123" } as const;
     const automationsRuntime: AutomationStoreRuntime = {
       get: async (input) => {
         calls.push(["get", input]);
         return {
           key: input.key,
           value: "user-55",
+          category: [],
+          actor,
         };
       },
       set: async (input) => {
@@ -53,11 +56,17 @@ describe("runBackofficeCodemode", () => {
         return {
           key: input.key,
           value: input.value,
+          category: input.category ?? [],
+          actor: input.actor,
         };
       },
       delete: async (input) => {
         calls.push(["delete", input]);
         return { ok: true, key: input.key };
+      },
+      list: async (input) => {
+        calls.push(["list", input]);
+        return [{ key: `${input.prefix}chat-123`, value: "user-55", category: [], actor }];
       },
     };
 
@@ -71,6 +80,7 @@ describe("runBackofficeCodemode", () => {
         const bound = await store.set({
           key: "telegram/chat-456",
           value: existing.value,
+          actor: existing.actor,
         });
         return { existing, bound };
       }`,
@@ -78,12 +88,12 @@ describe("runBackofficeCodemode", () => {
 
     expect(result.error).toBeUndefined();
     expect(result.result).toEqual({
-      existing: { key: "telegram/chat-123", value: "user-55" },
-      bound: { key: "telegram/chat-456", value: "user-55" },
+      existing: { key: "telegram/chat-123", value: "user-55", category: [], actor },
+      bound: { key: "telegram/chat-456", value: "user-55", category: [], actor },
     });
     expect(calls).toEqual([
       ["get", { key: "telegram/chat-123" }],
-      ["set", { key: "telegram/chat-456", value: "user-55" }],
+      ["set", { key: "telegram/chat-456", value: "user-55", actor }],
     ]);
     expect(result.toolCalls).toMatchObject([
       {
@@ -92,13 +102,15 @@ describe("runBackofficeCodemode", () => {
         toolId: "store.get",
         inputSummary: '{"key":"telegram/chat-123"}',
         status: "success",
-        resultSummary: '{"key":"telegram/chat-123","value":"user-55"}',
+        resultSummary:
+          '{"key":"telegram/chat-123","value":"user-55","category":[],"actor":{"scope":"external","type":"chat","id":"chat-123","source":"telegram"}}',
       },
       {
         providerName: "store",
         toolName: "set",
         toolId: "store.set",
-        inputSummary: '{"key":"telegram/chat-456","value":"user-55"}',
+        inputSummary:
+          '{"key":"telegram/chat-456","value":"user-55","actor":{"scope":"external","type":"chat","id":"chat-123","source":"telegram"}}',
         status: "success",
       },
     ]);
@@ -287,6 +299,7 @@ describe("runBackofficeCodemode", () => {
 
   test("rejects invalid runtime tool input before calling the runtime", async () => {
     const calls: unknown[] = [];
+    const actor = { scope: "external", source: "telegram", type: "chat", id: "chat-123" } as const;
     const automationsRuntime: AutomationStoreRuntime = {
       get: async (input) => {
         calls.push(["get", input]);
@@ -297,11 +310,17 @@ describe("runBackofficeCodemode", () => {
         return {
           key: input.key,
           value: input.value,
+          category: input.category ?? [],
+          actor: input.actor,
         };
       },
       delete: async (input) => {
         calls.push(["delete", input]);
         return { ok: true, key: input.key };
+      },
+      list: async (input) => {
+        calls.push(["list", input]);
+        return [{ key: `${input.prefix}chat-123`, value: "user-55", category: [], actor }];
       },
     };
 
@@ -311,7 +330,7 @@ describe("runBackofficeCodemode", () => {
       tools: automationStoreRuntimeTools,
       context: { runtimes: { automations: automationsRuntime } },
       code: `async () => {
-        return await store.set({ key: "telegram/chat-123", value: "" });
+        return await store.set({ key: "", value: "" });
       }`,
     });
 
@@ -321,7 +340,7 @@ describe("runBackofficeCodemode", () => {
       {
         providerName: "store",
         toolName: "set",
-        inputSummary: '{"key":"telegram/chat-123","value":""}',
+        inputSummary: '{"key":"","value":""}',
         status: "error",
       },
     ]);

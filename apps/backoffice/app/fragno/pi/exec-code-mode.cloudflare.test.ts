@@ -263,12 +263,15 @@ describe("Pi execCodeMode tool", () => {
 
   test("calls automation identity domain tools through codemode", async () => {
     const calls: unknown[] = [];
+    const actor = { scope: "external", source: "telegram", type: "chat", id: "chat-123" } as const;
     const automationsRuntime: AutomationStoreRuntime = {
       get: async (input) => {
         calls.push(["get", input]);
         return {
           key: input.key,
           value: "user-55",
+          category: [],
+          actor,
         };
       },
       set: async (input) => {
@@ -276,11 +279,17 @@ describe("Pi execCodeMode tool", () => {
         return {
           key: input.key,
           value: input.value,
+          category: input.category ?? [],
+          actor: input.actor,
         };
       },
       delete: async (input) => {
         calls.push(["delete", input]);
         return { ok: true, key: input.key };
+      },
+      list: async (input) => {
+        calls.push(["list", input]);
+        return [{ key: `${input.prefix}chat-123`, value: "user-55", category: [], actor }];
       },
     };
 
@@ -294,6 +303,7 @@ describe("Pi execCodeMode tool", () => {
         return await store.set({
           key: "telegram/chat-456",
           value: existing.value,
+          actor: existing.actor,
         });
       }`,
     });
@@ -307,12 +317,14 @@ describe("Pi execCodeMode tool", () => {
           toolName: "get",
           inputSummary: '{"key":"telegram/chat-123"}',
           status: "success",
-          resultSummary: '{"key":"telegram/chat-123","value":"user-55"}',
+          resultSummary:
+            '{"key":"telegram/chat-123","value":"user-55","category":[],"actor":{"scope":"external","type":"chat","id":"chat-123","source":"telegram"}}',
         },
         {
           providerName: "store",
           toolName: "set",
-          inputSummary: '{"key":"telegram/chat-456","value":"user-55"}',
+          inputSummary:
+            '{"key":"telegram/chat-456","value":"user-55","actor":{"scope":"external","type":"chat","id":"chat-123","source":"telegram"}}',
           status: "success",
         },
       ],
@@ -322,15 +334,18 @@ describe("Pi execCodeMode tool", () => {
     if (content?.type !== "text") {
       throw new Error("Expected text content from execCodeMode.");
     }
-    expect(content.text).toBe('{"key":"telegram/chat-456","value":"user-55"}');
+    expect(content.text).toBe(
+      '{"key":"telegram/chat-456","value":"user-55","category":[],"actor":{"scope":"external","type":"chat","id":"chat-123","source":"telegram"}}',
+    );
     expect(calls).toEqual([
       ["get", { key: "telegram/chat-123" }],
-      ["set", { key: "telegram/chat-456", value: "user-55" }],
+      ["set", { key: "telegram/chat-456", value: "user-55", actor }],
     ]);
   });
 
   test("rejects domain tool validation errors so the agent records a failed tool result", async () => {
     const calls: unknown[] = [];
+    const actor = { scope: "external", source: "telegram", type: "chat", id: "chat-123" } as const;
     const automationsRuntime: AutomationStoreRuntime = {
       get: async (input) => {
         calls.push(["get", input]);
@@ -341,11 +356,17 @@ describe("Pi execCodeMode tool", () => {
         return {
           key: input.key,
           value: input.value,
+          category: input.category ?? [],
+          actor: input.actor,
         };
       },
       delete: async (input) => {
         calls.push(["delete", input]);
         return { ok: true, key: input.key };
+      },
+      list: async (input) => {
+        calls.push(["list", input]);
+        return [{ key: `${input.prefix}chat-123`, value: "user-55", category: [], actor }];
       },
     };
 
@@ -353,7 +374,7 @@ describe("Pi execCodeMode tool", () => {
     await expect(
       tool.execute("tool-call-1", {
         code: `async () => {
-          return await store.set({ key: "telegram/chat-123", value: "" });
+          return await store.set({ key: "", value: "" });
         }`,
       }),
     ).rejects.toThrow("Too small");

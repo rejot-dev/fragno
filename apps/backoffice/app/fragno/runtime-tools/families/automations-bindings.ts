@@ -1,17 +1,26 @@
 import { z } from "zod";
 
 import {
+  automationStoreActorSchema,
   automationStoreDeleteResultSchema,
   automationStoreEntrySchema,
+  automationStoreListInputSchema,
+  automationStoreSetInputSchema,
+  automationStoreVerificationSchema,
   type AutomationStoreDeleteResult,
   type AutomationStoreEntry,
 } from "@/fragno/automation/store";
 import type {
   StoreDeleteArgs,
   StoreGetArgs,
+  StoreListArgs,
   StoreSetArgs,
 } from "@/fragno/runtime-tools/automation-types";
-import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
+import {
+  defineCliArgsParser,
+  readStringOption,
+  type ParsedCliTokens,
+} from "@/fragno/runtime-tools/bash-cli";
 
 import {
   defineBackofficeRuntimeTool,
@@ -26,6 +35,7 @@ export type AutomationStoreRuntime = {
   get: (input: StoreGetArgs) => Promise<AutomationStoreEntry | null>;
   set: (input: StoreSetArgs) => Promise<AutomationStoreEntry>;
   delete: (input: StoreDeleteArgs) => Promise<AutomationStoreDeleteResult | null>;
+  list: (input: StoreListArgs) => Promise<AutomationStoreEntry[]>;
 };
 
 export type AutomationStoreToolContext = BackofficeToolContext<{
@@ -33,6 +43,39 @@ export type AutomationStoreToolContext = BackofficeToolContext<{
 }>;
 
 const nonEmptyString = z.string().trim().min(1);
+
+const readJsonValueOption = (parsed: ParsedCliTokens, name: string, required = false) => {
+  const raw = readStringOption(parsed, name, required);
+  if (typeof raw === "undefined") {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new Error(`--${name} must be valid JSON`);
+  }
+};
+
+const readJsonArrayOption = (parsed: ParsedCliTokens, name: string, required = false) => {
+  const raw = readStringOption(parsed, name, required);
+  if (typeof raw === "undefined") {
+    return undefined;
+  }
+
+  try {
+    const value = JSON.parse(raw);
+    if (!Array.isArray(value)) {
+      throw new Error(`--${name} must be a JSON array`);
+    }
+    return value;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("must be a JSON array")) {
+      throw error;
+    }
+    throw new Error(`--${name} must be valid JSON`);
+  }
+};
 
 const defineAutomationStoreTool = <TInputSchema extends z.ZodType, TOutputSchema extends z.ZodType>(
   tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, AutomationStoreToolContext>,
@@ -45,10 +88,26 @@ const parseStoreGetArgs = defineCliArgsParser<StoreGetArgs>("store.get", {
 const parseStoreSetArgs = defineCliArgsParser<StoreSetArgs>("store.set", {
   key: { required: true },
   value: { required: true },
+  actor: {
+    read: (parsed, optionName, required) => readJsonValueOption(parsed, optionName, required),
+    transform: (value) => automationStoreActorSchema.nullable().parse(value),
+    required: true,
+  },
+  description: {},
+  category: { kind: "stringArray" },
+  verification: {
+    read: (parsed, optionName, required) => readJsonArrayOption(parsed, optionName, required),
+    transform: (value) => automationStoreVerificationSchema.parse(value),
+  },
 });
 
 const parseStoreDeleteArgs = defineCliArgsParser<StoreDeleteArgs>("store.delete", {
   key: { required: true },
+});
+
+const parseStoreListArgs = defineCliArgsParser<StoreListArgs>("store.list", {
+  prefix: {},
+  limit: { kind: "positiveInteger" },
 });
 
 const getAutomationStoreRuntime = (
@@ -96,10 +155,7 @@ const storeSetTool = defineAutomationStoreTool({
   namespace: "store",
   name: "set",
   description: "Create or update an automation store entry.",
-  inputSchema: z.object({
-    key: nonEmptyString,
-    value: nonEmptyString,
-  }),
+  inputSchema: automationStoreSetInputSchema,
   outputSchema: automationStoreEntrySchema,
   execute: async (input, context) =>
     await getAutomationStoreRuntime(context.runtimes.automations).set(input),
@@ -123,11 +179,77 @@ const storeSetTool = defineAutomationStoreTool({
             valueName: "value",
             description: "Value to store",
           },
+          {
+            name: "actor",
+            required: true,
+            valueRequired: true,
+            valueName: "json",
+            description: "JSON actor reference for who set this value, or null if unavailable",
+          },
+          {
+            name: "description",
+            valueRequired: true,
+            valueName: "text",
+            description: "Optional human-readable description of this entry",
+          },
+          {
+            name: "category",
+            valueRequired: true,
+            valueName: "category",
+            description: "Optional category tag; repeat to provide multiple categories",
+          },
+          {
+            name: "verification",
+            valueRequired: true,
+            valueName: "json",
+            description: "Optional JSON verification list, for example json-schema checks",
+          },
         ],
-        examples: ["store.set --key telegram/chat-123 --value user-55"],
+        examples: [
+          'store.set --key telegram/chat-123 --value user-55 --actor \'{"scope":"external","source":"telegram","type":"chat","id":"chat-123"}\'',
+        ],
       },
       parse: parseStoreSetArgs,
       format: (entry) => ({ data: entry }),
+    },
+  },
+});
+
+const storeListTool = defineAutomationStoreTool({
+  id: "store.list",
+  namespace: "store",
+  name: "list",
+  description: "List automation store entries, optionally filtered by key prefix.",
+  inputSchema: automationStoreListInputSchema,
+  outputSchema: z.array(automationStoreEntrySchema),
+  execute: async (input, context) =>
+    await getAutomationStoreRuntime(context.runtimes.automations).list(input),
+  adapters: {
+    bash: {
+      command: "store.list",
+      help: {
+        summary: "store.list lists automation store entries, optionally filtered by key prefix.",
+        options: [
+          {
+            name: "prefix",
+            valueRequired: true,
+            valueName: "prefix",
+            description: "Optional store key prefix",
+          },
+          {
+            name: "limit",
+            valueRequired: true,
+            valueName: "count",
+            description: "Maximum number of entries to return",
+          },
+        ],
+        examples: [
+          "store.list --format json",
+          "store.list --prefix telegram/ --limit 50 --format json",
+        ],
+      },
+      parse: parseStoreListArgs,
+      format: (entries) => ({ data: entries }),
     },
   },
 });
@@ -163,7 +285,12 @@ const storeDeleteTool = defineAutomationStoreTool({
   },
 });
 
-export const automationStoreRuntimeTools = [storeGetTool, storeSetTool, storeDeleteTool] as const;
+export const automationStoreRuntimeTools = [
+  storeGetTool,
+  storeSetTool,
+  storeDeleteTool,
+  storeListTool,
+] as const;
 
 export const automationStoreToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "store",

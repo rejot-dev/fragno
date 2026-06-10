@@ -26,7 +26,10 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
       await store.set({
         key: "pi/pi-default-agent",
         value: harness.id + "::" + model.provider + "::" + model.name,
-        });
+        actor: event.actor ?? null,
+        description: "Default Pi agent for automation-created sessions.",
+        category: ["pi"],
+      });
     }
   }
 
@@ -93,7 +96,7 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
 
     if (event.actor?.source === "telegram") {
       const workflowBinding = await store.get({
-        key: "telegram-claim-workflow/" + otpId,
+        key: "telegram/claim-workflow/" + otpId,
       });
       const instanceId = workflowBinding?.value ?? "";
 
@@ -157,9 +160,12 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
       });
 
       await store.set({
-        key: "telegram-claim-workflow/" + claim.otpId,
+        key: "telegram/claim-workflow/" + claim.otpId,
         value: workflowInstanceId,
-        });
+        actor: automationEvent.actor ?? null,
+        description: "Workflow waiting for Telegram identity claim " + claim.otpId,
+        category: ["system", "telegram", "otp"],
+      });
       await telegram.sendMessage({
         chatId,
         text: "Open this link to finish linking your Telegram account: " +
@@ -192,6 +198,9 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
         await store.set({
           key: completedActor.source + "/" + completedActorId,
           value: subjectUserId,
+          actor: completedActor,
+          description: "Backoffice user linked to Telegram chat " + completedActorId,
+          category: ["telegram", "identity"],
         });
         await telegram.sendMessage({
           chatId: completedActorId,
@@ -319,7 +328,9 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
       await store.set({
         key: "telegram-pi-session/" + linkedUser,
         value: session.id,
+        actor: automationEvent.actor,
         description: "Pi session for Telegram chat " + automationActorId,
+        category: ["telegram", "pi"],
       });
 
       return { created: true, sessionId: session.id };

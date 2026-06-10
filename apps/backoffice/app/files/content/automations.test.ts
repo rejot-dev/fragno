@@ -58,7 +58,7 @@ describe("starter automation content", () => {
       ),
       routerFiltersTelegramClaims: router.includes('event.actor?.source === "telegram"'),
       routerUsesEventIdPrefixForStart: router.includes('instanceIdForEvent("telegram-link")'),
-      routerLooksUpOtpWorkflowBinding: router.includes('key: "telegram-claim-workflow/"'),
+      routerLooksUpOtpWorkflowBinding: router.includes('key: "telegram/claim-workflow/"'),
       routerSendsWorkflowSafeEvent: router.includes('type: "identity-claim-completed"'),
       workflowWaitsForWorkflowSafeEvent: workflow.includes('type: "identity-claim-completed"'),
       routerStartsDelayedTestWorkflow:

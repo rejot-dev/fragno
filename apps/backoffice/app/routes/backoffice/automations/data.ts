@@ -12,6 +12,7 @@ import {
   type createAutomationFragment,
 } from "@/fragno/automation";
 import type { AutomationScriptEngine } from "@/fragno/automation/catalog";
+import type { AutomationEventActor } from "@/fragno/automation/contracts";
 
 import {
   booleanActionResultFromCaughtError,
@@ -45,6 +46,9 @@ export type AutomationStoreEntryRecord = {
   id?: AutomationIdLike;
   key?: string | null;
   value?: string | null;
+  description?: string | null;
+  category?: string[] | null;
+  actor?: AutomationEventActor | null;
   createdAt?: string | Date | null;
   updatedAt?: string | Date | null;
 };
@@ -238,7 +242,11 @@ export async function fetchAutomationStoreEntries(
 }> {
   try {
     const callRoute = createAutomationsRouteCaller(request, context, orgId);
-    const response = await callRoute("GET", "/store");
+    const requestUrl = new URL(request.url);
+    const prefix = requestUrl.searchParams.get("prefix") ?? undefined;
+    const response = await callRoute("GET", "/store", {
+      query: typeof prefix === "string" ? { prefix } : {},
+    });
 
     if (response.type === "json" && isSuccessStatus(response.status)) {
       return {

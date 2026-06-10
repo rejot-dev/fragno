@@ -73,6 +73,7 @@ describe("executeCodemodeAutomation", () => {
         return await store.set({
           key: event.source + "/" + event.payload.chatId,
           value: "user-55",
+          actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
         });
       }`,
     });
@@ -82,14 +83,20 @@ describe("executeCodemodeAutomation", () => {
       eventId: "event-codemode-bind-actor",
       exitCode: 0,
       stderr: "",
-      result: { key: "telegram/chat-123", value: "user-55" },
+      result: {
+        key: "telegram/chat-123",
+        value: "user-55",
+        category: [],
+        actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
+      },
       commandCalls: [],
       toolCalls: [
         {
           providerName: "store",
           toolName: "set",
           toolId: "store.set",
-          inputSummary: '{"key":"telegram/chat-123","value":"user-55"}',
+          inputSummary:
+            '{"key":"telegram/chat-123","value":"user-55","actor":{"scope":"external","source":"telegram","type":"chat","id":"chat-123"}}',
           status: "success",
         },
       ],
@@ -100,6 +107,7 @@ describe("executeCodemodeAutomation", () => {
         {
           key: "telegram/chat-123",
           value: "user-55",
+          actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
         },
       ],
     ]);
@@ -175,7 +183,8 @@ describe("executeCodemodeAutomation", () => {
     const bashResult = await executeBashAutomation({
       masterFs: createTestMasterFileSystem({}),
       context,
-      script: "store.set --key telegram/bash-chat --value user-bash",
+      script:
+        'store.set --key telegram/bash-chat --value user-bash --actor \'{"scope":"external","source":"telegram","type":"chat","id":"chat-123"}\'',
     });
     const codemodeResult = await executeCodemodeAutomation({
       env,
@@ -185,6 +194,7 @@ describe("executeCodemodeAutomation", () => {
         return await store.set({
           key: "telegram/codemode-chat",
           value: "user-codemode",
+          actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
         });
       }`,
     });
@@ -202,8 +212,22 @@ describe("executeCodemodeAutomation", () => {
       toolCalls: [{ toolId: "store.set", status: "success" }],
     });
     expect(calls).toEqual([
-      ["set", { key: "telegram/bash-chat", value: "user-bash" }],
-      ["set", { key: "telegram/codemode-chat", value: "user-codemode" }],
+      [
+        "set",
+        {
+          key: "telegram/bash-chat",
+          value: "user-bash",
+          actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
+        },
+      ],
+      [
+        "set",
+        {
+          key: "telegram/codemode-chat",
+          value: "user-codemode",
+          actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
+        },
+      ],
     ]);
   });
 
@@ -223,7 +247,7 @@ describe("executeCodemodeAutomation", () => {
       masterFs: createTestMasterFileSystem({}),
       context: createAutomationContext(event, createRecordingAutomationRuntime(calls)),
       script: `async () => {
-        return await store.set({ key: "telegram/chat-123", value: "" });
+        return await store.set({ key: "", value: "" });
       }`,
     });
 
@@ -293,6 +317,9 @@ const createUnusedAutomationRuntime = (): AutomationRuntime => ({
   delete: async () => {
     throw new Error("delete should not be called in this test.");
   },
+  list: async () => {
+    throw new Error("list should not be called in this test.");
+  },
   createClaim: async () => {
     throw new Error("createClaim should not be called in this test.");
   },
@@ -311,11 +338,17 @@ const createRecordingAutomationRuntime = (calls: unknown[]): AutomationRuntime =
     return {
       key: input.key,
       value: input.value,
+      category: input.category ?? [],
+      actor: input.actor,
     };
   },
   delete: async (input) => {
     calls.push(["delete", input]);
     return { ok: true, key: input.key };
+  },
+  list: async (input) => {
+    calls.push(["list", input]);
+    return [];
   },
   createClaim: async () => {
     throw new Error("createClaim should not be called in this test.");

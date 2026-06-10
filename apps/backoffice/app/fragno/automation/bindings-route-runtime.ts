@@ -1,5 +1,4 @@
 import type { AutomationStoreRuntime } from "../runtime-tools/families/automations-bindings";
-import { createAutomationStoreRuntime } from "./bindings-storage-runtime";
 import { createAutomationsRouteCaller } from "./route-callers";
 
 export const createRouteBackedAutomationStoreRuntime = ({
@@ -16,7 +15,7 @@ export const createRouteBackedAutomationStoreRuntime = ({
 
   const callRoute = createAutomationsRouteCaller(env, normalizedOrgId);
 
-  return createAutomationStoreRuntime({
+  return {
     get: async ({ key }) => {
       const response = await callRoute("GET", "/store/get", { query: { key } });
 
@@ -70,5 +69,25 @@ export const createRouteBackedAutomationStoreRuntime = ({
 
       throw new Error(`Automations backend returned ${response.status}`);
     },
-  });
+    list: async ({ prefix, limit }) => {
+      const response = await callRoute("GET", "/store", {
+        query: {
+          ...(typeof prefix === "string" ? { prefix } : {}),
+          ...(typeof limit === "number" ? { limit: String(limit) } : {}),
+        },
+      });
+
+      if (response.type === "json") {
+        return response.data;
+      }
+
+      if (response.type === "error") {
+        throw new Error(
+          `Automations backend returned ${response.status}: ${response.error.message}`,
+        );
+      }
+
+      throw new Error(`Automations backend returned ${response.status}`);
+    },
+  };
 };

@@ -1,4 +1,8 @@
-import type { AutomationEvent, AutomationExternalEntityRef } from "../automation/contracts";
+import type {
+  AutomationEvent,
+  AutomationEventActor,
+  AutomationExternalEntityRef,
+} from "../automation/contracts";
 import type { AutomationCommandCallResult } from "../automation/run-result";
 
 export type AutomationCommandFormat = "text" | "json";
@@ -25,9 +29,23 @@ export type StoreGetArgs = {
   key: string;
 };
 
+export type StoreVerification = {
+  type: "json-schema";
+  schema: unknown;
+};
+
 export type StoreSetArgs = {
   key: string;
   value: string;
+  actor: AutomationEventActor | null;
+  description?: string | null;
+  category?: string[];
+  verification?: StoreVerification[];
+};
+
+export type StoreListArgs = {
+  prefix?: string;
+  limit?: number;
 };
 
 export type StoreDeleteArgs = {

@@ -18,6 +18,7 @@ import {
 import type { AutomationCodemodeWorkflowParams } from "./engine/workflow";
 
 export type { AutomationPiBashContext } from "./engine/runtime";
+import { createAutomationStoreServices } from "./bindings-storage-runtime";
 import { automationFragmentSchema } from "./schema";
 
 export type AutomationIngestResult = {
@@ -176,8 +177,11 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       }),
     };
   })
-  .providesBaseService(({ defineService }) =>
-    defineService({
+  .providesBaseService(({ defineService }) => {
+    const storeServices = createAutomationStoreServices(defineService);
+
+    return defineService({
+      ...storeServices,
       ingestEvent: function (event: AutomationEvent) {
         return this.serviceTx(automationFragmentSchema)
           .mutate(({ uow }) => {
@@ -190,6 +194,6 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
           .transform(() => buildIngestResult(event))
           .build();
       },
-    }),
-  )
+    });
+  })
   .build();

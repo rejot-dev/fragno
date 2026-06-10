@@ -361,7 +361,11 @@ describe("starter Pi session automation", () => {
     const { automation, workflows } = context.fragments;
 
     await automation.fragment.callRoute("POST", "/store/set", {
-      body: { key: "telegram/chat-1", value: "user-1" },
+      body: {
+        key: "telegram/chat-1",
+        value: "user-1",
+        actor: { scope: "external", source: "telegram", type: "chat", id: "chat-1" },
+      },
     });
     await ingestPiConfigured();
 
@@ -390,7 +394,11 @@ describe("starter Pi session automation", () => {
     const { automation } = context.fragments;
 
     await automation.fragment.callRoute("POST", "/store/set", {
-      body: { key: "telegram/chat-1", value: "user-1" },
+      body: {
+        key: "telegram/chat-1",
+        value: "user-1",
+        actor: { scope: "external", source: "telegram", type: "chat", id: "chat-1" },
+      },
     });
     await ingestPiConfigured();
 

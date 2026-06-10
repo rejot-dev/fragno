@@ -90,6 +90,54 @@ async () => {
 };
 \`\`\`
 
+## Using the automation store
+
+Use the \`store\` provider for small durable key/value coordination between automation runs and workflows. Store values are strings; use \`JSON.stringify\` for structured data.
+
+\`\`\`js
+const existing = await store.get({ key: "telegram/" + chatId });
+
+await store.set({
+  key: "telegram/" + chatId,
+  value: userId,
+  actor: event.actor ?? null,
+  description: "Backoffice user linked to this Telegram chat.",
+  category: ["telegram", "identity"],
+});
+\`\`\`
+
+Available operations:
+
+- \`store.get({ key })\`: returns an entry or \`null\`.
+- \`store.set({ key, value, actor, description, category, verification })\`: creates or updates an entry. The \`actor\` field is required but may be \`null\` when no event actor is available.
+- \`store.list({ prefix, limit })\`: lists entries whose keys start with \`prefix\`.
+- \`store.delete({ key })\`: deletes an entry unless its category includes \`"system"\`.
+
+Use stable, namespaced keys such as \`telegram/<chat-id>\`, \`telegram-pi-session/<user-id>\`, or \`pi/pi-default-agent\`. Add categories to make the Backoffice store overview easier to filter and understand. If \`category\` contains \`"system"\`, users cannot delete the entry from the overview or API, so only use it for entries that must be protected.
+
+Use \`verification\` when storing JSON text that must match a schema. Verification is server-side only and is not persisted:
+
+\`\`\`js
+await store.set({
+  key: "pi/default-agent-config",
+  value: JSON.stringify({ harness: "default", model: "openai:gpt-5-mini" }),
+  actor: event.actor ?? null,
+  verification: [
+    {
+      type: "json-schema",
+      schema: {
+        type: "object",
+        required: ["harness", "model"],
+        properties: {
+          harness: { type: "string" },
+          model: { type: "string" },
+        },
+      },
+    },
+  ],
+});
+\`\`\`
+
 ## Useful connection setup examples
 
 - Telegram message automation usually needs the Telegram Connection skill first.
