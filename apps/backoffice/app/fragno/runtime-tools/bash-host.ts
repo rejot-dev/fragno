@@ -14,6 +14,7 @@ import type { DurableHooksRuntime } from "./families/automations-durable-hooks";
 import type { AutomationWorkflowRuntime } from "./families/automations-workflow";
 import type { BackofficeCapabilitiesRuntime } from "./families/backoffice-capabilities";
 import type { EventRuntime } from "./families/event-runtime";
+import type { RegisteredMcpCommandContext } from "./families/mcp-runtime";
 import type { RegisteredOtpCommandContext } from "./families/otp-runtime";
 import type { RegisteredPiCommandContext } from "./families/pi-runtime";
 import type { RegisteredResendCommandContext } from "./families/resend-runtime";
@@ -36,6 +37,7 @@ export type BashHostContext = {
   automations: RegisteredAutomationsBashCommandContext | null;
   workflow?: { runtime: AutomationWorkflowRuntime } | null;
   durableHooks?: { runtime: DurableHooksRuntime } | null;
+  mcp?: RegisteredMcpCommandContext | null;
   otp: RegisteredOtpCommandContext | null;
   pi: RegisteredPiCommandContext | null;
   reson8: RegisteredReson8CommandContext | null;
@@ -50,6 +52,7 @@ export const EMPTY_BASH_HOST_CONTEXT: BashHostContext = {
   automations: null,
   workflow: null,
   durableHooks: null,
+  mcp: null,
   otp: null,
   pi: null,
   reson8: null,
@@ -63,6 +66,7 @@ export type InteractiveBashCommandContext = Omit<BashHostContext, "automation"> 
   automations: NonNullable<BashHostContext["automations"]>;
   workflow?: BashHostContext["workflow"];
   durableHooks?: BashHostContext["durableHooks"];
+  mcp?: BashHostContext["mcp"];
   otp: NonNullable<BashHostContext["otp"]>;
   pi: NonNullable<BashHostContext["pi"]>;
   reson8: NonNullable<BashHostContext["reson8"]>;

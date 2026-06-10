@@ -4,6 +4,7 @@ import type { Automations } from "workers/automations.do";
 import type { CloudflareWorkers } from "workers/cloudflare-wfp.do";
 import type { GitHubWebhookRouter } from "workers/github-webhook-router.do";
 import type { GitHub } from "workers/github.do";
+import type { Mcp } from "workers/mcp.do";
 import type { Otp } from "workers/otp.do";
 import type { Pi } from "workers/pi.do";
 import type { Resend } from "workers/resend.do";
@@ -60,6 +61,19 @@ export function getTelegramDurableObject(
  * Helper to get the OTP Durable Object stub from the router context.
  * Each organization gets its own Durable Object instance, keyed by org id.
  */
+/**
+ * Helper to get the MCP Durable Object stub from the router context.
+ * Each organization gets its own Durable Object instance, keyed by org id.
+ */
+export function getMcpDurableObject(
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+): DurableObjectStub<Mcp> {
+  const { env } = context.get(CloudflareContext);
+
+  return env.MCP.get(env.MCP.idFromName(orgId));
+}
+
 export function getOtpDurableObject(
   context: Readonly<RouterContextProvider>,
   orgId: string,

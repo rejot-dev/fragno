@@ -6,13 +6,21 @@ function isBackofficePath(pathname: string): boolean {
   return pathname === BACKOFFICE_HOME_PATH || pathname.startsWith(`${BACKOFFICE_HOME_PATH}/`);
 }
 
+function isMcpOAuthCallbackPath(pathname: string): boolean {
+  return /^\/api\/mcp\/[^/]+\/oauth\/callback$/.test(pathname);
+}
+
+function isAllowedBackofficeReturnToPath(pathname: string): boolean {
+  return isBackofficePath(pathname) || isMcpOAuthCallbackPath(pathname);
+}
+
 export function sanitizeBackofficeReturnTo(value: string | null | undefined): string | null {
   if (!value) {
     return null;
   }
 
   const trimmed = value.trim();
-  if (!trimmed.startsWith(BACKOFFICE_HOME_PATH)) {
+  if (!trimmed.startsWith(BACKOFFICE_HOME_PATH) && !trimmed.startsWith("/api/mcp/")) {
     return null;
   }
 
@@ -23,7 +31,7 @@ export function sanitizeBackofficeReturnTo(value: string | null | undefined): st
     return null;
   }
 
-  if (!isBackofficePath(cleanedUrl.pathname)) {
+  if (!isAllowedBackofficeReturnToPath(cleanedUrl.pathname)) {
     return null;
   }
 

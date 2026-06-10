@@ -93,6 +93,10 @@
         "class_name": "Reson8",
       },
       {
+        "name": "MCP",
+        "class_name": "Mcp",
+      },
+      {
         "name": "OTP",
         "class_name": "Otp",
       },
@@ -186,6 +190,10 @@
     {
       "tag": "v15",
       "new_sqlite_classes": ["Reson8"],
+    },
+    {
+      "tag": "v16",
+      "new_sqlite_classes": ["Mcp"],
     },
   ],
   "rules": [

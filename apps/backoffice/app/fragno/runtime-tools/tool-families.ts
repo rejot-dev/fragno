@@ -18,6 +18,7 @@ import {
   type BackofficeCapabilitiesRuntime,
 } from "./families/backoffice-capabilities";
 import { eventToolFamily, type EventRuntime } from "./families/event";
+import { mcpToolFamily, type McpRuntime } from "./families/mcp";
 import { otpToolFamily, type OtpRuntime } from "./families/otp";
 import { piToolFamily, type PiRuntime } from "./families/pi";
 import { resendToolFamily, type ResendRuntime } from "./families/resend";
@@ -36,6 +37,7 @@ export type CoreBackofficeRuntimeMap = {
   workflow?: AutomationWorkflowRuntime;
   durableHooks?: DurableHooksRuntime;
   event?: EventRuntime;
+  mcp?: McpRuntime;
   otp?: OtpRuntime;
   pi?: PiRuntime;
   resend?: ResendRuntime;
@@ -56,6 +58,7 @@ export const runtimeToolFamilies = [
   hooksToolFamily,
   automationEventsToolFamily,
   eventToolFamily,
+  mcpToolFamily,
   otpToolFamily,
   piToolFamily,
   resendToolFamily,
@@ -73,6 +76,7 @@ const namespaceCapabilityIds = {
   hooks: "automations",
   events: "automations",
   event: "automations",
+  mcp: "mcp",
   otp: "otp",
   pi: "pi",
   resend: "resend",
