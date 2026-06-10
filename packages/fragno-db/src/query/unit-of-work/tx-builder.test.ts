@@ -6,7 +6,7 @@
  * NOTE: These are TYPE tests only. We test that the type inference is correct,
  * not the runtime behavior (which is covered by execute-unit-of-work.test.ts).
  */
-import { describe, expectTypeOf, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 import type { AnySchema } from "../../schema/create";
 import {
@@ -668,6 +668,34 @@ describe("HandlerTxBuilder type inference", () => {
 
       // retrieveResult is the transformed type
       expectTypeOf<MutateCtx["retrieveResult"]>().toEqualTypeOf<{ id: string } | null>();
+    });
+
+    it("transformRetrieve unwraps async transform results for later callbacks", () => {
+      type Builder = HandlerTxBuilder<
+        readonly [],
+        [{ id: string }[]],
+        [{ id: string }[]],
+        unknown,
+        unknown,
+        true,
+        false,
+        false,
+        false,
+        {}
+      >;
+
+      const assertTypes = () => {
+        const builder = null as unknown as Builder;
+        const transformed = builder.transformRetrieve<{ id: string } | null>(
+          async ([items]) => items[0] ?? null,
+        );
+        type MutateParam = Parameters<typeof transformed.mutate>[0];
+        type MutateCtx = Parameters<MutateParam>[0];
+
+        expectTypeOf<MutateCtx["retrieveResult"]>().toEqualTypeOf<{ id: string } | null>();
+      };
+
+      expect(assertTypes).toBeTypeOf("function");
     });
 
     it("afterRetrieve receives raw handler retrieve results", () => {
