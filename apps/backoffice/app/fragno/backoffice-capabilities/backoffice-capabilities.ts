@@ -13,6 +13,7 @@ import {
 import { automationsCapability } from "./capabilities/automations";
 import { cloudflareCapability } from "./capabilities/cloudflare";
 import { githubCapability } from "./capabilities/github";
+import { mcpCapability } from "./capabilities/mcp";
 import { otpCapability } from "./capabilities/otp";
 import { piCapability } from "./capabilities/pi";
 import { resendCapability } from "./capabilities/resend";
@@ -27,6 +28,7 @@ export type BackofficeCapabilityId =
   | "auth"
   | "cloudflare"
   | "github"
+  | "mcp"
   | "otp"
   | "pi"
   | "resend"
@@ -186,6 +188,7 @@ export type BackofficeCapability = BackofficeConnectionCapability | BackofficeSy
 
 export const backofficeCapabilities: readonly BackofficeCapability[] = [
   telegramCapability,
+  mcpCapability,
   resendCapability,
   reson8Capability,
   uploadCapability,
@@ -214,6 +217,15 @@ export const backofficeConnectionCatalog: readonly BackofficeConnectionCatalogEn
     configurable: true,
     description: "Capture chat activity, configure webhooks, and send messages as a bot.",
     routeSegment: "telegram",
+  },
+  {
+    id: "mcp",
+    label: "MCP",
+    kind: "connection",
+    configurable: true,
+    description:
+      "Register remote MCP servers, authenticate with OAuth or tokens, and inspect tools.",
+    routeSegment: "mcp",
   },
   {
     id: "resend",

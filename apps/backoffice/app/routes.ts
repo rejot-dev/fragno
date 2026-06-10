@@ -16,6 +16,7 @@ export default [
       route("connections", "routes/backoffice/connections/index.tsx"),
       route("connections/resend", "routes/backoffice/connections/resend/index.tsx"),
       route("connections/reson8", "routes/backoffice/connections/reson8/index.tsx"),
+      route("connections/mcp", "routes/backoffice/connections/mcp/index.tsx"),
       route("connections/telegram", "routes/backoffice/connections/telegram/index.tsx"),
       route("connections/github", "routes/backoffice/connections/github/index.tsx"),
       route(
@@ -71,6 +72,11 @@ export default [
           route("transcribe", "routes/backoffice/connections/reson8/transcribe.tsx"),
         ],
       ),
+      route("connections/mcp/:orgId", "routes/backoffice/connections/mcp/organisation-layout.tsx", [
+        index("routes/backoffice/connections/mcp/organisation-index.tsx"),
+        route("configuration", "routes/backoffice/connections/mcp/configuration.tsx"),
+        route("oauth-complete", "routes/backoffice/connections/mcp/oauth-complete.tsx"),
+      ]),
       route(
         "connections/telegram/:orgId/attachment-download",
         "routes/backoffice/connections/telegram/attachment-download.ts",
@@ -184,6 +190,7 @@ export default [
     route("cloudflare/:orgId/*", "routes/api/cloudflare.ts"),
     route("resend/:orgId/*", "routes/api/resend.ts"),
     route("reson8/:orgId/*", "routes/api/reson8.ts"),
+    route("mcp/:orgId/*", "routes/api/mcp.ts"),
     route("telegram/:orgId/*", "routes/api/telegram.ts"),
     route("otp/:orgId/*", "routes/api/otp.ts"),
     route("github/webhooks", "routes/api/github-webhooks.ts"),

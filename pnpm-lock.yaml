@@ -133,6 +133,9 @@ importers:
       '@fragno-dev/github-app-fragment':
         specifier: workspace:*
         version: link:../../packages/github-app-fragment
+      '@fragno-dev/mcp-fragment':
+        specifier: workspace:*
+        version: link:../../packages/mcp-fragment
       '@fragno-dev/otp-fragment':
         specifier: workspace:*
         version: link:../../example-fragments/otp-fragment
