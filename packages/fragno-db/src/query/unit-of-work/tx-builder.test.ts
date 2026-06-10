@@ -669,6 +669,26 @@ describe("HandlerTxBuilder type inference", () => {
       // retrieveResult is the transformed type
       expectTypeOf<MutateCtx["retrieveResult"]>().toEqualTypeOf<{ id: string } | null>();
     });
+
+    it("afterRetrieve receives raw handler retrieve results", () => {
+      type Builder = HandlerTxBuilder<
+        readonly [],
+        [{ id: string } | null, { id: string }[]], // retrieve results
+        [{ id: string } | null, { id: string }[]],
+        unknown,
+        unknown,
+        true, // HasRetrieve
+        false,
+        false,
+        false,
+        {}
+      >;
+
+      type AfterRetrieveParam = Parameters<Builder["afterRetrieve"]>[0];
+      type ResultsParam = Parameters<AfterRetrieveParam>[1];
+
+      expectTypeOf<ResultsParam>().toEqualTypeOf<[{ id: string } | null, { id: string }[]]>();
+    });
   });
 });
 

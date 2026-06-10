@@ -290,6 +290,12 @@ export interface HandlerTxCallbacks<
   ) => TypedUnitOfWork<AnySchema, TRetrieveResults, unknown, HooksMap> | void;
 
   /**
+   * Callback invoked after handler retrieve results are available, before service calls are
+   * processed. Throwing aborts the transaction attempt.
+   */
+  afterRetrieve?: (uow: IUnitOfWork, retrieveResult: TRetrieveResults) => void | Promise<void>;
+
+  /**
    * Optional early-return after handler retrieve results are available, before service calls are
    * processed. Returning control.return(value) skips service calls, mutate, and success.
    */
@@ -844,6 +850,10 @@ async function executeTx(
       const retrieveResult: TRetrieveResults = typedUowFromRetrieve
         ? await typedUowFromRetrieve.retrievalPhase
         : ([] as unknown as TRetrieveResults);
+
+      if (callbacks.afterRetrieve) {
+        await callbacks.afterRetrieve(baseUow, retrieveResult);
+      }
 
       if (callbacks.earlyReturn) {
         const earlyReturnResult = callbacks.earlyReturn({
@@ -1636,6 +1646,7 @@ interface HandlerTxBuilderState<
     idempotencyKey: string;
     currentAttempt: number;
   }) => TypedUnitOfWork<AnySchema, TRetrieveResults, unknown, HooksMap> | void;
+  afterRetrieveFn?: (uow: IUnitOfWork, retrieveResult: TRetrieveResults) => void | Promise<void>;
   earlyReturnFn?: (ctx: {
     retrieveResult: TRetrieveResults;
     control: EarlyReturnControl;
@@ -1776,6 +1787,7 @@ export class HandlerTxBuilder<
     return new HandlerTxBuilder({
       ...this.#state,
       retrieveFn: fn,
+      afterRetrieveFn: undefined, // Clear any existing afterRetrieve since results shape changed
       transformRetrieveFn: undefined, // Clear any existing transformRetrieve since results shape changed
     } as unknown as HandlerTxBuilderState<
       TServiceCalls,
@@ -1785,6 +1797,30 @@ export class HandlerTxBuilder<
       TTransformResult,
       THooks
     >);
+  }
+
+  /**
+   * Run a side-effect after handler retrieve results are available, before declared service calls
+   * are processed. The results are typed from this builder's retrieve() callback.
+   */
+  afterRetrieve(
+    fn: (uow: IUnitOfWork, retrieveResult: TRetrieveResults) => void | Promise<void>,
+  ): HandlerTxBuilder<
+    TServiceCalls,
+    TRetrieveResults,
+    TRetrieveSuccessResult,
+    TMutateResult,
+    TTransformResult,
+    HasRetrieve,
+    HasTransformRetrieve,
+    HasMutate,
+    HasTransform,
+    THooks
+  > {
+    return new HandlerTxBuilder({
+      ...this.#state,
+      afterRetrieveFn: fn,
+    });
   }
 
   /**
@@ -1956,6 +1992,7 @@ export class HandlerTxBuilder<
       THooks
     > = {
       serviceCalls: state.withServiceCallsFn,
+      afterRetrieve: state.afterRetrieveFn,
       retrieve: state.retrieveFn
         ? (context) => {
             return state.retrieveFn!({

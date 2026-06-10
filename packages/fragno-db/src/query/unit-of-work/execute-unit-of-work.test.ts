@@ -673,6 +673,40 @@ describe("Unified Tx API", () => {
       expect(onAfterRetrieve.mock.calls[0]?.[1]).toEqual([mockUsers]);
     });
 
+    it("should call afterRetrieve with typed handler retrieve results", async () => {
+      const compiler = createMockCompiler();
+      const mockUsers = [
+        {
+          id: FragnoId.fromExternal("1", 1),
+          email: "alice@example.com",
+          name: "Alice",
+          balance: 100,
+        },
+      ];
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [mockUsers],
+        executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+      };
+      const decoder = createMockDecoder();
+      let capturedUsers: unknown;
+
+      await createHandlerTxBuilder({
+        createUnitOfWork: () => createUnitOfWork(compiler, executor, decoder),
+      })
+        .retrieve(({ forSchema }) =>
+          forSchema(testSchema).find("users", (b) => b.whereIndex("idx_email")),
+        )
+        .afterRetrieve((_uow, [users]) => {
+          expectTypeOf(users).toEqualTypeOf<
+            { id: FragnoId; email: string; name: string; balance: number }[]
+          >();
+          capturedUsers = users;
+        })
+        .execute();
+
+      expect(capturedUsers).toEqual(mockUsers);
+    });
+
     it("should execute a simple mutate-only transaction", async () => {
       const compiler = createMockCompiler();
       const executor: UOWExecutor<unknown, unknown> = {
