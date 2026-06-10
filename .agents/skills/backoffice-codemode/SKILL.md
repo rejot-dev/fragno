@@ -12,6 +12,9 @@ description:
 Use the running Backoffice dev server as the source of truth for runtime behavior. The server is
 usually `http://localhost:5173`, but may be on another Vite port such as `5174`.
 
+This skill is usually invoked when the user wants to fix bugs in the backoffice codebase
+(`apps/backoffice`).
+
 ## Required workflow
 
 1. Probe the running server before assuming a port or org id. Try Vite ports in order and use the

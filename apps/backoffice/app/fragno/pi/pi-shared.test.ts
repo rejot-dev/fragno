@@ -45,8 +45,11 @@ describe("pi-shared helpers", () => {
     expect(harnesses).toHaveLength(2);
     expect(harnesses[0]?.id).toBe(DEFAULT_PI_HARNESS.id);
     expect(harnesses).toEqual(DEFAULT_PI_HARNESSES);
-    expect(harnesses.find((harness) => harness.id === "bash")?.tools).toEqual(["bash"]);
-    expect(harnesses.find((harness) => harness.id === "codemode")?.tools).toEqual(["execCodeMode"]);
+    expect(harnesses.find((harness) => harness.id === "bash")?.tools).toEqual(["bash", "read"]);
+    expect(harnesses.find((harness) => harness.id === "codemode")?.tools).toEqual([
+      "execCodeMode",
+      "read",
+    ]);
   });
 
   it("keeps bash and codemode runtime references isolated by harness", () => {

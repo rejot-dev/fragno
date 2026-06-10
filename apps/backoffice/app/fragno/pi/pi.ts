@@ -1,6 +1,7 @@
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
 import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
+import type { PiSkillRegistryResolver } from "@fragno-dev/pi-fragment/skills";
 import { Type, type TSchema } from "typebox";
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
@@ -9,6 +10,7 @@ import {
   createPiFragment,
   createPiWorkflows,
   interactiveChatWorkflow,
+  type PiBuilder,
   type PiTool,
 } from "@fragno-dev/pi-fragment";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
@@ -50,6 +52,7 @@ import {
   type PiToolId,
   type StoredPiConfig,
 } from "./pi-shared";
+import { loadBackofficePiSkills } from "./pi-skills";
 import { withSinclairSchema } from "./typebox-compat";
 
 export type PiRuntimeFragments = {
@@ -101,6 +104,16 @@ export const bashParametersSchema = withSinclairSchema(
   }),
 );
 
+export const readParametersSchema = withSinclairSchema(
+  Type.Object({
+    path: Type.String({ description: "Path to the file to read (relative or absolute)." }),
+    offset: Type.Optional(
+      Type.Number({ description: "Line number to start reading from (1-indexed)." }),
+    ),
+    limit: Type.Optional(Type.Number({ description: "Maximum number of lines to read." })),
+  }),
+);
+
 export const execCodeModeParametersSchema = withSinclairSchema(
   Type.Object({
     code: Type.String({
@@ -121,6 +134,45 @@ function createPiAdapter(state: DurableObjectState) {
     driverConfig: new CloudflareDurableObjectsDriverConfig(),
   });
 }
+
+const normalizeReadPath = (path: string) => (path.startsWith("/") ? path : `/${path}`);
+
+const applyLineRange = (content: string, offset?: number, limit?: number) => {
+  if (offset === undefined && limit === undefined) {
+    return content;
+  }
+
+  const lines = content.split("\n");
+  const startIndex = offset === undefined ? 0 : Math.max(0, Math.trunc(offset) - 1);
+  const endIndex = limit === undefined ? undefined : startIndex + Math.max(0, Math.trunc(limit));
+  return lines.slice(startIndex, endIndex).join("\n");
+};
+
+const createReadTool = (fs: MasterFileSystem): AgentTool =>
+  defineTool({
+    name: "read",
+    label: "Read",
+    description:
+      "Read a file from the combined Pi session filesystem. Use this to load matching skills from /starter/skills/<skill-name>/SKILL.md before applying them.",
+    parameters: readParametersSchema,
+    execute: async (_toolCallId, params, signal) => {
+      if (signal?.aborted) {
+        throw new Error("Read aborted.");
+      }
+
+      const path = normalizeReadPath(params.path);
+      const content = await fs.readFile(path, { encoding: "utf-8" });
+      const text = applyLineRange(content, params.offset, params.limit);
+      return {
+        content: [{ type: "text", text }],
+        details: {
+          path,
+          offset: params.offset ?? null,
+          limit: params.limit ?? null,
+        },
+      };
+    },
+  });
 
 const createBashTool = (
   fs: MasterFileSystem,
@@ -326,6 +378,10 @@ export const createPiToolRegistry = ({
   codemode?: PiCodemodeRuntime;
   bashCommandContext?: PiBashCommandContext;
 }): Record<PiToolId, PiTool> => ({
+  read: async ({ session }) => {
+    const fileSystem = await getSessionFs(sessionFileSystems, session.id, sessionFileSystemContext);
+    return createReadTool(fileSystem);
+  },
   bash: async ({ session }) => {
     if (!bashCommandContext || !env) {
       throw new Error("bash is not configured for this Pi runtime.");
@@ -369,12 +425,31 @@ const createBackofficePiBuilder = (tools: Record<PiToolId, PiTool>) =>
   createPi()
     .withTool("bash", tools.bash)
     .withTool("execCodeMode", tools.execCodeMode)
+    .withTool("read", tools.read)
     .withWorkflow(interactiveChatWorkflow)
     .logging({ enabled: true, level: "debug" });
 
-type BackofficePiBuilder = ReturnType<typeof createBackofficePiBuilder>;
+type BackofficePiBuilder = PiBuilder<Record<string, never>, Record<PiToolId, PiTool>>;
 
-const buildPiRuntime = (config: StoredPiConfig, tools: Record<PiToolId, PiTool>) => {
+const createBackofficePiSkillResolver =
+  (options: {
+    sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
+    sessionFileSystemContext: PiSessionFileSystemContext;
+  }): PiSkillRegistryResolver =>
+  async ({ sessionId }) => {
+    const fileSystem = await getSessionFs(
+      options.sessionFileSystems,
+      sessionId,
+      options.sessionFileSystemContext,
+    );
+    return loadBackofficePiSkills(fileSystem);
+  };
+
+const buildPiRuntime = (
+  config: StoredPiConfig,
+  tools: Record<PiToolId, PiTool>,
+  skills: PiSkillRegistryResolver,
+) => {
   const builder = createBackofficePiBuilder(tools);
 
   const harnesses = resolvePiHarnesses(config.harnesses);
@@ -389,6 +464,7 @@ const buildPiRuntime = (config: StoredPiConfig, tools: Record<PiToolId, PiTool>)
     workflows: createPiWorkflows({
       agents: runtime.config.agents,
       tools: runtime.config.tools,
+      skills,
       workflows: runtime.config.workflows,
       logging: runtime.config.logging,
     }),
@@ -420,12 +496,21 @@ const registerHarnessAgents = (
     builder.withAgent(agentName, {
       systemPrompt: harness.systemPrompt,
       model,
-      tools: harness.tools.filter(isValidPiToolId),
+      tools: resolveHarnessAgentTools(harness),
+      skills: "all",
       toolConfig: harness.toolConfig,
       thinkingLevel: harness.thinkingLevel,
       getApiKey: (provider) => resolveApiKey(config, provider),
     });
   }
+};
+
+const resolveHarnessAgentTools = (harness: PiHarnessConfig): PiToolId[] => {
+  const tools = harness.tools.filter(isValidPiToolId);
+  if (tools.includes("read")) {
+    return tools;
+  }
+  return [...tools, "read"];
 };
 
 export const isValidPiToolId = (toolId: string): toolId is (typeof PI_TOOL_IDS)[number] =>
@@ -457,7 +542,11 @@ export const createPiRuntime = (options: {
     codemode,
     bashCommandContext: options.bashCommandContext,
   });
-  const pi = buildPiRuntime(options.config, tools);
+  const skills = createBackofficePiSkillResolver({
+    sessionFileSystems: options.sessionFileSystems,
+    sessionFileSystemContext: options.sessionFileSystemContext,
+  });
+  const pi = buildPiRuntime(options.config, tools, skills);
 
   const workflowsFragment = createWorkflowsFragment(
     {

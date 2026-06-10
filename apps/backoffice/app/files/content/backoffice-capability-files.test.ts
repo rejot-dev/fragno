@@ -54,7 +54,7 @@ describe("Backoffice capability starter skills", () => {
       .filter((capability) => !capability.files)
       .map((capability) => capability.id);
 
-    expect(capabilityIdsWithoutSkills).toEqual(["automations", "github", "cloudflare"]);
+    expect(capabilityIdsWithoutSkills).toEqual(["automations", "github", "cloudflare", "auth"]);
   });
 
   test("Telegram skill documents its primary event and tools", () => {

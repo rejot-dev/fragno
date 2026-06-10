@@ -4,11 +4,13 @@ import * as files from "@/files";
 import { UPLOAD_PROVIDER_DATABASE, type UploadAdminConfigResponse } from "@/fragno/upload";
 import type { UploadFileRecord } from "@/routes/backoffice/connections/upload/data";
 
+import { createTestMasterFileSystem } from "../automation/engine/test-master-file-system.test-utils";
 import {
   createPiToolRegistry,
   type PiBashCommandContext,
   type PiSessionFileSystemContext,
 } from "./pi";
+import { loadBackofficePiSkills } from "./pi-skills";
 
 const createMockEnv = () =>
   ({
@@ -98,6 +100,78 @@ const createMockBashContext = (): PiBashCommandContext => ({
       },
     },
   },
+});
+
+describe("Backoffice Pi skills", () => {
+  test("loads starter skills from the Pi filesystem", async () => {
+    const fs = await files.createOrgFileSystem(createContext());
+    const skills = await loadBackofficePiSkills(fs);
+
+    expect(Object.keys(skills)).toContain("building-automations");
+    expect(skills["building-automations"]).toMatchObject({
+      location: "/starter/skills/building-automations/SKILL.md",
+      directory: "/starter/skills/building-automations",
+    });
+    expect(skills["building-automations"]?.body).toContain("events.eventsCatalogList");
+  });
+
+  test("reflects skills from the mounted virtual filesystem", async () => {
+    const fs = createTestMasterFileSystem({
+      "/starter/skills/custom/SKILL.md": `---
+name: custom
+description: Use custom filesystem skill.
+---
+
+# Custom Skill
+
+Filesystem-defined instructions.
+`,
+    });
+
+    const skills = await loadBackofficePiSkills(fs);
+
+    expect(Object.keys(skills)).toEqual(["custom"]);
+    expect(skills.custom).toMatchObject({
+      name: "custom",
+      description: "Use custom filesystem skill.",
+      location: "/starter/skills/custom/SKILL.md",
+    });
+  });
+
+  test("exposes a read tool that can load starter skill files", async () => {
+    const tools = createPiToolRegistry({
+      sessionFileSystems: new Map(),
+      sessionFileSystemContext: createContext(),
+    });
+
+    const readFactory = tools["read"];
+    if (typeof readFactory !== "function") {
+      throw new Error("Expected read to be registered as a factory.");
+    }
+
+    const readTool = await readFactory({
+      session: { id: "session-skill-read" },
+      turnId: "turn-1",
+      toolConfig: null,
+      messages: [],
+    } as never);
+
+    expect(readTool.name).toBe("read");
+    const result = await readTool.execute("tool-call-skill-1", {
+      path: "/starter/skills/building-automations/SKILL.md",
+      offset: 1,
+      limit: 8,
+    } as never);
+
+    expect(result.details).toMatchObject({
+      path: "/starter/skills/building-automations/SKILL.md",
+      offset: 1,
+      limit: 8,
+    });
+    const content = result.content[0];
+    expect(content?.type).toBe("text");
+    expect(content?.type === "text" ? content.text : "").toContain("name: building-automations");
+  });
 });
 
 describe("Pi bash tool", () => {
