@@ -597,6 +597,75 @@ describe("definePiWorkflow", () => {
     );
   });
 
+  it("records missing agent skills as agent step errors", async () => {
+    const config: PiFragmentConfig = {
+      agents: {
+        default: {
+          name: "default",
+          systemPrompt: "Base prompt.",
+          model: mockModel,
+          skills: ["missing-skill"],
+        },
+      },
+      tools: {},
+      skills: {},
+    };
+    const workflow = compilePiWorkflow(
+      definePiWorkflow({ name: "pi-missing-skill-step-error" }, async (ctx) => {
+        await ctx.agentStep("default").prompt("ask", { input: { text: "hello" } });
+        return { ok: true };
+      }),
+      {
+        agents: config.agents,
+        tools: config.tools,
+        skills: config.skills,
+      },
+    );
+
+    await runScenario(
+      defineScenario({
+        name: "pi-missing-skill-step-error",
+        workflows: { custom: workflow },
+        harness: {
+          configureFragments: (harness) => ({
+            pi: instantiate(piFragmentDefinition)
+              .withConfig(config)
+              .withServices({ workflows: harness.fragment.services }),
+          }),
+        },
+        runners: ["worker"],
+        steps: ({ runners, workflow }) => [
+          runners.worker.initializeAndRunUntilIdle({ workflow: "custom", id: "session-1" }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus("custom", "session-1"),
+              steps: await ctx.state.getSteps("custom", "session-1"),
+            }),
+            assert: ({ status, steps }) => {
+              expect(status).toMatchObject({
+                status: "errored",
+                error: {
+                  name: "NonRetryableError",
+                  message: "Skill 'missing-skill' not found.",
+                },
+              });
+              expect(steps).toContainEqual(
+                expect.objectContaining({
+                  stepKey: "do:ask",
+                  name: "ask",
+                  type: "do",
+                  status: "errored",
+                  errorName: "NonRetryableError",
+                  errorMessage: "Skill 'missing-skill' not found.",
+                }),
+              );
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
   it("appends the selected skill catalog to the agent system prompt", async () => {
     let observedSystemPrompt: string | undefined;
     const agentRunner: PiAgentRunner = async (_operation, runtime) => {

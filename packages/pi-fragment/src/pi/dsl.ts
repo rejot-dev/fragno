@@ -276,20 +276,6 @@ export const compilePiWorkflow = <
       }
 
       const runAgentStep = (name: string, runOptions: PiWorkflowAgentRunOptions) => {
-        const agentSkills = resolveAgentSkills(agent, options.skills);
-        const systemPrompt = agentSkills.length
-          ? appendSkillCatalogToSystemPrompt(
-              runOptions.systemPrompt ?? agent.systemPrompt,
-              agentSkills,
-            )
-          : runOptions.systemPrompt;
-        const messages = appendSkillInvocationMessage({
-          messages: runOptions.messages ?? [],
-          agentName,
-          agentSkills,
-          runOptions,
-        });
-
         return runPiAgentStep(
           { mode: runOptions.mode, promptInput: runOptions.input },
           {
@@ -302,11 +288,10 @@ export const compilePiWorkflow = <
               sessionId: event.instanceId,
               agentName,
               workflowName: definition.name,
-              systemPrompt,
             },
             turn: {
               tools: options.tools ?? {},
-              messages,
+              messages: runOptions.messages ?? [],
               turnId: runOptions.turnId ?? `${event.instanceId}:${name}`,
             },
           },
@@ -315,6 +300,33 @@ export const compilePiWorkflow = <
             controls: runOptions.controls,
             stopOnTools: stopOnToolNames(runOptions.stopOnTools),
             toolExecution: runOptions.toolExecution,
+            prepareRuntime: (runtime) => {
+              const agentSkills = resolveAgentSkills(agent, options.skills);
+              const systemPrompt = agentSkills.length
+                ? appendSkillCatalogToSystemPrompt(
+                    runOptions.systemPrompt ?? agent.systemPrompt,
+                    agentSkills,
+                  )
+                : (runOptions.systemPrompt ?? agent.systemPrompt);
+              const messages = appendSkillInvocationMessage({
+                messages: runOptions.messages ?? [],
+                agentName,
+                agentSkills,
+                runOptions,
+              });
+
+              return {
+                ...runtime,
+                session: {
+                  ...runtime.session,
+                  systemPrompt,
+                },
+                turn: {
+                  ...runtime.turn,
+                  messages,
+                },
+              };
+            },
           },
         );
       };

@@ -62,6 +62,7 @@ export type PiAgentStepRuntime = {
 export type PiAgentStepBehavior = PiAgentTurnBehavior & {
   step?: WorkflowStepConfig;
   controls?: Array<"abort" | "steer">;
+  prepareRuntime?: (runtime: PiAgentStepRuntime) => PiAgentStepRuntime;
 };
 
 const committedEmissionEpochs = (emissions: WorkflowStepEmission[]) =>
@@ -104,8 +105,10 @@ export const runPiAgentStep = async (
   behavior: PiAgentStepBehavior = {},
 ): Promise<PiAgentStepResult> =>
   runtime.step.do(runtime.stepName, behavior.step ?? defaultStepConfig, async (tx) => {
-    const runAgent = runtime.agentRunner ?? runAgentTurn;
-    const messagesBeforeStep = runtime.turn.messages.length;
+    const { prepareRuntime, ...turnBehavior } = behavior;
+    const preparedRuntime = prepareRuntime?.(runtime) ?? runtime;
+    const runAgent = preparedRuntime.agentRunner ?? runAgentTurn;
+    const messagesBeforeStep = preparedRuntime.turn.messages.length;
     const previousEmissions = await tx.previousEmissions();
     const committedEpochs = committedEmissionEpochs(previousEmissions);
     const previousEvents = previousEmissions.flatMap((emission): AgentEvent[] => {
@@ -133,7 +136,7 @@ export const runPiAgentStep = async (
       }
     });
     const restore = restoreAgentTurnFromEvents({
-      baseMessages: runtime.turn.messages,
+      baseMessages: preparedRuntime.turn.messages,
       operation,
       events: previousEvents,
     });
@@ -144,7 +147,10 @@ export const runPiAgentStep = async (
         const uow = forSchema(piSchema);
         uow.update(
           "session",
-          buildScopedInstanceRowId(runtime.session.workflowName, runtime.event.instanceId),
+          buildScopedInstanceRowId(
+            preparedRuntime.session.workflowName,
+            preparedRuntime.event.instanceId,
+          ),
           (builder) => builder.set({ status: "waiting", updatedAt: uow.now() }),
         );
       });
@@ -171,7 +177,10 @@ export const runPiAgentStep = async (
 
     const result = await runAgent(
       restore.operation,
-      { ...runtime, turn: { ...runtime.turn, messages: restore.messages } },
+      {
+        ...preparedRuntime,
+        turn: { ...preparedRuntime.turn, messages: restore.messages },
+      },
       {
         onController: (controller) => {
           if (controls.length === 0) {
@@ -191,14 +200,14 @@ export const runPiAgentStep = async (
         },
         onEvent: async (agentEvent) => {
           PiLogger.debug("agent event observed before workflow tx.emit", {
-            sessionId: runtime.session.sessionId,
-            turn: runtime.turn.turnId,
+            sessionId: preparedRuntime.session.sessionId,
+            turn: preparedRuntime.turn.turnId,
             type: agentEvent.type,
           });
           tx.emit(agentEvent);
         },
       },
-      behavior,
+      turnBehavior,
     );
 
     return finish({ ...result, events: [...restore.events, ...result.events] });
