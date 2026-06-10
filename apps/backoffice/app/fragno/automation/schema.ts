@@ -9,6 +9,9 @@ export const automationFragmentSchema = schema("automations", (s) => {
       .addColumn("id", idColumn())
       .addColumn("key", column("string"))
       .addColumn("value", column("string"))
+      .addColumn("description", column("string").nullable())
+      .addColumn("category", column("json").nullable())
+      .addColumn("actor", column("json").nullable())
       .addColumn(
         "createdAt",
         column("timestamp").defaultTo((b) => b.now()),

@@ -114,6 +114,7 @@ export const createAutomationRuntime = ({
     get: async () => requireOrgRouteBackend("store.get"),
     set: async () => requireOrgRouteBackend("store.set"),
     delete: async () => requireOrgRouteBackend("store.delete"),
+    list: async () => requireOrgRouteBackend("store.list"),
     createClaim: async () => requireOrgRouteBackend("otp.identity.create-claim"),
     ...createEventRuntime({
       env,

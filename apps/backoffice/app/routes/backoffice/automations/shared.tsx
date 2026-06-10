@@ -3,6 +3,7 @@ import { Link, isRouteErrorResponse } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
+import type { AutomationEventActor } from "@/fragno/automation/contracts";
 
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "../route-errors";
 
@@ -25,6 +26,9 @@ export type AutomationStoreItem = {
   id: string;
   key: string;
   value: string;
+  description?: string | null;
+  category: string[];
+  actor: AutomationEventActor | null;
   createdAt?: string | Date | null;
   updatedAt?: string | Date | null;
 };
@@ -34,6 +38,7 @@ export type AutomationLayoutContext = {
   organisation: BackofficeOrganisation;
   scripts: AutomationScriptItem[];
   storeEntries: AutomationStoreItem[];
+  storePrefix: string;
   scriptsError: string | null;
   storeEntriesError: string | null;
 };

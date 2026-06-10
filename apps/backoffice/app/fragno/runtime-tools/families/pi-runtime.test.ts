@@ -143,6 +143,13 @@ const createPiRuntime = (overrides: Partial<PiRuntime> = {}): PiRuntime => ({
   ...overrides,
 });
 
+const automationStoreActor = {
+  scope: "external",
+  source: "telegram",
+  type: "chat",
+  id: "actor-1",
+} as const;
+
 const createAutomationStoreRuntime = (): AutomationStoreRuntime => ({
   get: async ({ key }) => {
     if (key !== "telegram/actor-1") {
@@ -152,13 +159,20 @@ const createAutomationStoreRuntime = (): AutomationStoreRuntime => ({
     return {
       key,
       value: "user-1",
+      category: [],
+      actor: automationStoreActor,
     };
   },
-  set: async ({ key, value }) => ({
+  set: async ({ key, value, actor }) => ({
     key,
     value,
+    category: [],
+    actor,
   }),
   delete: async ({ key }) => ({ ok: true, key }),
+  list: async ({ prefix }) => [
+    { key: `${prefix}actor-1`, value: "user-1", category: [], actor: automationStoreActor },
+  ],
 });
 
 const createPiHost = (piRuntime: PiRuntime = createPiRuntime()) => {
@@ -231,7 +245,7 @@ describe("pi bash command registration", () => {
     const result = await bash.exec(
       'session_id="$(pi.session.create --agent assistant --name support --tag urgent --print id)"\n' +
         'user_id="$(store.get --key telegram/actor-1 --print value)"\n' +
-        'store.set --key telegram/actor-2 --value "$user_id" >/dev/null\n' +
+        'store.set --key telegram/actor-2 --value "$user_id" --actor \'{"scope":"internal","type":"user","id":"user-1"}\' >/dev/null\n' +
         'list_id="$(pi.session.list --limit 1 --print 0.id)"\n' +
         'pi.session.get --session-id "$session_id" --print id >/dev/null\n' +
         'pi.session.turn --session-id "$session_id" --text "hello" --print assistantText',

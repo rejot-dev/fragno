@@ -51,8 +51,18 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   } satisfies StoreActionData;
 }
 
+const formatActor = (actor: AutomationLayoutContext["storeEntries"][number]["actor"]) => {
+  if (!actor) {
+    return "—";
+  }
+
+  const source = actor.source ? `${actor.source}/` : "";
+  return `${actor.scope}:${source}${actor.type}:${actor.id}`;
+};
+
 export default function BackofficeOrganisationAutomationStore() {
-  const { storeEntries, storeEntriesError } = useOutletContext<AutomationLayoutContext>();
+  const { storeEntries, storeEntriesError, storePrefix } =
+    useOutletContext<AutomationLayoutContext>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const pendingKey =
@@ -72,14 +82,32 @@ export default function BackofficeOrganisationAutomationStore() {
         </div>
       ) : null}
 
+      <Form
+        method="get"
+        className="flex flex-wrap items-end gap-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4"
+      >
+        <label className="flex min-w-64 flex-1 flex-col gap-1 text-xs text-[var(--bo-muted)]">
+          <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+            Key prefix
+          </span>
+          <input
+            name="prefix"
+            defaultValue={storePrefix}
+            placeholder="telegram/"
+            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-xs text-[var(--bo-fg)] outline-none focus:border-[color:var(--bo-accent)]"
+          />
+        </label>
+        <button
+          type="submit"
+          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+        >
+          Scan prefix
+        </button>
+      </Form>
+
       {storeEntriesError ? (
         <div className="border border-red-400/40 bg-red-500/8 p-4 text-sm text-red-700 dark:text-red-200">
           Could not load store entries from the automations service: {storeEntriesError}
-        </div>
-      ) : storeEntries.length === 0 ? (
-        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-          No store entries have been recorded yet. Read and write known keys from scripts with{" "}
-          <code>{"store.get({ key })"}</code> and <code>{"store.set({ key, value })"}</code>.
         </div>
       ) : (
         <div className="backoffice-scroll overflow-x-auto border border-[color:var(--bo-border)]">
@@ -91,6 +119,15 @@ export default function BackofficeOrganisationAutomationStore() {
                 </th>
                 <th scope="col" className="px-3 py-2">
                   Value
+                </th>
+                <th scope="col" className="px-3 py-2">
+                  Description
+                </th>
+                <th scope="col" className="px-3 py-2">
+                  Category
+                </th>
+                <th scope="col" className="px-3 py-2">
+                  Actor
                 </th>
                 <th scope="col" className="px-3 py-2">
                   Created
@@ -106,6 +143,7 @@ export default function BackofficeOrganisationAutomationStore() {
             <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">
               {storeEntries.map((entry) => {
                 const isSubmitting = pendingKey === entry.key;
+                const isSystemEntry = entry.category.includes("system");
 
                 return (
                   <tr key={entry.id} className="text-[var(--bo-muted)]">
@@ -115,20 +153,44 @@ export default function BackofficeOrganisationAutomationStore() {
                     <td className="px-3 py-3 align-top">
                       <span className="font-mono text-xs text-[var(--bo-fg)]">{entry.value}</span>
                     </td>
+                    <td className="max-w-xs px-3 py-3 align-top text-xs">
+                      {entry.description || "—"}
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <div className="flex flex-wrap gap-1">
+                        {entry.category.length
+                          ? entry.category.map((category) => (
+                              <span
+                                key={category}
+                                className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 font-mono text-[10px] text-[var(--bo-muted)]"
+                              >
+                                {category}
+                              </span>
+                            ))
+                          : "—"}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <span className="font-mono text-xs text-[var(--bo-fg)]">
+                        {formatActor(entry.actor)}
+                      </span>
+                    </td>
                     <td className="px-3 py-3 align-top">{formatTimestamp(entry.createdAt)}</td>
                     <td className="px-3 py-3 align-top">{formatTimestamp(entry.updatedAt)}</td>
                     <td className="px-3 py-3 text-right align-top">
-                      <Form method="post" className="inline-flex">
-                        <input type="hidden" name="intent" value="delete-store-entry" />
-                        <input type="hidden" name="key" value={entry.key} />
-                        <button
-                          type="submit"
-                          disabled={isSubmitting}
-                          className="border border-red-400/40 bg-red-500/8 px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-red-700 uppercase transition-colors hover:border-red-400/60 hover:bg-red-500/12 disabled:cursor-not-allowed disabled:opacity-60 dark:text-red-200"
-                        >
-                          {isSubmitting ? "Deleting…" : "Delete"}
-                        </button>
-                      </Form>
+                      {isSystemEntry ? null : (
+                        <Form method="post" className="inline-flex">
+                          <input type="hidden" name="intent" value="delete-store-entry" />
+                          <input type="hidden" name="key" value={entry.key} />
+                          <button
+                            type="submit"
+                            disabled={isSubmitting}
+                            className="border border-red-400/40 bg-red-500/8 px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-red-700 uppercase transition-colors hover:border-red-400/60 hover:bg-red-500/12 disabled:cursor-not-allowed disabled:opacity-60 dark:text-red-200"
+                          >
+                            {isSubmitting ? "Deleting…" : "Delete"}
+                          </button>
+                        </Form>
+                      )}
                     </td>
                   </tr>
                 );

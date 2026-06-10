@@ -2,11 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
+import type { StoreSetArgs } from "./automation-types";
 import { createBashHost } from "./bash-host";
 import type { OtpRuntime } from "./families/otp-runtime";
 import type { PiRuntime } from "./families/pi-runtime";
 import type { ResendRuntime } from "./families/resend-runtime";
 import type { Reson8Runtime } from "./families/reson8-runtime";
+
+const automationStoreActor = {
+  scope: "external",
+  source: "telegram",
+  type: "chat",
+  id: "actor-1",
+} as const;
 
 const createAutomationsRuntime = () => ({
   get: async () => ({
@@ -14,14 +22,19 @@ const createAutomationsRuntime = () => ({
     key: "actor-1",
     value: "user-1",
     status: "linked",
+    category: [],
+    actor: automationStoreActor,
   }),
-  set: async ({ source, key, value }: Record<string, string>) => ({
-    source,
-    key,
-    value,
+  set: async (input: StoreSetArgs & { source?: string }) => ({
+    source: input.source,
+    key: input.key,
+    value: input.value,
     status: "linked",
+    category: [],
+    actor: input.actor ?? automationStoreActor,
   }),
   delete: async ({ key }: Record<string, string>) => ({ ok: true as const, key }),
+  list: async () => [],
 });
 
 const createOtpRuntime = (): OtpRuntime => ({

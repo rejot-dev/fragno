@@ -33,6 +33,9 @@ const createMockBashContext = (): PiBashCommandContext => ({
       delete: async () => {
         throw new Error("not available in test");
       },
+      list: async () => {
+        throw new Error("not available in test");
+      },
     },
   },
   otp: {

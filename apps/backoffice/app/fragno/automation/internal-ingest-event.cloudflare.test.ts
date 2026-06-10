@@ -373,7 +373,11 @@ describe("automation internalIngestEvent", () => {
       currentAutomationFileSystem = await createAutomationFileSystem();
 
       const linkResponse = await starterFragment.fragment.callRoute("POST", "/store/set", {
-        body: { key: "telegram/chat-1", value: "user-1" },
+        body: {
+          key: "telegram/chat-1",
+          value: "user-1",
+          actor: { scope: "external", source: "telegram", type: "chat", id: "chat-1" },
+        },
       });
 
       if (linkResponse.type !== "json") {

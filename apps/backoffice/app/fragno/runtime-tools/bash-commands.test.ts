@@ -13,12 +13,15 @@ describe("createBackofficeBashCommands", () => {
   test("routes generated bash commands through semantic runtime tools", async () => {
     const calls: unknown[] = [];
     const commandCallsResult: { command: string; output: string; exitCode: number }[] = [];
+    const actor = { scope: "external", source: "telegram", type: "chat", id: "chat-123" } as const;
     const automationsRuntime: AutomationStoreRuntime = {
       get: async (input) => {
         calls.push(["get", input]);
         return {
           key: input.key,
           value: "user-55",
+          category: [],
+          actor,
         };
       },
       set: async (input) => {
@@ -26,11 +29,17 @@ describe("createBackofficeBashCommands", () => {
         return {
           key: input.key,
           value: input.value,
+          category: input.category ?? [],
+          actor: input.actor,
         };
       },
       delete: async (input) => {
         calls.push(["delete", input]);
         return { ok: true, key: input.key };
+      },
+      list: async (input) => {
+        calls.push(["list", input]);
+        return [{ key: `${input.prefix}chat-123`, value: "user-55", category: [], actor }];
       },
     };
 
@@ -48,7 +57,9 @@ describe("createBackofficeBashCommands", () => {
     ).resolves.toMatchObject({ stdout: "user-55\n", exitCode: 0 });
 
     await expect(
-      bash.exec("store.set --key telegram/chat-123 --value user-55 --format json"),
+      bash.exec(
+        'store.set --key telegram/chat-123 --value user-55 --actor \'{"scope":"external","source":"telegram","type":"chat","id":"chat-123"}\' --format json',
+      ),
     ).resolves.toMatchObject({ exitCode: 0 });
 
     await expect(
@@ -57,15 +68,23 @@ describe("createBackofficeBashCommands", () => {
       exitCode: 0,
     });
 
+    await expect(
+      bash.exec("store.list --prefix telegram/ --limit 10 --format json"),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+    });
+
     expect(calls).toEqual([
       ["get", { key: "telegram/chat-123" }],
-      ["set", { key: "telegram/chat-123", value: "user-55" }],
+      ["set", { key: "telegram/chat-123", value: "user-55", actor }],
       ["delete", { key: "telegram/chat-123" }],
+      ["list", { prefix: "telegram/", limit: 10 }],
     ]);
     expect(commandCallsResult.map((call) => call.command)).toEqual([
       "store.get",
       "store.set",
       "store.delete",
+      "store.list",
     ]);
   });
 

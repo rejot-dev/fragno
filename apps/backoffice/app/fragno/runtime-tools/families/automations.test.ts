@@ -54,6 +54,7 @@ describe("automation runtime tools", () => {
       "store.get",
       "store.set",
       "store.delete",
+      "store.list",
     ]);
     expect(automationWorkflowRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
       "workflow.list",
@@ -308,11 +309,19 @@ describe("automation runtime tools", () => {
     expect(set.name).toBe("set");
     expect(
       set.inputSchema.parse(
-        set.adapters!.bash!.parse(["--key", "telegram/chat-123", "--value", "user-55"]),
+        set.adapters!.bash!.parse([
+          "--key",
+          "telegram/chat-123",
+          "--value",
+          "user-55",
+          "--actor",
+          '{"scope":"external","source":"telegram","type":"chat","id":"chat-123"}',
+        ]),
       ),
     ).toEqual({
       key: "telegram/chat-123",
       value: "user-55",
+      actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
     });
   });
 

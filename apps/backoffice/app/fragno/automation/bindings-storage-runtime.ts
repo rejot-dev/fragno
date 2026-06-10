@@ -1,75 +1,115 @@
-import { isUniqueConstraintError, type HookContext } from "@fragno-dev/db";
+import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import type {
   StoreDeleteArgs,
   StoreGetArgs,
+  StoreListArgs,
   StoreSetArgs,
 } from "../runtime-tools/automation-types";
 import type {
   AutomationStoreDeleteResult,
   AutomationStoreEntry,
-  AutomationStoreRuntime,
 } from "../runtime-tools/families/automations-bindings";
 import { automationFragmentSchema } from "./schema";
-import { automationStoreDeleteResultSchema, automationStoreEntrySchema } from "./store";
+import {
+  automationStoreDeleteResultSchema,
+  automationStoreEntrySchema,
+  hasSystemCategory,
+  validateAutomationStoreVerification,
+} from "./store";
 
-export type { AutomationStoreDeleteResult, AutomationStoreEntry, AutomationStoreRuntime };
+export type { AutomationStoreDeleteResult, AutomationStoreEntry };
 
-export type AutomationStoreStorageContext = Pick<HookContext, "handlerTx">;
+export class AutomationStoreProtectedEntryError extends Error {
+  constructor(readonly key: string) {
+    super(`Store entry '${key}' is protected and cannot be deleted.`);
+    this.name = "AutomationStoreProtectedEntryError";
+  }
+}
 
-type AutomationStoreRetrieveScope = Parameters<
-  Parameters<ReturnType<AutomationStoreStorageContext["handlerTx"]>["retrieve"]>[0]
->[0];
+type AutomationStoreServiceContext = DatabaseServiceContext<Record<string, never>>;
 
-const findStoreEntryByKey =
-  (key: string) =>
-  ({ forSchema }: AutomationStoreRetrieveScope) =>
-    forSchema(automationFragmentSchema).findFirst("kv_store", (b) =>
-      b.whereIndex("idx_kv_store_key", (eb) => eb("key", "=", key)),
-    );
+const normalizeStoreEntry = (entry: unknown): AutomationStoreEntry =>
+  automationStoreEntrySchema.parse(entry);
 
-export const listAutomationStoreEntries = async (
-  context: AutomationStoreStorageContext,
-): Promise<AutomationStoreEntry[]> =>
-  await context
-    .handlerTx()
-    .retrieve(({ forSchema }) =>
-      forSchema(automationFragmentSchema).find("kv_store", (b) => b.whereIndex("primary")),
-    )
-    .transformRetrieve(([entries]) =>
-      entries.map((entry) => automationStoreEntrySchema.parse(entry)),
-    )
-    .execute();
+const normalizeStoreEntries = (entries: unknown[]): AutomationStoreEntry[] =>
+  entries.map((entry) => normalizeStoreEntry(entry));
 
-export const getAutomationStoreEntry = async (
-  context: AutomationStoreStorageContext,
-  { key }: StoreGetArgs,
-): Promise<AutomationStoreEntry | null> =>
-  await context
-    .handlerTx()
-    .retrieve(findStoreEntryByKey(key))
-    .transformRetrieve(([entry]) => (entry ? automationStoreEntrySchema.parse(entry) : null))
-    .execute();
+const mergeCategoryForUpdate = ({
+  existing,
+  nextCategory,
+}: {
+  existing: AutomationStoreEntry;
+  nextCategory?: string[];
+}) => {
+  if (typeof nextCategory === "undefined") {
+    return existing.category;
+  }
 
-export const setAutomationStoreEntry = async (
-  context: AutomationStoreStorageContext,
-  { key, value }: StoreSetArgs,
-): Promise<AutomationStoreEntry> => {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      return await context
-        .handlerTx()
-        .retrieve(findStoreEntryByKey(key))
-        .mutate(({ forSchema, retrieveResult: [existing] }) => {
-          const uow = forSchema(automationFragmentSchema);
+  if (!hasSystemCategory(existing) || nextCategory.includes("system")) {
+    return nextCategory;
+  }
+
+  return [...nextCategory, "system"];
+};
+
+export const createAutomationStoreServices = (
+  defineService: <TService>(
+    service: TService & ThisType<AutomationStoreServiceContext>,
+  ) => TService,
+) =>
+  defineService({
+    listStoreEntries({ prefix, limit }: StoreListArgs = {}) {
+      return this.serviceTx(automationFragmentSchema)
+        .retrieve((uow) =>
+          uow.find("kv_store", (b) => {
+            const query = prefix
+              ? b.whereIndex("idx_kv_store_key", (eb) => eb("key", "starts with", prefix))
+              : b.whereIndex("primary");
+            return limit ? query.pageSize(limit) : query;
+          }),
+        )
+        .transformRetrieve(([entries]) => normalizeStoreEntries(entries))
+        .build();
+    },
+
+    getStoreEntry({ key }: StoreGetArgs) {
+      return this.serviceTx(automationFragmentSchema)
+        .retrieve((uow) =>
+          uow.findFirst("kv_store", (b) =>
+            b.whereIndex("idx_kv_store_key", (eb) => eb("key", "=", key)),
+          ),
+        )
+        .transformRetrieve(([entry]) => (entry ? normalizeStoreEntry(entry) : null))
+        .build();
+    },
+
+    setStoreEntry(args: StoreSetArgs) {
+      const { key, value, actor, verification } = args;
+      validateAutomationStoreVerification({ value, verification });
+
+      return this.serviceTx(automationFragmentSchema)
+        .retrieve((uow) =>
+          uow.findFirst("kv_store", (b) =>
+            b.whereIndex("idx_kv_store_key", (eb) => eb("key", "=", key)),
+          ),
+        )
+        .mutate(({ uow, retrieveResult: [rawExisting] }) => {
           const now = uow.now();
 
-          if (existing) {
-            uow.update("kv_store", existing.id, (b) =>
+          if (rawExisting) {
+            const existing = normalizeStoreEntry(rawExisting);
+            const description = "description" in args ? args.description : existing.description;
+            const category = mergeCategoryForUpdate({ existing, nextCategory: args.category });
+
+            uow.update("kv_store", rawExisting.id, (b) =>
               b
                 .set({
                   key,
                   value,
+                  actor,
+                  description: description ?? null,
+                  category,
                   updatedAt: now,
                 })
                 .check(),
@@ -79,13 +119,21 @@ export const setAutomationStoreEntry = async (
               ...existing,
               key,
               value,
+              actor,
+              description: description ?? null,
+              category,
               updatedAt: now,
             };
           }
 
+          const category = args.category ?? [];
+          const description = args.description ?? null;
           const createdId = uow.create("kv_store", {
             key,
             value,
+            actor,
+            description,
+            category,
             createdAt: now,
             updatedAt: now,
           });
@@ -94,56 +142,40 @@ export const setAutomationStoreEntry = async (
             id: createdId.valueOf(),
             key,
             value,
+            actor,
+            description,
+            category,
             createdAt: now,
             updatedAt: now,
           };
         })
-        .transform(({ mutateResult }) => automationStoreEntrySchema.parse(mutateResult))
-        .execute();
-    } catch (error) {
-      if (attempt === 0 && isUniqueConstraintError(error)) {
-        continue;
-      }
-      throw error;
-    }
-  }
+        .transform(({ mutateResult }) => normalizeStoreEntry(mutateResult))
+        .build();
+    },
 
-  throw new Error("Failed to set automation store entry after retrying a concurrent insert.");
-};
+    deleteStoreEntry({ key }: StoreDeleteArgs) {
+      return this.serviceTx(automationFragmentSchema)
+        .retrieve((uow) =>
+          uow.findFirst("kv_store", (b) =>
+            b.whereIndex("idx_kv_store_key", (eb) => eb("key", "=", key)),
+          ),
+        )
+        .mutate(({ uow, retrieveResult: [rawExisting] }) => {
+          if (!rawExisting) {
+            return null;
+          }
 
-export const deleteAutomationStoreEntry = async (
-  context: AutomationStoreStorageContext,
-  { key }: StoreDeleteArgs,
-): Promise<AutomationStoreDeleteResult | null> =>
-  await context
-    .handlerTx()
-    .retrieve(findStoreEntryByKey(key))
-    .mutate(({ forSchema, retrieveResult: [existing] }) => {
-      if (!existing) {
-        return null;
-      }
+          const existing = normalizeStoreEntry(rawExisting);
+          if (hasSystemCategory(existing)) {
+            throw new AutomationStoreProtectedEntryError(key);
+          }
 
-      forSchema(automationFragmentSchema).delete("kv_store", existing.id, (b) => b.check());
-      return { ok: true as const, key };
-    })
-    .transform(({ mutateResult }) =>
-      mutateResult ? automationStoreDeleteResultSchema.parse(mutateResult) : null,
-    )
-    .execute();
-
-export const createAutomationStoreRuntime = ({
-  get,
-  set,
-  delete: deleteEntry,
-}: AutomationStoreRuntime): AutomationStoreRuntime => ({ get, set, delete: deleteEntry });
-
-export const createStorageBackedAutomationStoreRuntime = ({
-  hookContext,
-}: {
-  hookContext: AutomationStoreStorageContext;
-}): AutomationStoreRuntime =>
-  createAutomationStoreRuntime({
-    get: async (args) => getAutomationStoreEntry(hookContext, args),
-    set: async (args) => setAutomationStoreEntry(hookContext, args),
-    delete: async (args) => deleteAutomationStoreEntry(hookContext, args),
+          uow.delete("kv_store", rawExisting.id, (b) => b.check());
+          return { ok: true as const, key };
+        })
+        .transform(({ mutateResult }) =>
+          mutateResult ? automationStoreDeleteResultSchema.parse(mutateResult) : null,
+        )
+        .build();
+    },
   });

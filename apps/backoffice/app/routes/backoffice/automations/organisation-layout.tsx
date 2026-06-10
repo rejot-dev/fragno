@@ -42,6 +42,9 @@ const normalizeStoreEntries = (
     id: toExternalId(entry.id) || `store-entry-${index}`,
     key: entry.key?.trim() || "—",
     value: entry.value?.trim() || "—",
+    description: entry.description ?? null,
+    category: Array.isArray(entry.category) ? entry.category : [],
+    actor: entry.actor ?? null,
     createdAt: entry.createdAt ?? null,
     updatedAt: entry.updatedAt ?? null,
   }));
@@ -69,6 +72,9 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     throwOrganisationNotFound(params.orgId);
   }
 
+  const url = new URL(request.url);
+  const storePrefix = url.searchParams.get("prefix") ?? "";
+
   const [workspaceResult, storeResult] = await Promise.all([
     loadAutomationWorkspaceData({ context, orgId: params.orgId }),
     fetchAutomationStoreEntries(request, context, params.orgId),
@@ -84,6 +90,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     storeEntries,
     scriptsError: workspaceResult.scriptsError,
     storeEntriesError: storeResult.storeEntriesError,
+    storePrefix,
   };
 }
 
