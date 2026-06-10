@@ -1,0 +1,149 @@
+{
+  "name": "@fragno-dev/mcp-fragment",
+  "version": "0.0.3",
+  "description": "A Fragno fragment",
+  "keywords": [
+    "fragno",
+    "react",
+    "solidjs",
+    "svelte",
+    "typescript",
+    "vue"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/mcp-fragment"
+  },
+  "bin": {
+    "fragno-mcp": "./bin/run.js"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "type": "module",
+  "main": "./dist/node/index.js",
+  "module": "./dist/node/index.js",
+  "types": "./dist/node/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/node/index.d.ts",
+      "default": "./dist/node/index.js"
+    },
+    "./cli": {
+      "types": "./dist/cli/cli.d.ts",
+      "default": "./dist/cli/cli.js"
+    },
+    "./definition": {
+      "development": "./src/definition.ts",
+      "types": "./dist/node/definition.d.ts",
+      "default": "./dist/node/definition.js"
+    },
+    "./dist/node/definition.js": {
+      "types": "./dist/node/definition.d.ts",
+      "default": "./dist/node/definition.js"
+    },
+    "./routes": {
+      "development": "./src/routes.ts",
+      "types": "./dist/node/routes.d.ts",
+      "default": "./dist/node/routes.js"
+    },
+    "./dist/node/routes.js": {
+      "types": "./dist/node/routes.d.ts",
+      "default": "./dist/node/routes.js"
+    },
+    "./schema": {
+      "development": "./src/schema.ts",
+      "types": "./dist/node/schema.d.ts",
+      "default": "./dist/node/schema.js"
+    },
+    "./dist/node/schema.js": {
+      "types": "./dist/node/schema.d.ts",
+      "default": "./dist/node/schema.js"
+    },
+    "./types": {
+      "development": "./src/mcp-types.ts",
+      "types": "./dist/node/mcp-types.d.ts",
+      "default": "./dist/node/mcp-types.js"
+    },
+    "./dist/node/mcp-types.js": {
+      "types": "./dist/node/mcp-types.d.ts",
+      "default": "./dist/node/mcp-types.js"
+    },
+    "./react": {
+      "development": {
+        "browser": "./dist/browser/client/react.js",
+        "default": "./src/client/react.ts"
+      },
+      "types": "./dist/browser/client/react.d.ts",
+      "default": "./dist/browser/client/react.js"
+    },
+    "./vue": {
+      "development": {
+        "browser": "./dist/browser/client/vue.js",
+        "default": "./src/client/vue.ts"
+      },
+      "types": "./dist/browser/client/vue.d.ts",
+      "default": "./dist/browser/client/vue.js"
+    },
+    "./svelte": {
+      "development": {
+        "browser": "./dist/browser/client/svelte.js",
+        "default": "./src/client/svelte.ts"
+      },
+      "types": "./dist/browser/client/svelte.d.ts",
+      "default": "./dist/browser/client/svelte.js"
+    },
+    "./solid": {
+      "development": {
+        "browser": "./dist/browser/client/solid.js",
+        "default": "./src/client/solid.ts"
+      },
+      "types": "./dist/browser/client/solid.d.ts",
+      "default": "./dist/browser/client/solid.js"
+    },
+    "./vanilla": {
+      "development": {
+        "browser": "./dist/browser/client/vanilla.js",
+        "default": "./src/client/vanilla.ts"
+      },
+      "types": "./dist/browser/client/vanilla.d.ts",
+      "default": "./dist/browser/client/vanilla.js"
+    }
+  },
+  "scripts": {
+    "types:check": "tsgo --noEmit",
+    "build": "tsdown",
+    "cli": "tsx src/cli/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest --watch"
+  },
+  "dependencies": {
+    "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
+    "@fragno-dev/node": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@standard-schema/spec": "^1.0.0",
+    "better-sqlite3": "^12.5.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@fragno-dev/cli": "workspace:*",
+    "@fragno-dev/test": "workspace:*",
+    "@fragno-dev/unplugin-fragno": "workspace:*",
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@types/node": "^25.2.2",
+    "@vitest/coverage-istanbul": "^4.1.0",
+    "tsdown": "^0.20.3",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@typescript/native-preview": "catalog:",
+    "react": ">=18.0.0",
+    "solid-js": ">=1.0.0",
+    "svelte": ">=4.0.0",
+    "vue": ">=3.0.0"
+  }
+}
