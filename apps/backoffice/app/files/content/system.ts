@@ -48,12 +48,9 @@ Connection discovery/setup flow for agents:
 1. Run \`hooks.scopes.list\` to discover valid hook scopes.
 2. Run \`connections.list\` to inspect configured connections.
 3. Run \`events.catalog\` before creating event-driven automations.
-4. For setup, run \`connections.setup --id <id>\`, collect the required user-provided values, then
-   use \`connections.configure --id <id> --json '{...}'\` and \`connections.verify --id <id>\`.
-
-Some connections also provide file-oriented views of their data:
-
-- /resend — email thread snapshots (one Markdown file per thread)
+4. For setup, read \`/starter/skills/configuring-connections/SKILL.md\`, collect the required
+   user-provided values, then use \`connections.configure --id <id> --json '{...}'\` and
+   \`connections.verify --id <id>\`.
 
 ## Runtime-specific references
 

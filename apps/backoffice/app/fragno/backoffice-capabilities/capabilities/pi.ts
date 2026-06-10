@@ -4,6 +4,7 @@ import type {
   BackofficeCapability,
   ConnectionStatus,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createPiCapabilityFiles } from "@/fragno/backoffice-capabilities/capabilities/pi-files";
 
 const AUTOMATION_SOURCE = "pi" as const;
 const AUTOMATION_EVENT_CAPABILITY_CONFIGURED = "capability.configured" as const;
@@ -79,6 +80,9 @@ const toPiStatus = (response: PiAdminConfigResponse): ConnectionStatus => {
 export const piCapability: BackofficeCapability = {
   ...capability,
   runtimeToolNamespaces: ["pi"],
+  get files() {
+    return createPiCapabilityFiles();
+  },
   connection: {
     configurable: true,
     configureInputSchema: piConfigureInputSchema,
@@ -88,27 +92,6 @@ export const piCapability: BackofficeCapability = {
       { name: "apiKeys.gemini", secret: true, description: "Gemini API key." },
       { name: "harnesses", description: "Harness configuration array." },
     ],
-    setup: {
-      overview: "Configure Pi model providers and harnesses for this organisation.",
-      manualSteps: [
-        {
-          id: "add-model-key",
-          title: "Add model provider key",
-          instructions: "Add at least one model provider API key.",
-          expectedUserInput: ["apiKeys"],
-        },
-        {
-          id: "configure-harness",
-          title: "Configure harnesses",
-          instructions: "Configure at least one harness.",
-          expectedUserInput: ["harnesses"],
-        },
-      ],
-      verify: {
-        tool: "connections.get --id pi",
-        description: "Check configured API keys and harnesses.",
-      },
-    },
     getStatus: async ({ env, orgId }) => toPiStatus(await getPiDo(env, orgId).getAdminConfig()),
     verify: async ({ env, orgId }) => toPiStatus(await getPiDo(env, orgId).getAdminConfig()),
     reset: async ({ env, orgId }) => toPiStatus(await getPiDo(env, orgId).resetAdminConfig()),

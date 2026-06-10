@@ -125,6 +125,7 @@ export default function BackofficeFilesExplorer() {
                     ) : null}
                     <Link
                       to={{ search: buildExplorerSearch(selectedDetail.node.mountPoint) }}
+                      preventScrollReset
                       className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Jump to root
@@ -213,6 +214,7 @@ function TreeNodeRow({
     <div>
       <Link
         to={{ pathname: `/backoffice/files/${orgId}`, search: buildExplorerSearch(node.path) }}
+        preventScrollReset
         aria-current={isSelected ? "page" : undefined}
         className={
           isSelected

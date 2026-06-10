@@ -841,20 +841,30 @@ export const createBackofficeCapabilitiesRuntime = ({
     if (!capability?.connection) {
       throw new Error(`Unknown configurable connection: ${id}`);
     }
-    const setup = capability.connection.setup ?? {
-      overview: `${capability.label} does not provide a setup guide yet.`,
-      manualSteps: [],
-    };
+    const skillPath = Object.keys(capability.files ?? {}).find(
+      (path) => path.startsWith("skills/") && path.endsWith("/SKILL.md"),
+    );
+    const hasSkill = Boolean(skillPath);
     return {
       id: capability.id,
       label: capability.label,
-      overview: setup.overview,
-      manualSteps: setup.manualSteps.map(({ expectedUserInput, ...step }) => ({
-        ...step,
-        ...(expectedUserInput ? { expectedUserInput: [...expectedUserInput] } : {}),
-      })),
+      overview: hasSkill
+        ? `Use /starter/${skillPath} for setup, event, and tool guidance.`
+        : `${capability.label} does not provide a setup guide yet.`,
+      manualSteps: hasSkill
+        ? [
+            {
+              id: "read-agent-skill",
+              title: "Read agent skill",
+              instructions: `Open /starter/${skillPath} and follow its guidance.`,
+            },
+          ]
+        : [],
       fields: [...(capability.connection.configureFields ?? [])],
-      ...(setup.verify ? { verify: setup.verify } : {}),
+      verify: {
+        tool: `connections.get --id ${capability.id}`,
+        description: `Check configured=true for ${capability.label}.`,
+      },
       configureExample: `connections.configure --id ${capability.id} --json '{...}' --format json`,
     };
   },

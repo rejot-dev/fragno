@@ -180,6 +180,7 @@ describe("Pi bash tool", () => {
       "input",
       "output",
       "prompts",
+      "skills",
     ]);
   });
 

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createOtpCapabilityFiles } from "@/fragno/backoffice-capabilities/capabilities/otp-files";
 
 const AUTOMATION_SOURCE = "otp" as const;
 const AUTOMATION_EVENT_IDENTITY_CLAIM_COMPLETED = "identity.claim.completed" as const;
@@ -26,6 +27,9 @@ export const otpCapability: BackofficeCapability = {
   label: "OTP",
   kind: "system",
   runtimeToolNamespaces: ["otp"],
+  get files() {
+    return createOtpCapabilityFiles();
+  },
   hooks: [
     {
       id: "otp",

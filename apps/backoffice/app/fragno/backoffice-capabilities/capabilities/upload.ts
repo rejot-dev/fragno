@@ -4,6 +4,7 @@ import type {
   BackofficeCapability,
   ConnectionStatus,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createUploadCapabilityFiles } from "@/fragno/backoffice-capabilities/capabilities/upload-files";
 
 const uploadProviderSchema = z.enum(["database", "r2", "r2-binding"]);
 
@@ -47,6 +48,9 @@ const toUploadStatus = (response: UploadAdminConfigResponse): ConnectionStatus =
 export const uploadCapability: BackofficeCapability = {
   ...capability,
   runtimeToolNamespaces: [],
+  get files() {
+    return createUploadCapabilityFiles();
+  },
   connection: {
     configurable: true,
     configureInputSchema: uploadConfigureInputSchema,
@@ -56,26 +60,6 @@ export const uploadCapability: BackofficeCapability = {
       { name: "r2", secret: true, description: "R2 provider credentials/configuration payload." },
       { name: "r2Binding", description: "R2 binding provider configuration payload." },
     ],
-    setup: {
-      overview: "Configure file upload storage for this organisation.",
-      manualSteps: [
-        {
-          id: "choose-provider",
-          title: "Choose provider",
-          instructions: "Choose a provider: database, r2-binding, or r2.",
-          expectedUserInput: ["provider"],
-        },
-        {
-          id: "collect-provider-config",
-          title: "Collect provider config",
-          instructions: "Collect the provider-specific configuration payload.",
-        },
-      ],
-      verify: {
-        tool: "connections.get --id upload",
-        description: "Check configured providers and default provider.",
-      },
-    },
     getStatus: async ({ env, orgId }) =>
       toUploadStatus(await getUploadDo(env, orgId).getAdminConfig()),
     verify: async ({ env, orgId }) =>

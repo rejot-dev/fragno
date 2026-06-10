@@ -4,6 +4,7 @@ import type {
   BackofficeCapability,
   ConnectionStatus,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createReson8CapabilityFiles } from "@/fragno/backoffice-capabilities/capabilities/reson8-files";
 
 const apiKeyValueSchema = z
   .string()
@@ -43,27 +44,15 @@ const toReson8Status = (response: Reson8AdminConfigResponse): ConnectionStatus =
 export const reson8Capability: BackofficeCapability = {
   ...capability,
   runtimeToolNamespaces: ["reson8"],
+  get files() {
+    return createReson8CapabilityFiles();
+  },
   connection: {
     configurable: true,
     configureInputSchema: reson8ConfigureInputSchema,
     configureFields: [
       { name: "apiKey", secret: true, description: "Reson8 API key. Required on first setup." },
     ],
-    setup: {
-      overview: "Connect Reson8 to this organisation.",
-      manualSteps: [
-        {
-          id: "create-api-key",
-          title: "Create API key",
-          instructions: "Create a Reson8 API key.",
-          expectedUserInput: ["apiKey"],
-        },
-      ],
-      verify: {
-        tool: "connections.get --id reson8",
-        description: "Check configured=true.",
-      },
-    },
     getStatus: async ({ env, orgId }) =>
       toReson8Status(await getReson8Do(env, orgId).getAdminConfig()),
     verify: async ({ env, orgId }) =>
