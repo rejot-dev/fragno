@@ -90,10 +90,14 @@ export const PI_MODEL_CATALOG: PiModelOption[] = [
   { provider: "gemini", name: "gemini-3-pro-preview", label: "Gemini 3 Pro (Preview)" },
 ];
 
-export const PI_TOOL_IDS = ["bash", "execCodeMode"] as const;
+export const PI_TOOL_IDS = ["bash", "execCodeMode", "read"] as const;
 export type PiToolId = (typeof PI_TOOL_IDS)[number];
 
-const BASH_HARNESS_PROMPT = `SYSTEM.md (agent guidance):\n\n${DEFAULT_SYSTEM_PROMPT}\n\n${BASH_HARNESS_REFERENCE}`;
+const SKILL_READING_PROMPT =
+  "When available_skills lists a matching skill, use the read tool to open " +
+  "the corresponding /starter/skills/<skill-name>/SKILL.md file before proceeding.";
+
+const BASH_HARNESS_PROMPT = `SYSTEM.md (agent guidance):\n\n${DEFAULT_SYSTEM_PROMPT}\n\n${SKILL_READING_PROMPT}\n\n${BASH_HARNESS_REFERENCE}`;
 
 const STATE_HARNESS_PROMPT = createCodemodeSystemPrompt({
   families: runtimeToolFamilies,
@@ -102,6 +106,8 @@ const STATE_HARNESS_PROMPT = createCodemodeSystemPrompt({
 const CODEMODE_HARNESS_PROMPT = `SYSTEM.md (agent guidance):\n\n${DEFAULT_SYSTEM_PROMPT}
 
 Codemode harness guidance:
+
+${SKILL_READING_PROMPT}
 
 - Use execCodeMode for coordinated filesystem work in the combined session filesystem.
 - Use state.* APIs from inside execCodeMode for multi-file operations.
@@ -122,14 +128,14 @@ export const DEFAULT_PI_HARNESSES: PiHarnessConfig[] = [
     label: "Codemode",
     description: "Built-in harness with execCodeMode access to the combined session filesystem.",
     systemPrompt: CODEMODE_HARNESS_PROMPT,
-    tools: ["execCodeMode"],
+    tools: ["execCodeMode", "read"],
   },
   {
     id: "bash",
     label: "Bash",
     description: "Built-in harness with bash access and the combined session filesystem.",
     systemPrompt: BASH_HARNESS_PROMPT,
-    tools: ["bash"],
+    tools: ["bash", "read"],
   },
 ];
 
