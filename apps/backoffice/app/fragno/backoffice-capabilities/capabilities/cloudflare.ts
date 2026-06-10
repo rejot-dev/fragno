@@ -7,21 +7,6 @@ export const cloudflareCapability: BackofficeCapability = {
   runtimeToolNamespaces: [],
   connection: {
     configurable: false,
-    setup: {
-      overview: "Cloudflare Workers integration is configured through Worker environment bindings.",
-      manualSteps: [
-        {
-          id: "configure-bindings",
-          title: "Configure Cloudflare bindings",
-          instructions:
-            "Set the required Cloudflare account/API bindings and Durable Object bindings in the Worker environment.",
-        },
-      ],
-      verify: {
-        tool: "connections.get --id cloudflare",
-        description: "Check the environment-managed Cloudflare connection status.",
-      },
-    },
     getStatus: async ({ env }) => ({
       id: "cloudflare",
       label: "Cloudflare Workers",

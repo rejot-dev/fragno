@@ -7,22 +7,6 @@ export const githubCapability: BackofficeCapability = {
   runtimeToolNamespaces: [],
   connection: {
     configurable: false,
-    setup: {
-      overview:
-        "GitHub is configured through environment GitHub App settings and installation flows.",
-      manualSteps: [
-        {
-          id: "configure-github-app",
-          title: "Configure GitHub App",
-          instructions:
-            "Set the GitHub App environment secrets/bindings and install the app for the organisation.",
-        },
-      ],
-      verify: {
-        tool: "connections.get --id github",
-        description: "Check the environment-managed GitHub connection status.",
-      },
-    },
     getStatus: async ({ env }) => ({
       id: "github",
       label: "GitHub",

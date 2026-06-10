@@ -1,7 +1,9 @@
 import type { FileSystemArtifact } from "../types";
 import { STARTER_AUTOMATION_CONTENT } from "./automations";
+import { BACKOFFICE_CAPABILITY_FILE_CONTENT } from "./backoffice-capability-files";
+import { GENERAL_SKILL_CONTENT } from "./skills";
 
-export const STATIC_STARTER_CONTENT = {
+export const STATIC_STARTER_CONTENT: Record<string, FileSystemArtifact> = {
   "README.md": `# Static starter content
 
 This read-only starter tree contains example files and default automation content.
@@ -14,6 +16,7 @@ This read-only starter tree contains example files and default automation conten
    - Use \`*.cm.js\` for codemode scripts.
    - Use \`*.sh\` for bash scripts.
    - Use \`*.workflow.js\` for durable codemode workflows started by scripts.
+4. Read capability agent skills under \`skills/*/SKILL.md\` for setup, event, and tool guidance.
 
 Copy anything you want to edit into writable workspace storage.
 `,
@@ -32,7 +35,9 @@ Describe the task you want to work on here.
 `,
   "output/.gitkeep": "",
   ...STARTER_AUTOMATION_CONTENT,
-} satisfies Record<string, FileSystemArtifact>;
+  ...BACKOFFICE_CAPABILITY_FILE_CONTENT,
+  ...GENERAL_SKILL_CONTENT,
+};
 
 export const STATIC_STARTER_ROOT_DESCRIPTION =
-  "Read-only static starter files, including filesystem-backed automation bash/codemode scripts under /starter.";
+  "Read-only static starter files, including filesystem-backed automation bash/codemode scripts and capability skills under /starter.";

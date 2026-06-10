@@ -4,6 +4,7 @@ import type {
   BackofficeCapability,
   ConnectionStatus,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createResendCapabilityFiles } from "@/fragno/backoffice-capabilities/capabilities/resend-files";
 
 const optionalTrimmedString = z
   .string()
@@ -62,6 +63,9 @@ const toResendStatus = (response: ResendAdminConfigResponse): ConnectionStatus =
 export const resendCapability: BackofficeCapability = {
   ...capability,
   runtimeToolNamespaces: ["resend"],
+  get files() {
+    return createResendCapabilityFiles();
+  },
   connection: {
     configurable: true,
     configureInputSchema: resendConfigureInputSchema,
@@ -75,28 +79,6 @@ export const resendCapability: BackofficeCapability = {
         description: "Public http(s) base URL used when registering Resend webhooks.",
       },
     ],
-    setup: {
-      overview: "Connect Resend email delivery to this organisation.",
-      manualSteps: [
-        {
-          id: "create-api-key",
-          title: "Create API key",
-          instructions: "Create a Resend API key.",
-          expectedUserInput: ["apiKey"],
-        },
-        {
-          id: "choose-default-from",
-          title: "Choose default sender and public URL",
-          instructions:
-            "Choose a default from address for outgoing email and provide the public Backoffice origin or tunnel URL.",
-          expectedUserInput: ["defaultFrom", "webhookBaseUrl"],
-        },
-      ],
-      verify: {
-        tool: "connections.get --id resend",
-        description: "Check configured=true and webhook secret status.",
-      },
-    },
     getStatus: async ({ env, orgId }) =>
       toResendStatus(await getResendDo(env, orgId).getAdminConfig()),
     verify: async ({ env, orgId }) =>

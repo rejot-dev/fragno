@@ -5,6 +5,7 @@ import type {
   BackofficeConfigurableConnectionCapability,
   ConnectionStatus,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createTelegramCapabilityFiles } from "@/fragno/backoffice-capabilities/capabilities/telegram-files";
 
 import type { TelegramAdminConfigResponse } from "../../../../workers/telegram.do";
 
@@ -105,6 +106,9 @@ const toTelegramStatus = (response: TelegramAdminConfigResponse): ConnectionStat
 export const telegramCapability: BackofficeConfigurableConnectionCapability = {
   ...capability,
   runtimeToolNamespaces: ["telegram"],
+  get files() {
+    return createTelegramCapabilityFiles();
+  },
   externalEntities: [telegramAutomationExternalEntities.chat],
   connection: {
     configurable: true,
@@ -130,28 +134,6 @@ export const telegramCapability: BackofficeConfigurableConnectionCapability = {
         description: "Public http(s) base URL used when registering the Telegram webhook.",
       },
     ],
-    setup: {
-      overview: "Connect a Telegram bot to this organisation.",
-      manualSteps: [
-        {
-          id: "create-bot",
-          title: "Create bot",
-          instructions: "Create a bot with BotFather and copy the bot token.",
-          expectedUserInput: ["botToken"],
-        },
-        {
-          id: "choose-webhook-secret",
-          title: "Choose webhook secret and public URL",
-          instructions:
-            "Choose a long random webhook secret token and provide the public Backoffice origin or tunnel URL.",
-          expectedUserInput: ["webhookSecretToken", "webhookBaseUrl"],
-        },
-      ],
-      verify: {
-        tool: "connections.get --id telegram",
-        description: "Check configured=true and webhook verification if present.",
-      },
-    },
     getStatus: async ({ env, orgId }) =>
       toTelegramStatus(await getTelegramDo(env, orgId).getAdminConfig()),
     verify: async ({ env, orgId }) =>
