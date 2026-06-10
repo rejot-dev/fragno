@@ -4,7 +4,12 @@ import type { AutomationExternalEntityDefinition } from "@/fragno/automation/con
 import type { DurableHookQueueOptions, DurableHookRepository } from "@/fragno/durable-hooks";
 import { zodSchemaToJsonSchema } from "@/lib/zod/zod-formatter";
 
-import { authCapability } from "./capabilities/auth";
+import {
+  AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED,
+  AUTH_AUTOMATION_EVENT_ORGANIZATION_UPDATED,
+  AUTH_AUTOMATION_SOURCE,
+  authCapability,
+} from "./capabilities/auth";
 import { automationsCapability } from "./capabilities/automations";
 import { cloudflareCapability } from "./capabilities/cloudflare";
 import { githubCapability } from "./capabilities/github";
@@ -296,12 +301,17 @@ export const getHookScope = (id: string) =>
     .find((hook) => hook.id === id);
 
 export const AUTOMATION_SOURCES = {
+  auth: AUTH_AUTOMATION_SOURCE,
   telegram: "telegram",
   otp: "otp",
   pi: "pi",
 } as const;
 
 export const AUTOMATION_SOURCE_EVENT_TYPES = {
+  [AUTOMATION_SOURCES.auth]: {
+    organizationCreated: AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED,
+    organizationUpdated: AUTH_AUTOMATION_EVENT_ORGANIZATION_UPDATED,
+  },
   [AUTOMATION_SOURCES.telegram]: {
     messageReceived: "message.received",
   },
