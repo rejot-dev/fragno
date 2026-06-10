@@ -20,6 +20,8 @@ export function isTxResult(value: unknown): value is TxResult<unknown> {
   );
 }
 
+type MaybePromise<T> = T | Promise<T>;
+
 /**
  * Extract the retrieve success result type from a TxResult.
  * If the TxResult has retrieveSuccess, returns its return type.
@@ -222,7 +224,7 @@ export interface ServiceTxCallbacks<
   retrieveSuccess?: (
     retrieveResult: TRetrieveResults,
     serviceResult: ExtractServiceRetrieveResults<TServiceCalls>,
-  ) => TRetrieveSuccessResult;
+  ) => MaybePromise<TRetrieveSuccessResult>;
 
   /**
    * Mutation phase callback - schedules mutations based on retrieve results.
@@ -310,7 +312,7 @@ export interface HandlerTxCallbacks<
   retrieveSuccess?: (
     retrieveResult: TRetrieveResults,
     serviceResult: ExtractServiceRetrieveResults<TServiceCalls>,
-  ) => TRetrieveSuccessResult;
+  ) => MaybePromise<TRetrieveSuccessResult>;
 
   /**
    * Mutation phase callback - schedules mutations based on retrieve results.
@@ -650,7 +652,7 @@ async function processTxResultAfterRetrieve<T>(
   }
 
   if (callbacks.retrieveSuccess) {
-    internal.retrieveSuccessResult = callbacks.retrieveSuccess(
+    internal.retrieveSuccessResult = await callbacks.retrieveSuccess(
       retrieveResults,
       serviceResults as ExtractServiceRetrieveResults<readonly TxResult<unknown>[]>,
     );
@@ -899,7 +901,7 @@ async function executeTx(
       // Call retrieveSuccess if provided
       let retrieveSuccessResult: TRetrieveSuccessResult;
       if (callbacks.retrieveSuccess) {
-        retrieveSuccessResult = callbacks.retrieveSuccess(
+        retrieveSuccessResult = await callbacks.retrieveSuccess(
           retrieveResult,
           serviceResults as ExtractServiceRetrieveResults<TServiceCalls>,
         );
@@ -1237,7 +1239,7 @@ interface ServiceTxBuilderState<
   transformRetrieveFn?: (
     retrieveResult: TRetrieveResults,
     serviceRetrieveResult: ExtractServiceRetrieveResults<TServiceCalls>,
-  ) => TRetrieveSuccessResult;
+  ) => MaybePromise<TRetrieveSuccessResult>;
   mutateFn?: (
     ctx: ServiceBuilderMutateContext<
       TSchema,
@@ -1392,12 +1394,12 @@ export class ServiceTxBuilder<
     fn: (
       retrieveResult: TRetrieveResults,
       serviceResult: ExtractServiceRetrieveResults<TServiceCalls>,
-    ) => TNewRetrieveSuccessResult,
+    ) => MaybePromise<TNewRetrieveSuccessResult>,
   ): ServiceTxBuilder<
     TSchema,
     TServiceCalls,
     TRetrieveResults,
-    TNewRetrieveSuccessResult,
+    Awaited<TNewRetrieveSuccessResult>,
     TMutateResult,
     TTransformResult,
     HasRetrieve,
@@ -1413,7 +1415,7 @@ export class ServiceTxBuilder<
       TSchema,
       TServiceCalls,
       TRetrieveResults,
-      TNewRetrieveSuccessResult,
+      Awaited<TNewRetrieveSuccessResult>,
       TMutateResult,
       TTransformResult,
       THooks
@@ -1857,11 +1859,11 @@ export class HandlerTxBuilder<
     fn: (
       retrieveResult: TRetrieveResults,
       serviceResult: ExtractServiceRetrieveResults<TServiceCalls>,
-    ) => TNewRetrieveSuccessResult,
+    ) => MaybePromise<TNewRetrieveSuccessResult>,
   ): HandlerTxBuilder<
     TServiceCalls,
     TRetrieveResults,
-    TNewRetrieveSuccessResult,
+    Awaited<TNewRetrieveSuccessResult>,
     TMutateResult,
     TTransformResult,
     HasRetrieve,
@@ -1876,7 +1878,7 @@ export class HandlerTxBuilder<
     } as unknown as HandlerTxBuilderState<
       TServiceCalls,
       TRetrieveResults,
-      TNewRetrieveSuccessResult,
+      Awaited<TNewRetrieveSuccessResult>,
       TMutateResult,
       TTransformResult,
       THooks

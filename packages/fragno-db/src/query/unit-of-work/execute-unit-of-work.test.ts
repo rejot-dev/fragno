@@ -751,6 +751,73 @@ describe("Unified Tx API", () => {
       );
     });
 
+    it("should await async handler transformRetrieve before mutate", async () => {
+      const compiler = createMockCompiler();
+      const mockUser = {
+        id: FragnoId.fromExternal("1", 1),
+        email: "test@example.com",
+        name: "Test",
+        balance: 100,
+      };
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [[mockUser]],
+        executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+      };
+      const decoder = createMockDecoder();
+
+      const result = await createHandlerTxBuilder({
+        createUnitOfWork: () => createUnitOfWork(compiler, executor, decoder),
+      })
+        .retrieve(({ forSchema }) =>
+          forSchema(testSchema).find("users", (b) => b.whereIndex("idx_email")),
+        )
+        .transformRetrieve(async ([users]) => users[0] ?? null)
+        .mutate(({ retrieveResult }) => {
+          expect(retrieveResult).toEqual(mockUser);
+          return { email: retrieveResult?.email };
+        })
+        .execute();
+
+      expect(result).toEqual({ email: "test@example.com" });
+    });
+
+    it("should await async service transformRetrieve before handler mutate", async () => {
+      const compiler = createMockCompiler();
+      const mockUser = {
+        id: FragnoId.fromExternal("1", 1),
+        email: "test@example.com",
+        name: "Test",
+        balance: 100,
+      };
+      const executor: UOWExecutor<unknown, unknown> = {
+        executeRetrievalPhase: async () => [[mockUser]],
+        executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
+      };
+      const decoder = createMockDecoder();
+
+      let currentUow: IUnitOfWork | null = null;
+      const getUserById = () =>
+        createServiceTxBuilder(testSchema, currentUow!)
+          .retrieve((uow) => uow.find("users", (b) => b.whereIndex("idx_email")))
+          .transformRetrieve(async ([users]) => users[0] ?? null)
+          .build();
+
+      const result = await createHandlerTxBuilder({
+        createUnitOfWork: () => {
+          currentUow = createUnitOfWork(compiler, executor, decoder);
+          return currentUow;
+        },
+      })
+        .withServiceCalls(() => [getUserById()] as const)
+        .mutate(({ serviceIntermediateResult: [user] }) => {
+          expect(user).toEqual(mockUser);
+          return { email: user?.email };
+        })
+        .execute();
+
+      expect(result).toEqual({ email: "test@example.com" });
+    });
+
     it("should execute a transaction with serviceCalls as retrieve source", async () => {
       const compiler = createMockCompiler();
       const mockUser = {
