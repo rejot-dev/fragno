@@ -405,6 +405,41 @@ describe("runtime tool reference generation", () => {
     `);
   });
 
+  test("stringifies reson8 codemode declarations", () => {
+    expect(stringifyFamilyByNamespace({ namespace: "reson8", target: "codemode" }))
+      .toMatchInlineSnapshot(`
+      "// ── Backoffice domain tool providers ───────────────────────────────────
+
+      // reson8 tools
+      type Reson8TranscribePrerecordedInput = {
+        audio?: unknown;
+        encoding?: "auto" | "pcm_s16le";
+        sampleRate?: number;
+        channels?: number;
+        customModelId?: string;
+        includeTimestamps?: boolean;
+        includeWords?: boolean;
+        includeConfidence?: boolean;
+      };
+      type Reson8TranscribePrerecordedOutput = {
+        text: string;
+        start_ms?: number;
+        duration_ms?: number;
+        words?: {
+            text: string;
+            start_ms?: number;
+            duration_ms?: number;
+            confidence?: number;
+          }[];
+      };
+
+      declare const reson8: {
+        /** Transcribe a prerecorded audio file via Reson8. */
+        transcribePrerecorded(input: Reson8TranscribePrerecordedInput): Promise<Reson8TranscribePrerecordedOutput>;
+      };"
+    `);
+  });
+
   test("stringifies a single codemode family for provider declarations", () => {
     expect(stringifyFamilyByNamespace({ namespace: "telegram", target: "codemode" }))
       .toMatchInlineSnapshot(`

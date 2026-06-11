@@ -20,19 +20,17 @@ describe("reson8 runtime tools", () => {
     const [transcribe] = reson8RuntimeTools;
 
     expect(
-      transcribe.inputSchema.parse(
-        transcribe.adapters!.bash!.parse([
-          "--input",
-          "./audio.raw",
-          "--encoding",
-          "pcm_s16le",
-          "--sample-rate",
-          "16000",
-          "--channels",
-          "1",
-          "--include-words",
-        ]),
-      ),
+      transcribe.adapters!.bash!.parse([
+        "--input",
+        "./audio.raw",
+        "--encoding",
+        "pcm_s16le",
+        "--sample-rate",
+        "16000",
+        "--channels",
+        "1",
+        "--include-words",
+      ]),
     ).toEqual({
       inputPath: "./audio.raw",
       encoding: "pcm_s16le",
@@ -57,6 +55,20 @@ describe("reson8 runtime tools", () => {
     expect(runtime.transcribePrerecorded).toHaveBeenCalledWith({
       audio,
       query: { include_confidence: "true" },
+    });
+  });
+
+  test("normalizes JSON byte arrays from codemode before calling Reson8", async () => {
+    const runtime = createRuntime();
+    const context: BackofficeToolContext<{ reson8: Reson8Runtime }> = {
+      runtimes: { reson8: runtime },
+    };
+
+    await reson8RuntimeTools[0].execute({ audio: [1, 2, 3] }, context);
+
+    expect(runtime.transcribePrerecorded).toHaveBeenCalledWith({
+      audio: new Uint8Array([1, 2, 3]),
+      query: {},
     });
   });
 });

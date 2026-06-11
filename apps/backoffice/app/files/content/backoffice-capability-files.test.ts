@@ -60,7 +60,9 @@ describe("Backoffice capability starter skills", () => {
   test("Telegram skill documents its primary event and tools", () => {
     const skill = readStarterText("skills/telegram-connection/SKILL.md");
 
-    expect(skill).toContain("telegram:message.received");
+    expect(skill).toContain("source`: `telegram`");
+    expect(skill).toContain("eventType`: `message.received`");
+    expect(skill).not.toContain("telegram:message.received");
     expect(skill).toContain("send chat messages");
   });
 
