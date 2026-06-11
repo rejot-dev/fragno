@@ -266,7 +266,8 @@ describe("pi bash command registration", () => {
       },
       {
         command: "store.set",
-        output: "",
+        output:
+          'Stored telegram/actor-2\nkey: telegram/actor-2\nvalue: user-1\nactor: {"scope":"internal","type":"user","id":"user-1"}',
         exitCode: 0,
       },
       {

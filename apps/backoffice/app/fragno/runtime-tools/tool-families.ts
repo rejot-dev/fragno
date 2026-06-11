@@ -1,3 +1,5 @@
+import type { AutomationEventActor } from "@/fragno/automation/contracts";
+
 import {
   automationStoreToolFamily,
   type AutomationStoreRuntime,
@@ -42,7 +44,10 @@ export type CoreBackofficeRuntimeMap = {
   telegram?: TelegramRuntime;
 };
 
-export type CoreBackofficeToolContext = BackofficeToolContext<CoreBackofficeRuntimeMap>;
+export type CoreBackofficeToolContext = BackofficeToolContext<
+  CoreBackofficeRuntimeMap,
+  { actor?: AutomationEventActor | null }
+>;
 
 export const runtimeToolFamilies = [
   backofficeCapabilitiesToolFamily,

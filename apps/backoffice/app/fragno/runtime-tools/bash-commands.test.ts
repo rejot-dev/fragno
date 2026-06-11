@@ -88,6 +88,62 @@ describe("createBackofficeBashCommands", () => {
     ]);
   });
 
+  test("uses the default actor for store.set when --actor is omitted", async () => {
+    const calls: unknown[] = [];
+    const actor = { scope: "internal", type: "user", id: "user-1" } as const;
+    const automationsRuntime: AutomationStoreRuntime = {
+      get: async () => null,
+      set: async (input) => {
+        calls.push(["set", input]);
+        return { key: input.key, value: input.value, category: [], actor: input.actor };
+      },
+      delete: async () => null,
+      list: async () => [],
+    };
+
+    const bash = new Bash({
+      fs: new InMemoryFs(),
+      customCommands: createBackofficeBashCommands({
+        tools: automationStoreRuntimeTools,
+        context: { runtimes: { automations: automationsRuntime }, defaults: { actor } },
+        commandCallsResult: [],
+      }),
+    });
+
+    await expect(
+      bash.exec("store.set --key dashboard/example --value configured --format json"),
+    ).resolves.toMatchObject({ exitCode: 0 });
+
+    expect(calls).toEqual([["set", { key: "dashboard/example", value: "configured", actor }]]);
+  });
+
+  test("requires store.set --actor when no default actor is available", async () => {
+    const automationsRuntime: AutomationStoreRuntime = {
+      get: async () => null,
+      set: async () => {
+        throw new Error("set should not be called");
+      },
+      delete: async () => null,
+      list: async () => [],
+    };
+
+    const bash = new Bash({
+      fs: new InMemoryFs(),
+      customCommands: createBackofficeBashCommands({
+        tools: automationStoreRuntimeTools,
+        context: { runtimes: { automations: automationsRuntime } },
+        commandCallsResult: [],
+      }),
+    });
+
+    await expect(
+      bash.exec("store.set --key dashboard/example --value configured"),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining("Missing required option --actor"),
+    });
+  });
+
   test("routes generated event bash commands through semantic runtime tools", async () => {
     const calls: unknown[] = [];
     const commandCallsResult: { command: string; output: string; exitCode: number }[] = [];

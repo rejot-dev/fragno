@@ -122,6 +122,11 @@ export async function action({ request, context }: Route.ActionArgs) {
       fs: fileSystem,
       env,
       orgId: activeOrg.id,
+      defaultActor: {
+        scope: "internal",
+        type: "user",
+        id: me.user.id,
+      },
     });
 
     const startedAt = performance.now();

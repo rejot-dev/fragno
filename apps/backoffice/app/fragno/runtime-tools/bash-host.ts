@@ -1,5 +1,6 @@
 import { Bash } from "just-bash";
 
+import type { AutomationEventActor } from "@/fragno/automation/contracts";
 import {
   createBackofficeBashCommands,
   getAvailableRuntimeTools,
@@ -29,6 +30,7 @@ export type RegisteredEventBashCommandContext = AutomationCommandContext & {
 };
 
 export type BashHostContext = {
+  defaultActor?: AutomationEventActor | null;
   backoffice?: { runtime: BackofficeCapabilitiesRuntime } | null;
   automation: RegisteredEventBashCommandContext | null;
   automations: RegisteredAutomationsBashCommandContext | null;

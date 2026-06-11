@@ -1,6 +1,7 @@
 import type { IFileSystem } from "@/files/interface";
 import { MasterFileSystem } from "@/files/master-file-system";
 import type { AutomationScriptEngine } from "@/fragno/automation/catalog";
+import type { AutomationEventActor } from "@/fragno/automation/contracts";
 import { createAutomationExecutionFileSystem } from "@/fragno/automation/engine/execution-file-system";
 import {
   createAutomationRunResult,
@@ -89,6 +90,7 @@ export type CreateInteractiveBashHostInput = {
   env: CloudflareEnv;
   orgId: string;
   sessionId?: string;
+  defaultActor?: AutomationEventActor | null;
   context?: BashHostContext;
 };
 
@@ -97,6 +99,11 @@ export const createInteractiveBashHost = (input: CreateInteractiveBashHostInput)
     fs: input.fs,
     sessionId: input.sessionId,
     context:
-      input.context ?? createRouteBackedRuntimeContext({ env: input.env, orgId: input.orgId }),
+      input.context ??
+      createRouteBackedRuntimeContext({
+        env: input.env,
+        orgId: input.orgId,
+        defaultActor: input.defaultActor,
+      }),
   });
 };
