@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { AutomationEventActor } from "@/fragno/automation/contracts";
 import {
   automationStoreActorSchema,
   automationStoreDeleteResultSchema,
@@ -18,6 +19,7 @@ import type {
 } from "@/fragno/runtime-tools/automation-types";
 import {
   defineCliArgsParser,
+  ensureTrailingNewline,
   readStringOption,
   type ParsedCliTokens,
 } from "@/fragno/runtime-tools/bash-cli";
@@ -38,9 +40,10 @@ export type AutomationStoreRuntime = {
   list: (input: StoreListArgs) => Promise<AutomationStoreEntry[]>;
 };
 
-export type AutomationStoreToolContext = BackofficeToolContext<{
-  automations?: AutomationStoreRuntime;
-}>;
+export type AutomationStoreToolContext = BackofficeToolContext<
+  { automations?: AutomationStoreRuntime },
+  { actor?: AutomationEventActor | null }
+>;
 
 const nonEmptyString = z.string().trim().min(1);
 
@@ -85,13 +88,14 @@ const parseStoreGetArgs = defineCliArgsParser<StoreGetArgs>("store.get", {
   key: { required: true },
 });
 
-const parseStoreSetArgs = defineCliArgsParser<StoreSetArgs>("store.set", {
+type StoreSetCliArgs = Omit<StoreSetArgs, "actor"> & { actor?: StoreSetArgs["actor"] };
+
+const parseStoreSetArgs = defineCliArgsParser<StoreSetCliArgs>("store.set", {
   key: { required: true },
   value: { required: true },
   actor: {
     read: (parsed, optionName, required) => readJsonValueOption(parsed, optionName, required),
     transform: (value) => automationStoreActorSchema.nullable().parse(value),
-    required: true,
   },
   description: {},
   category: { kind: "stringArray" },
@@ -109,6 +113,34 @@ const parseStoreListArgs = defineCliArgsParser<StoreListArgs>("store.list", {
   prefix: {},
   limit: { kind: "positiveInteger" },
 });
+
+const formatStoreEntryText = (entry: AutomationStoreEntry) =>
+  ensureTrailingNewline(
+    [
+      `key: ${entry.key}`,
+      `value: ${entry.value}`,
+      entry.description ? `description: ${entry.description}` : undefined,
+      entry.category.length ? `category: ${entry.category.join(", ")}` : undefined,
+      `actor: ${entry.actor ? JSON.stringify(entry.actor) : "null"}`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+
+const formatStoreEntryListText = (entries: AutomationStoreEntry[]) => {
+  if (entries.length === 0) {
+    return "No store entries found.\n";
+  }
+
+  return ensureTrailingNewline(
+    entries
+      .map((entry) => {
+        const category = entry.category.length ? ` [${entry.category.join(", ")}]` : "";
+        return `${entry.key}=${entry.value}${category}`;
+      })
+      .join("\n"),
+  );
+};
 
 const getAutomationStoreRuntime = (
   runtime: AutomationStoreToolContext["runtimes"]["automations"],
@@ -145,7 +177,12 @@ const storeGetTool = defineAutomationStoreTool({
         examples: ["store.get --key telegram/chat-123 --print value"],
       },
       parse: parseStoreGetArgs,
-      format: (entry) => (!entry ? { exitCode: 1 } : { data: entry }),
+      format: (entry, options) =>
+        !entry
+          ? { stderr: "Store entry not found.\n", exitCode: 1 }
+          : options.format === "json" || options.print
+            ? { data: entry }
+            : { stdout: formatStoreEntryText(entry) },
     },
   },
 });
@@ -181,10 +218,10 @@ const storeSetTool = defineAutomationStoreTool({
           },
           {
             name: "actor",
-            required: true,
             valueRequired: true,
             valueName: "json",
-            description: "JSON actor reference for who set this value, or null if unavailable",
+            description:
+              "JSON actor reference for who set this value, or null if unavailable. Defaults to the signed-in dashboard user when available.",
           },
           {
             name: "description",
@@ -209,8 +246,23 @@ const storeSetTool = defineAutomationStoreTool({
           'store.set --key telegram/chat-123 --value user-55 --actor \'{"scope":"external","source":"telegram","type":"chat","id":"chat-123"}\'',
         ],
       },
-      parse: parseStoreSetArgs,
-      format: (entry) => ({ data: entry }),
+      parse: (args) => parseStoreSetArgs(args) as StoreSetArgs,
+      execute: async ({ input, context, commandOutput }) => {
+        const parsedInput = input as StoreSetCliArgs;
+        const actor = "actor" in parsedInput ? parsedInput.actor : context.defaults?.actor;
+        if (typeof actor === "undefined") {
+          throw new Error(
+            "Missing required option --actor. Dashboard commands provide it automatically; other contexts must pass --actor explicitly.",
+          );
+        }
+        const entry = await getAutomationStoreRuntime(context.runtimes.automations).set({
+          ...parsedInput,
+          actor: actor as StoreSetArgs["actor"],
+        });
+        return commandOutput.format === "json" || commandOutput.print
+          ? { data: entry }
+          : { stdout: `Stored ${entry.key}\n${formatStoreEntryText(entry)}` };
+      },
     },
   },
 });
@@ -249,7 +301,10 @@ const storeListTool = defineAutomationStoreTool({
         ],
       },
       parse: parseStoreListArgs,
-      format: (entries) => ({ data: entries }),
+      format: (entries, options) =>
+        options.format === "json" || options.print
+          ? { data: entries }
+          : { stdout: formatStoreEntryListText(entries) },
     },
   },
 });
@@ -280,7 +335,12 @@ const storeDeleteTool = defineAutomationStoreTool({
         examples: ["store.delete --key telegram/chat-123"],
       },
       parse: parseStoreDeleteArgs,
-      format: (result) => (!result ? { exitCode: 1 } : { data: result }),
+      format: (result, options) =>
+        !result
+          ? { stderr: "Store entry not found.\n", exitCode: 1 }
+          : options.format === "json" || options.print
+            ? { data: result }
+            : { stdout: `Deleted ${result.key}\n` },
     },
   },
 });

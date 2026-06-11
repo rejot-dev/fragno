@@ -22,8 +22,10 @@ import {
 
 export type BackofficeToolContext<
   TRuntimes extends Record<string, unknown> = Record<string, unknown>,
+  TDefaults extends Record<string, unknown> = Record<string, unknown>,
 > = {
   runtimes: TRuntimes;
+  defaults?: TDefaults;
 };
 
 export type BackofficeRuntimeToolCall = {

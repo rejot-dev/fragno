@@ -4,6 +4,9 @@ import type { CoreBackofficeToolContext } from "./tool-families";
 export const createBackofficeToolContext = (
   context: BashHostContext,
 ): CoreBackofficeToolContext => ({
+  ...(typeof context.defaultActor === "undefined"
+    ? {}
+    : { defaults: { actor: context.defaultActor } }),
   runtimes: {
     backoffice: context.backoffice?.runtime,
     automations: context.automations?.runtime,

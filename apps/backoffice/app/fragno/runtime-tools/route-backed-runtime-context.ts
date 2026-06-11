@@ -1,4 +1,5 @@
 import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
+import type { AutomationEventActor } from "@/fragno/automation/contracts";
 import { createRouteBackedDurableHooksRuntime } from "@/fragno/automation/durable-hooks-route-runtime";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
@@ -18,6 +19,7 @@ export type RouteBackedRuntimeContextOptions = {
   env: CloudflareEnv;
   orgId: string;
   pi?: { runtime: PiRuntime } | null;
+  defaultActor?: AutomationEventActor | null;
 };
 
 /**
@@ -31,6 +33,7 @@ export const createRouteBackedRuntimeContext = ({
   env,
   orgId,
   pi,
+  defaultActor,
 }: RouteBackedRuntimeContextOptions): InteractiveBashCommandContext => {
   const normalizedOrgId = normalizeOrgId(orgId);
   if (!normalizedOrgId) {
@@ -38,6 +41,7 @@ export const createRouteBackedRuntimeContext = ({
   }
 
   return {
+    ...(typeof defaultActor === "undefined" ? {} : { defaultActor }),
     backoffice: {
       runtime: createBackofficeCapabilitiesRuntime({
         env,
