@@ -1,7 +1,7 @@
 import { auth } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
 
-import { parseSecretPayload, stringifySecretPayload } from "./mcp-api";
+import { parseSecretPayload, stringifySecretPayload, type McpClientAuth } from "./mcp-api";
 import type { McpFragmentConfig } from "./mcp-types";
 import {
   BufferedOAuthClientProvider,
@@ -34,6 +34,8 @@ export type AuthPersistenceChanges = Awaited<ReturnType<typeof prepareOAuthChang
   authPayload?: string;
   authExpiresAt?: Date | null;
 };
+
+export type McpOperationAuth = McpClientAuth<AuthPersistenceChanges>;
 
 export type SecretRecord = {
   id: { toString(): string } | string;
@@ -163,6 +165,87 @@ export async function createOAuthCallbackSnapshot(args: {
   });
   provider.consumeState();
   return prepareOAuthChanges(provider.changes);
+}
+
+const providerHasChanges = (changes: OAuthProviderChanges) =>
+  Boolean(
+    changes.clientInformation || changes.discoveryState || changes.tokens || changes.invalidate,
+  );
+
+function authChangesReader(
+  provider: BufferedOAuthClientProvider,
+  authPayload: Exclude<StoredAuthPayload, { type: "bearer" }>,
+) {
+  return async (): Promise<AuthPersistenceChanges | undefined> => {
+    if (!providerHasChanges(provider.changes)) {
+      return undefined;
+    }
+    const tokens = provider.changes.tokens ?? authPayload.tokens;
+    return {
+      ...(await prepareOAuthChanges(provider.changes)),
+      ...(tokens && provider.changes.tokens
+        ? {
+            authPayload: stringifySecretPayload({ ...authPayload, tokens }),
+            authExpiresAt: tokenExpiry(tokens),
+          }
+        : {}),
+    };
+  };
+}
+
+export async function createMcpOperationAuth(args: {
+  config: McpFragmentConfig;
+  server: { id: { toString(): string } | string; endpointUrl: string };
+  secrets: SecretRecord[];
+}): Promise<McpOperationAuth | undefined> {
+  const authSecret = secretByKind(args.secrets, "auth");
+  const authPayload = authSecret
+    ? parseSecretPayload<StoredAuthPayload>(authSecret.payload)
+    : undefined;
+  if (!authPayload) {
+    return undefined;
+  }
+  if (authPayload.type === "bearer") {
+    return { type: "bearer", token: authPayload.token };
+  }
+  if (authPayload.type === "oauth") {
+    if (!authPayload.tokens?.access_token) {
+      return undefined;
+    }
+    const clientSecret = secretByKind(args.secrets, "oauth-client");
+    const discoverySecret = secretByKind(args.secrets, "oauth-discovery");
+    const provider = new BufferedOAuthClientProvider({
+      serverId: args.server.id.toString(),
+      endpointUrl: args.server.endpointUrl,
+      redirectUrl: authPayload.redirectUri ?? defaultOAuthRedirectUri(args.config),
+      scope: authPayload.tokens.scope,
+      clientInformation: clientSecret ? parseSecretPayload(clientSecret.payload) : undefined,
+      tokens: authPayload.tokens,
+      discoveryState: discoverySecret ? parseSecretPayload(discoverySecret.payload) : undefined,
+    });
+    return {
+      type: "provider",
+      provider,
+      readAuthChanges: authChangesReader(provider, authPayload),
+    };
+  }
+
+  const discoverySecret = secretByKind(args.secrets, "oauth-discovery");
+  const provider = new BufferedOAuthClientProvider({
+    serverId: args.server.id.toString(),
+    endpointUrl: args.server.endpointUrl,
+    scope: authPayload.scopes?.join(" "),
+    clientId: authPayload.clientId,
+    clientSecret: authPayload.clientSecret,
+    tokens: authPayload.tokens,
+    discoveryState: discoverySecret ? parseSecretPayload(discoverySecret.payload) : undefined,
+    flow: "client_credentials",
+  });
+  return {
+    type: "provider",
+    provider,
+    readAuthChanges: authChangesReader(provider, authPayload),
+  };
 }
 
 export async function resolveMcpOperationAuth(args: {

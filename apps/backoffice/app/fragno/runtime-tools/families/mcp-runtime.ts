@@ -112,7 +112,7 @@ export const createRouteBackedMcpRuntime = (
       return throwOnMcpRuntimeError(response, "mcp.tools.list");
     },
     callTool: async ({ slug, name, arguments: toolArguments, timeoutMs }) => {
-      const response = await callRoute("POST", "/servers/:slug/tool", {
+      const response = await callRoute("POST", "/servers/:slug/tools/execute", {
         pathParams: { slug: normalizeSlug(slug) },
         body: {
           name,

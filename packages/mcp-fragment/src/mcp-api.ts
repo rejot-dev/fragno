@@ -1,3 +1,4 @@
+import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
@@ -8,9 +9,28 @@ export interface StoredServerAuth {
   payload?: unknown;
 }
 
-export interface McpOperationResult<T> {
-  result: T;
+export interface McpConnectionMetadata {
+  protocolVersion?: string;
+  serverInfo?: unknown;
+  capabilities?: unknown;
 }
+
+export type McpClientAuth<TAuthChanges = unknown> =
+  | { type: "bearer"; token?: string }
+  | {
+      type: "provider";
+      provider: OAuthClientProvider;
+      readAuthChanges: () => Promise<TAuthChanges | undefined>;
+    };
+
+export type McpOperationResult<T, TAuthChanges = unknown> =
+  | {
+      ok: true;
+      result: T;
+      metadata: McpConnectionMetadata;
+      authChanges?: TAuthChanges;
+    }
+  | { ok: false; error: unknown; authChanges?: TAuthChanges };
 
 export function assertAllowedEndpoint(endpointUrl: string, config: McpFragmentConfig) {
   const url = new URL(endpointUrl);
@@ -38,52 +58,70 @@ function bearerRequestInit(token: string | undefined): RequestInit | undefined {
   return { headers: { Authorization: `Bearer ${token}` } };
 }
 
-async function withMcpClient<T>(args: {
+const authProvider = (auth: McpClientAuth | undefined) =>
+  auth?.type === "provider" ? auth.provider : undefined;
+
+const authRequestInit = (auth: McpClientAuth | undefined) =>
+  auth?.type === "bearer" ? bearerRequestInit(auth.token) : undefined;
+
+async function readAuthChanges<TAuthChanges>(auth: McpClientAuth<TAuthChanges> | undefined) {
+  return auth?.type === "provider" ? await auth.readAuthChanges() : undefined;
+}
+
+async function withMcpClient<T, TAuthChanges = unknown>(args: {
   endpointUrl: string;
-  token?: string;
+  auth?: McpClientAuth<TAuthChanges>;
   timeoutMs?: number;
   fetchImplementation?: typeof fetch;
   operation: (client: Client) => Promise<T>;
-}): Promise<McpOperationResult<T>> {
+}): Promise<McpOperationResult<T, TAuthChanges>> {
   const client = new Client(
     { name: "fragno-mcp-fragment", version: "0.1.0" },
     { capabilities: {} },
   );
   const transport = new StreamableHTTPClientTransport(new URL(args.endpointUrl), {
     fetch: args.fetchImplementation,
-    requestInit: bearerRequestInit(args.token),
+    requestInit: authRequestInit(args.auth),
+    authProvider: authProvider(args.auth),
   });
 
   try {
     await client.connect(transport, { timeout: args.timeoutMs });
     const capabilities = client.getServerCapabilities();
-    if (!capabilities?.tools) {
-      throw new Error("MCP server does not advertise tools capability");
-    }
 
+    const metadata: McpConnectionMetadata = {
+      protocolVersion: transport.protocolVersion,
+      serverInfo: client.getServerVersion(),
+      capabilities,
+    };
     const result = await args.operation(client);
-    return { result };
+    return { ok: true, result, metadata, authChanges: await readAuthChanges(args.auth) };
+  } catch (error) {
+    return { ok: false, error, authChanges: await readAuthChanges(args.auth) };
   } finally {
     await transport.close().catch(() => undefined);
     await client.close().catch(() => undefined);
   }
 }
 
-export async function listMcpTools(args: {
+export async function listMcpTools<TAuthChanges = unknown>(args: {
   endpointUrl: string;
-  token?: string;
+  auth?: McpClientAuth<TAuthChanges>;
   timeoutMs?: number;
   fetchImplementation?: typeof fetch;
 }) {
   return await withMcpClient({
     ...args,
-    operation: async (client) => await client.listTools(undefined, { timeout: args.timeoutMs }),
+    operation: async (client) =>
+      client.getServerCapabilities()?.tools
+        ? await client.listTools(undefined, { timeout: args.timeoutMs })
+        : { tools: [] },
   });
 }
 
-export async function callMcpTool(args: {
+export async function callMcpTool<TAuthChanges = unknown>(args: {
   endpointUrl: string;
-  token?: string;
+  auth?: McpClientAuth<TAuthChanges>;
   name: string;
   toolArguments?: Record<string, unknown>;
   timeoutMs?: number;
@@ -91,9 +129,18 @@ export async function callMcpTool(args: {
 }) {
   return await withMcpClient({
     ...args,
-    operation: async (client) =>
-      await client.callTool({ name: args.name, arguments: args.toolArguments ?? {} }, undefined, {
-        timeout: args.timeoutMs,
-      }),
+    operation: async (client) => {
+      const result = await client.callTool(
+        { name: args.name, arguments: args.toolArguments ?? {} },
+        undefined,
+        {
+          timeout: args.timeoutMs,
+        },
+      );
+      if (result.isError) {
+        throw new Error(`MCP tool ${args.name} returned an error`);
+      }
+      return result;
+    },
   });
 }

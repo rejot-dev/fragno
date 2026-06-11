@@ -10,7 +10,7 @@ type McpOAuthCompleteLoaderData = {
 
 export function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
-  const status = url.searchParams.get("status") === "error" ? "error" : "success";
+  const status = url.searchParams.get("status") === "success" ? "success" : "error";
   const serverSlug = url.searchParams.get("server")?.trim() || null;
 
   return { serverSlug, status } satisfies McpOAuthCompleteLoaderData;

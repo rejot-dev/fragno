@@ -8,6 +8,7 @@ import * as z from "zod/v4";
 
 export interface TestMcpServerHandle {
   endpointUrl: string;
+  getMcpRequestCount: () => number;
   getTokenRequestCount: () => number;
   close: () => Promise<void>;
 }
@@ -20,6 +21,9 @@ export interface StartTestMcpServerOptions {
   disableDynamicRegistration?: boolean;
   requiredClientId?: string;
   requiredClientSecret?: string;
+  refreshedRefreshToken?: string;
+  omitRefreshTokenOnRefresh?: boolean;
+  failAuthorizedMcpRequests?: boolean;
 }
 
 interface McpSession {
@@ -82,6 +86,7 @@ export async function startStreamableHttpTestMcpServer(
   options: StartTestMcpServerOptions = {},
 ): Promise<TestMcpServerHandle> {
   const sessions = new Map<string, McpSession>();
+  let mcpRequestCount = 0;
   let tokenRequestCount = 0;
 
   async function createSession() {
@@ -202,7 +207,9 @@ export async function startStreamableHttpTestMcpServer(
           response.writeHead(200, { "Content-Type": "application/json" }).end(
             JSON.stringify({
               access_token: options.requiredBearerToken ?? "oauth-access-token",
-              refresh_token: "oauth-refresh-token",
+              ...(options.omitRefreshTokenOnRefresh
+                ? {}
+                : { refresh_token: options.refreshedRefreshToken ?? "oauth-refresh-token" }),
               token_type: "Bearer",
               expires_in: 3600,
               scope: "tools",
@@ -239,6 +246,7 @@ export async function startStreamableHttpTestMcpServer(
       response.writeHead(404).end("Not found");
       return;
     }
+    mcpRequestCount += 1;
     if (rejectUnauthorized(request, options.requiredBearerToken)) {
       if (options.oauth) {
         response
@@ -249,6 +257,10 @@ export async function startStreamableHttpTestMcpServer(
       } else {
         response.writeHead(401).end("Unauthorized");
       }
+      return;
+    }
+    if (options.failAuthorizedMcpRequests) {
+      response.writeHead(500).end("MCP operation failed");
       return;
     }
 
@@ -270,6 +282,7 @@ export async function startStreamableHttpTestMcpServer(
 
   return {
     endpointUrl: endpointUrl(httpServer),
+    getMcpRequestCount: () => mcpRequestCount,
     getTokenRequestCount: () => tokenRequestCount,
     close: async () => {
       for (const session of sessions.values()) {

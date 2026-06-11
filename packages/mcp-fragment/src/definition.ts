@@ -121,9 +121,12 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
               )
               .find("secret", (b) =>
                 b.whereIndex("idx_secret_server_kind", (eb) => eb("serverId", "=", serverId)),
+              )
+              .findFirst("server_connection_cache", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", serverId)),
               ),
           )
-          .transformRetrieve(async ([state, server, secrets]) => {
+          .transformRetrieve(async ([state, server, secrets, cache]) => {
             if (!state || state.consumedAt || new Date(state.expiresAt).getTime() < Date.now()) {
               return { found: false as const, reason: "invalid_state" as const };
             }
@@ -138,7 +141,7 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
               server,
               secrets,
             });
-            return { found: true as const, server, secrets, changes };
+            return { found: true as const, server, secrets, cache, changes };
           })
           .mutate(({ uow, retrieveResult }) => {
             if (!retrieveResult.found) {
@@ -178,6 +181,9 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
               uow.update("server_configuration", retrieveResult.server.id, (b) =>
                 b.set({ authMode: "oauth", updatedAt: b.now() }).check(),
               );
+              if (retrieveResult.cache) {
+                uow.delete("server_connection_cache", retrieveResult.cache.id);
+              }
             }
             if (retrieveResult.changes.consumeStateId) {
               uow.update("oauthState", input.stateId, (b) => b.set({ consumedAt: b.now() }));
@@ -202,9 +208,12 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
               )
               .find("secret", (b) =>
                 b.whereIndex("idx_secret_server_kind", (eb) => eb("serverId", "=", input.serverId)),
+              )
+              .findFirst("server_connection_cache", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", input.serverId)),
               ),
           )
-          .transformRetrieve(async ([server, secrets]) => {
+          .transformRetrieve(async ([server, secrets, cache]) => {
             if (!server) {
               return { found: false as const };
             }
@@ -215,46 +224,9 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
               endpointUrl: server.endpointUrl,
               token: resolved.token,
               secrets,
+              cache,
               authChanges: resolved.authChanges,
             };
-          })
-          .mutate(({ uow, retrieveResult }) => {
-            if (!retrieveResult.found) {
-              return { found: false as const };
-            }
-            const authChanges = retrieveResult.authChanges;
-            if (!authChanges) {
-              return { found: true as const };
-            }
-
-            const upsertSecret = (kind: string, payload: string, expiresAt: Date | null) => {
-              const existing = retrieveResult.secrets.find((secret) => secret.kind === kind);
-              if (existing) {
-                uow.update("secret", existing.id, (b) =>
-                  b.set({ payload, expiresAt, updatedAt: b.now() }).check(),
-                );
-                return;
-              }
-              uow.create("secret", {
-                id: `${retrieveResult.serverId}:${kind}`,
-                serverId: retrieveResult.serverId,
-                kind,
-                payload,
-                expiresAt,
-              });
-            };
-
-            if (authChanges.clientInformationPayload) {
-              upsertSecret("oauth-client", authChanges.clientInformationPayload, null);
-            }
-            if (authChanges.discoveryStatePayload) {
-              upsertSecret("oauth-discovery", authChanges.discoveryStatePayload, null);
-            }
-            if (authChanges.authPayload) {
-              upsertSecret("auth", authChanges.authPayload, authChanges.authExpiresAt ?? null);
-            }
-
-            return { found: true as const };
           })
           .transform(({ retrieveResult }) =>
             retrieveResult.found
@@ -262,6 +234,10 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
                   found: true as const,
                   endpointUrl: retrieveResult.endpointUrl,
                   token: retrieveResult.token,
+                  secrets: retrieveResult.secrets,
+                  cache: retrieveResult.cache,
+                  authChanges: retrieveResult.authChanges,
+                  serverId: retrieveResult.serverId,
                 }
               : { found: false as const },
           )
