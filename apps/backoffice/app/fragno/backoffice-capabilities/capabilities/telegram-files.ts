@@ -5,7 +5,7 @@ export const createTelegramCapabilityFiles = () =>
     name: "telegram-connection",
     title: "Telegram Connection",
     description:
-      "Configure and automate the Backoffice Telegram bot capability. Use when setting up Telegram, handling telegram:message.received events, sending chat replies, downloading Telegram files, or debugging Telegram hooks and runtime tools.",
+      'Configure and automate the Backoffice Telegram bot capability. Use when setting up Telegram, handling events with source "telegram" and eventType "message.received", sending chat replies, downloading Telegram files, or debugging Telegram hooks and runtime tools.',
     overview:
       "Use this skill for the organisation-scoped Telegram bot integration: bot setup details, inbound message semantics, Telegram hook scope, and Telegram-specific runtime tool purposes.",
     configuration: `# Telegram configuration
@@ -26,9 +26,20 @@ Setup notes:
 `,
     events: `# Telegram events
 
-## telegram:message.received
+## Message received
 
 Fires when the Telegram webhook receives a bot message for the organisation.
+
+Catalog identity:
+
+- \`source\`: \`telegram\`
+- \`eventType\`: \`message.received\`
+
+Before parsing payloads, inspect the catalog schema with codemode:
+
+\`\`\`js
+const descriptor = await events.eventsCatalogGet({ source: "telegram", type: "message.received" });
+\`\`\`
 
 Payload fields:
 
@@ -36,7 +47,15 @@ Payload fields:
 - \`chatId\`: Telegram chat id as a string. Use this with Telegram chat tools.
 - \`fromUserId\`: Telegram user id when available, otherwise \`null\`.
 - \`text\`: message text when available, otherwise \`null\`.
-- \`attachments\`: optional attachment metadata.
+- \`attachments\`: optional attachment metadata. Voice notes and files are represented here, not as raw Telegram \`message.voice\` fields.
+
+When reading a queued ingest event through \`events.getEvent({ hookId })\`, the normalized Telegram payload is inside the event envelope:
+
+\`\`\`js
+const entry = await events.getEvent({ hookId });
+const payload = entry?.payload?.payload;
+const attachments = payload?.attachments ?? [];
+\`\`\`
 
 Actor:
 
@@ -45,11 +64,16 @@ Actor:
 - \`type\`: \`chat\`
 - \`id\`: the Telegram chat id
 
-Common automation pattern: filter on \`event.source === "telegram"\` and \`event.eventType === "message.received"\`, then route slash commands or plain text.
+Common automation pattern: filter on \`event.source === "telegram"\` and \`event.eventType === "message.received"\`, then route slash commands, plain text, or attachments.
 
-## telegram:capability.configured
+## Capability configured
 
 Fires after Telegram is configured for an organisation for the first time. Use it to bootstrap Telegram-specific automation state.
+
+Catalog identity:
+
+- \`source\`: \`telegram\`
+- \`eventType\`: \`capability.configured\`
 
 Hook scope: \`telegram\`.
 `,

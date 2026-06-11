@@ -21,7 +21,10 @@ import {
   type BackofficeToolContext,
 } from "../runtime-tools";
 
-export type Reson8PrerecordedTranscriptionInput = Partial<Reson8PrerecordedTranscribeArgs> & {
+export type Reson8PrerecordedTranscriptionInput = Omit<
+  Partial<Reson8PrerecordedTranscribeArgs>,
+  "inputPath"
+> & {
   audio?: ArrayBuffer | ArrayBufferView | Blob | ReadableStream<Uint8Array>;
 };
 
@@ -32,7 +35,6 @@ const encodingSchema = z.enum(["auto", "pcm_s16le"]).optional();
 const positiveIntegerSchema = z.number().int().positive().optional();
 
 const transcribeInputSchema = z.object({
-  inputPath: nonEmptyString.optional(),
   audio: z.unknown().optional(),
   encoding: encodingSchema,
   sampleRate: positiveIntegerSchema,
@@ -48,6 +50,33 @@ const getReson8Runtime = (runtime: Reson8ToolContext["runtimes"]["reson8"]): Res
     throw new Error("Reson8 runtime is not available in this execution context");
   }
   return runtime;
+};
+
+const isByteArray = (value: unknown): value is number[] =>
+  Array.isArray(value) && value.every((item) => Number.isInteger(item) && item >= 0 && item <= 255);
+
+const normalizeAudioInput = (
+  audio: unknown,
+): ArrayBuffer | ArrayBufferView | Blob | ReadableStream<Uint8Array> => {
+  if (audio instanceof ArrayBuffer || ArrayBuffer.isView(audio)) {
+    return audio;
+  }
+
+  if (isByteArray(audio)) {
+    return new Uint8Array(audio);
+  }
+
+  if (typeof Blob !== "undefined" && audio instanceof Blob) {
+    return audio;
+  }
+
+  if (typeof ReadableStream !== "undefined" && audio instanceof ReadableStream) {
+    return audio as ReadableStream<Uint8Array>;
+  }
+
+  throw new Error(
+    "reson8.transcribePrerecorded requires audio as bytes, an ArrayBuffer, a typed array, a Blob, or a ReadableStream",
+  );
 };
 
 const normalizeEncoding = (value: string | undefined) => {
@@ -113,8 +142,9 @@ const transcribePrerecordedTool = defineBackofficeRuntimeTool({
     if (!input.audio) {
       throw new Error("reson8.transcribePrerecorded requires audio input");
     }
+
     return getReson8Runtime(context.runtimes.reson8).transcribePrerecorded({
-      audio: input.audio as ArrayBuffer | ArrayBufferView | Blob | ReadableStream<Uint8Array>,
+      audio: normalizeAudioInput(input.audio),
       query: toPrerecordedQuery(input),
     });
   },
@@ -188,18 +218,19 @@ const transcribePrerecordedTool = defineBackofficeRuntimeTool({
           : { ...output, format: "text" };
       },
       execute: async ({ input, context, commandOutput, shell }) => {
+        const bashInput = input as Partial<Reson8PrerecordedTranscribeArgs>;
         if (!shell.fs.readFileBuffer) {
           throw new Error(
             "reson8.prerecorded.transcribe requires a filesystem that supports binary reads",
           );
         }
-        if (!input.inputPath) {
+        if (!bashInput.inputPath) {
           throw new Error("reson8.prerecorded.transcribe requires --input");
         }
-        const resolvedPath = shell.fs.resolvePath(shell.cwd, input.inputPath);
+        const resolvedPath = shell.fs.resolvePath(shell.cwd, bashInput.inputPath);
         const data = await getReson8Runtime(context.runtimes.reson8).transcribePrerecorded({
           audio: await shell.fs.readFileBuffer(resolvedPath),
-          query: toPrerecordedQuery(input),
+          query: toPrerecordedQuery(bashInput),
         });
         const result = normalizeExecutionResult({ data });
         const stdout = formatCommandStdout(commandOutput, result);

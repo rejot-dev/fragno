@@ -109,7 +109,7 @@ describe("files service", () => {
       path: "/system/SYSTEM.md",
       title: "SYSTEM.md",
     });
-    expect(systemDetail?.textContent).toContain("Runtime-specific references");
+    expect(systemDetail?.textContent).toContain("Backoffice");
   });
 
   test("renders upload-backed workspace file stats", async () => {

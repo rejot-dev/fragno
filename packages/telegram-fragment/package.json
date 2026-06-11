@@ -27,6 +27,15 @@
       "types": "./dist/node/index.d.ts",
       "default": "./dist/node/index.js"
     },
+    "./types": {
+      "development": {
+        "browser": "./src/types.ts",
+        "default": "./src/types.ts"
+      },
+      "browser": "./dist/browser/types.js",
+      "types": "./dist/node/types.d.ts",
+      "default": "./dist/node/types.js"
+    },
     "./react": {
       "development": {
         "browser": "./dist/browser/client/react.js",

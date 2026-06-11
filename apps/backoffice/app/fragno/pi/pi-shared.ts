@@ -80,14 +80,13 @@ const DEFAULT_SYSTEM_PROMPT = (() => {
 })();
 
 export const PI_MODEL_CATALOG: PiModelOption[] = [
-  { provider: "openai", name: "gpt-5-nano", label: "GPT-5 nano" },
-  { provider: "openai", name: "gpt-5-mini", label: "GPT-5 mini" },
-  { provider: "openai", name: "gpt-5.2", label: "GPT-5.2" },
+  { provider: "openai", name: "gpt-5.4-mini", label: "GPT-5.4 mini" },
+  { provider: "openai", name: "gpt-5.5", label: "GPT-5.5" },
   { provider: "anthropic", name: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
   { provider: "anthropic", name: "claude-sonnet-4-5", label: "Claude Sonnet 4.5" },
   { provider: "anthropic", name: "claude-opus-4-5", label: "Claude Opus 4.5" },
-  { provider: "gemini", name: "gemini-3-flash-preview", label: "Gemini 3 Flash (Preview)" },
-  { provider: "gemini", name: "gemini-3-pro-preview", label: "Gemini 3 Pro (Preview)" },
+  { provider: "gemini", name: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
+  { provider: "gemini", name: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (Preview)" },
 ];
 
 export const PI_TOOL_IDS = ["bash", "execCodeMode", "read"] as const;

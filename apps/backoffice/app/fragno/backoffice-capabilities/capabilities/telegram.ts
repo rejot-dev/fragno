@@ -1,3 +1,4 @@
+import { telegramAttachmentSchema } from "@fragno-dev/telegram-fragment/types";
 import { z } from "zod";
 
 import type { AutomationExternalEntityDefinition } from "@/fragno/automation/contracts";
@@ -62,7 +63,7 @@ const telegramMessageReceivedPayloadSchema = z.object({
   chatId: z.string().min(1),
   fromUserId: z.string().min(1).nullable(),
   text: z.string().nullable(),
-  attachments: z.array(z.unknown()).optional(),
+  attachments: z.array(telegramAttachmentSchema).optional(),
 });
 
 const telegramMessageReceivedActorSchema = z.object({
@@ -167,6 +168,15 @@ export const telegramCapability: BackofficeConfigurableConnectionCapability = {
         chatId: "123456789",
         fromUserId: "123456789",
         text: "hello",
+        attachments: [
+          {
+            kind: "voice",
+            fileId: "voice-file-1",
+            fileUniqueId: "voice-unique-1",
+            duration: 3,
+            mimeType: "audio/ogg",
+          },
+        ],
       },
     },
     {
