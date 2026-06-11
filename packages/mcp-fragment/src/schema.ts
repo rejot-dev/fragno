@@ -40,5 +40,19 @@ export const mcpSchema = schema("mcp-fragment", (s) => {
         .addColumn("expiresAt", column("timestamp"))
         .addColumn("consumedAt", column("timestamp").nullable())
         .createIndex("idx_oauth_state_server", ["serverId"]),
+    )
+    .addTable("server_connection_cache", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("serverId", referenceColumn({ table: "server_configuration" }))
+        .addColumn("protocolVersion", column("string").nullable())
+        .addColumn("serverInfo", column("json").nullable())
+        .addColumn("capabilities", column("json").nullable())
+        .addColumn("tools", column("json").nullable())
+        .addColumn(
+          "updatedAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .createIndex("idx_server_connection_cache_server", ["serverId"], { unique: true }),
     );
 });

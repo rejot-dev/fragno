@@ -110,13 +110,9 @@ export class Mcp extends DurableObject<CloudflareEnv> {
       updatedAt: now,
     };
 
-    try {
-      await this.#state.blockConcurrencyWhile(async () => {
-        await this.#host.storeAndInitialize(stored);
-      });
-    } catch {
-      throw new Error("Failed to migrate MCP schema.");
-    }
+    await this.#state.blockConcurrencyWhile(async () => {
+      await this.#host.storeAndInitialize(stored);
+    });
 
     return buildConfigResponse(this.#env, stored);
   }

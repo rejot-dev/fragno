@@ -32,11 +32,20 @@ const authSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+const serverConnectionCacheSchema = z.object({
+  protocolVersion: z.string().nullable().optional(),
+  serverInfo: z.unknown().nullable().optional(),
+  capabilities: z.unknown().nullable().optional(),
+  tools: z.array(z.unknown()).nullable().optional(),
+  updatedAt: z.union([z.string(), z.date()]).optional(),
+});
+
 const serverSchema = z.object({
   slug: nonEmptyString,
   name: z.string().nullable().optional(),
   endpointUrl: nonEmptyString,
   authMode: nonEmptyString,
+  cache: serverConnectionCacheSchema.nullable().optional(),
 });
 const serversOutputSchema = z.object({ servers: z.array(serverSchema) });
 const createServerInputSchema = z.object({

@@ -108,7 +108,7 @@ Auth:
 Tools:
 
 - `GET /servers/:slug/tools` - connect to the MCP server and list tools.
-- `POST /servers/:slug/tool` - connect to the MCP server and call one tool.
+- `POST /servers/:slug/tools/execute` - connect to the MCP server and call one tool.
 
 ## Registering servers
 
@@ -226,9 +226,9 @@ The callback route:
 
 ### 4. Tool operations use stored OAuth tokens
 
-After callback completion, `GET /servers/:slug/tools` and `POST /servers/:slug/tool` read the stored
-OAuth token payload from the DB and send the access token as a bearer token when connecting to the
-MCP server.
+After callback completion, `GET /servers/:slug/tools` and `POST /servers/:slug/tools/execute` read
+the stored OAuth token payload from the DB and send the access token as a bearer token when
+connecting to the MCP server.
 
 The fragment still connects per operation. MCP session IDs are used only inside a single operation
 by the SDK transport and are not stored or reused across requests.

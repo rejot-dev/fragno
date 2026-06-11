@@ -6,11 +6,20 @@ import type { McpFragment } from "@/fragno/mcp";
 
 import type { McpConfigState } from "./shared";
 
+export type McpServerCache = {
+  protocolVersion?: string | null;
+  serverInfo?: unknown;
+  capabilities?: unknown;
+  tools?: McpToolSummary[] | null;
+  updatedAt?: string | Date;
+};
+
 export type McpServerSummary = {
   slug: string;
   name?: string | null;
   endpointUrl: string;
   authMode: string;
+  cache?: McpServerCache | null;
 };
 
 export type McpToolSummary = {

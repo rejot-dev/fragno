@@ -4,6 +4,7 @@ import type {
   BackofficeConfigurableConnectionCapability,
   ConnectionStatus,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createMcpCapabilityFiles } from "@/fragno/backoffice-capabilities/capabilities/mcp-files";
 
 import type { McpAdminConfigResponse } from "../../../../workers/mcp.do";
 
@@ -47,25 +48,13 @@ const toMcpStatus = (response: McpAdminConfigResponse): ConnectionStatus => {
 export const mcpCapability: BackofficeConfigurableConnectionCapability = {
   ...capability,
   runtimeToolNamespaces: ["mcp"],
+  get files() {
+    return createMcpCapabilityFiles();
+  },
   connection: {
     configurable: true,
     configureInputSchema: mcpConfigureInputSchema,
     configureFields: [],
-    setup: {
-      overview: "Register remote MCP servers for this organisation and authenticate to them.",
-      manualSteps: [
-        {
-          id: "add-mcp-server",
-          title: "Add MCP servers",
-          instructions:
-            "Add one or more streamable HTTP MCP endpoint URLs from the organisation configuration page.",
-        },
-      ],
-      verify: {
-        tool: "mcp.servers.list",
-        description: "List configured MCP servers and then inspect their advertised tools.",
-      },
-    },
     getStatus: async ({ env, orgId }) => toMcpStatus(await getMcpDo(env, orgId).getAdminConfig()),
     verify: async ({ env, orgId }) => toMcpStatus(await getMcpDo(env, orgId).getAdminConfig()),
     reset: async ({ env, orgId }) => toMcpStatus(await getMcpDo(env, orgId).resetAdminConfig()),

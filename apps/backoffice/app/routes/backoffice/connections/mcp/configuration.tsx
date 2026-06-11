@@ -173,6 +173,9 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     if (intent === "set-token") {
       const slug = getFormString(formData, "slug");
       const token = getFormString(formData, "token");
+      if (!token) {
+        return { ok: false, intent, message: "Bearer token is required." } satisfies McpActionData;
+      }
       const response = await callRoute("POST", "/servers/:slug/auth/token", {
         pathParams: { slug },
         body: { token },
@@ -441,6 +444,7 @@ function ServerDetail({
               type="password"
               name="token"
               placeholder="Bearer token"
+              required
               className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-xs text-[var(--bo-fg)]"
             />
             <button
@@ -455,8 +459,17 @@ function ServerDetail({
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3">
           <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">Tools</p>
           <p className="mt-2 text-sm text-[var(--bo-muted)]">
-            Tool discovery connects to the selected server only when requested.
+            Cached tool discovery is shown automatically when available. Refresh connects to the
+            selected server.
           </p>
+          {server.cache?.protocolVersion ? (
+            <p className="mt-2 text-xs text-[var(--bo-muted-2)]">
+              Protocol {server.cache.protocolVersion}
+              {server.cache.updatedAt
+                ? ` · cached ${new Date(server.cache.updatedAt).toLocaleString()}`
+                : ""}
+            </p>
+          ) : null}
           <Form method="post" className="mt-3">
             <input type="hidden" name="intent" value="fetch-tools" />
             <input type="hidden" name="slug" value={server.slug} />
@@ -550,6 +563,13 @@ export default function BackofficeOrganisationMcpConfiguration() {
       return new Map([...previous].filter(([slug]) => slugs.has(slug)));
     });
   }, [servers]);
+
+  const selectedToolsState = selectedServer
+    ? (toolsByServer.get(selectedServer.slug) ??
+      (Array.isArray(selectedServer.cache?.tools)
+        ? { slug: selectedServer.slug, tools: selectedServer.cache.tools }
+        : undefined))
+    : undefined;
 
   const configureLinkClass = isConfiguring
     ? "block w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-3 text-left text-[var(--bo-accent-fg)]"
@@ -655,7 +675,7 @@ export default function BackofficeOrganisationMcpConfiguration() {
         ) : selectedServer ? (
           <ServerDetail
             server={selectedServer}
-            toolsState={toolsByServer.get(selectedServer.slug)}
+            toolsState={selectedToolsState}
             fetchingTools={
               submittingIntent === "fetch-tools" && submittingSlug === selectedServer.slug
             }
@@ -670,7 +690,7 @@ export default function BackofficeOrganisationMcpConfiguration() {
                 Select a server or configure a new one.
               </h2>
               <p className="mt-2 text-sm text-[var(--bo-muted)]">
-                Server details, authentication controls, and manually fetched tools appear here.
+                Server details, authentication controls, and cached tools appear here.
               </p>
             </div>
           </div>

@@ -64,6 +64,14 @@ describe("Backoffice capability starter skills", () => {
     expect(skill).toContain("send chat messages");
   });
 
+  test("MCP skill documents OAuth setup and tools", () => {
+    const skill = readStarterText("skills/mcp-connection/SKILL.md");
+
+    expect(skill).toContain("public OAuth callback route");
+    expect(skill).toContain('auth: { type: "oauth" }');
+    expect(skill).toContain("mcp.listTools");
+  });
+
   test("general starter skills cover automations, connections, workflows, and sandbox", () => {
     expect(readStarterText("skills/building-automations/SKILL.md")).toContain(
       "events.eventsCatalogList",
