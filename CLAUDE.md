@@ -1,123 +1,118 @@
 # Fragno
 
-Fragno is a framework-agnostic, type-safe full-stack TypeScript framework that enables building
-portable full-stack libraries called "fragments". It follows a core + adapters pattern where
-`@fragno-dev/core` provides the framework-agnostic implementation and specific adapters provide
-integration with React, Vue, Node.js, and various meta-frameworks.
+This is the monorepo for Fragno, a meta framework that allows the user to built full-stack
+libraries.
+
+We're building an end-to-end toolchain for users and agents to build libraries that span the
+frontend, backend, and database layers.
+
+## Current status
+
+The project is PRE 1.0. That means we're fine with breaking changes, even in the data layer. We're
+hardcore dogfooding the meta framework, as well as full-stack libraries built on top of it with the
+goal to perfect the API surface.
+
+### Glossary
+
+- _you_: the agent reading this document, building Fragno
+- _me/we/us_: the humans contributing to Fragno, or the full-stack libraries in this repo. The party
+  talking to you as we build.
+- _developers/users/authors_: our users. The developers using Fragno to build and ship full-stack
+  libraries. We assume that they won't read much of the code produced whilst using Fragno, so we
+  must provide them with proper guardrails.
+- _end-users/integrators_: the users of our users, integrating full-stack libraries into their
+  full-stack apps. These are still programmers (or vibe coders) and they do not read code at all.
+
+- _Fragments_: a full-stack library ("Frag" from "Fragno").
+
+## Philosophy
+
+These foundations are built by me and you, all your code in the core components are carefully
+reviewed, as well as in some of the more critical full-stack libraries.
+
+We believe that users, and certainly end-users do NOT always write optional code. Specifically when
+it comes to distributed systems, or around databases. Atomic transactions, round-trips, exactly once
+execution. These are things that (end-)users do not think about enough. It's our goal to help users
+and end-users do the right thing.
+
+This also means we need to restrict the user: no interactive transactions, no arbitrary joins, a
+single database round-trip per HTTP endpoint, support ONLY cursor-based pagination. Limitations make
+programs great: faster and more fault tolerant.
+
+This means designing libraries around these limitations. Data models have to be designed around the
+fact that we use optimistic concurrency control, do not have arbitrary joins, and every HTTP
+endpoint can only have a single round-trip for retrieval, and a single round-trip for mutation.
+
+### Full-stack <> End-to-end
+
+When we say full-stack, we really mean it. This means end-to-end type safety, and also end-to-end
+testing. Libraries built with Fragno can define tests that use a real SQLite database, so actual SQL
+operations are tested. Actual routes are being called, and even client-side reactive stores are
+being updated and can also be asserted inside of these tests.
+
+### Boil the ocean
+
+This project is ambitious. Handling all layers of the stack is not easy.
+
+When planning, do not be afraid to suggest seemingly insane solutions. For example, rewriting
+esbuild to work entirely in JS without file system access. Seems insane, but it's absolutely doable
+with modern tools.
+
+### Only build the primitives
+
+We should avoid feature creep, and assume our users can use their agents to build whatever they
+need. This may seem to counter "boil the ocean", but it does not. We're focused on the primitives.
+
+Primitives are NOT basic. This is why we built Fragno Workflows, a durable execution primitive.
+
+Since Fragno is the first, and only, way of building full-stack libraries, primitives have shifted.
+A "GitHub App Fragment" could never have been a primitive, every applications has to integrate this
+manually into every layer. But now we are able to ship this as a primitive.
+
+### Obvious solutions
+
+We should avoid being clever and doing things because they seem smart. We want everything we build
+to be so obvious it feels kind of stupid.
+
+When one of us prompts you, never hesitate to push back and suggest ways we could make things more
+obvious. Note that "simple" and "obvious" are not always aligned, sometimes the "obvious" solution
+is more complex.
+
+"Obvious" solutions are the defaults that agents would assume are the case.
 
 ## Architecture
 
-- **Fragments**: Full-stack libraries that work across different frameworks
-- **Code Splitting**: Automatic client/server code separation via @fragno-dev/unplugin-fragno
-- **Type Safety**: End-to-end TypeScript types from server to client
-- **State Management**: Built on nanostores for reactive state management
-- **Two Audiences**: Library Authors build fragments; Users integrate them into their apps
-- **Fragment Workflow**: Authors define routes + client hooks → Users mount routes + use hooks
-- **Database Layer**: Optional @fragno-dev/db for fragments needing persistent storage
-  (Kysely/Drizzle adapters)
+Fragno's documentation is part of this repository, you may read it, but generally it makes more
+sense to read the underlying code.
 
-## Common Commands
+The `@fragno-dev/core` package contains the frontend and backend glue. This allows libraries to
+define HTTP routes and create reactive data stores (using Nanostores). It also contains adapters for
+integration with React, Vue, Node.js, and various full-stack frameworks like Next and Nuxt.
 
-Note: Always run tasks through `turbo` and always include `--output-logs=errors-only`.
+Automatic client/server code splitting happens in `@fragno-dev/unplugin-fragno`.
 
-All commands use Turbo as the monorepo task runner. Always include `--output-logs=errors-only` to
-reduce noise and only show errors.
+### Data layer
 
-- `pnpm exec turbo build --output-logs=errors-only` - Build all packages
-- `pnpm exec turbo types:check --output-logs=errors-only` - TypeScript type checking across all
-  packages
-- `pnpm exec turbo test --output-logs=errors-only` - Run tests across all packages
-- `pnpm run lint` - Run oxlint for the repo
+`@fragno-dev/db` is a key piece of this repository, but optional to the Fragment authors. Features:
 
-Use `--filter` to target specific packages or directories:
+- Schema definition
+- Limited ORM for queries
+- ORM adapters: Kysely, Drizzle, Prisma
+- Database Adapters: SQLite, Postgres/PGLite, MySQL
+- Transactions: two-phase OCC transactions
+- Migrations
+- Durable Hooks (outbox pattern): Trigger durable hooks when database operations are performed,
+  allowing the user to take action after a successful commit.
 
-- `--filter=@fragno-dev/core` - Target a specific package by name
-- `--filter=./packages/fragno-db` - Target by path
-- `--filter=./packages/*` - Target all packages in a directory
-- `--filter=...@fragno-dev/core` - Target a package and all its dependencies
+## How end-users integrate Fragments
 
-Examples:
+- Authors define routes, client hooks, database schema, and queries.
+- End-users mount routes into their application, migrate their database with the Fragment's schema,
+  and use the hooks on the frontend
 
-- `pnpm exec turbo build --filter=@fragno-dev/db --output-logs=errors-only`
-- `pnpm exec turbo test --filter=./packages/fragment-workflows --output-logs=errors-only`
-- `pnpm run lint`
+## Developing
 
-## Tools
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-- pnpm + Node
-- Turbo(repo) for monorepo management
-- TSDown for building packages
-- Vitest
-- Lefthook for pre-commit hooks
-- oxfmt
-- oxlint
-- Changesets
-
-## Development Practices
-
-- [IMPORTANT]: Always run tests and type-check for relevant packages after making changes.
-- DO NOT export things from barrel files (e.g. index.ts or mod.ts). Export files from package.json
-  instead.
-- ALWAYS assume full breaking changes.
-
-### Testing
-
-- When testing _types_, do NOT use `.toMatchTypeOf(..)`, it's deprecated. Use either
-  toMatchObjectType or toExtend instead:
-  - Use toMatchObjectType to perform a strict check on a subset of your type's keys
-  - Use toExtend to check if your type extends the expected type
-- Tests are colocated, e.g. `route.ts` -> `route.test.ts`
-- DO NOT use mocks. Instead write the implementation such that real objects can be mocked in tests.
-
-## Package Structure
-
-### Core Packages
-
-- `packages/fragno/` - Core framework (@fragno-dev/core) - Fragment definition, routing, client
-  builders
-- `packages/fragno-node/` - Node.js adapter for Express/HTTP servers (@fragno-dev/node)
-- `packages/unplugin-fragno/` - Build-time code splitting plugin (@fragno-dev/unplugin-fragno)
-- `packages/fragno-db/` - Type-safe ORM for fragments (@fragno-dev/db)
-  - Schema definition with versioning and migrations
-  - Kysely and Drizzle adapters
-  - Goal is to let Fragment authors define a (simple) data model to store data in the user's db
-  - Durable hooks dispatchers (Node + Cloudflare DO) live in `@fragno-dev/db/dispatchers/*`
-- `packages/fragno-test/` - Testing utilities for fragment authors
-
-### First-Party Fragments & Integrations
-
-- `packages/fragment-workflows/` - Workflows fragment
-- `packages/fragment-mailing-list/` - Mailing list fragment
-- `packages/auth/` - Auth fragment
-- `packages/forms/` - Forms fragment
-- `packages/stripe/` - Stripe integration fragment
-- `packages/jsonforms-shadcn-renderers/` - JSONForms renderers (shadcn/ui)
-
-### Tooling & CLIs
-
-- `packages/create/` - Library to create Fragno fragments
-- `apps/create-cli/` - CLI to create Fragno fragments (`npm create fragno`), uses `packages/create`
-- `apps/fragno-cli/` - Dev CLI for running and inspecting fragments
-- `apps/fragno-wf/` - Workflows CLI
-- `apps/fragno-ai/` - AI helper app for Fragno workflows
-
-### Private Tooling Packages
-
-- `packages-private/oxlint-plugins/` - Custom oxlint rules
-- `packages-private/typescript-config/` - Shared TS config presets
-- `packages-private/vitest-config/` - Shared Vitest config presets
-
-### Misc
-
-- `example-fragments/*` - Example fragments
-- `example-apps/` - Framework integration examples (Next.js, Nuxt, React Router, Astro, SvelteKit,
-  Vue SPA, SolidStart) plus DB usage demos and workflow samples
-
-### Documentation & Example Apps
-
-- `apps/docs/` - Documentation site (React Router + Fumadocs)
-  - `content/docs/fragno/for-library-authors/` - Building fragments
-  - `content/docs/fragno/for-users/` - Integrating fragments
-  - `content/docs/stripe/` - Stripe fragment docs
-  - `content/docs/forms/` - Forms fragment docs
-  - `content/docs/workflows/` - Workflows docs
+In short: we use Turborepo + PNPM.
+`pnpm exec turbo build types:check test --output-logs=errors-only`

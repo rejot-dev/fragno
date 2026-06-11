@@ -39,7 +39,57 @@ If you want to contact us in a more casual manner than creating an issue, you ca
 ## Getting Started
 
 1. Clone the repository
-1. Run `pnpm install`
-1. Run `pnpm run build:watch` (or just `build`)
-1. `cd packages/<package-name>` & `pnpm exec vitest` to run tests, or if in an app directory run
-   `pnpm run dev` to start the app
+1. Run `pnpm exec turbo build types:check test`
+
+## Common Commands
+
+Note: Always run tasks through `turbo` and always include `--output-logs=errors-only`.
+
+All commands use Turbo as the monorepo task runner. Always include `--output-logs=errors-only` to
+reduce noise and only show errors.
+
+- `pnpm exec turbo build --output-logs=errors-only` - Build all packages
+- `pnpm exec turbo types:check --output-logs=errors-only` - TypeScript type checking across all
+  packages
+- `pnpm exec turbo test --output-logs=errors-only` - Run tests across all packages
+- `pnpm run lint` - Run oxlint for the repo
+
+Use `--filter` to target specific packages or directories:
+
+- `--filter=@fragno-dev/core` - Target a specific package by name
+- `--filter=./packages/fragno-db` - Target by path
+- `--filter=./packages/*` - Target all packages in a directory
+- `--filter=...@fragno-dev/core` - Target a package and all its dependencies
+
+Examples:
+
+- `pnpm exec turbo build --filter=@fragno-dev/db --output-logs=errors-only`
+- `pnpm exec turbo test --filter=./packages/fragment-workflows --output-logs=errors-only`
+- `pnpm run lint`
+
+## Tools
+
+- pnpm + Node
+- Turbo(repo) for monorepo management
+- TSDown for building packages
+- Vitest
+- Lefthook for pre-commit hooks
+- oxfmt
+- oxlint
+- Changesets
+
+## Development Practices
+
+- [IMPORTANT]: Always run tests and type-check for relevant packages after making changes.
+- DO NOT export things from barrel files (e.g. index.ts or mod.ts). Export files from package.json
+  instead.
+- ALWAYS assume full breaking changes.
+
+### Testing
+
+- When testing _types_, do NOT use `.toMatchTypeOf(..)`, it's deprecated. Use either
+  toMatchObjectType or toExtend instead:
+  - Use toMatchObjectType to perform a strict check on a subset of your type's keys
+  - Use toExtend to check if your type extends the expected type
+- Tests are colocated, e.g. `route.ts` -> `route.test.ts`
+- DO NOT use mocks. Instead write the implementation such that real objects can be mocked in tests.
