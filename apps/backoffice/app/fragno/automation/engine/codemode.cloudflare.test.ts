@@ -1,12 +1,17 @@
 import { describe, expect, test, assert } from "vitest";
 
+import { createWorkflowsTestHarness } from "@fragno-dev/workflows/test";
+import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 import { env } from "cloudflare:workers";
+
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 import type { AutomationRuntimeHostContext, AutomationRuntime } from "@/fragno/automation";
 import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "@/fragno/automation/contracts";
 import { executeBashAutomation } from "@/fragno/runtime-tools/automation-host";
+import type { BackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
 
-import { executeCodemodeAutomation } from "./codemode";
+import { executeCodemodeAutomation, executeWorkflowCodemodeAutomation } from "./codemode";
 import { createTestMasterFileSystem } from "./test-master-file-system.test-utils";
 
 describe("executeCodemodeAutomation", () => {
@@ -114,6 +119,127 @@ describe("executeCodemodeAutomation", () => {
           actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
         },
       ],
+    ]);
+  });
+
+  test("exposes connection configuration tools to codemode automations", async () => {
+    const calls: unknown[] = [];
+    const event: AutomationEvent = {
+      id: "event-codemode-configure-upload",
+      orgId: "org-1",
+      source: "auth",
+      eventType: "organization.created",
+      occurredAt: "2026-06-12T00:00:00.000Z",
+      payload: { id: "org-1", name: "Org 1", slug: "org-1" },
+      actor: AUTOMATION_SYSTEM_ACTOR,
+      actors: [AUTOMATION_SYSTEM_ACTOR],
+    };
+
+    const result = await executeCodemodeAutomation({
+      env,
+      masterFs: createTestMasterFileSystem({}),
+      context: createAutomationContext(event, {
+        backofficeRuntime: createRecordingBackofficeRuntime(calls),
+      }),
+      script: `async () => {
+        return await connections.configure({
+          id: "upload",
+          payload: { provider: "database" },
+        });
+      }`,
+    });
+
+    expect(result).toMatchObject({
+      runtime: "codemode",
+      eventId: "event-codemode-configure-upload",
+      exitCode: 0,
+      stderr: "",
+      result: {
+        id: "upload",
+        configured: true,
+        config: { provider: "database" },
+      },
+      toolCalls: [
+        {
+          providerName: "connections",
+          toolName: "configure",
+          toolId: "connections.configure",
+          status: "success",
+        },
+      ],
+    });
+    expect(calls).toEqual([
+      ["configureConnection", { id: "upload", payload: { provider: "database" } }],
+    ]);
+  });
+
+  test("exposes connection configuration tools to workflow codemode automations", async () => {
+    const calls: unknown[] = [];
+    const event: AutomationEvent = {
+      id: "event-workflow-configure-upload",
+      orgId: "org-1",
+      source: "auth",
+      eventType: "organization.created",
+      occurredAt: "2026-06-12T00:00:00.000Z",
+      payload: { id: "org-1", name: "Org 1", slug: "org-1" },
+      actor: AUTOMATION_SYSTEM_ACTOR,
+      actors: [AUTOMATION_SYSTEM_ACTOR],
+    };
+    const Workflow = defineRemoteWorkflow(
+      { name: "codemode-workflow-connections-test" },
+      async (workflowEvent, remote) =>
+        await executeWorkflowCodemodeAutomation({
+          env,
+          workflowEvent,
+          remote,
+          masterFs: createTestMasterFileSystem({}),
+          context: createAutomationContext(event, {
+            backofficeRuntime: createRecordingBackofficeRuntime(calls),
+          }),
+          script: `defineWorkflow(
+            { name: "configure-upload-connection" },
+            async (_event, step) => {
+              return await step.do("configure upload database connection", async () => {
+                return await connections.configure({
+                  id: "upload",
+                  payload: { provider: "database" },
+                });
+              });
+            },
+          );`,
+        }),
+    );
+    const harness = await createWorkflowsTestHarness({
+      workflows: { WORKFLOW: Workflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const instanceId = await harness.createInstance("WORKFLOW", {
+      id: "codemode-workflow-connections-test-1",
+      remoteWorkflowName: "configure-upload-connection",
+      params: { automationEvent: event },
+    });
+    await harness.runUntilIdle({
+      workflowName: "codemode-workflow-connections-test",
+      instanceId,
+      reason: "create",
+    });
+
+    await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
+      status: "complete",
+      output: expect.objectContaining({
+        exitCode: 0,
+        result: expect.objectContaining({
+          id: "upload",
+          configured: true,
+          config: { provider: "database" },
+        }),
+      }),
+    });
+    expect(calls).toEqual([
+      ["configureConnection", { id: "upload", payload: { provider: "database" } }],
     ]);
   });
 
@@ -277,9 +403,10 @@ describe("executeCodemodeAutomation", () => {
 
 type AutomationContextOptions = {
   runtime?: AutomationRuntime;
+  backofficeRuntime?: BackofficeCapabilitiesRuntime;
   otpRuntime?: AutomationRuntimeHostContext["otp"]["runtime"];
   piRuntime?: NonNullable<AutomationRuntimeHostContext["pi"]>["runtime"] | null;
-  telegramRuntime?: AutomationRuntimeHostContext["telegram"]["runtime"];
+  telegramRuntime?: NonNullable<AutomationRuntimeHostContext["telegram"]>["runtime"];
   binding?: Partial<AutomationRuntimeHostContext["automation"]["binding"]>;
 };
 
@@ -291,6 +418,7 @@ const createAutomationContext = (
   const runtime = options.runtime ?? createUnusedAutomationRuntime();
 
   return {
+    backoffice: options.backofficeRuntime ? { runtime: options.backofficeRuntime } : null,
     automation: {
       event,
       orgId: event.orgId,
@@ -337,6 +465,32 @@ const createUnusedAutomationRuntime = (): AutomationRuntime => ({
     throw new Error("emitEvent should not be called in this test.");
   },
 });
+
+const createRecordingBackofficeRuntime = (calls: unknown[]): BackofficeCapabilitiesRuntime =>
+  new Proxy(
+    {
+      configureConnection: async (input: { id: string; payload: unknown; origin?: string }) => {
+        calls.push(["configureConnection", input]);
+        return {
+          id: input.id,
+          label: input.id,
+          kind: "connection" as const,
+          configured: true,
+          config: input.payload as Record<string, unknown>,
+        };
+      },
+    },
+    {
+      get(target, property: string) {
+        if (property in target) {
+          return target[property as keyof typeof target];
+        }
+        return async () => {
+          throw new Error(property + " should not be called in this test.");
+        };
+      },
+    },
+  ) as BackofficeCapabilitiesRuntime;
 
 const createRecordingAutomationRuntime = (calls: unknown[]): AutomationRuntime => ({
   get: async (input) => {

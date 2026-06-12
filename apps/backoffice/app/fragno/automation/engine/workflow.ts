@@ -61,6 +61,7 @@ const createWorkflowAutomationContext = ({
   };
 
   return {
+    ...runtimeContext,
     automation: {
       event: params.automationEvent,
       orgId,
@@ -81,16 +82,9 @@ const createWorkflowAutomationContext = ({
       ...runtimeContext.automations,
       runtime: automationRuntime,
     },
-    workflow: runtimeContext.workflow,
-    durableHooks: runtimeContext.durableHooks,
     otp: {
       runtime: automationRuntime,
     },
-    pi: runtimeContext.pi,
-    reson8: runtimeContext.reson8,
-    resend: runtimeContext.resend,
-    sandbox: runtimeContext.sandbox,
-    telegram: runtimeContext.telegram,
   };
 };
 

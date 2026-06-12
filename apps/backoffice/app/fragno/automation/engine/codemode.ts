@@ -16,30 +16,10 @@ import {
   type BackofficeRuntimeToolCall,
 } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
-import {
-  runtimeToolFamilies,
-  type CoreBackofficeToolContext,
-} from "@/fragno/runtime-tools/tool-families";
+import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import { createAutomationRunResult, type AutomationRunResult } from "../run-result";
 import { createAutomationExecutionFileSystem } from "./execution-file-system";
-
-const createAutomationToolRuntimeContext = (
-  context: AutomationExecutionContext,
-): CoreBackofficeToolContext => ({
-  runtimes: {
-    automations: context.automations?.runtime,
-    workflow: context.workflow?.runtime,
-    durableHooks: context.durableHooks?.runtime,
-    event: context.automation.runtime,
-    otp: context.otp?.runtime,
-    pi: context.pi?.runtime,
-    resend: context.resend?.runtime,
-    reson8: context.reson8?.runtime,
-    sandbox: context.sandbox?.runtime,
-    telegram: context.telegram?.runtime,
-  },
-});
 
 const createCodemodeAutomationRunResult = ({
   result,
@@ -83,7 +63,7 @@ export const executeCodemodeAutomation = async ({
       "event.json": JSON.stringify(context.automation.event),
     },
   });
-  const toolContext = createAutomationToolRuntimeContext(context);
+  const toolContext = createBackofficeToolContext(context);
   const tools = getAvailableRuntimeTools({
     families: runtimeToolFamilies,
     context: toolContext,
@@ -120,7 +100,7 @@ export const executeWorkflowCodemodeAutomation = async ({
       "event.json": JSON.stringify(context.automation.event),
     },
   });
-  const toolContext = createAutomationToolRuntimeContext(context);
+  const toolContext = createBackofficeToolContext(context);
   const tools = getAvailableRuntimeTools({
     families: runtimeToolFamilies,
     context: toolContext,

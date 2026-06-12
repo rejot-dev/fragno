@@ -70,6 +70,10 @@ describe("starter automation content", () => {
       routerHandlesPiConfigured: router.includes(
         `event.source === "pi" && event.eventType === "${piCapabilityConfigured}"`,
       ),
+      routerStartsUploadConnectionWorkflow:
+        router.includes('event.source === "auth" && event.eventType === "organization.created"') &&
+        router.includes('remoteWorkflowName: "configure-upload-connection"') &&
+        router.includes('"/starter/automations/scripts/configure-upload-connection.workflow.js"'),
       routerDerivesDefaultPiAgent:
         router.includes("event.payload.harnesses") &&
         router.includes("event.payload.modelCatalog") &&
@@ -85,7 +89,20 @@ describe("starter automation content", () => {
       routerStartsDelayedTestWorkflow: true,
       routerStartsPiWorkflow: true,
       routerHandlesPiConfigured: true,
+      routerStartsUploadConnectionWorkflow: true,
       routerDerivesDefaultPiAgent: true,
     });
+  });
+
+  test("organization creation workflow configures upload database connection", () => {
+    const workflow = readStarterAutomation(
+      STARTER_AUTOMATION_SCRIPT_PATHS.configureUploadConnection,
+    );
+
+    expect(workflow).toContain('{ name: "configure-upload-connection" }');
+    expect(workflow).toContain('automationEvent.eventType !== "organization.created"');
+    expect(workflow).toContain("connections.configure({");
+    expect(workflow).toContain('id: "upload"');
+    expect(workflow).toContain('payload: { provider: "database" }');
   });
 });
