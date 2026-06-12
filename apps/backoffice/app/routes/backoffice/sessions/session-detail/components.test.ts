@@ -53,6 +53,59 @@ describe("SessionConversationPanel", () => {
     expect(markup).toContain('data-streamdown="strong"');
   });
 
+  test("renders SKILL.md read tool results as loaded skills without file contents", () => {
+    const markup = renderToStaticMarkup(
+      createElement(SessionConversationPanel, {
+        draftToolCalls: [],
+        messages: [
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "toolCall",
+                id: "tool-read-skill",
+                name: "read",
+                arguments: { path: "/starter/skills/telegram-connection/SKILL.md" },
+              },
+            ],
+            timestamp: 1,
+            api: "test",
+            provider: "test",
+            model: "test",
+            usage: { input: 0, output: 0, totalTokens: 0, cost: { total: 0 } },
+            stopReason: "toolUse",
+          } as never,
+          {
+            role: "toolResult",
+            toolCallId: "tool-read-skill",
+            toolName: "read",
+            content: [{ type: "text", text: "# Secret skill contents" }],
+            details: { path: "/starter/skills/telegram-connection/SKILL.md" },
+            isError: false,
+            timestamp: 2,
+          } as never,
+        ],
+        onJumpToLatest: () => {},
+        onScroll: () => {},
+        readyForInput: true,
+        runningTools: [],
+        scrollContentRef: createRef<HTMLDivElement>(),
+        scrollViewportRef: createRef<HTMLDivElement>(),
+        showJumpToLatest: false,
+        showThinking: true,
+        showToolCalls: true,
+        showUsage: false,
+        statusText: null,
+      }),
+    );
+
+    expect(markup).toContain("Skill loaded");
+    expect(markup).toContain("telegram-connection");
+    expect(markup).not.toContain("Secret skill contents");
+    expect(markup).not.toContain("/starter/skills/telegram-connection/SKILL.md");
+    expect(markup).not.toContain("Tool call · read");
+  });
+
   test("renders a draft tool call even before the assistant message contains a tool block", () => {
     const markup = renderToStaticMarkup(
       createElement(SessionConversationPanel, {
