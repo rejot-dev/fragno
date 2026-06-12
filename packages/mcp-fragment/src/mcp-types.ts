@@ -56,13 +56,6 @@ export type AuthConfig = z.infer<typeof authConfigSchema>;
 export type CreateServerInput = z.infer<typeof createServerInputSchema>;
 export type ToolCallInput = z.infer<typeof toolCallInputSchema>;
 
-export interface McpJsonRpcResponse {
-  jsonrpc: "2.0";
-  id?: string | number;
-  result?: Record<string, unknown>;
-  error?: { code: number; message: string; data?: unknown };
-}
-
 export interface McpTool {
   name: string;
   title?: string;

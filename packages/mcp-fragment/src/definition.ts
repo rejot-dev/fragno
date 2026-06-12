@@ -1,18 +1,188 @@
 import { defineFragment } from "@fragno-dev/core";
-import { withDatabase } from "@fragno-dev/db";
+import { withDatabase, type HookFn } from "@fragno-dev/db";
 
-import type { McpFragmentConfig } from "./mcp-types";
+import { listMcpTools } from "./mcp-api";
+import type { McpFragmentConfig as BaseMcpFragmentConfig } from "./mcp-types";
 import { mcpSchema } from "./schema";
 import {
   createOAuthCallbackSnapshot,
+  createMcpOperationAuth,
   createOAuthStartSnapshot,
   defaultOAuthRedirectUri,
   resolveMcpOperationAuth,
   tokenExpiry,
+  type AuthPersistenceChanges,
 } from "./services";
+
+export interface McpServerConfigurationChangedPayload {
+  serverId: string;
+  current: {
+    tools: unknown[];
+  };
+}
+
+export interface McpServerConfigurationDeletedPayload {
+  serverId: string;
+}
+
+export interface McpFragmentHooksConfig {
+  onServerConfigurationChanged?: (
+    payload: McpServerConfigurationChangedPayload,
+    idempotencyKey: string,
+  ) => Promise<void> | void;
+  onServerConfigurationDeleted?: (
+    payload: McpServerConfigurationDeletedPayload,
+    idempotencyKey: string,
+  ) => Promise<void> | void;
+}
+
+export type McpFragmentConfig = BaseMcpFragmentConfig & McpFragmentHooksConfig;
+
+export interface McpInternalRefreshServerConfigurationPayload {
+  serverId: string;
+}
+
+export type McpHooksMap = {
+  internalRefreshServerConfiguration: HookFn<McpInternalRefreshServerConfigurationPayload>;
+  onServerConfigurationChanged: HookFn<McpServerConfigurationChangedPayload>;
+  onServerConfigurationDeleted: HookFn<McpServerConfigurationDeletedPayload>;
+};
 
 export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-fragment")
   .extend(withDatabase(mcpSchema))
+  .provideHooks<McpHooksMap>(({ defineHook, config }) => ({
+    internalRefreshServerConfiguration: defineHook(async function ({ serverId }) {
+      let prepared:
+        | {
+            authChanges?: AuthPersistenceChanges;
+            toolsOperation: Awaited<ReturnType<typeof listMcpTools<AuthPersistenceChanges>>>;
+          }
+        | undefined;
+
+      const result = await this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(mcpSchema)
+            .findFirst("server_configuration", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", serverId)),
+            )
+            .find("secret", (b) =>
+              b.whereIndex("idx_secret_server_kind", (eb) => eb("serverId", "=", serverId)),
+            )
+            .findFirst("server_connection_cache", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", serverId)),
+            ),
+        )
+        .afterRetrieve(async (_uow, [server, secrets]) => {
+          if (!server) {
+            return;
+          }
+
+          const auth = await createMcpOperationAuth({ config, server, secrets });
+          const toolsOperation = await listMcpTools({
+            endpointUrl: server.endpointUrl,
+            auth,
+            fetchImplementation: config.fetch,
+          });
+          prepared = {
+            authChanges: toolsOperation.authChanges,
+            toolsOperation,
+          };
+        })
+        .mutate(({ forSchema, retrieveResult: [server, secrets, cache] }) => {
+          if (!server) {
+            return { action: "missing" as const };
+          }
+          if (!prepared) {
+            throw new Error("MCP refresh operation was not prepared");
+          }
+
+          const preparedOperation = prepared;
+          const uow = forSchema(mcpSchema);
+          const upsertSecret = (kind: string, payload: string, expiresAt: Date | null) => {
+            const existing = secrets.find((secret) => secret.kind === kind);
+            if (existing) {
+              uow.update("secret", existing.id, (b) =>
+                b.set({ payload, expiresAt, updatedAt: b.now() }).check(),
+              );
+              return;
+            }
+            uow.create("secret", {
+              id: `${serverId}:${kind}`,
+              serverId,
+              kind,
+              payload,
+              expiresAt,
+            });
+          };
+
+          if (preparedOperation.authChanges?.clientInformationPayload) {
+            upsertSecret(
+              "oauth-client",
+              preparedOperation.authChanges.clientInformationPayload,
+              null,
+            );
+          }
+          if (preparedOperation.authChanges?.discoveryStatePayload) {
+            upsertSecret(
+              "oauth-discovery",
+              preparedOperation.authChanges.discoveryStatePayload,
+              null,
+            );
+          }
+          if (preparedOperation.authChanges?.authPayload) {
+            upsertSecret(
+              "auth",
+              preparedOperation.authChanges.authPayload,
+              preparedOperation.authChanges.authExpiresAt ?? null,
+            );
+          }
+
+          if (!preparedOperation.toolsOperation.ok) {
+            return {
+              action: "error" as const,
+              error:
+                preparedOperation.toolsOperation.error instanceof Error
+                  ? preparedOperation.toolsOperation.error.message
+                  : String(preparedOperation.toolsOperation.error),
+            };
+          }
+
+          const tools = Array.isArray(preparedOperation.toolsOperation.result.tools)
+            ? preparedOperation.toolsOperation.result.tools
+            : [];
+          const previousTools = Array.isArray(cache?.tools) ? cache.tools : null;
+          if (!previousTools || JSON.stringify(previousTools) !== JSON.stringify(tools)) {
+            uow.triggerHook("onServerConfigurationChanged", {
+              serverId,
+              current: { tools },
+            });
+          }
+
+          uow.delete("server_connection_cache", serverId);
+          uow.create("server_connection_cache", {
+            id: serverId,
+            serverId,
+            protocolVersion: preparedOperation.toolsOperation.metadata.protocolVersion ?? null,
+            serverInfo: preparedOperation.toolsOperation.metadata.serverInfo ?? null,
+            capabilities: preparedOperation.toolsOperation.metadata.capabilities ?? null,
+            tools,
+          });
+
+          return { action: "refreshed" as const };
+        })
+        .execute();
+
+      if (result.action === "error") {
+        throw new Error(result.error);
+      }
+    }),
+    onServerConfigurationChanged: defineHook(async function (payload) {
+      await config.onServerConfigurationChanged?.(payload, this.idempotencyKey);
+    }),
+    onServerConfigurationDeleted: defineHook(async function (payload) {
+      await config.onServerConfigurationDeleted?.(payload, this.idempotencyKey);
+    }),
+  }))
   .providesBaseService(({ defineService, config }) =>
     defineService({
       startOAuth: function (input: {
