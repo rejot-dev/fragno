@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi, assert } from "vitest";
 
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
@@ -246,7 +246,7 @@ describe("Hook System", () => {
       });
 
       expect(events).toHaveLength(1);
-      expect(events[0]?.maxAttempts).toBe(1);
+      assert(events[0]?.maxAttempts === 1);
     });
 
     it("should use custom retry policy from trigger options", async () => {
@@ -285,7 +285,7 @@ describe("Hook System", () => {
           .execute();
       });
 
-      expect(events[0]?.maxAttempts).toBe(1);
+      assert(events[0]?.maxAttempts === 1);
     });
 
     it("should set nextRetryAt when processAt is in the future", async () => {
@@ -388,7 +388,7 @@ describe("Hook System", () => {
         expect(queuedCall).toBeDefined();
 
         const fields = queuedCall?.[1]?.fields;
-        expect(typeof fields).toBe("function");
+        assert(typeof fields === "function");
 
         const summary = (
           fields as () => {
@@ -402,7 +402,7 @@ describe("Hook System", () => {
           hookName,
           count: 1,
         });
-        expect(summary.total).toBe(1);
+        assert(summary.total === 1);
       } finally {
         debugSpy.mockRestore();
       }
@@ -456,7 +456,7 @@ describe("Hook System", () => {
 
       // Verify hook context (this)
       const hookContext = hookFn.mock.contexts[0] as HookContext;
-      expect(hookContext.idempotencyKey).toBe("test-nonce");
+      assert(hookContext.idempotencyKey === "test-nonce");
 
       // Verify event was marked as completed
       const result = await internalFragment.inContext(async function () {
@@ -468,7 +468,7 @@ describe("Hook System", () => {
           .execute();
       });
 
-      expect(result?.status).toBe("completed");
+      assert(result?.status === "completed");
       expect(result?.lastAttemptAt).toBeInstanceOf(Date);
     });
 
@@ -542,7 +542,7 @@ describe("Hook System", () => {
           .execute();
       });
 
-      expect(event?.status).toBe("processing");
+      assert(event?.status === "processing");
     });
 
     it("should mark failed hooks for retry", async () => {
@@ -594,9 +594,9 @@ describe("Hook System", () => {
           .execute();
       });
 
-      expect(result?.status).toBe("pending");
-      expect(result?.attempts).toBe(1);
-      expect(result?.error).toBe("Hook failed");
+      assert(result?.status === "pending");
+      assert(result?.attempts === 1);
+      assert(result?.error === "Hook failed");
       expect(result?.nextRetryAt).toBeInstanceOf(Date);
     });
 
@@ -647,9 +647,9 @@ describe("Hook System", () => {
           .execute();
       });
 
-      expect(result?.status).toBe("failed");
-      expect(result?.attempts).toBe(1);
-      expect(result?.error).toBe("Permanent failure");
+      assert(result?.status === "failed");
+      assert(result?.attempts === 1);
+      assert(result?.error === "Permanent failure");
     });
 
     it("should handle missing hooks gracefully", async () => {
@@ -698,8 +698,8 @@ describe("Hook System", () => {
           .execute();
       });
 
-      expect(result?.status).toBe("failed");
-      expect(result?.error).toBe("Hook 'onMissing' not found in hooks map");
+      assert(result?.status === "failed");
+      assert(result?.error === "Hook 'onMissing' not found in hooks map");
     });
 
     it("should re-queue stuck processing hooks and call the handler", async () => {
@@ -761,7 +761,7 @@ describe("Hook System", () => {
           .execute();
       });
 
-      expect(result?.status).toBe("completed");
+      assert(result?.status === "completed");
     });
 
     it("should process multiple hooks in parallel", async () => {
@@ -927,7 +927,7 @@ describe("Hook System", () => {
 
       expect(completed).toHaveLength(2);
       expect(pending).toHaveLength(1);
-      expect(pending[0]?.error).toBe("Hook 2 failed");
+      assert(pending[0]?.error === "Hook 2 failed");
     });
 
     it("should do nothing when no pending events exist", async () => {

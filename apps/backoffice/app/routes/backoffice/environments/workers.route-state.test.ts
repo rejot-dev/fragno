@@ -1,16 +1,16 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { readWorkersRouteState, toWorkersPath } from "./workers.route-state";
 
 describe("workers.route-state", () => {
   test("builds a detail worker path", () => {
-    expect(toWorkersPath({ workerId: "alpha" })).toBe(
-      "/backoffice/environments/workers?worker=alpha",
+    assert(
+      toWorkersPath({ workerId: "alpha" }) === "/backoffice/environments/workers?worker=alpha",
     );
   });
 
   test("builds a new worker path", () => {
-    expect(toWorkersPath({ view: "new" })).toBe("/backoffice/environments/workers?view=new");
+    assert(toWorkersPath({ view: "new" }) === "/backoffice/environments/workers?view=new");
   });
 
   test("parses a selected worker from the route", () => {

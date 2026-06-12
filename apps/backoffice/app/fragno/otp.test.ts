@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import {
   IDENTITY_LINK_TYPE,
@@ -29,30 +29,30 @@ describe("otp identity claim helpers", () => {
   });
 
   it("rejects malformed identity claim payloads", () => {
-    expect(identityClaimPayloadSchema.safeParse(null).success).toBe(false);
-    expect(
-      identityClaimPayloadSchema.safeParse({
+    assert(!identityClaimPayloadSchema.safeParse(null).success);
+    assert(
+      !identityClaimPayloadSchema.safeParse({
         orgId: "org_123",
       }).success,
-    ).toBe(false);
-    expect(
-      identityClaimPayloadSchema.safeParse({
+    );
+    assert(
+      !identityClaimPayloadSchema.safeParse({
         orgId: "org_123",
         actor: { scope: "external", source: "telegram", type: "chat" },
       }).success,
-    ).toBe(false);
-    expect(
-      identityClaimPayloadSchema.safeParse({
+    );
+    assert(
+      !identityClaimPayloadSchema.safeParse({
         orgId: "org_123",
         actor: { scope: "external", type: "chat", id: "chat_123" },
       }).success,
-    ).toBe(false);
-    expect(
-      identityClaimPayloadSchema.safeParse({
+    );
+    assert(
+      !identityClaimPayloadSchema.safeParse({
         orgId: "org_123",
         actor: { scope: "internal", type: "user", id: "user_123" },
       }).success,
-    ).toBe(false);
+    );
   });
 
   it("parses valid identity claim confirmation payloads", () => {
@@ -66,20 +66,24 @@ describe("otp identity claim helpers", () => {
   });
 
   it("rejects malformed identity claim confirmation payloads", () => {
-    expect(identityClaimConfirmationPayloadSchema.safeParse(null).success).toBe(false);
-    expect(identityClaimConfirmationPayloadSchema.safeParse({}).success).toBe(false);
-    expect(
-      identityClaimConfirmationPayloadSchema.safeParse({
+    assert(!identityClaimConfirmationPayloadSchema.safeParse(null).success);
+    assert(!identityClaimConfirmationPayloadSchema.safeParse({}).success);
+    assert(
+      !identityClaimConfirmationPayloadSchema.safeParse({
         subjectUserId: "",
       }).success,
-    ).toBe(false);
+    );
   });
 
   it("builds browser completion urls from issued otp data", () => {
-    expect(
-      buildIdentityClaimCompletionUrl("https://docs.example/base", "org_123", "chat_123", "654321"),
-    ).toBe(
-      "https://docs.example/backoffice/automations/org_123/claims/complete?externalId=chat_123&code=654321",
+    assert(
+      buildIdentityClaimCompletionUrl(
+        "https://docs.example/base",
+        "org_123",
+        "chat_123",
+        "654321",
+      ) ===
+        "https://docs.example/backoffice/automations/org_123/claims/complete?externalId=chat_123&code=654321",
     );
   });
 

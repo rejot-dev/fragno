@@ -1,4 +1,4 @@
-import { beforeAll, afterAll, beforeEach, describe, expect, test } from "vitest";
+import { beforeAll, afterAll, beforeEach, describe, expect, test, assert } from "vitest";
 
 import { createServer, type Server } from "node:http";
 
@@ -86,7 +86,7 @@ describe("workflows CLI client", async () => {
       instanceId: created.id,
     });
 
-    expect(fetched.meta["workflowName"]).toBe("demo-workflow");
+    assert(fetched.meta["workflowName"] === "demo-workflow");
     expect(fetched.id).toBe(created.id);
   });
 

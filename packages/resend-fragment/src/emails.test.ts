@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, test } from "vitest";
+import { afterAll, beforeEach, describe, expect, test, assert } from "vitest";
 
 import { drainDurableHooks } from "@fragno-dev/test";
 
@@ -82,7 +82,7 @@ describe("resend-fragment emails", async () => {
       },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       return;
     }
@@ -93,7 +93,7 @@ describe("resend-fragment emails", async () => {
     if (!queued) {
       throw new Error("Expected queued email record");
     }
-    expect(queued.status).toBe("queued");
+    assert(queued.status === "queued");
     expect(queued.providerEmailId).toBeNull();
 
     await drainDurableHooks(fragment);
@@ -107,8 +107,8 @@ describe("resend-fragment emails", async () => {
     if (!updated) {
       throw new Error("Expected updated email record");
     }
-    expect(updated.status).toBe("sent");
-    expect(updated.providerEmailId).toBe("re_123");
+    assert(updated.status === "sent");
+    assert(updated.providerEmailId === "re_123");
     expect(updated.sentAt).toBeInstanceOf(Date);
     expect(updated.updatedAt.getTime()).toBeGreaterThanOrEqual(updated.createdAt.getTime());
   });
@@ -129,7 +129,7 @@ describe("resend-fragment emails", async () => {
       },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       return;
     }
@@ -142,7 +142,7 @@ describe("resend-fragment emails", async () => {
     }
     expect(queued.scheduledAt).toBeInstanceOf(Date);
     expect(queued.scheduledAt?.getTime()).toBeGreaterThan(queued.createdAt.getTime());
-    expect(queued.status).toBe("scheduled");
+    assert(queued.status === "scheduled");
 
     await drainDurableHooks(fragment);
 
@@ -151,7 +151,7 @@ describe("resend-fragment emails", async () => {
     if (!updated) {
       throw new Error("Expected updated email record");
     }
-    expect(updated.status).toBe("scheduled");
+    assert(updated.status === "scheduled");
     expect(updated.sentAt).toBeNull();
     expect(sendMock).not.toHaveBeenCalled();
   });
@@ -175,7 +175,7 @@ describe("resend-fragment emails", async () => {
       },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       return;
     }
@@ -188,9 +188,9 @@ describe("resend-fragment emails", async () => {
     if (!updated) {
       throw new Error("Expected updated email record");
     }
-    expect(updated.status).toBe("failed");
-    expect(updated.errorCode).toBe("invalid_from_address");
-    expect(updated.errorMessage).toBe("Invalid from");
+    assert(updated.status === "failed");
+    assert(updated.errorCode === "invalid_from_address");
+    assert(updated.errorMessage === "Invalid from");
   });
 
   test("marks failed when Resend throws", async () => {
@@ -204,7 +204,7 @@ describe("resend-fragment emails", async () => {
       },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       return;
     }
@@ -217,9 +217,9 @@ describe("resend-fragment emails", async () => {
     if (!updated) {
       throw new Error("Expected updated email record");
     }
-    expect(updated.status).toBe("failed");
-    expect(updated.errorMessage).toBe("boom");
-    expect(updated.errorCode).toBe("Error");
+    assert(updated.status === "failed");
+    assert(updated.errorMessage === "boom");
+    assert(updated.errorCode === "Error");
   });
 
   test("marks failed when Resend returns no data", async () => {
@@ -233,7 +233,7 @@ describe("resend-fragment emails", async () => {
       },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       return;
     }
@@ -246,9 +246,9 @@ describe("resend-fragment emails", async () => {
     if (!updated) {
       throw new Error("Expected updated email record");
     }
-    expect(updated.status).toBe("failed");
-    expect(updated.errorCode).toBe("missing_response");
-    expect(updated.errorMessage).toBe("Resend returned no data");
+    assert(updated.status === "failed");
+    assert(updated.errorCode === "missing_response");
+    assert(updated.errorMessage === "Resend returned no data");
   });
 
   test("lists emails with cursor pagination", async () => {
@@ -284,7 +284,7 @@ describe("resend-fragment emails", async () => {
       query: { order: "desc", pageSize: "2" },
     });
 
-    expect(firstPage.type).toBe("json");
+    assert(firstPage.type === "json");
     if (firstPage.type !== "json") {
       return;
     }
@@ -293,7 +293,7 @@ describe("resend-fragment emails", async () => {
       thirdId.valueOf(),
       secondId.valueOf(),
     ]);
-    expect(firstPage.data.hasNextPage).toBe(true);
+    assert(firstPage.data.hasNextPage);
     const cursor = firstPage.data.cursor;
     expect(cursor).toBeTruthy();
     if (!cursor) {
@@ -304,13 +304,13 @@ describe("resend-fragment emails", async () => {
       query: { order: "desc", pageSize: "2", cursor },
     });
 
-    expect(secondPage.type).toBe("json");
+    assert(secondPage.type === "json");
     if (secondPage.type !== "json") {
       return;
     }
 
     expect(secondPage.data.emails.map((email) => email.id)).toEqual([firstId.valueOf()]);
-    expect(secondPage.data.hasNextPage).toBe(false);
+    assert(!secondPage.data.hasNextPage);
   });
 
   test("lists emails with empty to list", async () => {
@@ -327,7 +327,7 @@ describe("resend-fragment emails", async () => {
 
     const response = await callRoute("GET", "/emails");
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       return;
     }
@@ -369,13 +369,13 @@ describe("resend-fragment emails", async () => {
       query: { status: "failed" },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       return;
     }
 
     expect(response.data.emails).toHaveLength(1);
-    expect(response.data.emails[0]?.status).toBe("failed");
+    assert(response.data.emails[0]?.status === "failed");
   });
 
   test("returns email detail including payload", async () => {
@@ -403,13 +403,13 @@ describe("resend-fragment emails", async () => {
       pathParams: { emailId: emailId.valueOf() },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       return;
     }
 
     expect(response.data.id).toBe(emailId.valueOf());
-    expect(response.data.resendId).toBe("re_detail");
+    assert(response.data.resendId === "re_detail");
     expect(response.data.payload).toMatchObject({
       from: "Acme <hello@example.com>",
       to: ["user@example.com"],
@@ -422,7 +422,7 @@ describe("resend-fragment emails", async () => {
       tags: [{ name: "source", value: "test" }],
       headers: { "X-Env": "test" },
     });
-    expect(response.data.lastEventType).toBe("email.delivered");
+    assert(response.data.lastEventType === "email.delivered");
   });
 
   test("returns 404 when email detail is missing", async () => {
@@ -430,10 +430,10 @@ describe("resend-fragment emails", async () => {
       pathParams: { emailId: "missing-email" },
     });
 
-    expect(response.type).toBe("error");
+    assert(response.type === "error");
     if (response.type === "error") {
-      expect(response.status).toBe(404);
-      expect(response.error.code).toBe("EMAIL_NOT_FOUND");
+      assert(response.status === 404);
+      assert(response.error.code === "EMAIL_NOT_FOUND");
     }
   });
 
@@ -445,10 +445,10 @@ describe("resend-fragment emails", async () => {
       } as unknown as ResendSendEmailInput,
     });
 
-    expect(response.type).toBe("error");
+    assert(response.type === "error");
     if (response.type === "error") {
-      expect(response.status).toBe(400);
-      expect(response.error.code).toBe("FRAGNO_VALIDATION_ERROR");
+      assert(response.status === 400);
+      assert(response.error.code === "FRAGNO_VALIDATION_ERROR");
     }
   });
 
@@ -461,10 +461,10 @@ describe("resend-fragment emails", async () => {
       } as unknown as ResendSendEmailInput,
     });
 
-    expect(response.type).toBe("error");
+    assert(response.type === "error");
     if (response.type === "error") {
-      expect(response.status).toBe(400);
-      expect(response.error.code).toBe("FRAGNO_VALIDATION_ERROR");
+      assert(response.status === 400);
+      assert(response.error.code === "FRAGNO_VALIDATION_ERROR");
     }
   });
 
@@ -479,9 +479,9 @@ describe("resend-fragment emails", async () => {
       },
     });
 
-    expect(response.type).toBe("error");
+    assert(response.type === "error");
     if (response.type === "error") {
-      expect(response.error.code).toBe("MISSING_FROM");
+      assert(response.error.code === "MISSING_FROM");
     }
   });
 });

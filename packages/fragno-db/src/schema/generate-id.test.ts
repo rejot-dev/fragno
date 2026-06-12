@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, assert } from "vitest";
 
 import { schema, idColumn, FragnoId } from "./create";
 import { generateId } from "./generate-id";
@@ -15,9 +15,9 @@ describe("generateId", () => {
 
     expect(id).toBeInstanceOf(FragnoId);
     expect(id.externalId).toBeDefined();
-    expect(typeof id.externalId).toBe("string");
+    assert(typeof id.externalId === "string");
     expect(id.externalId.length).toBeGreaterThan(0);
-    expect(id.version).toBe(0);
+    assert(id.version === 0);
   });
 
   it("should generate unique IDs on each call", () => {

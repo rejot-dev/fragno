@@ -170,7 +170,7 @@ describe("Forms Fragment", () => {
       });
 
       assert(response.type === "json");
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
       // Response is now just the ID string
       expect(response.data).toEqual(expect.any(String));
     });
@@ -188,7 +188,7 @@ describe("Forms Fragment", () => {
       });
 
       assert(response.type === "json");
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
       // Response is now just the ID string
       expect(response.data).toEqual(expect.any(String));
     });
@@ -197,7 +197,7 @@ describe("Forms Fragment", () => {
       const response = await formsFragment.callRoute("GET", "/admin/forms");
 
       assert(response.type === "json");
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
       expect(response.data).toHaveLength(2);
       expect(response.data.map((f: { title: string }) => f.title)).toContain("Contact Form");
       expect(response.data.map((f: { title: string }) => f.title)).toContain("Shipping Address");
@@ -223,8 +223,8 @@ describe("Forms Fragment", () => {
       });
 
       assert(response.type === "json");
-      expect(response.status).toBe(200);
-      expect(response.data.title).toBe("Survey Form");
+      assert(response.status === 200);
+      assert(response.data.title === "Survey Form");
       expect(response.data.dataSchema).toEqual(surveyDataSchema);
     });
 
@@ -278,10 +278,10 @@ describe("Forms Fragment", () => {
       });
 
       assert(getResponse.type === "json");
-      expect(getResponse.status).toBe(200);
-      expect(getResponse.data.title).toBe("Updated Test Form");
-      expect(getResponse.data.description).toBe("Now with a description");
-      expect(getResponse.data.version).toBe(2);
+      assert(getResponse.status === 200);
+      assert(getResponse.data.title === "Updated Test Form");
+      assert(getResponse.data.description === "Now with a description");
+      assert(getResponse.data.version === 2);
     });
 
     test("should delete a form", async () => {
@@ -306,9 +306,9 @@ describe("Forms Fragment", () => {
       });
 
       assert(deleteResponse.type === "json");
-      expect(deleteResponse.status).toBe(200);
+      assert(deleteResponse.status === 200);
       // Response is now just boolean
-      expect(deleteResponse.data).toBe(true);
+      assert(deleteResponse.data);
 
       // Verify it's gone (public route uses slug)
       const getResponse = await formsFragment.callRoute("GET", "/:slug", {
@@ -316,7 +316,7 @@ describe("Forms Fragment", () => {
       });
 
       assert(getResponse.type === "error");
-      expect(getResponse.status).toBe(404);
+      assert(getResponse.status === 404);
     });
 
     test("should return 404 for non-existent form", async () => {
@@ -325,8 +325,8 @@ describe("Forms Fragment", () => {
       });
 
       assert(response.type === "error");
-      expect(response.status).toBe(404);
-      expect(response.error.code).toBe("NOT_FOUND");
+      assert(response.status === 404);
+      assert(response.error.code === "NOT_FOUND");
     });
 
     test("should reject form creation with invalid JSON Schema", async () => {
@@ -344,8 +344,8 @@ describe("Forms Fragment", () => {
       });
 
       assert(response.type === "error");
-      expect(response.status).toBe(400);
-      expect(response.error.code).toBe("INVALID_JSON_SCHEMA");
+      assert(response.status === 400);
+      assert(response.error.code === "INVALID_JSON_SCHEMA");
     });
 
     test("should reject form update with invalid JSON Schema", async () => {
@@ -374,8 +374,8 @@ describe("Forms Fragment", () => {
       });
 
       assert(updateResponse.type === "error");
-      expect(updateResponse.status).toBe(400);
-      expect(updateResponse.error.code).toBe("INVALID_JSON_SCHEMA");
+      assert(updateResponse.status === 400);
+      assert(updateResponse.error.code === "INVALID_JSON_SCHEMA");
     });
   });
 
@@ -414,8 +414,8 @@ describe("Forms Fragment", () => {
       });
 
       assert(submitResponse.type === "error");
-      expect(submitResponse.status).toBe(400);
-      expect(submitResponse.error.code).toBe("FORM_NOT_OPEN");
+      assert(submitResponse.status === 400);
+      assert(submitResponse.error.code === "FORM_NOT_OPEN");
     });
 
     test("should allow submission to published form", async () => {
@@ -471,7 +471,7 @@ describe("Forms Fragment", () => {
       });
 
       assert(submitResponse.type === "json");
-      expect(submitResponse.status).toBe(200);
+      assert(submitResponse.status === 200);
       // Response is now just the response ID string
       expect(submitResponse.data).toEqual(expect.any(String));
     });
@@ -528,7 +528,7 @@ describe("Forms Fragment", () => {
       });
 
       assert(submitResponse.type === "json");
-      expect(submitResponse.status).toBe(200);
+      assert(submitResponse.status === 200);
       // Response is now just the response ID string
       expect(submitResponse.data).toEqual(expect.any(String));
     });
@@ -548,7 +548,7 @@ describe("Forms Fragment", () => {
       });
 
       assert(response.type === "json");
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
       expect(response.data.length).toBeGreaterThanOrEqual(2);
     });
 
@@ -586,7 +586,7 @@ describe("Forms Fragment", () => {
       });
 
       assert(response.type === "json");
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
       expect(response.data.data).toEqual({ name: "Test User", email: "test@test.com" });
     });
 
@@ -624,9 +624,9 @@ describe("Forms Fragment", () => {
       });
 
       assert(deleteResponse.type === "json");
-      expect(deleteResponse.status).toBe(200);
+      assert(deleteResponse.status === 200);
       // Response is now just boolean
-      expect(deleteResponse.data).toBe(true);
+      assert(deleteResponse.data);
 
       // Verify it's gone
       const getResponse = await formsFragment.callRoute("GET", "/admin/submissions/:id", {
@@ -634,7 +634,7 @@ describe("Forms Fragment", () => {
       });
 
       assert(getResponse.type === "error");
-      expect(getResponse.status).toBe(404);
+      assert(getResponse.status === 404);
     });
 
     test("should return 404 when submitting to non-existent form", async () => {
@@ -646,8 +646,8 @@ describe("Forms Fragment", () => {
       });
 
       assert(response.type === "error");
-      expect(response.status).toBe(404);
-      expect(response.error.code).toBe("NOT_FOUND");
+      assert(response.status === 404);
+      assert(response.error.code === "NOT_FOUND");
     });
   });
 
@@ -695,7 +695,7 @@ describe("Forms Fragment", () => {
       const form = await formsFragment.fragment.callServices(() =>
         formsFragment.services.getForm(createdId),
       );
-      expect(form?.title).toBe("Get Test");
+      assert(form?.title === "Get Test");
     });
 
     test("should list forms via service", async () => {
@@ -750,8 +750,8 @@ describe("Forms Fragment", () => {
       const updated = await formsFragment.fragment.callServices(() =>
         formsFragment.services.getForm(createdId),
       );
-      expect(updated?.title).toBe("Updated Title");
-      expect(updated?.version).toBe(2);
+      assert(updated?.title === "Updated Title");
+      assert(updated?.version === 2);
     });
 
     test("should delete form via service", async () => {
@@ -782,13 +782,13 @@ describe("Forms Fragment", () => {
         name: "John",
         email: "john@example.com",
       });
-      expect(validResult.success).toBe(true);
+      assert(validResult.success);
 
       // Invalid data - missing required field
       const invalidResult = formsFragment.services.validateData(personDataSchema, {
         name: "John",
       });
-      expect(invalidResult.success).toBe(false);
+      assert(!invalidResult.success);
       if (invalidResult.success === false) {
         expect(invalidResult.error.errors[0]).toStrictEqual({
           instancePath: "/email",

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import type { TelegramAttachment } from "@fragno-dev/telegram-fragment";
 
@@ -33,7 +33,7 @@ describe("telegram attachment path helpers", () => {
       ],
     };
 
-    expect(getTelegramAttachmentDownloadFileId(attachment)).toBe("photo-large");
+    assert(getTelegramAttachmentDownloadFileId(attachment) === "photo-large");
     expect(buildTelegramAttachmentDownloadPath("org_123", attachment)).toContain(
       "fileId=photo-large",
     );
@@ -48,17 +48,17 @@ describe("telegram attachment path helpers", () => {
       mimeType: "application/pdf",
     };
 
-    expect(getTelegramAttachmentOriginalFilename(attachment)).toBe("Quarterly Report.pdf");
+    assert(getTelegramAttachmentOriginalFilename(attachment) === "Quarterly Report.pdf");
 
     const downloadUrl = new URL(
       `https://example.com${buildTelegramAttachmentDownloadPath("org_123", attachment)}`,
     );
-    expect(downloadUrl.searchParams.get("filename")).toBe("Quarterly Report.pdf");
+    assert(downloadUrl.searchParams.get("filename") === "Quarterly Report.pdf");
 
     const inlineUrl = new URL(
       `https://example.com${buildTelegramAttachmentInlinePath("org_123", attachment)}`,
     );
-    expect(inlineUrl.searchParams.get("filename")).toBe("Quarterly Report.pdf");
-    expect(inlineUrl.searchParams.get("disposition")).toBe("inline");
+    assert(inlineUrl.searchParams.get("filename") === "Quarterly Report.pdf");
+    assert(inlineUrl.searchParams.get("disposition") === "inline");
   });
 });

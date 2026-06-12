@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, assert } from "vitest";
 
 import type { RetrievalOperation } from "../../query/unit-of-work/unit-of-work";
 import { schema, idColumn, column, FragnoId } from "../../schema/create";
@@ -74,7 +74,7 @@ describe("UnitOfWorkDecoder", () => {
       const results = decoder.decode(rawResults, [operation]);
 
       expect(results).toHaveLength(1);
-      expect(results[0]).toBe(42);
+      assert(results[0] === 42);
     });
 
     it("should decode cursor-paginated operations", () => {
@@ -117,7 +117,7 @@ describe("UnitOfWorkDecoder", () => {
         { id: "user1", name: "Alice", email: "alice@example.com", age: 30 },
         { id: "user2", name: "Bob", email: "bob@example.com", age: 25 },
       ]);
-      expect(cursorResult.hasNextPage).toBe(true);
+      assert(cursorResult.hasNextPage);
       expect(cursorResult.cursor).toBeDefined();
     });
 
@@ -155,7 +155,7 @@ describe("UnitOfWorkDecoder", () => {
       };
 
       expect(cursorResult.items).toHaveLength(2);
-      expect(cursorResult.hasNextPage).toBe(false);
+      assert(!cursorResult.hasNextPage);
       expect(cursorResult.cursor).toBeUndefined();
     });
 
@@ -191,7 +191,7 @@ describe("UnitOfWorkDecoder", () => {
       expect(results[0]).toEqual([
         { id: "user1", name: "Alice", email: "alice@example.com", age: 30 },
       ]);
-      expect(results[1]).toBe(5);
+      assert(results[1] === 5);
     });
 
     it("should throw error when rawResults and operations lengths don't match", () => {
@@ -247,7 +247,7 @@ describe("UnitOfWorkDecoder", () => {
       const results = decoder.decode(rawResults, [operation]);
 
       expect(results).toHaveLength(1);
-      expect(results[0]).toBe(0);
+      assert(results[0] === 0);
     });
 
     it("should generate cursor for custom index", () => {
@@ -284,7 +284,7 @@ describe("UnitOfWorkDecoder", () => {
       };
 
       expect(cursorResult.items).toHaveLength(1);
-      expect(cursorResult.hasNextPage).toBe(true);
+      assert(cursorResult.hasNextPage);
       expect(cursorResult.cursor).toBeDefined();
     });
 
@@ -319,7 +319,7 @@ describe("UnitOfWorkDecoder", () => {
       };
 
       expect(cursorResult.items).toHaveLength(2);
-      expect(cursorResult.hasNextPage).toBe(true);
+      assert(cursorResult.hasNextPage);
       expect(cursorResult.cursor).toBeUndefined(); // No cursor when orderByIndex is missing
     });
 
@@ -389,7 +389,7 @@ describe("UnitOfWorkDecoder", () => {
       };
 
       expect(cursorResult.items).toHaveLength(1);
-      expect(cursorResult.hasNextPage).toBe(true);
+      assert(cursorResult.hasNextPage);
       expect(cursorResult.cursor).toBeDefined();
 
       // Verify the item has FragnoId

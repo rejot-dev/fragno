@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, assert } from "vitest";
 
 import { DurableHooksLogger } from "../../hooks/durable-hooks-logger";
 import { createDurableHooksDispatcherDurableObject } from "./dispatcher";
@@ -158,11 +158,11 @@ describe("createDurableHooksDispatcherDurableObject", () => {
 
     expect(processDue).toHaveBeenCalledTimes(2);
     expect(onProcessError).toHaveBeenCalledWith(processFailure);
-    expect(
+    assert(
       errorSpy.mock.calls.some(
         ([message]) => message === "Durable hooks dispatcher onProcessError callback failed",
       ),
-    ).toBe(true);
+    );
   });
 
   it("should resolve notify when onProcessError throws in schedule error path", async () => {
@@ -197,10 +197,10 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     await Promise.resolve();
 
     expect(onProcessError).toHaveBeenCalledWith(scheduleFailure);
-    expect(
+    assert(
       errorSpy.mock.calls.some(
         ([message]) => message === "Durable hooks dispatcher onProcessError callback failed",
       ),
-    ).toBe(true);
+    );
   });
 });

@@ -1,4 +1,4 @@
-import { test, expect, afterEach } from "vitest";
+import { test, expect, afterEach, assert } from "vitest";
 
 import { exec } from "node:child_process";
 import fs from "node:fs/promises";
@@ -39,7 +39,7 @@ test("non-interactive mode creates project with defaults", async (ctx) => {
 
   // Verify package.json was created with correct name
   const pkg = JSON.parse(await fs.readFile(path.join(projectPath, "package.json"), "utf8"));
-  expect(pkg.name).toBe("my-test-fragment");
+  assert(pkg.name === "my-test-fragment");
 
   // Verify database files are included (default: withDatabase=true)
   await expect(fs.access(path.join(projectPath, "src", "schema.ts"))).resolves.toBeUndefined();

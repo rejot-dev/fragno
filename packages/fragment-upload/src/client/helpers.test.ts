@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { createUploadHelpers } from "./helpers";
 
@@ -67,7 +67,7 @@ describe("upload client helpers", () => {
       if (url.endsWith("/uploads")) {
         const body = JSON.parse(_init?.body as string);
         expect(body.provider).toBe(TEST_PROVIDER);
-        expect(body.fileKey).toBe("files.users.1.avatar");
+        assert(body.fileKey === "files.users.1.avatar");
         return jsonResponse({
           uploadId: "123",
           fileKey: "files.users.1.avatar",
@@ -150,7 +150,7 @@ describe("upload client helpers", () => {
       onProgress: (value) => progress.push(value.bytesUploaded),
     });
 
-    expect(result.file.fileKey).toBe("files.users.1.avatar");
+    assert(result.file.fileKey === "files.users.1.avatar");
     expect(progress).toEqual([4, 8, 10]);
     expect(calls).toContain(`POST http://local${uploadRoutePath("123", "/progress")}`);
     expect(calls).toContain(`POST http://local${uploadRoutePath("123", "/parts")}`);
@@ -167,8 +167,8 @@ describe("upload client helpers", () => {
       if (url.endsWith("/uploads")) {
         const body = JSON.parse(_init?.body as string);
         expect(body.provider).toBe(TEST_PROVIDER);
-        expect(body.fileKey).toBe("files.assets.banner");
-        expect(body.contentType).toBe("text/plain");
+        assert(body.fileKey === "files.assets.banner");
+        assert(body.contentType === "text/plain");
         return jsonResponse({
           uploadId: "proxy-1",
           fileKey: "files.assets.banner",
@@ -190,8 +190,8 @@ describe("upload client helpers", () => {
 
       if (url.endsWith(uploadRoutePath("proxy-1", "/content"))) {
         const init = _init as (RequestInit & { duplex?: string }) | undefined;
-        expect(init?.duplex).toBe("half");
-        expect(getHeaderValue(init?.headers, "content-type")).toBe("application/octet-stream");
+        assert(init?.duplex === "half");
+        assert(getHeaderValue(init?.headers, "content-type") === "application/octet-stream");
         const totalBytes = await readStream(_init?.body as ReadableStream<Uint8Array>);
         expect(totalBytes).toBe(5);
         return jsonResponse({ fileKey: "files.assets.banner", status: "ready" });
@@ -213,8 +213,8 @@ describe("upload client helpers", () => {
       onProgress: (value) => progress.push(value.bytesUploaded),
     });
 
-    expect(result.file.fileKey).toBe("files.assets.banner");
-    expect(progress[progress.length - 1]).toBe(5);
+    assert(result.file.fileKey === "files.assets.banner");
+    assert(progress[progress.length - 1] === 5);
   });
 
   it("returns file metadata date fields as strings", async () => {
@@ -228,7 +228,7 @@ describe("upload client helpers", () => {
       if (url.endsWith("/uploads")) {
         const body = JSON.parse(_init?.body as string);
         expect(body.provider).toBe(TEST_PROVIDER);
-        expect(body.fileKey).toBe("files.sample.date");
+        assert(body.fileKey === "files.sample.date");
         return jsonResponse({
           uploadId: "single-1",
           fileKey: "files.sample.date",
@@ -294,7 +294,7 @@ describe("upload client helpers", () => {
       fileKey: "files.sample.date",
     });
 
-    expect(typeof result.file.createdAt).toBe("string");
+    assert(typeof result.file.createdAt === "string");
     expect(result.file.createdAt).toBe(now);
     expect(result.file.completedAt).toBe(now);
     expect(result.file.deletedAt).toBeNull();
@@ -312,7 +312,7 @@ describe("upload client helpers", () => {
       if (url.endsWith("/uploads")) {
         const body = JSON.parse(_init?.body as string);
         expect(body.provider).toBe(TEST_PROVIDER);
-        expect(body.fileKey).toBe("files.assets.logo");
+        assert(body.fileKey === "files.assets.logo");
         return jsonResponse({
           uploadId: "proxy-2",
           fileKey: "files.assets.logo",
@@ -359,8 +359,8 @@ describe("upload client helpers", () => {
       onProgress: (value) => progress.push(value.bytesUploaded),
     });
 
-    expect(result.file.fileKey).toBe("files.assets.logo");
-    expect(progress[progress.length - 1]).toBe(5);
+    assert(result.file.fileKey === "files.assets.logo");
+    assert(progress[progress.length - 1] === 5);
   });
 
   it("throws actionable guidance when proxy transport fails for both attempts", async () => {
@@ -370,7 +370,7 @@ describe("upload client helpers", () => {
       if (url.endsWith("/uploads")) {
         const body = JSON.parse(_init?.body as string);
         expect(body.provider).toBe(TEST_PROVIDER);
-        expect(body.fileKey).toBe("files.assets.fail");
+        assert(body.fileKey === "files.assets.fail");
         return jsonResponse({
           uploadId: "proxy-3",
           fileKey: "files.assets.fail",
@@ -428,7 +428,7 @@ describe("upload client helpers", () => {
       if (url.endsWith("/uploads")) {
         const body = JSON.parse(_init?.body as string);
         expect(body.provider).toBe(TEST_PROVIDER);
-        expect(body.fileKey).toBe("files.assets.protocol");
+        assert(body.fileKey === "files.assets.protocol");
         return jsonResponse({
           uploadId: "proxy-4",
           fileKey: "files.assets.protocol",
@@ -469,7 +469,7 @@ describe("upload client helpers", () => {
       }),
     ).rejects.toThrow(/must use http:\/\/ or https:\/\//);
 
-    expect(contentEndpointCalled).toBe(false);
+    assert(!contentEndpointCalled);
   });
 
   it("downloads through /content when content method is selected", async () => {
@@ -504,8 +504,8 @@ describe("upload client helpers", () => {
       provider: TEST_PROVIDER,
       method: "content",
     });
-    expect(await response.text()).toBe("payload");
-    expect(calls.some((url) => url.endsWith(downloadUrlPath))).toBe(false);
+    assert((await response.text()) === "payload");
+    assert(!calls.some((url) => url.endsWith(downloadUrlPath)));
   });
 
   it("throws programming guidance when signed-url method is unsupported", async () => {

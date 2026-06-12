@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, assert } from "vitest";
 
 import { InMemoryAdapter } from "@fragno-dev/db";
 
@@ -46,7 +46,7 @@ describe("automation routes /scripts", () => {
   test("lists static starter scripts from the filesystem", async () => {
     const response = await fragment.callRoute("GET", "/scripts");
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type === "json") {
       expect(response.data.length).toBeGreaterThan(0);
       expect(response.data).toEqual(
@@ -77,7 +77,7 @@ describe("automation routes /scripts", () => {
 
     const response = await partialFragment.callRoute("GET", "/scripts");
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type === "json") {
       expect(response.data).toEqual(
         expect.arrayContaining([

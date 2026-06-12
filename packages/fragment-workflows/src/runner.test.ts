@@ -1,5 +1,5 @@
 // Tests for the new runner using the workflows test harness.
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, assert } from "vitest";
 
 import { BufferedPumpRegistry } from "@fragno-dev/db/buffered-pump";
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
@@ -217,7 +217,7 @@ describe("Workflows Runner", () => {
       payload: { type: "checkpoint" },
     });
     const { success } = await seedUow.executeMutations();
-    expect(success).toBe(true);
+    assert(success);
 
     await harness.tick(buildPayload(instance!, "create"));
 
@@ -285,7 +285,7 @@ describe("Workflows Runner", () => {
         ).map((row) => row.actor),
       ).toContain("user");
       expect(await observed.next()).toEqual({ type: "started" });
-      expect(observed.pendingCount()).toBe(0);
+      assert(observed.pendingCount() === 0);
     } finally {
       unsubscribe();
       emissionBus.stop();
@@ -484,7 +484,7 @@ describe("Workflows Runner", () => {
         type: "message_end",
         text: "In fields where silent shadows creep",
       });
-      expect(observed.pendingCount()).toBe(0);
+      assert(observed.pendingCount() === 0);
     } finally {
       unsubscribe();
       emissionBus.stop();
@@ -549,7 +549,7 @@ describe("Workflows Runner", () => {
       expect(await observed.next()).toEqual({ type: "message_end", text: "final text" });
       expect(await observed.next()).toEqual({ type: "turn_end" });
       expect(await observed.next()).toEqual({ type: "agent_end" });
-      expect(observed.pendingCount()).toBe(0);
+      assert(observed.pendingCount() === 0);
     } finally {
       unsubscribe();
       remoteBus.stop();
@@ -631,7 +631,7 @@ describe("Workflows Runner", () => {
 
       await flushBus(harness, remoteBus);
       expect(await observed.next()).toEqual({ type: "remote-started" });
-      expect(observed.pendingCount()).toBe(0);
+      assert(observed.pendingCount() === 0);
     } finally {
       unsubscribe();
       remoteBus.stop();
@@ -692,7 +692,7 @@ describe("Workflows Runner", () => {
       });
 
       expect(await received.next()).toEqual({ command: "continue" });
-      expect(received.pendingCount()).toBe(0);
+      assert(received.pendingCount() === 0);
     } finally {
       releaseStep.resolve();
       await tick;
@@ -885,8 +885,8 @@ describe("Workflows Runner", () => {
     await harness.tick(buildPayload(instance!, "wake"));
 
     const finalStatus = await harness.getStatus("TIMEOUT", instanceId);
-    expect(finalStatus.status).toBe("errored");
-    expect(finalStatus.error?.message).toBe("WAIT_FOR_EVENT_TIMEOUT");
+    assert(finalStatus.status === "errored");
+    assert(finalStatus.error?.message === "WAIT_FOR_EVENT_TIMEOUT");
   });
 
   test("marks workflow errored when WorkflowStepTx mutation fails", async () => {
@@ -945,7 +945,7 @@ describe("Workflows Runner", () => {
     await harness.tick(buildPayload(instance!, "create"));
 
     const status = await harness.getStatus("MUTATION_ERROR", instanceId);
-    expect(status.status).toBe("errored");
+    assert(status.status === "errored");
     expect(status.error?.message).toBeTruthy();
 
     const mutationRows = (
@@ -1017,7 +1017,7 @@ describe("Workflows Runner", () => {
     await harness.tick(buildPayload(instance!, "create"));
 
     const waitingStatus = await harness.getStatus("TERMINAL_ERROR", instanceId);
-    expect(waitingStatus.status).toBe("waiting");
+    assert(waitingStatus.status === "waiting");
 
     const rows = await (async () => {
       return (
@@ -1090,8 +1090,8 @@ describe("Workflows Runner", () => {
     await harness.tick(buildPayload(instance!, "create"));
 
     const finalStatus = await harness.getStatus("TERMINAL_ERROR_COMMIT", instanceId);
-    expect(finalStatus.status).toBe("errored");
-    expect(finalStatus.error?.message).toBe("NO_RETRY");
+    assert(finalStatus.status === "errored");
+    assert(finalStatus.error?.message === "NO_RETRY");
 
     const rows = await (async () => {
       return (
@@ -1129,8 +1129,8 @@ describe("Workflows Runner", () => {
     await drainDurableHooks(harness.fragment);
 
     const status = await harness.getStatus("NO_RETRY", instanceId);
-    expect(status.status).toBe("errored");
-    expect(status.error?.message).toBe("NO_RETRY");
+    assert(status.status === "errored");
+    assert(status.error?.message === "NO_RETRY");
     expect(attempts).toBe(1);
 
     const [stepRecord] = (
@@ -1199,7 +1199,7 @@ describe("Workflows Runner", () => {
         errorMessage: "RETRY_EXHAUSTED",
       });
       const { success } = await uow.executeMutations();
-      expect(success).toBe(true);
+      assert(success);
     }
 
     const processed = await harness.tick({
@@ -1212,8 +1212,8 @@ describe("Workflows Runner", () => {
     expect(attempts).toBe(0);
 
     const status = await harness.getStatus("RETRY_CAP", instanceId);
-    expect(status.status).toBe("errored");
-    expect(status.error?.message).toBe("RETRY_EXHAUSTED");
+    assert(status.status === "errored");
+    assert(status.error?.message === "RETRY_EXHAUSTED");
 
     const [stepRecord] = (
       await harness.db
@@ -1364,18 +1364,15 @@ describe("Workflows Runner", () => {
         pathParams: { workflowName: "pause-during-execution-workflow", instanceId },
       },
     );
-    expect(pauseResponse.type).toBe("json");
-    if (pauseResponse.type !== "json") {
-      throw new Error(`Unexpected response: ${pauseResponse.type}`);
-    }
-    expect((pauseResponse.data as { ok: true }).ok).toBe(true);
+    assert(pauseResponse.type === "json");
+    assert((pauseResponse.data as { ok: true }).ok);
 
     blocker.resolve();
     const processed = await tickPromise;
     expect(processed).toBe(1);
 
     const status = await harness.getStatus("PAUSE_DURING", instanceId);
-    expect(status.status).toBe("waiting");
+    assert(status.status === "waiting");
     expect(runs).toBe(1);
 
     const steps = await (async () => {
@@ -1392,7 +1389,7 @@ describe("Workflows Runner", () => {
     await harness.tick(buildPayload(instance!, "event"));
 
     const pausedStatus = await harness.getStatus("PAUSE_DURING", instanceId);
-    expect(pausedStatus.status).toBe("paused");
+    assert(pausedStatus.status === "paused");
     expect(runs).toBe(1);
   });
 
@@ -1447,8 +1444,8 @@ describe("Workflows Runner", () => {
     await harness.tick(buildPayload(instance!, "create"));
 
     const status = await harness.getStatus("MUTATION_ORDER", instanceId);
-    expect(status.status).toBe("errored");
-    expect(status.error?.message).toBe("CALLBACK_FAILED");
+    assert(status.status === "errored");
+    assert(status.error?.message === "CALLBACK_FAILED");
 
     const rows = (
       await harness.fragments["mutationOrder"].db
@@ -1814,7 +1811,7 @@ describe("Workflows Runner", () => {
     expect(steps).toHaveLength(1);
 
     const status = await harness.getStatus("CONCURRENCY", instanceId);
-    expect(status.status).toBe("complete");
+    assert(status.status === "complete");
   });
 
   test("terminate during in-flight tick does not get overwritten", async () => {
@@ -1861,13 +1858,13 @@ describe("Workflows Runner", () => {
         pathParams: { workflowName: "terminate-in-flight-workflow", instanceId },
       },
     );
-    expect(terminateResponse.type).toBe("json");
+    assert(terminateResponse.type === "json");
 
     blocker.resolve();
     await tickPromise;
 
     const status = await harness.getStatus("TERMINATE", instanceId);
-    expect(status.status).toBe("terminated");
+    assert(status.status === "terminated");
   });
 
   test("cached parent subtree skip does not renumber later sibling steps", async () => {
@@ -1983,7 +1980,7 @@ describe("Workflows Runner", () => {
     await harness.runUntilIdle(buildPayload(instance!, "wake"));
 
     const status = await harness.getStatus("LATE_FAILURE", instanceId);
-    expect(status.status).toBe("complete");
+    assert(status.status === "complete");
     expect(status.output).toEqual({ raceReturn: "fast" });
   });
 });

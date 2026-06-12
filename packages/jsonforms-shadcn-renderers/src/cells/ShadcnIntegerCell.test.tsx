@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, assert } from "vitest";
 
 import type { ControlElement } from "@jsonforms/core";
 import { NOT_APPLICABLE } from "@jsonforms/core";
@@ -49,7 +49,7 @@ describe("shadcnIntegerCellTester", () => {
 
   it("should return rank 2 for integer schema", () => {
     const rootSchema = { type: "object", properties: { age: { type: "integer" } } };
-    expect(shadcnIntegerCellTester(control, rootSchema, createTesterContext(rootSchema))).toBe(2);
+    assert(shadcnIntegerCellTester(control, rootSchema, createTesterContext(rootSchema)) === 2);
   });
 });
 
@@ -114,7 +114,7 @@ describe("ShadcnIntegerCell", () => {
     const input = screen.getByRole("spinbutton");
     fireEvent.change(input, { target: { value: "30" } });
 
-    expect((onChangeData.data as { age: number }).age).toBe(30);
+    assert((onChangeData.data as { age: number }).age === 30);
   });
 
   it("should be disabled when enabled=false", () => {

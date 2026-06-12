@@ -278,7 +278,7 @@ describe("auth oauth", async () => {
 
     assert(response.type === "json");
     const url = new URL(response.data.url);
-    expect(url.hostname).toBe("example.com");
+    assert(url.hostname === "example.com");
     expect(url.searchParams.get("redirect_uri")).toBe(redirectURI);
     const state = url.searchParams.get("state");
     expect(state).toBeTruthy();
@@ -303,7 +303,7 @@ describe("auth oauth", async () => {
     });
 
     assert(response.type === "json");
-    expect(response.data.email).toBe("new@test.com");
+    assert(response.data.email === "new@test.com");
     expect(response.data.auth.token).toBeTruthy();
   });
 
@@ -336,7 +336,7 @@ describe("auth oauth", async () => {
 
     assert(callbackResponse.type === "json");
     expect(callbackResponse.data.userId).toBe(existingUser.id);
-    expect(callbackResponse.data.email).toBe("linked@test.com");
+    assert(callbackResponse.data.email === "linked@test.com");
 
     expect(callbackResponse.data.userId).toBe(existingUser.id);
   });
@@ -369,7 +369,7 @@ describe("auth oauth", async () => {
     });
 
     assert(callbackResponse.type === "json");
-    expect(callbackResponse.data.email).toBe("unverified@test.com");
+    assert(callbackResponse.data.email === "unverified@test.com");
     expect(callbackResponse.data.userId).not.toBe(existingUser.id);
   });
 
@@ -393,8 +393,8 @@ describe("auth oauth", async () => {
     });
 
     assert(response.type === "error");
-    expect(response.error.code).toBe("signup_required");
-    expect(response.status).toBe(403);
+    assert(response.error.code === "signup_required");
+    assert(response.status === 403);
   });
 
   it("links providers via session even when provider email is unverified", async () => {
@@ -437,7 +437,7 @@ describe("auth oauth", async () => {
 
     assert(callbackResponse.type === "json");
     expect(callbackResponse.data.userId).toBe(user.id);
-    expect(callbackResponse.data.email).toBe("link-unverified@test.com");
+    assert(callbackResponse.data.email === "link-unverified@test.com");
   });
 
   it("respects disableSignUp from provider options", async () => {
@@ -459,8 +459,8 @@ describe("auth oauth", async () => {
     });
 
     assert(callbackResponse.type === "error");
-    expect(callbackResponse.error.code).toBe("signup_disabled");
-    expect(callbackResponse.status).toBe(403);
+    assert(callbackResponse.error.code === "signup_disabled");
+    assert(callbackResponse.status === 403);
   });
 
   it("respects disableImplicitSignUp from provider options", async () => {
@@ -482,8 +482,8 @@ describe("auth oauth", async () => {
     });
 
     assert(callbackResponse.type === "error");
-    expect(callbackResponse.error.code).toBe("signup_required");
-    expect(callbackResponse.status).toBe(403);
+    assert(callbackResponse.error.code === "signup_required");
+    assert(callbackResponse.status === 403);
 
     const authorizeResponseWithSignup = await fragment.callRoute(
       "GET",
@@ -512,7 +512,7 @@ describe("auth oauth", async () => {
     );
 
     assert(callbackResponseWithSignup.type === "json");
-    expect(callbackResponseWithSignup.data.email).toBe("test-disable-implicit-new@test.com");
+    assert(callbackResponseWithSignup.data.email === "test-disable-implicit-new@test.com");
   });
 
   it("requires a session when linking providers", async () => {
@@ -524,8 +524,8 @@ describe("auth oauth", async () => {
     });
 
     assert(unauthorizedResponse.type === "error");
-    expect(unauthorizedResponse.error.code).toBe("credential_invalid");
-    expect(unauthorizedResponse.status).toBe(400);
+    assert(unauthorizedResponse.error.code === "credential_invalid");
+    assert(unauthorizedResponse.status === 400);
 
     const passwordHash = await hashPassword("password-123");
     const [user] = await test.inContext(function () {
@@ -603,8 +603,8 @@ describe("auth oauth", async () => {
     });
 
     assert(callbackResponse.type === "empty");
-    expect(callbackResponse.status).toBe(302);
-    expect(callbackResponse.headers.get("Location")).toBe("/app");
+    assert(callbackResponse.status === 302);
+    assert(callbackResponse.headers.get("Location") === "/app");
   });
 
   it("rejects protocol-relative returnTo paths", async () => {
@@ -642,8 +642,8 @@ describe("auth oauth", async () => {
 
     assert(response.type === "json");
     const url = new URL(response.data.url);
-    expect(url.searchParams.get("scope")).toBe("read|write|openid");
-    expect(url.searchParams.get("login_hint")).toBe("user@test.com");
+    assert(url.searchParams.get("scope") === "read|write|openid");
+    assert(url.searchParams.get("login_hint") === "user@test.com");
   });
 
   it("returns provider_not_found for unknown providers", async () => {
@@ -653,8 +653,8 @@ describe("auth oauth", async () => {
     });
 
     assert(authorizeResponse.type === "error");
-    expect(authorizeResponse.error.code).toBe("provider_not_found");
-    expect(authorizeResponse.status).toBe(404);
+    assert(authorizeResponse.error.code === "provider_not_found");
+    assert(authorizeResponse.status === 404);
 
     const callbackResponse = await fragment.callRoute("GET", "/oauth/:provider/callback", {
       pathParams: { provider: "missing" },
@@ -665,8 +665,8 @@ describe("auth oauth", async () => {
     });
 
     assert(callbackResponse.type === "error");
-    expect(callbackResponse.error.code).toBe("provider_not_found");
-    expect(callbackResponse.status).toBe(404);
+    assert(callbackResponse.error.code === "provider_not_found");
+    assert(callbackResponse.status === 404);
   });
 
   it("rejects redirectUri mismatches on authorize", async () => {
@@ -678,8 +678,8 @@ describe("auth oauth", async () => {
     });
 
     assert(response.type === "error");
-    expect(response.error.code).toBe("redirect_uri_mismatch");
-    expect(response.status).toBe(400);
+    assert(response.error.code === "redirect_uri_mismatch");
+    assert(response.status === 400);
   });
 
   it("requires code and state on callback", async () => {
@@ -691,8 +691,8 @@ describe("auth oauth", async () => {
     });
 
     assert(missingCode.type === "error");
-    expect(missingCode.error.code).toBe("invalid_code");
-    expect(missingCode.status).toBe(400);
+    assert(missingCode.error.code === "invalid_code");
+    assert(missingCode.status === 400);
 
     const missingState = await fragment.callRoute("GET", "/oauth/:provider/callback", {
       pathParams: { provider: "test" },
@@ -702,8 +702,8 @@ describe("auth oauth", async () => {
     });
 
     assert(missingState.type === "error");
-    expect(missingState.error.code).toBe("invalid_state");
-    expect(missingState.status).toBe(400);
+    assert(missingState.error.code === "invalid_state");
+    assert(missingState.status === 400);
   });
 
   it("returns invalid_code when the token exchange fails", async () => {
@@ -717,8 +717,8 @@ describe("auth oauth", async () => {
     });
 
     assert(response.type === "error");
-    expect(response.error.code).toBe("invalid_code");
-    expect(response.status).toBe(401);
+    assert(response.error.code === "invalid_code");
+    assert(response.status === 401);
   });
 
   it("returns invalid_code when the provider returns no profile", async () => {
@@ -732,8 +732,8 @@ describe("auth oauth", async () => {
     });
 
     assert(response.type === "error");
-    expect(response.error.code).toBe("invalid_code");
-    expect(response.status).toBe(401);
+    assert(response.error.code === "invalid_code");
+    assert(response.status === 401);
   });
 
   it("requires an email in the provider profile", async () => {
@@ -747,8 +747,8 @@ describe("auth oauth", async () => {
     });
 
     assert(response.type === "error");
-    expect(response.error.code).toBe("email_required");
-    expect(response.status).toBe(400);
+    assert(response.error.code === "email_required");
+    assert(response.status === 400);
   });
 
   it("consumes oauth state when email is missing", async () => {
@@ -762,8 +762,8 @@ describe("auth oauth", async () => {
     });
 
     assert(response.type === "error");
-    expect(response.error.code).toBe("email_required");
-    expect(response.status).toBe(400);
+    assert(response.error.code === "email_required");
+    assert(response.status === 400);
 
     const oauthState = await test.inContext(function () {
       return this.handlerTx()
@@ -789,8 +789,8 @@ describe("auth oauth", async () => {
     });
 
     assert(missingState.type === "error");
-    expect(missingState.error.code).toBe("invalid_state");
-    expect(missingState.status).toBe(400);
+    assert(missingState.error.code === "invalid_state");
+    assert(missingState.status === 400);
 
     const mismatchedState = await getState("test");
     const mismatchResponse = await fragment.callRoute("GET", "/oauth/:provider/callback", {
@@ -802,8 +802,8 @@ describe("auth oauth", async () => {
     });
 
     assert(mismatchResponse.type === "error");
-    expect(mismatchResponse.error.code).toBe("invalid_state");
-    expect(mismatchResponse.status).toBe(400);
+    assert(mismatchResponse.error.code === "invalid_state");
+    assert(mismatchResponse.status === 400);
   });
 
   it("rejects reused oauth states", async () => {
@@ -827,8 +827,8 @@ describe("auth oauth", async () => {
     });
 
     assert(second.type === "error");
-    expect(second.error.code).toBe("invalid_state");
-    expect(second.status).toBe(400);
+    assert(second.error.code === "invalid_state");
+    assert(second.status === 400);
   });
 
   it("denies oauth callbacks for banned users", async () => {
@@ -862,8 +862,8 @@ describe("auth oauth", async () => {
     });
 
     assert(response.type === "error");
-    expect(response.error.code).toBe("user_banned");
-    expect(response.status).toBe(403);
+    assert(response.error.code === "user_banned");
+    assert(response.status === 403);
   });
 
   it("links providers using cookie auth when link=true", async () => {
@@ -906,7 +906,7 @@ describe("auth oauth", async () => {
 
     assert(callbackResponse.type === "json");
     expect(callbackResponse.data.userId).toBe(user.id);
-    expect(callbackResponse.data.email).toBe("link-user@test.com");
+    assert(callbackResponse.data.email === "link-user@test.com");
   });
 
   it("rejects linking with expired sessions", async () => {
@@ -947,8 +947,8 @@ describe("auth oauth", async () => {
     });
 
     assert(response.type === "error");
-    expect(response.error.code).toBe("credential_invalid");
-    expect(response.status).toBe(401);
+    assert(response.error.code === "credential_invalid");
+    assert(response.status === 401);
   });
 
   it("allows existing oauth accounts when disableSignUp is set", async () => {
@@ -1155,8 +1155,8 @@ describe("auth oauth disabled", async () => {
     });
 
     assert(authorizeResponse.type === "error");
-    expect(authorizeResponse.error.code).toBe("oauth_disabled");
-    expect(authorizeResponse.status).toBe(400);
+    assert(authorizeResponse.error.code === "oauth_disabled");
+    assert(authorizeResponse.status === 400);
 
     const callbackResponse = await fragment.callRoute("GET", "/oauth/:provider/callback", {
       pathParams: { provider: "test" },
@@ -1167,8 +1167,8 @@ describe("auth oauth disabled", async () => {
     });
 
     assert(callbackResponse.type === "error");
-    expect(callbackResponse.error.code).toBe("oauth_disabled");
-    expect(callbackResponse.status).toBe(400);
+    assert(callbackResponse.error.code === "oauth_disabled");
+    assert(callbackResponse.status === 400);
   });
 });
 
@@ -1210,8 +1210,8 @@ describe("auth oauth missing redirect uri", async () => {
     });
 
     assert(authorizeResponse.type === "error");
-    expect(authorizeResponse.error.code).toBe("missing_redirect_uri");
-    expect(authorizeResponse.status).toBe(400);
+    assert(authorizeResponse.error.code === "missing_redirect_uri");
+    assert(authorizeResponse.status === 400);
 
     const callbackResponse = await fragment.callRoute("GET", "/oauth/:provider/callback", {
       pathParams: { provider: "test-missing-redirect" },
@@ -1222,8 +1222,8 @@ describe("auth oauth missing redirect uri", async () => {
     });
 
     assert(callbackResponse.type === "error");
-    expect(callbackResponse.error.code).toBe("missing_redirect_uri");
-    expect(callbackResponse.status).toBe(400);
+    assert(callbackResponse.error.code === "missing_redirect_uri");
+    assert(callbackResponse.status === 400);
   });
 });
 
@@ -1271,8 +1271,8 @@ describe("auth oauth expired state", async () => {
     });
 
     assert(callbackResponse.type === "error");
-    expect(callbackResponse.error.code).toBe("invalid_state");
-    expect(callbackResponse.status).toBe(400);
+    assert(callbackResponse.error.code === "invalid_state");
+    assert(callbackResponse.status === 400);
   });
 });
 
@@ -1329,7 +1329,7 @@ describe("auth oauth linkByEmail false", async () => {
     });
 
     assert(callbackResponse.type === "json");
-    expect(callbackResponse.data.email).toBe("new@test.com");
+    assert(callbackResponse.data.email === "new@test.com");
     expect(callbackResponse.data.userId).not.toBe(existingUser.id);
   });
 });
@@ -1444,9 +1444,9 @@ describe("auth oauth token storage", async () => {
       "provider-new-test-token",
     );
     expect(account?.accessToken).toBeNull();
-    expect(account?.refreshToken).toBe("refresh-1");
+    assert(account?.refreshToken === "refresh-1");
     expect(account?.idToken).toBeNull();
-    expect(account?.tokenType).toBe("bearer");
+    assert(account?.tokenType === "bearer");
     expect(account?.tokenExpiresAt).toBeNull();
     expect(account?.scopes).toEqual(["read", "write"]);
   });
@@ -1464,10 +1464,10 @@ describe("auth oauth token storage", async () => {
     assert(response.type === "json");
 
     const account = await getOauthAccount(allSetup.test, "test-token", "provider-new-test-token");
-    expect(account?.accessToken).toBe("access-1");
-    expect(account?.refreshToken).toBe("refresh-1");
-    expect(account?.idToken).toBe("id-1");
-    expect(account?.tokenType).toBe("bearer");
+    assert(account?.accessToken === "access-1");
+    assert(account?.refreshToken === "refresh-1");
+    assert(account?.idToken === "id-1");
+    assert(account?.tokenType === "bearer");
     const tokenExpiresAt = account?.tokenExpiresAt
       ? new Date(account.tokenExpiresAt).getTime()
       : null;
@@ -1529,10 +1529,10 @@ describe("auth oauth token storage", async () => {
       "test-token-update",
       "provider-new-test-token-update",
     );
-    expect(account?.accessToken).toBe("access-updated");
-    expect(account?.refreshToken).toBe("refresh-updated");
-    expect(account?.idToken).toBe("id-updated");
-    expect(account?.tokenType).toBe("bearer");
+    assert(account?.accessToken === "access-updated");
+    assert(account?.refreshToken === "refresh-updated");
+    assert(account?.idToken === "id-updated");
+    assert(account?.tokenType === "bearer");
     const tokenExpiresAt = account?.tokenExpiresAt
       ? new Date(account.tokenExpiresAt).getTime()
       : null;

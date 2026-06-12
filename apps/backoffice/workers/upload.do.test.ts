@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi, assert } from "vitest";
 
 const {
   migrateMock,
@@ -132,7 +132,7 @@ describe("Upload Durable Object", () => {
 
     const response = await upload.fetch(new Request("https://example.com/api/upload/files"));
 
-    expect(response.status).toBe(400);
+    assert(response.status === 400);
     await expect(response.json()).resolves.toMatchObject({
       code: "NOT_CONFIGURED",
     });
@@ -158,20 +158,20 @@ describe("Upload Durable Object", () => {
       "acme",
     );
 
-    expect(config.defaultProvider).toBe("r2");
-    expect(config.providers["r2-binding"]?.configured).toBe(true);
-    expect(config.providers.r2?.configured).toBe(true);
+    assert(config.defaultProvider === "r2");
+    assert(config.providers["r2-binding"]?.configured);
+    assert(config.providers.r2?.configured);
 
     const bindingResponse = await upload.fetch(
       new Request("https://example.com/api/upload/files?provider=r2-binding"),
     );
-    expect(bindingResponse.status).toBe(200);
+    assert(bindingResponse.status === 200);
     await expect(bindingResponse.text()).resolves.toBe("binding-ok");
 
     const r2Response = await upload.fetch(
       new Request("https://example.com/api/upload/files?provider=r2"),
     );
-    expect(r2Response.status).toBe(200);
+    assert(r2Response.status === 200);
     await expect(r2Response.text()).resolves.toBe("r2-ok");
 
     expect(bindingHandler).toHaveBeenCalled();
@@ -231,7 +231,7 @@ describe("Upload Durable Object", () => {
       new Request("https://example.com/api/upload/files?provider=s3"),
     );
 
-    expect(response.status).toBe(400);
+    assert(response.status === 400);
     await expect(response.json()).resolves.toMatchObject({
       code: "INVALID_PROVIDER",
     });
@@ -252,12 +252,12 @@ describe("Upload Durable Object", () => {
 
     const config = await upload.setAdminConfig(VALID_DATABASE_PAYLOAD, "acme");
 
-    expect(config.defaultProvider).toBe("database");
-    expect(config.providers.database?.configured).toBe(true);
+    assert(config.defaultProvider === "database");
+    assert(config.providers.database?.configured);
 
     const response = await upload.fetch(new Request("https://example.com/api/upload/files"));
 
-    expect(response.status).toBe(200);
+    assert(response.status === 200);
     await expect(response.text()).resolves.toBe("fragment-database");
     expect(createUploadServerForProviderMock).toHaveBeenCalledWith(
       expect.objectContaining({ defaultProvider: "database" }),

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import {
   defineScenario,
@@ -118,10 +118,10 @@ describe("workflows scenario DSL", () => {
           storeAs: "hooks",
         }),
         workflow.assert((ctx) => {
-          expect(ctx.vars.sleepStatus?.status).toBe("waiting");
-          expect(ctx.vars.sleepFinal?.status).toBe("complete");
-          expect(ctx.vars.eventStatus?.status).toBe("waiting");
-          expect(ctx.vars.eventFinal?.status).toBe("complete");
+          assert(ctx.vars.sleepStatus?.status === "waiting");
+          assert(ctx.vars.sleepFinal?.status === "complete");
+          assert(ctx.vars.eventStatus?.status === "waiting");
+          assert(ctx.vars.eventFinal?.status === "complete");
           expect(ctx.vars.sleepHistory?.steps.length ?? 0).toBeGreaterThan(0);
           expect(ctx.vars.hooks?.length ?? 0).toBeGreaterThan(0);
         }),
@@ -186,11 +186,11 @@ describe("workflows scenario DSL", () => {
           storeAs: "eventsAfterRun",
         }),
         workflow.assert((ctx) => {
-          expect(ctx.vars.statusAfterDuplicate?.status).toBe("waiting");
+          assert(ctx.vars.statusAfterDuplicate?.status === "waiting");
           expect(ctx.vars.eventsBeforeRun).toHaveLength(1);
-          expect(ctx.vars.finalStatus?.status).toBe("complete");
+          assert(ctx.vars.finalStatus?.status === "complete");
           expect(ctx.vars.eventsAfterRun).toHaveLength(1);
-          expect(ctx.vars.eventsAfterRun?.[0]?.consumedByStepKey).toBe("waitForEvent:ready");
+          assert(ctx.vars.eventsAfterRun?.[0]?.consumedByStepKey === "waitForEvent:ready");
         }),
       ],
     });
@@ -248,7 +248,7 @@ describe("workflows scenario DSL", () => {
           const retryStep = rows.find((row) => row.stepKey === "do:maybe-fail") ?? rows[0];
 
           expect(retryStep).toBeDefined();
-          expect(retryStep?.status).toBe("waiting");
+          assert(retryStep?.status === "waiting");
           expect(retryStep?.nextRetryAt).toBeInstanceOf(Date);
 
           const expectedMs = startMs + 15 * 60 * 1000;

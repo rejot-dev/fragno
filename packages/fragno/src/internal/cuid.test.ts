@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, assert } from "vitest";
 
 import { createId, init } from "./cuid";
 
@@ -138,7 +138,7 @@ describe("cuid", () => {
     const ids = Array.from({ length: 1000 }, () => generator());
 
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids.every((id) => id.length === 24 && idPattern.test(id))).toBe(true);
+    assert(ids.every((id) => id.length === 24 && idPattern.test(id)));
   });
 
   it("uses the configured random source for the leading character", () => {
@@ -158,7 +158,7 @@ describe("cuid", () => {
       fingerprint: "fingerprint",
     })();
 
-    expect(leadingA[0]).toBe("a");
-    expect(leadingZ[0]).toBe("z");
+    assert(leadingA[0] === "a");
+    assert(leadingZ[0] === "z");
   });
 });

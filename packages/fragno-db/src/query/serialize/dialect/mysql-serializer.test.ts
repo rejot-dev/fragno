@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, it, assert } from "vitest";
 
 import { MySQL2DriverConfig } from "../../../adapters/generic-sql/driver-config";
 import type { AnyColumn } from "../../../schema/create";
@@ -34,7 +34,7 @@ describe("MySQLSerializer", () => {
 
         const date = serializer["deserializeDate"](mysqlDate, dateColumn);
 
-        expect(date.toISOString()).toBe("2024-03-10T00:00:00.000Z");
+        assert(date.toISOString() === "2024-03-10T00:00:00.000Z");
       });
     });
   });

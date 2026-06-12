@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, assert } from "vitest";
 
 import type { JsonSchema } from "@jsonforms/core";
 import { NOT_APPLICABLE, RuleEffect } from "@jsonforms/core";
@@ -94,7 +94,7 @@ describe("shadcnSliderControlTester", () => {
   });
 
   it("should return rank 5 for valid range control with slider option", () => {
-    expect(shadcnSliderControlTester(uischema, schema, createTesterContext(schema))).toBe(5);
+    assert(shadcnSliderControlTester(uischema, schema, createTesterContext(schema)) === 5);
   });
 
   it("should return rank 5 for integer type", () => {
@@ -104,9 +104,9 @@ describe("shadcnSliderControlTester", () => {
         rating: { type: "integer", minimum: 0, maximum: 10, default: 5 },
       },
     };
-    expect(
-      shadcnSliderControlTester(uischema, integerSchema, createTesterContext(integerSchema)),
-    ).toBe(5);
+    assert(
+      shadcnSliderControlTester(uischema, integerSchema, createTesterContext(integerSchema)) === 5,
+    );
   });
 });
 

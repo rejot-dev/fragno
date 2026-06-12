@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, assert } from "vitest";
 
 import { generateKeyPairSync } from "crypto";
 
@@ -195,10 +195,7 @@ describe("github-app installation sync", () => {
 
       const typedResponse = response as SyncResponse;
 
-      expect(typedResponse.type).toBe("json");
-      if (typedResponse.type !== "json") {
-        throw new Error(`Expected json response, got ${typedResponse.type}`);
-      }
+      assert(typedResponse.type === "json");
 
       expect(typedResponse.data).toEqual({ added: 1, removed: 1, updated: 1 });
 
@@ -214,14 +211,14 @@ describe("github-app installation sync", () => {
 
       const newRepo = repoById.get("101");
       expect(newRepo).toBeTruthy();
-      expect(newRepo?.fullName).toBe("octo/new-repo");
+      assert(newRepo?.fullName === "octo/new-repo");
       expect(newRepo?.removedAt).toBeNull();
 
       const updatedRepo = repoById.get("202");
-      expect(updatedRepo?.name).toBe("updated-repo");
-      expect(updatedRepo?.fullName).toBe("octo/updated-repo");
-      expect(updatedRepo?.isPrivate).toBe(true);
-      expect(updatedRepo?.defaultBranch).toBe("develop");
+      assert(updatedRepo?.name === "updated-repo");
+      assert(updatedRepo?.fullName === "octo/updated-repo");
+      assert(updatedRepo?.isPrivate);
+      assert(updatedRepo?.defaultBranch === "develop");
       expect(updatedRepo?.removedAt).toBeNull();
 
       const removedRepo = repoById.get("303");
@@ -236,8 +233,8 @@ describe("github-app installation sync", () => {
           .executeRetrieve()
       )[0];
       expect(installations).toHaveLength(1);
-      expect(installations[0]?.accountLogin).toBe("octo");
-      expect(installations[0]?.status).toBe("active");
+      assert(installations[0]?.accountLogin === "octo");
+      assert(installations[0]?.status === "active");
 
       const repoLinks = (
         await fragments.githubApp.db
@@ -248,10 +245,10 @@ describe("github-app installation sync", () => {
       )[0];
       expect(repoLinks).toHaveLength(0);
 
-      expect(fetchMock.calls.length).toBe(3);
+      assert(fetchMock.calls.length === 3);
       expect(fetchMock.calls[0]?.url.pathname).toBe(`/app/installations/${installationId}`);
       expect(fetchMock.calls[1]?.url.pathname).toContain("/access_tokens");
-      expect(fetchMock.calls[2]?.url.pathname).toBe("/installation/repositories");
+      assert(fetchMock.calls[2]?.url.pathname === "/installation/repositories");
     } finally {
       await test.cleanup();
     }
@@ -288,10 +285,7 @@ describe("github-app installation sync", () => {
       );
 
       const typedResponse = response as SyncResponse;
-      expect(typedResponse.type).toBe("json");
-      if (typedResponse.type !== "json") {
-        throw new Error(`Expected json response, got ${typedResponse.type}`);
-      }
+      assert(typedResponse.type === "json");
 
       expect(typedResponse.data).toEqual({ added: 1, removed: 0, updated: 0 });
 
@@ -304,12 +298,12 @@ describe("github-app installation sync", () => {
       )[0];
       expect(installations).toHaveLength(1);
       expect(toExternalId(installations[0]?.id)).toBe(installationId);
-      expect(installations[0]?.accountLogin).toBe("octo");
+      assert(installations[0]?.accountLogin === "octo");
 
-      expect(fetchMock.calls.length).toBe(3);
+      assert(fetchMock.calls.length === 3);
       expect(fetchMock.calls[0]?.url.pathname).toBe(`/app/installations/${installationId}`);
       expect(fetchMock.calls[1]?.url.pathname).toContain("/access_tokens");
-      expect(fetchMock.calls[2]?.url.pathname).toBe("/installation/repositories");
+      assert(fetchMock.calls[2]?.url.pathname === "/installation/repositories");
     } finally {
       await test.cleanup();
     }
@@ -350,14 +344,11 @@ describe("github-app installation listing", () => {
         query: { status: "active" },
       })) as InstallationsResponse;
 
-      expect(response.type).toBe("json");
-      if (response.type !== "json") {
-        throw new Error(`Expected json response, got ${response.type}`);
-      }
+      assert(response.type === "json");
 
       expect(response.data).toHaveLength(1);
-      expect(response.data[0]?.id).toBe("1");
-      expect(response.data[0]?.status).toBe("active");
+      assert(response.data[0]?.id === "1");
+      assert(response.data[0]?.status === "active");
     } finally {
       await test.cleanup();
     }
@@ -376,12 +367,9 @@ describe("github-app installation listing", () => {
         query: { status: "unknown" },
       })) as InstallationsResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("INVALID_STATUS");
+      assert(response.error.code === "INVALID_STATUS");
     } finally {
       await test.cleanup();
     }

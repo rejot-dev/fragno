@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi, assert } from "vitest";
 
 import { createCloudflareSandboxManager } from "./cloudflare-sandbox-manager";
 import type { SandboxInstanceStatus, SandboxInstanceSummary } from "./contracts";
@@ -87,8 +87,8 @@ describe("createCloudflareSandboxManager", () => {
 
     const started = await manager.startInstance({ id: "cf-demo" });
 
-    expect(started.id).toBe("cf-demo");
-    expect(started.status).toBe("running");
+    assert(started.id === "cf-demo");
+    assert(started.status === "running");
     expect(registry.trackInstance).toHaveBeenCalledWith("cf-demo");
   });
 
@@ -109,7 +109,7 @@ describe("createCloudflareSandboxManager", () => {
 
     const started = await manager.startInstance({ id: "CF-Demo" });
 
-    expect(started.id).toBe("cf-demo");
+    assert(started.id === "cf-demo");
     expect(getSandboxMock).toHaveBeenCalledWith(
       expect.anything(),
       "org_123::cf-demo",
@@ -130,7 +130,7 @@ describe("createCloudflareSandboxManager", () => {
     const handle = await manager.getHandle("CF-Demo");
     await manager.killInstance("CF-Demo");
 
-    expect(handle?.id).toBe("cf-demo");
+    assert(handle?.id === "cf-demo");
     expect(registry.getInstance).toHaveBeenCalledWith("org_123::cf-demo");
     expect(registry.untrackInstance).toHaveBeenCalledWith("org_123::cf-demo");
   });
@@ -264,12 +264,9 @@ describe("createCloudflareSandboxManager", () => {
     const handle = await manager.getHandle("cf-dead");
     const result = await handle!.executeCommand("npm test");
 
-    expect(result.ok).toBe(false);
-    if (result.ok) {
-      throw new Error("Expected command failure result");
-    }
-    expect(result.reason).toBe("sandbox_terminated");
-    expect(result.retryable).toBe(true);
+    assert(!result.ok);
+    assert(result.reason === "sandbox_terminated");
+    assert(result.retryable);
   });
 
   test("surfaces command_failed for non-zero command exit", async () => {
@@ -288,12 +285,9 @@ describe("createCloudflareSandboxManager", () => {
     const handle = await manager.getHandle("cf-fail");
     const result = await handle!.executeCommand("npm run build");
 
-    expect(result.ok).toBe(false);
-    if (result.ok) {
-      throw new Error("Expected command failure result");
-    }
-    expect(result.reason).toBe("command_failed");
-    expect(result.retryable).toBe(false);
+    assert(!result.ok);
+    assert(result.reason === "command_failed");
+    assert(!result.retryable);
   });
 
   test("handles undefined thrown values during command execution", async () => {
@@ -307,12 +301,9 @@ describe("createCloudflareSandboxManager", () => {
     const handle = await manager.getHandle("cf-undefined");
     const result = await handle!.executeCommand("echo hi");
 
-    expect(result.ok).toBe(false);
-    if (result.ok) {
-      throw new Error("Expected command failure result");
-    }
-    expect(result.reason).toBe("internal_error");
-    expect(result.message).toBe("Unknown sandbox execution error.");
+    assert(!result.ok);
+    assert(result.reason === "internal_error");
+    assert(result.message === "Unknown sandbox execution error.");
   });
 
   test("proxies mountBucket to the Cloudflare sandbox handle", async () => {

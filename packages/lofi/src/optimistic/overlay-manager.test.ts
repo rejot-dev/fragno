@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, assert } from "vitest";
 
 import { column, idColumn, schema, FragnoId } from "@fragno-dev/db/schema";
 import {
@@ -78,8 +78,8 @@ describe("optimistic overlay manager", () => {
     const query = manager.createQueryEngine(appSchema);
     const users = await query.find("users", (b) => b.whereIndex("primary"));
     expect(users).toHaveLength(1);
-    expect(users[0].name).toBe("Ada Lovelace");
+    assert(users[0].name === "Ada Lovelace");
     const userId = users[0].id as FragnoId;
-    expect(userId.version).toBe(1);
+    assert(userId.version === 1);
   });
 });

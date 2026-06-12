@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import {
   buildUploadFileKey,
@@ -20,9 +20,10 @@ describe("upload panel key helpers", () => {
   });
 
   it("rejects slashes and surrounding whitespace instead of normalizing segments", () => {
-    expect(validateUploadKeySegment("Collection", "a/b")).toBe("Collection cannot include '/'.");
-    expect(validateUploadKeySegment("Entity ID", " 42 ")).toBe(
-      "Entity ID cannot start or end with whitespace.",
+    assert(validateUploadKeySegment("Collection", "a/b") === "Collection cannot include '/'.");
+    assert(
+      validateUploadKeySegment("Entity ID", " 42 ") ===
+        "Entity ID cannot start or end with whitespace.",
     );
   });
 

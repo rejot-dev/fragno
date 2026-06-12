@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, assert } from "vitest";
 
 import { schema, idColumn, column, referenceColumn } from "../schema/create";
 import { createMigrator, type MigrationEngineOptions } from "./create";
@@ -92,7 +92,7 @@ describe("createMigrator", () => {
       const result = await migrator.prepareMigrationTo(2);
 
       expect(result.operations.length).toBeGreaterThan(0);
-      expect(getVersion()).toBe(2);
+      assert(getVersion() === 2);
     });
 
     it("should migrate forward by jumping multiple versions", async () => {
@@ -109,13 +109,13 @@ describe("createMigrator", () => {
       const { migrator, getVersion } = createTestMigrator(0);
 
       await migrator.prepareMigrationTo(1);
-      expect(getVersion()).toBe(1);
+      assert(getVersion() === 1);
 
       await migrator.prepareMigrationTo(2);
-      expect(getVersion()).toBe(2);
+      assert(getVersion() === 2);
 
       await migrator.prepareMigrationTo(3);
-      expect(getVersion()).toBe(3);
+      assert(getVersion() === 3);
     });
 
     it("should return empty operations when already at target version", async () => {
@@ -124,7 +124,7 @@ describe("createMigrator", () => {
       const result = await migrator.prepareMigrationTo(2);
 
       expect(result.operations).toEqual([]);
-      expect(getVersion()).toBe(2);
+      assert(getVersion() === 2);
     });
 
     it("should throw error when trying to migrate backwards", async () => {
@@ -229,7 +229,7 @@ describe("createMigrator", () => {
       const result = await migrator.prepareMigrationTo(1);
 
       expect(afterAutoSpy).toHaveBeenCalledOnce();
-      expect(result.operations.some((op) => op.type === "custom")).toBe(true);
+      assert(result.operations.some((op) => op.type === "custom"));
     });
 
     it("should apply afterAll transformer", async () => {
@@ -269,7 +269,7 @@ describe("createMigrator", () => {
       const result = await migrator.prepareMigrationTo(1);
 
       expect(afterAllSpy).toHaveBeenCalledOnce();
-      expect(result.operations.some((op) => op.type === "custom")).toBe(true);
+      assert(result.operations.some((op) => op.type === "custom"));
     });
   });
 

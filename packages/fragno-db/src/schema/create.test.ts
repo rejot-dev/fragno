@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, it } from "vitest";
+import { describe, expect, expectTypeOf, it, assert } from "vitest";
 
 import type {
   RawColumnValues,
@@ -63,16 +63,16 @@ describe("create", () => {
     expect(userTable.columns.name).toBeDefined();
     expect(userTable.columns.email).toBeDefined();
     expect(userTable.columns.age).toBeDefined();
-    expect(userTable.columns.age.isNullable).toBe(true);
+    assert(userTable.columns.age.isNullable);
 
     // Verify the index was stored as a sub-operation
     const addTableOps = userSchema.operations.filter((op) => op.type === "add-table");
     expect(addTableOps).toHaveLength(1);
     const indexOps = addTableOps[0].operations.filter((op) => op.type === "add-index");
     expect(indexOps).toHaveLength(1);
-    expect(indexOps[0].name).toBe("unique_email");
+    assert(indexOps[0].name === "unique_email");
     expect(indexOps[0].columns).toEqual(["email"]);
-    expect(indexOps[0].unique).toBe(true);
+    assert(indexOps[0].unique);
   });
 
   it("should create a schema with multiple tables using callback pattern", () => {
@@ -89,11 +89,11 @@ describe("create", () => {
         });
     });
 
-    expect(userSchema.version).toBe(2); // Two addTable calls
+    assert(userSchema.version === 2); // Two addTable calls
     expect(userSchema.tables.users).toBeDefined();
     expect(userSchema.tables.posts).toBeDefined();
-    expect(userSchema.tables.users.name).toBe("users");
-    expect(userSchema.tables.posts.name).toBe("posts");
+    assert(userSchema.tables.users.name === "users");
+    assert(userSchema.tables.posts.name === "posts");
   });
 
   it("should generate default values for columns", () => {
@@ -111,7 +111,7 @@ describe("create", () => {
 
     const testTable = testSchema.tables.test;
     const idValue = testTable.columns.id.generateDefaultValue();
-    expect(typeof idValue).toBe("string");
+    assert(typeof idValue === "string");
     expect(idValue?.length).toBeGreaterThan(0);
 
     const createdAtValue = testTable.columns.createdAt.generateDefaultValue();
@@ -135,7 +135,7 @@ describe("create", () => {
         });
     });
 
-    expect(userSchema.version).toBe(2); // Two addTable calls
+    assert(userSchema.version === 2); // Two addTable calls
   });
 
   it("should support unique constraints on tables via unique method", () => {
@@ -154,9 +154,9 @@ describe("create", () => {
     expect(addTableOps).toHaveLength(1);
     const indexOps = addTableOps[0].operations.filter((op) => op.type === "add-index");
     expect(indexOps).toHaveLength(1);
-    expect(indexOps[0].name).toBe("unique_email_username");
+    assert(indexOps[0].name === "unique_email_username");
     expect(indexOps[0].columns).toEqual(["email", "username"]);
-    expect(indexOps[0].unique).toBe(true);
+    assert(indexOps[0].unique);
   });
 
   it("should support creating indexes on tables", () => {
@@ -180,12 +180,12 @@ describe("create", () => {
     const emailIndex = indexOps.find((op) => op.name === "idx_email");
     expect(emailIndex).toBeDefined();
     expect(emailIndex!.columns).toEqual(["email"]);
-    expect(emailIndex!.unique).toBe(false);
+    assert(!emailIndex!.unique);
 
     const usernameIndex = indexOps.find((op) => op.name === "idx_username_unique");
     expect(usernameIndex).toBeDefined();
     expect(usernameIndex!.columns).toEqual(["username"]);
-    expect(usernameIndex!.unique).toBe(true);
+    assert(usernameIndex!.unique);
   });
 
   it("should throw on duplicate table names", () => {
@@ -285,13 +285,13 @@ describe("create", () => {
     const authorRelation = getTableRelations(postsTable)["author"];
     const authorForeignKey = getTableForeignKey(postsTable, "authorId");
 
-    expect(postsTable.columns.authorId.role).toBe("reference");
+    assert(postsTable.columns.authorId.role === "reference");
     expect(authorRelation).toBeDefined();
-    expect(authorRelation?.type).toBe("one");
+    assert(authorRelation?.type === "one");
     expect(authorRelation?.table).toBe(userSchema.tables.users);
     expect(authorRelation?.on).toEqual([["authorId", "id"]]);
     expect(authorForeignKey?.referencedTable).toBe(userSchema.tables.users);
-    expect(authorForeignKey?.referencedColumnName).toBe("_internalId");
+    assert(authorForeignKey?.referencedColumnName === "_internalId");
   });
 
   it("should target referenced internal ids for foreign keys", () => {
@@ -309,7 +309,7 @@ describe("create", () => {
 
     const productRef = getTableForeignKey(catalogSchema.tables.orders, "productRef");
     expect(productRef?.referencedTable).toBe(catalogSchema.tables.products);
-    expect(productRef?.referencedColumnName).toBe("_internalId");
+    assert(productRef?.referencedColumnName === "_internalId");
   });
 
   it("should support multiple reference columns in one table", () => {
@@ -358,7 +358,7 @@ describe("create", () => {
     const inviterForeignKey = getTableForeignKey(usersTable, "invitedBy");
 
     expect(inviterRelation).toBeDefined();
-    expect(inviterRelation?.type).toBe("one");
+    assert(inviterRelation?.type === "one");
     expect(inviterRelation?.table).toBe(usersTable);
     expect(inviterRelation?.on).toEqual([["invitedBy", "id"]]);
     expect(inviterForeignKey?.referencedTable).toBe(usersTable);
@@ -386,23 +386,23 @@ describe("create", () => {
     // Verify the new columns were added
     expect(usersTable.columns.email).toBeDefined();
     expect(usersTable.columns.age).toBeDefined();
-    expect(usersTable.columns.age.isNullable).toBe(true);
+    assert(usersTable.columns.age.isNullable);
 
     // Verify the operations were recorded
     const alterTableOps = userSchema.operations.filter((op) => op.type === "alter-table");
     expect(alterTableOps).toHaveLength(1);
     expect(alterTableOps[0].operations).toHaveLength(2);
-    expect(alterTableOps[0].operations[0].type).toBe("add-column");
-    expect(alterTableOps[0].operations[1].type).toBe("add-column");
+    assert(alterTableOps[0].operations[0].type === "add-column");
+    assert(alterTableOps[0].operations[1].type === "add-column");
     if (alterTableOps[0].operations[0].type === "add-column") {
-      expect(alterTableOps[0].operations[0].columnName).toBe("email");
+      assert(alterTableOps[0].operations[0].columnName === "email");
     }
     if (alterTableOps[0].operations[1].type === "add-column") {
-      expect(alterTableOps[0].operations[1].columnName).toBe("age");
+      assert(alterTableOps[0].operations[1].columnName === "age");
     }
 
     // Version should be: 1 (addTable) + 1 (alter-table with 2 columns)
-    expect(userSchema.version).toBe(2);
+    assert(userSchema.version === 2);
   });
 
   it("should allow altering an existing table to add indexes", () => {
@@ -427,7 +427,7 @@ describe("create", () => {
     expect(indexOps).toHaveLength(2);
 
     // Version should be: 1 (addTable) + 1 (alter-table with indexes as sub-operations)
-    expect(userSchema.version).toBe(2);
+    assert(userSchema.version === 2);
   });
 
   it("should allow multiple alterTable calls on the same table", () => {
@@ -466,7 +466,7 @@ describe("create", () => {
     expect(usersTable.columns.age).toBeDefined();
 
     // Version should be: 1 (addTable) + 1 (first alter) + 1 (second alter)
-    expect(userSchema.version).toBe(3);
+    assert(userSchema.version === 3);
   });
 
   it("should preserve user-defined columns after alterTable type updates", () => {
@@ -521,11 +521,11 @@ describe("create", () => {
     // Verify the original indexes are still present in the table
     expect(usersTable.indexes["idx_email"]).toBeDefined();
     expect(usersTable.indexes["idx_email"].columnNames).toEqual(["email"]);
-    expect(usersTable.indexes["idx_email"].unique).toBe(false);
+    assert(!usersTable.indexes["idx_email"].unique);
 
     expect(usersTable.indexes["idx_name_unique"]).toBeDefined();
     expect(usersTable.indexes["idx_name_unique"].columnNames).toEqual(["name"]);
-    expect(usersTable.indexes["idx_name_unique"].unique).toBe(true);
+    assert(usersTable.indexes["idx_name_unique"].unique);
   });
 
   it("should not duplicate existing indexes when altering a table", () => {
@@ -562,7 +562,7 @@ describe("create", () => {
     );
     expect(alterTableColumnOps).toHaveLength(1);
     if (alterTableColumnOps[0].type === "add-column") {
-      expect(alterTableColumnOps[0].columnName).toBe("age");
+      assert(alterTableColumnOps[0].columnName === "age");
     }
   });
 
@@ -589,7 +589,7 @@ describe("create", () => {
     expect(addTableOps).toHaveLength(1);
     const addTableIndexOps = addTableOps[0].operations.filter((op) => op.type === "add-index");
     expect(addTableIndexOps).toHaveLength(1);
-    expect(addTableIndexOps[0].name).toBe("idx_email");
+    assert(addTableIndexOps[0].name === "idx_email");
 
     // Verify the alter-table operation contains only the NEW indexes
     const alterTableOps = userSchema.operations.filter((op) => op.type === "alter-table");
@@ -703,7 +703,7 @@ describe("SchemaBuilder with existing schema", () => {
 
     expect(extendedSchema.tables.users).toBeDefined();
     expect(extendedSchema.tables.posts).toBeDefined();
-    expect(extendedSchema.version).toBe(2); // 1 from original + 1 from new table
+    assert(extendedSchema.version === 2); // 1 from original + 1 from new table
     expect(extendedSchema.operations).toHaveLength(2);
   });
 
@@ -730,9 +730,9 @@ describe("SchemaBuilder with existing schema", () => {
     );
 
     expect(addTableOps).toHaveLength(3);
-    expect(addTableOps[0]?.tableName).toBe("users");
-    expect(addTableOps[1]?.tableName).toBe("posts");
-    expect(addTableOps[2]?.tableName).toBe("comments");
+    assert(addTableOps[0]?.tableName === "users");
+    assert(addTableOps[1]?.tableName === "posts");
+    assert(addTableOps[2]?.tableName === "comments");
   });
 
   it("should merge multiple schemas using mergeWithExistingSchema", () => {
@@ -755,7 +755,7 @@ describe("SchemaBuilder with existing schema", () => {
 
     expect(mergedSchema.tables.users).toBeDefined();
     expect(mergedSchema.tables.posts).toBeDefined();
-    expect(mergedSchema.version).toBe(2); // 1 from schema1 + 1 from schema2
+    assert(mergedSchema.version === 2); // 1 from schema1 + 1 from schema2
     expect(mergedSchema.operations).toHaveLength(2);
   });
 
@@ -825,7 +825,7 @@ describe("SchemaBuilder with existing schema", () => {
     expect(extended.tables.users).toBeDefined();
     expect(extended.tables.posts).toBeDefined();
     expect(extended.tables.comments).toBeDefined();
-    expect(extended.version).toBe(3); // 2 from merged + 1 from new table
+    assert(extended.version === 3); // 2 from merged + 1 from new table
     expect(extended.operations).toHaveLength(3);
   });
 
@@ -853,7 +853,7 @@ describe("SchemaBuilder with existing schema", () => {
     expect(combined.tables.users).toBeDefined();
     expect(combined.tables.posts).toBeDefined();
     expect(combined.tables.comments).toBeDefined();
-    expect(combined.version).toBe(3); // 1 + 1 + 1
+    assert(combined.version === 3); // 1 + 1 + 1
     expect(combined.operations).toHaveLength(3);
   });
 
@@ -885,10 +885,10 @@ describe("SchemaBuilder with existing schema", () => {
     );
 
     expect(addTableOps).toHaveLength(3);
-    expect(addTableOps[0]?.tableName).toBe("users");
-    expect(addTableOps[1]?.tableName).toBe("posts");
-    expect(addTableOps[2]?.tableName).toBe("categories");
-    expect(mergedSchema.version).toBe(3); // 1 from schema1 + 2 from schema2
+    assert(addTableOps[0]?.tableName === "users");
+    assert(addTableOps[1]?.tableName === "posts");
+    assert(addTableOps[2]?.tableName === "categories");
+    assert(mergedSchema.version === 3); // 1 from schema1 + 2 from schema2
   });
 
   it("should merge three or more schemas", () => {
@@ -919,7 +919,7 @@ describe("SchemaBuilder with existing schema", () => {
     expect(mergedSchema.tables.users).toBeDefined();
     expect(mergedSchema.tables.posts).toBeDefined();
     expect(mergedSchema.tables.comments).toBeDefined();
-    expect(mergedSchema.version).toBe(3);
+    assert(mergedSchema.version === 3);
     expect(mergedSchema.operations).toHaveLength(3);
   });
 
@@ -933,7 +933,7 @@ describe("SchemaBuilder with existing schema", () => {
     const mergedSchema = new SchemaBuilder("merged").mergeWithExistingSchema(schema1).build();
 
     expect(mergedSchema.tables.users).toBeDefined();
-    expect(mergedSchema.version).toBe(1);
+    assert(mergedSchema.version === 1);
     expect(mergedSchema.operations).toHaveLength(1);
   });
 });

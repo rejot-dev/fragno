@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import {
   createNamingResolver,
@@ -87,7 +87,7 @@ describe("PreparedMigrations - PostgreSQL", () => {
       resolver,
     );
 
-    expect(statements.length).toBe(1);
+    assert(statements.length === 1);
     expect(statements[0].sql).toMatchInlineSnapshot(
       `"create table "users_test" ("id" varchar(191) not null unique, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null)"`,
     );
@@ -110,7 +110,7 @@ describe("PreparedMigrations - PostgreSQL", () => {
       resolver,
     );
 
-    expect(statements.length).toBe(1);
+    assert(statements.length === 1);
     expect(statements[0].sql).toMatchInlineSnapshot(
       `"alter table "users_test" add column "age" integer"`,
     );
@@ -130,7 +130,7 @@ describe("PreparedMigrations - PostgreSQL", () => {
       resolver,
     );
 
-    expect(statements.length).toBe(1);
+    assert(statements.length === 1);
     expect(statements[0].sql).toMatchInlineSnapshot(
       `"create index "idx_users_name_idx_test_92db5054" on "users_test" ("name")"`,
     );
@@ -266,7 +266,7 @@ describe("PreparedMigrations - SQLite FK Merging", () => {
     ]);
 
     // FK should be merged into posts create-table, plus pragma statement
-    expect(operations.length).toBe(3);
+    assert(operations.length === 3);
     expect(operations[0]).toEqual({ type: "custom", sql: "PRAGMA defer_foreign_keys = ON" });
     const postsOp = operations.find((op) => op.type === "create-table" && op.name === "posts");
     expect(postsOp).toBeDefined();
@@ -304,7 +304,7 @@ describe("PreparedMigrations - SQLite FK Merging", () => {
       resolver,
     );
 
-    expect(statements.length).toBe(3);
+    assert(statements.length === 3);
     expect(statements[0].sql).toMatchInlineSnapshot(`"PRAGMA defer_foreign_keys = ON"`);
     expect(statements[1].sql).toMatchInlineSnapshot(
       `"create table "users_test" ("id" text not null unique)"`,
@@ -368,14 +368,14 @@ describe("PreparedMigrations - MySQL", () => {
       },
     ]);
 
-    expect(operations.length).toBe(3);
-    expect(operations[0].type).toBe("custom");
+    assert(operations.length === 3);
+    assert(operations[0].type === "custom");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((operations[0] as any).sql).toBe("SET FOREIGN_KEY_CHECKS = 0");
-    expect(operations[1].type).toBe("create-table");
-    expect(operations[2].type).toBe("custom");
+    assert((operations[0] as any).sql === "SET FOREIGN_KEY_CHECKS = 0");
+    assert(operations[1].type === "create-table");
+    assert(operations[2].type === "custom");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((operations[2] as any).sql).toBe("SET FOREIGN_KEY_CHECKS = 1");
+    assert((operations[2] as any).sql === "SET FOREIGN_KEY_CHECKS = 1");
   });
 
   test("uses autoIncrement for internal-id columns", () => {
@@ -393,7 +393,7 @@ describe("PreparedMigrations - MySQL", () => {
     );
 
     // MySQL wraps with FK checks, so we have 3 statements
-    expect(statements.length).toBe(3);
+    assert(statements.length === 3);
     expect(statements[0].sql).toMatchInlineSnapshot(`"SET FOREIGN_KEY_CHECKS = 0"`);
     expect(statements[1].sql).toMatchInlineSnapshot(
       `"create table \`users\` (\`_internalId\` bigint not null  auto_increment, constraint \`users__internalId\` primary key (\`_internalId\`))"`,
@@ -470,8 +470,8 @@ describe("PreparedMigrations - Integration", () => {
 
     await prepared.execute(0, 1);
 
-    expect(transactionStarted).toBe(true);
-    expect(executedStatements.length).toBe(2);
+    assert(transactionStarted);
+    assert(executedStatements.length === 2);
     expect(executedStatements[0]).toMatchInlineSnapshot(
       `"create table "users_test" ("id" varchar(128) not null unique, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null)"`,
     );
@@ -515,7 +515,7 @@ describe("PreparedMigrations - Integration", () => {
     await prepared.execute(0, 1, { updateVersionInMigration: false });
 
     // Should only have the create table statement, no version update
-    expect(executedStatements.length).toBe(1);
+    assert(executedStatements.length === 1);
     expect(executedStatements[0]).toContain('create table "users_test"');
   });
 
@@ -598,7 +598,7 @@ describe("PreparedMigrations - Integration", () => {
     await prepared.execute(2, 2);
 
     // No statements should be executed
-    expect(executedStatements.length).toBe(0);
+    assert(executedStatements.length === 0);
   });
 
   test("throws error when execute is called without driver", async () => {
@@ -843,7 +843,7 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
     expect(compiled.statements).toBeDefined();
     expect(compiled.statements.length).toBeGreaterThan(0);
     // Should have: create table, add column, 2 indexes, version insert
-    expect(compiled.statements.length).toBe(5);
+    assert(compiled.statements.length === 5);
   });
 
   test("getSQL with updateVersionInMigration=false excludes version statement", () => {

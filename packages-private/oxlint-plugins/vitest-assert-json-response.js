@@ -7,20 +7,21 @@ const rule = {
   meta: {
     type: "suggestion",
     docs: {
-      description: "Prefer `assert` over `expect(...).toBe` + guard",
+      description: "Prefer `assert` over `expect(...).toBe(...)`",
       category: "Best Practices",
     },
     fixable: "code",
     schema: [],
     messages: {
-      replaceWithAssert:
-        'Use `assert({{expression}} === "json")` instead of `expect(...).toBe("json")` + guard.',
+      replaceWithAssert: "Use `assert` instead of `expect(...).toBe(...)`.",
     },
   },
 
   create(context) {
     const sourceCode = context.getSourceCode();
     let hasRelevantMatch = false;
+    /** @type {Array<[number, number]>} */
+    const replacedRanges = [];
 
     /** @param {any} node */
     const normalize = (node) => {
@@ -37,15 +38,37 @@ const rule = {
     };
 
     /** @param {any} node */
-    const isJsonLiteral = (node) => node?.type === "Literal" && node.value === "json";
-
-    /** @param {any} node */
-    const toBeExpression = (node) => {
-      if (node?.type !== "ExpressionStatement") {
-        return null;
+    const isSimpleExpected = (node) => {
+      const value = normalize(node);
+      if (!value) {
+        return false;
       }
 
-      const expr = node.expression;
+      if (value.type === "Literal") {
+        return !value.regex;
+      }
+
+      if (value.type === "TemplateLiteral") {
+        return value.expressions.length === 0;
+      }
+
+      if (value.type === "Identifier") {
+        return value.name === "undefined" || value.name === "NaN" || value.name === "Infinity";
+      }
+
+      if (value.type === "UnaryExpression") {
+        return (
+          (value.operator === "-" || value.operator === "+") &&
+          value.argument.type === "Literal" &&
+          typeof value.argument.value === "number"
+        );
+      }
+
+      return false;
+    };
+
+    /** @param {any} expr */
+    const toBeCall = (expr) => {
       if (expr?.type !== "CallExpression") {
         return null;
       }
@@ -71,20 +94,26 @@ const rule = {
         return null;
       }
 
-      if (!isJsonLiteral(expr.arguments[0])) {
+      const actual = normalize(expectCall.arguments[0]);
+      const expected = normalize(expr.arguments[0]);
+      if (!isSimpleExpected(expected)) {
         return null;
       }
 
-      const value = normalize(expectCall.arguments[0]);
-      if (value?.type !== "MemberExpression" || value.computed) {
+      if (booleanLiteralValue(expected) === null && actual?.type === "Identifier") {
         return null;
       }
 
-      if (value.property.type !== "Identifier" || value.property.name !== "type") {
+      return { actual, expected };
+    };
+
+    /** @param {any} statement */
+    const toBeAssertion = (statement) => {
+      if (statement?.type !== "ExpressionStatement") {
         return null;
       }
 
-      return value;
+      return toBeCall(statement.expression);
     };
 
     /**
@@ -128,11 +157,8 @@ const rule = {
       return false;
     };
 
-    /**
-     * @param {any} node
-     * @param {any} expr
-     */
-    const isJsonGuardIf = (node, expr) => {
+    /** @param {any} node */
+    const isAbruptSingleStatementIf = (node) => {
       if (!node || node.type !== "IfStatement") {
         return false;
       }
@@ -142,56 +168,180 @@ const rule = {
       }
 
       const statement = node.consequent.body[0];
-      if (statement.type !== "ReturnStatement" && statement.type !== "ThrowStatement") {
+      return statement.type === "ReturnStatement" || statement.type === "ThrowStatement";
+    };
+
+    /**
+     * @param {any} node
+     * @param {any} actual
+     * @param {boolean} expected
+     */
+    const isBooleanGuardIf = (node, actual, expected) => {
+      if (!isAbruptSingleStatementIf(node)) {
         return false;
       }
 
       const test = node.test;
-      if (test?.type !== "BinaryExpression" || test.operator !== "!==") {
+      if (expected) {
+        return (
+          test?.type === "UnaryExpression" &&
+          test.operator === "!" &&
+          sameExpr(test.argument, actual)
+        );
+      }
+
+      return sameExpr(test, actual);
+    };
+
+    /** @param {any} actual */
+    const booleanAssertionText = (actual) => {
+      const value = normalize(actual);
+      if (
+        value?.type === "CallExpression" &&
+        value.callee.type === "Identifier" &&
+        value.callee.name === "Boolean" &&
+        value.arguments.length === 1
+      ) {
+        return sourceCode.getText(value.arguments[0]);
+      }
+
+      return sourceCode.getText(actual);
+    };
+
+    /** @param {any} expected */
+    const booleanLiteralValue = (expected) => {
+      const value = normalize(expected);
+      if (value?.type !== "Literal" || typeof value.value !== "boolean") {
+        return null;
+      }
+
+      return value.value;
+    };
+
+    /**
+     * @param {string} actualText
+     * @param {string} expectedText
+     * @param {any} actual
+     * @param {any} expected
+     */
+    const toAssertStatement = (actualText, expectedText, actual, expected) => {
+      const expectedBoolean = booleanLiteralValue(expected);
+      if (expectedBoolean === true) {
+        return `assert(${booleanAssertionText(actual)});`;
+      }
+
+      if (expectedBoolean === false) {
+        return `assert(!(${booleanAssertionText(actual)}));`;
+      }
+
+      return `assert(${actualText} === ${expectedText});`;
+    };
+
+    /** @param {any} node */
+    const hasPreviousTsDirective = (node) => {
+      if (!node?.range) {
         return false;
       }
 
-      return isJsonLiteral(test.right) && sameExpr(test.left, expr);
+      const sourceText = sourceCode.getText();
+      const currentLineStart = sourceText.lastIndexOf("\n", node.range[0] - 1) + 1;
+      const previousLineEnd = currentLineStart - 1;
+      if (previousLineEnd <= 0) {
+        return false;
+      }
+
+      const previousLineStart = sourceText.lastIndexOf("\n", previousLineEnd - 1) + 1;
+      const previousLine = sourceText.slice(previousLineStart, previousLineEnd);
+      return previousLine.includes("@ts-expect-error") || previousLine.includes("@ts-ignore");
     };
 
     return {
-      "BlockStatement:exit"(node) {
-        const { body } = node;
-        if (!Array.isArray(body) || body.length < 2) {
+      "ArrowFunctionExpression:exit"(node) {
+        const assertion = toBeCall(node.body);
+        if (!assertion || hasPreviousTsDirective(node.body)) {
           return;
         }
 
-        for (let i = 0; i < body.length - 1; i += 1) {
-          const expectStmt = body[i];
-          const ifStmt = body[i + 1];
+        const actualText = sourceCode.getText(assertion.actual);
+        const expectedText = sourceCode.getText(assertion.expected);
+        hasRelevantMatch = true;
+        if (node.body.range) {
+          replacedRanges.push(node.body.range);
+        }
 
-          const expr = toBeExpression(expectStmt);
-          if (!expr || !isJsonGuardIf(ifStmt, expr)) {
+        context.report({
+          node: node.body,
+          messageId: "replaceWithAssert",
+          data: { actual: actualText, expected: expectedText },
+          fix(fixer) {
+            if (!node.body.range) {
+              return null;
+            }
+
+            const assertExpression = toAssertStatement(
+              actualText,
+              expectedText,
+              assertion.actual,
+              assertion.expected,
+            );
+            return fixer.replaceTextRange(node.body.range, assertExpression.slice(0, -1));
+          },
+        });
+      },
+
+      "BlockStatement:exit"(node) {
+        const { body } = node;
+        if (!Array.isArray(body)) {
+          return;
+        }
+
+        for (let i = 0; i < body.length; i += 1) {
+          const expectStmt = body[i];
+          const nextStmt = body[i + 1];
+
+          const assertion = toBeAssertion(expectStmt);
+          if (!assertion || hasPreviousTsDirective(expectStmt)) {
             continue;
           }
 
+          const actualText = sourceCode.getText(assertion.actual);
+          const expectedText = sourceCode.getText(assertion.expected);
+          const expectedBoolean = booleanLiteralValue(assertion.expected);
+          const removeGuard =
+            expectedBoolean !== null &&
+            isBooleanGuardIf(nextStmt, assertion.actual, expectedBoolean);
+          const assertStatement = toAssertStatement(
+            actualText,
+            expectedText,
+            assertion.actual,
+            assertion.expected,
+          );
+          const replacementEnd = removeGuard ? nextStmt : expectStmt;
+
           hasRelevantMatch = true;
+          if (expectStmt.range) {
+            replacedRanges.push(expectStmt.range);
+          }
+
           context.report({
-            node: ifStmt,
+            node: expectStmt,
             messageId: "replaceWithAssert",
-            data: { expression: sourceCode.getText(expr) },
+            data: { actual: actualText, expected: expectedText },
             fix(fixer) {
-              if (!expectStmt.range || !ifStmt.range) {
+              if (!expectStmt.range || !replacementEnd?.range) {
                 return null;
               }
 
-              const replacement = `assert(${sourceCode.getText(expr)} === "json");\n`;
-              return fixer.replaceTextRange([expectStmt.range[0], ifStmt.range[1]], replacement);
+              return fixer.replaceTextRange(
+                [expectStmt.range[0], replacementEnd.range[1]],
+                assertStatement,
+              );
             },
           });
         }
       },
 
       "Program:exit"(node) {
-        if (!hasRelevantMatch) {
-          return;
-        }
-
         /** @type {any | null} */
         const vitestImport = node.body.find(
           (statement) =>
@@ -200,13 +350,53 @@ const rule = {
             statement.source.value === "vitest",
         );
 
-        /** @param {any} importDecl */
-        const hasAssertSpecifier = (importDecl) => {
-          return importDecl?.specifiers?.some(
-            /** @param {any} specifier */
-            (specifier) =>
-              specifier.type === "ImportSpecifier" && specifier.local.name === "assert",
+        /** @param {any} candidate */
+        const isInsideReplacedRange = (candidate) => {
+          if (!candidate?.range) {
+            return false;
+          }
+
+          return replacedRanges.some(
+            ([start, end]) => candidate.range[0] >= start && candidate.range[1] <= end,
           );
+        };
+
+        const hasExpectUsage = () => {
+          /** @param {any} candidate */
+          const visit = (candidate) => {
+            if (!candidate || typeof candidate !== "object") {
+              return false;
+            }
+
+            if (candidate.type === "ImportDeclaration" || isInsideReplacedRange(candidate)) {
+              return false;
+            }
+
+            if (candidate.type === "Identifier" && candidate.name === "expect") {
+              return true;
+            }
+
+            for (const [key, value] of Object.entries(candidate)) {
+              if (key === "parent" || key === "range" || key === "loc") {
+                continue;
+              }
+
+              if (Array.isArray(value)) {
+                if (value.some((item) => visit(item))) {
+                  return true;
+                }
+                continue;
+              }
+
+              if (visit(value)) {
+                return true;
+              }
+            }
+
+            return false;
+          };
+
+          return visit(node);
         };
 
         const insertImport = () => {
@@ -231,11 +421,9 @@ const rule = {
         };
 
         if (!vitestImport) {
-          insertImport();
-          return;
-        }
-
-        if (hasAssertSpecifier(vitestImport)) {
+          if (hasRelevantMatch) {
+            insertImport();
+          }
           return;
         }
 
@@ -243,20 +431,51 @@ const rule = {
           /** @param {any} s */
           (s) => s.type === "ImportSpecifier",
         );
+        const hasAssertSpecifier = namedSpecifiers.some(
+          /** @param {any} specifier */
+          (specifier) => specifier.local.name === "assert",
+        );
+        const hasExpectSpecifier = namedSpecifiers.some(
+          /** @param {any} specifier */
+          (specifier) => specifier.local.name === "expect",
+        );
+        const shouldAddAssert = hasRelevantMatch && !hasAssertSpecifier;
+        const shouldRemoveExpect = hasExpectSpecifier && !hasExpectUsage();
 
-        if (namedSpecifiers.length > 0) {
-          const lastSpecifier = namedSpecifiers[namedSpecifiers.length - 1];
-          context.report({
-            node: vitestImport,
-            message: "Add assert import from vitest",
-            fix(fixer) {
-              return fixer.insertTextAfter(lastSpecifier, ", assert");
-            },
-          });
+        if (!shouldAddAssert && !shouldRemoveExpect) {
           return;
         }
 
-        insertImport();
+        const nextSpecifiers = namedSpecifiers
+          .filter(
+            /** @param {any} specifier */
+            (specifier) => !shouldRemoveExpect || specifier.local.name !== "expect",
+          )
+          .map(
+            /** @param {any} specifier */
+            (specifier) => sourceCode.getText(specifier),
+          );
+
+        if (shouldAddAssert) {
+          nextSpecifiers.push("assert");
+        }
+
+        context.report({
+          node: vitestImport,
+          message: shouldAddAssert
+            ? "Add assert import from vitest"
+            : "Remove unused expect import",
+          fix(fixer) {
+            if (!vitestImport.range) {
+              return null;
+            }
+
+            return fixer.replaceTextRange(
+              vitestImport.range,
+              `import { ${nextSpecifiers.join(", ")} } from "vitest";`,
+            );
+          },
+        });
       },
     };
   },

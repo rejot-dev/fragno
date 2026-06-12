@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, assert } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
@@ -407,14 +407,14 @@ describe("createMasterFileSystem", () => {
   });
 
   test("validates mount point and relative-path normalization", () => {
-    expect(normalizeMountPoint("//workspace//")).toBe("/workspace");
-    expect(normalizeRelativePath("  folder/sub/ ")).toBe("folder/sub");
-    expect(normalizeRelativePath("/")).toBe("");
+    assert(normalizeMountPoint("//workspace//") === "/workspace");
+    assert(normalizeRelativePath("  folder/sub/ ") === "folder/sub");
+    assert(normalizeRelativePath("/") === "");
   });
 
   test("detects parent mount relationship", () => {
-    expect(isMountPointParentOf("/system", "/system/archive")).toBe(true);
-    expect(isMountPointParentOf("/system", "/systematic")).toBe(false);
+    assert(isMountPointParentOf("/system", "/system/archive"));
+    assert(!isMountPointParentOf("/system", "/systematic"));
   });
 
   test("dynamically mounts and unmounts filesystems", async () => {

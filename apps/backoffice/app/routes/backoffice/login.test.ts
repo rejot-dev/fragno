@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, assert } from "vitest";
 
 import { createAuthRouteCaller, getAuthMe } from "@/fragno/auth/auth-server";
 
@@ -70,8 +70,8 @@ describe("backoffice login route", () => {
       ),
     );
 
-    expect(result.status).toBe(302);
-    expect(result.headers.get("Location")).toBe("/backoffice/settings");
+    assert(result.status === 302);
+    assert(result.headers.get("Location") === "/backoffice/settings");
     expect(createAuthRouteCaller).not.toHaveBeenCalled();
   });
 
@@ -100,9 +100,9 @@ describe("backoffice login route", () => {
       await loader(createLoaderArgs("https://example.com/backoffice/login")),
     );
 
-    expect(result.status).toBe(302);
+    assert(result.status === 302);
     expect(result.headers.get("Location")).toBe(BACKOFFICE_HOME_PATH);
-    expect(result.headers.get("set-cookie")).toBe("session=bootstrapped; Path=/; HttpOnly");
+    assert(result.headers.get("set-cookie") === "session=bootstrapped; Path=/; HttpOnly");
     expect(callAuthRoute).toHaveBeenCalledWith("POST", "/organizations/active", {
       body: { organizationId: "org_123" },
     });
@@ -159,9 +159,9 @@ describe("backoffice login route", () => {
       ),
     );
 
-    expect(result.status).toBe(302);
-    expect(result.headers.get("Location")).toBe("/backoffice/settings");
-    expect(result.headers.get("set-cookie")).toBe("session=abc; Path=/; HttpOnly");
+    assert(result.status === 302);
+    assert(result.headers.get("Location") === "/backoffice/settings");
+    assert(result.headers.get("set-cookie") === "session=abc; Path=/; HttpOnly");
     expect(callAuthRoute).toHaveBeenCalledWith("POST", "/sign-in", {
       body: {
         email: "dev@fragno.test",
@@ -191,8 +191,8 @@ describe("backoffice login route", () => {
       ),
     );
 
-    expect(result.status).toBe(302);
+    assert(result.status === 302);
     expect(result.headers.get("Location")).toBe(BACKOFFICE_HOME_PATH);
-    expect(result.headers.get("set-cookie")).toBe("session=xyz; Path=/; HttpOnly");
+    assert(result.headers.get("set-cookie") === "session=xyz; Path=/; HttpOnly");
   });
 });

@@ -71,14 +71,14 @@ describe("database storage adapter", () => {
 
     const uploadResponse = await fragment.callRoute("POST", "/files", { body: form });
     assert(uploadResponse.type === "json");
-    expect(uploadResponse.data.status).toBe("ready");
+    assert(uploadResponse.data.status === "ready");
 
     const contentResponse = await fragment.callRouteRaw("GET", "/files/by-key/content", {
       query: { provider: storage.name, key: "reports/q1.txt" },
     });
-    expect(contentResponse.status).toBe(200);
-    expect(contentResponse.headers.get("Content-Type")).toBe("text/plain");
-    expect(await contentResponse.text()).toBe("database bytes");
+    assert(contentResponse.status === 200);
+    assert(contentResponse.headers.get("Content-Type") === "text/plain");
+    assert((await contentResponse.text()) === "database bytes");
 
     const fileUow = db
       .createUnitOfWork("read-file")
@@ -102,7 +102,7 @@ describe("database storage adapter", () => {
       );
     await objectUow.executeRetrieve();
     const storedObject = (await objectUow.retrievalPhase)[0];
-    expect(Buffer.from(storedObject!.body).toString("utf8")).toBe("database bytes");
+    assert(Buffer.from(storedObject!.body).toString("utf8") === "database bytes");
   });
 
   it("removes database bytes when the file deletion hook runs", async () => {

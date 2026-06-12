@@ -56,8 +56,8 @@ describe("upload file routes", async () => {
 
     const response = await fragment.callRoute("POST", "/files", { body: form });
     assert(response.type === "json");
-    expect(response.status).toBe(200);
-    expect(response.data.status).toBe("ready");
+    assert(response.status === 200);
+    assert(response.data.status === "ready");
     const { fileKey } = response.data;
 
     const getResponse = await fragment.callRoute("GET", "/files/by-key", {
@@ -65,13 +65,13 @@ describe("upload file routes", async () => {
     });
     assert(getResponse.type === "json");
     expect(getResponse.data.fileKey).toBe(fileKey);
-    expect(getResponse.data.filename).toBe("hello.txt");
+    assert(getResponse.data.filename === "hello.txt");
 
     const contentResponse = await fragment.callRouteRaw("GET", "/files/by-key/content", {
       query: { provider, key: fileKey },
     });
-    expect(contentResponse.status).toBe(200);
-    expect(await contentResponse.text()).toBe("hello");
+    assert(contentResponse.status === 200);
+    assert((await contentResponse.text()) === "hello");
   });
 
   it("accepts provider namespaces that differ from the storage adapter name", async () => {
@@ -102,19 +102,19 @@ describe("upload file routes", async () => {
       body: { filename: "renamed.txt" },
     });
     assert(updateResponse.type === "json");
-    expect(updateResponse.data.filename).toBe("renamed.txt");
+    assert(updateResponse.data.filename === "renamed.txt");
 
     const downloadResponse = await fragment.callRoute("GET", "/files/by-key/download-url", {
       query: { provider: providerAlias, key: fileKey },
     });
     assert(downloadResponse.type === "error");
-    expect(downloadResponse.error.code).toBe("SIGNED_URL_UNSUPPORTED");
+    assert(downloadResponse.error.code === "SIGNED_URL_UNSUPPORTED");
 
     const contentResponse = await fragment.callRouteRaw("GET", "/files/by-key/content", {
       query: { provider: providerAlias, key: fileKey },
     });
-    expect(contentResponse.status).toBe(200);
-    expect(await contentResponse.text()).toBe("aliased");
+    assert(contentResponse.status === 200);
+    assert((await contentResponse.text()) === "aliased");
 
     const deleteResponse = await fragment.callRoute("DELETE", "/files/by-key", {
       query: { provider: providerAlias, key: fileKey },
@@ -134,8 +134,8 @@ describe("upload file routes", async () => {
 
     const response = await fragment.callRoute("POST", "/files", { body: form });
     assert(response.type === "error");
-    expect(response.status).toBe(400);
-    expect(response.error.code).toBe("INVALID_REQUEST");
+    assert(response.status === 400);
+    assert(response.error.code === "INVALID_REQUEST");
   });
 
   it("GET /files/by-key/content rejects deleted files", async () => {
@@ -163,8 +163,8 @@ describe("upload file routes", async () => {
       query: { provider, key: fileKey },
     });
     assert(contentResponse.type === "error");
-    expect(contentResponse.status).toBe(410);
-    expect(contentResponse.error.code).toBe("FILE_DELETED");
+    assert(contentResponse.status === 410);
+    assert(contentResponse.error.code === "FILE_DELETED");
   });
 
   it("DELETE /files/by-key deletes storage through durable hooks", async () => {
@@ -199,7 +199,7 @@ describe("upload file routes", async () => {
     }
     const storagePath = path.join(rootDir, ...storedFile.objectKey.split("/"));
 
-    expect(await fs.readFile(storagePath, "utf8")).toBe("hook delete");
+    assert((await fs.readFile(storagePath, "utf8")) === "hook delete");
 
     const deleteResponse = await fragment.callRoute("DELETE", "/files/by-key", {
       query: { provider, key: fileKey },
@@ -208,7 +208,7 @@ describe("upload file routes", async () => {
     expect(deleteResponse.data).toEqual({ ok: true });
 
     // The delete route now performs a logical delete only; bytes are removed by the durable hook.
-    expect(await fs.readFile(storagePath, "utf8")).toBe("hook delete");
+    assert((await fs.readFile(storagePath, "utf8")) === "hook delete");
 
     await drainDurableHooks(fragment);
 
@@ -242,22 +242,22 @@ describe("upload file routes", async () => {
       body: secondForm,
     });
     assert(secondCreate.type === "json");
-    expect(secondCreate.data.status).toBe("ready");
-    expect(secondCreate.data.filename).toBe("second.txt");
+    assert(secondCreate.data.status === "ready");
+    assert(secondCreate.data.filename === "second.txt");
 
     const beforeDrain = await fragment.callRouteRaw("GET", "/files/by-key/content", {
       query: { provider, key: firstCreate.data.fileKey },
     });
-    expect(beforeDrain.status).toBe(200);
-    expect(await beforeDrain.text()).toBe("second");
+    assert(beforeDrain.status === 200);
+    assert((await beforeDrain.text()) === "second");
 
     await drainDurableHooks(fragment);
 
     const afterDrain = await fragment.callRouteRaw("GET", "/files/by-key/content", {
       query: { provider, key: firstCreate.data.fileKey },
     });
-    expect(afterDrain.status).toBe(200);
-    expect(await afterDrain.text()).toBe("second");
+    assert(afterDrain.status === 200);
+    assert((await afterDrain.text()) === "second");
   });
 
   it("GET /files supports prefix pagination", async () => {
@@ -290,8 +290,8 @@ describe("upload file routes", async () => {
     });
     assert(response.type === "json");
     expect(response.data.files).toHaveLength(1);
-    expect(response.data.hasNextPage).toBe(true);
-    expect(response.data.files[0]?.fileKey.startsWith("users/1/")).toBe(true);
+    assert(response.data.hasNextPage);
+    assert(response.data.files[0]?.fileKey.startsWith("users/1/"));
   });
 
   it("GET /files supports larger explicit page sizes", async () => {
@@ -300,7 +300,7 @@ describe("upload file routes", async () => {
     });
 
     assert(response.type === "json");
-    expect(response.status).toBe(200);
+    assert(response.status === 200);
     expect(response.data.files).toEqual([]);
   });
 
@@ -310,8 +310,8 @@ describe("upload file routes", async () => {
     });
 
     assert(response.type === "error");
-    expect(response.status).toBe(400);
-    expect(response.error.code).toBe("INVALID_REQUEST");
+    assert(response.status === 400);
+    assert(response.error.code === "INVALID_REQUEST");
   });
 
   it("GET /files supports delimiter directory listings", async () => {
@@ -352,7 +352,7 @@ describe("upload file routes", async () => {
         prefix: "users/1/nested/",
       },
     ]);
-    expect(response.data.hasNextPage).toBe(false);
+    assert(!response.data.hasNextPage);
   });
 
   it("GET /files rejects an empty provider filter", async () => {
@@ -361,8 +361,8 @@ describe("upload file routes", async () => {
     });
 
     assert(response.type === "error");
-    expect(response.status).toBe(400);
-    expect(response.error.code).toBe("INVALID_REQUEST");
+    assert(response.status === 400);
+    assert(response.error.code === "INVALID_REQUEST");
   });
 
   it("GET /files/by-key/download-url uses the latest authoritative objectKey after overwrite", async () => {
@@ -517,6 +517,6 @@ describe("upload file routes", async () => {
       query: { provider, key: fileKey },
     });
     assert(downloadResponse.type === "error");
-    expect(downloadResponse.error.code).toBe("SIGNED_URL_UNSUPPORTED");
+    assert(downloadResponse.error.code === "SIGNED_URL_UNSUPPORTED");
   });
 });

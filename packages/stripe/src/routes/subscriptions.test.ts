@@ -1,4 +1,4 @@
-import { test, describe, expect, beforeEach, vi } from "vitest";
+import { test, describe, expect, beforeEach, vi, assert } from "vitest";
 
 import type Stripe from "stripe";
 
@@ -88,7 +88,7 @@ describe("subscription handlers", async () => {
     test("should return empty array when no subscriptions exist", async () => {
       const response = await fragment.callRoute("GET", "/admin/subscriptions");
 
-      expect(response.type).toBe("json");
+      assert(response.type === "json");
       if (response.type === "json") {
         expect(response.data).toEqual({ subscriptions: [] });
       }
@@ -115,12 +115,12 @@ describe("subscription handlers", async () => {
 
       const response = await fragment.callRoute("GET", "/admin/subscriptions");
 
-      expect(response.type).toBe("json");
+      assert(response.type === "json");
       if (response.type === "json") {
         expect(response.data.subscriptions.length).toBeGreaterThanOrEqual(1);
         const sub = response.data.subscriptions.find((s) => s.referenceId === "user_1");
         expect(sub).toBeDefined();
-        expect(sub?.stripeCustomerId).toBe("cus_1");
+        assert(sub?.stripeCustomerId === "cus_1");
       }
     });
   });
@@ -162,7 +162,7 @@ describe("subscription handlers", async () => {
         },
       });
 
-      expect(response.type).toBe("json");
+      assert(response.type === "json");
       if (response.type === "json") {
         expect(response.data).toEqual({
           url: "https://checkout.stripe.com/pay/cs_123",
@@ -224,7 +224,7 @@ describe("subscription handlers", async () => {
         },
       });
 
-      expect(response.type).toBe("json");
+      assert(response.type === "json");
       if (response.type === "json") {
         expect(response.data).toEqual({
           url: "https://checkout.stripe.com/pay/cs_123",
@@ -260,10 +260,10 @@ describe("subscription handlers", async () => {
         },
       });
 
-      expect(response.type).toBe("error");
+      assert(response.type === "error");
       if (response.type === "error") {
-        expect(response.error.code).toBe("MISSING_CUSTOMER_INFO");
-        expect(response.status).toBe(500);
+        assert(response.error.code === "MISSING_CUSTOMER_INFO");
+        assert(response.status === 500);
       }
     });
 
@@ -317,7 +317,7 @@ describe("subscription handlers", async () => {
         },
       });
 
-      expect(response.type).toBe("json");
+      assert(response.type === "json");
       if (response.type === "json") {
         expect(response.data).toEqual({
           url: "https://billing.stripe.com/portal",
@@ -346,10 +346,10 @@ describe("subscription handlers", async () => {
         },
       });
 
-      expect(response.type).toBe("error");
+      assert(response.type === "error");
       if (response.type === "error") {
-        expect(response.error.code).toBe("NO_ACTIVE_SUBSCRIPTIONS");
-        expect(response.status).toBe(400);
+        assert(response.error.code === "NO_ACTIVE_SUBSCRIPTIONS");
+        assert(response.status === 400);
       }
     });
   });
@@ -400,7 +400,7 @@ describe("subscription handlers", async () => {
         },
       });
 
-      expect(response.type).toBe("json");
+      assert(response.type === "json");
       if (response.type === "json") {
         expect(response.data).toEqual({
           url: "https://billing.stripe.com/cancel",
@@ -432,10 +432,10 @@ describe("subscription handlers", async () => {
         },
       });
 
-      expect(response.type).toBe("error");
+      assert(response.type === "error");
       if (response.type === "error") {
-        expect(response.error.code).toBe("NO_SUBSCRIPTION_TO_CANCEL");
-        expect(response.status).toBe(404);
+        assert(response.error.code === "NO_SUBSCRIPTION_TO_CANCEL");
+        assert(response.status === 404);
       }
     });
 
@@ -472,10 +472,10 @@ describe("subscription handlers", async () => {
         },
       });
 
-      expect(response.type).toBe("error");
+      assert(response.type === "error");
       if (response.type === "error") {
-        expect(response.error.code).toBe("NO_SUBSCRIPTION_TO_CANCEL");
-        expect(response.status).toBe(404);
+        assert(response.error.code === "NO_SUBSCRIPTION_TO_CANCEL");
+        assert(response.status === 404);
       }
     });
 
@@ -517,10 +517,10 @@ describe("subscription handlers", async () => {
         },
       });
 
-      expect(response.type).toBe("error");
+      assert(response.type === "error");
       if (response.type === "error") {
-        expect(response.error.code).toBe("MULTIPLE_SUBSCRIPTIONS_FOUND");
-        expect(response.status).toBe(400);
+        assert(response.error.code === "MULTIPLE_SUBSCRIPTIONS_FOUND");
+        assert(response.status === 400);
       }
 
       const response2 = await fragment.callRoute("POST", "/subscription/cancel", {
@@ -530,7 +530,7 @@ describe("subscription handlers", async () => {
         },
       });
 
-      expect(response2.type).toBe("json");
+      assert(response2.type === "json");
       if (response2.type === "json") {
         expect(response2.data).toEqual({
           url: "https://billing.stripe.com/cancel",

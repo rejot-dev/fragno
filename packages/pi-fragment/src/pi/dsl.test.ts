@@ -221,7 +221,9 @@ describe("createPi builder", () => {
       .withSkill("a-author", { description: "Author Fragno fragments." })
       .build();
 
-    expect(renderPiSkillCatalogXml(runtime.config.skills)).toBe(`<available_skills>
+    assert(
+      renderPiSkillCatalogXml(runtime.config.skills) ===
+        `<available_skills>
   <skill>
     <name>a-author</name>
     <description>Author Fragno fragments.</description>
@@ -230,11 +232,12 @@ describe("createPi builder", () => {
     <name>z-review</name>
     <description>Review &lt;code&gt; &amp; explain &quot;risks&quot;.</description>
   </skill>
-</available_skills>`);
+</available_skills>`,
+    );
   });
 
   it("renders an empty string when there are no skills", () => {
-    expect(renderPiSkillCatalogXml({})).toBe("");
+    assert(renderPiSkillCatalogXml({}) === "");
   });
 
   it("lets later registrations replace earlier registrations with the same name", () => {
@@ -291,7 +294,7 @@ describe("createPi builder", () => {
       .build();
     builder.withAgent("default", changedAgent).withTool("lookup", changedTool);
 
-    expect(runtime.config.agents["default"]?.systemPrompt).toBe("You are helpful.");
+    assert(runtime.config.agents["default"]?.systemPrompt === "You are helpful.");
     expect(runtime.config.tools["lookup"]).toBe(originalTool);
   });
 
@@ -329,7 +332,7 @@ describe("createPi builder", () => {
 
     const runtime = createPi().withWorkflow(first).withWorkflow(second).build();
 
-    expect(runtime.workflows["custom"]?.name).toBe("custom");
+    assert(runtime.workflows["custom"]?.name === "custom");
   });
 
   it("propagates logging config to runtime config and workflow initialization", () => {
@@ -357,7 +360,7 @@ describe("definePiWorkflow", () => {
       },
     );
 
-    expect(workflow.name).toBe("research-then-write");
+    assert(workflow.name === "research-then-write");
     expect(workflow.schema).toBe(schema);
     expect(workflow.outputSchema).toBe(outputSchema);
   });
@@ -457,7 +460,7 @@ describe("definePiWorkflow", () => {
           workflow.read({
             read: (ctx) => ctx.state.getStatus("custom", "session-1"),
             assert: (status) => {
-              expect(status.status).toBe("complete");
+              assert(status.status === "complete");
               expect(observedRuns.map((run) => run.mode)).toEqual(["continue", "continue"]);
               const [firstRun, secondRun] = observedRuns;
               assert(firstRun);
@@ -472,7 +475,7 @@ describe("definePiWorkflow", () => {
                 role: string;
                 content: Array<{ type: string; text: string }>;
               };
-              expect(firstMessage.role).toBe("user");
+              assert(firstMessage.role === "user");
               expect(firstMessage.content[0]?.text).toContain('<skill_content name="fragno">');
               expect(firstMessage.content[0]?.text).toContain("Follow Fragno conventions.");
               expect(firstMessage.content[0]?.text).toContain(
@@ -566,18 +569,18 @@ describe("definePiWorkflow", () => {
           workflow.read({
             read: (ctx) => ctx.state.getStatus("custom", "session-1"),
             assert: (status) => {
-              expect(status.status).toBe("complete");
+              assert(status.status === "complete");
               expect(observedRuns).toHaveLength(1);
               const run = observedRuns[0];
               assert(run);
-              expect(run.mode).toBe("prompt");
+              assert(run.mode === "prompt");
               expect(run.promptInput).toEqual({ text: "Extract the report title." });
               expect(run.messages).toHaveLength(1);
               const skillMessage = run.messages[0] as {
                 role: string;
                 content: Array<{ type: string; text: string }>;
               };
-              expect(skillMessage.role).toBe("user");
+              assert(skillMessage.role === "user");
               expect(skillMessage.content[0]?.text).toContain(
                 '<skill_content name="pdf-processing">',
               );
@@ -817,7 +820,7 @@ describe("definePiWorkflow", () => {
           workflow.read({
             read: (ctx) => ctx.state.getStatus("custom", "session-1"),
             assert: (status) => {
-              expect(status.status).toBe("complete");
+              assert(status.status === "complete");
               expect(observedSystemPrompt).toBe(`Base prompt.
 
 The following skills provide specialized instructions for specific tasks. When a task matches a skill's description, use that skill before proceeding.
@@ -887,7 +890,7 @@ The following skills provide specialized instructions for specific tasks. When a
           workflow.read({
             read: (ctx) => ctx.state.getStatus("custom", "session-1"),
             assert: (status) => {
-              expect(status.status).toBe("complete");
+              assert(status.status === "complete");
               expect(observedSystemPrompt).toContain("<name>dynamic-session-1</name>");
             },
           }),
@@ -996,7 +999,7 @@ The following skills provide specialized instructions for specific tasks. When a
               steps: await ctx.state.getSteps("custom", "session-1"),
             }),
             assert: ({ status, steps }) => {
-              expect(status.status).toBe("waiting");
+              assert(status.status === "waiting");
               expect(steps).toEqual([
                 expect.objectContaining({
                   status: "completed",
@@ -1161,7 +1164,7 @@ The following skills provide specialized instructions for specific tasks. When a
     const registry = createPiWorkflows({ agents: {}, tools: {}, workflows: [workflow] });
 
     expect(registry).toHaveProperty("custom-workflow");
-    expect(registry["custom-workflow"]?.name).toBe("custom-workflow");
+    assert(registry["custom-workflow"]?.name === "custom-workflow");
   });
 
   it("rejects duplicate Pi workflow names", () => {
@@ -1395,9 +1398,9 @@ describe("definePiTool", () => {
       },
     });
 
-    expect(tool.name).toBe("classify_request");
+    assert(tool.name === "classify_request");
     expect(tool.resultSchema).toBe(resultSchema);
-    expect(tool.handoff).toBe(true);
+    assert(tool.handoff);
     const agentTool: AgentTool<typeof parameters, { kind: "bug" | "feature"; confidence: number }> =
       tool;
     const piTool: PiTool = tool;
@@ -1456,6 +1459,6 @@ describe("definePiTool", () => {
     const result = await tool.execute("call-1", { value: 5 });
 
     expectTypeOf(result.details).toMatchObjectType<{ score: number }>();
-    expect(result.details.score).toBe(5);
+    assert(result.details.score === 5);
   });
 });

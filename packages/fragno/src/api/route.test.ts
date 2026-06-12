@@ -1,4 +1,4 @@
-import { test, expect, expectTypeOf, describe } from "vitest";
+import { test, expect, expectTypeOf, describe, assert } from "vitest";
 
 import { z } from "zod";
 
@@ -20,8 +20,8 @@ describe("defineRoute", () => {
       },
     });
 
-    expect(route.method).toBe("GET");
-    expect(route.path).toBe("/thing/**:path");
+    assert(route.method === "GET");
+    assert(route.path === "/thing/**:path");
     expect(route.handler).toBeDefined();
   });
 
@@ -51,8 +51,8 @@ describe("defineRoute", () => {
       },
     });
 
-    expect(route.method).toBe("GET");
-    expect(route.path).toBe("/thing/**:path");
+    assert(route.method === "GET");
+    assert(route.path === "/thing/**:path");
     expect(route.inputSchema).toBeDefined();
     expect(route.handler).toBeDefined();
   });
@@ -74,8 +74,8 @@ describe("defineRoute", () => {
       },
     });
 
-    expect(route.method).toBe("DELETE");
-    expect(route.path).toBe("/thing");
+    assert(route.method === "DELETE");
+    assert(route.path === "/thing");
     expect(route.handler).toBeDefined();
   });
 
@@ -89,8 +89,8 @@ describe("defineRoute", () => {
       },
     });
 
-    expect(route.method).toBe("GET");
-    expect(route.path).toBe("/users");
+    assert(route.method === "GET");
+    assert(route.path === "/users");
     expect(route.outputSchema).toBeDefined();
     expect(route.handler).toBeDefined();
   });
@@ -111,8 +111,8 @@ describe("defineRoute", () => {
       },
     });
 
-    expect(route.method).toBe("POST");
-    expect(route.path).toBe("/users");
+    assert(route.method === "POST");
+    assert(route.path === "/users");
     expect(route.inputSchema).toBeDefined();
     expect(route.outputSchema).toBeDefined();
     expect(route.handler).toBeDefined();
@@ -129,8 +129,8 @@ describe("defineRoute", () => {
       },
     });
 
-    expect(route.method).toBe("GET");
-    expect(route.path).toBe("/users/:id");
+    assert(route.method === "GET");
+    assert(route.path === "/users/:id");
     expect(route.outputSchema).toBeDefined();
     expect(route.handler).toBeDefined();
   });
@@ -146,8 +146,8 @@ describe("defineRoute", () => {
       },
     });
 
-    expect(route.method).toBe("GET");
-    expect(route.path).toBe("/organizations/:orgId/users/:userId");
+    assert(route.method === "GET");
+    assert(route.path === "/organizations/:orgId/users/:userId");
     expect(route.outputSchema).toBeDefined();
     expect(route.handler).toBeDefined();
   });
@@ -217,7 +217,7 @@ describe("defineRoutes", () => {
 
     // routeFactory is a function that returns routes when called
     expect(routeFactory).toBeDefined();
-    expect(typeof routeFactory).toBe("function");
+    assert(typeof routeFactory === "function");
   });
 
   test("defineRoutes with dependencies and services", () => {
@@ -259,6 +259,6 @@ describe("defineRoutes", () => {
 
     // routeFactory is a function that returns routes when called
     expect(routeFactory).toBeDefined();
-    expect(typeof routeFactory).toBe("function");
+    assert(typeof routeFactory === "function");
   });
 });

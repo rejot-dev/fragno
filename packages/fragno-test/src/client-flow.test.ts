@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { createClientBuilder } from "@fragno-dev/core/client";
 import { useFragno } from "@fragno-dev/core/vanilla";
@@ -102,7 +102,7 @@ describe("client flow test utilities", () => {
       expect(refreshed.data).toEqual([created]);
 
       const routeResponse = await fragments.notes.callRoute("GET", "/notes");
-      expect(routeResponse.type).toBe("json");
+      assert(routeResponse.type === "json");
       if (routeResponse.type === "json") {
         expect(routeResponse.data).toEqual([created]);
       }

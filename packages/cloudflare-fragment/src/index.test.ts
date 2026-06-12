@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi, assert } from "vitest";
 
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
@@ -145,7 +145,7 @@ describe("cloudflare-fragment", () => {
       },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       return;
     }
@@ -165,19 +165,19 @@ describe("cloudflare-fragment", () => {
 
     const app = await getApp("tenant-app");
     expect(app).toBeTruthy();
-    expect(app?.scriptName).toBe("fragno-tenant-app-worker");
+    assert(app?.scriptName === "fragno-tenant-app-worker");
 
     const appState = await fragment.callRoute("GET", "/apps/:appId", {
       pathParams: { appId: "tenant-app" },
     });
 
-    expect(appState.type).toBe("json");
+    assert(appState.type === "json");
     if (appState.type !== "json") {
       return;
     }
 
     expect(appState.data.latestDeployment?.id).toBe(response.data.id);
-    expect(appState.data.latestDeployment?.status).toBe("queued");
+    assert(appState.data.latestDeployment?.status === "queued");
     expect(appState.data.liveDeployment).toBeNull();
     expect(appState.data.liveDeploymentError).toBeNull();
     expect(appState.data.deployments.map((deployment) => deployment.id)).toEqual([
@@ -207,7 +207,7 @@ describe("cloudflare-fragment", () => {
       },
     });
 
-    expect(queued.type).toBe("json");
+    assert(queued.type === "json");
     if (queued.type !== "json") {
       return;
     }
@@ -221,26 +221,26 @@ describe("cloudflare-fragment", () => {
     expect(getFetchHeaders(0).get("if-match")).toBeNull();
 
     const deployment = await getDeployment(queued.data.id);
-    expect(deployment?.status).toBe("succeeded");
-    expect(deployment?.cloudflareEtag).toBe("etag_123");
-    expect(deployment?.attemptCount).toBe(1);
+    assert(deployment?.status === "succeeded");
+    assert(deployment?.cloudflareEtag === "etag_123");
+    assert(deployment?.attemptCount === 1);
 
     const app = await getApp("tenant-app");
     expect(app?.liveDeploymentId).toBe(queued.data.id);
-    expect(app?.liveCloudflareEtag).toBe("etag_123");
+    assert(app?.liveCloudflareEtag === "etag_123");
 
     const detail = await fragment.callRoute("GET", "/deployments/:deploymentId", {
       pathParams: { deploymentId: queued.data.id },
     });
 
-    expect(detail.type).toBe("json");
+    assert(detail.type === "json");
     if (detail.type !== "json") {
       return;
     }
 
-    expect(detail.data.status).toBe("succeeded");
-    expect(detail.data.sourceCode).toBe(
-      "export default { async fetch() { return new Response('ok'); } };",
+    assert(detail.data.status === "succeeded");
+    assert(
+      detail.data.sourceCode === "export default { async fetch() { return new Response('ok'); } };",
     );
     expect(detail.data.startedAt).toBeTypeOf("string");
     expect(detail.data.completedAt).toBeTypeOf("string");
@@ -273,7 +273,7 @@ describe("cloudflare-fragment", () => {
       },
     });
 
-    expect(firstDeployment.type).toBe("json");
+    assert(firstDeployment.type === "json");
     if (firstDeployment.type !== "json") {
       return;
     }
@@ -291,7 +291,7 @@ describe("cloudflare-fragment", () => {
       },
     });
 
-    expect(secondDeployment.type).toBe("json");
+    assert(secondDeployment.type === "json");
     if (secondDeployment.type !== "json") {
       return;
     }
@@ -300,15 +300,15 @@ describe("cloudflare-fragment", () => {
       pathParams: { appId: "tenant-app" },
     });
 
-    expect(appState.type).toBe("json");
+    assert(appState.type === "json");
     if (appState.type !== "json") {
       return;
     }
 
     expect(appState.data.latestDeployment?.id).toBe(secondDeployment.data.id);
-    expect(appState.data.latestDeployment?.status).toBe("queued");
+    assert(appState.data.latestDeployment?.status === "queued");
     expect(appState.data.liveDeployment?.id).toBe(firstDeployment.data.id);
-    expect(appState.data.liveDeployment?.status).toBe("succeeded");
+    assert(appState.data.liveDeployment?.status === "succeeded");
     expect(appState.data.liveDeploymentError).toBeNull();
     expect(appState.data.deployments.map((deployment) => deployment.id)).toEqual([
       secondDeployment.data.id,
@@ -350,7 +350,7 @@ describe("cloudflare-fragment", () => {
       },
     });
 
-    expect(firstDeployment.type).toBe("json");
+    assert(firstDeployment.type === "json");
     if (firstDeployment.type !== "json") {
       return;
     }
@@ -368,7 +368,7 @@ describe("cloudflare-fragment", () => {
       },
     });
 
-    expect(secondDeployment.type).toBe("json");
+    assert(secondDeployment.type === "json");
     if (secondDeployment.type !== "json") {
       return;
     }
@@ -386,7 +386,7 @@ describe("cloudflare-fragment", () => {
       },
     });
 
-    expect(thirdDeployment.type).toBe("json");
+    assert(thirdDeployment.type === "json");
     if (thirdDeployment.type !== "json") {
       return;
     }
@@ -397,15 +397,15 @@ describe("cloudflare-fragment", () => {
     const third = await getDeployment(thirdDeployment.data.id);
     const app = await getApp("tenant-app");
 
-    expect(second?.status).toBe("failed");
-    expect(second?.attemptCount).toBe(1);
-    expect(second?.errorCode).toBe("1001");
-    expect(second?.errorMessage).toBe("Invalid API token");
-    expect(third?.status).toBe("succeeded");
-    expect(third?.cloudflareEtag).toBe("etag_3");
+    assert(second?.status === "failed");
+    assert(second?.attemptCount === 1);
+    assert(second?.errorCode === "1001");
+    assert(second?.errorMessage === "Invalid API token");
+    assert(third?.status === "succeeded");
+    assert(third?.cloudflareEtag === "etag_3");
     expect(app?.liveDeploymentId).toBe(thirdDeployment.data.id);
-    expect(app?.liveCloudflareEtag).toBe("etag_3");
-    expect(getFetchHeaders(2).get("if-match")).toBe("etag_1");
+    assert(app?.liveCloudflareEtag === "etag_3");
+    assert(getFetchHeaders(2).get("if-match") === "etag_1");
   });
 
   test("uses Cloudflare etag CAS to prevent queued updates from rolling back the winner", async () => {
@@ -429,7 +429,7 @@ describe("cloudflare-fragment", () => {
       },
     });
 
-    expect(firstDeployment.type).toBe("json");
+    assert(firstDeployment.type === "json");
     if (firstDeployment.type !== "json") {
       return;
     }
@@ -457,8 +457,8 @@ describe("cloudflare-fragment", () => {
       },
     });
 
-    expect(secondDeployment.type).toBe("json");
-    expect(thirdDeployment.type).toBe("json");
+    assert(secondDeployment.type === "json");
+    assert(thirdDeployment.type === "json");
     if (secondDeployment.type !== "json" || thirdDeployment.type !== "json") {
       return;
     }
@@ -496,16 +496,16 @@ describe("cloudflare-fragment", () => {
     const third = await getDeployment(thirdDeployment.data.id);
     const app = await getApp("tenant-app");
 
-    expect(second?.status).toBe("succeeded");
-    expect(second?.cloudflareEtag).toBe("etag_2");
-    expect(third?.status).toBe("failed");
-    expect(third?.attemptCount).toBe(1);
-    expect(third?.errorCode).toBe("DEPLOYMENT_SUPERSEDED");
+    assert(second?.status === "succeeded");
+    assert(second?.cloudflareEtag === "etag_2");
+    assert(third?.status === "failed");
+    assert(third?.attemptCount === 1);
+    assert(third?.errorCode === "DEPLOYMENT_SUPERSEDED");
     expect(third?.errorMessage).toContain(secondDeployment.data.id);
     expect(app?.liveDeploymentId).toBe(secondDeployment.data.id);
-    expect(app?.liveCloudflareEtag).toBe("etag_2");
-    expect(getFetchHeaders(1).get("if-match")).toBe("etag_1");
-    expect(getFetchHeaders(2).get("if-match")).toBe("etag_1");
+    assert(app?.liveCloudflareEtag === "etag_2");
+    assert(getFetchHeaders(1).get("if-match") === "etag_1");
+    assert(getFetchHeaders(2).get("if-match") === "etag_1");
   });
 
   test("serializes the first deploy path locally so only one queued first deploy uploads", async () => {
@@ -530,8 +530,8 @@ describe("cloudflare-fragment", () => {
       },
     });
 
-    expect(firstDeployment.type).toBe("json");
-    expect(secondDeployment.type).toBe("json");
+    assert(firstDeployment.type === "json");
+    assert(secondDeployment.type === "json");
     if (firstDeployment.type !== "json" || secondDeployment.type !== "json") {
       return;
     }
@@ -552,13 +552,13 @@ describe("cloudflare-fragment", () => {
     const app = await getApp("tenant-app");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(first?.status).toBe("succeeded");
-    expect(second?.status).toBe("failed");
-    expect(second?.attemptCount).toBe(0);
-    expect(second?.errorCode).toBe("DEPLOYMENT_SUPERSEDED");
+    assert(first?.status === "succeeded");
+    assert(second?.status === "failed");
+    assert(second?.attemptCount === 0);
+    assert(second?.errorCode === "DEPLOYMENT_SUPERSEDED");
     expect(second?.errorMessage).toContain(firstDeployment.data.id);
     expect(app?.liveDeploymentId).toBe(firstDeployment.data.id);
-    expect(app?.liveCloudflareEtag).toBe("etag_1");
+    assert(app?.liveCloudflareEtag === "etag_1");
     expect(app?.firstDeploymentLeaseId).toBeNull();
   });
 
@@ -567,30 +567,30 @@ describe("cloudflare-fragment", () => {
       pathParams: { appId: "missing-app" },
     });
 
-    expect(appResponse.type).toBe("error");
+    assert(appResponse.type === "error");
     if (appResponse.type === "error") {
-      expect(appResponse.error.code).toBe("APP_NOT_FOUND");
-      expect(appResponse.status).toBe(404);
+      assert(appResponse.error.code === "APP_NOT_FOUND");
+      assert(appResponse.status === 404);
     }
 
     const deploymentResponse = await fragment.callRoute("GET", "/deployments/:deploymentId", {
       pathParams: { deploymentId: "missing-deployment" },
     });
 
-    expect(deploymentResponse.type).toBe("error");
+    assert(deploymentResponse.type === "error");
     if (deploymentResponse.type === "error") {
-      expect(deploymentResponse.error.code).toBe("DEPLOYMENT_NOT_FOUND");
-      expect(deploymentResponse.status).toBe(404);
+      assert(deploymentResponse.error.code === "DEPLOYMENT_NOT_FOUND");
+      assert(deploymentResponse.status === 404);
     }
 
     const deploymentHistoryResponse = await fragment.callRoute("GET", "/apps/:appId/deployments", {
       pathParams: { appId: "missing-app" },
     });
 
-    expect(deploymentHistoryResponse.type).toBe("error");
+    assert(deploymentHistoryResponse.type === "error");
     if (deploymentHistoryResponse.type === "error") {
-      expect(deploymentHistoryResponse.error.code).toBe("APP_NOT_FOUND");
-      expect(deploymentHistoryResponse.status).toBe(404);
+      assert(deploymentHistoryResponse.error.code === "APP_NOT_FOUND");
+      assert(deploymentHistoryResponse.status === 404);
     }
   });
 
@@ -603,7 +603,7 @@ describe("cloudflare-fragment", () => {
       },
     });
 
-    expect(result.success).toBe(false);
+    assert(!result.success);
   });
 
   test("lists apps and deployment history for the backoffice", async () => {
@@ -618,7 +618,7 @@ describe("cloudflare-fragment", () => {
       },
     });
 
-    expect(firstDeployment.type).toBe("json");
+    assert(firstDeployment.type === "json");
     if (firstDeployment.type !== "json") {
       return;
     }
@@ -636,7 +636,7 @@ describe("cloudflare-fragment", () => {
       },
     });
 
-    expect(secondDeployment.type).toBe("json");
+    assert(secondDeployment.type === "json");
     if (secondDeployment.type !== "json") {
       return;
     }
@@ -654,21 +654,21 @@ describe("cloudflare-fragment", () => {
       },
     });
 
-    expect(otherAppDeployment.type).toBe("json");
+    assert(otherAppDeployment.type === "json");
     if (otherAppDeployment.type !== "json") {
       return;
     }
 
     const appList = await fragment.callRoute("GET", "/apps");
 
-    expect(appList.type).toBe("json");
+    assert(appList.type === "json");
     if (appList.type !== "json") {
       return;
     }
 
     expect(appList.data.apps).toHaveLength(2);
-    expect(appList.data.apps[0]?.id).toBe("other-app");
-    expect(appList.data.apps[1]?.id).toBe("tenant-app");
+    assert(appList.data.apps[0]?.id === "other-app");
+    assert(appList.data.apps[1]?.id === "tenant-app");
     expect(appList.data.apps.find((app) => app.id === "tenant-app")?.latestDeployment?.id).toBe(
       secondDeployment.data.id,
     );
@@ -677,7 +677,7 @@ describe("cloudflare-fragment", () => {
       pathParams: { appId: "tenant-app" },
     });
 
-    expect(deploymentHistory.type).toBe("json");
+    assert(deploymentHistory.type === "json");
     if (deploymentHistory.type !== "json") {
       return;
     }

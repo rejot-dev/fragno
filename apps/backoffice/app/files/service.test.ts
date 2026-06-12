@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import {
   createMasterFileSystem,
@@ -89,7 +89,7 @@ describe("files service", () => {
     ]);
 
     const detail = await getFilesNodeDetail(master, "/workspace/README.md");
-    expect(detail?.textContent).toBe("custom workspace readme");
+    assert(detail?.textContent === "custom workspace readme");
     expect(detail?.capabilities).toMatchObject({
       canCreateFolder: false,
       canWriteText: true,
@@ -153,7 +153,7 @@ describe("files service", () => {
       }),
     );
 
-    expect(response.ok).toBe(true);
+    assert(response.ok);
     expect((await response.json()) as UploadFileRecord).toMatchObject({
       provider: UPLOAD_PROVIDER_R2,
       fileKey: "hello/logo.png",

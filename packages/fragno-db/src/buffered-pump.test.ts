@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { SQLocalKysely } from "sqlocal/kysely";
 
@@ -190,7 +190,7 @@ describe("BufferedDatabasePump", () => {
       debugLabel: () => "custom-label",
     });
 
-    expect(pump.debugLabel()).toBe("custom-label");
+    assert(pump.debugLabel() === "custom-label");
   });
 
   test("flushes scoped outgoing buffers", async () => {
@@ -372,12 +372,12 @@ describe("BufferedDatabasePump", () => {
 
     expect(flushCount).toBeGreaterThan(0);
     expect(observed.length).toBeGreaterThan(0);
-    expect(pump.isRunning()).toBe(true);
+    assert(pump.isRunning());
 
     unsubscribe();
     await nextMicrotask();
 
-    expect(pump.isRunning()).toBe(false);
+    assert(!pump.isRunning());
   });
 
   test("snapshot uses explicit snapshot override when provided", async () => {

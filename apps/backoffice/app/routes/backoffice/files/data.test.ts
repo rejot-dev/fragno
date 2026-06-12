@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi, assert } from "vitest";
 
 const { createOrgFileSystemMock } = vi.hoisted(() => ({
   createOrgFileSystemMock: vi.fn(),
@@ -49,9 +49,9 @@ describe("files explorer route data", () => {
     });
 
     expect(result.tree.map((root) => root.path)).toEqual(["/system", "/starter", "/tmp"]);
-    expect(result.selectedPath).toBe("/system");
-    expect(result.selectedDetail?.node.path).toBe("/system");
-    expect(result.loadError).toBe("Path '/missing' could not be found.");
+    assert(result.selectedPath === "/system");
+    assert(result.selectedDetail?.node.path === "/system");
+    assert(result.loadError === "Path '/missing' could not be found.");
   });
 
   test("rejects unknown action intents before dispatching to the files domain", async () => {
@@ -104,8 +104,8 @@ describe("files explorer route data", () => {
         },
       },
     });
-    expect(folders.has("/project/notes")).toBe(true);
-    expect(folders.has("/project/notes/archive")).toBe(true);
+    assert(folders.has("/project/notes"));
+    assert(folders.has("/project/notes/archive"));
   });
 
   test("expands the selected folder branch by querying the filesystem for its children", async () => {
@@ -132,8 +132,8 @@ describe("files explorer route data", () => {
     expect(worldFolder?.children?.map((node) => node.path)).toContain(
       "/project/hello/world/task.md",
     );
-    expect(result.selectedPath).toBe("/project/hello/world/");
-    expect(result.selectedDetail?.node.path).toBe("/project/hello/world/");
+    assert(result.selectedPath === "/project/hello/world/");
+    assert(result.selectedDetail?.node.path === "/project/hello/world/");
   });
 
   test("preserves eagerly described nested children in the initial tree", async () => {

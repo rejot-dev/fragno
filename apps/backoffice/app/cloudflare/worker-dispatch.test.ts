@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import {
   buildCloudflareWorkerDispatchPath,
@@ -14,8 +14,8 @@ describe("rewriteCloudflareWorkerDispatchUrl", () => {
       "wilco",
     );
 
-    expect(url.pathname).toBe("/api/ping");
-    expect(url.search).toBe("?mode=test");
+    assert(url.pathname === "/api/ping");
+    assert(url.search === "?mode=test");
   });
 
   test("maps the app root to slash", () => {
@@ -25,7 +25,7 @@ describe("rewriteCloudflareWorkerDispatchUrl", () => {
       "wilco",
     );
 
-    expect(url.pathname).toBe("/");
+    assert(url.pathname === "/");
   });
 });
 
@@ -49,17 +49,17 @@ describe("buildCloudflareWorkerDispatchRequest", () => {
       "fragno-org-123-wilco-worker",
     );
 
-    expect(forwardedRequest.url).toBe("http://localhost:3000/hello");
-    expect(forwardedRequest.headers.get("authorization")).toBe("Bearer secret");
+    assert(forwardedRequest.url === "http://localhost:3000/hello");
+    assert(forwardedRequest.headers.get("authorization") === "Bearer secret");
     expect(forwardedRequest.headers.get("cookie")).toBeNull();
     expect(forwardedRequest.headers.get("x-forwarded-host")).toBeNull();
-    expect(forwardedRequest.headers.get("content-type")).toBe("application/json");
-    expect(forwardedRequest.headers.get("x-fragno-worker-org-id")).toBe("org-123");
-    expect(forwardedRequest.headers.get("x-fragno-worker-app-id")).toBe("wilco");
-    expect(forwardedRequest.headers.get("x-fragno-worker-script-name")).toBe(
-      "fragno-org-123-wilco-worker",
+    assert(forwardedRequest.headers.get("content-type") === "application/json");
+    assert(forwardedRequest.headers.get("x-fragno-worker-org-id") === "org-123");
+    assert(forwardedRequest.headers.get("x-fragno-worker-app-id") === "wilco");
+    assert(
+      forwardedRequest.headers.get("x-fragno-worker-script-name") === "fragno-org-123-wilco-worker",
     );
-    expect(await forwardedRequest.text()).toBe('{"ok":true}');
+    assert((await forwardedRequest.text()) === '{"ok":true}');
   });
 
   test("forwards aborts from the original client signal", () => {
@@ -75,16 +75,16 @@ describe("buildCloudflareWorkerDispatchRequest", () => {
       "fragno-org-123-wilco-worker",
     );
 
-    expect(forwardedRequest.signal.aborted).toBe(false);
+    assert(!forwardedRequest.signal.aborted);
 
     abortController.abort();
 
-    expect(forwardedRequest.signal.aborted).toBe(true);
+    assert(forwardedRequest.signal.aborted);
   });
 
   test("builds the expected dev route prefix", () => {
-    expect(buildCloudflareWorkerDispatchPath("org-123", "wilco")).toBe(
-      "/__dev/workers/org-123/wilco",
+    assert(
+      buildCloudflareWorkerDispatchPath("org-123", "wilco") === "/__dev/workers/org-123/wilco",
     );
   });
 });

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { createS3Signer } from "./s3-signer.server";
 
@@ -38,8 +38,8 @@ describe("createS3Signer", () => {
     });
 
     expect(signed.url).toContain("uploads.s3.example.com");
-    expect(getHeader(signed.headers ?? {}, "host")).toBe("uploads.s3.example.com");
-    expect(getHeader(signed.headers ?? {}, "x-amz-meta-test")).toBe("1");
+    assert(getHeader(signed.headers ?? {}, "host") === "uploads.s3.example.com");
+    assert(getHeader(signed.headers ?? {}, "x-amz-meta-test") === "1");
     expect(getHeader(signed.headers ?? {}, "x-evil")).toBeUndefined();
   });
 
@@ -52,7 +52,7 @@ describe("createS3Signer", () => {
       url,
     });
 
-    expect(getHeader(signed.headers ?? {}, "x-amz-content-sha256")).toBe("UNSIGNED-PAYLOAD");
+    assert(getHeader(signed.headers ?? {}, "x-amz-content-sha256") === "UNSIGNED-PAYLOAD");
   });
 
   it("rejects disallowed methods", async () => {

@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi, assert } from "vitest";
 
 import { atom } from "nanostores";
 
@@ -119,30 +119,30 @@ describe("default organization helpers", () => {
   test("reuses a stored organization when it is still valid", () => {
     const me = createMe({ activeOrganizationId: "org-b" });
     const resolution = resolveDefaultOrganization(me, "org-a");
-    expect(resolution.status).toBe("reused");
-    expect(resolution.resolvedOrganizationId).toBe("org-a");
-    expect(resolution.organization.id).toBe("org-a");
+    assert(resolution.status === "reused");
+    assert(resolution.resolvedOrganizationId === "org-a");
+    assert(resolution.organization.id === "org-a");
   });
 
   test("initializes from the active organization when no preference is stored", () => {
     const me = createMe({ activeOrganizationId: "org-b" });
     const resolution = resolveDefaultOrganization(me, null);
-    expect(resolution.status).toBe("initialized");
-    expect(resolution.resolvedOrganizationId).toBe("org-b");
+    assert(resolution.status === "initialized");
+    assert(resolution.resolvedOrganizationId === "org-b");
   });
 
   test("repairs a stale stored organization with the active organization when available", () => {
     const me = createMe({ activeOrganizationId: "org-b" });
     const resolution = resolveDefaultOrganization(me, "org-missing");
-    expect(resolution.status).toBe("repaired");
-    expect(resolution.resolvedOrganizationId).toBe("org-b");
+    assert(resolution.status === "repaired");
+    assert(resolution.resolvedOrganizationId === "org-b");
   });
 
   test("repairs a stale stored organization with the first membership when no active org exists", () => {
     const me = createMe({ activeOrganizationId: null });
     const resolution = resolveDefaultOrganization(me, "org-missing");
-    expect(resolution.status).toBe("repaired");
-    expect(resolution.resolvedOrganizationId).toBe("org-a");
+    assert(resolution.status === "repaired");
+    assert(resolution.resolvedOrganizationId === "org-a");
   });
 
   test("syncs and updates the stored preference", () => {
@@ -150,18 +150,18 @@ describe("default organization helpers", () => {
     const me = createMe({ activeOrganizationId: "org-b" });
     const accountId = me.user.id;
 
-    expect(writeDefaultOrganizationId(accountId, "org-a", storage)).toBe(true);
-    expect(readDefaultOrganizationId(accountId, storage)).toBe("org-a");
+    assert(writeDefaultOrganizationId(accountId, "org-a", storage));
+    assert(readDefaultOrganizationId(accountId, storage) === "org-a");
 
     const repaired = syncDefaultOrganizationPreference(accountId, me, storage);
-    expect(repaired.status).toBe("reused");
-    expect(readDefaultOrganizationId(accountId, storage)).toBe("org-a");
+    assert(repaired.status === "reused");
+    assert(readDefaultOrganizationId(accountId, storage) === "org-a");
 
     const updated = setDefaultOrganizationForMe(accountId, me, "org-b", storage);
-    expect(updated.resolvedOrganizationId).toBe("org-b");
-    expect(readDefaultOrganizationId(accountId, storage)).toBe("org-b");
+    assert(updated.resolvedOrganizationId === "org-b");
+    assert(readDefaultOrganizationId(accountId, storage) === "org-b");
 
-    expect(clearDefaultOrganizationId(accountId, storage)).toBe(true);
+    assert(clearDefaultOrganizationId(accountId, storage));
     expect(readDefaultOrganizationId(accountId, storage)).toBeNull();
   });
 
@@ -183,7 +183,7 @@ describe("default organization helpers", () => {
 
     try {
       expect(readDefaultOrganizationId("user-1")).toBeNull();
-      expect(writeDefaultOrganizationId("user-1", "org-a")).toBe(false);
+      assert(!writeDefaultOrganizationId("user-1", "org-a"));
     } finally {
       vi.unstubAllGlobals();
     }
@@ -195,13 +195,13 @@ describe("default organization helpers", () => {
     expect(getDefaultOrganizationStorageKey("user-1")).toBe(
       getDefaultOrganizationStorageKey("user-2"),
     );
-    expect(writeDefaultOrganizationId("user-1", "org-a", storage)).toBe(true);
-    expect(readDefaultOrganizationId("user-1", storage)).toBe("org-a");
-    expect(readDefaultOrganizationId("user-2", storage)).toBe("org-a");
+    assert(writeDefaultOrganizationId("user-1", "org-a", storage));
+    assert(readDefaultOrganizationId("user-1", storage) === "org-a");
+    assert(readDefaultOrganizationId("user-2", storage) === "org-a");
 
-    expect(writeDefaultOrganizationId("user-2", "org-b", storage)).toBe(true);
-    expect(readDefaultOrganizationId("user-1", storage)).toBe("org-b");
-    expect(readDefaultOrganizationId("user-2", storage)).toBe("org-b");
+    assert(writeDefaultOrganizationId("user-2", "org-b", storage));
+    assert(readDefaultOrganizationId("user-1", storage) === "org-b");
+    assert(readDefaultOrganizationId("user-2", storage) === "org-b");
   });
 
   test("notifies all listeners because the preference is global", () => {
@@ -225,11 +225,11 @@ describe("default organization helpers", () => {
       { windowObject },
     );
 
-    expect(writeDefaultOrganizationId("user-1", "org-a", storage, windowObject)).toBe(true);
+    assert(writeDefaultOrganizationId("user-1", "org-a", storage, windowObject));
     expect(userOneChanges).toBe(1);
     expect(userTwoChanges).toBe(1);
 
-    expect(writeDefaultOrganizationId("user-2", "org-b", storage, windowObject)).toBe(true);
+    assert(writeDefaultOrganizationId("user-2", "org-b", storage, windowObject));
     expect(userOneChanges).toBe(2);
     expect(userTwoChanges).toBe(2);
 
@@ -264,17 +264,17 @@ describe("createDefaultOrganizationPreferenceState", () => {
 
     expect(state.defaultOrganization.storageKey).toBe(getDefaultOrganizationStorageKey(me.user.id));
     expect(state.store.storageKey).toBe(getDefaultOrganizationStorageKey(me.user.id));
-    expect(state.store.defaultOrganizationId.get()).toBe("org-b");
-    expect(state.store.me.get()?.activeOrganization?.organization.id).toBe("org-b");
-    expect(readDefaultOrganizationId(me.user.id, storage)).toBe("org-b");
+    assert(state.store.defaultOrganizationId.get() === "org-b");
+    assert(state.store.me.get()?.activeOrganization?.organization.id === "org-b");
+    assert(readDefaultOrganizationId(me.user.id, storage) === "org-b");
 
     const updated = state.store.setDefaultOrganization("org-a");
 
-    expect(updated.resolvedOrganizationId).toBe("org-a");
-    expect(state.store.defaultOrganizationId.get()).toBe("org-a");
-    expect(state.store.defaultOrganization.get()?.organization.id).toBe("org-a");
-    expect(state.store.me.get()?.activeOrganization?.organization.id).toBe("org-b");
-    expect(readDefaultOrganizationId(me.user.id, storage)).toBe("org-a");
+    assert(updated.resolvedOrganizationId === "org-a");
+    assert(state.store.defaultOrganizationId.get() === "org-a");
+    assert(state.store.defaultOrganization.get()?.organization.id === "org-a");
+    assert(state.store.me.get()?.activeOrganization?.organization.id === "org-b");
+    assert(readDefaultOrganizationId(me.user.id, storage) === "org-a");
 
     unsubscribe();
   });
@@ -299,8 +299,8 @@ describe("createDefaultOrganizationPreferenceState", () => {
 
     const normalizedMe = await state.me();
 
-    expect(normalizedMe.activeOrganization?.organization.id).toBe("org-b");
-    expect(state.store.defaultOrganizationId.get()).toBe("org-a");
+    assert(normalizedMe.activeOrganization?.organization.id === "org-b");
+    assert(state.store.defaultOrganizationId.get() === "org-a");
   });
 
   test("initializes the preference store from storage", () => {
@@ -321,8 +321,8 @@ describe("createDefaultOrganizationPreferenceState", () => {
 
     const unsubscribe = state.store.me.listen(() => {});
 
-    expect(state.store.storedOrganizationId.get()).toBe("org-a");
-    expect(state.store.defaultOrganizationId.get()).toBe("org-a");
+    assert(state.store.storedOrganizationId.get() === "org-a");
+    assert(state.store.defaultOrganizationId.get() === "org-a");
 
     unsubscribe();
   });
@@ -341,8 +341,8 @@ describe("createDefaultOrganizationPreferenceState", () => {
     });
 
     expect(state.defaultOrganization.storageKey).toBe(getDefaultOrganizationStorageKey());
-    expect(state.defaultOrganization.read()).toBe("org-a");
-    expect(state.store.readDefaultOrganizationId()).toBe("org-a");
+    assert(state.defaultOrganization.read() === "org-a");
+    assert(state.store.readDefaultOrganizationId() === "org-a");
   });
 
   test("keeps a single shared preference when the authenticated account changes", () => {
@@ -376,17 +376,17 @@ describe("createDefaultOrganizationPreferenceState", () => {
     const unsubscribe = state.store.me.listen(() => {});
 
     expect(state.store.storageKey).toBe(getDefaultOrganizationStorageKey(meA.user.id));
-    expect(state.store.storedOrganizationId.get()).toBe("org-a");
+    assert(state.store.storedOrganizationId.get() === "org-a");
 
     meStore.set({ loading: false, data: meB });
 
     expect(state.store.storageKey).toBe(getDefaultOrganizationStorageKey(meB.user.id));
-    expect(state.store.storedOrganizationId.get()).toBe("org-a");
+    assert(state.store.storedOrganizationId.get() === "org-a");
 
     state.store.setDefaultOrganization("org-c");
 
-    expect(readDefaultOrganizationId(meA.user.id, storage)).toBe("org-c");
-    expect(readDefaultOrganizationId(meB.user.id, storage)).toBe("org-c");
+    assert(readDefaultOrganizationId(meA.user.id, storage) === "org-c");
+    assert(readDefaultOrganizationId(meB.user.id, storage) === "org-c");
 
     unsubscribe();
   });

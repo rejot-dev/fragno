@@ -54,15 +54,15 @@ describe("readableToAtom", () => {
   test("should create an atom from a readable store", () => {
     const store = readable(123, () => {});
     const a = readableToAtom(store);
-    expect(a.get()).toBe(123);
+    assert(a.get() === 123);
   });
 
   test("should update the atom when the writable store changes", async () => {
     const store = writable(123);
     const a = readableToAtom(store);
-    expect(a.get()).toBe(123);
+    assert(a.get() === 123);
     store.set(456);
-    expect(a.get()).toBe(456);
+    assert(a.get() === 456);
   });
 
   test("should work with derived stores", async () => {
@@ -70,10 +70,10 @@ describe("readableToAtom", () => {
     const derivedStore = derived(baseStore, (value) => value * 2);
 
     const a = readableToAtom(derivedStore);
-    expect(a.get()).toBe(20);
+    assert(a.get() === 20);
 
     baseStore.set(5);
-    expect(a.get()).toBe(10);
+    assert(a.get() === 10);
   });
 });
 
@@ -119,7 +119,7 @@ describe("createSvelteHook", () => {
     const hook = renderHook(clientObj, "useUsers");
 
     await vi.waitFor(() => {
-      expect(get(hook.loading)).toBe(false);
+      assert(!get(hook.loading));
     });
 
     expect(get(hook.data)).toEqual([{ id: 1, name: "John" }]);
@@ -169,7 +169,7 @@ describe("createSvelteHook", () => {
     const hook = renderHook(clientObj, "useUser", { path: { id } });
 
     await vi.waitFor(() => {
-      expect(get(hook.loading)).toBe(false);
+      assert(!get(hook.loading));
     });
 
     expect(get(hook.data)).toEqual({ id: 123, name: "John" });
@@ -179,7 +179,7 @@ describe("createSvelteHook", () => {
     id.set("456");
 
     await vi.waitFor(() => {
-      expect((get(hook.data) as TestData | undefined)?.id).toBe(456);
+      assert((get(hook.data) as TestData | undefined)?.id === 456);
     });
 
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -225,7 +225,7 @@ describe("createSvelteHook", () => {
     const hook = renderHook(clientObj, "useUser", { path: { id } });
 
     await vi.waitFor(() => {
-      expect(get(hook.loading)).toBe(false);
+      assert(!get(hook.loading));
     });
 
     expect(get(hook.data)).toEqual({ id: 123, name: "John" });
@@ -235,7 +235,7 @@ describe("createSvelteHook", () => {
     id.set("456");
 
     await vi.waitFor(() => {
-      expect((get(hook.data) as TestData | undefined)?.id).toBe(456);
+      assert((get(hook.data) as TestData | undefined)?.id === 456);
     });
 
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -271,7 +271,7 @@ describe("createSvelteHook", () => {
     const hook = renderHook(clientObj, "useUsers");
 
     await vi.waitFor(() => {
-      expect(get(hook.loading)).toBe(false);
+      assert(!get(hook.loading));
     });
 
     expect(get(hook.data)).toBeUndefined();
@@ -305,7 +305,7 @@ describe("createSvelteHook", () => {
     const hook = renderHook(clientObj, "useUsers");
 
     // Initially loading should be true
-    expect(get(hook.loading)).toBe(true);
+    assert(get(hook.loading));
     expect(get(hook.data)).toBeUndefined();
     expect(get(hook.error)).toBeUndefined();
 
@@ -317,7 +317,7 @@ describe("createSvelteHook", () => {
     } as Response);
 
     await vi.waitFor(() => {
-      expect(get(hook.loading)).toBe(false);
+      assert(!get(hook.loading));
     });
 
     expect(get(hook.data)).toEqual([{ id: 1, name: "John" }]);
@@ -358,7 +358,7 @@ describe("createSvelteHook", () => {
     const hook = renderHook(clientObj, "useUsers", { query: { limit, page } });
 
     await vi.waitFor(() => {
-      expect(get(hook.loading)).toBe(false);
+      assert(!get(hook.loading));
     });
 
     expect(get(hook.data)).toEqual([{ id: 1, name: "John" }]);
@@ -369,7 +369,7 @@ describe("createSvelteHook", () => {
     page.set("2");
 
     await vi.waitFor(() => {
-      expect(vi.mocked(global.fetch).mock.calls.length).toBe(2);
+      assert(vi.mocked(global.fetch).mock.calls.length === 2);
     });
 
     // Verify the second call has updated params
@@ -426,8 +426,8 @@ describe("createSvelteHook", () => {
     const postsHook = renderHook(clientObj, "usePosts");
 
     await vi.waitFor(() => {
-      expect(get(usersHook.loading)).toBe(false);
-      expect(get(postsHook.loading)).toBe(false);
+      assert(!get(usersHook.loading));
+      assert(!get(postsHook.loading));
     });
 
     expect(get(usersHook.data)).toEqual([{ id: 1, name: "John" }]);
@@ -504,7 +504,7 @@ describe("createSvelteHook", () => {
 
     // Wait for initial load
     await vi.waitFor(() => {
-      expect(get(hook.loading)).toBe(false);
+      assert(!get(hook.loading));
     });
 
     expect(get(hook.data)).toEqual([
@@ -524,7 +524,7 @@ describe("createSvelteHook", () => {
     userId.set("2");
 
     await vi.waitFor(() => {
-      expect((get(hook.data) as TestData[])?.[0]?.id).toBe(200);
+      assert((get(hook.data) as TestData[])?.[0]?.id === 200);
     });
 
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -533,7 +533,7 @@ describe("createSvelteHook", () => {
     limit.set("20");
 
     await vi.waitFor(() => {
-      expect((get(hook.data) as TestData[])?.[0]?.category?.includes("20")).toBe(true);
+      assert((get(hook.data) as TestData[])?.[0]?.category?.includes("20"));
     });
 
     expect(fetch).toHaveBeenCalledTimes(3);
@@ -542,7 +542,7 @@ describe("createSvelteHook", () => {
     category.set("science");
 
     await vi.waitFor(() => {
-      expect((get(hook.data) as TestData[])?.[0]?.category?.includes("science")).toBe(true);
+      assert((get(hook.data) as TestData[])?.[0]?.category?.includes("science"));
     });
 
     expect(fetch).toHaveBeenCalledTimes(4);
@@ -594,7 +594,7 @@ describe("createSvelteMutator", () => {
 
     const mutator = renderMutator(clientObj, "createUser");
 
-    expect(get(mutator.loading)).toBe(false);
+    assert(!get(mutator.loading));
     expect(get(mutator.data)).toBeUndefined();
     expect(get(mutator.error)).toBeUndefined();
 
@@ -700,17 +700,17 @@ describe("useFragno", () => {
     const result = useFragno(clientObj);
 
     // Check that non-hook values are passed through unchanged
-    expect(result.someString).toBe("hello world");
-    expect(result.someNumber).toBe(42);
+    assert(result.someString === "hello world");
+    assert(result.someNumber === 42);
     expect(result.someObject).toEqual({ foo: "bar", nested: { value: true } });
     expect(result.someArray).toEqual([1, 2, 3]);
-    expect(result.someFunction()).toBe("test");
+    assert(result.someFunction() === "test");
     expect(result.someNull).toBeNull();
     expect(result.someUndefined).toBeUndefined();
 
     // Verify that hooks are still transformed
-    expect(typeof result.useData).toBe("function");
-    expect(typeof result.usePostAction).toBe("function");
+    assert(typeof result.useData === "function");
+    assert(typeof result.usePostAction === "function");
   });
 
   test("Should support path parameters and update reactively when using Svelte runes", async () => {
@@ -756,7 +756,7 @@ describe("useFragno", () => {
     const hook = renderHook(clientObj, "useUser", { path: { id: () => id } });
 
     await vi.waitFor(() => {
-      expect(get(hook.loading)).toBe(false);
+      assert(!get(hook.loading));
     });
 
     expect(get(hook.data)).toEqual({ id: 123, name: "John" });
@@ -766,7 +766,7 @@ describe("useFragno", () => {
     id = "456";
 
     await vi.waitFor(() => {
-      expect((get(hook.data) as TestData | undefined)?.id).toBe(456);
+      assert((get(hook.data) as TestData | undefined)?.id === 456);
     });
 
     const requestedIds = vi
@@ -835,7 +835,7 @@ describe("createSvelteStore", () => {
 
     await vi.waitFor(() => {
       expect(useNames.get()).toEqual("John, Jane, Jim");
-      expect(useUsersStream.get().loading).toBe(false);
+      assert(!useUsersStream.get().loading);
       expect(useUsersStream.get().data).toEqual([
         { id: 1, name: "John" },
         { id: 2, name: "Jane" },

@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi, assert } from "vitest";
 
 import {
   buildCloudflareScriptTags,
@@ -79,11 +79,12 @@ describe("cloudflare-api helpers", () => {
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     const headers = new Headers(init?.headers as HeadersInit | undefined);
 
-    expect(String(url)).toBe(
-      "https://api.cloudflare.com/client/v4/accounts/acct_test/workers/dispatch/namespaces/dispatch-prod/scripts/fragno-tenant-app-worker",
+    assert(
+      String(url) ===
+        "https://api.cloudflare.com/client/v4/accounts/acct_test/workers/dispatch/namespaces/dispatch-prod/scripts/fragno-tenant-app-worker",
     );
-    expect(init?.method?.toUpperCase()).toBe("PUT");
-    expect(headers.get("if-match")).toBe("etag_base_123");
+    assert(init?.method?.toUpperCase() === "PUT");
+    assert(headers.get("if-match") === "etag_base_123");
     expect(response).toMatchObject({
       etag: "etag_123",
       modified_on: "2026-03-10T12:00:00.000Z",
@@ -188,7 +189,7 @@ describe("cloudflare-api helpers", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
     const firstHeaders = new Headers((fetchMock.mock.calls[0]?.[1]?.headers ?? {}) as HeadersInit);
-    expect(firstHeaders.get("if-match")).toBe("etag_prev");
+    assert(firstHeaders.get("if-match") === "etag_prev");
     expect(result).toEqual({
       action: "already-deployed",
       deploymentTag,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 
@@ -83,7 +83,7 @@ for (const adapterCase of adapterCases) {
         const createUow = db.createUnitOfWork("create-user").forSchema(conformanceSchema);
         createUow.create("users", { name: "Ada" });
         const createResult = await createUow.executeMutations();
-        expect(createResult.success).toBe(true);
+        assert(createResult.success);
 
         const createdId = createUow.getCreatedIds()[0];
         expect(createdId).toBeDefined();
@@ -91,7 +91,7 @@ for (const adapterCase of adapterCases) {
         const updateUow = db.createUnitOfWork("update-user").forSchema(conformanceSchema);
         updateUow.update("users", createdId!, (b) => b.set({ name: "Ada Lovelace" }).check());
         const updateResult = await updateUow.executeMutations();
-        expect(updateResult.success).toBe(true);
+        assert(updateResult.success);
 
         const [[updatedUser]] = await db
           .createUnitOfWork("verify-update")
@@ -107,7 +107,7 @@ for (const adapterCase of adapterCases) {
         const staleUow = db.createUnitOfWork("stale-update").forSchema(conformanceSchema);
         staleUow.update("users", createdId!, (b) => b.set({ name: "Ada Byron" }).check());
         const staleResult = await staleUow.executeMutations();
-        expect(staleResult.success).toBe(false);
+        assert(!staleResult.success);
       });
     });
 
@@ -138,7 +138,7 @@ for (const adapterCase of adapterCases) {
         })();
 
         expect(firstPage.items.map((user) => user.name)).toEqual(["Ada", "Brett"]);
-        expect(firstPage.hasNextPage).toBe(true);
+        assert(firstPage.hasNextPage);
         expect(firstPage.cursor).toBeDefined();
 
         const secondPage = await (async () => {
@@ -157,7 +157,7 @@ for (const adapterCase of adapterCases) {
         })();
 
         expect(secondPage.items.map((user) => user.name)).toEqual(["Cora", "Dylan"]);
-        expect(secondPage.hasNextPage).toBe(true);
+        assert(secondPage.hasNextPage);
         expect(secondPage.cursor).toBeDefined();
 
         const thirdPage = await (async () => {
@@ -176,7 +176,7 @@ for (const adapterCase of adapterCases) {
         })();
 
         expect(thirdPage.items.map((user) => user.name)).toEqual(["Emma"]);
-        expect(thirdPage.hasNextPage).toBe(false);
+        assert(!thirdPage.hasNextPage);
         expect(thirdPage.cursor).toBeUndefined();
       });
     });
@@ -318,7 +318,7 @@ for (const adapterCase of adapterCases) {
             return (await uow.retrievalPhase)[0];
           })();
 
-          expect(createdUser?.slug).toBe("seeded-0");
+          assert(createdUser?.slug === "seeded-0");
           expect(createdUser?.createdAt?.toISOString()).toBe(fixedClock.toISOString());
         } finally {
           await firstContext.cleanup();
@@ -395,7 +395,7 @@ describe("adapter conformance (kysely-sqlite instrumentation)", () => {
       uow.create("users", { name: "Should not persist" });
 
       const result = await uow.executeMutations();
-      expect(result.success).toBe(false);
+      assert(!result.success);
 
       const users = await (async () => {
         const uow = db

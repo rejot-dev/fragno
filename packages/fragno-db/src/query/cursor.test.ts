@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, assert } from "vitest";
 
 import {
   BetterSQLite3DriverConfig,
@@ -20,10 +20,10 @@ describe("Cursor utilities", () => {
 
       const encoded = cursor.encode();
       expect(encoded).toBeTruthy();
-      expect(typeof encoded).toBe("string");
+      assert(typeof encoded === "string");
 
       const decoded = decodeCursor(encoded);
-      expect(decoded.indexName).toBe("idx_test");
+      assert(decoded.indexName === "idx_test");
       expect(decoded.indexValues).toEqual({ id: "user123" });
     });
 
@@ -42,7 +42,7 @@ describe("Cursor utilities", () => {
       const encoded = cursor.encode();
       const decoded = decodeCursor(encoded);
       expect(decoded.indexValues).toEqual(cursor.indexValues);
-      expect(decoded.pageSize).toBe(20);
+      assert(decoded.pageSize === 20);
     });
 
     it("should handle different data types in index values", () => {
@@ -426,8 +426,8 @@ describe("Cursor utilities", () => {
       );
 
       // Should preserve the values
-      expect(serialized["score"]).toBe(42);
-      expect(serialized["createdAt"]).toBe(1234567890);
+      assert(serialized["score"] === 42);
+      assert(serialized["createdAt"] === 1234567890);
     });
 
     it("should handle Date objects in cursors for PostgreSQL", () => {
@@ -462,8 +462,8 @@ describe("Cursor utilities", () => {
       const decoded = decodeCursor(encoded);
 
       // After decode, the value is a string (from JSON.parse)
-      expect(typeof decoded.indexValues["createdAt"]).toBe("string");
-      expect(decoded.indexValues["createdAt"]).toBe("2025-11-07T09:36:57.959Z");
+      assert(typeof decoded.indexValues["createdAt"] === "string");
+      assert(decoded.indexValues["createdAt"] === "2025-11-07T09:36:57.959Z");
 
       // Serialize should convert it back to Date for the database
       const serialized = serializeCursorValues(
@@ -474,7 +474,7 @@ describe("Cursor utilities", () => {
 
       // For PostgreSQL, Date objects should be passed through as-is
       expect(serialized["createdAt"]).toBeInstanceOf(Date);
-      expect((serialized["createdAt"] as Date).toISOString()).toBe("2025-11-07T09:36:57.959Z");
+      assert((serialized["createdAt"] as Date).toISOString() === "2025-11-07T09:36:57.959Z");
     });
 
     it("should handle Date objects in cursors for SQLite", () => {
@@ -515,7 +515,7 @@ describe("Cursor utilities", () => {
       );
 
       // For SQLite, Date should be converted to timestamp number
-      expect(typeof serialized["createdAt"]).toBe("number");
+      assert(typeof serialized["createdAt"] === "number");
       expect(serialized["createdAt"]).toBe(createdAtDate.getTime());
     });
 
@@ -554,7 +554,7 @@ describe("Cursor utilities", () => {
 
       // For MySQL, Date objects should be passed through as-is
       expect(serialized["createdAt"]).toBeInstanceOf(Date);
-      expect((serialized["createdAt"] as Date).toISOString()).toBe("2025-11-07T09:36:57.959Z");
+      assert((serialized["createdAt"] as Date).toISOString() === "2025-11-07T09:36:57.959Z");
     });
 
     it("should handle different order directions correctly", () => {
@@ -577,8 +577,8 @@ describe("Cursor utilities", () => {
       const decodedAsc = decodeCursor(cursorAsc.encode());
       const decodedDesc = decodeCursor(cursorDesc.encode());
 
-      expect(decodedAsc.orderDirection).toBe("asc");
-      expect(decodedDesc.orderDirection).toBe("desc");
+      assert(decodedAsc.orderDirection === "asc");
+      assert(decodedDesc.orderDirection === "desc");
     });
   });
 });

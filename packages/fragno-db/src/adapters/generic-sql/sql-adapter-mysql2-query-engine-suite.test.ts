@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, test, assert } from "vitest";
 
 import { randomUUID } from "node:crypto";
 
@@ -40,7 +40,7 @@ if (!mysqlTestDatabase) {
           variant,
         );
         try {
-          expect(await adapter.isConnectionHealthy()).toBe(true);
+          assert(await adapter.isConnectionHealthy());
         } finally {
           await close();
         }

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, assert } from "vitest";
 
 import {
   DEFAULT_ALPHABET,
@@ -30,7 +30,7 @@ describe("otp code helpers", () => {
 
   it("resolves code length with sane defaults", () => {
     expect(resolveCodeLength({})).toBe(DEFAULT_CODE_LENGTH);
-    expect(resolveCodeLength({ codeLength: 6 })).toBe(6);
+    assert(resolveCodeLength({ codeLength: 6 }) === 6);
     expect(resolveCodeLength({ codeLength: 0 })).toBe(DEFAULT_CODE_LENGTH);
     expect(resolveCodeLength({ codeLength: -1 })).toBe(DEFAULT_CODE_LENGTH);
     expect(resolveCodeLength({ codeLength: 1.5 })).toBe(DEFAULT_CODE_LENGTH);
@@ -51,8 +51,8 @@ describe("otp code helpers", () => {
   });
 
   it("normalizes OTP input based on alphabet casing", () => {
-    expect(normalizeOtpCode(" abc123 ", {})).toBe("ABC123");
-    expect(normalizeOtpCode(" abc123 ", { alphabet: "abcdef123" })).toBe("abc123");
+    assert(normalizeOtpCode(" abc123 ", {}) === "ABC123");
+    assert(normalizeOtpCode(" abc123 ", { alphabet: "abcdef123" }) === "abc123");
   });
 
   it("uses rejection sampling to avoid modulo bias", () => {
@@ -69,7 +69,7 @@ describe("otp code helpers", () => {
       return values;
     }) as typeof crypto.getRandomValues);
 
-    expect(generateOtpCode({ alphabet: "0123456789", codeLength: 1 })).toBe("5");
+    assert(generateOtpCode({ alphabet: "0123456789", codeLength: 1 }) === "5");
     expect(randomCallCount).toBe(2);
   });
 
@@ -79,6 +79,6 @@ describe("otp code helpers", () => {
       return values;
     }) as typeof crypto.getRandomValues);
 
-    expect(generateOtpCode({ alphabet: "abcd", codeLength: 4 })).toBe("abcd");
+    assert(generateOtpCode({ alphabet: "abcd", codeLength: 4 }) === "abcd");
   });
 });

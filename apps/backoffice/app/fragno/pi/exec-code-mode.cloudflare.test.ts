@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { createWorkflowsTestHarness } from "@fragno-dev/workflows/test";
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
@@ -59,7 +59,7 @@ describe("Pi execCodeMode tool", () => {
       logs: [],
     });
     const content = result.content[0];
-    expect(content?.type).toBe("text");
+    assert(content?.type === "text");
     if (content?.type !== "text") {
       throw new Error("Expected text content from execCodeMode.");
     }
@@ -97,7 +97,7 @@ describe("Pi execCodeMode tool", () => {
       result: { workflowName: "pi-codemode-script", instanceId: "session-1--tool-call-1" },
     });
     const content = result.content[0];
-    expect(content?.type).toBe("text");
+    assert(content?.type === "text");
     if (content?.type !== "text") {
       throw new Error("Expected text content from execCodeMode.");
     }
@@ -215,11 +215,11 @@ describe("Pi execCodeMode tool", () => {
       ["key", "value"],
     ]);
     const content = result.content[0];
-    expect(content?.type).toBe("text");
+    assert(content?.type === "text");
     if (content?.type !== "text") {
       throw new Error("Expected text content from execCodeMode.");
     }
-    expect(content.text).toBe("{}");
+    assert(content.text === "{}");
   });
 
   test("calls workflow domain tools through codemode when configured", async () => {
@@ -330,12 +330,13 @@ describe("Pi execCodeMode tool", () => {
       ],
     });
     const content = result.content[0];
-    expect(content?.type).toBe("text");
+    assert(content?.type === "text");
     if (content?.type !== "text") {
       throw new Error("Expected text content from execCodeMode.");
     }
-    expect(content.text).toBe(
-      '{"key":"telegram/chat-456","value":"user-55","category":[],"actor":{"scope":"external","type":"chat","id":"chat-123","source":"telegram"}}',
+    assert(
+      content.text ===
+        '{"key":"telegram/chat-456","value":"user-55","category":[],"actor":{"scope":"external","type":"chat","id":"chat-123","source":"telegram"}}',
     );
     expect(calls).toEqual([
       ["get", { key: "telegram/chat-123" }],

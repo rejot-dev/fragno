@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, vi, assert } from "vitest";
 
 import type { ControlElement, JsonSchema } from "@jsonforms/core";
 import { NOT_APPLICABLE } from "@jsonforms/core";
@@ -84,8 +84,8 @@ describe("shadcnOneOfEnumControlTester", () => {
         },
       },
     };
-    expect(shadcnOneOfEnumControlTester(control, rootSchema, createTesterContext(rootSchema))).toBe(
-      5,
+    assert(
+      shadcnOneOfEnumControlTester(control, rootSchema, createTesterContext(rootSchema)) === 5,
     );
   });
 });

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { env } from "cloudflare:workers";
 
@@ -251,7 +251,7 @@ describe("executeCodemodeAutomation", () => {
       }`,
     });
 
-    expect(result.exitCode).toBe(1);
+    assert(result.exitCode === 1);
     expect(result.stderr).toContain("Too small");
     expect(result.toolCalls).toMatchObject([
       {

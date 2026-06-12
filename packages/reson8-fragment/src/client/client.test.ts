@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi, assert } from "vitest";
 
 import type {
   CreateReson8AudioContext,
@@ -124,28 +124,27 @@ const token = (accessToken: string): Reson8AuthToken => ({
 
 describe("reson8 client helpers", () => {
   test("buildReson8RealtimeUrl converts https to wss and forwards query parameters", () => {
-    expect(
+    assert(
       buildReson8RealtimeUrl(
         {
           include_interim: true,
           sample_rate: 16000,
         },
         "https://api.reson8.dev/v1",
-      ),
-    ).toBe(
-      "wss://api.reson8.dev/v1/speech-to-text/realtime?include_interim=true&sample_rate=16000",
+      ) ===
+        "wss://api.reson8.dev/v1/speech-to-text/realtime?include_interim=true&sample_rate=16000",
     );
   });
 
   test("buildReson8RealtimeUrl preserves custom path prefixes", () => {
-    expect(
+    assert(
       buildReson8RealtimeUrl(
         {
           include_interim: true,
         },
         "https://host/reson8-proxy",
-      ),
-    ).toBe("wss://host/reson8-proxy/v1/speech-to-text/realtime?include_interim=true");
+      ) === "wss://host/reson8-proxy/v1/speech-to-text/realtime?include_interim=true",
+    );
   });
 
   test("createReson8AccessTokenStore caches tokens until they are near expiry", async () => {
@@ -161,16 +160,16 @@ describe("reson8 client helpers", () => {
       refreshBufferMs: 10_000,
     });
 
-    expect(await store.ensureAuthorization()).toBe("Bearer token_1");
-    expect(await store.ensureAuthorization()).toBe("Bearer token_1");
+    assert((await store.ensureAuthorization()) === "Bearer token_1");
+    assert((await store.ensureAuthorization()) === "Bearer token_1");
     expect(requestToken).toHaveBeenCalledTimes(1);
-    expect(store.authorization.get()).toBe("Bearer token_1");
+    assert(store.authorization.get() === "Bearer token_1");
 
     now = 591_000;
 
-    expect(await store.ensureAuthorization()).toBe("Bearer token_2");
+    assert((await store.ensureAuthorization()) === "Bearer token_2");
     expect(requestToken).toHaveBeenCalledTimes(2);
-    expect(store.authorization.get()).toBe("Bearer token_2");
+    assert(store.authorization.get() === "Bearer token_2");
   });
 
   test("createReson8MicrophoneCapture converts float audio to pcm16", async () => {
@@ -189,22 +188,22 @@ describe("reson8 client helpers", () => {
 
     audioContext.processor.emit([new Float32Array([-1, 0, 1])]);
 
-    expect(capture.permissionState.get()).toBe("granted");
-    expect(capture.capturing.get()).toBe(true);
-    expect(capture.sampleRate.get()).toBe(24_000);
-    expect(capture.chunkCount.get()).toBe(1);
-    expect(capture.lastChunkByteLength.get()).toBe(6);
+    assert(capture.permissionState.get() === "granted");
+    assert(capture.capturing.get());
+    assert(capture.sampleRate.get() === 24_000);
+    assert(capture.chunkCount.get() === 1);
+    assert(capture.lastChunkByteLength.get() === 6);
     expect(chunks).toHaveLength(1);
 
     const pcm = new DataView(chunks[0].buffer);
-    expect(pcm.getInt16(0, true)).toBe(-32768);
-    expect(pcm.getInt16(2, true)).toBe(0);
-    expect(pcm.getInt16(4, true)).toBe(32767);
+    assert(pcm.getInt16(0, true) === -32768);
+    assert(pcm.getInt16(2, true) === 0);
+    assert(pcm.getInt16(4, true) === 32767);
 
     await capture.stop();
-    expect(capture.capturing.get()).toBe(false);
-    expect(stream.track.stopped).toBe(true);
-    expect(audioContext.closed).toBe(true);
+    assert(!capture.capturing.get());
+    assert(stream.track.stopped);
+    assert(audioContext.closed);
   });
 
   test("createReson8RealtimeSessionStore opens a websocket and aggregates realtime messages", async () => {
@@ -228,9 +227,10 @@ describe("reson8 client helpers", () => {
       throw new Error("Expected a fake websocket instance.");
     }
 
-    expect(store.connectionState.get()).toBe("connecting");
-    expect(socket.url).toBe(
-      "wss://api.reson8.dev/v1/speech-to-text/realtime?include_interim=true&include_words=true",
+    assert(store.connectionState.get() === "connecting");
+    assert(
+      socket.url ===
+        "wss://api.reson8.dev/v1/speech-to-text/realtime?include_interim=true&include_words=true",
     );
     expect(socket.protocols).toEqual(["bearer", "access_123"]);
 
@@ -239,22 +239,22 @@ describe("reson8 client helpers", () => {
 
     socket.receive(JSON.stringify({ type: "transcript", text: "hello", is_final: false }));
     await Promise.resolve();
-    expect(store.interimTranscript.get()).toBe("hello");
+    assert(store.interimTranscript.get() === "hello");
 
     socket.receive(JSON.stringify({ type: "transcript", text: "hello world", is_final: true }));
     socket.receive(JSON.stringify({ type: "flush_confirmation", id: "flush-1" }));
     await Promise.resolve();
 
-    expect(store.connectionState.get()).toBe("open");
+    assert(store.connectionState.get() === "open");
     expect(store.messages.get()).toHaveLength(3);
     expect(store.transcripts.get()).toHaveLength(2);
     expect(store.interimTranscripts.get()).toHaveLength(1);
     expect(store.finalTranscripts.get()).toHaveLength(1);
     expect(store.flushConfirmations.get()).toEqual([{ type: "flush_confirmation", id: "flush-1" }]);
-    expect(store.fullTranscript.get()).toBe("hello world");
-    expect(store.interimTranscript.get()).toBe(null);
+    assert(store.fullTranscript.get() === "hello world");
+    assert(store.interimTranscript.get() === null);
 
-    expect(store.flush("flush-2")).toBe("flush-2");
+    assert(store.flush("flush-2") === "flush-2");
     expect(socket.sent).toContain('{"type":"flush_request","id":"flush-2"}');
 
     const audio = new Uint8Array([1, 2, 3]);
@@ -266,7 +266,7 @@ describe("reson8 client helpers", () => {
     expect(store.errors.get()).toHaveLength(1);
 
     store.disconnect(1000, "done");
-    expect(store.connectionState.get()).toBe("closed");
+    assert(store.connectionState.get() === "closed");
     expect(store.closeEvents.get()).toContainEqual({ code: 1000, reason: "done", wasClean: true });
   });
 
@@ -289,26 +289,26 @@ describe("reson8 client helpers", () => {
       createAudioContext: (() => audioContext) satisfies CreateReson8AudioContext,
     });
 
-    expect(transcriber.connectionState.get()).toBe("idle");
-    expect(transcriber.microphonePermissionState.get()).toBe("idle");
-    expect(transcriber.started.get()).toBe(false);
+    assert(transcriber.connectionState.get() === "idle");
+    assert(transcriber.microphonePermissionState.get() === "idle");
+    assert(!transcriber.started.get());
 
     const ensured = await transcriber.ensureToken();
-    expect(ensured.access_token).toBe("transcriber_token");
+    assert(ensured.access_token === "transcriber_token");
     expect(requestToken).toHaveBeenCalledTimes(1);
-    expect(transcriber.accessToken.authorization.get()).toBe("Bearer transcriber_token");
+    assert(transcriber.accessToken.authorization.get() === "Bearer transcriber_token");
 
     await transcriber.microphone.start({
       onAudioChunk: () => {},
     });
 
-    expect(transcriber.microphonePermissionState.get()).toBe("granted");
-    expect(transcriber.microphoneCapturing.get()).toBe(true);
-    expect(transcriber.microphoneSampleRate.get()).toBe(22_050);
+    assert(transcriber.microphonePermissionState.get() === "granted");
+    assert(transcriber.microphoneCapturing.get());
+    assert(transcriber.microphoneSampleRate.get() === 22_050);
 
     await transcriber.stop({ flush: false });
-    expect(transcriber.microphoneCapturing.get()).toBe(false);
-    expect(stream.track.stopped).toBe(true);
+    assert(!transcriber.microphoneCapturing.get());
+    assert(stream.track.stopped);
   });
 
   test("createReson8RealtimeTranscriberStore can export a local wav recording after stop", async () => {
@@ -353,21 +353,21 @@ describe("reson8 client helpers", () => {
 
       const recordedBlob = transcriber.recordedAudioBlob.get();
       expect(recordedBlob).toBeInstanceOf(Blob);
-      expect(recordedBlob?.type).toBe("audio/wav");
-      expect(transcriber.recordedAudioDownloadUrl.get()).toBe("blob:reson8-recording");
+      assert(recordedBlob?.type === "audio/wav");
+      assert(transcriber.recordedAudioDownloadUrl.get() === "blob:reson8-recording");
       expect(transcriber.recordedAudioFileName.get()).toMatch(/^reson8-recording-.*\.wav$/);
-      expect(transcriber.hasRecordedAudio.get()).toBe(true);
+      assert(transcriber.hasRecordedAudio.get());
       expect(createObjectURL).toHaveBeenCalledTimes(1);
 
       const wavBytes = new Uint8Array(await recordedBlob!.arrayBuffer());
-      expect(new TextDecoder().decode(wavBytes.slice(0, 4))).toBe("RIFF");
-      expect(new TextDecoder().decode(wavBytes.slice(8, 12))).toBe("WAVE");
+      assert(new TextDecoder().decode(wavBytes.slice(0, 4)) === "RIFF");
+      assert(new TextDecoder().decode(wavBytes.slice(8, 12)) === "WAVE");
 
       transcriber.clearRecordedAudio();
-      expect(transcriber.recordedAudioBlob.get()).toBe(null);
-      expect(transcriber.recordedAudioDownloadUrl.get()).toBe(null);
-      expect(transcriber.recordedAudioFileName.get()).toBe(null);
-      expect(transcriber.hasRecordedAudio.get()).toBe(false);
+      assert(transcriber.recordedAudioBlob.get() === null);
+      assert(transcriber.recordedAudioDownloadUrl.get() === null);
+      assert(transcriber.recordedAudioFileName.get() === null);
+      assert(!transcriber.hasRecordedAudio.get());
       expect(revokeObjectURL).toHaveBeenCalledWith("blob:reson8-recording");
     } finally {
       URL.createObjectURL = originalCreateObjectURL;
@@ -390,20 +390,20 @@ describe("reson8 client helpers", () => {
     });
 
     transcriber.messages.set([{ type: "transcript", text: "test one two", is_final: false }]);
-    expect(transcriber.interimTranscript.get()).toBe("test one two");
+    assert(transcriber.interimTranscript.get() === "test one two");
 
     transcriber.messages.set([
       { type: "transcript", text: "test one two", is_final: false },
       { type: "transcript", text: "test one two three", is_final: true },
     ]);
-    expect(transcriber.interimTranscript.get()).toBe(null);
+    assert(transcriber.interimTranscript.get() === null);
 
     transcriber.messages.set([
       { type: "transcript", text: "test one two", is_final: false },
       { type: "transcript", text: "test one two three", is_final: true },
       { type: "transcript", text: "another partial", is_final: false },
     ]);
-    expect(transcriber.interimTranscript.get()).toBe("another partial");
+    assert(transcriber.interimTranscript.get() === "another partial");
 
     transcriber.messages.set([
       { type: "transcript", text: "test one two", is_final: false },
@@ -411,6 +411,6 @@ describe("reson8 client helpers", () => {
       { type: "transcript", text: "another partial", is_final: false },
       { type: "flush_confirmation", id: "flush-1" },
     ]);
-    expect(transcriber.interimTranscript.get()).toBe(null);
+    assert(transcriber.interimTranscript.get() === null);
   });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, assert } from "vitest";
 
 import { BetterSQLite3DriverConfig } from "../../adapters/generic-sql/driver-config";
 import { GenericSQLUOWOperationCompiler } from "../../adapters/generic-sql/query/generic-sql-uow-operation-compiler";
@@ -95,7 +95,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
 
     // Execute mutation phase
     const mutationResult = await parentUow.executeMutations();
-    expect(mutationResult.success).toBe(true);
+    assert(mutationResult.success);
 
     // Verify execution happened
     const log = executor.getLog();
@@ -290,7 +290,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     // Verify results
     expect(result.user).toEqual({ id: "mock-id", name: "Mock User" });
     expect(result.orderId.externalId).toBeTruthy();
-    expect(result.existingOrderCount).toBe(1);
+    assert(result.existingOrderCount === 1);
 
     // Verify operations were registered
     // 1 user validation + 1 orders query = 2 retrieval operations
@@ -403,7 +403,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
 
     // Verify results
     expect(result.user).toBeDefined();
-    expect(result.postCount).toBe(1);
+    assert(result.postCount === 1);
 
     // Verify operations were registered at root level
     // 1 user query + 1 posts query = 2 retrieval operations
@@ -730,7 +730,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     // Parent UOW should have an idempotencyKey
     const parentIdempotencyKey = parentUow.idempotencyKey;
     expect(parentIdempotencyKey).toBeDefined();
-    expect(typeof parentIdempotencyKey).toBe("string");
+    assert(typeof parentIdempotencyKey === "string");
     expect(parentIdempotencyKey.length).toBeGreaterThan(0);
 
     // Create first child
@@ -912,7 +912,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     // The key assertion: internal ID should be defined (not undefined)
     // This tests that child UOW preserves shared reference to parent's createdInternalIds array
     expect(result.internalId).toBeDefined();
-    expect(typeof result.internalId).toBe("bigint");
+    assert(typeof result.internalId === "bigint");
     expect(result.internalId).toBeGreaterThan(0n);
   });
 
@@ -1071,7 +1071,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
 
     // This should succeed without errors
     const result = await goodHandler();
-    expect(result.success).toBe(true);
+    assert(result.success);
 
     // Verify operations were registered
     expect(parentUow.getRetrievalOperations()).toHaveLength(1);

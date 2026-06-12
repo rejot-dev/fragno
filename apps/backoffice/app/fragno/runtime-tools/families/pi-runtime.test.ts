@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
@@ -251,8 +251,8 @@ describe("pi bash command registration", () => {
         'pi.session.turn --session-id "$session_id" --text "hello" --print assistantText',
     );
 
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout?.trim()).toBe("assistant:hello");
+    assert(result.exitCode === 0);
+    assert(result.stdout?.trim() === "assistant:hello");
     expect(commandCallsResult).toEqual([
       {
         command: "pi.session.create",
@@ -296,7 +296,7 @@ describe("pi bash command registration", () => {
     const listHelp = await bash.exec("pi.session.list --help");
     const turnHelp = await bash.exec("pi.session.turn --help");
 
-    expect(createHelp.exitCode).toBe(0);
+    assert(createHelp.exitCode === 0);
     expect(createHelp.stdout).toContain("pi.session.create");
     expect(createHelp.stdout).toContain("Usage: pi.session.create [options]");
     expect(createHelp.stdout).toContain("--agent <agent>");
@@ -305,7 +305,7 @@ describe("pi bash command registration", () => {
     expect(createHelp.stdout).toContain("--format <format>");
     expect(createHelp.stdout).toContain("Examples:");
 
-    expect(getHelp.exitCode).toBe(0);
+    assert(getHelp.exitCode === 0);
     expect(getHelp.stdout).toContain("pi.session.get");
     expect(getHelp.stdout).toContain("Usage: pi.session.get [options]");
     expect(getHelp.stdout).toContain("--session-id <session-id>");
@@ -316,7 +316,7 @@ describe("pi bash command registration", () => {
     expect(getHelp.stdout).toContain("--print <selector>");
     expect(getHelp.stdout).toContain("--format <format>");
 
-    expect(listHelp.exitCode).toBe(0);
+    assert(listHelp.exitCode === 0);
     expect(listHelp.stdout).toContain("pi.session.list");
     expect(listHelp.stdout).toContain("Usage: pi.session.list [options]");
     expect(listHelp.stdout).toContain("--limit <limit>");
@@ -324,7 +324,7 @@ describe("pi bash command registration", () => {
     expect(listHelp.stdout).toContain("--print <selector>");
     expect(listHelp.stdout).toContain("--format <format>");
 
-    expect(turnHelp.exitCode).toBe(0);
+    assert(turnHelp.exitCode === 0);
     expect(turnHelp.stdout).toContain("pi.session.turn");
     expect(turnHelp.stdout).toContain("Usage: pi.session.turn [options]");
     expect(turnHelp.stdout).toContain("--session-id <session-id>");
@@ -440,14 +440,14 @@ describe("pi bash command registration", () => {
       ].join("\n"),
     );
 
-    expect(result.exitCode).toBe(0);
+    assert(result.exitCode === 0);
     const outputLines = result.stdout?.trim().split("\n") ?? [];
-    expect(outputLines[0]).toBe("text=");
-    expect(outputLines[2]).toBe("print=one-at-a-time");
-    expect(outputLines[3]).toBe("workflow=waiting");
-    expect(outputLines[4]).toBe("list_print=session-1");
-    expect(outputLines[5]).toBe("list_text=");
-    expect(outputLines[7]).toBe("turn_print=assistant:hello world");
+    assert(outputLines[0] === "text=");
+    assert(outputLines[2] === "print=one-at-a-time");
+    assert(outputLines[3] === "workflow=waiting");
+    assert(outputLines[4] === "list_print=session-1");
+    assert(outputLines[5] === "list_text=");
+    assert(outputLines[7] === "turn_print=assistant:hello world");
 
     const defaultListLine = outputLines[6]?.replace(/^list=/, "");
     expect(JSON.parse(defaultListLine ?? "null")).toMatchObject([
@@ -610,13 +610,13 @@ describe("pi bash command registration", () => {
       "pi.session.get --session-id session-1 --events false --events true",
     );
     const missingTurnText = await bash.exec("pi.session.turn --session-id session-1");
-    expect(missingSession.exitCode).toBe(1);
+    assert(missingSession.exitCode === 1);
     expect(missingSession.stderr).toContain("Missing required option --session-id");
-    expect(invalidLimit.exitCode).toBe(1);
+    assert(invalidLimit.exitCode === 1);
     expect(invalidLimit.stderr).toContain("--limit must be an integer");
-    expect(repeatedEvents.exitCode).toBe(1);
+    assert(repeatedEvents.exitCode === 1);
     expect(repeatedEvents.stderr).toContain("--events specified multiple times");
-    expect(missingTurnText.exitCode).toBe(1);
+    assert(missingTurnText.exitCode === 1);
     expect(missingTurnText.stderr).toContain("Missing required option --text");
     expect(commandCallsResult).toEqual([
       {
@@ -656,13 +656,13 @@ describe("pi bash command registration", () => {
     const listResult = await bash.exec("pi.session.list");
     const turnResult = await bash.exec("pi.session.turn --session-id missing --text hello");
 
-    expect(createResult.exitCode).toBe(1);
+    assert(createResult.exitCode === 1);
     expect(createResult.stderr).toContain("Pi fragment returned 404: Agent not found");
-    expect(getResult.exitCode).toBe(1);
+    assert(getResult.exitCode === 1);
     expect(getResult.stderr).toContain("Pi fragment returned 404: Session not found");
-    expect(listResult.exitCode).toBe(1);
+    assert(listResult.exitCode === 1);
     expect(listResult.stderr).toContain("Pi fragment returned 404: No sessions found");
-    expect(turnResult.exitCode).toBe(1);
+    assert(turnResult.exitCode === 1);
     expect(turnResult.stderr).toContain("Pi fragment returned 404: Session not found");
     expect(commandCallsResult).toEqual([
       {
@@ -693,7 +693,7 @@ describe("pi bash command registration", () => {
 
     const result = await bash.exec("event.emit --event-type test.event");
 
-    expect(result.exitCode).toBe(127);
+    assert(result.exitCode === 127);
     expect(result.stderr).toContain("bash: event.emit: command not found");
     expect(commandCallsResult).toEqual([]);
   });
@@ -1084,7 +1084,7 @@ describe("createPiRouteRuntime", () => {
       "runTurn should not wait for the live events stream to close",
     );
 
-    expect(turned.assistantText).toBe("assistant:done");
+    assert(turned.assistantText === "assistant:done");
     expect(turned.stream).toEqual([
       expect.objectContaining({ type: "snapshot" }),
       expect.objectContaining({ type: "message_end" }),
@@ -1200,7 +1200,7 @@ describe("createPiRouteRuntime", () => {
       "runTurn should not wait for wrapped live events stream to close",
     );
 
-    expect(turned.assistantText).toBe("assistant:wrapped");
+    assert(turned.assistantText === "assistant:wrapped");
     expect(turned.stream).toEqual([
       expect.objectContaining({ type: "snapshot" }),
       expect.objectContaining({
@@ -1389,7 +1389,7 @@ describe("createPiRouteRuntime", () => {
       "runTurn should not wait for wrapped live events stream to close",
     );
 
-    expect(turned.assistantText).toBe("new answer after tool");
+    assert(turned.assistantText === "new answer after tool");
     expect(requests.map((request) => request.url)).toEqual([
       "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme",
       "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme",

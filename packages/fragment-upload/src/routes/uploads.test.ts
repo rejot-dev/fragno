@@ -265,8 +265,8 @@ describe("upload routes", () => {
 
     assert(uploadResponse.type === "json");
     expect(uploadResponse.data.fileKey).toBe(fileKey);
-    expect(uploadResponse.data.status).toBe("ready");
-    expect(uploadResponse.data.sizeBytes).toBe(5);
+    assert(uploadResponse.data.status === "ready");
+    assert(uploadResponse.data.sizeBytes === 5);
 
     const statusResponse = asJsonResponse<{
       status: string;
@@ -278,8 +278,8 @@ describe("upload routes", () => {
     );
 
     assert(statusResponse.type === "json");
-    expect(statusResponse.data.status).toBe("completed");
-    expect(statusResponse.data.bytesUploaded).toBe(5);
+    assert(statusResponse.data.status === "completed");
+    assert(statusResponse.data.bytesUploaded === 5);
   });
 
   it("POST /uploads supports overwriting an existing file on the same path", async () => {
@@ -335,22 +335,22 @@ describe("upload routes", () => {
       }),
     );
 
-    expect(secondResponse.data.status).toBe("ready");
-    expect(secondResponse.data.filename).toBe("second.txt");
+    assert(secondResponse.data.status === "ready");
+    assert(secondResponse.data.filename === "second.txt");
 
     const beforeDrain = await fragment.callRouteRaw("GET", "/files/by-key/content", {
       query: { provider, key: firstUpload.data.fileKey },
     });
-    expect(beforeDrain.status).toBe(200);
-    expect(await beforeDrain.text()).toBe("second");
+    assert(beforeDrain.status === 200);
+    assert((await beforeDrain.text()) === "second");
 
     await drainDurableHooks(fragment as unknown as AnyFragnoInstantiatedFragment);
 
     const afterDrain = await fragment.callRouteRaw("GET", "/files/by-key/content", {
       query: { provider, key: firstUpload.data.fileKey },
     });
-    expect(afterDrain.status).toBe(200);
-    expect(await afterDrain.text()).toBe("second");
+    assert(afterDrain.status === 200);
+    assert((await afterDrain.text()) === "second");
   });
 
   it("marks uploads as failed when proxy streaming errors", async () => {
@@ -393,8 +393,8 @@ describe("upload routes", () => {
       );
 
       assert(uploadResponse.type === "error");
-      expect(uploadResponse.status).toBe(502);
-      expect(uploadResponse.error.code).toBe("STORAGE_ERROR");
+      assert(uploadResponse.status === 502);
+      assert(uploadResponse.error.code === "STORAGE_ERROR");
 
       const statusResponse = asJsonResponse<{
         status: string;
@@ -406,8 +406,8 @@ describe("upload routes", () => {
       );
 
       assert(statusResponse.type === "json");
-      expect(statusResponse.data.status).toBe("failed");
-      expect(statusResponse.data.errorCode).toBe("STORAGE_ERROR");
+      assert(statusResponse.data.status === "failed");
+      assert(statusResponse.data.errorCode === "STORAGE_ERROR");
 
       const fileResponse = asErrorResponse(
         await fragment.callRoute("GET", "/files/by-key", {
@@ -416,8 +416,8 @@ describe("upload routes", () => {
       );
 
       assert(fileResponse.type === "error");
-      expect(fileResponse.status).toBe(404);
-      expect(fileResponse.error.code).toBe("FILE_NOT_FOUND");
+      assert(fileResponse.status === 404);
+      assert(fileResponse.error.code === "FILE_NOT_FOUND");
     } finally {
       storage.writeStream = originalWriteStream;
     }
@@ -450,8 +450,8 @@ describe("upload routes", () => {
     );
 
     assert(progressResponse.type === "json");
-    expect(progressResponse.data.bytesUploaded).toBe(2);
-    expect(progressResponse.data.partsUploaded).toBe(1);
+    assert(progressResponse.data.bytesUploaded === 2);
+    assert(progressResponse.data.partsUploaded === 1);
 
     const smallerProgressResponse = asJsonResponse<{
       bytesUploaded: number;
@@ -464,8 +464,8 @@ describe("upload routes", () => {
     );
 
     assert(smallerProgressResponse.type === "json");
-    expect(smallerProgressResponse.data.bytesUploaded).toBe(2);
-    expect(smallerProgressResponse.data.partsUploaded).toBe(1);
+    assert(smallerProgressResponse.data.bytesUploaded === 2);
+    assert(smallerProgressResponse.data.partsUploaded === 1);
 
     const statusResponse = asJsonResponse<{
       status: string;
@@ -478,9 +478,9 @@ describe("upload routes", () => {
     );
 
     assert(statusResponse.type === "json");
-    expect(statusResponse.data.status).toBe("in_progress");
-    expect(statusResponse.data.bytesUploaded).toBe(2);
-    expect(statusResponse.data.partsUploaded).toBe(1);
+    assert(statusResponse.data.status === "in_progress");
+    assert(statusResponse.data.bytesUploaded === 2);
+    assert(statusResponse.data.partsUploaded === 1);
   });
 
   it("POST /uploads/:uploadId/abort does not create a file", async () => {
@@ -509,7 +509,7 @@ describe("upload routes", () => {
     );
 
     assert(abortResponse.type === "json");
-    expect(abortResponse.data.ok).toBe(true);
+    assert(abortResponse.data.ok);
 
     const statusResponse = asJsonResponse<{ status: string }>(
       await fragment.callRoute("GET", "/uploads/:uploadId", {
@@ -518,7 +518,7 @@ describe("upload routes", () => {
     );
 
     assert(statusResponse.type === "json");
-    expect(statusResponse.data.status).toBe("aborted");
+    assert(statusResponse.data.status === "aborted");
 
     const fileResponse = asErrorResponse(
       await fragment.callRoute("GET", "/files/by-key", {
@@ -527,8 +527,8 @@ describe("upload routes", () => {
     );
 
     assert(fileResponse.type === "error");
-    expect(fileResponse.status).toBe(404);
-    expect(fileResponse.error.code).toBe("FILE_NOT_FOUND");
+    assert(fileResponse.status === 404);
+    assert(fileResponse.error.code === "FILE_NOT_FOUND");
   });
 
   it("allows retry after failed proxy upload", async () => {
@@ -569,7 +569,7 @@ describe("upload routes", () => {
     );
 
     assert(firstUpload.type === "error");
-    expect(firstUpload.status).toBe(502);
+    assert(firstUpload.status === 502);
 
     storage.writeStream = originalWriteStream;
 
@@ -603,7 +603,7 @@ describe("upload routes", () => {
     );
 
     assert(retryUpload.type === "json");
-    expect(retryUpload.data.status).toBe("ready");
+    assert(retryUpload.data.status === "ready");
   });
 });
 
@@ -784,8 +784,8 @@ describe("upload route provider mismatch guards", () => {
       }),
     );
 
-    expect(response.status).toBe(409);
-    expect(response.error.code).toBe("PROVIDER_MISMATCH");
+    assert(response.status === 409);
+    assert(response.error.code === "PROVIDER_MISMATCH");
     expect(secondaryStorage.getPartUploadUrls).not.toHaveBeenCalled();
   });
 
@@ -814,8 +814,8 @@ describe("upload route provider mismatch guards", () => {
       }),
     );
 
-    expect(response.status).toBe(409);
-    expect(response.error.code).toBe("PROVIDER_MISMATCH");
+    assert(response.status === 409);
+    assert(response.error.code === "PROVIDER_MISMATCH");
     expect(secondaryStorage.completeMultipartUpload).not.toHaveBeenCalled();
     expect(secondaryStorage.finalizeUpload).not.toHaveBeenCalled();
   });
@@ -839,8 +839,8 @@ describe("upload route provider mismatch guards", () => {
       }),
     );
 
-    expect(response.status).toBe(409);
-    expect(response.error.code).toBe("PROVIDER_MISMATCH");
+    assert(response.status === 409);
+    assert(response.error.code === "PROVIDER_MISMATCH");
     expect(secondaryStorage.abortMultipartUpload).not.toHaveBeenCalled();
   });
 
@@ -871,8 +871,8 @@ describe("upload route provider mismatch guards", () => {
       }),
     );
 
-    expect(response.status).toBe(409);
-    expect(response.error.code).toBe("PROVIDER_MISMATCH");
+    assert(response.status === 409);
+    assert(response.error.code === "PROVIDER_MISMATCH");
     expect(secondaryStorage.writeStream).not.toHaveBeenCalled();
   });
 
@@ -896,8 +896,8 @@ describe("upload route provider mismatch guards", () => {
       }),
     );
 
-    expect(response.status).toBe(409);
-    expect(response.error.code).toBe("PROVIDER_MISMATCH");
+    assert(response.status === 409);
+    assert(response.error.code === "PROVIDER_MISMATCH");
     expect(secondaryStorage.finalizeUpload).not.toHaveBeenCalled();
   });
 });

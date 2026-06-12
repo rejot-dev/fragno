@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi, assert } from "vitest";
 
 const { getAuthMeMock, getSandboxManagerMock } = vi.hoisted(() => ({
   getAuthMeMock: vi.fn(),
@@ -18,10 +18,11 @@ import { toCfSandboxPath } from "./cf-sandbox-path";
 
 describe("CF Sandbox path builder", () => {
   test("builds sandbox links without an explicit organization scope", () => {
-    expect(toCfSandboxPath({})).toBe("/backoffice/environments/cf-sandbox");
-    expect(toCfSandboxPath({ view: "new" })).toBe("/backoffice/environments/cf-sandbox?view=new");
-    expect(toCfSandboxPath({ view: "detail", sandboxId: "sandbox-1" })).toBe(
-      "/backoffice/environments/cf-sandbox?sandbox=sandbox-1",
+    assert(toCfSandboxPath({}) === "/backoffice/environments/cf-sandbox");
+    assert(toCfSandboxPath({ view: "new" }) === "/backoffice/environments/cf-sandbox?view=new");
+    assert(
+      toCfSandboxPath({ view: "detail", sandboxId: "sandbox-1" }) ===
+        "/backoffice/environments/cf-sandbox?sandbox=sandbox-1",
     );
   });
 });
@@ -58,8 +59,9 @@ describe("CF Sandbox action", () => {
     );
     expect(manager.getHandle).not.toHaveBeenCalled();
     expect(response).toBeInstanceOf(Response);
-    expect((response as Response).headers.get("Location")).toBe(
-      "/backoffice/environments/cf-sandbox?sandbox=sandbox-1",
+    assert(
+      (response as Response).headers.get("Location") ===
+        "/backoffice/environments/cf-sandbox?sandbox=sandbox-1",
     );
   });
 });

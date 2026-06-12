@@ -46,7 +46,7 @@ describe("Mailing List Fragment", async () => {
       expect(fragment.$internal).toBeDefined();
       expect(fragment.$internal.deps).toBeDefined();
       expect(fragment.$internal.deps.schema).toBe(mailingListSchema);
-      expect(fragment.$internal.deps.namespace).toBe("mailing_list");
+      assert(fragment.$internal.deps.namespace === "mailing_list");
       expect(fragment.$internal.deps.createUnitOfWork).toBeDefined();
       expect(fragment.$internal.options).toBeDefined();
     });
@@ -185,7 +185,7 @@ describe("Mailing List Fragment", async () => {
         })();
 
         expect(result).toHaveLength(1);
-        expect(result[0].email).toBe("test@example.com");
+        assert(result[0].email === "test@example.com");
       });
     });
 

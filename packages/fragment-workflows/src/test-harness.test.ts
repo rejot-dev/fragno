@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
@@ -74,13 +74,13 @@ describe("createWorkflowsTestHarness", () => {
     await harness.runUntilIdle(buildPayload(sleepInstance, "create"));
 
     let sleepStatus = await harness.getStatus("sleep", sleepId);
-    expect(sleepStatus.status).toBe("waiting");
+    assert(sleepStatus.status === "waiting");
 
     harness.clock.advanceBy("1 hour");
     await harness.runUntilIdle(buildPayload(sleepInstance, "wake"));
 
     sleepStatus = await harness.getStatus("sleep", sleepId);
-    expect(sleepStatus.status).toBe("complete");
+    assert(sleepStatus.status === "complete");
 
     const eventId = await harness.createInstance("events");
     const [eventInstance] = (
@@ -100,13 +100,13 @@ describe("createWorkflowsTestHarness", () => {
     await harness.runUntilIdle(buildPayload(eventInstance, "create"));
 
     let eventStatus = await harness.getStatus("events", eventId);
-    expect(eventStatus.status).toBe("waiting");
+    assert(eventStatus.status === "waiting");
 
     await harness.sendEvent("events", eventId, { type: "ready", payload: { ok: true } });
     await harness.runUntilIdle(buildPayload(eventInstance, "event"));
 
     eventStatus = await harness.getStatus("events", eventId);
-    expect(eventStatus.status).toBe("complete");
+    assert(eventStatus.status === "complete");
   });
 
   test("supports null database namespace when scheduling wake hooks", async () => {
@@ -141,13 +141,13 @@ describe("createWorkflowsTestHarness", () => {
     await harness.runUntilIdle(buildPayload(sleepInstance, "create"));
 
     let sleepStatus = await harness.getStatus("sleep", sleepId);
-    expect(sleepStatus.status).toBe("waiting");
+    assert(sleepStatus.status === "waiting");
 
     const processed = await harness.tick(buildPayload(sleepInstance, "wake"));
     expect(processed).toBe(1);
 
     sleepStatus = await harness.getStatus("sleep", sleepId);
-    expect(sleepStatus.status).toBe("waiting");
+    assert(sleepStatus.status === "waiting");
   });
 
   test("schedules retries relative to failure time", async () => {
@@ -215,7 +215,7 @@ describe("createWorkflowsTestHarness", () => {
         .find("workflow_step", (b) => b.whereIndex("primary"))
         .executeRetrieve()
     )[0];
-    expect(step?.status).toBe("waiting");
+    assert(step?.status === "waiting");
     expect(step?.nextRetryAt).toBeInstanceOf(Date);
     expect(step?.nextRetryAt?.getTime()).toBe(nowMs + 60_000);
   });

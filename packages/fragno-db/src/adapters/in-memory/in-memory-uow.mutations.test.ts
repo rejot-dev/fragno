@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { UnitOfWork } from "../../query/unit-of-work/unit-of-work";
 import type { AnySchema } from "../../schema/create";
@@ -55,17 +55,17 @@ describe("in-memory uow mutations", () => {
     const firstCreate = createUow();
     firstCreate.create("users", { id: "user-1", name: "Ari" });
     const firstResult = await firstCreate.executeMutations();
-    expect(firstResult.success).toBe(true);
+    assert(firstResult.success);
 
     const secondCreate = createUow();
     secondCreate.create("users", { id: "user-2", name: "Bea" });
     const secondResult = await secondCreate.executeMutations();
-    expect(secondResult.success).toBe(true);
+    assert(secondResult.success);
 
     const [firstId, secondId] = [firstCreate.getCreatedIds()[0]!, secondCreate.getCreatedIds()[0]!];
 
-    expect(firstId.internalId).toBe(10n);
-    expect(secondId.internalId).toBe(11n);
+    assert(firstId.internalId === 10n);
+    assert(secondId.internalId === 11n);
   });
 
   it("skips foreign key and unique constraints when enforceConstraints is false", async () => {
@@ -79,12 +79,12 @@ describe("in-memory uow mutations", () => {
     const createUser = createUow();
     createUser.create("users", { id: "dup-id", name: "First" });
     const firstResult = await createUser.executeMutations();
-    expect(firstResult.success).toBe(true);
+    assert(firstResult.success);
 
     const createUserDup = createUow();
     createUserDup.create("users", { id: "dup-id", name: "Second" });
     const secondResult = await createUserDup.executeMutations();
-    expect(secondResult.success).toBe(true);
+    assert(secondResult.success);
 
     const findDupes = createUow();
     findDupes.find("users", (b) => b.whereIndex("primary"));
@@ -98,18 +98,18 @@ describe("in-memory uow mutations", () => {
       authorId: "missing-user",
     });
     const createPostResult = await createPost.executeMutations();
-    expect(createPostResult.success).toBe(true);
+    assert(createPostResult.success);
 
     const createdPostId = createPost.getCreatedIds()[0]!;
     const updatePost = createFkUow();
     updatePost.update("posts", createdPostId, (b) => b.set({ authorId: "still-missing" }));
     const updatePostResult = await updatePost.executeMutations();
-    expect(updatePostResult.success).toBe(true);
+    assert(updatePostResult.success);
 
     const createUserForDelete = createFkUow();
     createUserForDelete.create("users", { id: "user-3", name: "Sam" });
     const createUserForDeleteResult = await createUserForDelete.executeMutations();
-    expect(createUserForDeleteResult.success).toBe(true);
+    assert(createUserForDeleteResult.success);
 
     const userId = createUserForDelete.getCreatedIds()[0]!;
     const createPostForDelete = createFkUow();
@@ -119,11 +119,11 @@ describe("in-memory uow mutations", () => {
       authorId: userId,
     });
     const createPostForDeleteResult = await createPostForDelete.executeMutations();
-    expect(createPostForDeleteResult.success).toBe(true);
+    assert(createPostForDeleteResult.success);
 
     const deleteUser = createFkUow();
     deleteUser.delete("users", userId, (b) => b.check());
     const deleteResult = await deleteUser.executeMutations();
-    expect(deleteResult.success).toBe(true);
+    assert(deleteResult.success);
   });
 });

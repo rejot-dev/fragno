@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test, assert } from "vitest";
 
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
@@ -73,12 +73,12 @@ export function describeStorageAdapterContract(
       expect(result.expiresAt).toBeInstanceOf(Date);
 
       if (result.strategy === "proxy") {
-        expect(adapter.capabilities.proxyUpload).toBe(true);
+        assert(adapter.capabilities.proxyUpload);
       } else if (result.strategy === "direct-single") {
-        expect(adapter.capabilities.directUpload).toBe(true);
+        assert(adapter.capabilities.directUpload);
       } else if (result.strategy === "direct-multipart") {
-        expect(adapter.capabilities.directUpload).toBe(true);
-        expect(adapter.capabilities.multipartUpload).toBe(true);
+        assert(adapter.capabilities.directUpload);
+        assert(adapter.capabilities.multipartUpload);
       }
     });
 
@@ -191,7 +191,7 @@ describeStorageAdapterContract("Filesystem", async () => {
       await fs.rm(rootDir, { recursive: true, force: true });
     },
     assertDownloadResponse: (response) => {
-      expect(response.headers.get("Content-Type")).toBe("application/octet-stream");
+      assert(response.headers.get("Content-Type") === "application/octet-stream");
       expect(response.headers.get("Content-Length")).toBeTruthy();
     },
   };
@@ -231,7 +231,7 @@ describeStorageAdapterContract("Database", async () => {
       await build.test.cleanup();
     },
     assertDownloadResponse: (response) => {
-      expect(response.headers.get("Content-Type")).toBe("text/plain");
+      assert(response.headers.get("Content-Type") === "text/plain");
       expect(response.headers.get("Content-Length")).toBeTruthy();
     },
   };
@@ -251,7 +251,7 @@ describe("filesystem adapter storage keys", () => {
         fileKey: "users/12/avatar",
       });
 
-      expect(storageKey.startsWith("files/uploads/")).toBe(true);
+      assert(storageKey.startsWith("files/uploads/"));
       expect(storageKey).toBe("files/uploads/r2/users/12/avatar");
     } finally {
       await fs.rm(rootDir, { recursive: true, force: true });

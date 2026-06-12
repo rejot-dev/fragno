@@ -1,4 +1,4 @@
-import { test, expect, describe, vi } from "vitest";
+import { test, expect, describe, vi, assert } from "vitest";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
@@ -53,7 +53,7 @@ describe("RequestOutputContext", () => {
       const response = ctx.empty();
 
       expect(response).toBeInstanceOf(Response);
-      expect(response.status).toBe(201);
+      assert(response.status === 201);
 
       const body = await response.text();
       expect(body).toBe("");
@@ -63,7 +63,7 @@ describe("RequestOutputContext", () => {
       const ctx = new RequestOutputContext();
       const response = ctx.empty(204);
 
-      expect(response.status).toBe(204);
+      assert(response.status === 204);
 
       const body = await response.text();
       expect(body).toBe("");
@@ -74,8 +74,8 @@ describe("RequestOutputContext", () => {
       const headers = { "X-Custom": "test-value" };
       const response = ctx.empty(undefined, headers);
 
-      expect(response.status).toBe(201);
-      expect(response.headers.get("X-Custom")).toBe("test-value");
+      assert(response.status === 201);
+      assert(response.headers.get("X-Custom") === "test-value");
 
       const body = await response.text();
       expect(body).toBe("");
@@ -86,8 +86,8 @@ describe("RequestOutputContext", () => {
       const headers = { "X-Custom": "test-value" };
       const response = ctx.empty(204, headers);
 
-      expect(response.status).toBe(204);
-      expect(response.headers.get("X-Custom")).toBe("test-value");
+      assert(response.status === 204);
+      assert(response.headers.get("X-Custom") === "test-value");
 
       const body = await response.text();
       expect(body).toBe("");
@@ -102,8 +102,8 @@ describe("RequestOutputContext", () => {
       };
       const response = ctx.empty(init);
 
-      expect(response.status).toBe(204);
-      expect(response.headers.get("X-Custom")).toBe("test-value");
+      assert(response.status === 204);
+      assert(response.headers.get("X-Custom") === "test-value");
 
       const body = await response.text();
       expect(body).toBe("");
@@ -121,10 +121,10 @@ describe("RequestOutputContext", () => {
       };
       const response = ctx.empty(init);
 
-      expect(response.status).toBe(204);
-      expect(response.headers.get("X-Custom")).toBe("test-value");
-      expect(response.headers.get("X-Another")).toBe("another-value");
-      expect(response.headers.get("Content-Type")).toBe("application/json");
+      assert(response.status === 204);
+      assert(response.headers.get("X-Custom") === "test-value");
+      assert(response.headers.get("X-Another") === "another-value");
+      assert(response.headers.get("Content-Type") === "application/json");
     });
   });
 
@@ -135,7 +135,7 @@ describe("RequestOutputContext", () => {
       const response = ctx.json(data);
 
       expect(response).toBeInstanceOf(Response);
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
 
       const body = await response.json();
       expect(body).toEqual(data);
@@ -146,7 +146,7 @@ describe("RequestOutputContext", () => {
       const data = { message: "created" };
       const response = ctx.json(data, 201);
 
-      expect(response.status).toBe(201);
+      assert(response.status === 201);
 
       const body = await response.json();
       expect(body).toEqual(data);
@@ -156,7 +156,7 @@ describe("RequestOutputContext", () => {
       const ctx = new RequestOutputContext();
       const data = { message: "test" };
       const response = ctx.json(data);
-      expect(response.headers.get("content-type")).toBe("application/json");
+      assert(response.headers.get("content-type") === "application/json");
     });
 
     test("Should return JSON response with custom headers via third parameter", async () => {
@@ -165,8 +165,8 @@ describe("RequestOutputContext", () => {
       const headers = { "X-Custom": "test-value" };
       const response = ctx.json(data, undefined, headers);
 
-      expect(response.status).toBe(200);
-      expect(response.headers.get("X-Custom")).toBe("test-value");
+      assert(response.status === 200);
+      assert(response.headers.get("X-Custom") === "test-value");
 
       const body = await response.json();
       expect(body).toEqual(data);
@@ -178,8 +178,8 @@ describe("RequestOutputContext", () => {
       const headers = { "X-Custom": "test-value" };
       const response = ctx.json(data, 201, headers);
 
-      expect(response.status).toBe(201);
-      expect(response.headers.get("X-Custom")).toBe("test-value");
+      assert(response.status === 201);
+      assert(response.headers.get("X-Custom") === "test-value");
 
       const body = await response.json();
       expect(body).toEqual(data);
@@ -195,8 +195,8 @@ describe("RequestOutputContext", () => {
       };
       const response = ctx.json(data, init);
 
-      expect(response.status).toBe(201);
-      expect(response.headers.get("X-Custom")).toBe("test-value");
+      assert(response.status === 201);
+      assert(response.headers.get("X-Custom") === "test-value");
 
       const body = await response.json();
       expect(body).toEqual(data);
@@ -212,9 +212,9 @@ describe("RequestOutputContext", () => {
       const headers = { "X-Param": "param-value" };
       const response = ctx.json(data, init, headers);
 
-      expect(response.status).toBe(201);
-      expect(response.headers.get("X-Init")).toBe("init-value");
-      expect(response.headers.get("X-Param")).toBe("param-value");
+      assert(response.status === 201);
+      assert(response.headers.get("X-Init") === "init-value");
+      assert(response.headers.get("X-Param") === "param-value");
 
       const body = await response.json();
       expect(body).toEqual(data);
@@ -230,9 +230,9 @@ describe("RequestOutputContext", () => {
       const headers = { "X-Custom": "param-value" };
       const response = ctx.json(data, init, headers);
 
-      expect(response.status).toBe(201);
+      assert(response.status === 201);
       // Headers parameter should override ResponseInit headers
-      expect(response.headers.get("X-Custom")).toBe("param-value");
+      assert(response.headers.get("X-Custom") === "param-value");
 
       const body = await response.json();
       expect(body).toEqual(data);
@@ -242,7 +242,7 @@ describe("RequestOutputContext", () => {
       const ctx = new RequestOutputContext();
       const response = ctx.json(null);
 
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
 
       const body = await response.json();
       expect(body).toBe(null);
@@ -253,7 +253,7 @@ describe("RequestOutputContext", () => {
       const data = [1, 2, 3];
       const response = ctx.json(data);
 
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
 
       const body = await response.json();
       expect(body).toEqual(data);
@@ -263,7 +263,7 @@ describe("RequestOutputContext", () => {
       const ctx = new RequestOutputContext();
       const response = ctx.json("test string");
 
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
 
       const body = await response.json();
       expect(body).toBe("test string");
@@ -274,7 +274,7 @@ describe("RequestOutputContext", () => {
       const data = "test string";
       const response = ctx.json(data);
 
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
 
       const body = await response.json();
       expect(body).toBe(data);
@@ -293,7 +293,7 @@ describe("RequestOutputContext", () => {
     test("Should have chunked transfer encoding by default", async () => {
       const ctx = new RequestOutputContext();
       const response = ctx.jsonStream(() => {});
-      expect(response.headers.get("transfer-encoding")).toBe("chunked");
+      assert(response.headers.get("transfer-encoding") === "chunked");
     });
 
     test("Should handle callback that writes data", async () => {
@@ -338,7 +338,7 @@ describe("RequestOutputContext", () => {
         // Stream might be closed
       }
 
-      expect(chunks.join("")).toBe("Hello, World!");
+      assert(chunks.join("") === "Hello, World!");
 
       reader.releaseLock();
     });
@@ -367,7 +367,7 @@ describe("RequestOutputContext", () => {
         // Stream might be closed
       }
 
-      expect(chunks.join("")).toBe("Line 1\nLine 2\n");
+      assert(chunks.join("") === "Line 1\nLine 2\n");
 
       reader.releaseLock();
     });
@@ -475,11 +475,11 @@ describe("RequestOutputContext", () => {
       // Wait for setup
       await new Promise((resolve) => setTimeout(resolve, 1));
 
-      expect(streamRef!.aborted).toBe(false);
+      assert(!streamRef!.aborted);
 
       streamRef!.abort();
 
-      expect(streamRef!.aborted).toBe(true);
+      assert(streamRef!.aborted);
     });
 
     test("Should close stream after callback execution", async () => {
@@ -493,7 +493,7 @@ describe("RequestOutputContext", () => {
       // Wait for execution and cleanup
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      expect(streamRef!.closed).toBe(true);
+      assert(streamRef!.closed);
     });
 
     test("Should handle Uint8Array data", async () => {
@@ -518,7 +518,7 @@ describe("RequestOutputContext", () => {
         headers: { "content-type": "application/octet-stream" },
       });
 
-      expect(response.headers.get("content-type")).toBe("application/octet-stream");
+      assert(response.headers.get("content-type") === "application/octet-stream");
     });
   });
 
@@ -530,7 +530,7 @@ describe("RequestOutputContext", () => {
       // With schema, the json method should expect the inferred type
       const response = ctx.json("test string");
 
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
 
       const body = await response.json();
       expect(body).toBe("test string");
@@ -545,10 +545,10 @@ describe("RequestOutputContext", () => {
       const response3 = ctx.json(123);
       const response4 = ctx.json([1, 2, 3]);
 
-      expect(response1.status).toBe(200);
-      expect(response2.status).toBe(200);
-      expect(response3.status).toBe(200);
-      expect(response4.status).toBe(200);
+      assert(response1.status === 200);
+      assert(response2.status === 200);
+      assert(response3.status === 200);
+      assert(response4.status === 200);
     });
   });
 
@@ -557,7 +557,7 @@ describe("RequestOutputContext", () => {
       const ctx = new RequestOutputContext();
       const response = ctx.json({});
 
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
 
       const body = await response.json();
       expect(body).toEqual({});
@@ -578,7 +578,7 @@ describe("RequestOutputContext", () => {
       };
       const response = ctx.json(data);
 
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
 
       const body = await response.json();
       expect(body).toEqual(data);
@@ -596,9 +596,9 @@ describe("RequestOutputContext", () => {
       };
       const response = ctx.json({ message: "test" }, init);
 
-      expect(response.status).toBe(201);
-      expect(response.headers.get("X-Custom")).toBe("test-value");
-      expect(response.headers.get("Content-Type")).toBe("application/json");
+      assert(response.status === 201);
+      assert(response.headers.get("X-Custom") === "test-value");
+      assert(response.headers.get("Content-Type") === "application/json");
     });
 
     test("Should handle Headers object merging", async () => {
@@ -613,9 +613,9 @@ describe("RequestOutputContext", () => {
       const paramHeaders = { "X-Param": "param-value" };
       const response = ctx.json({ message: "test" }, init, paramHeaders);
 
-      expect(response.status).toBe(201);
-      expect(response.headers.get("X-Init")).toBe("init-value");
-      expect(response.headers.get("X-Param")).toBe("param-value");
+      assert(response.status === 201);
+      assert(response.headers.get("X-Init") === "init-value");
+      assert(response.headers.get("X-Param") === "param-value");
     });
 
     test("Should handle stream with immediate close", async () => {

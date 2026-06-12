@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import {
   column,
@@ -468,12 +468,12 @@ describe("Lofi scenario DSL", () => {
         ),
         clientSteps.assert((ctx) => {
           const response = ctx.lastSubmit["a"];
-          expect(response?.status).toBe("conflict");
+          assert(response?.status === "conflict");
           if (response && response.status === "conflict") {
-            expect(response.reason).toBe("write_congestion");
+            assert(response.reason === "write_congestion");
           }
           const user = ctx.vars.userAFinal;
-          expect(user?.name).toBe("Aria");
+          assert(user?.name === "Aria");
         }),
       ],
     });
@@ -517,7 +517,7 @@ describe("Lofi scenario DSL", () => {
         ),
         steps.assert((ctx) => {
           const user = ctx.vars.user;
-          expect(user?.id.version).toBe(2);
+          assert(user?.id.version === 2);
         }),
       ],
     });
@@ -574,8 +574,8 @@ describe("Lofi scenario DSL", () => {
         steps.assert((ctx) => {
           const posts = ctx.vars.posts;
           expect(posts).toHaveLength(1);
-          expect(posts?.[0]?.title).toBe("Updated");
-          expect(posts?.[0]?.author?.name).toBe("Ada");
+          assert(posts?.[0]?.title === "Updated");
+          assert(posts?.[0]?.author?.name === "Ada");
         }),
       ],
     });
@@ -615,9 +615,9 @@ describe("Lofi scenario DSL", () => {
         ),
         steps.assert((ctx) => {
           const response = ctx.lastSubmit["a"];
-          expect(response?.status).toBe("applied");
+          assert(response?.status === "applied");
           const user = ctx.vars.user;
-          expect(user?.name).toBe("Ada");
+          assert(user?.name === "Ada");
         }),
       ],
     });
@@ -683,8 +683,8 @@ describe("Lofi scenario DSL", () => {
         authSteps.assert((ctx) => {
           const posts = ctx.vars.posts;
           expect(posts).toHaveLength(1);
-          expect(posts?.[0]?.title).toBe("Hello");
-          expect(posts?.[0]?.author?.name).toBe("Ada");
+          assert(posts?.[0]?.title === "Hello");
+          assert(posts?.[0]?.author?.name === "Ada");
         }),
       ],
     });
@@ -780,14 +780,14 @@ describe("Lofi scenario DSL", () => {
           const before = ctx.vars.postsBeforeSubmit;
           const after = ctx.vars.postsAfterSubmit;
           expect(before).toHaveLength(1);
-          expect(before?.[0]?.title).toBe("Denied");
-          expect(before?.[0]?.author?.name).toBe("Ada");
-          expect(ctx.vars.basePostBefore?.title).toBe("Hello");
-          expect(ctx.lastSubmit["b"]?.status).toBe("applied");
+          assert(before?.[0]?.title === "Denied");
+          assert(before?.[0]?.author?.name === "Ada");
+          assert(ctx.vars.basePostBefore?.title === "Hello");
+          assert(ctx.lastSubmit["b"]?.status === "applied");
           expect(after).toHaveLength(1);
-          expect(after?.[0]?.title).toBe("Hello");
-          expect(after?.[0]?.author?.name).toBe("Ada");
-          expect(ctx.vars.basePostAfter?.title).toBe("Hello");
+          assert(after?.[0]?.title === "Hello");
+          assert(after?.[0]?.author?.name === "Ada");
+          assert(ctx.vars.basePostAfter?.title === "Hello");
         }),
       ],
     });
@@ -845,9 +845,9 @@ describe("Lofi scenario DSL", () => {
           const stackedUser = ctx.vars.stackedUser;
           const baseUser = ctx.vars.baseUser;
           const overlayUser = ctx.vars.overlayUser;
-          expect(stackedUser?.name).toBe("Ada");
+          assert(stackedUser?.name === "Ada");
           expect(baseUser).toBeNull();
-          expect(overlayUser?.name).toBe("Ada");
+          assert(overlayUser?.name === "Ada");
           const client = ctx.clients["a"];
           expect(client.adapters.stacked).toBeInstanceOf(StackedLofiAdapter);
           expect(client.stores.overlay).toBeDefined();
@@ -913,9 +913,9 @@ describe("Lofi scenario DSL", () => {
           const baseUser = ctx.vars.baseUser;
           const overlayUser = ctx.vars.overlayUser;
           const stackedUser = ctx.vars.stackedUser;
-          expect(baseUser?.name).toBe("Ada");
+          assert(baseUser?.name === "Ada");
           expect(overlayUser).toBeNull();
-          expect(stackedUser?.name).toBe("Ada");
+          assert(stackedUser?.name === "Ada");
         }),
       ],
     });
@@ -981,10 +981,10 @@ describe("Lofi scenario DSL", () => {
           "baseUser",
         ),
         steps.assert((ctx) => {
-          expect(ctx.vars.stackedUser?.name).toBe("Ada");
+          assert(ctx.vars.stackedUser?.name === "Ada");
           expect(ctx.vars.overlayUser).toBeNull();
-          expect(ctx.vars.baseUser?.name).toBe("Ada");
-          expect(ctx.vars.userB?.name).toBe("Ada");
+          assert(ctx.vars.baseUser?.name === "Ada");
+          assert(ctx.vars.userB?.name === "Ada");
         }),
       ],
     });
@@ -1048,9 +1048,9 @@ describe("Lofi scenario DSL", () => {
           const baseUser = ctx.vars.baseUser;
           const overlayUser = ctx.vars.overlayUser;
           const stackedUser = ctx.vars.stackedUser;
-          expect(baseUser?.name).toBe("Ada");
-          expect(overlayUser?.name).toBe("Bea");
-          expect(stackedUser?.name).toBe("Bea");
+          assert(baseUser?.name === "Ada");
+          assert(overlayUser?.name === "Bea");
+          assert(stackedUser?.name === "Bea");
 
           const client = ctx.clients["a"];
           const baseStore = client.stores.base;
@@ -1059,8 +1059,8 @@ describe("Lofi scenario DSL", () => {
           expect(overlayStore).toBeDefined();
           const baseRow = baseStore?.getRow(appSchema.name, "users", "user-1");
           const overlayRow = overlayStore?.getRow(appSchema.name, "users", "user-1");
-          expect(baseRow?.data["name"]).toBe("Ada");
-          expect(overlayRow?.data["name"]).toBe("Bea");
+          assert(baseRow?.data["name"] === "Ada");
+          assert(overlayRow?.data["name"] === "Bea");
         }),
       ],
     });
@@ -1134,11 +1134,11 @@ describe("Lofi scenario DSL", () => {
           "overlayUser",
         ),
         clientSteps.assert((ctx) => {
-          expect(ctx.lastSubmit["a"]?.status).toBe("applied");
-          expect(ctx.lastSubmit["b"]?.status).toBe("conflict");
-          expect(ctx.vars.userAFinal?.name).toBe("Aria");
-          expect(ctx.vars.baseUser?.name).toBe("Aria");
-          expect(ctx.vars.overlayUser?.name).toBe("Bea");
+          assert(ctx.lastSubmit["a"]?.status === "applied");
+          assert(ctx.lastSubmit["b"]?.status === "conflict");
+          assert(ctx.vars.userAFinal?.name === "Aria");
+          assert(ctx.vars.baseUser?.name === "Aria");
+          assert(ctx.vars.overlayUser?.name === "Bea");
         }),
       ],
     });
@@ -1284,9 +1284,9 @@ describe("Lofi scenario DSL", () => {
           "overlayUser",
         ),
         clientSteps.assert((ctx) => {
-          expect(ctx.lastSubmit["a"]?.status).toBe("conflict");
-          expect(ctx.vars.baseUser?.name).toBe("Bea");
-          expect(ctx.vars.overlayUser?.name).toBe("Dana");
+          assert(ctx.lastSubmit["a"]?.status === "conflict");
+          assert(ctx.vars.baseUser?.name === "Bea");
+          assert(ctx.vars.overlayUser?.name === "Dana");
         }),
       ],
     });
@@ -1346,8 +1346,8 @@ describe("Lofi scenario DSL", () => {
           "baseUser",
         ),
         clientSteps.assert((ctx) => {
-          expect(ctx.lastSubmit["a"]?.status).toBe("conflict");
-          expect(ctx.vars.baseUser?.name).toBe("Bea");
+          assert(ctx.lastSubmit["a"]?.status === "conflict");
+          assert(ctx.vars.baseUser?.name === "Bea");
         }),
       ],
     });
@@ -1451,11 +1451,11 @@ describe("Lofi scenario DSL", () => {
           "overlayPost",
         ),
         clientSteps.assert((ctx) => {
-          expect(ctx.lastSubmit["a"]?.status).toBe("conflict");
-          expect(ctx.vars.baseUser?.name).toBe("Bea");
-          expect(ctx.vars.basePost?.title).toBe("Hello");
-          expect(ctx.vars.overlayUser?.name).toBe("Cora");
-          expect(ctx.vars.overlayPost?.title).toBe("Updated");
+          assert(ctx.lastSubmit["a"]?.status === "conflict");
+          assert(ctx.vars.baseUser?.name === "Bea");
+          assert(ctx.vars.basePost?.title === "Hello");
+          assert(ctx.vars.overlayUser?.name === "Cora");
+          assert(ctx.vars.overlayPost?.title === "Updated");
         }),
       ],
     });
@@ -1521,9 +1521,9 @@ describe("Lofi scenario DSL", () => {
         steps.assert((ctx) => {
           const status = ctx.lastSubmit["b"]?.status;
           if (status === "applied") {
-            expect(ctx.vars.userFinal?.name).toBe("Bea");
+            assert(ctx.vars.userFinal?.name === "Bea");
           } else {
-            expect(ctx.vars.userFinal?.name).toBe("Ada");
+            assert(ctx.vars.userFinal?.name === "Ada");
           }
         }),
       ],
@@ -1570,7 +1570,7 @@ describe("Lofi scenario DSL", () => {
           "retryUser",
         ),
         steps.assert((ctx) => {
-          expect(ctx.vars.retryUser?.name).toBe("Ada");
+          assert(ctx.vars.retryUser?.name === "Ada");
           expect(ctx.vars.retryUser?.id.version).toBe(ctx.vars.userA?.id.version);
         }),
       ],
@@ -1647,7 +1647,7 @@ describe("Lofi scenario DSL", () => {
           "overlayUser",
         ),
         steps.assert((ctx) => {
-          expect(ctx.vars.persistedUser?.name).toBe("Ada");
+          assert(ctx.vars.persistedUser?.name === "Ada");
           expect(ctx.vars.overlayUser).toBeNull();
         }),
       ],
@@ -1758,7 +1758,7 @@ describe("Lofi scenario DSL", () => {
           "userFinal",
         ),
         steps.assert((ctx) => {
-          expect(ctx.vars.userFinal?.name).toBe("Bea");
+          assert(ctx.vars.userFinal?.name === "Bea");
         }),
       ],
     });

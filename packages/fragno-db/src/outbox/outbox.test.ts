@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { KyselyPGlite } from "kysely-pglite";
 import { SQLocalKysely } from "sqlocal/kysely";
@@ -232,7 +232,7 @@ describe("Fragno DB Outbox", () => {
 
     const entries = await listOutbox(internalFragment);
     expect(entries).toHaveLength(2);
-    expect(entries[0].versionstamp < entries[1].versionstamp).toBe(true);
+    assert(entries[0].versionstamp < entries[1].versionstamp);
 
     const filtered = await listOutbox(internalFragment, {
       afterVersionstamp: entries[0].versionstamp,
@@ -242,7 +242,7 @@ describe("Fragno DB Outbox", () => {
     expect(filtered[0].versionstamp).toBe(entries[1].versionstamp);
 
     const payload = superjson.deserialize(entries[1].payload as SuperJSONResult) as OutboxPayload;
-    expect(payload.version).toBe(1);
+    assert(payload.version === 1);
     expect(payload.mutations).toHaveLength(1);
     const [mutation] = payload.mutations;
     if (mutation.op !== "create") {
@@ -332,7 +332,7 @@ describe("Fragno DB Outbox", () => {
 
     const entries = await listOutbox(internalFragment);
     expect(entries.map((entry) => entry.uowId)).toEqual(completionOrder);
-    expect(entries[0].versionstamp < entries[1].versionstamp).toBe(true);
+    assert(entries[0].versionstamp < entries[1].versionstamp);
 
     await cleanup();
   });

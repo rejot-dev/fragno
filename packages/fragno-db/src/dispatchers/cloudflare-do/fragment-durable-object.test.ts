@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import type { HookNotifyContext } from "../../hooks/hooks";
 import type { AnyFragnoInstantiatedDatabaseFragment } from "../../mod";
@@ -202,8 +202,8 @@ describe("createFragmentDurableObjectHost", () => {
     );
     const piResponse = await host.fetch(runtime, new Request("https://example.com/api/pi"));
 
-    expect(workflowsResponse.status).toBe(200);
-    expect(piResponse.status).toBe(200);
+    assert(workflowsResponse.status === 200);
+    assert(piResponse.status === 200);
     expect(calls).toEqual(["workflows", "pi"]);
   });
 
@@ -238,7 +238,7 @@ describe("createFragmentDurableObjectHost", () => {
     const runtime = await host.initialize({});
     const response = await host.fetch(runtime, new Request("https://example.com/api/test"));
 
-    expect(response.status).toBe(200);
+    assert(response.status === 200);
     expect(calls).toEqual(["fallback"]);
   });
 

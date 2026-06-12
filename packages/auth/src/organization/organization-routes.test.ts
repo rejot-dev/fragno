@@ -89,7 +89,7 @@ describe("organization routes", async () => {
     const { credentialToken } = await createUserWithCredential("owner@orgs.test");
 
     const createResponse = await createOrganization(credentialToken, "Acme", "acme");
-    expect(createResponse.organization.slug).toBe("acme");
+    assert(createResponse.organization.slug === "acme");
     expect(createResponse.member.roles).toEqual(["owner"]);
 
     const orgId = createResponse.organization.id;
@@ -125,12 +125,12 @@ describe("organization routes", async () => {
 
     assert(firstPage.type === "json");
     expect(firstPage.data.organizations).toHaveLength(1);
-    expect(firstPage.data.hasNextPage).toBe(true);
+    assert(firstPage.data.hasNextPage);
     expect(firstPage.data.cursor).toBeTruthy();
 
     const missingCredential = await fragment.callRoute("GET", "/organizations", {});
     assert(missingCredential.type === "error");
-    expect(missingCredential.error.code).toBe("credential_invalid");
+    assert(missingCredential.error.code === "credential_invalid");
   });
 
   it("rejects invalid cursors for organization and member listings", async () => {
@@ -163,8 +163,8 @@ describe("organization routes", async () => {
     });
 
     assert(malformedOrganizationsCursor.type === "error");
-    expect(malformedOrganizationsCursor.error.code).toBe("invalid_input");
-    expect(malformedOrganizationsCursor.status).toBe(400);
+    assert(malformedOrganizationsCursor.error.code === "invalid_input");
+    assert(malformedOrganizationsCursor.status === 400);
 
     const addMemberResponse = await addMember(
       ownerCredentialToken,
@@ -200,8 +200,8 @@ describe("organization routes", async () => {
     );
 
     assert(invalidMembersCursor.type === "error");
-    expect(invalidMembersCursor.error.code).toBe("invalid_input");
-    expect(invalidMembersCursor.status).toBe(400);
+    assert(invalidMembersCursor.error.code === "invalid_input");
+    assert(invalidMembersCursor.status === 400);
 
     const invalidOrganizationsCursor = await fragment.callRoute("GET", "/organizations", {
       headers: authHeaders(ownerCredentialToken),
@@ -211,8 +211,8 @@ describe("organization routes", async () => {
     });
 
     assert(invalidOrganizationsCursor.type === "error");
-    expect(invalidOrganizationsCursor.error.code).toBe("invalid_input");
-    expect(invalidOrganizationsCursor.status).toBe(400);
+    assert(invalidOrganizationsCursor.error.code === "invalid_input");
+    assert(invalidOrganizationsCursor.status === 400);
   });
 
   it("invites members and accepts invitations", async () => {
@@ -262,7 +262,7 @@ describe("organization routes", async () => {
     );
 
     assert(acceptResponse.type === "json");
-    expect(acceptResponse.data.invitation.status).toBe("accepted");
+    assert(acceptResponse.data.invitation.status === "accepted");
 
     const membersResponse = await fragment.callRoute(
       "GET",
@@ -332,7 +332,7 @@ describe("organization routes", async () => {
     );
 
     assert(acceptResponse.type === "json");
-    expect(acceptResponse.data.invitation.status).toBe("accepted");
+    assert(acceptResponse.data.invitation.status === "accepted");
 
     const membersResponse = await fragment.callRoute(
       "GET",
@@ -359,7 +359,7 @@ describe("organization routes", async () => {
     const activeBefore = await fragment.callRoute("GET", "/organizations/active", {
       headers: authHeaders(credentialToken),
     });
-    expect(activeBefore.type).toBe("empty");
+    assert(activeBefore.type === "empty");
 
     const createResponse = await createOrganization(credentialToken, "Active Org", "active-org");
     const orgId = createResponse.organization.id;
@@ -370,7 +370,7 @@ describe("organization routes", async () => {
     });
 
     assert(missingMembership.type === "error");
-    expect(missingMembership.error.code).toBe("membership_not_found");
+    assert(missingMembership.error.code === "membership_not_found");
 
     const setActiveResponse = await fragment.callRoute("POST", "/organizations/active", {
       headers: authHeaders(credentialToken),
@@ -402,8 +402,8 @@ describe("organization routes", async () => {
     });
 
     assert(detailResponse.type === "error");
-    expect(detailResponse.error.code).toBe("permission_denied");
-    expect(detailResponse.status).toBe(403);
+    assert(detailResponse.error.code === "permission_denied");
+    assert(detailResponse.status === 403);
   });
 
   it("updates and deletes organizations with permission checks", async () => {
@@ -429,8 +429,8 @@ describe("organization routes", async () => {
     });
 
     assert(deniedUpdate.type === "error");
-    expect(deniedUpdate.error.code).toBe("permission_denied");
-    expect(deniedUpdate.status).toBe(403);
+    assert(deniedUpdate.error.code === "permission_denied");
+    assert(deniedUpdate.status === 403);
 
     const updateResponse = await fragment.callRoute("PATCH", "/organizations/:organizationId", {
       pathParams: { organizationId: created.organization.id },
@@ -439,7 +439,7 @@ describe("organization routes", async () => {
     });
 
     assert(updateResponse.type === "json");
-    expect(updateResponse.data.organization.name).toBe("Updated Org");
+    assert(updateResponse.data.organization.name === "Updated Org");
 
     const deniedDelete = await fragment.callRoute("DELETE", "/organizations/:organizationId", {
       pathParams: { organizationId: created.organization.id },
@@ -447,8 +447,8 @@ describe("organization routes", async () => {
     });
 
     assert(deniedDelete.type === "error");
-    expect(deniedDelete.error.code).toBe("permission_denied");
-    expect(deniedDelete.status).toBe(403);
+    assert(deniedDelete.error.code === "permission_denied");
+    assert(deniedDelete.status === 403);
 
     const deleteResponse = await fragment.callRoute("DELETE", "/organizations/:organizationId", {
       pathParams: { organizationId: created.organization.id },
@@ -456,7 +456,7 @@ describe("organization routes", async () => {
     });
 
     assert(deleteResponse.type === "json");
-    expect(deleteResponse.data.success).toBe(true);
+    assert(deleteResponse.data.success);
 
     const updateDeleted = await fragment.callRoute("PATCH", "/organizations/:organizationId", {
       pathParams: { organizationId: created.organization.id },
@@ -465,8 +465,8 @@ describe("organization routes", async () => {
     });
 
     assert(updateDeleted.type === "error");
-    expect(updateDeleted.error.code).toBe("organization_not_found");
-    expect(updateDeleted.status).toBe(404);
+    assert(updateDeleted.error.code === "organization_not_found");
+    assert(updateDeleted.status === 404);
 
     const deleteDeleted = await fragment.callRoute("DELETE", "/organizations/:organizationId", {
       pathParams: { organizationId: created.organization.id },
@@ -474,8 +474,8 @@ describe("organization routes", async () => {
     });
 
     assert(deleteDeleted.type === "error");
-    expect(deleteDeleted.error.code).toBe("organization_not_found");
-    expect(deleteDeleted.status).toBe(404);
+    assert(deleteDeleted.error.code === "organization_not_found");
+    assert(deleteDeleted.status === 404);
   });
 
   it("manages members with pagination and permissions", async () => {
@@ -497,7 +497,7 @@ describe("organization routes", async () => {
       ["member"],
     );
     assert(deniedAdd.type === "error");
-    expect(deniedAdd.error.code).toBe("permission_denied");
+    assert(deniedAdd.error.code === "permission_denied");
 
     const addMemberResponse = await addMember(
       ownerCredentialToken,
@@ -523,7 +523,7 @@ describe("organization routes", async () => {
 
     assert(firstPage.type === "json");
     expect(firstPage.data.members).toHaveLength(1);
-    expect(firstPage.data.hasNextPage).toBe(true);
+    assert(firstPage.data.hasNextPage);
     expect(firstPage.data.cursor).toBeTruthy();
 
     const forbiddenList = await fragment.callRoute(
@@ -536,7 +536,7 @@ describe("organization routes", async () => {
     );
 
     assert(forbiddenList.type === "error");
-    expect(forbiddenList.error.code).toBe("permission_denied");
+    assert(forbiddenList.error.code === "permission_denied");
   });
 
   it("updates and removes members with permission checks", async () => {
@@ -577,7 +577,7 @@ describe("organization routes", async () => {
     );
 
     assert(deniedUpdate.type === "error");
-    expect(deniedUpdate.error.code).toBe("permission_denied");
+    assert(deniedUpdate.error.code === "permission_denied");
 
     const deniedRemove = await fragment.callRoute(
       "DELETE",
@@ -589,7 +589,7 @@ describe("organization routes", async () => {
     );
 
     assert(deniedRemove.type === "error");
-    expect(deniedRemove.error.code).toBe("permission_denied");
+    assert(deniedRemove.error.code === "permission_denied");
 
     const updateResponse = await fragment.callRoute(
       "PATCH",
@@ -614,7 +614,7 @@ describe("organization routes", async () => {
     );
 
     assert(removeResponse.type === "json");
-    expect(removeResponse.data.success).toBe(true);
+    assert(removeResponse.data.success);
   });
 
   it("returns credential_invalid for member mutations with invalid sessions", async () => {
@@ -651,8 +651,8 @@ describe("organization routes", async () => {
     );
 
     assert(invalidCreate.type === "error");
-    expect(invalidCreate.error.code).toBe("credential_invalid");
-    expect(invalidCreate.status).toBe(401);
+    assert(invalidCreate.error.code === "credential_invalid");
+    assert(invalidCreate.status === 401);
 
     const invalidUpdate = await fragment.callRoute(
       "PATCH",
@@ -665,8 +665,8 @@ describe("organization routes", async () => {
     );
 
     assert(invalidUpdate.type === "error");
-    expect(invalidUpdate.error.code).toBe("credential_invalid");
-    expect(invalidUpdate.status).toBe(401);
+    assert(invalidUpdate.error.code === "credential_invalid");
+    assert(invalidUpdate.status === 401);
 
     const invalidDelete = await fragment.callRoute(
       "DELETE",
@@ -678,8 +678,8 @@ describe("organization routes", async () => {
     );
 
     assert(invalidDelete.type === "error");
-    expect(invalidDelete.error.code).toBe("credential_invalid");
-    expect(invalidDelete.status).toBe(401);
+    assert(invalidDelete.error.code === "credential_invalid");
+    assert(invalidDelete.status === 401);
   });
 
   it("returns organization_not_found when adding members to missing organizations", async () => {
@@ -693,8 +693,8 @@ describe("organization routes", async () => {
     });
 
     assert(response.type === "error");
-    expect(response.error.code).toBe("organization_not_found");
-    expect(response.status).toBe(404);
+    assert(response.error.code === "organization_not_found");
+    assert(response.status === 404);
   });
 
   it("lists invitations and handles invitation errors", async () => {
@@ -734,7 +734,7 @@ describe("organization routes", async () => {
     );
 
     assert(deniedInvite.type === "error");
-    expect(deniedInvite.error.code).toBe("permission_denied");
+    assert(deniedInvite.error.code === "permission_denied");
 
     const inviteResponse = await fragment.callRoute(
       "POST",
@@ -770,7 +770,7 @@ describe("organization routes", async () => {
     );
 
     assert(forbiddenMemberInvites.type === "error");
-    expect(forbiddenMemberInvites.error.code).toBe("permission_denied");
+    assert(forbiddenMemberInvites.error.code === "permission_denied");
 
     const forbiddenOrgInvites = await fragment.callRoute(
       "GET",
@@ -782,7 +782,7 @@ describe("organization routes", async () => {
     );
 
     assert(forbiddenOrgInvites.type === "error");
-    expect(forbiddenOrgInvites.error.code).toBe("permission_denied");
+    assert(forbiddenOrgInvites.error.code === "permission_denied");
 
     const listUserInvites = await fragment.callRoute("GET", "/organizations/invitations", {
       headers: authHeaders(inviteeCredentialToken),
@@ -802,7 +802,7 @@ describe("organization routes", async () => {
     );
 
     assert(invalidToken.type === "error");
-    expect(invalidToken.error.code).toBe("invalid_token");
+    assert(invalidToken.error.code === "invalid_token");
   });
 
   it("resends invitations for the same email and updates roles", async () => {
@@ -865,7 +865,7 @@ describe("organization routes", async () => {
     );
 
     assert(tamperedAccept.type === "error");
-    expect(tamperedAccept.error.code).toBe("invalid_token");
+    assert(tamperedAccept.error.code === "invalid_token");
   });
 
   it("rejects tokens from other invitations", async () => {
@@ -904,7 +904,7 @@ describe("organization routes", async () => {
     );
 
     assert(tamperedAccept.type === "error");
-    expect(tamperedAccept.error.code).toBe("invalid_token");
+    assert(tamperedAccept.error.code === "invalid_token");
   });
 
   it("blocks accepting invitations for a different email", async () => {
@@ -945,8 +945,8 @@ describe("organization routes", async () => {
     );
 
     assert(acceptResponse.type === "error");
-    expect(acceptResponse.error.code).toBe("permission_denied");
-    expect(acceptResponse.status).toBe(403);
+    assert(acceptResponse.error.code === "permission_denied");
+    assert(acceptResponse.status === 403);
   });
 
   it("blocks rejecting invitations for a different email", async () => {
@@ -987,8 +987,8 @@ describe("organization routes", async () => {
     );
 
     assert(rejectResponse.type === "error");
-    expect(rejectResponse.error.code).toBe("permission_denied");
-    expect(rejectResponse.status).toBe(403);
+    assert(rejectResponse.error.code === "permission_denied");
+    assert(rejectResponse.status === 403);
   });
 
   it("allows the inviter to cancel invitations", async () => {
@@ -1027,7 +1027,7 @@ describe("organization routes", async () => {
     );
 
     assert(cancelResponse.type === "json");
-    expect(cancelResponse.data.invitation.status).toBe("canceled");
+    assert(cancelResponse.data.invitation.status === "canceled");
   });
 
   it("allows organization admins to cancel invitations", async () => {
@@ -1071,7 +1071,7 @@ describe("organization routes", async () => {
     );
 
     assert(cancelResponse.type === "json");
-    expect(cancelResponse.data.invitation.status).toBe("canceled");
+    assert(cancelResponse.data.invitation.status === "canceled");
   });
 
   it("denies cancel for non-admin non-inviters", async () => {
@@ -1117,8 +1117,8 @@ describe("organization routes", async () => {
     );
 
     assert(cancelResponse.type === "error");
-    expect(cancelResponse.error.code).toBe("permission_denied");
-    expect(cancelResponse.status).toBe(403);
+    assert(cancelResponse.error.code === "permission_denied");
+    assert(cancelResponse.status === 403);
   });
 
   it("returns invitation_expired for expired invitations", async () => {
@@ -1165,7 +1165,7 @@ describe("organization routes", async () => {
     );
 
     assert(acceptResponse.type === "error");
-    expect(acceptResponse.error.code).toBe("invitation_expired");
+    assert(acceptResponse.error.code === "invitation_expired");
   });
 
   it("cancels pending invitations when an organization is deleted", async () => {
@@ -1199,7 +1199,7 @@ describe("organization routes", async () => {
     });
 
     assert(deleteResponse.type === "json");
-    expect(deleteResponse.data.success).toBe(true);
+    assert(deleteResponse.data.success);
 
     const acceptResponse = await fragment.callRoute(
       "PATCH",
@@ -1212,7 +1212,7 @@ describe("organization routes", async () => {
     );
 
     assert(acceptResponse.type === "error");
-    expect(acceptResponse.error.code).toBe("invitation_not_found");
+    assert(acceptResponse.error.code === "invitation_not_found");
 
     const listUserInvites = await fragment.callRoute("GET", "/organizations/invitations", {
       headers: authHeaders(invitedCredentialToken),
@@ -1259,7 +1259,7 @@ describe("organization routes", async () => {
     );
 
     assert(rejectResponse.type === "error");
-    expect(rejectResponse.error.code).toBe("invalid_token");
+    assert(rejectResponse.error.code === "invalid_token");
   });
 });
 
@@ -1365,7 +1365,7 @@ describe("organization routes limits regressions", async () => {
     });
 
     assert(thirdOrg.type === "error");
-    expect(thirdOrg.error.code).toBe("limit_reached");
+    assert(thirdOrg.error.code === "limit_reached");
   });
 
   it("rejects invitation acceptance when membersPerOrganization is reached", async () => {
@@ -1417,7 +1417,7 @@ describe("organization routes limits regressions", async () => {
     );
 
     assert(acceptResponse.type === "error");
-    expect(acceptResponse.error.code).toBe("limit_reached");
+    assert(acceptResponse.error.code === "limit_reached");
   });
 
   it("returns a single member entry with aggregated roles", async () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, assert } from "vitest";
 
 import type { ControlElement, JsonSchema } from "@jsonforms/core";
 import { NOT_APPLICABLE } from "@jsonforms/core";
@@ -64,9 +64,10 @@ describe("shadcnTextAreaControlTester", () => {
 
   it("should return rank 2 for string schema with multi: true", () => {
     const rootSchema = { type: "object", properties: { bio: { type: "string" } } };
-    expect(
-      shadcnTextAreaControlTester(controlWithMulti, rootSchema, createTesterContext(rootSchema)),
-    ).toBe(2);
+    assert(
+      shadcnTextAreaControlTester(controlWithMulti, rootSchema, createTesterContext(rootSchema)) ===
+        2,
+    );
   });
 });
 
@@ -115,7 +116,7 @@ describe("ShadcnTextAreaControl", () => {
     fireEvent.change(textarea, { target: { value: "New bio content" } });
 
     await waitFor(() => {
-      expect((changedData as { bio: string }).bio).toBe("New bio content");
+      assert((changedData as { bio: string }).bio === "New bio content");
     });
   });
 
@@ -137,7 +138,7 @@ describe("ShadcnTextAreaControl", () => {
     fireEvent.change(textarea, { target: { value: "Line 1\nLine 2\nLine 3" } });
 
     await waitFor(() => {
-      expect((changedData as { bio: string }).bio).toBe("Line 1\nLine 2\nLine 3");
+      assert((changedData as { bio: string }).bio === "Line 1\nLine 2\nLine 3");
     });
   });
 

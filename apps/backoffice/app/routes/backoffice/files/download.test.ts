@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, assert } from "vitest";
 
 const { getAuthMeMock, createOrgFileSystemMock } = vi.hoisted(() => ({
   getAuthMeMock: vi.fn(),
@@ -62,7 +62,7 @@ describe("backoffice files download route", () => {
       ),
     );
 
-    expect(response.status).toBe(302);
+    assert(response.status === 302);
     expect(response.headers.get("Location")).toBe(
       `https://example.com${buildBackofficeLoginPath("/backoffice/files/org_123/download?path=%2Fstarter%2Fprompts%2Ftask.md")}`,
     );
@@ -79,8 +79,8 @@ describe("backoffice files download route", () => {
       ),
     );
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toBe("text/markdown; charset=utf-8");
+    assert(response.status === 200);
+    assert(response.headers.get("content-type") === "text/markdown; charset=utf-8");
     expect(response.headers.get("content-disposition")).toContain('attachment; filename="task.md"');
     await expect(response.text()).resolves.toContain("Task");
   });
@@ -114,8 +114,8 @@ describe("backoffice files download route", () => {
       ),
     );
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-length")).toBe("17");
+    assert(response.status === 200);
+    assert(response.headers.get("content-length") === "17");
     await expect(response.text()).resolves.toBe("streamed download");
     expect(readFileStream).toHaveBeenCalledWith("/stream/big.bin");
     expect(readFileBuffer).not.toHaveBeenCalled();

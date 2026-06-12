@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { column, idColumn, schema } from "../../schema/create";
 import { createInMemoryStore, ensureNamespaceStore } from "./store";
@@ -24,32 +24,32 @@ describe("in-memory store", () => {
     const store = createInMemoryStore();
     const namespaceStore = ensureNamespaceStore(store, "test", testSchema);
 
-    expect(namespaceStore.tables.size).toBe(2);
-    expect(namespaceStore.tables.has("users")).toBe(true);
-    expect(namespaceStore.tables.has("posts")).toBe(true);
+    assert(namespaceStore.tables.size === 2);
+    assert(namespaceStore.tables.has("users"));
+    assert(namespaceStore.tables.has("posts"));
 
     const usersTable = namespaceStore.tables.get("users");
     const postsTable = namespaceStore.tables.get("posts");
 
-    expect(usersTable?.rows.size).toBe(0);
-    expect(postsTable?.rows.size).toBe(0);
-    expect(usersTable?.nextInternalId).toBe(1n);
-    expect(postsTable?.nextInternalId).toBe(1n);
-    expect(usersTable?.indexes.size).toBe(2);
-    expect(postsTable?.indexes.size).toBe(2);
-    expect(usersTable?.indexes.has("_primary")).toBe(true);
-    expect(postsTable?.indexes.has("_primary")).toBe(true);
+    assert(usersTable?.rows.size === 0);
+    assert(postsTable?.rows.size === 0);
+    assert(usersTable?.nextInternalId === 1n);
+    assert(postsTable?.nextInternalId === 1n);
+    assert(usersTable?.indexes.size === 2);
+    assert(postsTable?.indexes.size === 2);
+    assert(usersTable?.indexes.has("_primary"));
+    assert(postsTable?.indexes.has("_primary"));
 
     const usersPrimary = usersTable?.indexes.get("_primary");
     const usersNameIdx = usersTable?.indexes.get("name_idx");
     const postsUserIdx = postsTable?.indexes.get("user_idx");
 
     expect(usersPrimary?.definition.columnNames).toEqual(["id"]);
-    expect(usersPrimary?.definition.unique).toBe(true);
+    assert(usersPrimary?.definition.unique);
     expect(usersNameIdx?.definition.columnNames).toEqual(["name"]);
-    expect(usersNameIdx?.definition.unique).toBe(false);
+    assert(!usersNameIdx?.definition.unique);
     expect(postsUserIdx?.definition.columnNames).toEqual(["userId"]);
-    expect(postsUserIdx?.definition.unique).toBe(true);
+    assert(postsUserIdx?.definition.unique);
   });
 
   it("reuses existing namespace stores", () => {
@@ -64,6 +64,6 @@ describe("in-memory store", () => {
     const usersTableAgain = second.tables.get("users");
 
     expect(second).toBe(first);
-    expect(usersTableAgain?.nextInternalId).toBe(42n);
+    assert(usersTableAgain?.nextInternalId === 42n);
   });
 });

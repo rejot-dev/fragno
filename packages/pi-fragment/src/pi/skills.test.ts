@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import {
   createPiSkillActivationTool,
@@ -9,7 +9,7 @@ import {
 
 describe("renderPiSkillInvocationContext", () => {
   it("renders skill invocation XML with explicit directory, relative resource note, and extra instructions", () => {
-    expect(
+    assert(
       renderPiSkillInvocationContext(
         {
           name: "pdf-processing",
@@ -23,8 +23,8 @@ describe("renderPiSkillInvocationContext", () => {
           ],
         },
         { extraUserInstructions: "Only summarize the extraction risks." },
-      ),
-    ).toBe(`<skill_content name="pdf-processing">
+      ) ===
+        `<skill_content name="pdf-processing">
 <name>pdf-processing</name>
 <description>Use when working with PDF files.</description>
 <body>
@@ -45,19 +45,21 @@ Read the PDF handling reference before editing scripts.
 </skill_resources>
 </skill_content>
 
-Only summarize the extraction risks.`);
+Only summarize the extraction risks.`,
+    );
   });
 
   it("omits the trailing instructions block when no extra user instructions are provided", () => {
-    expect(
+    assert(
       renderPiSkillInvocationContext({
         name: "fragno",
         description: "Use when working on Fragno fragments.",
-      }),
-    ).toBe(`<skill_content name="fragno">
+      }) ===
+        `<skill_content name="fragno">
 <name>fragno</name>
 <description>Use when working on Fragno fragments.</description>
-</skill_content>`);
+</skill_content>`,
+    );
   });
 });
 
@@ -65,9 +67,9 @@ describe("createPiSkillActivationTool", () => {
   it("creates the built-in activate_skill tool", () => {
     const tool = createPiSkillActivationTool({});
 
-    expect(tool.name).toBe("activate_skill");
-    expect(tool.label).toBe("Activate skill");
-    expect(tool.description).toBe("Load the full instructions for a registered Pi skill by name.");
+    assert(tool.name === "activate_skill");
+    assert(tool.label === "Activate skill");
+    assert(tool.description === "Load the full instructions for a registered Pi skill by name.");
     expect(tool.parameters).toMatchObject({
       type: "object",
       properties: { name: { type: "string" } },
@@ -84,9 +86,9 @@ describe("createPiSkillActivationTool", () => {
       },
     );
 
-    expect(tool.name).toBe("load_skill");
-    expect(tool.label).toBe("Load skill");
-    expect(tool.description).toBe("Load a skill.");
+    assert(tool.name === "load_skill");
+    assert(tool.label === "Load skill");
+    assert(tool.description === "Load a skill.");
   });
 
   it("activates a skill by returning wrapped skill content", async () => {
@@ -200,24 +202,25 @@ Read &lt;body&gt; &amp; preserve &quot;quotes&quot;.
 
 describe("renderPiSkillCatalogXml", () => {
   it("renders an empty string when no skills are available", () => {
-    expect(renderPiSkillCatalogXml({})).toBe("");
-    expect(renderPiSkillCatalogXml([])).toBe("");
+    assert(renderPiSkillCatalogXml({}) === "");
+    assert(renderPiSkillCatalogXml([]) === "");
   });
 
   it("renders the fixed skill catalog XML shape", () => {
-    expect(
+    assert(
       renderPiSkillCatalogXml({
         fragno: {
           name: "fragno",
           description: "Use when working on Fragno fragments.",
         },
-      }),
-    ).toBe(`<available_skills>
+      }) ===
+        `<available_skills>
   <skill>
     <name>fragno</name>
     <description>Use when working on Fragno fragments.</description>
   </skill>
-</available_skills>`);
+</available_skills>`,
+    );
   });
 
   it("renders skills in deterministic name order", () => {
@@ -227,7 +230,9 @@ describe("renderPiSkillCatalogXml", () => {
       middle: { name: "middle", description: "Middle." },
     } satisfies Record<string, PiSkillDefinition>;
 
-    expect(renderPiSkillCatalogXml(skills)).toBe(`<available_skills>
+    assert(
+      renderPiSkillCatalogXml(skills) ===
+        `<available_skills>
   <skill>
     <name>alpha</name>
     <description>First.</description>
@@ -240,7 +245,8 @@ describe("renderPiSkillCatalogXml", () => {
     <name>zebra</name>
     <description>Last.</description>
   </skill>
-</available_skills>`);
+</available_skills>`,
+    );
   });
 
   it("accepts an array of skill definitions", () => {
@@ -249,7 +255,9 @@ describe("renderPiSkillCatalogXml", () => {
       { name: "first", description: "First skill." },
     ] satisfies PiSkillDefinition[];
 
-    expect(renderPiSkillCatalogXml(skills)).toBe(`<available_skills>
+    assert(
+      renderPiSkillCatalogXml(skills) ===
+        `<available_skills>
   <skill>
     <name>first</name>
     <description>First skill.</description>
@@ -258,27 +266,29 @@ describe("renderPiSkillCatalogXml", () => {
     <name>second</name>
     <description>Second skill.</description>
   </skill>
-</available_skills>`);
+</available_skills>`,
+    );
   });
 
   it("escapes XML special characters in names and descriptions", () => {
-    expect(
+    assert(
       renderPiSkillCatalogXml([
         {
           name: `fragno<&>"'`,
           description: `Use <skills> & explain "quotes" and 'apostrophes'.`,
         },
-      ]),
-    ).toBe(`<available_skills>
+      ]) ===
+        `<available_skills>
   <skill>
     <name>fragno&lt;&amp;&gt;&quot;&apos;</name>
     <description>Use &lt;skills&gt; &amp; explain &quot;quotes&quot; and &apos;apostrophes&apos;.</description>
   </skill>
-</available_skills>`);
+</available_skills>`,
+    );
   });
 
   it("does not include skill bodies, paths, resources, or metadata", () => {
-    expect(
+    assert(
       renderPiSkillCatalogXml([
         {
           name: "fragno",
@@ -295,12 +305,13 @@ describe("renderPiSkillCatalogXml", () => {
           ],
           metadata: { source: "manual" },
         },
-      ]),
-    ).toBe(`<available_skills>
+      ]) ===
+        `<available_skills>
   <skill>
     <name>fragno</name>
     <description>Use when working on Fragno fragments.</description>
   </skill>
-</available_skills>`);
+</available_skills>`,
+    );
   });
 });

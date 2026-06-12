@@ -104,7 +104,7 @@ describe("agent loop tool call results", () => {
                   },
                 },
               );
-              expect(response.type).toBe("json");
+              assert(response.type === "json");
               assert(response.type === "json", "expected json response");
               assert(!Array.isArray(response.data), "expected session response");
               return response.data.id;

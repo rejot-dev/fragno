@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, test } from "vitest";
+import { afterAll, beforeEach, describe, expect, test, assert } from "vitest";
 
 import { drainDurableHooks } from "@fragno-dev/test";
 
@@ -50,19 +50,19 @@ describe("resend-fragment threads", async () => {
       },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       return;
     }
 
     const { thread, message } = response.data;
-    expect(thread.subject).toBe("Initial thread");
-    expect(thread.messageCount).toBe(1);
-    expect(thread.lastDirection).toBe("outbound");
+    assert(thread.subject === "Initial thread");
+    assert(thread.messageCount === 1);
+    assert(thread.lastDirection === "outbound");
 
-    expect(message.direction).toBe("outbound");
-    expect(message.subject).toBe("Initial thread");
-    expect(Array.isArray(message.replyTo)).toBe(true);
+    assert(message.direction === "outbound");
+    assert(message.subject === "Initial thread");
+    assert(Array.isArray(message.replyTo));
     expect(message.replyTo.length).toBeGreaterThan(0);
 
     const storedThread = await ctx.getThread(thread.id);
@@ -85,8 +85,8 @@ describe("resend-fragment threads", async () => {
     if (!emailRecord) {
       throw new Error("Expected email record");
     }
-    expect(emailRecord.status).toBe("sent");
-    expect(emailRecord.providerEmailId).toBe("re_thread_1");
+    assert(emailRecord.status === "sent");
+    assert(emailRecord.providerEmailId === "re_thread_1");
   });
 
   test("returns scheduledAt for scheduled thread messages", async () => {
@@ -101,14 +101,14 @@ describe("resend-fragment threads", async () => {
       },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       return;
     }
 
     const { thread, message } = response.data;
-    expect(thread.messageCount).toBe(1);
-    expect(message.status).toBe("scheduled");
+    assert(thread.messageCount === 1);
+    assert(message.status === "scheduled");
     expect(message.scheduledAt).toBeTruthy();
 
     const storedMessage = await ctx.getEmail(message.id);
@@ -119,7 +119,7 @@ describe("resend-fragment threads", async () => {
 
     expect(storedMessage.scheduledAt).toBeInstanceOf(Date);
     const responseScheduledAt = new Date(String(message.scheduledAt));
-    expect(Number.isNaN(responseScheduledAt.getTime())).toBe(false);
+    assert(!Number.isNaN(responseScheduledAt.getTime()));
     expect(
       Math.abs(responseScheduledAt.getTime() - (storedMessage.scheduledAt?.getTime() ?? 0)),
     ).toBeLessThanOrEqual(1_000);
@@ -141,7 +141,7 @@ describe("resend-fragment threads", async () => {
       },
     });
 
-    expect(created.type).toBe("json");
+    assert(created.type === "json");
     if (created.type !== "json") {
       return;
     }
@@ -163,17 +163,17 @@ describe("resend-fragment threads", async () => {
       },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       return;
     }
 
     const { thread, message } = response.data;
     expect(thread.id).toBe(threadId);
-    expect(thread.messageCount).toBe(2);
-    expect(thread.lastDirection).toBe("outbound");
+    assert(thread.messageCount === 2);
+    assert(thread.lastDirection === "outbound");
 
-    expect(message.direction).toBe("outbound");
+    assert(message.direction === "outbound");
     expect(message.inReplyTo).toEqual(expect.any(String));
     expect(message.references).toEqual(expect.arrayContaining([expect.any(String)]));
 
@@ -196,7 +196,7 @@ describe("resend-fragment threads", async () => {
       },
     });
 
-    expect(created.type).toBe("json");
+    assert(created.type === "json");
     if (created.type !== "json") {
       return;
     }
@@ -206,7 +206,7 @@ describe("resend-fragment threads", async () => {
       pathParams: { threadId },
     });
 
-    expect(messages.type).toBe("json");
+    assert(messages.type === "json");
     if (messages.type !== "json") {
       return;
     }
@@ -229,7 +229,7 @@ describe("resend-fragment threads", async () => {
         html: "<p>First</p>",
       },
     });
-    expect(createFirst.type).toBe("json");
+    assert(createFirst.type === "json");
 
     const createSecond = await callRoute("POST", "/threads", {
       body: {
@@ -238,12 +238,12 @@ describe("resend-fragment threads", async () => {
         html: "<p>Second</p>",
       },
     });
-    expect(createSecond.type).toBe("json");
+    assert(createSecond.type === "json");
 
     const list = await callRoute("GET", "/threads", {
       query: { order: "desc", pageSize: "10" },
     });
-    expect(list.type).toBe("json");
+    assert(list.type === "json");
     if (list.type !== "json") {
       return;
     }
@@ -253,18 +253,18 @@ describe("resend-fragment threads", async () => {
     const detail = await callRoute("GET", "/threads/:threadId", {
       pathParams: { threadId: firstThreadId },
     });
-    expect(detail.type).toBe("json");
+    assert(detail.type === "json");
     if (detail.type !== "json") {
       return;
     }
     expect(detail.data.id).toBe(firstThreadId);
-    expect(typeof detail.data.replyToAddress).toBe("string");
+    assert(typeof detail.data.replyToAddress === "string");
   });
 
   test("returns THREAD_NOT_FOUND for unknown thread", async () => {
     const response = await callRoute("GET", "/threads/:threadId", {
       pathParams: { threadId: "missing-thread" },
     });
-    expect(response.type).toBe("error");
+    assert(response.type === "error");
   });
 });

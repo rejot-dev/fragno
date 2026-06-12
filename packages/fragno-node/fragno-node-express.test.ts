@@ -1,4 +1,4 @@
-import { test, expect, describe, beforeAll, afterAll } from "vitest";
+import { test, expect, describe, beforeAll, afterAll, assert } from "vitest";
 
 import { type FragnoPublicClientConfig } from "@fragno-dev/core/client";
 import express, { type Application } from "express";
@@ -69,7 +69,7 @@ describe("Fragno Express integration", () => {
   test("should fetch data from the GET /users route", async () => {
     const response = await fetch(`${clientConfig.baseUrl}${testFragment.mountRoute}/users`);
 
-    expect(response.ok).toBe(true);
+    assert(response.ok);
 
     const data = await response.json();
     expect(data).toEqual([{ id: 1, name: "John" }]);

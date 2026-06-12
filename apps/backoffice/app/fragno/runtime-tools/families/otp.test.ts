@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { otpRuntimeTools } from "./otp";
 
@@ -12,7 +12,7 @@ describe("otp runtime tools", () => {
   test("parse and validate create identity claim input", () => {
     const [createClaim] = otpRuntimeTools;
 
-    expect(createClaim.name).toBe("createIdentityClaim");
+    assert(createClaim.name === "createIdentityClaim");
     expect(
       createClaim.inputSchema.parse(
         createClaim.adapters!.bash!.parse([

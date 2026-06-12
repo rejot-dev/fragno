@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { createJsonResponse, createReson8TestContext } from "./test-context";
 
@@ -20,10 +20,10 @@ describe("reson8 auth routes", () => {
     const headers = new Headers(init?.headers);
 
     expect(url).toBe("https://api.reson8.dev/v1/auth/token");
-    expect(init?.method).toBe("POST");
-    expect(headers.get("authorization")).toBe("ApiKey test-api-key");
+    assert(init?.method === "POST");
+    assert(headers.get("authorization") === "ApiKey test-api-key");
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       return;
     }
@@ -44,12 +44,12 @@ describe("reson8 auth routes", () => {
     const response = await ctx.fragment.callRoute("POST", "/auth/token");
 
     expect(ctx.fetchMock).not.toHaveBeenCalled();
-    expect(response.type).toBe("error");
+    assert(response.type === "error");
     if (response.type !== "error") {
       return;
     }
 
-    expect(response.status).toBe(401);
+    assert(response.status === 401);
     expect(response.error).toEqual({
       code: "UNAUTHORIZED",
       message:

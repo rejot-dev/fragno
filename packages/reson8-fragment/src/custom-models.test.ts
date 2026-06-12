@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { createJsonResponse, createReson8TestContext, readRequestText } from "./test-context";
 
@@ -25,10 +25,10 @@ describe("reson8 custom model routes", () => {
     const headers = new Headers(init?.headers);
 
     expect(url).toBe("https://api.reson8.dev/v1/custom-model");
-    expect(init?.method).toBe("GET");
-    expect(headers.get("authorization")).toBe("Bearer token_123");
+    assert(init?.method === "GET");
+    assert(headers.get("authorization") === "Bearer token_123");
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       return;
     }
@@ -70,8 +70,8 @@ describe("reson8 custom model routes", () => {
     const headers = new Headers(init?.headers);
 
     expect(url).toBe("https://api.reson8.dev/v1/custom-model");
-    expect(init?.method).toBe("POST");
-    expect(headers.get("content-type")).toBe("application/json");
+    assert(init?.method === "POST");
+    assert(headers.get("content-type") === "application/json");
     expect(await readRequestText(init)).toBe(
       JSON.stringify({
         name: "Neurology",
@@ -80,12 +80,12 @@ describe("reson8 custom model routes", () => {
       }),
     );
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       return;
     }
 
-    expect(response.status).toBe(201);
+    assert(response.status === 201);
     expect(response.data).toEqual({
       id: "model_456",
       name: "Neurology",
@@ -110,12 +110,12 @@ describe("reson8 custom model routes", () => {
       pathParams: { id: "missing-model" },
     } as never);
 
-    expect(response.type).toBe("error");
+    assert(response.type === "error");
     if (response.type !== "error") {
       return;
     }
 
-    expect(response.status).toBe(404);
+    assert(response.status === 404);
     expect(response.error).toEqual({
       code: "NOT_FOUND",
       message: "Custom model not found",

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { createAsyncIteratorFromCallback, waitForAsyncIterator } from "./async";
 
@@ -35,7 +35,7 @@ describe("createAsyncIteratorFromCallback", () => {
 
     const result = await consumePromise;
     expect(result).toEqual(["first", "second", "third"]);
-    expect(unsubscribeCalled).toBe(true);
+    assert(unsubscribeCalled);
   });
 
   test("calls unsubscribe when iterator is terminated early", async () => {
@@ -70,7 +70,7 @@ describe("createAsyncIteratorFromCallback", () => {
 
     const result = await consumePromise;
     expect(result).toEqual(["first", "second"]);
-    expect(unsubscribeCalled).toBe(true);
+    assert(unsubscribeCalled);
   });
 });
 

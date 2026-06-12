@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, assert } from "vitest";
 
 import type { Categorization, JsonSchema } from "@jsonforms/core";
 import { NOT_APPLICABLE } from "@jsonforms/core";
@@ -109,9 +109,9 @@ describe("shadcnCategorizationStepperLayoutTester", () => {
   });
 
   it("should return rank 2 for valid categorization with stepper variant", () => {
-    expect(
-      shadcnCategorizationStepperLayoutTester(uischema, schema, createTesterContext(schema)),
-    ).toBe(2);
+    assert(
+      shadcnCategorizationStepperLayoutTester(uischema, schema, createTesterContext(schema)) === 2,
+    );
   });
 });
 

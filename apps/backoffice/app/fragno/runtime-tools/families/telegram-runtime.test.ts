@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
@@ -43,8 +43,8 @@ describe("telegram bash command registration", () => {
         "telegram.file.download --file-id file-1 > /tmp/file.bin",
     );
 
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout.trim()).toBe("voice/file-1.ogg");
+    assert(result.exitCode === 0);
+    assert(result.stdout.trim() === "voice/file-1.ogg");
     await expect(fs.readFileBuffer("/tmp/file.bin")).resolves.toEqual(
       new Uint8Array([0, 255, 1, 2]),
     );
@@ -91,7 +91,7 @@ describe("telegram bash command registration", () => {
         'telegram.message.edit --chat-id chat-1 --message-id 123 --text "Updated"',
     );
 
-    expect(result.exitCode).toBe(0);
+    assert(result.exitCode === 0);
     expect(calls).toEqual([
       expect.objectContaining({
         chatId: "chat-1",
@@ -139,7 +139,7 @@ describe("telegram bash command registration", () => {
       "mkdir -p /workspace\ntelegram.file.download --file-id file-1 --output /workspace/photo.bin",
     );
 
-    expect(result.exitCode).toBe(0);
+    assert(result.exitCode === 0);
     expect(result.stdout).toContain("Downloaded 4 bytes to /workspace/photo.bin");
     await expect(fs.readFileBuffer("/workspace/photo.bin")).resolves.toEqual(
       new Uint8Array([0, 255, 1, 2]),
@@ -232,8 +232,8 @@ describe("telegram bash command registration", () => {
       "mkdir -p /workspace\ntelegram.file.download --file-id missing -o /workspace/photo.bin",
     );
 
-    expect(result.exitCode).toBe(1);
-    expect(result.stdout).toBe("");
+    assert(result.exitCode === 1);
+    assert(result.stdout === "");
     expect(result.stderr).toContain("Telegram fragment returned 404: Telegram file not found");
     await expect(fs.readFileBuffer("/workspace/photo.bin")).rejects.toThrow();
     expect(commandCallsResult).toEqual([
@@ -266,7 +266,7 @@ describe("telegram bash command registration", () => {
 
     const result = await bash.exec("telegram.file.download --file-id missing");
 
-    expect(result.exitCode).toBe(1);
+    assert(result.exitCode === 1);
     expect(result.stderr).toContain("Telegram is not configured for this organisation.");
   });
 
@@ -300,10 +300,10 @@ describe("telegram bash command registration", () => {
     const getHelp = await bash.exec("telegram.file.get --help");
     const downloadHelp = await bash.exec("telegram.file.download --help");
 
-    expect(getHelp.exitCode).toBe(0);
+    assert(getHelp.exitCode === 0);
     expect(getHelp.stdout).toContain("telegram.file.get");
     expect(getHelp.stdout).toContain("--file-id");
-    expect(downloadHelp.exitCode).toBe(0);
+    assert(downloadHelp.exitCode === 0);
     expect(downloadHelp.stdout).toContain("telegram.file.download");
     expect(downloadHelp.stdout).toContain("--file-id");
     expect(commandCallsResult).toEqual([

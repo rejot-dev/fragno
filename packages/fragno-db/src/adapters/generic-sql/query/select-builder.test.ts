@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { column, idColumn, referenceColumn, schema } from "../../../schema/create";
 import { mapSelect, extendSelect } from "./select-builder";
@@ -117,8 +117,8 @@ describe("select-builder", () => {
     it("should always include hidden columns", () => {
       // Hidden columns (_internalId, _version) should always be included
       const result = mapSelect(["name"], usersTable, undefined);
-      expect(result.some((col) => col.includes("_internalId"))).toBe(true);
-      expect(result.some((col) => col.includes("_version"))).toBe(true);
+      assert(result.some((col) => col.includes("_internalId")));
+      assert(result.some((col) => col.includes("_version")));
     });
 
     it("should handle empty select array", () => {
@@ -163,7 +163,7 @@ describe("select-builder", () => {
       builder.extend("id");
       const compiled = builder.compile();
 
-      expect(compiled.result).toBe(true);
+      assert(compiled.result);
       expect(compiled.extendedKeys).toEqual([]);
     });
 

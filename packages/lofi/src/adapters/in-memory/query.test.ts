@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 
@@ -133,7 +133,7 @@ describe("in-memory query engine", () => {
     if (!joined[0].author) {
       throw new Error("Expected author join to be present");
     }
-    expect(joined[0].author.name).toBe("Grace");
+    assert(joined[0].author.name === "Grace");
 
     const missingRef = await query.find("posts", (b) =>
       b.whereIndex("primary").select(["id", "authorId"]),
@@ -190,7 +190,7 @@ describe("in-memory query engine", () => {
     );
 
     expect(firstPage.items).toHaveLength(2);
-    expect(firstPage.hasNextPage).toBe(true);
+    assert(firstPage.hasNextPage);
     expect(firstPage.cursor).toBeDefined();
 
     const secondPage = await query.findWithCursor("users", (b) =>
@@ -198,7 +198,7 @@ describe("in-memory query engine", () => {
     );
 
     expect(secondPage.items).toHaveLength(1);
-    expect(secondPage.hasNextPage).toBe(false);
+    assert(!secondPage.hasNextPage);
   });
 
   it("orders and filters encoded hash strings", async () => {
@@ -252,6 +252,6 @@ describe("in-memory query engine", () => {
     );
 
     expect(match).toHaveLength(1);
-    expect(match[0]?.id.externalId).toBe("file-2");
+    assert(match[0]?.id.externalId === "file-2");
   });
 });

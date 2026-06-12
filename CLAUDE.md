@@ -115,4 +115,5 @@ Automatic client/server code splitting happens in `@fragno-dev/unplugin-fragno`.
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 In short: we use Turborepo + PNPM.
-`pnpm exec turbo build types:check test --output-logs=errors-only`
+`pnpm exec turbo build types:check test --output-logs=errors-only` And Oxlint/Oxfmt:
+`p run lint:fix && p run format:changed`

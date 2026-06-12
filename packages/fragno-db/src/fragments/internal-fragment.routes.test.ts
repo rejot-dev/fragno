@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
@@ -67,11 +67,11 @@ describe("internal fragment describe routes", () => {
       .build();
 
     const response = await alphaFragment.callRouteRaw("GET", "/_internal" as never);
-    expect(response.status).toBe(200);
+    assert(response.status === 200);
     const payload = await response.json();
 
     expect(payload.adapterIdentity).toEqual(expect.any(String));
-    expect(payload.routes.internal).toBe("/_internal");
+    assert(payload.routes.internal === "/_internal");
     expect(payload.routes.outbox).toBeUndefined();
 
     expect(payload.fragments).toEqual([]);
@@ -93,11 +93,11 @@ describe("internal fragment describe routes", () => {
       ]),
     );
 
-    expect(
-      payload.schemas.some(
+    assert(
+      !payload.schemas.some(
         (schemaInfo: { name: string }) => schemaInfo.name === internalSchema.name,
       ),
-    ).toBe(false);
+    );
 
     const betaResponse = await betaFragment.callRouteRaw("GET", "/_internal" as never);
     const betaPayload = await betaResponse.json();
@@ -117,7 +117,7 @@ describe("internal fragment describe routes", () => {
       .build();
 
     const response = await alphaFragment.callRouteRaw("GET", "/_internal" as never);
-    expect(response.status).toBe(500);
+    assert(response.status === 500);
 
     const payload = await response.json();
     expect(payload.error).toEqual(
@@ -149,7 +149,7 @@ describe("internal fragment describe routes", () => {
 
     const response = await alphaFragment.callRouteRaw("GET", "/_internal" as never);
     const payload = await response.json();
-    expect(payload.routes.outbox).toBe("/_internal/outbox");
+    assert(payload.routes.outbox === "/_internal/outbox");
     expect(payload.fragments).toEqual(
       expect.arrayContaining([{ name: "alpha-fragment", mountRoute: "/alpha" }]),
     );
@@ -158,12 +158,12 @@ describe("internal fragment describe routes", () => {
     );
 
     const outboxResponse = await alphaFragment.callRouteRaw("GET", "/_internal/outbox" as never);
-    expect(outboxResponse.status).toBe(200);
+    assert(outboxResponse.status === 200);
     await expect(outboxResponse.json()).resolves.toEqual([]);
 
     const betaResponse = await betaFragment.callRouteRaw("GET", "/_internal" as never);
     const betaPayload = await betaResponse.json();
-    expect(betaPayload.routes.outbox).toBe("/_internal/outbox");
+    assert(betaPayload.routes.outbox === "/_internal/outbox");
     expect(betaPayload.fragments).toEqual(
       expect.arrayContaining([{ name: "alpha-fragment", mountRoute: "/alpha" }]),
     );
@@ -177,7 +177,7 @@ describe("internal fragment describe routes", () => {
       .build();
 
     const noOutboxResponse = await gammaFragment.callRouteRaw("GET", "/_internal/outbox" as never);
-    expect(noOutboxResponse.status).toBe(404);
+    assert(noOutboxResponse.status === 404);
 
     await closeNoOutbox();
   });
@@ -290,9 +290,9 @@ describe("internal fragment sync routes", () => {
       } as unknown as Parameters<typeof alphaFragment.callRouteRaw>[2],
     );
 
-    expect(submitResponse.status).toBe(200);
+    assert(submitResponse.status === 200);
     const submitPayload = await submitResponse.json();
-    expect(submitPayload.status).toBe("applied");
+    assert(submitPayload.status === "applied");
     expect(submitPayload.confirmedCommandIds).toEqual(["cmd-1"]);
     expect(submitPayload.entries.length).toBeGreaterThan(0);
     expect(submitPayload.lastVersionstamp).toEqual(expect.any(String));
@@ -308,7 +308,7 @@ describe("internal fragment sync routes", () => {
         .transformRetrieve(([result]) => result)
         .execute();
     });
-    expect(syncRecord?.requestId).toBe("req-1");
+    assert(syncRecord?.requestId === "req-1");
 
     const secondResponse = await alphaFragment.callRouteRaw(
       "POST",
@@ -330,8 +330,8 @@ describe("internal fragment sync routes", () => {
       } as unknown as Parameters<typeof alphaFragment.callRouteRaw>[2],
     );
     const secondPayload = await secondResponse.json();
-    expect(secondPayload.status).toBe("conflict");
-    expect(secondPayload.reason).toBe("already_handled");
+    assert(secondPayload.status === "conflict");
+    assert(secondPayload.reason === "already_handled");
     expect(secondPayload.confirmedCommandIds).toEqual(["cmd-1"]);
 
     await close();
@@ -375,8 +375,8 @@ describe("internal fragment sync routes", () => {
     );
 
     const submitPayload = await submitResponse.json();
-    expect(submitPayload.status).toBe("conflict");
-    expect(submitPayload.reason).toBe("limit_exceeded");
+    assert(submitPayload.status === "conflict");
+    assert(submitPayload.reason === "limit_exceeded");
 
     await close();
   });
@@ -423,7 +423,7 @@ describe("internal fragment sync routes", () => {
     );
 
     const createPayload = await createResponse.json();
-    expect(createPayload.status).toBe("applied");
+    assert(createPayload.status === "applied");
     const baseVersionstamp = createPayload.lastVersionstamp;
     expect(baseVersionstamp).toEqual(expect.any(String));
 
@@ -457,9 +457,9 @@ describe("internal fragment sync routes", () => {
     );
 
     const submitPayload = await submitResponse.json();
-    expect(submitPayload.status).toBe("conflict");
+    assert(submitPayload.status === "conflict");
     if (submitPayload.status === "conflict") {
-      expect(submitPayload.reason).toBe("conflict");
+      assert(submitPayload.reason === "conflict");
     }
 
     await close();
@@ -552,7 +552,7 @@ describe("internal fragment sync routes", () => {
       } as unknown as Parameters<typeof alphaFragment.callRouteRaw>[2],
     );
 
-    expect(submitResponse.status).toBe(200);
+    assert(submitResponse.status === 200);
 
     const createdItem = await alphaFragment.inContext(async function () {
       return await this.handlerTx()
@@ -563,7 +563,7 @@ describe("internal fragment sync routes", () => {
         .execute();
     });
 
-    expect(createdItem?.name).toBe("First-0");
+    assert(createdItem?.name === "First-0");
 
     await close();
   });

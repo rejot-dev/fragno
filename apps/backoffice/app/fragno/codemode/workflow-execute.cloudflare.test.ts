@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { createWorkflowsTestHarness } from "@fragno-dev/workflows/test";
 import {
@@ -202,7 +202,7 @@ describe("codemode workflow execution", () => {
         expect.objectContaining({ stepKey: "sleep:pause", status: "waiting" }),
       ]),
     );
-    expect(history.steps.some((step) => step.stepKey === "do:after-sleep")).toBe(false);
+    assert(!history.steps.some((step) => step.stepKey === "do:after-sleep"));
 
     harness.clock.advanceBy("3 seconds");
     await harness.runUntilIdle({

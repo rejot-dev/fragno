@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import AjvModule from "ajv";
 import { env } from "cloudflare:workers";
@@ -17,7 +17,7 @@ describe("typebox failure reproduction", () => {
   it("new Function works in the workers test runtime", () => {
     expect(env).toBeDefined();
     const fn = new Function("return 2 + 2;");
-    expect(fn()).toBe(4);
+    assert(fn() === 4);
   });
 
   it("validateToolArguments reports a validation error for invalid bash args", () => {
@@ -76,7 +76,7 @@ describe("typebox failure reproduction", () => {
     const Ajv = (AjvModule as unknown as { default?: typeof AjvModule }).default || AjvModule;
     const ajv = new Ajv({ allErrors: true, strict: false, coerceTypes: true });
     const validate = ajv.compile(bashParametersSchema);
-    expect(validate({ script: "echo ok" })).toBe(true);
-    expect(validate({ script: "" })).toBe(false);
+    assert(validate({ script: "echo ok" }));
+    assert(!validate({ script: "" }));
   });
 });

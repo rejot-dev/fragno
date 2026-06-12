@@ -17,7 +17,7 @@ const isDbNowMarker = (value: unknown): value is { tag: "db-now"; offsetMs?: num
 };
 
 const expectOtpTimestamp = (value: unknown) => {
-  expect(value instanceof Date || isDbNowMarker(value)).toBe(true);
+  assert(value instanceof Date || isDbNowMarker(value));
 };
 
 describe("otp fragment", async () => {
@@ -138,7 +138,7 @@ describe("otp fragment", async () => {
     });
     assert(confirmResponse.type === "json");
 
-    expect(confirmResponse.data.confirmed).toBe(true);
+    assert(confirmResponse.data.confirmed);
     expectOtpTimestamp(confirmResponse.data.confirmedAt);
 
     await drainDurableHooks(fragments.otp.fragment);
@@ -181,7 +181,7 @@ describe("otp fragment", async () => {
       await uow.executeRetrieve();
       return (await uow.retrievalPhase)[0];
     })();
-    expect(storedOtp?.status).toBe("confirmed");
+    assert(storedOtp?.status === "confirmed");
     expect(storedOtp?.confirmationPayload).toEqual(confirmationPayload);
     expect(storedOtp?.confirmedAt).toBeInstanceOf(Date);
   });
@@ -212,7 +212,7 @@ describe("otp fragment", async () => {
     });
     assert(repeatedConfirmResponse.type === "json");
 
-    expect(repeatedConfirmResponse.data.confirmed).toBe(true);
+    assert(repeatedConfirmResponse.data.confirmed);
     expect(repeatedConfirmResponse.data.confirmedAt).toBeTruthy();
 
     await drainDurableHooks(fragments.otp.fragment);
@@ -247,7 +247,7 @@ describe("otp fragment", async () => {
         },
       });
       assert(firstConfirmResponse.type === "json");
-      expect(firstConfirmResponse.data.confirmed).toBe(true);
+      assert(firstConfirmResponse.data.confirmed);
 
       let latestCode: string | null = null;
       for (let attempt = 0; attempt < 20; attempt++) {
@@ -274,8 +274,8 @@ describe("otp fragment", async () => {
         },
       });
       assert(replayResponse.type === "error");
-      expect(replayResponse.status).toBe(401);
-      expect(replayResponse.error.code).toBe("OTP_INVALID");
+      assert(replayResponse.status === 401);
+      assert(replayResponse.error.code === "OTP_INVALID");
 
       const latestConfirmResponse = await replayFragments.otp.callRoute("POST", "/otp/confirm", {
         body: {
@@ -285,7 +285,7 @@ describe("otp fragment", async () => {
         },
       });
       assert(latestConfirmResponse.type === "json");
-      expect(latestConfirmResponse.data.confirmed).toBe(true);
+      assert(latestConfirmResponse.data.confirmed);
     } finally {
       await replayTest.cleanup();
     }
@@ -322,8 +322,8 @@ describe("otp fragment", async () => {
         },
       });
       assert(confirmResponse.type === "error");
-      expect(confirmResponse.status).toBe(410);
-      expect(confirmResponse.error.code).toBe("OTP_EXPIRED");
+      assert(confirmResponse.status === 410);
+      assert(confirmResponse.error.code === "OTP_EXPIRED");
 
       await drainDurableHooks(expiringFragments.otp.fragment);
 
@@ -352,7 +352,7 @@ describe("otp fragment", async () => {
         await uow.executeRetrieve();
         return (await uow.retrievalPhase)[0];
       })();
-      expect(storedOtp?.status).toBe("expired");
+      assert(storedOtp?.status === "expired");
       expect(storedOtp?.expiredAt).toBeInstanceOf(Date);
     } finally {
       await expiringTest.cleanup();
@@ -389,7 +389,7 @@ describe("otp fragment", async () => {
         },
       });
       assert(confirmResponse.type === "json");
-      expect(confirmResponse.data.confirmed).toBe(true);
+      assert(confirmResponse.data.confirmed);
       expectOtpTimestamp(confirmResponse.data.confirmedAt);
     } finally {
       await lowercaseTest.cleanup();
@@ -432,8 +432,8 @@ describe("otp fragment", async () => {
         },
       });
       assert(mismatchedResponse.type === "error");
-      expect(mismatchedResponse.status).toBe(401);
-      expect(mismatchedResponse.error.code).toBe("OTP_INVALID");
+      assert(mismatchedResponse.status === 401);
+      assert(mismatchedResponse.error.code === "OTP_INVALID");
 
       const exactMatchResponse = await mixedCaseFragments.otp.callRoute("POST", "/otp/confirm", {
         body: {
@@ -443,7 +443,7 @@ describe("otp fragment", async () => {
         },
       });
       assert(exactMatchResponse.type === "json");
-      expect(exactMatchResponse.data.confirmed).toBe(true);
+      assert(exactMatchResponse.data.confirmed);
       expectOtpTimestamp(exactMatchResponse.data.confirmedAt);
     } finally {
       await mixedCaseTest.cleanup();
@@ -481,8 +481,8 @@ describe("otp fragment", async () => {
         },
       });
       assert(confirmResponse.type === "error");
-      expect(confirmResponse.status).toBe(410);
-      expect(confirmResponse.error.code).toBe("OTP_EXPIRED");
+      assert(confirmResponse.status === 410);
+      assert(confirmResponse.error.code === "OTP_EXPIRED");
 
       const storedAfterConfirm = await (async () => {
         const uow = expiringFragments.otp.db
@@ -494,7 +494,7 @@ describe("otp fragment", async () => {
         await uow.executeRetrieve();
         return (await uow.retrievalPhase)[0];
       })();
-      expect(storedAfterConfirm?.status).toBe("expired");
+      assert(storedAfterConfirm?.status === "expired");
       expect(storedAfterConfirm?.expiredAt).toBeInstanceOf(Date);
       expect(storedAfterConfirm?.invalidatedAt).toBeNull();
 
@@ -505,7 +505,7 @@ describe("otp fragment", async () => {
         },
       });
       assert(invalidateResponse.type === "json");
-      expect(invalidateResponse.data.invalidatedCount).toBe(0);
+      assert(invalidateResponse.data.invalidatedCount === 0);
 
       await drainDurableHooks(expiringFragments.otp.fragment);
 
@@ -531,7 +531,7 @@ describe("otp fragment", async () => {
         await uow.executeRetrieve();
         return (await uow.retrievalPhase)[0];
       })();
-      expect(storedAfterHooks?.status).toBe("expired");
+      assert(storedAfterHooks?.status === "expired");
       expect(storedAfterHooks?.invalidatedAt).toBeNull();
     } finally {
       await expiringTest.cleanup();
@@ -558,7 +558,7 @@ describe("otp fragment", async () => {
       },
     });
     assert(confirmResponse.type === "error");
-    expect(confirmResponse.status).toBe(401);
-    expect(confirmResponse.error.code).toBe("OTP_INVALID");
+    assert(confirmResponse.status === 401);
+    assert(confirmResponse.error.code === "OTP_INVALID");
   });
 });

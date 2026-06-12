@@ -21,23 +21,23 @@ async function sleep(ms: number) {
 describe("isAccessor", () => {
   test("should return false for ReadableAtom<string>", () => {
     const testAtom: ReadableAtom<string> = atom("test");
-    expect(isAccessor(testAtom)).toBe(false);
+    assert(!isAccessor(testAtom));
   });
 
   test("should return true for SolidJS Accessor", () => {
     createRoot((dispose) => {
       const [signal] = createSignal("test");
-      expect(isAccessor(signal)).toBe(true);
+      assert(isAccessor(signal));
       dispose();
     });
   });
 
   test("should return false for string", () => {
-    expect(isAccessor("test")).toBe(false);
+    assert(!isAccessor("test"));
   });
 
   test("should return false for object", () => {
-    expect(isAccessor({ value: "test" })).toBe(false);
+    assert(!isAccessor({ value: "test" }));
   });
 });
 
@@ -46,7 +46,7 @@ describe("accessorToAtom", () => {
     createRoot((dispose) => {
       const [signal, _setSignal] = createSignal(123);
       const a = accessorToAtom(signal);
-      expect(a.get()).toBe(123);
+      assert(a.get() === 123);
       dispose();
     });
   });
@@ -55,11 +55,11 @@ describe("accessorToAtom", () => {
     createRoot((dispose) => {
       const [signal, setSignal] = createSignal(123);
       const a = accessorToAtom(signal);
-      expect(a.get()).toBe(123);
+      assert(a.get() === 123);
       setSignal(456);
       // Give the effect time to run
       setTimeout(() => {
-        expect(a.get()).toBe(456);
+        assert(a.get() === 456);
         dispose();
       }, 0);
     });
@@ -113,7 +113,7 @@ describe("createSolidHook", () => {
         // Wait for loading to complete
         await sleep(1);
 
-        expect(loading()).toBe(false);
+        assert(!loading());
         expect(data()).toEqual([{ id: 1, name: "John" }]);
         expect(error()).toBeUndefined();
       } finally {
@@ -166,7 +166,7 @@ describe("createSolidHook", () => {
         // Wait for initial load
         await sleep(1);
 
-        expect(loading()).toBe(false);
+        assert(!loading());
         expect(data()).toEqual({ id: 123, name: "John" });
         expect(error()).toBeUndefined();
 
@@ -227,7 +227,7 @@ describe("createSolidHook", () => {
       // Wait for initial load
       await sleep(1);
 
-      expect(loading()).toBe(false);
+      assert(!loading());
       expect(data()).toEqual({ id: 123, name: "John" });
       expect(error()).toBeUndefined();
 
@@ -278,7 +278,7 @@ describe("createSolidHook", () => {
       // Wait for loading to complete
       await sleep(1);
 
-      expect(loading()).toBe(false);
+      assert(!loading());
       expect(data()).toBeUndefined();
       expect(error()).toBeDefined();
       expect(error()).toBeInstanceOf(FragnoClientUnknownApiError);
@@ -325,7 +325,7 @@ describe("createSolidHook", () => {
       // Wait for initial load
       await sleep(1);
 
-      expect(loading()).toBe(false);
+      assert(!loading());
       expect(data()).toEqual([{ id: 1, name: "John" }]);
       expect(error()).toBeUndefined();
 
@@ -415,8 +415,8 @@ describe("createSolidHook", () => {
       // Wait for loading to complete
       await sleep(1);
 
-      expect(users.loading()).toBe(false);
-      expect(posts.loading()).toBe(false);
+      assert(!users.loading());
+      assert(!posts.loading());
       expect(users.data()).toEqual([{ id: 1, name: "John" }]);
       expect(posts.data()).toEqual([{ id: 1, title: "First Post" }]);
 
@@ -499,7 +499,7 @@ describe("createSolidHook", () => {
       // Wait for initial load
       await sleep(1);
 
-      expect(loading()).toBe(false);
+      assert(!loading());
       expect(data()).toEqual([{ id: 100, title: "Post for user 1", category: "tech-10-desc" }]);
       expect(error()).toBeUndefined();
       expect(fetch).toHaveBeenCalledTimes(1);
@@ -691,17 +691,17 @@ describe("useFragno", () => {
     const result = useFragno(clientObj);
 
     // Check that non-hook values are passed through unchanged
-    expect(result.someString).toBe("hello world");
-    expect(result.someNumber).toBe(42);
+    assert(result.someString === "hello world");
+    assert(result.someNumber === 42);
     expect(result.someObject).toEqual({ foo: "bar", nested: { value: true } });
     expect(result.someArray).toEqual([1, 2, 3]);
-    expect(result.someFunction()).toBe("test");
+    assert(result.someFunction() === "test");
     expect(result.someNull).toBeNull();
     expect(result.someUndefined).toBeUndefined();
 
     // Verify that hooks are still transformed
-    expect(typeof result.useData).toBe("function");
-    expect(typeof result.usePostAction).toBe("function");
+    assert(typeof result.useData === "function");
+    assert(typeof result.usePostAction === "function");
   });
 });
 
@@ -739,14 +739,14 @@ describe("createSolidStore", () => {
       const { message, count, isActive } = useStore();
 
       // The store should return accessors
-      expect(typeof message).toBe("function");
-      expect(typeof count).toBe("function");
-      expect(typeof isActive).toBe("function");
+      assert(typeof message === "function");
+      assert(typeof count === "function");
+      assert(typeof isActive === "function");
 
       // Calling the accessors should return the values
-      expect(message()).toBe("hello");
-      expect(count()).toBe(42);
-      expect(isActive()).toBe(true);
+      assert(message() === "hello");
+      assert(count() === 42);
+      assert(isActive());
 
       dispose();
     });
@@ -771,18 +771,18 @@ describe("createSolidStore", () => {
 
       const { base, doubled, tripled } = useComputedValues();
 
-      expect(base()).toBe(10);
-      expect(doubled()).toBe(20);
-      expect(tripled()).toBe(30);
+      assert(base() === 10);
+      assert(doubled() === 20);
+      assert(tripled() === 30);
 
       // Update base and verify reactivity
       baseNumber.set(7);
 
       // Give reactivity time to propagate
       setTimeout(() => {
-        expect(base()).toBe(7);
-        expect(doubled()).toBe(14);
-        expect(tripled()).toBe(21);
+        assert(base() === 7);
+        assert(doubled() === 14);
+        assert(tripled() === 21);
 
         dispose();
       }, 0);
@@ -809,11 +809,11 @@ describe("createSolidStore", () => {
       const { message, config, constant, multiply } = useMixed();
 
       // Atom should be wrapped
-      expect(typeof message).toBe("function");
-      expect(message()).toBe("test");
+      assert(typeof message === "function");
+      assert(message() === "test");
 
       // Non-atom values should be passed through
-      expect(multiply(5)).toBe(10);
+      assert(multiply(5) === 10);
       expect(config).toEqual({ foo: "bar", baz: 123 });
       expect(constant).toBe(42);
 
@@ -833,11 +833,11 @@ describe("createSolidStore", () => {
       const { useCounter } = useFragno(client);
 
       expectTypeOf(useCounter).toExtend<() => () => number>();
-      expect(typeof useCounter).toBe("function");
+      assert(typeof useCounter === "function");
 
       const counter = useCounter();
-      expect(typeof counter).toBe("function");
-      expect(counter()).toBe(0);
+      assert(typeof counter === "function");
+      assert(counter() === 0);
 
       dispose();
     });
@@ -855,8 +855,8 @@ describe("createSolidStore", () => {
       const { useSingle } = useFragno(client);
 
       // Single atom should be wrapped as accessor
-      expect(typeof useSingle).toBe("function");
-      expect(useSingle()).toBe("single");
+      assert(typeof useSingle === "function");
+      assert(useSingle() === "single");
 
       dispose();
     });

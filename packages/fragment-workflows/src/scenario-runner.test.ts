@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { BufferedPumpRegistry } from "@fragno-dev/db/buffered-pump";
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
@@ -87,7 +87,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("STEP", "step-1"),
           assert: (status) => {
-            expect(status.status).toBe("complete");
+            assert(status.status === "complete");
             expect(status.output).toEqual({ value: 42 });
           },
         }),
@@ -132,7 +132,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("EVENTFUL", "eventful-1"),
           assert: (status) => {
-            expect(status.status).toBe("complete");
+            assert(status.status === "complete");
             expect(status.output).toEqual({ seed: 3, sum: 12, eventValue: 9 });
           },
         }),
@@ -183,7 +183,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("PARALLEL", "parallel-1"),
           assert: (status) => {
-            expect(status.status).toBe("complete");
+            assert(status.status === "complete");
             expect(status.output).toEqual({ alpha: "A", beta: "B" });
           },
         }),
@@ -236,7 +236,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("PARALLEL_SHORT_CIRCUIT", "parallel-short-circuit-1"),
           assert: (status) => {
-            expect(status.status).toBe("waiting");
+            assert(status.status === "waiting");
           },
         }),
         workflow.read({
@@ -348,7 +348,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
           read: (ctx) =>
             ctx.state.getStatus("PARALLEL_DO_SHORT_CIRCUIT", "parallel-do-short-circuit-1"),
           assert: (status) => {
-            expect(status.status).toBe("waiting");
+            assert(status.status === "waiting");
           },
         }),
         workflow.read({
@@ -464,7 +464,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("PARALLEL_RESTART", "parallel-restart-1"),
           assert: (status) => {
-            expect(status.status).toBe("waiting");
+            assert(status.status === "waiting");
           },
         }),
         workflow.read({
@@ -568,7 +568,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("RACE", "race-1"),
           assert: (status) => {
-            expect(status.status).toBe("complete");
+            assert(status.status === "complete");
             expect(status.output).toEqual({ raceReturn: "second", cached: "second" });
           },
         }),
@@ -650,7 +650,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("RACE_EVENT", "race-event-1"),
           assert: (status) => {
-            expect(status.status).toBe("waiting");
+            assert(status.status === "waiting");
           },
         }),
         runner.eventAndRunUntilIdle({
@@ -742,7 +742,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("ANY", "any-1"),
           assert: (status) => {
-            expect(status.status).toBe("complete");
+            assert(status.status === "complete");
             expect(status.output).toEqual({ anyReturn: "second" });
           },
         }),
@@ -785,7 +785,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("RESTART", "restart-1"),
           assert: (status) => {
-            expect(status?.status).toBe("waiting");
+            assert(status?.status === "waiting");
           },
         }),
         runner.restart(),
@@ -920,8 +920,8 @@ describe("Workflows Runner (Scenario DSL)", () => {
           },
         }),
         workflow.assert((ctx) => {
-          expect(ctx.vars.createTick).toBe(1);
-          expect(ctx.vars.eventTick).toBe(1);
+          assert(ctx.vars.createTick === 1);
+          assert(ctx.vars.eventTick === 1);
         }),
       ],
     });
@@ -988,7 +988,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
             workflow.read({
               read: (ctx) => ctx.state.getStatus("EARLY_EVENT", "early-event-1"),
               assert: (status) => {
-                expect(status.status).toBe("waiting");
+                assert(status.status === "waiting");
               },
             }),
             workflow.read({
@@ -1045,8 +1045,8 @@ describe("Workflows Runner (Scenario DSL)", () => {
           },
         }),
         workflow.assert((ctx) => {
-          expect(ctx.vars.eventStatus?.status).toBe("active");
-          expect(ctx.vars.createTick).toBe(1);
+          assert(ctx.vars.eventStatus?.status === "active");
+          assert(ctx.vars.createTick === 1);
           expect(ctx.vars.finalRun).toEqual({ processed: 1, ticks: 2 });
         }),
       ],
@@ -1130,8 +1130,8 @@ describe("Workflows Runner (Scenario DSL)", () => {
           },
         }),
         workflow.assert((ctx) => {
-          expect(ctx.vars.firstTick).toBe(0);
-          expect(ctx.vars.secondTick).toBe(1);
+          assert(ctx.vars.firstTick === 0);
+          assert(ctx.vars.secondTick === 1);
         }),
       ],
     });
@@ -1609,7 +1609,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
             return ctx.harness.fragment !== fragmentBeforeRestart;
           },
           assert: (fragmentWasRecreated) => {
-            expect(fragmentWasRecreated).toBe(true);
+            assert(fragmentWasRecreated);
           },
         }),
       ],
@@ -1767,7 +1767,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         }),
         workflow.assert((ctx) => {
           const tickResults = ctx.vars.tickResults ?? [];
-          expect(tickResults.every((result) => result.status === "fulfilled")).toBe(true);
+          assert(tickResults.every((result) => result.status === "fulfilled"));
           expect(
             tickResults
               .map((result) => (result.status === "fulfilled" ? result.value : -1))
@@ -1917,8 +1917,8 @@ describe("Workflows Runner (Scenario DSL)", () => {
               epochsByAttempt.set(payload.attempt, epochs);
             }
 
-            expect(epochsByAttempt.get(1)?.size).toBe(1);
-            expect(epochsByAttempt.get(2)?.size).toBe(1);
+            assert(epochsByAttempt.get(1)?.size === 1);
+            assert(epochsByAttempt.get(2)?.size === 1);
             expect(epochsByAttempt.get(1)).not.toEqual(epochsByAttempt.get(2));
           },
         }),
@@ -2090,7 +2090,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("RETRY", "retry-1"),
           assert: (status) => {
-            expect(status?.status).toBe("waiting");
+            assert(status?.status === "waiting");
           },
         }),
       ],
@@ -2178,7 +2178,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("FETCH", "fetch-1"),
           assert: (status) => {
-            expect(status?.status).toBe("complete");
+            assert(status?.status === "complete");
             expect(status?.output).toEqual({
               status: 200,
               json: { ok: true, source: "fake" },
@@ -2219,7 +2219,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("WAIT", "wait-1"),
           assert: (waitingStatus) => {
-            expect(waitingStatus?.status).toBe("waiting");
+            assert(waitingStatus?.status === "waiting");
           },
         }),
         workflow.read({
@@ -2239,7 +2239,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("WAIT", "wait-1"),
           assert: (finalStatus) => {
-            expect(finalStatus?.status).toBe("complete");
+            assert(finalStatus?.status === "complete");
             expect(finalStatus?.output).toEqual({ ok: true });
           },
         }),
@@ -2265,7 +2265,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("SLEEP", "sleep-1"),
           assert: (status) => {
-            expect(status?.status).toBe("waiting");
+            assert(status?.status === "waiting");
           },
         }),
         workflow.read({
@@ -2299,7 +2299,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("SLEEP_WAKE", "sleep-wake-1"),
           assert: (waiting) => {
-            expect(waiting?.status).toBe("waiting");
+            assert(waiting?.status === "waiting");
           },
         }),
         runner.advanceTimeAndRunUntilIdle({
@@ -2310,7 +2310,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("SLEEP_WAKE", "sleep-wake-1"),
           assert: (finalStatus) => {
-            expect(finalStatus?.status).toBe("complete");
+            assert(finalStatus?.status === "complete");
             expect(finalStatus?.output).toEqual({ done: true });
           },
         }),
@@ -2368,7 +2368,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("SEQUENTIAL_SLEEP", "sequential-sleep-1"),
           assert: (afterWakeStatus) => {
-            expect(afterWakeStatus?.status).toBe("waiting");
+            assert(afterWakeStatus?.status === "waiting");
           },
         }),
         workflow.read({
@@ -2413,7 +2413,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("SLEEP_EARLY", "sleep-early-1"),
           assert: (waiting) => {
-            expect(waiting?.status).toBe("waiting");
+            assert(waiting?.status === "waiting");
           },
         }),
         workflow.read({
@@ -2435,7 +2435,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("SLEEP_EARLY", "sleep-early-1"),
           assert: (afterWake) => {
-            expect(afterWake?.status).toBe("waiting");
+            assert(afterWake?.status === "waiting");
           },
         }),
         workflow.read({
@@ -2566,7 +2566,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("SLEEP_UNTIL", "sleep-until-1"),
           assert: (waiting) => {
-            expect(waiting?.status).toBe("waiting");
+            assert(waiting?.status === "waiting");
           },
         }),
         workflow.read({
@@ -2592,7 +2592,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("SLEEP_UNTIL", "sleep-until-1"),
           assert: (finalStatus) => {
-            expect(finalStatus?.status).toBe("complete");
+            assert(finalStatus?.status === "complete");
             expect(finalStatus?.output).toEqual({ done: true });
           },
         }),
@@ -2627,7 +2627,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("TIMEOUT_EARLY", "timeout-early-1"),
           assert: (waiting) => {
-            expect(waiting?.status).toBe("waiting");
+            assert(waiting?.status === "waiting");
           },
         }),
         workflow.read({
@@ -2656,7 +2656,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
           assert: (afterWake) => {
             // If this fails, we are using the hook timestamp as "now" and timing out
             // without checking the persisted wakeAt deadline.
-            expect(afterWake?.status).toBe("waiting");
+            assert(afterWake?.status === "waiting");
           },
         }),
         workflow.read({
@@ -2698,7 +2698,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("TIMEOUT", "timeout-1"),
           assert: (waiting) => {
-            expect(waiting?.status).toBe("waiting");
+            assert(waiting?.status === "waiting");
           },
         }),
         workflow.read({
@@ -2722,8 +2722,8 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("TIMEOUT", "timeout-1"),
           assert: (finalStatus) => {
-            expect(finalStatus?.status).toBe("errored");
-            expect(finalStatus?.error?.message).toBe("WAIT_FOR_EVENT_TIMEOUT");
+            assert(finalStatus?.status === "errored");
+            assert(finalStatus?.error?.message === "WAIT_FOR_EVENT_TIMEOUT");
           },
         }),
         workflow.read({
@@ -2772,7 +2772,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("GRACEFUL", "graceful-1"),
           assert: (waiting) => {
-            expect(waiting?.status).toBe("waiting");
+            assert(waiting?.status === "waiting");
           },
         }),
         workflow.read({
@@ -2790,7 +2790,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("GRACEFUL", "graceful-1"),
           assert: (finalStatus) => {
-            expect(finalStatus?.status).toBe("complete");
+            assert(finalStatus?.status === "complete");
             expect(finalStatus?.output).toEqual({ ok: true, timedOut: true });
           },
         }),
@@ -2900,7 +2900,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("TIMEOUT_MUTATE", "tm-1"),
           assert: (finalStatus) => {
-            expect(finalStatus?.status).toBe("complete");
+            assert(finalStatus?.status === "complete");
             expect(finalStatus?.output).toEqual({ finalStatus: "timed-out" });
           },
         }),
@@ -3124,7 +3124,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("TIMEOUT_EVENT", "timeout-event-1"),
           assert: (status) => {
-            expect(status?.status).toBe("complete");
+            assert(status?.status === "complete");
             expect(status?.output).toEqual({ ok: true });
           },
         }),
@@ -3162,7 +3162,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("TIMEOUT_EVENT", "timeout-event-1"),
           assert: (afterAdvanceStatus) => {
-            expect(afterAdvanceStatus?.status).toBe("complete");
+            assert(afterAdvanceStatus?.status === "complete");
             expect(afterAdvanceStatus?.output).toEqual({ ok: true });
           },
         }),
@@ -3182,8 +3182,8 @@ describe("Workflows Runner (Scenario DSL)", () => {
           },
         }),
         workflow.assert((ctx) => {
-          expect(ctx.vars.lateTicks?.processed).toBe(0);
-          expect(ctx.vars.lateTicks?.ticks).toBe(1);
+          assert(ctx.vars.lateTicks?.processed === 0);
+          assert(ctx.vars.lateTicks?.ticks === 1);
         }),
       ],
     });
@@ -3212,7 +3212,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("HISTORY", "history-1"),
           assert: (status) => {
-            expect(status?.status).toBe("waiting");
+            assert(status?.status === "waiting");
           },
         }),
         workflow.event({
@@ -3224,7 +3224,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("HISTORY", "history-1"),
           assert: (status) => {
-            expect(status?.status).toBe("complete");
+            assert(status?.status === "complete");
           },
         }),
         workflow.read({
@@ -3316,7 +3316,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
             return { status, events };
           },
           assert: ({ status, events }) => {
-            expect(status?.status).toBe("complete");
+            assert(status?.status === "complete");
             expect(events).toHaveLength(2);
 
             const [firstEvent, secondEvent] = events;
@@ -3365,7 +3365,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("EVENT_REASON", "event-reason-1"),
           assert: (statusAfterCreate) => {
-            expect(statusAfterCreate?.status).toBe("waiting");
+            assert(statusAfterCreate?.status === "waiting");
           },
         }),
         runner.tick({
@@ -3376,7 +3376,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("EVENT_REASON", "event-reason-1"),
           assert: (statusAfterEventTick) => {
-            expect(statusAfterEventTick?.status).toBe("waiting");
+            assert(statusAfterEventTick?.status === "waiting");
           },
         }),
         workflow.read({
@@ -3434,7 +3434,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("RESUME_REASON", "resume-reason-1"),
           assert: (pausedStatus) => {
-            expect(pausedStatus?.status).toBe("paused");
+            assert(pausedStatus?.status === "paused");
           },
         }),
         workflow.resume({
@@ -3445,7 +3445,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("RESUME_REASON", "resume-reason-1"),
           assert: (activeStatus) => {
-            expect(activeStatus?.status).toBe("active");
+            assert(activeStatus?.status === "active");
           },
         }),
         runner.tick({
@@ -3456,7 +3456,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("RESUME_REASON", "resume-reason-1"),
           assert: (finalStatus) => {
-            expect(finalStatus?.status).toBe("waiting");
+            assert(finalStatus?.status === "waiting");
           },
         }),
         workflow.read({
@@ -3471,7 +3471,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         }),
         workflow.assert((ctx) => {
           expect(ctx.vars.pauseResponse).toBeDefined();
-          expect(ctx.vars.resumeResponse?.status).toBe("active");
+          assert(ctx.vars.resumeResponse?.status === "active");
         }),
       ],
     });
@@ -3518,7 +3518,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("PAUSE_EVENT", "pause-event-1"),
           assert: (pausedStatus) => {
-            expect(pausedStatus?.status).toBe("paused");
+            assert(pausedStatus?.status === "paused");
           },
         }),
         workflow.event({
@@ -3529,7 +3529,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("PAUSE_EVENT", "pause-event-1"),
           assert: (pausedStatus) => {
-            expect(pausedStatus?.status).toBe("paused");
+            assert(pausedStatus?.status === "paused");
           },
         }),
         workflow.read({
@@ -3551,7 +3551,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("PAUSE_EVENT", "pause-event-1"),
           assert: (activeStatus) => {
-            expect(activeStatus?.status).toBe("active");
+            assert(activeStatus?.status === "active");
           },
         }),
         runner.tick({
@@ -3562,7 +3562,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("PAUSE_EVENT", "pause-event-1"),
           assert: (finalStatus) => {
-            expect(finalStatus?.status).toBe("complete");
+            assert(finalStatus?.status === "complete");
             expect(finalStatus?.output).toEqual({ ok: true });
           },
         }),
@@ -3579,7 +3579,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         }),
         workflow.assert((ctx) => {
           expect(ctx.vars.pauseResponse).toBeDefined();
-          expect(ctx.vars.resumeResponse?.status).toBe("active");
+          assert(ctx.vars.resumeResponse?.status === "active");
         }),
       ],
     });
@@ -3632,7 +3632,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("MUTATE", "mutate-1"),
           assert: (status) => {
-            expect(status?.status).toBe("complete");
+            assert(status?.status === "complete");
             expect(status?.output).toEqual({ result: "mutated" });
           },
         }),
@@ -3725,8 +3725,8 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("SERVICE_CALL", "service-call-1"),
           assert: (status) => {
-            expect(status?.status).toBe("errored");
-            expect(status?.error?.message).toBe("WORKFLOW_STEP_TX_RETRIEVE_NOT_SUPPORTED");
+            assert(status?.status === "errored");
+            assert(status?.error?.message === "WORKFLOW_STEP_TX_RETRIEVE_NOT_SUPPORTED");
           },
         }),
       ],
@@ -3765,7 +3765,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("RETRY", "retry-1"),
           assert: (status) => {
-            expect(status?.status).toBe("complete");
+            assert(status?.status === "complete");
             expect(status?.output).toEqual({ result: "ok" });
           },
         }),
@@ -3816,8 +3816,8 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("RETRY_MANAGEMENT", "retry-1"),
           assert: (status) => {
-            expect(status?.status).toBe("errored");
-            expect(status?.error?.message).toBe("MANUAL_RETRY");
+            assert(status?.status === "errored");
+            assert(status?.error?.message === "MANUAL_RETRY");
           },
         }),
         workflow.retry({
@@ -3830,7 +3830,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("RETRY_MANAGEMENT", "retry-1"),
           assert: (status) => {
-            expect(status?.status).toBe("complete");
+            assert(status?.status === "complete");
             expect(status?.output).toEqual({ stable: "stable", flaky: "ok" });
           },
         }),
@@ -3851,7 +3851,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
           },
         }),
         workflow.assert((ctx) => {
-          expect(ctx.vars.retryStatus?.status).toBe("waiting");
+          assert(ctx.vars.retryStatus?.status === "waiting");
           expect(stableRuns).toBe(1);
           expect(flakyRuns).toBe(2);
         }),
@@ -3894,7 +3894,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("RETRY_EARLY", "retry-early-1"),
           assert: (waiting) => {
-            expect(waiting?.status).toBe("waiting");
+            assert(waiting?.status === "waiting");
           },
         }),
         workflow.read({
@@ -3923,7 +3923,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
           assert: (afterRetry) => {
             // If this fails, we are retrying early based on the hook timestamp instead
             // of honoring the persisted nextRetryAt.
-            expect(afterRetry?.status).toBe("waiting");
+            assert(afterRetry?.status === "waiting");
           },
         }),
         workflow.read({
@@ -3962,7 +3962,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("ERROR", "error-1"),
           assert: (status) => {
-            expect(status?.status).toBe("errored");
+            assert(status?.status === "errored");
           },
         }),
         workflow.read({
@@ -4014,7 +4014,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("PAUSE", "pause-1"),
           assert: (pausedStatus) => {
-            expect(pausedStatus?.status).toBe("paused");
+            assert(pausedStatus?.status === "paused");
           },
         }),
         workflow.resume({
@@ -4025,14 +4025,14 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("PAUSE", "pause-1"),
           assert: (activeStatus) => {
-            expect(activeStatus?.status).toBe("active");
+            assert(activeStatus?.status === "active");
           },
         }),
         runner.runResumeUntilIdle({ workflow: "PAUSE", instanceId: "pause-1" }),
         workflow.read({
           read: (ctx) => ctx.state.getStatus("PAUSE", "pause-1"),
           assert: (finalStatus) => {
-            expect(finalStatus?.status).toBe("complete");
+            assert(finalStatus?.status === "complete");
             expect(finalStatus?.output).toEqual({ value: 1 });
           },
         }),
@@ -4046,7 +4046,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         }),
         workflow.assert((ctx) => {
           expect(ctx.vars.pauseResponse).toBeDefined();
-          expect(ctx.vars.resumeResponse?.status).toBe("active");
+          assert(ctx.vars.resumeResponse?.status === "active");
           expect(runs).toBe(1);
         }),
       ],
@@ -4088,7 +4088,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("TERM", "term-1"),
           assert: (status) => {
-            expect(status?.status).toBe("terminated");
+            assert(status?.status === "terminated");
           },
         }),
         workflow.read({
@@ -4107,7 +4107,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
           },
         }),
         workflow.assert((ctx) => {
-          expect(ctx.vars.terminateResponse?.status).toBe("terminated");
+          assert(ctx.vars.terminateResponse?.status === "terminated");
           expect(runs).toBe(0);
         }),
       ],
@@ -4146,7 +4146,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("SLEEP_TERM", "sleep-term-1"),
           assert: (waitingStatus) => {
-            expect(waitingStatus?.status).toBe("waiting");
+            assert(waitingStatus?.status === "waiting");
           },
         }),
         workflow.read({
@@ -4177,7 +4177,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("SLEEP_TERM", "sleep-term-1"),
           assert: (afterWakeStatus) => {
-            expect(afterWakeStatus?.status).toBe("terminated");
+            assert(afterWakeStatus?.status === "terminated");
           },
         }),
         workflow.read({
@@ -4197,9 +4197,9 @@ describe("Workflows Runner (Scenario DSL)", () => {
           },
         }),
         workflow.assert((ctx) => {
-          expect(ctx.vars.terminateResponse?.status).toBe("terminated");
+          assert(ctx.vars.terminateResponse?.status === "terminated");
           expect(ctx.vars.wakeAt).toBeInstanceOf(Date);
-          expect(ctx.vars.wakeProcessed).toBe(0);
+          assert(ctx.vars.wakeProcessed === 0);
         }),
       ],
     });
@@ -4236,21 +4236,21 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("BATCH", "batch-1"),
           assert: (status1) => {
-            expect(status1?.status).toBe("complete");
+            assert(status1?.status === "complete");
             expect(status1?.output).toEqual({ instanceId: "batch-1" });
           },
         }),
         workflow.read({
           read: (ctx) => ctx.state.getStatus("BATCH", "batch-2"),
           assert: (status2) => {
-            expect(status2?.status).toBe("complete");
+            assert(status2?.status === "complete");
             expect(status2?.output).toEqual({ instanceId: "batch-2" });
           },
         }),
         workflow.read({
           read: (ctx) => ctx.state.getStatus("BATCH", "batch-3"),
           assert: (status3) => {
-            expect(status3?.status).toBe("complete");
+            assert(status3?.status === "complete");
             expect(status3?.output).toEqual({ instanceId: "batch-3" });
           },
         }),
@@ -4328,7 +4328,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("BATCH_SKIP", "fresh-1"),
           assert: (freshStatus) => {
-            expect(freshStatus?.status).toBe("complete");
+            assert(freshStatus?.status === "complete");
             expect(freshStatus?.output).toEqual({ value: "fresh-1" });
           },
         }),
@@ -4659,7 +4659,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("EMIT", "emit-1"),
           assert: (status) => {
-            expect(status?.status).toBe("complete");
+            assert(status?.status === "complete");
           },
         }),
         workflow.read({

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi, assert } from "vitest";
 
 const {
   migrateMock,
@@ -128,7 +128,7 @@ describe("CloudflareWorkers Durable Object", () => {
       new Request("https://example.com/api/cloudflare/workers?orgId=other-org"),
     );
 
-    expect(response.status).toBe(409);
+    assert(response.status === 409);
     await expect(response.json()).resolves.toMatchObject({
       code: "ORG_ID_MISMATCH",
       expectedOrgId: "acme",

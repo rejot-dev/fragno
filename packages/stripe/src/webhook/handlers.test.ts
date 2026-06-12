@@ -1,4 +1,4 @@
-import { test, describe, expect, beforeEach, vi } from "vitest";
+import { test, describe, expect, beforeEach, vi, assert } from "vitest";
 
 import fs from "fs";
 import path from "path";
@@ -143,13 +143,13 @@ describe("webhooks", async () => {
 
       const subscription = await callService(() => fragment.services.getAllSubscriptions());
       expect(subscription).toHaveLength(1);
-      expect(subscription[0].status).toBe("active");
+      assert(subscription[0].status === "active");
     });
 
     test("updates existing subscription", async () => {
       let subscriptions = await callService(() => fragment.services.getAllSubscriptions());
       expect(subscriptions).toHaveLength(1);
-      expect(subscriptions[0].status).toBe("active");
+      assert(subscriptions[0].status === "active");
 
       const updatedEvent = {
         ...event,
@@ -166,7 +166,7 @@ describe("webhooks", async () => {
 
       subscriptions = await callService(() => fragment.services.getAllSubscriptions());
       expect(subscriptions).toHaveLength(1);
-      expect(subscriptions[0].status).toBe("inactive");
+      assert(Object.is(subscriptions[0].status, "inactive"));
     });
   });
 

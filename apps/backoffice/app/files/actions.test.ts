@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, assert } from "vitest";
 
 import {
   createMasterFileSystem,
@@ -59,8 +59,8 @@ describe("files actions", () => {
       intent: "write-text",
       path: "/project/README.md",
     });
-    expect(writeResult.detail?.textContent).toBe("updated");
-    expect(files["/project/README.md"]).toBe("updated");
+    assert(writeResult.detail?.textContent === "updated");
+    assert(files["/project/README.md"] === "updated");
 
     const deleteResult = await performFilesAction(master, {
       intent: "delete",

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi, assert } from "vitest";
 
 import { env } from "cloudflare:workers";
 
@@ -290,7 +290,7 @@ describe("starter OTP linking automation", () => {
     const bindingResponse = await automation.fragment.callRoute("GET", "/store/get", {
       query: { key: "telegram/chat-1" },
     });
-    expect(bindingResponse.type).toBe("json");
+    assert(bindingResponse.type === "json");
     if (bindingResponse.type === "json") {
       expect(bindingResponse.data).toMatchObject({
         key: "telegram/chat-1",
@@ -403,7 +403,7 @@ describe("starter OTP linking automation", () => {
     const bindingResponse = await automation.fragment.callRoute("GET", "/store/get", {
       query: { key: "telegram/chat-1" },
     });
-    expect(bindingResponse.type).toBe("error");
+    assert(bindingResponse.type === "error");
     expect(telegramSendCalls).toEqual([]);
   });
 });

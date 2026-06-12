@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, assert } from "vitest";
 
 import type { ControlElement, JsonSchema } from "@jsonforms/core";
 import { NOT_APPLICABLE, RuleEffect } from "@jsonforms/core";
@@ -84,7 +84,7 @@ describe("shadcnObjectControlTester", () => {
   });
 
   it("should return rank 2 for object schema", () => {
-    expect(shadcnObjectControlTester(uischemaFoo, schema, createTesterContext(schema))).toBe(2);
+    assert(shadcnObjectControlTester(uischemaFoo, schema, createTesterContext(schema)) === 2);
   });
 });
 

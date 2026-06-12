@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi, assert } from "vitest";
 
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
@@ -191,7 +191,7 @@ describe("createDurableHooksProcessor", () => {
 
     const processor = createDurableHooksProcessorGroup([noHooksFragment, fragment]);
     expect(processor).not.toBeNull();
-    expect(processor.namespace).toBe("test");
+    assert(processor.namespace === "test");
   });
 });
 

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { createR2StorageAdapter } from "../r2";
 import type { S3Signer } from "../s3";
@@ -22,8 +22,8 @@ describe("r2 storage adapter", () => {
       signer: createSigner(),
     });
 
-    expect(adapter.name).toBe("r2");
-    expect(adapter.limits?.maxMetadataBytes).toBe(8192);
+    assert(adapter.name === "r2");
+    assert(adapter.limits?.maxMetadataBytes === 8192);
   });
 
   test("rejects metadata larger than the default limit", async () => {

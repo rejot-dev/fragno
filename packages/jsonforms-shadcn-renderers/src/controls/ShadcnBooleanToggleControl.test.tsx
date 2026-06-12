@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, assert } from "vitest";
 
 import type { ControlElement, JsonSchema } from "@jsonforms/core";
 import { NOT_APPLICABLE } from "@jsonforms/core";
@@ -83,13 +83,13 @@ describe("shadcnBooleanToggleControlTester", () => {
 
   it("should return rank 3 for boolean schema with toggle: true", () => {
     const rootSchema = { type: "object", properties: { foo: { type: "boolean" } } };
-    expect(
+    assert(
       shadcnBooleanToggleControlTester(
         controlWithToggle,
         rootSchema,
         createTesterContext(rootSchema),
-      ),
-    ).toBe(3);
+      ) === 3,
+    );
   });
 });
 
@@ -142,7 +142,7 @@ describe("ShadcnBooleanToggleControl", () => {
     fireEvent.click(switchEl);
 
     await waitFor(() => {
-      expect((changedData as { foo: boolean }).foo).toBe(false);
+      assert(!(changedData as { foo: boolean }).foo);
     });
   });
 

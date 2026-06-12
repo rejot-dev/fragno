@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, assert } from "vitest";
 
 import { generateKeyPairSync } from "crypto";
 
@@ -112,12 +112,9 @@ describe("github-app pull request routes", () => {
         { pathParams: { owner: "octo", repo: "repo" }, query: { state: "invalid" } },
       )) as ErrorResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("INVALID_STATE");
+      assert(response.error.code === "INVALID_STATE");
     } finally {
       await test.cleanup();
     }
@@ -138,12 +135,9 @@ describe("github-app pull request routes", () => {
         { pathParams: { owner: "octo", repo: "repo" }, query: { perPage: "0" } },
       )) as ErrorResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("INVALID_PER_PAGE");
+      assert(response.error.code === "INVALID_PER_PAGE");
     } finally {
       await test.cleanup();
     }
@@ -164,12 +158,9 @@ describe("github-app pull request routes", () => {
         { pathParams: { owner: "octo", repo: "repo" }, query: { page: "0" } },
       )) as ErrorResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("INVALID_PAGE");
+      assert(response.error.code === "INVALID_PAGE");
     } finally {
       await test.cleanup();
     }
@@ -228,10 +219,7 @@ describe("github-app pull request routes", () => {
         },
       )) as PullsResponse;
 
-      expect(response.type).toBe("json");
-      if (response.type !== "json") {
-        throw new Error(`Expected json response, got ${response.type}`);
-      }
+      assert(response.type === "json");
 
       expect(response.data.pulls).toHaveLength(1);
       expect(response.data.pageInfo).toEqual({ page: 2, perPage: 25 });
@@ -239,8 +227,8 @@ describe("github-app pull request routes", () => {
       const pullsCall = fetchMock.calls.find(
         (call) => call.url.pathname === "/repos/octo/repo/pulls",
       );
-      expect(pullsCall?.url.searchParams.get("per_page")).toBe("25");
-      expect(pullsCall?.url.searchParams.get("page")).toBe("2");
+      assert(pullsCall?.url.searchParams.get("per_page") === "25");
+      assert(pullsCall?.url.searchParams.get("page") === "2");
     } finally {
       await test.cleanup();
     }
@@ -296,10 +284,7 @@ describe("github-app pull request routes", () => {
         { pathParams: { owner: "octo", repo: "repo" } },
       )) as PullsResponse;
 
-      expect(response.type).toBe("json");
-      if (response.type !== "json") {
-        throw new Error(`Expected json response, got ${response.type}`);
-      }
+      assert(response.type === "json");
 
       expect(response.data.pulls).toHaveLength(1);
       expect(response.data.pulls[0]).toMatchObject({ id: 2, title: "Alpha PR" });
@@ -323,12 +308,9 @@ describe("github-app pull request routes", () => {
         { pathParams: { owner: "octo", repo: "repo" } },
       )) as ErrorResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("REPO_NOT_FOUND");
+      assert(response.error.code === "REPO_NOT_FOUND");
     } finally {
       await test.cleanup();
     }
@@ -371,12 +353,9 @@ describe("github-app pull request routes", () => {
         { pathParams: { owner: "octo", repo: "repo" } },
       )) as ErrorResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("REPO_REMOVED");
+      assert(response.error.code === "REPO_REMOVED");
     } finally {
       await test.cleanup();
     }
@@ -419,12 +398,9 @@ describe("github-app pull request routes", () => {
         { pathParams: { owner: "octo", repo: "repo" } },
       )) as ErrorResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("REPO_NOT_LINKED");
+      assert(response.error.code === "REPO_NOT_LINKED");
     } finally {
       await test.cleanup();
     }
@@ -472,12 +448,9 @@ describe("github-app pull request routes", () => {
         { pathParams: { owner: "octo", repo: "repo" } },
       )) as ErrorResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("INSTALLATION_INACTIVE");
+      assert(response.error.code === "INSTALLATION_INACTIVE");
     } finally {
       await test.cleanup();
     }
@@ -510,12 +483,9 @@ describe("github-app pull request routes", () => {
         { pathParams: { owner: "octo", repo: "repo" } },
       )) as ErrorResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("INSTALLATION_NOT_FOUND");
+      assert(response.error.code === "INSTALLATION_NOT_FOUND");
     } finally {
       await test.cleanup();
     }
@@ -572,12 +542,9 @@ describe("github-app pull request routes", () => {
         { pathParams: { owner: "octo", repo: "repo" } },
       )) as ErrorResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("GITHUB_API_ERROR");
+      assert(response.error.code === "GITHUB_API_ERROR");
     } finally {
       await test.cleanup();
     }
@@ -598,12 +565,9 @@ describe("github-app pull request routes", () => {
         { pathParams: { owner: "octo", repo: "repo", number: "0" }, body: {} },
       )) as ErrorResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("INVALID_PULL_NUMBER");
+      assert(response.error.code === "INVALID_PULL_NUMBER");
     } finally {
       await test.cleanup();
     }
@@ -624,12 +588,9 @@ describe("github-app pull request routes", () => {
         { pathParams: { owner: "octo", repo: "repo", number: "12" }, body: {} },
       )) as ErrorResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("REPO_NOT_FOUND");
+      assert(response.error.code === "REPO_NOT_FOUND");
     } finally {
       await test.cleanup();
     }
@@ -672,12 +633,9 @@ describe("github-app pull request routes", () => {
         { pathParams: { owner: "octo", repo: "repo", number: "12" }, body: {} },
       )) as ErrorResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("REPO_REMOVED");
+      assert(response.error.code === "REPO_REMOVED");
     } finally {
       await test.cleanup();
     }
@@ -720,12 +678,9 @@ describe("github-app pull request routes", () => {
         { pathParams: { owner: "octo", repo: "repo", number: "12" }, body: {} },
       )) as ErrorResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("REPO_NOT_LINKED");
+      assert(response.error.code === "REPO_NOT_LINKED");
     } finally {
       await test.cleanup();
     }
@@ -773,12 +728,9 @@ describe("github-app pull request routes", () => {
         { pathParams: { owner: "octo", repo: "repo", number: "12" }, body: {} },
       )) as ErrorResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("INSTALLATION_INACTIVE");
+      assert(response.error.code === "INSTALLATION_INACTIVE");
     } finally {
       await test.cleanup();
     }
@@ -811,12 +763,9 @@ describe("github-app pull request routes", () => {
         { pathParams: { owner: "octo", repo: "repo", number: "12" }, body: {} },
       )) as ErrorResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("INSTALLATION_NOT_FOUND");
+      assert(response.error.code === "INSTALLATION_NOT_FOUND");
     } finally {
       await test.cleanup();
     }
@@ -873,12 +822,9 @@ describe("github-app pull request routes", () => {
         { pathParams: { owner: "octo", repo: "repo", number: "12" }, body: {} },
       )) as ErrorResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("GITHUB_API_ERROR");
+      assert(response.error.code === "GITHUB_API_ERROR");
     } finally {
       await test.cleanup();
     }
@@ -937,10 +883,7 @@ describe("github-app pull request routes", () => {
         },
       )) as ReviewResponse;
 
-      expect(response.type).toBe("json");
-      if (response.type !== "json") {
-        throw new Error(`Expected json response, got ${response.type}`);
-      }
+      assert(response.type === "json");
 
       expect(response.data.review).toMatchObject({ id: 123, state: "approved" });
 
@@ -948,7 +891,7 @@ describe("github-app pull request routes", () => {
         (call) => call.url.pathname === "/repos/octo/repo/pulls/12/reviews",
       );
       const body = reviewCall?.init?.body;
-      expect(typeof body).toBe("string");
+      assert(typeof body === "string");
       if (typeof body === "string") {
         expect(JSON.parse(body)).toMatchObject({ event: "APPROVE", body: "Looks good" });
       }
@@ -1010,10 +953,7 @@ describe("github-app pull request routes", () => {
         },
       )) as ReviewResponse;
 
-      expect(response.type).toBe("json");
-      if (response.type !== "json") {
-        throw new Error(`Expected json response, got ${response.type}`);
-      }
+      assert(response.type === "json");
 
       expect(response.data.review).toMatchObject({ id: 124, state: "approved" });
     } finally {

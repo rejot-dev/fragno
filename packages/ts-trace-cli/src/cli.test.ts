@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, assert } from "vitest";
 
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -44,20 +44,20 @@ describe("ts-trace CLI", () => {
     expect(exitCode).toBe(0);
 
     const output = JSON.parse(logger.log.mock.calls[0]?.[0] ?? "{}");
-    expect(output.entryCount).toBe(23);
+    assert(output.entryCount === 23);
     expect(output.projectLocalFiles[0]).toMatchObject({
       file: "packages/fragno-db/src/schema/create.ts",
       count: 14,
     });
     expect(output.projectLocalSymbols[0]).toMatchObject({ symbol: "MainSelectResult", count: 5 });
-    expect(
+    assert(
       output.overallSymbols.some((row: { symbol: string }) => row.symbol === "ErrorConstructor"),
-    ).toBe(true);
-    expect(
-      output.projectLocalSymbols.some(
+    );
+    assert(
+      !output.projectLocalSymbols.some(
         (row: { symbol: string }) => row.symbol === "ErrorConstructor",
       ),
-    ).toBe(false);
+    );
   });
 
   it("renders file JSON with anonymous group counts and raw samples", async () => {
@@ -83,7 +83,7 @@ describe("ts-trace CLI", () => {
     expect(exitCode).toBe(0);
 
     const output = JSON.parse(logger.log.mock.calls[0]?.[0] ?? "{}");
-    expect(output.entryCount).toBe(14);
+    assert(output.entryCount === 14);
     expect(output.symbolCounts[0]).toMatchObject({ symbol: "TableBuilder", count: 4 });
     expect(output.anonymousGroups).toEqual([
       { symbol: "__function", count: 1 },
@@ -116,7 +116,7 @@ describe("ts-trace CLI", () => {
     expect(exitCode).toBe(0);
 
     const output = JSON.parse(logger.log.mock.calls[0]?.[0] ?? "{}");
-    expect(output.totalCount).toBe(4);
+    assert(output.totalCount === 4);
     expect(output.declarationFiles).toEqual([
       { file: "packages/fragno-db/src/schema/create.ts", count: 4 },
     ]);

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, assert } from "vitest";
 
 import {
   ExponentialBackoffRetryPolicy,
@@ -11,30 +11,30 @@ describe("ExponentialBackoffRetryPolicy", () => {
     it("should use default maxRetries of 3", () => {
       const policy = new ExponentialBackoffRetryPolicy();
 
-      expect(policy.shouldRetry(0)).toBe(true);
-      expect(policy.shouldRetry(1)).toBe(true);
-      expect(policy.shouldRetry(2)).toBe(true);
-      expect(policy.shouldRetry(3)).toBe(false);
+      assert(policy.shouldRetry(0));
+      assert(policy.shouldRetry(1));
+      assert(policy.shouldRetry(2));
+      assert(!policy.shouldRetry(3));
     });
 
     it("should use default initialDelayMs of 100", () => {
       const policy = new ExponentialBackoffRetryPolicy();
 
-      expect(policy.getDelayMs(0)).toBe(100);
+      assert(policy.getDelayMs(0) === 100);
     });
 
     it("should use default backoffMultiplier of 2", () => {
       const policy = new ExponentialBackoffRetryPolicy();
 
-      expect(policy.getDelayMs(0)).toBe(100);
-      expect(policy.getDelayMs(1)).toBe(200);
-      expect(policy.getDelayMs(2)).toBe(400);
+      assert(policy.getDelayMs(0) === 100);
+      assert(policy.getDelayMs(1) === 200);
+      assert(policy.getDelayMs(2) === 400);
     });
 
     it("should cap at maxDelayMs of 10000", () => {
       const policy = new ExponentialBackoffRetryPolicy();
 
-      expect(policy.getDelayMs(10)).toBe(10000);
+      assert(policy.getDelayMs(10) === 10000);
     });
   });
 
@@ -42,21 +42,21 @@ describe("ExponentialBackoffRetryPolicy", () => {
     it("should respect custom maxRetries", () => {
       const policy = new ExponentialBackoffRetryPolicy({ maxRetries: 5 });
 
-      expect(policy.shouldRetry(4)).toBe(true);
-      expect(policy.shouldRetry(5)).toBe(false);
+      assert(policy.shouldRetry(4));
+      assert(!policy.shouldRetry(5));
     });
 
     it("should respect custom initialDelayMs", () => {
       const policy = new ExponentialBackoffRetryPolicy({ initialDelayMs: 50 });
 
-      expect(policy.getDelayMs(0)).toBe(50);
-      expect(policy.getDelayMs(1)).toBe(100);
+      assert(policy.getDelayMs(0) === 50);
+      assert(policy.getDelayMs(1) === 100);
     });
 
     it("should respect custom maxDelayMs", () => {
       const policy = new ExponentialBackoffRetryPolicy({ maxDelayMs: 500 });
 
-      expect(policy.getDelayMs(10)).toBe(500);
+      assert(policy.getDelayMs(10) === 500);
     });
 
     it("should respect custom backoffMultiplier", () => {
@@ -65,9 +65,9 @@ describe("ExponentialBackoffRetryPolicy", () => {
         backoffMultiplier: 3,
       });
 
-      expect(policy.getDelayMs(0)).toBe(100);
-      expect(policy.getDelayMs(1)).toBe(300);
-      expect(policy.getDelayMs(2)).toBe(900);
+      assert(policy.getDelayMs(0) === 100);
+      assert(policy.getDelayMs(1) === 300);
+      assert(policy.getDelayMs(2) === 900);
     });
   });
 
@@ -77,14 +77,14 @@ describe("ExponentialBackoffRetryPolicy", () => {
       const controller = new AbortController();
       controller.abort();
 
-      expect(policy.shouldRetry(0, undefined, controller.signal)).toBe(false);
+      assert(!policy.shouldRetry(0, undefined, controller.signal));
     });
 
     it("should return true if signal is not aborted", () => {
       const policy = new ExponentialBackoffRetryPolicy();
       const controller = new AbortController();
 
-      expect(policy.shouldRetry(0, undefined, controller.signal)).toBe(true);
+      assert(policy.shouldRetry(0, undefined, controller.signal));
     });
   });
 
@@ -96,14 +96,14 @@ describe("ExponentialBackoffRetryPolicy", () => {
         maxDelayMs: 1000,
       });
 
-      expect(policy.getDelayMs(0)).toBe(10);
-      expect(policy.getDelayMs(1)).toBe(20);
-      expect(policy.getDelayMs(2)).toBe(40);
-      expect(policy.getDelayMs(3)).toBe(80);
-      expect(policy.getDelayMs(4)).toBe(160);
-      expect(policy.getDelayMs(5)).toBe(320);
-      expect(policy.getDelayMs(6)).toBe(640);
-      expect(policy.getDelayMs(7)).toBe(1000); // capped at maxDelayMs
+      assert(policy.getDelayMs(0) === 10);
+      assert(policy.getDelayMs(1) === 20);
+      assert(policy.getDelayMs(2) === 40);
+      assert(policy.getDelayMs(3) === 80);
+      assert(policy.getDelayMs(4) === 160);
+      assert(policy.getDelayMs(5) === 320);
+      assert(policy.getDelayMs(6) === 640);
+      assert(policy.getDelayMs(7) === 1000); // capped at maxDelayMs
     });
   });
 });
@@ -113,24 +113,24 @@ describe("LinearBackoffRetryPolicy", () => {
     it("should use default maxRetries of 3", () => {
       const policy = new LinearBackoffRetryPolicy();
 
-      expect(policy.shouldRetry(0)).toBe(true);
-      expect(policy.shouldRetry(1)).toBe(true);
-      expect(policy.shouldRetry(2)).toBe(true);
-      expect(policy.shouldRetry(3)).toBe(false);
+      assert(policy.shouldRetry(0));
+      assert(policy.shouldRetry(1));
+      assert(policy.shouldRetry(2));
+      assert(!policy.shouldRetry(3));
     });
 
     it("should use default delayMs of 100", () => {
       const policy = new LinearBackoffRetryPolicy();
 
-      expect(policy.getDelayMs(0)).toBe(100);
+      assert(policy.getDelayMs(0) === 100);
     });
 
     it("should use default incrementMs of 100", () => {
       const policy = new LinearBackoffRetryPolicy();
 
-      expect(policy.getDelayMs(0)).toBe(100);
-      expect(policy.getDelayMs(1)).toBe(200);
-      expect(policy.getDelayMs(2)).toBe(300);
+      assert(policy.getDelayMs(0) === 100);
+      assert(policy.getDelayMs(1) === 200);
+      assert(policy.getDelayMs(2) === 300);
     });
   });
 
@@ -138,23 +138,23 @@ describe("LinearBackoffRetryPolicy", () => {
     it("should respect custom maxRetries", () => {
       const policy = new LinearBackoffRetryPolicy({ maxRetries: 5 });
 
-      expect(policy.shouldRetry(4)).toBe(true);
-      expect(policy.shouldRetry(5)).toBe(false);
+      assert(policy.shouldRetry(4));
+      assert(!policy.shouldRetry(5));
     });
 
     it("should respect custom delayMs", () => {
       const policy = new LinearBackoffRetryPolicy({ delayMs: 50 });
 
-      expect(policy.getDelayMs(0)).toBe(50);
-      expect(policy.getDelayMs(1)).toBe(150);
+      assert(policy.getDelayMs(0) === 50);
+      assert(policy.getDelayMs(1) === 150);
     });
 
     it("should respect custom incrementMs", () => {
       const policy = new LinearBackoffRetryPolicy({ incrementMs: 50 });
 
-      expect(policy.getDelayMs(0)).toBe(100);
-      expect(policy.getDelayMs(1)).toBe(150);
-      expect(policy.getDelayMs(2)).toBe(200);
+      assert(policy.getDelayMs(0) === 100);
+      assert(policy.getDelayMs(1) === 150);
+      assert(policy.getDelayMs(2) === 200);
     });
   });
 
@@ -164,14 +164,14 @@ describe("LinearBackoffRetryPolicy", () => {
       const controller = new AbortController();
       controller.abort();
 
-      expect(policy.shouldRetry(0, undefined, controller.signal)).toBe(false);
+      assert(!policy.shouldRetry(0, undefined, controller.signal));
     });
 
     it("should return true if signal is not aborted", () => {
       const policy = new LinearBackoffRetryPolicy();
       const controller = new AbortController();
 
-      expect(policy.shouldRetry(0, undefined, controller.signal)).toBe(true);
+      assert(policy.shouldRetry(0, undefined, controller.signal));
     });
   });
 
@@ -182,11 +182,11 @@ describe("LinearBackoffRetryPolicy", () => {
         incrementMs: 5,
       });
 
-      expect(policy.getDelayMs(0)).toBe(10);
-      expect(policy.getDelayMs(1)).toBe(15);
-      expect(policy.getDelayMs(2)).toBe(20);
-      expect(policy.getDelayMs(3)).toBe(25);
-      expect(policy.getDelayMs(4)).toBe(30);
+      assert(policy.getDelayMs(0) === 10);
+      assert(policy.getDelayMs(1) === 15);
+      assert(policy.getDelayMs(2) === 20);
+      assert(policy.getDelayMs(3) === 25);
+      assert(policy.getDelayMs(4) === 30);
     });
   });
 });
@@ -195,17 +195,17 @@ describe("NoRetryPolicy", () => {
   it("should always return false for shouldRetry", () => {
     const policy = new NoRetryPolicy();
 
-    expect(policy.shouldRetry(0)).toBe(false);
-    expect(policy.shouldRetry(1)).toBe(false);
-    expect(policy.shouldRetry(100)).toBe(false);
+    assert(!policy.shouldRetry(0));
+    assert(!policy.shouldRetry(1));
+    assert(!policy.shouldRetry(100));
   });
 
   it("should always return 0 for getDelayMs", () => {
     const policy = new NoRetryPolicy();
 
-    expect(policy.getDelayMs(0)).toBe(0);
-    expect(policy.getDelayMs(1)).toBe(0);
-    expect(policy.getDelayMs(100)).toBe(0);
+    assert(policy.getDelayMs(0) === 0);
+    assert(policy.getDelayMs(1) === 0);
+    assert(policy.getDelayMs(100) === 0);
   });
 
   it("should ignore abort signal", () => {
@@ -213,6 +213,6 @@ describe("NoRetryPolicy", () => {
     const controller = new AbortController();
     controller.abort();
 
-    expect(policy.shouldRetry(0, undefined, controller.signal)).toBe(false);
+    assert(!policy.shouldRetry(0, undefined, controller.signal));
   });
 });

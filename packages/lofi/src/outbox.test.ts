@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
 import superjson from "superjson";
@@ -84,8 +84,8 @@ describe("outbox utilities", () => {
       "0.accountId": "account-1",
     });
 
-    expect(resolvedCreate.values["accountId"]).toBe("account-1");
-    expect(resolvedCreate.values["name"]).toBe("Ada");
+    assert(resolvedCreate.values["accountId"] === "account-1");
+    assert(resolvedCreate.values["name"] === "Ada");
 
     const updateMutation: LofiMutation = {
       op: "update",
@@ -102,7 +102,7 @@ describe("outbox utilities", () => {
       "1.accountId": "account-2",
     });
 
-    expect(resolvedUpdate.set["accountId"]).toBe("account-2");
+    assert(resolvedUpdate.set["accountId"] === "account-2");
 
     expect(() =>
       resolveOutboxRefs(createMutation, {

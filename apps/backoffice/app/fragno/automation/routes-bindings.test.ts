@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, assert } from "vitest";
 
 import { InMemoryAdapter } from "@fragno-dev/db";
 
@@ -52,7 +52,7 @@ describe("automation routes /store", () => {
       },
     });
 
-    expect(setResponse.type).toBe("json");
+    assert(setResponse.type === "json");
     if (setResponse.type !== "json") {
       return;
     }
@@ -68,7 +68,7 @@ describe("automation routes /store", () => {
       query: { key: "telegram/chat-123" },
     });
 
-    expect(getResponse.type).toBe("json");
+    assert(getResponse.type === "json");
     if (getResponse.type === "json") {
       expect(getResponse.data).toMatchObject({ key: "telegram/chat-123", value: "user-55", actor });
     }
@@ -79,7 +79,7 @@ describe("automation routes /store", () => {
       body: { key: "telegram/chat-123", value: "user-55" } as never,
     });
 
-    expect(response.type).toBe("error");
+    assert(response.type === "error");
   });
 
   test("rejects non-array categories", async () => {
@@ -87,7 +87,7 @@ describe("automation routes /store", () => {
       body: { key: "system/default", value: "locked", actor, category: "system" } as never,
     });
 
-    expect(response.type).toBe("error");
+    assert(response.type === "error");
   });
 
   test("reuses the same record on update and tracks the latest actor", async () => {
@@ -99,11 +99,11 @@ describe("automation routes /store", () => {
       body: { key: "telegram/chat-123", value: "user-99", actor: secondActor },
     });
 
-    expect(first.type).toBe("json");
-    expect(second.type).toBe("json");
+    assert(first.type === "json");
+    assert(second.type === "json");
     if (first.type === "json" && second.type === "json") {
       expect(second.data.id).toBe(first.data.id);
-      expect(second.data.value).toBe("user-99");
+      assert(second.data.value === "user-99");
       expect(second.data.actor).toEqual(secondActor);
     }
   });
@@ -130,7 +130,7 @@ describe("automation routes /store", () => {
       },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type === "json") {
       expect(response.data).not.toHaveProperty("verification");
     }
@@ -155,7 +155,7 @@ describe("automation routes /store", () => {
       },
     });
 
-    expect(response.type).toBe("error");
+    assert(response.type === "error");
   });
 
   test("rejects invalid json-schema verification schemas", async () => {
@@ -168,7 +168,7 @@ describe("automation routes /store", () => {
       },
     });
 
-    expect(response.type).toBe("error");
+    assert(response.type === "error");
   });
 
   test("scans entries by prefix", async () => {
@@ -186,13 +186,13 @@ describe("automation routes /store", () => {
       query: { prefix: "telegram/" },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type === "json") {
       expect(response.data.map((entry) => entry.key).sort()).toEqual([
         "telegram/chat-123",
         "telegram/chat-456",
       ]);
-      expect(response.data.every((entry) => entry.actor?.id === actor.id)).toBe(true);
+      assert(response.data.every((entry) => entry.actor?.id === actor.id));
     }
   });
 
@@ -205,7 +205,7 @@ describe("automation routes /store", () => {
       body: { key: "telegram/chat-123" },
     });
 
-    expect(deleteResponse.type).toBe("json");
+    assert(deleteResponse.type === "json");
     if (deleteResponse.type === "json") {
       expect(deleteResponse.data).toEqual({ ok: true, key: "telegram/chat-123" });
     }
@@ -213,7 +213,7 @@ describe("automation routes /store", () => {
     const getResponse = await fragment.callRoute("GET", "/store/get", {
       query: { key: "telegram/chat-123" },
     });
-    expect(getResponse.type).toBe("error");
+    assert(getResponse.type === "error");
   });
 
   test("returns 403 when deleting a system store entry", async () => {
@@ -225,10 +225,10 @@ describe("automation routes /store", () => {
       body: { key: "system/default" },
     });
 
-    expect(deleteResponse.type).toBe("error");
+    assert(deleteResponse.type === "error");
     if (deleteResponse.type === "error") {
-      expect(deleteResponse.status).toBe(403);
-      expect(deleteResponse.error.code).toBe("STORE_ENTRY_PROTECTED");
+      assert(deleteResponse.status === 403);
+      assert(deleteResponse.error.code === "STORE_ENTRY_PROTECTED");
     }
   });
 
@@ -241,7 +241,7 @@ describe("automation routes /store", () => {
       body: { key: "system/default", value: "updated", actor, category: ["visible"] },
     });
 
-    expect(updateResponse.type).toBe("json");
+    assert(updateResponse.type === "json");
     if (updateResponse.type === "json") {
       expect(updateResponse.data.category.sort()).toEqual(["system", "visible"]);
     }
@@ -252,10 +252,10 @@ describe("automation routes /store", () => {
       query: { key: "missing" },
     });
 
-    expect(response.type).toBe("error");
+    assert(response.type === "error");
     if (response.type === "error") {
-      expect(response.status).toBe(404);
-      expect(response.error.code).toBe("STORE_ENTRY_NOT_FOUND");
+      assert(response.status === 404);
+      assert(response.error.code === "STORE_ENTRY_NOT_FOUND");
     }
   });
 
@@ -264,10 +264,10 @@ describe("automation routes /store", () => {
       body: { key: "missing" },
     });
 
-    expect(response.type).toBe("error");
+    assert(response.type === "error");
     if (response.type === "error") {
-      expect(response.status).toBe(404);
-      expect(response.error.code).toBe("STORE_ENTRY_NOT_FOUND");
+      assert(response.status === 404);
+      assert(response.error.code === "STORE_ENTRY_NOT_FOUND");
     }
   });
 });

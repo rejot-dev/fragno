@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, assert } from "vitest";
 
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
@@ -334,7 +334,7 @@ describe("Hook Service", () => {
     });
 
     expect(firstPage.items).toHaveLength(2);
-    expect(firstPage.hasNextPage).toBe(true);
+    assert(firstPage.hasNextPage);
     expect(firstPage.cursor).toBeDefined();
     expect(firstPage.items.map((event) => event.id.externalId)).toEqual([
       id3.externalId,
@@ -357,7 +357,7 @@ describe("Hook Service", () => {
     });
 
     expect(secondPage.items).toHaveLength(1);
-    expect(secondPage.hasNextPage).toBe(false);
+    assert(!secondPage.hasNextPage);
     expect(secondPage.items[0]?.id.externalId).toBe(id1.externalId);
   });
 
@@ -401,7 +401,7 @@ describe("Hook Service", () => {
     });
 
     expect(result).toBeDefined();
-    expect(result?.status).toBe("processing");
+    assert(result?.status === "processing");
     expect(result?.lastAttemptAt).toBeInstanceOf(Date);
   });
 
@@ -451,9 +451,9 @@ describe("Hook Service", () => {
     });
 
     expect(result).toBeDefined();
-    expect(result?.status).toBe("pending");
-    expect(result?.attempts).toBe(1);
-    expect(result?.error).toBe("Test error");
+    assert(result?.status === "pending");
+    assert(result?.attempts === 1);
+    assert(result?.error === "Test error");
     expect(result?.nextRetryAt).toBeInstanceOf(Date);
     expect(result?.lastAttemptAt).toBeInstanceOf(Date);
   });
@@ -509,9 +509,9 @@ describe("Hook Service", () => {
     });
 
     expect(result).toBeDefined();
-    expect(result?.status).toBe("failed");
-    expect(result?.attempts).toBe(1);
-    expect(result?.error).toBe("Max attempts reached");
+    assert(result?.status === "failed");
+    assert(result?.attempts === 1);
+    assert(result?.error === "Max attempts reached");
   });
 
   it("should claim only ready pending events and mark them processing", async () => {
@@ -591,10 +591,10 @@ describe("Hook Service", () => {
 
     expect(claimed).toHaveLength(2);
     const claimedIds = new Set(claimed.map((event) => event.id.externalId));
-    expect(claimedIds.has(nullRetryId.externalId)).toBe(true);
-    expect(claimedIds.has(pastRetryId.externalId)).toBe(true);
-    expect(claimedIds.has(futureRetryId.externalId)).toBe(false);
-    expect(claimedIds.has(otherNamespaceId.externalId)).toBe(false);
+    assert(claimedIds.has(nullRetryId.externalId));
+    assert(claimedIds.has(pastRetryId.externalId));
+    assert(!claimedIds.has(futureRetryId.externalId));
+    assert(!claimedIds.has(otherNamespaceId.externalId));
 
     const [nullEvent, pastEvent, futureEvent, otherEvent] = await fragment.inContext(
       async function () {
@@ -618,12 +618,12 @@ describe("Hook Service", () => {
       },
     );
 
-    expect(nullEvent?.status).toBe("processing");
+    assert(nullEvent?.status === "processing");
     expect(nullEvent?.lastAttemptAt).toBeInstanceOf(Date);
-    expect(pastEvent?.status).toBe("processing");
+    assert(pastEvent?.status === "processing");
     expect(pastEvent?.lastAttemptAt).toBeInstanceOf(Date);
-    expect(futureEvent?.status).toBe("pending");
-    expect(otherEvent?.status).toBe("pending");
+    assert(futureEvent?.status === "pending");
+    assert(otherEvent?.status === "pending");
   });
 
   it("should return claimed ids with incremented versions", async () => {
@@ -720,11 +720,11 @@ describe("Hook Service", () => {
     });
 
     expect(claimResult.events).toHaveLength(1);
-    expect(claimResult.events[0]?.hookName).toBe("onStuck");
+    assert(claimResult.events[0]?.hookName === "onStuck");
     expect(claimResult.events[0]?.id.version).toBe(staleId.version + 1);
 
     expect(claimResult.stuckEvents).toHaveLength(1);
-    expect(claimResult.stuckEvents[0]?.hookName).toBe("onStuck");
+    assert(claimResult.stuckEvents[0]?.hookName === "onStuck");
     expect(claimResult.stuckEvents[0]?.id.externalId).toBe(staleId.externalId);
     expect(claimResult.stuckEvents[0]?.id.version).toBe(staleId.version);
     expect(claimResult.stuckEvents[0]?.lastAttemptAt?.getTime()).toBe(staleLastAttemptAt.getTime());
@@ -743,7 +743,7 @@ describe("Hook Service", () => {
         .execute();
     });
 
-    expect(staleEvent?.status).toBe("processing");
+    assert(staleEvent?.status === "processing");
     expect(staleEvent?.nextRetryAt).toBeNull();
     expect(staleEvent?.lastAttemptAt).toBeInstanceOf(Date);
     expect(staleEvent?.lastAttemptAt?.getTime()).toBeGreaterThan(staleLastAttemptAt.getTime());

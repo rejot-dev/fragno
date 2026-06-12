@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import superjson, { type SuperJSONResult } from "superjson";
 
@@ -165,10 +165,10 @@ describe("in-memory outbox", () => {
 
     const entries = await listOutbox(internalFragment);
     expect(entries).toHaveLength(2);
-    expect(entries[0].versionstamp < entries[1].versionstamp).toBe(true);
+    assert(entries[0].versionstamp < entries[1].versionstamp);
 
     const payload = superjson.deserialize(entries[1].payload as SuperJSONResult) as OutboxPayload;
-    expect(payload.version).toBe(1);
+    assert(payload.version === 1);
     expect(payload.mutations).toHaveLength(1);
     const [mutation] = payload.mutations;
     if (mutation.op !== "create") {

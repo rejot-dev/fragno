@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, assert } from "vitest";
 
 import type { ControlElement } from "@jsonforms/core";
 import { NOT_APPLICABLE } from "@jsonforms/core";
@@ -59,7 +59,7 @@ describe("shadcnBooleanCellTester", () => {
 
   it("should return rank 2 for boolean schema", () => {
     const rootSchema = { type: "object", properties: { foo: { type: "boolean" } } };
-    expect(shadcnBooleanCellTester(control, rootSchema, createTesterContext(rootSchema))).toBe(2);
+    assert(shadcnBooleanCellTester(control, rootSchema, createTesterContext(rootSchema)) === 2);
   });
 });
 
@@ -141,7 +141,7 @@ describe("ShadcnBooleanCell", () => {
     const checkbox = screen.getByRole("checkbox");
     fireEvent.click(checkbox);
 
-    expect((onChangeData.data as { foo: boolean }).foo).toBe(false);
+    assert(!(onChangeData.data as { foo: boolean }).foo);
   });
 
   it("should be disabled when enabled=false", () => {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { githubAppSchema } from "../schema";
 import { buildHarness, runGithubUowCreate } from "./test-utils";
@@ -74,23 +74,17 @@ describe("github-app repo linking routes", () => {
         body: { installationId: "1", repoId: "10" },
       })) as LinkResponse;
 
-      expect(linkResponse.type).toBe("json");
-      if (linkResponse.type !== "json") {
-        throw new Error(`Expected json response, got ${linkResponse.type}`);
-      }
+      assert(linkResponse.type === "json");
 
-      expect(linkResponse.data.link.linkKey).toBe("default");
-      expect(linkResponse.data.repo.fullName).toBe("octo/repo");
+      assert(linkResponse.data.link.linkKey === "default");
+      assert(linkResponse.data.repo.fullName === "octo/repo");
 
       const linkedRepos = (await fragments.githubApp.callRoute(
         "GET",
         "/repositories/linked",
       )) as LinkedReposResponse;
 
-      expect(linkedRepos.type).toBe("json");
-      if (linkedRepos.type !== "json") {
-        throw new Error(`Expected json response, got ${linkedRepos.type}`);
-      }
+      assert(linkedRepos.type === "json");
 
       expect(linkedRepos.data).toHaveLength(1);
       expect(linkedRepos.data[0]?.linkKeys).toEqual(["default"]);
@@ -106,10 +100,7 @@ describe("github-app repo linking routes", () => {
         "/repositories/linked",
       )) as LinkedReposResponse;
 
-      expect(linkedAfter.type).toBe("json");
-      if (linkedAfter.type !== "json") {
-        throw new Error(`Expected json response, got ${linkedAfter.type}`);
-      }
+      assert(linkedAfter.type === "json");
       expect(linkedAfter.data).toHaveLength(0);
     } finally {
       await test.cleanup();
@@ -149,12 +140,9 @@ describe("github-app repo linking routes", () => {
         body: { installationId: "1", repoId: "10", linkKey: "  " },
       })) as LinkResponse;
 
-      expect(response.type).toBe("json");
-      if (response.type !== "json") {
-        throw new Error(`Expected json response, got ${response.type}`);
-      }
+      assert(response.type === "json");
 
-      expect(response.data.link.linkKey).toBe("alpha");
+      assert(response.data.link.linkKey === "alpha");
     } finally {
       await test.cleanup();
     }
@@ -190,12 +178,9 @@ describe("github-app repo linking routes", () => {
         body: { installationId: "1", repoId: "10", linkKey: "  custom  " },
       })) as LinkResponse;
 
-      expect(response.type).toBe("json");
-      if (response.type !== "json") {
-        throw new Error(`Expected json response, got ${response.type}`);
-      }
+      assert(response.type === "json");
 
-      expect(response.data.link.linkKey).toBe("custom");
+      assert(response.data.link.linkKey === "custom");
     } finally {
       await test.cleanup();
     }
@@ -237,13 +222,10 @@ describe("github-app repo linking routes", () => {
         "/repositories/linked",
       )) as LinkedReposResponse;
 
-      expect(response.type).toBe("json");
-      if (response.type !== "json") {
-        throw new Error(`Expected json response, got ${response.type}`);
-      }
+      assert(response.type === "json");
 
       expect(response.data).toHaveLength(1);
-      expect(response.data[0]?.installationId).toBe("9");
+      assert(response.data[0]?.installationId === "9");
     } finally {
       await test.cleanup();
     }
@@ -259,12 +241,9 @@ describe("github-app repo linking routes", () => {
         { pathParams: { installationId: "missing" } },
       )) as InstallReposResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("INSTALLATION_NOT_FOUND");
+      assert(response.error.code === "INSTALLATION_NOT_FOUND");
     } finally {
       await test.cleanup();
     }
@@ -302,10 +281,7 @@ describe("github-app repo linking routes", () => {
         { pathParams: { installationId: "5" }, query: { linkedOnly: "false" } },
       )) as InstallReposResponse;
 
-      expect(response.type).toBe("json");
-      if (response.type !== "json") {
-        throw new Error(`Expected json response, got ${response.type}`);
-      }
+      assert(response.type === "json");
 
       expect(response.data).toHaveLength(1);
       expect(response.data[0]?.linkKeys).toEqual([]);
@@ -346,10 +322,7 @@ describe("github-app repo linking routes", () => {
         { pathParams: { installationId: "6" } },
       )) as InstallReposResponse;
 
-      expect(response.type).toBe("json");
-      if (response.type !== "json") {
-        throw new Error(`Expected json response, got ${response.type}`);
-      }
+      assert(response.type === "json");
 
       expect(response.data).toHaveLength(0);
     } finally {
@@ -388,10 +361,7 @@ describe("github-app repo linking routes", () => {
         "/repositories/linked",
       )) as LinkedReposResponse;
 
-      expect(response.type).toBe("json");
-      if (response.type !== "json") {
-        throw new Error(`Expected json response, got ${response.type}`);
-      }
+      assert(response.type === "json");
 
       expect(response.data).toHaveLength(0);
     } finally {
@@ -435,10 +405,7 @@ describe("github-app repo linking routes", () => {
         "/repositories/linked",
       )) as LinkedReposResponse;
 
-      expect(response.type).toBe("json");
-      if (response.type !== "json") {
-        throw new Error(`Expected json response, got ${response.type}`);
-      }
+      assert(response.type === "json");
 
       expect(response.data).toHaveLength(0);
     } finally {
@@ -471,12 +438,9 @@ describe("github-app repo linking routes", () => {
         body: { repoId: "40" },
       })) as { type: "error"; error: { code: string } };
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("INSTALLATION_NOT_FOUND");
+      assert(response.error.code === "INSTALLATION_NOT_FOUND");
     } finally {
       await test.cleanup();
     }
@@ -490,12 +454,9 @@ describe("github-app repo linking routes", () => {
         body: { installationId: "missing", repoId: "1" },
       })) as LinkResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("INSTALLATION_NOT_FOUND");
+      assert(response.error.code === "INSTALLATION_NOT_FOUND");
     } finally {
       await test.cleanup();
     }
@@ -531,12 +492,9 @@ describe("github-app repo linking routes", () => {
         body: { installationId: "8", repoId: "80" },
       })) as LinkResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("INSTALLATION_INACTIVE");
+      assert(response.error.code === "INSTALLATION_INACTIVE");
     } finally {
       await test.cleanup();
     }
@@ -560,12 +518,9 @@ describe("github-app repo linking routes", () => {
         body: { installationId: "9", repoId: "missing" },
       })) as LinkResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("REPO_NOT_FOUND");
+      assert(response.error.code === "REPO_NOT_FOUND");
     } finally {
       await test.cleanup();
     }
@@ -601,12 +556,9 @@ describe("github-app repo linking routes", () => {
         body: { installationId: "10", repoId: "100" },
       })) as LinkResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("REPO_REMOVED");
+      assert(response.error.code === "REPO_REMOVED");
     } finally {
       await test.cleanup();
     }
@@ -620,12 +572,9 @@ describe("github-app repo linking routes", () => {
         body: { repoId: "missing" },
       })) as ErrorResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("REPO_NOT_FOUND");
+      assert(response.error.code === "REPO_NOT_FOUND");
     } finally {
       await test.cleanup();
     }
@@ -666,12 +615,9 @@ describe("github-app repo linking routes", () => {
         body: { repoId: "110" },
       })) as ErrorResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("INSTALLATION_INACTIVE");
+      assert(response.error.code === "INSTALLATION_INACTIVE");
     } finally {
       await test.cleanup();
     }
@@ -707,12 +653,9 @@ describe("github-app repo linking routes", () => {
         body: { repoId: "120" },
       })) as ErrorResponse;
 
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
+      assert(response.type === "error");
 
-      expect(response.error.code).toBe("LINK_NOT_FOUND");
+      assert(response.error.code === "LINK_NOT_FOUND");
     } finally {
       await test.cleanup();
     }
@@ -775,13 +718,10 @@ describe("github-app repo linking routes", () => {
         },
       )) as InstallReposResponse;
 
-      expect(response.type).toBe("json");
-      if (response.type !== "json") {
-        throw new Error(`Expected json response, got ${response.type}`);
-      }
+      assert(response.type === "json");
 
       expect(response.data).toHaveLength(1);
-      expect(response.data[0]?.fullName).toBe("octo/repo-alpha");
+      assert(response.data[0]?.fullName === "octo/repo-alpha");
       expect(response.data[0]?.linkKeys).toEqual(["alpha"]);
     } finally {
       await test.cleanup();
@@ -884,7 +824,7 @@ describe("github-app repo linking routes", () => {
         throw new Error("Expected repo result");
       }
 
-      expect(Boolean(repo.installation)).toBe(false);
+      assert(!repo.installation);
       expect(normalizeJoinedInstallation(repo.installation)).toBeNull();
     } finally {
       await test.cleanup();

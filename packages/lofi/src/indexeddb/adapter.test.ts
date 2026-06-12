@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, assert } from "vitest";
 
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 import {
@@ -107,7 +107,7 @@ describe("IndexedDbAdapter", () => {
       ],
     });
 
-    expect(result.applied).toBe(true);
+    assert(result.applied);
 
     const db = await openDb(dbName);
     const row = await getRow(db, ["app", "app", "users", "user-1"]);
@@ -115,8 +115,8 @@ describe("IndexedDbAdapter", () => {
       throw new Error("Expected row to exist");
     }
     expect(row.data).toMatchObject({ name: "Ada", age: 30 });
-    expect(row._lofi.internalId).toBe(1);
-    expect(row._lofi.version).toBe(1);
+    assert(row._lofi.internalId === 1);
+    assert(row._lofi.version === 1);
 
     const updateResult = await adapter.applyOutboxEntry({
       sourceKey: "app::outbox",
@@ -134,13 +134,13 @@ describe("IndexedDbAdapter", () => {
       ],
     });
 
-    expect(updateResult.applied).toBe(true);
+    assert(updateResult.applied);
     const updated = await getRow(db, ["app", "app", "users", "user-1"]);
     if (!updated) {
       throw new Error("Expected updated row to exist");
     }
     expect(updated.data).toMatchObject({ name: "Ada", age: 31 });
-    expect(updated._lofi.version).toBe(2);
+    assert(updated._lofi.version === 2);
 
     const deleteResult = await adapter.applyOutboxEntry({
       sourceKey: "app::outbox",
@@ -157,7 +157,7 @@ describe("IndexedDbAdapter", () => {
       ],
     });
 
-    expect(deleteResult.applied).toBe(true);
+    assert(deleteResult.applied);
     const deleted = await getRow(db, ["app", "app", "users", "user-1"]);
     expect(deleted).toBeUndefined();
 
@@ -177,7 +177,7 @@ describe("IndexedDbAdapter", () => {
       ],
     });
 
-    expect(missingUpdate.applied).toBe(true);
+    assert(missingUpdate.applied);
     const missingRow = await getRow(db, ["app", "app", "users", "user-missing"]);
     expect(missingRow).toBeUndefined();
 
@@ -197,7 +197,7 @@ describe("IndexedDbAdapter", () => {
       ],
     });
 
-    expect(duplicate.applied).toBe(false);
+    assert(!duplicate.applied);
   });
 
   it("maintains per-table internal IDs and reference normalization", async () => {
@@ -267,9 +267,9 @@ describe("IndexedDbAdapter", () => {
     if (!user1 || !user2 || !post) {
       throw new Error("Expected rows to exist");
     }
-    expect(user1._lofi.internalId).toBe(1);
-    expect(user2._lofi.internalId).toBe(2);
-    expect(post._lofi.norm["authorId"]).toBe(2);
+    assert(user1._lofi.internalId === 1);
+    assert(user2._lofi.internalId === 2);
+    assert(post._lofi.norm["authorId"] === 2);
   });
 
   it("throws on unknown schemas by default", async () => {
@@ -331,7 +331,7 @@ describe("IndexedDbAdapter", () => {
       ],
     });
 
-    expect(result.applied).toBe(true);
+    assert(result.applied);
     const db = await openDb(dbName);
     const row = await getRow(db, ["app", "app", "users", "user-1"]);
     const inboxRow = await getInboxRow(db, ["app::outbox", "uow-vs1", "vs1"]);
@@ -421,7 +421,7 @@ describe("IndexedDbAdapter", () => {
     const rowsStoreBefore = dbBefore.transaction("lofi_rows", "readonly").objectStore("lofi_rows");
     const indexBefore = rowsStoreBefore.index("idx__app__users__idx_lookup");
     expect(indexBefore.keyPath).toEqual(["endpoint", "schema", "table", "_lofi.norm.name", "id"]);
-    expect(indexBefore.unique).toBe(false);
+    assert(!indexBefore.unique);
     dbBefore.close();
 
     const schemaV2 = schema("app", (s) =>
@@ -446,7 +446,7 @@ describe("IndexedDbAdapter", () => {
     const rowsStoreAfter = dbAfter.transaction("lofi_rows", "readonly").objectStore("lofi_rows");
     const indexAfter = rowsStoreAfter.index("idx__app__users__idx_lookup");
     expect(indexAfter.keyPath).toEqual(["endpoint", "schema", "table", "_lofi.norm.email", "id"]);
-    expect(indexAfter.unique).toBe(true);
+    assert(indexAfter.unique);
     dbAfter.close();
   });
 
@@ -543,8 +543,8 @@ describe("IndexedDbAdapter", () => {
     expect(rows).toHaveLength(1);
 
     const rowsStore = db.transaction("lofi_rows", "readonly").objectStore("lofi_rows");
-    expect(rowsStore.indexNames.contains("idx_schema_table")).toBe(true);
-    expect(rowsStore.indexNames.contains("idx__app__users__idx_name")).toBe(true);
+    assert(rowsStore.indexNames.contains("idx_schema_table"));
+    assert(rowsStore.indexNames.contains("idx__app__users__idx_name"));
     db.close();
 
     const schemaV2 = schema("app", (s) =>

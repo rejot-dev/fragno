@@ -82,7 +82,7 @@ describe("workflows client pagination", () => {
 
       assert(firstPage.data);
       expect(firstPage.data.instances).toHaveLength(2);
-      expect(firstPage.data.hasNextPage).toBe(true);
+      assert(firstPage.data.hasNextPage);
       expect(firstPage.data.nextCursor).toEqual(expect.any(String));
       expect(firstPage.data).not.toHaveProperty("cursor");
 
@@ -94,7 +94,7 @@ describe("workflows client pagination", () => {
 
       assert(secondPage.data);
       expect(secondPage.data.instances).toHaveLength(2);
-      expect(secondPage.data.hasNextPage).toBe(true);
+      assert(secondPage.data.hasNextPage);
       expect(secondPage.data.nextCursor).toEqual(expect.any(String));
       expect(secondPage.data).not.toHaveProperty("cursor");
 
@@ -106,7 +106,7 @@ describe("workflows client pagination", () => {
 
       assert(thirdPage.data);
       expect(thirdPage.data.instances).toHaveLength(1);
-      expect(thirdPage.data.hasNextPage).toBe(false);
+      assert(!thirdPage.data.hasNextPage);
       expect(thirdPage.data.nextCursor).toBeUndefined();
       expect(thirdPage.data).not.toHaveProperty("cursor");
 
@@ -115,7 +115,7 @@ describe("workflows client pagination", () => {
         ...secondPage.data.instances,
         ...thirdPage.data.instances,
       ].map((instance) => instance.id);
-      expect(new Set(seenIds).size).toBe(5);
+      assert(new Set(seenIds).size === 5);
       expect(seenIds.sort()).toEqual([
         "client-cursor-0",
         "client-cursor-1",

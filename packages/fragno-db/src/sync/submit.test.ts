@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, assert } from "vitest";
 
 import type { OutboxEntry } from "../outbox/outbox";
 import { FragnoId } from "../schema/create";
@@ -68,10 +68,10 @@ describe("submitSyncRequest", () => {
       runtime,
     );
 
-    expect(result.status).toBe("error");
+    assert(result.status === "error");
     if (result.status === "error") {
-      expect(result.statusCode).toBe(409);
-      expect(result.body.error.code).toBe("ADAPTER_IDENTITY_MISMATCH");
+      assert(result.statusCode === 409);
+      assert(result.body.error.code === "ADAPTER_IDENTITY_MISMATCH");
     }
   });
 
@@ -104,17 +104,17 @@ describe("submitSyncRequest", () => {
       runtime,
     );
 
-    expect(result.status).toBe("ok");
+    assert(result.status === "ok");
     if (result.status === "ok") {
-      expect(result.response.status).toBe("conflict");
+      assert(result.response.status === "conflict");
       if (result.response.status === "conflict") {
-        expect(result.response.reason).toBe("limit_exceeded");
+        assert(result.response.reason === "limit_exceeded");
         expect(result.response.confirmedCommandIds).toEqual([]);
-        expect(result.response.lastVersionstamp).toBe("000000000000000000000001");
+        assert(result.response.lastVersionstamp === "000000000000000000000001");
       }
     }
     expect(stored).toHaveLength(1);
-    expect(stored[0]?.status).toBe("conflict");
+    assert(stored[0]?.status === "conflict");
   });
 
   it("returns client_far_behind when unseen mutations exceed the limit", async () => {
@@ -141,16 +141,16 @@ describe("submitSyncRequest", () => {
       runtime,
     );
 
-    expect(result.status).toBe("ok");
+    assert(result.status === "ok");
     if (result.status === "ok") {
-      expect(result.response.status).toBe("conflict");
+      assert(result.response.status === "conflict");
       if (result.response.status === "conflict") {
-        expect(result.response.reason).toBe("client_far_behind");
-        expect(result.response.lastVersionstamp).toBe("000000000000000000000002");
+        assert(result.response.reason === "client_far_behind");
+        assert(result.response.lastVersionstamp === "000000000000000000000002");
       }
     }
     expect(stored).toHaveLength(1);
-    expect(stored[0]?.status).toBe("conflict");
+    assert(stored[0]?.status === "conflict");
   });
 
   it("tracks confirmed command ids on applied requests", async () => {
@@ -191,15 +191,15 @@ describe("submitSyncRequest", () => {
       runtime,
     );
 
-    expect(result.status).toBe("ok");
+    assert(result.status === "ok");
     if (result.status === "ok") {
-      expect(result.response.status).toBe("applied");
+      assert(result.response.status === "applied");
       if (result.response.status === "applied") {
         expect(result.response.confirmedCommandIds).toEqual(["cmd-1", "cmd-2"]);
       }
     }
     expect(executeCommand).toHaveBeenCalledTimes(2);
     expect(stored).toHaveLength(1);
-    expect(stored[0]?.status).toBe("applied");
+    assert(stored[0]?.status === "applied");
   });
 });

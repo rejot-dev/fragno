@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, assert } from "vitest";
 
 import { fetchUploadConfig, fetchUploadFiles } from "./data";
 import { loader, shouldAutoStartUploads } from "./files";
@@ -28,23 +28,23 @@ vi.mock("./data", () => ({
 
 describe("upload files helpers", () => {
   it("auto-starts queued uploads for the root prefix", () => {
-    expect(
+    assert(
       shouldAutoStartUploads({
         uploadingFiles: false,
         defaultProvider: "r2-binding",
         nextQueuedUploadPrefix: "",
       }),
-    ).toBe(true);
+    );
   });
 
   it("does not auto-start when there is no queued prefix", () => {
-    expect(
-      shouldAutoStartUploads({
+    assert(
+      !shouldAutoStartUploads({
         uploadingFiles: false,
         defaultProvider: "r2-binding",
         nextQueuedUploadPrefix: null,
       }),
-    ).toBe(false);
+    );
   });
 });
 
