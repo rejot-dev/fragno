@@ -8,6 +8,7 @@ export const STARTER_AUTOMATION_SCRIPT_PATHS = {
   telegramClaimLinking: "automations/scripts/telegram-claim-linking.workflow.js",
   telegramDelayedTestReply: "automations/scripts/telegram-delayed-test-reply.workflow.js",
   telegramPiSession: "automations/scripts/telegram-pi-session.workflow.js",
+  configureUploadConnection: "automations/scripts/configure-upload-connection.workflow.js",
 } as const;
 
 export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
@@ -17,6 +18,20 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
   const instanceIdForEvent = (prefix) => {
     return prefix + "-" + event.id.replace(/[^a-zA-Z0-9-_]/g, "-");
   };
+
+  if (event.source === "auth" && event.eventType === "organization.created") {
+    const instanceId = instanceIdForEvent("configure-upload");
+    await workflow.createInstance({
+      workflowName: "automation-codemode-script",
+      remoteWorkflowName: "configure-upload-connection",
+      instanceId,
+      params: {
+        automationEvent: event,
+        workflowScriptPath:
+          "/starter/automations/scripts/configure-upload-connection.workflow.js",
+      },
+    });
+  }
 
   if (event.source === "pi" && event.eventType === "capability.configured") {
     const harness = event.payload.harnesses[0];
@@ -111,6 +126,29 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
     }
   }
 };
+`,
+  "automations/scripts/configure-upload-connection.workflow.js": `defineWorkflow(
+  { name: "configure-upload-connection" },
+  async (event, step) => {
+    const automationEvent = event.payload.automationEvent;
+
+    if (
+      automationEvent.source !== "auth" ||
+      automationEvent.eventType !== "organization.created"
+    ) {
+      return { skipped: true, reason: "not-organization-created" };
+    }
+
+    return await step.do("configure upload database connection", async () => {
+      await connections.configure({
+        id: "upload",
+        payload: { provider: "database" },
+      });
+
+      return { configured: true, id: "upload", provider: "database" };
+    });
+  },
+);
 `,
   "automations/scripts/telegram-claim-linking.workflow.js": `defineWorkflow(
   { name: "telegram-claim-linking" },

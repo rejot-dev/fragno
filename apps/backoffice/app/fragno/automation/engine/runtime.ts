@@ -1,18 +1,8 @@
-import type { McpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
+import type { BashHostContext } from "@/fragno/runtime-tools/bash-host";
 import type { PiRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
-import {
-  createUnavailableResendRuntime,
-  type ResendRuntime,
-} from "@/fragno/runtime-tools/families/resend-runtime";
-import {
-  createUnavailableReson8Runtime,
-  type Reson8Runtime,
-} from "@/fragno/runtime-tools/families/reson8-runtime";
-import type { SandboxRuntime } from "@/fragno/runtime-tools/families/sandbox-runtime";
-import {
-  createUnavailableTelegramRuntime,
-  type TelegramRuntime,
-} from "@/fragno/runtime-tools/families/telegram-runtime";
+import { createUnavailableResendRuntime } from "@/fragno/runtime-tools/families/resend-runtime";
+import { createUnavailableReson8Runtime } from "@/fragno/runtime-tools/families/reson8-runtime";
+import { createUnavailableTelegramRuntime } from "@/fragno/runtime-tools/families/telegram-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 import type {
@@ -23,8 +13,6 @@ import type {
   AutomationStoreRuntime,
   AutomationStoreEntry,
 } from "../../runtime-tools/families/automations-bindings";
-import type { DurableHooksRuntime } from "../../runtime-tools/families/automations-durable-hooks";
-import type { AutomationWorkflowRuntime } from "../../runtime-tools/families/automations-workflow";
 import {
   createEventRuntime,
   type AutomationEmitEventResult,
@@ -48,37 +36,16 @@ export type AutomationRuntimeCommandContext = AutomationCommandContext & {
   runtime: AutomationRuntime;
 };
 
-export type AutomationRuntimeHostContext = {
+export type AutomationRuntimeHostContext = Omit<
+  BashHostContext,
+  "automation" | "automations" | "otp"
+> & {
   automation: AutomationRuntimeCommandContext;
   automations: {
     runtime: AutomationStoreRuntime;
   };
-  workflow?: {
-    runtime: AutomationWorkflowRuntime;
-  } | null;
-  durableHooks?: {
-    runtime: DurableHooksRuntime;
-  } | null;
-  mcp?: {
-    runtime: McpRuntime;
-  } | null;
   otp: {
     runtime: OtpRuntime;
-  };
-  pi: {
-    runtime: PiRuntime;
-  } | null;
-  reson8: {
-    runtime: Reson8Runtime;
-  };
-  resend: {
-    runtime: ResendRuntime;
-  };
-  sandbox?: {
-    runtime: SandboxRuntime;
-  } | null;
-  telegram: {
-    runtime: TelegramRuntime;
   };
 };
 
@@ -159,6 +126,17 @@ export const createAutomationExecutionContext = ({
       : null;
 
   return {
+    ...(routeBacked ?? {
+      backoffice: null,
+      workflow: null,
+      durableHooks: null,
+      mcp: null,
+      pi: null,
+      reson8: { runtime: createUnavailableReson8Runtime() },
+      resend: { runtime: createUnavailableResendRuntime() },
+      sandbox: null,
+      telegram: { runtime: createUnavailableTelegramRuntime() },
+    }),
     automation: {
       event: eventWithOrgId,
       orgId,
@@ -171,16 +149,8 @@ export const createAutomationExecutionContext = ({
       : {
           runtime,
         },
-    workflow: routeBacked?.workflow ?? null,
-    durableHooks: routeBacked?.durableHooks ?? null,
-    mcp: routeBacked?.mcp ?? null,
     otp: {
       runtime,
     },
-    pi: routeBacked?.pi ?? null,
-    reson8: routeBacked?.reson8 ?? { runtime: createUnavailableReson8Runtime() },
-    resend: routeBacked?.resend ?? { runtime: createUnavailableResendRuntime() },
-    sandbox: routeBacked?.sandbox ?? null,
-    telegram: routeBacked?.telegram ?? { runtime: createUnavailableTelegramRuntime() },
   };
 };
