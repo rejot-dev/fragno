@@ -77,6 +77,44 @@ const getCodeArgument = (value: unknown) => {
   return { code, rest };
 };
 
+const getReadPath = (value: unknown) => {
+  if (!isRecord(value) || typeof value.path !== "string") {
+    return null;
+  }
+  return value.path;
+};
+
+const getSkillNameFromPath = (path: string | null | undefined) => {
+  if (!path) {
+    return null;
+  }
+
+  const pathSegments = path.split(/[\\/]+/).filter(Boolean);
+  if (pathSegments.at(-1) !== "SKILL.md") {
+    return null;
+  }
+
+  return pathSegments.at(-2) ?? null;
+};
+
+const getLoadedSkillName = ({
+  argumentsValue,
+  completedToolResult,
+  name,
+}: {
+  argumentsValue: unknown;
+  completedToolResult: ToolResultMessage | null;
+  name: string;
+}) => {
+  if (name !== "read" || !completedToolResult || completedToolResult.isError) {
+    return null;
+  }
+
+  const resultPath = getReadPath(completedToolResult.details);
+  const argumentPath = getReadPath(argumentsValue);
+  return getSkillNameFromPath(resultPath ?? argumentPath);
+};
+
 const decodeStreamingJsonString = (value: string) => {
   let result = "";
   for (let index = 0; index < value.length; index++) {
@@ -892,6 +930,11 @@ function ToolCallBlock({
   liveTool: LiveToolExecution | null;
   name: string;
 }) {
+  const loadedSkillName = getLoadedSkillName({ argumentsValue, completedToolResult, name });
+  if (loadedSkillName) {
+    return <SkillLoadedBlock name={loadedSkillName} />;
+  }
+
   return (
     <div className="min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-2 text-xs text-[var(--bo-muted)]">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -941,6 +984,22 @@ function ToolCallBlock({
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function SkillLoadedBlock({ name }: { name: string }) {
+  return (
+    <div className="min-w-0 border border-[oklch(0.76_0.14_178/0.45)] bg-[oklch(0.76_0.14_178/0.10)] p-2 text-xs text-[var(--bo-fg)] shadow-[0_0_0_1px_oklch(0.76_0.14_178/0.08)_inset]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="inline-flex items-center gap-2 text-[10px] font-semibold tracking-[0.22em] text-[oklch(0.76_0.14_178)] uppercase">
+          <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.76_0.14_178)] shadow-[0_0_12px_oklch(0.76_0.14_178/0.55)]" />
+          Skill loaded
+        </p>
+        <span className="border border-[oklch(0.76_0.14_178/0.35)] bg-[var(--bo-panel)] px-2 py-1 font-mono text-[10px] text-[var(--bo-fg)]">
+          {name}
+        </span>
+      </div>
     </div>
   );
 }
