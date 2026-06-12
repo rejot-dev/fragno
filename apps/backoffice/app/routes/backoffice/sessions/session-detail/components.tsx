@@ -1,5 +1,6 @@
 import { ScrollArea } from "@base-ui/react/scroll-area";
 import { Switch } from "@base-ui/react/switch";
+import { Maximize2, Minimize2 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Link } from "react-router";
 import { Streamdown } from "streamdown";
@@ -65,6 +66,14 @@ const formatJson = (value: unknown) => {
   }
 };
 
+const formatJsonString = (value: string) => {
+  try {
+    return formatJson(JSON.parse(value));
+  } catch {
+    return value;
+  }
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value && typeof value === "object" && !Array.isArray(value));
 
@@ -113,6 +122,27 @@ const getLoadedSkillName = ({
   const resultPath = getReadPath(completedToolResult.details);
   const argumentPath = getReadPath(argumentsValue);
   return getSkillNameFromPath(resultPath ?? argumentPath);
+};
+
+const formatExecCodeModeExpandedResult = (result: ToolResultMessage) => {
+  if (!isRecord(result.details)) {
+    return null;
+  }
+
+  const lines: string[] = [];
+  if (Array.isArray(result.details.logs)) {
+    lines.push(...result.details.logs.filter((line): line is string => typeof line === "string"));
+  }
+
+  if ("result" in result.details && result.details.result !== undefined) {
+    const resultText =
+      typeof result.details.result === "string"
+        ? formatJsonString(result.details.result)
+        : formatJson(result.details.result);
+    lines.push(resultText);
+  }
+
+  return lines.length > 0 ? lines.join("\n") : null;
 };
 
 const decodeStreamingJsonString = (value: string) => {
@@ -930,10 +960,13 @@ function ToolCallBlock({
   liveTool: LiveToolExecution | null;
   name: string;
 }) {
+  const [resultExpanded, setResultExpanded] = useState(false);
   const loadedSkillName = getLoadedSkillName({ argumentsValue, completedToolResult, name });
   if (loadedSkillName) {
     return <SkillLoadedBlock name={loadedSkillName} />;
   }
+
+  const canExpandResult = name === "execCodeMode" && completedToolResult !== null;
 
   return (
     <div className="min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-2 text-xs text-[var(--bo-muted)]">
@@ -973,17 +1006,64 @@ function ToolCallBlock({
             <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
               Result
             </p>
-            {completedToolResult.isError ? (
-              <span className="text-[10px] tracking-[0.22em] text-red-500 uppercase">Error</span>
-            ) : null}
+            <div className="flex items-center gap-2">
+              {completedToolResult.isError ? (
+                <span className="text-[10px] tracking-[0.22em] text-red-500 uppercase">Error</span>
+              ) : null}
+              {canExpandResult ? (
+                <button
+                  type="button"
+                  aria-label={
+                    resultExpanded ? "Collapse execCodeMode result" : "Expand execCodeMode result"
+                  }
+                  title={resultExpanded ? "Collapse result" : "Expand result"}
+                  onClick={() => setResultExpanded((current) => !current)}
+                  className="inline-flex h-6 w-6 items-center justify-center border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)] transition-[border-color,color,transform] duration-150 hover:border-[color:var(--bo-accent)] hover:text-[var(--bo-fg)] active:scale-[0.96]"
+                >
+                  {resultExpanded ? (
+                    <Minimize2 className="h-3.5 w-3.5" />
+                  ) : (
+                    <Maximize2 className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              ) : null}
+            </div>
           </div>
-          <div className="mt-1 min-w-0 space-y-2 text-[11px] text-[var(--bo-fg)]">
-            {normalizeContent(completedToolResult.content).map((block, index) => (
-              <ContentBlock key={`${block.type}-result-${index}`} block={block} scrollableText />
-            ))}
-          </div>
+          <ToolResultContent
+            expanded={canExpandResult && resultExpanded}
+            result={completedToolResult}
+            useExecCodeModeFormatting={canExpandResult}
+          />
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function ToolResultContent({
+  expanded,
+  result,
+  useExecCodeModeFormatting,
+}: {
+  expanded: boolean;
+  result: ToolResultMessage;
+  useExecCodeModeFormatting: boolean;
+}) {
+  const expandedText = useExecCodeModeFormatting ? formatExecCodeModeExpandedResult(result) : null;
+
+  if (expanded && expandedText !== null) {
+    return (
+      <pre className="mt-2 max-h-[70vh] min-h-64 max-w-full overflow-auto border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-[var(--bo-fg)]">
+        {expandedText}
+      </pre>
+    );
+  }
+
+  return (
+    <div className="mt-1 min-w-0 space-y-2 text-[11px] text-[var(--bo-fg)]">
+      {normalizeContent(result.content).map((block, index) => (
+        <ContentBlock key={`${block.type}-result-${index}`} block={block} scrollableText />
+      ))}
     </div>
   );
 }
