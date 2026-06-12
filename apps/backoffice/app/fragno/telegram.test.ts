@@ -34,7 +34,17 @@ describe("buildTelegramAutomationEvent", () => {
         source: "telegram",
         type: "chat",
         id: "chat-1",
+        role: "initiator",
       },
+      actors: [
+        {
+          scope: "external",
+          source: "telegram",
+          type: "chat",
+          id: "chat-1",
+          role: "initiator",
+        },
+      ],
     });
   });
 

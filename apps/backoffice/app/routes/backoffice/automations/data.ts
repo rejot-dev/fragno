@@ -48,7 +48,7 @@ export type AutomationStoreEntryRecord = {
   value?: string | null;
   description?: string | null;
   category?: string[] | null;
-  actor?: AutomationEventActor | null;
+  actor: AutomationEventActor;
   createdAt?: string | Date | null;
   updatedAt?: string | Date | null;
 };

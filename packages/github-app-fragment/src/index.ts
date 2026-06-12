@@ -11,6 +11,7 @@ export type {
   GitHubAppFragmentPublicClientConfig,
   GitHubAppWebhookConfig,
   GitHubAppWebhookHandler,
+  GitHubAppWebhookMeta,
   GitHubAppWebhookOn,
 } from "./github/types";
 export type { GitHubAppFragmentDependencies, GitHubAppFragmentServices } from "./github/definition";

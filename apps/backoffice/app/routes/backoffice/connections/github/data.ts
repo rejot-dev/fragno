@@ -108,7 +108,12 @@ const createGitHubRouteCaller = (
     baseUrl: request.url,
     mountRoute: "/api/github",
     baseHeaders: request.headers,
-    fetch: githubDo.fetch.bind(githubDo),
+    fetch: async (outboundRequest) => {
+      await githubDo.ensureAdminConfig(orgId);
+      const url = new URL(outboundRequest.url);
+      url.searchParams.set("orgId", orgId);
+      return await githubDo.fetch(new Request(url.toString(), outboundRequest));
+    },
   });
 };
 

@@ -2,12 +2,23 @@ import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
 import type { EmitterWebhookEvent, EmitterWebhookEventName } from "@octokit/webhooks";
 
-export type GitHubAppWebhookHandler<TEventName extends EmitterWebhookEventName> = (
-  event: EmitterWebhookEvent<TEventName>,
+export type GitHubAppWebhookMeta = {
+  deliveryId: string;
+  event: string;
+  action: string | null;
+  installationId: string;
+  receivedAt?: string | null;
+};
+
+export type GitHubAppWebhookHandler<TEventName extends EmitterWebhookEventName | "*"> = (
+  event: TEventName extends "*"
+    ? EmitterWebhookEvent
+    : EmitterWebhookEvent<Extract<TEventName, EmitterWebhookEventName>>,
   idempotencyKey: string,
+  meta: GitHubAppWebhookMeta,
 ) => void | Promise<void>;
 
-export type GitHubAppWebhookOn = <TEventName extends EmitterWebhookEventName>(
+export type GitHubAppWebhookOn = <TEventName extends EmitterWebhookEventName | "*">(
   event: TEventName | TEventName[],
   handler: GitHubAppWebhookHandler<TEventName>,
 ) => void;

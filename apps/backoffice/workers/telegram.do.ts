@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import type { TelegramFragmentConfig } from "@fragno-dev/telegram-fragment";
 
+import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
 import { telegramConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/telegram";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
@@ -283,6 +284,8 @@ export class Telegram extends DurableObject<CloudflareEnv> {
               capabilityId: "telegram",
               capabilityLabel: "Telegram",
             },
+            actor: AUTOMATION_SYSTEM_ACTOR,
+            actors: [AUTOMATION_SYSTEM_ACTOR],
             subject: {
               orgId: stored.orgId,
               capabilityId: "telegram",

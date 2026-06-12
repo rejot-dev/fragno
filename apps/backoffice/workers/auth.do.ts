@@ -13,6 +13,7 @@ import type {
 import { migrate } from "@fragno-dev/db";
 
 import { createAuthServer, type AuthFragment } from "@/fragno/auth/auth";
+import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
 import {
   AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED,
   AUTH_AUTOMATION_EVENT_ORGANIZATION_UPDATED,
@@ -50,7 +51,7 @@ const buildAuthActor = (actor: UserSummary | null) =>
         email: actor.email,
         role: actor.role,
       }
-    : null;
+    : AUTOMATION_SYSTEM_ACTOR;
 
 const dispatchOrganizationEvent = async (
   env: CloudflareEnv,
@@ -72,6 +73,7 @@ const dispatchOrganizationEvent = async (
     occurredAt,
     payload: buildOrganizationPayload(organization),
     actor: buildAuthActor(payload.actor),
+    actors: [buildAuthActor(payload.actor)],
     subject: { orgId: organization.id },
   });
 };

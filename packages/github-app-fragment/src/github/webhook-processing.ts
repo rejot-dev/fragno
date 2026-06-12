@@ -12,7 +12,12 @@ import {
   toRepoCreateRecord,
   toRepoRecord,
 } from "./repo-sync";
-import type { GitHubAppFragmentConfig, GitHubAppWebhookConfig, GitHubAppWebhookOn } from "./types";
+import type {
+  GitHubAppFragmentConfig,
+  GitHubAppWebhookConfig,
+  GitHubAppWebhookMeta,
+  GitHubAppWebhookOn,
+} from "./types";
 import { normalizeJoinedLinks, toExternalId } from "./utils";
 
 type InstallationRow = TableToColumnValues<(typeof githubAppSchema)["tables"]["installation"]>;
@@ -58,6 +63,7 @@ function asSupportedWebhook(data: WebhookProcessingPayload): SupportedWebhook | 
 type InternalWebhookHandler = (
   event: EmitterWebhookEvent,
   idempotencyKey: string,
+  meta: GitHubAppWebhookMeta,
 ) => void | Promise<void>;
 
 const toEmitterWebhookEvent = (data: WebhookProcessingPayload): EmitterWebhookEvent => {
@@ -85,7 +91,7 @@ const createWebhookEventDispatcher = (configureOn?: GitHubAppWebhookConfig) => {
 
   configureOn?.(registerOn);
 
-  return async (event: EmitterWebhookEvent, idempotencyKey: string) => {
+  return async (event: EmitterWebhookEvent, idempotencyKey: string, meta: GitHubAppWebhookMeta) => {
     if (handlersByEvent.size === 0) {
       return;
     }
@@ -94,7 +100,9 @@ const createWebhookEventDispatcher = (configureOn?: GitHubAppWebhookConfig) => {
       "action" in event.payload && typeof event.payload.action === "string"
         ? event.payload.action
         : null;
-    const dispatchEvents = action ? [`${event.name}.${action}`, event.name] : [event.name];
+    const dispatchEvents = action
+      ? [`${event.name}.${action}`, event.name, "*"]
+      : [event.name, "*"];
     const handlers: InternalWebhookHandler[] = [];
 
     for (const eventName of dispatchEvents) {
@@ -109,7 +117,7 @@ const createWebhookEventDispatcher = (configureOn?: GitHubAppWebhookConfig) => {
     }
 
     const settled = await Promise.allSettled(
-      handlers.map(async (handler) => await handler(event, idempotencyKey)),
+      handlers.map(async (handler) => await handler(event, idempotencyKey, meta)),
     );
     const failures = settled
       .filter((result): result is PromiseRejectedResult => result.status === "rejected")
@@ -224,9 +232,16 @@ export const createWebhookProcessor = (config: Pick<GitHubAppFragmentConfig, "we
 
   return async function processWebhook(this: HookContext, data: WebhookProcessingPayload) {
     const emitterEvent = toEmitterWebhookEvent(data);
+    const meta: GitHubAppWebhookMeta = {
+      deliveryId: data.deliveryId,
+      event: data.event,
+      action: data.action,
+      installationId: data.installationId,
+      receivedAt: data.receivedAt ?? null,
+    };
     const webhook = asSupportedWebhook(data);
     if (!webhook) {
-      await dispatchWebhookEvent(emitterEvent, this.idempotencyKey);
+      await dispatchWebhookEvent(emitterEvent, this.idempotencyKey, meta);
       return;
     }
 
@@ -443,6 +458,6 @@ export const createWebhookProcessor = (config: Pick<GitHubAppFragmentConfig, "we
         }
       })
       .execute();
-    await dispatchWebhookEvent(emitterEvent, this.idempotencyKey);
+    await dispatchWebhookEvent(emitterEvent, this.idempotencyKey, meta);
   };
 };

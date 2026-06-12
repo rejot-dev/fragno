@@ -275,8 +275,8 @@ export const backofficeConnectionCatalog: readonly BackofficeConnectionCatalogEn
   },
 ];
 
-export const listAutomationEventDescriptors = () =>
-  backofficeCapabilities.flatMap((capability) =>
+export const listAutomationEventDescriptors = () => {
+  const events = backofficeCapabilities.flatMap((capability) =>
     (capability.automationEvents ?? []).map((event) => ({
       ...event,
       capabilityId: capability.id,
@@ -285,6 +285,9 @@ export const listAutomationEventDescriptors = () =>
       subjectSchema: zodSchemaToJsonSchema(event.subjectSchema),
     })),
   );
+
+  return events;
+};
 
 const isConnectionCapability = (
   capability: BackofficeCapability,

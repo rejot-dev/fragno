@@ -86,7 +86,8 @@ export const buildIdentityClaimCompletedAutomationEvent = (input: {
     otpId: input.otp.id,
     claimType: input.otp.type,
   },
-  actor: input.claim.actor as AutomationExternalEntityRef,
+  actor: { ...(input.claim.actor as AutomationExternalEntityRef), role: "initiator" },
+  actors: [{ ...(input.claim.actor as AutomationExternalEntityRef), role: "initiator" }],
   subject: {
     userId: input.userId,
   },

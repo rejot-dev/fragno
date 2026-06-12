@@ -5,7 +5,7 @@ import { createUnsupportedFileSystem } from "@/files/interface";
 import { MasterFileSystem } from "@/files/master-file-system";
 import { executeBashAutomation } from "@/fragno/runtime-tools/automation-host";
 
-import type { AutomationEvent } from "../contracts";
+import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "../contracts";
 import {
   createAutomationExecutionContext as createRuntimeAutomationExecutionContext,
   createAutomationRuntime as createRouteBackedAutomationRuntime,
@@ -44,6 +44,18 @@ const createAutomationRuntime = (
   ...runtime,
   ...overrides,
 });
+
+const createTestEvent = (
+  event: Omit<AutomationEvent, "actor" | "actors"> &
+    Partial<Pick<AutomationEvent, "actor" | "actors">>,
+): AutomationEvent => {
+  const actor = event.actor ?? AUTOMATION_SYSTEM_ACTOR;
+  return {
+    ...event,
+    actor,
+    actors: event.actors ?? [actor],
+  };
+};
 
 const createDeferred = <T = void>() => {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -95,6 +107,7 @@ describe("bash command runner", () => {
         type: "chat",
         id: "chat-1",
       },
+      actors: [{ scope: "external", source: "telegram", type: "chat", id: "chat-1" }],
       subject: {
         userId: "user-1",
       },
@@ -122,32 +135,27 @@ describe("bash command runner", () => {
     assert(result.exitCode === 0);
     assert(
       result.stdout.trim() ===
-        'event={"id":"event-123","orgId":"org-1","source":"telegram","eventType":"message.received","occurredAt":"2026-01-01T00:00:00.000Z","payload":{"messageId":"message-1","chatId":"chat-1","fromUserId":"from-1","text":"/start"},"actor":{"scope":"external","source":"telegram","type":"chat","id":"chat-1"},"subject":{"userId":"user-1"}}',
+        'event={"id":"event-123","orgId":"org-1","source":"telegram","eventType":"message.received","occurredAt":"2026-01-01T00:00:00.000Z","payload":{"messageId":"message-1","chatId":"chat-1","fromUserId":"from-1","text":"/start"},"actor":{"scope":"external","source":"telegram","type":"chat","id":"chat-1"},"actors":[{"scope":"external","source":"telegram","type":"chat","id":"chat-1"}],"subject":{"userId":"user-1"}}',
     );
   });
 
   it("mounts /dev/null so scripts can discard output", async () => {
+    const event = createTestEvent({
+      id: "dev-null-event",
+      source: "telegram",
+      eventType: "message.received",
+      occurredAt: "2026-01-01T00:00:00.000Z",
+      payload: {},
+    });
     const automationRuntime = createRouteBackedAutomationRuntime({
-      event: {
-        id: "dev-null-event",
-        source: "telegram",
-        eventType: "message.received",
-        occurredAt: "2026-01-01T00:00:00.000Z",
-        payload: {},
-      },
+      event,
     });
 
     const result = await executeBashAutomation({
       script: 'echo "discarded" >/dev/null && echo "kept"',
       masterFs: new MasterFileSystem({ mounts: [] }),
       context: createRuntimeAutomationExecutionContext({
-        event: {
-          id: "dev-null-event",
-          source: "telegram",
-          eventType: "message.received",
-          occurredAt: "2026-01-01T00:00:00.000Z",
-          payload: {},
-        },
+        event,
         binding: { source: "telegram", eventType: "message.received", scriptId: "s-dev" },
         idempotencyKey: "idem-dev",
         runtime: automationRuntime,
@@ -161,28 +169,23 @@ describe("bash command runner", () => {
 
   it("keeps the shared master filesystem mount list unchanged after execution", async () => {
     const masterFs = new MasterFileSystem({ mounts: [] });
+    const event = createTestEvent({
+      id: "cleanup-event",
+      source: "telegram",
+      eventType: "message.received",
+      occurredAt: "2026-01-01T00:00:00.000Z",
+      payload: {},
+    });
 
     const automationRuntime = createRouteBackedAutomationRuntime({
-      event: {
-        id: "cleanup-event",
-        source: "telegram",
-        eventType: "message.received",
-        occurredAt: "2026-01-01T00:00:00.000Z",
-        payload: {},
-      },
+      event,
     });
 
     await executeBashAutomation({
       script: "echo ok",
       masterFs,
       context: createRuntimeAutomationExecutionContext({
-        event: {
-          id: "cleanup-event",
-          source: "telegram",
-          eventType: "message.received",
-          occurredAt: "2026-01-01T00:00:00.000Z",
-          payload: {},
-        },
+        event,
         binding: { source: "telegram", eventType: "message.received", scriptId: "s-cleanup" },
         idempotencyKey: "idem-cleanup",
         runtime: automationRuntime,
@@ -198,22 +201,22 @@ describe("bash command runner", () => {
     const releaseFirstRun = createDeferred();
     const firstRunBlocked = createDeferred();
 
-    const firstEvent: AutomationEvent = {
+    const firstEvent: AutomationEvent = createTestEvent({
       id: "event-overlap-a",
       orgId: "org-1",
       source: "telegram",
       eventType: "message.received",
       occurredAt: "2026-01-01T00:00:00.000Z",
       payload: { run: "a" },
-    };
-    const secondEvent: AutomationEvent = {
+    });
+    const secondEvent: AutomationEvent = createTestEvent({
       id: "event-overlap-b",
       orgId: "org-1",
       source: "telegram",
       eventType: "message.received",
       occurredAt: "2026-01-01T00:00:00.000Z",
       payload: { run: "b" },
-    };
+    });
 
     const firstRun = executeBashAutomation({
       script:
@@ -268,22 +271,22 @@ describe("bash command runner", () => {
     const releaseSecondRun = createDeferred();
     const secondRunBlocked = createDeferred();
 
-    const firstEvent: AutomationEvent = {
+    const firstEvent: AutomationEvent = createTestEvent({
       id: "event-cleanup-a",
       orgId: "org-1",
       source: "telegram",
       eventType: "message.received",
       occurredAt: "2026-01-01T00:00:00.000Z",
       payload: { run: "a" },
-    };
-    const secondEvent: AutomationEvent = {
+    });
+    const secondEvent: AutomationEvent = createTestEvent({
       id: "event-cleanup-b",
       orgId: "org-1",
       source: "telegram",
       eventType: "message.received",
       occurredAt: "2026-01-01T00:00:00.000Z",
       payload: { run: "b" },
-    };
+    });
 
     const firstRun = executeBashAutomation({
       script:
@@ -366,27 +369,22 @@ describe("bash command runner", () => {
       }),
     });
 
+    const event = createTestEvent({
+      id: "existing-dev-event",
+      source: "telegram",
+      eventType: "message.received",
+      occurredAt: "2026-01-01T00:00:00.000Z",
+      payload: {},
+    });
     const automationRuntime = createRouteBackedAutomationRuntime({
-      event: {
-        id: "existing-dev-event",
-        source: "telegram",
-        eventType: "message.received",
-        occurredAt: "2026-01-01T00:00:00.000Z",
-        payload: {},
-      },
+      event,
     });
 
     await executeBashAutomation({
       script: "echo ok",
       masterFs,
       context: createRuntimeAutomationExecutionContext({
-        event: {
-          id: "existing-dev-event",
-          source: "telegram",
-          eventType: "message.received",
-          occurredAt: "2026-01-01T00:00:00.000Z",
-          payload: {},
-        },
+        event,
         binding: { source: "telegram", eventType: "message.received", scriptId: "s-edev" },
         idempotencyKey: "idem-edev",
         runtime: automationRuntime,

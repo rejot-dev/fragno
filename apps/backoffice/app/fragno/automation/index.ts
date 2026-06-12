@@ -63,7 +63,7 @@ export {
   AUTOMATION_SOURCES,
   AUTOMATION_SOURCE_EVENT_TYPES,
 } from "./contracts";
-export type { AutomationEvent, AutomationIngestResult };
+export type { AutomationIngestResult };
 export type {
   AutomationCreateIdentityClaimInput,
   AutomationCreateIdentityClaimResult,
@@ -71,6 +71,7 @@ export type {
   AutomationEntityRef,
   AutomationEntityScope,
   AutomationExternalEntityRef,
+  AutomationEvent,
   AutomationEventActor,
   AutomationEventPayload,
   AutomationEventSubject,

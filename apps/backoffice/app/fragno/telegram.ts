@@ -73,7 +73,17 @@ export const buildTelegramAutomationEvent = (
     source: AUTOMATION_SOURCES.telegram,
     type: "chat",
     id: payload.chatId,
+    role: "initiator",
   },
+  actors: [
+    {
+      scope: "external",
+      source: AUTOMATION_SOURCES.telegram,
+      type: "chat",
+      id: payload.chatId,
+      role: "initiator",
+    },
+  ],
 });
 
 export function createAdapter(state?: DurableObjectState) {

@@ -28,6 +28,16 @@ export const createEventRuntime = ({ env, event }: CreateEventRuntimeOptions): E
     }
 
     const nextSource = source ?? event.source;
+    const baseActor = event.actor;
+    const baseActors = event.actors;
+    const nextActor = externalActorId
+      ? {
+          scope: "external" as const,
+          source: nextSource,
+          type: actorType ?? baseActor.type ?? "actor",
+          id: externalActorId,
+        }
+      : baseActor;
     const nextEvent: AutomationEvent = {
       id: `${event.id}:${eventType}:${crypto.randomUUID()}`,
       orgId,
@@ -38,15 +48,9 @@ export const createEventRuntime = ({ env, event }: CreateEventRuntimeOptions): E
         payload !== null && Array.isArray(payload) === false && typeof payload === "object"
           ? (payload as Record<string, unknown>)
           : {},
-      actor: externalActorId
-        ? {
-            scope: "external",
-            source: nextSource,
-            type: actorType ?? event.actor?.type ?? "actor",
-            id: externalActorId,
-          }
-        : null,
-      subject: subjectUserId ? { userId: subjectUserId } : null,
+      actor: nextActor,
+      actors: externalActorId ? [...baseActors, nextActor] : baseActors,
+      subject: subjectUserId ? { userId: subjectUserId } : (event.subject ?? null),
     };
 
     const automationsDo = env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(orgId));

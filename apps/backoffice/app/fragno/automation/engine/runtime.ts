@@ -1,3 +1,4 @@
+import type { McpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
 import type { PiRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
 import {
   createUnavailableResendRuntime,
@@ -58,6 +59,9 @@ export type AutomationRuntimeHostContext = {
   durableHooks?: {
     runtime: DurableHooksRuntime;
   } | null;
+  mcp?: {
+    runtime: McpRuntime;
+  } | null;
   otp: {
     runtime: OtpRuntime;
   };
@@ -88,6 +92,10 @@ export const createAutomationRuntime = ({
   event: AutomationEvent;
 }): AutomationRuntime => {
   const orgId = normalizeOrgId(event.orgId);
+  const eventWithOrgId: AutomationEvent = {
+    ...event,
+    orgId,
+  };
   const requireOrgRouteBackend = (toolName: string) => {
     if (!env) {
       throw new Error(`${toolName} is not configured`);
@@ -102,10 +110,7 @@ export const createAutomationRuntime = ({
       ...routeBacked.otp.runtime,
       ...createEventRuntime({
         env,
-        event: {
-          ...event,
-          orgId,
-        },
+        event: eventWithOrgId,
       }),
     };
   }
@@ -118,10 +123,7 @@ export const createAutomationRuntime = ({
     createClaim: async () => requireOrgRouteBackend("otp.identity.create-claim"),
     ...createEventRuntime({
       env,
-      event: {
-        ...event,
-        orgId,
-      },
+      event: eventWithOrgId,
     }),
   };
 };
@@ -141,12 +143,11 @@ export const createAutomationExecutionContext = ({
   env?: CloudflareEnv;
   pi: AutomationPiBashContext | null;
 }): AutomationRuntimeHostContext => {
-  const normalizedEvent: AutomationEvent = {
+  const orgId = normalizeOrgId(event.orgId);
+  const eventWithOrgId: AutomationEvent = {
     ...event,
-    orgId: normalizeOrgId(event.orgId),
+    orgId,
   };
-
-  const orgId = normalizedEvent.orgId;
 
   const routeBacked =
     env && orgId
@@ -159,7 +160,7 @@ export const createAutomationExecutionContext = ({
 
   return {
     automation: {
-      event: normalizedEvent,
+      event: eventWithOrgId,
       orgId,
       binding,
       idempotencyKey,
@@ -172,6 +173,7 @@ export const createAutomationExecutionContext = ({
         },
     workflow: routeBacked?.workflow ?? null,
     durableHooks: routeBacked?.durableHooks ?? null,
+    mcp: routeBacked?.mcp ?? null,
     otp: {
       runtime,
     },

@@ -801,6 +801,12 @@ describe("github-app webhooks", () => {
           }),
         }),
         expect.any(String),
+        expect.objectContaining({
+          deliveryId: "delivery-deleted",
+          event: "installation",
+          action: "deleted",
+          installationId,
+        }),
       );
       expect(onInstallation).toHaveBeenCalledTimes(1);
     } finally {

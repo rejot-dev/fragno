@@ -100,7 +100,7 @@ const existing = await store.get({ key: "telegram/" + chatId });
 await store.set({
   key: "telegram/" + chatId,
   value: userId,
-  actor: event.actor ?? null,
+  actor: event.actor,
   description: "Backoffice user linked to this Telegram chat.",
   category: ["telegram", "identity"],
 });
@@ -121,7 +121,7 @@ Use \`verification\` when storing JSON text that must match a schema. Verificati
 await store.set({
   key: "pi/default-agent-config",
   value: JSON.stringify({ harness: "default", model: "openai:gpt-5-mini" }),
-  actor: event.actor ?? null,
+  actor: event.actor,
   verification: [
     {
       type: "json-schema",
