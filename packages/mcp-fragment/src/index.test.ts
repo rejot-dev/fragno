@@ -1,7 +1,7 @@
-import { afterAll, assert, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { afterAll, assert, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { instantiate } from "@fragno-dev/core";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
 import { mcpFragmentDefinition } from "./definition";
 import { createMcpFragmentClients } from "./index";
@@ -14,6 +14,8 @@ import {
 } from "./testing/streamable-http-mcp-server";
 
 const bearerToken = "secret";
+const onServerConfigurationChanged = vi.fn();
+const onServerConfigurationDeleted = vi.fn();
 
 const buildMcpTest = async () =>
   await buildDatabaseFragmentsTest()
@@ -22,7 +24,11 @@ const buildMcpTest = async () =>
     .withFragment(
       "mcp",
       instantiate(mcpFragmentDefinition)
-        .withConfig({ publicBaseUrl: "https://app.test" })
+        .withConfig({
+          publicBaseUrl: "https://app.test",
+          onServerConfigurationChanged,
+          onServerConfigurationDeleted,
+        })
         .withRoutes([mcpRoutesFactory]),
     )
     .build();
@@ -172,6 +178,7 @@ describe("mcp-fragment", () => {
 
   beforeEach(async () => {
     await setup.test.resetDatabase();
+    vi.clearAllMocks();
   });
 
   afterAll(async () => {
@@ -416,6 +423,86 @@ describe("mcp-fragment", () => {
 
     expect(refreshed.data.tools).toEqual(first.data.tools);
     expect(jsonMcpServer.getMcpRequestCount()).toBeGreaterThan(afterFirst);
+  });
+
+  test("refreshes server configuration from durable hook after creating a server", async () => {
+    await createServer(fragment, {
+      slug: "auto-refresh-tools",
+      endpointUrl: jsonMcpServer.endpointUrl,
+    });
+
+    await drainDurableHooks(fragment);
+
+    const cache = await readConnectionCache(setup.fragments.mcp, "auto-refresh-tools");
+    expect(cache).toEqual(
+      expect.objectContaining({
+        tools: [expect.objectContaining({ name: "echo" })],
+      }),
+    );
+    expect(onServerConfigurationChanged).toHaveBeenCalledTimes(1);
+    expect(onServerConfigurationChanged).toHaveBeenCalledWith(
+      {
+        serverId: "auto-refresh-tools",
+        current: { tools: [expect.objectContaining({ name: "echo" })] },
+      },
+      expect.any(String),
+    );
+  });
+
+  test("triggers durable hook when tools are first cached", async () => {
+    await createServer(fragment, { slug: "new-tools", endpointUrl: jsonMcpServer.endpointUrl });
+
+    const refreshed = await fragment.callRoute("GET", "/servers/:slug/tools", {
+      pathParams: { slug: "new-tools" },
+    });
+    assert(refreshed.type === "json");
+
+    await drainDurableHooks(fragment);
+
+    expect(onServerConfigurationChanged).toHaveBeenCalledTimes(1);
+    expect(onServerConfigurationChanged).toHaveBeenCalledWith(
+      {
+        serverId: "new-tools",
+        current: { tools: refreshed.data.tools },
+      },
+      expect.any(String),
+    );
+  });
+
+  test("triggers durable hook when refreshed tools differ from cached tools", async () => {
+    await createServer(fragment, { slug: "changed-tools", endpointUrl: jsonMcpServer.endpointUrl });
+
+    const uow = setup.fragments.mcp.db
+      .createUnitOfWork("seed-stale-tools-cache")
+      .forSchema(mcpSchema);
+    uow.create("server_connection_cache", {
+      id: "changed-tools",
+      serverId: "changed-tools",
+      protocolVersion: null,
+      serverInfo: null,
+      capabilities: null,
+      tools: [{ name: "stale" }],
+    });
+    const { success } = await uow.executeMutations();
+    if (!success) {
+      throw new Error("Failed to seed stale tools cache");
+    }
+
+    const refreshed = await fragment.callRoute("GET", "/servers/:slug/tools", {
+      pathParams: { slug: "changed-tools" },
+    });
+    assert(refreshed.type === "json");
+
+    await drainDurableHooks(fragment);
+
+    expect(onServerConfigurationChanged).toHaveBeenCalledTimes(1);
+    expect(onServerConfigurationChanged).toHaveBeenCalledWith(
+      {
+        serverId: "changed-tools",
+        current: { tools: refreshed.data.tools },
+      },
+      expect.any(String),
+    );
   });
 
   test("caches connection metadata when calling a tool without listing tools", async () => {
@@ -828,6 +915,14 @@ describe("mcp-fragment", () => {
       return;
     }
     assert(deleted.status === 204);
+
+    await drainDurableHooks(fragment);
+
+    expect(onServerConfigurationDeleted).toHaveBeenCalledTimes(1);
+    expect(onServerConfigurationDeleted).toHaveBeenCalledWith(
+      { serverId: "delete-me" },
+      expect.any(String),
+    );
 
     const read = await fragment.callRoute("GET", "/servers/:slug", {
       pathParams: { slug: "delete-me" },

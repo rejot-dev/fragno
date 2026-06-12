@@ -127,6 +127,7 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                   expiresAt: null,
                 });
               }
+              uow.triggerHook("internalRefreshServerConfiguration", { serverId: body.slug });
               return { exists: false as const };
             })
             .execute();
@@ -224,6 +225,7 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                 uow.delete("server_connection_cache", cache.id);
               }
               uow.delete("server_configuration", server.id);
+              uow.triggerHook("onServerConfigurationDeleted", { serverId: pathParams.slug });
               return { deleted: true as const };
             })
             .execute();
@@ -473,6 +475,9 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                     b.whereIndex("idx_secret_server_kind", (eb) =>
                       eb("serverId", "=", pathParams.slug),
                     ),
+                  )
+                  .findFirst("server_connection_cache", (b) =>
+                    b.whereIndex("primary", (eb) => eb("id", "=", pathParams.slug)),
                   ),
               )
               .afterRetrieve(async (_uow, [server, secrets]) => {
@@ -492,7 +497,7 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                   toolsOperation,
                 };
               })
-              .mutate(({ forSchema, retrieveResult: [server, secrets] }) => {
+              .mutate(({ forSchema, retrieveResult: [server, secrets, cache] }) => {
                 if (!server) {
                   return { found: false as const };
                 }
@@ -554,6 +559,13 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                 const tools = Array.isArray(preparedOperation.toolsOperation.result.tools)
                   ? preparedOperation.toolsOperation.result.tools
                   : [];
+                const previousTools = Array.isArray(cache?.tools) ? cache.tools : null;
+                if (!previousTools || JSON.stringify(previousTools) !== JSON.stringify(tools)) {
+                  uow.triggerHook("onServerConfigurationChanged", {
+                    serverId: pathParams.slug,
+                    current: { tools },
+                  });
+                }
                 uow.delete("server_connection_cache", pathParams.slug);
                 uow.create("server_connection_cache", {
                   id: pathParams.slug,

@@ -3,8 +3,7 @@ import { createClientBuilder, type FragnoPublicClientConfig } from "@fragno-dev/
 import { instantiate } from "@fragno-dev/core";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 
-import { mcpFragmentDefinition } from "./definition";
-import type { McpFragmentConfig } from "./mcp-types";
+import { mcpFragmentDefinition, type McpFragmentConfig } from "./definition";
 import { mcpRoutesFactory } from "./routes";
 
 const routes = [mcpRoutesFactory] as const;
