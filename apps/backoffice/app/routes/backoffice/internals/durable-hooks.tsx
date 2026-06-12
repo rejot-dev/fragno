@@ -85,6 +85,7 @@ export default function BackofficeDurableHooksLanding() {
               const organizationPath = `/backoffice/internals/durable-hooks/${organization.id}`;
               const cloudflarePath = `${organizationPath}/cloudflare`;
               const telegramPath = `${organizationPath}/telegram`;
+              const mcpPath = `${organizationPath}/mcp`;
               const resendPath = `${organizationPath}/resend`;
               const githubPath = `${organizationPath}/github`;
               const uploadPath = `${organizationPath}/upload`;
@@ -135,6 +136,13 @@ export default function BackofficeDurableHooksLanding() {
                       className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Telegram
+                    </Link>
+                    <Link
+                      to={mcpPath}
+                      onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
+                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                    >
+                      MCP
                     </Link>
                     <Link
                       to={resendPath}

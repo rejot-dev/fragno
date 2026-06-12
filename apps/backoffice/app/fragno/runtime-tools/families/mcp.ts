@@ -102,13 +102,101 @@ const getMcpRuntime = (runtime: McpToolContext["runtimes"]["mcp"]): McpRuntime =
   return runtime;
 };
 
-const defaultStructuredOutput = (_args: string[], parsed: ParsedCliTokens) => {
-  const output = readOutputOptions(parsed);
-  return output.print || parsed.options.has("format")
-    ? output
-    : { ...output, format: "json" as const };
+const defaultOutput = (_args: string[], parsed: ParsedCliTokens) => readOutputOptions(parsed);
+
+const textOrDataFormat =
+  <T>(renderText: (result: T) => string) =>
+  (result: T, output: { format?: "text" | "json"; print?: string }) => {
+    if (output.format === "json" || output.print) {
+      return { data: result };
+    }
+    const stdout = renderText(result);
+    return { data: result, stdout: stdout.endsWith("\n") ? stdout : `${stdout}\n` };
+  };
+
+const stringifyMcpValue = (value: unknown) =>
+  typeof value === "string" ? value : JSON.stringify(value, null, 2);
+
+const cell = (value: unknown) => {
+  if (Array.isArray(value)) {
+    return value.length ? value.join(", ") : "-";
+  }
+  if (typeof value === "boolean") {
+    return value ? "yes" : "no";
+  }
+  if (value === undefined || value === null || value === "") {
+    return "-";
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return String(value);
 };
-const dataFormat = <T>(result: T) => ({ data: result });
+
+const renderTable = (headers: readonly string[], rows: readonly (readonly unknown[])[]) => {
+  const normalizedRows = rows.map((row) => row.map(cell));
+  const widths = headers.map((header, index) =>
+    Math.max(header.length, ...normalizedRows.map((row) => row[index]?.length ?? 0)),
+  );
+  const renderRow = (row: readonly string[]) =>
+    row
+      .map((value, index) => value.padEnd(widths[index] ?? value.length))
+      .join("  ")
+      .trimEnd();
+  return [
+    renderRow(headers),
+    renderRow(widths.map((width) => "-".repeat(width))),
+    ...normalizedRows.map(renderRow),
+  ].join("\n");
+};
+
+const readToolName = (tool: unknown) =>
+  tool && typeof tool === "object" && "name" in tool
+    ? String((tool as { name?: unknown }).name ?? "")
+    : "";
+
+const renderServerRows = (servers: readonly z.infer<typeof serverSchema>[]) =>
+  renderTable(
+    ["server", "name", "auth", "endpoint", "tools"],
+    servers.map((server) => [
+      server.slug,
+      server.name,
+      server.authMode,
+      server.endpointUrl,
+      Array.isArray(server.cache?.tools)
+        ? server.cache.tools.map(readToolName).filter(Boolean)
+        : [],
+    ]),
+  );
+
+const renderServers = (result: McpListServersOutput) =>
+  result.servers.length ? renderServerRows(result.servers) : "No MCP servers configured.";
+
+const renderTools = (result: McpListToolsOutput) =>
+  result.tools.length
+    ? renderTable(
+        ["tool", "title", "description"],
+        result.tools.map((tool) => [tool.name, tool.title, tool.description]),
+      )
+    : "No tools advertised.";
+
+const renderToolCall = (result: McpToolCallOutput) => {
+  const content = result["content"];
+  if (Array.isArray(content)) {
+    const text = content
+      .map((item) =>
+        item && typeof item === "object" && "text" in item
+          ? String((item as { text?: unknown }).text ?? "")
+          : "",
+      )
+      .filter(Boolean)
+      .join("\n");
+    if (text) {
+      return text;
+    }
+  }
+  return stringifyMcpValue(result);
+};
 
 const parseScopes = (value: string | undefined) =>
   value
@@ -205,8 +293,8 @@ export const mcpRuntimeTools = [
           examples: ["mcp.servers.list"],
         },
         parse: defineEmptyArgsParser("mcp.servers.list"),
-        outputOptions: defaultStructuredOutput,
-        format: dataFormat,
+        outputOptions: defaultOutput,
+        format: textOrDataFormat(renderServers),
       },
     },
   }),
@@ -278,8 +366,10 @@ export const mcpRuntimeTools = [
           ],
         },
         parse: parseServersAdd,
-        outputOptions: defaultStructuredOutput,
-        format: dataFormat,
+        outputOptions: defaultOutput,
+        format: textOrDataFormat(
+          (server: McpCreateServerOutput) => `Created MCP server\n\n${renderServerRows([server])}`,
+        ),
       },
     },
   }),
@@ -310,26 +400,26 @@ export const mcpRuntimeTools = [
           examples: ["mcp.servers.delete --server docs"],
         },
         parse: parseServerSlug,
-        outputOptions: defaultStructuredOutput,
-        format: dataFormat,
+        outputOptions: defaultOutput,
+        format: textOrDataFormat(() => "Deleted MCP server."),
       },
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "mcp.tools.list",
+    id: "mcp.servers.refresh",
     namespace: "mcp",
-    name: "listTools",
+    name: "refreshServer",
     capabilityId: "mcp",
-    description: "List tools advertised by a configured MCP server.",
+    description: "Refresh a configured MCP server and update its cached tool list.",
     inputSchema: listToolsInputSchema,
     outputSchema: listToolsOutputSchema,
     execute: async (input, context: McpToolContext) =>
       await getMcpRuntime(context.runtimes.mcp).listTools(input),
     adapters: {
       bash: {
-        command: "mcp.tools.list",
+        command: "mcp.servers.refresh",
         help: {
-          summary: "mcp.tools.list lists tools from a configured MCP server.",
+          summary: "mcp.servers.refresh refreshes a configured MCP server's cached tool list.",
           options: [
             {
               name: "server",
@@ -339,11 +429,14 @@ export const mcpRuntimeTools = [
               description: "MCP server slug",
             },
           ],
-          examples: ["mcp.tools.list --server docs", "mcp.tools.list --server docs --print tools"],
+          examples: [
+            "mcp.servers.refresh --server docs",
+            "mcp.servers.refresh --server docs --print tools",
+          ],
         },
         parse: parseServerSlug,
-        outputOptions: defaultStructuredOutput,
-        format: dataFormat,
+        outputOptions: defaultOutput,
+        format: textOrDataFormat(renderTools),
       },
     },
   }),
@@ -395,8 +488,8 @@ export const mcpRuntimeTools = [
           ],
         },
         parse: parseToolCall,
-        outputOptions: defaultStructuredOutput,
-        format: dataFormat,
+        outputOptions: defaultOutput,
+        format: textOrDataFormat(renderToolCall),
       },
     },
   }),
@@ -440,8 +533,11 @@ export const mcpRuntimeTools = [
           examples: ["mcp.oauth.start --server docs --scope tools"],
         },
         parse: parseOAuthStart,
-        outputOptions: defaultStructuredOutput,
-        format: dataFormat,
+        outputOptions: defaultOutput,
+        format: textOrDataFormat(
+          (result: McpOAuthStartOutput) =>
+            `Open this URL to authorize MCP server access:\n${result.authorizationUrl}\nstate=${result.state}`,
+        ),
       },
     },
   }),
@@ -479,8 +575,10 @@ export const mcpRuntimeTools = [
           examples: ["mcp.auth.token --server docs --token $TOKEN"],
         },
         parse: parseSetToken,
-        outputOptions: defaultStructuredOutput,
-        format: dataFormat,
+        outputOptions: defaultOutput,
+        format: textOrDataFormat((result: McpAuthStatus) =>
+          renderTable(["authenticated", "mode"], [[result.authenticated, result.mode]]),
+        ),
       },
     },
   }),

@@ -45,13 +45,16 @@ const auth = await mcp.startOAuth({ slug: serverId });
 return auth.authorizationUrl;
 \`\`\`
 
-After the user completes OAuth, verify with \`mcp.listTools({ slug: serverId })\`.
+After the user completes OAuth, refresh the server tools with \`mcp.refreshServer({ slug: serverId })\`.
 `,
     events: `# MCP events
 
-No cataloged automation events.
+Cataloged automation events:
 
-Treat MCP as a tool-backed capability: automations register servers, inspect advertised tools, and call those tools when an external MCP service is needed.
+- \`source\`: \`mcp\`, \`eventType\`: \`server.configuration.changed\` — fires after a server refresh when the advertised tools differ from the previous cache.
+- \`source\`: \`mcp\`, \`eventType\`: \`server.configuration.deleted\` — fires after an MCP server configuration is deleted.
+
+Treat MCP as a tool-backed capability: automations register servers, refresh advertised tool caches, and call those tools when an external MCP service is needed.
 `,
     tools: `# MCP tools
 
@@ -61,16 +64,16 @@ MCP tools can:
 - register and delete remote streamable HTTP MCP servers;
 - start OAuth login for a server;
 - store bearer tokens;
-- list tools advertised by a configured server;
+- refresh the cached tools advertised by a configured server;
 - call tools exposed by a configured server.
 
-Use codemode first. The \`mcp\` provider methods are \`listServers\`, \`createServer\`, \`deleteServer\`, \`startOAuth\`, \`setToken\`, \`listTools\`, and \`callTool\`.
+Use codemode first. The \`mcp\` provider methods are \`listServers\`, \`createServer\`, \`deleteServer\`, \`refreshServer\`, \`startOAuth\`, \`setToken\`, and \`callTool\`.
 
 Examples:
 
 \`\`\`js
 await mcp.listServers();
-await mcp.listTools({ slug: "cloudflare-mcp" });
+await mcp.refreshServer({ slug: "cloudflare-mcp" });
 await mcp.callTool({
   slug: "cloudflare-mcp",
   name: "docs",
@@ -78,6 +81,6 @@ await mcp.callTool({
 });
 \`\`\`
 
-Bash runtime commands include \`mcp.servers.list\`, \`mcp.servers.add\`, \`mcp.servers.delete\`, \`mcp.oauth.start\`, \`mcp.auth.token\`, \`mcp.tools.list\`, and \`mcp.tools.call\`.
+Bash runtime commands include \`mcp.servers.list\`, \`mcp.servers.add\`, \`mcp.servers.delete\`, \`mcp.servers.refresh\`, \`mcp.oauth.start\`, \`mcp.auth.token\`, and \`mcp.tools.call\`.
 `,
   });

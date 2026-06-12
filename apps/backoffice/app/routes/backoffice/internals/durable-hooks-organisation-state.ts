@@ -1,6 +1,7 @@
 export type DurableHooksOrgFragment =
   | "cloudflare"
   | "telegram"
+  | "mcp"
   | "otp"
   | "resend"
   | "github"
@@ -12,6 +13,7 @@ export type DurableHooksOrgFragment =
 export const DURABLE_HOOK_ORG_FRAGMENTS = [
   "cloudflare",
   "telegram",
+  "mcp",
   "otp",
   "resend",
   "github",
@@ -24,6 +26,7 @@ export const DURABLE_HOOK_ORG_FRAGMENTS = [
 export const FRAGMENT_LABELS: Record<DurableHooksOrgFragment, string> = {
   cloudflare: "Cloudflare Workers",
   telegram: "Telegram",
+  mcp: "MCP",
   otp: "OTP",
   resend: "Resend",
   github: "GitHub",
@@ -47,6 +50,10 @@ export const FRAGMENT_CONFIGURE_META: Record<
   telegram: {
     path: (orgId) => `/backoffice/connections/telegram/${orgId}/configuration`,
     label: "Configure Telegram",
+  },
+  mcp: {
+    path: (orgId) => `/backoffice/connections/mcp/${orgId}/configuration`,
+    label: "Configure MCP",
   },
   otp: {
     path: (orgId) => `/backoffice/connections/telegram/${orgId}/configuration`,
