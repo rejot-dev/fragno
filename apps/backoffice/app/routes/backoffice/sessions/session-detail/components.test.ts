@@ -53,6 +53,56 @@ describe("SessionConversationPanel", () => {
     expect(markup).toContain('data-streamdown="strong"');
   });
 
+  test("renders an expand control for execCodeMode results", () => {
+    const markup = renderToStaticMarkup(
+      createElement(SessionConversationPanel, {
+        draftToolCalls: [],
+        messages: [
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "toolCall",
+                id: "tool-exec-code-mode",
+                name: "execCodeMode",
+                arguments: { code: "return { ok: true }" },
+              },
+            ],
+            timestamp: 1,
+            api: "test",
+            provider: "test",
+            model: "test",
+            usage: { input: 0, output: 0, totalTokens: 0, cost: { total: 0 } },
+            stopReason: "toolUse",
+          } as never,
+          {
+            role: "toolResult",
+            toolCallId: "tool-exec-code-mode",
+            toolName: "execCodeMode",
+            content: [{ type: "text", text: '{"ok":true}' }],
+            details: { result: { ok: true }, logs: [] },
+            isError: false,
+            timestamp: 2,
+          } as never,
+        ],
+        onJumpToLatest: () => {},
+        onScroll: () => {},
+        readyForInput: true,
+        runningTools: [],
+        scrollContentRef: createRef<HTMLDivElement>(),
+        scrollViewportRef: createRef<HTMLDivElement>(),
+        showJumpToLatest: false,
+        showThinking: true,
+        showToolCalls: true,
+        showUsage: false,
+        statusText: null,
+      }),
+    );
+
+    expect(markup).toContain("Expand execCodeMode result");
+    expect(markup).toContain("{&quot;ok&quot;:true}");
+  });
+
   test("renders SKILL.md read tool results as loaded skills without file contents", () => {
     const markup = renderToStaticMarkup(
       createElement(SessionConversationPanel, {
