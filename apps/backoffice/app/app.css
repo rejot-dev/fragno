@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+@source "../node_modules/streamdown/dist/*.js";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -123,6 +125,111 @@
   --sidebar-accent-foreground: oklch(0.97 0.01 255);
   --sidebar-border: oklch(1 0 0 / 12%);
   --sidebar-ring: oklch(0.75 0.12 264);
+}
+
+@layer components {
+  .bo-session-markdown {
+    color: var(--bo-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .bo-session-markdown > :first-child {
+    margin-top: 0;
+  }
+
+  .bo-session-markdown > :last-child {
+    margin-bottom: 0;
+  }
+
+  .bo-session-markdown :where(p, ul, ol, blockquote, pre, table) {
+    margin-top: 0.5rem;
+  }
+
+  .bo-session-markdown :where(h1, h2, h3, h4) {
+    margin-top: 0.75rem;
+    color: var(--bo-fg);
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  .bo-session-markdown h1 {
+    font-size: 1.15rem;
+  }
+
+  .bo-session-markdown h2 {
+    font-size: 1.05rem;
+  }
+
+  .bo-session-markdown h3,
+  .bo-session-markdown h4 {
+    font-size: 0.95rem;
+  }
+
+  .bo-session-markdown :where(strong, th) {
+    color: var(--bo-fg);
+    font-weight: 700;
+  }
+
+  .bo-session-markdown a {
+    color: var(--bo-accent-fg);
+    text-decoration-line: underline;
+    text-underline-offset: 3px;
+  }
+
+  .bo-session-markdown :where(ul, ol) {
+    padding-left: 1.25rem;
+  }
+
+  .bo-session-markdown ul {
+    list-style-type: disc;
+  }
+
+  .bo-session-markdown ol {
+    list-style-type: decimal;
+  }
+
+  .bo-session-markdown li + li {
+    margin-top: 0.25rem;
+  }
+
+  .bo-session-markdown blockquote {
+    border-left: 2px solid var(--bo-border-strong);
+    padding-left: 0.75rem;
+    color: var(--bo-muted-2);
+  }
+
+  .bo-session-markdown :not(pre) > code {
+    border: 1px solid var(--bo-border);
+    background: var(--bo-panel-2);
+    padding: 0.05rem 0.3rem;
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+      monospace;
+    font-size: 0.85em;
+  }
+
+  .bo-session-markdown pre {
+    max-width: 100%;
+    overflow: auto;
+    border: 1px solid var(--bo-border);
+    background: var(--bo-panel-2);
+    padding: 0.5rem;
+    color: var(--bo-fg);
+  }
+
+  .bo-session-markdown table {
+    width: max-content;
+    max-width: 100%;
+    border-collapse: collapse;
+    overflow: auto;
+    display: block;
+  }
+
+  .bo-session-markdown :where(th, td) {
+    border: 1px solid var(--bo-border);
+    padding: 0.35rem 0.5rem;
+    text-align: left;
+  }
 }
 
 @layer base {

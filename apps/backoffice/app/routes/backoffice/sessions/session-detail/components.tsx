@@ -2,6 +2,7 @@ import { ScrollArea } from "@base-ui/react/scroll-area";
 import { Switch } from "@base-ui/react/switch";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Link } from "react-router";
+import { Streamdown } from "streamdown";
 
 import type { PiSessionEventStreamItem } from "@fragno-dev/pi-fragment";
 
@@ -790,6 +791,19 @@ function ScrollablePre({ children }: { children: string }) {
   );
 }
 
+function MarkdownText({ children }: { children: string }) {
+  return (
+    <Streamdown
+      mode="streaming"
+      className="bo-session-markdown"
+      controls={{ code: true, table: true }}
+      skipHtml
+    >
+      {children}
+    </Streamdown>
+  );
+}
+
 function ContentBlock({
   block,
   completedToolResult = null,
@@ -808,7 +822,7 @@ function ContentBlock({
       return scrollableText ? (
         <ScrollablePre>{block.text}</ScrollablePre>
       ) : (
-        <p className="break-words whitespace-pre-wrap">{block.text}</p>
+        <MarkdownText>{block.text}</MarkdownText>
       );
     case "thinking":
       return (

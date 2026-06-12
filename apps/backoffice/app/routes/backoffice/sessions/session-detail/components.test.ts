@@ -18,6 +18,41 @@ describe("formatToolArgumentsDisplayText", () => {
 });
 
 describe("SessionConversationPanel", () => {
+  test("renders assistant text content as Streamdown markdown", () => {
+    const markup = renderToStaticMarkup(
+      createElement(SessionConversationPanel, {
+        draftToolCalls: [],
+        messages: [
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "# Plan\n\n- **Ship** markdown" }],
+            timestamp: 1,
+            api: "test",
+            provider: "test",
+            model: "test",
+            usage: { input: 0, output: 0, totalTokens: 0, cost: { total: 0 } },
+            stopReason: "stop",
+          } as never,
+        ],
+        onJumpToLatest: () => {},
+        onScroll: () => {},
+        readyForInput: true,
+        runningTools: [],
+        scrollContentRef: createRef<HTMLDivElement>(),
+        scrollViewportRef: createRef<HTMLDivElement>(),
+        showJumpToLatest: false,
+        showThinking: true,
+        showToolCalls: true,
+        showUsage: false,
+        statusText: null,
+      }),
+    );
+
+    expect(markup).toContain('data-streamdown="heading-1"');
+    expect(markup).toContain('data-streamdown="unordered-list"');
+    expect(markup).toContain('data-streamdown="strong"');
+  });
+
   test("renders a draft tool call even before the assistant message contains a tool block", () => {
     const markup = renderToStaticMarkup(
       createElement(SessionConversationPanel, {
