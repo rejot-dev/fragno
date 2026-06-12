@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
 
@@ -50,8 +50,8 @@ describe("InMemoryLofiStore", () => {
     const reloadedRow = reloadedStore.getRow("app", "users", "user-1");
 
     expect(reloadedRow).toEqual(optimisticRow);
-    expect(reloadedRow?._lofi.version).toBe(2);
-    expect(reloadedRow?.data["name"]).toBe("Bea");
+    assert(reloadedRow?._lofi.version === 2);
+    assert(reloadedRow?.data["name"] === "Bea");
   });
 
   it("tracks tombstones for deletes and clears them on create", () => {
@@ -68,9 +68,9 @@ describe("InMemoryLofiStore", () => {
     });
 
     expect(store.getRow("app", "users", "user-1")).toBeUndefined();
-    expect(store.hasTombstone("app", "users", "user-1")).toBe(true);
+    assert(store.hasTombstone("app", "users", "user-1"));
 
     store.applyMutation(createMutation("Bea"));
-    expect(store.hasTombstone("app", "users", "user-1")).toBe(false);
+    assert(!store.hasTombstone("app", "users", "user-1"));
   });
 });

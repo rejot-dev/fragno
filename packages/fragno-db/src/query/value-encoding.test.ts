@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import {
   column,
@@ -103,12 +103,12 @@ describe("encodeValues", () => {
     it("should generate runtime defaults when generateDefault is true", () => {
       const result = encodeValues({ title: "Test Post", userId: "user1" }, postsTable, true);
 
-      expect(result["title"]).toBe("Test Post");
+      assert(result["title"] === "Test Post");
       expect(result["userId"]).toBeInstanceOf(ReferenceSubquery);
       // viewCount has static default (defaultTo), so it's omitted to let DB handle it
       expect(result["viewCount"]).toBeUndefined();
       expect(result["id"]).toBeDefined();
-      expect(typeof result["id"]).toBe("string");
+      assert(typeof result["id"] === "string");
     });
 
     it("should not generate default values when generateDefault is false", () => {
@@ -127,7 +127,7 @@ describe("encodeValues", () => {
         true,
       );
 
-      expect(result["viewCount"]).toBe(100);
+      assert(result["viewCount"] === 100);
     });
 
     it("should use injected runtime defaults when provided", () => {
@@ -147,7 +147,7 @@ describe("encodeValues", () => {
         now: () => testDate,
       });
 
-      expect(result["id"]).toBe("entry_1");
+      assert(result["id"] === "entry_1");
       expect(result["createdAt"]).toBe(testDate);
     });
   });
@@ -285,9 +285,9 @@ describe("encodeValues", () => {
       const result = encodeValues({ title: "Test Post", userId: fragnoId }, postsTable, false);
 
       // FragnoId without internalId should be converted to ReferenceSubquery for database lookup
-      expect(result["title"]).toBe("Test Post");
+      assert(result["title"] === "Test Post");
       expect(result["userId"]).toBeInstanceOf(ReferenceSubquery);
-      expect((result["userId"] as ReferenceSubquery).externalIdValue).toBe("user123");
+      assert((result["userId"] as ReferenceSubquery).externalIdValue === "user123");
     });
 
     it("should handle FragnoId across different providers", () => {
@@ -321,7 +321,7 @@ describe("encodeValues", () => {
         false,
       );
 
-      expect(refResult["title"]).toBe("Test Post");
+      assert(refResult["title"] === "Test Post");
       expect(refResult["userId"]).toBeInstanceOf(ReferenceSubquery);
     });
   });

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, assert } from "vitest";
 
 import { createHmac, generateKeyPairSync } from "crypto";
 
@@ -121,9 +121,9 @@ describe("createGitHubApiClient", () => {
       call.url.pathname.endsWith("/installation/repositories"),
     );
 
-    expect(tokenCall?.url.pathname).toBe("/api/v3/app/installations/123/access_tokens");
-    expect(reposCall?.url.pathname).toBe("/api/v3/installation/repositories");
-    expect(reposCall?.url.searchParams.get("per_page")).toBe("100");
+    assert(tokenCall?.url.pathname === "/api/v3/app/installations/123/access_tokens");
+    assert(reposCall?.url.pathname === "/api/v3/installation/repositories");
+    assert(reposCall?.url.searchParams.get("per_page") === "100");
   });
 
   it("exposes app and installation octokit for direct requests", async () => {
@@ -168,9 +168,9 @@ describe("createGitHubApiClient", () => {
     expect(reviewResponse.data).toMatchObject({ id: 77 });
 
     const pullsCall = calls.find((call) => call.url.pathname === "/repos/octo/repo/pulls");
-    expect(pullsCall?.url.searchParams.get("state")).toBe("open");
-    expect(pullsCall?.url.searchParams.get("per_page")).toBe("25");
-    expect(pullsCall?.url.searchParams.get("page")).toBe("2");
+    assert(pullsCall?.url.searchParams.get("state") === "open");
+    assert(pullsCall?.url.searchParams.get("per_page") === "25");
+    assert(pullsCall?.url.searchParams.get("page") === "2");
 
     const reviewCall = calls.find(
       (call) => call.url.pathname === "/repos/octo/repo/pulls/12/reviews",
@@ -196,7 +196,7 @@ describe("createGitHubApiClient", () => {
     });
 
     const deliveriesCall = calls.find((call) => call.url.pathname === "/app/hook/deliveries");
-    expect(deliveriesCall?.url.searchParams.get("per_page")).toBe("25");
+    assert(deliveriesCall?.url.searchParams.get("per_page") === "25");
 
     const redeliverCall = calls.find((call) =>
       call.url.pathname.endsWith("/app/hook/deliveries/12345/attempts"),
@@ -235,8 +235,8 @@ describe("createGitHubApiClient", () => {
       call.url.pathname.endsWith("/installation/repositories"),
     );
     expect(repoCalls).toHaveLength(2);
-    expect(repoCalls[0]?.url.searchParams.get("page")).toBe("1");
-    expect(repoCalls[1]?.url.searchParams.get("page")).toBe("2");
+    assert(repoCalls[0]?.url.searchParams.get("page") === "1");
+    assert(repoCalls[1]?.url.searchParams.get("page") === "2");
   });
 
   it("verifies webhook signatures using octokit webhooks", async () => {

@@ -1,4 +1,4 @@
-import { test, expect, describe, vi, beforeEach, afterEach, expectTypeOf } from "vitest";
+import { test, expect, describe, vi, beforeEach, afterEach, expectTypeOf, assert } from "vitest";
 
 import { atom, type ReadableAtom } from "nanostores";
 import { z } from "zod";
@@ -72,7 +72,7 @@ describe("createVanillaListeners", () => {
     // Wait for data to load
     await vi.waitFor(() => {
       const state = userStore.get();
-      expect(state.loading).toBe(false);
+      assert(!state.loading);
       expect(state.error).toBeUndefined();
       expect(state.data).toBeDefined();
     });
@@ -108,7 +108,7 @@ describe("createVanillaListeners", () => {
     // Wait for initial load
     await vi.waitFor(() => {
       const state = userStore.get();
-      expect(state.loading).toBe(false);
+      assert(!state.loading);
     });
 
     expect(listenCallback).toHaveBeenCalled();
@@ -178,7 +178,7 @@ describe("createVanillaListeners", () => {
 
     await vi.waitFor(() => {
       const state = userStore.get();
-      expect(state.loading).toBe(false);
+      assert(!state.loading);
       expect(state.data).toBeDefined();
     });
 
@@ -208,7 +208,7 @@ describe("createVanillaListeners", () => {
 
     await vi.waitFor(() => {
       const state = searchStore.get();
-      expect(state.loading).toBe(false);
+      assert(!state.loading);
       expect(state.data).toBeDefined();
     });
 
@@ -281,7 +281,7 @@ describe("createVanillaListeners", () => {
 
     await vi.waitFor(() => {
       const state = userStore.get();
-      expect(state.loading).toBe(false);
+      assert(!state.loading);
       expect(state.data).toBeDefined();
     });
 
@@ -328,7 +328,7 @@ describe("createVanillaListeners", () => {
       const { data, error, loading } = value!;
       expect(data).toBeUndefined();
       expect(error).toBeUndefined();
-      expect(loading).toBe(true);
+      assert(loading);
     }
 
     // First "result": loading is false, error is now set.
@@ -338,7 +338,7 @@ describe("createVanillaListeners", () => {
       const { data, error, loading } = value!;
       expect(data).toBeUndefined();
       expect(error).toBeInstanceOf(FragnoClientFetchNetworkError);
-      expect(loading).toBe(false);
+      assert(!loading);
     }
 
     // Retry initiated: loading is true
@@ -348,7 +348,7 @@ describe("createVanillaListeners", () => {
       const { data, error, loading } = value!;
       expect(data).toBeUndefined();
       expect(error).toBeUndefined();
-      expect(loading).toBe(true);
+      assert(loading);
     }
 
     // Retry succeeded: data is now available.
@@ -358,10 +358,10 @@ describe("createVanillaListeners", () => {
       const { data, error, loading } = value!;
       expect(data).toEqual({ id: 1, name: "John" });
       expect(error).toBeUndefined();
-      expect(loading).toBe(false);
+      assert(!loading);
     }
     const { done } = await asyncIterator.return();
-    expect(done).toBe(true);
+    assert(done);
   });
 });
 
@@ -464,7 +464,7 @@ describe("createVanillaMutator", () => {
 
     // Check loading state
     await vi.waitFor(() => {
-      expect(mutator.get().loading).toBe(true);
+      assert(mutator.get().loading);
     });
 
     // Resolve the fetch
@@ -652,9 +652,9 @@ describe("useFragno - createStore", () => {
     }
 
     expect(useStore).toBe(client.useStore.obj);
-    expect(useStore.message.get()).toBe("hello");
-    expect(useStore.count.get()).toBe(42);
-    expect(useStore.constant).toBe(7);
+    assert(useStore.message.get() === "hello");
+    assert(useStore.count.get() === 42);
+    assert(useStore.constant === 7);
   });
 
   test("unwraps single-store wrappers to the underlying atom", () => {
@@ -668,7 +668,7 @@ describe("useFragno - createStore", () => {
 
     expectTypeOf(useSingle).toExtend<typeof singleAtom>();
     expect(useSingle).toBe(singleAtom);
-    expect(useSingle.get()).toBe("single");
+    assert(useSingle.get() === "single");
   });
 });
 
@@ -726,12 +726,12 @@ describe("useFragno", () => {
 
     await vi.waitFor(() => {
       const state = dataStore.get();
-      expect(state.loading).toBe(false);
+      assert(!state.loading);
       expect(state.error).toBeUndefined();
       expect(state.data).toBeDefined();
     });
 
-    expect(dataStore.get().data).toBe("test data");
+    assert(dataStore.get().data === "test data");
 
     // Test the mutator
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
@@ -766,16 +766,16 @@ describe("useFragno", () => {
     const result = useFragno(clientObj);
 
     // Check that non-hook values are passed through unchanged
-    expect(result.someString).toBe("hello world");
-    expect(result.someNumber).toBe(42);
+    assert(result.someString === "hello world");
+    assert(result.someNumber === 42);
     expect(result.someObject).toEqual({ foo: "bar", nested: { value: true } });
     expect(result.someArray).toEqual([1, 2, 3]);
-    expect(result.someFunction()).toBe("test");
+    assert(result.someFunction() === "test");
     expect(result.someNull).toBeNull();
     expect(result.someUndefined).toBeUndefined();
 
     // Verify that the hook is still transformed
-    expect(typeof result.useData).toBe("function");
+    assert(typeof result.useData === "function");
   });
 
   test("multiple GET hooks for the same path should share the same store", async () => {
@@ -807,16 +807,16 @@ describe("useFragno", () => {
     const unsubscribe2 = store2.subscribe(() => {});
 
     await vi.waitFor(() => {
-      expect(store1.get().loading).toBe(false);
-      expect(store2.get().loading).toBe(false);
+      assert(!store1.get().loading);
+      assert(!store2.get().loading);
       expect(store1.get().data).toBeDefined();
       expect(store2.get().data).toBeDefined();
     });
 
     expect(fetch).toHaveBeenCalledTimes(1);
 
-    expect(store1.get().data).toBe("data1");
-    expect(store2.get().data).toBe("data1");
+    assert(store1.get().data === "data1");
+    assert(store2.get().data === "data1");
 
     unsubscribe1();
     unsubscribe2();
@@ -842,9 +842,9 @@ describe("createVanillaStore", () => {
     const { useSession } = useFragno(clientObj);
     const session = useSession({ path: { sessionId: "abc" } });
 
-    expect(session.sessionId.get()).toBe("abc");
-    expect(session.sendMessage("hello")).toBe("hello");
-    expect(typeof session.destroy).toBe("function");
+    assert(session.sessionId.get() === "abc");
+    assert(session.sendMessage("hello") === "hello");
+    assert(typeof session.destroy === "function");
 
     session.destroy?.();
     expect(dispose).toHaveBeenCalledTimes(1);
@@ -884,8 +884,8 @@ describe("createVanillaStore", () => {
     const session = useSession({ path: { sessionId: "abc" } });
 
     expect(session).toBeInstanceOf(SessionStore);
-    expect(session.sendMessage("hello")).toBe("abc:hello");
-    expect(typeof session.destroy).toBe("function");
+    assert(session.sendMessage("hello") === "abc:hello");
+    assert(typeof session.destroy === "function");
     expect(Object.keys(session)).not.toContain("destroy");
 
     session.destroy?.();
@@ -908,8 +908,8 @@ describe("createVanillaStore", () => {
     const { useCounter } = useFragno(clientObj);
 
     expectTypeOf(useCounter).toExtend<() => { count: typeof countAtom }>();
-    expect(typeof useCounter).toBe("function");
-    expect(useCounter().count.get()).toBe(0);
+    assert(typeof useCounter === "function");
+    assert(useCounter().count.get() === 0);
   });
 });
 
@@ -965,7 +965,7 @@ describe("error handling", () => {
       const { data, error, loading } = value!;
       expect(data).toBeUndefined();
       expect(error).toBeUndefined();
-      expect(loading).toBe(true);
+      assert(loading);
     }
 
     {
@@ -974,7 +974,7 @@ describe("error handling", () => {
       const { data, error, loading } = value!;
       expect(data).toBeUndefined();
       expect(error).toBeInstanceOf(FragnoClientFetchNetworkError);
-      expect(loading).toBe(false);
+      assert(!loading);
     }
 
     await asyncIterator.return();

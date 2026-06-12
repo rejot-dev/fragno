@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, vi, assert } from "vitest";
 
 import type { ControlElement } from "@jsonforms/core";
 import { NOT_APPLICABLE } from "@jsonforms/core";
@@ -75,7 +75,7 @@ describe("shadcnOneOfEnumCellTester", () => {
         },
       },
     };
-    expect(shadcnOneOfEnumCellTester(control, rootSchema, createTesterContext(rootSchema))).toBe(2);
+    assert(shadcnOneOfEnumCellTester(control, rootSchema, createTesterContext(rootSchema)) === 2);
   });
 });
 
@@ -179,7 +179,7 @@ describe("ShadcnOneOfEnumCell", () => {
 
     fireEvent.click(screen.getByRole("option", { name: "Germany" }));
 
-    expect((onChangeData.data as { country: string }).country).toBe("de");
+    assert((onChangeData.data as { country: string }).country === "de");
   });
 
   it("should be disabled when enabled=false", () => {

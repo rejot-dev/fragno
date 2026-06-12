@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { githubAppSchema } from "./schema";
 
 describe("githubAppSchema", () => {
   it("uses the expected schema name", () => {
-    expect(githubAppSchema.name).toBe("github-app-fragment");
+    assert(githubAppSchema.name === "github-app-fragment");
   });
 
   it("defines the expected tables", () => {
@@ -16,9 +16,9 @@ describe("githubAppSchema", () => {
   it("assigns external ids and indexes", () => {
     const { installation, installation_repo, repo_link } = githubAppSchema.tables;
 
-    expect(installation.getIdColumn().name).toBe("id");
-    expect(installation_repo.getIdColumn().name).toBe("id");
-    expect(repo_link.getIdColumn().name).toBe("id");
+    assert(installation.getIdColumn().name === "id");
+    assert(installation_repo.getIdColumn().name === "id");
+    assert(repo_link.getIdColumn().name === "id");
 
     expect(Object.keys(installation.indexes)).toEqual(
       expect.arrayContaining([

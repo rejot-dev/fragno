@@ -210,7 +210,7 @@ describe("buildDatabaseFragmentsTest", () => {
     });
 
     expect(userId).toBeDefined();
-    expect(typeof userId.valueOf()).toBe("string");
+    assert(typeof userId.valueOf() === "string");
 
     // Find using db
     const users = await fragments.user.fragment.inContext(async function () {
@@ -252,7 +252,7 @@ describe("buildDatabaseFragmentsTest", () => {
 
     // Test that deps are accessible
     expect(fragments.user.deps).toBeDefined();
-    expect(fragments.user.deps.testValue).toBe("test-dependency");
+    assert(fragments.user.deps.testValue === "test-dependency");
     expect(fragments.user.deps.databaseAdapter).toBeDefined();
     expect(fragments.user.deps.schema).toBeDefined();
     expect(fragments.user.deps.createUnitOfWork).toBeDefined();
@@ -304,8 +304,8 @@ describe("buildDatabaseFragmentsTest", () => {
 
     fragments.user.deps.state.count += 1;
     additionalRuntime.fragments.user.deps.state.count += 1;
-    expect(fragments.user.deps.state.count).toBe(1);
-    expect(additionalRuntime.fragments.user.deps.state.count).toBe(1);
+    assert(Object.is(fragments.user.deps.state.count, 1));
+    assert(Object.is(additionalRuntime.fragments.user.deps.state.count, 1));
 
     await fragments.user.fragment.callServices(() =>
       fragments.user.services.createUser({ name: "Shared DB User", email: "shared@example.com" }),
@@ -328,8 +328,8 @@ describe("buildDatabaseFragmentsTest", () => {
     expect(fragments.user.deps).not.toBe(originalDeps);
     expect(additionalRuntime.fragments.user.fragment).not.toBe(originalAdditionalFragment);
     expect(additionalRuntime.fragments.user.deps).not.toBe(originalAdditionalDeps);
-    expect(fragments.user.deps.state.count).toBe(0);
-    expect(additionalRuntime.fragments.user.deps.state.count).toBe(0);
+    assert(Object.is(fragments.user.deps.state.count, 0));
+    assert(Object.is(additionalRuntime.fragments.user.deps.state.count, 0));
     expect(fragments.user.deps.databaseAdapter).toBe(test.adapter);
     expect(additionalRuntime.fragments.user.deps.databaseAdapter).toBe(additionalRuntime.adapter);
 
@@ -403,8 +403,8 @@ describe("buildDatabaseFragmentsTest", () => {
       );
 
       expect(fragments.counter.deps).not.toBe(additionalRuntime.fragments.counter.deps);
-      expect(fragments.counter.deps.state.count).toBe(0);
-      expect(additionalRuntime.fragments.counter.deps.state.count).toBe(0);
+      assert(Object.is(fragments.counter.deps.state.count, 0));
+      assert(Object.is(additionalRuntime.fragments.counter.deps.state.count, 0));
 
       await expect(originalClient.useIncrement().mutate({})).resolves.toEqual({ count: 1 });
       await expect(originalClient.useIncrement().mutate({})).resolves.toEqual({ count: 2 });
@@ -412,8 +412,8 @@ describe("buildDatabaseFragmentsTest", () => {
       await expect(additionalClient.useIncrement().mutate({})).resolves.toEqual({ count: 0 });
       await expect(originalClient.useDecrement().mutate({})).resolves.toEqual({ count: 1 });
 
-      expect(fragments.counter.deps.state.count).toBe(1);
-      expect(additionalRuntime.fragments.counter.deps.state.count).toBe(0);
+      assert(Object.is(fragments.counter.deps.state.count, 1));
+      assert(Object.is(additionalRuntime.fragments.counter.deps.state.count, 0));
     } finally {
       await test.cleanup();
     }
@@ -513,7 +513,7 @@ describe("buildDatabaseFragmentsTest", () => {
       .build();
 
     // Verify the fragment was created with actual config
-    expect(fragments.requiredConfig.deps.apiKey).toBe("test-key");
+    assert(fragments.requiredConfig.deps.apiKey === "test-key");
     expect(fragments.requiredConfig.deps.client).toEqual({
       key: "test-key",
       secret: "test-secret",

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
 
@@ -77,7 +77,7 @@ describe("Workflows Runner (User Scenarios)", () => {
           storeAs: "events",
         }),
         workflow.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
+          assert(ctx.vars.status?.status === "complete");
           expect(ctx.vars.status?.output).toEqual({ total: 6 });
 
           const stepKeys = (ctx.vars.steps ?? []).map((step) => step.stepKey).sort();
@@ -149,7 +149,7 @@ describe("Workflows Runner (User Scenarios)", () => {
           storeAs: "events",
         }),
         workflow.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
+          assert(ctx.vars.status?.status === "complete");
           expect(ctx.vars.status?.output).toEqual({ sum: 19 });
 
           const stepKeys = (ctx.vars.steps ?? []).map((step) => step.stepKey).sort();
@@ -251,9 +251,9 @@ describe("Workflows Runner (User Scenarios)", () => {
           storeAs: "recordCount",
         }),
         workflow.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
+          assert(ctx.vars.status?.status === "complete");
           expect(ctx.vars.status?.output).toEqual({ ok: true });
-          expect(ctx.vars.recordCount).toBe(1);
+          assert(ctx.vars.recordCount === 1);
         }),
       ],
     });
@@ -309,8 +309,8 @@ describe("Workflows Runner (User Scenarios)", () => {
         }),
         workflow.assert((ctx) => {
           expect(attempts).toBe(3);
-          expect(ctx.vars.status?.status).toBe("errored");
-          expect(ctx.vars.status?.error?.message).toBe("RETRY_EXHAUSTED");
+          assert(ctx.vars.status?.status === "errored");
+          assert(ctx.vars.status?.error?.message === "RETRY_EXHAUSTED");
 
           const step = ctx.vars.steps?.[0];
           expect(step).toMatchObject({
@@ -400,11 +400,11 @@ describe("Workflows Runner (User Scenarios)", () => {
         }),
         workflow.assert((ctx) => {
           expect(ctx.vars.wakeAt).toBeInstanceOf(Date);
-          expect(ctx.vars.pausedStatus?.status).toBe("paused");
+          assert(ctx.vars.pausedStatus?.status === "paused");
           expect(ctx.vars.afterResumeSteps?.[0].wakeAt?.getTime()).toBe(
             (ctx.vars.wakeAt as Date).getTime(),
           );
-          expect(ctx.vars.finalStatus?.status).toBe("complete");
+          assert(ctx.vars.finalStatus?.status === "complete");
           expect(ctx.vars.finalStatus?.output).toEqual({ done: true });
         }),
       ],
@@ -465,8 +465,8 @@ describe("Workflows Runner (User Scenarios)", () => {
         }),
         workflow.assert((ctx) => {
           expect(runs).toBe(1);
-          expect(ctx.vars.waiting?.status).toBe("waiting");
-          expect(ctx.vars.final?.status).toBe("complete");
+          assert(ctx.vars.waiting?.status === "waiting");
+          assert(ctx.vars.final?.status === "complete");
           expect(ctx.vars.final?.output).toEqual({ first: 1 });
         }),
       ],
@@ -533,7 +533,7 @@ describe("Workflows Runner (User Scenarios)", () => {
           storeAs: "events",
         }),
         workflow.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
+          assert(ctx.vars.status?.status === "complete");
           expect(ctx.vars.status?.output).toEqual({ total: 11 });
 
           const stepKeys = (ctx.vars.steps ?? []).map((step) => step.stepKey).sort();
@@ -543,8 +543,8 @@ describe("Workflows Runner (User Scenarios)", () => {
           const events = [...(ctx.vars.events ?? [])].sort(
             (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
           );
-          expect(events[0]?.consumedByStepKey).toBe("waitForEvent:ready-0");
-          expect(events[1]?.consumedByStepKey).toBe("waitForEvent:ready-1");
+          assert(events[0]?.consumedByStepKey === "waitForEvent:ready-0");
+          assert(events[1]?.consumedByStepKey === "waitForEvent:ready-1");
         }),
       ],
     });
@@ -590,9 +590,9 @@ describe("Workflows Runner (User Scenarios)", () => {
           const events = await ctx.state.getEvents("APPROVAL", "approval-on-consume-1");
 
           expect(status).toMatchObject({ status: "complete", output: { approved: true } });
-          expect(events[0]?.consumedByStepKey).toBe("waitForEvent:approval");
+          assert(events[0]?.consumedByStepKey === "waitForEvent:approval");
           expect(consumedPayload).toEqual({ approved: true });
-          expect(txWasProvided).toBe(true);
+          assert(txWasProvided);
         }),
       ],
     });
@@ -664,7 +664,7 @@ describe("Workflows Runner (User Scenarios)", () => {
           storeAs: "events",
         }),
         workflow.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
+          assert(ctx.vars.status?.status === "complete");
           expect(ctx.vars.status?.output).toEqual({ approved: true });
 
           expect(ctx.vars.steps).toHaveLength(1);
@@ -675,7 +675,7 @@ describe("Workflows Runner (User Scenarios)", () => {
 
           const consumed = (ctx.vars.events ?? []).filter((e) => e.consumedByStepKey !== null);
           expect(consumed).toHaveLength(1);
-          expect(consumed[0]?.consumedByStepKey).toBe("waitForEvent:approval");
+          assert(consumed[0]?.consumedByStepKey === "waitForEvent:approval");
 
           const unconsumed = (ctx.vars.events ?? []).filter((e) => e.consumedByStepKey === null);
           expect(unconsumed).toHaveLength(2);
@@ -760,7 +760,7 @@ describe("Workflows Runner (User Scenarios)", () => {
           storeAs: "events",
         }),
         workflow.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
+          assert(ctx.vars.status?.status === "complete");
           expect(ctx.vars.status?.output).toEqual({ sum: 30 });
 
           const stepKeys = (ctx.vars.steps ?? []).map((s) => s.stepKey).sort();
@@ -858,7 +858,7 @@ describe("Workflows Runner (User Scenarios)", () => {
           storeAs: "events",
         }),
         workflow.assert((ctx) => {
-          expect(ctx.vars.status?.status).toBe("complete");
+          assert(ctx.vars.status?.status === "complete");
           expect(ctx.vars.status?.output).toEqual({ ok: true });
 
           expect(ctx.vars.steps?.[0]).toMatchObject({

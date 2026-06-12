@@ -120,28 +120,28 @@ describe("FormData utilities", () => {
     // We can't test internal functions directly, but we can test through the mutator behavior
     // This is a placeholder to document expected behavior
     const body = { name: "test", value: 123 };
-    expect(JSON.stringify(body)).toBe('{"name":"test","value":123}');
+    assert(JSON.stringify(body) === '{"name":"test","value":123}');
   });
 
   test("FormData should be detected correctly", () => {
     const formData = new FormData();
     formData.append("file", new Blob(["test"]), "test.txt");
 
-    expect(formData instanceof FormData).toBe(true);
-    expect({} instanceof FormData).toBe(false);
+    assert(formData instanceof FormData);
+    assert(!({} instanceof FormData));
     // Note: null instanceof X is a TS error, so we test with a nullable variable
     const nullValue: unknown = null;
-    expect(nullValue instanceof FormData).toBe(false);
+    assert(!(nullValue instanceof FormData));
   });
 
   test("File and Blob should be detected correctly", () => {
     const file = new File(["content"], "test.txt", { type: "text/plain" });
     const blob = new Blob(["content"], { type: "text/plain" });
 
-    expect(file instanceof File).toBe(true);
-    expect(file instanceof Blob).toBe(true);
-    expect(blob instanceof Blob).toBe(true);
-    expect(blob instanceof File).toBe(false);
+    assert(file instanceof File);
+    assert(file instanceof Blob);
+    assert(blob instanceof Blob);
+    assert(!(blob instanceof File));
   });
 
   test("toFormData should convert object with files to FormData", () => {
@@ -151,7 +151,7 @@ describe("FormData utilities", () => {
     formData.append("description", "A test file");
 
     expect(formData.get("file")).toBeInstanceOf(File);
-    expect(formData.get("description")).toBe("A test file");
+    assert(formData.get("description") === "A test file");
   });
 
   test("FormData can contain multiple files", () => {
@@ -294,7 +294,7 @@ describe("invalidation", () => {
     await modifyUsersManual().mutate({
       body: { name: "John" },
     });
-    expect(invalidateCalled).toBe(true);
+    assert(invalidateCalled);
 
     const stateAfterRefetch = await waitForAsyncIterator(
       userStore,
@@ -1129,7 +1129,7 @@ describe("createHook - streaming", () => {
     {
       const { value } = await itt.next();
       assert(value);
-      expect(value.loading).toBe(true);
+      assert(value.loading);
       expect(value.data).toBeUndefined();
       expect(value.error).toBeUndefined();
     }
@@ -1137,7 +1137,7 @@ describe("createHook - streaming", () => {
     {
       const { value } = await itt.next();
       assert(value);
-      expect(value.loading).toBe(false);
+      assert(!value.loading);
       expect(value.data).toEqual([{ id: 1, name: "John" }]);
       expect(value.error).toBeUndefined();
     }
@@ -1145,7 +1145,7 @@ describe("createHook - streaming", () => {
     {
       const { value } = await itt.next();
       assert(value);
-      expect(value.loading).toBe(false);
+      assert(!value.loading);
       expect(value.data).toEqual([
         { id: 1, name: "John" },
         { id: 2, name: "Jane" },
@@ -1156,7 +1156,7 @@ describe("createHook - streaming", () => {
     {
       const { value } = await itt.next();
       assert(value);
-      expect(value.loading).toBe(false);
+      assert(!value.loading);
       expect(value.data).toEqual([
         { id: 1, name: "John" },
         { id: 2, name: "Jane" },
@@ -1378,7 +1378,7 @@ describe("createMutator", () => {
     const [_url, options] = vi.mocked(global.fetch).mock.calls[0];
     const headers = options?.headers as Record<string, string> | undefined;
 
-    expect(headers?.["Content-Type"]).toBe("application/octet-stream");
+    assert(headers?.["Content-Type"] === "application/octet-stream");
     expect(options?.body).toBe(body);
   });
 
@@ -1441,8 +1441,8 @@ describe("createMutator", () => {
     await upload.mutateQuery({ body });
 
     const headers = capturedOptions?.headers as Record<string, string> | undefined;
-    expect(headers?.["Content-Type"]).toBe("application/octet-stream");
-    expect(capturedOptions?.duplex).toBe("half");
+    assert(headers?.["Content-Type"] === "application/octet-stream");
+    assert(capturedOptions?.duplex === "half");
     expect(capturedBodyText).toBe("streamed body");
   });
 });
@@ -1950,9 +1950,9 @@ describe("type guards", () => {
     const getHook = client.createHook("/users");
     const mutatorHook = client.createMutator("POST", "/users");
 
-    expect(isGetHook(getHook)).toBe(true);
+    assert(isGetHook(getHook));
     // Test that it correctly identifies non-GET hooks
-    expect(isGetHook(mutatorHook)).toBe(false);
+    assert(!isGetHook(mutatorHook));
   });
 
   test("isMutatorHook should correctly identify mutator hooks using symbols", () => {
@@ -1960,9 +1960,9 @@ describe("type guards", () => {
     const getHook = client.createHook("/users");
     const mutatorHook = client.createMutator("POST", "/users");
 
-    expect(isMutatorHook(mutatorHook)).toBe(true);
+    assert(isMutatorHook(mutatorHook));
     // Test that it correctly identifies non-mutator hooks
-    expect(isMutatorHook(getHook)).toBe(false);
+    assert(!isMutatorHook(getHook));
   });
 
   test("type guards should work correctly with symbol checking", () => {
@@ -1971,32 +1971,32 @@ describe("type guards", () => {
     const mutatorHook = client.createMutator("POST", "/users");
 
     // Test that the hooks have the expected methods/properties
-    expect("store" in getHook).toBe(true);
-    expect("query" in getHook).toBe(true);
-    expect("mutateQuery" in mutatorHook).toBe(true);
-    expect("mutatorStore" in mutatorHook).toBe(true);
+    assert("store" in getHook);
+    assert("query" in getHook);
+    assert("mutateQuery" in mutatorHook);
+    assert("mutatorStore" in mutatorHook);
 
     // The type guards should work based on symbols
-    expect(isGetHook(getHook)).toBe(true);
-    expect(isMutatorHook(mutatorHook)).toBe(true);
+    assert(isGetHook(getHook));
+    assert(isMutatorHook(mutatorHook));
   });
 
   test("type guards should work correctly with object checking", () => {
-    expect(isGetHook(1)).toBe(false);
-    expect(isMutatorHook("absence of hook")).toBe(false);
-    expect(isGetHook({})).toBe(false);
-    expect(isMutatorHook({})).toBe(false);
-    expect(isGetHook(null)).toBe(false);
-    expect(isMutatorHook(null)).toBe(false);
-    expect(isGetHook(undefined)).toBe(false);
-    expect(isMutatorHook(undefined)).toBe(false);
-    expect(isGetHook(true)).toBe(false);
-    expect(isMutatorHook(true)).toBe(false);
-    expect(isGetHook(false)).toBe(false);
-    expect(isMutatorHook(false)).toBe(false);
-    expect(isGetHook(Symbol("fragno-get-hook"))).toBe(false);
-    expect(isMutatorHook(Symbol("fragno-mutator-hook"))).toBe(false);
-    expect(isGetHook(Symbol("fragno-get-hook"))).toBe(false);
+    assert(!isGetHook(1));
+    assert(!isMutatorHook("absence of hook"));
+    assert(!isGetHook({}));
+    assert(!isMutatorHook({}));
+    assert(!isGetHook(null));
+    assert(!isMutatorHook(null));
+    assert(!isGetHook(undefined));
+    assert(!isMutatorHook(undefined));
+    assert(!isGetHook(true));
+    assert(!isMutatorHook(true));
+    assert(!isGetHook(false));
+    assert(!isMutatorHook(false));
+    assert(!isGetHook(Symbol("fragno-get-hook")));
+    assert(!isMutatorHook(Symbol("fragno-mutator-hook")));
+    assert(!isGetHook(Symbol("fragno-get-hook")));
   });
 });
 
@@ -2052,7 +2052,7 @@ describe("Custom Fetcher Configuration", () => {
     await useUsers.query();
 
     expect(capturedOptions).toBeDefined();
-    expect(capturedOptions?.credentials).toBe("include");
+    assert(capturedOptions?.credentials === "include");
   });
 
   test("user overrides with their own RequestInit (deep merge)", async () => {
@@ -2079,8 +2079,8 @@ describe("Custom Fetcher Configuration", () => {
     await useUsers.query();
 
     expect(capturedOptions).toBeDefined();
-    expect(capturedOptions?.credentials).toBe("include");
-    expect(capturedOptions?.mode).toBe("cors");
+    assert(capturedOptions?.credentials === "include");
+    assert(capturedOptions?.mode === "cors");
   });
 
   test("user provides custom fetch function (takes full precedence)", async () => {
@@ -2136,7 +2136,7 @@ describe("Custom Fetcher Configuration", () => {
     // User's RequestInit takes precedence, so global fetch should be used
     expect(authorFetch).not.toHaveBeenCalled();
     expect(global.fetch).toHaveBeenCalled();
-    expect(capturedOptions?.credentials).toBe("include");
+    assert(capturedOptions?.credentials === "include");
   });
 
   test("headers merge correctly (user headers override author headers)", async () => {
@@ -2181,9 +2181,9 @@ describe("Custom Fetcher Configuration", () => {
 
     expect(capturedOptions).toBeDefined();
     const headers = new Headers(capturedOptions?.headers);
-    expect(headers.get("X-Author-Header")).toBe("author-value");
-    expect(headers.get("X-User-Header")).toBe("user-value");
-    expect(headers.get("X-Shared-Header")).toBe("user-shared"); // User overrides
+    assert(headers.get("X-Author-Header") === "author-value");
+    assert(headers.get("X-User-Header") === "user-value");
+    assert(headers.get("X-Shared-Header") === "user-shared"); // User overrides
   });
 
   test("custom fetcher works with mutators", async () => {
@@ -2208,8 +2208,8 @@ describe("Custom Fetcher Configuration", () => {
     await mutator.mutateQuery({ body: { name: "Jane" } });
 
     expect(capturedOptions).toBeDefined();
-    expect(capturedOptions?.credentials).toBe("include");
-    expect(capturedOptions?.method).toBe("POST");
+    assert(capturedOptions?.credentials === "include");
+    assert(capturedOptions?.method === "POST");
   });
 
   test("buildUrl method works correctly", () => {
@@ -2314,7 +2314,7 @@ describe("Custom Fetcher Configuration", () => {
       const { fetcher, defaultOptions } = client.getFetcher();
       expect(fetcher).not.toBe(globalThis.fetch);
       expect(defaultOptions).toBeDefined();
-      expect(defaultOptions?.credentials).toBe("include");
+      assert(defaultOptions?.credentials === "include");
 
       await fetcher("https://example.com");
       expect(fetchSpy).toHaveBeenCalledWith("https://example.com");

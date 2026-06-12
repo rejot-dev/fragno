@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import dedent from "dedent";
 
@@ -361,7 +361,7 @@ describe("defineRoute edge cases and potential breaking scenarios", () => {
     const hasNoop = result.code.includes("handler: () => {}");
     const hasOriginal = result.code.includes("myHandler");
     // One or the other should be true, but not both
-    expect(hasNoop || hasOriginal).toBe(true);
+    assert(hasNoop || hasOriginal);
     if (hasNoop) {
       expect(result.code).not.toContain("computed");
     }

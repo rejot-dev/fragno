@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, assert } from "vitest";
 
 import { __testing, run, type CliActions, type CliContext } from "./mod";
 
@@ -144,8 +144,8 @@ describe("fragno-pi CLI", () => {
   it("exposes parseArgs for testing", () => {
     const parsed = __testing.parseArgs(["sessions", "get", "--session", "abc"]);
 
-    expect(parsed.command).toBe("sessions");
-    expect(parsed.action).toBe("get");
+    assert(parsed.command === "sessions");
+    assert(parsed.action === "get");
   });
 
   it("documents the Pi-shaped sessions get contract in help", () => {

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import dedent from "dedent";
 
@@ -8,7 +8,7 @@ describe("transform robustness and error handling", () => {
   test("empty file", () => {
     const source = "";
     const result = transform(source, "", { ssr: false });
-    expect(result.code).toBe("");
+    assert(result.code === "");
   });
 
   test("file with only comments", () => {

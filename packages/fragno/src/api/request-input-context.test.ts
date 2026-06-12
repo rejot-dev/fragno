@@ -1,4 +1,4 @@
-import { test, expect, describe } from "vitest";
+import { test, expect, describe, assert } from "vitest";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
@@ -134,7 +134,7 @@ describe("RequestContext", () => {
       rawBody: rawBodyText,
     });
 
-    expect(ctx.path).toBe("/api/test");
+    assert(ctx.path === "/api/test");
     expect(ctx.rawBody).toEqual(rawBodyText);
   });
 
@@ -147,7 +147,7 @@ describe("RequestContext", () => {
       body: bodyData,
     });
 
-    expect(ctx.path).toBe("/api/ssr");
+    assert(ctx.path === "/api/ssr");
     // rawBody is not set in fromSSRContext
     expect(ctx.rawBody).toBeUndefined();
   });
@@ -179,7 +179,7 @@ describe("RequestContext", () => {
 
       expect(ctx.input).toBeDefined();
       expect(ctx.input?.schema).toBe(validStringSchema);
-      expect(typeof ctx.input.valid).toBe("function");
+      assert(typeof ctx.input.valid === "function");
     });
 
     test("Should validate input successfully with valid data", async () => {
@@ -455,7 +455,7 @@ describe("RequestContext", () => {
         parsedBody: undefined,
       });
 
-      expect(ctx.query.toString()).toBe("");
+      assert(ctx.query.toString() === "");
     });
 
     test("Should handle search params with values", () => {
@@ -469,8 +469,8 @@ describe("RequestContext", () => {
         parsedBody: undefined,
       });
 
-      expect(ctx.query.get("key")).toBe("value");
-      expect(ctx.query.get("another")).toBe("test");
+      assert(ctx.query.get("key") === "value");
+      assert(ctx.query.get("another") === "test");
     });
 
     test("Should extract search params from request URL in fromRequest", async () => {
@@ -491,7 +491,7 @@ describe("RequestContext", () => {
         state,
       });
 
-      expect(ctx.query.get("param")).toBe("value");
+      assert(ctx.query.get("param") === "value");
     });
 
     test("Should use default empty search params in fromSSRContext when not provided", () => {
@@ -502,7 +502,7 @@ describe("RequestContext", () => {
         body: undefined,
       });
 
-      expect(ctx.query.toString()).toBe("");
+      assert(ctx.query.toString() === "");
     });
 
     test("Should use provided search params in fromSSRContext", () => {
@@ -515,7 +515,7 @@ describe("RequestContext", () => {
         body: undefined,
       });
 
-      expect(ctx.query.get("ssr")).toBe("true");
+      assert(ctx.query.get("ssr") === "true");
     });
   });
 
@@ -536,7 +536,7 @@ describe("RequestContext", () => {
 
       const result = ctx.formData();
       expect(result).toBe(formData);
-      expect(result.get("description")).toBe("A test file");
+      assert(result.get("description") === "A test file");
     });
 
     test("formData() should throw when body is not FormData", () => {
@@ -582,7 +582,7 @@ describe("RequestContext", () => {
         method: "POST",
       });
 
-      expect(ctx.isFormData()).toBe(true);
+      assert(ctx.isFormData());
     });
 
     test("isFormData() should return false when body is JSON", () => {
@@ -595,7 +595,7 @@ describe("RequestContext", () => {
         method: "POST",
       });
 
-      expect(ctx.isFormData()).toBe(false);
+      assert(!ctx.isFormData());
     });
 
     test("isFormData() should return false when body is undefined", () => {
@@ -608,7 +608,7 @@ describe("RequestContext", () => {
         method: "POST",
       });
 
-      expect(ctx.isFormData()).toBe(false);
+      assert(!ctx.isFormData());
     });
 
     test("isFormData() should return false when body is Blob", () => {
@@ -623,7 +623,7 @@ describe("RequestContext", () => {
         method: "POST",
       });
 
-      expect(ctx.isFormData()).toBe(false);
+      assert(!ctx.isFormData());
     });
 
     test("Can use isFormData() to conditionally access formData()", () => {

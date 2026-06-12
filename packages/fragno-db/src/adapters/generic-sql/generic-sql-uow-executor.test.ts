@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, it, assert } from "vitest";
 
 import type { CompiledMutation } from "../../query/unit-of-work/unit-of-work";
 import type { CompiledQuery, Dialect } from "../../sql-driver/sql-driver";
@@ -50,6 +50,6 @@ describe("executeMutation", () => {
     const result = await executeMutation(adapter, new NodePostgresDriverConfig(), mutationBatch, {
       dialect,
     });
-    expect(result.success).toBe(false);
+    assert(!result.success);
   });
 });

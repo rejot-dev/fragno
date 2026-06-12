@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { parseSleepAfterInput } from "./sleep-after";
 
@@ -22,10 +22,7 @@ describe("parseSleepAfterInput", () => {
   test("rejects invalid text values", () => {
     const parsed = parseSleepAfterInput("adsfafds");
 
-    expect(parsed.ok).toBe(false);
-    if (parsed.ok) {
-      throw new Error("Expected invalid parse result");
-    }
+    assert(!parsed.ok);
     expect(parsed.message).toContain('Invalid "sleep after" value');
   });
 

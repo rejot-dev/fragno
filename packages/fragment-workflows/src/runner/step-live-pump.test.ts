@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, assert } from "vitest";
 
 import { BufferedPumpRegistry } from "@fragno-dev/db/buffered-pump";
 
@@ -248,7 +248,7 @@ describe("WorkflowStepLivePump", () => {
       expect(await observed.next()).toEqual({ type: "message_start", text: "poem" });
       expect(await observed.next()).toEqual({ type: "message_update", text: "In fields" });
       expect(await observed.next()).toEqual({ type: "message_end", text: "In fields" });
-      expect(observed.pendingCount()).toBe(0);
+      assert(observed.pendingCount() === 0);
     } finally {
       unsubscribe();
       emissionBus.stop();
@@ -313,7 +313,7 @@ describe("WorkflowStepLivePump", () => {
       await flushBus(harness, remoteBus);
 
       expect(await observed.next()).toEqual({ type: "remote-started" });
-      expect(observed.pendingCount()).toBe(0);
+      assert(observed.pendingCount() === 0);
     } finally {
       unsubscribe();
       remoteBus.stop();
@@ -539,11 +539,11 @@ describe("WorkflowStepLivePump", () => {
       await flushBus(harness, emissionBus);
 
       expect(await lateObserver.next()).toEqual({ tag: "third", sequence: 0 });
-      expect((await earlyObserver.next()).tag).toBe("first");
-      expect((await earlyObserver.next()).tag).toBe("second");
-      expect((await earlyObserver.next()).tag).toBe("third");
-      expect(lateObserver.pendingCount()).toBe(0);
-      expect(earlyObserver.pendingCount()).toBe(0);
+      assert((await earlyObserver.next()).tag === "first");
+      assert((await earlyObserver.next()).tag === "second");
+      assert((await earlyObserver.next()).tag === "third");
+      assert(lateObserver.pendingCount() === 0);
+      assert(earlyObserver.pendingCount() === 0);
     } finally {
       unsubscribeLate();
       unsubscribeEarly();
@@ -605,7 +605,7 @@ describe("WorkflowStepLivePump", () => {
       expect([await received.next(), await received.next()]).toEqual(
         expect.arrayContaining([{ command: "continue" }, { command: "status" }]),
       );
-      expect(received.pendingCount()).toBe(0);
+      assert(received.pendingCount() === 0);
     } finally {
       releaseStep.resolve();
       await tick;

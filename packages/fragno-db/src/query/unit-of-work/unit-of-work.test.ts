@@ -57,7 +57,7 @@ describe("FindBuilder", () => {
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
-    expect(ops[0].indexName).toBe("_primary");
+    assert(ops[0].indexName === "_primary");
   });
 
   it("should support custom indexes", () => {
@@ -80,7 +80,7 @@ describe("FindBuilder", () => {
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
-    expect(ops[0].indexName).toBe("idx_email");
+    assert(ops[0].indexName === "idx_email");
   });
 
   it("should support cursor-based pagination", () => {
@@ -105,7 +105,7 @@ describe("FindBuilder", () => {
     const op = ops[0];
     assert(op.type === "find");
     expect(op.options.after).toBe(cursor);
-    expect(op.options.pageSize).toBe(10);
+    assert(op.options.pageSize === 10);
   });
 
   it("should support backward cursor pagination", () => {
@@ -130,7 +130,7 @@ describe("FindBuilder", () => {
     const op = ops[0];
     assert(op.type === "find");
     expect(op.options.before).toBe(cursor);
-    expect(op.options.pageSize).toBe(5);
+    assert(op.options.pageSize === 5);
   });
 
   it("should throw for invalid encoded cursors", () => {
@@ -252,11 +252,11 @@ describe("FindBuilder", () => {
 
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
-    expect(ops[0]?.type).toBe("count");
+    assert(ops[0]?.type === "count");
 
     const ops2 = uow2.getRetrievalOperations();
     expect(ops2).toHaveLength(1);
-    expect(ops2[0]?.type).toBe("count");
+    assert(ops2[0]?.type === "count");
   });
 
   it("should throw when using both select and selectCount", () => {
@@ -390,7 +390,7 @@ describe("FindBuilder", () => {
     assert(op.type === "find");
     expect(op.options.queryTree).toBeDefined();
     expect(op.options.queryTree?.children).toHaveLength(1);
-    expect(op.options.queryTree?.children[0]?.select).toBe(true); // Should default to selecting all columns
+    assert(op.options.queryTree?.children[0]?.select); // Should default to selecting all columns
   });
 
   it("should support join with whereIndex", () => {
@@ -504,7 +504,7 @@ describe("FindBuilder", () => {
     expect(ops).toHaveLength(1);
     const op = ops[0];
     assert(op.type === "find");
-    expect(op.options.queryTree?.children[0]?.pageSize).toBe(5);
+    assert(op.options.queryTree?.children[0]?.pageSize === 5);
   });
 
   it("should throw RangeError for invalid pageSize in join", () => {
@@ -607,7 +607,7 @@ describe("FindBuilder", () => {
     expect(postJoin?.children).toHaveLength(1);
 
     const userJoin = postJoin?.children[0];
-    expect(userJoin?.alias).toBe("user");
+    assert(userJoin?.alias === "user");
   });
 });
 
@@ -899,9 +899,9 @@ describe("generateId", () => {
 
     expect(id).toBeInstanceOf(FragnoId);
     expect(id.externalId).toBeDefined();
-    expect(typeof id.externalId).toBe("string");
+    assert(typeof id.externalId === "string");
     expect(id.externalId.length).toBeGreaterThan(0);
-    expect(id.version).toBe(0);
+    assert(id.version === 0);
 
     // No mutation operations should be added
     expect(uow.getMutationOperations()).toHaveLength(0);
@@ -975,11 +975,11 @@ describe("getCreatedIds", () => {
 
     expect(createdIds).toHaveLength(2);
     expect(createdIds[0].externalId).toBeDefined();
-    expect(createdIds[0].internalId).toBe(1n);
-    expect(createdIds[0].version).toBe(0);
+    assert(createdIds[0].internalId === 1n);
+    assert(createdIds[0].version === 0);
     expect(createdIds[1].externalId).toBeDefined();
-    expect(createdIds[1].internalId).toBe(2n);
-    expect(createdIds[1].version).toBe(0);
+    assert(createdIds[1].internalId === 2n);
+    assert(createdIds[1].version === 0);
   });
 
   it("should return created IDs without internal IDs when not supported", async () => {
@@ -1025,8 +1025,8 @@ describe("getCreatedIds", () => {
     const createdIds = uow.getCreatedIds();
 
     expect(createdIds).toHaveLength(1);
-    expect(createdIds[0].externalId).toBe("my-custom-id");
-    expect(createdIds[0].internalId).toBe(1n);
+    assert(createdIds[0].externalId === "my-custom-id");
+    assert(createdIds[0].internalId === 1n);
   });
 
   it("should only return IDs for create operations, not updates or deletes", async () => {
@@ -1049,7 +1049,7 @@ describe("getCreatedIds", () => {
 
     // Only one create operation, so only one ID returned
     expect(createdIds).toHaveLength(1);
-    expect(createdIds[0].internalId).toBe(1n);
+    assert(createdIds[0].internalId === 1n);
   });
 
   it("should throw when called before executeMutations", () => {
@@ -1296,8 +1296,8 @@ describe("Phase promises with multiple views", () => {
     expect(createdIds[1].externalId).toBe(postId.externalId);
 
     // Both should now have internal IDs (from database)
-    expect(createdIds[0].internalId).toBe(1n);
-    expect(createdIds[1].internalId).toBe(2n);
+    assert(createdIds[0].internalId === 1n);
+    assert(createdIds[1].internalId === 2n);
 
     // IDs should still be unique
     expect(createdIds[0].externalId).not.toBe(createdIds[1].externalId);
@@ -1378,8 +1378,8 @@ describe("Instrumentation", () => {
     for (const ctx of contexts) {
       expect(ctx.idempotencyKey).toBeTypeOf("string");
       expect(ctx.idempotencyKey.length).toBeGreaterThan(0);
-      expect(ctx.retrievalOpsCount).toBe(1);
-      expect(ctx.mutationOpsCount).toBe(1);
+      assert(ctx.retrievalOpsCount === 1);
+      assert(ctx.mutationOpsCount === 1);
     }
   });
 
@@ -1406,8 +1406,8 @@ describe("Instrumentation", () => {
     uow.forSchema(testSchema).create("users", { name: "Alice", email: "alice@example.com" });
 
     const result = await uow.executeMutations();
-    expect(result.success).toBe(false);
-    expect(mutationExecuted).toBe(false);
+    assert(!result.success);
+    assert(!mutationExecuted);
   });
 
   it("should throw on error injection before retrieval", async () => {
@@ -1430,7 +1430,7 @@ describe("Instrumentation", () => {
     uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
 
     await expect(uow.executeRetrieve()).rejects.toThrow("Injected failure");
-    expect(retrievalExecuted).toBe(false);
+    assert(!retrievalExecuted);
   });
 });
 
@@ -1496,7 +1496,7 @@ describe("Error Handling", () => {
     // uow.retrievalPhase should not be settled yet
 
     // Wait for execute to complete
-    expect(await executePromise).toBe("Query timeout");
+    assert((await executePromise) === "Query timeout");
   });
 
   it("should reject mutationPhase promise when executeMutations() fails", async () => {
@@ -1523,7 +1523,7 @@ describe("Error Handling", () => {
         throw new Error("Should not be called");
       });
     // Wait for execute to complete
-    expect(await executePromise).toBe("Constraint violation");
+    assert((await executePromise) === "Constraint violation");
   });
 
   it("should not cause unhandled promise rejection when executeRetrieve() fails and coordination promise is not awaited", async () => {
@@ -1549,7 +1549,7 @@ describe("Error Handling", () => {
     } catch (error) {
       // Error is caught, this is expected
       expect(error).toBeInstanceOf(Error);
-      expect((error as Error).message).toBe("Table does not exist");
+      assert((error as Error).message === "Table does not exist");
       errorResolver.resolve();
     }
 
@@ -1579,7 +1579,7 @@ describe("Error Handling", () => {
     } catch (error) {
       // Error is caught, this is expected
       expect(error).toBeInstanceOf(Error);
-      expect((error as Error).message).toBe("Deadlock detected");
+      assert((error as Error).message === "Deadlock detected");
       errorResolver.resolve();
     }
 
@@ -1606,7 +1606,7 @@ describe("Error Handling", () => {
       await uow.executeRetrieve();
     } catch (error) {
       expect(error).toBeInstanceOf(Error);
-      expect((error as Error).message).toBe("Connection lost");
+      assert((error as Error).message === "Connection lost");
       errorResolver.resolve();
     }
 
@@ -1632,7 +1632,7 @@ describe("Error Handling", () => {
       await uow.executeMutations();
     } catch (error) {
       expect(error).toBeInstanceOf(Error);
-      expect((error as Error).message).toBe("Transaction aborted");
+      assert((error as Error).message === "Transaction aborted");
       errorResolver.resolve();
     }
 
@@ -1655,7 +1655,7 @@ describe("Error Handling", () => {
     try {
       await uow.executeRetrieve();
     } catch (error) {
-      expect((error as Error).message).toBe("First attempt failed");
+      assert((error as Error).message === "First attempt failed");
       errorResolver.resolve();
     }
 
@@ -1663,7 +1663,7 @@ describe("Error Handling", () => {
     uow.reset();
 
     // The UOW should be in a clean state
-    expect(uow.state).toBe("building-retrieval");
+    assert(uow.state === "building-retrieval");
     expect(uow.getRetrievalOperations()).toHaveLength(0);
 
     await errorResolver.promise;
@@ -1685,7 +1685,7 @@ describe("Error Handling", () => {
     try {
       await uow.executeMutations();
     } catch (error) {
-      expect((error as Error).message).toBe("First mutation failed");
+      assert((error as Error).message === "First mutation failed");
       errorResolver.resolve();
     }
 
@@ -1693,7 +1693,7 @@ describe("Error Handling", () => {
     uow.reset();
 
     // The UOW should be in a clean state
-    expect(uow.state).toBe("building-retrieval");
+    assert(uow.state === "building-retrieval");
     expect(uow.getMutationOperations()).toHaveLength(0);
 
     await errorResolver.promise;
@@ -1714,7 +1714,7 @@ describe("Error Handling", () => {
     const checkOp = mutationOps[0];
     assert(checkOp);
     assert(checkOp.type === "check");
-    expect(checkOp.table).toBe("users");
+    assert(checkOp.table === "users");
     expect(checkOp.id).toBe(userId);
   });
 });
@@ -1759,7 +1759,7 @@ describe("findFirst convenience method", () => {
     // Result should be a single object, not an array
     const [user] = results;
     expect(user).toEqual({ id: "mock-id", name: "Mock User", email: "mock@example.com" });
-    expect(Array.isArray(user)).toBe(false);
+    assert(!Array.isArray(user));
   });
 
   it("executeRetrieve returns filtered typed results for findFirst", async () => {
@@ -1783,7 +1783,7 @@ describe("findFirst convenience method", () => {
 
     expect(results).toHaveLength(1);
     expect(user).toEqual({ id: "user-1", name: "User 1", email: "user1@example.com" });
-    expect(Array.isArray(user)).toBe(false);
+    assert(!Array.isArray(user));
   });
 
   it("should return null when no results are found", async () => {
@@ -1817,9 +1817,9 @@ describe("findFirst convenience method", () => {
     // Check that pageSize was set to 1 in the operation
     const ops = uow.getRetrievalOperations();
     expect(ops).toHaveLength(1);
-    expect(ops[0]?.type).toBe("find");
+    assert(ops[0]?.type === "find");
     if (ops[0]?.type === "find") {
-      expect(ops[0].options.pageSize).toBe(1);
+      assert(ops[0].options.pageSize === 1);
     }
   });
 
@@ -1894,8 +1894,8 @@ describe("findFirst convenience method", () => {
     // Both should be single objects, not arrays
     expect(user).toEqual({ id: "user-1", name: "User 1", email: "user1@example.com" });
     expect(post).toEqual({ id: "post-1", userId: "user-1", title: "Post 1" });
-    expect(Array.isArray(user)).toBe(false);
-    expect(Array.isArray(post)).toBe(false);
+    assert(!Array.isArray(user));
+    assert(!Array.isArray(post));
   });
 
   it("should handle mix of find and findFirst operations", async () => {
@@ -1925,10 +1925,10 @@ describe("findFirst convenience method", () => {
 
     // User should be a single object
     expect(user).toEqual({ id: "user-1", name: "User 1", email: "user1@example.com" });
-    expect(Array.isArray(user)).toBe(false);
+    assert(!Array.isArray(user));
 
     // Posts should be an array
-    expect(Array.isArray(posts)).toBe(true);
+    assert(Array.isArray(posts));
     expect(posts).toHaveLength(2);
   });
 
@@ -1951,7 +1951,7 @@ describe("findFirst convenience method", () => {
     const [user] = results;
 
     expect(user).toEqual({ id: "user-1", name: "Alice", email: "alice@example.com" });
-    expect(Array.isArray(user)).toBe(false);
+    assert(!Array.isArray(user));
   });
 
   it("should work with an explicit primary-index builder", async () => {
@@ -1971,11 +1971,11 @@ describe("findFirst convenience method", () => {
     const [user] = results;
 
     expect(user).toEqual({ id: "user-1", name: "User 1", email: "user1@example.com" });
-    expect(Array.isArray(user)).toBe(false);
+    assert(!Array.isArray(user));
 
     // Verify the operation used the primary index
     const ops = uow.getRetrievalOperations();
-    expect(ops[0]?.indexName).toBe("_primary");
+    assert(ops[0]?.indexName === "_primary");
   });
 });
 

@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, it } from "vitest";
+import { describe, expect, expectTypeOf, it, assert } from "vitest";
 
 import type { ExtractFragmentServices } from "@fragno-dev/core/route";
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
@@ -176,21 +176,21 @@ describe("buildDatabaseFragmentsTest", () => {
       fragment.services.getUsersWithCursor(),
     );
     expect(firstPage.items.map((item) => item.name)).toEqual(["Alice", "Brett"]);
-    expect(firstPage.hasNextPage).toBe(true);
+    assert(firstPage.hasNextPage);
     expect(firstPage.cursor).toBeDefined();
 
     const secondPage = await fragment.fragment.callServices(() =>
       fragment.services.getUsersWithCursor(firstPage.cursor),
     );
     expect(secondPage.items.map((item) => item.name)).toEqual(["Cora", "Dylan"]);
-    expect(secondPage.hasNextPage).toBe(true);
+    assert(secondPage.hasNextPage);
     expect(secondPage.cursor).toBeDefined();
 
     const thirdPage = await fragment.fragment.callServices(() =>
       fragment.services.getUsersWithCursor(secondPage.cursor),
     );
     expect(thirdPage.items.map((item) => item.name)).toEqual(["Emma"]);
-    expect(thirdPage.hasNextPage).toBe(false);
+    assert(!thirdPage.hasNextPage);
     expect(thirdPage.cursor).toBeUndefined();
 
     await test.cleanup();
@@ -251,7 +251,7 @@ describe("buildDatabaseFragmentsTest", () => {
     });
 
     expect(userId).toBeDefined();
-    expect(typeof userId.valueOf()).toBe("string");
+    assert(typeof userId.valueOf() === "string");
 
     // Test finding records using handlerTx
     const users = await fragment.fragment.inContext(async function () {

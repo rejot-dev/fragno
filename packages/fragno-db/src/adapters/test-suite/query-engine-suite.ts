@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { DatabaseConstraintError } from "../../errors";
 import { internalSchema } from "../../fragments/internal-fragment";
@@ -69,7 +69,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           email: "alice.primary@example.com",
           is_primary: true,
         });
-        expect((await create.executeMutations()).success).toBe(true);
+        assert((await create.executeMutations()).success);
 
         const [[email]] = await createSuiteUnitOfWork(adapter, "read-basic")
           .find("emails", (b) =>
@@ -91,15 +91,15 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
         const update = createSuiteUnitOfWork(adapter, "update-basic");
         expect(email.user).not.toBeNull();
         update.update("users", email.user!.id, (b) => b.set({ age: 33 }).check());
-        expect((await update.executeMutations()).success).toBe(true);
+        assert((await update.executeMutations()).success);
 
         const [[user]] = await createSuiteUnitOfWork(adapter, "read-updated-basic")
           .find("users", (b) =>
             b.whereIndex("users_email_idx", (eb) => eb("email", "=", "alice@example.com")),
           )
           .executeRetrieve();
-        expect(user.age).toBe(33);
-        expect(user.id.version).toBe(1);
+        assert(user.age === 33);
+        assert(user.id.version === 1);
       } finally {
         await close?.();
       }
@@ -120,18 +120,18 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
 
         const update = createSuiteUnitOfWork(adapter, "update-current");
         update.update("users", createdId, (b) => b.set({ name: "Fresh" }).check());
-        expect((await update.executeMutations()).success).toBe(true);
+        assert((await update.executeMutations()).success);
 
         const stale = createSuiteUnitOfWork(adapter, "update-stale");
         stale.update("users", createdId, (b) => b.set({ name: "Wrong" }).check());
-        expect((await stale.executeMutations()).success).toBe(false);
+        assert(!(await stale.executeMutations()).success);
 
         const [[user]] = await createSuiteUnitOfWork(adapter, "read-after-stale")
           .find("users", (b) =>
             b.whereIndex("users_email_idx", (eb) => eb("email", "=", "stale@example.com")),
           )
           .executeRetrieve();
-        expect(user.name).toBe("Fresh");
+        assert(user.name === "Fresh");
       } finally {
         await close?.();
       }
@@ -157,11 +157,11 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
 
         const badDelete = createSuiteUnitOfWork(adapter, "bad-delete");
         badDelete.delete("users", wrongVersionId, (b) => b.check());
-        expect((await badDelete.executeMutations()).success).toBe(false);
+        assert(!(await badDelete.executeMutations()).success);
 
         const goodDelete = createSuiteUnitOfWork(adapter, "good-delete");
         goodDelete.delete("users", createdId, (b) => b.check());
-        expect((await goodDelete.executeMutations()).success).toBe(true);
+        assert((await goodDelete.executeMutations()).success);
 
         const [users] = await createSuiteUnitOfWork(adapter, "read-after-delete")
           .find("users", (b) =>
@@ -239,7 +239,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           "Cursor A",
           "Cursor B",
         ]);
-        expect(firstPage.hasNextPage).toBe(true);
+        assert(firstPage.hasNextPage);
         expect(firstPage.cursor).toBeInstanceOf(Cursor);
         const cursor = firstPage.cursor;
         if (!cursor) {
@@ -258,7 +258,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
         await secondPageUow.executeRetrieve();
         const [secondPage] = await secondPageUow.retrievalPhase;
         expect(secondPage.items.map((user: { name: string }) => user.name)).toEqual(["Cursor C"]);
-        expect(secondPage.hasNextPage).toBe(false);
+        assert(!secondPage.hasNextPage);
       } finally {
         await close?.();
       }
@@ -276,7 +276,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
         create
           .forSchema(queryEngineSuiteSecondarySchema)
           .create("products", { id: "multi-product", name: "Widget", price: 25 });
-        expect((await create.executeMutations()).success).toBe(true);
+        assert((await create.executeMutations()).success);
 
         const read = createSuiteBaseUnitOfWork(adapter, "read-multi-schema");
         read
@@ -290,8 +290,8 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
             b.whereIndex("products_name_idx", (eb) => eb("name", "=", "Widget")),
           );
         const [users, products] = await read.executeRetrieve();
-        expect((users as { name: string }[])[0]?.name).toBe("Multi");
-        expect((products as { name: string }[])[0]?.name).toBe("Widget");
+        assert((users as { name: string }[])[0]?.name === "Multi");
+        assert((products as { name: string }[])[0]?.name === "Widget");
       } finally {
         await close?.();
       }
@@ -341,7 +341,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
 
         const bump = createSuiteUnitOfWork(adapter, "bump-check-version");
         bump.update("users", staleId, (b) => b.set({ name: "After" }).check());
-        expect((await bump.executeMutations()).success).toBe(true);
+        assert((await bump.executeMutations()).success);
 
         const stale = createSuiteUnitOfWork(adapter, "stale-check-rolls-back");
         stale.check("users", staleId);
@@ -351,7 +351,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           email: "rollback@example.com",
           age: 1,
         });
-        expect((await stale.executeMutations()).success).toBe(false);
+        assert(!(await stale.executeMutations()).success);
 
         const [rolledBackRows] = await createSuiteUnitOfWork(adapter, "verify-check-rollback")
           .find("users", (b) =>
@@ -375,10 +375,10 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           email: "provided@example.com",
           age: 2,
         });
-        expect((await first.executeMutations()).success).toBe(true);
+        assert((await first.executeMutations()).success);
         const ids = first.getCreatedIds();
         expect(ids).toHaveLength(2);
-        expect(ids[1]!.externalId).toBe("provided-id");
+        assert(ids[1]!.externalId === "provided-id");
 
         const mixed = createSuiteUnitOfWork(adapter, "created-ids-mixed");
         mixed.update("users", ids[0]!, (b) => b.set({ age: 3 }).check());
@@ -389,7 +389,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           age: 4,
         });
         mixed.delete("users", ids[1]!, (b) => b.check());
-        expect((await mixed.executeMutations()).success).toBe(true);
+        assert((await mixed.executeMutations()).success);
         expect(mixed.getCreatedIds().map((id) => id.externalId)).toEqual(["mixed-created"]);
       } finally {
         await close?.();
@@ -402,7 +402,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
         const uow = createSuiteUnitOfWork(adapter, "create-with-returned-ref");
         const userRef = uow.create("users", { name: "Ref User", email: "ref@example.com", age: 5 });
         uow.create("posts", { id: "ref-post", user_id: userRef, title: "Ref", content: "Post" });
-        expect((await uow.executeMutations()).success).toBe(true);
+        assert((await uow.executeMutations()).success);
 
         const [[post]] = await createSuiteUnitOfWork(adapter, "read-returned-ref")
           .find("posts", (b) =>
@@ -413,7 +413,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
               ),
           )
           .executeRetrieve();
-        expect(post.user?.email).toBe("ref@example.com");
+        assert(post.user?.email === "ref@example.com");
       } finally {
         await close?.();
       }
@@ -435,7 +435,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           email: "external-ref-email@example.com",
           is_primary: false,
         });
-        expect((await create.executeMutations()).success).toBe(true);
+        assert((await create.executeMutations()).success);
 
         const [[email]] = await createSuiteUnitOfWork(adapter, "read-external-ref")
           .find("emails", (b) =>
@@ -448,7 +448,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
               ),
           )
           .executeRetrieve();
-        expect(email.user?.id.externalId).toBe("external-ref-user");
+        assert(email.user?.id.externalId === "external-ref-user");
       } finally {
         await close?.();
       }
@@ -688,7 +688,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           email: "receipt@example.com",
           is_primary: false,
         });
-        expect((await transfer.executeMutations()).success).toBe(true);
+        assert((await transfer.executeMutations()).success);
 
         const [users, receipts] = await createSuiteUnitOfWork(adapter, "verify-transfer")
           .find("users", (b) => b.whereIndex("users_name_idx"))
@@ -791,7 +791,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           "composite-a",
           "composite-b",
         ]);
-        expect(page.hasNextPage).toBe(true);
+        assert(page.hasNextPage);
       } finally {
         await close?.();
       }
@@ -876,7 +876,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           },
         ]);
         expect(page.items[0]).not.toHaveProperty("email");
-        expect(page.hasNextPage).toBe(true);
+        assert(page.hasNextPage);
       } finally {
         await close?.();
       }
@@ -914,7 +914,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
         const [exactUsers, page] = await uow.retrievalPhase;
         expect(exactUsers).toHaveLength(1);
         expect(page.items).toHaveLength(1);
-        expect(page.hasNextPage).toBe(true);
+        assert(page.hasNextPage);
       } finally {
         await close?.();
       }
@@ -1085,7 +1085,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           id: "join-only-invite",
           email: "missing@example.com",
         });
-        expect((await createInvitation.executeMutations()).success).toBe(true);
+        assert((await createInvitation.executeMutations()).success);
 
         const createUser = createSuiteUnitOfWork(adapter, "create-join-only-user");
         createUser.create("users", {
@@ -1094,7 +1094,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           email: "join-only-fk@example.com",
           age: 1,
         });
-        expect((await createUser.executeMutations()).success).toBe(true);
+        assert((await createUser.executeMutations()).success);
 
         const createMatchingInvitation = createSuiteUnitOfWork(
           adapter,
@@ -1104,11 +1104,11 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           id: "matching-join-only-invite",
           email: "join-only-fk@example.com",
         });
-        expect((await createMatchingInvitation.executeMutations()).success).toBe(true);
+        assert((await createMatchingInvitation.executeMutations()).success);
 
         const deleteUser = createSuiteUnitOfWork(adapter, "delete-join-only-user");
         deleteUser.delete("users", createUser.getCreatedIds()[0]!, (b) => b.check());
-        expect((await deleteUser.executeMutations()).success).toBe(true);
+        assert((await deleteUser.executeMutations()).success);
       } finally {
         await close?.();
       }
@@ -1151,7 +1151,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           "Encoded A",
           "Encoded B",
         ]);
-        expect(ascFirstPage.hasNextPage).toBe(true);
+        assert(ascFirstPage.hasNextPage);
         expect(ascFirstPage.cursor).toBeInstanceOf(Cursor);
         if (!ascFirstPage.cursor) {
           throw new Error("Expected encoded cursor first page cursor");
@@ -1171,7 +1171,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           "Encoded C",
           "Encoded Composite",
         ]);
-        expect(ascSecondPage.hasNextPage).toBe(true);
+        assert(ascSecondPage.hasNextPage);
 
         const beforeCursor = new Cursor({
           indexName: "users_name_idx",
@@ -1192,7 +1192,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           "Encoded A",
           "Encoded B",
         ]);
-        expect(beforePage.hasNextPage).toBe(false);
+        assert(!beforePage.hasNextPage);
 
         const descFirstUow = createSuiteUnitOfWork(
           adapter,
@@ -1209,7 +1209,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           "Encoded D",
           "Encoded Composite",
         ]);
-        expect(descFirstPage.hasNextPage).toBe(true);
+        assert(descFirstPage.hasNextPage);
         expect(descFirstPage.cursor).toBeInstanceOf(Cursor);
         if (!descFirstPage.cursor) {
           throw new Error("Expected desc first page cursor");
@@ -1229,7 +1229,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           "Encoded C",
           "Encoded B",
         ]);
-        expect(descSecondPage.hasNextPage).toBe(true);
+        assert(descSecondPage.hasNextPage);
 
         const compositeFirstUow = createSuiteUnitOfWork(
           adapter,
@@ -1245,7 +1245,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
         expect(
           compositeFirstPage.items.map((user: { id: FragnoId }) => user.id.externalId),
         ).toEqual(["composite-a", "composite-b"]);
-        expect(compositeFirstPage.hasNextPage).toBe(true);
+        assert(compositeFirstPage.hasNextPage);
         if (!compositeFirstPage.cursor) {
           throw new Error("Expected composite first page cursor");
         }
@@ -1263,7 +1263,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
         expect(
           compositeSecondPage.items.map((user: { id: FragnoId }) => user.id.externalId),
         ).toEqual(["composite-c"]);
-        expect(compositeSecondPage.hasNextPage).toBe(false);
+        assert(!compositeSecondPage.hasNextPage);
       } finally {
         await close?.();
       }
@@ -1324,12 +1324,12 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
 
         const bumpSecond = createSuiteUnitOfWork(adapter, "bump-late-conflict-second");
         bumpSecond.update("users", staleSecondId!, (b) => b.set({ age: 21 }).check());
-        expect((await bumpSecond.executeMutations()).success).toBe(true);
+        assert((await bumpSecond.executeMutations()).success);
 
         const staleTransfer = createSuiteUnitOfWork(adapter, "late-conflict-rolls-back-first");
         staleTransfer.update("users", firstId!, (b) => b.set({ age: 11 }).check());
         staleTransfer.update("users", staleSecondId!, (b) => b.set({ age: 22 }).check());
-        expect((await staleTransfer.executeMutations()).success).toBe(false);
+        assert(!(await staleTransfer.executeMutations()).success);
 
         const [[first], [second]] = await createSuiteUnitOfWork(adapter, "verify-late-conflict")
           .find("users", (b) =>
@@ -1716,7 +1716,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           .executeRetrieve();
         expect(event.created_at).toBeInstanceOf(Date);
         expect(event.happened_on).toBeInstanceOf(Date);
-        expect(event.happened_on.toISOString().slice(0, 10)).toBe("2024-06-18");
+        assert(event.happened_on.toISOString().slice(0, 10) === "2024-06-18");
         expect(event.payload).toEqual(payload);
         expect(event.big_score).toBe(bigScore);
       } finally {

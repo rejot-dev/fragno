@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, assert } from "vitest";
 
 import { workflowsSchema } from "@fragno-dev/workflows";
 
@@ -89,7 +89,7 @@ const withTimeout = async <T>(promise: Promise<T>, message: string, ms = 2_000):
 function assertJsonStream<TResponse extends { type: string }>(
   response: TResponse,
 ): asserts response is Extract<TResponse, { type: "jsonStream" }> {
-  expect(response.type).toBe("jsonStream");
+  assert(response.type === "jsonStream");
   if (response.type !== "jsonStream") {
     throw new Error(`Expected jsonStream response, got ${response.type}.`);
   }
@@ -177,7 +177,7 @@ describe("pi-fragment /events route", () => {
         },
       },
     );
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       throw new Error("expected json response");
     }
@@ -250,7 +250,7 @@ describe("pi-fragment /events route", () => {
           },
         },
       );
-      expect(response.type).toBe("json");
+      assert(response.type === "json");
       if (response.type !== "json") {
         throw new Error("expected json response");
       }
@@ -441,7 +441,7 @@ describe("pi-fragment /events route", () => {
         body: { name: "Pi", input: { agentName: "default" } },
       },
     );
-    expect(sessionResponse.type).toBe("json");
+    assert(sessionResponse.type === "json");
     if (sessionResponse.type !== "json") {
       throw new Error("expected json response");
     }
@@ -571,7 +571,7 @@ describe("pi-fragment /events route", () => {
         body: { name: "Pi", input: { agentName: "default" } },
       },
     );
-    expect(sessionResponse.type).toBe("json");
+    assert(sessionResponse.type === "json");
     if (sessionResponse.type !== "json") {
       throw new Error("expected json response");
     }

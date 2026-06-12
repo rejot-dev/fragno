@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, assert } from "vitest";
 
 import {
   column,
@@ -82,7 +82,7 @@ describe("local handler tx", () => {
     );
 
     expect(posts).toHaveLength(1);
-    expect(posts[0].author?.email).toBe("alpha@example.com");
+    assert(posts[0].author?.email === "alpha@example.com");
   });
 
   it("supports replaying mutations using reference values from reads", async () => {

@@ -275,16 +275,16 @@ describe("decodeResult", () => {
 
       // Main table id should be FragnoId
       assert(result["id"] instanceof FragnoId);
-      expect(result["id"].externalId).toBe("post1");
+      assert(result["id"].externalId === "post1");
       expect(result["id"].internalId).toBe(BigInt(100));
 
       // Relation id should also be FragnoId (THIS IS THE BUG WE'RE FIXING)
       expect(result["user"]).toBeDefined();
       const user = result["user"] as Record<string, unknown>;
       assert(user["id"] instanceof FragnoId);
-      expect(user["id"].externalId).toBe("user1");
+      assert(user["id"].externalId === "user1");
       expect(user["id"].internalId).toBe(BigInt(200));
-      expect(user["name"]).toBe("Alice");
+      assert(user["name"] === "Alice");
     });
 
     it("should return null for missing one relations when internal id is null", () => {
@@ -424,9 +424,9 @@ describe("decodeResult", () => {
       const fragnoId = result["id"];
       assert(fragnoId instanceof FragnoId);
 
-      expect(fragnoId.externalId).toBe("user123");
-      expect(fragnoId.internalId).toBe(456n);
-      expect(result["name"]).toBe("John");
+      assert(fragnoId.externalId === "user123");
+      assert(fragnoId.internalId === 456n);
+      assert(result["name"] === "John");
     });
 
     it("should create FragnoId from string internal ID", () => {
@@ -443,9 +443,9 @@ describe("decodeResult", () => {
       const fragnoId = result["id"];
       assert(fragnoId instanceof FragnoId);
 
-      expect(fragnoId.externalId).toBe("user123");
+      assert(fragnoId.externalId === "user123");
       expect(fragnoId.internalId).toBe(BigInt(456));
-      expect(result["name"]).toBe("John");
+      assert(result["name"] === "John");
     });
 
     it("should return regular string when internal ID is missing", () => {
@@ -482,8 +482,8 @@ describe("decodeResult", () => {
       expect(postgresqlResult["id"]).toBeInstanceOf(FragnoId);
       expect(mysqlResult["id"]).toBeInstanceOf(FragnoId);
 
-      expect((sqliteResult["id"] as FragnoId).externalId).toBe("user123");
-      expect((sqliteResult["id"] as FragnoId).internalId).toBe(456n);
+      assert((sqliteResult["id"] as FragnoId).externalId === "user123");
+      assert((sqliteResult["id"] as FragnoId).internalId === 456n);
     });
 
     it("should create FragnoId in relation data when both IDs present", () => {
@@ -500,14 +500,14 @@ describe("decodeResult", () => {
         postgresqlConfig,
       );
 
-      expect(result["id"]).toBe("post1");
-      expect(result["title"]).toBe("My Post");
+      assert(result["id"] === "post1");
+      assert(result["title"] === "My Post");
       // Relations now correctly create FragnoId objects when both IDs are present (thanks to recursive decoding)
       const user: Record<string, unknown> = result["user"] as Record<string, unknown>;
       assert(user["id"] instanceof FragnoId);
-      expect(user["id"].externalId).toBe("user123");
-      expect(user["id"].internalId).toBe(456n);
-      expect(user["name"]).toBe("Alice");
+      assert(user["id"].externalId === "user123");
+      assert(user["id"].internalId === 456n);
+      assert(user["name"] === "Alice");
     });
 
     it("should return regular string in relation data when internal ID missing", () => {
@@ -551,12 +551,12 @@ describe("decodeResult", () => {
       );
 
       expect(result["id"]).toBeInstanceOf(FragnoId);
-      expect((result["id"] as FragnoId).externalId).toBe("user123");
-      expect((result["id"] as FragnoId).internalId).toBe(456n);
-      expect(result["name"]).toBe("Alice");
-      expect(result["email"]).toBe("alice@example.com");
-      expect(result["age"]).toBe(30);
-      expect(result["isActive"]).toBe(true);
+      assert((result["id"] as FragnoId).externalId === "user123");
+      assert((result["id"] as FragnoId).internalId === 456n);
+      assert(result["name"] === "Alice");
+      assert(result["email"] === "alice@example.com");
+      assert(result["age"] === 30);
+      assert(result["isActive"]);
       expect(result["createdAt"]).toEqual(new Date(timestamp));
     });
 
@@ -572,9 +572,9 @@ describe("decodeResult", () => {
       );
 
       expect(result["id"]).toBeInstanceOf(FragnoId);
-      expect((result["id"] as FragnoId).externalId).toBe("user123");
-      expect((result["id"] as FragnoId).internalId).toBe(789n);
-      expect(result["name"]).toBe("John");
+      assert((result["id"] as FragnoId).externalId === "user123");
+      assert((result["id"] as FragnoId).internalId === 789n);
+      assert(result["name"] === "John");
     });
   });
 });

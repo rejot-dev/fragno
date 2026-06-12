@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, assert } from "vitest";
 
 import { createHttpClient } from "./client";
 
@@ -27,7 +27,7 @@ describe("http client", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(response.status).toBe(200);
+    assert(response.status === 200);
   });
 
   it("retries on 429 responses", async () => {
@@ -47,7 +47,7 @@ describe("http client", () => {
     const response = await client.request({ method: "GET", path: "sessions" });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(response.status).toBe(200);
+    assert(response.status === 200);
   });
 
   it("times out requests", async () => {
@@ -99,6 +99,6 @@ describe("http client", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(response.status).toBe(400);
+    assert(response.status === 400);
   });
 });

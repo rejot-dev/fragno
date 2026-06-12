@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { UniqueConstraintError } from "./errors";
 import { SortedArrayIndex } from "./sorted-array-index";
@@ -55,9 +55,9 @@ describe("sorted-array index", () => {
     index.insert([1], "b");
     index.insert([2], "c");
 
-    expect(index.remove([1], "b")).toBe(true);
+    assert(index.remove([1], "b"));
     expect(valuesFromScan(index)).toEqual(["a", "c"]);
-    expect(index.remove([3])).toBe(false);
+    assert(!index.remove([3]));
   });
 
   it("updates entries by removing and re-inserting", () => {

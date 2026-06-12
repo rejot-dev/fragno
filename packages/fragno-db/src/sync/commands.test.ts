@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { schema, column, idColumn } from "../schema/create";
 import { defineSyncCommands } from "./commands";
@@ -16,8 +16,8 @@ describe("defineSyncCommands", () => {
       }),
     ]);
 
-    expect(registry.schemaName).toBe("sync-test");
-    expect(registry.commands.size).toBe(1);
+    assert(registry.schemaName === "sync-test");
+    assert(registry.commands.size === 1);
     expect(registry.commands.get("ping")).toBeDefined();
     expect(registry.getCommand("ping")).toBe(registry.commands.get("ping"));
   });

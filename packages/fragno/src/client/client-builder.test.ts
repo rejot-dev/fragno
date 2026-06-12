@@ -1,4 +1,4 @@
-import { test, expect, expectTypeOf, describe } from "vitest";
+import { test, expect, expectTypeOf, describe, assert } from "vitest";
 
 import { z } from "zod";
 
@@ -108,7 +108,7 @@ describe("Hook builder (createHookBuilder) and createFragmentHook", () => {
 
       expect(hook).toHaveProperty("route");
       expect(hook).toHaveProperty("store");
-      expect(hook.route.path).toBe("/users");
+      assert(hook.route.path === "/users");
     });
 
     test("should create multiple hooks independently", () => {
@@ -117,9 +117,9 @@ describe("Hook builder (createHookBuilder) and createFragmentHook", () => {
       const userHook = builder.createHook("/users/:id");
       const aiHook = builder.createHook("/ai-config");
 
-      expect(usersHook.route.path).toBe("/users");
-      expect(userHook.route.path).toBe("/users/:id");
-      expect(aiHook.route.path).toBe("/ai-config");
+      assert(usersHook.route.path === "/users");
+      assert(userHook.route.path === "/users/:id");
+      assert(aiHook.route.path === "/ai-config");
     });
   });
 
@@ -165,10 +165,8 @@ describe("Hook builder (createHookBuilder) and createFragmentHook", () => {
       );
       const fileHook = builder.createHook("/files/**:filepath");
 
-      expect(commentHook.route.path).toBe(
-        "/api/v1/users/:userId/posts/:postId/comments/:commentId",
-      );
-      expect(fileHook.route.path).toBe("/files/**:filepath");
+      assert(commentHook.route.path === "/api/v1/users/:userId/posts/:postId/comments/:commentId");
+      assert(fileHook.route.path === "/files/**:filepath");
     });
   });
 });

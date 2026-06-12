@@ -1,4 +1,14 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  assert,
+} from "vitest";
 
 import { drainDurableHooks } from "@fragno-dev/test";
 
@@ -42,9 +52,9 @@ describe("resend-fragment webhook", () => {
       }),
     );
 
-    expect(response.status).toBe(400);
+    assert(response.status === 400);
     const body = await response.json();
-    expect(body.code).toBe("MISSING_SIGNATURE");
+    assert(body.code === "MISSING_SIGNATURE");
     expect(verifyMock).not.toHaveBeenCalled();
   });
 
@@ -109,7 +119,7 @@ describe("resend-fragment webhook", () => {
       }),
     );
 
-    expect(response.status).toBe(200);
+    assert(response.status === 200);
     expect(await response.json()).toEqual({ success: true });
     expect(verifyMock).toHaveBeenCalledWith({
       payload: rawBody,
@@ -129,7 +139,7 @@ describe("resend-fragment webhook", () => {
       throw new Error("Expected received email");
     }
     expect(received.threadId).toBeTruthy();
-    expect(received.providerEmailId).toBe("re_received_1");
+    assert(received.providerEmailId === "re_received_1");
     expect(ctx.onEmailReceived).toHaveBeenCalledTimes(1);
     const callbackPayload = ctx.onEmailReceived.mock.calls[0]?.[0];
     expect(callbackPayload).toMatchObject({
@@ -209,7 +219,7 @@ describe("resend-fragment webhook", () => {
       }),
     );
 
-    expect(response.status).toBe(200);
+    assert(response.status === 200);
     await response.json();
 
     await drainDurableHooks(fragment);
@@ -249,7 +259,7 @@ describe("resend-fragment webhook", () => {
       },
     });
 
-    expect(created.type).toBe("json");
+    assert(created.type === "json");
     if (created.type !== "json") {
       return;
     }
@@ -318,7 +328,7 @@ describe("resend-fragment webhook", () => {
       }),
     );
 
-    expect(response.status).toBe(200);
+    assert(response.status === 200);
     await response.json();
     await drainDurableHooks(fragment);
 
@@ -393,7 +403,7 @@ describe("resend-fragment webhook", () => {
       }),
     );
 
-    expect(newerResponse.status).toBe(200);
+    assert(newerResponse.status === 200);
     await newerResponse.json();
     await drainDurableHooks(fragment);
 
@@ -462,7 +472,7 @@ describe("resend-fragment webhook", () => {
       }),
     );
 
-    expect(olderResponse.status).toBe(200);
+    assert(olderResponse.status === 200);
     await olderResponse.json();
     await drainDurableHooks(fragment);
 
@@ -472,10 +482,10 @@ describe("resend-fragment webhook", () => {
       throw new Error("Expected resolved thread");
     }
 
-    expect(thread.messageCount).toBe(2);
-    expect(thread.lastMessageAt.toISOString()).toBe("2026-03-18T11:00:00.000Z");
-    expect(thread.lastDirection).toBe("inbound");
-    expect(thread.lastMessagePreview).toBe("Newest reply");
+    assert(thread.messageCount === 2);
+    assert(thread.lastMessageAt.toISOString() === "2026-03-18T11:00:00.000Z");
+    assert(thread.lastDirection === "inbound");
+    assert(thread.lastMessagePreview === "Newest reply");
     expect(ctx.onEmailReceived).toHaveBeenLastCalledWith(
       expect.objectContaining({
         providerEmailId: "re_received_older",
@@ -553,7 +563,7 @@ describe("resend-fragment webhook", () => {
       }),
     );
 
-    expect(response.status).toBe(200);
+    assert(response.status === 200);
     await response.json();
 
     await drainDurableHooks(fragment);
@@ -563,7 +573,7 @@ describe("resend-fragment webhook", () => {
     if (!updated) {
       throw new Error("Expected updated email");
     }
-    expect(updated.lastEventType).toBe("email.delivered");
+    assert(updated.lastEventType === "email.delivered");
     expect(updated.lastEventAt).toBeInstanceOf(Date);
     expect(ctx.onEmailStatusUpdated).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -647,14 +657,14 @@ describe("resend-fragment webhook", () => {
       }),
     );
 
-    expect(response.status).toBe(200);
+    assert(response.status === 200);
     await response.json();
 
     await drainDurableHooks(fragment);
 
     const updated = await ctx.getEmail("msg_status_retry");
     expect(updated).toBeTruthy();
-    expect(updated?.status).toBe("delivered");
+    assert(updated?.status === "delivered");
     expect(ctx.onEmailStatusUpdated).toHaveBeenCalledTimes(1);
 
     vi.setSystemTime(new Date("2026-03-18T10:05:01.000Z"));
@@ -688,9 +698,9 @@ describe("resend-fragment webhook", () => {
       }),
     );
 
-    expect(response.status).toBe(400);
+    assert(response.status === 400);
     const body = await response.json();
-    expect(body.code).toBe("WEBHOOK_SIGNATURE_INVALID");
+    assert(body.code === "WEBHOOK_SIGNATURE_INVALID");
   });
 
   test("rejects webhook when resend secret missing", async () => {
@@ -709,8 +719,8 @@ describe("resend-fragment webhook", () => {
       }),
     );
 
-    expect(response.status).toBe(400);
+    assert(response.status === 400);
     const body = await response.json();
-    expect(body.code).toBe("WEBHOOK_ERROR");
+    assert(body.code === "WEBHOOK_ERROR");
   });
 });

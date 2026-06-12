@@ -23,16 +23,16 @@ describe("refToAtom", () => {
   test("should create an atom from a ref", () => {
     const r = ref(123);
     const a = refToAtom(r);
-    expect(a.get()).toBe(123);
+    assert(a.get() === 123);
   });
 
   test("should update the atom when the ref changes", async () => {
     const r = ref(123);
     const a = refToAtom(r);
-    expect(a.get()).toBe(123);
+    assert(a.get() === 123);
     r.value = 456;
     await sleep(0);
-    expect(a.get()).toBe(456);
+    assert(a.get() === 456);
   });
 
   test("ref nested in object", async () => {
@@ -42,8 +42,8 @@ describe("refToAtom", () => {
     watch(
       obj,
       (newObj) => {
-        expect(newObj.a).toBe(3);
-        expect(newObj.nested.b).toBe(5);
+        assert(newObj.a === 3);
+        assert(newObj.nested.b === 5);
         listenExecuted = true;
       },
       { deep: true },
@@ -53,7 +53,7 @@ describe("refToAtom", () => {
     obj.value.nested.b = 5;
 
     await nextTick();
-    expect(listenExecuted).toBe(true);
+    assert(listenExecuted);
   });
 });
 
@@ -100,7 +100,7 @@ describe("createVueHook", () => {
     const { loading, data, error } = useUsers();
 
     await waitFor(() => {
-      expect(loading.value).toBe(false);
+      assert(!loading.value);
     });
 
     expect(data.value).toEqual([{ id: 1, name: "John" }]);
@@ -147,7 +147,7 @@ describe("createVueHook", () => {
     const { loading, data, error } = useUser({ path: { id } });
 
     await waitFor(() => {
-      expect(loading.value).toBe(false);
+      assert(!loading.value);
     });
 
     expect(data.value).toEqual({ id: 123, name: "John" });
@@ -203,7 +203,7 @@ describe("createVueHook", () => {
     const { loading, data, error } = useUser({ path: { id } });
 
     await waitFor(() => {
-      expect(loading.value).toBe(false);
+      assert(!loading.value);
     });
 
     expect(data.value).toEqual({ id: 123, name: "John" });
@@ -250,7 +250,7 @@ describe("createVueHook", () => {
     const { loading, data, error } = useUsers();
 
     await waitFor(() => {
-      expect(loading.value).toBe(false);
+      assert(!loading.value);
     });
 
     expect(data.value).toBeUndefined();
@@ -285,7 +285,7 @@ describe("createVueHook", () => {
     const { loading, data, error } = useUsers();
 
     // Initially loading should be true
-    expect(loading.value).toBe(true);
+    assert(loading.value);
     expect(data.value).toBeUndefined();
     expect(error.value).toBeUndefined();
 
@@ -297,7 +297,7 @@ describe("createVueHook", () => {
     } as Response);
 
     await waitFor(() => {
-      expect(loading.value).toBe(false);
+      assert(!loading.value);
     });
 
     expect(data.value).toEqual([{ id: 1, name: "John" }]);
@@ -336,7 +336,7 @@ describe("createVueHook", () => {
     const { createUser } = useFragno(clientObj);
     const { mutate, loading, data, error } = createUser();
 
-    expect(loading.value).toBe(false);
+    assert(!loading.value);
     expect(data.value).toBeUndefined();
     expect(error.value).toBeUndefined();
 
@@ -384,7 +384,7 @@ describe("createVueHook", () => {
     const { loading, data, error } = useUsers({ query: { limit, page } });
 
     await waitFor(() => {
-      expect(loading.value).toBe(false);
+      assert(!loading.value);
     });
 
     expect(data.value).toEqual([{ id: 1, name: "John" }]);
@@ -469,8 +469,8 @@ describe("createVueHook", () => {
     const deleter = deleteUser();
 
     await waitFor(() => {
-      expect(users.loading.value).toBe(false);
-      expect(posts.loading.value).toBe(false);
+      assert(!users.loading.value);
+      assert(!posts.loading.value);
     });
 
     expect(users.data.value).toEqual([{ id: 1, name: "John" }]);
@@ -550,7 +550,7 @@ describe("createVueHook", () => {
 
     // Wait for initial load
     await waitFor(() => {
-      expect(loading.value).toBe(false);
+      assert(!loading.value);
     });
 
     expect(data.value).toEqual([{ id: 100, title: "Post for user 1", category: "tech-10-desc" }]);
@@ -742,17 +742,17 @@ describe("useFragno", () => {
     const result = useFragno(clientObj);
 
     // Check that non-hook values are passed through unchanged
-    expect(result.someString).toBe("hello world");
-    expect(result.someNumber).toBe(42);
+    assert(result.someString === "hello world");
+    assert(result.someNumber === 42);
     expect(result.someObject).toEqual({ foo: "bar", nested: { value: true } });
     expect(result.someArray).toEqual([1, 2, 3]);
-    expect(result.someFunction()).toBe("test");
+    assert(result.someFunction() === "test");
     expect(result.someNull).toBeNull();
     expect(result.someUndefined).toBeUndefined();
 
     // Verify that hooks are still transformed
-    expect(typeof result.useData).toBe("function");
-    expect(typeof result.usePostAction).toBe("function");
+    assert(typeof result.useData === "function");
+    assert(typeof result.usePostAction === "function");
   });
 });
 
@@ -801,9 +801,9 @@ describe("useFragno - createStore", () => {
       expectTypeOf(result.data.value.count).toEqualTypeOf<number>();
       expectTypeOf(result.items.value).toExtend<readonly string[]>();
 
-      expect(result.message.value).toBe("hello");
-      expect(result.count.value).toBe(42);
-      expect(result.isActive.value).toBe(true);
+      assert(result.message.value === "hello");
+      assert(result.count.value === 42);
+      assert(result.isActive.value);
       expect(result.data.value).toEqual({ count: 0 });
       expect(result.items.value).toEqual(["a", "b", "c"]);
     });
@@ -839,9 +839,9 @@ describe("useFragno - createStore", () => {
       expectTypeOf(result.combined.value.doubled).toEqualTypeOf<number>();
       expectTypeOf(result.combined.value.tripled).toEqualTypeOf<number>();
 
-      expect(result.base.value).toBe(10);
-      expect(result.doubled.value).toBe(20);
-      expect(result.tripled.value).toBe(30);
+      assert(result.base.value === 10);
+      assert(result.doubled.value === 20);
+      assert(result.tripled.value === 30);
       expect(result.combined.value).toEqual({ doubled: 20, tripled: 30 });
     });
     scope.stop();
@@ -875,12 +875,12 @@ describe("useFragno - createStore", () => {
       expectTypeOf(result.config.baz).toEqualTypeOf<number>();
       expectTypeOf(result.constant).toExtend<number>();
 
-      expect(result.message.value).toBe("test");
+      assert(result.message.value === "test");
       expect(result.multiply).toBe(regularFunction);
       expect(result.config).toBe(regularObject);
-      expect(result.multiply(5)).toBe(10);
+      assert(result.multiply(5) === 10);
       expect(result.config).toEqual({ foo: "bar", baz: 123 });
-      expect(result.constant).toBe(42);
+      assert(result.constant === 42);
     });
     scope.stop();
   });
@@ -909,11 +909,11 @@ describe("useFragno - createStore", () => {
     scope.run(() => {
       const singleResult = useSingle();
       expectTypeOf(singleResult.value).toEqualTypeOf<string>();
-      expect(singleResult.value).toBe("single");
+      assert(singleResult.value === "single");
 
       const objectResult = useObject();
       expectTypeOf(objectResult.value.value).toEqualTypeOf<string>();
-      expect(objectResult.value.value).toBe("single");
+      assert(objectResult.value.value === "single");
     });
     scope.stop();
   });
@@ -953,7 +953,7 @@ describe("useFragno - createStore", () => {
 
       expect(result.user.value).toEqual({ id: 1, name: "John", email: "john@example.com" });
       expect(result.settings.value).toEqual({ theme: "light", notifications: true });
-      expect(result.loading.value).toBe(false);
+      assert(!result.loading.value);
       expect(result.error.value).toBeNull();
     });
     scope.stop();
@@ -1095,8 +1095,8 @@ describe("useFragno - createStore", () => {
       const result = useSession("session-1");
 
       expectTypeOf(result.sessionId.value).toEqualTypeOf<string>();
-      expect(result.sessionId.value).toBe("session-1");
-      expect(result.sendMessage("hi")).toBe("hi");
+      assert(result.sessionId.value === "session-1");
+      assert(result.sendMessage("hi") === "hi");
     });
 
     expect(dispose).not.toHaveBeenCalled();

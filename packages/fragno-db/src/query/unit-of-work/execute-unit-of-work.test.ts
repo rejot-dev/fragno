@@ -1,4 +1,4 @@
-import { describe, it, expect, expectTypeOf, vi } from "vitest";
+import { describe, it, expect, expectTypeOf, vi, assert } from "vitest";
 
 import { InMemoryAdapter } from "../../adapters/in-memory/in-memory-adapter";
 import type { InternalFragmentInstance } from "../../fragments/internal-fragment";
@@ -185,15 +185,15 @@ describe("Unified Tx API", () => {
         .retrieve((uow) => uow.find("users", (b) => b.whereIndex("idx_email")))
         .build();
 
-      expect(isTxResult(txResult)).toBe(true);
+      assert(isTxResult(txResult));
     });
 
     it("should return false for non-TxResult objects", () => {
-      expect(isTxResult(null)).toBe(false);
-      expect(isTxResult(undefined)).toBe(false);
-      expect(isTxResult({})).toBe(false);
-      expect(isTxResult({ _internal: {} })).toBe(false);
-      expect(isTxResult(Promise.resolve())).toBe(false);
+      assert(!isTxResult(null));
+      assert(!isTxResult(undefined));
+      assert(!isTxResult({}));
+      assert(!isTxResult({ _internal: {} }));
+      assert(!isTxResult(Promise.resolve()));
     });
   });
 
@@ -220,7 +220,7 @@ describe("Unified Tx API", () => {
         .retrieve((uow) => uow.find("users", (b) => b.whereIndex("idx_email")))
         .build();
 
-      expect(isTxResult(txResult)).toBe(true);
+      assert(isTxResult(txResult));
       expect(txResult._internal.schema).toBe(testSchema);
       expect(txResult._internal.callbacks.retrieve).toBeDefined();
     });
@@ -248,7 +248,7 @@ describe("Unified Tx API", () => {
         .transformRetrieve(([users]) => users[0] ?? null)
         .build();
 
-      expect(isTxResult(txResult)).toBe(true);
+      assert(isTxResult(txResult));
       expect(txResult._internal.callbacks.retrieveSuccess).toBeDefined();
     });
 
@@ -498,7 +498,7 @@ describe("Unified Tx API", () => {
         })
         .build();
 
-      expect(isTxResult(txResult)).toBe(true);
+      assert(isTxResult(txResult));
       expect(txResult._internal.serviceCalls).toHaveLength(1);
     });
 
@@ -639,8 +639,8 @@ describe("Unified Tx API", () => {
         .execute();
 
       expect(users).toHaveLength(2);
-      expect(users[0].email).toBe("alice@example.com");
-      expect(users[1].name).toBe("Bob");
+      assert(users[0].email === "alice@example.com");
+      assert(users[1].name === "Bob");
     });
 
     it("should call onAfterRetrieve with full results", async () => {
@@ -899,7 +899,7 @@ describe("Unified Tx API", () => {
         })
         .execute();
 
-      expect(result.ok).toBe(true);
+      assert(result.ok);
       if (result.ok) {
         expect(result.newUserId).toBeInstanceOf(FragnoId);
       }
@@ -956,9 +956,9 @@ describe("Unified Tx API", () => {
         })
         .execute();
 
-      expect(result.summary).toBe("Transaction completed");
+      assert(result.summary === "Transaction completed");
       expect(result.originalUser).toEqual(mockUser);
-      expect(result.mutationResult?.created).toBe(true);
+      assert(result.mutationResult?.created);
     });
 
     it("should execute a transaction with serviceCalls (service composition)", async () => {
@@ -1007,9 +1007,9 @@ describe("Unified Tx API", () => {
         })
         .execute();
 
-      expect(result.ok).toBe(true);
+      assert(result.ok);
       if (result.ok) {
-        expect(result.forUser).toBe("test@example.com");
+        assert(result.forUser === "test@example.com");
         expect(result.orderId).toBeInstanceOf(FragnoId);
       }
     });
@@ -1052,7 +1052,7 @@ describe("Unified Tx API", () => {
         .execute();
 
       // Since optionalService was undefined, maybeUser was undefined, so we hit the fallback path
-      expect(result.hadUser).toBe(false);
+      assert(!result.hadUser);
       if (!result.hadUser) {
         expect(result.userId).toBeInstanceOf(FragnoId);
       }
@@ -1150,10 +1150,10 @@ describe("Unified Tx API", () => {
         .execute();
 
       // Verify runtime behavior
-      expect(result.depCode).toBe("ABC123");
-      expect(result.hadExtra).toBe(false);
-      expect(result.finalDepCode).toBe("ABC123");
-      expect(result.extraWasUndefined).toBe(true);
+      assert(result.depCode === "ABC123");
+      assert(!result.hadExtra);
+      assert(result.finalDepCode === "ABC123");
+      assert(result.extraWasUndefined);
       expect(result.finalDepUserId).toBeInstanceOf(FragnoId);
     });
 
@@ -1218,7 +1218,7 @@ describe("Unified Tx API", () => {
         })
         .execute();
 
-      expect(result.count).toBe(42);
+      assert(result.count === 42);
       expect(result.pages).toEqual([1, 2]);
       expect(result.userId).toBeInstanceOf(FragnoId);
     });
@@ -1511,8 +1511,8 @@ describe("Unified Tx API", () => {
         )
         .execute();
 
-      expect(result.depUpdated).toBe(true);
-      expect(result.depNewBalance).toBe(200);
+      assert(result.depUpdated);
+      assert(result.depNewBalance === 200);
     });
   });
 
@@ -1877,11 +1877,11 @@ describe("Unified Tx API", () => {
         .execute();
 
       // Verify services were called
-      expect(getUserByIdCalled).toBe(true);
-      expect(validateUserCalled).toBe(true);
-      expect(retrievePhaseExecuted).toBe(true);
-      expect(result.isValid).toBe(true);
-      expect(result.userName).toBe("Test User");
+      assert(getUserByIdCalled);
+      assert(validateUserCalled);
+      assert(retrievePhaseExecuted);
+      assert(result.isValid);
+      assert(result.userName === "Test User");
     }, 500);
 
     it("should handle a TxResult with serviceCalls that returns another TxResult", async () => {
@@ -1953,8 +1953,8 @@ describe("Unified Tx API", () => {
         })
         .execute();
 
-      expect(result.completed).toBe(true);
-      expect(result.forUser).toBe("test@example.com");
+      assert(result.completed);
+      assert(result.forUser === "test@example.com");
       expect(result.orderId).toBeInstanceOf(FragnoId);
     }, 500); // Set 500ms timeout to catch deadlock
 
@@ -2033,8 +2033,8 @@ describe("Unified Tx API", () => {
         }))
         .execute();
 
-      expect(result.completed).toBe(true);
-      expect(result.forUser).toBe("test@example.com");
+      assert(result.completed);
+      assert(result.forUser === "test@example.com");
       expect(result.orderId).toBeInstanceOf(FragnoId);
     }, 500); // Set 500ms timeout to catch deadlock
   });
@@ -2480,8 +2480,8 @@ describe("Unified Tx API", () => {
         .transform(({ serviceResult: [emailResult] }) => emailResult)
         .execute();
 
-      expect(result.sent).toBe(true);
-      expect(result.forUser).toBe("user-1");
+      assert(result.sent);
+      assert(result.forUser === "user-1");
 
       // RUNTIME VERIFICATION: Verify the actual runtime value of serviceIntermediateResult
       // This proves generateOTP's mutate result is actually passed as serviceIntermediateResult
@@ -2569,8 +2569,8 @@ describe("Unified Tx API", () => {
         })
         .execute();
 
-      expect(result.auditAction).toBe("user_login");
-      expect(result.loginCount).toBe(42);
+      assert(result.auditAction === "user_login");
+      assert(result.loginCount === 42);
 
       // RUNTIME VERIFICATION: Verify the actual runtime values
       expect(capturedAuditResult).toMatchObject({

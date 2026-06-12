@@ -1,5 +1,5 @@
 // Tests for workflow service APIs such as instance control, history, and events.
-import { beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { beforeAll, beforeEach, describe, expect, test, assert } from "vitest";
 
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import type { Cursor, TxResult } from "@fragno-dev/db";
@@ -64,7 +64,7 @@ describe("Workflows Fragment Services", () => {
     );
 
     expect(result.id).toBeTruthy();
-    expect(result.details.status).toBe("active");
+    assert(result.details.status === "active");
 
     const [instance] = (
       await db
@@ -95,7 +95,7 @@ describe("Workflows Fragment Services", () => {
     );
 
     expect(created).toHaveLength(1);
-    expect(created[0].id).toBe("fresh-1");
+    assert(created[0].id === "fresh-1");
 
     const instances = (
       await db
@@ -132,7 +132,7 @@ describe("Workflows Fragment Services", () => {
         );
       }
       const { success } = await uow.executeMutations();
-      expect(success).toBe(true);
+      assert(success);
     }
 
     const seen: string[] = [];
@@ -184,7 +184,7 @@ describe("Workflows Fragment Services", () => {
         errorMessage: null,
       });
     }
-    expect((await uow.executeMutations()).success).toBe(true);
+    assert((await uow.executeMutations()).success);
 
     const page = await runService<{ instances: { id: string }[] }>(() =>
       fragment.services.listInstances({
@@ -207,7 +207,7 @@ describe("Workflows Fragment Services", () => {
     const paused = await runService<{ status: string }>(() =>
       fragment.services.pauseInstance("demo-workflow", created.id),
     );
-    expect(paused.status).toBe("active");
+    assert(paused.status === "active");
 
     const [instance] = (
       await db
@@ -248,7 +248,7 @@ describe("Workflows Fragment Services", () => {
     const resumed = await runService<{ status: string }>(() =>
       fragment.services.resumeInstance("demo-workflow", created.id),
     );
-    expect(resumed.status).toBe("active");
+    assert(resumed.status === "active");
 
     const [resumedInstance] = (
       await db
@@ -290,7 +290,7 @@ describe("Workflows Fragment Services", () => {
     const paused = await runService<{ status: string }>(() =>
       fragment.services.pauseInstance("demo-workflow", created.id),
     );
-    expect(paused.status).toBe("waiting");
+    assert(paused.status === "waiting");
 
     const [pausedInstance] = (
       await db
@@ -335,7 +335,7 @@ describe("Workflows Fragment Services", () => {
       fragment.services.terminateInstance("demo-workflow", "terminate-1"),
     );
 
-    expect(terminated.status).toBe("terminated");
+    assert(terminated.status === "terminated");
 
     const [instance] = (
       await db
@@ -348,7 +348,7 @@ describe("Workflows Fragment Services", () => {
       workflowName: "demo-workflow",
       status: "terminated",
     });
-    expect(instance.instanceId).toBe("terminate-1");
+    assert(instance.instanceId === "terminate-1");
     expect(instance.completedAt).toBeInstanceOf(Date);
     await drainDurableHooks(fragment);
   });
@@ -581,7 +581,7 @@ describe("Workflows Fragment Services", () => {
       }),
     );
 
-    expect(status.status).toBe("waiting");
+    assert(status.status === "waiting");
 
     const [event] = (
       await db
@@ -619,8 +619,8 @@ describe("Workflows Fragment Services", () => {
       }),
     );
 
-    expect(first.status).toBe("active");
-    expect(second.status).toBe("active");
+    assert(first.status === "active");
+    assert(second.status === "active");
 
     const [events] = await db
       .createUnitOfWork("read")
@@ -628,7 +628,7 @@ describe("Workflows Fragment Services", () => {
       .find("workflow_event", (b) => b.whereIndex("primary"))
       .executeRetrieve();
     expect(events).toHaveLength(1);
-    expect(events[0]?.id.toString()).toBe("evt-idempotent-1");
+    assert(events[0]?.id.toString() === "evt-idempotent-1");
   });
 
   test("sendEvent should reject a reused event id for another instance", async () => {
@@ -683,7 +683,7 @@ describe("Workflows Fragment Services", () => {
       }),
     );
 
-    expect(retry.status).toBe("terminated");
+    assert(retry.status === "terminated");
   });
 
   test("sendEvent should not wake when waitForEvent has timed out", async () => {

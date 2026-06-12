@@ -371,7 +371,7 @@ describe.sequential("Database Fragment Integration", () => {
     });
 
     // Should return 404 error because user doesn't exist
-    expect(invalidOrderResponse.status).toBe(404);
+    assert(invalidOrderResponse.status === 404);
   });
 
   it("should be able to use inContext to call a service", async () => {
@@ -443,12 +443,12 @@ describe.sequential("Database Fragment Integration", () => {
 
     // Verify idempotencyKey is a string UUID
     expect(result.idempotencyKey).toBeDefined();
-    expect(typeof result.idempotencyKey).toBe("string");
+    assert(typeof result.idempotencyKey === "string");
     expect(result.idempotencyKey).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
     );
 
-    expect(result.currentAttempt).toBe(1);
+    assert(result.currentAttempt === 1);
 
     // Verify user was created
     expect(result.newUserId).toBeDefined();
@@ -487,7 +487,7 @@ describe.sequential("Database Fragment Integration", () => {
           .execute();
       });
 
-      expect(result.retrieved).toBe(true);
+      assert(result.retrieved);
       expect(result.user).toMatchObject({
         id: expect.objectContaining({ externalId: userId }),
         name: "John Doe",
@@ -515,7 +515,7 @@ describe.sequential("Database Fragment Integration", () => {
       });
 
       expect(result.userId).toBeDefined();
-      expect(result.wasCreatedInMutate).toBe(true);
+      assert(result.wasCreatedInMutate);
       expect(result.processedAt).toBeDefined();
     });
 
@@ -551,7 +551,7 @@ describe.sequential("Database Fragment Integration", () => {
       });
 
       expect(result.orderId).toBeDefined();
-      expect(result.hadRetrieve).toBe(true);
+      assert(result.hadRetrieve);
       expect(result.completedAt).toBeDefined();
     });
   });

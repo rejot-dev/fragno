@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, test } from "vitest";
+import { describe, expect, expectTypeOf, test, assert } from "vitest";
 
 import { z } from "zod";
 
@@ -38,8 +38,8 @@ describe("createRouteCaller", () => {
     }
 
     const request = capturedRequest as Request;
-    expect(request.headers.get("content-type")).toBe("application/json");
-    expect(await request.text()).toBe('{"hello":"world"}');
+    assert(request.headers.get("content-type") === "application/json");
+    assert((await request.text()) === '{"hello":"world"}');
   });
 
   test("keeps an explicit application/octet-stream content-type for binary bodies", async () => {
@@ -76,7 +76,7 @@ describe("createRouteCaller", () => {
     }
 
     const request = capturedRequest as Request;
-    expect(request.headers.get("content-type")).toBe("application/octet-stream");
+    assert(request.headers.get("content-type") === "application/octet-stream");
     expect(new Uint8Array(await request.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
   });
 
@@ -176,20 +176,20 @@ describe("createRouteCaller", () => {
     }>();
     expectTypeOf<typeof listResponse>().toExtend<FragnoResponse<unknown>>();
 
-    expect(listResponse.type).toBe("json");
+    assert(listResponse.type === "json");
     if (listResponse.type === "json") {
-      expect(listResponse.data.threads[0]?.id).toBe("thread-1");
+      assert(listResponse.data.threads[0]?.id === "thread-1");
     }
 
-    expect(messagesResponse.type).toBe("json");
+    assert(messagesResponse.type === "json");
     if (messagesResponse.type === "json") {
-      expect(messagesResponse.data.messages[0]?.threadId).toBe("thread-1");
-      expect(messagesResponse.data.cursor).toBe("cursor-1");
+      assert(messagesResponse.data.messages[0]?.threadId === "thread-1");
+      assert(messagesResponse.data.cursor === "cursor-1");
     }
 
-    expect(replyResponse.type).toBe("json");
+    assert(replyResponse.type === "json");
     if (replyResponse.type === "json") {
-      expect(replyResponse.data.ok).toBe(true);
+      assert(replyResponse.data.ok);
     }
   });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, assert } from "vitest";
 
 import { resolve } from "node:path";
 
@@ -98,7 +98,7 @@ describe("stripJsonComments", () => {
   });
 
   it("should handle empty input", () => {
-    expect(stripJsonComments("")).toBe("");
+    assert(stripJsonComments("") === "");
   });
 
   it("should handle input with no comments", () => {
@@ -126,10 +126,10 @@ describe("stripJsonComments", () => {
     const result = stripJsonComments(input);
     expect(() => JSON.parse(result)).not.toThrow();
     const parsed = JSON.parse(result);
-    expect(parsed.compilerOptions.target).toBe("ESNext");
-    expect(parsed.compilerOptions.module).toBe("ESNext");
-    expect(parsed.compilerOptions.moduleResolution).toBe("bundler");
-    expect(parsed.compilerOptions.strict).toBe(true);
+    assert(parsed.compilerOptions.target === "ESNext");
+    assert(parsed.compilerOptions.module === "ESNext");
+    assert(parsed.compilerOptions.moduleResolution === "bundler");
+    assert(parsed.compilerOptions.strict);
   });
 });
 

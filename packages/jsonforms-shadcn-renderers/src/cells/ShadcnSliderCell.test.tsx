@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, assert } from "vitest";
 
 import type { ControlElement, JsonSchema } from "@jsonforms/core";
 import { NOT_APPLICABLE } from "@jsonforms/core";
@@ -42,7 +42,7 @@ describe("shadcnSliderCellTester", () => {
   });
 
   it("should return rank 2 for valid range control with slider option", () => {
-    expect(shadcnSliderCellTester(uischema, schema, createTesterContext(schema))).toBe(2);
+    assert(shadcnSliderCellTester(uischema, schema, createTesterContext(schema)) === 2);
   });
 });
 

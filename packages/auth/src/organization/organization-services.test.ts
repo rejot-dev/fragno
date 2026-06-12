@@ -93,12 +93,9 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      return;
-    }
+    assert(result.ok);
 
-    expect(result.organization.slug).toBe("acme-inc");
+    assert(result.organization.slug === "acme-inc");
     expect(result.member.roles).toEqual(["owner", "admin"]);
 
     const [membersResult] = await test.inContext(function () {
@@ -163,10 +160,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      return;
-    }
+    assert(result.ok);
 
     const [organizationsResult] = await test.inContext(function () {
       return this.handlerTx()
@@ -321,10 +315,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      return;
-    }
+    assert(result.ok);
 
     expect(result.organization.id).toBe(organization.organization.id);
     expect(result.member.userId).toBe(user.id);
@@ -362,7 +353,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(result.ok).toBe(true);
+    assert(result.ok);
     if (!result.ok || !result.data) {
       return;
     }
@@ -404,7 +395,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(member.ok).toBe(true);
+    assert(member.ok);
 
     const [result] = await test.inContext(function () {
       return this.handlerTx()
@@ -418,10 +409,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      return;
-    }
+    assert(result.ok);
 
     expect(result.members).toHaveLength(2);
     expect(result.members.map((entry) => entry.userId)).toContain(owner.id);
@@ -461,7 +449,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(invitation.ok).toBe(true);
+    assert(invitation.ok);
 
     const [organizationInvitations] = await test.inContext(function () {
       return this.handlerTx()
@@ -474,10 +462,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(organizationInvitations.ok).toBe(true);
-    if (!organizationInvitations.ok) {
-      return;
-    }
+    assert(organizationInvitations.ok);
 
     expect(organizationInvitations.invitations).toHaveLength(1);
     expect(organizationInvitations.invitations[0]?.email).toBe(invitee.email);
@@ -513,7 +498,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(first.ok).toBe(true);
+    assert(first.ok);
 
     const [second] = await test.inContext(function () {
       return this.handlerTx()
@@ -528,9 +513,9 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(second.ok).toBe(false);
+    assert(!second.ok);
     if (!second.ok) {
-      expect(second.code).toBe("organization_slug_taken");
+      assert(second.code === "organization_slug_taken");
     }
   });
 
@@ -564,11 +549,8 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(updateResult.ok).toBe(true);
-    if (!updateResult.ok) {
-      return;
-    }
-    expect(updateResult.organization.slug).toBe("stable-org");
+    assert(updateResult.ok);
+    assert(updateResult.organization.slug === "stable-org");
   });
 
   it("updates member roles", async () => {
@@ -622,10 +604,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(updated.ok).toBe(true);
-    if (!updated.ok) {
-      return;
-    }
+    assert(updated.ok);
 
     expect(updated.member.roles).toEqual(["admin", "member"]);
 
@@ -657,10 +636,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(organizationResult.ok).toBe(true);
-    if (!organizationResult.ok) {
-      return;
-    }
+    assert(organizationResult.ok);
 
     const [memberResult] = await test.inContext(function () {
       return this.handlerTx()
@@ -675,10 +651,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(memberResult.ok).toBe(true);
-    if (!memberResult.ok) {
-      return;
-    }
+    assert(memberResult.ok);
 
     const [denied] = await test.inContext(function () {
       return this.handlerTx()
@@ -693,9 +666,9 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(denied.ok).toBe(false);
+    assert(!denied.ok);
     if (!denied.ok) {
-      expect(denied.code).toBe("permission_denied");
+      assert(denied.code === "permission_denied");
     }
 
     const [added] = await test.inContext(function () {
@@ -711,7 +684,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(added.ok).toBe(true);
+    assert(added.ok);
 
     const [addedAgain] = await test.inContext(function () {
       return this.handlerTx()
@@ -726,7 +699,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(addedAgain.ok).toBe(true);
+    assert(addedAgain.ok);
 
     const [rolesAfterAdd] = await test.inContext(function () {
       return this.handlerTx()
@@ -751,7 +724,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(removed.ok).toBe(true);
+    assert(removed.ok);
 
     const [rolesAfterRemove] = await test.inContext(function () {
       return this.handlerTx()
@@ -776,9 +749,9 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(lastOwner.ok).toBe(false);
+    assert(!lastOwner.ok);
     if (!lastOwner.ok) {
-      expect(lastOwner.code).toBe("last_owner");
+      assert(lastOwner.code === "last_owner");
     }
   });
 
@@ -832,9 +805,9 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(result.ok).toBe(false);
+    assert(!result.ok);
     if (!result.ok) {
-      expect(result.code).toBe("permission_denied");
+      assert(result.code === "permission_denied");
     }
   });
 
@@ -871,9 +844,9 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(result.ok).toBe(false);
+    assert(!result.ok);
     if (!result.ok) {
-      expect(result.code).toBe("last_owner");
+      assert(result.code === "last_owner");
     }
   });
 
@@ -931,9 +904,9 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(accepted.ok).toBe(true);
+    assert(accepted.ok);
     if (accepted.ok) {
-      expect(accepted.invitation.status).toBe("accepted");
+      assert(accepted.invitation.status === "accepted");
     }
   });
 
@@ -969,7 +942,7 @@ describe("organization services", async () => {
     });
 
     expect(orgsResult.organizations).toHaveLength(1);
-    expect(orgsResult.organizations[0]?.organization.slug).toBe("auto-org-workspace");
+    assert(orgsResult.organizations[0]?.organization.slug === "auto-org-workspace");
 
     const [activeOrg] = await test.inContext(function () {
       return this.handlerTx()
@@ -1009,7 +982,7 @@ describe("organization services", async () => {
         !operation.options.where,
     );
 
-    expect(hasUnboundedMemberScan).toBe(false);
+    assert(!hasUnboundedMemberScan);
   });
 
   it("paginates organizations for a user", async () => {
@@ -1042,7 +1015,7 @@ describe("organization services", async () => {
     });
 
     assert(firstOrg.ok);
-    expect(secondOrg.ok).toBe(true);
+    assert(secondOrg.ok);
 
     const [firstPage] = await test.inContext(function () {
       return this.handlerTx()
@@ -1056,7 +1029,7 @@ describe("organization services", async () => {
     });
 
     expect(firstPage.organizations).toHaveLength(1);
-    expect(firstPage.hasNextPage).toBe(true);
+    assert(firstPage.hasNextPage);
     expect(firstPage.cursor).toBeTruthy();
   });
 
@@ -1094,7 +1067,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(memberResult.ok).toBe(true);
+    assert(memberResult.ok);
 
     const [firstPage] = await test.inContext(function () {
       return this.handlerTx()
@@ -1108,7 +1081,7 @@ describe("organization services", async () => {
     });
 
     expect(firstPage.members).toHaveLength(1);
-    expect(firstPage.hasNextPage).toBe(true);
+    assert(firstPage.hasNextPage);
     expect(firstPage.cursor).toBeTruthy();
   });
 
@@ -1148,7 +1121,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(invitationResult.ok).toBe(true);
+    assert(invitationResult.ok);
 
     const [orgInvites] = await test.inContext(function () {
       return this.handlerTx()
@@ -1248,9 +1221,9 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(tamperedResponse.ok).toBe(false);
+    assert(!tamperedResponse.ok);
     if (!tamperedResponse.ok) {
-      expect(tamperedResponse.code).toBe("invalid_token");
+      assert(tamperedResponse.code === "invalid_token");
     }
 
     const [pendingInvites] = await test.inContext(function () {
@@ -1338,9 +1311,9 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(tamperedResponse.ok).toBe(false);
+    assert(!tamperedResponse.ok);
     if (!tamperedResponse.ok) {
-      expect(tamperedResponse.code).toBe("invalid_token");
+      assert(tamperedResponse.code === "invalid_token");
     }
   });
 
@@ -1510,7 +1483,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(expiredLookup?.invitation.status).toBe("expired");
+    assert(expiredLookup?.invitation.status === "expired");
     expect(expiredLookup?.invitation.respondedAt).toBeTruthy();
 
     const [pendingInvites] = await test.inContext(function () {
@@ -1616,7 +1589,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(expiredLookup?.invitation.status).toBe("expired");
+    assert(expiredLookup?.invitation.status === "expired");
   });
 
   it("marks invitations expired when responding after expiry", async () => {
@@ -1670,9 +1643,9 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(response.ok).toBe(false);
+    assert(!response.ok);
     if (!response.ok) {
-      expect(response.code).toBe("invitation_expired");
+      assert(response.code === "invitation_expired");
     }
 
     const [expiredLookup] = await test.inContext(function () {
@@ -1683,7 +1656,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(expiredLookup?.invitation.status).toBe("expired");
+    assert(expiredLookup?.invitation.status === "expired");
   });
 
   it("lists invitations by status", async () => {
@@ -1736,7 +1709,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(cancelResult.ok).toBe(true);
+    assert(cancelResult.ok);
 
     const [pendingInvites] = await test.inContext(function () {
       return this.handlerTx()
@@ -1812,7 +1785,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(deleteResult.ok).toBe(true);
+    assert(deleteResult.ok);
 
     const [lookup] = await test.inContext(function () {
       return this.handlerTx()
@@ -1822,7 +1795,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(lookup?.invitation.status).toBe("canceled");
+    assert(lookup?.invitation.status === "canceled");
     expect(lookup?.invitation.respondedAt).toBeTruthy();
 
     const [pendingInvites] = await test.inContext(function () {
@@ -1852,9 +1825,9 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(acceptResult.ok).toBe(false);
+    assert(!acceptResult.ok);
     if (!acceptResult.ok) {
-      expect(acceptResult.code).toBe("invitation_not_found");
+      assert(acceptResult.code === "invitation_not_found");
     }
   });
 
@@ -1908,7 +1881,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(removeResult.ok).toBe(true);
+    assert(removeResult.ok);
 
     const [membersResult] = await test.inContext(function () {
       return this.handlerTx()
@@ -1956,7 +1929,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(deleteResult.ok).toBe(true);
+    assert(deleteResult.ok);
 
     const [getResult] = await test.inContext(function () {
       return this.handlerTx()
@@ -2011,7 +1984,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(deleteResult.ok).toBe(true);
+    assert(deleteResult.ok);
 
     const [updateResult, deleteAgainResult] = await test.inContext(function () {
       return this.handlerTx()
@@ -2029,14 +2002,14 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(updateResult.ok).toBe(false);
+    assert(!updateResult.ok);
     if (!updateResult.ok) {
-      expect(updateResult.code).toBe("organization_not_found");
+      assert(updateResult.code === "organization_not_found");
     }
 
-    expect(deleteAgainResult.ok).toBe(false);
+    assert(!deleteAgainResult.ok);
     if (!deleteAgainResult.ok) {
-      expect(deleteAgainResult.code).toBe("organization_not_found");
+      assert(deleteAgainResult.code === "organization_not_found");
     }
   });
 
@@ -2074,10 +2047,7 @@ describe("organization services", async () => {
         .execute();
     });
 
-    expect(updateResult.ok).toBe(true);
-    if (!updateResult.ok) {
-      return;
-    }
+    assert(updateResult.ok);
 
     expect(updateResult.organization.logoUrl).toBeNull();
     expect(updateResult.organization.metadata).toBeNull();
@@ -2130,10 +2100,7 @@ describe("organization service role defaults", async () => {
         .execute();
     });
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      return;
-    }
+    assert(result.ok);
 
     expect(result.member.roles).toEqual(["owner", "admin"]);
   });
@@ -2171,10 +2138,7 @@ describe("organization service role defaults", async () => {
         .execute();
     });
 
-    expect(memberResult.ok).toBe(true);
-    if (!memberResult.ok) {
-      return;
-    }
+    assert(memberResult.ok);
 
     expect(memberResult.member.roles).toEqual(["member", "admin"]);
 
@@ -2192,10 +2156,7 @@ describe("organization service role defaults", async () => {
         .execute();
     });
 
-    expect(invitationResult.ok).toBe(true);
-    if (!invitationResult.ok) {
-      return;
-    }
+    assert(invitationResult.ok);
 
     expect(invitationResult.invitation.roles).toEqual(["member", "admin"]);
   });
@@ -2266,9 +2227,9 @@ describe("organization service limits", async () => {
         .execute();
     });
 
-    expect(secondOrg.ok).toBe(false);
+    assert(!secondOrg.ok);
     if (!secondOrg.ok) {
-      expect(secondOrg.code).toBe("limit_reached");
+      assert(secondOrg.code === "limit_reached");
     }
 
     const [memberResult] = await test.inContext(function () {
@@ -2284,9 +2245,9 @@ describe("organization service limits", async () => {
         .execute();
     });
 
-    expect(memberResult.ok).toBe(false);
+    assert(!memberResult.ok);
     if (!memberResult.ok) {
-      expect(memberResult.code).toBe("limit_reached");
+      assert(memberResult.code === "limit_reached");
     }
   });
 
@@ -2324,7 +2285,7 @@ describe("organization service limits", async () => {
         .execute();
     });
 
-    expect(firstInvite.ok).toBe(true);
+    assert(firstInvite.ok);
 
     const [secondInvite] = await test.inContext(function () {
       return this.handlerTx()
@@ -2340,9 +2301,9 @@ describe("organization service limits", async () => {
         .execute();
     });
 
-    expect(secondInvite.ok).toBe(false);
+    assert(!secondInvite.ok);
     if (!secondInvite.ok) {
-      expect(secondInvite.code).toBe("limit_reached");
+      assert(secondInvite.code === "limit_reached");
     }
   });
 
@@ -2395,9 +2356,9 @@ describe("organization service limits", async () => {
         .execute();
     });
 
-    expect(acceptResult.ok).toBe(false);
+    assert(!acceptResult.ok);
     if (!acceptResult.ok) {
-      expect(acceptResult.code).toBe("limit_reached");
+      assert(acceptResult.code === "limit_reached");
     }
   });
 });

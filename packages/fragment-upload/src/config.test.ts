@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { resolveUploadFragmentConfig } from "./config";
 import type { StorageAdapter } from "./storage/types";
@@ -39,9 +39,9 @@ describe("resolveUploadFragmentConfig", () => {
       }),
     });
 
-    expect(config.signedUrlExpiresInSeconds).toBe(900);
-    expect(config.uploadExpiresInSeconds).toBe(120);
-    expect(config.multipartPartSizeBytes).toBe(5);
+    assert(config.signedUrlExpiresInSeconds === 900);
+    assert(config.uploadExpiresInSeconds === 120);
+    assert(config.multipartPartSizeBytes === 5);
   });
 
   it("falls back to adapter limits when thresholds are not provided", () => {
@@ -55,11 +55,11 @@ describe("resolveUploadFragmentConfig", () => {
       }),
     });
 
-    expect(config.maxSingleUploadBytes).toBe(10);
-    expect(config.maxMultipartUploadBytes).toBe(100);
-    expect(config.multipartPartSizeBytes).toBe(2);
-    expect(config.directUploadThresholdBytes).toBe(10);
-    expect(config.multipartThresholdBytes).toBe(10);
+    assert(config.maxSingleUploadBytes === 10);
+    assert(config.maxMultipartUploadBytes === 100);
+    assert(config.multipartPartSizeBytes === 2);
+    assert(config.directUploadThresholdBytes === 10);
+    assert(config.multipartThresholdBytes === 10);
   });
 
   it("respects explicit overrides", () => {
@@ -72,7 +72,7 @@ describe("resolveUploadFragmentConfig", () => {
       directUploadThresholdBytes: 42,
     });
 
-    expect(config.signedUrlExpiresInSeconds).toBe(7200);
-    expect(config.directUploadThresholdBytes).toBe(42);
+    assert(config.signedUrlExpiresInSeconds === 7200);
+    assert(config.directUploadThresholdBytes === 42);
   });
 });

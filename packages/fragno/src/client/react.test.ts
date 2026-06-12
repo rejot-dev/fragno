@@ -1,4 +1,4 @@
-import { test, expect, describe, vi, beforeEach, afterEach, expectTypeOf } from "vitest";
+import { test, expect, describe, vi, beforeEach, afterEach, expectTypeOf, assert } from "vitest";
 
 import { atom, computed, type ReadableAtom } from "nanostores";
 import { StrictMode, createElement } from "react";
@@ -71,7 +71,7 @@ describe("createReactHook", () => {
     const { result } = renderHook(() => users());
 
     await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+      assert(!result.current.loading);
     });
 
     expect(result.current.data).toEqual([{ id: 1, name: "John" }]);
@@ -94,7 +94,7 @@ describe("createReactHook", () => {
     const { result } = renderHook(() => user({ path: { id: "123" } }));
 
     await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+      assert(!result.current.loading);
     });
 
     expect(result.current.data).toEqual({ id: 123, name: "John" });
@@ -117,7 +117,7 @@ describe("createReactHook", () => {
     const { result } = renderHook(() => search({ query: { q: "test" } }));
 
     await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+      assert(!result.current.loading);
     });
 
     expect(result.current.data).toEqual(["result1", "result2"]);
@@ -148,7 +148,7 @@ describe("createReactHook", () => {
     const { result } = renderHook(() => user({ path: { id: idAtom } }));
 
     await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+      assert(!result.current.loading);
     });
 
     expect(result.current.data).toEqual({ id: 1, name: "John" });
@@ -177,7 +177,7 @@ describe("createReactHook", () => {
     const { result } = renderHook(() => useUsers());
 
     await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+      assert(!result.current.loading);
     });
 
     expect(result.current.error).toBeInstanceOf(FragnoClientFetchNetworkError);
@@ -267,7 +267,7 @@ describe("createReactMutator", () => {
     });
 
     await waitFor(() => {
-      expect(renderedHook.current.loading).toBe(false);
+      assert(!renderedHook.current.loading);
     });
 
     expect(renderedHook.current.data).toEqual({ id: 1, name: "John", email: "john@example.com" });
@@ -346,7 +346,7 @@ describe("createReactMutator", () => {
     expect(result).toEqual({ success: true });
 
     await waitFor(() => {
-      expect(hook.loading).toBe(false);
+      assert(!hook.loading);
     });
 
     expect(hook).toEqual({
@@ -397,7 +397,7 @@ describe("createReactMutator", () => {
     expect(result).toBeUndefined();
 
     await waitFor(() => {
-      expect(hook.loading).toBe(false);
+      assert(!hook.loading);
     });
 
     expect(hook).toEqual({
@@ -435,7 +435,7 @@ describe("createReactMutator", () => {
     );
 
     await waitFor(() => {
-      expect(renderedHook.current.loading).toBe(false);
+      assert(!renderedHook.current.loading);
     });
 
     expect(renderedHook.current.error).toBeInstanceOf(FragnoClientFetchNetworkError);
@@ -486,10 +486,10 @@ describe("useFragno", () => {
     const { result: hookResult } = renderHook(() => useData());
 
     await waitFor(() => {
-      expect(hookResult.current.loading).toBe(false);
+      assert(!hookResult.current.loading);
     });
 
-    expect(hookResult.current.data).toBe("test data");
+    assert(hookResult.current.data === "test data");
 
     // Test the mutator
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
@@ -520,16 +520,16 @@ describe("useFragno", () => {
     const result = useFragno(clientObj);
 
     // Check that non-hook values are passed through unchanged
-    expect(result.someString).toBe("hello world");
-    expect(result.someNumber).toBe(42);
+    assert(result.someString === "hello world");
+    assert(result.someNumber === 42);
     expect(result.someObject).toEqual({ foo: "bar", nested: { value: true } });
     expect(result.someArray).toEqual([1, 2, 3]);
-    expect(result.someFunction()).toBe("test");
+    assert(result.someFunction() === "test");
     expect(result.someNull).toBeNull();
     expect(result.someUndefined).toBeUndefined();
 
     // Verify that the hook is still transformed
-    expect(typeof result.useData).toBe("function");
+    assert(typeof result.useData === "function");
   });
 
   test("should preserve reference equality for non-hook objects", () => {
@@ -578,15 +578,15 @@ describe("useFragno", () => {
     const result = useFragno(clientObj);
 
     // Check hooks are transformed
-    expect(typeof result.useData).toBe("function");
-    expect(typeof result.usePostAction).toBe("function");
+    assert(typeof result.useData === "function");
+    assert(typeof result.usePostAction === "function");
 
     // Check other values are passed through
     expect(result.config).toEqual({ apiKey: "test-key", timeout: 5000 });
-    expect(result.utils.formatDate(new Date("2024-01-01"))).toBe("2024-01-01T00:00:00.000Z");
-    expect(result.utils.parseId("123")).toBe(123);
-    expect(result.constants.MAX_RETRIES).toBe(3);
-    expect(result.constants.DEFAULT_PAGE_SIZE).toBe(20);
+    assert(result.utils.formatDate(new Date("2024-01-01")) === "2024-01-01T00:00:00.000Z");
+    assert(result.utils.parseId("123") === 123);
+    assert(result.constants.MAX_RETRIES === 3);
+    assert(result.constants.DEFAULT_PAGE_SIZE === 20);
     expect(result.metadata).toEqual({ version: "1.0.0", environment: "test" });
 
     expectTypeOf<(typeof result)["config"]>().toEqualTypeOf<{ apiKey: string; timeout: number }>();
@@ -621,8 +621,8 @@ describe("useFragno", () => {
     const result = useFragno(clientObj);
 
     expect(result).toEqual(clientObj);
-    expect(result.a).toBe(1);
-    expect(result.b).toBe("two");
+    assert(result.a === 1);
+    assert(result.b === "two");
     expect(result.c).toEqual({ three: 3 });
     expect(result.d).toEqual([4, 5, 6]);
   });
@@ -649,13 +649,13 @@ describe("useStore", () => {
 
     const { result } = renderHook(() => useStore(doubledStore));
 
-    expect(result.current).toBe(10);
+    assert(Object.is(result.current, 10));
 
     act(() => {
       baseStore.set(7);
     });
 
-    expect(result.current).toBe(14);
+    assert(Object.is(result.current, 14));
   });
 
   test("should unsubscribe on unmount", () => {
@@ -730,9 +730,9 @@ describe("useFragno - createStore", () => {
 
     // Runtime test
     const { result } = renderHook(() => useStore());
-    expect(result.current.message).toBe("hello");
-    expect(result.current.count).toBe(42);
-    expect(result.current.isActive).toBe(true);
+    assert(result.current.message === "hello");
+    assert(result.current.count === 42);
+    assert(result.current.isActive);
     expect(result.current.data).toEqual({ count: 0 });
     expect(result.current.items).toEqual(["a", "b", "c"]);
   });
@@ -768,9 +768,9 @@ describe("useFragno - createStore", () => {
 
     // Runtime test
     const { result } = renderHook(() => useComputedValues());
-    expect(result.current.base).toBe(10);
-    expect(result.current.doubled).toBe(20);
-    expect(result.current.tripled).toBe(30);
+    assert(result.current.base === 10);
+    assert(result.current.doubled === 20);
+    assert(result.current.tripled === 30);
     expect(result.current.combined).toEqual({ doubled: 20, tripled: 30 });
   });
 
@@ -804,10 +804,10 @@ describe("useFragno - createStore", () => {
 
     // Runtime test
     const { result } = renderHook(() => useMixed());
-    expect(result.current.message).toBe("test");
-    expect(result.current.multiply(5)).toBe(10);
+    assert(result.current.message === "test");
+    assert(result.current.multiply(5) === 10);
     expect(result.current.config).toEqual({ foo: "bar", baz: 123 });
-    expect(result.current.constant).toBe(42);
+    assert(result.current.constant === 42);
   });
 
   test("FragnoReactStore type test - single store vs object with stores", () => {
@@ -833,7 +833,7 @@ describe("useFragno - createStore", () => {
 
     // Runtime test
     const { result: singleResult } = renderHook(() => useSingle());
-    expect(singleResult.current).toBe("single");
+    assert(singleResult.current === "single");
 
     const { result: objectResult } = renderHook(() => useObject());
     expect(objectResult.current).toEqual({ value: "single" });
@@ -875,7 +875,7 @@ describe("useFragno - createStore", () => {
     const { result } = renderHook(() => useAppState());
     expect(result.current.user).toEqual({ id: 1, name: "John", email: "john@example.com" });
     expect(result.current.settings).toEqual({ theme: "light", notifications: true });
-    expect(result.current.loading).toBe(false);
+    assert(!result.current.loading);
     expect(result.current.error).toBeNull();
   });
 
@@ -909,8 +909,8 @@ describe("useFragno - createStore", () => {
       { initialProps: { sessionId: "1" } },
     );
 
-    expect(result.current.sessionId).toBe("1");
-    expect(result.current.sendMessage("hi")).toBe("hi");
+    assert(Object.is(result.current.sessionId, "1"));
+    assert(result.current.sendMessage("hi") === "hi");
     expect(factory).toHaveBeenCalledTimes(1);
 
     rerender({ sessionId: "1" });
@@ -918,7 +918,7 @@ describe("useFragno - createStore", () => {
     expect(disposeOne).not.toHaveBeenCalled();
 
     rerender({ sessionId: "2" });
-    expect(result.current.sessionId).toBe("2");
+    assert(Object.is(result.current.sessionId, "2"));
     expect(factory).toHaveBeenCalledTimes(2);
 
     await new Promise((resolve) => setTimeout(resolve, 5));
@@ -972,8 +972,8 @@ describe("useFragno - createStore", () => {
       },
     );
 
-    expect(result.current.sessionId).toBe("session-1");
-    expect(result.current.traceCount).toBe(1);
+    assert(result.current.sessionId === "session-1");
+    assert(result.current.traceCount === 1);
     expect(factory).toHaveBeenCalledTimes(1);
 
     rerender({ initialData: buildInitialData() });
@@ -1000,7 +1000,7 @@ describe("useFragno - createStore", () => {
       wrapper: ({ children }) => createElement(StrictMode, null, children),
     });
 
-    expect(result.current.sessionId).toBe("session-1");
+    assert(result.current.sessionId === "session-1");
 
     await new Promise((resolve) => setTimeout(resolve, 5));
     expect(dispose).not.toHaveBeenCalled();
@@ -1041,8 +1041,8 @@ describe("useFragno - createStore", () => {
     const { useSession } = useFragno(client);
     const { result } = renderHook(() => useSession({ path: { sessionId: "abc" } }));
 
-    expect(result.current.sessionId).toBe("abc");
-    expect(result.current.start()).toBe("session:abc:start");
+    assert(result.current.sessionId === "abc");
+    assert(result.current.start() === "session:abc:start");
   });
 
   test("Derived from streaming route", async () => {
@@ -1106,7 +1106,7 @@ describe("useFragno - createStore", () => {
 
     await waitFor(() => {
       expect(result.current.names).toEqual("John, Jane, Jim");
-      expect(result.current.usersStream.loading).toBe(false);
+      assert(!result.current.usersStream.loading);
       expect(result.current.usersStream.data).toEqual([
         { id: 1, name: "John" },
         { id: 2, name: "Jane" },

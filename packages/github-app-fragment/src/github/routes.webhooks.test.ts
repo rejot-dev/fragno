@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, assert } from "vitest";
 
 import { createHmac, generateKeyPairSync } from "crypto";
 
@@ -143,7 +143,7 @@ describe("github-app webhooks", () => {
         }),
       );
 
-      expect(response.status).toBe(401);
+      assert(response.status === 401);
     } finally {
       await test.cleanup();
     }
@@ -350,7 +350,7 @@ describe("github-app webhooks", () => {
         }),
       );
 
-      expect(response.status).toBe(204);
+      assert(response.status === 204);
 
       await drainDurableHooks(fragments.githubApp.fragment);
 
@@ -363,8 +363,8 @@ describe("github-app webhooks", () => {
       )[0];
       expect(installations).toHaveLength(1);
       expect(toExternalId(installations[0]?.id)).toBe(installationId);
-      expect(installations[0]?.status).toBe("active");
-      expect(installations[0]?.accountLogin).toBe("octo");
+      assert(installations[0]?.status === "active");
+      assert(installations[0]?.accountLogin === "octo");
       expect(installations[0]?.lastWebhookAt).toBeInstanceOf(Date);
 
       const repos = (
@@ -375,7 +375,7 @@ describe("github-app webhooks", () => {
           .executeRetrieve()
       )[0];
       expect(repos).toHaveLength(1);
-      expect(repos[0]?.fullName).toBe("octo/new-repo");
+      assert(repos[0]?.fullName === "octo/new-repo");
 
       const duplicate = await getHandler(fragments.githubApp)(
         createWebhookRequest(payload, {
@@ -385,7 +385,7 @@ describe("github-app webhooks", () => {
         }),
       );
 
-      expect(duplicate.status).toBe(204);
+      assert(duplicate.status === 204);
 
       await drainDurableHooks(fragments.githubApp.fragment);
 
@@ -433,7 +433,7 @@ describe("github-app webhooks", () => {
         }),
       );
 
-      expect(response.status).toBe(204);
+      assert(response.status === 204);
 
       await drainDurableHooks(fragments.githubApp.fragment);
 
@@ -446,7 +446,7 @@ describe("github-app webhooks", () => {
       )[0];
       expect(installations).toHaveLength(1);
       expect(toExternalId(installations[0]?.id)).toBe(installationId);
-      expect(installations[0]?.status).toBe("active");
+      assert(installations[0]?.status === "active");
 
       const repos = (
         await fragments.githubApp.db
@@ -518,7 +518,7 @@ describe("github-app webhooks", () => {
         }),
       );
 
-      expect(response.status).toBe(204);
+      assert(response.status === 204);
 
       await drainDurableHooks(fragments.githubApp.fragment);
 
@@ -530,8 +530,8 @@ describe("github-app webhooks", () => {
           .executeRetrieve()
       )[0];
       expect(repos).toHaveLength(1);
-      expect(repos[0]?.fullName).toBe("octo/payload-repo");
-      expect(toExternalId(repos[0]?.id)).toBe("201");
+      assert(repos[0]?.fullName === "octo/payload-repo");
+      assert(toExternalId(repos[0]?.id) === "201");
       expect(repos[0]?.isFork).toBeNull();
       expect(repos[0]?.defaultBranch).toBeNull();
 
@@ -606,7 +606,7 @@ describe("github-app webhooks", () => {
         }),
       );
 
-      expect(response.status).toBe(204);
+      assert(response.status === 204);
 
       await drainDurableHooks(fragments.githubApp.fragment);
 
@@ -618,8 +618,8 @@ describe("github-app webhooks", () => {
           .executeRetrieve()
       )[0];
       expect(repos).toHaveLength(1);
-      expect(repos[0]?.isFork).toBe(true);
-      expect(repos[0]?.defaultBranch).toBe("develop");
+      assert(repos[0]?.isFork);
+      assert(repos[0]?.defaultBranch === "develop");
     } finally {
       await test.cleanup();
     }
@@ -705,7 +705,7 @@ describe("github-app webhooks", () => {
         }),
       );
 
-      expect(response.status).toBe(204);
+      assert(response.status === 204);
 
       await drainDurableHooks(fragments.githubApp.fragment);
 
@@ -719,7 +719,7 @@ describe("github-app webhooks", () => {
       const byId = new Map(repos.map((repo) => [toExternalId(repo.id), repo]));
 
       expect(byId.get("20")?.removedAt).toBeNull();
-      expect(byId.get("20")?.fullName).toBe("octo/added-repo");
+      assert(byId.get("20")?.fullName === "octo/added-repo");
       expect(byId.get("10")?.removedAt).toBeInstanceOf(Date);
 
       const links = (
@@ -786,7 +786,7 @@ describe("github-app webhooks", () => {
         }),
       );
 
-      expect(response.status).toBe(204);
+      assert(response.status === 204);
 
       await drainDurableHooks(fragments.githubApp.fragment);
 

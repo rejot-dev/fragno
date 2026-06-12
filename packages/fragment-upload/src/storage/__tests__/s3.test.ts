@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi, assert } from "vitest";
 
 import { createHash } from "node:crypto";
 
@@ -69,12 +69,12 @@ describe("s3 storage adapter", () => {
       metadata: null,
     });
 
-    expect(result.strategy).toBe("direct-single");
+    assert(result.strategy === "direct-single");
     expect(result.uploadUrl).toContain("signed=1");
-    expect(result.uploadHeaders?.["x-test-signed"]).toBe("true");
-    expect(result.storageKey.startsWith("fragno/")).toBe(true);
-    expect(result.storageKey).toBe("fragno/r2/users/1/avatar");
-    expect(presignCalls[0]?.method).toBe("PUT");
+    assert(result.uploadHeaders?.["x-test-signed"] === "true");
+    assert(result.storageKey.startsWith("fragno/"));
+    assert(result.storageKey === "fragno/r2/users/1/avatar");
+    assert(presignCalls[0]?.method === "PUT");
   });
 
   test("multipart init creates upload id and part urls", async () => {
@@ -108,10 +108,10 @@ describe("s3 storage adapter", () => {
       metadata: null,
     });
 
-    expect(result.strategy).toBe("direct-multipart");
-    expect(result.storageUploadId).toBe("upload-123");
+    assert(result.strategy === "direct-multipart");
+    assert(result.storageUploadId === "upload-123");
     expect(result.partSizeBytes).toBeGreaterThanOrEqual(5 * 1024 * 1024);
-    expect(signCalls[0]?.method).toBe("POST");
+    assert(signCalls[0]?.method === "POST");
     expect(fetchMock).toHaveBeenCalled();
 
     const partUrls = await adapter.getPartUploadUrls?.({
@@ -121,9 +121,9 @@ describe("s3 storage adapter", () => {
       partSizeBytes: result.partSizeBytes ?? 0,
     });
 
-    expect(partUrls?.length).toBe(2);
+    assert(partUrls?.length === 2);
     expect(partUrls?.[0]?.url).toContain("partNumber=1");
-    expect(presignCalls.some((call) => call.method === "PUT")).toBe(true);
+    assert(presignCalls.some((call) => call.method === "PUT"));
   });
 
   test("completeMultipartUpload returns an etag", async () => {
@@ -140,7 +140,7 @@ describe("s3 storage adapter", () => {
       parts: [{ partNumber: 1, etag: '"etag-part"' }],
     });
 
-    expect(result?.etag).toBe('"etag-complete"');
+    assert(result?.etag === '"etag-complete"');
   });
 
   test("finalizeUpload verifies size and checksums when available", async () => {
@@ -172,8 +172,8 @@ describe("s3 storage adapter", () => {
       checksum: { algo: "md5", value: md5Hex },
     });
 
-    expect(result?.sizeBytes).toBe(5n);
-    expect(signCalls.some((call) => call.method === "HEAD")).toBe(true);
+    assert(result?.sizeBytes === 5n);
+    assert(signCalls.some((call) => call.method === "HEAD"));
 
     await adapter.finalizeUpload({
       storageKey: "fragno/s~a",
@@ -216,7 +216,7 @@ describe("s3 storage adapter", () => {
       checksum: { algo: "sha256", value: sha },
     });
 
-    expect(signCalls.some((call) => call.method === "GET")).toBe(true);
+    assert(signCalls.some((call) => call.method === "GET"));
   });
 
   test("finalizeUpload rejects checksum mismatch when headers are missing", async () => {

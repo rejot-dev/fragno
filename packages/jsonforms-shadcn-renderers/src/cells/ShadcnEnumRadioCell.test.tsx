@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, assert } from "vitest";
 
 import type { ControlElement } from "@jsonforms/core";
 import { NOT_APPLICABLE } from "@jsonforms/core";
@@ -69,9 +69,7 @@ describe("shadcnEnumRadioCellTester", () => {
       type: "object",
       properties: { status: { type: "string", enum: ["a", "b"] } },
     };
-    expect(shadcnEnumRadioCellTester(control, rootSchema, createTesterContext(rootSchema))).toBe(
-      20,
-    );
+    assert(shadcnEnumRadioCellTester(control, rootSchema, createTesterContext(rootSchema)) === 20);
   });
 });
 
@@ -139,7 +137,7 @@ describe("ShadcnEnumRadioCell", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: "completed" }));
 
-    expect((onChangeData.data as { status: string }).status).toBe("completed");
+    assert((onChangeData.data as { status: string }).status === "completed");
   });
 
   it("should be disabled when enabled=false", () => {

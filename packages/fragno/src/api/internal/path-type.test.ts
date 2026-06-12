@@ -1,4 +1,4 @@
-import { test, expect, expectTypeOf } from "vitest";
+import { test, expect, expectTypeOf, assert } from "vitest";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
@@ -389,7 +389,7 @@ test("Type compatibility runtime tests", () => {
   // Function that expects specific params
   function _handleUserRoute(params: ExtractPathParams<"/users/:id">) {
     // Should have id property
-    expect(typeof params).toBe("object");
+    assert(typeof params === "object");
     // Type system ensures params has 'id' property of type string
   }
 
@@ -398,7 +398,7 @@ test("Type compatibility runtime tests", () => {
     params: ExtractPathParams<"/api/:version/users/:userId/posts/:postId">,
   ) {
     // Should have version, userId, and postId properties
-    expect(typeof params).toBe("object");
+    assert(typeof params === "object");
     // Type system ensures all required properties exist
   }
 
@@ -415,8 +415,8 @@ test("Type compatibility runtime tests", () => {
   const hasParams1: HasPathParams<"/users/:id"> = true;
   const hasParams2: HasPathParams<"/static"> = false;
 
-  expect(hasParams1).toBe(true);
-  expect(hasParams2).toBe(false);
+  assert(hasParams1);
+  assert(!hasParams2);
 });
 
 test("ExtractPathParamsOrWiden type tests", () => {
@@ -494,30 +494,30 @@ test("QueryParamsHint assignability tests", () => {
 
   // Hinted parameters should be assignable
   const query2: TestQuery = { page: "1" };
-  expect(query2.page).toBe("1");
+  assert(query2.page === "1");
 
   const query3: TestQuery = { limit: "10" };
-  expect(query3.limit).toBe("10");
+  assert(query3.limit === "10");
 
   const query4: TestQuery = { page: "1", limit: "10" };
-  expect(query4.page).toBe("1");
-  expect(query4.limit).toBe("10");
+  assert(query4.page === "1");
+  assert(query4.limit === "10");
 
   // Additional parameters should be assignable
   const query5: TestQuery = { page: "1", sort: "asc" };
-  expect(query5.page).toBe("1");
-  expect(query5["sort"]).toBe("asc");
+  assert(query5.page === "1");
+  assert(query5["sort"] === "asc");
 
   const query6: TestQuery = { search: "test", filter: "active" };
-  expect(query6["search"]).toBe("test");
-  expect(query6["filter"]).toBe("active");
+  assert(query6["search"] === "test");
+  assert(query6["filter"] === "active");
 
   // Mixed hinted and additional parameters
   const query7: TestQuery = { page: "1", limit: "10", sort: "desc", filter: "all" };
-  expect(query7.page).toBe("1");
-  expect(query7.limit).toBe("10");
-  expect(query7["sort"]).toBe("desc");
-  expect(query7["filter"]).toBe("all");
+  assert(query7.page === "1");
+  assert(query7.limit === "10");
+  assert(query7["sort"] === "desc");
+  assert(query7["filter"] === "all");
 });
 
 test("QueryParamsHint with different value types", () => {
@@ -528,11 +528,11 @@ test("QueryParamsHint with different value types", () => {
   expect(numQuery1).toEqual({});
 
   const numQuery2: NumberQuery = { count: 5 };
-  expect(numQuery2.count).toBe(5);
+  assert(numQuery2.count === 5);
 
   const numQuery3: NumberQuery = { count: 5, extra: 10 };
-  expect(numQuery3.count).toBe(5);
-  expect(numQuery3["extra"]).toBe(10);
+  assert(numQuery3.count === 5);
+  assert(numQuery3["extra"] === 10);
 
   // Boolean value type
   type BooleanQuery = QueryParamsHint<"enabled" | "debug", boolean>;
@@ -541,24 +541,24 @@ test("QueryParamsHint with different value types", () => {
   expect(boolQuery1).toEqual({});
 
   const boolQuery2: BooleanQuery = { enabled: true };
-  expect(boolQuery2.enabled).toBe(true);
+  assert(boolQuery2.enabled);
 
   const boolQuery3: BooleanQuery = { enabled: true, verbose: false };
-  expect(boolQuery3.enabled).toBe(true);
-  expect(boolQuery3["verbose"]).toBe(false);
+  assert(boolQuery3.enabled);
+  assert(!boolQuery3["verbose"]);
 
   // Union type
   type MixedQuery = QueryParamsHint<"value", string | number>;
 
   const mixedQuery1: MixedQuery = { value: "text" };
-  expect(mixedQuery1.value).toBe("text");
+  assert(mixedQuery1.value === "text");
 
   const mixedQuery2: MixedQuery = { value: 42 };
-  expect(mixedQuery2.value).toBe(42);
+  assert(mixedQuery2.value === 42);
 
   const mixedQuery3: MixedQuery = { value: "text", other: 123 };
-  expect(mixedQuery3.value).toBe("text");
-  expect(mixedQuery3["other"]).toBe(123);
+  assert(mixedQuery3.value === "text");
+  assert(mixedQuery3["other"] === 123);
 });
 
 test("QueryParamsHint real-world examples", () => {
@@ -571,10 +571,10 @@ test("QueryParamsHint real-world examples", () => {
     sort: "created_at",
     order: "desc",
   };
-  expect(paginationQuery.page).toBe("1");
-  expect(paginationQuery.limit).toBe("20");
-  expect(paginationQuery["sort"]).toBe("created_at");
-  expect(paginationQuery["order"]).toBe("desc");
+  assert(paginationQuery.page === "1");
+  assert(paginationQuery.limit === "20");
+  assert(paginationQuery["sort"] === "created_at");
+  assert(paginationQuery["order"] === "desc");
 
   // Search and filter query
   type SearchQuery = QueryParamsHint<"q" | "category" | "tags">;
@@ -584,9 +584,9 @@ test("QueryParamsHint real-world examples", () => {
     status: "published",
     author: "john",
   };
-  expect(searchQuery.q).toBe("typescript");
-  expect(searchQuery["status"]).toBe("published");
-  expect(searchQuery["author"]).toBe("john");
+  assert(searchQuery.q === "typescript");
+  assert(searchQuery["status"] === "published");
+  assert(searchQuery["author"] === "john");
 
   // API configuration query
   type ApiQuery = QueryParamsHint<"version" | "format">;
@@ -597,8 +597,8 @@ test("QueryParamsHint real-world examples", () => {
     include: "metadata",
     fields: "id,name,created_at",
   };
-  expect(apiQuery.version).toBe("v2");
-  expect(apiQuery.format).toBe("json");
-  expect(apiQuery["include"]).toBe("metadata");
-  expect(apiQuery["fields"]).toBe("id,name,created_at");
+  assert(apiQuery.version === "v2");
+  assert(apiQuery.format === "json");
+  assert(apiQuery["include"] === "metadata");
+  assert(apiQuery["fields"] === "id,name,created_at");
 });

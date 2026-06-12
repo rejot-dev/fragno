@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import type { MigrationOperation } from "../../../../migration-engine/shared";
 import { createNamingResolver, type SqlNamingStrategy } from "../../../../naming/sql-naming";
@@ -26,7 +26,7 @@ describe("SQLiteSQLGenerator", () => {
     const statements = generator.compile([operation]);
     // SQLite adds PRAGMA defer_foreign_keys at the beginning
     expect(statements.length).toBeGreaterThanOrEqual(2);
-    expect(statements[0].sql).toBe("PRAGMA defer_foreign_keys = ON");
+    assert(statements[0].sql === "PRAGMA defer_foreign_keys = ON");
     return statements[1].sql;
   }
 
@@ -37,7 +37,7 @@ describe("SQLiteSQLGenerator", () => {
   function compileMany(operation: MigrationOperation): string[] {
     const statements = generator.compile([operation]);
     expect(statements.length).toBeGreaterThanOrEqual(1);
-    expect(statements[0].sql).toBe("PRAGMA defer_foreign_keys = ON");
+    assert(statements[0].sql === "PRAGMA defer_foreign_keys = ON");
     // Return everything except pragma statement
     return statements.slice(1).map((s) => s.sql);
   }
@@ -185,7 +185,7 @@ describe("SQLiteSQLGenerator", () => {
       };
 
       const statements = prismaGenerator.compile([operation]);
-      expect(statements[0].sql).toBe("PRAGMA defer_foreign_keys = ON");
+      assert(statements[0].sql === "PRAGMA defer_foreign_keys = ON");
       expect(statements[1].sql).toMatchInlineSnapshot(
         `"create table "prisma_timestamps" ("id" integer not null unique, "created_at" text not null, "published_on" text not null)"`,
       );
@@ -1225,7 +1225,7 @@ describe("SQLiteSQLGenerator", () => {
       const statements = generator.compile(operations);
       // PRAGMA + 4 operations
       expect(statements).toHaveLength(5);
-      expect(statements[0].sql).toBe("PRAGMA defer_foreign_keys = ON");
+      assert(statements[0].sql === "PRAGMA defer_foreign_keys = ON");
       expect(statements[1].sql).toMatchInlineSnapshot(
         `"create table "users" ("id" integer not null unique, "email" text not null, "name" text not null)"`,
       );
@@ -1556,10 +1556,10 @@ describe("SQLiteSQLGenerator", () => {
             referencedColumns: string[];
           }[];
         };
-        expect(metadata?.preserve).toBe("keep");
+        assert(metadata?.preserve === "keep");
         expect(metadata?.inlineForeignKeys).toHaveLength(2);
-        expect(metadata?.inlineForeignKeys?.[0].name).toBe("posts_orgs_org_fk");
-        expect(metadata?.inlineForeignKeys?.[1].name).toBe("posts_users_author_fk");
+        assert(metadata?.inlineForeignKeys?.[0].name === "posts_orgs_org_fk");
+        assert(metadata?.inlineForeignKeys?.[1].name === "posts_users_author_fk");
       }
     });
 
@@ -1608,7 +1608,7 @@ describe("SQLiteSQLGenerator", () => {
       const preprocessed = generator.preprocess(operations);
 
       expect(preprocessed).toHaveLength(3);
-      expect(preprocessed.some((op) => op.type === "alter-table")).toBe(false);
+      assert(!preprocessed.some((op) => op.type === "alter-table"));
 
       const sessionOp = preprocessed[1];
       expect(sessionOp).toMatchObject({
@@ -1617,7 +1617,7 @@ describe("SQLiteSQLGenerator", () => {
       });
 
       if (sessionOp.type === "create-table") {
-        expect(sessionOp.columns.some((col) => col.name === "active_org_id")).toBe(true);
+        assert(sessionOp.columns.some((col) => col.name === "active_org_id"));
         const metadata = sessionOp.metadata as {
           inlineForeignKeys?: {
             name: string;
@@ -1668,7 +1668,7 @@ describe("SQLiteSQLGenerator", () => {
 
       // PRAGMA + 2 create-table operations
       expect(statements).toHaveLength(3);
-      expect(statements[0].sql).toBe("PRAGMA defer_foreign_keys = ON");
+      assert(statements[0].sql === "PRAGMA defer_foreign_keys = ON");
 
       // Posts table should contain inline FK constraint
       const postsSql = statements[2].sql;
@@ -1833,8 +1833,8 @@ describe("SQLiteSQLGenerator", () => {
         const metadata = postsOp.metadata as { inlineForeignKeys?: { name: string }[] };
         expect(metadata?.inlineForeignKeys).toBeDefined();
         expect(metadata?.inlineForeignKeys).toHaveLength(2);
-        expect(metadata?.inlineForeignKeys?.[0].name).toBe("posts_users_author_fk");
-        expect(metadata?.inlineForeignKeys?.[1].name).toBe("posts_categories_category_fk");
+        assert(metadata?.inlineForeignKeys?.[0].name === "posts_users_author_fk");
+        assert(metadata?.inlineForeignKeys?.[1].name === "posts_categories_category_fk");
       }
     });
 
@@ -1929,7 +1929,7 @@ describe("SQLiteSQLGenerator", () => {
       ];
 
       const preprocessed = generator.preprocess(operations);
-      expect(preprocessed.length).toBe(2);
+      assert(preprocessed.length === 2);
       expect(preprocessed[0]).toEqual({ type: "custom", sql: "PRAGMA defer_foreign_keys = ON" });
       expect(preprocessed[1]).toEqual(operations[0]);
     });

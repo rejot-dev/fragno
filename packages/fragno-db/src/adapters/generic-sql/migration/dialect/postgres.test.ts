@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import type { MigrationOperation } from "../../../../migration-engine/shared";
 import { createNamingResolver, type SqlNamingStrategy } from "../../../../naming/sql-naming";
@@ -16,7 +16,7 @@ describe("PostgresSQLGenerator", () => {
    */
   function compileOne(operation: MigrationOperation): string {
     const statements = generator.compile([operation]);
-    expect(statements.length).toBe(1);
+    assert(statements.length === 1);
     return statements[0].sql;
   }
 

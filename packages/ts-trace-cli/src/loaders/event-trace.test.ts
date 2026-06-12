@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,8 +16,8 @@ describe("loadEventTrace", () => {
 
     expect(result.metadataEvents).toHaveLength(2);
     expect(result.events).toHaveLength(5);
-    expect(result.events[1]?.path?.displayPath).toBe("packages/fragno-db/src/schema/create.ts");
-    expect(result.events[2]?.path?.displayPath).toBe("packages/fragno-db/src/schema/create.ts");
-    expect(result.events[3]?.duration).toBe(120);
+    assert(result.events[1]?.path?.displayPath === "packages/fragno-db/src/schema/create.ts");
+    assert(result.events[2]?.path?.displayPath === "packages/fragno-db/src/schema/create.ts");
+    assert(result.events[3]?.duration === 120);
   });
 });

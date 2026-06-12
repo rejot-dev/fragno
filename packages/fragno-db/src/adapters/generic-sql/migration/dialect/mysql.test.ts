@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import type { MigrationOperation } from "../../../../migration-engine/shared";
 import { createNamingResolver, type SqlNamingStrategy } from "../../../../naming/sql-naming";
@@ -18,8 +18,8 @@ describe("MySQLSQLGenerator", () => {
     const statements = generator.compile([operation]);
     // MySQL wraps with FK checks: [SET FK=0, ...operations..., SET FK=1]
     expect(statements.length).toBeGreaterThanOrEqual(3);
-    expect(statements[0].sql).toBe("SET FOREIGN_KEY_CHECKS = 0");
-    expect(statements[statements.length - 1].sql).toBe("SET FOREIGN_KEY_CHECKS = 1");
+    assert(statements[0].sql === "SET FOREIGN_KEY_CHECKS = 0");
+    assert(statements[statements.length - 1].sql === "SET FOREIGN_KEY_CHECKS = 1");
     return statements[1].sql;
   }
 
@@ -30,8 +30,8 @@ describe("MySQLSQLGenerator", () => {
   function compileMany(operation: MigrationOperation): string[] {
     const statements = generator.compile([operation]);
     expect(statements.length).toBeGreaterThanOrEqual(2);
-    expect(statements[0].sql).toBe("SET FOREIGN_KEY_CHECKS = 0");
-    expect(statements[statements.length - 1].sql).toBe("SET FOREIGN_KEY_CHECKS = 1");
+    assert(statements[0].sql === "SET FOREIGN_KEY_CHECKS = 0");
+    assert(statements[statements.length - 1].sql === "SET FOREIGN_KEY_CHECKS = 1");
     // Return everything except FK check statements
     return statements.slice(1, -1).map((s) => s.sql);
   }
@@ -784,8 +784,8 @@ describe("MySQLSQLGenerator", () => {
       ]);
 
       // Should have FK check wrapper + 5 operations
-      expect(statements.length).toBe(7);
-      expect(statements[0].sql).toBe("SET FOREIGN_KEY_CHECKS = 0");
+      assert(statements.length === 7);
+      assert(statements[0].sql === "SET FOREIGN_KEY_CHECKS = 0");
       expect(statements[1].sql).toMatchInlineSnapshot(
         `"create table \`users\` (\`id\` integer not null unique, \`email\` varchar(191) not null, \`name\` varchar(191) not null)"`,
       );
@@ -801,7 +801,7 @@ describe("MySQLSQLGenerator", () => {
       expect(statements[5].sql).toMatchInlineSnapshot(
         `"alter table \`posts\` add constraint \`posts_user_id_fk\` foreign key (\`user_id\`) references \`users\` (\`id\`) on delete restrict on update restrict"`,
       );
-      expect(statements[6].sql).toBe("SET FOREIGN_KEY_CHECKS = 1");
+      assert(statements[6].sql === "SET FOREIGN_KEY_CHECKS = 1");
     });
 
     it("should handle multiple alter-table operations", () => {
@@ -972,7 +972,7 @@ describe("MySQLSQLGenerator", () => {
       ];
 
       const preprocessed = generator.preprocess(operations);
-      expect(preprocessed.length).toBe(3);
+      assert(preprocessed.length === 3);
       expect(preprocessed[0]).toEqual({ type: "custom", sql: "SET FOREIGN_KEY_CHECKS = 0" });
       expect(preprocessed[1]).toEqual(operations[0]);
       expect(preprocessed[2]).toEqual({ type: "custom", sql: "SET FOREIGN_KEY_CHECKS = 1" });

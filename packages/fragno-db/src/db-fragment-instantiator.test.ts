@@ -310,7 +310,7 @@ describe("db-fragment-instantiator", () => {
         .build();
 
       const response = await fragment.callRoute("GET", "/check");
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
       assert(response.type === "json");
       expect(response.data).toEqual({ hasTypedUow: true });
     });
@@ -337,7 +337,7 @@ describe("db-fragment-instantiator", () => {
         .build();
 
       const result = await fragment.callServices(() => fragment.services.getUowExists());
-      expect(result).toBe(true);
+      assert(result);
     });
 
     it("should allow calling multiple services at once via callServices", async () => {
@@ -440,8 +440,8 @@ describe("db-fragment-instantiator", () => {
         .withOptions({ databaseAdapter: mockAdapter })
         .build();
 
-      expect(fragment.services.getUserServicePrefix()).toBe("USER_");
-      expect(fragment.services.hasAdapter()).toBe(true);
+      assert(fragment.services.getUserServicePrefix() === "USER_");
+      assert(fragment.services.hasAdapter());
     });
   });
 
@@ -490,7 +490,7 @@ describe("db-fragment-instantiator", () => {
         .build();
 
       expect(fragment.$internal.deps.schema).toBe(testSchema);
-      expect(fragment.$internal.deps.namespace).toBe("test");
+      assert(fragment.$internal.deps.namespace === "test");
     });
 
     it("should use databaseNamespace override when provided", () => {
@@ -507,7 +507,7 @@ describe("db-fragment-instantiator", () => {
         })
         .build();
 
-      expect(fragment.$internal.deps.namespace).toBe("custom-namespace");
+      assert(fragment.$internal.deps.namespace === "custom-namespace");
     });
 
     it("should allow explicit null namespace override", () => {
@@ -538,7 +538,7 @@ describe("db-fragment-instantiator", () => {
         .build();
 
       // schema.name is "my-fragment", but default namespace should be sanitized to "my_fragment"
-      expect(fragment.$internal.deps.namespace).toBe("my_fragment");
+      assert(fragment.$internal.deps.namespace === "my_fragment");
     });
 
     it("should NOT sanitize explicit databaseNamespace even when it contains dashes", () => {
@@ -556,7 +556,7 @@ describe("db-fragment-instantiator", () => {
         .build();
 
       // Explicit override should be used as-is, dashes preserved
-      expect(fragment.$internal.deps.namespace).toBe("my-fragment");
+      assert(fragment.$internal.deps.namespace === "my-fragment");
     });
 
     it("should populate $internal when using providesBaseService without withDependencies", () => {

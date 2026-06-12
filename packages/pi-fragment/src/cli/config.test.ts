@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import {
   DEFAULT_RETRIES,
@@ -30,10 +30,10 @@ describe("cli config", () => {
       },
     });
 
-    expect(config.baseUrl).toBe("https://example.com/api");
-    expect(config.timeoutMs).toBe(12000);
-    expect(config.retries).toBe(4);
-    expect(config.retryDelayMs).toBe(250);
+    assert(config.baseUrl === "https://example.com/api");
+    assert(config.timeoutMs === 12000);
+    assert(config.retries === 4);
+    assert(config.retryDelayMs === 250);
     expect(config.headers).toEqual({
       Authorization: "Bearer abc",
       "X-Test": "value",
@@ -56,10 +56,10 @@ describe("cli config", () => {
       },
     });
 
-    expect(config.baseUrl).toBe("https://flags.example.com");
-    expect(config.timeoutMs).toBe(3000);
-    expect(config.retries).toBe(1);
-    expect(config.retryDelayMs).toBe(100);
+    assert(config.baseUrl === "https://flags.example.com");
+    assert(config.timeoutMs === 3000);
+    assert(config.retries === 1);
+    assert(config.retryDelayMs === 100);
     expect(config.headers).toEqual({
       Authorization: "Bearer flag",
       "X-Test": "env",

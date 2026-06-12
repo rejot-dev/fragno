@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, assert } from "vitest";
 
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
 import {
@@ -58,7 +58,7 @@ describe("LofiSubmitClient", () => {
       }
 
       const body = init?.body ? JSON.parse(init.body as string) : undefined;
-      expect(body?.adapterIdentity).toBe("adapter-123");
+      assert(body?.adapterIdentity === "adapter-123");
       expect(body?.commands).toHaveLength(1);
 
       return new Response(
@@ -90,7 +90,7 @@ describe("LofiSubmitClient", () => {
     });
 
     const response = await client.submitOnce();
-    expect(response.status).toBe("applied");
+    assert(response.status === "applied");
 
     const stored = await adapter.getMeta("app::submit-queue");
     expect(stored).toBeDefined();
@@ -162,7 +162,7 @@ describe("LofiSubmitClient", () => {
     expect(submitBodies).toHaveLength(1);
 
     const retried = await client.submitOnce();
-    expect(retried.status).toBe("applied");
+    assert(retried.status === "applied");
     expect(submitBodies).toHaveLength(1);
     expect(fetcher).toHaveBeenCalledTimes(2);
 
@@ -222,6 +222,6 @@ describe("LofiSubmitClient", () => {
     const overlayQuery = overlay.createQueryEngine(appSchema);
     const overlayUsers = await overlayQuery.find("users", (b) => b.whereIndex("primary"));
     expect(overlayUsers).toHaveLength(1);
-    expect(overlayUsers[0].email).toBe("ada@example.com");
+    assert(overlayUsers[0].email === "ada@example.com");
   });
 });

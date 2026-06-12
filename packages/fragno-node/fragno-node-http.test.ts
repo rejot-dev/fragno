@@ -1,4 +1,4 @@
-import { test, expect, describe } from "vitest";
+import { test, expect, describe, assert } from "vitest";
 
 import { createServer, type RequestListener, type Server } from "node:http";
 
@@ -59,7 +59,7 @@ describe("Fragno Node.js integration", () => {
 
     const response = await fetch(`${clientConfig.baseUrl}${testFragment.mountRoute}/users`);
 
-    expect(response.ok).toBe(true);
+    assert(response.ok);
 
     const data = await response.json();
     expect(data).toEqual([{ id: 1, name: "John" }]);
@@ -79,7 +79,7 @@ describe("Fragno Node.js integration", () => {
     });
 
     const response = await fetch(`${clientConfig.baseUrl}/`);
-    expect(response.ok).toBe(true);
+    assert(response.ok);
     const data = await response.json();
     expect(data).toEqual({ message: "It's working." });
 

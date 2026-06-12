@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, assert } from "vitest";
 
 import type { ControlElement, JsonSchema } from "@jsonforms/core";
 import { NOT_APPLICABLE } from "@jsonforms/core";
@@ -59,7 +59,7 @@ describe("shadcnDateControlTester", () => {
       type: "object",
       properties: { birthDate: { type: "string", format: "date" } },
     };
-    expect(shadcnDateControlTester(control, rootSchema, createTesterContext(rootSchema))).toBe(4);
+    assert(shadcnDateControlTester(control, rootSchema, createTesterContext(rootSchema)) === 4);
   });
 
   it("should return rank 4 when format option is date", () => {
@@ -69,9 +69,9 @@ describe("shadcnDateControlTester", () => {
       scope: "#/properties/birthDate",
       options: { format: "date" },
     };
-    expect(
-      shadcnDateControlTester(controlWithOption, rootSchema, createTesterContext(rootSchema)),
-    ).toBe(4);
+    assert(
+      shadcnDateControlTester(controlWithOption, rootSchema, createTesterContext(rootSchema)) === 4,
+    );
   });
 });
 

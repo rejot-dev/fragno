@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import {
   createBinaryStream,
@@ -36,13 +36,13 @@ describe("reson8 prerecorded transcription routes", () => {
     expect(url).toBe(
       "https://api.reson8.dev/v1/speech-to-text/prerecorded?encoding=pcm_s16le&sample_rate=44100&channels=2&include_words=true&include_confidence=true",
     );
-    expect(init?.method).toBe("POST");
-    expect(headers.get("authorization")).toBe("Bearer token_abc");
-    expect(headers.get("content-type")).toBe("application/octet-stream");
-    expect((init as RequestInit & { duplex?: string }).duplex).toBe("half");
+    assert(init?.method === "POST");
+    assert(headers.get("authorization") === "Bearer token_abc");
+    assert(headers.get("content-type") === "application/octet-stream");
+    assert((init as RequestInit & { duplex?: string }).duplex === "half");
     expect(Array.from(await readRequestBody(init))).toEqual([1, 2, 3, 4]);
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       return;
     }
@@ -62,12 +62,12 @@ describe("reson8 prerecorded transcription routes", () => {
     } as never);
 
     expect(ctx.fetchMock).not.toHaveBeenCalled();
-    expect(response.type).toBe("error");
+    assert(response.type === "error");
     if (response.type !== "error") {
       return;
     }
 
-    expect(response.status).toBe(400);
+    assert(response.status === 400);
     expect(response.error).toEqual({
       code: "INVALID_REQUEST",
       message: 'include_words must be "true" or "false".',
@@ -87,12 +87,12 @@ describe("reson8 prerecorded transcription routes", () => {
       body: createBinaryStream([new Uint8Array([1, 2, 3])]),
     } as never);
 
-    expect(response.type).toBe("error");
+    assert(response.type === "error");
     if (response.type !== "error") {
       return;
     }
 
-    expect(response.status).toBe(500);
+    assert(response.status === 500);
     expect(response.error).toEqual({
       code: "INTERNAL_ERROR",
       message: "upstream exploded",

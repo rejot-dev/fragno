@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, assert } from "vitest";
 
 import { cli } from "gunshi";
 
@@ -27,7 +27,7 @@ describe("Fragno Database Drizzle", () => {
       });
 
       expect(logs).toContain("Created user:");
-      expect(logs.some((log) => log.includes("test@test.com"))).toBe(true);
+      assert(logs.some((log) => log.includes("test@test.com")));
     });
 
     it("should list users", async () => {
@@ -37,7 +37,7 @@ describe("Fragno Database Drizzle", () => {
       });
 
       expect(logs).toContain("Users:");
-      expect(logs.some((log) => log.includes("test@test.com"))).toBe(true);
+      assert(logs.some((log) => log.includes("test@test.com")));
     });
 
     it("should get user by email", async () => {
@@ -47,7 +47,7 @@ describe("Fragno Database Drizzle", () => {
       });
 
       expect(logs).toContain("User:");
-      expect(logs.some((log) => log.includes("test@test.com"))).toBe(true);
+      assert(logs.some((log) => log.includes("test@test.com")));
     });
 
     it("should get user by ID", async () => {
@@ -57,7 +57,7 @@ describe("Fragno Database Drizzle", () => {
       });
 
       expect(logs).toContain("User:");
-      expect(logs.some((log) => log.includes("test@test.com"))).toBe(true);
+      assert(logs.some((log) => log.includes("test@test.com")));
     });
 
     it("should update a user", async () => {
@@ -66,8 +66,8 @@ describe("Fragno Database Drizzle", () => {
         subCommands: userSubCommands,
       });
 
-      expect(logs.some((log) => log.includes("User 1 updated successfully"))).toBe(true);
-      expect(logs.some((log) => log.includes("Updated User"))).toBe(true);
+      assert(logs.some((log) => log.includes("User 1 updated successfully")));
+      assert(logs.some((log) => log.includes("Updated User")));
     });
   });
 
@@ -83,7 +83,7 @@ describe("Fragno Database Drizzle", () => {
       );
 
       expect(logs).toContain("Created blog post:");
-      expect(logs.some((log) => log.includes("Test Post"))).toBe(true);
+      assert(logs.some((log) => log.includes("Test Post")));
     });
 
     it("should list posts", async () => {
@@ -93,7 +93,7 @@ describe("Fragno Database Drizzle", () => {
       });
 
       expect(logs).toContain("Blog posts:");
-      expect(logs.some((log) => log.includes("Test Post"))).toBe(true);
+      assert(logs.some((log) => log.includes("Test Post")));
     });
 
     it("should get post by ID", async () => {
@@ -103,7 +103,7 @@ describe("Fragno Database Drizzle", () => {
       });
 
       expect(logs).toContain("Blog post:");
-      expect(logs.some((log) => log.includes("Test Post"))).toBe(true);
+      assert(logs.some((log) => log.includes("Test Post")));
     });
 
     it("should update a post", async () => {
@@ -112,8 +112,8 @@ describe("Fragno Database Drizzle", () => {
         subCommands: postSubCommands,
       });
 
-      expect(logs.some((log) => log.includes("Blog post 1 updated successfully"))).toBe(true);
-      expect(logs.some((log) => log.includes("Updated Post"))).toBe(true);
+      assert(logs.some((log) => log.includes("Blog post 1 updated successfully")));
+      assert(logs.some((log) => log.includes("Updated Post")));
     });
   });
 
@@ -124,8 +124,8 @@ describe("Fragno Database Drizzle", () => {
         subCommands: ratingSubCommands,
       });
 
-      expect(logs.some((log) => log.includes("Upvoted reference: 1"))).toBe(true);
-      expect(logs.some((log) => log.includes("Current rating: 1"))).toBe(true);
+      assert(logs.some((log) => log.includes("Upvoted reference: 1")));
+      assert(logs.some((log) => log.includes("Current rating: 1")));
     });
   });
 
@@ -152,7 +152,7 @@ describe("Fragno Database Drizzle", () => {
         },
       );
 
-      expect(logs.some((log) => log.includes("First Comment"))).toBe(true);
+      assert(logs.some((log) => log.includes("First Comment")));
 
       // Clear logs for next comment
       logs = [];
@@ -176,7 +176,7 @@ describe("Fragno Database Drizzle", () => {
         },
       );
 
-      expect(logs.some((log) => log.includes("Second Comment"))).toBe(true);
+      assert(logs.some((log) => log.includes("Second Comment")));
 
       // Clear logs for third comment
       logs = [];
@@ -200,7 +200,7 @@ describe("Fragno Database Drizzle", () => {
         },
       );
 
-      expect(logs.some((log) => log.includes("Third Comment"))).toBe(true);
+      assert(logs.some((log) => log.includes("Third Comment")));
     });
 
     it("should list posts with author and include comments", async () => {
@@ -212,20 +212,20 @@ describe("Fragno Database Drizzle", () => {
       expect(logs).toContain("Blog posts with authors:");
 
       // Check that the post is included
-      expect(logs.some((log) => log.includes("Updated Post"))).toBe(true);
+      assert(logs.some((log) => log.includes("Updated Post")));
 
       // Check that the author is included
-      expect(logs.some((log) => log.includes("Updated User"))).toBe(true);
+      assert(logs.some((log) => log.includes("Updated User")));
 
       // Check that comments are included
-      expect(logs.some((log) => log.includes("First Comment"))).toBe(true);
-      expect(logs.some((log) => log.includes("Second Comment"))).toBe(true);
-      expect(logs.some((log) => log.includes("Third Comment"))).toBe(true);
+      assert(logs.some((log) => log.includes("First Comment")));
+      assert(logs.some((log) => log.includes("Second Comment")));
+      assert(logs.some((log) => log.includes("Third Comment")));
 
       // Verify comments array exists in the output
-      expect(logs.some((log) => log.includes("comments"))).toBe(true);
+      assert(logs.some((log) => log.includes("comments")));
 
-      expect(logs.some((log) => log.includes("rating"))).toBe(true);
+      assert(logs.some((log) => log.includes("rating")));
     });
   });
 
@@ -237,13 +237,11 @@ describe("Fragno Database Drizzle", () => {
       });
 
       expect(logs).toContain("Testing auth joins with explicit queries...");
-      expect(
-        logs.some((log) => log.includes("=== Auth Sessions with Owners (explicit join) ===")),
-      ).toBe(true);
-      expect(logs.some((log) => log.includes("=== Auth Users with Sessions ==="))).toBe(true);
-      expect(
+      assert(logs.some((log) => log.includes("=== Auth Sessions with Owners (explicit join) ===")));
+      assert(logs.some((log) => log.includes("=== Auth Users with Sessions ===")));
+      assert(
         logs.some((log) => log.includes("✓ Auth joins working correctly with explicit queries!")),
-      ).toBe(true);
+      );
     });
 
     it("should test comment relations", async () => {
@@ -252,13 +250,11 @@ describe("Fragno Database Drizzle", () => {
         subCommands: relationsSubCommands,
       });
 
-      expect(logs.some((log) => log.includes("Testing comment relations for post 1..."))).toBe(
-        true,
-      );
-      expect(logs.some((log) => log.includes("=== Comments with Nested Replies ==="))).toBe(true);
-      expect(
+      assert(logs.some((log) => log.includes("Testing comment relations for post 1...")));
+      assert(logs.some((log) => log.includes("=== Comments with Nested Replies ===")));
+      assert(
         logs.some((log) => log.includes("✓ Comment self-referential relations working correctly!")),
-      ).toBe(true);
+      );
     });
 
     it("should test all Fragno relations", async () => {
@@ -267,25 +263,17 @@ describe("Fragno Database Drizzle", () => {
         subCommands: relationsSubCommands,
       });
 
-      expect(
-        logs.some((log) => log.includes("=== Testing All Fragno Relation-Style Queries ===")),
-      ).toBe(true);
-      expect(logs.some((log) => log.includes("✓ Auth sessions with owners (explicit join):"))).toBe(
-        true,
-      );
-      expect(logs.some((log) => log.includes("✓ Auth users with sessions:"))).toBe(true);
-      expect(logs.some((log) => log.includes("✓ Comments with replies:"))).toBe(true);
-      expect(
-        logs.some((log) => log.includes("=== All Fragno Relation-Style Queries Passed! ===")),
-      ).toBe(true);
+      assert(logs.some((log) => log.includes("=== Testing All Fragno Relation-Style Queries ===")));
+      assert(logs.some((log) => log.includes("✓ Auth sessions with owners (explicit join):")));
+      assert(logs.some((log) => log.includes("✓ Auth users with sessions:")));
+      assert(logs.some((log) => log.includes("✓ Comments with replies:")));
+      assert(logs.some((log) => log.includes("=== All Fragno Relation-Style Queries Passed! ===")));
 
       // Verify the key messages about what was tested
-      expect(logs.some((log) => log.includes("Explicit joins still work for auth data"))).toBe(
-        true,
-      );
-      expect(
+      assert(logs.some((log) => log.includes("Explicit joins still work for auth data")));
+      assert(
         logs.some((log) => log.includes("Self-referential comment trees still work correctly")),
-      ).toBe(true);
+      );
     });
   });
 });

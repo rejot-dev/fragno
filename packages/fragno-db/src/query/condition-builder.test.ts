@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { column, idColumn, schema } from "../schema/create";
 import { createBuilder, createIndexedBuilder } from "./condition-builder";
@@ -107,7 +107,7 @@ describe("ConditionBuilder", () => {
 
       const now = builder.now();
       expect(now).toMatchObject({ tag: "db-now" });
-      expect(typeof now.plus).toBe("function");
+      assert(typeof now.plus === "function");
       expect(now.plus({ seconds: 1 })).toMatchObject({ tag: "db-now", offsetMs: 1000 });
       expect(now.plus({ seconds: 1 }).plus({ minutes: 1 })).toMatchObject({
         tag: "db-now",
@@ -212,17 +212,17 @@ describe("ConditionBuilder", () => {
       });
 
       // false in AND should short-circuit
-      expect(builder.and(false, builder("age", ">", 18))).toBe(false);
+      assert(!builder.and(false, builder("age", ">", 18)));
 
       // all true should return true
-      expect(builder.and(true, true)).toBe(true);
+      assert(builder.and(true, true));
     });
 
     it("should handle boolean shortcuts in OR", () => {
       const builder = createBuilder(usersTable.columns);
 
       // true in OR should short-circuit
-      expect(builder.or(true, builder("age", ">", 18))).toBe(true);
+      assert(builder.or(true, builder("age", ">", 18)));
 
       // false in OR should be ignored
       expect(builder.or(false, builder("age", ">", 18))).toEqual({
@@ -238,7 +238,7 @@ describe("ConditionBuilder", () => {
       });
 
       // all false should return false
-      expect(builder.or(false, false)).toBe(false);
+      assert(!builder.or(false, false));
     });
 
     it("should throw on invalid column name", () => {

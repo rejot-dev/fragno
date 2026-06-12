@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, assert } from "vitest";
 
 import { Kysely, PostgresDialect } from "kysely";
 
@@ -836,8 +836,8 @@ describe("where-builder", () => {
 
       const processed = processReferenceSubqueries(values, kysely);
 
-      expect(processed["title"]).toBe("My Post");
-      expect(processed["content"]).toBe("Post content");
+      assert(processed["title"] === "My Post");
+      assert(processed["content"] === "Post content");
       expect(processed["userId"]).toBeDefined();
       // The userId should now be a Kysely subquery
       expect(processed["userId"]).toHaveProperty("compile");
@@ -854,7 +854,7 @@ describe("where-builder", () => {
 
       expect(processed["ref1"]).toHaveProperty("compile");
       expect(processed["ref2"]).toHaveProperty("compile");
-      expect(processed["regularValue"]).toBe("test");
+      assert(processed["regularValue"] === "test");
     });
 
     it("should not modify non-reference values", () => {

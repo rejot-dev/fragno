@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 
@@ -297,7 +297,7 @@ describe("automation runtime tools", () => {
   test("parse and validate get input", () => {
     const [get] = automationStoreRuntimeTools;
 
-    expect(get.name).toBe("get");
+    assert(get.name === "get");
     expect(
       get.inputSchema.parse(get.adapters!.bash!.parse(["--key", "telegram/chat-123"])),
     ).toEqual({ key: "telegram/chat-123" });
@@ -306,7 +306,7 @@ describe("automation runtime tools", () => {
   test("parse and validate set input", () => {
     const [, set] = automationStoreRuntimeTools;
 
-    expect(set.name).toBe("set");
+    assert(set.name === "set");
     expect(
       set.inputSchema.parse(
         set.adapters!.bash!.parse([
@@ -328,7 +328,7 @@ describe("automation runtime tools", () => {
   test("parse and validate delete input", () => {
     const [, , deleteEntry] = automationStoreRuntimeTools;
 
-    expect(deleteEntry.name).toBe("delete");
+    assert(deleteEntry.name === "delete");
     expect(
       deleteEntry.inputSchema.parse(
         deleteEntry.adapters!.bash!.parse(["--key", "telegram/chat-123"]),
@@ -338,7 +338,7 @@ describe("automation runtime tools", () => {
 
   test("workflow retry tool parses input and calls the runtime", async () => {
     const retryTool = automationWorkflowRuntimeTools[6];
-    expect(retryTool.id).toBe("workflow.instances.retry");
+    assert(retryTool.id === "workflow.instances.retry");
 
     const calls: unknown[] = [];
     const runtime: AutomationWorkflowRuntime = {

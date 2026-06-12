@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, assert } from "vitest";
 
 import { z } from "zod";
 
@@ -52,8 +52,8 @@ describe("withTestUtils extension", () => {
     });
 
     // Both existing services and deps should be available
-    expect(fragment.services.add()).toBe(7);
-    expect(fragment.services.multiply()).toBe(12);
+    assert(fragment.services.add() === 7);
+    assert(fragment.services.multiply() === 12);
     expect(fragment.services.deps).toEqual({ x: 3, y: 4 });
   });
 
@@ -75,7 +75,7 @@ describe("withTestUtils extension", () => {
     });
 
     expect(fragment.services.deps).toEqual({ value: 21 });
-    expect(fragment.services.math.double()).toBe(42);
+    assert(fragment.services.math.double() === 42);
   });
 
   it("should work with service dependencies", () => {
@@ -179,7 +179,7 @@ describe("createFragmentForTest", () => {
       pathParams: { num: "5" },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type === "json") {
       expect(response.data).toEqual({
         result: 15,
@@ -233,14 +233,14 @@ describe("createFragmentForTest", () => {
 
     // Each request should have its own isolated storage
     const response1 = await fragment.callRoute("POST", "/increment");
-    expect(response1.type).toBe("json");
+    assert(response1.type === "json");
     if (response1.type === "json") {
       expect(response1.data).toEqual({ count: 11 });
     }
 
     // New request should start fresh
     const response2 = await fragment.callRoute("POST", "/increment");
-    expect(response2.type).toBe("json");
+    assert(response2.type === "json");
     if (response2.type === "json") {
       expect(response2.data).toEqual({ count: 11 }); // Not 12!
     }
@@ -263,7 +263,7 @@ describe("createFragmentForTest", () => {
     });
 
     // Services should work
-    expect(fragment.services.getValue()).toBe(42);
+    assert(fragment.services.getValue() === 42);
     // But deps should not be exposed
     expect(fragment.services).not.toHaveProperty("deps");
   });

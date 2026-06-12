@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, assert } from "vitest";
 
 import {
   fieldToSchemaProperty,
@@ -180,8 +180,8 @@ describe("fieldToUiSchemaElement", () => {
     const field = createField({ fieldName: "user_name" });
     const result = fieldToUiSchemaElement(field);
 
-    expect(result.scope).toBe("#/properties/user_name");
-    expect(result.type).toBe("Control");
+    assert(result.scope === "#/properties/user_name");
+    assert(result.type === "Control");
   });
 
   it("adds multi option for textarea", () => {
@@ -313,52 +313,52 @@ describe("generateSchemas", () => {
 
 describe("labelToFieldName", () => {
   it("converts simple label to lowercase", () => {
-    expect(labelToFieldName("Name")).toBe("name");
+    assert(labelToFieldName("Name") === "name");
   });
 
   it("replaces spaces with underscores", () => {
-    expect(labelToFieldName("First Name")).toBe("first_name");
+    assert(labelToFieldName("First Name") === "first_name");
   });
 
   it("replaces special characters with underscores", () => {
-    expect(labelToFieldName("Email (Work)")).toBe("email_work");
+    assert(labelToFieldName("Email (Work)") === "email_work");
   });
 
   it("collapses multiple underscores", () => {
-    expect(labelToFieldName("My   Field")).toBe("my_field");
+    assert(labelToFieldName("My   Field") === "my_field");
   });
 
   it("trims leading/trailing underscores", () => {
-    expect(labelToFieldName("  Name  ")).toBe("name");
+    assert(labelToFieldName("  Name  ") === "name");
   });
 
   it("returns 'field' for empty string", () => {
-    expect(labelToFieldName("")).toBe("field");
+    assert(labelToFieldName("") === "field");
   });
 
   it("returns 'field' for only special characters", () => {
-    expect(labelToFieldName("---")).toBe("field");
+    assert(labelToFieldName("---") === "field");
   });
 
   it("handles mixed case and numbers", () => {
-    expect(labelToFieldName("Address Line 1")).toBe("address_line_1");
+    assert(labelToFieldName("Address Line 1") === "address_line_1");
   });
 });
 
 describe("ensureUniqueFieldName", () => {
   it("returns original name if not in existing names", () => {
-    expect(ensureUniqueFieldName("email", ["name", "age"])).toBe("email");
+    assert(ensureUniqueFieldName("email", ["name", "age"]) === "email");
   });
 
   it("appends _1 if name exists", () => {
-    expect(ensureUniqueFieldName("email", ["email", "name"])).toBe("email_1");
+    assert(ensureUniqueFieldName("email", ["email", "name"]) === "email_1");
   });
 
   it("increments counter until unique", () => {
-    expect(ensureUniqueFieldName("field", ["field", "field_1", "field_2"])).toBe("field_3");
+    assert(ensureUniqueFieldName("field", ["field", "field_1", "field_2"]) === "field_3");
   });
 
   it("handles empty existing names", () => {
-    expect(ensureUniqueFieldName("name", [])).toBe("name");
+    assert(ensureUniqueFieldName("name", []) === "name");
   });
 });

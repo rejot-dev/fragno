@@ -1,4 +1,4 @@
-import { test, describe, expect, beforeEach, vi } from "vitest";
+import { test, describe, expect, beforeEach, vi, assert } from "vitest";
 
 import type Stripe from "stripe";
 
@@ -139,8 +139,8 @@ describe("Stripe Fragment Services", async () => {
       );
 
       expect(result).not.toBeNull();
-      expect(result?.stripeSubscriptionId).toBe("sub_unique_123");
-      expect(result?.status).toBe("active");
+      assert(result?.stripeSubscriptionId === "sub_unique_123");
+      assert(result?.status === "active");
     });
 
     test("should return null for non-existent subscription", async () => {
@@ -193,8 +193,8 @@ describe("Stripe Fragment Services", async () => {
       );
 
       expect(results).toHaveLength(2);
-      expect(results[0].stripeCustomerId).toBe("cus_shared_123");
-      expect(results[1].stripeCustomerId).toBe("cus_shared_123");
+      assert(results[0].stripeCustomerId === "cus_shared_123");
+      assert(results[1].stripeCustomerId === "cus_shared_123");
     });
 
     test("should return empty array for non-existent customer", async () => {
@@ -229,7 +229,7 @@ describe("Stripe Fragment Services", async () => {
 
       expect(result).not.toBeNull();
       expect(result?.id).toBe(created);
-      expect(result?.stripeSubscriptionId).toBe("sub_123");
+      assert(result?.stripeSubscriptionId === "sub_123");
     });
 
     test("should return null for non-existent ID", async () => {
@@ -265,7 +265,7 @@ describe("Stripe Fragment Services", async () => {
       );
 
       expect(result).toHaveLength(1);
-      expect(result[0].referenceId).toBe("user_unique_789");
+      assert(result[0].referenceId === "user_unique_789");
     });
 
     test("should return empty array for non-existent reference ID", async () => {
@@ -307,9 +307,9 @@ describe("Stripe Fragment Services", async () => {
       const updated = await callService(() => fragment.services.getSubscriptionById(created));
 
       expect(updated).not.toBeNull();
-      expect(updated?.status).toBe("canceled");
-      expect(updated?.cancelAtPeriodEnd).toBe(true);
-      expect(updated?.seats).toBe(2);
+      assert(updated?.status === "canceled");
+      assert(updated?.cancelAtPeriodEnd);
+      assert(updated?.seats === 2);
     });
 
     test("should update partial fields", async () => {
@@ -338,8 +338,8 @@ describe("Stripe Fragment Services", async () => {
 
       const updated = await callService(() => fragment.services.getSubscriptionById(created));
 
-      expect(updated?.seats).toBe(5);
-      expect(updated?.status).toBe("active"); // Other fields unchanged
+      assert(updated?.seats === 5);
+      assert(updated?.status === "active"); // Other fields unchanged
     });
   });
 
@@ -396,7 +396,7 @@ describe("Stripe Fragment Services", async () => {
       const { success } = await callService(() =>
         fragment.services.deleteSubscriptionsByReferenceId("user_ref_delete_123"),
       );
-      expect(success).toBe(true);
+      assert(success);
 
       const result = await callService(() =>
         fragment.services.getSubscriptionsByReferenceId("user_ref_delete_123"),
@@ -423,7 +423,7 @@ describe("Stripe Fragment Services", async () => {
       const { success } = await callService(() =>
         fragment.services.deleteSubscriptionsByReferenceId(referenceId),
       );
-      expect(success).toBe(true);
+      assert(success);
 
       const result = await callService(() =>
         fragment.services.getSubscriptionsByReferenceId(referenceId),
@@ -436,7 +436,7 @@ describe("Stripe Fragment Services", async () => {
       const { success } = await callService(() =>
         fragment.services.deleteSubscriptionsByReferenceId("user_nonexistent_ref"),
       );
-      expect(success).toBe(true);
+      assert(success);
     });
   });
 
@@ -479,8 +479,8 @@ describe("Stripe Fragment Services", async () => {
       const results = await callService(() => fragment.services.getAllSubscriptions());
 
       expect(results).toHaveLength(2);
-      expect(results[0].referenceId).toBe("user_1");
-      expect(results[1].referenceId).toBe("user_2");
+      assert(results[0].referenceId === "user_1");
+      assert(results[1].referenceId === "user_2");
     });
 
     test("should return empty array when no subscriptions exist", async () => {

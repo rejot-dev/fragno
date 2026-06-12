@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { defineRoute } from "@fragno-dev/core/route";
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
@@ -63,9 +63,9 @@ describe("dbRoundtripGuard", () => {
 
     const response = await fragments.user.callRoute("POST", "/multi");
 
-    expect(response.type).toBe("error");
+    assert(response.type === "error");
     if (response.type === "error") {
-      expect(response.error.code).toBe("DB_ROUNDTRIP_LIMIT_EXCEEDED");
+      assert(response.error.code === "DB_ROUNDTRIP_LIMIT_EXCEEDED");
     }
 
     await test.cleanup();
@@ -118,9 +118,9 @@ describe("dbRoundtripGuard", () => {
 
     const response = await fragments.user.callRoute("POST", "/service-multi");
 
-    expect(response.type).toBe("error");
+    assert(response.type === "error");
     if (response.type === "error") {
-      expect(response.error.code).toBe("DB_ROUNDTRIP_LIMIT_EXCEEDED");
+      assert(response.error.code === "DB_ROUNDTRIP_LIMIT_EXCEEDED");
     }
 
     await test.cleanup();
@@ -168,9 +168,9 @@ describe("dbRoundtripGuard", () => {
 
     const response = await fragments.user.callRoute("POST", "/split");
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type === "json") {
-      expect(response.data.count).toBe(0);
+      assert(response.data.count === 0);
     }
 
     await test.cleanup();
@@ -218,7 +218,7 @@ describe("dbRoundtripGuard", () => {
 
     const response = await fragments.user.callRoute("GET", "/stream");
 
-    expect(response.type).toBe("jsonStream");
+    assert(response.type === "jsonStream");
     const frames: unknown[] = [];
     if (response.type === "jsonStream") {
       for await (const frame of response.stream) {

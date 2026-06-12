@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, assert } from "vitest";
 
 import { Kysely, PostgresDialect } from "kysely";
 
@@ -113,8 +113,8 @@ describe("UnitOfWorkEncoder", () => {
 
       // Should have generated an ID
       expect(result["id"]).toBeDefined();
-      expect(typeof result["id"]).toBe("string");
-      expect(result["title"]).toBe("Test");
+      assert(typeof result["id"] === "string");
+      assert(result["title"] === "Test");
     });
 
     it("should use sqlite dateStorage for dbNow date columns", () => {

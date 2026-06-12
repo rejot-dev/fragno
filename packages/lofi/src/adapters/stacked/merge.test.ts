@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { column, FragnoId, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 
@@ -203,7 +203,7 @@ describe("stacked merge", () => {
       | { name?: string }
       | null
       | undefined;
-    expect(author?.name).toBe("Ada");
+    assert(author?.name === "Ada");
   });
 
   it("applies join select when backfilling overlay-only rows", async () => {
@@ -262,9 +262,9 @@ describe("stacked merge", () => {
       | Record<string, unknown>
       | null
       | undefined;
-    expect(author?.["name"]).toBe("Ada");
-    expect(author && "email" in author).toBe(false);
-    expect(author && "id" in author).toBe(false);
+    assert(author?.["name"] === "Ada");
+    assert(!(author && "email" in author));
+    assert(!(author && "id" in author));
   });
 
   it("keeps array joins intact when overlay patches a single entry", async () => {
@@ -405,7 +405,7 @@ describe("stacked merge", () => {
     expect(users).toHaveLength(1);
     const posts = (users[0] as Record<string, unknown>)["posts"] as Array<Record<string, unknown>>;
     expect(posts).toHaveLength(1);
-    expect(posts[0]?.["title"]).toBe("Second");
+    assert(posts[0]?.["title"] === "Second");
   });
 
   it("patches nested joins from overlay rows", async () => {
@@ -466,7 +466,7 @@ describe("stacked merge", () => {
     const posts = (users[0] as Record<string, unknown>)["posts"] as Array<Record<string, unknown>>;
     expect(posts).toHaveLength(1);
     const comments = posts[0]?.["comments"] as Array<Record<string, unknown>> | undefined;
-    expect(comments?.[0]?.["body"]).toBe("Updated");
+    assert(comments?.[0]?.["body"] === "Updated");
   });
 
   it("respects join filters when backfilling overlay-only rows", async () => {
@@ -560,7 +560,7 @@ describe("stacked merge", () => {
       ? ((gracePost as Record<string, unknown>)["author"] as unknown)
       : undefined;
 
-    expect(adaAuthor?.name).toBe("Ada");
+    assert(adaAuthor?.name === "Ada");
     expect(graceAuthor ?? null).toBeNull();
   });
 
@@ -623,7 +623,7 @@ describe("stacked merge", () => {
       | Record<string, unknown>
       | null
       | undefined;
-    expect(author?.["name"]).toBe("Ada");
+    assert(author?.["name"] === "Ada");
   });
 
   it("moves joins when overlay updates the foreign key", async () => {
@@ -691,7 +691,7 @@ describe("stacked merge", () => {
       | Record<string, unknown>
       | null
       | undefined;
-    expect(author?.["name"]).toBe("Grace");
+    assert(author?.["name"] === "Grace");
   });
 
   it("matches composite joins", async () => {
@@ -739,7 +739,7 @@ describe("stacked merge", () => {
       | Record<string, unknown>
       | null
       | undefined;
-    expect(member?.["email"]).toBe("grace@example.com");
+    assert(member?.["email"] === "grace@example.com");
   });
 
   it("supports join filters using external IDs", async () => {
@@ -794,7 +794,7 @@ describe("stacked merge", () => {
       | Record<string, unknown>
       | null
       | undefined;
-    expect(author?.["name"]).toBe("Ada");
+    assert(author?.["name"] === "Ada");
   });
 
   it("paginates join results without dropping overlay rows", async () => {
@@ -880,7 +880,7 @@ describe("stacked merge", () => {
     );
 
     expect(firstPage.items).toHaveLength(2);
-    expect(firstPage.hasNextPage).toBe(true);
+    assert(firstPage.hasNextPage);
 
     const secondPage = await query.findWithCursor("posts", (b) =>
       joinAuthor(
@@ -890,7 +890,7 @@ describe("stacked merge", () => {
     );
 
     expect(secondPage.items).toHaveLength(1);
-    expect(secondPage.hasNextPage).toBe(false);
+    assert(!secondPage.hasNextPage);
   });
 
   it("returns null joins when the referenced base row is missing", async () => {
@@ -982,7 +982,7 @@ describe("stacked merge", () => {
       | Record<string, unknown>
       | null
       | undefined;
-    expect(author?.["name"]).toBe("Ada Lovelace");
+    assert(author?.["name"] === "Ada Lovelace");
   });
 
   it("supports join filters with not in", async () => {
@@ -1079,7 +1079,7 @@ describe("stacked merge", () => {
       ? ((gracePost as Record<string, unknown>)["author"] as unknown)
       : undefined;
 
-    expect(adaAuthor?.["name"]).toBe("Ada");
+    assert(adaAuthor?.["name"] === "Ada");
     expect(graceAuthor ?? null).toBeNull();
   });
 
@@ -1211,7 +1211,7 @@ describe("stacked merge", () => {
       ? ((author2 as Record<string, unknown>)["org"] as Record<string, unknown> | null | undefined)
       : undefined;
 
-    expect(org1?.["name"]).toBe("Org A");
+    assert(org1?.["name"] === "Org A");
     expect(org2 ?? null).toBeNull();
   });
 
@@ -1314,7 +1314,7 @@ describe("stacked merge", () => {
       : undefined;
 
     expect(youngAuthor ?? null).toBeNull();
-    expect(matureAuthor?.["name"]).toBe("Grace");
+    assert(matureAuthor?.["name"] === "Grace");
   });
 
   it("supports join filters with string negation operators", async () => {
@@ -1415,7 +1415,7 @@ describe("stacked merge", () => {
       : undefined;
 
     expect(adaAuthor ?? null).toBeNull();
-    expect(graceAuthor?.["name"]).toBe("Grace Hopper");
+    assert(graceAuthor?.["name"] === "Grace Hopper");
   });
 
   it("supports join filters with column comparisons", async () => {
@@ -1520,7 +1520,7 @@ describe("stacked merge", () => {
           | undefined)
       : undefined;
 
-    expect(adaAuthor?.["name"]).toBe("Ada");
+    assert(adaAuthor?.["name"] === "Ada");
     expect(graceAuthor ?? null).toBeNull();
   });
 
@@ -1622,7 +1622,7 @@ describe("stacked merge", () => {
           | undefined)
       : undefined;
 
-    expect(adaAuthor?.["name"]).toBe("Ada");
+    assert(adaAuthor?.["name"] === "Ada");
     expect(graceAuthor ?? null).toBeNull();
   });
 
@@ -1803,7 +1803,7 @@ describe("stacked merge", () => {
     );
 
     expect(firstPage.items).toHaveLength(2);
-    expect(firstPage.hasNextPage).toBe(true);
+    assert(firstPage.hasNextPage);
 
     const secondPage = await query.findWithCursor("posts", (b) =>
       joinAuthor(
@@ -1820,7 +1820,7 @@ describe("stacked merge", () => {
       | Record<string, unknown>
       | null
       | undefined;
-    expect(author?.["name"]).toBe("Ada");
+    assert(author?.["name"] === "Ada");
   });
 
   it("does not match composite joins with nulls or partial mismatches", async () => {
@@ -1964,10 +1964,10 @@ describe("stacked merge", () => {
 
     const posts = (users[0] as Record<string, unknown>)["posts"] as Array<Record<string, unknown>>;
     expect(posts).toHaveLength(1);
-    expect(posts[0]?.["title"]).toBe("Gamma");
+    assert(posts[0]?.["title"] === "Gamma");
 
     const comments = posts[0]?.["comments"] as Array<Record<string, unknown>> | undefined;
     expect(comments).toHaveLength(1);
-    expect(comments?.[0]?.["body"]).toBe("a");
+    assert(comments?.[0]?.["body"] === "a");
   });
 });

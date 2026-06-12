@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, expectTypeOf } from "vitest";
+import { describe, it, expect, vi, expectTypeOf, assert } from "vitest";
 
 import fs from "node:fs";
 import os from "node:os";
@@ -121,7 +121,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         options: { databaseAdapter: mockAdapter },
       });
 
-      expect(deps.customDep).toBe("value");
+      assert(deps.customDep === "value");
       expect(deps.databaseAdapter).toBeDefined();
       expect(deps.createUnitOfWork).toBeDefined();
       expect(deps.schema).toBeDefined();
@@ -142,7 +142,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         options: { databaseAdapter: mockAdapter },
       });
 
-      expect(deps.apiKey).toBe("key123");
+      assert(deps.apiKey === "key123");
       expect(deps.databaseAdapter).toBeDefined();
       expect(deps.createUnitOfWork).toBeDefined();
       expect(deps.schema).toBeDefined();
@@ -175,7 +175,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         defineService: (svc) => svc,
       });
 
-      expect(userService.list()).toBe("users list");
+      assert(userService.list() === "users list");
     });
 
     it("should extend after providesService", () => {
@@ -217,8 +217,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         defineService: (svc) => svc,
       });
 
-      expect(basicService.ping()).toBe("pong");
-      expect(userService.list()).toBe("users list");
+      assert(basicService.ping() === "pong");
+      assert(userService.list() === "users list");
     });
 
     it("should extend before usesService", () => {
@@ -282,7 +282,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         defineService: (svc) => svc,
       });
 
-      expect(services.healthCheck()).toBe("healthy");
+      assert(services.healthCheck() === "healthy");
     });
 
     it("should extend after providesBaseService replaces previous base service", () => {
@@ -316,7 +316,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       });
 
       // Second providesBaseService replaces the first one
-      expect(services.status()).toBe("ok");
+      assert(services.status() === "ok");
       expect(services).not.toHaveProperty("ping");
     });
 
@@ -371,7 +371,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         defineService: (svc) => svc,
       });
 
-      expect(services.init()).toBe("initialized");
+      assert(services.init() === "initialized");
       expect(logs).toContain("Initialized with key: secret");
 
       const dataService = definition.namedServices!.data({
@@ -387,7 +387,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         defineService: (svc) => svc,
       });
 
-      expect(dataService.fetch()).toBe("Fetching with secret");
+      assert(dataService.fetch() === "Fetching with secret");
     });
 
     it("should support complex ordering: deps -> extend -> deps replaces previous", () => {
@@ -420,7 +420,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
 
       // Only the second withDependencies is used (plus implicit deps)
       expect(deps).not.toHaveProperty("baseConfig");
-      expect(deps.enhancedConfig).toBe("enhanced");
+      assert(deps.enhancedConfig === "enhanced");
       expect(deps.databaseAdapter).toBeDefined();
 
       const combinedService = definition.namedServices!.combined({
@@ -432,7 +432,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         defineService: (svc) => svc,
       });
 
-      expect(combinedService.getConfig()).toBe("enhanced");
+      assert(combinedService.getConfig() === "enhanced");
     });
 
     it("should preserve type safety with typed config across extend", () => {
@@ -467,8 +467,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         options: { databaseAdapter: mockAdapter },
       });
 
-      expect(deps.connectionTimeout).toBe(5000);
-      expect(deps.dbConnectionString).toBe("postgres://localhost");
+      assert(deps.connectionTimeout === 5000);
+      assert(deps.dbConnectionString === "postgres://localhost");
       expect(deps.databaseAdapter).toBeDefined();
     });
 
@@ -518,8 +518,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       });
 
       // Verify all dependencies including implicit ones
-      expect(deps.apiKey).toBe("secret");
-      expect(deps.timeout).toBe(5000);
+      assert(deps.apiKey === "secret");
+      assert(deps.timeout === 5000);
       expect(deps.databaseAdapter).toBeDefined();
       expect(deps.schema).toBeDefined();
       expect(deps.createUnitOfWork).toBeDefined();
@@ -536,7 +536,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         defineService: (svc) => svc,
       });
 
-      expect(baseServices.healthCheck()).toBe("OK (timeout: 5000)");
+      assert(baseServices.healthCheck() === "OK (timeout: 5000)");
 
       const userService = definition.namedServices!.users({
         config: {},
@@ -550,7 +550,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         defineService: (svc) => svc,
       });
 
-      expect(userService.list()).toBe("Users (key: secret)");
+      assert(userService.list() === "Users (key: secret)");
       expect(logs).toContain("Listing users");
     });
   });
@@ -581,7 +581,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       expect(deps).toHaveProperty("schema");
       expect(deps).toHaveProperty("createUnitOfWork");
       expect(deps).toHaveProperty("customDep");
-      expect(deps.customDep).toBe("test");
+      assert(deps.customDep === "test");
     });
 
     it("should provide implicit database dependencies", () => {
@@ -600,7 +600,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       // Check implicit dependencies structure
       expect(deps.databaseAdapter).toBeDefined();
       expect(deps.schema).toBeDefined();
-      expect(typeof deps.createUnitOfWork).toBe("function");
+      assert(typeof deps.createUnitOfWork === "function");
     });
   });
 
@@ -611,7 +611,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       const definition = withDatabase(testSchema)(defineFragment("db-frag"))
         .withDependencies(() => ({ apiKey: "key" }))
         .providesBaseService(({ deps, defineService }) => {
-          expect(deps.apiKey).toBe("key");
+          assert(deps.apiKey === "key");
           expect(deps.databaseAdapter).toBeDefined();
           expect(defineService).toBeDefined();
 
@@ -640,7 +640,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         defineService: (svc) => svc,
       });
 
-      expect(services.getUsers()).toBe("users");
+      assert(services.getUsers() === "users");
     });
   });
 
@@ -674,8 +674,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         defineService: (svc) => svc,
       });
 
-      expect(userService.list()).toBe("Listing users with key");
-      expect(userService.create("John")).toBe("Creating user John");
+      assert(userService.list() === "Listing users with key");
+      assert(userService.create("John") === "Creating user John");
     });
   });
 
@@ -705,7 +705,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         .usesOptionalService<"logger", LogService>("logger")
         .build();
 
-      expect(definition.serviceDependencies!.logger.required).toBe(false);
+      assert(!definition.serviceDependencies!.logger.required);
     });
   });
 
@@ -785,8 +785,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         storage: mockStorage,
       });
 
-      expect(typeof contexts.serviceContext.serviceTx).toBe("function");
-      expect(typeof contexts.handlerContext.handlerTx).toBe("function");
+      assert(typeof contexts.serviceContext.serviceTx === "function");
+      assert(typeof contexts.handlerContext.handlerTx === "function");
     });
 
     it("preserves outer mutations when handlerTx is nested", async () => {
@@ -881,7 +881,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         }))
         .build();
 
-      expect(definition.name).toBe("complex-db-frag");
+      assert(definition.name === "complex-db-frag");
       expect(definition.dependencies).toBeDefined();
       expect(definition.baseServices).toBeDefined();
       expect(definition.namedServices).toBeDefined();
@@ -908,7 +908,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         defineService: (svc) => svc,
       });
 
-      expect(services.healthCheck()).toBe("OK");
+      assert(services.healthCheck() === "OK");
       expect(logs).toContain("Health check");
 
       const userService = definition.namedServices!.users({
@@ -924,8 +924,8 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         defineService: (svc) => svc,
       });
 
-      expect(userService.getAll()).toBe("all users");
-      expect(userService.create("Alice")).toBe("Created user Alice");
+      assert(userService.getAll() === "all users");
+      assert(userService.create("Alice") === "Created user Alice");
     });
   });
 
@@ -976,7 +976,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         } & ImplicitDatabaseDependencies
       >();
 
-      expect(deps.customDep).toBe("test");
+      assert(deps.customDep === "test");
       expect(deps.databaseAdapter).toBeDefined();
     });
   });
@@ -1265,7 +1265,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         const notifyContext = notifySpy.mock.calls[0]?.[0] as
           | { source?: string; waitUntil?: unknown }
           | undefined;
-        expect(notifyContext?.source).toBe("hook");
+        assert(notifyContext?.source === "hook");
         expect(notifyContext?.waitUntil).toBe(waitUntilSpy);
         expect(waitUntilSpy).toHaveBeenCalledTimes(1);
       } finally {

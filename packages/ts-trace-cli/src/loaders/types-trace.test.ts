@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,14 +20,15 @@ describe("loadTypesTrace", () => {
     const tsLib = result.entries.find((entry) => entry.symbolName === "ErrorConstructor");
     const intrinsic = result.entries.find((entry) => entry.intrinsicName === "string");
 
-    expect(result.entryCount).toBe(23);
-    expect(tableBuilder?.declaration?.displayPath).toBe("packages/fragno-db/src/schema/create.ts");
-    expect(mainSelectResult?.declaration?.displayPath).toBe(
-      "packages/fragno-db/src/query/simple-query-interface.ts",
+    assert(result.entryCount === 23);
+    assert(tableBuilder?.declaration?.displayPath === "packages/fragno-db/src/schema/create.ts");
+    assert(
+      mainSelectResult?.declaration?.displayPath ===
+        "packages/fragno-db/src/query/simple-query-interface.ts",
     );
-    expect(tsLib?.declaration?.isNodeModules).toBe(true);
-    expect(tsLib?.declaration?.isTypeScriptLib).toBe(true);
-    expect(intrinsic?.normalizedSymbolName).toBe("string");
+    assert(tsLib?.declaration?.isNodeModules);
+    assert(tsLib?.declaration?.isTypeScriptLib);
+    assert(intrinsic?.normalizedSymbolName === "string");
     expect(intrinsic?.declaration).toBeUndefined();
   });
 });

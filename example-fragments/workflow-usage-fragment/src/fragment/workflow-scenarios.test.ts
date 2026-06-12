@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import {
   defineScenario,
@@ -59,7 +59,7 @@ describe("DSL Workflow - Scenario Tests", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "dsl-scenario-1"),
           assert: (status) => {
-            expect(status?.status).toBe("waiting");
+            assert(status?.status === "waiting");
           },
         }),
         runner.eventAndRunUntilIdle({
@@ -73,7 +73,7 @@ describe("DSL Workflow - Scenario Tests", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "dsl-scenario-1"),
           assert: (status) => {
-            expect(status?.status).toBe("complete");
+            assert(status?.status === "complete");
 
             const output = status?.output as {
               sessionId?: string;
@@ -81,8 +81,8 @@ describe("DSL Workflow - Scenario Tests", () => {
               dslState?: Record<string, number>;
             };
 
-            expect(output?.sessionId).toBe("scenario-session-1");
-            expect(output?.turns).toBe(1);
+            assert(output?.sessionId === "scenario-session-1");
+            assert(output?.turns === 1);
             expect(output?.dslState).toEqual({
               x: 10,
               y: 20,
@@ -95,8 +95,8 @@ describe("DSL Workflow - Scenario Tests", () => {
           assert: (steps) => {
             expect(steps).toHaveLength(7);
             const calcStep = steps?.find((s) => s.name === "calculate-sum");
-            expect(calcStep?.type).toBe("do");
-            expect(calcStep?.status).toBe("completed");
+            assert(calcStep?.type === "do");
+            assert(calcStep?.status === "completed");
           },
         }),
       ],
@@ -141,7 +141,7 @@ describe("DSL Workflow - Scenario Tests", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "multi-turn-1"),
           assert: (status) => {
-            expect(status?.status).toBe("waiting");
+            assert(status?.status === "waiting");
           },
         }),
         runner.eventAndRunUntilIdle({
@@ -155,14 +155,14 @@ describe("DSL Workflow - Scenario Tests", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "multi-turn-1"),
           assert: (status) => {
-            expect(status?.status).toBe("complete");
+            assert(status?.status === "complete");
 
             const output = status?.output as {
               turns?: number;
               dslState?: Record<string, number>;
             };
 
-            expect(output?.turns).toBe(2);
+            assert(output?.turns === 2);
             expect(output?.dslState).toEqual({
               x: 100,
               y: 200,
@@ -215,7 +215,7 @@ describe("DSL Workflow - Scenario Tests", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "done-false-1"),
           assert: (status) => {
-            expect(status?.status).toBe("waiting");
+            assert(status?.status === "waiting");
           },
         }),
         runner.eventAndRunUntilIdle({
@@ -229,7 +229,7 @@ describe("DSL Workflow - Scenario Tests", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "done-false-1"),
           assert: (status) => {
-            expect(status?.status).toBe("complete");
+            assert(status?.status === "complete");
           },
         }),
       ],
@@ -277,9 +277,9 @@ describe("DSL Workflow - Scenario Tests", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "no-dsl-1"),
           assert: (status) => {
-            expect(status?.status).toBe("complete");
+            assert(status?.status === "complete");
             const output = status?.output as { turns?: number };
-            expect(output?.turns).toBe(3);
+            assert(output?.turns === 3);
           },
         }),
       ],
@@ -334,7 +334,7 @@ describe("DSL Workflow - Scenario Tests", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "missing-key-1"),
           assert: (status) => {
-            expect(status?.status).toBe("errored");
+            assert(status?.status === "errored");
           },
         }),
         workflow.read({
@@ -396,7 +396,7 @@ describe("DSL Workflow - Scenario Tests", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "string-num-1"),
           assert: (status) => {
-            expect(status?.status).toBe("complete");
+            assert(status?.status === "complete");
             const output = status?.output as { dslState?: Record<string, number> };
             expect(output?.dslState).toEqual({ x: 7, y: 3, sum: 10 });
           },
@@ -448,9 +448,9 @@ describe("DSL Workflow - Scenario Tests", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "empty-str-1"),
           assert: (status) => {
-            expect(status?.status).toBe("complete");
+            assert(status?.status === "complete");
             const output = status?.output as { dslState?: Record<string, number> };
-            expect(output?.dslState?.["val"]).toBe(0);
+            assert(output?.dslState?.["val"] === 0);
           },
         }),
       ],
@@ -503,7 +503,7 @@ describe("DSL Workflow - Scenario Tests", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "no-assign-1"),
           assert: (status) => {
-            expect(status?.status).toBe("complete");
+            assert(status?.status === "complete");
             const output = status?.output as { dslState?: Record<string, number> };
             expect(output?.dslState).toEqual({ score: 42, scaled: 420 });
           },
@@ -555,21 +555,21 @@ describe("DSL Workflow - Scenario Tests", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "random-1"),
           assert: (status) => {
-            expect(status?.status).toBe("complete");
+            assert(status?.status === "complete");
             const output = status?.output as { dslState?: Record<string, number> };
             const roll = output?.dslState?.["roll"];
             expect(roll).toBeTypeOf("number");
             expect(roll).toBeGreaterThanOrEqual(1);
             expect(roll).toBeLessThanOrEqual(100);
-            expect(Number.isInteger(roll)).toBe(true);
+            assert(Number.isInteger(roll));
           },
         }),
         workflow.read({
           read: (ctx) => ctx.state.getSteps("DSL", "random-1"),
           assert: (steps) => {
             const rollStep = steps?.find((s) => s.name === "roll-dice");
-            expect(rollStep?.type).toBe("do");
-            expect(rollStep?.status).toBe("completed");
+            assert(rollStep?.type === "do");
+            assert(rollStep?.status === "completed");
           },
         }),
       ],
@@ -624,7 +624,7 @@ describe("DSL Workflow - Scenario Tests", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "chain-1"),
           assert: (status) => {
-            expect(status?.status).toBe("complete");
+            assert(status?.status === "complete");
             const output = status?.output as { dslState?: Record<string, number> };
             expect(output?.dslState).toEqual({
               base: 5,
@@ -674,9 +674,9 @@ describe("DSL Workflow - Scenario Tests", () => {
           read: (ctx) => ctx.state.getSteps("DSL", "prim-1"),
           assert: (steps) => {
             const inputStep = steps?.find((s) => s.name === "get-x");
-            expect(inputStep?.status).toBe("completed");
+            assert(inputStep?.status === "completed");
             const result = inputStep?.result as { skipped?: boolean };
-            expect(result?.skipped).toBe(true);
+            assert(result?.skipped);
           },
         }),
       ],
@@ -727,7 +727,7 @@ describe("DSL Workflow - Scenario Tests", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "wait-1"),
           assert: (status) => {
-            expect(status?.status).toBe("waiting");
+            assert(status?.status === "waiting");
           },
         }),
         runner.advanceTimeAndRunUntilIdle({
@@ -738,11 +738,11 @@ describe("DSL Workflow - Scenario Tests", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "wait-1"),
           assert: (status) => {
-            expect(status?.status).toBe("complete");
+            assert(status?.status === "complete");
             const output = status?.output as {
               dslState?: Record<string, number>;
             };
-            expect(output?.dslState?.["result"]).toBe(2);
+            assert(output?.dslState?.["result"] === 2);
           },
         }),
       ],
@@ -790,7 +790,7 @@ describe("DSL Workflow - Scenario Tests", () => {
           assert: (hooks) => {
             expect(hooks).toHaveLength(1);
             const hook = hooks[0];
-            expect(hook?.hookName).toBe("onSessionCompleted");
+            assert(hook?.hookName === "onSessionCompleted");
 
             const payload = hook?.payload as {
               sessionId: string;
@@ -799,9 +799,9 @@ describe("DSL Workflow - Scenario Tests", () => {
               dslState: Record<string, number>;
             };
 
-            expect(payload.sessionId).toBe("hook-session");
-            expect(payload.agentName).toBe("hook-agent");
-            expect(payload.turns).toBe(1);
+            assert(payload.sessionId === "hook-session");
+            assert(payload.agentName === "hook-agent");
+            assert(payload.turns === 1);
             expect(payload.dslState).toEqual({ x: 3, y: 7, sum: 10 });
           },
         }),
@@ -862,7 +862,7 @@ describe("DSL Workflow - Scenario Tests", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "concurrent-a"),
           assert: (status) => {
-            expect(status?.status).toBe("complete");
+            assert(status?.status === "complete");
             const output = status?.output as { dslState?: Record<string, number> };
             expect(output?.dslState).toEqual({ x: 1, y: 2, sum: 3 });
           },
@@ -870,7 +870,7 @@ describe("DSL Workflow - Scenario Tests", () => {
         workflow.read({
           read: (ctx) => ctx.state.getStatus("DSL", "concurrent-b"),
           assert: (status) => {
-            expect(status?.status).toBe("complete");
+            assert(status?.status === "complete");
             const output = status?.output as { dslState?: Record<string, number> };
             expect(output?.dslState).toEqual({ x: 100, y: 200, sum: 300 });
           },

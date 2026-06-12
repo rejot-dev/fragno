@@ -4,7 +4,8 @@
   "jsPlugins": [
     "./packages-private/oxlint-plugins/tsdown-exports-sync.js",
     "./packages-private/oxlint-plugins/fragment-dev-browser-exports.js",
-    "./packages-private/oxlint-plugins/docs-icons-sync.js"
+    "./packages-private/oxlint-plugins/docs-icons-sync.js",
+    "./packages-private/oxlint-plugins/vitest-assert-json-response.js"
   ],
   "env": {
     "builtin": true
@@ -29,6 +30,7 @@
     "tsdown-exports-sync/exports-match": "error",
     "fragment-dev-browser-exports/exports-match": "error",
     "docs-icons-sync/used-icons": "error",
+    "vitest-assert-json-response/assert-json-response": "error",
     "for-direction": "error",
     "no-async-promise-executor": "error",
     "no-case-declarations": "error",

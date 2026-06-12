@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, assert } from "vitest";
 
 import { FragnoId } from "@fragno-dev/db/schema";
 import superjson from "superjson";
@@ -82,7 +82,7 @@ describe("LofiClient", () => {
     const result = await client.syncOnce();
 
     expect(result).toEqual({ appliedEntries: 3, lastVersionstamp: "vs-3" });
-    expect(meta.get("app-outbox::outbox")).toBe("vs-3");
+    assert(meta.get("app-outbox::outbox") === "vs-3");
     expect(applied).toEqual([
       { sourceKey: "app-outbox::outbox", versionstamp: "vs-1", uowId: "uow-vs-1" },
       { sourceKey: "app-outbox::outbox", versionstamp: "vs-2", uowId: "uow-vs-2" },

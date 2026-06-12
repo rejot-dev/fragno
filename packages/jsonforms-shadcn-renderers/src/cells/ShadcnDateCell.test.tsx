@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, assert } from "vitest";
 
 import type { ControlElement } from "@jsonforms/core";
 import { NOT_APPLICABLE } from "@jsonforms/core";
@@ -45,7 +45,7 @@ describe("shadcnDateCellTester", () => {
       type: "object",
       properties: { eventDate: { type: "string", format: "date" } },
     };
-    expect(shadcnDateCellTester(control, rootSchema, createTesterContext(rootSchema))).toBe(2);
+    assert(shadcnDateCellTester(control, rootSchema, createTesterContext(rootSchema)) === 2);
   });
 });
 

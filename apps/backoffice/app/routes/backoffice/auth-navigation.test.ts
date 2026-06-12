@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import {
   BACKOFFICE_HOME_PATH,
@@ -10,8 +10,9 @@ import {
 
 describe("sanitizeBackofficeReturnTo", () => {
   test("trims values, preserves query strings, and strips hashes for backoffice paths", () => {
-    expect(sanitizeBackofficeReturnTo(" /backoffice/settings?tab=members#security ")).toBe(
-      "/backoffice/settings?tab=members",
+    assert(
+      sanitizeBackofficeReturnTo(" /backoffice/settings?tab=members#security ") ===
+        "/backoffice/settings?tab=members",
     );
   });
 
@@ -23,11 +24,11 @@ describe("sanitizeBackofficeReturnTo", () => {
   });
 
   test("allows org-scoped MCP OAuth callbacks so login can resume the callback flow", () => {
-    expect(
+    assert(
       sanitizeBackofficeReturnTo(
         "/api/mcp/org_123/oauth/callback?code=abc&state=cloudflare%3Astate#ignored",
-      ),
-    ).toBe("/api/mcp/org_123/oauth/callback?code=abc&state=cloudflare%3Astate");
+      ) === "/api/mcp/org_123/oauth/callback?code=abc&state=cloudflare%3Astate",
+    );
   });
 
   test("rejects paths outside the backoffice namespace or allowed callback routes", () => {
@@ -41,28 +42,28 @@ describe("sanitizeBackofficeReturnTo", () => {
 
 describe("backoffice auth navigation helpers", () => {
   test("builds login paths with a cleaned returnTo only", () => {
-    expect(buildBackofficeLoginPath("/backoffice/settings?tab=members#security")).toBe(
-      "/backoffice/login?returnTo=%2Fbackoffice%2Fsettings%3Ftab%3Dmembers",
+    assert(
+      buildBackofficeLoginPath("/backoffice/settings?tab=members#security") ===
+        "/backoffice/login?returnTo=%2Fbackoffice%2Fsettings%3Ftab%3Dmembers",
     );
-    expect(
-      buildBackofficeLoginPath("/api/mcp/org_123/oauth/callback?code=abc&state=cloudflare%3As"),
-    ).toBe(
-      "/backoffice/login?returnTo=%2Fapi%2Fmcp%2Forg_123%2Foauth%2Fcallback%3Fcode%3Dabc%26state%3Dcloudflare%253As",
+    assert(
+      buildBackofficeLoginPath("/api/mcp/org_123/oauth/callback?code=abc&state=cloudflare%3As") ===
+        "/backoffice/login?returnTo=%2Fapi%2Fmcp%2Forg_123%2Foauth%2Fcallback%3Fcode%3Dabc%26state%3Dcloudflare%253As",
     );
     expect(buildBackofficeLoginPath("/backoffice/login?x=1")).toBe(BACKOFFICE_LOGIN_PATH);
   });
 
   test("reads the returnTo value with the same sanitization", () => {
-    expect(
+    assert(
       readBackofficeReturnTo(
         "http://localhost/backoffice/login?returnTo=%2Fbackoffice%2Fsettings%3Ftab%3Dmembers",
-      ),
-    ).toBe("/backoffice/settings?tab=members");
-    expect(
+      ) === "/backoffice/settings?tab=members",
+    );
+    assert(
       readBackofficeReturnTo(
         "http://localhost/backoffice/login?returnTo=%2Fapi%2Fmcp%2Forg_123%2Foauth%2Fcallback%3Fcode%3Dabc%26state%3Dcloudflare%253As",
-      ),
-    ).toBe("/api/mcp/org_123/oauth/callback?code=abc&state=cloudflare%3As");
+      ) === "/api/mcp/org_123/oauth/callback?code=abc&state=cloudflare%3As",
+    );
     expect(
       readBackofficeReturnTo("http://localhost/backoffice/login?returnTo=%2Fbackoffice-login"),
     ).toBe(BACKOFFICE_HOME_PATH);

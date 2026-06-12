@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, assert } from "vitest";
 
 import { column, FragnoReference, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 import {
@@ -207,7 +207,7 @@ describe("outbox sync integration", () => {
           ),
       );
       expect(joined).toHaveLength(1);
-      expect(joined[0].author?.email).toBe("beta@example.com");
+      assert(joined[0].author?.email === "beta@example.com");
     } finally {
       await cleanup();
     }
@@ -254,7 +254,7 @@ describe("outbox sync integration", () => {
       expect(onSyncApplied).toHaveBeenCalledTimes(1);
 
       const second = await client.syncOnce();
-      expect(second.appliedEntries).toBe(0);
+      assert(second.appliedEntries === 0);
       expect(onSyncApplied).toHaveBeenCalledTimes(1);
 
       const query = adapter.createQueryEngine(appSchema);

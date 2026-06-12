@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, assert } from "vitest";
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -53,7 +53,7 @@ describe("sessions actions", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(url).toBe(`${BASE_URL}/workflows/interactive-chat-workflow/sessions?limit=5`);
-    expect(init?.method).toBe("GET");
+    assert(init?.method === "GET");
     expect(logger.log.mock.calls[0]?.[0]).toContain("ID");
   });
 
@@ -72,7 +72,7 @@ describe("sessions actions", () => {
     expect(exitCode).toBe(0);
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(url).toBe(`${BASE_URL}/workflows/interactive-chat-workflow/sessions`);
-    expect(init?.method).toBe("POST");
+    assert(init?.method === "POST");
     expect(init?.headers).toMatchObject({ "content-type": "application/json" });
     expect(JSON.parse(String(init?.body))).toEqual({
       input: { agentName: "agent-1" },
@@ -175,7 +175,7 @@ describe("sessions actions", () => {
     expect(exitCode).toBe(0);
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(url).toBe(`${BASE_URL}/workflows/interactive-chat-workflow/sessions/session-2/events`);
-    expect(init?.method).toBe("GET");
+    assert(init?.method === "GET");
     expect(fetchMock).toHaveBeenCalledTimes(3);
     const output = logger.log.mock.calls.map((call) => call[0]);
     expect(output.join("\n")).toContain("message_end hello there");
@@ -332,7 +332,7 @@ describe("sessions actions", () => {
     expect(exitCode).toBe(0);
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(url).toBe(`${BASE_URL}/workflows/interactive-chat-workflow/sessions/session-3/command`);
-    expect(init?.method).toBe("POST");
+    assert(init?.method === "POST");
     expect(JSON.parse(String(init?.body))).toEqual({
       kind: "prompt",
       input: { text: "Hello" },

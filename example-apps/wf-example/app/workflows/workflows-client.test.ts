@@ -1,20 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { describe, it, assert } from "vitest";
 
 import { workflowsClient } from "./workflows-client";
 
 describe("workflows client helpers", () => {
   it("labels statuses", () => {
-    expect(workflowsClient.helpers.statusLabel("active")).toBe("Active");
+    assert(workflowsClient.helpers.statusLabel("active") === "Active");
   });
 
   it("detects terminal statuses", () => {
-    expect(workflowsClient.helpers.isTerminalStatus("complete")).toBe(true);
-    expect(workflowsClient.helpers.isTerminalStatus("errored")).toBe(true);
-    expect(workflowsClient.helpers.isTerminalStatus("active")).toBe(false);
+    assert(workflowsClient.helpers.isTerminalStatus("complete"));
+    assert(workflowsClient.helpers.isTerminalStatus("errored"));
+    assert(!workflowsClient.helpers.isTerminalStatus("active"));
   });
 
   it("detects waiting statuses", () => {
-    expect(workflowsClient.helpers.isWaitingStatus("waiting")).toBe(true);
-    expect(workflowsClient.helpers.isWaitingStatus("active")).toBe(false);
+    assert(workflowsClient.helpers.isWaitingStatus("waiting"));
+    assert(!workflowsClient.helpers.isWaitingStatus("active"));
   });
 });

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import {
   buildCloudflareAppTag,
@@ -17,8 +17,8 @@ describe("deployment-tag helpers", () => {
 
     expect(appTag).toBe("fragno-app-tenant-app");
     expect(deploymentTag).toBe("fragno-dep-dep-123");
-    expect(getCloudflareAppIdFromTag(appTag, prefix)).toBe("tenant-app");
-    expect(getCloudflareDeploymentIdFromTag(deploymentTag, prefix)).toBe("dep-123");
+    assert(getCloudflareAppIdFromTag(appTag, prefix) === "tenant-app");
+    assert(getCloudflareDeploymentIdFromTag(deploymentTag, prefix) === "dep-123");
   });
 
   test("caps long prefixes so app and deployment tags stay within Cloudflare's limit", () => {
@@ -47,8 +47,8 @@ describe("deployment-tag helpers", () => {
 
     expect(appTag).toBe("fragno-app-app-tenant-app");
     expect(deploymentTag).toBe("fragno-dep-dep-dep-123");
-    expect(getCloudflareAppIdFromTag(appTag, appPrefix)).toBe("tenant-app");
-    expect(getCloudflareDeploymentIdFromTag(deploymentTag, deploymentPrefix)).toBe("dep-123");
+    assert(getCloudflareAppIdFromTag(appTag, appPrefix) === "tenant-app");
+    assert(getCloudflareDeploymentIdFromTag(deploymentTag, deploymentPrefix) === "dep-123");
     expect(findCloudflareAppTag([deploymentTag, appTag], appPrefix)).toBe(appTag);
     expect(findCloudflareDeploymentTag([appTag, deploymentTag], deploymentPrefix)).toBe(
       deploymentTag,

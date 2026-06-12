@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
@@ -16,7 +16,7 @@ describe("BackofficeStateFileSystem", () => {
     });
     const stateFs = new BackofficeStateFileSystem(masterFs);
 
-    expect(await stateFs.readFile("/workspace/readme.md")).toBe("hello");
+    assert((await stateFs.readFile("/workspace/readme.md")) === "hello");
     expect(await stateFs.stat("/workspace/readme.md")).toMatchObject({
       type: "file",
       size: 5,
@@ -27,7 +27,7 @@ describe("BackofficeStateFileSystem", () => {
     await stateFs.writeFileBytes("/workspace/docs/data.bin", new TextEncoder().encode("bytes"));
     await stateFs.appendFile("/workspace/docs/plan.md", "\nnow");
 
-    expect(await stateFs.readFile("/workspace/docs/plan.md")).toBe("ship it\nnow");
+    assert((await stateFs.readFile("/workspace/docs/plan.md")) === "ship it\nnow");
     expect(await stateFs.readFileBytes("/workspace/docs/data.bin")).toEqual(
       new TextEncoder().encode("bytes"),
     );

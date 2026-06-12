@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
@@ -25,32 +25,31 @@ describe("pi-fragment client exports", () => {
   it("exposes hooks and mutators for pi routes", () => {
     const clients = createPiFragmentClients(clientConfig);
 
-    expect(clients.useSessions.route.path).toBe("/workflows/:workflowName/sessions");
-    expect(clients.useSessions.route.method).toBe("GET");
-    expect(typeof clients.useSessions.store).toBe("function");
+    assert(clients.useSessions.route.path === "/workflows/:workflowName/sessions");
+    assert(clients.useSessions.route.method === "GET");
+    assert(typeof clients.useSessions.store === "function");
 
-    expect(clients.useSessionDetail.route.path).toBe(
-      "/workflows/:workflowName/sessions/:sessionId",
-    );
-    expect(clients.useSessionDetail.route.method).toBe("GET");
-    expect(typeof clients.useSessionDetail.store).toBe("function");
+    assert(clients.useSessionDetail.route.path === "/workflows/:workflowName/sessions/:sessionId");
+    assert(clients.useSessionDetail.route.method === "GET");
+    assert(typeof clients.useSessionDetail.store === "function");
 
-    expect(clients.useCreateSession.route.path).toBe("/workflows/:workflowName/sessions");
-    expect(clients.useCreateSession.route.method).toBe("POST");
-    expect(typeof clients.useCreateSession.mutateQuery).toBe("function");
+    assert(clients.useCreateSession.route.path === "/workflows/:workflowName/sessions");
+    assert(clients.useCreateSession.route.method === "POST");
+    assert(typeof clients.useCreateSession.mutateQuery === "function");
     expect(clients.useCreateSession.mutatorStore).toBeDefined();
 
-    expect(clients.useSessionEvents.route.path).toBe(
-      "/workflows/:workflowName/sessions/:sessionId/events",
+    assert(
+      clients.useSessionEvents.route.path === "/workflows/:workflowName/sessions/:sessionId/events",
     );
-    expect(clients.useSessionEvents.route.method).toBe("GET");
-    expect(typeof clients.useSessionEvents.store).toBe("function");
+    assert(clients.useSessionEvents.route.method === "GET");
+    assert(typeof clients.useSessionEvents.store === "function");
 
-    expect(clients.useCommandSession.route.path).toBe(
-      "/workflows/:workflowName/sessions/:sessionId/command",
+    assert(
+      clients.useCommandSession.route.path ===
+        "/workflows/:workflowName/sessions/:sessionId/command",
     );
-    expect(clients.useCommandSession.route.method).toBe("POST");
-    expect(typeof clients.useCommandSession.mutateQuery).toBe("function");
+    assert(clients.useCommandSession.route.method === "POST");
+    assert(typeof clients.useCommandSession.mutateQuery === "function");
     expect(clients.useCommandSession.mutatorStore).toBeDefined();
   });
 
@@ -80,7 +79,7 @@ describe("pi-fragment client exports", () => {
       }
 
       for (const key of expectedKeys) {
-        expect(typeof clients[key]).toBe("function");
+        assert(typeof clients[key] === "function");
       }
     }
   });

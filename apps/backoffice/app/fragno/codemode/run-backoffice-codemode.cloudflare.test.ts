@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { env } from "cloudflare:workers";
 import { InMemoryFs } from "just-bash";
@@ -33,7 +33,7 @@ describe("runBackofficeCodemode", () => {
     });
 
     expect(result.error).toBeUndefined();
-    expect(result.result).toBe("hello codemode");
+    assert(result.result === "hello codemode");
     expect(result.logs).toContain("wrote output");
     await expect(fs.readFile("/workspace/output.txt")).resolves.toBe("hello codemode");
   });
@@ -368,7 +368,7 @@ describe("runBackofficeCodemode", () => {
     });
 
     expect(result.result).toBeUndefined();
-    expect(result.error).toBe("runtime tool failed");
+    assert(result.error === "runtime tool failed");
     expect(result.toolCalls).toMatchObject([
       {
         providerName: "otp",

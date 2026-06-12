@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { createUnsupportedOperationFileSystemError } from "@/files/fs-errors";
 import { createUnsupportedFileSystem } from "@/files/interface";
@@ -119,9 +119,10 @@ describe("bash command runner", () => {
       }),
     });
 
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout.trim()).toBe(
-      'event={"id":"event-123","orgId":"org-1","source":"telegram","eventType":"message.received","occurredAt":"2026-01-01T00:00:00.000Z","payload":{"messageId":"message-1","chatId":"chat-1","fromUserId":"from-1","text":"/start"},"actor":{"scope":"external","source":"telegram","type":"chat","id":"chat-1"},"subject":{"userId":"user-1"}}',
+    assert(result.exitCode === 0);
+    assert(
+      result.stdout.trim() ===
+        'event={"id":"event-123","orgId":"org-1","source":"telegram","eventType":"message.received","occurredAt":"2026-01-01T00:00:00.000Z","payload":{"messageId":"message-1","chatId":"chat-1","fromUserId":"from-1","text":"/start"},"actor":{"scope":"external","source":"telegram","type":"chat","id":"chat-1"},"subject":{"userId":"user-1"}}',
     );
   });
 
@@ -154,8 +155,8 @@ describe("bash command runner", () => {
       }),
     });
 
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout.trim()).toBe("kept");
+    assert(result.exitCode === 0);
+    assert(result.stdout.trim() === "kept");
   });
 
   it("keeps the shared master filesystem mount list unchanged after execution", async () => {
@@ -253,8 +254,8 @@ describe("bash command runner", () => {
     releaseFirstRun.resolve();
     const completedFirstRun = await firstRun;
 
-    expect(completedFirstRun.exitCode).toBe(0);
-    expect(secondRun.exitCode).toBe(0);
+    assert(completedFirstRun.exitCode === 0);
+    assert(secondRun.exitCode === 0);
     expect(secondRun.stdout).toContain('before={"id":"event-overlap-b"');
     expect(secondRun.stdout).toContain('after={"id":"event-overlap-b"');
     expect(secondRun.stdout).not.toContain('"id":"event-overlap-a"');
@@ -338,13 +339,13 @@ describe("bash command runner", () => {
 
     releaseFirstRun.resolve();
     const completedFirstRun = await firstRun;
-    expect(completedFirstRun.exitCode).toBe(0);
+    assert(completedFirstRun.exitCode === 0);
 
     releaseSecondRun.resolve();
     const secondRun = await secondRunPromise;
 
-    expect(secondRun.exitCode).toBe(0);
-    expect(secondRun.stderr).toBe("");
+    assert(secondRun.exitCode === 0);
+    assert(secondRun.stderr === "");
     expect(secondRun.stdout).toContain('before={"id":"event-cleanup-b"');
     expect(secondRun.stdout).toContain('after={"id":"event-cleanup-b"');
   });
@@ -394,6 +395,6 @@ describe("bash command runner", () => {
     });
 
     expect(masterFs.mounts).toHaveLength(1);
-    expect(masterFs.mounts[0]!.id).toBe("existing-dev");
+    assert(masterFs.mounts[0]!.id === "existing-dev");
   });
 });

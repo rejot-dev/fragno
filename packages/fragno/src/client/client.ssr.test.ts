@@ -6,7 +6,7 @@
  * @vitest-environment node
  */
 
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi, assert } from "vitest";
 
 import { z } from "zod";
 
@@ -33,7 +33,7 @@ describe("server side rendering", () => {
 
   describe("pre-conditions", () => {
     test("Make sure window is undefined", () => {
-      expect(typeof window).toBe("undefined");
+      assert(typeof window === "undefined");
     });
   });
 

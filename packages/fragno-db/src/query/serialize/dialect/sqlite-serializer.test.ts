@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, assert } from "vitest";
 
 import { BetterSQLite3DriverConfig } from "../../../adapters/generic-sql/driver-config";
 import { sqliteStoragePrisma } from "../../../adapters/generic-sql/sqlite-storage";
@@ -28,7 +28,7 @@ describe("SQLiteSerializer", () => {
 
         const result = serializer["serializeBigInt"](BigInt(123), col);
         expect(result).toBe(123);
-        expect(typeof result).toBe("number");
+        assert(typeof result === "number");
       });
 
       it("should convert safe bigint to number for internal-id column", () => {
@@ -41,7 +41,7 @@ describe("SQLiteSerializer", () => {
 
         const result = serializer["serializeBigInt"](BigInt(456), col);
         expect(result).toBe(456);
-        expect(typeof result).toBe("number");
+        assert(typeof result === "number");
       });
 
       it("should convert MAX_SAFE_INTEGER successfully", () => {
@@ -116,7 +116,7 @@ describe("SQLiteSerializer", () => {
 
         const result = serializer["serializeBigInt"](BigInt(789), col);
         expect(result).toBeInstanceOf(Buffer);
-        expect((result as Buffer).length).toBe(8);
+        assert((result as Buffer).length === 8);
       });
 
       it("should keep bigint for regular column in prisma storage", () => {
@@ -129,7 +129,7 @@ describe("SQLiteSerializer", () => {
 
         const result = prismaSerializer["serializeBigInt"](BigInt(789), col);
         expect(result).toBe(BigInt(789));
-        expect(typeof result).toBe("bigint");
+        assert(typeof result === "bigint");
       });
 
       it("should handle large values outside safe integer range as Buffer", () => {
@@ -156,26 +156,26 @@ describe("SQLiteSerializer", () => {
       const date = new Date("2024-01-01T00:00:00Z");
       const result = serializer["serializeDate"](date, timestampColumn);
       expect(result).toBe(date.getTime());
-      expect(typeof result).toBe("number");
+      assert(typeof result === "number");
     });
 
     it("should serialize Date to ISO string for prisma storage", () => {
       const date = new Date("2024-01-01T00:00:00Z");
       const result = prismaSerializer["serializeDate"](date, timestampColumn);
       expect(result).toBe(date.toISOString());
-      expect(typeof result).toBe("string");
+      assert(typeof result === "string");
     });
 
     it("should serialize boolean to 0/1", () => {
-      expect(serializer["serializeBoolean"](true)).toBe(1);
-      expect(serializer["serializeBoolean"](false)).toBe(0);
+      assert(serializer["serializeBoolean"](true) === 1);
+      assert(serializer["serializeBoolean"](false) === 0);
     });
 
     it("should serialize JSON to string", () => {
       const obj = { foo: "bar", num: 42 };
       const result = serializer["serializeJson"](obj);
       expect(result).toBe(JSON.stringify(obj));
-      expect(typeof result).toBe("string");
+      assert(typeof result === "string");
     });
   });
 
@@ -213,31 +213,31 @@ describe("SQLiteSerializer", () => {
   describe("deserializeDate", () => {
     it("should parse CURRENT_TIMESTAMP format as UTC", () => {
       const date = prismaSerializer["deserializeDate"]("2024-03-10 12:34:56", timestampColumn);
-      expect(date.toISOString()).toBe("2024-03-10T12:34:56.000Z");
+      assert(date.toISOString() === "2024-03-10T12:34:56.000Z");
     });
 
     it("should parse CURRENT_TIMESTAMP format with milliseconds as UTC", () => {
       const date = prismaSerializer["deserializeDate"]("2024-03-10 12:34:56.789", timestampColumn);
-      expect(date.toISOString()).toBe("2024-03-10T12:34:56.789Z");
+      assert(date.toISOString() === "2024-03-10T12:34:56.789Z");
     });
 
     it("should parse numeric timestamp strings with decimals", () => {
       const date = serializer["deserializeDate"]("1772709276409.0", timestampColumn);
-      expect(date.getTime()).toBe(1772709276409);
+      assert(date.getTime() === 1772709276409);
     });
   });
 
   describe("deserializeInteger", () => {
     it("should deserialize number directly", () => {
-      expect(serializer["deserializeInteger"](42)).toBe(42);
+      assert(serializer["deserializeInteger"](42) === 42);
     });
 
     it("should deserialize string to number", () => {
-      expect(serializer["deserializeInteger"]("123")).toBe(123);
+      assert(serializer["deserializeInteger"]("123") === 123);
     });
 
     it("should deserialize bigint to number when safe", () => {
-      expect(serializer["deserializeInteger"](BigInt(456))).toBe(456);
+      assert(serializer["deserializeInteger"](BigInt(456)) === 456);
     });
 
     it("should throw error when bigint exceeds safe range", () => {
@@ -261,13 +261,13 @@ describe("SQLiteSerializer", () => {
 
   describe("deserializeDecimal", () => {
     it("should deserialize number directly", () => {
-      expect(serializer["deserializeDecimal"](3.14)).toBe(3.14);
+      assert(serializer["deserializeDecimal"](3.14) === 3.14);
     });
 
     it("should deserialize string to number", () => {
-      expect(serializer["deserializeDecimal"]("3.14")).toBe(3.14);
-      expect(serializer["deserializeDecimal"]("123.456")).toBe(123.456);
-      expect(serializer["deserializeDecimal"]("-99.99")).toBe(-99.99);
+      assert(serializer["deserializeDecimal"]("3.14") === 3.14);
+      assert(serializer["deserializeDecimal"]("123.456") === 123.456);
+      assert(serializer["deserializeDecimal"]("-99.99") === -99.99);
     });
 
     it("should throw error for invalid string", () => {
@@ -285,7 +285,7 @@ describe("SQLiteSerializer", () => {
 
   describe("deserializeString", () => {
     it("should deserialize string directly", () => {
-      expect(serializer["deserializeString"]("hello")).toBe("hello");
+      assert(serializer["deserializeString"]("hello") === "hello");
     });
 
     it("should throw error for non-string", () => {

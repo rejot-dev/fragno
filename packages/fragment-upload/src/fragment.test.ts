@@ -139,7 +139,7 @@ describe("upload fragment direct single flows", () => {
     });
 
     assert(createResponse.type === "json");
-    expect(createResponse.data.strategy).toBe("direct-single");
+    assert(createResponse.data.strategy === "direct-single");
 
     const completeResponse = await fragment.callRoute("POST", "/uploads/:uploadId/complete", {
       pathParams: { uploadId: createResponse.data.uploadId },
@@ -147,7 +147,7 @@ describe("upload fragment direct single flows", () => {
     });
 
     assert(completeResponse.type === "json");
-    expect(completeResponse.data.status).toBe("ready");
+    assert(completeResponse.data.status === "ready");
     expect(finalizeUpload).toHaveBeenCalled();
 
     const stored = await (async () => {
@@ -163,7 +163,7 @@ describe("upload fragment direct single flows", () => {
       return (await uow.retrievalPhase)[0];
     })();
 
-    expect(stored?.status).toBe("ready");
+    assert(stored?.status === "ready");
     expect(stored?.objectKey).toMatch(
       new RegExp(
         `^store/${adapter.name}/${createResponse.data.fileKey}/\\d{8}T\\d{9}Z(?:-\\d{4})?$`,
@@ -222,8 +222,8 @@ describe("upload fragment direct single flows", () => {
     });
 
     assert(second.type === "error");
-    expect(second.status).toBe(409);
-    expect(second.error.code).toBe("UPLOAD_ALREADY_ACTIVE");
+    assert(second.status === 409);
+    assert(second.error.code === "UPLOAD_ALREADY_ACTIVE");
     expect(initUpload).toHaveBeenCalledTimes(2);
   });
 
@@ -250,8 +250,8 @@ describe("upload fragment direct single flows", () => {
     });
 
     assert(second.type === "error");
-    expect(second.status).toBe(409);
-    expect(second.error.code).toBe("UPLOAD_ALREADY_ACTIVE");
+    assert(second.status === 409);
+    assert(second.error.code === "UPLOAD_ALREADY_ACTIVE");
     expect(initUpload).toHaveBeenCalledTimes(2);
   });
 
@@ -281,8 +281,8 @@ describe("upload fragment direct single flows", () => {
     });
 
     assert(secondComplete.type === "error");
-    expect(secondComplete.status).toBe(409);
-    expect(secondComplete.error.code).toBe("FILE_ALREADY_EXISTS");
+    assert(secondComplete.status === 409);
+    assert(secondComplete.error.code === "FILE_ALREADY_EXISTS");
   });
 
   it("rejects expired uploads", async () => {
@@ -315,8 +315,8 @@ describe("upload fragment direct single flows", () => {
     });
 
     assert(response.type === "error");
-    expect(response.status).toBe(410);
-    expect(response.error.code).toBe("UPLOAD_EXPIRED");
+    assert(response.status === 410);
+    assert(response.error.code === "UPLOAD_EXPIRED");
   });
 
   it("replaces the authoritative file row when a file appears before completion", async () => {
@@ -384,7 +384,7 @@ describe("upload fragment direct single flows", () => {
     });
 
     assert(completeResponse.type === "json");
-    expect(completeResponse.data.status).toBe("ready");
+    assert(completeResponse.data.status === "ready");
 
     const currentFile = await (async () => {
       const uow = db
@@ -463,7 +463,7 @@ describe("upload fragment direct single flows", () => {
     });
 
     assert(secondComplete.type === "json");
-    expect(secondComplete.data.filename).toBe("second.txt");
+    assert(secondComplete.data.filename === "second.txt");
 
     const currentFile = await (async () => {
       const uow = db
@@ -528,8 +528,8 @@ describe("upload fragment direct single flows", () => {
       });
 
       assert(secondComplete.type === "error");
-      expect(secondComplete.status).toBe(502);
-      expect(secondComplete.error.code).toBe("STORAGE_ERROR");
+      assert(secondComplete.status === 502);
+      assert(secondComplete.error.code === "STORAGE_ERROR");
     } finally {
       dateNowSpy.mockRestore();
     }
@@ -563,8 +563,8 @@ describe("upload fragment direct single flows", () => {
       });
 
       assert(response.type === "error");
-      expect(response.status).toBe(400);
-      expect(response.error.code).toBe("INVALID_CHECKSUM");
+      assert(response.status === 400);
+      assert(response.error.code === "INVALID_CHECKSUM");
     });
   });
 
@@ -651,8 +651,8 @@ describe("upload fragment direct single flows", () => {
         return (await uow.retrievalPhase)[0];
       })();
 
-      expect(upload?.status).toBe("expired");
-      expect(upload?.errorCode).toBe("UPLOAD_EXPIRED");
+      assert(upload?.status === "expired");
+      assert(upload?.errorCode === "UPLOAD_EXPIRED");
       expect(file).toBeNull();
     });
   });
@@ -822,7 +822,7 @@ describe("upload fragment direct single flows", () => {
         expect(onFileDeleted).not.toHaveBeenCalled();
 
         const currentStoragePath = path.join(rootDir, ...currentFile.objectKey.split("/"));
-        expect(await fs.readFile(currentStoragePath, "utf8")).toBe("second");
+        assert((await fs.readFile(currentStoragePath, "utf8")) === "second");
       });
     } finally {
       await fs.rm(rootDir, { recursive: true, force: true });
@@ -952,17 +952,17 @@ describe("upload fragment direct single flows", () => {
           throw new Error("Current file row missing objectKey");
         }
 
-        expect(await readStoredContent(firstFile.objectKey)).toBe("first");
-        expect(await readStoredContent(secondFile.objectKey)).toBe("second");
-        expect(await readStoredContent(currentFile.objectKey)).toBe("third");
+        assert((await readStoredContent(firstFile.objectKey)) === "first");
+        assert((await readStoredContent(secondFile.objectKey)) === "second");
+        assert((await readStoredContent(currentFile.objectKey)) === "third");
         expect(deleteObject).not.toHaveBeenCalled();
         expect(onFileDeleted).not.toHaveBeenCalled();
 
         const beforeDrain = await fragment.callRouteRaw("GET", "/files/by-key/content", {
           query: { provider: storage.name, key: firstCreate.data.fileKey },
         });
-        expect(beforeDrain.status).toBe(200);
-        expect(await beforeDrain.text()).toBe("third");
+        assert(beforeDrain.status === 200);
+        assert((await beforeDrain.text()) === "third");
 
         await drainDurableHooks(fragment);
 
@@ -981,7 +981,7 @@ describe("upload fragment direct single flows", () => {
         await expect(readStoredContent(secondFile.objectKey)).rejects.toMatchObject({
           code: "ENOENT",
         });
-        expect(await readStoredContent(currentFile.objectKey)).toBe("third");
+        assert((await readStoredContent(currentFile.objectKey)) === "third");
       });
     } finally {
       dateNowSpy.mockRestore();
@@ -1086,8 +1086,8 @@ describe("upload fragment direct single flows", () => {
         });
         assert(deleteResponse.type === "json");
 
-        expect(await readStoredContent(firstFile.objectKey)).toBe("first");
-        expect(await readStoredContent(currentFile.objectKey)).toBe("second");
+        assert((await readStoredContent(firstFile.objectKey)) === "first");
+        assert((await readStoredContent(currentFile.objectKey)) === "second");
         expect(deleteObject).not.toHaveBeenCalled();
         expect(onFileDeleted).not.toHaveBeenCalled();
 
@@ -1095,8 +1095,8 @@ describe("upload fragment direct single flows", () => {
           query: { provider: storage.name, key: firstCreate.data.fileKey },
         });
         assert(contentResponse.type === "error");
-        expect(contentResponse.status).toBe(410);
-        expect(contentResponse.error.code).toBe("FILE_DELETED");
+        assert(contentResponse.status === 410);
+        assert(contentResponse.error.code === "FILE_DELETED");
 
         await drainDurableHooks(fragment);
 
@@ -1371,7 +1371,7 @@ describe("upload fragment direct single flows", () => {
             .execute();
         });
 
-        expect(updatedHook?.status).toBe("pending");
+        assert(updatedHook?.status === "pending");
         expect(updatedHook?.error).toContain("Missing persisted objectKey");
         expect(updatedHook?.error).toContain("Refusing to reconstruct storage key");
       });
@@ -1422,7 +1422,7 @@ describe("upload fragment direct single flows", () => {
     });
 
     assert(completedRetry.type === "json");
-    expect(completedRetry.data.status).toBe("ready");
+    assert(completedRetry.data.status === "ready");
 
     const internalFragment = getInternalFragment(build.test.adapter);
     const hooks = await internalFragment.inContext(async function () {
@@ -1484,7 +1484,7 @@ describe("upload fragment direct single flows", () => {
       return (await uow.retrievalPhase)[0];
     })();
 
-    expect(file?.status).toBe("ready");
+    assert(file?.status === "ready");
   });
 });
 
@@ -1519,7 +1519,7 @@ describe("upload fragment direct multipart flows", () => {
     });
 
     assert(createResponse.type === "json");
-    expect(createResponse.data.strategy).toBe("direct-multipart");
+    assert(createResponse.data.strategy === "direct-multipart");
 
     const partsResponse = await fragment.callRoute("POST", "/uploads/:uploadId/parts", {
       pathParams: { uploadId: createResponse.data.uploadId },
@@ -1554,7 +1554,7 @@ describe("upload fragment direct multipart flows", () => {
     });
 
     assert(completeResponse.type === "json");
-    expect(completeResponse.data.status).toBe("ready");
+    assert(completeResponse.data.status === "ready");
     expect(completeMultipartUpload).toHaveBeenCalledWith({
       storageKey: expect.stringMatching(
         new RegExp(`^store/${adapter.name}/${createResponse.data.fileKey}/\\d{8}T\\d{9}Z$`),
@@ -1634,7 +1634,7 @@ describe("upload fragment direct multipart flows", () => {
     });
 
     assert(secondComplete.type === "json");
-    expect(secondComplete.data.filename).toBe("movie-v2.mp4");
+    assert(secondComplete.data.filename === "movie-v2.mp4");
 
     const currentFile = await (async () => {
       const uow = db
@@ -1708,6 +1708,6 @@ describe("upload fragment proxy streaming", () => {
     });
 
     assert(uploadResponse.type === "json");
-    expect(uploadResponse.data.status).toBe("ready");
+    assert(uploadResponse.data.status === "ready");
   });
 });

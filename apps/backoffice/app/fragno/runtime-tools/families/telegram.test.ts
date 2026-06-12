@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { telegramRuntimeTools } from "./telegram";
 
@@ -6,7 +6,7 @@ describe("telegram runtime tools", () => {
   test("parse and validate chat send input with shorthand flags", () => {
     const sendMessage = telegramRuntimeTools.find((tool) => tool.id === "telegram.chat.send")!;
 
-    expect(sendMessage.name).toBe("sendMessage");
+    assert(sendMessage.name === "sendMessage");
     expect(
       sendMessage.inputSchema.parse(
         sendMessage.adapters!.bash!.parse([
@@ -33,7 +33,7 @@ describe("telegram runtime tools", () => {
   test("parse and validate file download input with output shorthand", () => {
     const downloadFile = telegramRuntimeTools.find((tool) => tool.id === "telegram.file.download")!;
 
-    expect(downloadFile.name).toBe("downloadFile");
+    assert(downloadFile.name === "downloadFile");
     expect(
       downloadFile.inputSchema.parse(
         downloadFile.adapters!.bash!.parse(["--file-id", "file-1", "-o", "/tmp/file.bin"]),

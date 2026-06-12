@@ -1,4 +1,4 @@
-import { test, expect, describe } from "vitest";
+import { test, expect, describe, assert } from "vitest";
 
 import { FragnoApiError } from "../api/error";
 import { RequestOutputContext } from "../api/request-output-context";
@@ -10,9 +10,9 @@ describe("Error Conversion", () => {
     const apiResponse = apiError.toResponse();
     const clientError = await FragnoClientApiError.fromResponse(apiResponse);
     expect(clientError).toBeInstanceOf(FragnoClientApiError);
-    expect(clientError.message).toBe("API error");
-    expect(clientError.code).toBe("API_ERROR");
-    expect(clientError.status).toBe(500);
+    assert(clientError.message === "API error");
+    assert(clientError.code === "API_ERROR");
+    assert(clientError.status === 500);
   });
 
   test("error() should never result in an unknown error", async () => {
@@ -20,13 +20,13 @@ describe("Error Conversion", () => {
     const response = ctx.error({ message: "test", code: "MY_TEST_ERROR" }, { status: 400 });
 
     expect(response).toBeInstanceOf(Response);
-    expect(response.status).toBe(400);
+    assert(response.status === 400);
 
     const clientError = await FragnoClientApiError.fromResponse(response);
     expect(clientError).toBeInstanceOf(FragnoClientApiError);
     expect(clientError).not.toBeInstanceOf(FragnoClientUnknownApiError);
-    expect(clientError.message).toBe("test");
-    expect(clientError.code).toBe("MY_TEST_ERROR");
-    expect(clientError.status).toBe(400);
+    assert(clientError.message === "test");
+    assert(clientError.code === "MY_TEST_ERROR");
+    assert(clientError.status === 400);
   });
 });

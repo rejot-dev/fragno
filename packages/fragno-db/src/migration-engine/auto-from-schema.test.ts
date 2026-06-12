@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { column, idColumn, referenceColumn, schema } from "../schema/create";
 import { generateMigrationFromSchema } from "./auto-from-schema";
@@ -129,7 +129,7 @@ describe("generateMigrationFromSchema", () => {
     const operations = generateMigrationFromSchema(mySchema, 0, 2);
 
     expect(operations).toHaveLength(2);
-    expect(operations[0].type).toBe("create-table");
+    assert(operations[0].type === "create-table");
     expect(operations[1]).toMatchObject({
       type: "add-index",
       table: "users",
@@ -153,7 +153,7 @@ describe("generateMigrationFromSchema", () => {
     const operations = generateMigrationFromSchema(mySchema, 1, 2);
 
     expect(operations).toHaveLength(1);
-    expect(operations[0].type).toBe("alter-table");
+    assert(operations[0].type === "alter-table");
 
     const op = operations[0] as Extract<(typeof operations)[number], { type: "alter-table" }>;
     expect(op.value).toHaveLength(1);
@@ -180,14 +180,14 @@ describe("generateMigrationFromSchema", () => {
 
     const operationsV1 = generateMigrationFromSchema(mySchema, 0, 1);
     expect(operationsV1).toHaveLength(1);
-    expect(operationsV1[0].type).toBe("create-table");
+    assert(operationsV1[0].type === "create-table");
     const createOp = operationsV1[0] as Extract<
       (typeof operationsV1)[number],
       { type: "create-table" }
     >;
     const nameColumn = createOp.columns.find((col) => col.name === "name");
     expect(nameColumn).toBeDefined();
-    expect(nameColumn?.isNullable).toBe(false);
+    assert(!nameColumn?.isNullable);
 
     const operationsV2 = generateMigrationFromSchema(mySchema, 0, 2);
     expect(operationsV2).toHaveLength(2);
@@ -197,7 +197,7 @@ describe("generateMigrationFromSchema", () => {
     >;
     const nameColumnV2 = createOpV2.columns.find((col) => col.name === "name");
     expect(nameColumnV2).toBeDefined();
-    expect(nameColumnV2?.isNullable).toBe(false);
+    assert(!nameColumnV2?.isNullable);
   });
 
   it("should generate mixed operations for tables and foreign keys", () => {
@@ -217,9 +217,9 @@ describe("generateMigrationFromSchema", () => {
     const operations = generateMigrationFromSchema(mySchema, 0, 2);
 
     expect(operations).toHaveLength(3);
-    expect(operations[0].type).toBe("create-table");
-    expect(operations[1].type).toBe("create-table");
-    expect(operations[2].type).toBe("add-foreign-key");
+    assert(operations[0].type === "create-table");
+    assert(operations[1].type === "create-table");
+    assert(operations[2].type === "add-foreign-key");
   });
 
   it("should generate mixed operations for tables, indexes, and foreign keys", () => {
@@ -242,10 +242,10 @@ describe("generateMigrationFromSchema", () => {
     const operations = generateMigrationFromSchema(mySchema, 0, 3);
 
     expect(operations).toHaveLength(4);
-    expect(operations[0].type).toBe("create-table");
-    expect(operations[1].type).toBe("add-index");
-    expect(operations[2].type).toBe("create-table");
-    expect(operations[3].type).toBe("add-foreign-key");
+    assert(operations[0].type === "create-table");
+    assert(operations[1].type === "add-index");
+    assert(operations[2].type === "create-table");
+    assert(operations[3].type === "add-foreign-key");
   });
 
   it("should generate no operations when version range is empty", () => {

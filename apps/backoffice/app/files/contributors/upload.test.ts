@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { Bash, defineCommand } from "just-bash";
 
@@ -297,9 +297,7 @@ describe("upload file contributor", () => {
     await fs.writeFile?.("/workspace/reports/q1.txt", "updated");
     await fs.rm?.("/workspace/reports/q1.txt", { force: true });
 
-    expect(runtime.requests.some((request) => request.startsWith("GET /api/upload/files?"))).toBe(
-      false,
-    );
+    assert(!runtime.requests.some((request) => request.startsWith("GET /api/upload/files?")));
   });
 
   test("fails fast when a mount is bound to an unconfigured provider", () => {
@@ -339,7 +337,7 @@ describe("upload file contributor", () => {
       "telegram.file.download --file-id telegram-file-1 > /workspace/audio.oga",
     );
 
-    expect(result.exitCode).toBe(0);
+    assert(result.exitCode === 0);
     await expect(fs.readFileBuffer("/workspace/audio.oga")).resolves.toEqual(originalBytes);
   });
 
@@ -352,9 +350,7 @@ describe("upload file contributor", () => {
     await expect(fs.readFile?.("/workspace/reports/q1.txt")).resolves.toBe("updated");
 
     await fs.writeFile?.("/workspace/notes/todo.md", "- ship it");
-    expect(runtime.files.has(composeStorageKey(UPLOAD_PROVIDER_DATABASE, "notes/todo.md"))).toBe(
-      true,
-    );
+    assert(runtime.files.has(composeStorageKey(UPLOAD_PROVIDER_DATABASE, "notes/todo.md")));
     await expect(fs.readFile?.("/workspace/notes/todo.md")).resolves.toBe("- ship it");
 
     await fs.rm?.("/workspace/reports/", { recursive: true });
@@ -471,16 +467,16 @@ describe("upload file contributor", () => {
 
     await fs.mkdir?.("/workspace/reports/2026", { recursive: true });
 
-    expect(
+    assert(
       runtime.files.has(
         composeStorageKey(UPLOAD_PROVIDER_DATABASE, toUploadDirectoryMarkerFileKey("reports")),
       ),
-    ).toBe(true);
-    expect(
+    );
+    assert(
       runtime.files.has(
         composeStorageKey(UPLOAD_PROVIDER_DATABASE, toUploadDirectoryMarkerFileKey("reports/2026")),
       ),
-    ).toBe(true);
+    );
 
     await expect(fs.exists?.("/workspace/reports/")).resolves.toBe(true);
     await expect(fs.exists?.("/workspace/reports/2026/")).resolves.toBe(true);
@@ -514,16 +510,16 @@ describe("upload file contributor", () => {
 
     await expect(fs.exists?.("/workspace/reports/")).resolves.toBe(false);
     await expect(fs.readdir?.("/workspace")).resolves.toEqual([]);
-    expect(
-      runtime.files.has(
+    assert(
+      !runtime.files.has(
         composeStorageKey(UPLOAD_PROVIDER_DATABASE, toUploadDirectoryMarkerFileKey("reports")),
       ),
-    ).toBe(false);
-    expect(
-      runtime.files.has(
+    );
+    assert(
+      !runtime.files.has(
         composeStorageKey(UPLOAD_PROVIDER_DATABASE, toUploadDirectoryMarkerFileKey("reports/2026")),
       ),
-    ).toBe(false);
+    );
   });
 
   test("directory-marker detection requires marker metadata", async () => {

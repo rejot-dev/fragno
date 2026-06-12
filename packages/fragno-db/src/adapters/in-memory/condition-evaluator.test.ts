@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, it, assert } from "vitest";
 
 import type { Condition } from "../../query/condition-builder";
 import { buildCondition } from "../../query/condition-builder";
@@ -32,55 +32,55 @@ describe("in-memory condition evaluator", () => {
       size: 9n,
     };
 
-    expect(
+    assert(
       evaluateCondition(
         buildCondition(table.columns, (eb) => eb("createdAt", "=", createdAt)),
         table,
         row,
       ),
-    ).toBe(true);
+    );
     const numericBooleanCondition: Condition = {
       type: "compare",
       a: table.columns.isActive,
       operator: "=",
       b: 1,
     };
-    expect(evaluateCondition(numericBooleanCondition, table, row)).toBe(true);
-    expect(
+    assert(evaluateCondition(numericBooleanCondition, table, row));
+    assert(
       evaluateCondition(
         buildCondition(table.columns, (eb) => eb("payload", "=", payload)),
         table,
         row,
       ),
-    ).toBe(true);
-    expect(
+    );
+    assert(
       evaluateCondition(
         buildCondition(table.columns, (eb) => eb("size", ">", 8n)),
         table,
         row,
       ),
-    ).toBe(true);
-    expect(
+    );
+    assert(
       evaluateCondition(
         buildCondition(table.columns, (eb) => eb("name", "contains", "test")),
         table,
         row,
       ),
-    ).toBe(true);
-    expect(
+    );
+    assert(
       evaluateCondition(
         buildCondition(table.columns, (eb) => eb("name", "starts with", "TEST")),
         table,
         row,
       ),
-    ).toBe(true);
-    expect(
+    );
+    assert(
       evaluateCondition(
         buildCondition(table.columns, (eb) => eb("name", "ends with", "user")),
         table,
         row,
       ),
-    ).toBe(true);
+    );
   });
 
   it("handles null and IN semantics", () => {
@@ -100,27 +100,27 @@ describe("in-memory condition evaluator", () => {
       size: 9n,
     };
 
-    expect(
+    assert(
       evaluateCondition(
         buildCondition(table.columns, (eb) => eb("age", "is", null)),
         table,
         row,
       ),
-    ).toBe(true);
-    expect(
-      evaluateCondition(
+    );
+    assert(
+      !evaluateCondition(
         buildCondition(table.columns, (eb) => eb("age", "=", null)),
         table,
         row,
       ),
-    ).toBe(false);
-    expect(
-      evaluateCondition(
+    );
+    assert(
+      !evaluateCondition(
         buildCondition(table.columns, (eb) => eb("age", "is not", null)),
         table,
         row,
       ),
-    ).toBe(false);
+    );
 
     const inCondition: Condition = {
       type: "compare",
@@ -135,15 +135,15 @@ describe("in-memory condition evaluator", () => {
       b: [1n, null],
     };
 
-    expect(evaluateCondition(inCondition, table, row)).toBe(false);
-    expect(evaluateCondition(notInCondition, table, row)).toBe(false);
-    expect(
+    assert(!evaluateCondition(inCondition, table, row));
+    assert(!evaluateCondition(notInCondition, table, row));
+    assert(
       evaluateCondition(
         buildCondition(table.columns, (eb) => eb("size", "not in", [1n, 2n])),
         table,
         row,
       ),
-    ).toBe(true);
+    );
   });
 
   it("resolves reference values against the namespace store", () => {
@@ -184,6 +184,6 @@ describe("in-memory condition evaluator", () => {
     };
 
     const condition = buildCondition(postsTable.columns, (eb) => eb("userId", "=", "user_1"));
-    expect(evaluateCondition(condition, postsTable, postRow, namespaceStore)).toBe(true);
+    assert(evaluateCondition(condition, postsTable, postRow, namespaceStore));
   });
 });

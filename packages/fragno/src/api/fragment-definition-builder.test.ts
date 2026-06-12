@@ -1,4 +1,4 @@
-import { describe, it, expect, expectTypeOf, vi } from "vitest";
+import { describe, it, expect, expectTypeOf, vi, assert } from "vitest";
 
 import type { RequestThisContext } from "./api";
 import { defineFragment, type FragmentDefinition } from "./fragment-definition-builder";
@@ -8,13 +8,13 @@ describe("FragmentDefinitionBuilder", () => {
   describe("defineFragment", () => {
     it("should create a basic fragment builder", () => {
       const builder = defineFragment("test-fragment");
-      expect(builder.name).toBe("test-fragment");
+      assert(builder.name === "test-fragment");
     });
 
     it("should build a minimal definition", () => {
       const definition = defineFragment("test-fragment").build();
 
-      expect(definition.name).toBe("test-fragment");
+      assert(definition.name === "test-fragment");
       expect(definition.dependencies).toBeUndefined();
       expect(definition.baseServices).toBeUndefined();
       expect(definition.namedServices).toBeUndefined();
@@ -43,8 +43,8 @@ describe("FragmentDefinitionBuilder", () => {
         options: { mountRoute: "/api" },
       });
 
-      expect(deps.apiKey).toBe("test-key");
-      expect(deps.mountRoute).toBe("/api");
+      assert(deps.apiKey === "test-key");
+      assert(deps.mountRoute === "/api");
     });
 
     it("should reset services when setting dependencies", () => {
@@ -172,8 +172,8 @@ describe("FragmentDefinitionBuilder", () => {
         defineService: (svc) => svc,
       });
 
-      expect(services.method1()).toBe("test-key-method1");
-      expect(services.method2()).toBe("method2");
+      assert(services.method1() === "test-key-method1");
+      assert(services.method2() === "method2");
     });
 
     it("should define unnamed services with defineService", () => {
@@ -224,9 +224,7 @@ describe("FragmentDefinitionBuilder", () => {
         defineService: (svc) => svc,
       });
 
-      expect(emailService.send("user@example.com")).toBe(
-        "Sending to user@example.com with test-key",
-      );
+      assert(emailService.send("user@example.com") === "Sending to user@example.com with test-key");
     });
 
     it("should support multiple named services", () => {
@@ -259,8 +257,8 @@ describe("FragmentDefinitionBuilder", () => {
         defineService: (svc) => svc,
       });
 
-      expect(emailService.send()).toBe("email sent");
-      expect(smsService.send()).toBe("sms sent");
+      assert(emailService.send() === "email sent");
+      assert(smsService.send() === "sms sent");
     });
   });
 
@@ -309,8 +307,8 @@ describe("FragmentDefinitionBuilder", () => {
         .usesOptionalService<"logger", LogService>("logger")
         .build();
 
-      expect(definition.serviceDependencies!.email.required).toBe(true);
-      expect(definition.serviceDependencies!.logger.required).toBe(false);
+      assert(definition.serviceDependencies!.email.required);
+      assert(!definition.serviceDependencies!.logger.required);
     });
 
     it("should allow services to use service dependencies", () => {
@@ -344,8 +342,8 @@ describe("FragmentDefinitionBuilder", () => {
         defineService: (svc) => svc,
       });
 
-      expect(services.sendWelcome()).toBe("Email sent to welcome@example.com");
-      expect(services.getKey()).toBe("test-key");
+      assert(services.sendWelcome() === "Email sent to welcome@example.com");
+      assert(services.getKey() === "test-key");
     });
   });
 
@@ -379,7 +377,7 @@ describe("FragmentDefinitionBuilder", () => {
         }))
         .build();
 
-      expect(definition.name).toBe("complex-fragment");
+      assert(definition.name === "complex-fragment");
       expect(definition.dependencies).toBeDefined();
       expect(definition.baseServices).toBeDefined();
       expect(definition.namedServices).toBeDefined();
@@ -418,9 +416,9 @@ describe("FragmentDefinitionBuilder", () => {
         defineService: (svc) => svc,
       });
 
-      expect(services.getData()).toBe("data-my-key");
+      assert(services.getData() === "data-my-key");
       expect(logs).toContain("Getting data");
-      expect(analyticsService.track("click")).toBe("Tracking click with my-key");
+      assert(analyticsService.track("click") === "Tracking click with my-key");
     });
   });
 
@@ -457,7 +455,7 @@ describe("FragmentDefinitionBuilder", () => {
         ? true
         : false = true;
 
-      expect(_typeCheck).toBe(true);
+      assert(_typeCheck);
     });
   });
 
@@ -472,7 +470,7 @@ describe("FragmentDefinitionBuilder", () => {
       }));
 
       expect(extended.builder).toBe(builder);
-      expect(extended.additionalMethod()).toBe("extended");
+      assert(extended.additionalMethod() === "extended");
     });
 
     it("should pass correct type through transformer", () => {
@@ -493,8 +491,8 @@ describe("FragmentDefinitionBuilder", () => {
         };
       });
 
-      expect(extended.name).toBe("test");
-      expect(extended.definition.name).toBe("test");
+      assert(extended.name === "test");
+      assert(extended.definition.name === "test");
     });
   });
 });

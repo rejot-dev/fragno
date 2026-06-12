@@ -1,4 +1,4 @@
-import { test, expect, describe, expectTypeOf } from "vitest";
+import { test, expect, describe, expectTypeOf, assert } from "vitest";
 
 import { z } from "zod";
 
@@ -49,7 +49,7 @@ describe("Request Middleware", () => {
       method: "GET",
     });
     const unauthorizedRes = await withAuth.handler(unauthorizedReq);
-    expect(unauthorizedRes.status).toBe(401);
+    assert(unauthorizedRes.status === 401);
     const unauthorizedBody = await unauthorizedRes.json();
     expect(unauthorizedBody).toEqual({
       message: "Unauthorized",
@@ -61,7 +61,7 @@ describe("Request Middleware", () => {
       method: "GET",
     });
     const authorizedRes = await withAuth.handler(authorizedReq);
-    expect(authorizedRes.status).toBe(200);
+    assert(authorizedRes.status === 200);
     const authorizedBody = await authorizedRes.json();
     expect(authorizedBody).toEqual({
       message: "You accessed protected resource",
@@ -141,7 +141,7 @@ describe("Request Middleware", () => {
     });
 
     const res = await instance.handler(req);
-    expect(res.status).toBe(403);
+    assert(res.status === 403);
 
     expect(await res.json()).toEqual({
       message: "Creating users has been disabled.",
@@ -153,7 +153,7 @@ describe("Request Middleware", () => {
       method: "GET",
     });
     const getRes = await instance.handler(getReq);
-    expect(getRes.status).toBe(200);
+    assert(getRes.status === 200);
     expect(await getRes.json()).toEqual({
       id: 1,
       name: "John Doe",
@@ -215,14 +215,14 @@ describe("Request Middleware", () => {
     });
 
     const res = await instance.handler(req);
-    expect(res.status).toBe(200);
+    assert(res.status === 200);
 
     expect(await res.json()).toEqual({
       id: 123,
       name: "John Doe",
     });
 
-    expect(middlewareCalled).toBe(false);
+    assert(!middlewareCalled);
   });
 
   test("ifMatchesRoute - can return undefined", async () => {
@@ -270,12 +270,12 @@ describe("Request Middleware", () => {
       method: "GET",
     });
     const getRes = await instance.handler(getReq);
-    expect(getRes.status).toBe(200);
+    assert(getRes.status === 200);
     expect(await getRes.json()).toEqual({
       id: 1,
       name: "John Doe",
     });
-    expect(middlewareCalled).toBe(true);
+    assert(middlewareCalled);
   });
 
   test("ifMatchesRoute - supports internal routes", async () => {
@@ -313,7 +313,7 @@ describe("Request Middleware", () => {
     });
 
     const res = await instance.handler(req);
-    expect(res.status).toBe(418);
+    assert(res.status === 418);
     expect(await res.json()).toEqual({ ok: false });
   });
 
@@ -397,7 +397,7 @@ describe("Request Middleware", () => {
     });
 
     const res = await instance.handler(req);
-    expect(res.status).toBe(200);
+    assert(res.status === 200);
     expect(await res.json()).toEqual({
       id: 1,
       name: "John Doe",
@@ -443,7 +443,7 @@ describe("Request Middleware", () => {
       method: "GET",
     });
     const adminRes = await instance.handler(adminReq);
-    expect(adminRes.status).toBe(200);
+    assert(adminRes.status === 200);
     expect(await adminRes.json()).toEqual({
       id: 9999,
       name: "John Doe",
@@ -513,7 +513,7 @@ describe("Request Middleware", () => {
     });
 
     const res = await instance.handler(invalidReq);
-    expect(res.status).toBe(400);
+    assert(res.status === 400);
 
     const body = await res.json();
     expect(body).toEqual({
@@ -572,7 +572,7 @@ describe("Request Middleware", () => {
     });
 
     const res = await instance.handler(invalidReq);
-    expect(res.status).toBe(400);
+    assert(res.status === 400);
 
     const body = await res.json();
     expect(body).toEqual({
@@ -621,7 +621,7 @@ describe("Request Middleware", () => {
       method: "GET",
     });
     const adminRes = await instance.handler(adminReq);
-    expect(adminRes.status).toBe(200);
+    assert(adminRes.status === 200);
     expect(await adminRes.json()).toEqual({
       id: 123,
       name: "John Doe",
@@ -676,7 +676,7 @@ describe("Request Middleware", () => {
     });
 
     const res = await instance.handler(req);
-    expect(res.status).toBe(200);
+    assert(res.status === 200);
     expect(await res.json()).toEqual({
       name: "John Doe",
       role: "admin-from-middleware",
@@ -719,7 +719,7 @@ describe("Request Middleware", () => {
     });
 
     const res = await instance.handler(req);
-    expect(res.status).toBe(200);
+    assert(res.status === 200);
     expect(await res.json()).toEqual({
       auth: "Bearer middleware-token",
       custom: "middleware-value",
@@ -789,8 +789,8 @@ describe("Request Middleware", () => {
     });
 
     const existingUserRes = await instance.handler(existingUserReq);
-    expect(asyncOperationCompleted).toBe(true);
-    expect(existingUserRes.status).toBe(409);
+    assert(asyncOperationCompleted);
+    assert(existingUserRes.status === 409);
     expect(await existingUserRes.json()).toEqual({
       message: "User already exists",
       code: "USER_EXISTS",
@@ -807,8 +807,8 @@ describe("Request Middleware", () => {
     });
 
     const newUserRes = await instance.handler(newUserReq);
-    expect(asyncOperationCompleted).toBe(true);
-    expect(newUserRes.status).toBe(200);
+    assert(asyncOperationCompleted);
+    assert(newUserRes.status === 200);
     expect(await newUserRes.json()).toEqual({
       id: 1,
       name: "new-user",
@@ -860,7 +860,7 @@ describe("Request Middleware", () => {
     });
 
     const res = await instance.handler(req);
-    expect(res.status).toBe(503);
+    assert(res.status === 503);
     expect(await res.json()).toEqual({
       message: "Service temporarily unavailable",
       code: "SERVICE_UNAVAILABLE",
@@ -929,7 +929,7 @@ describe("Request Middleware", () => {
     });
 
     const res = await instance.handler(req);
-    expect(res.status).toBe(200);
+    assert(res.status === 200);
 
     const responseBody = await res.json();
     expect(responseBody).toMatchObject({
@@ -987,7 +987,7 @@ describe("Request Middleware", () => {
     });
 
     const res = await instance.handler(req);
-    expect(res.status).toBe(200);
+    assert(res.status === 200);
     expect(executionOrder).toEqual([
       "start",
       "before-first-async",

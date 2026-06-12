@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { sqliteStoragePrisma } from "../../adapters/generic-sql/sqlite-storage";
 import { column, referenceColumn } from "../create";
@@ -43,43 +43,43 @@ describe("SQLTypeMapper", () => {
     const mapper = createSQLTypeMapper("sqlite");
 
     it("should convert integer types to integer", () => {
-      expect(mapper.getDatabaseType(column("integer"))).toBe("integer");
+      assert(mapper.getDatabaseType(column("integer")) === "integer");
     });
 
     it("should convert timestamp to integer", () => {
-      expect(mapper.getDatabaseType(column("timestamp"))).toBe("integer");
+      assert(mapper.getDatabaseType(column("timestamp")) === "integer");
     });
 
     it("should convert date to integer", () => {
-      expect(mapper.getDatabaseType(column("date"))).toBe("integer");
+      assert(mapper.getDatabaseType(column("date")) === "integer");
     });
 
     it("should convert bool to integer", () => {
-      expect(mapper.getDatabaseType(column("bool"))).toBe("integer");
+      assert(mapper.getDatabaseType(column("bool")) === "integer");
     });
 
     it("should convert binary to blob", () => {
-      expect(mapper.getDatabaseType(column("binary"))).toBe("blob");
+      assert(mapper.getDatabaseType(column("binary")) === "blob");
     });
 
     it("should convert bigint to blob", () => {
-      expect(mapper.getDatabaseType(column("bigint"))).toBe("blob");
+      assert(mapper.getDatabaseType(column("bigint")) === "blob");
     });
 
     it("should convert json to text", () => {
-      expect(mapper.getDatabaseType(column("json"))).toBe("text");
+      assert(mapper.getDatabaseType(column("json")) === "text");
     });
 
     it("should convert string to text", () => {
-      expect(mapper.getDatabaseType(column("string"))).toBe("text");
+      assert(mapper.getDatabaseType(column("string")) === "text");
     });
 
     it("should convert varchar to text", () => {
-      expect(mapper.getDatabaseType({ type: "varchar(255)" })).toBe("text");
+      assert(mapper.getDatabaseType({ type: "varchar(255)" }) === "text");
     });
 
     it("should convert decimal to real", () => {
-      expect(mapper.getDatabaseType(column("decimal"))).toBe("real");
+      assert(mapper.getDatabaseType(column("decimal")) === "real");
     });
   });
 
@@ -87,22 +87,22 @@ describe("SQLTypeMapper", () => {
     const mapper = createSQLTypeMapper("sqlite", sqliteStoragePrisma);
 
     it("should convert timestamp to text", () => {
-      expect(mapper.getDatabaseType(column("timestamp"))).toBe("text");
+      assert(mapper.getDatabaseType(column("timestamp")) === "text");
     });
 
     it("should convert date to text", () => {
-      expect(mapper.getDatabaseType(column("date"))).toBe("text");
+      assert(mapper.getDatabaseType(column("date")) === "text");
     });
 
     it("should convert bigint to integer", () => {
-      expect(mapper.getDatabaseType(column("bigint"))).toBe("integer");
+      assert(mapper.getDatabaseType(column("bigint")) === "integer");
     });
 
     it("should keep reference bigint as integer", () => {
       const userReferenceColumn = referenceColumn({ table: "users" });
       userReferenceColumn.name = "userId";
 
-      expect(mapper.getDatabaseType(userReferenceColumn)).toBe("integer");
+      assert(mapper.getDatabaseType(userReferenceColumn) === "integer");
     });
   });
 
@@ -110,32 +110,32 @@ describe("SQLTypeMapper", () => {
     const mapper = createSQLTypeMapper("postgresql");
 
     it("should convert bool to boolean", () => {
-      expect(mapper.getDatabaseType(column("bool"))).toBe("boolean");
+      assert(mapper.getDatabaseType(column("bool")) === "boolean");
     });
 
     it("should convert json to json", () => {
-      expect(mapper.getDatabaseType(column("json"))).toBe("json");
+      assert(mapper.getDatabaseType(column("json")) === "json");
     });
 
     it("should convert string to varchar", () => {
-      expect(mapper.getDatabaseType(column("string"))).toBe("varchar(191)");
+      assert(mapper.getDatabaseType(column("string")) === "varchar(191)");
     });
 
     it("should convert text to text", () => {
-      expect(mapper.getDatabaseType(column("text"))).toBe("text");
+      assert(mapper.getDatabaseType(column("text")) === "text");
     });
 
     it("should convert binary to bytea", () => {
-      expect(mapper.getDatabaseType(column("binary"))).toBe("bytea");
+      assert(mapper.getDatabaseType(column("binary")) === "bytea");
     });
 
     it("should preserve varchar with length", () => {
-      expect(mapper.getDatabaseType({ type: "varchar(200)" })).toBe("varchar(200)");
+      assert(mapper.getDatabaseType({ type: "varchar(200)" }) === "varchar(200)");
     });
 
     it("should preserve other types", () => {
-      expect(mapper.getDatabaseType(column("timestamp"))).toBe("timestamp");
-      expect(mapper.getDatabaseType(column("integer"))).toBe("integer");
+      assert(mapper.getDatabaseType(column("timestamp")) === "timestamp");
+      assert(mapper.getDatabaseType(column("integer")) === "integer");
     });
   });
 
@@ -143,28 +143,28 @@ describe("SQLTypeMapper", () => {
     const mapper = createSQLTypeMapper("mysql");
 
     it("should convert bool to boolean", () => {
-      expect(mapper.getDatabaseType(column("bool"))).toBe("boolean");
+      assert(mapper.getDatabaseType(column("bool")) === "boolean");
     });
 
     it("should convert string to varchar", () => {
-      expect(mapper.getDatabaseType(column("string"))).toBe("varchar(191)");
+      assert(mapper.getDatabaseType(column("string")) === "varchar(191)");
     });
 
     it("should convert text to text", () => {
-      expect(mapper.getDatabaseType(column("text"))).toBe("text");
+      assert(mapper.getDatabaseType(column("text")) === "text");
     });
 
     it("should convert binary to longblob", () => {
-      expect(mapper.getDatabaseType(column("binary"))).toBe("longblob");
+      assert(mapper.getDatabaseType(column("binary")) === "longblob");
     });
 
     it("should preserve varchar with length", () => {
-      expect(mapper.getDatabaseType({ type: "varchar(150)" })).toBe("varchar(150)");
+      assert(mapper.getDatabaseType({ type: "varchar(150)" }) === "varchar(150)");
     });
 
     it("should preserve other types", () => {
-      expect(mapper.getDatabaseType(column("integer"))).toBe("integer");
-      expect(mapper.getDatabaseType(column("json"))).toBe("json");
+      assert(mapper.getDatabaseType(column("integer")) === "integer");
+      assert(mapper.getDatabaseType(column("json")) === "json");
     });
   });
 });

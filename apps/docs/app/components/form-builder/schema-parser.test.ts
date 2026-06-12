@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, assert } from "vitest";
 
 import { generateSchemas } from "./schema-generator";
 import { parseSchemas } from "./schema-parser";
@@ -46,7 +46,7 @@ describe("parseSchemas", () => {
 
     const result = parseSchemas(schemas);
 
-    expect(result.fields[0].fieldType).toBe("textarea");
+    assert(result.fields[0].fieldType === "textarea");
   });
 
   it("parses slider via slider option", () => {
@@ -65,9 +65,9 @@ describe("parseSchemas", () => {
 
     const result = parseSchemas(schemas);
 
-    expect(result.fields[0].fieldType).toBe("slider");
-    expect(result.fields[0].options?.minimum).toBe(1);
-    expect(result.fields[0].options?.maximum).toBe(10);
+    assert(result.fields[0].fieldType === "slider");
+    assert(result.fields[0].options?.minimum === 1);
+    assert(result.fields[0].options?.maximum === 10);
   });
 
   it("parses select with enum values", () => {
@@ -90,7 +90,7 @@ describe("parseSchemas", () => {
 
     const result = parseSchemas(schemas);
 
-    expect(result.fields[0].fieldType).toBe("select");
+    assert(result.fields[0].fieldType === "select");
     expect(result.fields[0].options?.enumValues).toEqual(["active", "inactive", "pending"]);
   });
 
@@ -110,9 +110,9 @@ describe("parseSchemas", () => {
 
     const result = parseSchemas(schemas);
 
-    expect(result.fields[0].fieldType).toBe("number");
-    expect(result.fields[0].options?.minimum).toBe(0);
-    expect(result.fields[0].options?.maximum).toBe(150);
+    assert(result.fields[0].fieldType === "number");
+    assert(result.fields[0].options?.minimum === 0);
+    assert(result.fields[0].options?.maximum === 150);
   });
 
   it("parses integer type", () => {
@@ -131,7 +131,7 @@ describe("parseSchemas", () => {
 
     const result = parseSchemas(schemas);
 
-    expect(result.fields[0].fieldType).toBe("integer");
+    assert(result.fields[0].fieldType === "integer");
   });
 
   it("parses email format", () => {
@@ -150,7 +150,7 @@ describe("parseSchemas", () => {
 
     const result = parseSchemas(schemas);
 
-    expect(result.fields[0].fieldType).toBe("email");
+    assert(result.fields[0].fieldType === "email");
   });
 
   it("parses date format", () => {
@@ -169,7 +169,7 @@ describe("parseSchemas", () => {
 
     const result = parseSchemas(schemas);
 
-    expect(result.fields[0].fieldType).toBe("date");
+    assert(result.fields[0].fieldType === "date");
   });
 
   it("parses time format", () => {
@@ -188,7 +188,7 @@ describe("parseSchemas", () => {
 
     const result = parseSchemas(schemas);
 
-    expect(result.fields[0].fieldType).toBe("time");
+    assert(result.fields[0].fieldType === "time");
   });
 
   it("parses datetime format", () => {
@@ -207,7 +207,7 @@ describe("parseSchemas", () => {
 
     const result = parseSchemas(schemas);
 
-    expect(result.fields[0].fieldType).toBe("datetime");
+    assert(result.fields[0].fieldType === "datetime");
   });
 
   it("parses boolean type", () => {
@@ -226,7 +226,7 @@ describe("parseSchemas", () => {
 
     const result = parseSchemas(schemas);
 
-    expect(result.fields[0].fieldType).toBe("boolean");
+    assert(result.fields[0].fieldType === "boolean");
   });
 
   it("preserves field order from UI schema", () => {
@@ -276,7 +276,7 @@ describe("parseSchemas", () => {
     const result = parseSchemas(schemas);
 
     expect(result.fields.map((field) => field.fieldType)).toEqual(["text", "label", "text"]);
-    expect(result.fields[1].label).toBe("Section label");
+    assert(result.fields[1].label === "Section label");
   });
 
   it("handles required fields", () => {
@@ -302,9 +302,9 @@ describe("parseSchemas", () => {
 
     const result = parseSchemas(schemas);
 
-    expect(result.fields[0].required).toBe(true);
-    expect(result.fields[1].required).toBe(true);
-    expect(result.fields[2].required).toBe(false);
+    assert(result.fields[0].required);
+    assert(result.fields[1].required);
+    assert(!result.fields[2].required);
   });
 
   it("handles missing UI schema gracefully", () => {
@@ -344,7 +344,7 @@ describe("parseSchemas", () => {
 
     const result = parseSchemas(schemas);
 
-    expect(result.fields[0].description).toBe("Enter your full name");
+    assert(result.fields[0].description === "Enter your full name");
   });
 
   it("handles placeholder option", () => {
@@ -365,7 +365,7 @@ describe("parseSchemas", () => {
 
     const result = parseSchemas(schemas);
 
-    expect(result.fields[0].options?.placeholder).toBe("John Doe");
+    assert(result.fields[0].options?.placeholder === "John Doe");
   });
 
   it("falls back to humanized fieldName when title is missing", () => {
@@ -384,7 +384,7 @@ describe("parseSchemas", () => {
 
     const result = parseSchemas(schemas);
 
-    expect(result.fields[0].label).toBe("User Email");
+    assert(result.fields[0].label === "User Email");
   });
 
   it("handles properties not in UI schema", () => {
@@ -405,8 +405,8 @@ describe("parseSchemas", () => {
     const result = parseSchemas(schemas);
 
     expect(result.fields).toHaveLength(2);
-    expect(result.fields[0].fieldName).toBe("visible");
-    expect(result.fields[1].fieldName).toBe("hidden");
+    assert(result.fields[0].fieldName === "visible");
+    assert(result.fields[1].fieldName === "hidden");
   });
 
   it("marks array type as unsupported", () => {
@@ -425,7 +425,7 @@ describe("parseSchemas", () => {
 
     const result = parseSchemas(schemas);
 
-    expect(result.fields[0].fieldType).toBe("unsupported");
+    assert(result.fields[0].fieldType === "unsupported");
     expect(result.fields[0].options?.rawJsonSchema).toBeDefined();
     expect(JSON.parse(result.fields[0].options!.rawJsonSchema!)).toEqual({
       type: "array",
@@ -453,7 +453,7 @@ describe("parseSchemas", () => {
 
     const result = parseSchemas(schemas);
 
-    expect(result.fields[0].fieldType).toBe("unsupported");
+    assert(result.fields[0].fieldType === "unsupported");
     expect(result.fields[0].options?.rawJsonSchema).toBeDefined();
   });
 
@@ -473,7 +473,7 @@ describe("parseSchemas", () => {
 
     const result = parseSchemas(schemas);
 
-    expect(result.fields[0].fieldType).toBe("unsupported");
+    assert(result.fields[0].fieldType === "unsupported");
     expect(result.fields[0].options?.rawJsonSchema).toContain("custom-format");
   });
 
@@ -501,7 +501,7 @@ describe("parseSchemas", () => {
 
     expect(result.fields[0].options?.rawUiSchema).toBeDefined();
     const uiSchema = JSON.parse(result.fields[0].options!.rawUiSchema!);
-    expect(uiSchema.options?.showSortButtons).toBe(true);
+    assert(uiSchema.options?.showSortButtons);
   });
 
   it("handles nested HorizontalLayout within VerticalLayout", () => {
@@ -596,8 +596,8 @@ describe("parseSchemas", () => {
 
     const result = parseSchemas(schemas);
 
-    expect(result.fields[0].fieldType).toBe("textarea");
-    expect(result.fields[1].fieldType).toBe("slider");
+    assert(result.fields[0].fieldType === "textarea");
+    assert(result.fields[1].fieldType === "slider");
   });
 });
 
@@ -717,9 +717,9 @@ describe("round-trip", () => {
     const schemas = generateSchemas(originalState);
     const parsedState = parseSchemas(schemas);
 
-    expect(parsedState.fields[0].fieldType).toBe("number");
-    expect(parsedState.fields[0].options?.minimum).toBe(0);
-    expect(parsedState.fields[0].options?.maximum).toBe(150);
+    assert(parsedState.fields[0].fieldType === "number");
+    assert(parsedState.fields[0].options?.minimum === 0);
+    assert(parsedState.fields[0].options?.maximum === 150);
   });
 
   it("preserves slider default value", () => {
@@ -744,8 +744,8 @@ describe("round-trip", () => {
 
     const result = parseSchemas(schemas);
 
-    expect(result.fields[0].fieldType).toBe("slider");
-    expect(result.fields[0].options?.defaultValue).toBe(3);
+    assert(result.fields[0].fieldType === "slider");
+    assert(result.fields[0].options?.defaultValue === 3);
   });
 
   it("handles integer type with constraints", () => {
@@ -765,9 +765,9 @@ describe("round-trip", () => {
     const schemas = generateSchemas(originalState);
     const parsedState = parseSchemas(schemas);
 
-    expect(parsedState.fields[0].fieldType).toBe("integer");
-    expect(parsedState.fields[0].options?.minimum).toBe(1);
-    expect(parsedState.fields[0].options?.maximum).toBe(100);
+    assert(parsedState.fields[0].fieldType === "integer");
+    assert(parsedState.fields[0].options?.minimum === 1);
+    assert(parsedState.fields[0].options?.maximum === 100);
   });
 
   it("handles datetime and time formats", () => {
@@ -793,8 +793,8 @@ describe("round-trip", () => {
     const schemas = generateSchemas(originalState);
     const parsedState = parseSchemas(schemas);
 
-    expect(parsedState.fields[0].fieldType).toBe("time");
-    expect(parsedState.fields[1].fieldType).toBe("datetime");
+    assert(parsedState.fields[0].fieldType === "time");
+    assert(parsedState.fields[1].fieldType === "datetime");
   });
 
   it("round-trips unsupported field with raw schemas", () => {
@@ -831,7 +831,7 @@ describe("round-trip", () => {
     });
 
     const parsedState = parseSchemas(schemas);
-    expect(parsedState.fields[0].fieldType).toBe("unsupported");
+    assert(parsedState.fields[0].fieldType === "unsupported");
     expect(parsedState.fields[0].options?.rawJsonSchema).toBeDefined();
   });
 });

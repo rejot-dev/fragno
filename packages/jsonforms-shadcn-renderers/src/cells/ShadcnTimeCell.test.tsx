@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, assert } from "vitest";
 
 import type { ControlElement } from "@jsonforms/core";
 import { NOT_APPLICABLE } from "@jsonforms/core";
@@ -45,7 +45,7 @@ describe("shadcnTimeCellTester", () => {
       type: "object",
       properties: { startTime: { type: "string", format: "time" } },
     };
-    expect(shadcnTimeCellTester(control, rootSchema, createTesterContext(rootSchema))).toBe(2);
+    assert(shadcnTimeCellTester(control, rootSchema, createTesterContext(rootSchema)) === 2);
   });
 });
 
@@ -114,7 +114,7 @@ describe("ShadcnTimeCell", () => {
     fireEvent.change(input, { target: { value: "14:30" } });
 
     // Should output HH:mm:ss format for JSON Schema compliance
-    expect((onChangeData.data as { startTime: string }).startTime).toBe("14:30:00");
+    assert((onChangeData.data as { startTime: string }).startTime === "14:30:00");
   });
 
   it("should be disabled when enabled=false", () => {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
@@ -345,19 +345,19 @@ describe("bash host command assembly", () => {
     const resendReplyHelp = await bash.exec("resend.threads.reply --help");
     const missingEvent = await bash.exec("event.emit --event-type test");
 
-    expect(piHelp.exitCode).toBe(0);
+    assert(piHelp.exitCode === 0);
     expect(piHelp.stdout).toContain("pi.session.get");
-    expect(automationsHelp.exitCode).toBe(0);
+    assert(automationsHelp.exitCode === 0);
     expect(automationsHelp.stdout).toContain("store.get");
-    expect(otpHelp.exitCode).toBe(0);
+    assert(otpHelp.exitCode === 0);
     expect(otpHelp.stdout).toContain("otp.identity.create-claim");
-    expect(resendGetHelp.exitCode).toBe(0);
+    assert(resendGetHelp.exitCode === 0);
     expect(resendGetHelp.stdout).toContain("resend.threads.get");
-    expect(resendListHelp.exitCode).toBe(0);
+    assert(resendListHelp.exitCode === 0);
     expect(resendListHelp.stdout).toContain("resend.threads.list");
-    expect(resendReplyHelp.exitCode).toBe(0);
+    assert(resendReplyHelp.exitCode === 0);
     expect(resendReplyHelp.stdout).toContain("resend.threads.reply");
-    expect(missingEvent.exitCode).toBe(127);
+    assert(missingEvent.exitCode === 127);
     expect(missingEvent.stderr).toContain("bash: event.emit: command not found");
     expect(commandCallsResult).toEqual([
       {
@@ -410,9 +410,9 @@ describe("bash host command assembly", () => {
     const eventHelp = await bash.exec("event.emit --help");
     const missingPi = await bash.exec("pi.session.create --agent assistant");
 
-    expect(eventHelp.exitCode).toBe(0);
+    assert(eventHelp.exitCode === 0);
     expect(eventHelp.stdout).toContain("event.emit");
-    expect(missingPi.exitCode).toBe(127);
+    assert(missingPi.exitCode === 127);
     expect(missingPi.stderr).toContain("bash: pi.session.create: command not found");
     expect(commandCallsResult).toEqual([
       {
@@ -442,9 +442,9 @@ describe("bash host command assembly", () => {
     const telegramHelp = await bash.exec("telegram.file.get --help");
     const missingPi = await bash.exec("pi.session.create --agent assistant");
 
-    expect(telegramHelp.exitCode).toBe(0);
+    assert(telegramHelp.exitCode === 0);
     expect(telegramHelp.stdout).toContain("telegram.file.get");
-    expect(missingPi.exitCode).toBe(127);
+    assert(missingPi.exitCode === 127);
     expect(missingPi.stderr).toContain("bash: pi.session.create: command not found");
     expect(commandCallsResult).toEqual([
       {

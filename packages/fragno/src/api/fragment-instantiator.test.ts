@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, expectTypeOf } from "vitest";
+import { describe, it, expect, vi, expectTypeOf, assert } from "vitest";
 
 import { z } from "zod";
 
@@ -36,9 +36,9 @@ describe("fragment-instantiator", () => {
         .build();
 
       expect(fragment).toBeInstanceOf(FragnoInstantiatedFragment);
-      expect(fragment.name).toBe("test-fragment");
+      assert(fragment.name === "test-fragment");
       expect(fragment.routes).toHaveLength(1);
-      expect(fragment.mountRoute).toBe("/api");
+      assert(fragment.mountRoute === "/api");
     });
 
     it("should instantiate without config or routes", () => {
@@ -47,7 +47,7 @@ describe("fragment-instantiator", () => {
       const fragment = instantiate(definition).build();
 
       expect(fragment).toBeInstanceOf(FragnoInstantiatedFragment);
-      expect(fragment.name).toBe("minimal-fragment");
+      assert(fragment.name === "minimal-fragment");
       expect(fragment.routes).toHaveLength(0);
     });
   });
@@ -126,7 +126,7 @@ describe("fragment-instantiator", () => {
         .withOptions({})
         .build();
 
-      expect(fragment.services.greet("World")).toBe("Hello World");
+      assert(fragment.services.greet("World") === "Hello World");
     });
 
     it("should provide config, options, deps to baseServices", () => {
@@ -148,7 +148,7 @@ describe("fragment-instantiator", () => {
         .withOptions({})
         .build();
 
-      expect(fragment.services.getValue()).toBe("test-test");
+      assert(fragment.services.getValue() === "test-test");
     });
   });
 
@@ -163,8 +163,8 @@ describe("fragment-instantiator", () => {
 
       const fragment = instantiate(definition).withOptions({}).build();
 
-      expect(fragment.services.mathService.add(2, 3)).toBe(5);
-      expect(fragment.services.mathService.multiply(4, 5)).toBe(20);
+      assert(fragment.services.mathService.add(2, 3) === 5);
+      assert(fragment.services.mathService.multiply(4, 5) === 20);
     });
 
     it("should provide context to named service factories", () => {
@@ -186,7 +186,7 @@ describe("fragment-instantiator", () => {
         .withOptions({})
         .build();
 
-      expect(fragment.services.mathService.scale(5)).toBe(50);
+      assert(fragment.services.mathService.scale(5) === 50);
     });
 
     it("should merge base services and named services", () => {
@@ -201,8 +201,8 @@ describe("fragment-instantiator", () => {
 
       const fragment = instantiate(definition).withOptions({}).build();
 
-      expect(fragment.services.baseMethod()).toBe("base");
-      expect(fragment.services.namedService.namedMethod()).toBe("named");
+      assert(fragment.services.baseMethod() === "base");
+      assert(fragment.services.namedService.namedMethod() === "named");
     });
   });
 
@@ -270,7 +270,7 @@ describe("fragment-instantiator", () => {
         .withServices({ authService })
         .build();
 
-      expect(fragment.services.getUserName()).toBe("John");
+      assert(fragment.services.getUserName() === "John");
     });
 
     it("should provide serviceDeps to named services", () => {
@@ -294,7 +294,7 @@ describe("fragment-instantiator", () => {
         .withServices({ authService })
         .build();
 
-      expect(fragment.services.userService.getUserId()).toBe("123");
+      assert(fragment.services.userService.getUserId() === "123");
     });
 
     it("should combine uses, provides, and base services", () => {
@@ -349,7 +349,7 @@ describe("fragment-instantiator", () => {
       const request = new Request("http://localhost/api/hello");
       const response = await fragment.handler(request);
 
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
       const data = await response.json();
       expect(data).toEqual({ message: "Hello World" });
     });
@@ -365,9 +365,9 @@ describe("fragment-instantiator", () => {
       const request = new Request("http://localhost/api/unknown");
       const response = await fragment.handler(request);
 
-      expect(response.status).toBe(404);
+      assert(response.status === 404);
       const data = await response.json();
-      expect(data.code).toBe("ROUTE_NOT_FOUND");
+      assert(data.code === "ROUTE_NOT_FOUND");
     });
 
     it("should return 404 for wrong mount route", async () => {
@@ -389,9 +389,9 @@ describe("fragment-instantiator", () => {
       const request = new Request("http://localhost/wrong/hello");
       const response = await fragment.handler(request);
 
-      expect(response.status).toBe(404);
+      assert(response.status === 404);
       const data = await response.json();
-      expect(data.code).toBe("ROUTE_NOT_FOUND");
+      assert(data.code === "ROUTE_NOT_FOUND");
     });
 
     it("should handle route with path params", async () => {
@@ -413,7 +413,7 @@ describe("fragment-instantiator", () => {
       const request = new Request("http://localhost/api/users/123");
       const response = await fragment.handler(request);
 
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
       const data = await response.json();
       expect(data).toEqual({ userId: "123" });
     });
@@ -438,7 +438,7 @@ describe("fragment-instantiator", () => {
       const request = new Request("http://localhost/api/users/a%20b");
       const response = await fragment.handler(request);
 
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
       const data = await response.json();
       expect(data).toEqual({ userName: "a b" });
     });
@@ -463,7 +463,7 @@ describe("fragment-instantiator", () => {
       const request = new Request("http://localhost/api/files/folder%2Fsubfolder");
       const response = await fragment.handler(request);
 
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
       const data = await response.json();
       expect(data).toEqual({ filePath: "folder/subfolder" });
     });
@@ -498,7 +498,7 @@ describe("fragment-instantiator", () => {
 
       const response = await fragment.handler(request);
 
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
       const data = await response.json();
       expect(data).toEqual({ received: { test: "data" } });
     });
@@ -532,7 +532,7 @@ describe("fragment-instantiator", () => {
 
       const response = await fragment.handler(request);
 
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
       const data = await response.json();
       expect(data).toEqual({ description: "Test file upload" });
     });
@@ -565,9 +565,9 @@ describe("fragment-instantiator", () => {
 
       const response = await fragment.handler(request);
 
-      expect(response.status).toBe(415);
+      assert(response.status === 415);
       const data = await response.json();
-      expect(data.code).toBe("UNSUPPORTED_MEDIA_TYPE");
+      assert(data.code === "UNSUPPORTED_MEDIA_TYPE");
     });
 
     it("should reject JSON for FormData routes", async () => {
@@ -597,9 +597,9 @@ describe("fragment-instantiator", () => {
 
       const response = await fragment.handler(request);
 
-      expect(response.status).toBe(415);
+      assert(response.status === 415);
       const data = await response.json();
-      expect(data.code).toBe("UNSUPPORTED_MEDIA_TYPE");
+      assert(data.code === "UNSUPPORTED_MEDIA_TYPE");
     });
 
     it("should accept octet-stream for routes with contentType: application/octet-stream", async () => {
@@ -629,7 +629,7 @@ describe("fragment-instantiator", () => {
 
       const response = await fragment.handler(request);
 
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
       const data = await response.json();
       expect(data).toEqual({ received: "hello" });
     });
@@ -662,9 +662,9 @@ describe("fragment-instantiator", () => {
 
       const response = await fragment.handler(request);
 
-      expect(response.status).toBe(415);
+      assert(response.status === 415);
       const data = await response.json();
-      expect(data.code).toBe("UNSUPPORTED_MEDIA_TYPE");
+      assert(data.code === "UNSUPPORTED_MEDIA_TYPE");
     });
   });
 
@@ -684,7 +684,7 @@ describe("fragment-instantiator", () => {
 
       const response = await fragment.callRoute("GET", "/hello");
 
-      expect(response.type).toBe("json");
+      assert(response.type === "json");
       if (response.type === "json") {
         expect(response.data).toEqual({ message: "Hello from callRoute" });
       }
@@ -707,7 +707,7 @@ describe("fragment-instantiator", () => {
         pathParams: { id: "456" },
       });
 
-      expect(response.type).toBe("json");
+      assert(response.type === "json");
       if (response.type === "json") {
         expect(response.data).toEqual({ userId: "456" });
       }
@@ -736,7 +736,7 @@ describe("fragment-instantiator", () => {
         body: { test: "data" },
       });
 
-      expect(response.type).toBe("json");
+      assert(response.type === "json");
       if (response.type === "json") {
         expect(response.data).toEqual({ received: { test: "data" } });
       }
@@ -758,9 +758,9 @@ describe("fragment-instantiator", () => {
       // @ts-expect-error - /unknown is not a valid route
       const response = await fragment.callRouteRaw("GET", "/unknown");
 
-      expect(response.status).toBe(404);
+      assert(response.status === 404);
       const data = await response.json();
-      expect(data.code).toBe("ROUTE_NOT_FOUND");
+      assert(data.code === "ROUTE_NOT_FOUND");
     });
   });
 
@@ -781,7 +781,7 @@ describe("fragment-instantiator", () => {
       const response = await fragment.callRouteRaw("GET", "/hello");
 
       expect(response).toBeInstanceOf(Response);
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
       const data = await response.json();
       expect(data).toEqual({ message: "Raw response" });
     });
@@ -871,7 +871,7 @@ describe("fragment-instantiator", () => {
       const handlers = fragment.handlersFor("astro");
 
       expect(handlers).toHaveProperty("ALL");
-      expect(typeof handlers.ALL).toBe("function");
+      assert(typeof handlers.ALL === "function");
     });
 
     it("should generate react-router handlers", () => {
@@ -883,8 +883,8 @@ describe("fragment-instantiator", () => {
 
       expect(handlers).toHaveProperty("loader");
       expect(handlers).toHaveProperty("action");
-      expect(typeof handlers.loader).toBe("function");
-      expect(typeof handlers.action).toBe("function");
+      assert(typeof handlers.loader === "function");
+      assert(typeof handlers.action === "function");
     });
 
     it("should generate next-js handlers", () => {
@@ -1181,7 +1181,7 @@ describe("fragment-instantiator", () => {
         afterDirect: 8,
       });
 
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
     });
 
     it("should allow services to use custom this context at runtime", async () => {
@@ -1248,7 +1248,7 @@ describe("fragment-instantiator", () => {
         new Request("http://localhost/api/test-service"),
       );
 
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
       const data = await response.json();
       expect(data).toEqual({ result: "key-5-6" });
     });
@@ -1315,7 +1315,7 @@ describe("fragment-instantiator", () => {
       });
 
       expect(routes).toBeDefined();
-      expect(typeof routes).toBe("function");
+      assert(typeof routes === "function");
     });
 
     it("should provide named services in route factory context", () => {
@@ -1412,12 +1412,12 @@ describe("fragment-instantiator", () => {
         .build();
 
       // Verify fragment.services has the same structure
-      expect(fragment.services.baseMethod()).toBe("base-value");
-      expect(fragment.services.namedService.namedMethod()).toBe("named-value");
+      assert(fragment.services.baseMethod() === "base-value");
+      assert(fragment.services.namedService.namedMethod() === "named-value");
 
       // Verify route can access services with the same structure
       const response = await fragment.handler(new Request("http://localhost/api/test"));
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
       const data = await response.json();
       expect(data).toEqual({
         base: "base-value",
@@ -1526,7 +1526,7 @@ describe("fragment-instantiator", () => {
       const fragment = instantiate(definition).withOptions({}).build();
 
       const response = await fragment.callRouteRaw("GET", "/_internal/status" as never);
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
       await expect(response.json()).resolves.toEqual({ ok: true });
     });
 
@@ -1547,7 +1547,7 @@ describe("fragment-instantiator", () => {
 
       const request = new Request("http://localhost/api/_internal/status");
       const response = await fragment.handler(request);
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
       await expect(response.json()).resolves.toEqual({ ok: true });
     });
 
@@ -1576,7 +1576,7 @@ describe("fragment-instantiator", () => {
       const fragment = instantiate(definition).withOptions({}).build();
 
       const response = await fragment.callRouteRaw("GET", "/_internal/status" as never);
-      expect(response.status).toBe(200);
+      assert(response.status === 200);
       await expect(response.json()).resolves.toEqual({ ok: true });
     });
   });
@@ -1601,9 +1601,9 @@ describe("fragment-instantiator", () => {
       const request = new Request("http://localhost/api/error");
       const response = await fragment.handler(request);
 
-      expect(response.status).toBe(500);
+      assert(response.status === 500);
       const data = await response.json();
-      expect(data.code).toBe("INTERNAL_SERVER_ERROR");
+      assert(data.code === "INTERNAL_SERVER_ERROR");
     });
 
     it("should handle errors in middleware", async () => {
@@ -1629,9 +1629,9 @@ describe("fragment-instantiator", () => {
       const request = new Request("http://localhost/api/test");
       const response = await fragment.handler(request);
 
-      expect(response.status).toBe(500);
+      assert(response.status === 500);
       const data = await response.json();
-      expect(data.code).toBe("INTERNAL_SERVER_ERROR");
+      assert(data.code === "INTERNAL_SERVER_ERROR");
     });
   });
 

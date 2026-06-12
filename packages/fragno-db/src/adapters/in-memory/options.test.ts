@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, assert } from "vitest";
 
 import { resolveInMemoryAdapterOptions } from "./options";
 
@@ -23,15 +23,15 @@ describe("resolveInMemoryAdapterOptions", () => {
   it("provides a monotonic internal id generator", () => {
     const generator = resolveInMemoryAdapterOptions({ idSeed: "seed" }).internalIdGenerator;
 
-    expect(generator()).toBe(1n);
-    expect(generator()).toBe(2n);
+    assert(generator() === 1n);
+    assert(generator() === 2n);
   });
 
   it("defaults enforceConstraints and btreeOrder", () => {
     const options = resolveInMemoryAdapterOptions({ idSeed: "seed" });
 
-    expect(options.enforceConstraints).toBe(true);
-    expect(options.btreeOrder).toBe(32);
+    assert(options.enforceConstraints);
+    assert(options.btreeOrder === 32);
   });
 
   it("defaults to a clock that returns dates", () => {

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, assert } from "vitest";
 
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
@@ -81,7 +81,7 @@ describe("User Overview Services", () => {
         pageSize: 20,
       });
 
-      expect(result.users.length).toBe(3); // alice, bob, charlie
+      assert(result.users.length === 3); // alice, bob, charlie
       result.users.forEach((user) => {
         expect(user.email).toContain("example.com");
       });
@@ -95,8 +95,8 @@ describe("User Overview Services", () => {
         pageSize: 20,
       });
 
-      expect(result.users.length).toBe(1);
-      expect(result.users[0].email).toBe("alice@example.com");
+      assert(result.users.length === 1);
+      assert(result.users[0].email === "alice@example.com");
     });
 
     it("should sort users by email ascending", async () => {
@@ -107,10 +107,10 @@ describe("User Overview Services", () => {
         pageSize: 20,
       });
 
-      expect(result.users.length).toBe(3);
-      expect(result.users[0].email).toBe("alice@example.com");
-      expect(result.users[1].email).toBe("bob@example.com");
-      expect(result.users[2].email).toBe("charlie@example.com");
+      assert(result.users.length === 3);
+      assert(result.users[0].email === "alice@example.com");
+      assert(result.users[1].email === "bob@example.com");
+      assert(result.users[2].email === "charlie@example.com");
     });
 
     it("should sort users by email descending", async () => {
@@ -121,10 +121,10 @@ describe("User Overview Services", () => {
         pageSize: 20,
       });
 
-      expect(result.users.length).toBe(3);
-      expect(result.users[0].email).toBe("charlie@example.com");
-      expect(result.users[1].email).toBe("bob@example.com");
-      expect(result.users[2].email).toBe("alice@example.com");
+      assert(result.users.length === 3);
+      assert(result.users[0].email === "charlie@example.com");
+      assert(result.users[1].email === "bob@example.com");
+      assert(result.users[2].email === "alice@example.com");
     });
 
     it("should sort users by createdAt ascending", async () => {
@@ -164,7 +164,7 @@ describe("User Overview Services", () => {
         pageSize: 2,
       });
 
-      expect(result.users.length).toBe(2);
+      assert(result.users.length === 2);
       expect(result.cursor).toBeDefined(); // Should have more results
     });
 
@@ -176,7 +176,7 @@ describe("User Overview Services", () => {
         pageSize: 2,
       });
 
-      expect(firstPage.users.length).toBe(2);
+      assert(firstPage.users.length === 2);
       expect(firstPage.cursor).toBeDefined();
 
       // Get second page using cursor
@@ -210,7 +210,7 @@ describe("User Overview Services", () => {
           pageSize: 100,
           cursor: result.cursor,
         });
-        expect(nextPage.users.length).toBe(0);
+        assert(nextPage.users.length === 0);
       }
     });
 
@@ -222,8 +222,8 @@ describe("User Overview Services", () => {
         pageSize: 1,
       });
 
-      expect(result.users.length).toBe(1);
-      expect(result.users[0].email).toBe("david@test.com");
+      assert(result.users.length === 1);
+      assert(result.users[0].email === "david@test.com");
       expect(result.cursor).toBeDefined(); // eve@test.com should be next
     });
 
@@ -235,7 +235,7 @@ describe("User Overview Services", () => {
         pageSize: 2,
       });
 
-      expect(page1.users.length).toBe(2);
+      assert(page1.users.length === 2);
       expect(page1.cursor).toBeDefined();
 
       // Use cursor from page 1 to get page 2
@@ -252,7 +252,7 @@ describe("User Overview Services", () => {
       expect(page2.users[0].id).not.toBe(page1.users[1].id);
 
       // First user on page 2 should come after the last user on page 1
-      expect(page2.users[0].email > page1.users[1].email).toBe(true);
+      assert(page2.users[0].email > page1.users[1].email);
     });
 
     it("should return empty results when using cursor with no more data", async () => {
@@ -274,7 +274,7 @@ describe("User Overview Services", () => {
         });
 
         expect(nextPage.users).toEqual([]);
-        expect(nextPage.users.length).toBe(0);
+        assert(nextPage.users.length === 0);
       }
 
       // Alternative: Get a page that exhausts the data
@@ -329,7 +329,7 @@ describe("User Overview Services", () => {
         pageSize: 20,
       });
 
-      expect(result.users.length).toBe(0);
+      assert(result.users.length === 0);
       expect(result.cursor).toBeUndefined();
     });
 
@@ -340,7 +340,7 @@ describe("User Overview Services", () => {
         pageSize: 1,
       });
 
-      expect(result.users.length).toBe(1);
+      assert(result.users.length === 1);
     });
 
     it("should handle large pageSize values", async () => {
@@ -360,13 +360,13 @@ describe("User Overview Services", () => {
         pageSize: 1,
       });
 
-      expect(result.users.length).toBe(1);
+      assert(result.users.length === 1);
       const user = result.users[0];
       expect(user).toHaveProperty("id");
       expect(user).toHaveProperty("email");
       expect(user).toHaveProperty("createdAt");
-      expect(typeof user.id).toBe("string");
-      expect(typeof user.email).toBe("string");
+      assert(typeof user.id === "string");
+      assert(typeof user.email === "string");
       expect(user.createdAt).toBeInstanceOf(Date);
     });
 

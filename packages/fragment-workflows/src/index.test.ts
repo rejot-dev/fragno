@@ -59,7 +59,7 @@ describe("Workflows Fragment", () => {
 
   test("should expose workflows schema", () => {
     expect(fragment.$internal.deps.schema).toBe(workflowsSchema);
-    expect(fragment.$internal.deps.namespace).toBe("workflows");
+    assert(fragment.$internal.deps.namespace === "workflows");
   });
 
   test("should generate migrations for workflows schema", () => {
@@ -210,8 +210,8 @@ describe("Workflows Fragment", () => {
     const error = new NonRetryableError("no retry");
 
     expect(error).toBeInstanceOf(Error);
-    expect(error.message).toBe("no retry");
-    expect(error.name).toBe("NonRetryableError");
+    assert(error.message === "no retry");
+    assert(error.name === "NonRetryableError");
   });
 
   test("WaitForEventTimeoutError extends NonRetryableError", () => {
@@ -220,8 +220,8 @@ describe("Workflows Fragment", () => {
     expect(error).toBeInstanceOf(Error);
     expect(error).toBeInstanceOf(NonRetryableError);
     expect(error).toBeInstanceOf(WaitForEventTimeoutError);
-    expect(error.message).toBe("WAIT_FOR_EVENT_TIMEOUT");
-    expect(error.name).toBe("WaitForEventTimeoutError");
+    assert(error.message === "WAIT_FOR_EVENT_TIMEOUT");
+    assert(error.name === "WaitForEventTimeoutError");
   });
 
   describe("Routes", () => {
@@ -239,7 +239,7 @@ describe("Workflows Fragment", () => {
         pathParams: { workflowName: "missing-workflow" },
       });
 
-      expect(response.type).toBe("json");
+      assert(response.type === "json");
       if (response.type === "json") {
         expect(response.data.instances).toEqual([]);
       }
@@ -272,7 +272,7 @@ describe("Workflows Fragment", () => {
         errorMessage: null,
       });
       const { success } = await uow.executeMutations();
-      expect(success).toBe(true);
+      assert(success);
 
       const response = await fragment.callRoute("GET", "/:workflowName/instances", {
         pathParams: { workflowName: "demo-workflow" },
@@ -293,10 +293,10 @@ describe("Workflows Fragment", () => {
         query: { cursor: "not-valid-base64!!!" },
       });
 
-      expect(response.type).toBe("error");
+      assert(response.type === "error");
       if (response.type === "error") {
-        expect(response.error.code).toBe("INVALID_CURSOR");
-        expect(response.status).toBe(400);
+        assert(response.error.code === "INVALID_CURSOR");
+        assert(response.status === 400);
       }
     });
 
@@ -322,7 +322,7 @@ describe("Workflows Fragment", () => {
       expect(instance).toMatchObject({
         workflowName: "demo-workflow",
       });
-      expect(instance?.instanceId).toBe("route-1");
+      assert(instance?.instanceId === "route-1");
     });
 
     test("POST /:workflowName/instances should be idempotent for duplicate instance id", async () => {
@@ -337,7 +337,7 @@ describe("Workflows Fragment", () => {
         body: { id: "route-duplicate", params: { source: "second" } },
       });
 
-      expect(second.type).toBe("json");
+      assert(second.type === "json");
       if (second.type === "json") {
         expect(second.data).toEqual(first.data);
       }
@@ -380,14 +380,14 @@ describe("Workflows Fragment", () => {
           completedAt,
         }),
       );
-      expect((await uow.executeMutations()).success).toBe(true);
+      assert((await uow.executeMutations()).success);
 
       const second = await fragment.callRoute("POST", "/:workflowName/instances", {
         pathParams: { workflowName: "demo-workflow" },
         body: { id: "route-duplicate-terminal", params: { ignored: true } },
       });
 
-      expect(second.type).toBe("json");
+      assert(second.type === "json");
       if (second.type === "json") {
         expect(second.data).toEqual({
           id: "route-duplicate-terminal",
@@ -634,7 +634,7 @@ describe("Workflows Fragment", () => {
         "do:step-new",
       ]);
       expect(response.data.events).toHaveLength(1);
-      expect(response.data.events[0].type).toBe("latest");
+      assert(response.data.events[0].type === "latest");
     });
 
     test("GET /:workflowName/instances/:instanceId/history should return 404 for missing instance", async () => {
@@ -646,10 +646,10 @@ describe("Workflows Fragment", () => {
         },
       );
 
-      expect(response.type).toBe("error");
+      assert(response.type === "error");
       if (response.type === "error") {
-        expect(response.error.code).toBe("INSTANCE_NOT_FOUND");
-        expect(response.status).toBe(404);
+        assert(response.error.code === "INSTANCE_NOT_FOUND");
+        assert(response.status === 404);
       }
     });
   });

@@ -67,7 +67,7 @@ describe("chatno", () => {
     const response = await fragment.callRoute("GET", "/health");
 
     assert(response.type === "json");
-    expect(response.status).toBe(200);
+    assert(response.status === 200);
     expect(response.data).toEqual({ status: "ok" });
   });
 
@@ -75,7 +75,7 @@ describe("chatno", () => {
     const response = await fragmentJustFactory.callRoute("GET", "/simple-stream");
 
     assert(response.type === "jsonStream");
-    expect(response.status).toBe(200);
+    assert(response.status === 200);
     const data = await Array.fromAsync(response.stream);
     expect(data).toEqual([
       { message: "Item 1" },
@@ -95,7 +95,7 @@ describe("chatno", () => {
     const response = await fragmentJustFactory.callRoute("GET", "/health");
 
     assert(response.type === "json");
-    expect(response.status).toBe(200);
+    assert(response.status === 200);
     expect(response.data).toEqual({ status: "ok" });
   });
 });

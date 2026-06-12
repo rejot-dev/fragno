@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
@@ -70,7 +70,7 @@ describe("adapter registry", () => {
     });
 
     const outboxConfig = getOutboxConfigForAdapter(adapter);
-    expect(outboxConfig.enabled).toBe(false);
+    assert(!outboxConfig.enabled);
 
     const registry = getRegistryForAdapterSync(adapter);
     registry.registerSchema(
@@ -84,8 +84,8 @@ describe("adapter registry", () => {
       { outboxEnabled: true },
     );
 
-    expect(outboxConfig.enabled).toBe(true);
-    expect(registry.isOutboxEnabled()).toBe(true);
+    assert(outboxConfig.enabled);
+    assert(registry.isOutboxEnabled());
 
     await adapter.close();
     sqlite.close();

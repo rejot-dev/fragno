@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import {
   UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
@@ -35,17 +35,14 @@ describe("upload admin contract", () => {
       },
     });
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      throw new Error(result.message);
-    }
+    assert(result.ok);
 
-    expect(result.config.defaultProvider).toBe("r2");
-    expect(result.config.namespace.orgPrefix).toBe("org/acme-dev");
-    expect(result.config.providers.r2?.provider).toBe("r2");
-    expect(result.config.providers.r2?.r2.endpoint).toBe("https://123456.r2.cloudflarestorage.com");
-    expect(result.config.providers.r2?.r2.limits?.maxMetadataBytes).toBe(0);
-    expect(result.config.providers.r2?.r2.limits?.uploadExpiresInSeconds).toBe(3600);
+    assert(result.config.defaultProvider === "r2");
+    assert(result.config.namespace.orgPrefix === "org/acme-dev");
+    assert(result.config.providers.r2?.provider === "r2");
+    assert(result.config.providers.r2?.r2.endpoint === "https://123456.r2.cloudflarestorage.com");
+    assert(result.config.providers.r2?.r2.limits?.maxMetadataBytes === 0);
+    assert(result.config.providers.r2?.r2.limits?.uploadExpiresInSeconds === 3600);
   });
 
   test("resolves a database-backed config payload", () => {
@@ -61,22 +58,19 @@ describe("upload admin contract", () => {
       },
     });
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      throw new Error(result.message);
-    }
+    assert(result.ok);
 
-    expect(result.config.defaultProvider).toBe("database");
-    expect(result.config.providers.database?.database.storageKeySuffix).toBe("workspace");
+    assert(result.config.defaultProvider === "database");
+    assert(result.config.providers.database?.database.storageKeySuffix === "workspace");
     expect(result.config.providers.database?.database.limits).toMatchObject({
       maxSingleUploadBytes: 10485760,
       uploadExpiresInSeconds: 1800,
     });
 
     const response = buildUploadAdminConfigResponse(result.config);
-    expect(response.configured).toBe(true);
-    expect(response.defaultProvider).toBe("database");
-    expect(response.providers.database?.config?.storageKeyPrefix).toBe("org/acme-dev/workspace");
+    assert(response.configured);
+    assert(response.defaultProvider === "database");
+    assert(response.providers.database?.config?.storageKeyPrefix === "org/acme-dev/workspace");
   });
 
   test("applies a safe database object-size limit when omitted", () => {
@@ -89,10 +83,7 @@ describe("upload admin contract", () => {
       },
     });
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      throw new Error(result.message);
-    }
+    assert(result.ok);
 
     expect(result.config.providers.database?.database.limits?.maxSingleUploadBytes).toBe(
       UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
@@ -111,10 +102,7 @@ describe("upload admin contract", () => {
         maxMetadataBytes: 0,
       },
     });
-    expect(first.ok).toBe(true);
-    if (!first.ok) {
-      throw new Error(first.message);
-    }
+    assert(first.ok);
 
     const second = resolveUploadAdminConfigInput({
       orgId: "acme-dev",
@@ -131,14 +119,11 @@ describe("upload admin contract", () => {
       },
     });
 
-    expect(second.ok).toBe(true);
-    if (!second.ok) {
-      throw new Error(second.message);
-    }
+    assert(second.ok);
 
-    expect(second.config.defaultProvider).toBe("r2");
-    expect(second.config.providers["r2-binding"]?.provider).toBe("r2-binding");
-    expect(second.config.providers.r2?.provider).toBe("r2");
+    assert(second.config.defaultProvider === "r2");
+    assert(second.config.providers["r2-binding"]?.provider === "r2-binding");
+    assert(second.config.providers.r2?.provider === "r2");
   });
 
   test("rejects unsupported provider values", () => {
@@ -149,10 +134,7 @@ describe("upload admin contract", () => {
       },
     });
 
-    expect(result.ok).toBe(false);
-    if (result.ok) {
-      throw new Error("Expected failure");
-    }
+    assert(!result.ok);
     expect(result.message).toContain("Only providers 'database', 'r2', and 'r2-binding'");
   });
 
@@ -166,10 +148,7 @@ describe("upload admin contract", () => {
       },
     });
 
-    expect(result.ok).toBe(false);
-    if (result.ok) {
-      throw new Error("Expected failure");
-    }
+    assert(!result.ok);
     expect(result.message).toContain("not configured");
   });
 
@@ -187,17 +166,14 @@ describe("upload admin contract", () => {
       },
     });
 
-    expect(resolved.ok).toBe(true);
-    if (!resolved.ok) {
-      throw new Error(resolved.message);
-    }
+    assert(resolved.ok);
 
     const response = buildUploadAdminConfigResponse(resolved.config);
-    expect(response.configured).toBe(true);
-    expect(response.defaultProvider).toBe("r2");
-    expect(response.providers.r2?.config?.accessKeyIdPreview).toBe("ACCE...TEST");
-    expect(response.providers.r2?.config?.secretAccessKeyPreview).toBe("SECR...TEST");
-    expect(response.providers.r2?.config?.storageKeyPrefix).toBe("org/acme");
+    assert(response.configured);
+    assert(response.defaultProvider === "r2");
+    assert(response.providers.r2?.config?.accessKeyIdPreview === "ACCE...TEST");
+    assert(response.providers.r2?.config?.secretAccessKeyPreview === "SECR...TEST");
+    assert(response.providers.r2?.config?.storageKeyPrefix === "org/acme");
   });
 
   test("normalizes legacy single-provider config shape", () => {
@@ -216,8 +192,8 @@ describe("upload admin contract", () => {
     });
 
     expect(normalized).not.toBeNull();
-    expect(normalized?.defaultProvider).toBe("r2-binding");
-    expect(normalized?.providers["r2-binding"]?.r2Binding.bindingName).toBe("UPLOAD_BUCKET");
+    assert(normalized?.defaultProvider === "r2-binding");
+    assert(normalized?.providers["r2-binding"]?.r2Binding.bindingName === "UPLOAD_BUCKET");
   });
 
   test("drops persisted upload limits that fail current non-negative validation", () => {

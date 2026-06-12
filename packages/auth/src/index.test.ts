@@ -117,7 +117,7 @@ describe("auth client", () => {
 
       expect(await clients.me()).toEqual(meResponse);
       expect(customFetch).toHaveBeenCalledOnce();
-      expect(storage.getItem(getDefaultOrganizationStorageKey())).toBe("org-b");
+      assert(storage.getItem(getDefaultOrganizationStorageKey()) === "org-b");
     } finally {
       vi.unstubAllGlobals();
     }
@@ -159,7 +159,7 @@ describe("auth-fragment with a custom auth cookie name", async () => {
     });
 
     assert(meResponse.type === "json");
-    expect(meResponse.data.user.email).toBe("custom-cookie@test.com");
+    assert(meResponse.data.user.email === "custom-cookie@test.com");
   });
 });
 
@@ -240,7 +240,7 @@ describe("auth-fragment", async () => {
       });
 
       assert(response.type === "error");
-      expect(response.error.code).toBe("email_already_exists");
+      assert(response.error.code === "email_already_exists");
     });
 
     it("/me - get active session", async () => {
@@ -340,9 +340,9 @@ describe("auth-fragment", async () => {
       expect(meResponse.data.organizations[0]?.organization.id).toBe(ownedOrg.organization.id);
       expect(meResponse.data.activeOrganization?.organization.id).toBe(ownedOrg.organization.id);
       expect(meResponse.data.invitations).toHaveLength(1);
-      expect(meResponse.data.invitations[0]?.invitation.email).toBe("test@test.com");
+      assert(meResponse.data.invitations[0]?.invitation.email === "test@test.com");
       expect(meResponse.data.invitations[0]?.organization.id).toBe(otherOrg.organization.id);
-      expect("token" in meResponse.data.invitations[0]!.invitation).toBe(false);
+      assert(!("token" in meResponse.data.invitations[0]!.invitation));
     });
 
     it("/sign-out - invalidate session and emit onCredentialInvalidated", async () => {
@@ -363,14 +363,14 @@ describe("auth-fragment", async () => {
           .execute();
       });
 
-      expect(
+      assert(
         hooks.some(
           (hook) =>
             hook.hookName === "onCredentialInvalidated" &&
             (hook.payload as { credential?: { id?: string } }).credential?.id ===
               invalidatedCredentialToken,
         ),
-      ).toBe(true);
+      );
     });
 
     it("/sign-out - clears the auth cookie when the credential is already invalid", async () => {
@@ -380,8 +380,8 @@ describe("auth-fragment", async () => {
       });
 
       assert(response.type === "error");
-      expect(response.status).toBe(401);
-      expect(response.error.code).toBe("credential_invalid");
+      assert(response.status === 401);
+      assert(response.error.code === "credential_invalid");
       expect(response.headers.get("Set-Cookie")).toContain("fragno_auth=");
       expect(response.headers.get("Set-Cookie")).toContain("Max-Age=0");
     });
@@ -392,7 +392,7 @@ describe("auth-fragment", async () => {
       });
 
       assert(response.type === "error");
-      expect(response.error.code).toBe("credential_invalid");
+      assert(response.error.code === "credential_invalid");
     });
 
     it("/sign-in - invalid credentials", async () => {
@@ -400,7 +400,7 @@ describe("auth-fragment", async () => {
         body: { email: "test@test.com", password: "wrongpassword" },
       });
       assert(response.type === "error");
-      expect(response.error.code).toBe("invalid_credentials");
+      assert(response.error.code === "invalid_credentials");
     });
 
     it("/sign-in - sign in user", async () => {
@@ -611,7 +611,7 @@ describe("auth-fragment", async () => {
       });
 
       assert(response.type === "error");
-      expect(response.error.code).toBe("user_banned");
+      assert(response.error.code === "user_banned");
     });
 
     it("/change-password - update password", async () => {
@@ -627,7 +627,7 @@ describe("auth-fragment", async () => {
         body: { email: "test@test.com", password: "password" },
       });
       assert(oldPasswordResponse.type === "error");
-      expect(oldPasswordResponse.error.code).toBe("invalid_credentials");
+      assert(oldPasswordResponse.error.code === "invalid_credentials");
 
       const newPasswordResponse = await fragment.callRoute("POST", "/sign-in", {
         body: { email: "test@test.com", password: "newpassword123" },
@@ -650,7 +650,7 @@ describe("auth-fragment", async () => {
       });
 
       assert(response.type === "error");
-      expect(response.error.code).toBe("permission_denied");
+      assert(response.error.code === "permission_denied");
     });
 
     it("/users/:userId/role - admin update", async () => {
@@ -718,7 +718,7 @@ describe("auth-fragment", async () => {
           .execute();
       });
 
-      expect(updated?.role).toBe("admin");
+      assert(updated?.role === "admin");
     });
 
     it("updateUserPassword - updates password hash", async () => {
@@ -801,9 +801,9 @@ describe("auth-fragment", async () => {
           .execute();
       });
 
-      expect(setResult.ok).toBe(false);
+      assert(!setResult.ok);
       if (!setResult.ok) {
-        expect(setResult.code).toBe("membership_not_found");
+        assert(setResult.code === "membership_not_found");
       }
     });
   });
@@ -876,38 +876,38 @@ describe("auth-fragment", async () => {
       const userHooks = hooks.filter(
         (hook) => (hook.payload as { user?: { id?: string } }).user?.id === user.id,
       );
-      expect(userHooks.some((hook) => hook.hookName === "onUserCreated")).toBe(true);
-      expect(
+      assert(userHooks.some((hook) => hook.hookName === "onUserCreated"));
+      assert(
         hooks.some(
           (hook) =>
             hook.hookName === "onCredentialIssued" &&
             (hook.payload as { credential?: { id?: string } }).credential?.id ===
               createdCredentialToken,
         ),
-      ).toBe(true);
+      );
 
       const orgHooks = hooks.filter(
         (hook) =>
           (hook.payload as { organization?: { id?: string } }).organization?.id ===
           organizationResult.organization.id,
       );
-      expect(orgHooks.some((hook) => hook.hookName === "onOrganizationCreated")).toBe(true);
-      expect(
+      assert(orgHooks.some((hook) => hook.hookName === "onOrganizationCreated"));
+      assert(
         orgHooks.some(
           (hook) =>
             hook.hookName === "onMemberAdded" &&
             (hook.payload as { member?: { id?: string } }).member?.id ===
               organizationResult.member.id,
         ),
-      ).toBe(true);
-      expect(
+      );
+      assert(
         orgHooks.some(
           (hook) =>
             hook.hookName === "onInvitationCreated" &&
             (hook.payload as { invitation?: { id?: string } }).invitation?.id ===
               invitationResult.invitation.id,
         ),
-      ).toBe(true);
+      );
     });
   });
 });
@@ -942,8 +942,8 @@ describe("auth-fragment email/password disabled", async () => {
     });
 
     assert(response.type === "error");
-    expect(response.error.code).toBe("email_password_disabled");
-    expect(response.status).toBe(403);
+    assert(response.error.code === "email_password_disabled");
+    assert(response.status === 403);
   });
 
   it("blocks email/password sign-in when disabled", async () => {
@@ -955,8 +955,8 @@ describe("auth-fragment email/password disabled", async () => {
     });
 
     assert(response.type === "error");
-    expect(response.error.code).toBe("email_password_disabled");
-    expect(response.status).toBe(403);
+    assert(response.error.code === "email_password_disabled");
+    assert(response.status === 403);
   });
 });
 
@@ -1093,7 +1093,7 @@ describe("auth-fragment auto-create organizations", async () => {
 
     assert(meResponse.type === "json");
     expect(meResponse.data.organizations).toHaveLength(1);
-    expect(meResponse.data.organizations[0]?.organization.slug).toBe("auto-org-user-workspace");
+    assert(meResponse.data.organizations[0]?.organization.slug === "auto-org-user-workspace");
     expect(meResponse.data.activeOrganization?.organization.id).toBe(
       meResponse.data.organizations[0]?.organization.id ?? null,
     );
@@ -1162,7 +1162,7 @@ describe("auth-fragment beforeCreateUser hook", async () => {
         .execute();
     });
 
-    expect(user.email).toBe("allowed@test.com");
+    assert(user.email === "allowed@test.com");
     expect(hookCalls).toContain("allowed@test.com");
   });
 });

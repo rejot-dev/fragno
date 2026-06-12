@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { eventRuntimeTools } from "./event";
 
@@ -10,7 +10,7 @@ describe("event runtime tools", () => {
   test("parse and validate emit input", () => {
     const [emit] = eventRuntimeTools;
 
-    expect(emit.name).toBe("emit");
+    assert(emit.name === "emit");
     expect(
       emit.inputSchema.parse(
         emit.adapters!.bash!.parse([

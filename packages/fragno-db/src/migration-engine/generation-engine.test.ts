@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach, vi, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, vi, afterEach, assert } from "vitest";
 
 import { DummyDriver, MysqlAdapter, PostgresAdapter, SqliteAdapter } from "kysely";
 
@@ -91,8 +91,8 @@ describe("generateSchemaArtifacts - sql", () => {
     expect(results[0].schema).toContain("create table");
     expect(results[0].schema).toContain("fragno_db_settings");
 
-    expect(results[1].namespace).toBe("test-db");
-    expect(results[1].path).toBe("20251024_002_f000_t001_test-db.sql");
+    assert(results[1].namespace === "test-db");
+    assert(results[1].path === "20251024_002_f000_t001_test-db.sql");
     expect(results[1].schema).toContain("create table");
     expect(results[1].schema).toContain('"test-db"."users"');
   });
@@ -140,16 +140,16 @@ describe("generateSchemaArtifacts - sql", () => {
     expect(results[0].namespace).toBeNull();
     expect(results[0].path).toMatch(/^20251024_001_f000_t00\d_fragno_db_settings.sql$/);
 
-    expect(results[1].namespace).toBe("apple-db");
-    expect(results[1].path).toBe("20251024_002_f000_t001_apple-db.sql");
+    assert(results[1].namespace === "apple-db");
+    assert(results[1].path === "20251024_002_f000_t001_apple-db.sql");
     expect(results[1].schema).toContain('"apple-db"."posts"');
 
-    expect(results[2].namespace).toBe("mango-db");
-    expect(results[2].path).toBe("20251024_003_f000_t001_mango-db.sql");
+    assert(results[2].namespace === "mango-db");
+    assert(results[2].path === "20251024_003_f000_t001_mango-db.sql");
     expect(results[2].schema).toContain('"mango-db"."comments"');
 
-    expect(results[3].namespace).toBe("zebra-db");
-    expect(results[3].path).toBe("20251024_004_f000_t001_zebra-db.sql");
+    assert(results[3].namespace === "zebra-db");
+    assert(results[3].path === "20251024_004_f000_t001_zebra-db.sql");
     expect(results[3].schema).toContain('"zebra-db"."users"');
   });
 
@@ -179,8 +179,8 @@ describe("generateSchemaArtifacts - sql", () => {
     // But fragment migration is still generated
     expect(results).toHaveLength(2);
     expect(results[0].namespace).toBeNull();
-    expect(results[1].namespace).toBe("test-db");
-    expect(results[1].path).toBe("20251024_002_f000_t002_test-db.sql");
+    assert(results[1].namespace === "test-db");
+    assert(results[1].path === "20251024_002_f000_t002_test-db.sql");
     expect(results[1].schema).toContain("create table");
     expect(results[1].schema).toContain("alter table");
   });
@@ -207,7 +207,7 @@ describe("generateSchemaArtifacts - sql", () => {
     // Settings migration is generated, and fragment migration creates schema (toVersion=0)
     expect(results).toHaveLength(2);
     expect(results[0].namespace).toBeNull();
-    expect(results[1].namespace).toBe("test-db");
+    assert(results[1].namespace === "test-db");
     expect(results[1].schema).toContain('CREATE SCHEMA IF NOT EXISTS "test-db"');
   });
 
@@ -441,7 +441,7 @@ describe("generateSchemaArtifacts - schema outputs", () => {
     const healthSpy = vi.spyOn(adapter, "isConnectionHealthy").mockResolvedValue(false);
     const [result] = await generateSchemaArtifacts([fragnoDb], { format: "drizzle" });
 
-    expect(result.path).toBe("fragno-schema.ts");
+    assert(result.path === "fragno-schema.ts");
     expect(result.schema).toContain("schemaVersion");
     expect(healthSpy).not.toHaveBeenCalled();
   });
@@ -564,7 +564,7 @@ describe("generateSchemaArtifacts - schema outputs", () => {
 
     const [result] = await generateSchemaArtifacts([fragnoDb], { format: "prisma" });
 
-    expect(result.path).toBe("fragno.prisma");
+    assert(result.path === "fragno.prisma");
     expect(result.schema).toContain("model Events_prisma_db");
     expect(result.schema).toContain("DateTime");
   });
@@ -616,7 +616,7 @@ describe("postProcessMigrationFilenames", () => {
 
     expect(result).toHaveLength(3);
     expect(result[0].namespace).toBeNull();
-    expect(result[0].path).toBe("20251024_001_f000_t001_fragno_db_settings.sql");
+    assert(result[0].path === "20251024_001_f000_t001_fragno_db_settings.sql");
   });
 
   it("should sort non-settings namespaces alphabetically", () => {
@@ -644,9 +644,9 @@ describe("postProcessMigrationFilenames", () => {
     const result = postProcessMigrationFilenames(files);
 
     expect(result).toHaveLength(3);
-    expect(result[0].namespace).toBe("apple-db");
-    expect(result[1].namespace).toBe("mango-db");
-    expect(result[2].namespace).toBe("zebra-db");
+    assert(result[0].namespace === "apple-db");
+    assert(result[1].namespace === "mango-db");
+    assert(result[2].namespace === "zebra-db");
   });
 
   it("should format filename with correct ordering and version numbers", () => {
@@ -670,8 +670,8 @@ describe("postProcessMigrationFilenames", () => {
 
     const result = postProcessMigrationFilenames(files);
 
-    expect(result[0].path).toBe("20251024_001_f000_t005_fragno_db_settings.sql");
-    expect(result[1].path).toBe("20251024_002_f005_t010_comment-db.sql");
+    assert(result[0].path === "20251024_001_f000_t005_fragno_db_settings.sql");
+    assert(result[1].path === "20251024_002_f005_t010_comment-db.sql");
   });
 
   it("should pad numbers to 3 digits", () => {
@@ -686,7 +686,7 @@ describe("postProcessMigrationFilenames", () => {
 
     const result = postProcessMigrationFilenames(files);
 
-    expect(result[0].path).toBe("20251024_001_f099_t999_test-db.sql");
+    assert(result[0].path === "20251024_001_f099_t999_test-db.sql");
   });
 
   it("should sanitize namespace with invalid characters", () => {
@@ -701,7 +701,7 @@ describe("postProcessMigrationFilenames", () => {
 
     const result = postProcessMigrationFilenames(files);
 
-    expect(result[0].path).toBe("20251024_001_f000_t001_test_db_special_chars.sql");
+    assert(result[0].path === "20251024_001_f000_t001_test_db_special_chars.sql");
   });
 
   it("should preserve schema content", () => {
@@ -716,7 +716,7 @@ describe("postProcessMigrationFilenames", () => {
 
     const result = postProcessMigrationFilenames(files);
 
-    expect(result[0].schema).toBe("CREATE TABLE users (id INT);");
+    assert(result[0].schema === "CREATE TABLE users (id INT);");
   });
 
   it("should handle multiple files with settings first and others sorted", () => {
@@ -754,13 +754,13 @@ describe("postProcessMigrationFilenames", () => {
 
     expect(result).toHaveLength(4);
     expect(result[0].namespace).toBeNull();
-    expect(result[0].path).toBe("20251024_001_f000_t005_fragno_db_settings.sql");
-    expect(result[1].namespace).toBe("apple-db");
-    expect(result[1].path).toBe("20251024_002_f003_t004_apple-db.sql");
-    expect(result[2].namespace).toBe("mango-db");
-    expect(result[2].path).toBe("20251024_003_f002_t003_mango-db.sql");
-    expect(result[3].namespace).toBe("zoo-db");
-    expect(result[3].path).toBe("20251024_004_f001_t002_zoo-db.sql");
+    assert(result[0].path === "20251024_001_f000_t005_fragno_db_settings.sql");
+    assert(result[1].namespace === "apple-db");
+    assert(result[1].path === "20251024_002_f003_t004_apple-db.sql");
+    assert(result[2].namespace === "mango-db");
+    assert(result[2].path === "20251024_003_f002_t003_mango-db.sql");
+    assert(result[3].namespace === "zoo-db");
+    assert(result[3].path === "20251024_004_f001_t002_zoo-db.sql");
   });
 
   it("should handle ordering numbers beyond 100", () => {
@@ -792,7 +792,7 @@ describe("postProcessMigrationFilenames", () => {
 
     const result = postProcessMigrationFilenames(files);
 
-    expect(result[0].path).toBe("20251024_001_f000_t001_my-awesome-db-fragment.sql");
+    assert(result[0].path === "20251024_001_f000_t001_my-awesome-db-fragment.sql");
   });
 
   it("should use current date in YYYYMMDD format", () => {

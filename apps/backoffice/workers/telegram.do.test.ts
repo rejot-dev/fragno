@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi, assert } from "vitest";
 
 const {
   migrateMock,
@@ -233,7 +233,7 @@ describe("Telegram Durable Object", () => {
       expectedOrgId: "acme",
       orgId: "other-org",
     });
-    expect(response.status).toBe(409);
+    assert(response.status === 409);
   });
 
   test("rejects stored config without an org id during initialization", async () => {
@@ -279,7 +279,7 @@ describe("Telegram Durable Object", () => {
 
     const response = await telegram.downloadAutomationFile({ fileId: "telegram-file-1" });
     expect(response).toBeInstanceOf(Response);
-    expect(response.ok).toBe(true);
+    assert(response.ok);
     await expect(response.arrayBuffer().then((buf) => new Uint8Array(buf))).resolves.toEqual(
       new Uint8Array([0, 255, 1, 2]),
     );

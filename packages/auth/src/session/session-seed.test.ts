@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { parseCredentialSeedFromQuery, serializeCredentialSeedForQuery } from "./session-seed";
 
@@ -8,7 +8,7 @@ describe("credential seed query parsing", () => {
   });
 
   test("returns invalid when the query value is present but empty", () => {
-    expect(parseCredentialSeedFromQuery("")).toBe("invalid");
+    assert(parseCredentialSeedFromQuery("") === "invalid");
   });
 
   test("returns the parsed credential seed for valid query JSON", () => {
@@ -20,13 +20,13 @@ describe("credential seed query parsing", () => {
   });
 
   test("returns invalid when query JSON cannot be parsed", () => {
-    expect(parseCredentialSeedFromQuery("{not-json")).toBe("invalid");
+    assert(parseCredentialSeedFromQuery("{not-json") === "invalid");
   });
 
   test("returns invalid when query JSON fails parseCredentialSeed validation", () => {
-    expect(parseCredentialSeedFromQuery(JSON.stringify({}))).toBe("invalid");
-    expect(parseCredentialSeedFromQuery(JSON.stringify({ activeOrganizationId: "" }))).toBe(
-      "invalid",
+    assert(parseCredentialSeedFromQuery(JSON.stringify({})) === "invalid");
+    assert(
+      parseCredentialSeedFromQuery(JSON.stringify({ activeOrganizationId: "" })) === "invalid",
     );
   });
 });

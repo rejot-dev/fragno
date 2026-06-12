@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
 
@@ -28,12 +28,12 @@ describe("InMemoryLofiAdapter", () => {
       ],
     });
 
-    expect(first.applied).toBe(true);
+    assert(first.applied);
 
     const query = adapter.createQueryEngine(appSchema);
     const users = await query.find("users", (b) => b.whereIndex("primary"));
     expect(users).toHaveLength(1);
-    expect(users[0].name).toBe("Ada");
+    assert(users[0].name === "Ada");
 
     const second = await adapter.applyOutboxEntry({
       sourceKey: "app::outbox",
@@ -51,6 +51,6 @@ describe("InMemoryLofiAdapter", () => {
       ],
     });
 
-    expect(second.applied).toBe(false);
+    assert(!second.applied);
   });
 });

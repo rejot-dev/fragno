@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, test } from "vitest";
+import { afterAll, beforeEach, describe, expect, test, assert } from "vitest";
 
 import { createResendTestContext, receivingGetMock, receivingListMock } from "./test-context";
 
@@ -49,7 +49,7 @@ describe("resend-fragment received emails", async () => {
     const response = await callRoute("GET", "/received-emails");
 
     expect(receivingListMock).toHaveBeenCalledWith({ limit: 50 });
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       return;
     }
@@ -125,7 +125,7 @@ describe("resend-fragment received emails", async () => {
     });
 
     expect(receivingGetMock).toHaveBeenCalledWith("recv_detail");
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       return;
     }

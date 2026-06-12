@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, assert } from "vitest";
 
 import type { ControlElement, JsonSchema } from "@jsonforms/core";
 import { NOT_APPLICABLE } from "@jsonforms/core";
@@ -82,8 +82,8 @@ describe("shadcnEnumRadioControlTester", () => {
       type: "object",
       properties: { priority: { type: "string", enum: ["a", "b"] } },
     };
-    expect(shadcnEnumRadioControlTester(control, rootSchema, createTesterContext(rootSchema))).toBe(
-      20,
+    assert(
+      shadcnEnumRadioControlTester(control, rootSchema, createTesterContext(rootSchema)) === 20,
     );
   });
 });

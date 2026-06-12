@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi, assert } from "vitest";
 
 import { instantiate } from "@fragno-dev/core";
 import { getInternalFragment } from "@fragno-dev/db";
@@ -110,9 +110,9 @@ describe("telegram-fragment", async () => {
       body: baseUpdate,
     });
 
-    expect(response.type).toBe("error");
+    assert(response.type === "error");
     if (response.type === "error") {
-      expect(response.error.code).toBe("UNAUTHORIZED");
+      assert(response.error.code === "UNAUTHORIZED");
     }
   });
 
@@ -124,7 +124,7 @@ describe("telegram-fragment", async () => {
       },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
 
     await drainDurableHooks(fragment);
 
@@ -142,7 +142,7 @@ describe("telegram-fragment", async () => {
       return (await uow.retrievalPhase)[0];
     })();
     expect(messages).toHaveLength(1);
-    expect(messages[0]?.commandName).toBe("ping");
+    assert(messages[0]?.commandName === "ping");
   });
 
   test("normalizes raw Telegram webhook payloads at the boundary", async () => {
@@ -176,7 +176,7 @@ describe("telegram-fragment", async () => {
       },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
 
     await drainDurableHooks(fragment);
 
@@ -225,7 +225,7 @@ describe("telegram-fragment", async () => {
       },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
 
     await drainDurableHooks(fragment);
 
@@ -247,7 +247,7 @@ describe("telegram-fragment", async () => {
       pathParams: { chatId: "123" },
     });
 
-    expect(messages.type).toBe("json");
+    assert(messages.type === "json");
     if (messages.type === "json") {
       expect(messages.data.messages[0]?.attachments).toEqual([
         {
@@ -332,7 +332,7 @@ describe("telegram-fragment", async () => {
       },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
 
     await drainDurableHooks(fragment);
 
@@ -411,7 +411,7 @@ describe("telegram-fragment", async () => {
       pathParams: { chatId: "123" },
     });
 
-    expect(messages.type).toBe("json");
+    assert(messages.type === "json");
     if (messages.type === "json") {
       expect(messages.data.messages[0]?.attachments).toEqual([
         {
@@ -506,7 +506,7 @@ describe("telegram-fragment", async () => {
       },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
 
     await drainDurableHooks(fragment);
 
@@ -519,7 +519,7 @@ describe("telegram-fragment", async () => {
       return (await uow.retrievalPhase)[0];
     })();
     expect(chats).toHaveLength(1);
-    expect(chats[0]?.id.toString()).toBe("123");
+    assert(chats[0]?.id.toString() === "123");
 
     const users = await (async () => {
       const uow = fragments.telegram.db
@@ -530,7 +530,7 @@ describe("telegram-fragment", async () => {
       return (await uow.retrievalPhase)[0];
     })();
     const userIds = users.map((user) => user.id.toString());
-    expect(new Set(userIds).size).toBe(2);
+    assert(new Set(userIds).size === 2);
     expect(userIds).toContain("42");
     expect(userIds).toContain("43");
   });
@@ -549,15 +549,15 @@ describe("telegram-fragment", async () => {
       },
     });
 
-    expect(response1.type).toBe("json");
+    assert(response1.type === "json");
     if (response1.type === "json") {
-      expect(response1.data.ok).toBe(true);
+      assert(response1.data.ok);
       expect(response1.data.duplicate).toBeUndefined();
     }
-    expect(response2.type).toBe("json");
+    assert(response2.type === "json");
     if (response2.type === "json") {
-      expect(response2.data.ok).toBe(true);
-      expect(response2.data.duplicate).toBe(true);
+      assert(response2.data.ok);
+      assert(response2.data.duplicate);
     }
 
     await drainDurableHooks(fragment);
@@ -592,18 +592,18 @@ describe("telegram-fragment", async () => {
       },
     });
 
-    expect(bindResponse.type).toBe("json");
+    assert(bindResponse.type === "json");
 
     const updated = await fragment.callRoute("GET", "/commands", {
       query: { chatId: "123" },
     });
 
-    expect(updated.type).toBe("json");
+    assert(updated.type === "json");
     if (updated.type === "json") {
       const command = updated.data.commands.find(
         (entry: { name: string }) => entry.name === "ping",
       );
-      expect(command?.enabled).toBe(false);
+      assert(!command?.enabled);
     }
 
     const secondUpdate: TelegramUpdate = {
@@ -655,10 +655,10 @@ describe("telegram-fragment", async () => {
       body: { text: "Hello from bot" },
     });
 
-    expect(sendResponse.type).toBe("json");
+    assert(sendResponse.type === "json");
     if (sendResponse.type === "json") {
-      expect(sendResponse.data.ok).toBe(true);
-      expect(sendResponse.data.queued).toBe(true);
+      assert(sendResponse.data.ok);
+      assert(sendResponse.data.queued);
     }
 
     await drainDurableHooks(fragment);
@@ -683,7 +683,7 @@ describe("telegram-fragment", async () => {
       return (await uow.retrievalPhase)[0];
     })();
     expect(storedAfterSend).toHaveLength(1);
-    expect(storedAfterSend[0]?.text).toBe("Hello from bot");
+    assert(storedAfterSend[0]?.text === "Hello from bot");
     expect(onMessageReceived).not.toHaveBeenCalled();
 
     const editedMessage = {
@@ -706,10 +706,10 @@ describe("telegram-fragment", async () => {
       },
     );
 
-    expect(editResponse.type).toBe("json");
+    assert(editResponse.type === "json");
     if (editResponse.type === "json") {
-      expect(editResponse.data.ok).toBe(true);
-      expect(editResponse.data.queued).toBe(true);
+      assert(editResponse.data.ok);
+      assert(editResponse.data.queued);
     }
 
     await drainDurableHooks(fragment);
@@ -736,7 +736,7 @@ describe("telegram-fragment", async () => {
       return (await uow.retrievalPhase)[0];
     })();
     expect(storedAfterEdit).toHaveLength(1);
-    expect(storedAfterEdit[0]?.text).toBe("Edited text");
+    assert(storedAfterEdit[0]?.text === "Edited text");
     expect(storedAfterEdit[0]?.editedAt).not.toBeNull();
   });
 
@@ -778,7 +778,7 @@ describe("telegram-fragment", async () => {
       body: { text, parseMode: "Markdown" },
     });
 
-    expect(sendResponse.type).toBe("json");
+    assert(sendResponse.type === "json");
 
     await drainDurableHooks(fragment);
 
@@ -838,7 +838,7 @@ describe("telegram-fragment", async () => {
       },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
 
     await drainDurableHooks(fragment);
 
@@ -894,7 +894,7 @@ describe("telegram-fragment", async () => {
       },
     });
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
 
     await drainDurableHooks(fragment);
 
@@ -913,6 +913,6 @@ describe("telegram-fragment", async () => {
     const outgoingHooks = hooks.filter((hook) => hook.hookName === "internalOutgoingMessage");
     expect(outgoingHooks).toHaveLength(2);
     const nonces = new Set(outgoingHooks.map((hook) => hook.nonce));
-    expect(nonces.size).toBe(1);
+    assert(nonces.size === 1);
   });
 });

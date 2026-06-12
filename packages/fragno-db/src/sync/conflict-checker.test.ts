@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from "vitest";
+import { describe, test, beforeEach, afterEach, assert } from "vitest";
 
 import Database from "better-sqlite3";
 import { SqliteDialect } from "kysely";
@@ -130,7 +130,7 @@ describe("checkConflicts", () => {
       { driver, driverConfig: new BetterSQLite3DriverConfig() },
     );
 
-    expect(hasConflict).toBe(true);
+    assert(hasConflict);
   });
 
   test("detects conflicts from read scopes with joins", async () => {
@@ -178,7 +178,7 @@ describe("checkConflicts", () => {
       { driver, driverConfig: new BetterSQLite3DriverConfig() },
     );
 
-    expect(hasConflict).toBe(true);
+    assert(hasConflict);
   });
 
   test("honors unknownReadStrategy ignore", async () => {
@@ -201,7 +201,7 @@ describe("checkConflicts", () => {
       { driver, driverConfig: new BetterSQLite3DriverConfig() },
     );
 
-    expect(hasConflict).toBe(false);
+    assert(!hasConflict);
   });
 
   test("ignores empty externalIds in read/write keys", async () => {
@@ -222,7 +222,7 @@ describe("checkConflicts", () => {
       { driver, driverConfig: new BetterSQLite3DriverConfig() },
     );
 
-    expect(hasConflict).toBe(false);
+    assert(!hasConflict);
   });
 
   test("detects conflicts from write keys", async () => {
@@ -243,7 +243,7 @@ describe("checkConflicts", () => {
       { driver, driverConfig: new BetterSQLite3DriverConfig() },
     );
 
-    expect(hasConflict).toBe(true);
+    assert(hasConflict);
   });
 
   test("skips mutations at the base versionstamp", async () => {
@@ -265,7 +265,7 @@ describe("checkConflicts", () => {
       { driver, driverConfig: new BetterSQLite3DriverConfig() },
     );
 
-    expect(hasConflict).toBe(false);
+    assert(!hasConflict);
   });
 
   test("defaults unknown read strategy to conflict", async () => {
@@ -287,7 +287,7 @@ describe("checkConflicts", () => {
       { driver, driverConfig: new BetterSQLite3DriverConfig() },
     );
 
-    expect(hasConflict).toBe(true);
+    assert(hasConflict);
   });
 
   test("unknownReadStrategy table only checks matching tables", async () => {
@@ -322,8 +322,8 @@ describe("checkConflicts", () => {
       { driver, driverConfig: new BetterSQLite3DriverConfig() },
     );
 
-    expect(shouldSkip).toBe(false);
-    expect(shouldConflict).toBe(true);
+    assert(!shouldSkip);
+    assert(shouldConflict);
   });
 
   test("read scopes without matching rows do not conflict", async () => {
@@ -365,7 +365,7 @@ describe("checkConflicts", () => {
       { driver, driverConfig: new BetterSQLite3DriverConfig() },
     );
 
-    expect(hasConflict).toBe(false);
+    assert(!hasConflict);
   });
 
   test("returns conflict when any read scope matches", async () => {
@@ -417,7 +417,7 @@ describe("checkConflicts", () => {
       { driver, driverConfig: new BetterSQLite3DriverConfig() },
     );
 
-    expect(hasConflict).toBe(true);
+    assert(hasConflict);
   });
 
   test("does not conflict on schema mismatch", async () => {
@@ -438,6 +438,6 @@ describe("checkConflicts", () => {
       { driver, driverConfig: new BetterSQLite3DriverConfig() },
     );
 
-    expect(hasConflict).toBe(false);
+    assert(!hasConflict);
   });
 });

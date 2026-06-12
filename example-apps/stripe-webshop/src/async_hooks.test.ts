@@ -1,4 +1,4 @@
-import { test, expect, afterAll, beforeAll, describe } from "vitest";
+import { test, expect, afterAll, beforeAll, describe, assert } from "vitest";
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -112,8 +112,8 @@ describe.skipIf(!isCI && !hasEnvFile)("development server integration", () => {
       console.error(serverLogs.join("\n"));
     }
 
-    expect(response.status).toBe(200);
-    expect(response.ok).toBe(true);
+    assert(response.status === 200);
+    assert(response.ok);
 
     const contentType = response.headers.get("content-type");
     expect(contentType).toContain("text/html");

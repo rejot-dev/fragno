@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { decodeFileKey, encodeFileKey, encodeFileKeyPrefix, type FileKeyParts } from "./keys";
 
@@ -12,13 +12,13 @@ describe("file key encoding", () => {
 
   it("encodes prefixes safely", () => {
     const prefix = encodeFileKeyPrefix(["users", 1]);
-    expect(prefix.endsWith(".")).toBe(true);
+    assert(prefix.endsWith("."));
     expect(prefix).toBe(`${encodeFileKey(["users", 1])}.`);
   });
 
   it("returns an empty prefix for empty input", () => {
-    expect(encodeFileKeyPrefix([])).toBe("");
-    expect(encodeFileKey([])).toBe("");
+    assert(encodeFileKeyPrefix([]) === "");
+    assert(encodeFileKey([]) === "");
     expect(decodeFileKey("")).toEqual([]);
   });
 

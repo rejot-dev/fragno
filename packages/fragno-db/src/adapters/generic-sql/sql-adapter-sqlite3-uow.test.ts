@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, assert } from "vitest";
 
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
@@ -135,7 +135,7 @@ describe("SqlAdapter SQLite", () => {
 
     const firstUow = buildHookUow("hook-duplicate-first");
     const { success } = await firstUow.executeMutations();
-    expect(success).toBe(true);
+    assert(success);
 
     const secondUow = buildHookUow("hook-duplicate-second");
     await expect(secondUow.executeMutations()).rejects.toThrow();

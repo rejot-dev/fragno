@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, assert } from "vitest";
 
 import { FragnoClientApiError } from "@fragno-dev/core/client";
 import { atom } from "nanostores";
@@ -329,7 +329,7 @@ describe("Pi session stream reducer", () => {
     );
 
     expect(state.agent?.messages).toEqual([message("new epoch partial")]);
-    expect(isPiSessionPossiblyStuck(state, { now: 10_000 })).toBe(false);
+    assert(!isPiSessionPossiblyStuck(state, { now: 10_000 }));
   });
 
   it("does not mark a committed stale step emission as possibly stuck", () => {
@@ -355,7 +355,7 @@ describe("Pi session stream reducer", () => {
       { now: 1_001 },
     );
 
-    expect(isPiSessionPossiblyStuck(state, { now: 10_000 })).toBe(false);
+    assert(!isPiSessionPossiblyStuck(state, { now: 10_000 }));
   });
 
   it("does not mark old uncommitted step emissions as stuck after a later step commits", () => {
@@ -392,7 +392,7 @@ describe("Pi session stream reducer", () => {
       { now: 2_001 },
     );
 
-    expect(isPiSessionPossiblyStuck(state, { now: 10_000 })).toBe(false);
+    assert(!isPiSessionPossiblyStuck(state, { now: 10_000 }));
   });
 
   it("does not mark a disconnected stale session as needing a nudge", () => {
@@ -407,9 +407,7 @@ describe("Pi session stream reducer", () => {
       { now: 1_000 },
     );
 
-    expect(
-      isPiSessionPossiblyStuck({ ...state, connectionStatus: "retrying" }, { now: 10_000 }),
-    ).toBe(false);
+    assert(!isPiSessionPossiblyStuck({ ...state, connectionStatus: "retrying" }, { now: 10_000 }));
   });
 
   it("marks a stale tool execution start as possibly stuck", () => {
@@ -424,7 +422,7 @@ describe("Pi session stream reducer", () => {
       { now: 1_000 },
     );
 
-    expect(isPiSessionPossiblyStuck(state, { now: 6_000 })).toBe(true);
+    assert(isPiSessionPossiblyStuck(state, { now: 6_000 }));
   });
 
   it("marks a stale tool execution update as possibly stuck", () => {
@@ -439,7 +437,7 @@ describe("Pi session stream reducer", () => {
       { now: 1_000 },
     );
 
-    expect(isPiSessionPossiblyStuck(state, { now: 6_000 })).toBe(true);
+    assert(isPiSessionPossiblyStuck(state, { now: 6_000 }));
   });
 
   it("marks a stale agent start as possibly stuck", () => {
@@ -452,7 +450,7 @@ describe("Pi session stream reducer", () => {
       now: 1_000,
     });
 
-    expect(isPiSessionPossiblyStuck(state, { now: 6_000 })).toBe(true);
+    assert(isPiSessionPossiblyStuck(state, { now: 6_000 }));
   });
 
   it("marks a stale message start as possibly stuck", () => {
@@ -465,7 +463,7 @@ describe("Pi session stream reducer", () => {
       now: 1_000,
     });
 
-    expect(isPiSessionPossiblyStuck(state, { now: 6_000 })).toBe(true);
+    assert(isPiSessionPossiblyStuck(state, { now: 6_000 }));
   });
 
   it("marks an uncommitted stale step after message_end as possibly stuck", () => {
@@ -486,7 +484,7 @@ describe("Pi session stream reducer", () => {
       { now: 1_000 },
     );
 
-    expect(isPiSessionPossiblyStuck(state, { now: 6_000 })).toBe(true);
+    assert(isPiSessionPossiblyStuck(state, { now: 6_000 }));
   });
 
   it("marks an uncommitted stale step after agent_end as possibly stuck", () => {
@@ -507,7 +505,7 @@ describe("Pi session stream reducer", () => {
       { now: 1_000 },
     );
 
-    expect(isPiSessionPossiblyStuck(state, { now: 6_000 })).toBe(true);
+    assert(isPiSessionPossiblyStuck(state, { now: 6_000 }));
   });
 
   it("detects an open session as possibly stuck when the last event is non-terminal and stale", () => {
@@ -522,15 +520,15 @@ describe("Pi session stream reducer", () => {
       { now: 1_000 },
     );
 
-    expect(isPiSessionPossiblyStuck(state, { now: 5_999 })).toBe(false);
-    expect(isPiSessionPossiblyStuck(state, { now: 6_000 })).toBe(true);
+    assert(!isPiSessionPossiblyStuck(state, { now: 5_999 }));
+    assert(isPiSessionPossiblyStuck(state, { now: 6_000 }));
 
     const ended = reducePiSessionStreamFrame(
       state,
       { type: "message_end", message: message("done") } as AgentEvent,
       { now: 6_000 },
     );
-    expect(isPiSessionPossiblyStuck(ended, { now: 20_000 })).toBe(false);
+    assert(!isPiSessionPossiblyStuck(ended, { now: 20_000 }));
   });
 
   it("rolls back stale step-emission events when a competing epoch commits", () => {
@@ -652,11 +650,11 @@ describe("createStorePiSessionTransport", () => {
     });
     const iterator = frames[Symbol.asyncIterator]();
     const next = iterator.next();
-    await vi.waitFor(() => expect(eventsStore.listenerCount()).toBe(1));
+    await vi.waitFor(() => assert(eventsStore.listenerCount() === 1));
 
     eventsStore.set({ loading: false, error: storeError });
     await expect(next).rejects.toBe(storeError);
-    expect(eventsStore.listenerCount()).toBe(0);
+    assert(eventsStore.listenerCount() === 0);
   });
 
   it("unsubscribes when aborted", async () => {
@@ -674,11 +672,11 @@ describe("createStorePiSessionTransport", () => {
     });
     const iterator = frames[Symbol.asyncIterator]();
     const next = iterator.next();
-    await vi.waitFor(() => expect(eventsStore.listenerCount()).toBe(1));
+    await vi.waitFor(() => assert(eventsStore.listenerCount() === 1));
 
     controller.abort();
     await expect(next).rejects.toThrow("Request was aborted");
-    expect(eventsStore.listenerCount()).toBe(0);
+    assert(eventsStore.listenerCount() === 0);
   });
 });
 
@@ -704,7 +702,7 @@ describe("createPiSessionStore", () => {
     const unsubscribe = store.subscribe((state) => statuses.push(state.connectionStatus));
 
     await vi.waitFor(() => {
-      expect(store.get().connectionStatus).toBe("open");
+      assert(store.get().connectionStatus === "open");
       expect(opens).toBe(2);
     });
 
@@ -797,10 +795,10 @@ describe("createPiSessionStore", () => {
     const store = createStore(transport);
     const unsubscribe = store.subscribe(() => {});
 
-    await vi.waitFor(() => expect(store.get().connectionStatus).toBe("open"));
+    await vi.waitFor(() => assert(store.get().connectionStatus === "open"));
     unsubscribe();
 
-    await vi.waitFor(() => expect(aborted).toBe(true));
+    await vi.waitFor(() => assert(aborted));
   });
 
   it("stores successful command acknowledgements", async () => {
@@ -1193,7 +1191,7 @@ describe("createPiSessionStore", () => {
     store.reconnect();
 
     await vi.waitFor(() => expect(opens).toBe(2));
-    expect(store.get().connectionStatus).toBe("open");
+    assert(store.get().connectionStatus === "open");
 
     unsubscribe();
   });
@@ -1217,7 +1215,7 @@ describe("createPiSessionStore", () => {
     const unsubscribe = store.subscribe(() => {});
 
     await vi.waitFor(() => {
-      expect(store.get().connectionStatus).toBe("open");
+      assert(store.get().connectionStatus === "open");
       expect(opens).toBe(2);
     });
 

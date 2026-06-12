@@ -1,13 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { getRequestAuth, parseBearerToken, resolveRequestCredential } from "./request-auth";
 
 describe("request auth helpers", () => {
   it("parses bearer tokens and rejects malformed authorization headers", () => {
     expect(parseBearerToken(null)).toBeNull();
-    expect(parseBearerToken("Bearer token-123")).toBe("token-123");
-    expect(parseBearerToken("Basic token-123")).toBe("malformed");
-    expect(parseBearerToken("Bearer   ")).toBe("malformed");
+    assert(parseBearerToken("Bearer token-123") === "token-123");
+    assert(parseBearerToken("Basic token-123") === "malformed");
+    assert(parseBearerToken("Bearer   ") === "malformed");
   });
 
   it("prefers authorization headers over cookies", () => {

@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi, assert } from "vitest";
 
 import * as files from "@/files";
 import { UPLOAD_PROVIDER_DATABASE, type UploadAdminConfigResponse } from "@/fragno/upload";
@@ -162,7 +162,7 @@ Filesystem-defined instructions.
       messages: [],
     } as never);
 
-    expect(readTool.name).toBe("read");
+    assert(readTool.name === "read");
     const result = await readTool.execute("tool-call-skill-1", {
       path: "/starter/skills/building-automations/SKILL.md",
       offset: 1,
@@ -175,7 +175,7 @@ Filesystem-defined instructions.
       limit: 8,
     });
     const content = result.content[0];
-    expect(content?.type).toBe("text");
+    assert(content?.type === "text");
     expect(content?.type === "text" ? content.text : "").toContain("name: building-automations");
   });
 });
@@ -321,7 +321,7 @@ describe("Pi bash tool", () => {
       stderr: "",
       exitCode: 0,
     });
-    expect((listResult.details as { stdout: string }).stdout).toBe("thread-1.md");
+    assert((listResult.details as { stdout: string }).stdout === "thread-1.md");
 
     const readResult = await tool.execute("tool-call-resend-2", {
       script: "cat /resend/thread-1.md",

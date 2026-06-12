@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, assert } from "vitest";
 
 const { getAuthMeMock, getTelegramDurableObjectMock } = vi.hoisted(() => ({
   getAuthMeMock: vi.fn(),
@@ -37,7 +37,7 @@ describe("telegram attachment download route", () => {
     );
 
     expect(response).toBeInstanceOf(Response);
-    expect(response.status).toBe(302);
+    assert(response.status === 302);
     expect(response.headers.get("Location")).toBe(
       `https://example.com${buildBackofficeLoginPath("/backoffice/connections/telegram/org_123/attachment-download?fileId=file-1&kind=voice")}`,
     );
@@ -61,8 +61,8 @@ describe("telegram attachment download route", () => {
       ),
     );
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toBe("audio/ogg");
+    assert(response.status === 200);
+    assert(response.headers.get("content-type") === "audio/ogg");
     expect(response.headers.get("content-disposition")).toContain(
       'attachment; filename="message-1.ogg"',
     );
@@ -88,11 +88,11 @@ describe("telegram attachment download route", () => {
       ),
     );
 
-    expect(response.status).toBe(200);
+    assert(response.status === 200);
     expect(response.headers.get("content-disposition")).toContain(
       'attachment; filename="Quarterly Report.pdf"',
     );
-    expect(response.headers.get("content-type")).toBe("application/pdf");
+    assert(response.headers.get("content-type") === "application/pdf");
   });
 
   it("falls back to the attachment kind when Telegram metadata lacks a file path", async () => {
@@ -113,11 +113,11 @@ describe("telegram attachment download route", () => {
       ),
     );
 
-    expect(response.status).toBe(200);
+    assert(response.status === 200);
     expect(response.headers.get("content-disposition")).toContain(
       'attachment; filename="file-with-spaces.ogg"',
     );
-    expect(response.headers.get("content-type")).toBe("audio/ogg");
+    assert(response.headers.get("content-type") === "audio/ogg");
   });
 
   it("serves inline disposition when requested for previews", async () => {
@@ -138,9 +138,9 @@ describe("telegram attachment download route", () => {
       ),
     );
 
-    expect(response.status).toBe(200);
+    assert(response.status === 200);
     expect(response.headers.get("content-disposition")).toContain('inline; filename="thumb.jpg"');
-    expect(response.headers.get("content-type")).toBe("image/jpeg");
+    assert(response.headers.get("content-type") === "image/jpeg");
   });
 
   it("returns 404 for users outside the organisation", async () => {
@@ -161,15 +161,16 @@ describe("telegram attachment download route", () => {
   });
 
   it("exposes filename and content-type helpers for attachment rendering", () => {
-    expect(buildDownloadFilename(undefined, "photos/picture.jpg", "file-1", "photo")).toBe(
-      "picture.jpg",
+    assert(
+      buildDownloadFilename(undefined, "photos/picture.jpg", "file-1", "photo") === "picture.jpg",
     );
-    expect(
-      buildDownloadFilename("Quarterly Report.pdf", "documents/file_123", "file-1", "document"),
-    ).toBe("Quarterly Report.pdf");
-    expect(buildDownloadFilename(undefined, undefined, "file 1", "voice")).toBe("file-1.ogg");
-    expect(guessContentType("picture.jpg", "photo")).toBe("image/jpeg");
-    expect(guessContentType("voice-note.ogg", "voice")).toBe("audio/ogg");
+    assert(
+      buildDownloadFilename("Quarterly Report.pdf", "documents/file_123", "file-1", "document") ===
+        "Quarterly Report.pdf",
+    );
+    assert(buildDownloadFilename(undefined, undefined, "file 1", "voice") === "file-1.ogg");
+    assert(guessContentType("picture.jpg", "photo") === "image/jpeg");
+    assert(guessContentType("voice-note.ogg", "voice") === "audio/ogg");
     expect(createContentDisposition("voice-note.ogg", "inline")).toContain(
       'inline; filename="voice-note.ogg"',
     );

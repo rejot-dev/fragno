@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, assert } from "vitest";
 
 import type { AnyColumn } from "../schema/create";
 import { Cursor, createCursorFromRecord, decodeCursor } from "./cursor-client";
@@ -37,9 +37,9 @@ describe("cursor-client", () => {
     const encoded = cursor.encode();
     const decoded = decodeCursor(encoded);
 
-    expect(decoded.indexName).toBe("idx_created");
-    expect(decoded.orderDirection).toBe("asc");
-    expect(decoded.pageSize).toBe(25);
+    assert(decoded.indexName === "idx_created");
+    assert(decoded.orderDirection === "asc");
+    assert(decoded.pageSize === 25);
     expect(decoded.indexValues).toEqual({
       createdAt: 1730000000000,
       name: "München",
@@ -61,7 +61,7 @@ describe("cursor-client", () => {
     });
 
     expect(cursor.indexValues).toEqual({ createdAt: 123 });
-    expect(cursor.orderDirection).toBe("desc");
+    assert(cursor.orderDirection === "desc");
   });
 
   it("rejects malformed cursor payloads", () => {

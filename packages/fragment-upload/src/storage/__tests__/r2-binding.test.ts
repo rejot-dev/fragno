@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi, assert } from "vitest";
 
 import {
   createR2BindingStorageAdapter,
@@ -184,12 +184,12 @@ describe("r2 binding storage adapter", () => {
       metadata: { source: "test" },
     });
 
-    expect(result.strategy).toBe("proxy");
-    expect(adapter.name).toBe("r2-binding");
-    expect(adapter.capabilities.proxyUpload).toBe(true);
-    expect(adapter.capabilities.directUpload).toBe(false);
-    expect(adapter.capabilities.multipartUpload).toBe(true);
-    expect(adapter.limits?.maxMetadataBytes).toBe(32);
+    assert(result.strategy === "proxy");
+    assert(adapter.name === "r2-binding");
+    assert(adapter.capabilities.proxyUpload);
+    assert(!adapter.capabilities.directUpload);
+    assert(adapter.capabilities.multipartUpload);
+    assert(adapter.limits?.maxMetadataBytes === 32);
     expect(adapter.limits?.minMultipartPartSizeBytes).toBe(5 * BYTES_IN_MIB);
   });
 
@@ -239,7 +239,7 @@ describe("r2 binding storage adapter", () => {
     });
     const text = await response.text();
     expect(text).toBe("hello from r2 binding");
-    expect(response.headers.get("Content-Type")).toBe("text/plain");
+    assert(response.headers.get("Content-Type") === "text/plain");
 
     await adapter.deleteObject({
       storageKey,
@@ -275,9 +275,9 @@ describe("r2 binding storage adapter", () => {
       sizeBytes: BigInt(payload.byteLength),
     });
 
-    expect(inMemory.stats.putCalls).toBe(1);
-    expect(inMemory.stats.createMultipartUploadCalls).toBe(0);
-    expect(inMemory.stats.uploadPartCalls).toBe(0);
+    assert(inMemory.stats.putCalls === 1);
+    assert(inMemory.stats.createMultipartUploadCalls === 0);
+    assert(inMemory.stats.uploadPartCalls === 0);
   });
 
   test("uses multipart uploads above threshold and persists assembled content", async () => {
@@ -304,17 +304,17 @@ describe("r2 binding storage adapter", () => {
     });
 
     expect(writeResult.sizeBytes).toBe(BigInt(payload.byteLength));
-    expect(inMemory.stats.putCalls).toBe(0);
-    expect(inMemory.stats.createMultipartUploadCalls).toBe(1);
-    expect(inMemory.stats.uploadPartCalls).toBe(2);
+    assert(inMemory.stats.putCalls === 0);
+    assert(inMemory.stats.createMultipartUploadCalls === 1);
+    assert(inMemory.stats.uploadPartCalls === 2);
     expect(inMemory.stats.uploadedPartNumbers).toEqual([1, 2]);
-    expect(inMemory.stats.completeCalls).toBe(1);
+    assert(inMemory.stats.completeCalls === 1);
 
     const response = await adapter.getDownloadStream({ storageKey });
     const bytes = new Uint8Array(await response.arrayBuffer());
     expect(bytes.byteLength).toBe(payload.byteLength);
-    expect(bytes[0]).toBe(3);
-    expect(bytes[bytes.length - 1]).toBe(3);
+    assert(bytes[0] === 3);
+    assert(bytes[bytes.length - 1] === 3);
   });
 
   test("aborts multipart upload when a part fails", async () => {
@@ -344,10 +344,10 @@ describe("r2 binding storage adapter", () => {
       }),
     ).rejects.toThrow("part upload failed");
 
-    expect(inMemory.stats.createMultipartUploadCalls).toBe(1);
-    expect(inMemory.stats.uploadPartCalls).toBe(2);
-    expect(inMemory.stats.completeCalls).toBe(0);
-    expect(inMemory.stats.abortCalls).toBe(1);
+    assert(inMemory.stats.createMultipartUploadCalls === 1);
+    assert(inMemory.stats.uploadPartCalls === 2);
+    assert(inMemory.stats.completeCalls === 0);
+    assert(inMemory.stats.abortCalls === 1);
   });
 
   test("rejects multipart part sizes smaller than the R2 minimum", () => {
@@ -371,7 +371,7 @@ describe("r2 binding storage adapter", () => {
     });
     const fileKey = "users/8/avatar";
 
-    expect(adapter.resolveStorageKey({ provider, fileKey })).toBe("r2-binding/users/8/avatar");
+    assert(adapter.resolveStorageKey({ provider, fileKey }) === "r2-binding/users/8/avatar");
 
     await expect(
       adapter.initUpload({

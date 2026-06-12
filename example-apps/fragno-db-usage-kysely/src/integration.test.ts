@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, assert } from "vitest";
 
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -31,7 +31,7 @@ describe("Fragno Database Kysely", () => {
       });
 
       expect(logs).toContain("Created user:");
-      expect(logs.some((log) => log.includes("test@test.com"))).toBe(true);
+      assert(logs.some((log) => log.includes("test@test.com")));
     });
 
     it("should list users", async () => {
@@ -40,7 +40,7 @@ describe("Fragno Database Kysely", () => {
       });
 
       expect(logs).toContain("Users:");
-      expect(logs.some((log) => log.includes("test@test.com"))).toBe(true);
+      assert(logs.some((log) => log.includes("test@test.com")));
     });
 
     it("should get user by email", async () => {
@@ -49,7 +49,7 @@ describe("Fragno Database Kysely", () => {
       });
 
       expect(logs).toContain("User:");
-      expect(logs.some((log) => log.includes("test@test.com"))).toBe(true);
+      assert(logs.some((log) => log.includes("test@test.com")));
     });
 
     it("should get user by ID", async () => {
@@ -58,7 +58,7 @@ describe("Fragno Database Kysely", () => {
       });
 
       expect(logs).toContain("User:");
-      expect(logs.some((log) => log.includes("test@test.com"))).toBe(true);
+      assert(logs.some((log) => log.includes("test@test.com")));
     });
 
     it("should update a user", async () => {
@@ -66,8 +66,8 @@ describe("Fragno Database Kysely", () => {
         subCommands: userSubCommands,
       });
 
-      expect(logs.some((log) => log.includes("User 1 updated successfully"))).toBe(true);
-      expect(logs.some((log) => log.includes("Updated User"))).toBe(true);
+      assert(logs.some((log) => log.includes("User 1 updated successfully")));
+      assert(logs.some((log) => log.includes("Updated User")));
     });
   });
 
@@ -83,7 +83,7 @@ describe("Fragno Database Kysely", () => {
       );
 
       expect(logs).toContain("Created blog post:");
-      expect(logs.some((log) => log.includes("Test Post"))).toBe(true);
+      assert(logs.some((log) => log.includes("Test Post")));
     });
 
     it("should list posts", async () => {
@@ -93,7 +93,7 @@ describe("Fragno Database Kysely", () => {
       });
 
       expect(logs).toContain("Blog posts:");
-      expect(logs.some((log) => log.includes("Test Post"))).toBe(true);
+      assert(logs.some((log) => log.includes("Test Post")));
     });
 
     it("should get post by ID", async () => {
@@ -103,7 +103,7 @@ describe("Fragno Database Kysely", () => {
       });
 
       expect(logs).toContain("Blog post:");
-      expect(logs.some((log) => log.includes("Test Post"))).toBe(true);
+      assert(logs.some((log) => log.includes("Test Post")));
     });
 
     it("should update a post", async () => {
@@ -112,8 +112,8 @@ describe("Fragno Database Kysely", () => {
         subCommands: postSubCommands,
       });
 
-      expect(logs.some((log) => log.includes("Blog post 1 updated successfully"))).toBe(true);
-      expect(logs.some((log) => log.includes("Updated Post"))).toBe(true);
+      assert(logs.some((log) => log.includes("Blog post 1 updated successfully")));
+      assert(logs.some((log) => log.includes("Updated Post")));
     });
   });
 
@@ -124,8 +124,8 @@ describe("Fragno Database Kysely", () => {
         subCommands: ratingSubCommands,
       });
 
-      expect(logs.some((log) => log.includes("Upvoted reference: 1"))).toBe(true);
-      expect(logs.some((log) => log.includes("Current rating: 1"))).toBe(true);
+      assert(logs.some((log) => log.includes("Upvoted reference: 1")));
+      assert(logs.some((log) => log.includes("Current rating: 1")));
     });
   });
 
@@ -152,7 +152,7 @@ describe("Fragno Database Kysely", () => {
         },
       );
 
-      expect(logs.some((log) => log.includes("First Comment"))).toBe(true);
+      assert(logs.some((log) => log.includes("First Comment")));
 
       // Clear logs for next comment
       logs = [];
@@ -176,7 +176,7 @@ describe("Fragno Database Kysely", () => {
         },
       );
 
-      expect(logs.some((log) => log.includes("Second Comment"))).toBe(true);
+      assert(logs.some((log) => log.includes("Second Comment")));
 
       // Clear logs for third comment
       logs = [];
@@ -200,7 +200,7 @@ describe("Fragno Database Kysely", () => {
         },
       );
 
-      expect(logs.some((log) => log.includes("Third Comment"))).toBe(true);
+      assert(logs.some((log) => log.includes("Third Comment")));
     });
 
     it("should list comments for a post", async () => {
@@ -212,9 +212,9 @@ describe("Fragno Database Kysely", () => {
       expect(logs).toContain("Comments for post 1:");
 
       // Check that all three comments are listed
-      expect(logs.some((log) => log.includes("First Comment"))).toBe(true);
-      expect(logs.some((log) => log.includes("Second Comment"))).toBe(true);
-      expect(logs.some((log) => log.includes("Third Comment"))).toBe(true);
+      assert(logs.some((log) => log.includes("First Comment")));
+      assert(logs.some((log) => log.includes("Second Comment")));
+      assert(logs.some((log) => log.includes("Third Comment")));
     });
 
     it("should list posts with author and include comments", async () => {
@@ -226,20 +226,20 @@ describe("Fragno Database Kysely", () => {
       expect(logs).toContain("Blog posts with authors:");
 
       // Check that the post is included
-      expect(logs.some((log) => log.includes("Updated Post"))).toBe(true);
+      assert(logs.some((log) => log.includes("Updated Post")));
 
       // Check that the author is included
-      expect(logs.some((log) => log.includes("Updated User"))).toBe(true);
+      assert(logs.some((log) => log.includes("Updated User")));
 
       // Check that comments are included
-      expect(logs.some((log) => log.includes("First Comment"))).toBe(true);
-      expect(logs.some((log) => log.includes("Second Comment"))).toBe(true);
-      expect(logs.some((log) => log.includes("Third Comment"))).toBe(true);
+      assert(logs.some((log) => log.includes("First Comment")));
+      assert(logs.some((log) => log.includes("Second Comment")));
+      assert(logs.some((log) => log.includes("Third Comment")));
 
       // Verify comments array exists in the output
-      expect(logs.some((log) => log.includes("comments"))).toBe(true);
+      assert(logs.some((log) => log.includes("comments")));
 
-      expect(logs.some((log) => log.includes("rating"))).toBe(true);
+      assert(logs.some((log) => log.includes("rating")));
     });
   });
 
@@ -266,14 +266,14 @@ describe("Fragno Database Kysely", () => {
       );
 
       // Verify output directory was created
-      expect(existsSync(outputDir)).toBe(true);
+      assert(existsSync(outputDir));
 
       // Verify files were generated
-      expect(logs.some((log) => log.includes("✓ Generated:"))).toBe(true);
-      expect(logs.some((log) => log.includes("Output generated successfully"))).toBe(true);
-      expect(logs.some((log) => log.includes("comment"))).toBe(true);
-      expect(logs.some((log) => log.includes("upvote"))).toBe(true);
-      expect(logs.some((log) => log.includes("Files generated:"))).toBe(true);
+      assert(logs.some((log) => log.includes("✓ Generated:")));
+      assert(logs.some((log) => log.includes("Output generated successfully")));
+      assert(logs.some((log) => log.includes("comment")));
+      assert(logs.some((log) => log.includes("upvote")));
+      assert(logs.some((log) => log.includes("Files generated:")));
     });
   });
 });

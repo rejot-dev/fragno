@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, assert } from "vitest";
 
 import type { Categorization, JsonSchema } from "@jsonforms/core";
 import { NOT_APPLICABLE } from "@jsonforms/core";
@@ -89,7 +89,7 @@ describe("shadcnCategorizationLayoutTester", () => {
   });
 
   it("should return rank 1 for valid categorization with categories", () => {
-    expect(shadcnCategorizationLayoutTester(uischema, schema, createTesterContext(schema))).toBe(1);
+    assert(shadcnCategorizationLayoutTester(uischema, schema, createTesterContext(schema)) === 1);
   });
 });
 

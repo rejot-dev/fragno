@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, assert } from "vitest";
 
 import { createId } from "@fragno-dev/db/id";
 import { z } from "zod";
@@ -66,7 +66,7 @@ describe("pi-fragment Pi-shaped routes", () => {
         },
       },
     );
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       throw new Error("expected json response");
     }
@@ -94,7 +94,7 @@ describe("pi-fragment Pi-shaped routes", () => {
         },
       },
     );
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       throw new Error("expected json response");
     }
@@ -119,12 +119,12 @@ describe("pi-fragment Pi-shaped routes", () => {
       },
     );
 
-    expect(response.type).toBe("error");
+    assert(response.type === "error");
     if (response.type !== "error") {
       throw new Error("expected error response");
     }
-    expect(response.status).toBe(404);
-    expect(response.error.code).toBe("WORKFLOW_NOT_FOUND");
+    assert(response.status === 404);
+    assert(response.error.code === "WORKFLOW_NOT_FOUND");
   });
 
   it("allows different workflows to reuse the same public session id", async () => {
@@ -163,8 +163,8 @@ describe("pi-fragment Pi-shaped routes", () => {
       { pathParams: { workflowName: "second" } },
     );
 
-    expect(firstSessions.type).toBe("json");
-    expect(secondSessions.type).toBe("json");
+    assert(firstSessions.type === "json");
+    assert(secondSessions.type === "json");
     if (firstSessions.type !== "json" || secondSessions.type !== "json") {
       throw new Error("expected json response");
     }
@@ -210,7 +210,7 @@ describe("pi-fragment Pi-shaped routes", () => {
         body: { input: {}, name: "Parent" },
       },
     );
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       throw new Error("expected json response");
     }
@@ -236,8 +236,8 @@ describe("pi-fragment Pi-shaped routes", () => {
       "/workflows/:workflowName/sessions",
       { pathParams: { workflowName: "child" } },
     );
-    expect(parentSessions.type).toBe("json");
-    expect(childSessions.type).toBe("json");
+    assert(parentSessions.type === "json");
+    assert(childSessions.type === "json");
     if (parentSessions.type !== "json" || childSessions.type !== "json") {
       throw new Error("expected json response");
     }
@@ -265,7 +265,7 @@ describe("pi-fragment Pi-shaped routes", () => {
         body: { input: { topic: "durability" }, name: "Custom" },
       },
     );
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       throw new Error("expected json response");
     }
@@ -298,7 +298,7 @@ describe("pi-fragment Pi-shaped routes", () => {
         body: { input: {}, name: "Approval" },
       },
     );
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       throw new Error("expected json response");
     }
@@ -317,7 +317,7 @@ describe("pi-fragment Pi-shaped routes", () => {
         query: { once: "true" },
       },
     );
-    expect(events.type).toBe("jsonStream");
+    assert(events.type === "jsonStream");
     if (events.type !== "jsonStream") {
       throw new Error("expected json stream response");
     }
@@ -335,11 +335,11 @@ describe("pi-fragment Pi-shaped routes", () => {
         body: { kind: "complete" },
       },
     );
-    expect(command.type).toBe("json");
+    assert(command.type === "json");
     if (command.type !== "json") {
       throw new Error("expected json response");
     }
-    expect(command.data.accepted).toBe(true);
+    assert(command.data.accepted);
 
     await harness.workflows.runUntilIdle({
       workflowName: "approval",
@@ -354,7 +354,7 @@ describe("pi-fragment Pi-shaped routes", () => {
         pathParams: { workflowName: response.data.workflowName, sessionId: response.data.id },
       },
     );
-    expect(detail.type).toBe("json");
+    assert(detail.type === "json");
     if (detail.type !== "json") {
       throw new Error("expected json response");
     }
@@ -374,7 +374,7 @@ describe("pi-fragment Pi-shaped routes", () => {
         pathParams: { workflowName: interactiveChatWorkflow.name, sessionId },
       },
     );
-    expect(detail.type).toBe("json");
+    assert(detail.type === "json");
     if (detail.type !== "json") {
       throw new Error("expected json response");
     }
@@ -401,11 +401,11 @@ describe("pi-fragment Pi-shaped routes", () => {
         body: { kind: "prompt", input: { text: "hello" } },
       },
     );
-    expect(command.type).toBe("json");
+    assert(command.type === "json");
     if (command.type !== "json") {
       throw new Error("expected json response");
     }
-    expect(command.data.accepted).toBe(true);
+    assert(command.data.accepted);
 
     await drainDurableHooks(harness.workflows.fragment);
     await runSessionUntilIdle(sessionId);
@@ -431,7 +431,7 @@ describe("pi-fragment Pi-shaped routes", () => {
         },
       );
     }
-    expect(detail.type).toBe("json");
+    assert(detail.type === "json");
     if (detail.type !== "json") {
       throw new Error("expected json response");
     }
@@ -462,7 +462,7 @@ describe("pi-fragment Pi-shaped routes", () => {
         pathParams: { workflowName: interactiveChatWorkflow.name, sessionId },
       },
     );
-    expect(stream.type).toBe("jsonStream");
+    assert(stream.type === "jsonStream");
     if (stream.type !== "jsonStream") {
       throw new Error("expected json stream response");
     }

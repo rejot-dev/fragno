@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, assert } from "vitest";
 
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
@@ -72,7 +72,7 @@ describe("getDurableHooksService", () => {
     const baseInternal = getInternalFragment(baseAdapter);
     const hookInternal = getInternalFragment(hookAdapter);
 
-    expect(hooksEnabled).toBe(true);
+    assert(hooksEnabled);
     expect(namespace).toBe("test");
     expect(hookService).toBe(hookInternal.services.hookService);
     expect(hookService).not.toBe(baseInternal.services.hookService);

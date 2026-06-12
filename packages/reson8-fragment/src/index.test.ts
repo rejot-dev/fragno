@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi, assert } from "vitest";
 
 import { createReson8Fragment, createReson8FragmentClients } from "./index";
 
@@ -18,11 +18,11 @@ describe("reson8-fragment exports", () => {
       "useRequestToken",
     ]);
 
-    expect(typeof clients.useCustomModels.query).toBe("function");
-    expect(typeof clients.useCustomModel.query).toBe("function");
-    expect(typeof clients.useRequestToken.mutateQuery).toBe("function");
-    expect(typeof clients.useCreateCustomModel.mutateQuery).toBe("function");
-    expect(typeof clients.usePrerecordedTranscription.mutateQuery).toBe("function");
+    assert(typeof clients.useCustomModels.query === "function");
+    assert(typeof clients.useCustomModel.query === "function");
+    assert(typeof clients.useRequestToken.mutateQuery === "function");
+    assert(typeof clients.useCreateCustomModel.mutateQuery === "function");
+    assert(typeof clients.usePrerecordedTranscription.mutateQuery === "function");
     expect(clients.useAccessToken).toBeDefined();
     expect(clients.useMicrophoneCapture).toBeDefined();
     expect(clients.useRealtimeSession).toBeDefined();
@@ -51,7 +51,7 @@ describe("reson8-fragment exports", () => {
 
     const response = await fragment.callRoute("POST", "/auth/token");
 
-    expect(response.type).toBe("json");
+    assert(response.type === "json");
     if (response.type !== "json") {
       return;
     }

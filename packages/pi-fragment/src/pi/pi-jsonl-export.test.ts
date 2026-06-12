@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { drainDurableHooks } from "@fragno-dev/test";
 
@@ -46,10 +46,7 @@ describe("pi JSONL export route", () => {
           },
         },
       );
-      expect(create.type).toBe("json");
-      if (create.type !== "json") {
-        throw new Error(`Expected json response, got ${create.type}`);
-      }
+      assert(create.type === "json");
       const sessionId = create.data.id;
 
       await harness.workflows.getStatus(interactiveChatWorkflow.name, sessionId);
@@ -83,8 +80,8 @@ describe("pi JSONL export route", () => {
         },
       );
 
-      expect(response.status).toBe(200);
-      expect(response.headers.get("content-type")).toBe("application/x-ndjson; charset=utf-8");
+      assert(response.status === 200);
+      assert(response.headers.get("content-type") === "application/x-ndjson; charset=utf-8");
       expect(response.headers.get("content-disposition")).toBe(
         `attachment; filename="pi-session-${sessionId}.jsonl"`,
       );
@@ -152,12 +149,9 @@ describe("pi JSONL export route", () => {
           pathParams: { workflowName: interactiveChatWorkflow.name, sessionId: "missing" },
         },
       );
-      expect(response.type).toBe("error");
-      if (response.type !== "error") {
-        throw new Error(`Expected error response, got ${response.type}`);
-      }
-      expect(response.status).toBe(404);
-      expect(response.error.code).toBe("SESSION_NOT_FOUND");
+      assert(response.type === "error");
+      assert(response.status === 404);
+      assert(response.error.code === "SESSION_NOT_FOUND");
     } finally {
       await harness.test.cleanup();
     }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, it, assert } from "vitest";
 
 import type { OAuth2Tokens } from "../../types";
 import type { GithubOAuthClient } from "./client";
@@ -106,7 +106,7 @@ describe("github provider", () => {
     });
 
     const result = await provider.getUserInfo({ accessToken: "token" });
-    expect(result?.user.email).toBe("primary@test.com");
-    expect(result?.user.emailVerified).toBe(true);
+    assert(result?.user.email === "primary@test.com");
+    assert(result?.user.emailVerified);
   });
 });

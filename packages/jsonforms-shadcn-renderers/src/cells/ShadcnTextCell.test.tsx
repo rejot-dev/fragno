@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, assert } from "vitest";
 
 import type { ControlElement } from "@jsonforms/core";
 import { NOT_APPLICABLE } from "@jsonforms/core";
@@ -42,7 +42,7 @@ describe("shadcnTextCellTester", () => {
 
   it("should return rank 1 for string schema", () => {
     const rootSchema = { type: "object", properties: { name: { type: "string" } } };
-    expect(shadcnTextCellTester(control, rootSchema, createTesterContext(rootSchema))).toBe(1);
+    assert(shadcnTextCellTester(control, rootSchema, createTesterContext(rootSchema)) === 1);
   });
 });
 
@@ -107,7 +107,7 @@ describe("ShadcnTextCell", () => {
     const input = screen.getByRole("textbox");
     fireEvent.change(input, { target: { value: "Jane" } });
 
-    expect((onChangeData.data as { name: string }).name).toBe("Jane");
+    assert((onChangeData.data as { name: string }).name === "Jane");
   });
 
   it("should be disabled when enabled=false", () => {

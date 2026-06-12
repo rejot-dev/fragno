@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
@@ -149,7 +149,7 @@ describe("resend bash runtime", () => {
 
     const result = await bash.exec("resend.threads.get --thread-id thread-1");
 
-    expect(result.exitCode).toBe(0);
+    assert(result.exitCode === 0);
     expect(result.stdout).toContain("# Invoice Update");
     expect(commandCallsResult).toEqual([
       {
@@ -173,7 +173,7 @@ describe("resend bash runtime", () => {
 
     const result = await bash.exec("resend.threads.get --thread-id thread-1 --format json");
 
-    expect(result.exitCode).toBe(0);
+    assert(result.exitCode === 0);
     expect(JSON.parse(result.stdout)).toMatchObject({
       thread: {
         id: "thread-1",
@@ -216,7 +216,7 @@ describe("resend bash runtime", () => {
 
     const result = await bash.exec("resend.threads.list --page-size 10");
 
-    expect(result.exitCode).toBe(0);
+    assert(result.exitCode === 0);
     expect(JSON.parse(result.stdout)).toMatchObject({
       threads: [
         {
@@ -250,7 +250,7 @@ describe("resend bash runtime", () => {
       'resend.threads.reply --thread-id thread-1 --subject "Re: Invoice Update" --body "Thanks for the update"',
     );
 
-    expect(result.exitCode).toBe(0);
+    assert(result.exitCode === 0);
     expect(JSON.parse(result.stdout)).toMatchObject({
       thread: {
         id: "thread-1",

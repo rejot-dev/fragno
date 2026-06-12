@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, assert } from "vitest";
 
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
@@ -131,7 +131,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
     const [result] = await generateSchemaArtifacts([fragnoDb], { format: "prisma" });
 
-    expect(result.path).toBe("fragno.prisma");
+    assert(result.path === "fragno.prisma");
   });
 
   it("should store prisma storage values using sqlite-friendly types", async () => {
@@ -153,7 +153,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
       .prepare(`SELECT happened_on, big_score FROM ${tableName} WHERE name = ?`)
       .get("Prisma Storage Event") as { happened_on?: unknown; big_score?: unknown } | undefined;
 
-    expect(typeof row?.happened_on).toBe("string");
+    assert(typeof row?.happened_on === "string");
     expect(row?.happened_on).toBe(happenedOn.toISOString());
     expect(row?.big_score).not.toBeInstanceOf(Buffer);
     expect(["number", "bigint"]).toContain(typeof row?.big_score);
@@ -195,7 +195,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
         .prepare(`SELECT happened_on, big_score FROM ${tableName} WHERE name = ?`)
         .get("Fragno Storage Event") as { happened_on?: number; big_score?: Buffer } | undefined;
 
-      expect(typeof row?.happened_on).toBe("number");
+      assert(typeof row?.happened_on === "number");
       expect(row?.happened_on).toBe(happenedOn.getTime());
       expect(row?.big_score).toBeInstanceOf(Buffer);
       expect(row?.big_score?.readBigInt64BE(0)).toBe(bigScore);
@@ -249,7 +249,7 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
       .executeRetrieve();
 
     expect(event.created_at).toBeInstanceOf(Date);
-    expect(event.created_at.toISOString()).toBe("2024-06-15T14:30:00.000Z");
+    assert(event.created_at.toISOString() === "2024-06-15T14:30:00.000Z");
   });
 
   it("should roundtrip BigInt when sqlite returns bigint values", async () => {

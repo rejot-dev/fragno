@@ -77,9 +77,9 @@ describe("Node.js Streaming", () => {
 
     assert(response.body, "Response body is missing");
 
-    expect(response.headers.get("content-type")).toBe("application/x-ndjson; charset=utf-8");
-    expect(response.headers.get("cache-control")).toBe("no-cache");
-    expect(response.headers.get("transfer-encoding")).toBe("chunked");
+    assert(response.headers.get("content-type") === "application/x-ndjson; charset=utf-8");
+    assert(response.headers.get("cache-control") === "no-cache");
+    assert(response.headers.get("transfer-encoding") === "chunked");
 
     const decoder = new TextDecoder();
     let result = "";

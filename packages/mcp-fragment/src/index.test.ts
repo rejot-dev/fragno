@@ -233,7 +233,7 @@ describe("mcp-fragment", () => {
 
     assert(created.type === "json");
 
-    expect(created.status).toBe(201);
+    assert(created.status === 201);
     expect(created.data).toMatchObject({
       slug: "local-tools",
       name: "Local tools",
@@ -270,12 +270,12 @@ describe("mcp-fragment", () => {
       auth: { type: "bearer", token: bearerToken },
     });
 
-    expect(duplicate.type).toBe("error");
+    assert(duplicate.type === "error");
     if (duplicate.type !== "error") {
       return;
     }
-    expect(duplicate.status).toBe(409);
-    expect(duplicate.error.code).toBe("SERVER_EXISTS");
+    assert(duplicate.status === 409);
+    assert(duplicate.error.code === "SERVER_EXISTS");
   });
 
   test("sets and updates bearer tokens without duplicating auth records", async () => {
@@ -285,18 +285,18 @@ describe("mcp-fragment", () => {
       pathParams: { slug: "token-upsert" },
       body: { token: "wrong" },
     });
-    expect(first.type).toBe("json");
+    assert(first.type === "json");
 
     const denied = await fragment.callRoute("POST", "/servers/:slug/tools/execute", {
       pathParams: { slug: "token-upsert" },
       body: { name: "echo", arguments: { text: "hello" } },
     });
-    expect(denied.type).toBe("error");
+    assert(denied.type === "error");
     if (denied.type !== "error") {
       return;
     }
-    expect(denied.status).toBe(502);
-    expect(denied.error.code).toBe("MCP_ERROR");
+    assert(denied.status === 502);
+    assert(denied.error.code === "MCP_ERROR");
 
     const second = await fragment.callRoute("POST", "/servers/:slug/auth/token", {
       pathParams: { slug: "token-upsert" },
@@ -456,10 +456,10 @@ describe("mcp-fragment", () => {
     const cached = await fragment.callRoute("GET", "/servers/:slug/tools", {
       pathParams: { slug: "delete-cache" },
     });
-    expect(cached.type).toBe("error");
+    assert(cached.type === "error");
     if (cached.type === "error") {
-      expect(cached.status).toBe(404);
-      expect(cached.error.code).toBe("SERVER_NOT_FOUND");
+      assert(cached.status === 404);
+      assert(cached.error.code === "SERVER_NOT_FOUND");
     }
   });
 
@@ -487,10 +487,10 @@ describe("mcp-fragment", () => {
       body: { name: "missing-tool", arguments: {} },
     });
 
-    expect(result.type).toBe("error");
+    assert(result.type === "error");
     if (result.type === "error") {
-      expect(result.status).toBe(502);
-      expect(result.error.code).toBe("MCP_ERROR");
+      assert(result.status === 502);
+      assert(result.error.code === "MCP_ERROR");
       expect(result.error.message).toContain("missing-tool");
     }
   });
@@ -531,7 +531,7 @@ describe("mcp-fragment", () => {
     });
     assert(result.type === "json");
     expect(result.data["structuredContent"]).toEqual({ echoed: "from-static-oauth" });
-    expect(staticOAuthMcpServer.getTokenRequestCount()).toBe(2);
+    assert(staticOAuthMcpServer.getTokenRequestCount() === 2);
   });
 
   test("retains existing OAuth refresh token when the refresh response omits one", async () => {
@@ -639,7 +639,7 @@ describe("mcp-fragment", () => {
       body: { name: "missing-tool", arguments: {} },
     });
 
-    expect(result.type).toBe("error");
+    assert(result.type === "error");
     const authSecret = await readAuthSecret(setup.fragments.mcp, "rotating-oauth-tools");
     assert(authSecret);
     expect(parseSecretPayload<{ tokens: { refresh_token?: string } }>(authSecret.payload)).toEqual(
@@ -685,7 +685,7 @@ describe("mcp-fragment", () => {
       pathParams: { slug: "rotating-oauth-list-tools" },
     });
 
-    expect(result.type).toBe("error");
+    assert(result.type === "error");
     const authSecret = await readAuthSecret(setup.fragments.mcp, "rotating-oauth-list-tools");
     assert(authSecret);
     expect(parseSecretPayload<{ tokens: { refresh_token?: string } }>(authSecret.payload)).toEqual(
@@ -711,7 +711,7 @@ describe("mcp-fragment", () => {
       pathParams: { slug: "failed-client-credentials-tools" },
     });
 
-    expect(result.type).toBe("error");
+    assert(result.type === "error");
     const authSecret = await readAuthSecret(setup.fragments.mcp, "failed-client-credentials-tools");
     assert(authSecret);
     expect(parseSecretPayload<{ tokens?: { access_token?: string } }>(authSecret.payload)).toEqual(
@@ -763,11 +763,11 @@ describe("mcp-fragment", () => {
       pathParams: { slug: "bad-auth" },
     });
 
-    expect(result.type).toBe("error");
+    assert(result.type === "error");
     if (result.type !== "error") {
       return;
     }
-    expect(result.status).toBe(502);
+    assert(result.status === 502);
     expect(result.error).toMatchObject({ code: "MCP_ERROR" });
     expect(result.error.message).toContain("Unauthorized");
   });
@@ -794,23 +794,23 @@ describe("mcp-fragment", () => {
     const read = await fragment.callRoute("GET", "/servers/:slug", {
       pathParams: { slug: "missing" },
     });
-    expect(read.type).toBe("error");
+    assert(read.type === "error");
     if (read.type !== "error") {
       return;
     }
-    expect(read.status).toBe(404);
-    expect(read.error.code).toBe("SERVER_NOT_FOUND");
+    assert(read.status === 404);
+    assert(read.error.code === "SERVER_NOT_FOUND");
 
     const call = await fragment.callRoute("POST", "/servers/:slug/tools/execute", {
       pathParams: { slug: "missing" },
       body: { name: "echo", arguments: { text: "hello" } },
     });
-    expect(call.type).toBe("error");
+    assert(call.type === "error");
     if (call.type !== "error") {
       return;
     }
-    expect(call.status).toBe(404);
-    expect(call.error.code).toBe("SERVER_NOT_FOUND");
+    assert(call.status === 404);
+    assert(call.error.code === "SERVER_NOT_FOUND");
   });
 
   test("deletes servers and stored auth data", async () => {
@@ -823,20 +823,20 @@ describe("mcp-fragment", () => {
     const deleted = await fragment.callRoute("DELETE", "/servers/:slug", {
       pathParams: { slug: "delete-me" },
     });
-    expect(deleted.type).toBe("empty");
+    assert(deleted.type === "empty");
     if (deleted.type !== "empty") {
       return;
     }
-    expect(deleted.status).toBe(204);
+    assert(deleted.status === 204);
 
     const read = await fragment.callRoute("GET", "/servers/:slug", {
       pathParams: { slug: "delete-me" },
     });
-    expect(read.type).toBe("error");
+    assert(read.type === "error");
     if (read.type !== "error") {
       return;
     }
-    expect(read.status).toBe(404);
+    assert(read.status === 404);
   });
 
   test("honors endpoint allow-list configuration", async () => {
@@ -862,12 +862,12 @@ describe("mcp-fragment", () => {
         },
       });
 
-      expect(result.type).toBe("error");
+      assert(result.type === "error");
       if (result.type !== "error") {
         return;
       }
-      expect(result.status).toBe(400);
-      expect(result.error.code).toBe("ENDPOINT_NOT_ALLOWED");
+      assert(result.status === 400);
+      assert(result.error.code === "ENDPOINT_NOT_ALLOWED");
     } finally {
       await restricted.test.cleanup();
     }

@@ -1,4 +1,4 @@
-import { describe, test, expect } from "vitest";
+import { describe, test, expect, assert } from "vitest";
 
 import { Cursor } from "../../../query/cursor";
 import {
@@ -295,7 +295,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
     expect(result!.query.sql).toMatchInlineSnapshot(
       `"update "users" set "name" = ?, "_version" = coalesce("_version", 0) + 1 where ("users"."id" = ? and "users"."_version" = ?)"`,
     );
-    expect(result!.expectedAffectedRows).toBe(1n);
+    assert(result!.expectedAffectedRows === 1n);
   });
 
   test("compileDelete operation", () => {
@@ -328,7 +328,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
     expect(result!.query.sql).toMatchInlineSnapshot(
       `"select 1 as "exists" from "users" where ("users"."id" = ? and "users"."_version" = ?) limit ?"`,
     );
-    expect(result!.expectedReturnedRows).toBe(1);
+    assert(result!.expectedReturnedRows === 1);
   });
 
   describe("compileCreate - dialect differences", () => {
@@ -501,7 +501,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       expect(result!.query.sql).toMatchInlineSnapshot(
         `"delete from "users" where ("users"."id" = ? and "users"."_version" = ?)"`,
       );
-      expect(result!.expectedAffectedRows).toBe(1n);
+      assert(result!.expectedAffectedRows === 1n);
     });
   });
 
@@ -1627,7 +1627,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       expect(result!.query.sql).toMatchInlineSnapshot(
         `"update \`users\` set \`name\` = ?, \`_version\` = coalesce(\`_version\`, 0) + 1 where (\`users\`.\`id\` = ? and \`users\`.\`_version\` = ?)"`,
       );
-      expect(result!.expectedAffectedRows).toBe(1n);
+      assert(result!.expectedAffectedRows === 1n);
     });
 
     test("should compile cursor pagination", () => {
@@ -1707,7 +1707,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
       expect(result!.query.sql).toMatchInlineSnapshot(
         `"select 1 as \`exists\` from \`users\` where (\`users\`.\`id\` = ? and \`users\`.\`_version\` = ?) limit ?"`,
       );
-      expect(result!.expectedReturnedRows).toBe(1);
+      assert(result!.expectedReturnedRows === 1);
     });
   });
 

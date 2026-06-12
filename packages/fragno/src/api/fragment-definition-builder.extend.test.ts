@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, assert } from "vitest";
 
 import type { RequestThisContext } from "./api";
 import { defineFragment, FragmentDefinitionBuilder } from "./fragment-definition-builder";
@@ -67,7 +67,7 @@ describe("FragmentDefinitionBuilder.extend()", () => {
         .extend(addTimestamp())
         .build();
 
-      expect(definition.name).toBe("test");
+      assert(definition.name === "test");
       expect(definition.dependencies).toBeDefined();
       expect(definition.baseServices).toBeDefined();
     });
@@ -199,7 +199,7 @@ describe("FragmentDefinitionBuilder.extend()", () => {
         .extend(addLogger())
         .build();
 
-      expect(definition.name).toBe("chained");
+      assert(definition.name === "chained");
       expect(definition.baseServices).toBeDefined();
 
       // Verify both extensions are present in the type
@@ -346,8 +346,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
         defineService: (svc) => svc,
       });
 
-      expect(services.baseValue).toBe(42);
-      expect(services.derivedValue).toBe(84); // 42 * 2
+      assert(services.baseValue === 42);
+      assert(services.derivedValue === 84); // 42 * 2
     });
 
     it("withDependencies resets base services - extend before withDependencies is lost", () => {
@@ -491,7 +491,7 @@ describe("FragmentDefinitionBuilder.extend()", () => {
       // Dependencies should still work
       expect(definition.dependencies).toBeDefined();
       const deps = definition.dependencies!({ config: { prefix: "TEST" }, options: {} });
-      expect(deps.prefix).toBe("TEST");
+      assert(deps.prefix === "TEST");
 
       // Named services should still work
       expect(definition.namedServices).toBeDefined();
@@ -503,7 +503,7 @@ describe("FragmentDefinitionBuilder.extend()", () => {
         privateServices: {},
         defineService: (svc) => svc,
       });
-      expect(namedService.addPrefix("value")).toBe("TEST-value");
+      assert(namedService.addPrefix("value") === "TEST-value");
 
       // Extended base service should be present
       const services = definition.baseServices!({
@@ -514,7 +514,7 @@ describe("FragmentDefinitionBuilder.extend()", () => {
         privateServices: {},
         defineService: (svc) => svc,
       });
-      expect(services.formatter.format("hello")).toBe("HELLO");
+      assert(services.formatter.format("hello") === "HELLO");
     });
   });
 
@@ -594,7 +594,7 @@ describe("FragmentDefinitionBuilder.extend()", () => {
       // Config type is preserved
       expect(definition.dependencies).toBeDefined();
       const deps = definition.dependencies!({ config: { value: 10 }, options: {} });
-      expect(deps.computed).toBe(20);
+      assert(deps.computed === 20);
 
       // Named services are preserved
       expect(definition.namedServices).toBeDefined();
@@ -606,7 +606,7 @@ describe("FragmentDefinitionBuilder.extend()", () => {
         privateServices: {},
         defineService: (svc) => svc,
       });
-      expect(calculator.getComputed()).toBe(20);
+      assert(calculator.getComputed() === 20);
 
       // Service dependencies are preserved
       expect(definition.serviceDependencies).toBeDefined();
@@ -621,7 +621,7 @@ describe("FragmentDefinitionBuilder.extend()", () => {
         privateServices: {},
         defineService: (svc) => svc,
       });
-      expect(services.math.add(5, 3)).toBe(8);
+      assert(services.math.add(5, 3) === 8);
     });
 
     it("should allow extending to add request storage configuration", () => {
@@ -673,8 +673,8 @@ describe("FragmentDefinitionBuilder.extend()", () => {
       });
       expect(storage).toHaveProperty("requestId");
       expect(storage).toHaveProperty("timestamp");
-      expect(typeof storage.requestId).toBe("string");
-      expect(typeof storage.timestamp).toBe("number");
+      assert(typeof storage.requestId === "string");
+      assert(typeof storage.timestamp === "number");
     });
   });
 
@@ -738,7 +738,7 @@ describe("FragmentDefinitionBuilder.extend()", () => {
       // Minimal fragment - just a name, then extend
       const definition = defineFragment("minimal").extend(addSimple()).build();
 
-      expect(definition.name).toBe("minimal");
+      assert(definition.name === "minimal");
       expect(definition.baseServices).toBeDefined();
 
       const services = definition.baseServices!({
@@ -750,7 +750,7 @@ describe("FragmentDefinitionBuilder.extend()", () => {
         defineService: (svc) => svc,
       });
 
-      expect(services.simple).toBe("value");
+      assert(services.simple === "value");
     });
 
     it("should allow extend with identity transformation", () => {
@@ -801,11 +801,11 @@ describe("FragmentDefinitionBuilder.extend()", () => {
         .extend(identity())
         .build();
 
-      expect(definition.name).toBe("identity");
+      assert(definition.name === "identity");
       expect(definition.dependencies).toBeDefined();
 
       const deps = definition.dependencies!({ config: {}, options: {} });
-      expect(deps.x).toBe(1);
+      assert(deps.x === 1);
     });
   });
 });

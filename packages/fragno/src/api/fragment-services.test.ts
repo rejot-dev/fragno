@@ -1,4 +1,4 @@
-import { describe, test, expect, expectTypeOf } from "vitest";
+import { describe, test, expect, expectTypeOf, assert } from "vitest";
 
 import { defineFragment } from "./fragment-definition-builder";
 import { instantiate } from "./fragment-instantiator";
@@ -58,7 +58,7 @@ describe("Fragment Service System", () => {
         .usesService<"email", IEmailService>("email")
         .build();
 
-      expect(definition.name).toBe("test-fragment");
+      assert(definition.name === "test-fragment");
       expect(definition.serviceDependencies?.email).toBeDefined();
     });
 
@@ -68,7 +68,7 @@ describe("Fragment Service System", () => {
         .build();
 
       expect(definition.serviceDependencies?.email).toBeDefined();
-      expect(definition.serviceDependencies?.email?.required).toBe(true);
+      assert(definition.serviceDependencies?.email?.required);
     });
 
     test("should have correct type inference for optional service", () => {
@@ -77,7 +77,7 @@ describe("Fragment Service System", () => {
         .build();
 
       expect(definition.serviceDependencies?.logger).toBeDefined();
-      expect(definition.serviceDependencies?.logger?.required).toBe(false);
+      assert(!definition.serviceDependencies?.logger?.required);
     });
   });
 
@@ -117,8 +117,8 @@ describe("Fragment Service System", () => {
         .usesOptionalService<"logger", ILogger>("logger")
         .build();
 
-      expect(definition.serviceDependencies?.email?.required).toBe(true);
-      expect(definition.serviceDependencies?.logger?.required).toBe(false);
+      assert(definition.serviceDependencies?.email?.required);
+      assert(!definition.serviceDependencies?.logger?.required);
     });
 
     test("should store provided services in definition", () => {
@@ -130,7 +130,7 @@ describe("Fragment Service System", () => {
         .providesService("email", () => emailImpl)
         .build();
 
-      expect(typeof definition.namedServices).toBe("object");
+      assert(typeof definition.namedServices === "object");
     });
 
     test("should allow fragments without any services", () => {
@@ -292,7 +292,7 @@ describe("Fragment Service System", () => {
 
       // namedServices stores an object with service names as keys and factory functions as values
       expect(definition.namedServices).toBeDefined();
-      expect(typeof definition.namedServices).toBe("object");
+      assert(typeof definition.namedServices === "object");
     });
 
     test("Named services should have correct types (using callback with context)", () => {
@@ -394,7 +394,7 @@ describe("Fragment Service System", () => {
         .build();
 
       expect(instance.services.sendWelcomeEmail).toBeDefined();
-      expect(typeof instance.services.sendWelcomeEmail).toBe("function");
+      assert(typeof instance.services.sendWelcomeEmail === "function");
     });
 
     test("provided service can access used services - builder style", () => {
@@ -417,7 +417,7 @@ describe("Fragment Service System", () => {
         .build();
 
       expect(instance.services.sendWelcomeEmail).toBeDefined();
-      expect(typeof instance.services.sendWelcomeEmail).toBe("function");
+      assert(typeof instance.services.sendWelcomeEmail === "function");
     });
 
     test("provided service can access config", () => {
@@ -432,7 +432,7 @@ describe("Fragment Service System", () => {
         .withOptions({})
         .build();
 
-      expect(instance.services.getApiKey()).toBe("test-key");
+      assert(instance.services.getApiKey() === "test-key");
     });
 
     test("provided service can access deps from withDependencies", () => {
@@ -532,7 +532,7 @@ describe("Fragment Service System", () => {
 
       expect(instance.services.maybeSendEmail).toBeDefined();
       // When the optional service is provided, the wrapped method should work
-      expect(typeof instance.services.maybeSendEmail).toBe("function");
+      assert(typeof instance.services.maybeSendEmail === "function");
     });
   });
 
@@ -565,7 +565,7 @@ describe("Fragment Service System", () => {
 
       // But the public service that uses it should work
       expect(instance.services.getValue).toBeDefined();
-      expect(instance.services.getValue("test")).toBe("cached-value");
+      assert(instance.services.getValue("test") === "cached-value");
     });
 
     test("private service should NOT be exposed on fragment instance", () => {
@@ -622,7 +622,7 @@ describe("Fragment Service System", () => {
       const instance = instantiate(definition).withOptions({}).build();
 
       expect(instance.services.getCachedValue).toBeDefined();
-      expect(instance.services.getCachedValue("test")).toBe("cached");
+      assert(instance.services.getCachedValue("test") === "cached");
     });
 
     test("private services can access config and deps", () => {
@@ -643,7 +643,7 @@ describe("Fragment Service System", () => {
         .withOptions({})
         .build();
 
-      expect(instance.services.doRequest()).toBe("https://api.example.com/test-key/request");
+      assert(instance.services.doRequest() === "https://api.example.com/test-key/request");
     });
 
     test("private services can access serviceDeps", () => {
@@ -688,7 +688,7 @@ describe("Fragment Service System", () => {
 
       const instance = instantiate(definition).withOptions({}).build();
 
-      expect(instance.services.calculator.square(5)).toBe(25);
+      assert(instance.services.calculator.square(5) === 25);
       // @ts-expect-error - Private service should not be accessible
       expect(instance.services.helper).toBeUndefined();
     });
@@ -716,7 +716,7 @@ describe("Fragment Service System", () => {
       const instance = instantiate(definition).withOptions({}).build();
 
       // 5^2 = 25, 25 + 10 = 35
-      expect(instance.services.compute(5)).toBe(35);
+      assert(instance.services.compute(5) === 35);
 
       // Private services should not be accessible on the instance
       // @ts-expect-error - Private service should not be accessible

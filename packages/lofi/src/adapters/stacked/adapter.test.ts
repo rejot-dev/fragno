@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 
@@ -245,7 +245,7 @@ describe("StackedLofiAdapter", () => {
     );
 
     expect(joined).toHaveLength(1);
-    expect(joined[0].author?.name).toBe("Grace");
+    assert(joined[0].author?.name === "Grace");
   });
 
   it("paginates with cursor after overlay merges", async () => {
@@ -299,7 +299,7 @@ describe("StackedLofiAdapter", () => {
     );
 
     expect(firstPage.items).toHaveLength(2);
-    expect(firstPage.hasNextPage).toBe(true);
+    assert(firstPage.hasNextPage);
     expect(firstPage.cursor).toBeDefined();
 
     const secondPage = await query.findWithCursor("users", (b) =>
@@ -307,7 +307,7 @@ describe("StackedLofiAdapter", () => {
     );
 
     expect(secondPage.items).toHaveLength(1);
-    expect(secondPage.hasNextPage).toBe(false);
+    assert(!secondPage.hasNextPage);
   });
 
   it("iteratively fetches base pages when overlay removes rows", async () => {
