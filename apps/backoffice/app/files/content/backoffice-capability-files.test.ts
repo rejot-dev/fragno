@@ -71,7 +71,8 @@ describe("Backoffice capability starter skills", () => {
 
     expect(skill).toContain("public OAuth callback route");
     expect(skill).toContain('auth: { type: "oauth" }');
-    expect(skill).toContain("mcp.listTools");
+    expect(skill).toContain("mcp.refreshServer");
+    expect(skill).toContain("server.configuration.changed");
   });
 
   test("general starter skills cover automations, connections, workflows, and sandbox", () => {

@@ -109,7 +109,7 @@ export const createRouteBackedMcpRuntime = (
       if (response.type === "json" && isSuccessStatus(response.status)) {
         return response.data as { tools: McpTool[] };
       }
-      return throwOnMcpRuntimeError(response, "mcp.tools.list");
+      return throwOnMcpRuntimeError(response, "mcp.servers.refresh");
     },
     callTool: async ({ slug, name, arguments: toolArguments, timeoutMs }) => {
       const response = await callRoute("POST", "/servers/:slug/tools/execute", {

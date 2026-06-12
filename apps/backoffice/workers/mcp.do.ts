@@ -1,7 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
+import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
 import { mcpConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/mcp";
+import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import {
   createMcpServer,
   resolveMcpPublicBaseUrl,
@@ -44,6 +46,18 @@ const readMcpPublicOrigin = (env: CloudflareEnv) => {
 const resolvePublicBaseUrl = (env: CloudflareEnv, orgId: string) =>
   resolveMcpPublicBaseUrl({ baseUrl: readMcpPublicOrigin(env), orgId });
 
+const buildServerConfigurationChangedEventId = (input: {
+  orgId: string;
+  serverId: string;
+  idempotencyKey: string;
+}) => `mcp:server.configuration.changed:${input.orgId}:${input.serverId}:${input.idempotencyKey}`;
+
+const buildServerConfigurationDeletedEventId = (input: {
+  orgId: string;
+  serverId: string;
+  idempotencyKey: string;
+}) => `mcp:server.configuration.deleted:${input.orgId}:${input.serverId}:${input.idempotencyKey}`;
+
 function buildConfigResponse(
   env: CloudflareEnv,
   config: StoredMcpConfig | null,
@@ -77,6 +91,46 @@ export class Mcp extends DurableObject<CloudflareEnv> {
       env,
       toSource: (stored) => ({
         publicBaseUrl: resolvePublicBaseUrl(env, stored.orgId),
+        onServerConfigurationChanged: async (payload, idempotencyKey) => {
+          await env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(stored.orgId)).ingestEvent({
+            id: buildServerConfigurationChangedEventId({
+              orgId: stored.orgId,
+              serverId: payload.serverId,
+              idempotencyKey,
+            }),
+            orgId: stored.orgId,
+            source: "mcp",
+            eventType: "server.configuration.changed",
+            occurredAt: new Date().toISOString(),
+            payload: { ...payload },
+            actor: AUTOMATION_SYSTEM_ACTOR,
+            actors: [AUTOMATION_SYSTEM_ACTOR],
+            subject: {
+              orgId: stored.orgId,
+              serverId: payload.serverId,
+            },
+          });
+        },
+        onServerConfigurationDeleted: async (payload, idempotencyKey) => {
+          await env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(stored.orgId)).ingestEvent({
+            id: buildServerConfigurationDeletedEventId({
+              orgId: stored.orgId,
+              serverId: payload.serverId,
+              idempotencyKey,
+            }),
+            orgId: stored.orgId,
+            source: "mcp",
+            eventType: "server.configuration.deleted",
+            occurredAt: new Date().toISOString(),
+            payload: { ...payload },
+            actor: AUTOMATION_SYSTEM_ACTOR,
+            actors: [AUTOMATION_SYSTEM_ACTOR],
+            subject: {
+              orgId: stored.orgId,
+              serverId: payload.serverId,
+            },
+          });
+        },
       }),
       createRuntime: (config) => createMcpServer(config, state),
     });
@@ -84,6 +138,14 @@ export class Mcp extends DurableObject<CloudflareEnv> {
     void state.blockConcurrencyWhile(async () => {
       await this.#host.initializeFromStored(await this.#host.loadStored());
     });
+  }
+
+  async alarm() {
+    await this.#host.alarm();
+  }
+
+  getDurableHookRepository() {
+    return this.#host.getDurableHookRepository<DurableHookQueueOptions>(({ runtime }) => runtime);
   }
 
   async getAdminConfig(): Promise<McpAdminConfigResponse> {

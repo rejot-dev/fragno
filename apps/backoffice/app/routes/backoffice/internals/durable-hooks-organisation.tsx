@@ -6,6 +6,7 @@ import {
   getCloudflareWorkersDurableObject,
   getAutomationsDurableObject,
   getGitHubDurableObject,
+  getMcpDurableObject,
   getOtpDurableObject,
   getPiDurableObject,
   getResendDurableObject,
@@ -99,6 +100,13 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
         }
         case "telegram": {
           const repository = await getTelegramDurableObject(
+            context,
+            params.orgId,
+          ).getDurableHookRepository();
+          return await repository.getHookQueue({ cursor, pageSize });
+        }
+        case "mcp": {
+          const repository = await getMcpDurableObject(
             context,
             params.orgId,
           ).getDurableHookRepository();
