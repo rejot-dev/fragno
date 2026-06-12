@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
 import type { MasterFileSystem } from "@/files";
+import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import { piConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/pi";
 import {
@@ -239,6 +240,8 @@ export class Pi extends DurableObject<CloudflareEnv> {
             eventType: "capability.configured",
             occurredAt: item.createdAt,
             payload: buildCapabilityConfiguredPayload(stored),
+            actor: AUTOMATION_SYSTEM_ACTOR,
+            actors: [AUTOMATION_SYSTEM_ACTOR],
             subject: {
               orgId: stored.orgId,
               capabilityId: "pi",

@@ -289,6 +289,13 @@ describe("automation internalIngestEvent", () => {
   };
 
   const ingestEvent = async (overrides: Partial<AutomationEvent> = {}) => {
+    const defaultActor = {
+      scope: "external" as const,
+      source: "telegram",
+      type: "user",
+      id: "actor-1",
+    };
+    const actor = overrides.actor ?? defaultActor;
     const result = await fragment.fragment.callServices(() =>
       fragment.services.ingestEvent({
         id: "event-123",
@@ -296,13 +303,9 @@ describe("automation internalIngestEvent", () => {
         eventType,
         occurredAt: new Date("2026-01-01T00:00:00.000Z").toISOString(),
         payload: {},
-        actor: {
-          scope: "external",
-          source: "telegram",
-          type: "user",
-          id: "actor-1",
-        },
         ...overrides,
+        actor,
+        actors: overrides.actors ?? [actor],
       }),
     );
 
@@ -401,6 +404,7 @@ describe("automation internalIngestEvent", () => {
             type: "chat",
             id: "chat-1",
           },
+          actors: [{ scope: "external", source: "telegram", type: "chat", id: "chat-1" }],
         }),
       );
 
@@ -424,6 +428,7 @@ describe("automation internalIngestEvent", () => {
             type: "chat",
             id: "chat-1",
           },
+          actors: [{ scope: "external", source: "telegram", type: "chat", id: "chat-1" }],
         }),
       );
 
@@ -519,6 +524,7 @@ telegram.file.download --file-id "$file_id" > /workspace/telegram-download.bin
             type: "chat",
             id: "chat-1",
           },
+          actors: [{ scope: "external", source: "telegram", type: "chat", id: "chat-1" }],
         }),
       );
 

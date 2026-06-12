@@ -3,7 +3,7 @@ import { describe, expect, test, assert } from "vitest";
 import { env } from "cloudflare:workers";
 
 import type { AutomationRuntimeHostContext, AutomationRuntime } from "@/fragno/automation";
-import type { AutomationEvent } from "@/fragno/automation/contracts";
+import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "@/fragno/automation/contracts";
 import { executeBashAutomation } from "@/fragno/runtime-tools/automation-host";
 
 import { executeCodemodeAutomation } from "./codemode";
@@ -19,6 +19,8 @@ describe("executeCodemodeAutomation", () => {
       eventType: "message.received",
       occurredAt: "2026-06-03T00:00:00.000Z",
       payload: { text: "hello" },
+      actor: AUTOMATION_SYSTEM_ACTOR,
+      actors: [AUTOMATION_SYSTEM_ACTOR],
     };
 
     const result = await executeCodemodeAutomation({
@@ -62,6 +64,8 @@ describe("executeCodemodeAutomation", () => {
       eventType: "message.received",
       occurredAt: "2026-06-03T00:00:00.000Z",
       payload: { chatId: "chat-123" },
+      actor: AUTOMATION_SYSTEM_ACTOR,
+      actors: [AUTOMATION_SYSTEM_ACTOR],
     };
 
     const result = await executeCodemodeAutomation({
@@ -123,6 +127,8 @@ describe("executeCodemodeAutomation", () => {
       eventType: "message.received",
       occurredAt: "2026-06-03T00:00:00.000Z",
       payload: { plan: "basic" },
+      actor: AUTOMATION_SYSTEM_ACTOR,
+      actors: [AUTOMATION_SYSTEM_ACTOR],
     };
 
     const result = await executeCodemodeAutomation({
@@ -177,6 +183,8 @@ describe("executeCodemodeAutomation", () => {
       eventType: "message.received",
       occurredAt: "2026-06-03T00:00:00.000Z",
       payload: {},
+      actor: AUTOMATION_SYSTEM_ACTOR,
+      actors: [AUTOMATION_SYSTEM_ACTOR],
     };
     const context = createAutomationContext(event, runtime);
 
@@ -240,6 +248,8 @@ describe("executeCodemodeAutomation", () => {
       eventType: "message.received",
       occurredAt: "2026-06-03T00:00:00.000Z",
       payload: {},
+      actor: AUTOMATION_SYSTEM_ACTOR,
+      actors: [AUTOMATION_SYSTEM_ACTOR],
     };
 
     const result = await executeCodemodeAutomation({

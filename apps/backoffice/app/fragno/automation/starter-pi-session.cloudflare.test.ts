@@ -8,7 +8,7 @@ import { workflowsFragmentDefinition, workflowsRoutesFactory } from "@fragno-dev
 
 import { createMasterFileSystem, type FilesContext } from "@/files";
 
-import type { AutomationEvent } from "./contracts";
+import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "./contracts";
 import { automationFragmentDefinition } from "./definition";
 import { defineAutomationCodemodeWorkflow } from "./engine/workflow";
 import { automationFragmentRoutes } from "./routes";
@@ -315,6 +315,7 @@ const telegramEvent = (id: string, text: string) =>
       text,
     },
     actor: { scope: "external", source: "telegram", type: "chat", id: "chat-1" },
+    actors: [{ scope: "external", source: "telegram", type: "chat", id: "chat-1" }],
   }) satisfies AutomationEvent;
 
 describe("starter Pi session automation", () => {
@@ -339,6 +340,8 @@ describe("starter Pi session automation", () => {
           harnesses: [{ id: "default", label: "Default", tools: ["bash"] }],
           modelCatalog: [{ provider: "openai", name: "gpt-5-mini", label: "GPT-5 mini" }],
         },
+        actor: AUTOMATION_SYSTEM_ACTOR,
+        actors: [AUTOMATION_SYSTEM_ACTOR],
         subject: { orgId: "org-1", capabilityId: "pi" },
       }),
     );

@@ -86,14 +86,21 @@ const automationEventRecordSchema = z.object({
   source: z.string(),
   eventType: z.string(),
   hookId: z.string(),
-  actor: z
-    .object({
-      scope: z.string().optional(),
-      source: z.string().optional(),
-      type: z.string().optional(),
-      id: z.string().optional(),
-    })
-    .nullable()
+  actor: z.object({
+    scope: z.string(),
+    source: z.string().optional(),
+    type: z.string(),
+    id: z.string(),
+  }),
+  actors: z
+    .array(
+      z.object({
+        scope: z.string(),
+        source: z.string().optional(),
+        type: z.string(),
+        id: z.string(),
+      }),
+    )
     .optional(),
 });
 const automationEventsQueueResponseSchema = durableHookQueueResponseSchema.extend({

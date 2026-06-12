@@ -56,7 +56,7 @@ describe("starter automation content", () => {
       routerHandlesContractEvent: router.includes(
         `event.eventType === "${identityClaimCompleted}"`,
       ),
-      routerFiltersTelegramClaims: router.includes('event.actor?.source === "telegram"'),
+      routerFiltersTelegramClaims: router.includes('event.actor.source === "telegram"'),
       routerUsesEventIdPrefixForStart: router.includes('instanceIdForEvent("telegram-link")'),
       routerLooksUpOtpWorkflowBinding: router.includes('key: "telegram/claim-workflow/"'),
       routerSendsWorkflowSafeEvent: router.includes('type: "identity-claim-completed"'),

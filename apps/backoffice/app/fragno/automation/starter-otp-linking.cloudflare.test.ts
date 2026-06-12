@@ -225,6 +225,7 @@ const telegramStartEvent = {
   occurredAt: "2026-06-05T10:00:00.000Z",
   payload: { text: "/start", chatId: "chat-1" },
   actor: { scope: "external", source: "telegram", type: "chat", id: "chat-1" },
+  actors: [{ scope: "external", source: "telegram", type: "chat", id: "chat-1" }],
   subject: null,
 } satisfies AutomationEvent;
 
@@ -239,6 +240,7 @@ const otpCompletedEvent = {
     claimType: "identity_link",
   },
   actor: { scope: "external", source: "telegram", type: "chat", id: "chat-1" },
+  actors: [{ scope: "external", source: "telegram", type: "chat", id: "chat-1" }],
   subject: { userId: "user-1" },
 } satisfies AutomationEvent;
 

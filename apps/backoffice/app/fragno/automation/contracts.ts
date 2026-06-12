@@ -81,7 +81,17 @@ export const AUTOMATION_INTERNAL_ENTITIES = {
 
 export type AutomationInternalEntityType = keyof typeof AUTOMATION_INTERNAL_ENTITIES;
 
-export type AutomationEventActor = AutomationEntityRef;
+export type AutomationEventActor = AutomationEntityRef & {
+  role?: "initiator" | "principal" | "delegate" | "system" | string;
+};
+export type AutomationEventActors = AutomationEventActor[];
+
+export const AUTOMATION_SYSTEM_ACTOR = {
+  scope: "internal",
+  type: "system",
+  id: "backoffice",
+  role: "system",
+} as const satisfies AutomationEventActor;
 
 export type AutomationEventSubject = {
   orgId?: string;
@@ -96,7 +106,8 @@ export type AutomationEvent = {
   eventType: string;
   occurredAt: string;
   payload: AutomationEventPayload;
-  actor?: AutomationEventActor | null;
+  actor: AutomationEventActor;
+  actors: AutomationEventActors;
   subject?: AutomationEventSubject | null;
 };
 

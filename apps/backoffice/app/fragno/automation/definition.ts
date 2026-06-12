@@ -69,7 +69,7 @@ const buildCatalogResolverInput = (event: AutomationEvent): AutomationFileSystem
 
 export const automationFragmentDefinition = defineFragment<AutomationFragmentConfig>("automations")
   .extend(withDatabase(automationFragmentSchema))
-  .usesOptionalService<"workflows", AutomationWorkflowsService>("workflows")
+  .usesService<"workflows", AutomationWorkflowsService>("workflows")
   .provideHooks(({ defineHook, config, serviceDeps }) => {
     return {
       internalIngestEvent: defineHook(async function (payload) {
@@ -185,11 +185,9 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       ingestEvent: function (event: AutomationEvent) {
         return this.serviceTx(automationFragmentSchema)
           .mutate(({ uow }) => {
-            uow.triggerHook(
-              "internalIngestEvent",
-              { ...event, orgId: event.orgId?.trim() },
-              { id: event.id },
-            );
+            uow.triggerHook("internalIngestEvent", event, {
+              id: event.id,
+            });
           })
           .transform(() => buildIngestResult(event))
           .build();

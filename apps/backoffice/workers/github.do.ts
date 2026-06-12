@@ -1,7 +1,3 @@
-import {
-  createFragmentDurableObjectHost,
-  type FragmentDurableObjectHost,
-} from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject } from "cloudflare:workers";
 
 import {
@@ -9,36 +5,76 @@ import {
   type GitHubAppFragmentConfig,
 } from "@fragno-dev/github-app-fragment";
 
+import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import {
-  createDurableHookRepository,
-  createEmptyDurableHookRepository,
-  type DurableHookQueueOptions,
-} from "@/fragno/durable-hooks";
-import { createGitHubServer, type GitHubFragment } from "@/fragno/github";
+  buildGitHubAutomationEvent,
+  createGitHubServer,
+  type GitHubFragment,
+} from "@/fragno/github";
 
-import { extractFragmentConfig, resolveGitHubConfig } from "./github.shared";
+import { configsEqual, extractFragmentConfig, resolveGitHubConfig } from "./github.shared";
+import {
+  createBackofficeFragmentDurableObject,
+  type BackofficeFragmentDurableObject,
+} from "./lib/backoffice-fragment-durable-object";
+
+type StoredGitHubConfig = {
+  orgId: string;
+  source: GitHubAppFragmentConfig;
+};
 
 const GITHUB_WEBHOOK_ROUTER_SINGLETON_ID = "GITHUB_WEBHOOK_ROUTER_SINGLETON_ID";
 
 export class GitHub extends DurableObject<CloudflareEnv> {
   #env: CloudflareEnv;
-  #host: FragmentDurableObjectHost<GitHubAppFragmentConfig, GitHubFragment>;
-  #fragment: GitHubFragment | null = null;
+  #state: DurableObjectState;
+  #host: BackofficeFragmentDurableObject<
+    StoredGitHubConfig,
+    GitHubAppFragmentConfig,
+    GitHubFragment
+  >;
   #configResolution: ReturnType<typeof resolveGitHubConfig>;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
     this.#env = env;
+    this.#state = state;
     this.#configResolution = resolveGitHubConfig(env);
-    this.#host = createFragmentDurableObjectHost({
+    this.#host = createBackofficeFragmentDurableObject({
       name: "GitHub",
       state,
       env,
+      toSource: (stored) => stored.source,
+      fingerprint: (source) => JSON.stringify(source),
       createRuntime: (config) =>
         createGitHubServer(
           {
             ...config,
             webhook: (register) => {
+              register("*", async (event, _idempotencyKey, meta) => {
+                const runtime = this.#host.getConfigured();
+                if (!runtime) {
+                  console.warn(
+                    "Ignoring GitHub webhook automation event without configured runtime",
+                    {
+                      deliveryId: meta.deliveryId,
+                      event: meta.event,
+                      installationId: meta.installationId,
+                    },
+                  );
+                  return;
+                }
+
+                const orgId = this.#host.getStoredOrgId(runtime.stored);
+                if (!orgId) {
+                  throw new Error("Stored GitHub config is missing an organisation id.");
+                }
+
+                await this.#env.AUTOMATIONS.get(
+                  this.#env.AUTOMATIONS.idFromName(orgId),
+                ).ingestEvent(buildGitHubAutomationEvent({ orgId, event, meta }));
+              });
+
               register("installation.deleted", async ({ payload }, idempotencyKey) => {
                 await this.#cleanupInstallationRouting(
                   `${payload.installation.id}`,
@@ -49,22 +85,33 @@ export class GitHub extends DurableObject<CloudflareEnv> {
           },
           state,
         ),
-      onProcessError: (error) => {
-        console.error("GitHub hook processor error", error);
-      },
-      onDispatcherError: (error) => {
-        console.warn("GitHub hook processor disabled", error);
-      },
     });
 
     void state.blockConcurrencyWhile(async () => {
-      if (!this.#configResolution.ok) {
-        return;
-      }
+      await this.#host.initializeFromStored(await this.#host.loadStored());
+    });
+  }
 
-      this.#fragment = await this.#host.initialize(
-        extractFragmentConfig(this.#configResolution.config),
+  async ensureAdminConfig(orgId: string) {
+    const normalizedOrgId = orgId.trim();
+    if (!normalizedOrgId) {
+      throw new Error("GitHub configuration requires an organisation id.");
+    }
+    if (!this.#configResolution.ok) {
+      throw new Error(
+        this.#configResolution.error ?? "GitHub is not configured for this environment.",
       );
+    }
+
+    const source = extractFragmentConfig(this.#configResolution.config);
+    const existing = await this.#host.loadStored();
+    this.#host.assertSameOrg(existing, normalizedOrgId);
+    if (existing && configsEqual(existing.source, source)) {
+      return;
+    }
+
+    await this.#state.blockConcurrencyWhile(async () => {
+      await this.#host.storeAndInitialize({ orgId: normalizedOrgId, source });
     });
   }
 
@@ -91,11 +138,7 @@ export class GitHub extends DurableObject<CloudflareEnv> {
   }
 
   getDurableHookRepository() {
-    if (!this.#fragment) {
-      return createEmptyDurableHookRepository();
-    }
-
-    return createDurableHookRepository<DurableHookQueueOptions>(() => this.#fragment!);
+    return this.#host.getDurableHookRepository<DurableHookQueueOptions>(({ runtime }) => runtime);
   }
 
   async redeliverFailedInstallationWebhooks(installationId: string): Promise<void> {
@@ -115,7 +158,8 @@ export class GitHub extends DurableObject<CloudflareEnv> {
       return;
     }
 
-    if (!this.#fragment) {
+    const runtime = this.#host.getConfigured();
+    if (!runtime) {
       console.warn("GitHub install callback redelivery skipped", {
         installationId: normalizedInstallationId,
         reason: "GitHub is not configured for this environment.",
@@ -123,7 +167,7 @@ export class GitHub extends DurableObject<CloudflareEnv> {
       return;
     }
 
-    const app = getGitHubAppFromFragment(this.#fragment);
+    const app = getGitHubAppFromFragment(runtime.runtime);
     const deliveriesResponse = await app.octokit.request("GET /app/hook/deliveries", {
       per_page: 100,
     });
@@ -183,7 +227,8 @@ export class GitHub extends DurableObject<CloudflareEnv> {
   }
 
   async fetch(request: Request): Promise<Response> {
-    if (!this.#fragment) {
+    const configured = this.#host.getConfigured();
+    if (!configured) {
       const resolution = this.#configResolution;
       return Response.json(
         {
@@ -196,6 +241,6 @@ export class GitHub extends DurableObject<CloudflareEnv> {
       );
     }
 
-    return await this.#host.fetch(this.#fragment, request);
+    return await this.#host.fetch(request);
   }
 }

@@ -16,6 +16,7 @@ const createEvent = (overrides: Partial<AutomationEvent> = {}): AutomationEvent 
     type: "chat",
     id: "chat-1",
   },
+  actors: [{ scope: "external", source: "telegram", type: "chat", id: "chat-1" }],
   subject: null,
   ...overrides,
 });

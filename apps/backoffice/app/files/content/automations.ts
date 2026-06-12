@@ -26,7 +26,7 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
       await store.set({
         key: "pi/pi-default-agent",
         value: harness.id + "::" + model.provider + "::" + model.name,
-        actor: event.actor ?? null,
+        actor: event.actor,
         description: "Default Pi agent for automation-created sessions.",
         category: ["pi"],
       });
@@ -94,7 +94,7 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
   if (event.source === "otp" && event.eventType === "identity.claim.completed") {
     const otpId = event.payload.otpId;
 
-    if (event.actor?.source === "telegram") {
+    if (event.actor.source === "telegram") {
       const workflowBinding = await store.get({
         key: "telegram/claim-workflow/" + otpId,
       });
@@ -162,7 +162,7 @@ export const STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
       await store.set({
         key: "telegram/claim-workflow/" + claim.otpId,
         value: workflowInstanceId,
-        actor: automationEvent.actor ?? null,
+        actor: automationEvent.actor,
         description: "Workflow waiting for Telegram identity claim " + claim.otpId,
         category: ["system", "telegram", "otp"],
       });

@@ -111,7 +111,8 @@ describe("otp identity claim helpers", () => {
         otpId: "otp_123",
         claimType: IDENTITY_LINK_TYPE,
       },
-      actor: telegramChatActor,
+      actor: { ...telegramChatActor, role: "initiator" },
+      actors: [{ ...telegramChatActor, role: "initiator" }],
       subject: {
         userId: "user_123",
       },

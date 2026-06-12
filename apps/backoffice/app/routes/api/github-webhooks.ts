@@ -204,6 +204,8 @@ const forwardWebhook = async (request: Request, context: Readonly<RouterContextP
   }
 
   const githubDo = getGitHubDurableObject(context, orgId);
+  await githubDo.ensureAdminConfig(orgId);
+
   const url = new URL(request.url);
   url.pathname = "/api/github/webhooks";
   url.searchParams.set("orgId", orgId);
@@ -218,6 +220,7 @@ const forwardWebhook = async (request: Request, context: Readonly<RouterContextP
       status: response.status,
       statusText: response.statusText,
     });
+    return response;
   }
 
   return response;
