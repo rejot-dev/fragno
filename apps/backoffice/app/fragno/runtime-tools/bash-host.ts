@@ -22,6 +22,7 @@ import type { RegisteredResendCommandContext } from "./families/resend-runtime";
 import type { RegisteredReson8CommandContext } from "./families/reson8-runtime";
 import type { SandboxRuntime } from "./families/sandbox-runtime";
 import type { RegisteredTelegramCommandContext } from "./families/telegram-runtime";
+import { isomorphicGitCommand } from "./isomorphic-git-command";
 
 export type RegisteredAutomationsBashCommandContext = {
   runtime: AutomationStoreRuntime;
@@ -103,13 +104,19 @@ export type BashCommandFactoryInput = {
 
 const createRegisteredBashCommands = (input: BashCommandFactoryInput) => {
   const context = createBackofficeToolContext(input.context);
-  const tools = getAvailableRuntimeTools({ families: runtimeToolFamilies, context });
-
-  return createBackofficeBashCommands({
-    tools,
+  const tools = getAvailableRuntimeTools({
+    families: runtimeToolFamilies,
     context,
-    commandCallsResult: input.commandCallsResult,
   });
+
+  return [
+    ...createBackofficeBashCommands({
+      tools,
+      context,
+      commandCallsResult: input.commandCallsResult,
+    }),
+    isomorphicGitCommand,
+  ];
 };
 
 export const createBashHost = (input: CreateBashHostInput): BashHost => {

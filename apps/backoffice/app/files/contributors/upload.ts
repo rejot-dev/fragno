@@ -56,6 +56,28 @@ type UploadWriteOptions = WriteFileOptions | BufferEncoding | undefined;
 const getWriteEncoding = (options: UploadWriteOptions): BufferEncoding | undefined =>
   typeof options === "string" ? options : options?.encoding;
 
+const decodeUploadBytes = (
+  bytes: Uint8Array,
+  options?: BufferEncoding | { encoding?: BufferEncoding | null },
+): string => {
+  const encoding = typeof options === "string" ? options : options?.encoding;
+
+  if (encoding === "binary" || encoding === "latin1") {
+    return Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
+  }
+  if (encoding === "ascii") {
+    return Array.from(bytes, (byte) => String.fromCharCode(byte & 0x7f)).join("");
+  }
+  if (encoding === "hex") {
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  if (encoding === "base64") {
+    return btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""));
+  }
+
+  return new TextDecoder("utf-8").decode(bytes);
+};
+
 const binaryStringToBytes = (value: string): Uint8Array => {
   const bytes = new Uint8Array(value.length);
   for (let index = 0; index < value.length; index += 1) {
@@ -211,13 +233,6 @@ const normalizeUploadContentType = (contentType: string | null | undefined): str
   return normalizedContentType || null;
 };
 
-const resolveUploadReadContentType = (response: Response, fileKey: string): string | null => {
-  return resolveUploadContentType({
-    fileKey,
-    contentType: normalizeUploadContentType(response.headers.get("content-type")),
-  });
-};
-
 export const createUploadFileSystem = (
   ctx: FilesContext,
   options: CreateUploadFileSystemOptions = {},
@@ -289,7 +304,7 @@ export const createUploadFileSystem = (
         isSymbolicLink: false,
       }));
     },
-    async readFile(path) {
+    async readFile(path, options) {
       const { fileKey, isRoot, isDirectoryPath } = toRelativeUploadPath(mountPoint, path);
       if (isRoot || !fileKey || isDirectoryPath) {
         throw createPathNotFoundFileSystemError("read", path);
@@ -302,11 +317,8 @@ export const createUploadFileSystem = (
         fileKey,
         operation: "read",
       });
-      if (!isProbablyTextContent(resolveUploadReadContentType(response, fileKey), fileKey)) {
-        throw new Error("Binary files cannot be read as text.");
-      }
 
-      return response.text();
+      return decodeUploadBytes(new Uint8Array(await response.arrayBuffer()), options);
     },
     async readFileBuffer(path) {
       const { fileKey, isRoot, isDirectoryPath } = toRelativeUploadPath(mountPoint, path);
@@ -1528,16 +1540,3 @@ const ensureFolderPrefix = (value: string): string =>
 const getLeafSegment = (value: string): string => value.split("/").filter(Boolean).at(-1) ?? value;
 const normalizePath = (value: string, kind: FileEntryDescriptor["kind"]): string =>
   kind === "folder" ? ensureFolderPath(stripTrailingSlash(value)) : stripTrailingSlash(value);
-
-const isProbablyTextContent = (contentType: string | null | undefined, path: string): boolean => {
-  const normalizedContentType = contentType?.toLowerCase() ?? "";
-  return (
-    normalizedContentType.startsWith("text/") ||
-    normalizedContentType === "application/json" ||
-    normalizedContentType === "application/ld+json" ||
-    normalizedContentType === "application/xml" ||
-    normalizedContentType === "application/javascript" ||
-    normalizedContentType === "text/typescript" ||
-    /\.(md|mdx|txt|json|js|jsx|ts|tsx|css|html|xml|yml|yaml)$/i.test(path)
-  );
-};

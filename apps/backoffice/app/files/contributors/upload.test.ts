@@ -122,9 +122,13 @@ describe("upload file contributor", () => {
       },
       "reports/q1.txt": { content: "ready" },
       "reports/q2.json": { content: '{"ok":true}' },
+      ".git/HEAD": {
+        content: "ref: refs/heads/main\n",
+        contentType: "application/octet-stream",
+      },
     });
 
-    await expect(fs.readdir?.("/workspace")).resolves.toEqual(["images", "reports"]);
+    await expect(fs.readdir?.("/workspace")).resolves.toEqual([".git", "images", "reports"]);
     await expect(fs.readdirWithFileTypes?.("/workspace/reports/")).resolves.toEqual([
       {
         name: "config",
@@ -156,12 +160,13 @@ describe("upload file contributor", () => {
 
     await expect(fs.readFile?.("/workspace/reports/config")).resolves.toBe('{"ok":true}');
     await expect(fs.readFile?.("/workspace/reports/q1.txt")).resolves.toBe("ready");
+    await expect(fs.readFile?.("/workspace/.git/HEAD", "utf8")).resolves.toBe(
+      "ref: refs/heads/main\n",
+    );
     await expect(fs.readFileBuffer?.("/workspace/images/logo.png")).resolves.toEqual(
       new Uint8Array([137, 80, 78, 71]),
     );
-    await expect(fs.readFile?.("/workspace/images/logo.png")).rejects.toThrow(
-      /Binary files cannot be read as text/,
-    );
+    await expect(fs.readFile?.("/workspace/images/logo.png")).resolves.toContain("PNG");
     expect(runtime.requests).toContain(
       "GET /api/upload/files/by-key/content?provider=database&key=reports%2Fq1.txt",
     );

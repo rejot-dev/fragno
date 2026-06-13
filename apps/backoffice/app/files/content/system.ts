@@ -49,6 +49,8 @@ command families only when the matching runtime context is configured.
 The available commands appear as shell commands inside automation bash scripts. You can inspect help
 for a command with --help and capture output with --format json or --print options.
 
+The bash host also exposes \`isogit\`, a thin isomorphic-git command with \`clone\` and \`status\` conveniences. Run \`isogit --help\` for usage.
+
 Keep in mind that the implementation of these commands is not part of your file system, so DO NOT
 bother to find them if something's wrong. Just tell the user you cannot help them.
 
