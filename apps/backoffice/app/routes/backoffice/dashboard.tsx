@@ -2,7 +2,7 @@ import { Link, redirect, useOutletContext } from "react-router";
 
 import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import { BackofficePageHeader } from "@/components/backoffice";
-import { createOrgFileSystem } from "@/files";
+import { createOrgFileSystem, type IFileSystem } from "@/files";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import type { AutomationCommandOptionSpec } from "@/fragno/runtime-tools/automation-types";
@@ -18,9 +18,12 @@ import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 import type { Route } from "./+types/dashboard";
 import {
   type DashboardCommandResult,
+  type DashboardPathAutocompleteEntry,
+  type DashboardPathAutocompleteResult,
   DASHBOARD_COMMAND_TIMEOUT_MS,
   DEFAULT_CWD,
   extractNextCwd,
+  getDashboardPathAutocompleteRequest,
   wrapDashboardCommand,
 } from "./dashboard-terminal";
 import { DashboardTerminalPanel } from "./dashboard-terminal-panel";
@@ -83,6 +86,52 @@ const toErrorMessage = (error: unknown): string => {
   return "Command failed.";
 };
 
+const appendPathSegment = (parentPath: string, name: string) =>
+  parentPath === "/" ? `/${name}` : `${parentPath.replace(/\/+$/, "")}/${name}`;
+
+const listPathAutocompleteEntries = async ({
+  fileSystem,
+  cwd,
+  parentPath,
+  query,
+  directoriesOnly,
+}: {
+  fileSystem: IFileSystem;
+  cwd: string;
+  parentPath: string;
+  query: string;
+  directoriesOnly: boolean;
+}): Promise<DashboardPathAutocompleteEntry[]> => {
+  const resolvedParentPath = fileSystem.resolvePath(cwd, parentPath || ".");
+  const dirents = fileSystem.readdirWithFileTypes
+    ? await fileSystem.readdirWithFileTypes(resolvedParentPath)
+    : await Promise.all(
+        (await fileSystem.readdir(resolvedParentPath)).map(async (name) => {
+          const stat = await fileSystem.stat(appendPathSegment(resolvedParentPath, name));
+          return {
+            name,
+            isDirectory: stat.isDirectory,
+          };
+        }),
+      );
+
+  return dirents
+    .filter((entry) => entry.name.startsWith(query))
+    .filter((entry) => !directoriesOnly || entry.isDirectory)
+    .sort((left, right) => {
+      if (left.isDirectory !== right.isDirectory) {
+        return left.isDirectory ? -1 : 1;
+      }
+      return left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: "base" });
+    })
+    .slice(0, 8)
+    .map((entry) => ({
+      name: entry.name,
+      path: appendPathSegment(resolvedParentPath, entry.name),
+      isDirectory: entry.isDirectory,
+    }));
+};
+
 function StatCard({ label, value, description }: Stat) {
   return (
     <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
@@ -107,10 +156,68 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   const formData = await request.formData();
+  const intent = String(formData.get("intent") ?? "run-command");
   const command = String(formData.get("command") ?? "").trim();
   const cwdInput = String(formData.get("cwd") ?? "").trim();
   const cwd = cwdInput || DEFAULT_CWD;
   const activeOrg = me.activeOrganization?.organization;
+
+  if (intent === "autocomplete-path") {
+    const commandLine = String(formData.get("commandLine") ?? "");
+    const cursorPositionInput = Number(formData.get("cursorPosition"));
+    const cursorPosition = Number.isFinite(cursorPositionInput)
+      ? cursorPositionInput
+      : commandLine.length;
+    const autocompleteRequest = getDashboardPathAutocompleteRequest({
+      commandLine,
+      cwd,
+      cursorPosition,
+    });
+    const emptyResult = (error: string): DashboardPathAutocompleteResult => ({
+      ...(autocompleteRequest ?? {
+        intent: "autocomplete-path" as const,
+        commandLine,
+        cwd,
+        cursorPosition,
+        parentPath: "",
+        query: "",
+        replacementStart: cursorPosition,
+        replacementEnd: cursorPosition,
+        directoriesOnly: false,
+      }),
+      ok: false,
+      entries: [],
+      error,
+    });
+
+    if (!autocompleteRequest) {
+      return emptyResult("No path completion is available for this command.");
+    }
+
+    if (!activeOrg) {
+      return emptyResult(
+        "No active organization selected. Choose an organization to use the PI filesystem.",
+      );
+    }
+
+    try {
+      const env = context.get(CloudflareContext).env;
+      const fileSystem = await createOrgFileSystem({ orgId: activeOrg.id, env });
+      return {
+        ...autocompleteRequest,
+        ok: true,
+        entries: await listPathAutocompleteEntries({
+          fileSystem,
+          cwd,
+          parentPath: autocompleteRequest.parentPath,
+          query: autocompleteRequest.query,
+          directoriesOnly: autocompleteRequest.directoriesOnly,
+        }),
+      } satisfies DashboardPathAutocompleteResult;
+    } catch (error) {
+      return emptyResult(toErrorMessage(error));
+    }
+  }
 
   if (!command) {
     return {

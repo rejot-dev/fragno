@@ -6,6 +6,7 @@ const DASHBOARD_CWD_MARKER = "__FRAGNO_BACKOFFICE_CWD__";
 const DASHBOARD_TERMINAL_STORAGE_KEY = "backoffice.dashboard.terminal";
 const MAX_HISTORY = 80;
 const MAX_AUTOCOMPLETE_SUGGESTIONS = 8;
+const DASHBOARD_PATH_COMPLETION_COMMANDS = new Set(["cat", "cd", "find", "ls"]);
 
 export const DEFAULT_CWD = "/";
 export const DASHBOARD_COMMAND_TIMEOUT_MS = 15_000;
@@ -32,6 +33,34 @@ export type DashboardCommandResult = {
   ok: boolean;
 };
 
+export type DashboardPathAutocompleteEntry = {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+};
+
+export type DashboardPathAutocompleteRequest = {
+  intent: "autocomplete-path";
+  commandLine: string;
+  cwd: string;
+  cursorPosition: number;
+  parentPath: string;
+  query: string;
+  replacementStart: number;
+  replacementEnd: number;
+  directoriesOnly: boolean;
+};
+
+export type DashboardPathAutocompleteResult = DashboardPathAutocompleteRequest & {
+  ok: boolean;
+  entries: DashboardPathAutocompleteEntry[];
+  error?: string;
+};
+
+export type DashboardTerminalActionResult =
+  | DashboardCommandResult
+  | DashboardPathAutocompleteResult;
+
 export type DashboardCommandSpec = {
   command: string;
   summary: string;
@@ -43,7 +72,7 @@ export type DashboardAutocompleteMode = "completion" | "history";
 
 export type DashboardAutocompleteSuggestion = {
   id: string;
-  kind: "argument" | "command" | "history";
+  kind: "argument" | "command" | "history" | "path";
   label: string;
   description: string;
   detail?: string;
@@ -66,6 +95,8 @@ type UseDashboardTerminalOptions = {
   organizationId?: string | null;
   organizationName?: string | null;
   result?: DashboardCommandResult;
+  pathAutocompleteResult?: DashboardPathAutocompleteResult;
+  requestPathAutocomplete?: (request: DashboardPathAutocompleteRequest) => void;
   disabled?: boolean;
   commandSpecs?: readonly DashboardCommandSpec[];
 };
@@ -158,6 +189,106 @@ const formatSuggestionDescription = (option: AutomationCommandOptionSpec) => {
   return `${requirement}${value}`;
 };
 
+const splitPathToken = (pathToken: string) => {
+  const separatorIndex = pathToken.lastIndexOf("/");
+  if (separatorIndex === -1) {
+    return {
+      parentPath: "",
+      query: pathToken,
+    };
+  }
+
+  return {
+    parentPath: pathToken.slice(0, separatorIndex + 1) || "/",
+    query: pathToken.slice(separatorIndex + 1),
+  };
+};
+
+const joinPathCompletion = (parentPath: string, name: string, isDirectory: boolean) => {
+  const prefix = parentPath && parentPath !== "/" ? parentPath.replace(/\/+$/, "/") : parentPath;
+  const replacement = `${prefix}${name}`;
+  return isDirectory ? `${replacement}/` : replacement;
+};
+
+const isMatchingPathAutocompleteResult = (
+  request: DashboardPathAutocompleteRequest,
+  result: DashboardPathAutocompleteResult | undefined,
+) =>
+  Boolean(
+    result &&
+    result.ok &&
+    result.commandLine === request.commandLine &&
+    result.cwd === request.cwd &&
+    result.cursorPosition === request.cursorPosition &&
+    result.parentPath === request.parentPath &&
+    result.query === request.query &&
+    result.replacementStart === request.replacementStart &&
+    result.replacementEnd === request.replacementEnd &&
+    result.directoriesOnly === request.directoriesOnly,
+  );
+
+export const getDashboardPathAutocompleteRequest = ({
+  commandLine,
+  cwd,
+  cursorPosition = commandLine.length,
+}: {
+  commandLine: string;
+  cwd: string;
+  cursorPosition?: number;
+}): DashboardPathAutocompleteRequest | null => {
+  const tokens = tokenizeCommandLine(commandLine);
+  const commandToken = tokens[0];
+  if (!commandToken || cursorPosition <= commandToken.end) {
+    return null;
+  }
+
+  if (!DASHBOARD_PATH_COMPLETION_COMMANDS.has(commandToken.value)) {
+    return null;
+  }
+
+  const currentToken = currentTokenAt(commandLine, cursorPosition);
+  if (currentToken.value.startsWith("--")) {
+    return null;
+  }
+
+  const { parentPath, query } = splitPathToken(currentToken.value);
+
+  return {
+    intent: "autocomplete-path",
+    commandLine,
+    cwd,
+    cursorPosition,
+    parentPath,
+    query,
+    replacementStart: currentToken.start,
+    replacementEnd: currentToken.end,
+    directoriesOnly: commandToken.value === "cd",
+  };
+};
+
+const buildDashboardPathAutocompleteSuggestions = (
+  request: DashboardPathAutocompleteRequest,
+  result: DashboardPathAutocompleteResult | undefined,
+): DashboardAutocompleteSuggestion[] => {
+  if (!result || !isMatchingPathAutocompleteResult(request, result)) {
+    return [];
+  }
+
+  return result.entries.slice(0, MAX_AUTOCOMPLETE_SUGGESTIONS).map((entry) => {
+    const replacement = joinPathCompletion(request.parentPath, entry.name, entry.isDirectory);
+    return {
+      id: `path:${entry.path}`,
+      kind: "path",
+      label: replacement,
+      description: entry.path,
+      detail: entry.isDirectory ? "Directory" : "File",
+      replacement,
+      replacementStart: request.replacementStart,
+      replacementEnd: request.replacementEnd,
+    };
+  });
+};
+
 export const shortenDashboardCwd = (cwd: string, maxLength = 40) => {
   if (cwd.length <= maxLength) {
     return cwd;
@@ -238,15 +369,19 @@ const createEntry = (result: DashboardCommandResult): DashboardTerminalEntry => 
 export const buildDashboardAutocomplete = ({
   commandLine,
   commandSpecs,
+  currentCwd = DEFAULT_CWD,
   cursorPosition = commandLine.length,
   history,
   mode,
+  pathAutocompleteResult,
 }: {
   commandLine: string;
   commandSpecs: readonly DashboardCommandSpec[];
+  currentCwd?: string;
   cursorPosition?: number;
   history: readonly string[];
   mode: DashboardAutocompleteMode;
+  pathAutocompleteResult?: DashboardPathAutocompleteResult;
 }): DashboardAutocompleteSuggestion[] => {
   const trimmedQuery = commandLine.trim().toLowerCase();
   const historyCommands = uniqueNewestCommands(history);
@@ -294,6 +429,18 @@ export const buildDashboardAutocomplete = ({
     if (commandSuggestions.length) {
       return commandSuggestions;
     }
+  }
+
+  const pathAutocompleteRequest = getDashboardPathAutocompleteRequest({
+    commandLine,
+    cwd: currentCwd,
+    cursorPosition,
+  });
+  const pathAutocompleteSuggestions = pathAutocompleteRequest
+    ? buildDashboardPathAutocompleteSuggestions(pathAutocompleteRequest, pathAutocompleteResult)
+    : [];
+  if (pathAutocompleteSuggestions.length) {
+    return pathAutocompleteSuggestions;
   }
 
   const commandSpec = commandToken
@@ -404,6 +551,8 @@ export const useDashboardTerminal = ({
   organizationId,
   organizationName,
   result,
+  pathAutocompleteResult,
+  requestPathAutocomplete,
   disabled = false,
   commandSpecs = [],
 }: UseDashboardTerminalOptions) => {
@@ -423,10 +572,19 @@ export const useDashboardTerminal = ({
       buildDashboardAutocomplete({
         commandLine: command,
         commandSpecs,
+        currentCwd: snapshot.cwd,
         history: snapshot.commands,
         mode: autocompleteMode,
+        pathAutocompleteResult,
       }),
-    [autocompleteMode, command, commandSpecs, snapshot.commands],
+    [
+      autocompleteMode,
+      command,
+      commandSpecs,
+      pathAutocompleteResult,
+      snapshot.commands,
+      snapshot.cwd,
+    ],
   );
 
   const argumentHints = useMemo(
@@ -525,6 +683,16 @@ export const useDashboardTerminal = ({
     }
   }, [activeAutocompleteIndex, autocompleteOpen, autocompleteSuggestions.length]);
 
+  useEffect(() => {
+    if (disabled || !autocompleteSuggestions.some((suggestion) => suggestion.kind === "path")) {
+      return;
+    }
+
+    setAutocompleteMode("completion");
+    setAutocompleteOpen(true);
+    setActiveAutocompleteIndex(0);
+  }, [autocompleteSuggestions, disabled]);
+
   const clear = () => {
     setSnapshot(createSnapshot(organizationName));
     setCommand("");
@@ -586,6 +754,19 @@ export const useDashboardTerminal = ({
     if (event.key === "Tab") {
       if (!disabled) {
         event.preventDefault();
+        const cursorPosition = inputRef.current?.selectionStart ?? command.length;
+        const pathAutocompleteRequest = getDashboardPathAutocompleteRequest({
+          commandLine: command,
+          cwd: snapshot.cwd,
+          cursorPosition,
+        });
+
+        if (pathAutocompleteRequest && requestPathAutocomplete) {
+          closeAutocomplete();
+          requestPathAutocomplete(pathAutocompleteRequest);
+          return;
+        }
+
         openAutocomplete("completion");
       }
       return;
