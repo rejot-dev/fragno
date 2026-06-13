@@ -99,7 +99,7 @@ const SKILL_READING_PROMPT =
 const BASH_HARNESS_PROMPT = `SYSTEM.md (agent guidance):\n\n${DEFAULT_SYSTEM_PROMPT}\n\n${SKILL_READING_PROMPT}\n\n${BASH_HARNESS_REFERENCE}`;
 
 const STATE_HARNESS_PROMPT = createCodemodeSystemPrompt({
-  families: runtimeToolFamilies,
+  families: runtimeToolFamilies.filter((family) => !family.hidden),
 });
 
 const CODEMODE_HARNESS_PROMPT = `SYSTEM.md (agent guidance):\n\n${DEFAULT_SYSTEM_PROMPT}

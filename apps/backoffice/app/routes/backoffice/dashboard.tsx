@@ -38,7 +38,11 @@ const DASHBOARD_COMMAND_REFERENCES = createRuntimeToolReferences({
   families: runtimeToolFamilies,
   context: createRuntimeToolReferenceContext(),
 });
-const DASHBOARD_COMMAND_GROUPS = renderDashboardCommandGroups(DASHBOARD_COMMAND_REFERENCES);
+const DASHBOARD_VISIBLE_COMMAND_REFERENCES = createRuntimeToolReferences({
+  families: runtimeToolFamilies.filter((family) => !family.hidden),
+  context: createRuntimeToolReferenceContext(),
+});
+const DASHBOARD_COMMAND_GROUPS = renderDashboardCommandGroups(DASHBOARD_VISIBLE_COMMAND_REFERENCES);
 const DASHBOARD_SHELL_COMMAND_SPECS = [
   { command: "cat", summary: "Print file contents.", options: [] },
   { command: "cd", summary: "Change the terminal working directory.", options: [] },

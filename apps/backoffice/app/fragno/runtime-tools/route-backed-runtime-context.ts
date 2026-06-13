@@ -3,6 +3,7 @@ import type { AutomationEventActor } from "@/fragno/automation/contracts";
 import { createRouteBackedDurableHooksRuntime } from "@/fragno/automation/durable-hooks-route-runtime";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
+import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
 import { createMcpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
 import { createOtpRuntime } from "@/fragno/runtime-tools/families/otp-runtime";
 import { createPiRouteRuntime, type PiRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
@@ -59,6 +60,9 @@ export const createRouteBackedRuntimeContext = ({
     },
     durableHooks: {
       runtime: createRouteBackedDurableHooksRuntime({ env, orgId: normalizedOrgId }),
+    },
+    internal: {
+      runtime: createInternalRuntime({ env, orgId: normalizedOrgId }),
     },
     mcp: env.MCP
       ? {

@@ -39,7 +39,7 @@ export const SYSTEM_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
       return { skipped: true, reason: "not-organization-created" };
     }
 
-    return await step.do("configure upload database connection", async () => {
+    const configured = await step.do("configure upload database connection", async () => {
       await connections.configure({
         id: "upload",
         payload: { provider: "database" },
@@ -47,6 +47,12 @@ export const SYSTEM_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
 
       return { configured: true, id: "upload", provider: "database" };
     });
+
+    const seeded = await step.do("seed workspace starter files", async () => {
+      return await internal.filesSeedExecute({});
+    });
+
+    return { ...configured, seeded };
   },
 );
 `,

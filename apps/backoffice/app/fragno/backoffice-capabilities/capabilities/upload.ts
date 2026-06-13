@@ -1,10 +1,5 @@
 import { z } from "zod";
 
-import { GENERAL_SKILL_CONTENT } from "@/files/content/skills";
-import { WORKSPACE_STARTER_AUTOMATION_CONTENT } from "@/files/content/starter-automations";
-import { createUploadFileSystem } from "@/files/contributors/upload";
-import { FileSystemError } from "@/files/fs-errors";
-import type { IFileSystem } from "@/files/interface";
 import type {
   BackofficeCapability,
   ConnectionStatus,
@@ -50,53 +45,6 @@ const toUploadStatus = (response: UploadAdminConfigResponse): ConnectionStatus =
   };
 };
 
-const fileExists = async (fs: IFileSystem, path: string) => {
-  try {
-    await fs.readFileBuffer(path);
-    return true;
-  } catch (error) {
-    if (error instanceof FileSystemError && error.code === "ENOENT") {
-      return false;
-    }
-
-    throw error;
-  }
-};
-
-const copyWorkspaceStarterFiles = async ({ env, orgId }: { env: CloudflareEnv; orgId: string }) => {
-  const uploadDo = getUploadDo(env, orgId);
-  const fs = createUploadFileSystem(
-    {
-      orgId,
-      uploadConfig: await uploadDo.getAdminConfig(),
-      uploadRuntime: {
-        baseUrl: "https://files.internal",
-        fetch: uploadDo.fetch.bind(uploadDo),
-      },
-    },
-    { mountPoint: "/workspace", provider: "database" },
-  );
-
-  const starterContent = {
-    "AGENTS.md": `# Workspace guidance\n\nThis is the editable organisation workspace. User-owned automations live in \`/workspace/automations/\` and may be changed freely.\n`,
-    "README.md": `# Workspace starter content\n\nThis editable workspace contains starter automation content and scratch areas.\n`,
-    "input/notes.md": `# Notes\n\nUse this file for requirements, TODOs, links, and rough context before handing work to Pi or a Sandbox runtime.\n`,
-    "prompts/task.md": `# Task prompt\n\nDescribe the task you want to work on here.\n`,
-    "output/.gitkeep": "",
-    ...WORKSPACE_STARTER_AUTOMATION_CONTENT,
-    ...GENERAL_SKILL_CONTENT,
-  };
-
-  for (const [relativePath, content] of Object.entries(starterContent)) {
-    const path = `/workspace/${relativePath.replace(/^\/+/, "")}`;
-    if (await fileExists(fs, path)) {
-      continue;
-    }
-
-    await fs.writeFile(path, content);
-  }
-};
-
 export const uploadCapability: BackofficeCapability = {
   ...capability,
   runtimeToolNamespaces: [],
@@ -118,21 +66,14 @@ export const uploadCapability: BackofficeCapability = {
       toUploadStatus(await getUploadDo(env, orgId).getAdminConfig()),
     reset: async ({ env, orgId }) =>
       toUploadStatus(await getUploadDo(env, orgId).resetAdminConfig()),
-    configure: async ({ env, orgId, origin, payload }) => {
-      const status = toUploadStatus(
+    configure: async ({ env, orgId, origin, payload }) =>
+      toUploadStatus(
         await getUploadDo(env, orgId).setAdminConfig(
           uploadConfigureInputSchema.parse(payload),
           orgId,
           origin,
         ),
-      );
-
-      if (status.configured) {
-        await copyWorkspaceStarterFiles({ env, orgId });
-      }
-
-      return status;
-    },
+      ),
   },
   hooks: [
     {

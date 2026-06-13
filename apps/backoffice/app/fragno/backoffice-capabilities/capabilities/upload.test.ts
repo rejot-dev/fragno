@@ -1,17 +1,14 @@
 import { describe, expect, test, vi, assert } from "vitest";
 
-import { uploadCapability } from "./upload";
+import { seedWorkspaceStarterFiles } from "@/files/seed-workspace-starter-files";
 
-describe("upload capability workspace starter initialization", () => {
+describe("workspace starter file seeding", () => {
   test("copies missing starter files without resolving them as folders", async () => {
     const requests: Array<{ method: string; pathname: string }> = [];
     const uploadDo = {
-      setAdminConfig: vi.fn(async () => ({
-        configured: true,
-        providers: { database: { configured: true } },
-      })),
       getAdminConfig: vi.fn(async () => ({
         configured: true,
+        defaultProvider: "database",
         providers: { database: { configured: true } },
       })),
       fetch: vi.fn(async (request: Request) => {
@@ -49,24 +46,12 @@ describe("upload capability workspace starter initialization", () => {
       },
     } as unknown as CloudflareEnv;
 
-    if (!uploadCapability.connection?.configure) {
-      throw new Error("Expected upload connection to be configurable.");
-    }
+    await expect(seedWorkspaceStarterFiles({ env, orgId: "org-1" })).resolves.toMatchObject({
+      provider: "database",
+      created: expect.arrayContaining(["/workspace/AGENTS.md"]),
+    });
 
-    await expect(
-      uploadCapability.connection.configure({
-        env,
-        orgId: "org-1",
-        origin: "https://example.com",
-        payload: { provider: "database" },
-      }),
-    ).resolves.toMatchObject({ configured: true });
-
-    expect(uploadDo.setAdminConfig).toHaveBeenCalledWith(
-      { provider: "database" },
-      "org-1",
-      "https://example.com",
-    );
+    expect(uploadDo.getAdminConfig).toHaveBeenCalledOnce();
     expect(requests).not.toContainEqual({ method: "GET", pathname: "/api/upload/files" });
     assert(requests.some((request) => request.method === "POST"));
   });
