@@ -342,7 +342,10 @@ export const createCodemodeTypes = ({
   families: readonly BackofficeRuntimeToolFamily[];
   context?: BackofficeToolContext;
 }) => {
-  const references = createRuntimeToolReferences({ families, context });
+  const references = createRuntimeToolReferences({
+    families: families.filter((family) => !family.hidden),
+    context,
+  });
   const providerTypes = references.length ? `\n\n${renderCodemodeProviderTypes(references)}` : "";
   return `${STATE_TYPES}\n\n${renderCodemodeWorkflowTypes()}${providerTypes}`;
 };

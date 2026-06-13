@@ -10,7 +10,7 @@ import { GENERAL_SKILL_CONTENT } from "./skills";
 import { SYSTEM_AUTOMATION_CONTENT } from "./system-automations";
 
 export const BASH_COMMAND_REFERENCE = renderBashCommandReferenceMarkdown(
-  createRuntimeToolReferences({ families: runtimeToolFamilies }),
+  createRuntimeToolReferences({ families: runtimeToolFamilies.filter((family) => !family.hidden) }),
 );
 
 export const SYSTEM_GUIDANCE = `# System guidance

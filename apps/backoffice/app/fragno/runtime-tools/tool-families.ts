@@ -18,6 +18,7 @@ import {
   type BackofficeCapabilitiesRuntime,
 } from "./families/backoffice-capabilities";
 import { eventToolFamily, type EventRuntime } from "./families/event";
+import { internalToolFamily, type InternalRuntime } from "./families/internal";
 import { mcpToolFamily, type McpRuntime } from "./families/mcp";
 import { otpToolFamily, type OtpRuntime } from "./families/otp";
 import { piToolFamily, type PiRuntime } from "./families/pi";
@@ -37,6 +38,7 @@ export type CoreBackofficeRuntimeMap = {
   workflow?: AutomationWorkflowRuntime;
   durableHooks?: DurableHooksRuntime;
   event?: EventRuntime;
+  internal?: InternalRuntime;
   mcp?: McpRuntime;
   otp?: OtpRuntime;
   pi?: PiRuntime;
@@ -65,6 +67,7 @@ export const runtimeToolFamilies = [
   reson8ToolFamily,
   sandboxToolFamily,
   telegramToolFamily,
+  internalToolFamily,
 ] as const satisfies readonly BackofficeRuntimeToolFamily[];
 
 export const getAvailableBackofficeRuntimeTools = (context: BackofficeToolContext) =>

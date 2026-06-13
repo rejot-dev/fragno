@@ -114,6 +114,7 @@ export type AnyBackofficeRuntimeTool = BackofficeRuntimeTool<
 export type BackofficeRuntimeToolFamily = {
   namespace: string;
   tools: readonly AnyBackofficeRuntimeTool[];
+  hidden?: boolean;
   isAvailable?: (context: BackofficeToolContext) => boolean;
 };
 
@@ -130,14 +131,17 @@ export const defineBackofficeRuntimeToolFamily = <
 >({
   namespace,
   tools,
+  hidden,
   isAvailable,
 }: {
   namespace: string;
   tools: readonly BackofficeRuntimeTool<z.ZodType, z.ZodType, TContext>[];
+  hidden?: boolean;
   isAvailable?: (context: TContext) => boolean;
 }): BackofficeRuntimeToolFamily => ({
   namespace,
   tools: tools as readonly AnyBackofficeRuntimeTool[],
+  ...(hidden ? { hidden } : {}),
   ...(isAvailable
     ? { isAvailable: (context: BackofficeToolContext) => isAvailable(context as TContext) }
     : {}),

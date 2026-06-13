@@ -14,6 +14,7 @@ import type { DurableHooksRuntime } from "./families/automations-durable-hooks";
 import type { AutomationWorkflowRuntime } from "./families/automations-workflow";
 import type { BackofficeCapabilitiesRuntime } from "./families/backoffice-capabilities";
 import type { EventRuntime } from "./families/event-runtime";
+import type { InternalRuntime } from "./families/internal";
 import type { RegisteredMcpCommandContext } from "./families/mcp-runtime";
 import type { RegisteredOtpCommandContext } from "./families/otp-runtime";
 import type { RegisteredPiCommandContext } from "./families/pi-runtime";
@@ -37,6 +38,7 @@ export type BashHostContext = {
   automations: RegisteredAutomationsBashCommandContext | null;
   workflow?: { runtime: AutomationWorkflowRuntime } | null;
   durableHooks?: { runtime: DurableHooksRuntime } | null;
+  internal?: { runtime: InternalRuntime } | null;
   mcp?: RegisteredMcpCommandContext | null;
   otp: RegisteredOtpCommandContext | null;
   pi: RegisteredPiCommandContext | null;
@@ -52,6 +54,7 @@ export const EMPTY_BASH_HOST_CONTEXT: BashHostContext = {
   automations: null,
   workflow: null,
   durableHooks: null,
+  internal: null,
   mcp: null,
   otp: null,
   pi: null,

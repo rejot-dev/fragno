@@ -22,7 +22,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   return new Response(
     createCodemodeSystemPrompt({
-      families: runtimeToolFamilies,
+      families: runtimeToolFamilies.filter((family) => !family.hidden),
       context: createRuntimeToolReferenceContext(),
     }),
     {
