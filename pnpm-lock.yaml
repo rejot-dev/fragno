@@ -166,6 +166,9 @@ importers:
       isbot:
         specifier: ^5.1.32
         version: 5.1.32
+      isomorphic-git:
+        specifier: 1.38.3
+        version: 1.38.3
       just-bash:
         specifier: ^2.11.7
         version: 2.13.0
