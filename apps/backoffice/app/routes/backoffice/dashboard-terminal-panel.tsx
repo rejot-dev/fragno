@@ -5,6 +5,8 @@ import {
   type DashboardCommandResult,
   type DashboardCommandSpec,
   type DashboardAutocompleteSuggestion,
+  type DashboardPathAutocompleteRequest,
+  type DashboardTerminalActionResult,
   shortenDashboardCwd,
   useDashboardTerminal,
 } from "./dashboard-terminal";
@@ -27,12 +29,29 @@ export function DashboardTerminalPanel({
   organizationName,
   commandSpecs = [],
 }: DashboardTerminalPanelProps) {
-  const fetcher = useFetcher<DashboardCommandResult>();
-  const isSubmitting = fetcher.state !== "idle";
+  const commandFetcher = useFetcher<DashboardTerminalActionResult>();
+  const pathAutocompleteFetcher = useFetcher<DashboardTerminalActionResult>();
+  const isSubmitting = commandFetcher.state !== "idle";
+  const commandResult: DashboardCommandResult | undefined =
+    commandFetcher.data?.intent === "run-command" ? commandFetcher.data : undefined;
+  const pathAutocompleteResult =
+    pathAutocompleteFetcher.data?.intent === "autocomplete-path"
+      ? pathAutocompleteFetcher.data
+      : undefined;
+  const requestPathAutocomplete = (request: DashboardPathAutocompleteRequest) => {
+    const formData = new FormData();
+    formData.set("intent", request.intent);
+    formData.set("commandLine", request.commandLine);
+    formData.set("cwd", request.cwd);
+    formData.set("cursorPosition", String(request.cursorPosition));
+    pathAutocompleteFetcher.submit(formData, { method: "post" });
+  };
   const terminal = useDashboardTerminal({
     organizationId,
     organizationName,
-    result: fetcher.data,
+    result: commandResult,
+    pathAutocompleteResult,
+    requestPathAutocomplete,
     disabled: isSubmitting,
     commandSpecs,
   });
@@ -106,8 +125,9 @@ export function DashboardTerminalPanel({
         ))}
       </div>
 
-      <fetcher.Form method="post" className="mt-4 space-y-2">
+      <commandFetcher.Form method="post" className="mt-4 space-y-2">
         <div className="flex gap-2">
+          <input type="hidden" name="intent" value="run-command" />
           <input type="hidden" name="cwd" value={terminal.currentCwd} />
           <div className="relative flex min-w-0 flex-1 items-stretch border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
             {terminal.autocompleteOpen ? (
@@ -229,7 +249,7 @@ export function DashboardTerminalPanel({
             </div>
           </div>
         ) : null}
-      </fetcher.Form>
+      </commandFetcher.Form>
     </div>
   );
 }

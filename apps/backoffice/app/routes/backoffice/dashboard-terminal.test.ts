@@ -5,6 +5,7 @@ import {
   buildDashboardAutocomplete,
   extractNextCwd,
   getDashboardArgumentHints,
+  getDashboardPathAutocompleteRequest,
   type DashboardCommandSpec,
   wrapDashboardCommand,
 } from "./dashboard-terminal";
@@ -115,6 +116,55 @@ describe("dashboard terminal autocomplete", () => {
     assert.equal(
       applyDashboardAutocompleteSuggestion("pi.session.get --", suggestions[0]!),
       "pi.session.get --session-id ",
+    );
+  });
+
+  test("builds path completion requests for shell command path arguments", () => {
+    expect(
+      getDashboardPathAutocompleteRequest({
+        commandLine: "cd /workspace/bla",
+        cwd: "/",
+      }),
+    ).toMatchObject({
+      intent: "autocomplete-path",
+      parentPath: "/workspace/",
+      query: "bla",
+      replacementStart: 3,
+      replacementEnd: 17,
+      directoriesOnly: true,
+    });
+  });
+
+  test("completes shell command paths from filesystem suggestions", () => {
+    const request = getDashboardPathAutocompleteRequest({
+      commandLine: "cd /workspace/bla",
+      cwd: "/",
+    });
+    assert(request);
+
+    const suggestions = buildDashboardAutocomplete({
+      commandLine: "cd /workspace/bla",
+      commandSpecs,
+      currentCwd: "/",
+      history: [],
+      mode: "completion",
+      pathAutocompleteResult: {
+        ...request,
+        ok: true,
+        entries: [
+          { name: "blackbird", path: "/workspace/blackbird", isDirectory: true },
+          { name: "blame.txt", path: "/workspace/blame.txt", isDirectory: false },
+        ],
+      },
+    });
+
+    expect(suggestions.map((suggestion) => [suggestion.kind, suggestion.label])).toEqual([
+      ["path", "/workspace/blackbird/"],
+      ["path", "/workspace/blame.txt"],
+    ]);
+    assert.equal(
+      applyDashboardAutocompleteSuggestion("cd /workspace/bla", suggestions[0]!),
+      "cd /workspace/blackbird/",
     );
   });
 
