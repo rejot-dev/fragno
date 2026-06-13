@@ -6,8 +6,10 @@ import {
 } from "@/files";
 import { FileSystemError } from "@/files/fs-errors";
 
-export const AUTOMATION_WORKSPACE_ROOT = "/starter/automations";
-export const AUTOMATION_SCRIPTS_ROOT = `${AUTOMATION_WORKSPACE_ROOT}/scripts`;
+export const AUTOMATION_SYSTEM_ROOT = "/system/automations";
+export const AUTOMATION_WORKSPACE_ROOT = "/workspace/automations";
+export const AUTOMATION_SCRIPTS_ROOT = AUTOMATION_WORKSPACE_ROOT;
+const AUTOMATION_ROOTS = [AUTOMATION_SYSTEM_ROOT, AUTOMATION_WORKSPACE_ROOT] as const;
 
 export type AutomationFileSystemResolvePurpose = "route" | "runtime";
 
@@ -58,14 +60,17 @@ export type AutomationCatalog = {
   scripts: AutomationScriptCatalogEntry[];
 };
 
+export type AutomationScriptLayer = "system" | "workspace";
+
 export type AutomationWorkspaceScriptEntry = {
+  layer: AutomationScriptLayer;
   path: string;
   absolutePath: string;
   engine: AutomationScriptEngine;
   kind: "script" | "workflow";
 };
 
-const AUTOMATION_WORKSPACE_ROOT_RELATIVE = AUTOMATION_WORKSPACE_ROOT.slice(1);
+const AUTOMATION_ROOT_RELATIVES = AUTOMATION_ROOTS.map((root) => root.slice(1));
 
 const inferWorkspaceScriptEngine = (path: string): AutomationScriptEngine =>
   path.endsWith(".cm.js") ? "codemode" : "bash";
@@ -86,14 +91,14 @@ const normalizeScriptRelativePath = (value: string, label = "Automation script")
       );
     }
 
-    if (
-      normalizedAbsolutePath !== AUTOMATION_WORKSPACE_ROOT_RELATIVE &&
-      !normalizedAbsolutePath.startsWith(`${AUTOMATION_WORKSPACE_ROOT_RELATIVE}/`)
-    ) {
-      throw new Error(`${label} path '${value}' must stay under ${AUTOMATION_WORKSPACE_ROOT}.`);
+    const matchedRoot = AUTOMATION_ROOT_RELATIVES.find(
+      (root) => normalizedAbsolutePath === root || normalizedAbsolutePath.startsWith(`${root}/`),
+    );
+    if (!matchedRoot) {
+      throw new Error(`${label} path '${value}' must stay under an automation root.`);
     }
 
-    return normalizedAbsolutePath.slice(`${AUTOMATION_WORKSPACE_ROOT_RELATIVE}/`.length);
+    return normalizedAbsolutePath.slice(`${matchedRoot}/`.length);
   }
 
   try {
@@ -108,14 +113,16 @@ const normalizeScriptRelativePath = (value: string, label = "Automation script")
 const toAbsoluteAutomationPath = (relativePath: string) =>
   `${AUTOMATION_WORKSPACE_ROOT}/${normalizeRelativePath(relativePath)}`;
 
+const getAutomationRootForPath = (absolutePath: string) =>
+  AUTOMATION_ROOTS.find((root) => absolutePath === root || absolutePath.startsWith(`${root}/`));
+
 const toAutomationWorkspaceRelativePath = (absolutePath: string) => {
-  if (!absolutePath.startsWith(`${AUTOMATION_WORKSPACE_ROOT}/`)) {
-    throw new Error(
-      `Automation path '${absolutePath}' must stay under ${AUTOMATION_WORKSPACE_ROOT}.`,
-    );
+  const root = getAutomationRootForPath(absolutePath);
+  if (!root) {
+    throw new Error(`Automation path '${absolutePath}' must stay under an automation root.`);
   }
 
-  return normalizeRelativePath(absolutePath.slice(`${AUTOMATION_WORKSPACE_ROOT}/`.length));
+  return normalizeRelativePath(absolutePath.slice(`${root}/`.length));
 };
 
 const compareScriptEntries = <
@@ -263,6 +270,9 @@ const readAutomationWorkspaceTextFile = async (
   }
 };
 
+const getAutomationLayerForPath = (absolutePath: string): AutomationScriptLayer =>
+  absolutePath.startsWith(`${AUTOMATION_SYSTEM_ROOT}/`) ? "system" : "workspace";
+
 const toScriptKey = (path: string) => path.replace(/^scripts\//, "").replace(/\.[^.]+$/, "");
 
 const toScriptName = (path: string) => {
@@ -285,9 +295,10 @@ const toScriptCatalogEntry = async (
     "Automation script",
   );
   const key = toScriptKey(workspaceScript.path);
+  const layer = getAutomationLayerForPath(workspaceScript.absolutePath);
 
   return {
-    id: `script:${key}@1:${workspaceScript.path}`,
+    id: `script:${layer}:${key}@1:${workspaceScript.path}`,
     key,
     name: toScriptName(workspaceScript.path),
     engine: workspaceScript.engine,
@@ -316,12 +327,17 @@ export const createMinimalFileSystem = async (orgId?: string): Promise<IFileSyst
 export const listAutomationWorkspaceScripts = async (
   fileSystem: IFileSystem,
 ): Promise<AutomationWorkspaceScriptEntry[]> => {
-  const absolutePaths = await listAutomationWorkspaceFilePaths(fileSystem, AUTOMATION_SCRIPTS_ROOT);
+  const absolutePaths = (
+    await Promise.all(
+      AUTOMATION_ROOTS.map((root) => listAutomationWorkspaceFilePaths(fileSystem, root)),
+    )
+  ).flat();
 
   return absolutePaths
     .map((absolutePath) => {
       const path = toAutomationWorkspaceRelativePath(absolutePath);
       return {
+        layer: getAutomationLayerForPath(absolutePath),
         path,
         absolutePath,
         engine: inferWorkspaceScriptEngine(path),
@@ -335,12 +351,17 @@ export const readAutomationWorkspaceScript = async (
   fileSystem: IFileSystem,
   scriptPath: string,
 ): Promise<AutomationScriptCatalogEntry> => {
-  const normalizedPath = normalizeScriptRelativePath(scriptPath, scriptPath.trim() || "script");
-  const absolutePath = toAbsoluteAutomationPath(normalizedPath);
+  const trimmedPath = scriptPath.trim();
+  const isAbsoluteAutomationPath = trimmedPath.startsWith("/");
+  const normalizedPath = normalizeScriptRelativePath(trimmedPath, trimmedPath || "script");
+  const absolutePath = isAbsoluteAutomationPath
+    ? trimmedPath
+    : toAbsoluteAutomationPath(normalizedPath);
+  const layer = getAutomationLayerForPath(absolutePath);
   const body = await readAutomationWorkspaceTextFile(fileSystem, absolutePath, "Automation script");
 
   return {
-    id: `script:${toScriptKey(normalizedPath)}@1:${normalizedPath}`,
+    id: `script:${layer}:${toScriptKey(normalizedPath)}@1:${normalizedPath}`,
     key: toScriptKey(normalizedPath),
     name: toScriptName(normalizedPath),
     engine: inferWorkspaceScriptEngine(normalizedPath),

@@ -115,15 +115,15 @@ describe("Backoffice Pi skills", () => {
 
     expect(Object.keys(skills)).toContain("building-automations");
     expect(skills["building-automations"]).toMatchObject({
-      location: "/starter/skills/building-automations/SKILL.md",
-      directory: "/starter/skills/building-automations",
+      location: "/system/skills/building-automations/SKILL.md",
+      directory: "/system/skills/building-automations",
     });
     expect(skills["building-automations"]?.body).toContain("events.eventsCatalogList");
   });
 
   test("reflects skills from the mounted virtual filesystem", async () => {
     const fs = createTestMasterFileSystem({
-      "/starter/skills/custom/SKILL.md": `---
+      "/workspace/skills/custom/SKILL.md": `---
 name: custom
 description: Use custom filesystem skill.
 ---
@@ -140,7 +140,7 @@ Filesystem-defined instructions.
     expect(skills.custom).toMatchObject({
       name: "custom",
       description: "Use custom filesystem skill.",
-      location: "/starter/skills/custom/SKILL.md",
+      location: "/workspace/skills/custom/SKILL.md",
     });
   });
 
@@ -164,13 +164,13 @@ Filesystem-defined instructions.
 
     assert(readTool.name === "read");
     const result = await readTool.execute("tool-call-skill-1", {
-      path: "/starter/skills/building-automations/SKILL.md",
+      path: "/system/skills/building-automations/SKILL.md",
       offset: 1,
       limit: 8,
     } as never);
 
     expect(result.details).toMatchObject({
-      path: "/starter/skills/building-automations/SKILL.md",
+      path: "/system/skills/building-automations/SKILL.md",
       offset: 1,
       limit: 8,
     });
@@ -220,7 +220,6 @@ describe("Pi bash tool", () => {
     expect((lsResult.details as { stdout: string }).stdout.split("\n")).toEqual([
       "events",
       "resend",
-      "starter",
       "system",
       "tmp",
     ]);
@@ -248,18 +247,16 @@ describe("Pi bash tool", () => {
 
     const result = await tool.execute("tool-call-3", {
       script: "ls",
-      cwd: "/starter",
+      cwd: "/system",
     } as never);
     expect(result.details).toMatchObject({
       stderr: "",
       exitCode: 0,
     });
     expect((result.details as { stdout: string }).stdout.split("\n")).toEqual([
-      "README.md",
+      "AGENTS.md",
+      "SYSTEM.md",
       "automations",
-      "input",
-      "output",
-      "prompts",
       "skills",
     ]);
   });
@@ -285,7 +282,7 @@ describe("Pi bash tool", () => {
     } as never);
 
     const result = await tool.execute("tool-call-automations-1", {
-      script: "cat /starter/automations/scripts/router.cm.js",
+      script: "cat /system/automations/router.cm.js",
     } as never);
     expect(result.details).toMatchObject({
       stderr: "",
@@ -450,7 +447,7 @@ describe("Pi bash tool", () => {
     } as never);
 
     const touchResult = await tool.execute("tool-call-readonly-1", {
-      script: "touch /starter/README.md",
+      script: "touch /system/AGENTS.md",
     } as never);
     expect(touchResult.details).toMatchObject({
       stdout: "",

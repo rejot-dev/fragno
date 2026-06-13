@@ -2,34 +2,45 @@ import { describe, expect, test } from "vitest";
 
 import { AUTOMATION_SOURCE_EVENT_TYPES } from "@/fragno/automation/contracts";
 
-import { STARTER_AUTOMATION_CONTENT, STARTER_AUTOMATION_SCRIPT_PATHS } from "./automations";
+import { WORKSPACE_STARTER_AUTOMATION_CONTENT } from "./starter-automations";
+import { AUTOMATION_SCRIPT_PATHS, SYSTEM_AUTOMATION_CONTENT } from "./system-automations";
 
-type StarterAutomationPath = keyof typeof STARTER_AUTOMATION_CONTENT;
+type WorkspaceAutomationPath = keyof typeof WORKSPACE_STARTER_AUTOMATION_CONTENT;
 
-const readStarterAutomation = (path: StarterAutomationPath) => {
-  const content = STARTER_AUTOMATION_CONTENT[path];
+type SystemAutomationPath = keyof typeof SYSTEM_AUTOMATION_CONTENT;
+
+const readWorkspaceAutomation = (path: WorkspaceAutomationPath) => {
+  const content = WORKSPACE_STARTER_AUTOMATION_CONTENT[path];
   if (typeof content !== "string") {
-    throw new Error(`Expected starter automation '${path}' to be string content.`);
+    throw new Error(`Expected workspace automation '${path}'.`);
   }
   return content;
 };
 
-describe("starter automation content", () => {
-  test("runnable codemode starter scripts use executor-compatible nullary functions", () => {
-    const runnableCodemodeScripts = Object.keys(STARTER_AUTOMATION_CONTENT).filter(
-      (path): path is StarterAutomationPath =>
+const readSystemAutomation = (path: SystemAutomationPath) => {
+  const content = SYSTEM_AUTOMATION_CONTENT[path];
+  if (typeof content !== "string") {
+    throw new Error(`Expected system automation '${path}'.`);
+  }
+  return content;
+};
+
+describe("automation content", () => {
+  test("runnable workspace codemode scripts use executor-compatible nullary functions", () => {
+    const runnableCodemodeScripts = Object.keys(WORKSPACE_STARTER_AUTOMATION_CONTENT).filter(
+      (path): path is WorkspaceAutomationPath =>
         path.endsWith(".js") && !path.endsWith(".workflow.js"),
     );
 
     const scriptsWithInjectedParameterSignatures = runnableCodemodeScripts.filter((path) =>
-      /^\s*async\s*\(\s*\{/u.test(readStarterAutomation(path)),
+      /^\s*async\s*\(\s*\{/u.test(readWorkspaceAutomation(path)),
     );
 
     expect(scriptsWithInjectedParameterSignatures).toEqual([]);
   });
 
   test("workflow starter scripts use the flat codemode provider APIs", () => {
-    const workflow = readStarterAutomation(STARTER_AUTOMATION_SCRIPT_PATHS.telegramClaimLinking);
+    const workflow = readWorkspaceAutomation(AUTOMATION_SCRIPT_PATHS.telegramUserLinking);
     const unsupportedNestedProviderCalls = Array.from(
       workflow.matchAll(/\b(?:otp|automations)\.identity\.[A-Za-z_$][\w$]*/gu),
       (match) => match[0],
@@ -46,9 +57,9 @@ describe("starter automation content", () => {
     expect(workflow).toContain("store.set(");
   });
 
-  test("starter router starts event-id keyed workflows and routes OTP completions by OTP id", () => {
-    const router = readStarterAutomation(STARTER_AUTOMATION_SCRIPT_PATHS.router);
-    const workflow = readStarterAutomation(STARTER_AUTOMATION_SCRIPT_PATHS.telegramClaimLinking);
+  test("workspace router starts user-editable workflows and system router starts upload setup", () => {
+    const router = readWorkspaceAutomation(AUTOMATION_SCRIPT_PATHS.workspaceRouter);
+    const systemRouter = readSystemAutomation(AUTOMATION_SCRIPT_PATHS.systemRouter);
     const identityClaimCompleted = AUTOMATION_SOURCE_EVENT_TYPES.otp.identityClaimCompleted;
     const piCapabilityConfigured = AUTOMATION_SOURCE_EVENT_TYPES.pi.capabilityConfigured;
 
@@ -56,50 +67,48 @@ describe("starter automation content", () => {
       routerHandlesContractEvent: router.includes(
         `event.eventType === "${identityClaimCompleted}"`,
       ),
-      routerFiltersTelegramClaims: router.includes('event.actor.source === "telegram"'),
       routerUsesEventIdPrefixForStart: router.includes('instanceIdForEvent("telegram-link")'),
-      routerLooksUpOtpWorkflowBinding: router.includes('key: "telegram/claim-workflow/"'),
+      routerStartsTelegramUserLinkingWorkflow:
+        router.includes('remoteWorkflowName: "telegram-user-linking"') &&
+        router.includes('"/workspace/automations/telegram-user-linking.workflow.js"'),
       routerSendsWorkflowSafeEvent: router.includes('type: "identity-claim-completed"'),
-      workflowWaitsForWorkflowSafeEvent: workflow.includes('type: "identity-claim-completed"'),
-      routerStartsDelayedTestWorkflow:
+      routerStartsTelegramTestCommandWorkflow:
         router.includes("workflowScriptPath:") &&
-        router.includes('"/starter/automations/scripts/telegram-delayed-test-reply.workflow.js"'),
-      routerStartsPiWorkflow:
-        router.includes('remoteWorkflowName: "telegram-pi-session"') &&
-        router.includes('"/starter/automations/scripts/telegram-pi-session.workflow.js"'),
-      routerHandlesPiConfigured: router.includes(
-        `event.source === "pi" && event.eventType === "${piCapabilityConfigured}"`,
-      ),
-      routerStartsUploadConnectionWorkflow:
-        router.includes('event.source === "auth" && event.eventType === "organization.created"') &&
-        router.includes('remoteWorkflowName: "configure-upload-connection"') &&
-        router.includes('"/starter/automations/scripts/configure-upload-connection.workflow.js"'),
-      routerDerivesDefaultPiAgent:
+        router.includes('"/workspace/automations/telegram-test-command.workflow.js"'),
+      routerStartsTelegramUserPiLinkingWorkflow:
+        router.includes('remoteWorkflowName: "telegram-user-pi-linking"') &&
+        router.includes('"/workspace/automations/telegram-user-pi-linking.workflow.js"'),
+      routerHandlesPiConfigured:
+        router.includes('event.source === "pi"') &&
+        router.includes(`event.eventType === "${piCapabilityConfigured}"`),
+      systemRouterStartsWorkspaceFileInitializationWorkflow:
+        systemRouter.includes(
+          'event.source === "auth" && event.eventType === "organization.created"',
+        ) &&
+        systemRouter.includes('remoteWorkflowName: "workspace-file-initialization"') &&
+        systemRouter.includes('"/system/automations/workspace-file-initialization.workflow.js"'),
+      routerStoresDefaultPiAgent:
         router.includes("event.payload.harnesses") &&
         router.includes("event.payload.modelCatalog") &&
         router.includes('key: "pi/pi-default-agent"') &&
         router.includes('value: harness.id + "::" + model.provider + "::" + model.name'),
     }).toEqual({
       routerHandlesContractEvent: true,
-      routerFiltersTelegramClaims: true,
       routerUsesEventIdPrefixForStart: true,
-      routerLooksUpOtpWorkflowBinding: true,
+      routerStartsTelegramUserLinkingWorkflow: true,
       routerSendsWorkflowSafeEvent: true,
-      workflowWaitsForWorkflowSafeEvent: true,
-      routerStartsDelayedTestWorkflow: true,
-      routerStartsPiWorkflow: true,
+      routerStartsTelegramTestCommandWorkflow: true,
+      routerStartsTelegramUserPiLinkingWorkflow: true,
       routerHandlesPiConfigured: true,
-      routerStartsUploadConnectionWorkflow: true,
-      routerDerivesDefaultPiAgent: true,
+      systemRouterStartsWorkspaceFileInitializationWorkflow: true,
+      routerStoresDefaultPiAgent: true,
     });
   });
 
   test("organization creation workflow configures upload database connection", () => {
-    const workflow = readStarterAutomation(
-      STARTER_AUTOMATION_SCRIPT_PATHS.configureUploadConnection,
-    );
+    const workflow = readSystemAutomation(AUTOMATION_SCRIPT_PATHS.workspaceFileInitialization);
 
-    expect(workflow).toContain('{ name: "configure-upload-connection" }');
+    expect(workflow).toContain('{ name: "workspace-file-initialization" }');
     expect(workflow).toContain('automationEvent.eventType !== "organization.created"');
     expect(workflow).toContain("connections.configure({");
     expect(workflow).toContain('id: "upload"');

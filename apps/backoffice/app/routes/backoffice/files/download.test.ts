@@ -57,14 +57,14 @@ describe("backoffice files download route", () => {
     const response = toResponse(
       await loader(
         createLoaderArgs(
-          "https://example.com/backoffice/files/org_123/download?path=%2Fstarter%2Fprompts%2Ftask.md",
+          "https://example.com/backoffice/files/org_123/download?path=%2Fsystem%2FAGENTS.md",
         ),
       ),
     );
 
     assert(response.status === 302);
     expect(response.headers.get("Location")).toBe(
-      `https://example.com${buildBackofficeLoginPath("/backoffice/files/org_123/download?path=%2Fstarter%2Fprompts%2Ftask.md")}`,
+      `https://example.com${buildBackofficeLoginPath("/backoffice/files/org_123/download?path=%2Fsystem%2FAGENTS.md")}`,
     );
   });
 
@@ -74,15 +74,17 @@ describe("backoffice files download route", () => {
     const response = toResponse(
       await loader(
         createLoaderArgs(
-          "https://example.com/backoffice/files/org_123/download?path=%2Fstarter%2Fprompts%2Ftask.md",
+          "https://example.com/backoffice/files/org_123/download?path=%2Fsystem%2FAGENTS.md",
         ),
       ),
     );
 
     assert(response.status === 200);
     assert(response.headers.get("content-type") === "text/markdown; charset=utf-8");
-    expect(response.headers.get("content-disposition")).toContain('attachment; filename="task.md"');
-    await expect(response.text()).resolves.toContain("Task");
+    expect(response.headers.get("content-disposition")).toContain(
+      'attachment; filename="AGENTS.md"',
+    );
+    await expect(response.text()).resolves.toContain("Backoffice");
   });
 
   it("streams downloads when the mounted filesystem supports it", async () => {
@@ -150,7 +152,7 @@ describe("backoffice files download route", () => {
     await expect(
       loader(
         createLoaderArgs(
-          "https://example.com/backoffice/files/org_123/download?path=%2Fstarter%2Fprompts%2Fmissing.md",
+          "https://example.com/backoffice/files/org_123/download?path=%2Fsystem%2Fmissing.md",
         ),
       ),
     ).rejects.toMatchObject({
@@ -198,7 +200,7 @@ describe("backoffice files download route", () => {
     await expect(
       loader(
         createLoaderArgs(
-          "https://example.com/backoffice/files/org_123/download?path=%2Fstarter%2Fprompts",
+          "https://example.com/backoffice/files/org_123/download?path=%2Fsystem%2Fskills",
         ),
       ),
     ).rejects.toMatchObject({

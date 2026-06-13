@@ -49,7 +49,7 @@ const createWorkflowAutomationContext = ({
     triggerOrder: null,
     scriptId: `script:${scriptPath}`,
     scriptKey: scriptPath
-      .replace(/^\/workspace\/automations\//u, "")
+      .replace(/^\/(?:system|workspace)\/automations\//u, "")
       .replace(/\.workflow\.js$/u, ""),
     scriptName: scriptPath.split("/").at(-1) ?? scriptPath,
     scriptPath,

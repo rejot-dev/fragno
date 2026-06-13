@@ -23,6 +23,8 @@ const normalizeScripts = (
       key: script.key,
       name: script.name,
       engine: script.engine,
+      layer: script.layer,
+      readOnly: script.readOnly,
       script: null,
       path: script.path,
       absolutePath: script.absolutePath,
@@ -31,7 +33,10 @@ const normalizeScripts = (
       enabled: script.enabled,
     }))
     .sort(
-      (left, right) => left.name.localeCompare(right.name) || left.path.localeCompare(right.path),
+      (left, right) =>
+        left.layer.localeCompare(right.layer) ||
+        left.name.localeCompare(right.name) ||
+        left.path.localeCompare(right.path),
     );
 };
 

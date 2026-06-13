@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 
-import { STARTER_AUTOMATION_CONTENT, STARTER_AUTOMATION_SCRIPT_PATHS } from "@/files";
+import { AUTOMATION_SCRIPT_PATHS } from "@/files";
+import { WORKSPACE_STARTER_AUTOMATION_CONTENT } from "@/files/content/starter-automations";
+import { SYSTEM_AUTOMATION_CONTENT } from "@/files/content/system-automations";
 
 import {
   AUTOMATION_SCRIPTS_ROOT,
@@ -14,15 +16,51 @@ import { createTestMasterFileSystem } from "./engine/test-master-file-system.tes
 const createAutomationFileSystem = async (files: Record<string, string> = {}) =>
   createTestMasterFileSystem(
     Object.fromEntries(
-      Object.entries({ ...STARTER_AUTOMATION_CONTENT, ...files }).map(([path, content]) => [
-        `${AUTOMATION_WORKSPACE_ROOT}/${path.replace(/^automations\//u, "")}`,
-        content,
-      ]),
+      Object.entries({ ...WORKSPACE_STARTER_AUTOMATION_CONTENT, ...files }).map(
+        ([path, content]) => [
+          `${AUTOMATION_WORKSPACE_ROOT}/${path.replace(/^automations\//u, "")}`,
+          content,
+        ],
+      ),
     ),
   );
 
 describe("automation filesystem catalog", () => {
-  test("loads starter automation scripts from /starter", async () => {
+  test("loads enabled routers from both /system and /workspace", async () => {
+    const fileSystem = createTestMasterFileSystem({
+      ...Object.fromEntries(
+        Object.entries(SYSTEM_AUTOMATION_CONTENT).map(([path, content]) => [
+          `/system/${path}`,
+          content,
+        ]),
+      ),
+      ...Object.fromEntries(
+        Object.entries(WORKSPACE_STARTER_AUTOMATION_CONTENT).map(([path, content]) => [
+          `/workspace/${path}`,
+          content,
+        ]),
+      ),
+    });
+
+    const catalog = await loadAutomationCatalog(fileSystem);
+
+    expect(catalog.scripts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "script:system:router.cm@1:router.cm.js",
+          absolutePath: "/system/automations/router.cm.js",
+          enabled: true,
+        }),
+        expect.objectContaining({
+          id: "script:workspace:router.cm@1:router.cm.js",
+          absolutePath: "/workspace/automations/router.cm.js",
+          enabled: true,
+        }),
+      ]),
+    );
+  });
+
+  test("loads workspace starter automation scripts from /workspace", async () => {
     const fileSystem = await createAutomationFileSystem();
 
     const catalog = await loadAutomationCatalog(fileSystem);
@@ -32,12 +70,12 @@ describe("automation filesystem catalog", () => {
       expect.arrayContaining([
         expect.objectContaining({
           key: "router.cm",
-          path: STARTER_AUTOMATION_SCRIPT_PATHS.router.replace(/^automations\//u, ""),
+          path: AUTOMATION_SCRIPT_PATHS.workspaceRouter.replace(/^automations\//u, ""),
           engine: "codemode",
           enabled: true,
         }),
         expect.objectContaining({
-          path: STARTER_AUTOMATION_SCRIPT_PATHS.telegramClaimLinking.replace(/^automations\//u, ""),
+          path: AUTOMATION_SCRIPT_PATHS.telegramUserLinking.replace(/^automations\//u, ""),
           enabled: false,
         }),
       ]),
@@ -46,20 +84,20 @@ describe("automation filesystem catalog", () => {
 
   test("lists scripts recursively under the automation scripts root", async () => {
     const fileSystem = await createAutomationFileSystem({
-      "automations/scripts/custom.sh": "echo custom",
-      "automations/scripts/nested/custom.cm.js": "async () => true",
+      "automations/custom.sh": "echo custom",
+      "automations/nested/custom.cm.js": "async () => true",
     });
 
     await expect(listAutomationWorkspaceScripts(fileSystem)).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          path: "scripts/custom.sh",
+          path: "custom.sh",
           absolutePath: `${AUTOMATION_SCRIPTS_ROOT}/custom.sh`,
           engine: "bash",
           kind: "script",
         }),
         expect.objectContaining({
-          path: "scripts/nested/custom.cm.js",
+          path: "nested/custom.cm.js",
           absolutePath: `${AUTOMATION_SCRIPTS_ROOT}/nested/custom.cm.js`,
           engine: "codemode",
           kind: "script",
@@ -70,12 +108,12 @@ describe("automation filesystem catalog", () => {
 
   test("reads individual automation script source lazily", async () => {
     const fileSystem = await createAutomationFileSystem({
-      "automations/scripts/lazy.sh": "echo lazy",
+      "automations/lazy.sh": "echo lazy",
     });
 
-    await expect(readAutomationWorkspaceScript(fileSystem, "scripts/lazy.sh")).resolves.toEqual(
+    await expect(readAutomationWorkspaceScript(fileSystem, "lazy.sh")).resolves.toEqual(
       expect.objectContaining({
-        path: "scripts/lazy.sh",
+        path: "lazy.sh",
         body: "echo lazy",
         engine: "bash",
       }),

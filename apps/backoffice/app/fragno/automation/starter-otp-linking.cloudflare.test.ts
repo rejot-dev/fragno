@@ -6,10 +6,11 @@ import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 import { workflowsFragmentDefinition, workflowsRoutesFactory } from "@fragno-dev/workflows";
 
-import { createMasterFileSystem, type FilesContext } from "@/files";
+import { WORKSPACE_STARTER_CONTENT } from "@/files";
 
 import type { AutomationEvent } from "./contracts";
 import { automationFragmentDefinition } from "./definition";
+import { createTestMasterFileSystem } from "./engine/test-master-file-system.test-utils";
 import { defineAutomationCodemodeWorkflow } from "./engine/workflow";
 import { automationFragmentRoutes } from "./routes";
 
@@ -26,11 +27,14 @@ const issueIdentityClaimMock = vi.fn(
 );
 
 const createAutomationFileSystem = async () =>
-  await createMasterFileSystem({
-    orgId: "org-1",
-    backend: "backoffice",
-    uploadConfig: null,
-  } satisfies FilesContext);
+  createTestMasterFileSystem(
+    Object.fromEntries(
+      Object.entries(WORKSPACE_STARTER_CONTENT).map(([path, content]) => [
+        `/workspace/${path.replace(/^\/+/, "")}`,
+        content,
+      ]),
+    ),
+  );
 
 const createTestEnv = () =>
   ({
@@ -316,7 +320,7 @@ describe("starter OTP linking automation", () => {
     ]);
   });
 
-  test("starts separate Telegram link workflows for separate /start event ids", async () => {
+  test("starts separate Telegram user-linking workflows for separate /start event ids", async () => {
     const { automation, workflows } = context.fragments;
 
     await automation.fragment.callServices(() =>

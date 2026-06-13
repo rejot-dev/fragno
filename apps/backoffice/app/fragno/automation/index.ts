@@ -40,6 +40,7 @@ export { automationFragmentSchema, AUTOMATION_TRIGGER_ORDER_LAST } from "./schem
 export type { AutomationFragmentConfig, AutomationPiBashContext };
 export {
   AUTOMATION_SCRIPTS_ROOT,
+  AUTOMATION_SYSTEM_ROOT,
   AUTOMATION_WORKSPACE_ROOT,
   createMinimalFileSystem,
   listAutomationWorkspaceScripts,
@@ -56,6 +57,7 @@ export type {
   AutomationFileSystemResolver,
   AutomationFileSystemResolverInput,
   AutomationScriptCatalogEntry,
+  AutomationScriptLayer,
   AutomationWorkspaceScriptEntry,
 } from "./catalog";
 export {

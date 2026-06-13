@@ -6,13 +6,7 @@ import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 import { workflowsFragmentDefinition, workflowsRoutesFactory } from "@fragno-dev/workflows";
 
-import {
-  STATIC_STARTER_CONTENT,
-  STARTER_AUTOMATION_SCRIPT_PATHS,
-  createMasterFileSystem,
-  type FilesContext,
-  type IFileSystem,
-} from "@/files";
+import { WORKSPACE_STARTER_CONTENT, AUTOMATION_SCRIPT_PATHS, type IFileSystem } from "@/files";
 
 import type { AutomationEvent } from "./contracts";
 import { automationFragmentDefinition, type AutomationPiBashContext } from "./definition";
@@ -150,19 +144,11 @@ const createPiSessionMock = vi.fn(async ({ agent }: { agent: string }) => ({
 const createAutomationFileSystem = async (
   customFiles: Record<string, string> = {},
 ): Promise<IFileSystem> => {
-  if (Object.keys(customFiles).length === 0) {
-    return createMasterFileSystem({
-      orgId: "org_123",
-      backend: "backoffice",
-      uploadConfig: null,
-    } satisfies FilesContext);
-  }
-
   return createTestMasterFileSystem(
     Object.fromEntries([
       ["/workspace/.keep", ""],
-      ...[...Object.entries(STATIC_STARTER_CONTENT), ...Object.entries(customFiles)].map(
-        ([path, content]) => [`/starter/${path.replace(/^\/+/, "")}`, content],
+      ...[...Object.entries(WORKSPACE_STARTER_CONTENT), ...Object.entries(customFiles)].map(
+        ([path, content]) => [`/workspace/${path.replace(/^\/+/, "")}`, content],
       ),
     ]),
   );
@@ -489,7 +475,7 @@ describe("automation internalIngestEvent", () => {
 
     try {
       await setAutomationFiles({
-        "automations/scripts/telegram-attachment-download.sh": `file_id="$(jq -r '.payload.attachments[0].fileId // ""' /context/event.json)"
+        "automations/telegram-attachment-download.sh": `file_id="$(jq -r '.payload.attachments[0].fileId // ""' /context/event.json)"
 if [ -z "$file_id" ]; then
   echo "Missing attachment fileId in /context/event.json" >&2
   exit 1
@@ -547,7 +533,7 @@ telegram.file.download --file-id "$file_id" > /workspace/telegram-download.bin
 
   test("runs custom static starter automation files in tests", async () => {
     await setAutomationFiles({
-      [STARTER_AUTOMATION_SCRIPT_PATHS.telegramClaimLinkingStart]: `async () => {
+      [AUTOMATION_SCRIPT_PATHS.workspaceRouter]: `async () => {
   await telegram.sendMessage({ chatId: "chat-1", text: "custom-start" });
 };`,
     });

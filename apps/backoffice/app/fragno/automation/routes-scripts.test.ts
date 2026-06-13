@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, assert } from "vitest";
 
 import { InMemoryAdapter } from "@fragno-dev/db";
 
-import { STARTER_AUTOMATION_SCRIPT_PATHS } from "@/files";
+import { AUTOMATION_SCRIPT_PATHS } from "@/files";
 
 import type { AutomationWorkflowsService } from "./definition";
 import { createTestMasterFileSystem } from "./engine/test-master-file-system.test-utils";
@@ -43,7 +43,7 @@ describe("automation routes /scripts", () => {
     });
   });
 
-  test("lists static starter scripts from the filesystem", async () => {
+  test("lists system scripts from the filesystem", async () => {
     const response = await fragment.callRoute("GET", "/scripts");
 
     assert(response.type === "json");
@@ -52,12 +52,12 @@ describe("automation routes /scripts", () => {
       expect(response.data).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            path: STARTER_AUTOMATION_SCRIPT_PATHS.router.replace(/^automations\//u, ""),
+            path: AUTOMATION_SCRIPT_PATHS.systemRouter.replace(/^automations\//u, ""),
             engine: "codemode",
             enabled: true,
           }),
           expect.objectContaining({
-            path: STARTER_AUTOMATION_SCRIPT_PATHS.telegramClaimLinking.replace(
+            path: AUTOMATION_SCRIPT_PATHS.workspaceFileInitialization.replace(
               /^automations\//u,
               "",
             ),
@@ -70,8 +70,8 @@ describe("automation routes /scripts", () => {
 
   test("loads scripts from a custom filesystem", async () => {
     const fileSystem = await createTestMasterFileSystem({
-      "/starter/automations/scripts/present.sh": "#!/usr/bin/env bash\necho ok",
-      "/starter/automations/scripts/present.cm.js": "async () => true",
+      "/workspace/automations/present.sh": "#!/usr/bin/env bash\necho ok",
+      "/workspace/automations/present.cm.js": "async () => true",
     });
     const partialFragment = createAutomation({ automationFileSystem: fileSystem });
 

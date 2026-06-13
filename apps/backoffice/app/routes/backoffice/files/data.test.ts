@@ -48,7 +48,7 @@ describe("files explorer route data", () => {
       orgId: "acme-org",
     });
 
-    expect(result.tree.map((root) => root.path)).toEqual(["/system", "/starter", "/tmp"]);
+    expect(result.tree.map((root) => root.path)).toEqual(["/system", "/tmp"]);
     assert(result.selectedPath === "/system");
     assert(result.selectedDetail?.node.path === "/system");
     assert(result.loadError === "Path '/missing' could not be found.");
