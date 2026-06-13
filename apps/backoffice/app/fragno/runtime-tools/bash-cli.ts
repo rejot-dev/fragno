@@ -434,6 +434,36 @@ const formatCommandOptionLine = (option: AutomationCommandOptionSpec) => {
 
 export const hasHelpOption = (parsed: ParsedCliTokens) => parsed.options.has("help");
 
+export const STANDARD_COMMAND_OPTIONS = [
+  {
+    name: "help",
+    description: "Show this help text",
+    valueRequired: false,
+    valueName: "",
+  },
+  {
+    name: "print",
+    description: "Extract a nested JSON field (kebab-case path) from command result",
+    valueRequired: true,
+    valueName: "selector",
+    required: false,
+  },
+  {
+    name: "format",
+    description: "Output format: text (default) or json",
+    valueRequired: true,
+    valueName: "format",
+  },
+] as const satisfies readonly AutomationCommandOptionSpec[];
+
+const appendStandardCommandOptions = (options: readonly AutomationCommandOptionSpec[]) => {
+  const optionNames = new Set(options.map((option) => option.name));
+  return [
+    ...options,
+    ...STANDARD_COMMAND_OPTIONS.filter((option) => !optionNames.has(option.name)),
+  ];
+};
+
 export const describeCommandOption = (option: AutomationCommandOptionSpec) => {
   const optionLine = formatCommandOptionLine(option);
   const description = option.required ? `${option.description} (required)` : option.description;
@@ -460,37 +490,9 @@ export const buildCommandHelp = (spec: {
   outputLines.push("");
   outputLines.push("Options:");
 
-  for (const option of spec.help.options) {
+  for (const option of appendStandardCommandOptions(spec.help.options)) {
     outputLines.push(`  ${describeCommandOption(option)}`);
   }
-
-  outputLines.push(
-    `  ${describeCommandOption({
-      name: "help",
-      description: "Show this help text",
-      valueRequired: false,
-      valueName: "",
-    })}`,
-  );
-
-  outputLines.push(
-    `  ${describeCommandOption({
-      name: "print",
-      description: "Extract a nested JSON field (kebab-case path) from command result",
-      valueRequired: true,
-      valueName: "selector",
-      required: false,
-    })}`,
-  );
-
-  outputLines.push(
-    `  ${describeCommandOption({
-      name: "format",
-      description: "Output format: text (default) or json",
-      valueRequired: true,
-      valueName: "format",
-    })}`,
-  );
 
   if (spec.help.examples && spec.help.examples.length > 0) {
     outputLines.push("");

@@ -1,6 +1,40 @@
-import { describe, expect, test } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 
-import { extractNextCwd, wrapDashboardCommand } from "./dashboard-terminal";
+import {
+  applyDashboardAutocompleteSuggestion,
+  buildDashboardAutocomplete,
+  extractNextCwd,
+  getDashboardArgumentHints,
+  type DashboardCommandSpec,
+  wrapDashboardCommand,
+} from "./dashboard-terminal";
+
+const commandSpecs: DashboardCommandSpec[] = [
+  {
+    command: "pi.session.get",
+    summary: "Fetch a Pi session by id.",
+    options: [
+      {
+        name: "session-id",
+        description: "Pi session id.",
+        required: true,
+        valueName: "id",
+        valueRequired: true,
+      },
+      {
+        name: "format",
+        description: "Output format.",
+        valueName: "text|json",
+        valueRequired: true,
+      },
+    ],
+  },
+  {
+    command: "pi.session.list",
+    summary: "List Pi sessions.",
+    options: [],
+  },
+];
 
 describe("dashboard terminal cwd tracking", () => {
   test("wraps commands with cwd marker reporting", () => {
@@ -26,5 +60,73 @@ describe("dashboard terminal cwd tracking", () => {
       stderr: "plain stderr",
       nextCwd: "/workspace",
     });
+  });
+});
+
+describe("dashboard terminal autocomplete", () => {
+  test("returns newest matching history commands for ctrl+r", () => {
+    const suggestions = buildDashboardAutocomplete({
+      commandLine: "session",
+      commandSpecs,
+      history: ["ls /workspace", "pi.session.list", "pi.session.get --session-id abc"],
+      mode: "history",
+    });
+
+    expect(suggestions.map((suggestion) => suggestion.label)).toEqual([
+      "pi.session.get --session-id abc",
+      "pi.session.list",
+    ]);
+    assert.equal(
+      applyDashboardAutocompleteSuggestion("session", suggestions[0]!),
+      "pi.session.get --session-id abc",
+    );
+  });
+
+  test("completes command names from runtime tool specs", () => {
+    const suggestions = buildDashboardAutocomplete({
+      commandLine: "pi.sess",
+      commandSpecs,
+      history: [],
+      mode: "completion",
+    });
+
+    expect(suggestions.map((suggestion) => suggestion.label)).toEqual([
+      "pi.session.get",
+      "pi.session.list",
+    ]);
+    assert.equal(
+      applyDashboardAutocompleteSuggestion("pi.sess", suggestions[0]!),
+      "pi.session.get ",
+    );
+  });
+
+  test("suggests unused command arguments with descriptions", () => {
+    const suggestions = buildDashboardAutocomplete({
+      commandLine: "pi.session.get --",
+      commandSpecs,
+      history: [],
+      mode: "completion",
+    });
+
+    expect(suggestions.map((suggestion) => [suggestion.label, suggestion.description])).toEqual([
+      ["--session-id <id>", "Pi session id."],
+      ["--format <text|json>", "Output format."],
+    ]);
+    assert.equal(
+      applyDashboardAutocompleteSuggestion("pi.session.get --", suggestions[0]!),
+      "pi.session.get --session-id ",
+    );
+  });
+
+  test("returns argument hints and marks already-used options", () => {
+    const hints = getDashboardArgumentHints({
+      commandLine: "pi.session.get --session-id abc",
+      commandSpecs,
+    });
+
+    expect(hints.map((hint) => [hint.name, hint.used, hint.description])).toEqual([
+      ["session-id", true, "Pi session id."],
+      ["format", false, "Output format."],
+    ]);
   });
 });
