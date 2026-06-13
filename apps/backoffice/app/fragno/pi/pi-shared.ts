@@ -94,7 +94,7 @@ export type PiToolId = (typeof PI_TOOL_IDS)[number];
 
 const SKILL_READING_PROMPT =
   "When available_skills lists a matching skill, use the read tool to open " +
-  "the corresponding /starter/skills/<skill-name>/SKILL.md file before proceeding.";
+  "the corresponding /system/skills/<skill-name>/SKILL.md or /workspace/skills/<skill-name>/SKILL.md file before proceeding.";
 
 const BASH_HARNESS_PROMPT = `SYSTEM.md (agent guidance):\n\n${DEFAULT_SYSTEM_PROMPT}\n\n${SKILL_READING_PROMPT}\n\n${BASH_HARNESS_REFERENCE}`;
 
@@ -114,8 +114,8 @@ ${SKILL_READING_PROMPT}
 - Do not assume import() or module loading is available inside dynamic Worker code.
 - Write codemode as either a standalone async arrow function, for example: async () => { return await state.readFile("/workspace/file.txt"); }, or a workflow definition: defineWorkflow({ name: "my-workflow" }, async (event, step) => { ... }).
 - Use defineWorkflow(...) when work should run durably with workflow steps, retries, sleeps, or event waits.
-- Codemode automation script files must use /starter/automations/scripts/*.cm.js.
-- Bash automation script files usually use /starter/automations/scripts/*.sh.
+- Codemode automation script files must use /workspace/automations/*.cm.js.
+- Bash automation script files usually use /workspace/automations/*.sh.
 - Codemode automation scripts read event data from /context/event.json with state.readFile and should return JSON-serializable values.
 - Do not call non-existent aliases like state.listFiles, state.readDirectory, or state.list.
 

@@ -14,6 +14,8 @@ export type AutomationScriptItem = {
   key: string;
   name: string;
   engine: string;
+  layer: "system" | "workspace";
+  readOnly: boolean;
   script: string | null;
   path: string;
   absolutePath: string;
@@ -93,7 +95,7 @@ export function AutomationHeader({
       ]}
       eyebrow="Automations"
       title={`Automations for ${organisationName ?? orgId}`}
-      description="Inspect filesystem-backed automation scripts for this organisation. Edit the underlying files through Backoffice Files under /starter/automations."
+      description="Inspect system and workspace automation scripts for this organisation. System scripts are read-only; workspace scripts can be edited under /workspace/automations."
       actions={
         <Link
           to={`/backoffice/organisations/${orgId}`}

@@ -55,7 +55,6 @@ describe("createMasterFileSystem", () => {
 
     expect(resolved.mounts.map((mount) => mount.mountPoint)).toEqual([
       "/system",
-      "/starter",
       "/docs",
       "/examples",
       "/tmp",
@@ -68,11 +67,7 @@ describe("createMasterFileSystem", () => {
     );
 
     const resolved = await createTestMasterFileSystem({ ...context, orgId: "  org_123  " });
-    expect(resolved.mounts.map((mount) => mount.mountPoint)).toEqual([
-      "/system",
-      "/starter",
-      "/tmp",
-    ]);
+    expect(resolved.mounts.map((mount) => mount.mountPoint)).toEqual(["/system", "/tmp"]);
   });
 
   test("rejects duplicate mount points", async () => {
@@ -463,7 +458,7 @@ describe("createMasterFileSystem", () => {
     const mount = {
       id: "dup",
       kind: "custom" as const,
-      mountPoint: "/starter",
+      mountPoint: "/system",
       title: "Dup",
       readOnly: false,
       persistence: "session" as const,
@@ -479,10 +474,10 @@ describe("createMasterFileSystem", () => {
 
     expect(() =>
       master.mount({
-        id: "starter-child",
+        id: "system-child",
         kind: "custom",
-        mountPoint: "/starter/examples",
-        title: "Starter Child",
+        mountPoint: "/system/examples",
+        title: "System Child",
         readOnly: false,
         persistence: "session",
         fs,

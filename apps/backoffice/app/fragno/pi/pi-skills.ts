@@ -3,6 +3,7 @@ import { parse } from "yaml";
 import type { PiSkillDefinition, PiSkillRegistry } from "@fragno-dev/pi-fragment";
 
 import type { MasterFileSystem } from "@/files";
+import { FileSystemError } from "@/files/fs-errors";
 
 type Result<TValue, TError extends Error> =
   | { ok: true; value: TValue }
@@ -35,10 +36,7 @@ function parseFrontmatter<T extends Record<string, unknown>>(
   }
 }
 
-type SkillFrontmatter = {
-  name: string;
-  description: string;
-} & Record<string, unknown>;
+type SkillFrontmatter = { name: string; description: string } & Record<string, unknown>;
 
 const joinSkillPath = (root: string, name: string) => `${root.replace(/\/+$/, "")}/${name}`;
 
@@ -68,22 +66,42 @@ const parseFilesystemSkill = (path: string, content: string): PiSkillDefinition 
 
 export const loadBackofficePiSkills = async (
   fs: MasterFileSystem,
-  options: { root?: string } = {},
+  options: { root?: string; roots?: readonly string[] } = {},
 ): Promise<PiSkillRegistry> => {
-  const root = options.root ?? "/starter/skills";
-  const entries = await fs.readdirWithFileTypes(root);
+  const roots =
+    options.roots ?? (options.root ? [options.root] : ["/system/skills", "/workspace/skills"]);
   const skills: PiSkillRegistry = {};
 
-  for (const entry of entries) {
-    if (!entry.isDirectory) {
-      continue;
+  for (const root of roots) {
+    let entries;
+    try {
+      entries = await fs.readdirWithFileTypes(root);
+    } catch (error) {
+      if (error instanceof FileSystemError && error.code === "ENOENT") {
+        continue;
+      }
+
+      throw error;
     }
 
-    const directory = joinSkillPath(root, entry.name);
-    const location = `${directory}/SKILL.md`;
-    const content = await fs.readFile(location, { encoding: "utf-8" });
-    const skill = parseFilesystemSkill(location, content);
-    skills[skill.name] = skill;
+    for (const entry of entries) {
+      if (!entry.isDirectory) {
+        continue;
+      }
+      const directory = joinSkillPath(root, entry.name);
+      const location = `${directory}/SKILL.md`;
+      try {
+        const content = await fs.readFile(location, { encoding: "utf-8" });
+        const skill = parseFilesystemSkill(location, content);
+        skills[skill.name] = skill;
+      } catch (error) {
+        if (error instanceof FileSystemError && error.code === "ENOENT") {
+          continue;
+        }
+
+        throw error;
+      }
+    }
   }
 
   return skills;

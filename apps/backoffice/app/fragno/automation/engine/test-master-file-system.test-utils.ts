@@ -8,9 +8,7 @@ export const createTestMasterFileSystem = (
 ): MasterFileSystem =>
   new MasterFileSystem({
     mounts: [
-      ...(hasMountedFiles(files, "/starter")
-        ? [createTestMount("starter", "/starter", files)]
-        : []),
+      ...(hasMountedFiles(files, "/system") ? [createTestMount("system", "/system", files)] : []),
       createTestMount("workspace", "/workspace", files),
     ],
   });

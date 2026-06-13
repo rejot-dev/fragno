@@ -6,10 +6,11 @@ import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 import { workflowsFragmentDefinition, workflowsRoutesFactory } from "@fragno-dev/workflows";
 
-import { createMasterFileSystem, type FilesContext } from "@/files";
+import { WORKSPACE_STARTER_CONTENT } from "@/files";
 
 import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "./contracts";
 import { automationFragmentDefinition } from "./definition";
+import { createTestMasterFileSystem } from "./engine/test-master-file-system.test-utils";
 import { defineAutomationCodemodeWorkflow } from "./engine/workflow";
 import { automationFragmentRoutes } from "./routes";
 
@@ -19,11 +20,14 @@ const piCreateSessionCalls: Array<{ agent: string; name?: string | null }> = [];
 const piCommandCalls: Array<{ sessionId: string; text: string }> = [];
 
 const createAutomationFileSystem = async () =>
-  await createMasterFileSystem({
-    orgId: "org-1",
-    backend: "backoffice",
-    uploadConfig: null,
-  } satisfies FilesContext);
+  createTestMasterFileSystem(
+    Object.fromEntries(
+      Object.entries(WORKSPACE_STARTER_CONTENT).map(([path, content]) => [
+        `/workspace/${path.replace(/^\/+/, "")}`,
+        content,
+      ]),
+    ),
+  );
 
 const createNdjsonResponse = (items: unknown[]) =>
   new Response(items.map((item) => JSON.stringify(item)).join("\n") + "\n", {
@@ -346,6 +350,19 @@ describe("starter Pi session automation", () => {
       }),
     );
     await drainAll();
+
+    const defaultAgentResponse = await context.fragments.automation.fragment.callRoute(
+      "GET",
+      "/store/get",
+      { query: { key: "pi/pi-default-agent" } },
+    );
+    if (defaultAgentResponse.type !== "json") {
+      throw new Error("Expected Pi configuration automation to store the default Pi agent.");
+    }
+    expect(defaultAgentResponse.data).toMatchObject({
+      key: "pi/pi-default-agent",
+      value: "default::openai::gpt-5-mini",
+    });
   };
 
   beforeEach(async () => {

@@ -5,9 +5,11 @@ import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import { getAutomationsDurableObject } from "@/cloudflare/cloudflare-utils";
 import { createOrgFileSystem } from "@/files";
 import {
+  AUTOMATION_SYSTEM_ROOT,
   AUTOMATION_WORKSPACE_ROOT,
   listAutomationWorkspaceScripts,
   readAutomationWorkspaceScript,
+  type AutomationScriptLayer,
   type AutomationWorkspaceScriptEntry,
   type createAutomationFragment,
 } from "@/fragno/automation";
@@ -35,6 +37,8 @@ export type AutomationScriptRecord = {
   key: string;
   name: string;
   engine: AutomationScriptEngine;
+  layer: AutomationScriptLayer;
+  readOnly: boolean;
   path: string;
   absolutePath: string;
   version: number | null;
@@ -58,7 +62,7 @@ export type AutomationScriptSourceRecord = {
   scriptError: string | null;
 };
 
-const AUTOMATION_SCRIPT_ID_PREFIX = "workspace-script:";
+const AUTOMATION_SCRIPT_ID_PREFIX = "automation-script:";
 const formatErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
 
@@ -107,9 +111,11 @@ const normalizeAutomationScriptPath = (value: string) => {
     return "";
   }
 
-  const workspacePrefix = `${AUTOMATION_WORKSPACE_ROOT}/`;
-  if (trimmed.startsWith(workspacePrefix)) {
-    return trimmed.slice(workspacePrefix.length);
+  for (const root of [AUTOMATION_SYSTEM_ROOT, AUTOMATION_WORKSPACE_ROOT]) {
+    const prefix = `${root}/`;
+    if (trimmed.startsWith(prefix)) {
+      return trimmed.slice(prefix.length);
+    }
   }
 
   return trimmed.replace(/^\/+/, "");
@@ -132,12 +138,22 @@ const buildAutomationScriptName = (path: string) => {
   return segments.join(" ") || path;
 };
 
+const buildLayeredAutomationScriptName = (script: AutomationWorkspaceScriptEntry) => {
+  if (script.path === "router.cm.js") {
+    return script.layer === "system" ? "System Router" : "Workspace Router";
+  }
+
+  return buildAutomationScriptName(script.path);
+};
+
 const buildWorkspaceScriptRecord = (
   script: AutomationWorkspaceScriptEntry,
 ): AutomationScriptRecord => ({
-  id: toAutomationScriptId(script.path),
+  id: toAutomationScriptId(script),
+  layer: script.layer,
+  readOnly: script.layer === "system",
   key: buildAutomationScriptKey(script.path),
-  name: buildAutomationScriptName(script.path),
+  name: buildLayeredAutomationScriptName(script),
   engine: script.engine,
   path: script.path,
   absolutePath: script.absolutePath,
@@ -146,13 +162,29 @@ const buildWorkspaceScriptRecord = (
   enabled: script.kind === "script",
 });
 
-export const toAutomationScriptId = (path: string): string =>
-  `${AUTOMATION_SCRIPT_ID_PREFIX}${normalizeAutomationScriptPath(path)}`;
+export const toAutomationScriptId = (
+  script: Pick<AutomationWorkspaceScriptEntry, "layer" | "path">,
+): string =>
+  `${AUTOMATION_SCRIPT_ID_PREFIX}${script.layer}:${normalizeAutomationScriptPath(script.path)}`;
 
-export const fromAutomationScriptId = (value: string): string =>
-  value.startsWith(AUTOMATION_SCRIPT_ID_PREFIX)
+export const fromAutomationScriptId = (value: string): string => {
+  const normalized = value.startsWith(AUTOMATION_SCRIPT_ID_PREFIX)
     ? value.slice(AUTOMATION_SCRIPT_ID_PREFIX.length)
-    : normalizeAutomationScriptPath(value);
+    : value;
+  const [layer, ...pathParts] = normalized.split(":");
+  const path = normalizeAutomationScriptPath(
+    pathParts.length > 0 ? pathParts.join(":") : normalized,
+  );
+
+  if (layer === "system") {
+    return `${AUTOMATION_SYSTEM_ROOT}/${path}`;
+  }
+  if (layer === "workspace") {
+    return `${AUTOMATION_WORKSPACE_ROOT}/${path}`;
+  }
+
+  return path;
+};
 
 export const toExternalId = (value: unknown): string => {
   if (typeof value === "string") {
@@ -198,7 +230,10 @@ export async function loadAutomationWorkspaceData({
     scripts: workspaceScripts
       .map(buildWorkspaceScriptRecord)
       .sort(
-        (left, right) => left.name.localeCompare(right.name) || left.path.localeCompare(right.path),
+        (left, right) =>
+          left.layer.localeCompare(right.layer) ||
+          left.name.localeCompare(right.name) ||
+          left.path.localeCompare(right.path),
       ),
     scriptsError: workspaceScriptsError,
   };

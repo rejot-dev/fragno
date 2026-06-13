@@ -27,7 +27,7 @@ export const GENERAL_SKILL_CONTENT: Record<string, FileSystemArtifact> = {
     name: "building-automations",
     title: "Building Automations",
     description:
-      "Build Backoffice automations in codemode. Use when creating event router behavior, wiring useful configured connections together, reading the event catalog, updating /starter/automations/scripts/router.cm.js, or adding durable workflow scripts.",
+      "Build Backoffice automations in codemode. Use when creating event router behavior, wiring useful configured connections together, reading the event catalog, updating /workspace/automations/router.cm.js, or adding durable workflow scripts.",
     body: `Use this skill when the user wants the system to react to events from connections such as Telegram, Pi, OTP, or future integrations.
 
 ## Codemode-first workflow
@@ -42,15 +42,15 @@ const telegramMessage = await events.eventsCatalogGet({
 });
 \`\`\`
 
-2. Read the current router at \`/starter/automations/scripts/router.cm.js\`. It is the default event entrypoint and already demonstrates routing Telegram, OTP, and Pi events.
+2. Read the current router at \`/workspace/automations/router.cm.js\`. It is the default event entrypoint and already demonstrates routing Telegram, OTP, and Pi events.
 
 \`\`\`js
-const router = await state.readFile("/starter/automations/scripts/router.cm.js");
+const router = await state.readFile("/workspace/automations/router.cm.js");
 \`\`\`
 
 3. Add small routing logic to the router. Filter early by \`event.source\` and \`event.eventType\`; do not perform long-running work in the router.
 
-4. For long-running behavior, create a new \`*.workflow.js\` file under \`/starter/automations/scripts/\` and start it from the router with \`workflow.createInstance\`. Use \`state.writeFile\` when authoring from codemode.
+4. For long-running behavior, create a new \`*.workflow.js\` file under \`/workspace/automations/\` and start it from the router with \`workflow.createInstance\`. Use \`state.writeFile\` when authoring from codemode.
 
 5. If the automation depends on an external service, check whether the matching connection is configured. If not, use the Configuring Connections skill and work with the user to collect credentials or public URLs.
 
@@ -58,7 +58,7 @@ const router = await state.readFile("/starter/automations/scripts/router.cm.js")
 
 \`\`\`js
 await state.writeFile(
-  "/starter/automations/scripts/my-new-workflow.workflow.js",
+  "/workspace/automations/my-new-workflow.workflow.js",
   'defineWorkflow(\n' +
     '  { name: "my-new-workflow" },\n' +
     '  async (event, step) => {\n' +
@@ -84,7 +84,7 @@ async () => {
     instanceId: "my-new-workflow-" + event.id,
     params: {
       automationEvent: event,
-      workflowScriptPath: "/starter/automations/scripts/my-new-workflow.workflow.js",
+      workflowScriptPath: "/workspace/automations/my-new-workflow.workflow.js",
     },
   });
 };
@@ -163,7 +163,7 @@ const telegram = await connections.get({ id: "telegram" });
 const schema = await connections.schema({ id: "telegram" });
 \`\`\`
 
-2. Read the relevant connection skill in \`/starter/skills/<connection-or-system>/SKILL.md\` for capability-specific fields and gotchas.
+2. Read the relevant connection skill in \`/system/skills/<connection-or-system>/SKILL.md or /workspace/skills/<connection-or-system>/SKILL.md\` for capability-specific fields and gotchas.
 
 3. Work with the user to obtain required information. Do not invent secrets, API keys, sender addresses, webhook origins, public tunnel URLs, bucket configuration, or model provider keys.
 
@@ -202,7 +202,7 @@ const status = await connections.verify({ id: "telegram" });
       "Build and operate durable Backoffice workflows in codemode. Use when creating *.workflow.js files, using defineWorkflow, step.do, step.sleep, step.waitForEvent, retries, or workflow.* runtime tools.",
     body: `Use this skill for durable, replayable automation work that should survive waits, sleeps, retries, or external events.
 
-Backoffice workflow scripts live in \`/starter/automations/scripts/*.workflow.js\`. They are not run directly; router scripts start them through \`workflow.createInstance\`.
+Backoffice workflow scripts live in \`/workspace/automations/*.workflow.js\`. They are not run directly; router scripts start them through \`workflow.createInstance\`.
 
 ## Coding workflow scripts
 
@@ -241,7 +241,7 @@ await workflow.createInstance({
   instanceId: "approval-" + event.id,
   params: {
     automationEvent: event,
-    workflowScriptPath: "/starter/automations/scripts/approval.workflow.js",
+    workflowScriptPath: "/workspace/automations/approval.workflow.js",
   },
 });
 \`\`\`

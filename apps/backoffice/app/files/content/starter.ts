@@ -1,24 +1,17 @@
 import type { FileSystemArtifact } from "../types";
-import { STARTER_AUTOMATION_CONTENT } from "./automations";
-import { BACKOFFICE_CAPABILITY_FILE_CONTENT } from "./backoffice-capability-files";
 import { GENERAL_SKILL_CONTENT } from "./skills";
+import { WORKSPACE_STARTER_AUTOMATION_CONTENT } from "./starter-automations";
 
-export const STATIC_STARTER_CONTENT: Record<string, FileSystemArtifact> = {
-  "README.md": `# Static starter content
+export const WORKSPACE_STARTER_CONTENT: Record<string, FileSystemArtifact> = {
+  "AGENTS.md": `# Workspace guidance
 
-This read-only starter tree contains example files and default automation content.
+This is the editable organisation workspace. User-owned automations live in \`/workspace/automations/\` and may be changed freely.
 
-## Suggested flow
+System-owned guidance and automations live in \`/system\` and are read-only.
+`,
+  "README.md": `# Workspace starter content
 
-1. Review example inputs and constraints in \`input/notes.md\`.
-2. Use the files below as templates for prompts, plans, or scratch output.
-3. Review automation defaults under \`automations/scripts/\`.
-   - Use \`*.cm.js\` for codemode scripts.
-   - Use \`*.sh\` for bash scripts.
-   - Use \`*.workflow.js\` for durable codemode workflows started by scripts.
-4. Read capability agent skills under \`skills/*/SKILL.md\` for setup, event, and tool guidance.
-
-Copy anything you want to edit into writable workspace storage.
+This editable workspace contains starter automation content and scratch areas.
 `,
   "input/notes.md": `# Notes
 
@@ -34,10 +27,9 @@ Describe the task you want to work on here.
 - Expected output:
 `,
   "output/.gitkeep": "",
-  ...STARTER_AUTOMATION_CONTENT,
-  ...BACKOFFICE_CAPABILITY_FILE_CONTENT,
+  ...WORKSPACE_STARTER_AUTOMATION_CONTENT,
   ...GENERAL_SKILL_CONTENT,
 };
 
-export const STATIC_STARTER_ROOT_DESCRIPTION =
-  "Read-only static starter files, including filesystem-backed automation bash/codemode scripts and capability skills under /starter.";
+export const WORKSPACE_STARTER_ROOT_DESCRIPTION =
+  "Editable starter files copied into /workspace after Upload workspace initialization.";

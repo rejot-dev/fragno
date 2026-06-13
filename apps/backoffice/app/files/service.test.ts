@@ -56,7 +56,6 @@ describe("files service", () => {
       master.mounts.map((mount) => [mount.mountPoint, mount.id, mount.uploadProvider ?? null]),
     ).toEqual([
       ["/system", "system", null],
-      ["/starter", "static-starter", null],
       ["/workspace", "workspace", UPLOAD_PROVIDER_DATABASE],
       ["/r2-remote", "r2-remote", UPLOAD_PROVIDER_R2],
       ["/tmp", "tmp", null],
@@ -75,13 +74,7 @@ describe("files service", () => {
     } satisfies FilesContext);
 
     const tree = await listFilesTree(master);
-    expect(tree.map((node) => node.path)).toEqual([
-      "/system",
-      "/starter",
-      "/workspace",
-      "/r2-remote",
-      "/tmp",
-    ]);
+    expect(tree.map((node) => node.path)).toEqual(["/system", "/workspace", "/r2-remote", "/tmp"]);
 
     const workspaceChildren = await listFilesChildren(master, "/workspace");
     expect(workspaceChildren.map((node) => [node.kind, node.path, node.title])).toEqual([
@@ -166,7 +159,7 @@ describe("files service", () => {
     });
   });
 
-  test("returns a read-only static starter mount when Upload is unavailable", async () => {
+  test("does not mount workspace when Upload is unavailable", async () => {
     const master = await createMasterFileSystem({
       orgId: "org_123",
       backend: "backoffice",
@@ -174,18 +167,15 @@ describe("files service", () => {
     } satisfies FilesContext);
 
     const tree = await listFilesTree(master);
-    expect(tree.map((node) => node.path)).toEqual(["/system", "/starter", "/tmp"]);
+    expect(tree.map((node) => node.path)).toEqual(["/system", "/tmp"]);
 
-    const detail = await getFilesNodeDetail(master, "/starter/README.md");
-    expect(detail?.textContent).toContain("Static starter content");
+    const detail = await getFilesNodeDetail(master, "/system/AGENTS.md");
+    expect(detail?.textContent).toContain("Backoffice");
     expect(detail?.capabilities).toMatchObject({
       canCreateFolder: false,
       canWriteText: false,
       canDelete: false,
     });
-    expect(detail?.fields).toEqual(
-      expect.arrayContaining([{ label: "Persistence", value: "persistent" }]),
-    );
   });
 
   test("returns empty results for unknown built-in paths", async () => {

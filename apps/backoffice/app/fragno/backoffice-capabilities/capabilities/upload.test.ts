@@ -1,0 +1,73 @@
+import { describe, expect, test, vi, assert } from "vitest";
+
+import { uploadCapability } from "./upload";
+
+describe("upload capability workspace starter initialization", () => {
+  test("copies missing starter files without resolving them as folders", async () => {
+    const requests: Array<{ method: string; pathname: string }> = [];
+    const uploadDo = {
+      setAdminConfig: vi.fn(async () => ({
+        configured: true,
+        providers: { database: { configured: true } },
+      })),
+      getAdminConfig: vi.fn(async () => ({
+        configured: true,
+        providers: { database: { configured: true } },
+      })),
+      fetch: vi.fn(async (request: Request) => {
+        const url = new URL(request.url);
+        requests.push({ method: request.method, pathname: url.pathname });
+
+        if (request.method === "GET" && url.pathname === "/api/upload/files") {
+          return new Response("folder resolution should not be used during starter copy", {
+            status: 500,
+          });
+        }
+
+        if (request.method === "GET" && url.pathname === "/api/upload/files/by-key/content") {
+          return new Response("missing", { status: 404 });
+        }
+
+        if (request.method === "GET" && url.pathname === "/api/upload/files/by-key") {
+          return new Response(JSON.stringify({ message: "missing" }), { status: 404 });
+        }
+
+        if (request.method === "POST" && url.pathname === "/api/upload/files") {
+          return new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+
+        return new Response("unexpected", { status: 500 });
+      }),
+    };
+    const env = {
+      UPLOAD: {
+        idFromName: vi.fn((orgId: string) => `upload:${orgId}`),
+        get: vi.fn(() => uploadDo),
+      },
+    } as unknown as CloudflareEnv;
+
+    if (!uploadCapability.connection?.configure) {
+      throw new Error("Expected upload connection to be configurable.");
+    }
+
+    await expect(
+      uploadCapability.connection.configure({
+        env,
+        orgId: "org-1",
+        origin: "https://example.com",
+        payload: { provider: "database" },
+      }),
+    ).resolves.toMatchObject({ configured: true });
+
+    expect(uploadDo.setAdminConfig).toHaveBeenCalledWith(
+      { provider: "database" },
+      "org-1",
+      "https://example.com",
+    );
+    expect(requests).not.toContainEqual({ method: "GET", pathname: "/api/upload/files" });
+    assert(requests.some((request) => request.method === "POST"));
+  });
+});

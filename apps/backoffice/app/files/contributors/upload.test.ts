@@ -104,7 +104,6 @@ describe("upload file contributor", () => {
   test("exposes built-in contributors in deterministic order", () => {
     expect(getBuiltInFileContributors().map((contributor) => contributor.id)).toEqual([
       "system",
-      "static-starter",
       "workspace",
       "r2",
       "r2-remote",

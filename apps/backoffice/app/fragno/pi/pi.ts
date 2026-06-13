@@ -153,7 +153,7 @@ const createReadTool = (fs: MasterFileSystem): AgentTool =>
     name: "read",
     label: "Read",
     description:
-      "Read a file from the combined Pi session filesystem. Use this to load matching skills from /starter/skills/<skill-name>/SKILL.md before applying them.",
+      "Read a file from the combined Pi session filesystem. Use this to load matching skills from /system/skills/<skill-name>/SKILL.md or /workspace/skills/<skill-name>/SKILL.md before applying them.",
     parameters: readParametersSchema,
     execute: async (_toolCallId, params, signal) => {
       if (signal?.aborted) {

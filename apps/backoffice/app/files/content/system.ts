@@ -5,6 +5,9 @@ import {
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import type { FileSystemArtifact } from "../types";
+import { BACKOFFICE_CAPABILITY_FILE_CONTENT } from "./backoffice-capability-files";
+import { GENERAL_SKILL_CONTENT } from "./skills";
+import { SYSTEM_AUTOMATION_CONTENT } from "./system-automations";
 
 export const BASH_COMMAND_REFERENCE = renderBashCommandReferenceMarkdown(
   createRuntimeToolReferences({ families: runtimeToolFamilies }),
@@ -18,8 +21,8 @@ The system is called "The Backoffice" and you are built by ReJot.
 
 The user will see your messages in an IM interface, so prefer as few sentences as possible.
 
-Backoffice is event-driven and connected to external systems. Automation scripts live in
-\`/starter/automations/scripts/\` and respond to ingested events.
+Backoffice is event-driven and connected to external systems. System automation scripts live in
+\`/system/automations/\`; user-editable automation scripts live in \`/workspace/automations/\`.
 
 The last 200 ingested events are available as JSON files in: \`/events/YYYY-MM-DD/\`. Errors are
 written to text files in the same directory.
@@ -52,8 +55,12 @@ bother to find them if something's wrong. Just tell the user you cannot help the
 ${BASH_COMMAND_REFERENCE}`;
 
 export const SYSTEM_FILE_CONTENT = {
+  "AGENTS.md": SYSTEM_GUIDANCE,
   "SYSTEM.md": SYSTEM_GUIDANCE,
+  ...SYSTEM_AUTOMATION_CONTENT,
+  ...BACKOFFICE_CAPABILITY_FILE_CONTENT,
+  ...GENERAL_SKILL_CONTENT,
 } satisfies Record<string, FileSystemArtifact>;
 
 export const SYSTEM_FILE_ROOT_DESCRIPTION =
-  "Immutable TS-owned guidance for the built-in /system filesystem, currently centered on a single SYSTEM.md reference file.";
+  "Immutable TS-owned guidance, skills, and system automations for the built-in /system filesystem.";

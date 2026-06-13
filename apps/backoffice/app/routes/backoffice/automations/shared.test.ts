@@ -5,14 +5,14 @@ import { parseAutomationLoadError, type AutomationLoadErrorDetails } from "./sha
 describe("parseAutomationLoadError", () => {
   test("extracts missing script details from catalog errors", () => {
     const error =
-      "Automation script for binding 'telegram-file-store' '/starter/automations/scripts/telegram-file-store.sh' was not found in the automation workspace: File not found.";
+      "Automation script for binding 'telegram-file-store' '/workspace/automations/telegram-file-store.sh' was not found in the automation workspace: File not found.";
 
     const parsed = parseAutomationLoadError(error);
 
     expect(parsed).toMatchObject({
       kind: "missing-script",
       bindingId: "telegram-file-store",
-      scriptPath: "/starter/automations/scripts/telegram-file-store.sh",
+      scriptPath: "/workspace/automations/telegram-file-store.sh",
       cause: "File not found.",
     } satisfies AutomationLoadErrorDetails);
   });

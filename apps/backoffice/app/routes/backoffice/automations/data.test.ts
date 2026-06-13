@@ -21,11 +21,12 @@ beforeEach(() => {
 });
 
 describe("automation backoffice workspace data", () => {
-  test("shows filesystem scripts directly", async () => {
+  test("shows filesystem scripts from both roots", async () => {
     const fileSystem = createStubAutomationFileSystem({
-      "/starter/automations/scripts/router.cm.js": "async () => true",
-      "/starter/automations/scripts/unbound.sh": 'echo "unbound"',
-      "/starter/automations/scripts/workflow.workflow.js":
+      "/system/automations/router.cm.js": "async () => true",
+      "/workspace/automations/router.cm.js": "async () => true",
+      "/workspace/automations/unbound.sh": 'echo "unbound"',
+      "/workspace/automations/workflow.workflow.js":
         "defineWorkflow({ name: 'x' }, async () => {})",
     });
     createOrgFileSystemMock.mockResolvedValue(fileSystem.fs);
@@ -39,20 +40,30 @@ describe("automation backoffice workspace data", () => {
     expect(result.scripts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "workspace-script:scripts/router.cm.js",
+          id: "automation-script:system:router.cm.js",
           key: "router.cm",
-          path: "scripts/router.cm.js",
+          layer: "system",
+          readOnly: true,
+          path: "router.cm.js",
           enabled: true,
         }),
         expect.objectContaining({
-          id: "workspace-script:scripts/unbound.sh",
+          id: "automation-script:workspace:router.cm.js",
+          key: "router.cm",
+          layer: "workspace",
+          readOnly: false,
+          path: "router.cm.js",
+          enabled: true,
+        }),
+        expect.objectContaining({
+          id: "automation-script:workspace:unbound.sh",
           key: "unbound",
-          path: "scripts/unbound.sh",
+          path: "unbound.sh",
           enabled: true,
         }),
         expect.objectContaining({
-          id: "workspace-script:scripts/workflow.workflow.js",
-          path: "scripts/workflow.workflow.js",
+          id: "automation-script:workspace:workflow.workflow.js",
+          path: "workflow.workflow.js",
           enabled: false,
         }),
       ]),
@@ -62,26 +73,32 @@ describe("automation backoffice workspace data", () => {
 
   test("reads the selected script source only when the user opens it", async () => {
     const fileSystem = createStubAutomationFileSystem({
-      "/starter/automations/scripts/lazy.sh": 'echo "lazy"',
+      "/workspace/automations/lazy.sh": 'echo "lazy"',
     });
     createOrgFileSystemMock.mockResolvedValue(fileSystem.fs);
 
     const result = await loadAutomationScriptSource({
       context: mockContext,
       orgId: "acme-org",
-      scriptId: "workspace-script:scripts/lazy.sh",
+      scriptId: "automation-script:workspace:lazy.sh",
     });
 
     expect(result).toEqual({
       script: 'echo "lazy"',
       scriptError: null,
     });
-    expect(fileSystem.readFileCalls).toEqual(["/starter/automations/scripts/lazy.sh"]);
+    expect(fileSystem.readFileCalls).toEqual(["/workspace/automations/lazy.sh"]);
   });
 });
 
 function createStubAutomationFileSystem(files: Record<string, string>) {
-  const directories = new Set<string>(["/", "/workspace", "/starter/automations"]);
+  const directories = new Set<string>([
+    "/",
+    "/system",
+    "/system/automations",
+    "/workspace",
+    "/workspace/automations",
+  ]);
 
   for (const filePath of Object.keys(files)) {
     const segments = filePath.split("/").filter(Boolean);
