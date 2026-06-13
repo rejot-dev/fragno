@@ -5,6 +5,8 @@ import { BackofficePageHeader } from "@/components/backoffice";
 import { createOrgFileSystem } from "@/files";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
+import type { AutomationCommandOptionSpec } from "@/fragno/runtime-tools/automation-types";
+import { STANDARD_COMMAND_OPTIONS } from "@/fragno/runtime-tools/bash-cli";
 import {
   createRuntimeToolReferenceContext,
   createRuntimeToolReferences,
@@ -29,12 +31,33 @@ type Stat = {
   description: string;
 };
 
-const DASHBOARD_COMMAND_GROUPS = renderDashboardCommandGroups(
-  createRuntimeToolReferences({
-    families: runtimeToolFamilies,
-    context: createRuntimeToolReferenceContext(),
-  }),
-);
+const DASHBOARD_COMMAND_REFERENCES = createRuntimeToolReferences({
+  families: runtimeToolFamilies,
+  context: createRuntimeToolReferenceContext(),
+});
+const DASHBOARD_COMMAND_GROUPS = renderDashboardCommandGroups(DASHBOARD_COMMAND_REFERENCES);
+const DASHBOARD_SHELL_COMMAND_SPECS = [
+  { command: "cat", summary: "Print file contents.", options: [] },
+  { command: "cd", summary: "Change the terminal working directory.", options: [] },
+  { command: "find", summary: "Search for files under a directory.", options: [] },
+  { command: "ls", summary: "List files and directories.", options: [] },
+  { command: "pwd", summary: "Print the terminal working directory.", options: [] },
+] as const;
+const appendStandardCommandOptions = (options: readonly AutomationCommandOptionSpec[]) => {
+  const optionNames = new Set(options.map((option) => option.name));
+  return [
+    ...options,
+    ...STANDARD_COMMAND_OPTIONS.filter((option) => !optionNames.has(option.name)),
+  ];
+};
+
+const DASHBOARD_COMMAND_SPECS = [
+  ...DASHBOARD_SHELL_COMMAND_SPECS,
+  ...DASHBOARD_COMMAND_REFERENCES.map((reference) => ({
+    ...reference.bash,
+    options: appendStandardCommandOptions(reference.bash.options),
+  })),
+];
 
 class DashboardCommandTimeoutError extends Error {
   constructor(timeoutMs: number) {
@@ -255,6 +278,7 @@ export default function BackofficeDashboard() {
           key={activeOrganization?.id ?? "none"}
           organizationId={activeOrganization?.id}
           organizationName={activeOrganization?.name}
+          commandSpecs={DASHBOARD_COMMAND_SPECS}
         />
 
         <div className="space-y-4">
