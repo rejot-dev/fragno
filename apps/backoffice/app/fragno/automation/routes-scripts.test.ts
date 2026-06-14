@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, assert } from "vitest";
 
 import { InMemoryAdapter } from "@fragno-dev/db";
 
-import { AUTOMATION_SCRIPT_PATHS } from "@/files";
+import { SYSTEM_AUTOMATION_SCRIPT_PATHS } from "@/files";
 
 import type { AutomationWorkflowsService } from "./definition";
 import { createTestMasterFileSystem } from "./engine/test-master-file-system.test-utils";
@@ -52,12 +52,12 @@ describe("automation routes /scripts", () => {
       expect(response.data).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            path: AUTOMATION_SCRIPT_PATHS.systemRouter.replace(/^automations\//u, ""),
+            path: SYSTEM_AUTOMATION_SCRIPT_PATHS.systemRouter.replace(/^automations\//u, ""),
             engine: "codemode",
             enabled: true,
           }),
           expect.objectContaining({
-            path: AUTOMATION_SCRIPT_PATHS.workspaceFileInitialization.replace(
+            path: SYSTEM_AUTOMATION_SCRIPT_PATHS.workspaceFileInitialization.replace(
               /^automations\//u,
               "",
             ),

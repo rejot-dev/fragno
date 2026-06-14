@@ -169,7 +169,7 @@ describe("files service", () => {
     const tree = await listFilesTree(master);
     expect(tree.map((node) => node.path)).toEqual(["/system", "/tmp"]);
 
-    const detail = await getFilesNodeDetail(master, "/system/AGENTS.md");
+    const detail = await getFilesNodeDetail(master, "/system/SYSTEM.md");
     expect(detail?.textContent).toContain("Backoffice");
     expect(detail?.capabilities).toMatchObject({
       canCreateFolder: false,

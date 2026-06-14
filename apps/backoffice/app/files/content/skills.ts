@@ -268,7 +268,7 @@ If an instance is stuck waiting, confirm the sent event \`type\` exactly matches
     title: "Sandbox",
     description:
       "Work with Cloudflare sandboxes from Backoffice codemode. Use when starting, listing, killing, or executing commands in sandboxes with sandbox.startSandbox, sandbox.listSandboxes, sandbox.killSandbox, or sandbox.executeCommand.",
-    body: `Use this skill when the task needs an isolated Cloudflare sandbox to run shell commands or inspect a runtime environment. Sandbox tools are runtime tools and are not tied to a single Backoffice capability skill.
+    body: `Use this skill when the task needs an isolated Cloudflare sandbox to run shell commands or inspect a runtime environment. Sandbox tools are available when the Sandbox capability is configured by the deployment environment.
 
 ## Codemode provider
 

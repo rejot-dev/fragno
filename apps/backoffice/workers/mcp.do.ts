@@ -133,6 +133,31 @@ export class Mcp extends DurableObject<CloudflareEnv> {
         },
       }),
       createRuntime: (config) => createMcpServer(config, state),
+      outbox: {
+        dispatch: async (item, { env, stored }) => {
+          if (item.type !== "capability.configured") {
+            return;
+          }
+
+          await env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(stored.orgId)).ingestEvent({
+            id: item.id,
+            orgId: stored.orgId,
+            source: "mcp",
+            eventType: "capability.configured",
+            occurredAt: item.createdAt,
+            payload: {
+              capabilityId: "mcp",
+              capabilityLabel: "MCP",
+            },
+            actor: AUTOMATION_SYSTEM_ACTOR,
+            actors: [AUTOMATION_SYSTEM_ACTOR],
+            subject: {
+              orgId: stored.orgId,
+              capabilityId: "mcp",
+            },
+          });
+        },
+      },
     });
 
     void state.blockConcurrencyWhile(async () => {
@@ -174,6 +199,12 @@ export class Mcp extends DurableObject<CloudflareEnv> {
 
     await this.#state.blockConcurrencyWhile(async () => {
       await this.#host.storeAndInitialize(stored);
+      const configuredAt = new Date().toISOString();
+      await this.#host.dispatch({
+        id: `mcp:capability.configured:${parsed.orgId}:${configuredAt}`,
+        type: "capability.configured",
+        createdAt: configuredAt,
+      });
     });
 
     return buildConfigResponse(this.#env, stored);

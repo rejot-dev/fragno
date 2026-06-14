@@ -182,12 +182,30 @@ export class Auth extends DurableObject<CloudflareEnv> {
     return createDurableHookRepository<DurableHookQueueOptions>(() => this.#ensureFragment());
   }
 
-  async getAllOrganizations(): Promise<Organization[]> {
+  async getDevOrganizations(): Promise<
+    Array<{
+      id: string;
+      name: string;
+      slug: string;
+      createdBy: string;
+      createdAt: Date;
+      updatedAt: Date;
+    }>
+  > {
     const fragment = this.#ensureFragment();
     return await fragment.inContext(function () {
       return this.handlerTx()
         .withServiceCalls(() => [fragment.services.getAllOrganizations()])
-        .transform(({ serviceResult: [organizations] }) => organizations)
+        .transform(({ serviceResult: [organizations] }) =>
+          organizations.map((organization) => ({
+            id: organization.id,
+            name: organization.name,
+            slug: organization.slug,
+            createdBy: organization.createdBy,
+            createdAt: organization.createdAt,
+            updatedAt: organization.updatedAt,
+          })),
+        )
         .execute();
     });
   }

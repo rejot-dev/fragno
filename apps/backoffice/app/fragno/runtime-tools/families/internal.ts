@@ -4,16 +4,30 @@ import {
   seedWorkspaceStarterFiles,
   type WorkspaceStarterFilesSeedOutput,
 } from "@/files/seed-workspace-starter-files";
+import {
+  backofficeCapabilities,
+  type BackofficeCapabilityId,
+} from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { CODEMODE_DTS_PATH, createCodemodeDts } from "@/fragno/codemode/codemode-dts";
+import { STATE_TYPES } from "@/fragno/codemode/state-prompt";
 import { defineCliArgsParser, readOutputOptions } from "@/fragno/runtime-tools/bash-cli";
 
 import {
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
+  type BackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../runtime-tools";
 
+export type CodemodeTypesRenderOutput = {
+  path: typeof CODEMODE_DTS_PATH;
+  content: string;
+  configuredCapabilities: BackofficeCapabilityId[];
+};
+
 export type InternalRuntime = {
   seedWorkspaceStarterFiles(input?: { force?: boolean }): Promise<WorkspaceStarterFilesSeedOutput>;
+  renderCodemodeTypes(): Promise<CodemodeTypesRenderOutput>;
 };
 
 type InternalToolContext = BackofficeToolContext<{ internal?: InternalRuntime }>;
@@ -26,6 +40,12 @@ const workspaceStarterFilesSeedOutputSchema = z.object({
   skipped: z.array(z.string()),
 });
 
+const codemodeTypesRenderOutputSchema = z.object({
+  path: z.literal(CODEMODE_DTS_PATH),
+  content: z.string(),
+  configuredCapabilities: z.array(z.string()),
+});
+
 const getRuntime = (context: InternalToolContext) => {
   if (!context.runtimes.internal) {
     throw new Error("Internal runtime is not available in this execution context");
@@ -36,12 +56,39 @@ const getRuntime = (context: InternalToolContext) => {
 export const createInternalRuntime = ({
   env,
   orgId,
+  families,
 }: {
   env: CloudflareEnv;
   orgId: string;
+  families: readonly BackofficeRuntimeToolFamily[];
 }): InternalRuntime => ({
   seedWorkspaceStarterFiles: async (input) =>
     await seedWorkspaceStarterFiles({ env, orgId, force: input?.force }),
+  renderCodemodeTypes: async () => {
+    const configuredCapabilities: BackofficeCapabilityId[] = [];
+
+    for (const capability of backofficeCapabilities) {
+      if (capability.kind === "system") {
+        configuredCapabilities.push(capability.id);
+        continue;
+      }
+
+      const status = await capability.connection.getStatus({ env, orgId });
+      if (status.configured) {
+        configuredCapabilities.push(capability.id);
+      }
+    }
+
+    return {
+      path: CODEMODE_DTS_PATH,
+      content: createCodemodeDts({
+        configuredCapabilityIds: configuredCapabilities,
+        families,
+        stateTypes: STATE_TYPES,
+      }),
+      configuredCapabilities,
+    };
+  },
 });
 
 const filesSeedExecuteTool = defineBackofficeRuntimeTool({
@@ -83,7 +130,33 @@ const filesSeedExecuteTool = defineBackofficeRuntimeTool({
   },
 });
 
-export const internalRuntimeTools = [filesSeedExecuteTool] as const;
+const codemodeTypesRenderTool = defineBackofficeRuntimeTool({
+  id: "internal.codemode.types.render",
+  namespace: "internal",
+  name: "codemodeTypesRender",
+  description:
+    "Render the org-scoped codemode TypeScript declarations for configured capabilities.",
+  inputSchema: z.object({}).optional().default({}),
+  outputSchema: codemodeTypesRenderOutputSchema,
+  execute: async (_input, context: InternalToolContext) =>
+    await getRuntime(context).renderCodemodeTypes(),
+  adapters: {
+    bash: {
+      command: "internal.codemode.types.render",
+      help: {
+        summary: "internal.codemode.types.render renders /workspace/codemode.d.ts content.",
+        options: [],
+        examples: ["internal.codemode.types.render --format json --print content"],
+      },
+      parse: () => ({}),
+      outputOptions: (_args, parsed) => readOutputOptions(parsed),
+      format: (output, options) =>
+        options.format === "json" || options.print ? { data: output } : { stdout: output.content },
+    },
+  },
+});
+
+export const internalRuntimeTools = [filesSeedExecuteTool, codemodeTypesRenderTool] as const;
 
 export const internalToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "internal",

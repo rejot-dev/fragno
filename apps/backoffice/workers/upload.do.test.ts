@@ -49,10 +49,15 @@ import { Upload } from "./upload.do";
 
 const createState = () => {
   const store = new Map<string, unknown>();
+  let alarm: number | null = null;
   const storage = {
     get: vi.fn(async (key: string) => store.get(key)),
     put: vi.fn(async (key: string, value: unknown) => {
       store.set(key, value);
+    }),
+    getAlarm: vi.fn(async () => alarm),
+    setAlarm: vi.fn(async (scheduledTime: number) => {
+      alarm = scheduledTime;
     }),
   };
   const waitUntil = vi.fn();

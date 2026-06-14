@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { AUTOMATION_SCRIPT_PATHS } from "@/files";
+import { STARTER_AUTOMATION_SCRIPT_PATHS } from "@/files";
 import { WORKSPACE_STARTER_AUTOMATION_CONTENT } from "@/files/content/starter-automations";
 import { SYSTEM_AUTOMATION_CONTENT } from "@/files/content/system-automations";
 
@@ -70,12 +70,12 @@ describe("automation filesystem catalog", () => {
       expect.arrayContaining([
         expect.objectContaining({
           key: "router.cm",
-          path: AUTOMATION_SCRIPT_PATHS.workspaceRouter.replace(/^automations\//u, ""),
+          path: STARTER_AUTOMATION_SCRIPT_PATHS.workspaceRouter.replace(/^automations\//u, ""),
           engine: "codemode",
           enabled: true,
         }),
         expect.objectContaining({
-          path: AUTOMATION_SCRIPT_PATHS.telegramUserLinking.replace(/^automations\//u, ""),
+          path: STARTER_AUTOMATION_SCRIPT_PATHS.telegramUserLinking.replace(/^automations\//u, ""),
           enabled: false,
         }),
       ]),

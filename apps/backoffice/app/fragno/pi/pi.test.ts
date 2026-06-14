@@ -254,7 +254,6 @@ describe("Pi bash tool", () => {
       exitCode: 0,
     });
     expect((result.details as { stdout: string }).stdout.split("\n")).toEqual([
-      "AGENTS.md",
       "SYSTEM.md",
       "automations",
       "skills",
@@ -447,7 +446,7 @@ describe("Pi bash tool", () => {
     } as never);
 
     const touchResult = await tool.execute("tool-call-readonly-1", {
-      script: "touch /system/AGENTS.md",
+      script: "touch /system/SYSTEM.md",
     } as never);
     expect(touchResult.details).toMatchObject({
       stdout: "",

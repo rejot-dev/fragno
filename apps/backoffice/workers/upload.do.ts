@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
+import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
 import { uploadConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/upload";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import {
@@ -161,6 +162,33 @@ export class Upload extends DurableObject<CloudflareEnv> {
           ]),
         ),
       }),
+      outbox: {
+        dispatch: async (item, { env, stored }) => {
+          if (item.type !== "capability.configured") {
+            return;
+          }
+
+          await env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(stored.namespace.orgId)).ingestEvent(
+            {
+              id: item.id,
+              orgId: stored.namespace.orgId,
+              source: "upload",
+              eventType: "capability.configured",
+              occurredAt: item.createdAt,
+              payload: {
+                capabilityId: "upload",
+                capabilityLabel: "Upload",
+              },
+              actor: AUTOMATION_SYSTEM_ACTOR,
+              actors: [AUTOMATION_SYSTEM_ACTOR],
+              subject: {
+                orgId: stored.namespace.orgId,
+                capabilityId: "upload",
+              },
+            },
+          );
+        },
+      },
     });
 
     void state.blockConcurrencyWhile(async () => {
@@ -318,6 +346,12 @@ export class Upload extends DurableObject<CloudflareEnv> {
     try {
       await this.#state.blockConcurrencyWhile(async () => {
         await this.#host.storeAndInitialize(resolved.config);
+        const configuredAt = new Date().toISOString();
+        await this.#host.dispatch({
+          id: `upload:capability.configured:${args.orgId}:${configuredAt}`,
+          type: "capability.configured",
+          createdAt: configuredAt,
+        });
       });
     } catch (error) {
       console.log("Upload migration failed", { error });

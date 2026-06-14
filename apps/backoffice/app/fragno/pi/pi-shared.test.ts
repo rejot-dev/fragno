@@ -40,34 +40,11 @@ describe("pi-shared helpers", () => {
     }
   });
 
-  it("falls back to the default bash and codemode harnesses", () => {
+  it("falls back to the single default harness", () => {
     const harnesses = resolvePiHarnesses([]);
-    expect(harnesses).toHaveLength(2);
+    expect(harnesses).toHaveLength(1);
     expect(harnesses[0]?.id).toBe(DEFAULT_PI_HARNESS.id);
     expect(harnesses).toEqual(DEFAULT_PI_HARNESSES);
-    expect(harnesses.find((harness) => harness.id === "bash")?.tools).toEqual(["bash", "read"]);
-    expect(harnesses.find((harness) => harness.id === "codemode")?.tools).toEqual([
-      "execCodeMode",
-      "read",
-    ]);
-  });
-
-  it("keeps bash and codemode runtime references isolated by harness", () => {
-    const bashHarness = resolvePiHarnesses([]).find((harness) => harness.id === "bash");
-    const codemodeHarness = resolvePiHarnesses([]).find((harness) => harness.id === "codemode");
-
-    expect(bashHarness?.systemPrompt).toContain("## Bash runtime reference");
-    expect(bashHarness?.systemPrompt).toContain("telegram.file.get");
-    expect(bashHarness?.systemPrompt).not.toContain("declare const telegram");
-    expect(bashHarness?.systemPrompt).not.toContain("Available API (TypeScript reference)");
-
-    expect(codemodeHarness?.systemPrompt).not.toContain("## Bash runtime reference");
-    expect(codemodeHarness?.systemPrompt).not.toContain("telegram.file.get --file-id");
-    expect(codemodeHarness?.systemPrompt).toContain("state.*");
-    expect(codemodeHarness?.systemPrompt).toContain("Available API (TypeScript reference)");
-    expect(codemodeHarness?.systemPrompt).toContain("declare const telegram");
-    expect(codemodeHarness?.systemPrompt).toContain("declare const pi");
-    expect(codemodeHarness?.systemPrompt).toContain("declare function defineWorkflow");
-    expect(codemodeHarness?.systemPrompt).toContain("/workspace/automations/");
+    expect(harnesses[0]?.tools).toEqual(["execCodeMode", "read", "bash"]);
   });
 });

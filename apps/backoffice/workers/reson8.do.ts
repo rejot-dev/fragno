@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
+import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
 import { reson8ConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/reson8";
 import { createReson8Server, type Reson8Fragment } from "@/fragno/reson8";
 
@@ -99,11 +100,40 @@ export class Reson8 extends DurableObject<CloudflareEnv> {
       createRuntime: (source) => createReson8Server(source),
       getMigrationFragments: () => [],
       getHookFragments: () => [],
+      outbox: {
+        dispatch: async (item, { env, stored }) => {
+          if (item.type !== "capability.configured") {
+            return;
+          }
+
+          await env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(stored.orgId)).ingestEvent({
+            id: item.id,
+            orgId: stored.orgId,
+            source: "reson8",
+            eventType: "capability.configured",
+            occurredAt: item.createdAt,
+            payload: {
+              capabilityId: "reson8",
+              capabilityLabel: "Reson8",
+            },
+            actor: AUTOMATION_SYSTEM_ACTOR,
+            actors: [AUTOMATION_SYSTEM_ACTOR],
+            subject: {
+              orgId: stored.orgId,
+              capabilityId: "reson8",
+            },
+          });
+        },
+      },
     });
 
     void state.blockConcurrencyWhile(async () => {
       await this.#host.initializeFromStored(await this.#host.loadStored());
     });
+  }
+
+  async alarm() {
+    await this.#host.alarm();
   }
 
   async getAdminConfig(): Promise<ConfigResponse> {
@@ -226,6 +256,12 @@ export class Reson8 extends DurableObject<CloudflareEnv> {
 
     await this.#state.blockConcurrencyWhile(async () => {
       await this.#host.storeAndInitialize(stored);
+      const configuredAt = new Date().toISOString();
+      await this.#host.dispatch({
+        id: `reson8:capability.configured:${normalizedOrgId}:${configuredAt}`,
+        type: "capability.configured",
+        createdAt: configuredAt,
+      });
     });
 
     return buildConfigResponse(stored);

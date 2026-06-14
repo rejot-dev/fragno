@@ -1,5 +1,12 @@
 import type { FileSystemArtifact } from "../types";
 
+export const STARTER_AUTOMATION_SCRIPT_PATHS = {
+  workspaceRouter: "automations/router.cm.js",
+  telegramUserLinking: "automations/telegram-user-linking.workflow.js",
+  telegramUserPiLinking: "automations/telegram-user-pi-linking.workflow.js",
+  telegramTestCommand: "automations/telegram-test-command.workflow.js",
+} as const;
+
 export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
   "automations/router.cm.js": `async () => {
   const event = await state.readFile("/context/event.json").then(JSON.parse);

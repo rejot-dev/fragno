@@ -128,10 +128,10 @@ export const piCapability: BackofficeCapability = {
         capabilityLabel: "Pi",
         harnesses: [
           {
-            id: "codemode",
-            label: "Codemode",
-            description: "Built-in harness with execCodeMode access.",
-            tools: ["execCodeMode"],
+            id: "default",
+            label: "Default",
+            description: "Built-in harness with codemode, read, and bash access.",
+            tools: ["execCodeMode", "read", "bash"],
           },
         ],
         modelCatalog: [{ provider: "openai", name: "gpt-5-nano", label: "GPT-5 nano" }],

@@ -21,8 +21,8 @@ describe("static file contributor", () => {
 
   test("renders and reads the built-in /system docs pack", async () => {
     const entries = await staticFileContributor.readdirWithFileTypes?.(STATIC_FILE_MOUNT_POINT);
-    const systemMarkdown = await staticFileContributor.readFile?.(
-      `${STATIC_FILE_MOUNT_POINT}/SYSTEM.md`,
+    expect(await staticFileContributor.readFile?.(`${STATIC_FILE_MOUNT_POINT}/SYSTEM.md`)).toEqual(
+      SYSTEM_FILE_CONTENT["SYSTEM.md"],
     );
 
     expect(entries?.map((entry) => entry.name)).toEqual(expect.arrayContaining(["SYSTEM.md"]));
@@ -32,6 +32,5 @@ describe("static file contributor", () => {
         ...Object.keys(SYSTEM_FILE_CONTENT).map((path) => `/system/${path}`),
       ]),
     );
-    expect(systemMarkdown).toContain("You are a helpful assistant");
   });
 });

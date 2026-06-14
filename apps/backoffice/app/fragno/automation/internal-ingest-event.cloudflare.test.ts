@@ -6,7 +6,11 @@ import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 import { workflowsFragmentDefinition, workflowsRoutesFactory } from "@fragno-dev/workflows";
 
-import { WORKSPACE_STARTER_CONTENT, AUTOMATION_SCRIPT_PATHS, type IFileSystem } from "@/files";
+import {
+  WORKSPACE_STARTER_CONTENT,
+  STARTER_AUTOMATION_SCRIPT_PATHS,
+  type IFileSystem,
+} from "@/files";
 
 import type { AutomationEvent } from "./contracts";
 import { automationFragmentDefinition, type AutomationPiBashContext } from "./definition";
@@ -533,7 +537,7 @@ telegram.file.download --file-id "$file_id" > /workspace/telegram-download.bin
 
   test("runs custom static starter automation files in tests", async () => {
     await setAutomationFiles({
-      [AUTOMATION_SCRIPT_PATHS.workspaceRouter]: `async () => {
+      [STARTER_AUTOMATION_SCRIPT_PATHS.workspaceRouter]: `async () => {
   await telegram.sendMessage({ chatId: "chat-1", text: "custom-start" });
 };`,
     });

@@ -84,7 +84,7 @@ const namespaceCapabilityIds = {
   pi: "pi",
   resend: "resend",
   reson8: "reson8",
-  sandbox: "pi",
+  sandbox: "sandbox",
   telegram: "telegram",
 } as const;
 

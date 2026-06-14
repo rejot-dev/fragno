@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
-import { createCodemodeTypes } from "@/fragno/codemode/state-prompt";
+import { createCodemodeDts } from "@/fragno/codemode/codemode-dts";
+import { STATE_TYPES } from "@/fragno/codemode/state-prompt";
 
 import {
   createRuntimeToolFamilyReference,
@@ -538,8 +539,8 @@ describe("runtime tool reference generation", () => {
     expect(types).toContain("declare const telegram");
   });
 
-  test("renders codemode prompt types from the pi codemode target family list", () => {
-    const types = createCodemodeTypes({ families: runtimeToolFamilies });
+  test("renders codemode prompt types from the default dynamic codemode family list", () => {
+    const types = createCodemodeDts({ families: runtimeToolFamilies, stateTypes: STATE_TYPES });
     const domainProviderTypes = types.slice(
       types.indexOf("// ── Backoffice domain tool providers"),
     );
@@ -550,7 +551,24 @@ describe("runtime tool reference generation", () => {
     expect(domainProviderTypes).toContain("getInstance(input: WorkflowGetInstanceInput)");
     expect(domainProviderTypes).toContain("retryInstance(input: WorkflowRetryInstanceInput)");
     expect(domainProviderTypes).toContain("declare const otp");
-    expect(domainProviderTypes).toContain("declare const pi");
-    expect(domainProviderTypes).toContain("declare const telegram");
+    expect(domainProviderTypes).not.toContain("declare const pi");
+    expect(domainProviderTypes).not.toContain("declare const telegram");
+  });
+
+  test("renders sandbox provider types from the sandbox capability", () => {
+    const piTypes = createCodemodeDts({
+      configuredCapabilityIds: ["pi"],
+      families: runtimeToolFamilies,
+      stateTypes: "declare const state: unknown;",
+    });
+    const sandboxTypes = createCodemodeDts({
+      configuredCapabilityIds: ["sandbox"],
+      families: runtimeToolFamilies,
+      stateTypes: "declare const state: unknown;",
+    });
+
+    expect(piTypes).toContain("declare const pi");
+    expect(piTypes).not.toContain("declare const sandbox");
+    expect(sandboxTypes).toContain("declare const sandbox");
   });
 });

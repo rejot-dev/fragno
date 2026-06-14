@@ -18,6 +18,7 @@ import { otpCapability } from "./capabilities/otp";
 import { piCapability } from "./capabilities/pi";
 import { resendCapability } from "./capabilities/resend";
 import { reson8Capability } from "./capabilities/reson8";
+import { sandboxCapability } from "./capabilities/sandbox";
 import { telegramCapability } from "./capabilities/telegram";
 import { uploadCapability } from "./capabilities/upload";
 
@@ -33,6 +34,7 @@ export type BackofficeCapabilityId =
   | "pi"
   | "resend"
   | "reson8"
+  | "sandbox"
   | "telegram"
   | "upload";
 
@@ -193,6 +195,7 @@ export const backofficeCapabilities: readonly BackofficeCapability[] = [
   reson8Capability,
   uploadCapability,
   piCapability,
+  sandboxCapability,
   otpCapability,
   automationsCapability,
   githubCapability,
@@ -257,6 +260,13 @@ export const backofficeConnectionCatalog: readonly BackofficeConnectionCatalogEn
     kind: "connection",
     configurable: true,
     description: "Configure model providers and Pi runtime harnesses.",
+  },
+  {
+    id: "sandbox",
+    label: "Sandbox",
+    kind: "connection",
+    configurable: false,
+    description: "Start isolated Cloudflare sandboxes and execute shell commands.",
   },
   {
     id: "github",
