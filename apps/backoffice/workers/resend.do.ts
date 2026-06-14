@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import type { ResendFragmentConfig } from "@fragno-dev/resend-fragment";
 
+import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
 import { resendConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/resend";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import { createResendServer, type ResendConfig, type ResendFragment } from "@/fragno/resend";
@@ -289,6 +290,31 @@ export class Resend extends DurableObject<CloudflareEnv> {
       }),
       fingerprint: (config) => JSON.stringify(config),
       createRuntime: (config) => createResendServer(config, state),
+      outbox: {
+        dispatch: async (item, { env, stored }) => {
+          if (item.type !== "capability.configured") {
+            return;
+          }
+
+          await env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(stored.orgId)).ingestEvent({
+            id: item.id,
+            orgId: stored.orgId,
+            source: "resend",
+            eventType: "capability.configured",
+            occurredAt: item.createdAt,
+            payload: {
+              capabilityId: "resend",
+              capabilityLabel: "Resend",
+            },
+            actor: AUTOMATION_SYSTEM_ACTOR,
+            actors: [AUTOMATION_SYSTEM_ACTOR],
+            subject: {
+              orgId: stored.orgId,
+              capabilityId: "resend",
+            },
+          });
+        },
+      },
     });
 
     void state.blockConcurrencyWhile(async () => {
@@ -368,6 +394,12 @@ export class Resend extends DurableObject<CloudflareEnv> {
 
         try {
           await this.#host.storeAndInitialize(stored);
+          const configuredAt = new Date().toISOString();
+          await this.#host.dispatch({
+            id: `resend:capability.configured:${normalizedOrgId}:${configuredAt}`,
+            type: "capability.configured",
+            createdAt: configuredAt,
+          });
         } catch (error) {
           console.log("Migration failed", { error });
           throw new Error("Failed to migrate Resend schema.");

@@ -13,7 +13,7 @@ import { createSandboxRouteRuntime } from "@/fragno/runtime-tools/families/sandb
 import { createTelegramRuntime } from "@/fragno/runtime-tools/families/telegram-runtime";
 
 import type { InteractiveBashCommandContext } from "./bash-host";
-import { getRuntimeToolNamespacesByCapability } from "./tool-families";
+import { getRuntimeToolNamespacesByCapability, runtimeToolFamilies } from "./tool-families";
 
 const normalizeOrgId = (orgId: string | undefined) => orgId?.trim() || undefined;
 
@@ -62,7 +62,11 @@ export const createRouteBackedRuntimeContext = ({
       runtime: createRouteBackedDurableHooksRuntime({ env, orgId: normalizedOrgId }),
     },
     internal: {
-      runtime: createInternalRuntime({ env, orgId: normalizedOrgId }),
+      runtime: createInternalRuntime({
+        env,
+        orgId: normalizedOrgId,
+        families: runtimeToolFamilies,
+      }),
     },
     mcp: env.MCP
       ? {

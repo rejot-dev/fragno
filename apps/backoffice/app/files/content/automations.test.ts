@@ -2,8 +2,11 @@ import { describe, expect, test } from "vitest";
 
 import { AUTOMATION_SOURCE_EVENT_TYPES } from "@/fragno/automation/contracts";
 
-import { WORKSPACE_STARTER_AUTOMATION_CONTENT } from "./starter-automations";
-import { AUTOMATION_SCRIPT_PATHS, SYSTEM_AUTOMATION_CONTENT } from "./system-automations";
+import {
+  STARTER_AUTOMATION_SCRIPT_PATHS,
+  WORKSPACE_STARTER_AUTOMATION_CONTENT,
+} from "./starter-automations";
+import { SYSTEM_AUTOMATION_SCRIPT_PATHS, SYSTEM_AUTOMATION_CONTENT } from "./system-automations";
 
 type WorkspaceAutomationPath = keyof typeof WORKSPACE_STARTER_AUTOMATION_CONTENT;
 
@@ -40,7 +43,7 @@ describe("automation content", () => {
   });
 
   test("workflow starter scripts use the flat codemode provider APIs", () => {
-    const workflow = readWorkspaceAutomation(AUTOMATION_SCRIPT_PATHS.telegramUserLinking);
+    const workflow = readWorkspaceAutomation(STARTER_AUTOMATION_SCRIPT_PATHS.telegramUserLinking);
     const unsupportedNestedProviderCalls = Array.from(
       workflow.matchAll(/\b(?:otp|automations)\.identity\.[A-Za-z_$][\w$]*/gu),
       (match) => match[0],
@@ -58,8 +61,8 @@ describe("automation content", () => {
   });
 
   test("workspace router starts user-editable workflows and system router starts upload setup", () => {
-    const router = readWorkspaceAutomation(AUTOMATION_SCRIPT_PATHS.workspaceRouter);
-    const systemRouter = readSystemAutomation(AUTOMATION_SCRIPT_PATHS.systemRouter);
+    const router = readWorkspaceAutomation(STARTER_AUTOMATION_SCRIPT_PATHS.workspaceRouter);
+    const systemRouter = readSystemAutomation(SYSTEM_AUTOMATION_SCRIPT_PATHS.systemRouter);
     const identityClaimCompleted = AUTOMATION_SOURCE_EVENT_TYPES.otp.identityClaimCompleted;
     const piCapabilityConfigured = AUTOMATION_SOURCE_EVENT_TYPES.pi.capabilityConfigured;
 
@@ -106,7 +109,9 @@ describe("automation content", () => {
   });
 
   test("organization creation workflow configures upload database connection", () => {
-    const workflow = readSystemAutomation(AUTOMATION_SCRIPT_PATHS.workspaceFileInitialization);
+    const workflow = readSystemAutomation(
+      SYSTEM_AUTOMATION_SCRIPT_PATHS.workspaceFileInitialization,
+    );
 
     expect(workflow).toContain('{ name: "workspace-file-initialization" }');
     expect(workflow).toContain('automationEvent.eventType !== "organization.created"');

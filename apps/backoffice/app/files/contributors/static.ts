@@ -1,4 +1,4 @@
-import { SYSTEM_FILE_CONTENT, SYSTEM_FILE_ROOT_DESCRIPTION } from "../content/system";
+import { SYSTEM_FILE_CONTENT } from "../content/system";
 import type { FileContributor, FileMountMetadata } from "../types";
 import { createReadOnlyContentFileSystem } from "./content";
 
@@ -13,7 +13,8 @@ export const staticFileMount: FileMountMetadata = {
   title: "System",
   readOnly: true,
   persistence: "persistent",
-  description: SYSTEM_FILE_ROOT_DESCRIPTION,
+  description:
+    "Immutable TS-owned guidance, skills, and system automations for the built-in /system filesystem.",
 };
 
 export const staticFileContributor: FileContributor = {

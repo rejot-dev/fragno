@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-import type { Organization } from "@fragno-dev/auth";
-
 import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import { getAuthDurableObject } from "@/cloudflare/cloudflare-utils";
 import { createOrgFileSystem } from "@/files/create-file-system";
@@ -49,10 +47,7 @@ const parseJsonBody = async (request: Request) => {
 };
 
 const assertOrganizationExists = async (context: Route.ActionArgs["context"], orgId: string) => {
-  const authDo = getAuthDurableObject(context) as unknown as {
-    getAllOrganizations(): Promise<Organization[]>;
-  };
-  const organizations = await authDo.getAllOrganizations();
+  const organizations = await getAuthDurableObject(context).getDevOrganizations();
 
   if (!organizations.some((organization) => organization.id === orgId)) {
     throw Response.json(

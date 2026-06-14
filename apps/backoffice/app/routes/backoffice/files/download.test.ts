@@ -57,14 +57,14 @@ describe("backoffice files download route", () => {
     const response = toResponse(
       await loader(
         createLoaderArgs(
-          "https://example.com/backoffice/files/org_123/download?path=%2Fsystem%2FAGENTS.md",
+          "https://example.com/backoffice/files/org_123/download?path=%2Fsystem%2FSYSTEM.md",
         ),
       ),
     );
 
     assert(response.status === 302);
     expect(response.headers.get("Location")).toBe(
-      `https://example.com${buildBackofficeLoginPath("/backoffice/files/org_123/download?path=%2Fsystem%2FAGENTS.md")}`,
+      `https://example.com${buildBackofficeLoginPath("/backoffice/files/org_123/download?path=%2Fsystem%2FSYSTEM.md")}`,
     );
   });
 
@@ -74,7 +74,7 @@ describe("backoffice files download route", () => {
     const response = toResponse(
       await loader(
         createLoaderArgs(
-          "https://example.com/backoffice/files/org_123/download?path=%2Fsystem%2FAGENTS.md",
+          "https://example.com/backoffice/files/org_123/download?path=%2Fsystem%2FSYSTEM.md",
         ),
       ),
     );
@@ -82,7 +82,7 @@ describe("backoffice files download route", () => {
     assert(response.status === 200);
     assert(response.headers.get("content-type") === "text/markdown; charset=utf-8");
     expect(response.headers.get("content-disposition")).toContain(
-      'attachment; filename="AGENTS.md"',
+      'attachment; filename="SYSTEM.md"',
     );
     await expect(response.text()).resolves.toContain("Backoffice");
   });

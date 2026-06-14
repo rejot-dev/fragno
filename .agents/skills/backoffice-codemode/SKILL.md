@@ -40,15 +40,15 @@ This skill is usually invoked when the user wants to fix bugs in the backoffice 
    - If no orgs are listed, the health route is still valid; ask the user for an org id or inspect
      the app/auth state.
 
-3. Fetch and read the rendered codemode instructions from the running system.
+3. Fetch and read the org-scoped rendered codemode instructions from the running system.
 
    ```bash
-   curl -sS "$BASE_URL/__dev/codemode/AGENTS.md" -o /tmp/backoffice-codemode-AGENTS.md
+   curl -sS "$BASE_URL/__dev/codemode/$ORG_ID/AGENTS.md" -o /tmp/backoffice-codemode-AGENTS.md
    ```
 
    Then read `/tmp/backoffice-codemode-AGENTS.md`. Treat it as authoritative for available
-   `state.*`, workflow helpers, and runtime tool providers. It is generated from the currently
-   running code.
+   `state.*`, workflow helpers, and runtime tool providers. The route reads the org's existing
+   `/workspace/codemode.d.ts` file and returns those declarations inline.
 
 4. Inspect code when runtime behavior is unclear. Relevant areas:
    - `apps/backoffice/app/routes/dev/*` — dev health, codemode, and prompt routes.

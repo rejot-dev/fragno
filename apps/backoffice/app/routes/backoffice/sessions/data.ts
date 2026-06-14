@@ -165,7 +165,13 @@ export async function createPiSession(
     const { workflowName = interactiveChatWorkflow.name, ...body } = payload;
     const response = await callRoute("POST", "/workflows/:workflowName/sessions", {
       pathParams: { workflowName },
-      body,
+      body: {
+        ...body,
+        input: {
+          ...body.input,
+          systemPrompt: body.input.systemPrompt,
+        },
+      },
     });
 
     if (response.type === "json") {

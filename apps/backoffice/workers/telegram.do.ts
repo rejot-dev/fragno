@@ -411,10 +411,11 @@ export class Telegram extends DurableObject<CloudflareEnv> {
     try {
       await this.#state.blockConcurrencyWhile(async () => {
         await this.#host.storeAndInitialize(stored);
+        const configuredAt = new Date().toISOString();
         await this.#host.dispatch({
-          id: `telegram:capability.configured:${normalizedOrgId}:${createdAt}`,
+          id: `telegram:capability.configured:${normalizedOrgId}:${configuredAt}`,
           type: "capability.configured",
-          createdAt,
+          createdAt: configuredAt,
         });
       });
     } catch {

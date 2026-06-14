@@ -274,6 +274,16 @@ export function createBackofficeFragmentDurableObject<
       }
     });
   const durableHooks = options.durableHooks ?? defaultDurableHookDependencies;
+
+  const scheduleOutboxAlarm = async (delayMs: number = 0) => {
+    const now = Date.now();
+    const alarmAt = now + delayMs;
+    const existingAlarm = await options.state.storage.getAlarm?.();
+    if (existingAlarm === undefined || existingAlarm === null || existingAlarm > alarmAt) {
+      await options.state.storage.setAlarm(alarmAt);
+    }
+  };
+
   const fragmentHost = createFragmentDurableObjectHost({
     name: options.name,
     state: options.state,
@@ -338,6 +348,7 @@ export function createBackofficeFragmentDurableObject<
   const initializeFromStored = async (stored: TStored | null) => {
     if (!isConfigured(stored)) {
       current = { configured: false, stored };
+      await ensurePendingOutboxAlarm();
       return current;
     }
 
@@ -348,6 +359,7 @@ export function createBackofficeFragmentDurableObject<
 
     if (current.configured && current.fingerprint === nextFingerprint) {
       current = { ...current, stored, source };
+      await ensurePendingOutboxAlarm();
       return current;
     }
 
@@ -358,7 +370,7 @@ export function createBackofficeFragmentDurableObject<
     initializingFingerprint = nextFingerprint;
     initializing = fragmentHost
       .initialize(source)
-      .then((runtime) => {
+      .then(async (runtime) => {
         current = {
           configured: true,
           stored,
@@ -366,6 +378,7 @@ export function createBackofficeFragmentDurableObject<
           runtime,
           fingerprint: nextFingerprint,
         };
+        await ensurePendingOutboxAlarm();
         return current;
       })
       .catch((error) => {
@@ -406,20 +419,29 @@ export function createBackofficeFragmentDurableObject<
     });
   };
 
-  const scheduleOutboxAlarm = async (delayMs: number) => {
-    const alarmAt = Date.now() + delayMs;
-    const existingAlarm = await options.state.storage.getAlarm();
-    if (existingAlarm === null || existingAlarm > alarmAt) {
-      await options.state.storage.setAlarm(alarmAt);
-    }
-  };
-
   const outboxItemKeyPrefix = `${outboxKey}:`;
   const getOutboxItemKey = (id: string) => `${outboxItemKeyPrefix}${id}`;
 
-  const loadOutboxItems = async (): Promise<TOutbox[]> => [
-    ...(await options.state.storage.list<TOutbox>({ prefix: outboxItemKeyPrefix })).values(),
-  ];
+  const loadOutboxItems = async (): Promise<TOutbox[]> => {
+    if (typeof options.state.storage.list !== "function") {
+      return [];
+    }
+
+    return [
+      ...(await options.state.storage.list<TOutbox>({ prefix: outboxItemKeyPrefix })).values(),
+    ];
+  };
+
+  const ensurePendingOutboxAlarm = async () => {
+    if (!options.outbox) {
+      return;
+    }
+
+    const items = await loadOutboxItems();
+    if (items.some((item) => !item.dispatchedAt)) {
+      await scheduleOutboxAlarm(0);
+    }
+  };
 
   const processOutbox = async () => {
     if (!options.outbox) {
@@ -512,10 +534,21 @@ export function createBackofficeFragmentDurableObject<
       await scheduleOutboxAlarm(0);
     },
     alarm: async () => {
+      let fragmentAlarmError: unknown;
+
       if (current.configured) {
-        await fragmentHost.alarm();
+        try {
+          await fragmentHost.alarm();
+        } catch (error) {
+          fragmentAlarmError = error;
+        }
       }
+
       await processOutbox();
+
+      if (fragmentAlarmError) {
+        throw fragmentAlarmError;
+      }
     },
     async fetch(request, context) {
       if (!current.configured) {

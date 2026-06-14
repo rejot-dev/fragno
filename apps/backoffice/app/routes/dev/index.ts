@@ -1,5 +1,3 @@
-import type { Organization } from "@fragno-dev/auth";
-
 import { getAuthDurableObject } from "@/cloudflare/cloudflare-utils";
 
 import type { Route } from "./+types/index";
@@ -20,17 +18,7 @@ const assertDevOnlyLocalRequest = (request: Request) => {
 export async function loader({ request, context }: Route.LoaderArgs) {
   assertDevOnlyLocalRequest(request);
 
-  const authDo = getAuthDurableObject(context) as unknown as {
-    getAllOrganizations(): Promise<Organization[]>;
-  };
-  const organizations = (await authDo.getAllOrganizations()).map((organization) => ({
-    id: organization.id,
-    name: organization.name,
-    slug: organization.slug,
-    createdBy: organization.createdBy,
-    createdAt: organization.createdAt,
-    updatedAt: organization.updatedAt,
-  }));
+  const organizations = await getAuthDurableObject(context).getDevOrganizations();
 
   return Response.json(
     {

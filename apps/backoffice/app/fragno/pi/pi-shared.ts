@@ -1,7 +1,4 @@
-import { BASH_HARNESS_REFERENCE, SYSTEM_FILE_CONTENT, SYSTEM_GUIDANCE } from "@/files";
-
-import { createCodemodeSystemPrompt } from "../codemode/state-prompt";
-import { runtimeToolFamilies } from "../runtime-tools/tool-families";
+import { SYSTEM_FILE_CONTENT, SYSTEM_GUIDANCE } from "@/files";
 
 export type PiSteeringMode = "all" | "one-at-a-time";
 export type PiThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -92,49 +89,14 @@ export const PI_MODEL_CATALOG: PiModelOption[] = [
 export const PI_TOOL_IDS = ["bash", "execCodeMode", "read"] as const;
 export type PiToolId = (typeof PI_TOOL_IDS)[number];
 
-const SKILL_READING_PROMPT =
-  "When available_skills lists a matching skill, use the read tool to open " +
-  "the corresponding /system/skills/<skill-name>/SKILL.md or /workspace/skills/<skill-name>/SKILL.md file before proceeding.";
-
-const BASH_HARNESS_PROMPT = `SYSTEM.md (agent guidance):\n\n${DEFAULT_SYSTEM_PROMPT}\n\n${SKILL_READING_PROMPT}\n\n${BASH_HARNESS_REFERENCE}`;
-
-const STATE_HARNESS_PROMPT = createCodemodeSystemPrompt({
-  families: runtimeToolFamilies.filter((family) => !family.hidden),
-});
-
-const CODEMODE_HARNESS_PROMPT = `SYSTEM.md (agent guidance):\n\n${DEFAULT_SYSTEM_PROMPT}
-
-Codemode harness guidance:
-
-${SKILL_READING_PROMPT}
-
-- Use execCodeMode for coordinated filesystem work in the combined session filesystem.
-- Use state.* APIs from inside execCodeMode for multi-file operations.
-- Prefer camelCase domain tools when they are available in codemode contexts.
-- Do not assume import() or module loading is available inside dynamic Worker code.
-- Write codemode as either a standalone async arrow function, for example: async () => { return await state.readFile("/workspace/file.txt"); }, or a workflow definition: defineWorkflow({ name: "my-workflow" }, async (event, step) => { ... }).
-- Use defineWorkflow(...) when work should run durably with workflow steps, retries, sleeps, or event waits.
-- Codemode automation script files must use /workspace/automations/*.cm.js.
-- Bash automation script files usually use /workspace/automations/*.sh.
-- Codemode automation scripts read event data from /context/event.json with state.readFile and should return JSON-serializable values.
-- Do not call non-existent aliases like state.listFiles, state.readDirectory, or state.list.
-
-${STATE_HARNESS_PROMPT}`;
-
 export const DEFAULT_PI_HARNESSES: PiHarnessConfig[] = [
   {
-    id: "codemode",
-    label: "Codemode",
-    description: "Built-in harness with execCodeMode access to the combined session filesystem.",
-    systemPrompt: CODEMODE_HARNESS_PROMPT,
-    tools: ["execCodeMode", "read"],
-  },
-  {
-    id: "bash",
-    label: "Bash",
-    description: "Built-in harness with bash access and the combined session filesystem.",
-    systemPrompt: BASH_HARNESS_PROMPT,
-    tools: ["bash", "read"],
+    id: "default",
+    label: "Default",
+    description:
+      "Built-in harness with codemode, read, and bash access to the combined session filesystem.",
+    systemPrompt: DEFAULT_SYSTEM_PROMPT,
+    tools: ["execCodeMode", "read", "bash"],
   },
 ];
 

@@ -1,15 +1,5 @@
-import {
-  createRuntimeToolReferences,
-  renderCodemodeProviderTypes,
-  renderCodemodeWorkflowTypes,
-} from "@/fragno/runtime-tools/reference";
-import type {
-  BackofficeRuntimeToolFamily,
-  BackofficeToolContext,
-} from "@/fragno/runtime-tools/runtime-tools";
-
-// Browser-safe copy of @cloudflare/shell state prompt constants.
-// Keep this in sync with @cloudflare/shell's STATE_SYSTEM_PROMPT and STATE_TYPES.
+// Browser-safe copy of @cloudflare/shell state type constants.
+// Keep this in sync with @cloudflare/shell's STATE_TYPES.
 // The package root import currently pulls Node-only modules into browser bundles.
 
 // prettier-ignore
@@ -314,43 +304,3 @@ declare const state: {
    */
   applyEdits(edits: StateEdit[], options?: StateApplyEditsOptions): Promise<StateApplyEditsResult>;
 };`;
-
-// prettier-ignore
-export const STATE_SYSTEM_PROMPT = `You can write JavaScript code that runs inside an isolated sandbox with access to a persistent
-virtual filesystem through the \`state\` object.
-
-Rules:
-- Write either an async function: \`async () => { ... return result; }\`, or a named workflow definition: \`defineWorkflow({ name: "my-workflow" }, async (event, step) => { ... })\`.
-- Use \`defineWorkflow(...)\` when the work should run durably with workflow steps, retries, sleeps, or event waits.
-- Do NOT use TypeScript syntax — no type annotations, interfaces, or generics in your code.
-- Do NOT use \`import\` statements — all helpers are available through \`state\`.
-- Always \`return\` the final value you want back.
-- Return JSON-serializable values when possible. Convert \`Map\`, \`Set\`, class instances, and other special objects to plain objects, arrays, or strings before returning them.
-- For multi-file refactors, prefer \`planEdits()\` + \`applyEditPlan()\` over many individual writes.
-- For search-and-replace across a tree, use \`replaceInFiles()\` — it is transactional by default.
-
-Available API (TypeScript reference):
-
-\`\`\`typescript
-{{types}}
-\`\`\``;
-
-export const createCodemodeTypes = ({
-  families,
-  context,
-}: {
-  families: readonly BackofficeRuntimeToolFamily[];
-  context?: BackofficeToolContext;
-}) => {
-  const references = createRuntimeToolReferences({
-    families: families.filter((family) => !family.hidden),
-    context,
-  });
-  const providerTypes = references.length ? `\n\n${renderCodemodeProviderTypes(references)}` : "";
-  return `${STATE_TYPES}\n\n${renderCodemodeWorkflowTypes()}${providerTypes}`;
-};
-
-export const createCodemodeSystemPrompt = (input: {
-  families: readonly BackofficeRuntimeToolFamily[];
-  context?: BackofficeToolContext;
-}) => STATE_SYSTEM_PROMPT.replace("{{types}}", createCodemodeTypes(input));

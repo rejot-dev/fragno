@@ -89,14 +89,15 @@ export {
   uploadR2RemoteFileMount,
 } from "./contributors/upload";
 export { WORKSPACE_STARTER_CONTENT, WORKSPACE_STARTER_ROOT_DESCRIPTION } from "./content/starter";
-export { AUTOMATION_SCRIPT_PATHS, SYSTEM_AUTOMATION_CONTENT } from "./content/system-automations";
-export { WORKSPACE_STARTER_AUTOMATION_CONTENT } from "./content/starter-automations";
 export {
-  BASH_HARNESS_REFERENCE,
-  SYSTEM_FILE_CONTENT,
-  SYSTEM_FILE_ROOT_DESCRIPTION,
-  SYSTEM_GUIDANCE,
-} from "./content/system";
+  SYSTEM_AUTOMATION_SCRIPT_PATHS,
+  SYSTEM_AUTOMATION_CONTENT,
+} from "./content/system-automations";
+export {
+  STARTER_AUTOMATION_SCRIPT_PATHS,
+  WORKSPACE_STARTER_AUTOMATION_CONTENT,
+} from "./content/starter-automations";
+export { SYSTEM_FILE_CONTENT, SYSTEM_GUIDANCE } from "./content/system";
 export { MasterFileSystem, createMasterFileSystem } from "./master-file-system";
 export type { CreateMasterFileSystemOptions } from "./master-file-system";
 export { createOrgFileSystem } from "./create-file-system";
