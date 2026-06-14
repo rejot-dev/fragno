@@ -6,7 +6,6 @@ import { ExponentialBackoffRetryPolicy, isUniqueConstraintError } from "@fragno-
 
 import { telegramFragmentDefinition } from "./definition";
 import { telegramSchema } from "./schema";
-import { createTelegramApi } from "./telegram-api";
 import {
   DEFAULT_COMMAND_SCOPES,
   normalizeTelegramUpdate,
@@ -141,8 +140,8 @@ const filterUndefined = (payload: Record<string, unknown>) =>
   Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined));
 
 export const telegramRoutesFactory = defineRoutes(telegramFragmentDefinition).create(
-  ({ defineRoute, services, config }) => {
-    const api = createTelegramApi(config);
+  ({ defineRoute, services, config, deps }) => {
+    const api = deps.telegramApi;
 
     return [
       defineRoute({

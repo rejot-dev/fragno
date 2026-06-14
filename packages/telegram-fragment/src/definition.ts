@@ -10,7 +10,7 @@ import {
 } from "./services";
 import { createTelegramApi } from "./telegram-api";
 import { parseTelegramUpdate } from "./telegram-utils";
-import type { TelegramFragmentConfig, TelegramHooksMap } from "./types";
+import type { TelegramFragmentConfig, TelegramFragmentDeps, TelegramHooksMap } from "./types";
 
 const isTelegramEntityParseError = (result: {
   ok: false;
@@ -29,13 +29,18 @@ export const telegramFragmentDefinition = defineFragment<TelegramFragmentConfig>
   "telegram-fragment",
 )
   .extend(withDatabase(telegramSchema))
+  .withDependencies(
+    ({ config }): TelegramFragmentDeps => ({
+      telegramApi: config.api ?? createTelegramApi(config),
+    }),
+  )
   .providesBaseService(({ defineService, config }) =>
     defineService({
       ...createTelegramServices(config),
     }),
   )
-  .provideHooks<TelegramHooksMap>(({ defineHook, config }) => {
-    const api = createTelegramApi(config);
+  .provideHooks<TelegramHooksMap>(({ defineHook, config, deps }) => {
+    const api = deps.telegramApi;
     const hooks = config.hooks;
     const buildProcessIncomingUpdateOps = createProcessIncomingUpdateOps(config);
 
