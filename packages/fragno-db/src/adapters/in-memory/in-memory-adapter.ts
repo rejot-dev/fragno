@@ -144,6 +144,30 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
     return new UnitOfWork(compiler, executor, decoder, name, config, this.#schemaNamespaceMap);
   }
 
+  prepareMigrations<T extends AnySchema>(schema: T, namespace: string | null) {
+    this.registerSchema(schema, namespace);
+
+    return {
+      async execute() {
+        return;
+      },
+      async executeWithDriver() {
+        return;
+      },
+      getSQL() {
+        return "";
+      },
+      compile() {
+        return {
+          statements: [],
+          sql: [],
+          fromVersion: 0,
+          toVersion: schema.version,
+        };
+      },
+    };
+  }
+
   createQueryEngine<T extends AnySchema>(
     schema: T,
     namespace: string | null,
