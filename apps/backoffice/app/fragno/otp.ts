@@ -1,6 +1,3 @@
-import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
-import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
-import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
 import { z } from "zod";
 
 import {
@@ -8,6 +5,8 @@ import {
   type OtpFragmentConfig,
   type ResolvedOtpConfirmedHookPayload,
 } from "@fragno-dev/otp-fragment";
+
+import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 
 import type { AutomationExternalEntityRef, AutomationKnownEvent } from "./automation/contracts";
 import { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES } from "./automation/contracts";
@@ -93,19 +92,8 @@ export const buildIdentityClaimCompletedAutomationEvent = (input: {
   },
 });
 
-export function createAdapter(state?: DurableObjectState) {
-  const dialect = new DurableObjectDialect({
-    ctx: state!,
-  });
-
-  return new SqlAdapter({
-    dialect,
-    driverConfig: new CloudflareDurableObjectsDriverConfig(),
-  });
-}
-
 export function createOtpServer(
-  state: DurableObjectState,
+  runtime: BackofficeFragmentRuntimeOptions,
   config: Pick<OtpFragmentConfig, "hooks"> = {},
 ) {
   return createOtpFragment(
@@ -114,7 +102,9 @@ export function createOtpServer(
       hooks: config.hooks,
     },
     {
-      databaseAdapter: createAdapter(state),
+      databaseAdapter: runtime.adapters.createAdapter({
+        kind: "otp",
+      }),
       mountRoute: "/api/otp",
     },
   );

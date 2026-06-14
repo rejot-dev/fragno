@@ -8,8 +8,8 @@ import type {
   Reson8PrerecordedTranscription,
 } from "@fragno-dev/reson8-fragment";
 
-import { getReson8DurableObject } from "@/cloudflare/cloudflare-utils";
 import type { Reson8Fragment } from "@/fragno/reson8";
+import { getReson8DurableObject } from "@/worker-runtime/durable-objects";
 
 import type { Reson8ConfigState } from "./shared";
 

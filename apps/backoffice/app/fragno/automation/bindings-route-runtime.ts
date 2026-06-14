@@ -1,11 +1,13 @@
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+
 import type { AutomationStoreRuntime } from "../runtime-tools/families/automations-bindings";
 import { createAutomationsRouteCaller } from "./route-callers";
 
 export const createRouteBackedAutomationStoreRuntime = ({
-  env,
+  objects,
   orgId,
 }: {
-  env: CloudflareEnv;
+  objects: BackofficeObjectRegistry;
   orgId: string;
 }): AutomationStoreRuntime => {
   const normalizedOrgId = orgId.trim();
@@ -13,7 +15,7 @@ export const createRouteBackedAutomationStoreRuntime = ({
     throw new Error("Automation store backend requires an organisation id");
   }
 
-  const callRoute = createAutomationsRouteCaller(env, normalizedOrgId);
+  const callRoute = createAutomationsRouteCaller({ objects, orgId: normalizedOrgId });
 
   return {
     get: async ({ key }) => {

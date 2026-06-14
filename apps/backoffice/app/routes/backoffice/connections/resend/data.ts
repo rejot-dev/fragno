@@ -22,8 +22,8 @@ import type {
   ResendThreadSummary,
 } from "@fragno-dev/resend-fragment";
 
-import { getResendDurableObject } from "@/cloudflare/cloudflare-utils";
 import type { ResendFragment } from "@/fragno/resend";
+import { getResendDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { ResendConfigState } from "./shared";
 

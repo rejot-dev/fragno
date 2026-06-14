@@ -1,6 +1,4 @@
-import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
-import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
-import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
+import { InMemoryAdapter } from "@fragno-dev/db/adapters/in-memory";
 
 import {
   createAuthFragment,
@@ -9,16 +7,7 @@ import {
   type OrganizationHooks,
 } from "@fragno-dev/auth";
 
-export function createAdapter(state?: DurableObjectState) {
-  const dialect = new DurableObjectDialect({
-    ctx: state!,
-  });
-
-  return new SqlAdapter({
-    dialect,
-    driverConfig: new CloudflareDurableObjectsDriverConfig(),
-  });
-}
+import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
 
 export type AuthInit =
   | {
@@ -27,7 +16,7 @@ export type AuthInit =
   | {
       type: "live";
       env: CloudflareEnv;
-      state: DurableObjectState;
+      adapters: BackofficeDatabaseAdapterFactory;
     };
 
 type AuthServerOptions = {
@@ -92,7 +81,14 @@ export function createAuthServer(init: AuthInit, options: AuthServerOptions = {}
       },
       oauth: oauthConfig,
     },
-    { databaseAdapter: createAdapter(init.type === "live" ? init.state : undefined) },
+    {
+      databaseAdapter:
+        init.type === "live"
+          ? init.adapters.createAdapter({
+              kind: "auth",
+            })
+          : new InMemoryAdapter(),
+    },
   );
 }
 

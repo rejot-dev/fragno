@@ -4,6 +4,11 @@ import { z } from "zod";
 
 import type { ResendFragmentConfig } from "@fragno-dev/resend-fragment";
 
+import type { ResendObject } from "@/backoffice-runtime/object-registry";
+import {
+  createCloudflareDurableObjectRuntimeServices,
+  type BackofficeRuntimeServices,
+} from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
 import { resendConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/resend";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
@@ -12,6 +17,7 @@ import { createResendServer, type ResendConfig, type ResendFragment } from "@/fr
 import {
   createBackofficeFragmentDurableObject,
   type BackofficeFragmentDurableObject,
+  type BackofficeObjectState,
 } from "./lib/backoffice-fragment-durable-object";
 
 type StoredResendConfig = Omit<ResendConfig, "webhookSecret"> & {
@@ -265,13 +271,26 @@ const updateWebhook = async (
   }
 };
 
-export class Resend extends DurableObject<CloudflareEnv> {
-  #state: DurableObjectState;
+export class InMemoryResendObject implements ResendObject {
+  #state: BackofficeObjectState;
+  #runtimeServices: BackofficeRuntimeServices;
   #host: BackofficeFragmentDurableObject<StoredResendConfig, ResendFragmentConfig, ResendFragment>;
+  #createClient: (apiKey: string) => ResendClient;
 
-  constructor(state: DurableObjectState, env: CloudflareEnv) {
-    super(state, env);
+  constructor({
+    state,
+    env,
+    runtime,
+    createClient = (apiKey) => new ResendClient(apiKey),
+  }: {
+    state: BackofficeObjectState;
+    env?: unknown;
+    runtime: BackofficeRuntimeServices;
+    createClient?: (apiKey: string) => ResendClient;
+  }) {
     this.#state = state;
+    this.#runtimeServices = runtime;
+    this.#createClient = createClient;
     this.#host = createBackofficeFragmentDurableObject({
       name: "Resend",
       state,
@@ -289,14 +308,17 @@ export class Resend extends DurableObject<CloudflareEnv> {
         defaultHeaders: stored.defaultHeaders,
       }),
       fingerprint: (config) => JSON.stringify(config),
-      createRuntime: (config) => createResendServer(config, state),
+      createRuntime: (config) =>
+        createResendServer(config, {
+          adapters: this.#runtimeServices.adapters,
+        }),
       outbox: {
-        dispatch: async (item, { env, stored }) => {
+        dispatch: async (item, { stored }) => {
           if (item.type !== "capability.configured") {
             return;
           }
 
-          await env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(stored.orgId)).ingestEvent({
+          await this.#runtimeServices.objects.automations.forOrg(stored.orgId).ingestEvent({
             id: item.id,
             orgId: stored.orgId,
             source: "resend",
@@ -371,7 +393,7 @@ export class Resend extends DurableObject<CloudflareEnv> {
         updatedAt: now,
       };
 
-      const client = new ResendClient(stored.apiKey);
+      const client = this.#createClient(stored.apiKey);
       const webhookUrl = resolveWebhookUrl(origin, normalizedOrgId, stored.webhookBaseUrl);
 
       let webhookResult: WebhookResult;
@@ -426,5 +448,42 @@ export class Resend extends DurableObject<CloudflareEnv> {
     return await this.#host.fetch(request, {
       waitUntil: this.#state.waitUntil.bind(this.#state),
     });
+  }
+}
+
+export class Resend extends DurableObject<CloudflareEnv> implements ResendObject {
+  #object: InMemoryResendObject;
+
+  constructor(state: DurableObjectState, env: CloudflareEnv) {
+    super(state, env);
+    this.#object = new InMemoryResendObject({
+      state,
+      env,
+      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
+    });
+  }
+
+  async alarm() {
+    await this.#object.alarm();
+  }
+
+  async getAdminConfig(): Promise<ConfigResponse> {
+    return await this.#object.getAdminConfig();
+  }
+
+  async resetAdminConfig(): Promise<ConfigResponse> {
+    return await this.#object.resetAdminConfig();
+  }
+
+  async setAdminConfig(payload: unknown, orgId: string, origin: string): Promise<ConfigResponse> {
+    return await this.#object.setAdminConfig(payload, orgId, origin);
+  }
+
+  getDurableHookRepository() {
+    return this.#object.getDurableHookRepository();
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    return await this.#object.fetch(request);
   }
 }

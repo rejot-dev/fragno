@@ -4,7 +4,7 @@ import type { RouterContextProvider } from "react-router";
 
 import type { createWorkflowsFragment } from "@fragno-dev/workflows";
 
-import { getAutomationsDurableObject, getPiDurableObject } from "@/cloudflare/cloudflare-utils";
+import { getAutomationsDurableObject, getPiDurableObject } from "@/worker-runtime/durable-objects";
 
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;

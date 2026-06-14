@@ -54,7 +54,7 @@ type ResendThreadMessageLike = {
   updatedAt: Date;
 };
 
-vi.mock("@/cloudflare/cloudflare-utils", () => ({
+vi.mock("@/worker-runtime/durable-objects", () => ({
   getResendDurableObject: () => ({
     fetch: (request: Request) => resendRequestHandler(request),
   }),

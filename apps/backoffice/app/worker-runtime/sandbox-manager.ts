@@ -5,8 +5,8 @@ import { getSandbox } from "@cloudflare/sandbox";
 import { createCloudflareSandboxManager } from "@/sandbox/cloudflare-sandbox-manager";
 import type { SandboxManager } from "@/sandbox/contracts";
 
-import { CloudflareContext } from "./cloudflare-context";
-import { getSandboxRegistryDurableObject } from "./cloudflare-utils";
+import { getSandboxRegistryDurableObject } from "./durable-objects";
+import { BackofficeWorkerContext } from "./router-context";
 
 /**
  * Creates the Cloudflare sandbox manager for route loaders/actions.
@@ -15,7 +15,7 @@ export function getSandboxManager(
   context: Readonly<RouterContextProvider>,
   organizationId: string,
 ): SandboxManager {
-  const { env } = context.get(CloudflareContext);
+  const { env } = context.get(BackofficeWorkerContext);
 
   return createCloudflareSandboxManager({
     sandboxNamespace: env.SANDBOX,

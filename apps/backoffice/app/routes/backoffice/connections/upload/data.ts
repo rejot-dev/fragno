@@ -1,10 +1,10 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { RouterContextProvider } from "react-router";
 
-import { getUploadDurableObject } from "@/cloudflare/cloudflare-utils";
 import { isUploadDirectoryMarker } from "@/files/contributors/upload-markers";
 import type { UploadProvider } from "@/fragno/upload";
 import type { UploadFragment } from "@/fragno/upload-server";
+import { getUploadDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { UploadConfigState } from "./shared";
 

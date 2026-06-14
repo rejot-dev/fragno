@@ -215,12 +215,16 @@ const createRemoteWorkflowStep = (stepTarget) => {
 export default class RemoteWorkflowEntrypoint extends WorkerEntrypoint {
   async run(event, stepTarget, dispatchers = {}) {
     __dispatchers = dispatchers;
-    if (typeof workflowProgram !== "function") {
+    if (
+      typeof workflowProgram !== "function" &&
+      !__isFragnoCodemodeWorkflowDefinition(workflowProgram)
+    ) {
       throw new Error("REMOTE_WORKFLOW_CODE_MUST_EVALUATE_TO_FUNCTION");
     }
     try {
       const step = createRemoteWorkflowStep(stepTarget);
-      const definitionOrResult = workflowProgram.length >= 2
+      const isWorkflowDefinition = __isFragnoCodemodeWorkflowDefinition(workflowProgram);
+      const definitionOrResult = isWorkflowDefinition || workflowProgram.length >= 2
         ? workflowProgram
         : await workflowProgram();
       const runWorkflow = __isFragnoCodemodeWorkflowDefinition(definitionOrResult)

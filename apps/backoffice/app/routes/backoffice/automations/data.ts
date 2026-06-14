@@ -1,8 +1,6 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { RouterContextProvider } from "react-router";
 
-import { CloudflareContext } from "@/cloudflare/cloudflare-context";
-import { getAutomationsDurableObject } from "@/cloudflare/cloudflare-utils";
 import { createOrgFileSystem } from "@/files";
 import {
   AUTOMATION_SYSTEM_ROOT,
@@ -15,6 +13,8 @@ import {
 } from "@/fragno/automation";
 import type { AutomationScriptEngine } from "@/fragno/automation/catalog";
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
+import { getAutomationsDurableObject } from "@/worker-runtime/durable-objects";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import {
   booleanActionResultFromCaughtError,
@@ -101,8 +101,8 @@ const createBackofficeAutomationFileSystem = async ({
   context: Readonly<RouterContextProvider>;
   orgId: string;
 }) => {
-  const { env } = context.get(CloudflareContext);
-  return createOrgFileSystem({ orgId, env });
+  const { runtime } = context.get(BackofficeWorkerContext);
+  return createOrgFileSystem({ orgId, objects: runtime.objects });
 };
 
 const normalizeAutomationScriptPath = (value: string) => {

@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 
-import { getUploadDurableObject } from "@/cloudflare/cloudflare-utils";
+import { getUploadDurableObject } from "@/worker-runtime/durable-objects";
 
 const forwardToUpload = async (
   request: Request,

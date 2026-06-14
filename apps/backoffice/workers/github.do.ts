@@ -5,6 +5,11 @@ import {
   type GitHubAppFragmentConfig,
 } from "@fragno-dev/github-app-fragment";
 
+import type { GitHubObject } from "@/backoffice-runtime/object-registry";
+import {
+  createCloudflareDurableObjectRuntimeServices,
+  type BackofficeRuntimeServices,
+} from "@/backoffice-runtime/runtime-services";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import {
   buildGitHubAutomationEvent,
@@ -16,6 +21,7 @@ import { configsEqual, extractFragmentConfig, resolveGitHubConfig } from "./gith
 import {
   createBackofficeFragmentDurableObject,
   type BackofficeFragmentDurableObject,
+  type BackofficeObjectState,
 } from "./lib/backoffice-fragment-durable-object";
 
 type StoredGitHubConfig = {
@@ -23,11 +29,9 @@ type StoredGitHubConfig = {
   source: GitHubAppFragmentConfig;
 };
 
-const GITHUB_WEBHOOK_ROUTER_SINGLETON_ID = "GITHUB_WEBHOOK_ROUTER_SINGLETON_ID";
-
-export class GitHub extends DurableObject<CloudflareEnv> {
-  #env: CloudflareEnv;
-  #state: DurableObjectState;
+export class InMemoryGitHubObject implements GitHubObject {
+  #state: BackofficeObjectState;
+  #runtimeServices: BackofficeRuntimeServices;
   #host: BackofficeFragmentDurableObject<
     StoredGitHubConfig,
     GitHubAppFragmentConfig,
@@ -35,10 +39,17 @@ export class GitHub extends DurableObject<CloudflareEnv> {
   >;
   #configResolution: ReturnType<typeof resolveGitHubConfig>;
 
-  constructor(state: DurableObjectState, env: CloudflareEnv) {
-    super(state, env);
-    this.#env = env;
+  constructor({
+    state,
+    env,
+    runtime,
+  }: {
+    state: BackofficeObjectState;
+    env: Parameters<typeof resolveGitHubConfig>[0];
+    runtime: BackofficeRuntimeServices;
+  }) {
     this.#state = state;
+    this.#runtimeServices = runtime;
     this.#configResolution = resolveGitHubConfig(env);
     this.#host = createBackofficeFragmentDurableObject({
       name: "GitHub",
@@ -70,9 +81,9 @@ export class GitHub extends DurableObject<CloudflareEnv> {
                   throw new Error("Stored GitHub config is missing an organisation id.");
                 }
 
-                await this.#env.AUTOMATIONS.get(
-                  this.#env.AUTOMATIONS.idFromName(orgId),
-                ).ingestEvent(buildGitHubAutomationEvent({ orgId, event, meta }));
+                await this.#runtimeServices.objects.automations
+                  .forOrg(orgId)
+                  .ingestEvent(buildGitHubAutomationEvent({ orgId, event, meta }));
               });
 
               register("installation.deleted", async ({ payload }, idempotencyKey) => {
@@ -83,7 +94,9 @@ export class GitHub extends DurableObject<CloudflareEnv> {
               });
             },
           },
-          state,
+          {
+            adapters: this.#runtimeServices.adapters,
+          },
         ),
     });
 
@@ -121,9 +134,7 @@ export class GitHub extends DurableObject<CloudflareEnv> {
       return;
     }
 
-    const routerDo = this.#env.GITHUB_WEBHOOK_ROUTER.get(
-      this.#env.GITHUB_WEBHOOK_ROUTER.idFromName(GITHUB_WEBHOOK_ROUTER_SINGLETON_ID),
-    );
+    const routerDo = this.#runtimeServices.objects.githubWebhookRouter.get();
     const cleanup = await routerDo.clearInstallationRouting(normalizedInstallationId);
     console.info("Cleaned GitHub webhook router installation mapping after uninstall", {
       installationId: normalizedInstallationId,
@@ -242,5 +253,38 @@ export class GitHub extends DurableObject<CloudflareEnv> {
     }
 
     return await this.#host.fetch(request);
+  }
+}
+
+export class GitHub extends DurableObject<CloudflareEnv> implements GitHubObject {
+  #object: InMemoryGitHubObject;
+
+  constructor(state: DurableObjectState, env: CloudflareEnv) {
+    super(state, env);
+    this.#object = new InMemoryGitHubObject({
+      state,
+      env,
+      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
+    });
+  }
+
+  async ensureAdminConfig(orgId: string) {
+    return await this.#object.ensureAdminConfig(orgId);
+  }
+
+  async alarm() {
+    await this.#object.alarm();
+  }
+
+  getDurableHookRepository() {
+    return this.#object.getDurableHookRepository();
+  }
+
+  async redeliverFailedInstallationWebhooks(installationId: string): Promise<void> {
+    await this.#object.redeliverFailedInstallationWebhooks(installationId);
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    return await this.#object.fetch(request);
   }
 }

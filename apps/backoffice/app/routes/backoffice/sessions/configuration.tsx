@@ -1,10 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Form, useActionData, useNavigation, useOutletContext } from "react-router";
 
-import { getPiDurableObject } from "@/cloudflare/cloudflare-utils";
 import { FormContainer, FormField } from "@/components/backoffice";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import type { PiConfigState } from "@/fragno/pi/pi-shared";
+import { getPiDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { Route } from "./+types/configuration";
 import { formatTimestamp, type PiLayoutContext } from "./shared";

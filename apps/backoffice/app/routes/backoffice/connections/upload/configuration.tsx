@@ -7,13 +7,13 @@ import {
   type ActionFunctionArgs,
 } from "react-router";
 
-import { getUploadDurableObject } from "@/cloudflare/cloudflare-utils";
 import { ByteUnitField, FormContainer, FormField, TimeUnitField } from "@/components/backoffice";
 import {
   UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
   UPLOAD_R2_DEFAULT_BINDING_NAME,
   type UploadAdminSetConfigPayload,
 } from "@/fragno/upload";
+import { getUploadDurableObject } from "@/worker-runtime/durable-objects";
 
 import {
   UploadProviderTabs,

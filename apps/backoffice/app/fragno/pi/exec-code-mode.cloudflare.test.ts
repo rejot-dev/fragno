@@ -7,6 +7,7 @@ import { InMemoryFs } from "just-bash";
 
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { MasterFileSystem } from "@/files/master-file-system";
 import type { ResolvedFileMount } from "@/files/types";
 
@@ -15,6 +16,8 @@ import type { AutomationStoreRuntime } from "../runtime-tools/families/automatio
 import type { AutomationWorkflowRuntime } from "../runtime-tools/families/automations-workflow";
 import { createPiToolRegistry } from "./pi";
 import { createPiCodemodeRuntime } from "./pi-codemode";
+
+const unusedObjects = {} as BackofficeObjectRegistry;
 
 describe("Pi execCodeMode tool", () => {
   test("runs codemode against a session filesystem and persists writes", async () => {
@@ -29,7 +32,7 @@ describe("Pi execCodeMode tool", () => {
       sessionFileSystems,
       sessionFileSystemContext: {
         orgId: "org-1",
-        env,
+        objects: unusedObjects,
       },
       codemode: createPiCodemodeRuntime(env),
     });
@@ -140,7 +143,7 @@ describe("Pi execCodeMode tool", () => {
       sessionFileSystems,
       sessionFileSystemContext: {
         orgId: "org-1",
-        env,
+        objects: unusedObjects,
       },
       codemode: {
         ...createPiCodemodeRuntime(env),
@@ -400,7 +403,7 @@ const createExecCodeModeTool = async ({
     sessionFileSystems,
     sessionFileSystemContext: {
       orgId: "org-1",
-      env,
+      objects: unusedObjects,
     },
     codemode: { ...createPiCodemodeRuntime(env), workflow: workflowRuntime },
     bashCommandContext: automationsRuntime

@@ -1,6 +1,11 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
+import type { Reson8Object } from "@/backoffice-runtime/object-registry";
+import {
+  createCloudflareDurableObjectRuntimeServices,
+  type BackofficeRuntimeServices,
+} from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
 import { reson8ConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/reson8";
 import { createReson8Server, type Reson8Fragment } from "@/fragno/reson8";
@@ -8,6 +13,7 @@ import { createReson8Server, type Reson8Fragment } from "@/fragno/reson8";
 import {
   createBackofficeFragmentDurableObject,
   type BackofficeFragmentDurableObject,
+  type BackofficeObjectState,
 } from "./lib/backoffice-fragment-durable-object";
 
 type StoredReson8Config = {
@@ -81,13 +87,26 @@ const buildRealtimeDiagnosticUrl = () => {
   return url.toString();
 };
 
-export class Reson8 extends DurableObject<CloudflareEnv> {
-  #state: DurableObjectState;
+export class InMemoryReson8Object implements Reson8Object {
+  #state: BackofficeObjectState;
+  #runtime: BackofficeRuntimeServices;
   #host: BackofficeFragmentDurableObject<StoredReson8Config, Reson8Source, Reson8Fragment>;
+  #fetch: typeof fetch;
 
-  constructor(state: DurableObjectState, env: CloudflareEnv) {
-    super(state, env);
+  constructor({
+    state,
+    env,
+    runtime,
+    fetch: fetchImpl = fetch,
+  }: {
+    state: BackofficeObjectState;
+    env?: unknown;
+    runtime: BackofficeRuntimeServices;
+    fetch?: typeof fetch;
+  }) {
     this.#state = state;
+    this.#runtime = runtime;
+    this.#fetch = fetchImpl;
     this.#host = createBackofficeFragmentDurableObject({
       name: "Reson8",
       state,
@@ -101,12 +120,12 @@ export class Reson8 extends DurableObject<CloudflareEnv> {
       getMigrationFragments: () => [],
       getHookFragments: () => [],
       outbox: {
-        dispatch: async (item, { env, stored }) => {
+        dispatch: async (item, { stored }) => {
           if (item.type !== "capability.configured") {
             return;
           }
 
-          await env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(stored.orgId)).ingestEvent({
+          await this.#runtime.objects.automations.forOrg(stored.orgId).ingestEvent({
             id: item.id,
             orgId: stored.orgId,
             source: "reson8",
@@ -153,7 +172,7 @@ export class Reson8 extends DurableObject<CloudflareEnv> {
       "Reson8 is not configured for this organisation.",
     );
 
-    const tokenResponse = await fetch(`${RESON8_API_BASE_URL}/auth/token`, {
+    const tokenResponse = await this.#fetch(`${RESON8_API_BASE_URL}/auth/token`, {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -184,7 +203,7 @@ export class Reson8 extends DurableObject<CloudflareEnv> {
 
     let websocketResponse: Response;
     try {
-      websocketResponse = await fetch(buildRealtimeDiagnosticUrl(), {
+      websocketResponse = await this.#fetch(buildRealtimeDiagnosticUrl(), {
         headers: {
           Authorization: `Bearer ${token.access_token}`,
           Origin: origin,
@@ -269,5 +288,42 @@ export class Reson8 extends DurableObject<CloudflareEnv> {
 
   async fetch(request: Request): Promise<Response> {
     return await this.#host.fetch(request);
+  }
+}
+
+export class Reson8 extends DurableObject<CloudflareEnv> implements Reson8Object {
+  #object: InMemoryReson8Object;
+
+  constructor(state: DurableObjectState, env: CloudflareEnv) {
+    super(state, env);
+    this.#object = new InMemoryReson8Object({
+      state,
+      env,
+      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
+    });
+  }
+
+  async alarm() {
+    await this.#object.alarm();
+  }
+
+  async getAdminConfig(): Promise<ConfigResponse> {
+    return await this.#object.getAdminConfig();
+  }
+
+  async resetAdminConfig(): Promise<ConfigResponse> {
+    return await this.#object.resetAdminConfig();
+  }
+
+  async getRealtimeOriginDiagnostic(origin: string): Promise<Reson8RealtimeOriginDiagnostic> {
+    return await this.#object.getRealtimeOriginDiagnostic(origin);
+  }
+
+  async setAdminConfig(payload: unknown, orgId: string): Promise<ConfigResponse> {
+    return await this.#object.setAdminConfig(payload, orgId);
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    return await this.#object.fetch(request);
   }
 }

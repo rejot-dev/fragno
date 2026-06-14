@@ -1,3 +1,4 @@
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { GENERAL_SKILL_CONTENT } from "@/files/content/skills";
 import { WORKSPACE_STARTER_AUTOMATION_CONTENT } from "@/files/content/starter-automations";
 import { createUploadFileSystem } from "@/files/contributors/upload";
@@ -26,15 +27,15 @@ export type WorkspaceStarterFilesSeedOutput = {
 };
 
 export const seedWorkspaceStarterFiles = async ({
-  env,
+  objects,
   orgId,
   force = false,
 }: {
-  env: CloudflareEnv;
+  objects: BackofficeObjectRegistry;
   orgId: string;
   force?: boolean;
 }): Promise<WorkspaceStarterFilesSeedOutput> => {
-  const uploadDo = env.UPLOAD.get(env.UPLOAD.idFromName(orgId));
+  const uploadDo = objects.upload.forOrg(orgId);
   const uploadConfig = await uploadDo.getAdminConfig();
   const provider = uploadConfig.defaultProvider ?? "database";
   const fs = createUploadFileSystem(
@@ -43,7 +44,8 @@ export const seedWorkspaceStarterFiles = async ({
       uploadConfig,
       uploadRuntime: {
         baseUrl: "https://files.internal",
-        fetch: uploadDo.fetch.bind(uploadDo),
+        fetch: async (input) =>
+          uploadDo.fetch(input instanceof Request ? input : new Request(input)),
       },
     },
     { mountPoint: "/workspace", provider },

@@ -1,9 +1,9 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { RouterContextProvider } from "react-router";
 
-import { getAuthDurableObject } from "@/cloudflare/cloudflare-utils";
 import type { AuthFragment } from "@/fragno/auth/auth";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
+import { getAuthDurableObject } from "@/worker-runtime/durable-objects";
 
 type AuthCallRoute = AuthFragment["callRoute"];
 

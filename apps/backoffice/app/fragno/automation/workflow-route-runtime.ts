@@ -1,11 +1,13 @@
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+
 import type { AutomationWorkflowRuntime } from "../runtime-tools/families/automations-workflow";
 import { createWorkflowsRouteCaller } from "./route-callers";
 
 export const createRouteBackedAutomationWorkflowRuntime = ({
-  env,
+  objects,
   orgId,
 }: {
-  env: CloudflareEnv;
+  objects: BackofficeObjectRegistry;
   orgId: string;
 }): AutomationWorkflowRuntime => {
   const normalizedOrgId = orgId.trim();
@@ -13,7 +15,7 @@ export const createRouteBackedAutomationWorkflowRuntime = ({
     throw new Error("Workflows backend requires an organisation id");
   }
 
-  const callRoute = createWorkflowsRouteCaller(env, normalizedOrgId);
+  const callRoute = createWorkflowsRouteCaller({ objects, orgId: normalizedOrgId });
 
   return {
     createInstance: async ({ workflowName, remoteWorkflowName, instanceId, params }) => {

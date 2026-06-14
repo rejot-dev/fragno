@@ -8,9 +8,9 @@ import {
   useSearchParams,
 } from "react-router";
 
-import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import { FormField } from "@/components/backoffice";
 import { mcpCapability } from "@/fragno/backoffice-capabilities/capabilities/mcp";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/configuration";
 import {
@@ -68,13 +68,17 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const { env } = context.get(CloudflareContext);
-  const status = await mcpCapability.connection.getStatus({ env, orgId: params.orgId });
+  const { runtime } = context.get(BackofficeWorkerContext);
+  const capabilityContext = {
+    objects: runtime.objects,
+    config: runtime.config,
+    orgId: params.orgId,
+    origin: new URL(request.url).origin,
+  };
+  const status = await mcpCapability.connection.getStatus(capabilityContext);
   if (!status.configured) {
     await mcpCapability.connection.configure({
-      env,
-      orgId: params.orgId,
-      origin: new URL(request.url).origin,
+      ...capabilityContext,
       payload: {},
     });
   }
@@ -92,15 +96,19 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const formData = await request.formData();
   const intent = getFormString(formData, "intent") || "add-server";
   const origin = new URL(request.url).origin;
-  const { env } = context.get(CloudflareContext);
+  const { runtime } = context.get(BackofficeWorkerContext);
+  const capabilityContext = {
+    objects: runtime.objects,
+    config: runtime.config,
+    orgId: params.orgId,
+    origin,
+  };
 
   try {
-    const status = await mcpCapability.connection.getStatus({ env, orgId: params.orgId });
+    const status = await mcpCapability.connection.getStatus(capabilityContext);
     if (!status.configured) {
       await mcpCapability.connection.configure({
-        env,
-        orgId: params.orgId,
-        origin,
+        ...capabilityContext,
         payload: {},
       });
     }

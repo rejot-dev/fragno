@@ -9,8 +9,8 @@ import type {
   PiSessionStatus,
 } from "@fragno-dev/pi-fragment";
 
-import { getPiDurableObject } from "@/cloudflare/cloudflare-utils";
 import type { PiConfigState } from "@/fragno/pi/pi-shared";
+import { getPiDurableObject } from "@/worker-runtime/durable-objects";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;

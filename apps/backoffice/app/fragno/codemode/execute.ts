@@ -1,7 +1,3 @@
-import { stateToolsFromBackend } from "@cloudflare/shell/workers";
-
-import { FileSystemStateBackend } from "@cloudflare/shell";
-
 import type { IFileSystem } from "@/files/interface";
 import { createBackofficeCodemodeProviders } from "@/fragno/runtime-tools/runtime-tools";
 import type {
@@ -18,6 +14,7 @@ import {
   type ResolvedProvider,
 } from "./codemode-executor";
 import { BackofficeStateFileSystem } from "./master-file-system-state";
+import { BackofficeFileSystemStateBackend, stateToolsFromBackend } from "./state-backend";
 
 export type BackofficeCodemodeEnv = {
   LOADER: WorkerLoader;
@@ -61,7 +58,7 @@ export const createBackofficeCodemodeResolvedProviders = ({
   const providers: ResolvedProvider[] = [];
 
   if (fs) {
-    const stateBackend = new FileSystemStateBackend(new BackofficeStateFileSystem(fs));
+    const stateBackend = new BackofficeFileSystemStateBackend(new BackofficeStateFileSystem(fs));
     providers.push(resolveProvider(stateToolsFromBackend(stateBackend)));
   }
 

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+
 import type { AutomationEvent } from "../../automation/contracts";
 import { createEventRuntime } from "./event-runtime";
 
@@ -24,16 +26,11 @@ const createEvent = (overrides: Partial<AutomationEvent> = {}): AutomationEvent 
 describe("createEventRuntime.emitEvent", () => {
   it("normalizes array payloads to an empty object", async () => {
     const triggerIngestEvent = vi.fn(async () => undefined);
-    const env = {
-      AUTOMATIONS: {
-        idFromName: vi.fn(() => "automations-do-id"),
-        get: vi.fn(() => ({
-          triggerIngestEvent,
-        })),
-      },
-    } as unknown as CloudflareEnv;
+    const objects = {
+      automations: { forOrg: vi.fn(() => ({ triggerIngestEvent })) },
+    } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
-      env,
+      objects,
       event: createEvent(),
     });
 
@@ -56,16 +53,11 @@ describe("createEventRuntime.emitEvent", () => {
 
   it("preserves object payloads", async () => {
     const triggerIngestEvent = vi.fn(async () => undefined);
-    const env = {
-      AUTOMATIONS: {
-        idFromName: vi.fn(() => "automations-do-id"),
-        get: vi.fn(() => ({
-          triggerIngestEvent,
-        })),
-      },
-    } as unknown as CloudflareEnv;
+    const objects = {
+      automations: { forOrg: vi.fn(() => ({ triggerIngestEvent })) },
+    } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
-      env,
+      objects,
       event: createEvent(),
     });
 

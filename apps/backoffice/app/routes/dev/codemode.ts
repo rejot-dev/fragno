@@ -1,12 +1,12 @@
 import { z } from "zod";
 
-import { CloudflareContext } from "@/cloudflare/cloudflare-context";
-import { getAuthDurableObject } from "@/cloudflare/cloudflare-utils";
 import { createOrgFileSystem } from "@/files/create-file-system";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { getAvailableBackofficeRuntimeTools } from "@/fragno/runtime-tools/tool-families";
+import { getAuthDurableObject } from "@/worker-runtime/durable-objects";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/codemode";
 
@@ -75,10 +75,10 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const body = await parseJsonBody(request);
   await assertOrganizationExists(context, orgId);
 
-  const { env } = context.get(CloudflareContext);
+  const { env, runtime } = context.get(BackofficeWorkerContext);
 
-  const fs = await createOrgFileSystem({ orgId, env });
-  const routeRuntimeContext = createRouteBackedRuntimeContext({ env, orgId });
+  const fs = await createOrgFileSystem({ orgId, objects: runtime.objects });
+  const routeRuntimeContext = createRouteBackedRuntimeContext({ runtime, orgId });
   const toolContext = createBackofficeToolContext(routeRuntimeContext);
 
   const result = await runBackofficeCodemode({

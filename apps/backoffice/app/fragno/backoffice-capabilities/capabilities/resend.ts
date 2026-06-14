@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type {
   BackofficeCapability,
   ConnectionStatus,
@@ -36,8 +37,8 @@ export const resendConfigureInputSchema = z.object({
 });
 
 const capability = { id: "resend", label: "Resend", kind: "connection" } as const;
-const getResendDo = (env: CloudflareEnv, orgId: string) =>
-  env.RESEND.get(env.RESEND.idFromName(orgId));
+const getResendDo = (objects: BackofficeObjectRegistry, orgId: string) =>
+  objects.resend.forOrg(orgId);
 
 type ResendAdminConfigResponse = {
   configured?: boolean;
@@ -79,15 +80,15 @@ export const resendCapability: BackofficeCapability = {
         description: "Public http(s) base URL used when registering Resend webhooks.",
       },
     ],
-    getStatus: async ({ env, orgId }) =>
-      toResendStatus(await getResendDo(env, orgId).getAdminConfig()),
-    verify: async ({ env, orgId }) =>
-      toResendStatus(await getResendDo(env, orgId).getAdminConfig()),
-    reset: async ({ env, orgId }) =>
-      toResendStatus(await getResendDo(env, orgId).resetAdminConfig()),
-    configure: async ({ env, orgId, origin, payload }) =>
+    getStatus: async ({ objects, orgId }) =>
+      toResendStatus(await getResendDo(objects, orgId).getAdminConfig()),
+    verify: async ({ objects, orgId }) =>
+      toResendStatus(await getResendDo(objects, orgId).getAdminConfig()),
+    reset: async ({ objects, orgId }) =>
+      toResendStatus(await getResendDo(objects, orgId).resetAdminConfig()),
+    configure: async ({ objects, orgId, origin, payload }) =>
       toResendStatus(
-        await getResendDo(env, orgId).setAdminConfig(
+        await getResendDo(objects, orgId).setAdminConfig(
           resendConfigureInputSchema.parse(payload),
           orgId,
           origin,
@@ -98,7 +99,7 @@ export const resendCapability: BackofficeCapability = {
     {
       id: "resend",
       label: "Resend",
-      getRepository: ({ env, orgId }) => getResendDo(env, orgId).getDurableHookRepository(),
+      getRepository: ({ objects, orgId }) => getResendDo(objects, orgId).getDurableHookRepository(),
     },
   ],
 };

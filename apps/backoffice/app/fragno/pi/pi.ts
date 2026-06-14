@@ -1,6 +1,3 @@
-import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
-import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
-import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
 import type { PiSkillRegistryResolver } from "@fragno-dev/pi-fragment/skills";
 import { Type, type TSchema } from "typebox";
 
@@ -18,6 +15,9 @@ import { createWorkflowsFragment } from "@fragno-dev/workflows";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { getModel } from "@earendil-works/pi-ai";
 
+import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createOrgFileSystem, type MasterFileSystem } from "@/files";
 
 import type {
@@ -83,7 +83,7 @@ export type PiBashCommandContext = InteractiveBashCommandContext & {
 
 export type PiSessionFileSystemContext = {
   orgId: string;
-  env: Pick<CloudflareEnv, "UPLOAD" | "RESEND" | "AUTOMATIONS">;
+  objects: BackofficeObjectRegistry;
 };
 
 export type PiCodemodeRuntime = {
@@ -127,13 +127,6 @@ export const execCodeModeParametersSchema = withSinclairSchema(
 const defineTool = <TParameters extends TSchema, TDetails>(
   tool: AgentTool<TParameters, TDetails>,
 ): AgentTool<TParameters, TDetails> => tool;
-
-function createPiAdapter(state: DurableObjectState) {
-  return new SqlAdapter({
-    dialect: new DurableObjectDialect({ ctx: state }),
-    driverConfig: new CloudflareDurableObjectsDriverConfig(),
-  });
-}
 
 const normalizeReadPath = (path: string) => (path.startsWith("/") ? path : `/${path}`);
 
@@ -352,7 +345,7 @@ const getSessionFs = async (
 
   const pendingFileSystem = createOrgFileSystem({
     orgId: context.orgId,
-    env: context.env,
+    objects: context.objects,
   });
 
   cache.set(sessionId, pendingFileSystem);
@@ -517,23 +510,26 @@ export const isValidPiToolId = (toolId: string): toolId is (typeof PI_TOOL_IDS)[
   PI_TOOL_IDS.includes(toolId as (typeof PI_TOOL_IDS)[number]);
 
 export const createPiBashCommandContext = ({
-  env,
+  runtime,
   orgId,
 }: {
-  env: CloudflareEnv;
+  runtime: BackofficeRuntimeServices;
   orgId: string;
-}): PiBashCommandContext => createRouteBackedRuntimeContext({ env, orgId });
+}): PiBashCommandContext => createRouteBackedRuntimeContext({ runtime, orgId });
 
 export const createPiRuntime = (options: {
   config: StoredPiConfig;
-  state: DurableObjectState;
+  adapters: BackofficeDatabaseAdapterFactory;
+  orgId: string;
   env: CloudflareEnv;
   sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
   sessionFileSystemContext: PiSessionFileSystemContext;
   bashCommandContext: PiBashCommandContext;
   codemode?: PiCodemodeRuntime;
 }): PiRuntimeFragments => {
-  const adapter = createPiAdapter(options.state);
+  const adapter = options.adapters.createAdapter({
+    kind: "pi",
+  });
   const codemode = options.codemode;
   const tools = createPiToolRegistry({
     sessionFileSystems: options.sessionFileSystems,

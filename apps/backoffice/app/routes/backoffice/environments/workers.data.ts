@@ -9,8 +9,8 @@ import type {
   CloudflareDeploymentSummary,
 } from "@fragno-dev/cloudflare-fragment";
 
-import { getCloudflareWorkersDurableObject } from "@/cloudflare/cloudflare-utils";
 import type { CloudflareFragment } from "@/fragno/cloudflare";
+import { getCloudflareWorkersDurableObject } from "@/worker-runtime/durable-objects";
 
 const createCloudflareRouteCaller = (
   request: Request,

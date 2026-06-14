@@ -1,3 +1,4 @@
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { IFileSystem } from "@/files/interface";
 import { MasterFileSystem } from "@/files/master-file-system";
 import type { AutomationScriptEngine } from "@/fragno/automation/catalog";
@@ -88,6 +89,7 @@ export const executeAutomationScript = async ({
 export type CreateInteractiveBashHostInput = {
   fs: IFileSystem;
   env: CloudflareEnv;
+  runtime?: BackofficeRuntimeServices;
   orgId: string;
   sessionId?: string;
   defaultActor?: AutomationEventActor | null;
@@ -95,15 +97,22 @@ export type CreateInteractiveBashHostInput = {
 };
 
 export const createInteractiveBashHost = (input: CreateInteractiveBashHostInput): BashHost => {
+  const context =
+    input.context ??
+    (input.runtime
+      ? createRouteBackedRuntimeContext({
+          runtime: input.runtime,
+          orgId: input.orgId,
+          defaultActor: input.defaultActor,
+        })
+      : null);
+  if (!context) {
+    throw new Error("Interactive bash host requires a runtime context or runtime services.");
+  }
+
   return createBashHost({
     fs: input.fs,
     sessionId: input.sessionId,
-    context:
-      input.context ??
-      createRouteBackedRuntimeContext({
-        env: input.env,
-        orgId: input.orgId,
-        defaultActor: input.defaultActor,
-      }),
+    context,
   });
 };

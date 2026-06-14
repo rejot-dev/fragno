@@ -1,11 +1,10 @@
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareSandboxManager,
   type CloudflareSandboxManagerOptions,
 } from "@/sandbox/cloudflare-sandbox-manager";
 
 import { createSandboxRuntime, type SandboxRuntime } from "./sandbox-runtime";
-
-const SANDBOX_REGISTRY_ORG_KEY_PREFIX = "SANDBOX_REGISTRY_ORG:";
 
 type SandboxRouteOptions = {
   keepAlive?: boolean;
@@ -53,10 +52,10 @@ const applySandboxRouteConfiguration = async (
 };
 
 export const createSandboxRouteRuntime = ({
-  env,
+  objects,
   orgId,
 }: {
-  env: CloudflareEnv;
+  objects: BackofficeObjectRegistry;
   orgId: string;
 }): SandboxRuntime => {
   const normalizedOrgId = orgId.trim();
@@ -64,16 +63,13 @@ export const createSandboxRouteRuntime = ({
     throw new Error("Sandbox runtime requires an organisation id");
   }
 
-  const registryKey = `${SANDBOX_REGISTRY_ORG_KEY_PREFIX}${normalizedOrgId}`;
   const manager = createCloudflareSandboxManager({
-    sandboxNamespace: env.SANDBOX,
+    sandboxNamespace: {} as CloudflareEnv["SANDBOX"],
     sandboxIdScope: normalizedOrgId,
-    registry: env.SANDBOX_REGISTRY.get(env.SANDBOX_REGISTRY.idFromName(registryKey)),
+    registry: objects.sandboxRegistry.forOrg(normalizedOrgId),
     sdk: {
-      async getSandbox(namespace, id, options) {
-        const stub = namespace.get(
-          namespace.idFromName(id),
-        ) as unknown as ConfigurableSandboxRouteStub;
+      async getSandbox(_namespace, id, options) {
+        const stub = objects.sandbox.forName(id) as unknown as ConfigurableSandboxRouteStub;
         await applySandboxRouteConfiguration(stub, id, options);
         return stub;
       },

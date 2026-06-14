@@ -1,10 +1,10 @@
 import { Link, useLoaderData } from "react-router";
 
+import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
 import {
   GITHUB_WEBHOOK_ROUTER_SINGLETON_ID,
   getGitHubWebhookRouterDurableObject,
-} from "@/cloudflare/cloudflare-utils";
-import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
+} from "@/worker-runtime/durable-objects";
 
 import type { Route } from "./+types/github";
 

@@ -212,7 +212,7 @@ describe("backoffice files download route", () => {
 const createLoaderArgs = (url: string) =>
   ({
     request: new Request(url),
-    context: { get: () => ({ env: {} }) } as never,
+    context: { get: () => ({ runtime: { objects: {} }, env: {} }) } as never,
     params: { orgId: "org_123" },
   }) as unknown as Parameters<typeof loader>[0];
 

@@ -1,6 +1,5 @@
 import { Link, redirect, useOutletContext } from "react-router";
 
-import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import { BackofficePageHeader } from "@/components/backoffice";
 import { createOrgFileSystem, type IFileSystem } from "@/files";
 import { getAuthMe } from "@/fragno/auth/auth-server";
@@ -14,6 +13,7 @@ import {
 } from "@/fragno/runtime-tools/reference";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/dashboard";
 import {
@@ -205,8 +205,11 @@ export async function action({ request, context }: Route.ActionArgs) {
     }
 
     try {
-      const env = context.get(CloudflareContext).env;
-      const fileSystem = await createOrgFileSystem({ orgId: activeOrg.id, env });
+      const { runtime } = context.get(BackofficeWorkerContext);
+      const fileSystem = await createOrgFileSystem({
+        orgId: activeOrg.id,
+        objects: runtime.objects,
+      });
       return {
         ...autocompleteRequest,
         ok: true,
@@ -250,11 +253,15 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   try {
-    const env = context.get(CloudflareContext).env;
-    const fileSystem = await createOrgFileSystem({ orgId: activeOrg.id, env });
+    const { env, runtime } = context.get(BackofficeWorkerContext);
+    const fileSystem = await createOrgFileSystem({
+      orgId: activeOrg.id,
+      objects: runtime.objects,
+    });
     const { bash } = createInteractiveBashHost({
       fs: fileSystem,
       env,
+      runtime,
       orgId: activeOrg.id,
       defaultActor: {
         scope: "internal",

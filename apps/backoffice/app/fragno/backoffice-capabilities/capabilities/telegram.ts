@@ -1,6 +1,7 @@
 import { telegramAttachmentSchema } from "@fragno-dev/telegram-fragment/types";
 import { z } from "zod";
 
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { AutomationExternalEntityDefinition } from "@/fragno/automation/contracts";
 import type {
   BackofficeConfigurableConnectionCapability,
@@ -84,8 +85,8 @@ const telegramCapabilityConfiguredSubjectSchema = z.object({
 });
 
 const capability = { id: "telegram", label: "Telegram", kind: "connection" } as const;
-const getTelegramDo = (env: CloudflareEnv, orgId: string) =>
-  env.TELEGRAM.get(env.TELEGRAM.idFromName(orgId));
+const getTelegramDo = (objects: BackofficeObjectRegistry, orgId: string) =>
+  objects.telegram.forOrg(orgId);
 
 const toTelegramStatus = (response: TelegramAdminConfigResponse): ConnectionStatus => {
   if (!response.configured) {
@@ -135,15 +136,15 @@ export const telegramCapability: BackofficeConfigurableConnectionCapability = {
         description: "Public http(s) base URL used when registering the Telegram webhook.",
       },
     ],
-    getStatus: async ({ env, orgId }) =>
-      toTelegramStatus(await getTelegramDo(env, orgId).getAdminConfig()),
-    verify: async ({ env, orgId }) =>
-      toTelegramStatus(await getTelegramDo(env, orgId).getAdminConfig()),
-    reset: async ({ env, orgId }) =>
-      toTelegramStatus(await getTelegramDo(env, orgId).resetAdminConfig()),
-    configure: async ({ env, orgId, origin, payload }) =>
+    getStatus: async ({ objects, orgId }) =>
+      toTelegramStatus(await getTelegramDo(objects, orgId).getAdminConfig()),
+    verify: async ({ objects, orgId }) =>
+      toTelegramStatus(await getTelegramDo(objects, orgId).getAdminConfig()),
+    reset: async ({ objects, orgId }) =>
+      toTelegramStatus(await getTelegramDo(objects, orgId).resetAdminConfig()),
+    configure: async ({ objects, orgId, origin, payload }) =>
       toTelegramStatus(
-        await getTelegramDo(env, orgId).setAdminConfig(
+        await getTelegramDo(objects, orgId).setAdminConfig(
           { ...telegramConfigureInputSchema.parse(payload), orgId },
           origin,
         ),
@@ -153,7 +154,8 @@ export const telegramCapability: BackofficeConfigurableConnectionCapability = {
     {
       id: "telegram",
       label: "Telegram",
-      getRepository: ({ env, orgId }) => getTelegramDo(env, orgId).getDurableHookRepository(),
+      getRepository: ({ objects, orgId }) =>
+        getTelegramDo(objects, orgId).getDurableHookRepository(),
     },
   ],
   automationEvents: [

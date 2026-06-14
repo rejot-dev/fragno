@@ -9,7 +9,7 @@ vi.mock("@/fragno/auth/auth-server", () => ({
   getAuthMe: getAuthMeMock,
 }));
 
-vi.mock("@/cloudflare/sandbox-manager", () => ({
+vi.mock("@/worker-runtime/sandbox-manager", () => ({
   getSandboxManager: getSandboxManagerMock,
 }));
 

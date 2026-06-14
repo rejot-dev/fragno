@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
 
-import { getReson8DurableObject } from "@/cloudflare/cloudflare-utils";
+import { getReson8DurableObject } from "@/worker-runtime/durable-objects";
 
 const forwardToReson8 = async (
   request: Request,

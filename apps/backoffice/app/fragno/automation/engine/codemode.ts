@@ -1,6 +1,7 @@
 import type { RemoteWorkflowStepHost } from "@fragno-dev/workflows/remote-workflow";
 import type { WorkflowEvent } from "@fragno-dev/workflows/workflow";
 
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { MasterFileSystem } from "@/files/master-file-system";
 import {
   runBackofficeCodemode,
@@ -122,12 +123,14 @@ export const executePiCodemodeWorkflow = async ({
   params,
   masterFs,
   env,
+  runtime,
   workflowEvent,
   remote,
 }: {
   params: PiCodemodeWorkflowParams;
   masterFs: MasterFileSystem;
   env: BackofficeCodemodeEnv & CloudflareEnv;
+  runtime?: BackofficeRuntimeServices;
   workflowEvent: WorkflowEvent<unknown>;
   remote: RemoteWorkflowStepHost;
 }): Promise<unknown> => {
@@ -136,7 +139,11 @@ export const executePiCodemodeWorkflow = async ({
     throw new Error("Pi codemode workflow requires an organisation id.");
   }
 
-  const runtimeContext = createRouteBackedRuntimeContext({ env, orgId });
+  if (!runtime) {
+    throw new Error("Pi codemode workflow requires Backoffice runtime services.");
+  }
+
+  const runtimeContext = createRouteBackedRuntimeContext({ runtime, orgId });
   const context = createBackofficeToolContext(runtimeContext);
   const tools = getAvailableRuntimeTools({
     families: runtimeToolFamilies,

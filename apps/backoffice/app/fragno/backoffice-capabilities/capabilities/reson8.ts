@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type {
   BackofficeCapability,
   ConnectionStatus,
@@ -17,8 +18,8 @@ export const reson8ConfigureInputSchema = z.object({
 });
 
 const capability = { id: "reson8", label: "Reson8", kind: "connection" } as const;
-const getReson8Do = (env: CloudflareEnv, orgId: string) =>
-  env.RESON8.get(env.RESON8.idFromName(orgId));
+const getReson8Do = (objects: BackofficeObjectRegistry, orgId: string) =>
+  objects.reson8.forOrg(orgId);
 
 type Reson8AdminConfigResponse = {
   configured?: boolean;
@@ -53,15 +54,15 @@ export const reson8Capability: BackofficeCapability = {
     configureFields: [
       { name: "apiKey", secret: true, description: "Reson8 API key. Required on first setup." },
     ],
-    getStatus: async ({ env, orgId }) =>
-      toReson8Status(await getReson8Do(env, orgId).getAdminConfig()),
-    verify: async ({ env, orgId }) =>
-      toReson8Status(await getReson8Do(env, orgId).getAdminConfig()),
-    reset: async ({ env, orgId }) =>
-      toReson8Status(await getReson8Do(env, orgId).resetAdminConfig()),
-    configure: async ({ env, orgId, payload }) =>
+    getStatus: async ({ objects, orgId }) =>
+      toReson8Status(await getReson8Do(objects, orgId).getAdminConfig()),
+    verify: async ({ objects, orgId }) =>
+      toReson8Status(await getReson8Do(objects, orgId).getAdminConfig()),
+    reset: async ({ objects, orgId }) =>
+      toReson8Status(await getReson8Do(objects, orgId).resetAdminConfig()),
+    configure: async ({ objects, orgId, payload }) =>
       toReson8Status(
-        await getReson8Do(env, orgId).setAdminConfig(
+        await getReson8Do(objects, orgId).setAdminConfig(
           reson8ConfigureInputSchema.parse(payload),
           orgId,
         ),

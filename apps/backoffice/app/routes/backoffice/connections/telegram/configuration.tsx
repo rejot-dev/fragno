@@ -1,9 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Form, useActionData, useNavigation, useOutletContext } from "react-router";
 
-import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import { FormContainer, FormField, WizardStepper } from "@/components/backoffice";
 import { telegramCapability } from "@/fragno/backoffice-capabilities/capabilities/telegram";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/configuration";
 import {
@@ -147,11 +147,12 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   }
 
   const origin = new URL(request.url).origin;
-  const { env } = context.get(CloudflareContext);
+  const { runtime } = context.get(BackofficeWorkerContext);
 
   try {
     const status = await telegramCapability.connection.configure({
-      env,
+      objects: runtime.objects,
+      config: runtime.config,
       orgId: params.orgId,
       origin,
       payload: validation.payload,

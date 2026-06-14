@@ -544,20 +544,11 @@ const createContext = (
 
   return {
     orgId: "acme-org",
-    env: {
-      UPLOAD: {
-        idFromName: () => "upload-id",
-        get: () => upload,
-      },
-      RESEND: {
-        idFromName: () => "resend-id",
-        get: () => resend,
-      },
-      AUTOMATIONS: {
-        idFromName: () => "automations-id",
-        get: () => automations,
-      },
-    } as unknown as PiSessionFileSystemContext["env"],
+    objects: {
+      upload: { forOrg: () => upload },
+      resend: { forOrg: () => resend },
+      automations: { forOrg: () => automations },
+    } as unknown as PiSessionFileSystemContext["objects"],
   };
 };
 

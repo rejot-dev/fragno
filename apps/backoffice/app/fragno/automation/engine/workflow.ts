@@ -1,5 +1,6 @@
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { MasterFileSystem } from "@/files/master-file-system";
 import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
 import type { PiCodemodeWorkflowParams } from "@/fragno/pi/pi-codemode-workflow";
@@ -21,10 +22,10 @@ export type AutomationCodemodeWorkflowParams = {
 };
 
 const createWorkflowAutomationContext = ({
-  env,
+  runtime,
   params,
 }: {
-  env: CloudflareEnv;
+  runtime: BackofficeRuntimeServices;
   params: AutomationCodemodeWorkflowParams;
 }): AutomationRuntimeHostContext => {
   const orgId = params.automationEvent.orgId?.trim() || undefined;
@@ -32,8 +33,11 @@ const createWorkflowAutomationContext = ({
     throw new Error("Workflow-backed automation requires an organisation id.");
   }
 
-  const runtimeContext = createRouteBackedRuntimeContext({ env, orgId });
-  const eventRuntime = createEventRuntime({ env, event: params.automationEvent });
+  const runtimeContext = createRouteBackedRuntimeContext({ runtime, orgId });
+  const eventRuntime = createEventRuntime({
+    objects: runtime.objects,
+    event: params.automationEvent,
+  });
   const automationRuntime = {
     ...runtimeContext.automations.runtime,
     ...runtimeContext.otp.runtime,
@@ -89,7 +93,7 @@ const createWorkflowAutomationContext = ({
 };
 
 export const defineAutomationCodemodeWorkflow = (
-  config: AutomationFileSystemConfig & { env?: CloudflareEnv },
+  config: AutomationFileSystemConfig & { env?: CloudflareEnv; runtime?: BackofficeRuntimeServices },
 ) =>
   defineRemoteWorkflow({ name: "automation-codemode-script" }, async (event, remote) => {
     if (!config.env?.LOADER) {
@@ -115,7 +119,11 @@ export const defineAutomationCodemodeWorkflow = (
     }
 
     const { executeWorkflowCodemodeAutomation } = await import("./codemode");
-    const context = createWorkflowAutomationContext({ env: config.env, params });
+    if (!config.runtime) {
+      throw new Error("Workflow-backed codemode automation requires Backoffice runtime services.");
+    }
+
+    const context = createWorkflowAutomationContext({ runtime: config.runtime, params });
     const result = await executeWorkflowCodemodeAutomation({
       script,
       context,
@@ -132,7 +140,10 @@ export const defineAutomationCodemodeWorkflow = (
     return result.result;
   });
 
-export const definePiCodemodeWorkflow = (config: { env?: BackofficeCodemodeEnv & CloudflareEnv }) =>
+export const definePiCodemodeWorkflow = (config: {
+  env?: BackofficeCodemodeEnv & CloudflareEnv;
+  runtime?: BackofficeRuntimeServices;
+}) =>
   defineRemoteWorkflow({ name: "pi-codemode-script" }, async (event, remote) => {
     if (!config.env?.LOADER) {
       throw new Error("Pi codemode workflow requires the Cloudflare Worker Loader.");
@@ -144,6 +155,7 @@ export const definePiCodemodeWorkflow = (config: { env?: BackofficeCodemodeEnv &
       params,
       masterFs: new MasterFileSystem({ mounts: [] }),
       env: config.env,
+      runtime: config.runtime,
       workflowEvent: event,
       remote,
     });

@@ -1,4 +1,4 @@
-import { getPiDurableObject } from "@/cloudflare/cloudflare-utils";
+import { getPiDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { Route } from "./+types/pi";
 

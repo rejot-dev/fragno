@@ -4,6 +4,7 @@ import { defineFragment } from "@fragno-dev/core";
 import { withDatabase, type TxResult } from "@fragno-dev/db";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { MasterFileSystem } from "@/files/master-file-system";
 import { executeAutomationScript } from "@/fragno/runtime-tools/automation-host";
 
@@ -43,6 +44,7 @@ export type AutomationWorkflowsService = Pick<
 
 export interface AutomationFragmentConfig extends AutomationFileSystemConfig {
   env?: CloudflareEnv;
+  runtime?: BackofficeRuntimeServices;
   createPiAutomationContext?: (input: {
     event: AutomationEvent;
     idempotencyKey: string;
@@ -95,7 +97,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
         }
 
         const runtime = createAutomationRuntime({
-          env: config.env,
+          runtime: config.runtime,
           event: payload,
         });
         const pi = await config.createPiAutomationContext?.({
@@ -123,7 +125,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
             binding,
             idempotencyKey: this.idempotencyKey,
             runtime,
-            env: config.env,
+            runtimeServices: config.runtime,
             pi: pi ?? null,
           });
 

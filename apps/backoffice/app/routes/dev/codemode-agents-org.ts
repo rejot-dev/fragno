@@ -1,6 +1,6 @@
-import { CloudflareContext } from "@/cloudflare/cloudflare-context";
-import { getAuthDurableObject } from "@/cloudflare/cloudflare-utils";
 import { createOrgFileSystem } from "@/files/create-file-system";
+import { getAuthDurableObject } from "@/worker-runtime/durable-objects";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/codemode-agents-org";
 
@@ -32,8 +32,8 @@ const assertOrganizationExists = async (context: Route.LoaderArgs["context"], or
 };
 
 const readOrgSystemGuidance = async (context: Route.LoaderArgs["context"], orgId: string) => {
-  const { env } = context.get(CloudflareContext);
-  const fs = await createOrgFileSystem({ env, orgId });
+  const { runtime } = context.get(BackofficeWorkerContext);
+  const fs = await createOrgFileSystem({ objects: runtime.objects, orgId });
   return await fs.readFile("/system/SYSTEM.md");
 };
 

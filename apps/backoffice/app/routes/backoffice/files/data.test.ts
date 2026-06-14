@@ -21,7 +21,7 @@ import {
 
 import { handleFilesExplorerAction, loadFilesExplorerData } from "./data";
 
-const mockContext = { get: () => ({ env: {} }) } as never;
+const mockContext = { get: () => ({ runtime: { objects: {} }, env: {} }) } as never;
 
 const contributors: FileContributor[] = [];
 

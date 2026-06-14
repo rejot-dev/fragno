@@ -1,6 +1,7 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { CreateServerInput, McpTool, ToolCallInput } from "@fragno-dev/mcp-fragment/types";
 
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { McpFragment } from "@/fragno/mcp";
 
 import {
@@ -161,8 +162,14 @@ export const createRouteBackedMcpRuntime = (
   };
 };
 
-export const createMcpRuntime = ({ env, orgId }: { env: CloudflareEnv; orgId: string }) => {
-  const mcpDo = env.MCP.get(env.MCP.idFromName(orgId));
+export const createMcpRuntime = ({
+  objects,
+  orgId,
+}: {
+  objects: BackofficeObjectRegistry;
+  orgId: string;
+}) => {
+  const mcpDo = objects.mcp.forOrg(orgId);
   return createRouteBackedMcpRuntime({
     baseUrl: "https://mcp.do",
     fetch: async (outboundRequest) => mcpDo.fetch(outboundRequest),

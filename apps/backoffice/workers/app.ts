@@ -1,7 +1,8 @@
 import { createRequestHandler, RouterContextProvider } from "react-router";
 import System from "typebox/system";
 
-import { CloudflareContext } from "../app/cloudflare/cloudflare-context";
+import { createCloudflareBackofficeRuntimeServices } from "../app/backoffice-runtime/runtime-services";
+import { BackofficeWorkerContext } from "../app/worker-runtime/router-context";
 import { Auth } from "./auth.do";
 import { Automations } from "./automations.do";
 import { CloudflareWorkers } from "./cloudflare-wfp.do";
@@ -43,7 +44,11 @@ System.Settings.Set({ useAcceleration: false });
 export default {
   async fetch(request, env, ctx) {
     const context = new RouterContextProvider();
-    context.set(CloudflareContext, { env, ctx });
+    context.set(BackofficeWorkerContext, {
+      runtime: createCloudflareBackofficeRuntimeServices(env),
+      env,
+      ctx,
+    });
     return requestHandler(request, context);
   },
 } satisfies ExportedHandler<CloudflareEnv>;

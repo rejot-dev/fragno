@@ -1,8 +1,8 @@
 import { createRouteCaller, type RouteCallerForFragment } from "@fragno-dev/core/api";
 import type { RouterContextProvider } from "react-router";
 
-import { getMcpDurableObject } from "@/cloudflare/cloudflare-utils";
 import type { McpFragment } from "@/fragno/mcp";
+import { getMcpDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { McpConfigState } from "./shared";
 

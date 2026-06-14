@@ -1,7 +1,7 @@
 import type { RouterContextProvider } from "react-router";
 
-import { getTelegramDurableObject } from "@/cloudflare/cloudflare-utils";
 import { getAuthMe } from "@/fragno/auth/auth-server";
+import { getTelegramDurableObject } from "@/worker-runtime/durable-objects";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
 

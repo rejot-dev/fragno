@@ -1,5 +1,6 @@
 import { describe, expect, test, vi, assert } from "vitest";
 
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { seedWorkspaceStarterFiles } from "@/files/seed-workspace-starter-files";
 
 describe("workspace starter file seeding", () => {
@@ -39,14 +40,13 @@ describe("workspace starter file seeding", () => {
         return new Response("unexpected", { status: 500 });
       }),
     };
-    const env = {
-      UPLOAD: {
-        idFromName: vi.fn((orgId: string) => `upload:${orgId}`),
-        get: vi.fn(() => uploadDo),
+    const objects = {
+      upload: {
+        forOrg: vi.fn(() => uploadDo),
       },
-    } as unknown as CloudflareEnv;
+    } as unknown as BackofficeObjectRegistry;
 
-    await expect(seedWorkspaceStarterFiles({ env, orgId: "org-1" })).resolves.toMatchObject({
+    await expect(seedWorkspaceStarterFiles({ objects, orgId: "org-1" })).resolves.toMatchObject({
       provider: "database",
       created: expect.arrayContaining(["/workspace/AGENTS.md"]),
     });

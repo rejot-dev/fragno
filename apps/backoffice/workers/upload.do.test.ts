@@ -65,7 +65,12 @@ const createState = () => {
     return callback();
   });
 
-  return { storage, waitUntil, blockConcurrencyWhile } as unknown as DurableObjectState;
+  return {
+    id: { toString: () => "upload:test" },
+    storage,
+    waitUntil,
+    blockConcurrencyWhile,
+  } as unknown as DurableObjectState;
 };
 
 const VALID_R2_PAYLOAD = {
@@ -267,7 +272,11 @@ describe("Upload Durable Object", () => {
     expect(createUploadServerForProviderMock).toHaveBeenCalledWith(
       expect.objectContaining({ defaultProvider: "database" }),
       "database",
-      state,
+      expect.objectContaining({
+        adapters: expect.objectContaining({
+          createAdapter: expect.any(Function),
+        }),
+      }),
       expect.any(Object),
     );
   });

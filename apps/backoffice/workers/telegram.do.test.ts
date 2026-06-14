@@ -96,7 +96,12 @@ const createState = (initialEntries?: Array<[string, unknown]>) => {
 
   return {
     store,
-    state: { storage, waitUntil, blockConcurrencyWhile } as unknown as DurableObjectState,
+    state: {
+      id: { toString: () => "telegram:test" },
+      storage,
+      waitUntil,
+      blockConcurrencyWhile,
+    } as unknown as DurableObjectState,
     waitForBlockConcurrency: async () => await blockConcurrencyPromise,
   };
 };
@@ -183,7 +188,11 @@ describe("Telegram Durable Object", () => {
         webhookSecretToken: VALID_PAYLOAD.webhookSecretToken,
         botUsername: VALID_PAYLOAD.botUsername,
       }),
-      state,
+      expect.objectContaining({
+        adapters: expect.objectContaining({
+          createAdapter: expect.any(Function),
+        }),
+      }),
       expect.objectContaining({
         hooks: expect.objectContaining({
           onMessageReceived: expect.any(Function),

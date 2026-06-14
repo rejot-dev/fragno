@@ -1,6 +1,3 @@
-import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
-import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
-import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
 import { createDatabaseStorageAdapter } from "@fragno-dev/upload/storage/db";
 import { AwsClient } from "aws4fetch";
 
@@ -12,6 +9,8 @@ import {
   type S3Signer,
   type S3SignerInput,
 } from "@fragno-dev/upload";
+
+import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 
 import {
   UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
@@ -37,17 +36,6 @@ const toHeaderRecord = (headers: Headers): Record<string, string> => {
   });
   return out;
 };
-
-export function createAdapter(state?: DurableObjectState) {
-  const dialect = new DurableObjectDialect({
-    ctx: state!,
-  });
-
-  return new SqlAdapter({
-    dialect,
-    driverConfig: new CloudflareDurableObjectsDriverConfig(),
-  });
-}
 
 const createR2Signer = (config: UploadR2SignerConfig): S3Signer => {
   const client = new AwsClient({
@@ -116,7 +104,7 @@ const getProviderConfig = (config: StoredUploadAdminConfig, provider: UploadProv
 export function createUploadServerForProvider(
   config: StoredUploadAdminConfig,
   provider: UploadProvider,
-  state: DurableObjectState,
+  runtime: BackofficeFragmentRuntimeOptions,
   env: CloudflareEnv,
 ): ReturnType<typeof createUploadFragment> {
   const providerConfig = getProviderConfig(config, provider);
@@ -127,7 +115,9 @@ export function createUploadServerForProvider(
         ? (providerConfig.r2.limits ?? {})
         : (providerConfig.r2Binding.limits ?? {});
   const storageKeyPrefix = resolveUploadProviderStorageKeyPrefix(config, provider);
-  const databaseAdapter = createAdapter(state);
+  const databaseAdapter = runtime.adapters.createAdapter({
+    kind: "upload",
+  });
 
   const storage =
     providerConfig.provider === UPLOAD_PROVIDER_DATABASE
@@ -197,10 +187,10 @@ export function createUploadServerForProvider(
 
 export function createUploadServer(
   config: StoredUploadAdminConfig,
-  state: DurableObjectState,
+  runtime: BackofficeFragmentRuntimeOptions,
   env: CloudflareEnv,
 ): ReturnType<typeof createUploadFragment> {
-  return createUploadServerForProvider(config, config.defaultProvider, state, env);
+  return createUploadServerForProvider(config, config.defaultProvider, runtime, env);
 }
 
 export type UploadFragment = ReturnType<typeof createUploadServerForProvider>;

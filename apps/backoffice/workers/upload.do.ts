@@ -1,6 +1,11 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
+import type { UploadObject } from "@/backoffice-runtime/object-registry";
+import {
+  createCloudflareDurableObjectRuntimeServices,
+  type BackofficeRuntimeServices,
+} from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
 import { uploadConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/upload";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
@@ -22,6 +27,7 @@ import {
   createBackofficeFragmentDurableObject,
   type BackofficeDurableHookDependencies,
   type BackofficeFragmentDurableObject,
+  type BackofficeObjectState,
 } from "./lib/backoffice-fragment-durable-object";
 
 const hasOwn = (record: Record<string, unknown>, key: string) =>
@@ -118,23 +124,30 @@ type UploadRuntime = {
   fragmentsByProvider: Map<UploadProvider, UploadFragment>;
 };
 
-export class Upload extends DurableObject<CloudflareEnv> {
-  #state: DurableObjectState;
-  #env: CloudflareEnv;
+export class InMemoryUploadObject implements UploadObject {
+  #state: BackofficeObjectState;
+  #env: Parameters<typeof createUploadServerForProvider>[3];
+  #runtimeServices: BackofficeRuntimeServices;
   #host: BackofficeFragmentDurableObject<
     StoredUploadAdminConfig,
     StoredUploadAdminConfig,
     UploadRuntime
   >;
 
-  constructor(
-    state: DurableObjectState,
-    env: CloudflareEnv,
-    durableHooks?: BackofficeDurableHookDependencies,
-  ) {
-    super(state, env);
+  constructor({
+    state,
+    env,
+    runtime,
+    durableHooks,
+  }: {
+    state: BackofficeObjectState;
+    env: Parameters<typeof createUploadServerForProvider>[3];
+    runtime: BackofficeRuntimeServices;
+    durableHooks?: BackofficeDurableHookDependencies;
+  }) {
     this.#state = state;
     this.#env = env;
+    this.#runtimeServices = runtime;
     this.#host = createBackofficeFragmentDurableObject({
       name: "Upload",
       state,
@@ -163,13 +176,14 @@ export class Upload extends DurableObject<CloudflareEnv> {
         ),
       }),
       outbox: {
-        dispatch: async (item, { env, stored }) => {
+        dispatch: async (item, { stored }) => {
           if (item.type !== "capability.configured") {
             return;
           }
 
-          await env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(stored.namespace.orgId)).ingestEvent(
-            {
+          await this.#runtimeServices.objects.automations
+            .forOrg(stored.namespace.orgId)
+            .ingestEvent({
               id: item.id,
               orgId: stored.namespace.orgId,
               source: "upload",
@@ -185,8 +199,7 @@ export class Upload extends DurableObject<CloudflareEnv> {
                 orgId: stored.namespace.orgId,
                 capabilityId: "upload",
               },
-            },
-          );
+            });
         },
       },
     });
@@ -225,7 +238,14 @@ export class Upload extends DurableObject<CloudflareEnv> {
     for (const provider of configuredProvidersFromResponse(response)) {
       fragmentsByProvider.set(
         provider,
-        createUploadServerForProvider(stored, provider, this.#state, this.#env),
+        createUploadServerForProvider(
+          stored,
+          provider,
+          {
+            adapters: this.#runtimeServices.adapters,
+          },
+          this.#env,
+        ),
       );
     }
 
@@ -391,5 +411,51 @@ export class Upload extends DurableObject<CloudflareEnv> {
     return await fragment.handler(request, {
       waitUntil: this.#state.waitUntil.bind(this.#state),
     });
+  }
+}
+
+export class Upload extends DurableObject<CloudflareEnv> implements UploadObject {
+  #object: InMemoryUploadObject;
+
+  constructor(
+    state: DurableObjectState,
+    env: CloudflareEnv,
+    durableHooks?: BackofficeDurableHookDependencies,
+  ) {
+    super(state, env);
+    this.#object = new InMemoryUploadObject({
+      state,
+      env,
+      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
+      durableHooks,
+    });
+  }
+
+  async getAdminConfig(): Promise<UploadAdminConfigResponse> {
+    return await this.#object.getAdminConfig();
+  }
+
+  async resetAdminConfig(): Promise<UploadAdminConfigResponse> {
+    return await this.#object.resetAdminConfig();
+  }
+
+  async setAdminConfig(
+    payload: unknown,
+    orgId: string,
+    origin?: string,
+  ): Promise<UploadAdminConfigResponse> {
+    return await this.#object.setAdminConfig(payload, orgId, origin);
+  }
+
+  async getDurableHookRepository() {
+    return await this.#object.getDurableHookRepository();
+  }
+
+  async alarm(): Promise<void> {
+    await this.#object.alarm();
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    return await this.#object.fetch(request);
   }
 }

@@ -2,6 +2,8 @@ import { describe, expect, it, assert } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+
 import { createBashHost } from "../bash-host";
 import type { AutomationStoreRuntime } from "./automations-bindings";
 import {
@@ -14,6 +16,13 @@ import {
 } from "./pi-runtime";
 
 const now = new Date("2026-01-01T00:00:00.000Z");
+
+const createPiObjects = (env: Pick<CloudflareEnv, "PI">): BackofficeObjectRegistry =>
+  ({
+    pi: {
+      forOrg: (orgId: string) => env.PI.get(env.PI.idFromName(orgId)),
+    },
+  }) as unknown as BackofficeObjectRegistry;
 
 const createTurnResult = (sessionId: string, assistantText = "assistant:hello") => {
   const assistantMessage = {
@@ -885,7 +894,7 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteRuntime({ env, orgId: "acme" });
+    const runtime = createPiRouteRuntime({ objects: createPiObjects(env), orgId: "acme" });
 
     const created = await runtime.createSession({
       agent: "assistant",
@@ -1078,7 +1087,7 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteRuntime({ env, orgId: "acme" });
+    const runtime = createPiRouteRuntime({ objects: createPiObjects(env), orgId: "acme" });
     const turned = await withTimeout(
       runtime.runTurn({ sessionId: "session-2", text: "hello" }),
       "runTurn should not wait for the live events stream to close",
@@ -1194,7 +1203,7 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteRuntime({ env, orgId: "acme" });
+    const runtime = createPiRouteRuntime({ objects: createPiObjects(env), orgId: "acme" });
     const turned = await withTimeout(
       runtime.runTurn({ sessionId: "session-2", text: "hello" }),
       "runTurn should not wait for wrapped live events stream to close",
@@ -1383,7 +1392,7 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteRuntime({ env, orgId: "acme" });
+    const runtime = createPiRouteRuntime({ objects: createPiObjects(env), orgId: "acme" });
     const turned = await withTimeout(
       runtime.runTurn({ sessionId: "session-2", text: "poem" }),
       "runTurn should not wait for wrapped live events stream to close",
@@ -1425,7 +1434,7 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteRuntime({ env, orgId: "acme" });
+    const runtime = createPiRouteRuntime({ objects: createPiObjects(env), orgId: "acme" });
 
     await expect(runtime.createSession({ agent: "missing" })).rejects.toThrow(
       "Pi fragment returned 404: Agent not found",
@@ -1470,7 +1479,7 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteRuntime({ env, orgId: "acme" });
+    const runtime = createPiRouteRuntime({ objects: createPiObjects(env), orgId: "acme" });
 
     await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(
       "session events route did not return a jsonStream response",
@@ -1523,7 +1532,7 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteRuntime({ env, orgId: "acme" });
+    const runtime = createPiRouteRuntime({ objects: createPiObjects(env), orgId: "acme" });
 
     await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(
       "Pi fragment returned 409: Session not ready",
@@ -1587,7 +1596,7 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteRuntime({ env, orgId: "acme" });
+    const runtime = createPiRouteRuntime({ objects: createPiObjects(env), orgId: "acme" });
 
     await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(
       "Pi fragment returned 500: Detail unavailable",

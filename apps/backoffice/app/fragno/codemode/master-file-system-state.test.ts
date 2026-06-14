@@ -2,12 +2,11 @@ import { describe, expect, test, assert } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
-import { FileSystemStateBackend } from "@cloudflare/shell";
-
 import { MasterFileSystem } from "@/files/master-file-system";
 import type { ResolvedFileMount } from "@/files/types";
 
 import { BackofficeStateFileSystem } from "./master-file-system-state";
+import { BackofficeFileSystemStateBackend } from "./state-backend";
 
 describe("BackofficeStateFileSystem", () => {
   test("adapts reads, writes, mkdir, rm, stat, and directory entries", async () => {
@@ -123,13 +122,13 @@ describe("BackofficeStateFileSystem", () => {
     await expect(stateFs.glob("/missing/**/*.ts")).resolves.toEqual([]);
   });
 
-  test("creates a FileSystemStateBackend for state.* operations", async () => {
+  test("creates a BackofficeFileSystemStateBackend for state.* operations", async () => {
     const masterFs = createTestMasterFileSystem({
       "/workspace/input.json": JSON.stringify({ count: 1 }),
     });
-    const backend = new FileSystemStateBackend(new BackofficeStateFileSystem(masterFs));
+    const backend = new BackofficeFileSystemStateBackend(new BackofficeStateFileSystem(masterFs));
 
-    expect(backend).toBeInstanceOf(FileSystemStateBackend);
+    expect(backend).toBeInstanceOf(BackofficeFileSystemStateBackend);
     await expect(backend.readJson("/workspace/input.json")).resolves.toEqual({ count: 1 });
 
     await backend.writeFile("/workspace/output.txt", "done");

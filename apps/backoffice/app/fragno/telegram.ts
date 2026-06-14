@@ -1,15 +1,15 @@
-import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
-import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
-import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
 import { z } from "zod";
 
 import {
   createTelegram,
   createTelegramFragment,
   telegramAttachmentSchema,
+  type TelegramApi,
   type TelegramFragmentConfig,
   type TelegramMessageHookPayload,
 } from "@fragno-dev/telegram-fragment";
+
+import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 
 import type { AutomationKnownEvent } from "./automation/contracts";
 import { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES } from "./automation/contracts";
@@ -21,6 +21,7 @@ export type TelegramConfig = Pick<
 
 export type TelegramServerOptions = {
   hooks?: TelegramFragmentConfig["hooks"];
+  api?: TelegramApi;
 };
 
 export const telegramMessageReceivedPayloadSchema = z.object({
@@ -86,29 +87,21 @@ export const buildTelegramAutomationEvent = (
   ],
 });
 
-export function createAdapter(state?: DurableObjectState) {
-  const dialect = new DurableObjectDialect({
-    ctx: state!,
-  });
-
-  return new SqlAdapter({
-    dialect,
-    driverConfig: new CloudflareDurableObjectsDriverConfig(),
-  });
-}
-
 export function createTelegramServer(
   config: TelegramConfig,
-  state: DurableObjectState,
+  runtime: BackofficeFragmentRuntimeOptions,
   options: TelegramServerOptions = {},
 ): ReturnType<typeof createTelegramFragment> {
   const telegramConfig = createTelegram({
     ...config,
     hooks: options.hooks,
+    api: options.api,
   }).build();
 
   return createTelegramFragment(telegramConfig, {
-    databaseAdapter: createAdapter(state),
+    databaseAdapter: runtime.adapters.createAdapter({
+      kind: "telegram",
+    }),
     mountRoute: "/api/telegram",
   });
 }

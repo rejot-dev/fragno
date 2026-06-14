@@ -1,5 +1,6 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type {
   TelegramRuntime,
   TelegramAutomationFileMetadata,
@@ -159,13 +160,13 @@ export const createRouteBackedTelegramRuntime = (
 };
 
 export const createTelegramRuntime = ({
-  env,
+  objects,
   orgId,
 }: {
-  env: CloudflareEnv;
+  objects: BackofficeObjectRegistry;
   orgId: string;
 }): TelegramRuntime => {
-  const telegramDo = env.TELEGRAM.get(env.TELEGRAM.idFromName(orgId));
+  const telegramDo = objects.telegram.forOrg(orgId);
   const routeBacked = createRouteBackedTelegramRuntime({
     baseUrl: "https://telegram.do",
     fetch: async (outboundRequest) => telegramDo.fetch(outboundRequest),
