@@ -45,7 +45,7 @@ export const createAutomationsRuntime = (
         AUTOMATION_CODEMODE_SCRIPT: defineAutomationCodemodeWorkflow(config),
         PI_CODEMODE_SCRIPT: definePiCodemodeWorkflow(config),
       },
-      runtime: defaultFragnoRuntime,
+      runtime: config.runtime?.fragnoRuntime ?? defaultFragnoRuntime,
     },
     {
       databaseAdapter,

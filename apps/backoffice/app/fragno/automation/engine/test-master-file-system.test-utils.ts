@@ -1,5 +1,6 @@
 import { InMemoryFs } from "just-bash";
 
+import { createPathNotFoundFileSystemError } from "@/files/fs-errors";
 import { MasterFileSystem } from "@/files/master-file-system";
 import type { ResolvedFileMount } from "@/files/types";
 
@@ -41,14 +42,7 @@ const createMountedInMemoryFs = (files: Record<string, string | Uint8Array>) => 
     exists: (path: string) => fs.exists(path),
     stat: async (path: string) => {
       if (!(await fs.exists(path))) {
-        return {
-          isFile: false,
-          isDirectory: false,
-          isSymbolicLink: false,
-          mode: 0,
-          size: 0,
-          mtime: new Date(0),
-        };
+        throw createPathNotFoundFileSystemError("stat", path);
       }
       return fs.stat(path);
     },

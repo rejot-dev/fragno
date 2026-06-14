@@ -1,3 +1,5 @@
+import type { FragnoRuntime } from "@fragno-dev/core";
+
 import { cloudflareDatabaseAdapters } from "./cloudflare-database-adapters";
 import { createCloudflareBackofficeObjectRegistry } from "./cloudflare-durable-object-factory";
 import {
@@ -31,6 +33,7 @@ export type BackofficeRuntimeServices = {
   objects: BackofficeObjectRegistry;
   adapters: BackofficeDatabaseAdapterFactory;
   config: BackofficeRuntimeConfig;
+  fragnoRuntime?: FragnoRuntime;
 };
 
 export type BackofficeRuntimeServiceOverrides = Partial<
