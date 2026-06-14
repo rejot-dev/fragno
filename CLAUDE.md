@@ -8,9 +8,9 @@ frontend, backend, and database layers.
 
 ## Current status
 
-The project is PRE 1.0. That means we're fine with breaking changes, even in the data layer. We're
-hardcore dogfooding the meta framework, as well as full-stack libraries built on top of it with the
-goal to perfect the API surface.
+The project is PRE 1.0. That means FULL BREAKING CHANGES, even in the data layer. We're hardcore
+dogfooding the meta framework, as well as full-stack libraries built on top of it with the goal to
+perfect the API surface.
 
 ### Glossary
 
@@ -112,8 +112,6 @@ Automatic client/server code splitting happens in `@fragno-dev/unplugin-fragno`.
 
 ## Developing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
-
 We use Turborepo + PNPM. `pnpm exec turbo build types:check test --output-logs=errors-only`
 
 E.g.
@@ -122,3 +120,5 @@ E.g.
 - `pnpm exec turbo test --filter=./packages/fragment-workflows --output-logs=errors-only`
 
 And Oxlint + Oxfmt: `pnpm run lint:fix && pnpm run format:changed`
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
