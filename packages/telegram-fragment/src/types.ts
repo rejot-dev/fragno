@@ -493,7 +493,12 @@ export interface TelegramFragmentConfig {
   apiBaseUrl?: string;
   commands?: TelegramCommandRegistry;
   hooks?: TelegramHooks;
+  api?: TelegramApi;
 }
+
+export type TelegramFragmentDeps = {
+  telegramApi: TelegramApi;
+};
 
 export type TelegramConfigBuilder = {
   command: (command: TelegramCommandDefinition) => TelegramConfigBuilder;
