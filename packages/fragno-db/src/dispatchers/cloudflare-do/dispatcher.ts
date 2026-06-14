@@ -3,8 +3,8 @@ import type { DurableHooksProcessor } from "../../hooks/durable-hooks-processor"
 import type { HookNotifyContext, HookNotifySource } from "../../hooks/hooks";
 
 type AlarmStorage = {
+  getAlarm?: () => Promise<number | null>;
   setAlarm?: (timestamp: number | Date) => Promise<void>;
-  deleteAlarm?: () => Promise<void>;
 };
 
 export type DurableHooksDispatcherDurableObjectState = {
@@ -53,16 +53,16 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
           });
         });
     };
+    const rawGetAlarm = state.storage.getAlarm;
     const rawSetAlarm = state.storage.setAlarm;
-    const rawDeleteAlarm = state.storage.deleteAlarm;
 
     if (!rawSetAlarm) {
       throw new Error(
         "Durable hooks dispatcher requires state.storage.setAlarm to schedule alarms.",
       );
     }
+    const getAlarm = rawGetAlarm?.bind(state.storage);
     const setAlarm = rawSetAlarm.bind(state.storage);
-    const deleteAlarm = rawDeleteAlarm?.bind(state.storage);
 
     let processing = false;
     let queued = false;
@@ -121,8 +121,7 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
       });
       const nextWakeAt = await processor.getNextWakeAt();
       if (!nextWakeAt) {
-        await deleteAlarm?.();
-        DurableHooksLogger.debug("Durable hooks alarm cleared", {
+        DurableHooksLogger.debug("Durable hooks alarm idle", {
           namespace: processor.namespace,
           fields: {
             source,
@@ -133,7 +132,14 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
 
       const now = Date.now();
       const scheduledAt = new Date(Math.max(nextWakeAt.getTime(), now));
-      await setAlarm(scheduledAt);
+      const existingAlarm = await getAlarm?.();
+      if (
+        existingAlarm === undefined ||
+        existingAlarm === null ||
+        existingAlarm > scheduledAt.getTime()
+      ) {
+        await setAlarm(scheduledAt);
+      }
       DurableHooksLogger.debug("Durable hooks alarm scheduled", {
         namespace: processor.namespace,
         fields: {

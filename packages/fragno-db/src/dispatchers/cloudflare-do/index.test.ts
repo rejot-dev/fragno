@@ -3,6 +3,11 @@ import { afterEach, describe, expect, it, vi, assert } from "vitest";
 import { DurableHooksLogger } from "../../hooks/durable-hooks-logger";
 import { createDurableHooksDispatcherDurableObject } from "./dispatcher";
 
+const flushAlarmScheduling = async () => {
+  await Promise.resolve();
+  await Promise.resolve();
+};
+
 describe("createDurableHooksDispatcherDurableObject", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -27,17 +32,16 @@ describe("createDurableHooksDispatcherDurableObject", () => {
 
     handlerFactory({ storage: { setAlarm } }, {});
 
-    await Promise.resolve();
+    await flushAlarmScheduling();
     expect(setAlarm).toHaveBeenCalledTimes(1);
     expect(processDue).not.toHaveBeenCalled();
   });
 
-  it("should delete the alarm when no pending hooks exist", async () => {
+  it("should leave the alarm unchanged when no pending hooks exist", async () => {
     const processDue = vi.fn().mockResolvedValue(0);
     const getNextWakeAt = vi.fn().mockResolvedValue(null);
     const drain = vi.fn().mockResolvedValue(undefined);
     const setAlarm = vi.fn().mockResolvedValue(undefined);
-    const deleteAlarm = vi.fn().mockResolvedValue(undefined);
 
     const handlerFactory = createDurableHooksDispatcherDurableObject({
       createProcessor: () => ({
@@ -49,15 +53,14 @@ describe("createDurableHooksDispatcherDurableObject", () => {
       }),
     });
 
-    const handler = handlerFactory({ storage: { setAlarm, deleteAlarm } }, {});
+    const handler = handlerFactory({ storage: { setAlarm } }, {});
 
-    await Promise.resolve();
+    await flushAlarmScheduling();
     expect(getNextWakeAt).toHaveBeenCalledTimes(1);
 
     await handler.alarm?.();
 
     expect(processDue).toHaveBeenCalledTimes(1);
-    expect(deleteAlarm).toHaveBeenCalledTimes(1);
     expect(setAlarm).not.toHaveBeenCalled();
   });
 
@@ -78,7 +81,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     });
 
     const handler = handlerFactory({ storage: { setAlarm } }, {});
-    await Promise.resolve();
+    await flushAlarmScheduling();
     expect(setAlarm).toHaveBeenCalledTimes(1);
 
     const waitUntil = vi.fn();
@@ -92,16 +95,16 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     expect(setAlarm).toHaveBeenCalledTimes(2);
   });
 
-  it("should schedule alarm using max(nextWakeAt, now)", async () => {
+  it("should not postpone an existing due alarm", async () => {
     vi.useFakeTimers();
     const now = new Date("2024-01-01T00:00:00Z");
     vi.setSystemTime(now);
 
     const processDue = vi.fn().mockResolvedValue(0);
-    const getNextWakeAt = vi.fn().mockResolvedValue(new Date(now.getTime() - 10000));
+    const getNextWakeAt = vi.fn().mockResolvedValue(new Date(now.getTime() + 60000));
     const drain = vi.fn().mockResolvedValue(undefined);
+    const getAlarm = vi.fn().mockResolvedValue(now.getTime() - 1);
     const setAlarm = vi.fn().mockResolvedValue(undefined);
-    const deleteAlarm = vi.fn().mockResolvedValue(undefined);
 
     const handlerFactory = createDurableHooksDispatcherDurableObject({
       createProcessor: () => ({
@@ -113,9 +116,36 @@ describe("createDurableHooksDispatcherDurableObject", () => {
       }),
     });
 
-    const handler = handlerFactory({ storage: { setAlarm, deleteAlarm } }, {});
+    handlerFactory({ storage: { getAlarm, setAlarm } }, {});
 
-    await Promise.resolve();
+    await flushAlarmScheduling();
+    expect(getAlarm).toHaveBeenCalledTimes(1);
+    expect(setAlarm).not.toHaveBeenCalled();
+  });
+
+  it("should schedule alarm using max(nextWakeAt, now)", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2024-01-01T00:00:00Z");
+    vi.setSystemTime(now);
+
+    const processDue = vi.fn().mockResolvedValue(0);
+    const getNextWakeAt = vi.fn().mockResolvedValue(new Date(now.getTime() - 10000));
+    const drain = vi.fn().mockResolvedValue(undefined);
+    const setAlarm = vi.fn().mockResolvedValue(undefined);
+
+    const handlerFactory = createDurableHooksDispatcherDurableObject({
+      createProcessor: () => ({
+        processDue,
+        process: processDue,
+        getNextWakeAt,
+        drain,
+        namespace: "test",
+      }),
+    });
+
+    const handler = handlerFactory({ storage: { setAlarm } }, {});
+
+    await flushAlarmScheduling();
     expect(setAlarm).toHaveBeenCalledTimes(1);
 
     await handler.alarm?.();
@@ -150,7 +180,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     });
 
     const handler = handlerFactory({ storage: { setAlarm } }, {});
-    await Promise.resolve();
+    await flushAlarmScheduling();
 
     await handler.alarm?.();
     await handler.alarm?.();
@@ -191,7 +221,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     });
 
     const handler = handlerFactory({ storage: { setAlarm } }, {});
-    await Promise.resolve();
+    await flushAlarmScheduling();
 
     await handler.notify?.({ source: "request" });
     await Promise.resolve();
