@@ -7,6 +7,11 @@ import { z } from "zod";
 
 import type { ResolvedOtpConfirmedHookPayload } from "@fragno-dev/otp-fragment";
 
+import type { OtpObject } from "@/backoffice-runtime/object-registry";
+import {
+  createCloudflareDurableObjectRuntimeServices,
+  type BackofficeRuntimeServices,
+} from "@/backoffice-runtime/runtime-services";
 import { createDurableHookRepository, type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import {
   DEFAULT_IDENTITY_LINK_EXPIRY_MINUTES,
@@ -18,6 +23,8 @@ import {
   identityClaimPayloadSchema,
   type OtpFragment,
 } from "@/fragno/otp";
+
+import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 
 export type IssueIdentityClaimInput = {
   orgId: string;
@@ -79,26 +86,38 @@ const confirmIdentityClaimInputSchema = z.object({
   subjectUserId: z.string().trim().min(1),
 });
 
-export class Otp extends DurableObject<CloudflareEnv> {
-  #env: CloudflareEnv;
-  #state: DurableObjectState;
+export class InMemoryOtpObject implements OtpObject {
+  #state: BackofficeObjectState;
+  #runtime: BackofficeRuntimeServices;
   #host: FragmentDurableObjectHost<void, OtpFragment>;
   #fragment: OtpFragment | null = null;
 
-  constructor(state: DurableObjectState, env: CloudflareEnv) {
-    super(state, env);
-    this.#env = env;
+  constructor({
+    state,
+    env,
+    runtime,
+  }: {
+    state: BackofficeObjectState;
+    env?: unknown;
+    runtime: BackofficeRuntimeServices;
+  }) {
     this.#state = state;
+    this.#runtime = runtime;
     this.#host = createFragmentDurableObjectHost({
       name: "OTP",
       state,
       env,
       createRuntime: () =>
-        createOtpServer(state, {
-          hooks: {
-            onOtpConfirmed: this.#handleOtpConfirmed.bind(this),
+        createOtpServer(
+          {
+            adapters: this.#runtime.adapters,
           },
-        }),
+          {
+            hooks: {
+              onOtpConfirmed: this.#handleOtpConfirmed.bind(this),
+            },
+          },
+        ),
       onProcessError: (error) => {
         console.error("OTP hook processor error", error);
       },
@@ -142,9 +161,7 @@ export class Otp extends DurableObject<CloudflareEnv> {
     const claim = claimResult.data;
     const confirmation = confirmationResult.data;
 
-    const automationsDo = this.#env.AUTOMATIONS.get(this.#env.AUTOMATIONS.idFromName(claim.orgId));
-
-    await automationsDo.triggerIngestEvent(
+    await this.#runtime.objects.automations.forOrg(claim.orgId).triggerIngestEvent(
       buildIdentityClaimCompletedAutomationEvent({
         orgId: claim.orgId,
         userId: confirmation.subjectUserId,
@@ -229,5 +246,40 @@ export class Otp extends DurableObject<CloudflareEnv> {
     return await this.#host.fetch(this.#getFragment(), request, {
       waitUntil: this.#state.waitUntil.bind(this.#state),
     });
+  }
+}
+
+export class Otp extends DurableObject<CloudflareEnv> implements OtpObject {
+  #object: InMemoryOtpObject;
+
+  constructor(state: DurableObjectState, env: CloudflareEnv) {
+    super(state, env);
+    this.#object = new InMemoryOtpObject({
+      state,
+      env,
+      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
+    });
+  }
+
+  async issueIdentityClaim(input: IssueIdentityClaimInput): Promise<IssueIdentityClaimResult> {
+    return await this.#object.issueIdentityClaim(input);
+  }
+
+  async confirmIdentityClaim(
+    input: ConfirmIdentityClaimInput,
+  ): Promise<ConfirmIdentityClaimResult> {
+    return await this.#object.confirmIdentityClaim(input);
+  }
+
+  getDurableHookRepository() {
+    return this.#object.getDurableHookRepository();
+  }
+
+  async alarm(): Promise<void> {
+    await this.#object.alarm();
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    return await this.#object.fetch(request);
   }
 }

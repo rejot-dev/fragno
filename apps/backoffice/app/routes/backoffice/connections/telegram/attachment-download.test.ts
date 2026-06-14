@@ -9,7 +9,7 @@ vi.mock("@/fragno/auth/auth-server", () => ({
   getAuthMe: getAuthMeMock,
 }));
 
-vi.mock("@/cloudflare/cloudflare-utils", () => ({
+vi.mock("@/worker-runtime/durable-objects", () => ({
   getTelegramDurableObject: getTelegramDurableObjectMock,
 }));
 

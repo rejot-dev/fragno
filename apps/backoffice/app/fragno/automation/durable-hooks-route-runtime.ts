@@ -1,3 +1,5 @@
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import { getHookScope } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import type {
   DurableHookQueueOptions,
@@ -12,11 +14,13 @@ import type {
 type FragmentDurableHookRepository = DurableHookRepository<DurableHookQueueOptions>;
 
 const getDurableHookRepository = async ({
-  env,
+  objects,
+  config,
   orgId,
   fragment,
 }: {
-  env: CloudflareEnv;
+  objects: BackofficeObjectRegistry;
+  config: BackofficeRuntimeConfig;
   orgId: string;
   fragment: DurableHookFragment;
 }): Promise<FragmentDurableHookRepository> => {
@@ -26,22 +30,24 @@ const getDurableHookRepository = async ({
       `Unknown hook fragment '${fragment}'. Run hooks.scopes.list to discover available hook scopes.`,
     );
   }
-  return await scope.getRepository({ env, orgId });
+  return await scope.getRepository({ objects, config, orgId, origin: "https://backoffice.local" });
 };
 
 export const createRouteBackedDurableHooksRuntime = ({
-  env,
+  objects,
+  config,
   orgId,
 }: {
-  env: CloudflareEnv;
+  objects: BackofficeObjectRegistry;
+  config: BackofficeRuntimeConfig;
   orgId: string;
 }): DurableHooksRuntime => ({
   listHooks: async ({ fragment, cursor, pageSize }): Promise<DurableHookQueueResponse> => {
-    const repository = await getDurableHookRepository({ env, orgId, fragment });
+    const repository = await getDurableHookRepository({ objects, config, orgId, fragment });
     return await repository.getHookQueue({ cursor, pageSize });
   },
   getHook: async ({ fragment, hookId }) => {
-    const repository = await getDurableHookRepository({ env, orgId, fragment });
+    const repository = await getDurableHookRepository({ objects, config, orgId, fragment });
     return await repository.getHook(hookId);
   },
 });

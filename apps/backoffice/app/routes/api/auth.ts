@@ -1,4 +1,4 @@
-import { getAuthDurableObject } from "@/cloudflare/cloudflare-utils";
+import { getAuthDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { Route } from "./+types/auth";
 

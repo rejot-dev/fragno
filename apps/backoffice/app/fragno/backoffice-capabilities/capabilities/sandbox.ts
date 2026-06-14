@@ -7,11 +7,11 @@ export const sandboxCapability: BackofficeCapability = {
   runtimeToolNamespaces: ["sandbox"],
   connection: {
     configurable: false,
-    getStatus: async ({ env }) => ({
+    getStatus: async ({ config }) => ({
       id: "sandbox",
       label: "Sandbox",
       kind: "connection",
-      configured: Boolean(env.SANDBOX && env.SANDBOX_REGISTRY),
+      configured: config.bindings.sandbox && config.bindings.sandboxRegistry,
       config: { configurationScope: "environment" },
       nextSteps: ["Configure Cloudflare Sandbox and Sandbox Registry bindings."],
     }),

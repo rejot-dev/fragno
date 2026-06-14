@@ -2,6 +2,9 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { useEffect } from "react";
 import { Link, Outlet, useLoaderData, useLocation, useNavigate, useParams } from "react-router";
 
+import { BackofficePageHeader } from "@/components/backoffice";
+import { getAuthMe } from "@/fragno/auth/auth-server";
+import type { DurableHookQueueEntry, DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import {
   getCloudflareWorkersDurableObject,
   getAutomationsDurableObject,
@@ -12,10 +15,7 @@ import {
   getResendDurableObject,
   getTelegramDurableObject,
   getUploadDurableObject,
-} from "@/cloudflare/cloudflare-utils";
-import { BackofficePageHeader } from "@/components/backoffice";
-import { getAuthMe } from "@/fragno/auth/auth-server";
-import type { DurableHookQueueEntry, DurableHookQueueResponse } from "@/fragno/durable-hooks";
+} from "@/worker-runtime/durable-objects";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/durable-hooks-organisation";

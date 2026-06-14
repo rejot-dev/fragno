@@ -7,8 +7,8 @@ import {
   type ActionFunctionArgs,
 } from "react-router";
 
-import { getReson8DurableObject } from "@/cloudflare/cloudflare-utils";
 import { FormContainer, FormField } from "@/components/backoffice";
+import { getReson8DurableObject } from "@/worker-runtime/durable-objects";
 
 import { formatTimestamp, type Reson8ConfigState, type Reson8LayoutContext } from "./shared";
 

@@ -1,6 +1,6 @@
 import type { RouterContextProvider } from "react-router";
 
-import { getAutomationsDurableObject } from "@/cloudflare/cloudflare-utils";
+import { getAutomationsDurableObject } from "@/worker-runtime/durable-objects";
 
 const forwardToAutomations = async (
   request: Request,

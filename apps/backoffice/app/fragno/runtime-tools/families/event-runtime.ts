@@ -1,10 +1,12 @@
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+
 import type { AutomationEvent } from "../../automation/contracts";
 import type { AutomationEmitEventResult, EventRuntime } from "./event";
 
 export type { AutomationEmitEventResult, EventRuntime };
 
 export type CreateEventRuntimeOptions = {
-  env?: CloudflareEnv;
+  objects: BackofficeObjectRegistry;
   event: AutomationEvent;
 };
 
@@ -16,12 +18,9 @@ const buildIngestResult = (event: AutomationEvent): AutomationEmitEventResult =>
   eventType: event.eventType,
 });
 
-export const createEventRuntime = ({ env, event }: CreateEventRuntimeOptions): EventRuntime => ({
+export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRuntime => ({
   emitEvent: async ({ eventType, source, externalActorId, actorType, subjectUserId, payload }) => {
-    if (!env) {
-      throw new Error("event.emit is not configured");
-    }
-
+    const { event } = options;
     const orgId = event.orgId?.trim();
     if (!orgId) {
       throw new Error("event.emit requires an organisation id");
@@ -53,9 +52,16 @@ export const createEventRuntime = ({ env, event }: CreateEventRuntimeOptions): E
       subject: subjectUserId ? { userId: subjectUserId } : (event.subject ?? null),
     };
 
-    const automationsDo = env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(orgId));
-    await automationsDo.triggerIngestEvent(nextEvent);
+    await options.objects.automations.forOrg(orgId).triggerIngestEvent(nextEvent);
 
     return buildIngestResult(nextEvent);
+  },
+});
+
+export const createUnavailableEventRuntime = (
+  message = "event.emit is not configured",
+): EventRuntime => ({
+  emitEvent: async () => {
+    throw new Error(message);
   },
 });

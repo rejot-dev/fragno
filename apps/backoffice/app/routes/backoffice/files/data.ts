@@ -1,6 +1,5 @@
 import type { RouterContextProvider } from "react-router";
 
-import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import {
   createOrgFileSystem,
   ensureFolderPath,
@@ -15,6 +14,7 @@ import {
   type FilesNodeDetail,
   type MasterFileSystem,
 } from "@/files";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 export type FilesExplorerLoaderData = {
   tree: FilesExplorerTreeNode[];
@@ -39,8 +39,8 @@ export async function createBackofficeFilesFileSystem({
   context: Readonly<RouterContextProvider>;
   orgId: string;
 }): Promise<MasterFileSystem> {
-  const { env } = context.get(CloudflareContext);
-  return createOrgFileSystem({ orgId, env });
+  const { runtime } = context.get(BackofficeWorkerContext);
+  return createOrgFileSystem({ orgId, objects: runtime.objects });
 }
 
 export async function loadFilesExplorerData({

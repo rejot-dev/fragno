@@ -1,14 +1,12 @@
-import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
-import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
 import {
   createDurableHooksProcessor,
   type DurableHooksDispatcherDurableObjectHandler,
 } from "@fragno-dev/db/dispatchers/cloudflare-do";
-import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
+import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 import { createAutomationFragment, type AutomationFragmentConfig } from "@/fragno/automation";
 import {
   defineAutomationCodemodeWorkflow,
@@ -27,20 +25,20 @@ const jsonResponse = (payload: unknown, status = 200) =>
     headers: { "content-type": "application/json" },
   });
 
-const createAutomationsAdapter = (state: DurableObjectState) =>
-  new SqlAdapter({
-    dialect: new DurableObjectDialect({ ctx: state }),
-    driverConfig: new CloudflareDurableObjectsDriverConfig(),
-  });
-
 export const createAutomationsRuntime = (
-  state: DurableObjectState,
+  runtime: BackofficeFragmentRuntimeOptions,
   config: Pick<
     AutomationFragmentConfig,
-    "env" | "createPiAutomationContext" | "automationFileSystem" | "getAutomationFileSystem"
+    | "env"
+    | "runtime"
+    | "createPiAutomationContext"
+    | "automationFileSystem"
+    | "getAutomationFileSystem"
   > = {},
 ) => {
-  const databaseAdapter = createAutomationsAdapter(state);
+  const databaseAdapter = runtime.adapters.createAdapter({
+    kind: "automations",
+  });
   const workflowsFragment = createWorkflowsFragment(
     {
       workflows: {
@@ -57,6 +55,7 @@ export const createAutomationsRuntime = (
   const automationFragment = createAutomationFragment(
     {
       env: config.env,
+      runtime: config.runtime,
       createPiAutomationContext: config.createPiAutomationContext,
       automationFileSystem: config.automationFileSystem,
       getAutomationFileSystem: config.getAutomationFileSystem,

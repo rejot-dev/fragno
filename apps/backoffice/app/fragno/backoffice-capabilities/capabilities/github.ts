@@ -44,11 +44,11 @@ export const githubCapability: BackofficeCapability = {
   runtimeToolNamespaces: [],
   connection: {
     configurable: false,
-    getStatus: async ({ env }) => ({
+    getStatus: async ({ config }) => ({
       id: "github",
       label: "GitHub",
       kind: "connection",
-      configured: Boolean(env.GITHUB),
+      configured: config.bindings.github,
       config: { configurationScope: "environment" },
       nextSteps: ["Configure the GitHub App environment and installation."],
     }),
@@ -57,8 +57,8 @@ export const githubCapability: BackofficeCapability = {
     {
       id: "github",
       label: "GitHub",
-      getRepository: ({ env, orgId }) =>
-        env.GITHUB.get(env.GITHUB.idFromName(orgId)).getDurableHookRepository(),
+      getRepository: ({ objects, orgId }) =>
+        objects.github.forOrg(orgId).getDurableHookRepository(),
     },
   ],
   automationEvents: [

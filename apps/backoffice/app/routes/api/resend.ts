@@ -1,4 +1,4 @@
-import { getResendDurableObject } from "@/cloudflare/cloudflare-utils";
+import { getResendDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { Route } from "./+types/resend";
 

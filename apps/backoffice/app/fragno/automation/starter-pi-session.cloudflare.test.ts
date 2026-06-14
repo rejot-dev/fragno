@@ -6,6 +6,7 @@ import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 import { workflowsFragmentDefinition, workflowsRoutesFactory } from "@fragno-dev/workflows";
 
+import { createCloudflareBackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { WORKSPACE_STARTER_CONTENT } from "@/files";
 
 import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "./contracts";
@@ -238,8 +239,10 @@ const callWorkflowsRoute = async ({
 const buildStarterPiTestContext = async () => {
   const testEnv = createTestEnv();
   const fileSystem = await createAutomationFileSystem();
+  const runtime = createCloudflareBackofficeRuntimeServices(testEnv);
   const workflowConfig = {
     env: testEnv,
+    runtime,
     getAutomationFileSystem: async () => fileSystem,
   };
 
@@ -260,6 +263,7 @@ const buildStarterPiTestContext = async () => {
       instantiate(automationFragmentDefinition)
         .withConfig({
           env: testEnv,
+          runtime,
           createPiAutomationContext: () => ({
             runtime: {
               createSession: vi.fn(),

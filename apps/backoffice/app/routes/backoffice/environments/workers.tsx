@@ -9,12 +9,12 @@ import type {
   CloudflareDeploymentSummary,
 } from "@fragno-dev/cloudflare-fragment";
 
+import { BackofficePageHeader } from "@/components/backoffice";
+import { getAuthMe } from "@/fragno/auth/auth-server";
 import {
   buildCloudflareWorkerDispatchPath,
   isCloudflareWorkerDispatchEnabled,
-} from "@/cloudflare/worker-dispatch";
-import { BackofficePageHeader } from "@/components/backoffice";
-import { getAuthMe } from "@/fragno/auth/auth-server";
+} from "@/worker-runtime/cloudflare-worker-dispatch";
 
 import type { Route } from "./+types/workers";
 import {

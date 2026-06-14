@@ -1,6 +1,5 @@
 import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 
-import { getSandboxManager } from "@/cloudflare/sandbox-manager";
 import { BackofficePageHeader } from "@/components/backoffice";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import type {
@@ -10,6 +9,7 @@ import type {
   StartSandboxOptions,
 } from "@/sandbox/contracts";
 import { parseSleepAfterInput } from "@/sandbox/sleep-after";
+import { getSandboxManager } from "@/worker-runtime/sandbox-manager";
 
 import type { Route } from "./+types/cf-sandbox";
 import { toCfSandboxPath, type CfSandboxView } from "./cf-sandbox-path";

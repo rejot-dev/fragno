@@ -1,11 +1,8 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { createSandboxRouteRuntime } from "./sandbox-route-runtime";
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 
-const createNamespace = <TStub>(stub: TStub) => ({
-  idFromName: vi.fn((name: string) => ({ name })),
-  get: vi.fn(() => stub),
-});
+import { createSandboxRouteRuntime } from "./sandbox-route-runtime";
 
 describe("createSandboxRouteRuntime", () => {
   test("applies route sandbox configuration before starting a sandbox", async () => {
@@ -20,14 +17,13 @@ describe("createSandboxRouteRuntime", () => {
       exec: vi.fn(async () => ({ success: true, stdout: "", stderr: "", exitCode: 0 })),
       destroy: vi.fn(async () => undefined),
     };
-    const sandboxNamespace = createNamespace(sandbox);
-    const registryNamespace = createNamespace(registry);
-    const env = {
-      SANDBOX: sandboxNamespace,
-      SANDBOX_REGISTRY: registryNamespace,
-    } as unknown as CloudflareEnv;
-
-    const runtime = createSandboxRouteRuntime({ env, orgId: " org-1 " });
+    const runtime = createSandboxRouteRuntime({
+      objects: {
+        sandbox: { forName: vi.fn(() => sandbox) },
+        sandboxRegistry: { forOrg: vi.fn(() => registry) },
+      } as unknown as BackofficeObjectRegistry,
+      orgId: " org-1 ",
+    });
 
     await expect(
       runtime.startSandbox({ id: "Dev", keepAlive: true, sleepAfter: "15m" }),

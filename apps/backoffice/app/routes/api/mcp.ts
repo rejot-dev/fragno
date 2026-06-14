@@ -1,5 +1,5 @@
-import { getMcpDurableObject } from "@/cloudflare/cloudflare-utils";
 import { getAuthMe } from "@/fragno/auth/auth-server";
+import { getMcpDurableObject } from "@/worker-runtime/durable-objects";
 
 import { buildBackofficeLoginPath } from "../backoffice/auth-navigation";
 import type { Route } from "./+types/mcp";

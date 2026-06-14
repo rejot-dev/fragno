@@ -7,11 +7,11 @@ export const cloudflareCapability: BackofficeCapability = {
   runtimeToolNamespaces: [],
   connection: {
     configurable: false,
-    getStatus: async ({ env }) => ({
+    getStatus: async ({ config }) => ({
       id: "cloudflare",
       label: "Cloudflare Workers",
       kind: "connection",
-      configured: Boolean(env.CLOUDFLARE_WORKERS),
+      configured: config.bindings.cloudflareWorkers,
       config: { configurationScope: "environment" },
       nextSteps: ["Configure Cloudflare Worker bindings and secrets."],
     }),
@@ -20,10 +20,8 @@ export const cloudflareCapability: BackofficeCapability = {
     {
       id: "cloudflare",
       label: "Cloudflare Workers",
-      getRepository: async ({ env, orgId }) => {
-        const repository = await env.CLOUDFLARE_WORKERS.get(
-          env.CLOUDFLARE_WORKERS.idFromName(orgId),
-        ).getDurableHookRepository();
+      getRepository: async ({ objects, orgId }) => {
+        const repository = await objects.cloudflareWorkers.forOrg(orgId).getDurableHookRepository();
         return {
           getHookQueue: async (options) => await repository.getHookQueue({ ...options, orgId }),
           getHook: async (hookId, options) =>

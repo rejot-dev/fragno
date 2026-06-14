@@ -63,7 +63,9 @@ const createState = (initialStorage?: Record<string, unknown>) => {
     return callback();
   });
 
-  return { storage, waitUntil, blockConcurrencyWhile } as unknown as DurableObjectState;
+  const id = { toString: () => "cloudflare-workers:test" };
+
+  return { id, storage, waitUntil, blockConcurrencyWhile } as unknown as DurableObjectState;
 };
 
 describe("CloudflareWorkers Durable Object", () => {

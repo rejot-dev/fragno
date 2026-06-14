@@ -1,4 +1,4 @@
-import { getTelegramDurableObject } from "@/cloudflare/cloudflare-utils";
+import { getTelegramDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { Route } from "./+types/telegram";
 

@@ -1,4 +1,4 @@
-import { getGitHubDurableObject } from "@/cloudflare/cloudflare-utils";
+import { getGitHubDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { Route } from "./+types/github";
 

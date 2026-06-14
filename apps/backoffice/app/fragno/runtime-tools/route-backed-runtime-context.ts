@@ -1,3 +1,4 @@
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
 import { createRouteBackedDurableHooksRuntime } from "@/fragno/automation/durable-hooks-route-runtime";
@@ -18,7 +19,7 @@ import { getRuntimeToolNamespacesByCapability, runtimeToolFamilies } from "./too
 const normalizeOrgId = (orgId: string | undefined) => orgId?.trim() || undefined;
 
 export type RouteBackedRuntimeContextOptions = {
-  env: CloudflareEnv;
+  runtime: BackofficeRuntimeServices;
   orgId: string;
   pi?: { runtime: PiRuntime } | null;
   defaultActor?: AutomationEventActor | null;
@@ -32,7 +33,7 @@ export type RouteBackedRuntimeContextOptions = {
  * context and only add `automation` / `event` on top.
  */
 export const createRouteBackedRuntimeContext = ({
-  env,
+  runtime,
   orgId,
   pi,
   defaultActor,
@@ -46,53 +47,72 @@ export const createRouteBackedRuntimeContext = ({
     ...(typeof defaultActor === "undefined" ? {} : { defaultActor }),
     backoffice: {
       runtime: createBackofficeCapabilitiesRuntime({
-        env,
+        objects: runtime.objects,
+        config: runtime.config,
         orgId: normalizedOrgId,
         runtimeToolNamespacesByCapability: getRuntimeToolNamespacesByCapability(),
       }),
     },
     automation: null,
     automations: {
-      runtime: createRouteBackedAutomationStoreRuntime({ env, orgId: normalizedOrgId }),
+      runtime: createRouteBackedAutomationStoreRuntime({
+        objects: runtime.objects,
+        orgId: normalizedOrgId,
+      }),
     },
     workflow: {
-      runtime: createRouteBackedAutomationWorkflowRuntime({ env, orgId: normalizedOrgId }),
+      runtime: createRouteBackedAutomationWorkflowRuntime({
+        objects: runtime.objects,
+        orgId: normalizedOrgId,
+      }),
     },
     durableHooks: {
-      runtime: createRouteBackedDurableHooksRuntime({ env, orgId: normalizedOrgId }),
+      runtime: createRouteBackedDurableHooksRuntime({
+        objects: runtime.objects,
+        config: runtime.config,
+        orgId: normalizedOrgId,
+      }),
     },
     internal: {
       runtime: createInternalRuntime({
-        env,
+        objects: runtime.objects,
+        config: runtime.config,
         orgId: normalizedOrgId,
         families: runtimeToolFamilies,
       }),
     },
-    mcp: env.MCP
+    mcp: runtime.config.bindings.mcp
       ? {
-          runtime: createMcpRuntime({ env, orgId: normalizedOrgId }),
+          runtime: createMcpRuntime({ objects: runtime.objects, orgId: normalizedOrgId }),
         }
       : null,
     otp: {
-      runtime: createOtpRuntime({ env, orgId: normalizedOrgId }),
+      runtime: createOtpRuntime({
+        objects: runtime.objects,
+        config: runtime.config,
+        orgId: normalizedOrgId,
+      }),
     },
     pi: pi ?? {
-      runtime: createPiRouteRuntime({ env, orgId: normalizedOrgId }),
+      runtime: createPiRouteRuntime({ objects: runtime.objects, orgId: normalizedOrgId }),
     },
     reson8: {
-      runtime: createReson8RouteRuntime({ env, orgId: normalizedOrgId }),
+      runtime: createReson8RouteRuntime({ objects: runtime.objects, orgId: normalizedOrgId }),
     },
     resend: {
-      runtime: createResendRouteRuntime({ env, orgId: normalizedOrgId }),
+      runtime: createResendRouteRuntime({ objects: runtime.objects, orgId: normalizedOrgId }),
     },
     sandbox:
-      env.SANDBOX && env.SANDBOX_REGISTRY
+      runtime.config.bindings.sandbox && runtime.config.bindings.sandboxRegistry
         ? {
-            runtime: createSandboxRouteRuntime({ env, orgId: normalizedOrgId }),
+            runtime: createSandboxRouteRuntime({
+              objects: runtime.objects,
+              orgId: normalizedOrgId,
+            }),
           }
         : null,
     telegram: {
-      runtime: createTelegramRuntime({ env, orgId: normalizedOrgId }),
+      runtime: createTelegramRuntime({ objects: runtime.objects, orgId: normalizedOrgId }),
     },
   };
 };

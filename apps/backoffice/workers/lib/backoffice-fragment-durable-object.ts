@@ -92,18 +92,29 @@ export type BackofficeOutboxItem = {
   lastError?: string;
 };
 
+export type BackofficeObjectState = Pick<
+  DurableObjectState,
+  "storage" | "blockConcurrencyWhile" | "waitUntil"
+>;
+
+export type BackofficeFragmentDurableObjectCreateRuntimeContext<TEnv = CloudflareEnv> =
+  FragmentDurableObjectHostContext<TEnv> & {
+    orgId: string;
+  };
+
 export type BackofficeFragmentDurableObjectOptions<
   TStored,
   TSource,
   TRuntime,
   TOutbox extends BackofficeOutboxItem = BackofficeOutboxItem,
+  TEnv = CloudflareEnv,
 > = {
   /** Human-readable fragment/DO name used in logs, errors, and default messages. */
   name: string;
-  /** The Durable Object state from the class constructor. */
-  state: DurableObjectState;
-  /** The Worker environment from the class constructor. */
-  env: CloudflareEnv;
+  /** The object state used by the fragment host. */
+  state: BackofficeObjectState;
+  /** Runtime-specific environment passed through to hosted fragments. */
+  env: TEnv;
   /** Storage key for the persisted config. Defaults to `${name.toLowerCase()}-config`. */
   configKey?: string;
   /** Storage key for the persisted outbox. Defaults to `${name.toLowerCase()}-outbox`. */
@@ -140,7 +151,7 @@ export type BackofficeFragmentDurableObjectOptions<
   /** Builds the raw fragment or multi-fragment runtime from the derived `source`. */
   createRuntime: (
     source: TSource,
-    context: FragmentDurableObjectHostContext<CloudflareEnv>,
+    context: BackofficeFragmentDurableObjectCreateRuntimeContext<TEnv>,
   ) => TRuntime | Promise<TRuntime>;
   /** Single-fragment runtimes can omit this; multi-fragment runtimes should provide it. */
   getMigrationFragments?: (runtime: TRuntime) => readonly AnyFragnoInstantiatedDatabaseFragment[];
@@ -159,7 +170,7 @@ export type BackofficeFragmentDurableObjectOptions<
   mounts?: readonly FragmentDurableObjectMount<TRuntime>[];
   /** Minimal persisted outbox support. Items are stored separately from config. */
   outbox?: {
-    dispatch: (item: TOutbox, context: { env: CloudflareEnv; stored: TStored }) => Promise<void>;
+    dispatch: (item: TOutbox, context: { env: TEnv; stored: TStored }) => Promise<void>;
     retryDelayMs?: number;
   };
 };
@@ -256,8 +267,9 @@ export function createBackofficeFragmentDurableObject<
   TSource = TStored,
   TRuntime = never,
   TOutbox extends BackofficeOutboxItem = BackofficeOutboxItem,
+  TEnv = CloudflareEnv,
 >(
-  options: BackofficeFragmentDurableObjectOptions<TStored, TSource, TRuntime, TOutbox>,
+  options: BackofficeFragmentDurableObjectOptions<TStored, TSource, TRuntime, TOutbox, TEnv>,
 ): BackofficeFragmentDurableObject<TStored, TSource, TRuntime, TOutbox> {
   const configKey = options.configKey ?? defaultConfigKey(options.name);
   const outboxKey = options.outboxKey ?? `${options.name.toLowerCase()}-outbox`;
@@ -284,11 +296,17 @@ export function createBackofficeFragmentDurableObject<
     }
   };
 
+  let initializingOrgId: string | null = null;
   const fragmentHost = createFragmentDurableObjectHost({
     name: options.name,
-    state: options.state,
+    state: options.state as DurableObjectState,
     env: options.env,
-    createRuntime: options.createRuntime,
+    createRuntime: (source: TSource, context: FragmentDurableObjectHostContext<TEnv>) => {
+      if (!initializingOrgId) {
+        throw new Error(`${options.name} runtime initialization requires an organisation id.`);
+      }
+      return options.createRuntime(source, { ...context, orgId: initializingOrgId });
+    },
     getMigrationFragments: options.getMigrationFragments,
     getHookFragments: options.getHookFragments,
     hostRuntime: options.hostRuntime,
@@ -352,7 +370,7 @@ export function createBackofficeFragmentDurableObject<
       return current;
     }
 
-    requireStoredOrgId(stored);
+    const orgId = requireStoredOrgId(stored);
 
     const source = toSource(stored);
     const nextFingerprint = fingerprint(source, stored);
@@ -368,6 +386,7 @@ export function createBackofficeFragmentDurableObject<
     }
 
     initializingFingerprint = nextFingerprint;
+    initializingOrgId = orgId;
     initializing = fragmentHost
       .initialize(source)
       .then(async (runtime) => {
@@ -388,6 +407,7 @@ export function createBackofficeFragmentDurableObject<
       .finally(() => {
         initializing = null;
         initializingFingerprint = null;
+        initializingOrgId = null;
       });
 
     return initializing;

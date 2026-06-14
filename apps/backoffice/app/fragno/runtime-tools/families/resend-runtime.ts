@@ -9,6 +9,7 @@ import type {
   ResendThreadSummary,
 } from "@fragno-dev/resend-fragment";
 
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { ResendFragment } from "@/fragno/resend";
 
 import {
@@ -286,13 +287,13 @@ export const createRouteBackedResendRuntime = (
 };
 
 export const createResendRouteRuntime = ({
-  env,
+  objects,
   orgId,
 }: {
-  env: CloudflareEnv;
+  objects: BackofficeObjectRegistry;
   orgId: string;
 }): ResendRuntime => {
-  const resendDo = env.RESEND.get(env.RESEND.idFromName(orgId));
+  const resendDo = objects.resend.forOrg(orgId);
   return createRouteBackedResendRuntime({
     baseUrl: "https://resend.do",
     fetch: resendDo.fetch.bind(resendDo),

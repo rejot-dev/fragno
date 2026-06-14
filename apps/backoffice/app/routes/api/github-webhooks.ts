@@ -1,10 +1,10 @@
 import type { RouterContextProvider } from "react-router";
 
-import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import {
   getGitHubDurableObject,
   getGitHubWebhookRouterDurableObject,
-} from "@/cloudflare/cloudflare-utils";
+} from "@/worker-runtime/durable-objects";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 const jsonResponse = (payload: unknown, status = 200) =>
   new Response(JSON.stringify(payload), {
@@ -133,7 +133,7 @@ const forwardWebhook = async (request: Request, context: Readonly<RouterContextP
   const webhookMeta = getWebhookLogContext(request);
   const { installationId, payloadText, payloadBytes, parseError } =
     await extractWebhookPayload(request);
-  const { env } = context.get(CloudflareContext);
+  const { env } = context.get(BackofficeWorkerContext);
 
   const webhookSecret = env.GITHUB_APP_WEBHOOK_SECRET?.trim() ?? "";
   if (!webhookSecret) {

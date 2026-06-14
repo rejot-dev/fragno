@@ -9,12 +9,12 @@ import {
   useOutletContext,
 } from "react-router";
 
+import { FormContainer } from "@/components/backoffice";
+import { getAuthMe } from "@/fragno/auth/auth-server";
 import {
   getGitHubDurableObject,
   getGitHubWebhookRouterDurableObject,
-} from "@/cloudflare/cloudflare-utils";
-import { FormContainer } from "@/components/backoffice";
-import { getAuthMe } from "@/fragno/auth/auth-server";
+} from "@/worker-runtime/durable-objects";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
 import type { Route } from "./+types/configuration";

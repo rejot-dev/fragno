@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Form, useActionData, useNavigation, useOutletContext } from "react-router";
 
-import { getResendDurableObject } from "@/cloudflare/cloudflare-utils";
 import { FormContainer, FormField, WizardStepper } from "@/components/backoffice";
+import { getResendDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { Route } from "./+types/configuration";
 import { formatTimestamp, type ResendConfigState, type ResendLayoutContext } from "./shared";

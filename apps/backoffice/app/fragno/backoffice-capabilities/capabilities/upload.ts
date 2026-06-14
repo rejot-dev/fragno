@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type {
   BackofficeCapability,
   ConnectionStatus,
@@ -16,8 +17,8 @@ export const uploadConfigureInputSchema = z
   .passthrough();
 
 const capability = { id: "upload", label: "Upload", kind: "connection" } as const;
-const getUploadDo = (env: CloudflareEnv, orgId: string) =>
-  env.UPLOAD.get(env.UPLOAD.idFromName(orgId));
+const getUploadDo = (objects: BackofficeObjectRegistry, orgId: string) =>
+  objects.upload.forOrg(orgId);
 
 type UploadAdminConfigResponse = {
   configured?: boolean;
@@ -60,15 +61,15 @@ export const uploadCapability: BackofficeCapability = {
       { name: "r2", secret: true, description: "R2 provider credentials/configuration payload." },
       { name: "r2Binding", description: "R2 binding provider configuration payload." },
     ],
-    getStatus: async ({ env, orgId }) =>
-      toUploadStatus(await getUploadDo(env, orgId).getAdminConfig()),
-    verify: async ({ env, orgId }) =>
-      toUploadStatus(await getUploadDo(env, orgId).getAdminConfig()),
-    reset: async ({ env, orgId }) =>
-      toUploadStatus(await getUploadDo(env, orgId).resetAdminConfig()),
-    configure: async ({ env, orgId, origin, payload }) =>
+    getStatus: async ({ objects, orgId }) =>
+      toUploadStatus(await getUploadDo(objects, orgId).getAdminConfig()),
+    verify: async ({ objects, orgId }) =>
+      toUploadStatus(await getUploadDo(objects, orgId).getAdminConfig()),
+    reset: async ({ objects, orgId }) =>
+      toUploadStatus(await getUploadDo(objects, orgId).resetAdminConfig()),
+    configure: async ({ objects, orgId, origin, payload }) =>
       toUploadStatus(
-        await getUploadDo(env, orgId).setAdminConfig(
+        await getUploadDo(objects, orgId).setAdminConfig(
           uploadConfigureInputSchema.parse(payload),
           orgId,
           origin,
@@ -79,7 +80,7 @@ export const uploadCapability: BackofficeCapability = {
     {
       id: "upload",
       label: "Upload",
-      getRepository: ({ env, orgId }) => getUploadDo(env, orgId).getDurableHookRepository(),
+      getRepository: ({ objects, orgId }) => getUploadDo(objects, orgId).getDurableHookRepository(),
     },
   ],
 };

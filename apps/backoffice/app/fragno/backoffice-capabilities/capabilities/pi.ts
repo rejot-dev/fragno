@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type {
   BackofficeCapability,
   ConnectionStatus,
@@ -54,7 +55,7 @@ const piCapabilityConfiguredSubjectSchema = z.object({
 });
 
 const capability = { id: "pi", label: "Pi", kind: "connection" } as const;
-const getPiDo = (env: CloudflareEnv, orgId: string) => env.PI.get(env.PI.idFromName(orgId));
+const getPiDo = (objects: BackofficeObjectRegistry, orgId: string) => objects.pi.forOrg(orgId);
 
 type PiAdminConfigResponse = {
   configured?: boolean;
@@ -92,12 +93,15 @@ export const piCapability: BackofficeCapability = {
       { name: "apiKeys.gemini", secret: true, description: "Gemini API key." },
       { name: "harnesses", description: "Harness configuration array." },
     ],
-    getStatus: async ({ env, orgId }) => toPiStatus(await getPiDo(env, orgId).getAdminConfig()),
-    verify: async ({ env, orgId }) => toPiStatus(await getPiDo(env, orgId).getAdminConfig()),
-    reset: async ({ env, orgId }) => toPiStatus(await getPiDo(env, orgId).resetAdminConfig()),
-    configure: async ({ env, orgId, payload }) =>
+    getStatus: async ({ objects, orgId }) =>
+      toPiStatus(await getPiDo(objects, orgId).getAdminConfig()),
+    verify: async ({ objects, orgId }) =>
+      toPiStatus(await getPiDo(objects, orgId).getAdminConfig()),
+    reset: async ({ objects, orgId }) =>
+      toPiStatus(await getPiDo(objects, orgId).resetAdminConfig()),
+    configure: async ({ objects, orgId, payload }) =>
       toPiStatus(
-        await getPiDo(env, orgId).setAdminConfig({
+        await getPiDo(objects, orgId).setAdminConfig({
           ...piConfigureInputSchema.parse(payload),
           orgId,
         }),
@@ -107,12 +111,13 @@ export const piCapability: BackofficeCapability = {
     {
       id: "pi",
       label: "Pi",
-      getRepository: ({ env, orgId }) => getPiDo(env, orgId).getDurableHookRepository("pi"),
+      getRepository: ({ objects, orgId }) => getPiDo(objects, orgId).getDurableHookRepository("pi"),
     },
     {
       id: "pi-workflows",
       label: "Pi workflows",
-      getRepository: ({ env, orgId }) => getPiDo(env, orgId).getDurableHookRepository("workflows"),
+      getRepository: ({ objects, orgId }) =>
+        getPiDo(objects, orgId).getDurableHookRepository("workflows"),
     },
   ],
   automationEvents: [

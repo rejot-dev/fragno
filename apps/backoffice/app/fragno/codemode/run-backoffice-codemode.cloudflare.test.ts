@@ -38,6 +38,31 @@ describe("runBackofficeCodemode", () => {
     await expect(fs.readFile("/workspace/output.txt")).resolves.toBe("hello codemode");
   });
 
+  test("awaits promise-valued expression codemode", async () => {
+    const fs = createTestMasterFileSystem({
+      "/workspace/input.txt": "hello expression",
+    });
+
+    const result = await runBackofficeCodemode({
+      env,
+      fs,
+      code: `state.readFile("/workspace/input.txt")`,
+    });
+
+    expect(result.error).toBeUndefined();
+    assert(result.result === "hello expression");
+  });
+
+  test("reports unsupported test state tools explicitly", async () => {
+    const result = await runBackofficeCodemode({
+      env,
+      fs: createTestMasterFileSystem({}),
+      code: `async () => await state.find("/")`,
+    });
+
+    assert(result.error === "state.find is not implemented for test codemode.");
+  });
+
   test("calls automation identity tools through codemode providers", async () => {
     const calls: unknown[] = [];
     const actor = { scope: "external", source: "telegram", type: "chat", id: "chat-123" } as const;

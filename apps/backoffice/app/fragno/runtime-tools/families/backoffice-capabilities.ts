@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import {
   getConnectionCapability,
@@ -740,185 +742,194 @@ const automationEventsCatalogGetTool = defineBackofficeRuntimeTool({
 });
 
 export const createBackofficeCapabilitiesRuntime = ({
-  env,
+  objects,
+  config,
   orgId,
   origin = "https://backoffice.local",
   runtimeToolNamespacesByCapability,
 }: {
-  env: CloudflareEnv;
+  objects: BackofficeObjectRegistry;
+  config: BackofficeRuntimeConfig;
   orgId: string;
   origin?: string;
   runtimeToolNamespacesByCapability?: ReadonlyMap<string, readonly string[]>;
-}): BackofficeCapabilitiesRuntime => ({
-  listCapabilities: async () =>
-    await Promise.all(
-      backofficeCapabilities.map(async (capability) => {
-        if (!capability.connection) {
-          return {
-            id: capability.id,
-            label: capability.label,
-            kind: capability.kind,
-            available: true,
-            configured: true,
-            healthy: true,
-          };
-        }
-        try {
-          const status = await capability.connection.getStatus({ env, orgId });
-          return {
-            id: capability.id,
-            label: capability.label,
-            kind: capability.kind,
-            available: true,
-            configured: status.configured,
-            ...(status.verification ? { healthy: status.verification.ok } : {}),
-            ...(status.missing?.length ? { reason: `missing: ${status.missing.join(", ")}` } : {}),
-          };
-        } catch (error) {
-          return {
-            id: capability.id,
-            label: capability.label,
-            kind: capability.kind,
-            available: false,
-            configured: false,
-            healthy: false,
-            reason: error instanceof Error ? error.message : String(error),
-          };
-        }
-      }),
-    ),
-  listHookScopes: async () => {
-    const statuses = new Map(
-      (await Promise.all(
+}): BackofficeCapabilitiesRuntime => {
+  const capabilityContext = { objects, config, orgId, origin };
+
+  return {
+    listCapabilities: async () =>
+      await Promise.all(
         backofficeCapabilities.map(async (capability) => {
           if (!capability.connection) {
-            return [capability.id, { configured: true, healthy: true }] as const;
+            return {
+              id: capability.id,
+              label: capability.label,
+              kind: capability.kind,
+              available: true,
+              configured: true,
+              healthy: true,
+            };
           }
-          const status = await capability.connection.getStatus({ env, orgId });
-          return [
-            capability.id,
-            {
+          try {
+            const status = await capability.connection.getStatus(capabilityContext);
+            return {
+              id: capability.id,
+              label: capability.label,
+              kind: capability.kind,
+              available: true,
               configured: status.configured,
-              healthy: status.verification?.ok,
-            },
-          ] as const;
+              ...(status.verification ? { healthy: status.verification.ok } : {}),
+              ...(status.missing?.length
+                ? { reason: `missing: ${status.missing.join(", ")}` }
+                : {}),
+            };
+          } catch (error) {
+            return {
+              id: capability.id,
+              label: capability.label,
+              kind: capability.kind,
+              available: false,
+              configured: false,
+              healthy: false,
+              reason: error instanceof Error ? error.message : String(error),
+            };
+          }
         }),
-      )) as readonly (readonly [string, { configured: boolean; healthy?: boolean }])[],
-    );
-    return listHookScopes().map((scope) => ({ ...scope, ...statuses.get(scope.capabilityId) }));
-  },
-  listConnections: async () =>
-    await Promise.all(
-      listConnectionCapabilities().map(async (capability) => {
-        const status = await capability.connection!.getStatus({ env, orgId });
-        return {
-          id: capability.id,
-          label: capability.label,
-          kind: capability.kind,
-          configured: status.configured,
-          hookScopes: (capability.hooks ?? []).map((hook) => hook.id),
-          runtimeToolNamespaces: [
-            ...(runtimeToolNamespacesByCapability?.get(capability.id) ??
-              capability.runtimeToolNamespaces ??
-              []),
-          ],
-          automationEvents: (capability.automationEvents ?? []).map(
-            (event) => `${event.source}:${event.eventType}`,
-          ),
-          ...(status.missing ? { missing: status.missing } : {}),
-        };
-      }),
-    ),
-  getConnection: async ({ id }) => {
-    const capability = getConnectionCapability(id);
-    if (!capability?.connection) {
-      throw new Error(`Unknown configurable connection: ${id}`);
-    }
-    return await capability.connection.getStatus({ env, orgId });
-  },
-  setupConnection: async ({ id }) => {
-    const capability = getConnectionCapability(id);
-    if (!capability?.connection) {
-      throw new Error(`Unknown configurable connection: ${id}`);
-    }
-    const skillPath = Object.keys(capability.files ?? {}).find(
-      (path) => path.startsWith("skills/") && path.endsWith("/SKILL.md"),
-    );
-    const hasSkill = Boolean(skillPath);
-    return {
-      id: capability.id,
-      label: capability.label,
-      overview: hasSkill
-        ? `Use /system/${skillPath} for setup, event, and tool guidance.`
-        : `${capability.label} does not provide a setup guide yet.`,
-      manualSteps: hasSkill
-        ? [
-            {
-              id: "read-agent-skill",
-              title: "Read agent skill",
-              instructions: `Open /system/${skillPath} and follow its guidance.`,
-            },
-          ]
-        : [],
-      fields: [...(capability.connection.configureFields ?? [])],
-      verify: {
-        tool: `connections.get --id ${capability.id}`,
-        description: `Check configured=true for ${capability.label}.`,
-      },
-      configureExample: `connections.configure --id ${capability.id} --json '{...}' --format json`,
-    };
-  },
-  getConnectionSchema: async ({ id }) => {
-    const capability = getConnectionCapability(id);
-    if (!capability?.connection) {
-      throw new Error(`Unknown configurable connection: ${id}`);
-    }
-    return {
-      id: capability.id,
-      label: capability.label,
-      fields: [...(capability.connection.configureFields ?? [])],
-    };
-  },
-  verifyConnection: async ({ id }) => {
-    const capability = getConnectionCapability(id);
-    if (!capability?.connection) {
-      throw new Error(`Unknown configurable connection: ${id}`);
-    }
-    return await (capability.connection.verify?.({ env, orgId }) ??
-      capability.connection.getStatus({ env, orgId }));
-  },
-  resetConnection: async ({ id, confirm }) => {
-    if (confirm !== id) {
-      throw new Error(`Refusing to reset '${id}' without --confirm ${id}.`);
-    }
-    const capability = getConnectionCapability(id);
-    if (!capability?.connection?.reset) {
-      throw new Error(`Connection cannot be reset through runtime tools: ${id}`);
-    }
-    return await capability.connection.reset({ env, orgId });
-  },
-  configureConnection: async ({ id, payload, origin: inputOrigin }) => {
-    const capability = getConnectionCapability(id);
-    if (!capability?.connection?.configure) {
-      throw new Error(`Connection is not configurable through runtime tools: ${id}`);
-    }
-    const parsedPayload = capability.connection.configureInputSchema?.parse(payload) ?? payload;
-    return await capability.connection.configure({
-      env,
-      orgId,
-      origin: inputOrigin ?? origin,
-      payload: parsedPayload,
-    });
-  },
-  listAutomationEvents: async () =>
-    listAutomationEventDescriptors().map(
-      ({ payloadSchema, actorSchema, subjectSchema, ...event }) => event,
-    ),
-  getAutomationEvent: async ({ source, type }) =>
-    listAutomationEventDescriptors().find(
-      (event) => event.source === source && event.eventType === type,
-    ) ?? null,
-});
+      ),
+    listHookScopes: async () => {
+      const statuses = new Map(
+        (await Promise.all(
+          backofficeCapabilities.map(async (capability) => {
+            if (!capability.connection) {
+              return [capability.id, { configured: true, healthy: true }] as const;
+            }
+            const status = await capability.connection.getStatus(capabilityContext);
+            return [
+              capability.id,
+              {
+                configured: status.configured,
+                healthy: status.verification?.ok,
+              },
+            ] as const;
+          }),
+        )) as readonly (readonly [string, { configured: boolean; healthy?: boolean }])[],
+      );
+      return listHookScopes().map((scope) => ({ ...scope, ...statuses.get(scope.capabilityId) }));
+    },
+    listConnections: async () =>
+      await Promise.all(
+        listConnectionCapabilities().map(async (capability) => {
+          const status = await capability.connection!.getStatus(capabilityContext);
+          return {
+            id: capability.id,
+            label: capability.label,
+            kind: capability.kind,
+            configured: status.configured,
+            hookScopes: (capability.hooks ?? []).map((hook) => hook.id),
+            runtimeToolNamespaces: [
+              ...(runtimeToolNamespacesByCapability?.get(capability.id) ??
+                capability.runtimeToolNamespaces ??
+                []),
+            ],
+            automationEvents: (capability.automationEvents ?? []).map(
+              (event) => `${event.source}:${event.eventType}`,
+            ),
+            ...(status.missing ? { missing: status.missing } : {}),
+          };
+        }),
+      ),
+    getConnection: async ({ id }) => {
+      const capability = getConnectionCapability(id);
+      if (!capability?.connection) {
+        throw new Error(`Unknown configurable connection: ${id}`);
+      }
+      return await capability.connection.getStatus(capabilityContext);
+    },
+    setupConnection: async ({ id }) => {
+      const capability = getConnectionCapability(id);
+      if (!capability?.connection) {
+        throw new Error(`Unknown configurable connection: ${id}`);
+      }
+      const skillPath = Object.keys(capability.files ?? {}).find(
+        (path) => path.startsWith("skills/") && path.endsWith("/SKILL.md"),
+      );
+      const hasSkill = Boolean(skillPath);
+      return {
+        id: capability.id,
+        label: capability.label,
+        overview: hasSkill
+          ? `Use /system/${skillPath} for setup, event, and tool guidance.`
+          : `${capability.label} does not provide a setup guide yet.`,
+        manualSteps: hasSkill
+          ? [
+              {
+                id: "read-agent-skill",
+                title: "Read agent skill",
+                instructions: `Open /system/${skillPath} and follow its guidance.`,
+              },
+            ]
+          : [],
+        fields: [...(capability.connection.configureFields ?? [])],
+        verify: {
+          tool: `connections.get --id ${capability.id}`,
+          description: `Check configured=true for ${capability.label}.`,
+        },
+        configureExample: `connections.configure --id ${capability.id} --json '{...}' --format json`,
+      };
+    },
+    getConnectionSchema: async ({ id }) => {
+      const capability = getConnectionCapability(id);
+      if (!capability?.connection) {
+        throw new Error(`Unknown configurable connection: ${id}`);
+      }
+      return {
+        id: capability.id,
+        label: capability.label,
+        fields: [...(capability.connection.configureFields ?? [])],
+      };
+    },
+    verifyConnection: async ({ id }) => {
+      const capability = getConnectionCapability(id);
+      if (!capability?.connection) {
+        throw new Error(`Unknown configurable connection: ${id}`);
+      }
+      return await (capability.connection.verify?.(capabilityContext) ??
+        capability.connection.getStatus(capabilityContext));
+    },
+    resetConnection: async ({ id, confirm }) => {
+      if (confirm !== id) {
+        throw new Error(`Refusing to reset '${id}' without --confirm ${id}.`);
+      }
+      const capability = getConnectionCapability(id);
+      if (!capability?.connection?.reset) {
+        throw new Error(`Connection cannot be reset through runtime tools: ${id}`);
+      }
+      return await capability.connection.reset(capabilityContext);
+    },
+    configureConnection: async ({ id, payload, origin: inputOrigin }) => {
+      const capability = getConnectionCapability(id);
+      if (!capability?.connection?.configure) {
+        throw new Error(`Connection is not configurable through runtime tools: ${id}`);
+      }
+      const parsedPayload = capability.connection.configureInputSchema?.parse(payload) ?? payload;
+      return await capability.connection.configure({
+        objects,
+        config,
+        orgId,
+        origin: inputOrigin ?? origin,
+        payload: parsedPayload,
+      });
+    },
+    listAutomationEvents: async () =>
+      listAutomationEventDescriptors().map(
+        ({ payloadSchema, actorSchema, subjectSchema, ...event }) => event,
+      ),
+    getAutomationEvent: async ({ source, type }) =>
+      listAutomationEventDescriptors().find(
+        (event) => event.source === source && event.eventType === type,
+      ) ?? null,
+  };
+};
 
 export const backofficeCapabilitiesRuntimeTools = [
   capabilitiesListTool,

@@ -1,9 +1,9 @@
-import { CloudflareContext } from "@/cloudflare/cloudflare-context";
 import {
   buildCloudflareWorkerDispatchRequest,
   isCloudflareWorkerDispatchEnabled,
   resolveCloudflareWorkerScriptName,
-} from "@/cloudflare/worker-dispatch";
+} from "@/worker-runtime/cloudflare-worker-dispatch";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/cloudflare-worker-proxy";
 
@@ -25,7 +25,7 @@ const dispatchToCloudflareWorker = async (
     throw new Response("Not Found", { status: 404 });
   }
 
-  const { env } = context.get(CloudflareContext);
+  const { env } = context.get(BackofficeWorkerContext);
   const scriptName = resolveCloudflareWorkerScriptName(orgId, appId);
   const forwardedRequest = buildCloudflareWorkerDispatchRequest(request, orgId, appId, scriptName);
 

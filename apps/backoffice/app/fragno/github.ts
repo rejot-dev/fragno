@@ -1,12 +1,10 @@
-import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
-import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
-import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
-
 import {
   createGitHubAppFragment,
   type GitHubAppWebhookMeta,
   type GitHubAppFragmentConfig,
 } from "@fragno-dev/github-app-fragment";
+
+import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 
 import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "./automation/contracts";
 
@@ -25,23 +23,14 @@ export type GitHubConfig = Pick<
   | "webhook"
 >;
 
-export function createAdapter(state?: DurableObjectState) {
-  const dialect = new DurableObjectDialect({
-    ctx: state!,
-  });
-
-  return new SqlAdapter({
-    dialect,
-    driverConfig: new CloudflareDurableObjectsDriverConfig(),
-  });
-}
-
 export function createGitHubServer(
   config: GitHubConfig,
-  state: DurableObjectState,
+  runtime: BackofficeFragmentRuntimeOptions,
 ): ReturnType<typeof createGitHubAppFragment> {
   return createGitHubAppFragment(config, {
-    databaseAdapter: createAdapter(state),
+    databaseAdapter: runtime.adapters.createAdapter({
+      kind: "github",
+    }),
     mountRoute: "/api/github",
   });
 }

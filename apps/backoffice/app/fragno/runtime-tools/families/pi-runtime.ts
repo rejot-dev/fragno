@@ -7,6 +7,8 @@ import type {
   createPiFragment,
 } from "@fragno-dev/pi-fragment";
 
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../runtime-errors";
 
 type PiFragment = ReturnType<typeof createPiFragment>;
@@ -156,8 +158,14 @@ export type RegisteredPiCommandContext = {
   runtime: PiRuntime;
 };
 
-const createPiRouteCaller = (env: CloudflareEnv, orgId: string) => {
-  const piDo = env.PI.get(env.PI.idFromName(orgId));
+const createPiRouteCaller = ({
+  objects,
+  orgId,
+}: {
+  objects: BackofficeObjectRegistry;
+  orgId: string;
+}) => {
+  const piDo = objects.pi.forOrg(orgId);
 
   return createRouteCaller<PiFragment>({
     // Durable Object route helpers still need absolute URLs, so use a synthetic origin.
@@ -189,10 +197,10 @@ const closeActiveStream = async (stream: AsyncGenerator<PiSessionEventStreamItem
 };
 
 export const createPiRouteRuntime = ({
-  env,
+  objects,
   orgId,
 }: {
-  env: CloudflareEnv;
+  objects: BackofficeObjectRegistry;
   orgId: string;
 }): PiRuntime => {
   const normalizedOrgId = orgId.trim();
@@ -200,7 +208,7 @@ export const createPiRouteRuntime = ({
     throw new Error("pi.session commands require an organisation id");
   }
 
-  const callRoute = createPiRouteCaller(env, normalizedOrgId);
+  const callRoute = createPiRouteCaller({ objects, orgId: normalizedOrgId });
 
   return {
     createSession: async (args) => {

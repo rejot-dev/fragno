@@ -3,8 +3,8 @@ import type { RouterContextProvider } from "react-router";
 
 import type { TelegramChatSummary, TelegramMessageSummary } from "@fragno-dev/telegram-fragment";
 
-import { getTelegramDurableObject } from "@/cloudflare/cloudflare-utils";
 import type { TelegramFragment } from "@/fragno/telegram";
+import { getTelegramDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { TelegramConfigState } from "./shared";
 

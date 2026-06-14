@@ -4,7 +4,7 @@ import {
   buildCloudflareWorkerDispatchPath,
   buildCloudflareWorkerDispatchRequest,
   rewriteCloudflareWorkerDispatchUrl,
-} from "./worker-dispatch";
+} from "./cloudflare-worker-dispatch";
 
 describe("rewriteCloudflareWorkerDispatchUrl", () => {
   test("rewrites the route prefix away for nested paths", () => {

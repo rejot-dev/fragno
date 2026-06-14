@@ -1,3 +1,4 @@
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { DurableHookQueueOptions, DurableHookQueueResponse } from "@/fragno/durable-hooks";
 
 import { automationHooksFileContributor } from "./contributors/durable-hooks";
@@ -7,7 +8,7 @@ const INTERNAL_ORIGIN = "https://files.internal";
 
 export type CreateOrgFileSystemOptions = {
   orgId: string;
-  env: Pick<CloudflareEnv, "UPLOAD" | "RESEND" | "AUTOMATIONS">;
+  objects: BackofficeObjectRegistry;
   /**
    * Override for the automations DO to call its own getHookQueue() directly
    * instead of going through an external stub (avoids deadlock during init).
@@ -18,29 +19,26 @@ export type CreateOrgFileSystemOptions = {
 export const createOrgFileSystem = async (
   options: CreateOrgFileSystemOptions,
 ): Promise<MasterFileSystem> => {
-  const { orgId, env } = options;
+  const { orgId, objects } = options;
 
   let uploadConfig = null;
   let uploadRuntime: { baseUrl: string; fetch: typeof fetch } | undefined;
 
-  if (env.UPLOAD) {
-    const uploadDo = env.UPLOAD.get(env.UPLOAD.idFromName(orgId));
-    uploadConfig = await uploadDo.getAdminConfig();
-    uploadRuntime = {
-      baseUrl: INTERNAL_ORIGIN,
-      fetch: uploadDo.fetch.bind(uploadDo),
-    };
-  }
-
-  const resendDo = env.RESEND.get(env.RESEND.idFromName(orgId));
-  const resendRuntime = {
+  const uploadDo = objects.upload.forOrg(orgId);
+  uploadConfig = await uploadDo.getAdminConfig();
+  uploadRuntime = {
     baseUrl: INTERNAL_ORIGIN,
-    fetch: resendDo.fetch.bind(resendDo),
+    fetch: async (input) => uploadDo.fetch(input instanceof Request ? input : new Request(input)),
   };
 
-  const automationsDo = options.automationHookQueue
-    ? null
-    : env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(orgId));
+  const resendDo = objects.resend.forOrg(orgId);
+  const resendRuntime = {
+    baseUrl: INTERNAL_ORIGIN,
+    fetch: async (input: RequestInfo | URL) =>
+      resendDo.fetch(input instanceof Request ? input : new Request(input)),
+  };
+
+  const automationsDo = options.automationHookQueue ? null : objects.automations.forOrg(orgId);
 
   const durableHooksRuntimes = [
     {

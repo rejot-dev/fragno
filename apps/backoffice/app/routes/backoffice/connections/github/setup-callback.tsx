@@ -1,7 +1,7 @@
 import { redirect } from "react-router";
 
-import { getGitHubWebhookRouterDurableObject } from "@/cloudflare/cloudflare-utils";
 import { getAuthMe } from "@/fragno/auth/auth-server";
+import { getGitHubWebhookRouterDurableObject } from "@/worker-runtime/durable-objects";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
 import type { Route } from "./+types/setup-callback";

@@ -1,4 +1,4 @@
-import { getOtpDurableObject } from "@/cloudflare/cloudflare-utils";
+import { getOtpDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { Route } from "./+types/otp";
 

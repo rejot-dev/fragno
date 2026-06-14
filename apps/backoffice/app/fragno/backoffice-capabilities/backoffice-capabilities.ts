@@ -1,5 +1,7 @@
 import type { z } from "zod";
 
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import type { AutomationExternalEntityDefinition } from "@/fragno/automation/contracts";
 import type { DurableHookQueueOptions, DurableHookRepository } from "@/fragno/durable-hooks";
 import { zodSchemaToJsonSchema } from "@/lib/zod/zod-formatter";
@@ -49,13 +51,19 @@ export type ConnectionStatus = {
   verification?: { ok: boolean; message: string };
 };
 
+export type BackofficeCapabilityContext = {
+  objects: BackofficeObjectRegistry;
+  config: BackofficeRuntimeConfig;
+  orgId: string;
+  origin: string;
+};
+
 export type BackofficeHookScope = {
   id: string;
   label: string;
-  getRepository(input: {
-    env: CloudflareEnv;
-    orgId: string;
-  }):
+  getRepository(
+    input: BackofficeCapabilityContext,
+  ):
     | Promise<DurableHookRepository<DurableHookQueueOptions>>
     | DurableHookRepository<DurableHookQueueOptions>;
 };
@@ -127,22 +135,19 @@ ${tools}
 `,
 });
 
+type BackofficeConnectionInput = BackofficeCapabilityContext;
+
 type BackofficeConnectionDescriptorBase = {
-  getStatus(input: { env: CloudflareEnv; orgId: string }): Promise<ConnectionStatus>;
-  verify?(input: { env: CloudflareEnv; orgId: string }): Promise<ConnectionStatus>;
+  getStatus(input: BackofficeConnectionInput): Promise<ConnectionStatus>;
+  verify?(input: BackofficeConnectionInput): Promise<ConnectionStatus>;
 };
 
 export type BackofficeConfigurableConnectionDescriptor = BackofficeConnectionDescriptorBase & {
   configurable: true;
   configureInputSchema?: z.ZodType;
   configureFields?: readonly BackofficeConnectionConfigureField[];
-  reset?(input: { env: CloudflareEnv; orgId: string }): Promise<ConnectionStatus>;
-  configure(input: {
-    env: CloudflareEnv;
-    orgId: string;
-    origin: string;
-    payload: unknown;
-  }): Promise<ConnectionStatus>;
+  reset?(input: BackofficeConnectionInput): Promise<ConnectionStatus>;
+  configure(input: BackofficeConnectionInput & { payload: unknown }): Promise<ConnectionStatus>;
 };
 
 export type BackofficeManagedConnectionDescriptor = BackofficeConnectionDescriptorBase & {

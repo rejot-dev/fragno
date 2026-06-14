@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type {
   BackofficeConfigurableConnectionCapability,
   ConnectionStatus,
@@ -46,7 +47,7 @@ const mcpServerConfigurationSubjectSchema = z.object({
 });
 
 const capability = { id: "mcp", label: "MCP", kind: "connection" } as const;
-const getMcpDo = (env: CloudflareEnv, orgId: string) => env.MCP.get(env.MCP.idFromName(orgId));
+const getMcpDo = (objects: BackofficeObjectRegistry, orgId: string) => objects.mcp.forOrg(orgId);
 
 const toMcpStatus = (response: McpAdminConfigResponse): ConnectionStatus => {
   if (!response.configured) {
@@ -75,12 +76,15 @@ export const mcpCapability: BackofficeConfigurableConnectionCapability = {
     configurable: true,
     configureInputSchema: mcpConfigureInputSchema,
     configureFields: [],
-    getStatus: async ({ env, orgId }) => toMcpStatus(await getMcpDo(env, orgId).getAdminConfig()),
-    verify: async ({ env, orgId }) => toMcpStatus(await getMcpDo(env, orgId).getAdminConfig()),
-    reset: async ({ env, orgId }) => toMcpStatus(await getMcpDo(env, orgId).resetAdminConfig()),
-    configure: async ({ env, orgId, payload }) =>
+    getStatus: async ({ objects, orgId }) =>
+      toMcpStatus(await getMcpDo(objects, orgId).getAdminConfig()),
+    verify: async ({ objects, orgId }) =>
+      toMcpStatus(await getMcpDo(objects, orgId).getAdminConfig()),
+    reset: async ({ objects, orgId }) =>
+      toMcpStatus(await getMcpDo(objects, orgId).resetAdminConfig()),
+    configure: async ({ objects, orgId, payload }) =>
       toMcpStatus(
-        await getMcpDo(env, orgId).setAdminConfig({
+        await getMcpDo(objects, orgId).setAdminConfig({
           ...mcpConfigureInputSchema.parse(payload),
           orgId,
         }),
@@ -90,7 +94,7 @@ export const mcpCapability: BackofficeConfigurableConnectionCapability = {
     {
       id: "mcp",
       label: "MCP",
-      getRepository: ({ env, orgId }) => getMcpDo(env, orgId).getDurableHookRepository(),
+      getRepository: ({ objects, orgId }) => getMcpDo(objects, orgId).getDurableHookRepository(),
     },
   ],
   automationEvents: [

@@ -1,4 +1,4 @@
-import { getCloudflareWorkersDurableObject } from "@/cloudflare/cloudflare-utils";
+import { getCloudflareWorkersDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { Route } from "./+types/cloudflare";
 

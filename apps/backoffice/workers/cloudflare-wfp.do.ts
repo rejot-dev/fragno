@@ -1,8 +1,16 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
-import type { CloudflareFragmentConfig } from "@fragno-dev/cloudflare-fragment";
+import type {
+  CloudflareDispatchNamespaceBinding,
+  CloudflareFragmentConfig,
+} from "@fragno-dev/cloudflare-fragment";
 
+import type { CloudflareWorkersObject } from "@/backoffice-runtime/object-registry";
+import {
+  createCloudflareDurableObjectRuntimeServices,
+  type BackofficeRuntimeServices,
+} from "@/backoffice-runtime/runtime-services";
 import { createCloudflareServer, type CloudflareFragment } from "@/fragno/cloudflare";
 import {
   createDurableHookRepositoryRpcTarget,
@@ -12,7 +20,14 @@ import {
 import {
   createBackofficeFragmentDurableObject,
   type BackofficeFragmentDurableObject,
+  type BackofficeObjectState,
 } from "./lib/backoffice-fragment-durable-object";
+
+type CloudflareWorkersObjectEnv = {
+  CLOUDFLARE_WORKERS_ACCOUNT_ID?: string;
+  CLOUDFLARE_WORKERS_API_TOKEN?: string;
+  DISPATCHER?: CloudflareDispatchNamespaceBinding;
+};
 
 type StoredCloudflareWorkersConfig = {
   orgId: string;
@@ -62,7 +77,7 @@ const hookQueueInputSchema = z.object({
 });
 
 const resolveCloudflareWorkersConfig = (
-  env: CloudflareEnv,
+  env: CloudflareWorkersObjectEnv,
   orgId: string,
 ): CloudflareWorkersConfigResolution => {
   const accountId = env.CLOUDFLARE_WORKERS_ACCOUNT_ID?.trim() ?? "";
@@ -90,7 +105,7 @@ const resolveCloudflareWorkersConfig = (
       accountId,
       apiToken,
       dispatcher: {
-        binding: env.DISPATCHER,
+        binding: env.DISPATCHER as CloudflareDispatchNamespaceBinding,
         namespace: CLOUDFLARE_WFP_NAMESPACE,
       },
       compatibilityDate: COMPATIBILITY_DATE,
@@ -127,19 +142,28 @@ const orgMismatchResponse = (expectedOrgId: string, orgId: string) =>
     { status: 409 },
   );
 
-export class CloudflareWorkers extends DurableObject<CloudflareEnv> {
-  #env: CloudflareEnv;
-  #state: DurableObjectState;
+export class InMemoryCloudflareWorkersObject implements CloudflareWorkersObject {
+  #env: CloudflareWorkersObjectEnv;
+  #state: BackofficeObjectState;
+  #runtimeServices: BackofficeRuntimeServices;
   #host: BackofficeFragmentDurableObject<
     StoredCloudflareWorkersConfig,
     CloudflareFragmentConfig,
     CloudflareFragment
   >;
 
-  constructor(state: DurableObjectState, env: CloudflareEnv) {
-    super(state, env);
+  constructor({
+    state,
+    env,
+    runtime,
+  }: {
+    state: BackofficeObjectState;
+    env: CloudflareWorkersObjectEnv;
+    runtime: BackofficeRuntimeServices;
+  }) {
     this.#env = env;
     this.#state = state;
+    this.#runtimeServices = runtime;
     this.#host = createBackofficeFragmentDurableObject({
       name: "Cloudflare Workers",
       state,
@@ -150,10 +174,10 @@ export class CloudflareWorkers extends DurableObject<CloudflareEnv> {
         if (!stored) {
           return false;
         }
-        return resolveCloudflareWorkersConfig(env, stored.orgId).ok;
+        return resolveCloudflareWorkersConfig(this.#env, stored.orgId).ok;
       },
       toSource: (stored) => {
-        const resolution = resolveCloudflareWorkersConfig(env, stored.orgId);
+        const resolution = resolveCloudflareWorkersConfig(this.#env, stored.orgId);
         if (!resolution.ok) {
           throw new Error(
             resolution.error ??
@@ -162,7 +186,10 @@ export class CloudflareWorkers extends DurableObject<CloudflareEnv> {
         }
         return resolution.config;
       },
-      createRuntime: (config) => createCloudflareServer(config, state),
+      createRuntime: (config) =>
+        createCloudflareServer(config, {
+          adapters: this.#runtimeServices.adapters,
+        }),
     });
 
     void state.blockConcurrencyWhile(async () => {
@@ -244,5 +271,33 @@ export class CloudflareWorkers extends DurableObject<CloudflareEnv> {
     return await this.#host.fetch(request, {
       waitUntil: this.#state.waitUntil.bind(this.#state),
     });
+  }
+}
+
+export class CloudflareWorkers
+  extends DurableObject<CloudflareEnv>
+  implements CloudflareWorkersObject
+{
+  #object: InMemoryCloudflareWorkersObject;
+
+  constructor(state: DurableObjectState, env: CloudflareEnv) {
+    super(state, env);
+    this.#object = new InMemoryCloudflareWorkersObject({
+      state,
+      env,
+      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
+    });
+  }
+
+  async alarm() {
+    await this.#object.alarm();
+  }
+
+  getDurableHookRepository() {
+    return this.#object.getDurableHookRepository();
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    return await this.#object.fetch(request);
   }
 }

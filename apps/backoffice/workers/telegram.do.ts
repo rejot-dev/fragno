@@ -1,8 +1,13 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
-import type { TelegramFragmentConfig } from "@fragno-dev/telegram-fragment";
+import type { TelegramApi, TelegramFragmentConfig } from "@fragno-dev/telegram-fragment";
 
+import type { TelegramObject } from "@/backoffice-runtime/object-registry";
+import {
+  createCloudflareDurableObjectRuntimeServices,
+  type BackofficeRuntimeServices,
+} from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
 import { telegramConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/telegram";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
@@ -16,6 +21,7 @@ import {
 
 import {
   createBackofficeFragmentDurableObject,
+  type BackofficeObjectState,
   type BackofficeFragmentDurableObject,
 } from "./lib/backoffice-fragment-durable-object";
 
@@ -41,6 +47,23 @@ export type TelegramAdminConfigResponse = {
     ok: boolean;
     message: string;
   };
+};
+
+type TelegramWebhookRegistrationResult = {
+  ok: boolean;
+  message: string;
+};
+
+type TelegramAdminApiSetWebhookInput = {
+  botToken: string;
+  apiBaseUrl?: string | null;
+  webhookUrl: string;
+  secretToken: string;
+  orgId?: string;
+};
+
+type TelegramAdminApi = {
+  setWebhook(input: TelegramAdminApiSetWebhookInput): Promise<TelegramWebhookRegistrationResult>;
 };
 
 const DEFAULT_TELEGRAM_API_BASE_URL = "https://api.telegram.org";
@@ -153,85 +176,100 @@ const normalizeTelegramAutomationFile = (
   };
 };
 
-const setTelegramWebhook = async (config: TelegramConfig, webhookUrl: string, orgId: string) => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  let response: Response;
+const createFetchTelegramAdminApi = (): TelegramAdminApi => ({
+  async setWebhook({ botToken, apiBaseUrl, webhookUrl, secretToken, orgId }) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    let response: Response;
 
-  try {
-    response = await fetch(
-      `${normalizeTelegramApiBaseUrl(config.apiBaseUrl)}/bot${config.botToken}/setWebhook`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          url: webhookUrl,
-          secret_token: config.webhookSecretToken,
-        }),
-        signal: controller.signal,
-      },
-    );
-  } catch (error) {
-    if (error && typeof error === "object" && "name" in error) {
-      const name = String((error as { name?: string }).name);
-      if (name === "AbortError") {
-        console.warn("Telegram webhook request timed out", {
-          orgId,
-          webhookUrl,
-        });
-        return { ok: false, message: "Telegram API request timed out" };
+    try {
+      response = await fetch(
+        `${normalizeTelegramApiBaseUrl(apiBaseUrl)}/bot${botToken}/setWebhook`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            url: webhookUrl,
+            secret_token: secretToken,
+          }),
+          signal: controller.signal,
+        },
+      );
+    } catch (error) {
+      if (error && typeof error === "object" && "name" in error) {
+        const name = String((error as { name?: string }).name);
+        if (name === "AbortError") {
+          console.warn("Telegram webhook request timed out", {
+            orgId,
+            webhookUrl,
+          });
+          return { ok: false, message: "Telegram API request timed out" };
+        }
       }
+      console.error("Telegram webhook request failed", {
+        orgId,
+        webhookUrl,
+        error,
+      });
+      throw error;
+    } finally {
+      clearTimeout(timeout);
     }
-    console.error("Telegram webhook request failed", {
-      orgId,
-      webhookUrl,
-      error,
-    });
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
 
-  const payloadResult = telegramApiResponseSchema.safeParse(
-    await response.json().catch(() => null),
-  );
-  const payload = payloadResult.success ? payloadResult.data : null;
+    const payloadResult = telegramApiResponseSchema.safeParse(
+      await response.json().catch(() => null),
+    );
+    const payload = payloadResult.success ? payloadResult.data : null;
 
-  if (!response.ok || !payload?.ok) {
-    const message =
-      payload?.description ?? `Telegram API rejected the webhook (${response.status}).`;
-    console.warn("Telegram webhook rejected", {
-      orgId,
-      webhookUrl,
-      status: response.status,
-      description: payload?.description ?? null,
-    });
-    return { ok: false, message };
-  }
+    if (!response.ok || !payload?.ok) {
+      const message =
+        payload?.description ?? `Telegram API rejected the webhook (${response.status}).`;
+      console.warn("Telegram webhook rejected", {
+        orgId,
+        webhookUrl,
+        status: response.status,
+        description: payload?.description ?? null,
+      });
+      return { ok: false, message };
+    }
 
-  return {
-    ok: true,
-    message: payload.description ?? "Webhook registered with Telegram.",
-  };
-};
+    return {
+      ok: true,
+      message: payload.description ?? "Webhook registered with Telegram.",
+    };
+  },
+});
 
-export class Telegram extends DurableObject<CloudflareEnv> {
-  #env: CloudflareEnv;
-  #state: DurableObjectState;
+export class InMemoryTelegramObject implements TelegramObject {
+  #state: BackofficeObjectState;
+  #runtime: BackofficeRuntimeServices;
+  #api?: TelegramApi;
+  #adminApi?: TelegramAdminApi;
   #host: BackofficeFragmentDurableObject<
     StoredTelegramConfig,
     TelegramFragmentConfig,
     TelegramFragment
   >;
 
-  constructor(state: DurableObjectState, env: CloudflareEnv) {
-    super(state, env);
-    this.#env = env;
+  constructor({
+    state,
+    runtime,
+    api,
+    adminApi,
+  }: {
+    state: BackofficeObjectState;
+    runtime: BackofficeRuntimeServices;
+    api?: TelegramApi;
+    adminApi?: TelegramAdminApi;
+  }) {
     this.#state = state;
+    this.#runtime = runtime;
+    this.#api = api;
+    this.#adminApi = adminApi;
     this.#host = createBackofficeFragmentDurableObject({
       name: "Telegram",
       state,
-      env,
+      env: {},
       toSource: (stored) => ({
         botToken: stored.botToken,
         webhookSecretToken: stored.webhookSecretToken,
@@ -239,42 +277,47 @@ export class Telegram extends DurableObject<CloudflareEnv> {
         apiBaseUrl: stored.apiBaseUrl,
       }),
       createRuntime: (config) =>
-        createTelegramServer(config, state, {
-          hooks: {
-            onMessageReceived: async (payload) => {
-              const runtime = this.#host.getConfigured();
-              if (!runtime) {
-                console.warn(
-                  "Ignoring Telegram message because automations routing is unavailable",
-                  {
-                    orgId: null,
-                    updateId: payload.updateId,
-                    messageId: payload.messageId,
-                  },
-                );
-                return;
-              }
+        createTelegramServer(
+          config,
+          {
+            adapters: this.#runtime.adapters,
+          },
+          {
+            api: this.#api,
+            hooks: {
+              onMessageReceived: async (payload) => {
+                const runtime = this.#host.getConfigured();
+                if (!runtime) {
+                  console.warn(
+                    "Ignoring Telegram message because automations routing is unavailable",
+                    {
+                      orgId: null,
+                      updateId: payload.updateId,
+                      messageId: payload.messageId,
+                    },
+                  );
+                  return;
+                }
 
-              const orgId = this.#host.getStoredOrgId(runtime.stored);
-              if (!orgId) {
-                throw new Error("Stored Telegram config is missing an organisation id.");
-              }
+                const orgId = this.#host.getStoredOrgId(runtime.stored);
+                if (!orgId) {
+                  throw new Error("Stored Telegram config is missing an organisation id.");
+                }
 
-              const automationsDo = this.#env.AUTOMATIONS.get(
-                this.#env.AUTOMATIONS.idFromName(orgId),
-              );
-
-              await automationsDo.triggerIngestEvent(buildTelegramAutomationEvent(orgId, payload));
+                await this.#runtime.objects.automations
+                  .forOrg(orgId)
+                  .triggerIngestEvent(buildTelegramAutomationEvent(orgId, payload));
+              },
             },
           },
-        }),
+        ),
       outbox: {
-        dispatch: async (item, { env, stored }) => {
+        dispatch: async (item, { stored }) => {
           if (item.type !== "capability.configured") {
             return;
           }
 
-          await env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(stored.orgId)).ingestEvent({
+          await this.#runtime.objects.automations.forOrg(stored.orgId).ingestEvent({
             id: item.id,
             orgId: stored.orgId,
             source: "telegram",
@@ -423,7 +466,13 @@ export class Telegram extends DurableObject<CloudflareEnv> {
     }
 
     const webhookUrl = resolveWebhookUrl(origin, normalizedOrgId, stored.webhookBaseUrl);
-    const webhookResult = await setTelegramWebhook(stored, webhookUrl, normalizedOrgId);
+    const webhookResult = await (this.#adminApi ?? createFetchTelegramAdminApi()).setWebhook({
+      botToken: stored.botToken,
+      apiBaseUrl: stored.apiBaseUrl,
+      webhookUrl,
+      secretToken: stored.webhookSecretToken,
+      orgId: normalizedOrgId,
+    });
 
     return {
       configured: true,
@@ -446,5 +495,49 @@ export class Telegram extends DurableObject<CloudflareEnv> {
 
   async fetch(request: Request): Promise<Response> {
     return await this.#host.fetch(request);
+  }
+}
+
+export class Telegram extends DurableObject<CloudflareEnv> implements TelegramObject {
+  #object: InMemoryTelegramObject;
+
+  constructor(state: DurableObjectState, env: CloudflareEnv) {
+    super(state, env);
+    this.#object = new InMemoryTelegramObject({
+      state,
+      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
+    });
+  }
+
+  async getAutomationFile(input: { fileId: string }): Promise<TelegramAutomationFileMetadata> {
+    return await this.#object.getAutomationFile(input);
+  }
+
+  async downloadAutomationFile(input: { fileId: string }): Promise<Response> {
+    return await this.#object.downloadAutomationFile(input);
+  }
+
+  async alarm() {
+    await this.#object.alarm();
+  }
+
+  async getAdminConfig(): Promise<TelegramAdminConfigResponse> {
+    return await this.#object.getAdminConfig();
+  }
+
+  async resetAdminConfig(): Promise<TelegramAdminConfigResponse> {
+    return await this.#object.resetAdminConfig();
+  }
+
+  async setAdminConfig(payload: unknown, origin: string): Promise<TelegramAdminConfigResponse> {
+    return await this.#object.setAdminConfig(payload, origin);
+  }
+
+  getDurableHookRepository() {
+    return this.#object.getDurableHookRepository();
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    return await this.#object.fetch(request);
   }
 }

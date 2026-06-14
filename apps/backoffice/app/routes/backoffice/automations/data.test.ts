@@ -14,7 +14,7 @@ vi.mock("@/files", async (importOriginal) => {
 
 import { loadAutomationScriptSource, loadAutomationWorkspaceData } from "./data";
 
-const mockContext = { get: () => ({ env: {} }) } as never;
+const mockContext = { get: () => ({ runtime: { objects: {} }, env: {} }) } as never;
 
 beforeEach(() => {
   createOrgFileSystemMock.mockReset();

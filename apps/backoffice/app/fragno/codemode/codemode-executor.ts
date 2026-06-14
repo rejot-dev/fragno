@@ -4,8 +4,8 @@
  * Source file last-changed commit: f739ec9cd74c73da6a2d68403ab05f20940e36af
  *
  * Backoffice changes:
- * - This is the only backoffice file that imports from `@cloudflare/codemode`; other backoffice
- *   code imports executor utilities/types from here.
+ * - Owns the small codemode provider/dispatcher API surface Backoffice relies on instead of
+ *   importing it from `@cloudflare/codemode` directly.
  * - Keeps the upstream DynamicWorkerExecutor shape, but exposes the provider bridge pieces used by
  *   workflow codemode's custom Dynamic Worker entrypoint.
  * - Adds `createCodemodeDispatchers` and `createCodemodeProviderProxySource` so callers can pass
@@ -21,7 +21,7 @@ import {
   type Executor,
   type ResolvedProvider,
   type ToolProvider,
-} from "@cloudflare/codemode";
+} from "./runtime-api";
 
 export {
   normalizeCode,
@@ -81,6 +81,9 @@ function __parseForCodemode(json) {
 function defineWorkflow(options, run) {
   if (!options || typeof options !== "object" || typeof options.name !== "string" || options.name.trim() === "") {
     throw new Error("defineWorkflow requires a non-empty workflow name.");
+  }
+  if (run === undefined) {
+    return (workflowRun) => defineWorkflow(options, workflowRun);
   }
   if (typeof run !== "function") {
     throw new Error("defineWorkflow requires a workflow callback.");
@@ -253,10 +256,13 @@ export class DynamicWorkerExecutor implements Executor {
       createCodemodeProviderProxySource(providers),
       "",
       "    try {",
-      "      const result = await Promise.race([",
-      `        (${normalizeCode(code)})(),`,
+      "      const program = (" + normalizeCode(code) + ");",
+      "      const result = __isFragnoCodemodeWorkflowDefinition(program)",
+      "        ? program",
+      "        : await Promise.race([",
+      '          typeof program === "function" ? program() : Promise.resolve(program),',
       `        new Promise((_, reject) => setTimeout(() => reject(new Error("Execution timed out")), ${this.#timeout}))`,
-      "      ]);",
+      "        ]);",
       "      if (__isFragnoCodemodeWorkflowDefinition(result)) {",
       "        return { result: undefined, workflowDefinition: { name: String(result.options.name), options: result.options }, logs: __logs };",
       "      }",

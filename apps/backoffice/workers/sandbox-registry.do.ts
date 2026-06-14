@@ -1,5 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
 
+import type { SandboxRegistryObject } from "@/backoffice-runtime/object-registry";
+import {
+  createCloudflareDurableObjectRuntimeServices,
+  type BackofficeRuntimeServices,
+} from "@/backoffice-runtime/runtime-services";
 import type { SandboxInstanceStatus, SandboxInstanceSummary } from "@/sandbox/contracts";
 
 const SANDBOX_ID_KEY_PREFIX = "sandbox-id:";
@@ -13,14 +18,30 @@ function parseSandboxId(storageKey: string) {
   return storageKey.slice(SANDBOX_ID_KEY_PREFIX.length);
 }
 
-export class SandboxRegistry extends DurableObject<CloudflareEnv> {
-  #state: DurableObjectState;
-  #env: CloudflareEnv;
+type SandboxRegistryObjectStorage = {
+  get<T>(key: string): Promise<T | undefined>;
+  put(key: string, value: unknown): Promise<void>;
+  delete(key: string): Promise<boolean>;
+  list<T>(options: { prefix: string }): Promise<Map<string, T>>;
+};
 
-  constructor(state: DurableObjectState, env: CloudflareEnv) {
-    super(state, env);
+type SandboxRegistryObjectState = {
+  storage: SandboxRegistryObjectStorage;
+};
+
+export class InMemorySandboxRegistryObject implements SandboxRegistryObject {
+  #state: SandboxRegistryObjectState;
+  #runtime: BackofficeRuntimeServices;
+
+  constructor({
+    state,
+    runtime,
+  }: {
+    state: SandboxRegistryObjectState;
+    runtime: BackofficeRuntimeServices;
+  }) {
     this.#state = state;
-    this.#env = env;
+    this.#runtime = runtime;
   }
 
   async getInstances(): Promise<SandboxInstanceSummary[]> {
@@ -75,7 +96,7 @@ export class SandboxRegistry extends DurableObject<CloudflareEnv> {
   }
 
   async #getLiveSandboxStatus(id: string): Promise<SandboxInstanceStatus> {
-    const sandbox = this.#env.SANDBOX.get(this.#env.SANDBOX.idFromName(id));
+    const sandbox = this.#runtime.objects.sandbox.forName(id);
 
     try {
       const runtimeStatus = await sandbox.getRuntimeStatus();
@@ -84,5 +105,41 @@ export class SandboxRegistry extends DurableObject<CloudflareEnv> {
       console.warn("Failed to get live sandbox runtime status", { sandboxId: id, error });
       return "error";
     }
+  }
+}
+
+export class SandboxRegistry extends DurableObject<CloudflareEnv> implements SandboxRegistryObject {
+  #object: InMemorySandboxRegistryObject;
+
+  constructor(state: DurableObjectState, env: CloudflareEnv) {
+    super(state, env);
+    this.#object = new InMemorySandboxRegistryObject({
+      state,
+      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
+    });
+  }
+
+  async getInstances(): Promise<SandboxInstanceSummary[]> {
+    return await this.#object.getInstances();
+  }
+
+  async listInstances(): Promise<SandboxInstanceSummary[]> {
+    return await this.#object.listInstances();
+  }
+
+  async getInstance(id: string): Promise<SandboxInstanceSummary | null> {
+    return await this.#object.getInstance(id);
+  }
+
+  async hasInstance(id: string): Promise<boolean> {
+    return await this.#object.hasInstance(id);
+  }
+
+  async trackInstance(id: string): Promise<void> {
+    await this.#object.trackInstance(id);
+  }
+
+  async untrackInstance(id: string): Promise<void> {
+    await this.#object.untrackInstance(id);
   }
 }

@@ -12,6 +12,11 @@ import type {
 } from "@fragno-dev/auth";
 import { migrate } from "@fragno-dev/db";
 
+import type { AuthObject } from "@/backoffice-runtime/object-registry";
+import {
+  createCloudflareDurableObjectRuntimeServices,
+  type BackofficeRuntimeServices,
+} from "@/backoffice-runtime/runtime-services";
 import { createAuthServer, type AuthFragment } from "@/fragno/auth/auth";
 import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
 import {
@@ -20,6 +25,8 @@ import {
   AUTH_AUTOMATION_SOURCE,
 } from "@/fragno/backoffice-capabilities/capabilities/auth";
 import { createDurableHookRepository, type DurableHookQueueOptions } from "@/fragno/durable-hooks";
+
+import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 
 type AuthOrganizationAutomationEventType =
   | typeof AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED
@@ -53,8 +60,10 @@ const buildAuthActor = (actor: UserSummary | null) =>
       }
     : AUTOMATION_SYSTEM_ACTOR;
 
+type AuthLiveEnv = Extract<Parameters<typeof createAuthServer>[0], { type: "live" }>["env"];
+
 const dispatchOrganizationEvent = async (
-  env: CloudflareEnv,
+  runtime: BackofficeRuntimeServices,
   eventType: AuthOrganizationAutomationEventType,
   payload: OrganizationHookPayload,
 ) => {
@@ -65,7 +74,7 @@ const dispatchOrganizationEvent = async (
       : organization.updatedAt,
   );
 
-  await env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(organization.id)).ingestEvent({
+  await runtime.objects.automations.forOrg(organization.id).ingestEvent({
     id: `${AUTH_AUTOMATION_SOURCE}:${eventType}:${organization.id}:${occurredAt}`,
     orgId: organization.id,
     source: AUTH_AUTOMATION_SOURCE,
@@ -78,12 +87,14 @@ const dispatchOrganizationEvent = async (
   });
 };
 
-const createOrganizationAutomationHooks = (env: CloudflareEnv): OrganizationHooks => ({
+const createOrganizationAutomationHooks = (
+  runtime: BackofficeRuntimeServices,
+): OrganizationHooks => ({
   onOrganizationCreated: async (payload) => {
-    await dispatchOrganizationEvent(env, AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED, payload);
+    await dispatchOrganizationEvent(runtime, AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED, payload);
   },
   onOrganizationUpdated: async (payload) => {
-    await dispatchOrganizationEvent(env, AUTH_AUTOMATION_EVENT_ORGANIZATION_UPDATED, payload);
+    await dispatchOrganizationEvent(runtime, AUTH_AUTOMATION_EVENT_ORGANIZATION_UPDATED, payload);
   },
 });
 
@@ -98,17 +109,26 @@ const resolveAuthBaseUrl = (request: Request): string => {
   return requestUrl.origin;
 };
 
-export class Auth extends DurableObject<CloudflareEnv> {
-  #env: CloudflareEnv;
-  #state: DurableObjectState;
+export class InMemoryAuthObject implements AuthObject {
+  #env: AuthLiveEnv;
+  #state: BackofficeObjectState;
+  #runtimeServices: BackofficeRuntimeServices;
   #fragment: AuthFragment | null = null;
   #fragmentBaseUrl: string | null = null;
   #dispatcher: DurableHooksDispatcherDurableObjectHandler | null = null;
 
-  constructor(state: DurableObjectState, env: CloudflareEnv) {
-    super(state, env);
+  constructor({
+    state,
+    env,
+    runtime,
+  }: {
+    state: BackofficeObjectState;
+    env: AuthLiveEnv;
+    runtime: BackofficeRuntimeServices;
+  }) {
     this.#env = env;
     this.#state = state;
+    this.#runtimeServices = runtime;
 
     const fragment = this.#createFragment();
     this.#fragment = fragment;
@@ -125,8 +145,12 @@ export class Auth extends DurableObject<CloudflareEnv> {
 
   #createFragment(baseUrl?: string) {
     return createAuthServer(
-      { type: "live", env: this.#env, state: this.#state },
-      { baseUrl, organizationHooks: createOrganizationAutomationHooks(this.#env) },
+      {
+        type: "live",
+        env: this.#env,
+        adapters: this.#runtimeServices.adapters,
+      },
+      { baseUrl, organizationHooks: createOrganizationAutomationHooks(this.#runtimeServices) },
     );
   }
 
@@ -182,6 +206,16 @@ export class Auth extends DurableObject<CloudflareEnv> {
     return createDurableHookRepository<DurableHookQueueOptions>(() => this.#ensureFragment());
   }
 
+  async getAllOrganizations(): Promise<Organization[]> {
+    const fragment = this.#ensureFragment();
+    return await fragment.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [fragment.services.getAllOrganizations()])
+        .transform(({ serviceResult: [organizations] }) => organizations)
+        .execute();
+    });
+  }
+
   async getDevOrganizations(): Promise<
     Array<{
       id: string;
@@ -192,22 +226,15 @@ export class Auth extends DurableObject<CloudflareEnv> {
       updatedAt: Date;
     }>
   > {
-    const fragment = this.#ensureFragment();
-    return await fragment.inContext(function () {
-      return this.handlerTx()
-        .withServiceCalls(() => [fragment.services.getAllOrganizations()])
-        .transform(({ serviceResult: [organizations] }) =>
-          organizations.map((organization) => ({
-            id: organization.id,
-            name: organization.name,
-            slug: organization.slug,
-            createdBy: organization.createdBy,
-            createdAt: organization.createdAt,
-            updatedAt: organization.updatedAt,
-          })),
-        )
-        .execute();
-    });
+    const organizations = await this.getAllOrganizations();
+    return organizations.map((organization) => ({
+      id: organization.id,
+      name: organization.name,
+      slug: organization.slug,
+      createdBy: organization.createdBy,
+      createdAt: organization.createdAt,
+      updatedAt: organization.updatedAt,
+    }));
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -215,5 +242,47 @@ export class Auth extends DurableObject<CloudflareEnv> {
     return fragment.handler(request, {
       waitUntil: this.#state.waitUntil.bind(this.#state),
     });
+  }
+}
+
+export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
+  #object: InMemoryAuthObject;
+
+  constructor(state: DurableObjectState, env: CloudflareEnv) {
+    super(state, env);
+    this.#object = new InMemoryAuthObject({
+      state,
+      env,
+      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
+    });
+  }
+
+  async alarm() {
+    await this.#object.alarm();
+  }
+
+  getDurableHookRepository() {
+    return this.#object.getDurableHookRepository();
+  }
+
+  async getAllOrganizations(): Promise<Organization[]> {
+    return await this.#object.getAllOrganizations();
+  }
+
+  async getDevOrganizations(): Promise<
+    Array<{
+      id: string;
+      name: string;
+      slug: string;
+      createdBy: string;
+      createdAt: Date;
+      updatedAt: Date;
+    }>
+  > {
+    return await this.#object.getDevOrganizations();
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    return await this.#object.fetch(request);
   }
 }

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import {
   seedWorkspaceStarterFiles,
   type WorkspaceStarterFilesSeedOutput,
@@ -54,16 +56,20 @@ const getRuntime = (context: InternalToolContext) => {
 };
 
 export const createInternalRuntime = ({
-  env,
+  objects,
+  config,
   orgId,
+  origin = "https://backoffice.local",
   families,
 }: {
-  env: CloudflareEnv;
+  objects: BackofficeObjectRegistry;
+  config: BackofficeRuntimeConfig;
   orgId: string;
+  origin?: string;
   families: readonly BackofficeRuntimeToolFamily[];
 }): InternalRuntime => ({
   seedWorkspaceStarterFiles: async (input) =>
-    await seedWorkspaceStarterFiles({ env, orgId, force: input?.force }),
+    await seedWorkspaceStarterFiles({ objects, orgId, force: input?.force }),
   renderCodemodeTypes: async () => {
     const configuredCapabilities: BackofficeCapabilityId[] = [];
 
@@ -73,7 +79,7 @@ export const createInternalRuntime = ({
         continue;
       }
 
-      const status = await capability.connection.getStatus({ env, orgId });
+      const status = await capability.connection.getStatus({ objects, config, orgId, origin });
       if (status.configured) {
         configuredCapabilities.push(capability.id);
       }

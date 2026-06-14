@@ -2,9 +2,9 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { useEffect } from "react";
 import { Link, Outlet, useLocation, useLoaderData, useNavigate, useParams } from "react-router";
 
-import { getAuthDurableObject } from "@/cloudflare/cloudflare-utils";
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { DurableHookQueueEntry, DurableHookQueueResponse } from "@/fragno/durable-hooks";
+import { getAuthDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { Route } from "./+types/durable-hooks-singletons";
 import { formatTimestamp, getStatusBadgeClasses } from "./durable-hooks-shared";

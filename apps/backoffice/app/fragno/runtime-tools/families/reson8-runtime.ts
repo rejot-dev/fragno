@@ -5,6 +5,7 @@ import type {
   Reson8PrerecordedTranscription,
 } from "@fragno-dev/reson8-fragment";
 
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { Reson8Fragment } from "@/fragno/reson8";
 
 import {
@@ -88,13 +89,13 @@ export const createRouteBackedReson8Runtime = (
 };
 
 export const createReson8RouteRuntime = ({
-  env,
+  objects,
   orgId,
 }: {
-  env: CloudflareEnv;
+  objects: BackofficeObjectRegistry;
   orgId: string;
 }): Reson8Runtime => {
-  const reson8Do = env.RESON8.get(env.RESON8.idFromName(orgId));
+  const reson8Do = objects.reson8.forOrg(orgId);
   return createRouteBackedReson8Runtime({
     baseUrl: "https://reson8.do",
     fetch: reson8Do.fetch.bind(reson8Do),

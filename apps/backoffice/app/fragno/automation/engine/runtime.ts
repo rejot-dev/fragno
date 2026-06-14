@@ -1,3 +1,4 @@
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BashHostContext } from "@/fragno/runtime-tools/bash-host";
 import type { PiRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
 import { createUnavailableResendRuntime } from "@/fragno/runtime-tools/families/resend-runtime";
@@ -14,6 +15,7 @@ import type {
   AutomationStoreEntry,
 } from "../../runtime-tools/families/automations-bindings";
 import {
+  createUnavailableEventRuntime,
   createEventRuntime,
   type AutomationEmitEventResult,
   type EventRuntime,
@@ -52,10 +54,10 @@ export type AutomationRuntimeHostContext = Omit<
 export type { AutomationEmitEventResult, AutomationStoreEntry, AutomationIdentityClaimRecord };
 
 export const createAutomationRuntime = ({
-  env,
+  runtime,
   event,
 }: {
-  env?: CloudflareEnv;
+  runtime?: BackofficeRuntimeServices;
   event: AutomationEvent;
 }): AutomationRuntime => {
   const orgId = normalizeOrgId(event.orgId);
@@ -64,19 +66,19 @@ export const createAutomationRuntime = ({
     orgId,
   };
   const requireOrgRouteBackend = (toolName: string) => {
-    if (!env) {
+    if (!runtime) {
       throw new Error(`${toolName} is not configured`);
     }
     throw new Error(`${toolName} requires an organisation id`);
   };
 
-  if (env && orgId) {
-    const routeBacked = createRouteBackedRuntimeContext({ env, orgId });
+  if (runtime && orgId) {
+    const routeBacked = createRouteBackedRuntimeContext({ runtime, orgId });
     return {
       ...routeBacked.automations.runtime,
       ...routeBacked.otp.runtime,
       ...createEventRuntime({
-        env,
+        objects: runtime.objects,
         event: eventWithOrgId,
       }),
     };
@@ -88,10 +90,7 @@ export const createAutomationRuntime = ({
     delete: async () => requireOrgRouteBackend("store.delete"),
     list: async () => requireOrgRouteBackend("store.list"),
     createClaim: async () => requireOrgRouteBackend("otp.identity.create-claim"),
-    ...createEventRuntime({
-      env,
-      event: eventWithOrgId,
-    }),
+    ...createUnavailableEventRuntime(),
   };
 };
 
@@ -100,14 +99,14 @@ export const createAutomationExecutionContext = ({
   binding,
   idempotencyKey,
   runtime,
-  env,
+  runtimeServices,
   pi,
 }: {
   event: AutomationEvent;
   binding: AutomationTriggerBinding;
   idempotencyKey: string;
   runtime: AutomationRuntime;
-  env?: CloudflareEnv;
+  runtimeServices?: BackofficeRuntimeServices;
   pi: AutomationPiBashContext | null;
 }): AutomationRuntimeHostContext => {
   const orgId = normalizeOrgId(event.orgId);
@@ -117,9 +116,9 @@ export const createAutomationExecutionContext = ({
   };
 
   const routeBacked =
-    env && orgId
+    runtimeServices && orgId
       ? createRouteBackedRuntimeContext({
-          env,
+          runtime: runtimeServices,
           orgId,
           ...(pi ? { pi: { runtime: pi.runtime } } : {}),
         })

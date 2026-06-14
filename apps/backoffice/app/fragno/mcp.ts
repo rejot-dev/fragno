@@ -1,9 +1,8 @@
-import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
-import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
-import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
 import type { McpFragmentConfig } from "@fragno-dev/mcp-fragment/definition";
 
 import { createMcpFragment } from "@fragno-dev/mcp-fragment";
+
+import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 
 export type McpConfig = Pick<
   McpFragmentConfig,
@@ -22,20 +21,9 @@ export const resolveMcpPublicBaseUrl = ({ baseUrl, orgId }: { baseUrl: string; o
   return parsed.toString().replace(/\/+$/, "");
 };
 
-export function createAdapter(state?: DurableObjectState) {
-  const dialect = new DurableObjectDialect({
-    ctx: state!,
-  });
-
-  return new SqlAdapter({
-    dialect,
-    driverConfig: new CloudflareDurableObjectsDriverConfig(),
-  });
-}
-
 export function createMcpServer(
   config: McpConfig,
-  state: DurableObjectState,
+  runtime: BackofficeFragmentRuntimeOptions,
 ): ReturnType<typeof createMcpFragment> {
   return createMcpFragment(
     {
@@ -44,7 +32,9 @@ export function createMcpServer(
       onServerConfigurationDeleted: config.onServerConfigurationDeleted,
     },
     {
-      databaseAdapter: createAdapter(state),
+      databaseAdapter: runtime.adapters.createAdapter({
+        kind: "mcp",
+      }),
       mountRoute: "/api/mcp",
     },
   );

@@ -34,8 +34,7 @@ export const otpCapability: BackofficeCapability = {
     {
       id: "otp",
       label: "OTP",
-      getRepository: ({ env, orgId }) =>
-        env.OTP.get(env.OTP.idFromName(orgId)).getDurableHookRepository(),
+      getRepository: ({ objects, orgId }) => objects.otp.forOrg(orgId).getDurableHookRepository(),
     },
   ],
   automationEvents: [

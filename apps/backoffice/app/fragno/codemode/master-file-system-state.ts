@@ -1,4 +1,4 @@
-import { InMemoryFs, type FileSystem } from "@cloudflare/shell";
+import type { FileSystem } from "@cloudflare/shell";
 
 import type { FsStat, IFileSystem } from "@/files/interface";
 
@@ -106,6 +106,10 @@ export class BackofficeStateFileSystem implements FileSystem {
     await this.#withEnoent(linkPath, "symlink", () => this.#fs.symlink(target, linkPath));
   }
 
+  async link(existingPath: string, newPath: string): Promise<void> {
+    await this.#withEnoent(existingPath, "link", () => this.#fs.link(existingPath, newPath));
+  }
+
   async readlink(path: string): Promise<string> {
     return this.#withEnoent(path, "readlink", () => this.#fs.readlink(path));
   }
@@ -118,25 +122,25 @@ export class BackofficeStateFileSystem implements FileSystem {
     return this.#fs.resolvePath(base, path);
   }
 
+  async chmod(path: string, mode: number): Promise<void> {
+    await this.#withEnoent(path, "chmod", () => this.#fs.chmod(path, mode));
+  }
+
+  async utimes(path: string, atime: Date, mtime: Date): Promise<void> {
+    await this.#withEnoent(path, "utimes", () => this.#fs.utimes(path, atime, mtime));
+  }
+
   async glob(pattern: string): Promise<string[]> {
-    const globFs = new InMemoryFs();
+    const matcher = createGlobMatcher(pattern);
+    const paths: string[] = [];
 
-    await this.#walkGlobRoot("/", async (path, stat) => {
-      if (path === "/") {
-        return;
-      }
-
-      if (stat.isDirectory) {
-        await globFs.mkdir(path, { recursive: true });
-        return;
-      }
-
-      if (stat.isFile) {
-        await globFs.writeFile(path, "");
+    await this.#walkGlobRoot("/", (path) => {
+      if (path !== "/" && matcher(path)) {
+        paths.push(path);
       }
     });
 
-    return globFs.glob(pattern);
+    return paths.sort();
   }
 
   async #walkGlobRoot(
@@ -180,6 +184,63 @@ export class BackofficeStateFileSystem implements FileSystem {
 
 type FileSystemStat = Awaited<ReturnType<FileSystem["stat"]>>;
 type FileSystemDirent = Awaited<ReturnType<FileSystem["readdirWithFileTypes"]>>[number];
+
+const createGlobMatcher = (pattern: string): ((path: string) => boolean) => {
+  const regex = new RegExp(`^${globToRegexSource(pattern)}$`, "u");
+  return (path) => regex.test(path);
+};
+
+const globToRegexSource = (pattern: string): string => {
+  let source = "";
+
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index];
+    const next = pattern[index + 1];
+    const nextNext = pattern[index + 2];
+
+    if (char === "*" && next === "*" && nextNext === "/") {
+      source += "(?:.*/)?";
+      index += 2;
+      continue;
+    }
+
+    if (char === "*" && next === "*") {
+      source += ".*";
+      index += 1;
+      continue;
+    }
+
+    if (char === "*") {
+      source += "[^/]*";
+      continue;
+    }
+
+    if (char === "?") {
+      source += "[^/]";
+      continue;
+    }
+
+    if (char === "{") {
+      const end = pattern.indexOf("}", index + 1);
+      if (end !== -1) {
+        const alternates = pattern
+          .slice(index + 1, end)
+          .split(",")
+          .map(escapeRegex)
+          .join("|");
+        source += `(?:${alternates})`;
+        index = end;
+        continue;
+      }
+    }
+
+    source += escapeRegex(char ?? "");
+  }
+
+  return source;
+};
+
+const escapeRegex = (value: string): string => value.replace(/[|\\{}()[\]^$+*?.]/gu, "\\$&");
 
 const isMissingPathError = (error: unknown): boolean => {
   if (!(error instanceof Error)) {

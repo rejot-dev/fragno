@@ -9,10 +9,8 @@ export const automationsCapability: BackofficeCapability = {
     {
       id: "automations",
       label: "Automations",
-      getRepository: ({ env, orgId }) =>
-        env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(orgId)).getDurableHookRepository(
-          "automation",
-        ),
+      getRepository: ({ objects, orgId }) =>
+        objects.automations.forOrg(orgId).getDurableHookRepository("automation"),
     },
   ],
 };

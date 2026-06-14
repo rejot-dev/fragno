@@ -1,3 +1,6 @@
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
+
 import type { AutomationIdentityClaimRecord, OtpRuntime } from "./otp";
 
 export type { AutomationIdentityClaimRecord, OtpRuntime };
@@ -7,10 +10,12 @@ export type RegisteredOtpCommandContext = {
 };
 
 export const createOtpRuntime = ({
-  env,
+  objects,
+  config,
   orgId,
 }: {
-  env: CloudflareEnv;
+  objects: BackofficeObjectRegistry;
+  config: BackofficeRuntimeConfig;
   orgId: string;
 }): OtpRuntime => ({
   createClaim: async ({ actor, ttlMinutes }) => {
@@ -19,14 +24,14 @@ export const createOtpRuntime = ({
       throw new Error("otp.identity.create-claim requires an organisation id");
     }
 
-    const publicBaseUrl = env.DOCS_PUBLIC_BASE_URL?.trim();
+    const publicBaseUrl = config.docsPublicBaseUrl?.trim();
     if (!publicBaseUrl) {
       throw new Error(
         "DOCS_PUBLIC_BASE_URL must be configured before issuing automation identity claims.",
       );
     }
 
-    const otpDo = env.OTP.get(env.OTP.idFromName(normalizedOrgId));
+    const otpDo = objects.otp.forOrg(normalizedOrgId);
     const issued = await otpDo.issueIdentityClaim({
       orgId: normalizedOrgId,
       actor,

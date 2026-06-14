@@ -108,6 +108,8 @@ type GitHubWebhookRouterSnapshot = {
   };
 };
 
+type GitHubWebhookRouterObjectState = Pick<DurableObjectState, "storage">;
+
 const toBase64Url = (bytes: Uint8Array) =>
   btoa(String.fromCharCode(...bytes))
     .replace(/\+/g, "-")
@@ -130,12 +132,11 @@ const toStateTokenPreview = (value: string) => {
   return `${value.slice(0, 8)}…`;
 };
 
-export class GitHubWebhookRouter extends DurableObject<CloudflareEnv> {
+export class InMemoryGitHubWebhookRouterObject {
   #env: CloudflareEnv;
-  #state: DurableObjectState;
+  #state: GitHubWebhookRouterObjectState;
 
-  constructor(state: DurableObjectState, env: CloudflareEnv) {
-    super(state, env);
+  constructor({ state, env }: { state: GitHubWebhookRouterObjectState; env: CloudflareEnv }) {
     this.#env = env;
     this.#state = state;
   }
@@ -441,5 +442,63 @@ export class GitHubWebhookRouter extends DurableObject<CloudflareEnv> {
         activeInstallStates: activeInstallStates.length,
       },
     };
+  }
+}
+
+export class GitHubWebhookRouter extends DurableObject<CloudflareEnv> {
+  #object: InMemoryGitHubWebhookRouterObject;
+
+  constructor(state: DurableObjectState, env: CloudflareEnv) {
+    super(state, env);
+    this.#object = new InMemoryGitHubWebhookRouterObject({ state, env });
+  }
+
+  async getAdminConfig(orgId: string, origin: string): Promise<AdminConfigResponse> {
+    return await this.#object.getAdminConfig(orgId, origin);
+  }
+
+  async createInstallStatefulUrl(userId: string, orgId: string): Promise<CreateInstallUrlResult> {
+    return await this.#object.createInstallStatefulUrl(userId, orgId);
+  }
+
+  async resolveInstallState(
+    input: ResolveInstallStateInput,
+  ): Promise<InstallStateResolutionResult> {
+    return await this.#object.resolveInstallState(input);
+  }
+
+  async consumeInstallState(input: ConsumeInstallStateInput): Promise<ConsumeInstallStateResult> {
+    return await this.#object.consumeInstallState(input);
+  }
+
+  async setInstallationOrg(
+    installationId: string,
+    orgId: string,
+  ): Promise<
+    | { ok: true }
+    | {
+        ok: false;
+        message: string;
+        code?: "INSTALLATION_ORG_CONFLICT";
+        existingOrgId?: string;
+      }
+  > {
+    return await this.#object.setInstallationOrg(installationId, orgId);
+  }
+
+  async getInstallationOrg(installationId: string): Promise<string | null> {
+    return await this.#object.getInstallationOrg(installationId);
+  }
+
+  async clearInstallationRouting(installationId: string): Promise<{
+    ok: true;
+    removedMapping: boolean;
+    clearedPendingWebhooks: number;
+  }> {
+    return await this.#object.clearInstallationRouting(installationId);
+  }
+
+  async getWebhookRouterSnapshot(): Promise<GitHubWebhookRouterSnapshot> {
+    return await this.#object.getWebhookRouterSnapshot();
   }
 }

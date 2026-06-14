@@ -1,6 +1,11 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
+import type { PiObject } from "@/backoffice-runtime/object-registry";
+import {
+  createCloudflareDurableObjectRuntimeServices,
+  type BackofficeRuntimeServices,
+} from "@/backoffice-runtime/runtime-services";
 import type { MasterFileSystem } from "@/files";
 import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
@@ -30,6 +35,7 @@ import {
 import {
   createBackofficeFragmentDurableObject,
   type BackofficeFragmentDurableObject,
+  type BackofficeObjectState,
 } from "./lib/backoffice-fragment-durable-object";
 
 type PiHookFragment = "pi" | "workflows";
@@ -190,16 +196,25 @@ const toStoredHarness = (harness: z.infer<typeof harnessSchema>): PiHarnessConfi
 const toStoredHarnesses = (harnesses: z.infer<typeof harnessesSchema>) =>
   harnesses.map(toStoredHarness);
 
-export class Pi extends DurableObject<CloudflareEnv> {
-  #env: CloudflareEnv;
-  #state: DurableObjectState;
+export class InMemoryPiObject implements PiObject {
+  #env: Parameters<typeof createPiRuntime>[0]["env"];
+  #state: BackofficeObjectState;
+  #runtimeServices: BackofficeRuntimeServices;
   #host: BackofficeFragmentDurableObject<StoredPiConfig, StoredPiConfig, PiRuntimeFragments>;
   #sessionFileSystems = new Map<string, Promise<MasterFileSystem>>();
 
-  constructor(state: DurableObjectState, env: CloudflareEnv) {
-    super(state, env);
+  constructor({
+    state,
+    env,
+    runtime,
+  }: {
+    state: BackofficeObjectState;
+    env: Parameters<typeof createPiRuntime>[0]["env"];
+    runtime: BackofficeRuntimeServices;
+  }) {
     this.#env = env;
     this.#state = state;
+    this.#runtimeServices = runtime;
     this.#host = createBackofficeFragmentDurableObject({
       name: "Pi",
       state,
@@ -228,12 +243,12 @@ export class Pi extends DurableObject<CloudflareEnv> {
         { id: "pi", target: (runtime) => runtime.piFragment },
       ],
       outbox: {
-        dispatch: async (item, { env, stored }) => {
+        dispatch: async (item, { stored }) => {
           if (item.type !== "capability.configured") {
             return;
           }
 
-          await env.AUTOMATIONS.get(env.AUTOMATIONS.idFromName(stored.orgId)).ingestEvent({
+          await this.#runtimeServices.objects.automations.forOrg(stored.orgId).ingestEvent({
             id: item.id,
             orgId: stored.orgId,
             source: "pi",
@@ -264,21 +279,25 @@ export class Pi extends DurableObject<CloudflareEnv> {
 
     const sessionFileSystemContext: PiSessionFileSystemContext = {
       orgId,
-      env: this.#env,
+      objects: this.#runtimeServices.objects,
     };
 
     return createPiRuntime({
       config,
-      state: this.#state,
+      adapters: this.#runtimeServices.adapters,
+      orgId,
       env: this.#env,
       codemode: {
         ...createPiCodemodeRuntime(this.#env),
-        workflow: createRouteBackedAutomationWorkflowRuntime({ env: this.#env, orgId }),
+        workflow: createRouteBackedAutomationWorkflowRuntime({
+          objects: this.#runtimeServices.objects,
+          orgId,
+        }),
       },
       sessionFileSystems: this.#sessionFileSystems,
       sessionFileSystemContext,
       bashCommandContext: createPiBashCommandContext({
-        env: this.#env,
+        runtime: this.#runtimeServices,
         orgId,
       }),
     });
@@ -366,5 +385,42 @@ export class Pi extends DurableObject<CloudflareEnv> {
 
   async fetch(request: Request): Promise<Response> {
     return await this.#host.fetch(request);
+  }
+}
+
+export class Pi extends DurableObject<CloudflareEnv> implements PiObject {
+  #object: InMemoryPiObject;
+
+  constructor(state: DurableObjectState, env: CloudflareEnv) {
+    super(state, env);
+    this.#object = new InMemoryPiObject({
+      state,
+      env,
+      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
+    });
+  }
+
+  async alarm() {
+    await this.#object.alarm();
+  }
+
+  async getAdminConfig(): Promise<PiConfigState> {
+    return await this.#object.getAdminConfig();
+  }
+
+  async resetAdminConfig(): Promise<PiConfigState> {
+    return await this.#object.resetAdminConfig();
+  }
+
+  async setAdminConfig(payload: unknown): Promise<PiConfigState> {
+    return await this.#object.setAdminConfig(payload);
+  }
+
+  getDurableHookRepository(fragment?: PiHookFragment) {
+    return this.#object.getDurableHookRepository(fragment);
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    return await this.#object.fetch(request);
   }
 }
