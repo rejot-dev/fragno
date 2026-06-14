@@ -28,7 +28,7 @@ import {
   resolveRouteFactories,
 } from "./route";
 import type { RouteHandlerInputOptions } from "./route-handler-input-options";
-import type { FragnoFragmentSharedConfig, FragnoPublicConfig } from "./shared-types";
+import type { FragnoPublicConfig } from "./shared-types";
 
 // Re-export types needed by consumers
 export type { BoundServices };

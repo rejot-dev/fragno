@@ -130,9 +130,7 @@ describe("session credential strategy", () => {
     });
 
     expect(invalidateCredential).toHaveBeenCalledWith("session_123");
-    expect(clearResult.headers).toEqual({
-      "Set-Cookie": expect.stringContaining("fragno_auth="),
-    });
+    expect(clearResult.headers).toEqual([["Set-Cookie", expect.stringContaining("fragno_auth=")]]);
     expect(
       buildIssuedCredentialHeaders({
         token: "session_123",
@@ -140,8 +138,6 @@ describe("session credential strategy", () => {
         expiresAt: new Date("2026-01-02T03:04:05.000Z"),
         activeOrganizationId: null,
       }),
-    ).toEqual({
-      "Set-Cookie": expect.stringContaining("fragno_auth=session_123"),
-    });
+    ).toEqual([["Set-Cookie", expect.stringContaining("fragno_auth=session_123")]]);
   });
 });

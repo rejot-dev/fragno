@@ -6,6 +6,15 @@ import type { DatabaseServiceContext } from "@fragno-dev/db";
 import type { Role, authFragmentDefinition } from "..";
 import { buildClearedCredentialHeaders } from "../auth/credential-strategy";
 import { resolveRequestCredential } from "../auth/request-auth";
+import { buildIssuedAuthResponse } from "../auth/response-auth";
+import {
+  mintSessionAccessToken,
+  resolveAccessTokenConfig,
+  resolveBackingSessionCredential,
+  resolveRefreshCredential,
+  verifySessionAccessToken,
+} from "../auth/session-access-token";
+import type { ValidatedCredential } from "../auth/types";
 import type { AuthHooksMap } from "../hooks";
 import { invitationSummarySchema, memberSchema, organizationSchema } from "../organization/schemas";
 import {
@@ -85,10 +94,18 @@ type OrganizationInvitationRow = {
   organization?: OrganizationRow | null;
 };
 
-type CredentialSeedMemberRow = {
-  createdAt: Date;
-  organizationMemberOrganization?: OrganizationRow | null;
+type CurrentSessionOrganizations = {
+  organizations: Array<{
+    organization: z.infer<typeof organizationSchema>;
+    member: z.infer<typeof memberSchema>;
+  }>;
+  activeOrganizationId: string | null;
 };
+
+type CurrentSessionInvitations = Array<{
+  invitation: z.infer<typeof invitationSummarySchema>;
+  organization: z.infer<typeof organizationSchema>;
+}>;
 
 const organizationSelect = [
   "id",
@@ -109,12 +126,41 @@ const normalizeMany = <T>(value: T | T[] | null | undefined): T[] => {
   return Array.isArray(value) ? value : [value];
 };
 
+const normalizeMetadata = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return Object.fromEntries(Object.entries(value));
+};
+
+const normalizeStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((entry): entry is string => typeof entry === "string");
+};
+
+const normalizeInvitationStatus = (status: string): OrganizationInvitationStatus => {
+  switch (status) {
+    case "accepted":
+    case "canceled":
+    case "expired":
+    case "pending":
+    case "rejected":
+      return status;
+    default:
+      return "pending";
+  }
+};
+
+const normalizeRole = (role: string): Role => (role === "admin" ? "admin" : "user");
+
 const mapOrganizationRow = (organization: OrganizationRow): Organization => ({
   id: toExternalId(organization.id),
   name: organization.name,
   slug: organization.slug,
   logoUrl: organization.logoUrl ?? null,
-  metadata: (organization.metadata ?? null) as Record<string, unknown> | null,
+  metadata: normalizeMetadata(organization.metadata),
   createdBy: toExternalId(organization.createdBy),
   createdAt: organization.createdAt,
   updatedAt: organization.updatedAt,
@@ -142,8 +188,8 @@ const mapInvitationRow = (
   id: toExternalId(invitation.id),
   organizationId,
   email: invitation.email,
-  roles: Array.isArray(invitation.roles) ? (invitation.roles as string[]) : [],
-  status: invitation.status as OrganizationInvitationStatus,
+  roles: normalizeStringArray(invitation.roles),
+  status: normalizeInvitationStatus(invitation.status),
   token: invitation.token,
   inviterId: toExternalId(invitation.inviterId),
   expiresAt: invitation.expiresAt,
@@ -184,7 +230,7 @@ const buildOrganizationsFromRows = (
       organizationsByMemberId.set(memberId, entry);
     }
 
-    const roles = normalizeMany(member.roles) as OrganizationMemberRoleRow[];
+    const roles = normalizeMany(member.roles);
     for (const role of roles) {
       if (role?.role) {
         entry.roles.add(role.role);
@@ -259,7 +305,7 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
         )
         .transformRetrieve(([members]) => {
           return resolveCredentialSeedFromMembers(
-            (members as CredentialSeedMemberRow[]).map((member) => ({
+            members.map((member) => ({
               createdAt: member.createdAt,
               organization: member.organizationMemberOrganization ?? null,
             })),
@@ -344,7 +390,7 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
                 .joinOne("sessionOwner", "user", (owner) =>
                   owner
                     .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
-                    .select(["id", "email", "role"]),
+                    .select(["id", "email", "role", "bannedAt"]),
                 ),
             )
             .findFirst("session", (b) =>
@@ -360,13 +406,13 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
           if (!session) {
             return null;
           }
-          if (!session.sessionOwner) {
+          if (!session.sessionOwner || session.sessionOwner.bannedAt) {
             return null;
           }
 
           return {
             id: session.id.valueOf(),
-            userId: session.userId as unknown as string,
+            userId: toExternalId(session.userId),
             expiresAt: session.expiresAt,
             activeOrganizationId: session.activeOrganizationId
               ? String(session.activeOrganizationId)
@@ -374,10 +420,139 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
             user: {
               id: session.sessionOwner.id.valueOf(),
               email: session.sessionOwner.email,
-              role: session.sessionOwner.role,
+              role: normalizeRole(session.sessionOwner.role),
             },
           };
         })
+        .build();
+    },
+    /**
+     * Return full organization/member rows for the user behind a valid session credential.
+     */
+    getCredentialOrganizations: function (this: AuthServiceContext, credentialToken: string) {
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow.findFirst("session", (b) =>
+            b
+              .whereIndex("idx_session_id_expiresAt", (eb) =>
+                eb.and(eb("id", "=", credentialToken), eb("expiresAt", ">", eb.now())),
+              )
+              .joinOne("sessionActiveOrganization", "organization", (organization) =>
+                organization
+                  .onIndex("primary", (eb) => eb("id", "=", eb.parent("activeOrganizationId")))
+                  .select(["id"]),
+              )
+              .joinMany("sessionMembers", "organizationMember", (member) =>
+                member
+                  .onIndex("idx_org_member_user", (eb) => eb("userId", "=", eb.parent("userId")))
+                  .joinOne("organization", "organization", (organization) =>
+                    organization
+                      .onIndex("primary", (eb) => eb("id", "=", eb.parent("organizationId")))
+                      .select(organizationSelect),
+                  )
+                  .joinMany("roles", "organizationMemberRole", (role) =>
+                    role
+                      .onIndex("idx_org_member_role_member", (eb) =>
+                        eb("memberId", "=", eb.parent("id")),
+                      )
+                      .select(["role"]),
+                  ),
+              ),
+          ),
+        )
+        .transformRetrieve(([session]) => {
+          if (!session) {
+            return { organizations: [], activeOrganizationId: null };
+          }
+
+          return {
+            organizations: buildOrganizationsFromRows(
+              normalizeMany(session.sessionMembers),
+              toExternalId(session.userId),
+            ),
+            activeOrganizationId:
+              session.sessionActiveOrganization?.id != null
+                ? toExternalId(session.sessionActiveOrganization.id)
+                : null,
+          };
+        })
+        .mutate(({ retrieveResult }) => retrieveResult)
+        .build();
+    },
+    /**
+     * Return pending invitations for the user behind a valid session credential.
+     */
+    getCredentialInvitations: function (this: AuthServiceContext, credentialToken: string) {
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow.findFirst("session", (b) =>
+            b
+              .whereIndex("idx_session_id_expiresAt", (eb) =>
+                eb.and(eb("id", "=", credentialToken), eb("expiresAt", ">", eb.now())),
+              )
+              .joinOne("sessionOwner", "user", (owner) =>
+                owner
+                  .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
+                  .select(["email"])
+                  .joinMany("invitations", "organizationInvitation", (invitation) =>
+                    invitation
+                      .onIndex("idx_org_invitation_email", (eb) =>
+                        eb("email", "=", eb.parent("email")),
+                      )
+                      .joinOne("organization", "organization", (organization) =>
+                        organization
+                          .onIndex("primary", (eb) => eb("id", "=", eb.parent("organizationId")))
+                          .select(organizationSelect),
+                      ),
+                  ),
+              ),
+          ),
+        )
+        .transformRetrieve(([session]) =>
+          buildInvitationsFromRows(normalizeMany(session?.sessionOwner?.invitations)),
+        )
+        .mutate(({ retrieveResult }) => retrieveResult)
+        .build();
+    },
+    /**
+     * Return non-deleted organization ids for the user behind a valid session credential.
+     */
+    getCredentialOrganizationIds: function (this: AuthServiceContext, credentialToken: string) {
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow.findFirst("session", (b) =>
+            b
+              .whereIndex("idx_session_id_expiresAt", (eb) =>
+                eb.and(eb("id", "=", credentialToken), eb("expiresAt", ">", eb.now())),
+              )
+              .joinMany("sessionMembers", "organizationMember", (member) =>
+                member
+                  .onIndex("idx_org_member_user", (eb) => eb("userId", "=", eb.parent("userId")))
+                  .joinOne("organization", "organization", (organization) =>
+                    organization
+                      .onIndex("primary", (eb) => eb("id", "=", eb.parent("organizationId")))
+                      .select(["id", "deletedAt"]),
+                  ),
+              ),
+          ),
+        )
+        .transformRetrieve(([session]) => {
+          if (!session) {
+            return [];
+          }
+          const sessionMembers = normalizeMany(session.sessionMembers);
+
+          return Array.from(
+            new Set(
+              sessionMembers.flatMap((member) =>
+                member.organization && !member.organization.deletedAt
+                  ? [toExternalId(member.organization.id)]
+                  : [],
+              ),
+            ),
+          );
+        })
+        .mutate(({ retrieveResult }) => retrieveResult)
         .build();
     },
     /**
@@ -431,7 +606,60 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
 
 export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>().create(
   ({ services, config }) => {
+    const accessTokens = resolveAccessTokenConfig(config.authentication?.accessTokens);
+
     return [
+      defineRoute({
+        method: "POST",
+        path: "/token/refresh",
+        inputSchema: z.object({}).optional(),
+        outputSchema: z.object({
+          auth: z.object({
+            token: z.string(),
+            kind: z.enum(["jwt"]),
+            expiresAt: z.string().nullable(),
+            activeOrganizationId: z.string().nullable(),
+            refreshToken: z.string().optional(),
+            refreshExpiresAt: z.string().nullable().optional(),
+          }),
+        }),
+        errorCodes: ["credential_invalid", "access_tokens_disabled"],
+        handler: async function ({ input, headers }, { error }) {
+          await input.valid();
+          if (!accessTokens) {
+            return error(
+              { message: "Access tokens are disabled", code: "access_tokens_disabled" },
+              404,
+            );
+          }
+          const credential = resolveRefreshCredential(headers, config.cookieOptions, {
+            acceptBearer: accessTokens.acceptBearer,
+            issueCookie: accessTokens.issueCookie,
+          });
+          if (!credential.ok) {
+            return error({ message: "Authentication required", code: "credential_invalid" }, 400);
+          }
+          const credentialToken = credential.credential.token;
+          const [session, organizationIds] = (await this.handlerTx()
+            .withServiceCalls(() => [
+              services.validateCredential(credentialToken),
+              services.getCredentialOrganizationIds(credentialToken),
+            ])
+            .execute()) as [ValidatedCredential | null, string[]];
+          if (!session) {
+            return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
+          }
+          const issued = await mintSessionAccessToken({
+            config: accessTokens,
+            session: { ...session, organizationIds },
+          });
+          const response = buildIssuedAuthResponse(issued, config.cookieOptions, {
+            issueCookie: accessTokens.issueCookie,
+          });
+          return Response.json({ auth: response.auth }, { headers: response.headers });
+        },
+      }),
+
       defineRoute({
         method: "POST",
         path: "/sign-out",
@@ -440,17 +668,43 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
           success: z.boolean(),
         }),
         errorCodes: ["credential_invalid"],
-        handler: async function ({ input, headers }, { json, error }) {
+        handler: async function ({ input, headers }, { error }) {
           await input.valid();
 
-          const credential = resolveRequestCredential(headers, config.cookieOptions);
-          if (!credential.ok) {
+          const credential = accessTokens
+            ? resolveRefreshCredential(headers, config.cookieOptions, {
+                acceptBearer: accessTokens.acceptBearer,
+                issueCookie: accessTokens.issueCookie,
+              })
+            : resolveRequestCredential(headers, config.cookieOptions);
+
+          let credentialToken: string | null = credential.ok ? credential.credential.token : null;
+          if (
+            !credential.ok &&
+            accessTokens &&
+            credential.reason !== "malformed" &&
+            credential.reason !== "multiple"
+          ) {
+            const accessCredential = resolveRequestCredential(headers, config.cookieOptions);
+            if (accessCredential.ok) {
+              const principal = await verifySessionAccessToken({
+                config: accessTokens,
+                token: accessCredential.credential.token,
+                source: accessCredential.credential.source,
+              });
+              credentialToken = principal?.auth.credentialId ?? null;
+            }
+          }
+
+          if (!credentialToken) {
             return error(
               {
                 message:
-                  credential.reason === "malformed"
+                  !credential.ok && credential.reason === "malformed"
                     ? "Malformed authentication"
-                    : "Authentication required",
+                    : !credential.ok && credential.reason === "multiple"
+                      ? "Multiple authentication credentials"
+                      : "Authentication required",
                 code: "credential_invalid",
               },
               400,
@@ -458,24 +712,22 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
           }
 
           const [invalidated] = await this.handlerTx()
-            .withServiceCalls(() => [services.invalidateCredential(credential.credential.token)])
+            .withServiceCalls(() => [services.invalidateCredential(credentialToken)])
             .execute();
 
-          const clearedCredentialHeaders = buildClearedCredentialHeaders(config.cookieOptions);
+          const clearedCredentialHeaders = buildClearedCredentialHeaders(
+            config.cookieOptions,
+            accessTokens != null,
+          );
 
           if (!invalidated) {
-            return error(
+            return Response.json(
               { message: "Invalid credential", code: "credential_invalid" },
               { status: 401, headers: clearedCredentialHeaders },
             );
           }
 
-          return json(
-            { success: true },
-            {
-              headers: clearedCredentialHeaders,
-            },
-          );
+          return Response.json({ success: true }, { headers: clearedCredentialHeaders });
         },
       }),
 
@@ -509,7 +761,11 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
         }),
         errorCodes: ["credential_invalid"],
         handler: async function ({ headers }, { json, error }) {
-          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          const credential = await resolveBackingSessionCredential({
+            headers,
+            cookieOptions: config.cookieOptions,
+            accessTokens,
+          });
           if (!credential.ok) {
             return error(
               {
@@ -519,214 +775,57 @@ export const sessionRoutesFactory = defineRoutes<typeof authFragmentDefinition>(
                     : "Authentication required",
                 code: "credential_invalid",
               },
-              400,
+              credential.reason === "invalid" ? 401 : 400,
             );
           }
 
           const credentialToken = credential.credential.token;
-          const result = await this.handlerTx()
-            .retrieve(({ forSchema }) => {
-              const uow = forSchema(authSchema);
-              const scheduleExpiredLookup = () => {
-                uow.findFirst("session", (b) =>
-                  b.whereIndex("idx_session_id_expiresAt", (eb) =>
-                    eb.and(eb("id", "=", credentialToken), eb("expiresAt", "<=", eb.now())),
-                  ),
-                );
-              };
 
-              if (config.organizations === false) {
-                uow.find("session", (b) =>
-                  b
-                    .whereIndex("idx_session_id_expiresAt", (eb) =>
-                      eb.and(eb("id", "=", credentialToken), eb("expiresAt", ">", eb.now())),
-                    )
-                    .joinOne("sessionOwner", "user", (owner) =>
-                      owner
-                        .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
-                        .select(["id", "email", "role"]),
-                    ),
-                );
-                scheduleExpiredLookup();
-                return uow;
-              }
+          if (config.organizations === false) {
+            const [session] = await this.handlerTx()
+              .withServiceCalls(() => [services.validateCredential(credentialToken)])
+              .execute();
 
-              uow.find("session", (b) =>
-                b
-                  .whereIndex("idx_session_id_expiresAt", (eb) =>
-                    eb.and(eb("id", "=", credentialToken), eb("expiresAt", ">", eb.now())),
-                  )
-                  .joinOne("sessionOwner", "user", (owner) =>
-                    owner
-                      .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
-                      .select(["id", "email", "role"]),
-                  )
-                  .joinOne("sessionActiveOrganization", "organization", (organization) =>
-                    organization
-                      .onIndex("primary", (eb) => eb("id", "=", eb.parent("activeOrganizationId")))
-                      .select(["id"]),
-                  )
-                  .joinMany("sessionMembers", "organizationMember", (member) =>
-                    member
-                      .onIndex("idx_org_member_user", (eb) =>
-                        eb("userId", "=", eb.parent("userId")),
-                      )
-                      .joinOne("organization", "organization", (organization) =>
-                        organization
-                          .onIndex("primary", (eb) => eb("id", "=", eb.parent("organizationId")))
-                          .select(organizationSelect),
-                      )
-                      .joinMany("roles", "organizationMemberRole", (role) =>
-                        role
-                          .onIndex("idx_org_member_role_member", (eb) =>
-                            eb("memberId", "=", eb.parent("id")),
-                          )
-                          .select(["role"]),
-                      ),
-                  ),
-              );
+            if (!session) {
+              return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
+            }
 
-              uow.find("session", (b) =>
-                b
-                  .whereIndex("idx_session_id_expiresAt", (eb) =>
-                    eb.and(eb("id", "=", credentialToken), eb("expiresAt", ">", eb.now())),
-                  )
-                  .joinOne("sessionOwner", "user", (owner) =>
-                    owner
-                      .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
-                      .select(["id", "email", "role"])
-                      .joinMany("invitations", "organizationInvitation", (invitation) =>
-                        invitation
-                          .onIndex("idx_org_invitation_email", (eb) =>
-                            eb("email", "=", eb.parent("email")),
-                          )
-                          .joinOne("organization", "organization", (organization) =>
-                            organization
-                              .onIndex("primary", (eb) =>
-                                eb("id", "=", eb.parent("organizationId")),
-                              )
-                              .select(organizationSelect),
-                          ),
-                      ),
-                  ),
-              );
+            return json({
+              user: session.user,
+              organizations: [],
+              activeOrganization: null,
+              invitations: [],
+            });
+          }
 
-              scheduleExpiredLookup();
-              return uow;
-            })
-            .transformRetrieve((retrieveResult) => {
-              if (config.organizations === false) {
-                const [sessions, expiredSession] = retrieveResult as unknown as [
-                  Array<{
-                    id: unknown;
-                    sessionOwner?: { id: unknown; email: string; role: Role } | null;
-                  }>,
-                  { id: unknown } | null,
-                ];
-                return {
-                  session: sessions[0] ?? null,
-                  organizations: [],
-                  invitations: [],
-                  activeOrganizationId: null,
-                  expiredSession,
-                };
-              }
+          const [session, organizationResult, invitations] = (await this.handlerTx()
+            .withServiceCalls(() => [
+              services.validateCredential(credentialToken),
+              services.getCredentialOrganizations(credentialToken),
+              services.getCredentialInvitations(credentialToken),
+            ])
+            .execute()) as [
+            ValidatedCredential | null,
+            CurrentSessionOrganizations,
+            CurrentSessionInvitations,
+          ];
 
-              const [memberRows, invitationRows, expiredSession] = retrieveResult as unknown as [
-                Array<{
-                  id: unknown;
-                  sessionOwner?: { id: unknown; email: string; role: Role } | null;
-                  sessionActiveOrganization?: { id: unknown } | null;
-                  sessionMembers?: OrganizationMemberRow | OrganizationMemberRow[] | null;
-                }>,
-                Array<{
-                  id: unknown;
-                  sessionOwner?: {
-                    email?: string;
-                    role?: Role;
-                    invitations?: OrganizationInvitationRow | OrganizationInvitationRow[] | null;
-                  } | null;
-                }>,
-                { id: unknown } | null,
-              ];
-              const memberSession = memberRows[0] ?? null;
-              const invitationSession = invitationRows[0] ?? null;
-              const session = memberSession ?? invitationSession;
-              const activeOrganizationId =
-                memberSession?.sessionActiveOrganization?.id != null
-                  ? toExternalId(memberSession.sessionActiveOrganization.id)
-                  : null;
-
-              const sessionMembers = memberSession?.sessionMembers
-                ? Array.isArray(memberSession.sessionMembers)
-                  ? memberSession.sessionMembers
-                  : [memberSession.sessionMembers]
-                : [];
-              const sessionInvitations = invitationSession?.sessionOwner?.invitations
-                ? Array.isArray(invitationSession.sessionOwner.invitations)
-                  ? invitationSession.sessionOwner.invitations
-                  : [invitationSession.sessionOwner.invitations]
-                : [];
-              const sessionUserId = memberSession?.sessionOwner?.id
-                ? toExternalId(memberSession.sessionOwner.id)
-                : "";
-
-              return {
-                session,
-                organizations: buildOrganizationsFromRows(sessionMembers, sessionUserId),
-                invitations: buildInvitationsFromRows(sessionInvitations),
-                activeOrganizationId,
-                expiredSession,
-              };
-            })
-            .mutate(({ forSchema, retrieveResult }) => {
-              const { session, expiredSession } = retrieveResult;
-              if (expiredSession) {
-                const uow = forSchema(authSchema);
-                uow.delete("session", expiredSession.id as string, (b) => b.check());
-              }
-              if (!session) {
-                return { invalid: true as const };
-              }
-              if (!session.sessionOwner) {
-                return { invalid: true as const };
-              }
-              return { invalid: false as const };
-            })
-            .transform(({ retrieveResult, mutateResult }) => {
-              const { session, organizations, invitations, activeOrganizationId } = retrieveResult;
-              if (mutateResult.invalid || !session || !session.sessionOwner) {
-                return { ok: false as const };
-              }
-
-              const user = session.sessionOwner;
-              const userId = toExternalId(user.id);
-              const activeOrganization = activeOrganizationId
-                ? (organizations.find((entry) => entry.organization.id === activeOrganizationId) ??
-                  null)
-                : null;
-
-              return {
-                ok: true as const,
-                data: {
-                  user: {
-                    id: userId,
-                    email: user.email,
-                    role: user.role as Role,
-                  },
-                  organizations,
-                  activeOrganization,
-                  invitations,
-                },
-              };
-            })
-            .execute();
-
-          if (!result.ok) {
+          if (!session) {
             return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
           }
 
-          return json(result.data);
+          const activeOrganization = organizationResult.activeOrganizationId
+            ? (organizationResult.organizations.find(
+                (entry) => entry.organization.id === organizationResult.activeOrganizationId,
+              ) ?? null)
+            : null;
+
+          return json({
+            user: session.user,
+            organizations: organizationResult.organizations,
+            activeOrganization,
+            invitations,
+          });
         },
       }),
     ];

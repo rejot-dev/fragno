@@ -1,4 +1,4 @@
-import { DrawerPreview as Drawer } from "@base-ui/react/drawer";
+import { Drawer } from "@base-ui/react/drawer";
 import { Menu } from "@base-ui/react/menu";
 import { Separator } from "@base-ui/react/separator";
 import type { ReactNode } from "react";

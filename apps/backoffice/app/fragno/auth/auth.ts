@@ -1,4 +1,5 @@
 import { InMemoryAdapter } from "@fragno-dev/db/adapters/in-memory";
+import z from "zod";
 
 import {
   createAuthFragment,
@@ -24,6 +25,16 @@ type AuthServerOptions = {
   organizationHooks?: OrganizationHooks;
 };
 
+export const ACCESS_TOKEN_ISSUER = "fragno-backoffice-auth";
+export const ACCESS_TOKEN_AUDIENCE = "fragno-backoffice";
+const DEV_ACCESS_TOKEN_SECRET = "fragno-backoffice-development-access-token-secret";
+
+export const backofficeAccessTokenContextSchema = z.object({
+  organizationIds: z.array(z.string()),
+});
+
+export type BackofficeAccessTokenContext = z.infer<typeof backofficeAccessTokenContextSchema>;
+
 const resolveBaseUrl = (baseUrl?: string) => {
   if (!baseUrl) {
     return undefined;
@@ -36,6 +47,27 @@ const resolveBaseUrl = (baseUrl?: string) => {
       cause: error,
     });
   }
+};
+
+export const resolveLiveAccessTokenSecret = (env: CloudflareEnv, isDev: boolean): string => {
+  const configuredSecret = env.AUTH_ACCESS_TOKEN_SECRET?.trim();
+  if (configuredSecret) {
+    return configuredSecret;
+  }
+
+  if (isDev) {
+    return DEV_ACCESS_TOKEN_SECRET;
+  }
+
+  throw new Error("AUTH_ACCESS_TOKEN_SECRET must be configured for backoffice auth access tokens.");
+};
+
+export const resolveAccessTokenSecret = (init: AuthInit, isDev: boolean): string => {
+  if (init.type === "dry-run") {
+    return DEV_ACCESS_TOKEN_SECRET;
+  }
+
+  return resolveLiveAccessTokenSecret(init.env, isDev);
 };
 
 const buildOauthConfig = (init: AuthInit, baseUrl?: string): AuthOAuthConfig | undefined => {
@@ -67,9 +99,25 @@ export function createAuthServer(init: AuthInit, options: AuthServerOptions = {}
   const baseUrl = resolveBaseUrl(options.baseUrl);
   const oauthConfig = buildOauthConfig(init, baseUrl);
   const isDev = import.meta.env.MODE === "development";
+  const accessTokenSecret = resolveAccessTokenSecret(init, isDev);
 
   return createAuthFragment(
     {
+      authentication: {
+        accessTokens: {
+          enabled: true,
+          issuer: ACCESS_TOKEN_ISSUER,
+          audience: ACCESS_TOKEN_AUDIENCE,
+          secret: accessTokenSecret,
+          expiresInSeconds: 15 * 60,
+          context: {
+            schema: backofficeAccessTokenContextSchema,
+            project: ({ snapshot }) => ({
+              organizationIds: snapshot.organizationIds,
+            }),
+          },
+        },
+      },
       cookieOptions: {
         sameSite: "Lax",
         secure: !isDev,

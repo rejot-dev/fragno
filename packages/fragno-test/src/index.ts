@@ -1,11 +1,3 @@
-import type {
-  SupportedAdapter,
-  KyselySqliteAdapter,
-  KyselyPgliteAdapter,
-  DrizzlePgliteAdapter,
-  InMemoryAdapterConfig,
-} from "./adapters";
-
 // Re-export utilities from @fragno-dev/core/test
 export {
   createFragmentForTest,

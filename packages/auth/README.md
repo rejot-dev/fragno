@@ -6,6 +6,7 @@ everything by hand. It ships with typed routes, hooks, and client helpers.
 
 - Email/password sign-up, sign-in, and sign-out
 - Strategy-neutral auth cookies (`fragno_auth`) with configurable security attributes
+- Optional short-lived session-backed access JWTs to avoid auth database reads on normal requests
 - Organizations, roles, invitations, and active organization context
 - OAuth providers (GitHub built-in)
 - Hooks for user/credential/org lifecycle events
@@ -75,6 +76,7 @@ Auth:
 - `POST /sign-up`
 - `POST /sign-in`
 - `POST /sign-out`
+- `POST /token/refresh`
 - `POST /change-password`
 - `GET /users`
 - `PATCH /users/:userId/role`
@@ -130,7 +132,26 @@ This applies to:
 - `POST /sign-in`
 - `GET /oauth/:provider/callback` when it returns JSON
 
-`POST /sign-out` clears the `fragno_auth` cookie.
+When `authentication.accessTokens.enabled` is `true`, issuing routes still create a backing session
+row first, but return `auth.kind: "jwt"` and `auth.token` contains a short-lived signed access JWT.
+Cookie clients receive:
+
+- `fragno_auth`: the access JWT
+- `fragno_auth_refresh`: the opaque backing session credential
+
+Bearer clients can store `auth.token` as the access token and `auth.refreshToken` as the opaque
+session credential. Call `POST /token/refresh` with `Authorization: Bearer <refreshToken>` or the
+refresh cookie to mint a replacement access JWT. Normal authenticated requests with a valid access
+JWT are resolved from token claims without reading the auth database; refresh, sign-out, OAuth
+callback issuance, and active-organization changes still validate the backing session row.
+
+Access JWTs are signed for integrity, not confidentiality. Any projected `ctx` claim is a stale,
+short-lived snapshot and must not contain secrets. Routes that need immediate organization,
+membership, role, or ban correctness should still perform their own domain/database checks or force
+refresh.
+
+`POST /sign-out` clears the `fragno_auth` cookie. In access-token mode it also clears
+`fragno_auth_refresh` and invalidates the backing session credential.
 
 ## Configuration
 
@@ -141,6 +162,7 @@ This applies to:
   `onOrganizationCreated`, and more
 - `organizations`: `false` to disable or an organization config object
 - `emailAndPassword`: `{ enabled?: boolean }` to toggle email/password routes
+- `authentication.accessTokens`: optional session-backed access-token mode
 - `oauth`: providers and OAuth settings
 
 Organization config fields:
@@ -148,6 +170,15 @@ Organization config fields:
 - `roles`, `creatorRoles`, `defaultMemberRoles`
 - `allowUserToCreateOrganization`, `invitationExpiresInDays`
 - `autoCreateOrganization`, `limits`, `hooks`
+
+Access-token config fields:
+
+- `enabled`: defaults to `false`
+- `issuer`, `audience`, `secret`: required when enabled
+- `expiresInSeconds`: defaults to 15 minutes and is capped by the backing session expiry
+- `acceptBearer`: defaults to `true`
+- `issueCookie`: defaults to `true`
+- `context`: optional `{ schema, project, maxBytes }` projection for small token-safe `ctx` claims
 
 OAuth config fields:
 

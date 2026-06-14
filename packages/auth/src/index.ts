@@ -7,6 +7,15 @@ import {
 } from "@fragno-dev/core";
 import { withDatabase, type FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+
+import { verifyAuthAccessTokenFromRequest } from "./auth/request-access-token";
+import {
+  resolveAccessTokenConfig,
+  verifySessionAccessTokenDetailed,
+  type ResolvedSessionAccessTokenConfig,
+} from "./auth/session-access-token";
+import type { AuthCredentialSource, AuthPrincipal, RequestAuthFailureReason } from "./auth/types";
 import {
   clearDefaultOrganizationId,
   createDefaultOrganizationPreferenceState,
@@ -27,6 +36,19 @@ import {
   type DefaultOrganizationResolution as AuthDefaultOrganizationResolution,
   type DefaultOrganizationResolutionStatus,
 } from "./client/default-organization";
+import {
+  clearAuthSessionCache,
+  isAuthSessionCacheFresh,
+  readAuthSessionCache,
+  writeAuthSessionCache,
+  type AuthSessionCacheOptions,
+} from "./client/session-cache";
+import {
+  readStorageItem,
+  removeStorageItem,
+  writeStorageItem,
+  type StorageLike,
+} from "./client/storage";
 import type {
   AuthHooks,
   AuthHooksMap,
@@ -69,9 +91,51 @@ import {
 } from "./user/user-overview";
 import type { CookieOptions } from "./utils/cookie";
 
-export interface AuthConfig<TRole extends string = DefaultOrganizationRole> {
+export interface AuthSessionSnapshot<TSessionContext = unknown> {
+  session: {
+    id: string;
+    expiresAt: Date | null;
+    activeOrganizationId: string | null;
+    context: TSessionContext;
+  };
+  user: {
+    id: string;
+    email: string;
+    role: Role;
+  };
+  organizationIds: string[];
+}
+
+export interface ProjectAccessTokenContextInput<TSessionContext = unknown> {
+  snapshot: AuthSessionSnapshot<TSessionContext>;
+}
+
+export interface AuthConfig<
+  TRole extends string = DefaultOrganizationRole,
+  TSessionContext = unknown,
+  TAccessTokenContext = unknown,
+> {
   authentication?: {
     strategy?: "session";
+    accessTokens?: {
+      enabled?: boolean;
+      issuer: string;
+      audience: string;
+      secret: string;
+      expiresInSeconds?: number;
+      acceptBearer?: boolean;
+      issueCookie?: boolean;
+      context?: {
+        schema: StandardSchemaV1<unknown, TAccessTokenContext>;
+        project: (
+          input: ProjectAccessTokenContextInput<TSessionContext>,
+        ) => TAccessTokenContext | null;
+        maxBytes?: number;
+      };
+    };
+  };
+  sessionContext?: {
+    schema: StandardSchemaV1<unknown, TSessionContext>;
   };
   cookieOptions?: CookieOptions;
   hooks?: AuthHooks;
@@ -300,6 +364,7 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
         organizationConfig: organizationConfigResolved,
       }),
       ...createActiveOrganizationServices(),
+      accessTokens: createAuthAccessTokenMethods(config),
       ...createOAuthServices({
         oauth: config.oauth,
         autoCreateOptions,
@@ -339,7 +404,61 @@ const buildAuthFragment = (
     .build();
 };
 
+export type AuthAccessTokenVerificationResult =
+  | { ok: true; principal: AuthPrincipal }
+  | { ok: false; reason: "disabled" | RequestAuthFailureReason | "expired" };
+
+export interface AuthAccessTokenMethods {
+  config: ResolvedSessionAccessTokenConfig | null;
+  verify(input: {
+    token: string;
+    source?: AuthCredentialSource;
+  }): Promise<AuthAccessTokenVerificationResult>;
+  verifyRequest(input: {
+    headers: Headers;
+    cookieOptions?: CookieOptions;
+  }): Promise<AuthAccessTokenVerificationResult>;
+}
+
 export type AuthFragmentInstance = InstantiatedFragmentFromDefinition<AuthFragmentDefinition>;
+
+export function createAuthAccessTokenMethods(config: AuthConfig): AuthAccessTokenMethods {
+  const accessTokens = resolveAccessTokenConfig(config.authentication?.accessTokens);
+
+  return {
+    config: accessTokens,
+    async verify({ token, source = "authorization-header" }) {
+      if (!accessTokens) {
+        return { ok: false, reason: "disabled" };
+      }
+
+      if (source === "authorization-header" && !accessTokens.acceptBearer) {
+        return { ok: false, reason: "invalid" };
+      }
+      if (source === "cookie" && !accessTokens.issueCookie) {
+        return { ok: false, reason: "invalid" };
+      }
+
+      const result = await verifySessionAccessTokenDetailed({
+        config: accessTokens,
+        token,
+        source,
+      });
+      return result.ok ? { ok: true, principal: result.principal } : result;
+    },
+    async verifyRequest({ headers, cookieOptions }) {
+      if (!accessTokens) {
+        return { ok: false, reason: "disabled" };
+      }
+
+      return verifyAuthAccessTokenFromRequest({
+        headers,
+        accessTokens,
+        cookieOptions,
+      });
+    },
+  };
+}
 
 export function createAuthFragment(
   config: AuthConfig = {},
@@ -348,14 +467,122 @@ export function createAuthFragment(
   return buildAuthFragment(config, fragnoConfig);
 }
 
-export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfig) {
+export type AuthClientAccessTokenTransport = "cookie" | "bearer" | "cookie-and-bearer";
+
+const DEFAULT_AUTH_ACCESS_TOKEN_STORAGE_KEY = "fragno_auth_access_token";
+
+const shouldUseBearerTransport = (transport?: AuthClientAccessTokenTransport) =>
+  transport === "bearer" || transport === "cookie-and-bearer";
+
+const extractAuthAccessToken = (value: unknown): string | null => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const auth = (value as { auth?: unknown }).auth;
+  if (!auth || typeof auth !== "object") {
+    return null;
+  }
+
+  const token = (auth as { token?: unknown }).token;
+  return typeof token === "string" && token.length > 0 ? token : null;
+};
+
+const createBearerAccessTokenFetcher = (input: {
+  fetcherConfig: FragnoPublicClientConfig["fetcherConfig"];
+  storage?: StorageLike | null;
+  storageKey?: string;
+}): typeof fetch => {
+  const tokenStorageKey = input.storageKey ?? DEFAULT_AUTH_ACCESS_TOKEN_STORAGE_KEY;
+  const fetcher =
+    input.fetcherConfig?.type === "function"
+      ? input.fetcherConfig.fetcher
+      : globalThis.fetch.bind(globalThis);
+  const defaultOptions =
+    input.fetcherConfig?.type === "options" ? input.fetcherConfig.options : undefined;
+
+  return async (resource, init) => {
+    const storedToken = readStorageItem(tokenStorageKey, input.storage);
+    const headers = new Headers(defaultOptions?.headers);
+    new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
+
+    if (storedToken && !headers.has("Authorization")) {
+      headers.set("Authorization", `Bearer ${storedToken}`);
+    }
+
+    const response = await fetcher(resource, {
+      ...defaultOptions,
+      ...init,
+      headers,
+    });
+
+    if (response.ok) {
+      const token = extractAuthAccessToken(await response.clone().json());
+      if (token) {
+        writeStorageItem(tokenStorageKey, token, input.storage);
+      }
+    }
+
+    return response;
+  };
+};
+
+export interface AuthClientSessionCacheConfig {
+  enabled?: boolean;
+  storage?: StorageLike | null;
+  storageKey?: string;
+  ttlSeconds?: number;
+}
+
+export interface AuthClientAuthConfig {
+  accessTokens?: {
+    enabled?: boolean;
+    transport?: AuthClientAccessTokenTransport;
+  };
+  sessionCache?: AuthClientSessionCacheConfig;
+}
+
+export type AuthFragmentClientConfig = FragnoPublicClientConfig & { auth?: AuthClientAuthConfig };
+
+export function createAuthFragmentClients(fragnoConfig?: AuthFragmentClientConfig) {
   // Note: Cookies are automatically sent for same-origin requests by the browser.
   // For cross-origin requests, you may need to configure CORS headers on the server.
-  const config = { ...fragnoConfig };
+  const { auth: authClientConfig, ...config } = { ...fragnoConfig };
+  const sessionCacheConfig = authClientConfig?.sessionCache;
+  const sessionCacheEnabled =
+    authClientConfig?.accessTokens?.enabled === true && sessionCacheConfig?.enabled === true;
+  const sessionCacheOptions: AuthSessionCacheOptions = {
+    storage: sessionCacheConfig?.storage,
+    storageKey: sessionCacheConfig?.storageKey,
+    ttlSeconds: sessionCacheConfig?.ttlSeconds,
+  };
+  const accessTokenTransport = authClientConfig?.accessTokens?.transport ?? "cookie";
+  const bearerAccessTokensEnabled =
+    authClientConfig?.accessTokens?.enabled === true &&
+    shouldUseBearerTransport(accessTokenTransport);
+  const bearerAccessTokenStorage = sessionCacheConfig?.storage;
+  const bearerAccessTokenStorageKey = DEFAULT_AUTH_ACCESS_TOKEN_STORAGE_KEY;
+  const clientConfig: FragnoPublicClientConfig = bearerAccessTokensEnabled
+    ? {
+        ...config,
+        fetcherConfig: {
+          type: "function",
+          fetcher: createBearerAccessTokenFetcher({
+            fetcherConfig: config.fetcherConfig,
+            storage: bearerAccessTokenStorage,
+            storageKey: bearerAccessTokenStorageKey,
+          }),
+          useOnServer:
+            config.fetcherConfig?.type === "function"
+              ? config.fetcherConfig.useOnServer
+              : undefined,
+        },
+      }
+    : config;
 
   const b = createClientBuilder(
     authFragmentDefinition,
-    config,
+    clientConfig,
     [
       userActionsRoutesFactory,
       sessionRoutesFactory,
@@ -524,8 +751,42 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
   const useUserInvitations = b.createHook("/organizations/invitations");
   const useOAuthAuthorize = b.createHook("/oauth/:provider/authorize");
   const useOAuthCallback = b.createHook("/oauth/:provider/callback");
+  type ClientMeResponse = Awaited<ReturnType<typeof useMe.query>>;
+  const writeMeSessionCache = (me: ClientMeResponse) => {
+    if (!sessionCacheEnabled) {
+      return;
+    }
+    writeAuthSessionCache(
+      {
+        me,
+        updatedAt: new Date().toISOString(),
+        expiresAt: null,
+        activeOrganizationId: me.activeOrganization?.organization.id ?? null,
+      },
+      sessionCacheOptions,
+    );
+  };
+  const clearMeSessionCache = () => {
+    if (sessionCacheEnabled) {
+      clearAuthSessionCache(sessionCacheOptions);
+    }
+  };
   const readRawMe = async () => {
-    return useMe.query();
+    if (sessionCacheEnabled) {
+      const cached = readAuthSessionCache<ClientMeResponse>(sessionCacheOptions);
+      if (cached && isAuthSessionCacheFresh(cached, new Date(), sessionCacheOptions)) {
+        return cached.me;
+      }
+    }
+
+    try {
+      const me = await useMe.query();
+      writeMeSessionCache(me);
+      return me;
+    } catch (error) {
+      clearMeSessionCache();
+      throw error;
+    }
   };
   const defaultOrganizationPreference = createDefaultOrganizationPreferenceState({
     meStore: useMe.store(),
@@ -577,31 +838,54 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
         rememberMe?: boolean;
       }) => {
         // Note: rememberMe is accepted but not yet implemented on the backend
-        return useSignIn.mutateQuery({
+        const result = await useSignIn.mutateQuery({
           body: {
             email,
             password,
             auth,
           },
         });
+        if (sessionCacheEnabled) {
+          try {
+            writeMeSessionCache(await useMe.query());
+          } catch {
+            clearMeSessionCache();
+          }
+        }
+        return result;
       },
     },
 
     signUp: {
       email: async ({ email, password }: { email: string; password: string }) => {
-        return useSignUp.mutateQuery({
+        const result = await useSignUp.mutateQuery({
           body: {
             email,
             password,
           },
         });
+        if (sessionCacheEnabled) {
+          try {
+            writeMeSessionCache(await useMe.query());
+          } catch {
+            clearMeSessionCache();
+          }
+        }
+        return result;
       },
     },
 
-    signOut: () => {
-      return useSignOut.mutateQuery({
-        body: {},
-      });
+    signOut: async () => {
+      try {
+        return await useSignOut.mutateQuery({
+          body: {},
+        });
+      } finally {
+        clearMeSessionCache();
+        if (bearerAccessTokensEnabled) {
+          removeStorageItem(bearerAccessTokenStorageKey, bearerAccessTokenStorage);
+        }
+      }
     },
 
     me: defaultOrganizationPreference.me,
@@ -638,7 +922,7 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
         state: string;
         requestSignUp?: boolean;
       }) => {
-        return useOAuthCallback.query({
+        const result = await useOAuthCallback.query({
           path: { provider: params.provider },
           query: {
             code: params.code,
@@ -646,6 +930,14 @@ export function createAuthFragmentClients(fragnoConfig?: FragnoPublicClientConfi
             requestSignUp: params.requestSignUp ? "true" : undefined,
           },
         });
+        if (sessionCacheEnabled) {
+          try {
+            writeMeSessionCache(await useMe.query());
+          } catch {
+            clearMeSessionCache();
+          }
+        }
+        return result;
       },
     },
   };
@@ -674,9 +966,32 @@ export type {
   ResolveRequestAuthResult,
   ResolveRequestCredentialResult,
   ResolvedRequestCredential,
+  ValidatedCredential,
 } from "./auth/types";
 export { toAuthActor } from "./auth/actor";
-export { getRequestAuth, parseBearerToken, resolveRequestCredential } from "./auth/request-auth";
+export {
+  getRequestAuth,
+  parseBearerToken,
+  resolveRequestCredential,
+  resolveRequestCredentialCandidates,
+} from "./auth/request-auth";
+export {
+  resolveAccessTokenConfig,
+  verifySessionAccessToken,
+  verifySessionAccessTokenDetailed,
+  type ResolvedSessionAccessTokenConfig,
+  type SessionAccessTokenConfig,
+  type VerifySessionAccessTokenResult,
+} from "./auth/session-access-token";
+export {
+  clearAuthSessionCache,
+  DEFAULT_AUTH_SESSION_CACHE_STORAGE_KEY,
+  DEFAULT_AUTH_SESSION_CACHE_TTL_SECONDS,
+  isAuthSessionCacheFresh,
+  readAuthSessionCache,
+  writeAuthSessionCache,
+} from "./client/session-cache";
+export type { AuthSessionCache, AuthSessionCacheOptions } from "./client/session-cache";
 export type { UserSummary } from "./types";
 export type {
   AnyOAuthProvider,

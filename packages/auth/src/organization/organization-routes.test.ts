@@ -11,7 +11,7 @@ import { organizationRoutesFactory } from "./routes";
 
 describe("organization routes", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withTestAdapter({ type: "drizzle-pglite" })
+    .withTestAdapter({ type: "kysely-sqlite" })
     .withFragment(
       "auth",
       instantiate(authFragmentDefinition).withRoutes([
@@ -1265,7 +1265,7 @@ describe("organization routes", async () => {
 
 describe("organization routes limits regressions", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withTestAdapter({ type: "drizzle-pglite" })
+    .withTestAdapter({ type: "kysely-sqlite" })
     .withFragment(
       "auth",
       instantiate(authFragmentDefinition)

@@ -2,11 +2,15 @@ import { z } from "zod";
 
 import { defineRoute, defineRoutes } from "@fragno-dev/core";
 
-import type { Role, authFragmentDefinition } from "..";
+import type { authFragmentDefinition } from "..";
 import { toAuthActor } from "../auth/actor";
 import { createSessionCredentialStrategy } from "../auth/credential-strategy";
 import { getRequestAuth } from "../auth/request-auth";
 import { buildIssuedAuthResponse, issuedAuthSchema } from "../auth/response-auth";
+import {
+  issueSessionBackedAuthCredential,
+  resolveAccessTokenConfig,
+} from "../auth/session-access-token";
 import { parseCredentialSeedFromQuery } from "../session/session-seed";
 import type { AnyOAuthProvider } from "./types";
 import { normalizeOAuthConfig } from "./utils";
@@ -20,6 +24,13 @@ const parseScopes = (value: string | null): string[] | undefined => {
     .map((scope) => scope.trim())
     .filter(Boolean);
   return scopes.length > 0 ? scopes : undefined;
+};
+
+const normalizeRecord = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return Object.fromEntries(Object.entries(value));
 };
 
 const resolveRedirectUri = (
@@ -39,6 +50,7 @@ const resolveRedirectUri = (
 export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().create(
   ({ services, config }) => {
     const oauthConfig = normalizeOAuthConfig(config.oauth);
+    const accessTokens = resolveAccessTokenConfig(config.authentication?.accessTokens);
 
     return [
       defineRoute({
@@ -91,6 +103,7 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
           if (link) {
             const strategy = createSessionCredentialStrategy({
               cookieOptions: config.cookieOptions,
+              accessTokens: config.authentication?.accessTokens,
               validateCredential: async (credentialToken) => {
                 const [credential] = await this.handlerTx()
                   .withServiceCalls(() => [services.validateCredential(credentialToken)])
@@ -104,7 +117,7 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
                   user: {
                     id: credential.user.id,
                     email: credential.user.email,
-                    role: credential.user.role as Role,
+                    role: credential.user.role,
                   },
                   expiresAt: credential.expiresAt,
                   activeOrganizationId: credential.activeOrganizationId,
@@ -190,7 +203,7 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
           "signup_required",
           "user_banned",
         ],
-        handler: async function ({ query, pathParams }, { json, error }) {
+        handler: async function ({ query, pathParams }, { error }) {
           if (!oauthConfig) {
             return error({ message: "OAuth is not configured", code: "oauth_disabled" }, 400);
           }
@@ -249,7 +262,7 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
                 state,
                 tokens,
                 userInfo: userInfo.user,
-                rawProfile: userInfo.data as Record<string, unknown>,
+                rawProfile: normalizeRecord(userInfo.data),
                 provider,
                 requestSignUp: query.get("requestSignUp") === "true",
               }),
@@ -272,27 +285,22 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
             return error({ message: "OAuth failed", code: result.code }, status);
           }
 
-          const issuedAuth = buildIssuedAuthResponse(
-            {
-              token: result.credentialToken,
-              kind: "session",
-              expiresAt: result.expiresAt,
-              activeOrganizationId: result.activeOrganizationId,
-            },
-            config.cookieOptions,
-          );
+          const issuedCredential = await issueSessionBackedAuthCredential({
+            accessTokens,
+            session: result.credential,
+          });
+          const issuedAuth = buildIssuedAuthResponse(issuedCredential, config.cookieOptions, {
+            issueCookie: accessTokens?.issueCookie,
+          });
 
           if (result.returnTo) {
             return new Response(null, {
               status: 302,
-              headers: {
-                ...issuedAuth.headers,
-                Location: result.returnTo,
-              },
+              headers: [...issuedAuth.headers, ["Location", result.returnTo]],
             });
           }
 
-          return json(
+          return Response.json(
             {
               auth: issuedAuth.auth,
               userId: result.userId,
@@ -300,9 +308,7 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
               role: result.role,
               returnTo: result.returnTo,
             },
-            {
-              headers: issuedAuth.headers,
-            },
+            { headers: issuedAuth.headers },
           );
         },
       }),

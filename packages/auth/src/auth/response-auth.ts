@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { CookieOptions } from "../utils/cookie";
-import { buildIssuedCredentialHeaders } from "./credential-strategy";
+import { buildIssuedCredentialHeaders, type AuthResponseHeaders } from "./credential-strategy";
 import type { IssuedAuthCredential } from "./types";
 
 export const issuedAuthSchema = z.object({
@@ -9,22 +9,41 @@ export const issuedAuthSchema = z.object({
   kind: z.enum(["session", "jwt"]),
   expiresAt: z.string().nullable(),
   activeOrganizationId: z.string().nullable(),
+  refreshToken: z.string().optional(),
+  refreshExpiresAt: z.string().nullable().optional(),
 });
 
-export const serializeIssuedAuthCredential = (credential: IssuedAuthCredential) => ({
+export type SerializedIssuedAuthCredential<T extends IssuedAuthCredential = IssuedAuthCredential> =
+  {
+    token: string;
+    kind: T["kind"];
+    expiresAt: string | null;
+    activeOrganizationId: string | null;
+    refreshToken?: string;
+    refreshExpiresAt?: string | null;
+  };
+
+export const serializeIssuedAuthCredential = <T extends IssuedAuthCredential>(
+  credential: T,
+): SerializedIssuedAuthCredential<T> => ({
   token: credential.token,
   kind: credential.kind,
   expiresAt: credential.expiresAt?.toISOString() ?? null,
   activeOrganizationId: credential.activeOrganizationId,
+  ...(credential.refreshToken ? { refreshToken: credential.refreshToken } : {}),
+  ...(credential.refreshExpiresAt !== undefined
+    ? { refreshExpiresAt: credential.refreshExpiresAt?.toISOString() ?? null }
+    : {}),
 });
 
-export const buildIssuedAuthResponse = (
-  credential: IssuedAuthCredential,
+export const buildIssuedAuthResponse = <T extends IssuedAuthCredential>(
+  credential: T,
   cookieOptions?: CookieOptions,
+  options?: { issueCookie?: boolean },
 ): {
-  auth: ReturnType<typeof serializeIssuedAuthCredential>;
-  headers: { "Set-Cookie": string };
+  auth: SerializedIssuedAuthCredential<T>;
+  headers: AuthResponseHeaders;
 } => ({
   auth: serializeIssuedAuthCredential(credential),
-  headers: buildIssuedCredentialHeaders(credential, cookieOptions),
+  headers: buildIssuedCredentialHeaders(credential, cookieOptions, options),
 });

@@ -14,6 +14,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
   const requestUrl = new URL(request.url);
   const returnTo = `${requestUrl.pathname}${requestUrl.search}`;
+
   const me = await getAuthMe(request, context);
   if (!me?.user) {
     throw redirectToLogin(request.url, returnTo);

@@ -32,7 +32,6 @@ import type {
   OtpIssueInput,
   OtpIssueOutput,
 } from "./routes";
-import { otpSchema } from "./schema";
 import { otpStatusSchema, otpTypeSchema } from "./types";
 import type { OtpErrorCode, OtpStatus, OtpType } from "./types";
 

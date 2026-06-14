@@ -8,6 +8,7 @@ interface CloudflareEnv {
   CLOUDFLARE_WORKERS_API_TOKEN: string;
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
+  AUTH_ACCESS_TOKEN_SECRET?: string;
   GITHUB_APP_ID: string;
   GITHUB_APP_SLUG: string;
   GITHUB_APP_PRIVATE_KEY: string;

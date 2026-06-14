@@ -1,9 +1,8 @@
-import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 import { useFragno } from "@fragno-dev/core/solid";
 
-import { createAuthFragmentClients } from "..";
+import { createAuthFragmentClients, type AuthFragmentClientConfig } from "..";
 
-export function createAuthFragmentClient(config: FragnoPublicClientConfig = {}) {
+export function createAuthFragmentClient(config: AuthFragmentClientConfig = {}) {
   return useFragno(createAuthFragmentClients(config));
 }
 

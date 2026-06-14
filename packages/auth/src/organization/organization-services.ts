@@ -1526,7 +1526,16 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
                 .joinOne("sessionOwner", "user", (owner) =>
                   owner
                     .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
-                    .select(["id"]),
+                    .select(["id", "email", "role", "bannedAt"]),
+                )
+                .joinMany("sessionMembers", "organizationMember", (member) =>
+                  member
+                    .onIndex("idx_org_member_user", (eb) => eb("userId", "=", eb.parent("userId")))
+                    .joinOne("organization", "organization", (organization) =>
+                      organization
+                        .onIndex("primary", (eb) => eb("id", "=", eb.parent("organizationId")))
+                        .select(["id", "deletedAt"]),
+                    ),
                 ),
             )
             .findFirst("session", (b) =>
@@ -1554,7 +1563,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
             uow.delete("session", expiredSession.id, (b) => b.check());
           }
 
-          if (!session || !session.sessionOwner) {
+          if (!session || !session.sessionOwner || session.sessionOwner.bannedAt) {
             return { ok: false as const, code: "credential_invalid" as const };
           }
 
@@ -1584,6 +1593,26 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
           const memberOrganizationId = toExternalId(organization.id);
           const memberUserId = toExternalId(session.sessionOwner.id);
 
+          const sessionMembers = normalizeMany(
+            (
+              session as {
+                sessionMembers?:
+                  | Array<{ organization?: { id: unknown; deletedAt: Date | null } | null }>
+                  | { organization?: { id: unknown; deletedAt: Date | null } | null }
+                  | null;
+              }
+            ).sessionMembers,
+          );
+          const organizationIds = Array.from(
+            new Set(
+              sessionMembers.flatMap((entry) =>
+                entry.organization && !entry.organization.deletedAt
+                  ? [toExternalId(entry.organization.id)]
+                  : [],
+              ),
+            ),
+          );
+
           return {
             ok: true as const,
             organization: mapOrganization({
@@ -1597,6 +1626,17 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
               updatedAt: organization.updatedAt,
               deletedAt: organization.deletedAt ?? null,
             }),
+            credential: {
+              id: session.id.valueOf(),
+              expiresAt: session.expiresAt,
+              activeOrganizationId: params.organizationId,
+              organizationIds,
+              user: {
+                id: session.sessionOwner.id.valueOf(),
+                email: session.sessionOwner.email,
+                role: session.sessionOwner.role as Role,
+              },
+            },
             member: mapMember(
               {
                 id: member.id,

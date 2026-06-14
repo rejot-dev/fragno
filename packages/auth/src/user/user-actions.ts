@@ -4,8 +4,12 @@ import { defineRoutes } from "@fragno-dev/core";
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import type { authFragmentDefinition } from "..";
-import { resolveRequestCredential } from "../auth/request-auth";
 import { buildIssuedAuthResponse, issuedAuthSchema } from "../auth/response-auth";
+import {
+  issueSessionBackedAuthCredential,
+  resolveAccessTokenConfig,
+  resolveBackingSessionCredential,
+} from "../auth/session-access-token";
 import type { AuthActor } from "../auth/types";
 import type { AuthHooksMap, BeforeCreateUserHook } from "../hooks";
 import { authSchema } from "../schema";
@@ -30,6 +34,8 @@ const normalizeMany = <T>(value: T | T[] | null | undefined): T[] => {
   return Array.isArray(value) ? value : [value];
 };
 
+const normalizeRole = (role: string): "user" | "admin" => (role === "admin" ? "admin" : "user");
+
 const collectCredentialSeedMembers = <
   TUser extends {
     userOrganizationMembers?: CredentialSeedMemberRow | CredentialSeedMemberRow[] | null;
@@ -44,6 +50,19 @@ const collectCredentialSeedMembers = <
     })),
   );
 };
+
+const collectOrganizationIdsFromSeedMembers = (
+  members: ReturnType<typeof collectCredentialSeedMembers>,
+) =>
+  Array.from(
+    new Set(
+      members.flatMap((member) =>
+        member.organization && !member.organization.deletedAt
+          ? [String(member.organization.id)]
+          : [],
+      ),
+    ),
+  );
 
 export function createUserServices(
   options?: AutoCreateOrganizationOptions,
@@ -130,7 +149,7 @@ export function createUserServices(
                 id: user.id.valueOf(),
                 email: user.email,
                 passwordHash: user.passwordHash ?? null,
-                role: user.role as "user" | "admin",
+                role: normalizeRole(user.role),
               }
             : null,
         )
@@ -265,14 +284,21 @@ export function createUserServices(
             });
           }
 
-          return {
-            ok: true as const,
-            credentialToken: credentialId.valueOf(),
+          const credential = {
+            id: credentialId.valueOf(),
             expiresAt,
             activeOrganizationId: autoOrganization?.organization.id ?? null,
-            userId: userId.valueOf(),
-            email,
-            role: "user" as const,
+            organizationIds: autoOrganization ? [autoOrganization.organization.id] : [],
+            user: {
+              id: userId.valueOf(),
+              email,
+              role: "user" as const,
+            },
+          };
+
+          return {
+            ok: true as const,
+            credential,
           };
         })
         .build();
@@ -463,6 +489,7 @@ export function createUserServices(
 export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefinition>().create(
   ({ services, config, defineRoute }) => {
     const emailAndPasswordEnabled = config.emailAndPassword?.enabled !== false;
+    const accessTokens = resolveAccessTokenConfig(config.authentication?.accessTokens);
 
     return [
       defineRoute({
@@ -479,7 +506,11 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
           const { role } = await input.valid();
           const { userId } = pathParams;
 
-          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          const credential = await resolveBackingSessionCredential({
+            headers,
+            cookieOptions: config.cookieOptions,
+            accessTokens,
+          });
           if (!credential.ok) {
             return error(
               {
@@ -489,7 +520,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
                     : "Authentication required",
                 code: "credential_invalid",
               },
-              400,
+              credential.reason === "invalid" ? 401 : 400,
             );
           }
 
@@ -527,7 +558,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
           role: z.enum(["user", "admin"]),
         }),
         errorCodes: ["email_already_exists", "invalid_input", "email_password_disabled"],
-        handler: async function ({ input }, { json, error }) {
+        handler: async function ({ input }, { error }) {
           if (!emailAndPasswordEnabled) {
             return error(
               { message: "Email/password auth is disabled", code: "email_password_disabled" },
@@ -547,26 +578,22 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
             return error({ message: "Email already exists", code: "email_already_exists" }, 400);
           }
 
-          const issuedAuth = buildIssuedAuthResponse(
-            {
-              token: result.credentialToken,
-              kind: "session",
-              expiresAt: result.expiresAt,
-              activeOrganizationId: result.activeOrganizationId,
-            },
-            config.cookieOptions,
-          );
+          const issuedCredential = await issueSessionBackedAuthCredential({
+            accessTokens,
+            session: result.credential,
+          });
+          const issuedAuth = buildIssuedAuthResponse(issuedCredential, config.cookieOptions, {
+            issueCookie: accessTokens?.issueCookie,
+          });
 
-          return json(
+          return Response.json(
             {
               auth: issuedAuth.auth,
-              userId: result.userId,
-              email: result.email,
-              role: result.role,
+              userId: result.credential.user.id,
+              email: result.credential.user.email,
+              role: result.credential.user.role,
             },
-            {
-              headers: issuedAuth.headers,
-            },
+            { headers: issuedAuth.headers },
           );
         },
       }),
@@ -586,7 +613,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
           role: z.enum(["user", "admin"]),
         }),
         errorCodes: ["invalid_credentials", "user_banned", "email_password_disabled"],
-        handler: async function ({ input }, { json, error }) {
+        handler: async function ({ input }, { error }) {
           if (!emailAndPasswordEnabled) {
             return error(
               { message: "Email/password auth is disabled", code: "email_password_disabled" },
@@ -659,8 +686,9 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
               const now = new Date();
               const expiresAt = uow.now().plus({ days: 30 });
               const sessionExpiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+              const credentialSeedMembers = collectCredentialSeedMembers(users);
               const resolvedCredentialSeed = resolveCredentialSeedFromMembers(
-                collectCredentialSeedMembers(users),
+                credentialSeedMembers,
                 auth,
               );
               const activeOrganizationId = resolvedCredentialSeed.activeOrganizationId;
@@ -686,12 +714,21 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
                 actor: userSummary,
               });
 
-              return {
-                ok: true as const,
-                credentialToken: credentialId.valueOf(),
+              const credential = {
+                id: credentialId.valueOf(),
                 expiresAt: sessionExpiresAt,
                 activeOrganizationId,
-                user: userSummary,
+                organizationIds: collectOrganizationIdsFromSeedMembers(credentialSeedMembers),
+                user: {
+                  id: userSummary.id,
+                  email: userSummary.email,
+                  role: userSummary.role,
+                },
+              };
+
+              return {
+                ok: true as const,
+                credential,
               };
             })
             .execute();
@@ -703,26 +740,22 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
             return error({ message: "Invalid credentials", code: "invalid_credentials" }, 401);
           }
 
-          const issuedAuth = buildIssuedAuthResponse(
-            {
-              token: result.credentialToken,
-              kind: "session",
-              expiresAt: result.expiresAt,
-              activeOrganizationId: result.activeOrganizationId,
-            },
-            config.cookieOptions,
-          );
+          const issuedCredential = await issueSessionBackedAuthCredential({
+            accessTokens,
+            session: result.credential,
+          });
+          const issuedAuth = buildIssuedAuthResponse(issuedCredential, config.cookieOptions, {
+            issueCookie: accessTokens?.issueCookie,
+          });
 
-          return json(
+          return Response.json(
             {
               auth: issuedAuth.auth,
-              userId: result.user.id,
-              email: result.user.email,
-              role: result.user.role,
+              userId: result.credential.user.id,
+              email: result.credential.user.email,
+              role: result.credential.user.role,
             },
-            {
-              headers: issuedAuth.headers,
-            },
+            { headers: issuedAuth.headers },
           );
         },
       }),
@@ -740,7 +773,11 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
         handler: async function ({ input, headers }, { json, error }) {
           const { newPassword } = await input.valid();
 
-          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          const credential = await resolveBackingSessionCredential({
+            headers,
+            cookieOptions: config.cookieOptions,
+            accessTokens,
+          });
           if (!credential.ok) {
             return error(
               {
@@ -750,7 +787,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
                     : "Authentication required",
                 code: "credential_invalid",
               },
-              400,
+              credential.reason === "invalid" ? 401 : 400,
             );
           }
 

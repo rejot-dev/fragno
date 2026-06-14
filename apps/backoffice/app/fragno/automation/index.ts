@@ -1,14 +1,6 @@
 import { instantiate } from "@fragno-dev/core";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 
-import type {
-  AutomationCreateIdentityClaimInput,
-  AutomationCreateIdentityClaimResult,
-  AutomationEvent,
-  AutomationEventActor,
-  AutomationEventPayload,
-  AutomationEventSubject,
-} from "./contracts";
 import {
   automationFragmentDefinition,
   type AutomationFragmentConfig,

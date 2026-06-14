@@ -18,6 +18,11 @@ export function createAuthRouteCaller(
     headers.set("cookie", cookie);
   }
 
+  const authorization = request.headers.get("authorization");
+  if (authorization) {
+    headers.set("authorization", authorization);
+  }
+
   return createRouteCaller<AuthFragment>({
     baseUrl: request.url,
     mountRoute: "/api/auth",

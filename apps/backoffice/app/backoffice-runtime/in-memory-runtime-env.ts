@@ -6,6 +6,7 @@ export type InMemoryBackofficeRuntimeEnv = {
   TURNSTILE_SITEKEY?: string;
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
+  AUTH_ACCESS_TOKEN_SECRET?: string;
   CLOUDFLARE_WORKERS_ACCOUNT_ID?: string;
   CLOUDFLARE_WORKERS_API_TOKEN?: string;
   GITHUB_APP_ID?: string;
@@ -72,6 +73,7 @@ export const defaultInMemoryBackofficeRuntimeEnv = (): InMemoryBackofficeRuntime
   TURNSTILE_SITEKEY: "0x4AAAAAACEAKTUMl498hZ6v",
   GITHUB_CLIENT_ID: "in-memory-github-client-id",
   GITHUB_CLIENT_SECRET: "in-memory-github-client-secret",
+  AUTH_ACCESS_TOKEN_SECRET: "in-memory-auth-access-token-secret",
   CLOUDFLARE_WORKERS_ACCOUNT_ID: "in-memory-cloudflare-account-id",
   CLOUDFLARE_WORKERS_API_TOKEN: "in-memory-cloudflare-api-token",
   GITHUB_APP_ID: "1",

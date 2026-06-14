@@ -1,6 +1,6 @@
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
-import type { AuthActor } from "../auth/types";
+import type { AuthActor, ValidatedCredential } from "../auth/types";
 import type { AuthHooksMap, BeforeCreateUserHook } from "../hooks";
 import { authSchema } from "../schema";
 import {
@@ -33,6 +33,7 @@ export type OAuthStateResult =
 export type OAuthCallbackResult =
   | {
       ok: true;
+      credential: ValidatedCredential;
       credentialToken: string;
       expiresAt: Date;
       activeOrganizationId: string | null;
@@ -93,6 +94,19 @@ const collectCredentialSeedMembers = <
 ) => {
   return rows.flatMap((row) => (row ? mapCredentialSeedMembers(row.userOrganizationMembers) : []));
 };
+
+const collectOrganizationIdsFromSeedMembers = (
+  members: ReturnType<typeof collectCredentialSeedMembers>,
+) =>
+  Array.from(
+    new Set(
+      members.flatMap((member) =>
+        member.organization && !member.organization.deletedAt
+          ? [String(member.organization.id)]
+          : [],
+      ),
+    ),
+  );
 
 const toResolvedUser = <TUser extends SeedableUserRow>(rows: Array<TUser | null | undefined>) => {
   const first = rows.find((row): row is TUser => Boolean(row));
@@ -480,6 +494,9 @@ export function createOAuthServices(options: {
               });
             }
 
+            const existingOrganizationIds = collectOrganizationIdsFromSeedMembers(
+              resolvedUser.members,
+            );
             const resolvedCredentialSeed = resolveCredentialSeedFromMembers(
               resolvedUser.members,
               sessionSeed,
@@ -505,14 +522,31 @@ export function createOAuthServices(options: {
               actor: userSummary,
             });
 
-            return {
-              ok: true as const,
-              credentialToken: credentialId.valueOf(),
+            const credential = {
+              id: credentialId.valueOf(),
               expiresAt: sessionExpiresAt,
               activeOrganizationId,
-              userId: resolvedUser.id,
-              email: resolvedUser.email,
-              role: resolvedUser.role,
+              organizationIds: autoOrganization
+                ? Array.from(
+                    new Set([...existingOrganizationIds, autoOrganization.organization.id]),
+                  )
+                : existingOrganizationIds,
+              user: {
+                id: resolvedUser.id,
+                email: resolvedUser.email,
+                role: resolvedUser.role,
+              },
+            };
+
+            return {
+              ok: true as const,
+              credential,
+              credentialToken: credential.id,
+              expiresAt: credential.expiresAt,
+              activeOrganizationId: credential.activeOrganizationId,
+              userId: credential.user.id,
+              email: credential.user.email,
+              role: credential.user.role,
               returnTo: oauthState.returnTo ?? null,
             };
           },

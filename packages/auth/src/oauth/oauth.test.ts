@@ -207,6 +207,11 @@ const tokenProvider = createTestProvider({
     };
   },
 });
+const getSetCookieHeaders = (headers: Headers) =>
+  (headers as Headers & { getSetCookie?: () => string[] }).getSetCookie?.() ?? [
+    headers.get("Set-Cookie") ?? "",
+  ];
+
 const tokenUpdateProvider = createTestProvider({
   id: "test-token-update",
   validateAuthorizationCode: async () => {
@@ -221,9 +226,93 @@ const tokenUpdateProvider = createTestProvider({
   },
 });
 
+describe("auth oauth access tokens", async () => {
+  const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "kysely-sqlite" })
+    .withFragment(
+      "auth",
+      instantiate(authFragmentDefinition)
+        .withConfig({
+          organizations: false,
+          authentication: {
+            accessTokens: {
+              enabled: true,
+              issuer: "https://auth.test",
+              audience: "auth-tests",
+              secret: "test-secret-with-enough-entropy",
+            },
+          },
+          oauth: {
+            providers: {
+              test: createTestProvider({
+                id: "test-oauth-access",
+                newEmail: "oauth-access@test.com",
+              }),
+            },
+          },
+        })
+        .withRoutes([oauthRoutesFactory]),
+    )
+    .build();
+
+  afterAll(async () => {
+    await test.cleanup();
+  });
+
+  it("issues access and refresh credentials on callback", async () => {
+    const authorize = await fragments.auth.callRoute("GET", "/oauth/:provider/authorize", {
+      pathParams: { provider: "test" },
+      query: {},
+    });
+    assert(authorize.type === "json");
+    const state = new URL(authorize.data.url).searchParams.get("state") ?? "";
+
+    const callback = await fragments.auth.callRoute("GET", "/oauth/:provider/callback", {
+      pathParams: { provider: "test" },
+      query: { code: "oauth-code", state },
+    });
+
+    assert(callback.type === "json");
+    assert(callback.data.email === "oauth-access@test.com");
+    expect(callback.data.auth).toMatchObject({
+      kind: "jwt",
+      token: expect.any(String),
+      refreshToken: expect.any(String),
+    });
+    const setCookie = getSetCookieHeaders(callback.headers);
+    expect(setCookie).toEqual(expect.arrayContaining([expect.stringContaining("fragno_auth=")]));
+    expect(setCookie).toEqual(
+      expect.arrayContaining([expect.stringContaining("fragno_auth_refresh=")]),
+    );
+  });
+
+  it("sets access and refresh cookies on redirect callbacks", async () => {
+    const authorize = await fragments.auth.callRoute("GET", "/oauth/:provider/authorize", {
+      pathParams: { provider: "test" },
+      query: { returnTo: "/app" },
+    });
+    assert(authorize.type === "json");
+    const state = new URL(authorize.data.url).searchParams.get("state") ?? "";
+
+    const callback = await fragments.auth.callRoute("GET", "/oauth/:provider/callback", {
+      pathParams: { provider: "test" },
+      query: { code: "oauth-redirect-code", state },
+    });
+
+    assert(callback.type === "empty");
+    assert(callback.status === 302);
+    assert(callback.headers.get("Location") === "/app");
+    const setCookie = getSetCookieHeaders(callback.headers);
+    expect(setCookie).toEqual(expect.arrayContaining([expect.stringContaining("fragno_auth=")]));
+    expect(setCookie).toEqual(
+      expect.arrayContaining([expect.stringContaining("fragno_auth_refresh=")]),
+    );
+  });
+});
+
 describe("auth oauth", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withTestAdapter({ type: "drizzle-pglite" })
+    .withTestAdapter({ type: "kysely-sqlite" })
     .withFragment(
       "auth",
       instantiate(authFragmentDefinition)
@@ -1025,7 +1114,7 @@ describe("auth oauth", async () => {
 
 describe("auth oauth credential seeds", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withTestAdapter({ type: "drizzle-pglite" })
+    .withTestAdapter({ type: "kysely-sqlite" })
     .withFragment(
       "auth",
       instantiate(authFragmentDefinition)
@@ -1131,7 +1220,7 @@ describe("auth oauth credential seeds", async () => {
 
 describe("auth oauth disabled", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withTestAdapter({ type: "drizzle-pglite" })
+    .withTestAdapter({ type: "kysely-sqlite" })
     .withFragment(
       "auth",
       instantiate(authFragmentDefinition)
@@ -1181,7 +1270,7 @@ describe("auth oauth missing redirect uri", async () => {
   });
 
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withTestAdapter({ type: "drizzle-pglite" })
+    .withTestAdapter({ type: "kysely-sqlite" })
     .withFragment(
       "auth",
       instantiate(authFragmentDefinition)
@@ -1229,7 +1318,7 @@ describe("auth oauth missing redirect uri", async () => {
 
 describe("auth oauth expired state", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withTestAdapter({ type: "drizzle-pglite" })
+    .withTestAdapter({ type: "kysely-sqlite" })
     .withFragment(
       "auth",
       instantiate(authFragmentDefinition)
@@ -1278,7 +1367,7 @@ describe("auth oauth expired state", async () => {
 
 describe("auth oauth linkByEmail false", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withTestAdapter({ type: "drizzle-pglite" })
+    .withTestAdapter({ type: "kysely-sqlite" })
     .withFragment(
       "auth",
       instantiate(authFragmentDefinition)
@@ -1340,7 +1429,7 @@ describe("auth oauth token storage", async () => {
     provider: OAuthProvider,
   ) => {
     const { fragments, test } = await buildDatabaseFragmentsTest()
-      .withTestAdapter({ type: "drizzle-pglite" })
+      .withTestAdapter({ type: "kysely-sqlite" })
       .withFragment(
         "auth",
         instantiate(authFragmentDefinition)

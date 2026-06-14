@@ -18,7 +18,6 @@ import {
   PiSkillDefinitionBuilder,
   renderPiSkillCatalogXml,
   renderPiSkillInvocationContext,
-  type PiAgentSkillSelection,
   type PiSkillDefinition,
   type PiSkillDefinitionInput,
   type PiSkillRegistry,
