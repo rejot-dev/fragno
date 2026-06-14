@@ -1,3 +1,4 @@
+import { authorizeAccessTokenForOrganization } from "@/fragno/auth/access-token.server";
 import { getPiDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { Route } from "./+types/pi";
@@ -11,6 +12,11 @@ const forwardToPi = async (
     return new Response("Missing organisation id", { status: 400 });
   }
 
+  const auth = await authorizeAccessTokenForOrganization(request, context, orgId);
+  if (!auth.ok) {
+    return auth.response;
+  }
+
   const piDo = getPiDurableObject(context, orgId);
   const url = new URL(request.url);
   const prefix = `/api/pi/${orgId}`;
@@ -21,7 +27,20 @@ const forwardToPi = async (
   url.searchParams.set("orgId", orgId);
 
   const proxyRequest = new Request(url.toString(), request);
-  return piDo.fetch(proxyRequest);
+  const response = await piDo.fetch(proxyRequest);
+  if (auth.headers.length === 0) {
+    return response;
+  }
+
+  const headers = new Headers(response.headers);
+  for (const [name, value] of auth.headers) {
+    headers.append(name, value);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 };
 
 /**

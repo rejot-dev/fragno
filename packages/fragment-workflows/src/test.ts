@@ -14,12 +14,7 @@ import type {
   TestDb,
 } from "@fragno-dev/test";
 
-import type {
-  WorkflowsHistory,
-  WorkflowsHistoryEmission,
-  WorkflowsHistoryEvent,
-  WorkflowsHistoryStep,
-} from "./definition";
+import type { WorkflowsHistory } from "./definition";
 import { workflowsFragmentDefinition } from "./definition";
 export type {
   WorkflowsHistory,

@@ -1,4 +1,4 @@
-import { DrawerPreview as Drawer } from "@base-ui/react/drawer";
+import { Drawer } from "@base-ui/react/drawer";
 import type { ReactNode } from "react";
 
 import type { AuthMeData } from "@/fragno/auth/auth-client";

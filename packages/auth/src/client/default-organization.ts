@@ -1,5 +1,7 @@
 import { atom, computed, onMount, type ReadableAtom, type Store } from "nanostores";
 
+import { readStorageItem, removeStorageItem, writeStorageItem, type StorageLike } from "./storage";
+
 export interface AuthMeLike {
   organizations: Array<{
     organization: {
@@ -37,7 +39,6 @@ export const DEFAULT_ORGANIZATION_CHANGE_EVENT = "fragno-auth:default-organizati
 export const NO_ORGANIZATIONS_ERROR_MESSAGE =
   "Authenticated users must always have at least one organization.";
 
-type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 type WindowLike = Pick<Window, "addEventListener" | "removeEventListener" | "dispatchEvent">;
 
 export type DefaultOrganizationMeStore<TMe extends AuthMeLike> = Store<{
@@ -77,21 +78,6 @@ export type DefaultOrganizationPreferenceState<TMe extends AuthMeLike> = {
   store: DefaultOrganizationPreferenceStore<TMe>;
 };
 
-function getStorage(storage?: StorageLike | null): StorageLike | null {
-  if (storage != null) {
-    return storage;
-  }
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
 function getWindow(win?: WindowLike | null): WindowLike | null {
   if (win != null) {
     return win;
@@ -105,12 +91,7 @@ function toNonEmptyString(value: string | null | undefined): string | null {
 }
 
 function readCurrentDefaultOrganizationId(storage?: StorageLike | null): string | null {
-  const s = getStorage(storage);
-  if (!s) {
-    return null;
-  }
-
-  return toNonEmptyString(s.getItem(getDefaultOrganizationStorageKey()));
+  return toNonEmptyString(readStorageItem(getDefaultOrganizationStorageKey(), storage));
 }
 
 export function getDefaultOrganizationStorageKey(_accountId?: string): string {
@@ -125,16 +106,7 @@ export function readDefaultOrganizationId(
   _accountId?: string | null,
   storage?: StorageLike | null,
 ): string | null {
-  const s = getStorage(storage);
-  if (!s) {
-    return null;
-  }
-
-  try {
-    return readCurrentDefaultOrganizationId(s);
-  } catch {
-    return null;
-  }
+  return readCurrentDefaultOrganizationId(storage);
 }
 
 export function writeDefaultOrganizationId(
@@ -148,19 +120,12 @@ export function writeDefaultOrganizationId(
     return clearDefaultOrganizationId(_accountId, storage, win);
   }
 
-  const s = getStorage(storage);
   const storageKey = getDefaultOrganizationStorageKey();
   const eventName = getDefaultOrganizationChangeEventName();
-  if (!s) {
+  if (readCurrentDefaultOrganizationId(storage) === trimmed) {
     return false;
   }
-  if (readCurrentDefaultOrganizationId(s) === trimmed) {
-    return false;
-  }
-
-  try {
-    s.setItem(storageKey, trimmed);
-  } catch {
+  if (!writeStorageItem(storageKey, trimmed, storage)) {
     return false;
   }
 
@@ -173,20 +138,12 @@ export function clearDefaultOrganizationId(
   storage?: StorageLike | null,
   win?: WindowLike | null,
 ): boolean {
-  const s = getStorage(storage);
   const storageKey = getDefaultOrganizationStorageKey();
   const eventName = getDefaultOrganizationChangeEventName();
-  if (!s) {
+  if (!readCurrentDefaultOrganizationId(storage)) {
     return false;
   }
-
-  if (!readCurrentDefaultOrganizationId(s)) {
-    return false;
-  }
-
-  try {
-    s.removeItem(storageKey);
-  } catch {
+  if (!removeStorageItem(storageKey, storage)) {
     return false;
   }
 

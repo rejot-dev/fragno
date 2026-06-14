@@ -288,7 +288,7 @@ const clientLoader = browserCollections.blog.createClientLoader<Record<string, n
                 {toc.length > 0 ? (
                   <div className={panelClass}>
                     <div className={panelTitle}>Table of contents</div>
-                    <div className="max-h-[40vh] overflow-y-auto pr-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    <div className="max-h-[40vh] [scrollbar-width:none] overflow-y-auto pr-1 [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                       <TableOfContents items={toc as unknown as TocItem[]} />
                     </div>
                   </div>

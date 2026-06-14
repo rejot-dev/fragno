@@ -8,9 +8,8 @@ import {
   type WorkflowUsageConfig,
   type WorkflowUsageWorkflowsService,
 } from "./definition";
-import type { WorkflowUsageAgentDefinition } from "./dsl";
 import { workflowUsageRoutesFactory } from "./routes";
-import { dslWorkflow, INTERNAL_WORKFLOW_NAME } from "./workflow";
+import { dslWorkflow } from "./workflow";
 
 export type {
   WorkflowUsageAgentDefinition,

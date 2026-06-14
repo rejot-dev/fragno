@@ -24,7 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { authClient } from "@/lib/auth/client";
-import { stripeClient } from "@/lib/stripe.client";
+import { stripeClient } from "@/lib/stripe-client";
 import { cn } from "@/lib/utils";
 
 type UserWithSubscription = UserWithRole & { stripeCustomerId: string };

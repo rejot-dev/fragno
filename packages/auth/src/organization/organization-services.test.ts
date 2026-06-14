@@ -10,7 +10,7 @@ import { hashPassword } from "../user/password";
 
 describe("organization services", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withTestAdapter({ type: "drizzle-pglite" })
+    .withTestAdapter({ type: "kysely-sqlite" })
     .withFragment("auth", instantiate(authFragmentDefinition))
     .build();
 
@@ -934,7 +934,7 @@ describe("organization services", async () => {
       return this.handlerTx()
         .withServiceCalls(() => [
           fragment.services.getOrganizationsForUser({
-            userId: signUpResult.userId,
+            userId: signUpResult.credential.user.id,
             pageSize: 10,
           }),
         ])
@@ -949,8 +949,12 @@ describe("organization services", async () => {
         .withServiceCalls(() => [
           fragment.services.getActiveOrganizationForPrincipal({
             principal: toPrincipalFromCredential(
-              { id: signUpResult.userId, email: signUpResult.email, role: signUpResult.role },
-              { id: signUpResult.credentialToken, activeOrganizationId: null },
+              {
+                id: signUpResult.credential.user.id,
+                email: signUpResult.credential.user.email,
+                role: signUpResult.credential.user.role,
+              },
+              { id: signUpResult.credential.id, activeOrganizationId: null },
               orgsResult.organizations[0]?.organization.id ?? null,
             ),
           }),
@@ -2056,7 +2060,7 @@ describe("organization services", async () => {
 
 describe("organization service role defaults", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withTestAdapter({ type: "drizzle-pglite" })
+    .withTestAdapter({ type: "kysely-sqlite" })
     .withFragment(
       "auth",
       instantiate(authFragmentDefinition).withConfig({
@@ -2164,7 +2168,7 @@ describe("organization service role defaults", async () => {
 
 describe("organization service limits", async () => {
   const { fragments, test } = await buildDatabaseFragmentsTest()
-    .withTestAdapter({ type: "drizzle-pglite" })
+    .withTestAdapter({ type: "kysely-sqlite" })
     .withFragment(
       "auth",
       instantiate(authFragmentDefinition).withConfig({

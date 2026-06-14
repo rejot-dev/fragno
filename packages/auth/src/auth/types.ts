@@ -1,9 +1,9 @@
 import type { Role } from "../types";
 
-export type AuthStrategyName = "session" | "stateless-jwt";
+export type AuthStrategyName = "session";
 export type AuthCredentialKind = "session" | "jwt";
 export type AuthCredentialSource = "cookie" | "authorization-header";
-export type RequestAuthFailureReason = "missing" | "malformed" | "invalid";
+export type RequestAuthFailureReason = "missing" | "malformed" | "multiple" | "invalid";
 
 export interface AuthPrincipal {
   user: {
@@ -18,6 +18,7 @@ export interface AuthPrincipal {
     credentialId: string | null;
     expiresAt: Date | null;
     activeOrganizationId: string | null;
+    sessionContext?: unknown;
   };
 }
 
@@ -33,6 +34,8 @@ export interface IssuedAuthCredential {
   kind: AuthCredentialKind;
   expiresAt: Date | null;
   activeOrganizationId: string | null;
+  refreshToken?: string;
+  refreshExpiresAt?: Date | null;
 }
 
 export interface ResolvedRequestCredential {
@@ -47,7 +50,7 @@ export type ResolveRequestCredentialResult =
     }
   | {
       ok: false;
-      reason: Extract<RequestAuthFailureReason, "missing" | "malformed">;
+      reason: Extract<RequestAuthFailureReason, "missing" | "malformed" | "multiple">;
     };
 
 export type ResolveRequestAuthResult =
@@ -69,6 +72,8 @@ export interface ValidatedCredential {
   };
   expiresAt: Date | null;
   activeOrganizationId: string | null;
+  sessionContext?: unknown;
+  organizationIds?: string[];
 }
 
 export interface CreatedCredential {

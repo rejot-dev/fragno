@@ -1,4 +1,4 @@
-import { DrawerPreview as Drawer } from "@base-ui/react/drawer";
+import { Drawer } from "@base-ui/react/drawer";
 import { Separator } from "@base-ui/react/separator";
 import { Link } from "react-router";
 

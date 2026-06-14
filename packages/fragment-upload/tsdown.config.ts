@@ -18,6 +18,7 @@ export default defineConfig([
     platform: "node",
     outDir: "./dist/node",
     plugins: [unpluginFragno({ platform: "node" })],
+    external: [/^@fragno-dev\/core/, /^@fragno-dev\/db/],
     unbundle: true,
   },
   {

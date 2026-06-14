@@ -5,15 +5,15 @@ import type { AnyColumn } from "../../../schema/create";
 import { MySQLSerializer } from "./mysql-serializer";
 
 const withTimezone = (timezone: string, run: () => void) => {
-  const previousTimezone = process.env.TZ;
+  const previousTimezone = process.env["TZ"];
   try {
-    process.env.TZ = timezone;
+    process.env["TZ"] = timezone;
     run();
   } finally {
     if (previousTimezone === undefined) {
-      delete process.env.TZ;
+      delete process.env["TZ"];
     } else {
-      process.env.TZ = previousTimezone;
+      process.env["TZ"] = previousTimezone;
     }
   }
 };

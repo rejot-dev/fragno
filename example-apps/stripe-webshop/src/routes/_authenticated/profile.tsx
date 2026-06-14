@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { signOut, useSession } from "@/lib/auth/client";
 import { formatDate } from "@/lib/dates";
 import { PLANS } from "@/lib/plans";
-import { stripeClient } from "@/lib/stripe.client";
+import { stripeClient } from "@/lib/stripe-client";
 
 export const Route = createFileRoute("/_authenticated/profile")({
   component: ProfilePage,

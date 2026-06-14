@@ -5,6 +5,9 @@
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 
+# For auth access-token cookies. Set a strong secret in production.
+AUTH_ACCESS_TOKEN_SECRET=dev-auth-access-token-secret-replace-me
+
 # For Cloudflare Workers Platform deployments.
 CLOUDFLARE_WORKERS_ACCOUNT_ID=
 CLOUDFLARE_WORKERS_API_TOKEN=

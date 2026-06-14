@@ -5,6 +5,13 @@ import { defineRoute, defineRoutes } from "@fragno-dev/core";
 
 import type { authFragmentDefinition } from "..";
 import { resolveRequestCredential } from "../auth/request-auth";
+import { buildIssuedAuthResponse, issuedAuthSchema } from "../auth/response-auth";
+import {
+  mintSessionAccessToken,
+  resolveAccessTokenConfig,
+  resolveBackingSessionCredential,
+  resolveRefreshCredential,
+} from "../auth/session-access-token";
 import { invitationSchema, memberSchema, organizationSchema } from "./schemas";
 import { serializeInvitation, serializeMember, serializeOrganization } from "./serializers";
 
@@ -53,6 +60,7 @@ const parseCursor = (
 export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinition>().create(
   ({ config, services }) => {
     const organizationsEnabled = config.organizations !== false;
+    const accessTokens = resolveAccessTokenConfig(config.authentication?.accessTokens);
     const defineOrganizationRoute = ((route: Parameters<typeof defineRoute>[0]) =>
       defineRoute({
         ...route,
@@ -87,7 +95,11 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
           "credential_invalid",
         ],
         handler: async function ({ input, headers }, { json, error }) {
-          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          const credential = await resolveBackingSessionCredential({
+            headers,
+            cookieOptions: config.cookieOptions,
+            accessTokens,
+          });
           if (!credential.ok) {
             return error(
               {
@@ -97,7 +109,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
                     : "Authentication required",
                 code: "credential_invalid",
               },
-              400,
+              credential.reason === "invalid" ? 401 : 400,
             );
           }
 
@@ -179,7 +191,11 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             return error({ message: "Invalid query parameters", code: "invalid_input" }, 400);
           }
 
-          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          const credential = await resolveBackingSessionCredential({
+            headers,
+            cookieOptions: config.cookieOptions,
+            accessTokens,
+          });
           if (!credential.ok) {
             return error(
               {
@@ -189,7 +205,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
                     : "Authentication required",
                 code: "credential_invalid",
               },
-              400,
+              credential.reason === "invalid" ? 401 : 400,
             );
           }
 
@@ -236,7 +252,11 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
           .nullable(),
         errorCodes: ["credential_invalid"],
         handler: async function ({ headers }, { json, error }) {
-          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          const credential = await resolveBackingSessionCredential({
+            headers,
+            cookieOptions: config.cookieOptions,
+            accessTokens,
+          });
           if (!credential.ok) {
             return error(
               {
@@ -246,7 +266,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
                     : "Authentication required",
                 code: "credential_invalid",
               },
-              400,
+              credential.reason === "invalid" ? 401 : 400,
             );
           }
 
@@ -284,10 +304,16 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         outputSchema: z.object({
           organization: organizationSchema,
           member: memberSchema,
+          auth: issuedAuthSchema.optional(),
         }),
         errorCodes: ["organization_not_found", "membership_not_found", "credential_invalid"],
         handler: async function ({ input, headers }, { json, error }) {
-          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          const credential = accessTokens
+            ? resolveRefreshCredential(headers, config.cookieOptions, {
+                acceptBearer: accessTokens.acceptBearer,
+                issueCookie: accessTokens.issueCookie,
+              })
+            : resolveRequestCredential(headers, config.cookieOptions);
           if (!credential.ok) {
             return error(
               {
@@ -329,6 +355,24 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             return error({ message: "Invalid credential", code: "credential_invalid" }, 401);
           }
 
+          if (accessTokens) {
+            const issued = await mintSessionAccessToken({
+              config: accessTokens,
+              session: result.credential,
+            });
+            const issuedAuth = buildIssuedAuthResponse(issued, config.cookieOptions, {
+              issueCookie: accessTokens.issueCookie,
+            });
+            return Response.json(
+              {
+                organization: serializeOrganization(result.organization),
+                member: serializeMember(result.member),
+                auth: issuedAuth.auth,
+              },
+              { headers: issuedAuth.headers },
+            );
+          }
+
           return json({
             organization: serializeOrganization(result.organization),
             member: serializeMember(result.member),
@@ -349,7 +393,11 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         }),
         errorCodes: ["credential_invalid"],
         handler: async function ({ headers }, { json, error }) {
-          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          const credential = await resolveBackingSessionCredential({
+            headers,
+            cookieOptions: config.cookieOptions,
+            accessTokens,
+          });
           if (!credential.ok) {
             return error(
               {
@@ -359,7 +407,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
                     : "Authentication required",
                 code: "credential_invalid",
               },
-              400,
+              credential.reason === "invalid" ? 401 : 400,
             );
           }
 
@@ -401,7 +449,11 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
           "credential_invalid",
         ],
         handler: async function ({ input, pathParams, headers }, { json, error }) {
-          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          const credential = await resolveBackingSessionCredential({
+            headers,
+            cookieOptions: config.cookieOptions,
+            accessTokens,
+          });
           if (!credential.ok) {
             return error(
               {
@@ -411,7 +463,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
                     : "Authentication required",
                 code: "credential_invalid",
               },
-              400,
+              credential.reason === "invalid" ? 401 : 400,
             );
           }
 
@@ -473,7 +525,11 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         }),
         errorCodes: ["organization_not_found", "permission_denied", "credential_invalid"],
         handler: async function ({ pathParams, headers }, { json, error }) {
-          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          const credential = await resolveBackingSessionCredential({
+            headers,
+            cookieOptions: config.cookieOptions,
+            accessTokens,
+          });
           if (!credential.ok) {
             return error(
               {
@@ -483,7 +539,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
                     : "Authentication required",
                 code: "credential_invalid",
               },
-              400,
+              credential.reason === "invalid" ? 401 : 400,
             );
           }
 
@@ -535,7 +591,11 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
           "credential_invalid",
         ],
         handler: async function ({ input, pathParams, headers }, { json, error }) {
-          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          const credential = await resolveBackingSessionCredential({
+            headers,
+            cookieOptions: config.cookieOptions,
+            accessTokens,
+          });
           if (!credential.ok) {
             return error(
               {
@@ -545,7 +605,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
                     : "Authentication required",
                 code: "credential_invalid",
               },
-              400,
+              credential.reason === "invalid" ? 401 : 400,
             );
           }
 
@@ -603,7 +663,11 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         }),
         errorCodes: ["organization_not_found", "permission_denied", "credential_invalid"],
         handler: async function ({ pathParams, headers }, { json, error }) {
-          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          const credential = await resolveBackingSessionCredential({
+            headers,
+            cookieOptions: config.cookieOptions,
+            accessTokens,
+          });
           if (!credential.ok) {
             return error(
               {
@@ -613,7 +677,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
                     : "Authentication required",
                 code: "credential_invalid",
               },
-              400,
+              credential.reason === "invalid" ? 401 : 400,
             );
           }
 
@@ -668,7 +732,11 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
             return error({ message: "Invalid query parameters", code: "invalid_input" }, 400);
           }
 
-          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          const credential = await resolveBackingSessionCredential({
+            headers,
+            cookieOptions: config.cookieOptions,
+            accessTokens,
+          });
           if (!credential.ok) {
             return error(
               {
@@ -678,7 +746,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
                     : "Authentication required",
                 code: "credential_invalid",
               },
-              400,
+              credential.reason === "invalid" ? 401 : 400,
             );
           }
 
@@ -739,7 +807,11 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
           "credential_invalid",
         ],
         handler: async function ({ input, pathParams, headers }, { json, error }) {
-          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          const credential = await resolveBackingSessionCredential({
+            headers,
+            cookieOptions: config.cookieOptions,
+            accessTokens,
+          });
           if (!credential.ok) {
             return error(
               {
@@ -749,7 +821,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
                     : "Authentication required",
                 code: "credential_invalid",
               },
-              400,
+              credential.reason === "invalid" ? 401 : 400,
             );
           }
 
@@ -809,7 +881,11 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         }),
         errorCodes: ["member_not_found", "permission_denied", "last_owner", "credential_invalid"],
         handler: async function ({ input, pathParams, headers }, { json, error }) {
-          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          const credential = await resolveBackingSessionCredential({
+            headers,
+            cookieOptions: config.cookieOptions,
+            accessTokens,
+          });
           if (!credential.ok) {
             return error(
               {
@@ -819,7 +895,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
                     : "Authentication required",
                 code: "credential_invalid",
               },
-              400,
+              credential.reason === "invalid" ? 401 : 400,
             );
           }
 
@@ -866,7 +942,11 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         }),
         errorCodes: ["member_not_found", "permission_denied", "last_owner", "credential_invalid"],
         handler: async function ({ pathParams, headers }, { json, error }) {
-          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          const credential = await resolveBackingSessionCredential({
+            headers,
+            cookieOptions: config.cookieOptions,
+            accessTokens,
+          });
           if (!credential.ok) {
             return error(
               {
@@ -876,7 +956,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
                     : "Authentication required",
                 code: "credential_invalid",
               },
-              400,
+              credential.reason === "invalid" ? 401 : 400,
             );
           }
 
@@ -919,7 +999,11 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
         }),
         errorCodes: ["organization_not_found", "permission_denied", "credential_invalid"],
         handler: async function ({ pathParams, headers }, { json, error }) {
-          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          const credential = await resolveBackingSessionCredential({
+            headers,
+            cookieOptions: config.cookieOptions,
+            accessTokens,
+          });
           if (!credential.ok) {
             return error(
               {
@@ -929,7 +1013,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
                     : "Authentication required",
                 code: "credential_invalid",
               },
-              400,
+              credential.reason === "invalid" ? 401 : 400,
             );
           }
 
@@ -982,7 +1066,11 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
           "credential_invalid",
         ],
         handler: async function ({ input, pathParams, headers }, { json, error }) {
-          const credential = resolveRequestCredential(headers, config.cookieOptions);
+          const credential = await resolveBackingSessionCredential({
+            headers,
+            cookieOptions: config.cookieOptions,
+            accessTokens,
+          });
           if (!credential.ok) {
             return error(
               {
@@ -992,7 +1080,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
                     : "Authentication required",
                 code: "credential_invalid",
               },
-              400,
+              credential.reason === "invalid" ? 401 : 400,
             );
           }
 

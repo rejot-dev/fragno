@@ -10,6 +10,8 @@ const resendDomainStatusSchema = z.enum([
   "failed",
   "temporary_failure",
   "not_started",
+  "partially_failed",
+  "partially_verified",
 ]);
 const resendDomainRegionSchema = z.enum(["us-east-1", "eu-west-1", "sa-east-1", "ap-northeast-1"]);
 
@@ -26,10 +28,10 @@ export const resendDomainSchema = z.object({
 });
 
 export const resendDomainRecordSchema = z.object({
-  record: z.enum(["SPF", "DKIM", "Receiving"]),
+  record: z.enum(["SPF", "DKIM", "Receiving", "Tracking", "TrackingCAA"]),
   name: z.string(),
   value: z.string(),
-  type: z.enum(["MX", "TXT", "CNAME"]),
+  type: z.enum(["MX", "TXT", "CNAME", "CAA"]),
   ttl: z.string(),
   status: resendDomainStatusSchema,
   routingPolicy: z.string().optional(),

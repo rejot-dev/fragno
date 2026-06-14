@@ -9,7 +9,7 @@ import { userOverviewRoutesFactory, type GetUsersParams } from "./user-overview"
 
 const buildAuthTest = async () =>
   buildDatabaseFragmentsTest()
-    .withTestAdapter({ type: "drizzle-pglite" })
+    .withTestAdapter({ type: "kysely-sqlite" })
     .withFragment(
       "auth",
       instantiate(authFragmentDefinition).withRoutes([userOverviewRoutesFactory]),

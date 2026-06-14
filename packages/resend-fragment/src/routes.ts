@@ -3,10 +3,6 @@ import { defineRoutes } from "@fragno-dev/core";
 import { resendFragmentDefinition } from "./definition";
 import {
   registerDomainRoutes,
-  type ResendDomain,
-  type ResendDomainDetail,
-  type ResendDomainRecord,
-  type ResendListDomainsOutput,
   resendDomainDetailSchema,
   resendDomainRecordSchema,
   resendDomainSchema,
@@ -14,12 +10,6 @@ import {
 } from "./routes/domains";
 import {
   registerEmailRoutes,
-  type ResendEmailInput,
-  type ResendEmailRecord,
-  type ResendEmailSummary,
-  type ResendEmailDetail,
-  type ResendListEmailsOutput,
-  type ResendSendEmailInput,
   resendEmailRecordSchema,
   resendEmailDetailSchema,
   resendEmailSummarySchema,
@@ -30,10 +20,6 @@ import {
 } from "./routes/emails";
 import {
   registerReceivedEmailRoutes,
-  type ResendListReceivedEmailsOutput,
-  type ResendReceivedEmailRecordAttachment,
-  type ResendReceivedEmailDetail,
-  type ResendReceivedEmailSummary,
   resendListReceivedEmailsOutputSchema,
   resendReceivedEmailAttachmentSchema,
   resendReceivedEmailDetailSchema,
@@ -41,13 +27,6 @@ import {
 } from "./routes/received-emails";
 import {
   registerThreadRoutes,
-  type ResendThreadMessage,
-  type ResendThreadMutationOutput,
-  type ResendThreadReplyInput,
-  type ResendThreadSummary,
-  type ResendThreadDetail,
-  type ResendListThreadMessagesOutput,
-  type ResendListThreadsOutput,
   resendListThreadMessagesOutputSchema,
   resendListThreadsOutputSchema,
   resendThreadDetailSchema,

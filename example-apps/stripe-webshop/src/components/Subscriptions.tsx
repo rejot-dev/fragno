@@ -8,7 +8,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDate } from "@/lib/dates";
-import { stripeClient } from "@/lib/stripe.client";
+import { stripeClient } from "@/lib/stripe-client";
 
 export function Subscriptions() {
   const { data, loading, error } = stripeClient.useSubscription();

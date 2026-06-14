@@ -4,6 +4,7 @@ import type { AutomationCommandOptionSpec } from "@/fragno/runtime-tools/automat
 
 const DASHBOARD_CWD_MARKER = "__FRAGNO_BACKOFFICE_CWD__";
 const DASHBOARD_TERMINAL_STORAGE_KEY = "backoffice.dashboard.terminal";
+const HYDRATION_SAFE_WELCOME_TIMESTAMP = "1970-01-01T00:00:00.000Z";
 const MAX_HISTORY = 80;
 const MAX_AUTOCOMPLETE_SUGGESTIONS = 8;
 const DASHBOARD_PATH_COMPLETION_COMMANDS = new Set(["cat", "cd", "find", "ls"]);
@@ -313,8 +314,11 @@ export const shortenDashboardCwd = (cwd: string, maxLength = 40) => {
   return cwd;
 };
 
-export const createWelcomeEntry = (organizationName?: string | null): DashboardTerminalEntry => ({
-  id: `welcome-${Date.now()}`,
+export const createWelcomeEntry = (
+  organizationName?: string | null,
+  timestamp = new Date().toISOString(),
+): DashboardTerminalEntry => ({
+  id: `welcome-${timestamp}`,
   command: "",
   cwd: DEFAULT_CWD,
   ok: true,
@@ -323,21 +327,27 @@ export const createWelcomeEntry = (organizationName?: string | null): DashboardT
 Organization: ${organizationName ?? "no active organisation"}
 Type a command and press Enter.`,
   durationMs: 0,
-  timestamp: new Date().toISOString(),
+  timestamp,
 });
 
-const createSnapshot = (organizationName?: string | null): DashboardTerminalSnapshot => ({
+const createSnapshot = (
+  organizationName?: string | null,
+  timestamp?: string,
+): DashboardTerminalSnapshot => ({
   cwd: DEFAULT_CWD,
-  entries: [createWelcomeEntry(organizationName)],
+  entries: [createWelcomeEntry(organizationName, timestamp)],
   commands: [],
 });
+
+const createHydrationSafeSnapshot = (organizationName?: string | null) =>
+  createSnapshot(organizationName, HYDRATION_SAFE_WELCOME_TIMESTAMP);
 
 const readSnapshot = (
   organizationId?: string | null,
   organizationName?: string | null,
 ): DashboardTerminalSnapshot => {
   if (typeof window === "undefined") {
-    return createSnapshot(organizationName);
+    return createHydrationSafeSnapshot(organizationName);
   }
 
   const raw = window.localStorage.getItem(getStorageKey(organizationId));
@@ -556,7 +566,8 @@ export const useDashboardTerminal = ({
   disabled = false,
   commandSpecs = [],
 }: UseDashboardTerminalOptions) => {
-  const [snapshot, setSnapshot] = useState(() => readSnapshot(organizationId, organizationName));
+  const [snapshot, setSnapshot] = useState(() => createHydrationSafeSnapshot(organizationName));
+  const [snapshotHydrated, setSnapshotHydrated] = useState(false);
   const [command, setCommand] = useState("");
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [historyDraft, setHistoryDraft] = useState("");
@@ -622,8 +633,17 @@ export const useDashboardTerminal = ({
   };
 
   useEffect(() => {
+    setSnapshot(readSnapshot(organizationId, organizationName));
+    setSnapshotHydrated(true);
+  }, [organizationId, organizationName]);
+
+  useEffect(() => {
+    if (!snapshotHydrated) {
+      return;
+    }
+
     writeSnapshot(organizationId, snapshot);
-  }, [organizationId, snapshot]);
+  }, [organizationId, snapshot, snapshotHydrated]);
 
   useEffect(() => {
     if (disabled || selectionVersion === 0) {

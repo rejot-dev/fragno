@@ -11,7 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDate } from "@/lib/dates";
-import { stripeClient } from "@/lib/stripe.client";
+import { stripeClient } from "@/lib/stripe-client";
 
 export function StripeCustomers() {
   const [customerPage, setCustomerPage] = useState<string | undefined>(undefined);
