@@ -64,7 +64,10 @@ export const seedWorkspaceStarterFiles = async ({
   const skipped: string[] = [];
 
   for (const [relativePath, content] of Object.entries(starterContent)) {
-    const path = `/workspace/${relativePath.replace(/^\/+/, "")}`;
+    const normalizedPath = relativePath.replace(/^\/+/, "");
+    const path = normalizedPath.startsWith("workspace/")
+      ? `/${normalizedPath}`
+      : `/workspace/${normalizedPath}`;
     const exists = await fileExists(fs, path);
 
     if (exists && !force) {
