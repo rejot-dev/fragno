@@ -209,6 +209,7 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
   #getRuntimeServices: () => BackofficeRuntimeServices;
   #getAutomationFileSystem?: InMemoryObjectFactoryOptions["getAutomationFileSystem"];
   #objectFactories?: InMemoryObjectFactoryOverrides;
+  #timeOffsetMs = 0;
 
   constructor(options: InMemoryObjectFactoryOptions) {
     this.env = {
@@ -247,27 +248,35 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
     }
   }
 
-  async drainAlarms(toleranceMs = 0): Promise<void> {
-    const now = Date.now();
+  now(): number {
+    return Date.now() + this.#timeOffsetMs;
+  }
+
+  advanceTime(ms: number): number {
+    this.#timeOffsetMs += ms;
+    return this.now();
+  }
+
+  async drainAlarms(): Promise<void> {
+    const now = this.now();
     const due = this.instances()
       .map((instance) => ({ ...instance, alarmTimestamp: instance.state.alarmTimestamp }))
       .filter(
         ({ state, alarmTimestamp }) =>
-          alarmTimestamp !== null &&
-          alarmTimestamp <= now + toleranceMs &&
-          state.consumeDueAlarm(now + toleranceMs),
+          alarmTimestamp !== null && alarmTimestamp <= now && state.consumeDueAlarm(now),
       );
 
-    for (const { object, state, alarmTimestamp } of due) {
-      const delayMs = Math.max(0, (alarmTimestamp ?? Date.now()) - Date.now());
-      if (delayMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-      }
-
+    for (const { object, state } of due) {
       await state.drainBlocking();
       const alarm = (object as { alarm?: () => Promise<void> }).alarm;
       if (alarm) {
-        await alarm.call(object);
+        const originalNow = Date.now;
+        Date.now = () => now;
+        try {
+          await alarm.call(object);
+        } finally {
+          Date.now = originalNow;
+        }
       }
     }
   }

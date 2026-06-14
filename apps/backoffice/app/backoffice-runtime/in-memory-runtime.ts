@@ -1,3 +1,5 @@
+import { defaultFragnoRuntime } from "@fragno-dev/core";
+
 import type { MasterFileSystem } from "@/files";
 
 import type { BackofficeDatabaseAdapterFactory } from "./database-adapters";
@@ -9,12 +11,16 @@ import {
 import type { InMemoryBackofficeRuntimeEnv } from "./in-memory-runtime-env";
 import { createBackofficeObjectRegistry } from "./object-registry";
 import type { BackofficeObjectRegistry } from "./object-registry";
-import type { BackofficeRuntimeServices } from "./runtime-services";
+import type { BackofficeRuntimeConfig, BackofficeRuntimeServices } from "./runtime-services";
 
 export type InMemoryBackofficeRuntime = {
   env: InMemoryBackofficeRuntimeEnv;
   objects: BackofficeObjectRegistry;
   adapters: BackofficeDatabaseAdapterFactory;
+  config: BackofficeRuntimeConfig;
+  services: BackofficeRuntimeServices;
+  now(): number;
+  advanceTime(ms: number): number;
   drain(): Promise<void>;
   drainAlarms(): Promise<void>;
   drainWaitUntil(): Promise<void>;
@@ -34,7 +40,14 @@ export type CreateInMemoryBackofficeRuntimeOptions = {
 export const createInMemoryBackofficeRuntime = async (
   options: CreateInMemoryBackofficeRuntimeOptions = {},
 ): Promise<InMemoryBackofficeRuntime> => {
-  const adapters = createInMemoryBackofficeDatabaseAdapters();
+  let runtimeNow = () => Date.now();
+  const adapters = createInMemoryBackofficeDatabaseAdapters({
+    adapterOptions: {
+      clock: {
+        now: () => new Date(runtimeNow()),
+      },
+    },
+  });
   let runtimeServices: BackofficeRuntimeServices;
   const getRuntimeServices = () => runtimeServices;
   const objectFactory = new InMemoryObjectFactory({
@@ -43,12 +56,19 @@ export const createInMemoryBackofficeRuntime = async (
     getAutomationFileSystem: options.getAutomationFileSystem,
     objectFactories: options.objectFactories,
   });
+  runtimeNow = () => objectFactory.now();
   const objects = createBackofficeObjectRegistry(objectFactory);
 
   runtimeServices = {
     objects,
     adapters,
     config: objectFactory.createRuntimeConfig(),
+    fragnoRuntime: {
+      ...defaultFragnoRuntime,
+      time: {
+        now: () => new Date(objectFactory.now()),
+      },
+    },
   };
 
   const drain = async () => {
@@ -58,23 +78,48 @@ export const createInMemoryBackofficeRuntime = async (
       const hadPendingBefore = objectFactory.instances().some(({ state }) => state.hasPendingWork);
       const dueBefore = objectFactory
         .instances()
-        .some(({ state }) => state.alarmTimestamp !== null && state.alarmTimestamp <= Date.now());
+        .some(
+          ({ state }) =>
+            state.alarmTimestamp !== null && state.alarmTimestamp <= objectFactory.now(),
+        );
 
       await objectFactory.drainWaitUntil();
-      await objectFactory.drainAlarms(1_000);
+      await objectFactory.drainAlarms();
       await objectFactory.drainWaitUntil();
 
       const hasPendingAfter = objectFactory.instances().some(({ state }) => state.hasPendingWork);
       const dueAfter = objectFactory
         .instances()
-        .some(({ state }) => state.alarmTimestamp !== null && state.alarmTimestamp <= Date.now());
+        .some(
+          ({ state }) =>
+            state.alarmTimestamp !== null && state.alarmTimestamp <= objectFactory.now(),
+        );
       if (!hadPendingBefore && !dueBefore && !hasPendingAfter && !dueAfter) {
         return;
       }
     }
 
+    const pending = await Promise.all(
+      objectFactory
+        .instances()
+        .filter(
+          ({ state }) =>
+            state.hasPendingWork ||
+            (state.alarmTimestamp !== null && state.alarmTimestamp <= objectFactory.now()),
+        )
+        .map(async ({ name, state }) => ({
+          name,
+          hasPendingWork: state.hasPendingWork,
+          alarmTimestamp: state.alarmTimestamp,
+          now: objectFactory.now(),
+          storageKeys: [...(await state.storage.list()).keys()],
+        })),
+    );
+
     throw new Error(
-      `In-memory Backoffice runtime did not drain after ${maxIterations} iterations.`,
+      `In-memory Backoffice runtime did not drain after ${maxIterations} iterations: ${JSON.stringify(
+        pending,
+      )}.`,
     );
   };
 
@@ -82,11 +127,15 @@ export const createInMemoryBackofficeRuntime = async (
     env: objectFactory.env,
     objects,
     adapters,
+    config: runtimeServices.config,
+    services: runtimeServices,
+    now: () => objectFactory.now(),
+    advanceTime: (ms) => objectFactory.advanceTime(ms),
     drain,
     drainAlarms: () => objectFactory.drainAlarms(),
     drainWaitUntil: () => objectFactory.drainWaitUntil(),
     async cleanup() {
-      await drain();
+      await objectFactory.drainWaitUntil();
       await adapters.cleanup();
     },
   };

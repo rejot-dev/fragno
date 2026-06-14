@@ -168,6 +168,7 @@ const isAutomationWorkspaceDirectoryMissingError = (error: unknown): boolean => 
   return (
     error.message === "Path not found." ||
     error.message === "File not found." ||
+    error.message.endsWith(" is not a directory.") ||
     error.message.startsWith("ENOENT:") ||
     error.message.endsWith(" was not found.")
   );
