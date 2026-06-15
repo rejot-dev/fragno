@@ -27,7 +27,7 @@ export const GENERAL_SKILL_CONTENT: Record<string, FileSystemArtifact> = {
     name: "building-automations",
     title: "Building Automations",
     description:
-      "Build Backoffice automations in codemode. Use when creating event router behavior, wiring useful configured connections together, reading the event catalog, updating /workspace/automations/router.cm.js, or adding durable workflow scripts.",
+      "Build Backoffice automations in codemode. Use when creating event router behavior, wiring useful configured connections together, reading the event catalog, updating /workspace/automations/router.cm.js, or adding durable workflow scripts. ONLY use when the user is explicit about wanting an automation/workflow.",
     body: `Use this skill when the user wants the system to react to events from connections such as Telegram, Pi, OTP, or future integrations.
 
 ## Codemode-first workflow
