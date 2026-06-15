@@ -46,7 +46,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
           <CardDescription>Enter your email below to login to your account</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={(event) => void handleSubmit(event)}>
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="email">Email</FieldLabel>

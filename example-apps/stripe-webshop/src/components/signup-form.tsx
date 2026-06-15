@@ -55,7 +55,7 @@ export function SignupForm({ ...props }: React.ComponentProps<typeof Card>) {
         <CardDescription>Enter your information below to create your account</CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={(event) => void handleSubmit(event)}>
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="name">Full Name</FieldLabel>

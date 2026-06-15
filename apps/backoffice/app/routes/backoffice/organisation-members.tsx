@@ -351,7 +351,7 @@ function OrganizationMemberRow({
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={handleSave}
+                onClick={() => void handleSave()}
                 disabled={!rolesChanged || selectedRoles.length === 0 || saving}
                 className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-2 py-1 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
               >
@@ -359,7 +359,7 @@ function OrganizationMemberRow({
               </button>
               <button
                 type="button"
-                onClick={handleRemove}
+                onClick={() => void handleRemove()}
                 disabled={removing}
                 className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
               >

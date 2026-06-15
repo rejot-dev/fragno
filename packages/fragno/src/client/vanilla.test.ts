@@ -117,7 +117,7 @@ describe("createVanillaListeners", () => {
 
   test("should support refetch functionality", async () => {
     let callCount = 0;
-    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(() => {
       callCount++;
       return {
         headers: new Headers(),

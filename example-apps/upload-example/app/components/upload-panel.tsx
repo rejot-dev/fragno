@@ -207,7 +207,7 @@ export function UploadPanel({
 
             <button
               type="button"
-              onClick={handleUpload}
+              onClick={() => void handleUpload()}
               disabled={uploading}
               className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
@@ -292,7 +292,7 @@ export function UploadPanel({
                     type="button"
                     className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700"
                     onClick={() =>
-                      handleDownload({
+                      void handleDownload({
                         provider: fileItem.provider,
                         fileKey: fileItem.fileKey,
                         filename: fileItem.filename,

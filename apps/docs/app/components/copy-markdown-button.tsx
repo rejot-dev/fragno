@@ -24,7 +24,7 @@ export function CopyMarkdownButton({ markdownText }: CopyMarkdownButtonProps) {
 
   return (
     <button
-      onClick={handleCopy}
+      onClick={() => void handleCopy()}
       className={cn(
         buttonVariants({
           variant: "secondary",

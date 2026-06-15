@@ -202,7 +202,7 @@ describe("invalidation", () => {
 
   test("should automatically refetch when an item is invalidated", async () => {
     let callCount = 0;
-    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(() => {
       callCount++;
       return {
         headers: new Headers(),
@@ -253,7 +253,7 @@ describe("invalidation", () => {
 
   test("should refetch when an item is invalidated", async () => {
     let callCount = 0;
-    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(() => {
       callCount++;
       return {
         headers: new Headers(),
@@ -2034,7 +2034,7 @@ describe("Custom Fetcher Configuration", () => {
   test("fragment author sets RequestInit options (credentials)", async () => {
     let capturedOptions: RequestInit | undefined;
 
-    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async (_url, options) => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((_url, options) => {
       capturedOptions = options;
       return {
         headers: new Headers(),
@@ -2058,7 +2058,7 @@ describe("Custom Fetcher Configuration", () => {
   test("user overrides with their own RequestInit (deep merge)", async () => {
     let capturedOptions: RequestInit | undefined;
 
-    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async (_url, options) => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((_url, options) => {
       capturedOptions = options;
       return {
         headers: new Headers(),
@@ -2113,7 +2113,7 @@ describe("Custom Fetcher Configuration", () => {
     })) as unknown as typeof fetch;
 
     let capturedOptions: RequestInit | undefined;
-    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async (_url, options) => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((_url, options) => {
       capturedOptions = options;
       return {
         headers: new Headers(),
@@ -2142,7 +2142,7 @@ describe("Custom Fetcher Configuration", () => {
   test("headers merge correctly (user headers override author headers)", async () => {
     let capturedOptions: RequestInit | undefined;
 
-    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async (_url, options) => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((_url, options) => {
       capturedOptions = options;
       return {
         headers: new Headers(),
@@ -2189,7 +2189,7 @@ describe("Custom Fetcher Configuration", () => {
   test("custom fetcher works with mutators", async () => {
     let capturedOptions: RequestInit | undefined;
 
-    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async (_url, options) => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((_url, options) => {
       capturedOptions = options;
       return {
         headers: new Headers(),
@@ -2234,7 +2234,7 @@ describe("Custom Fetcher Configuration", () => {
   test("public mountRoute is used for hooks", async () => {
     let capturedUrl: string | undefined;
 
-    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async (url) => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((url) => {
       capturedUrl = String(url);
       return {
         headers: new Headers(),
@@ -2258,7 +2258,7 @@ describe("Custom Fetcher Configuration", () => {
   test("public mountRoute is used for mutators", async () => {
     let capturedUrl: string | undefined;
 
-    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async (url) => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((url) => {
       capturedUrl = String(url);
       return {
         headers: new Headers(),

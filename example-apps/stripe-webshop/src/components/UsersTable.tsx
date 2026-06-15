@@ -202,7 +202,7 @@ export function UsersTable() {
                           </Popover>
                           <Button
                             size="sm"
-                            onClick={() => handleSaveLink(user.id)}
+                            onClick={() => void handleSaveLink(user.id)}
                             disabled={updating || !selectedCustomerId}
                           >
                             {updating ? "Saving..." : "Save"}

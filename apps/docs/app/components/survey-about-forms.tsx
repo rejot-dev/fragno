@@ -85,7 +85,10 @@ export function SurveyAboutForms({ turnstileSitekey }: SurveyAboutFormsProps) {
           options={{ appearance: "interaction-only" }}
         />
 
-        <Button onClick={handleSubmit} disabled={loading || !turnstileToken || errors.length > 0}>
+        <Button
+          onClick={() => void handleSubmit()}
+          disabled={loading || !turnstileToken || errors.length > 0}
+        >
           {loading ? "Submitting..." : "Submit"}
         </Button>
       </div>

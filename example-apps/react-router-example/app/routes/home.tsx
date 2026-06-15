@@ -90,7 +90,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             </div>
 
             <button
-              onClick={handleSubmitMessage}
+              onClick={() => void handleSubmitMessage()}
               disabled={!message.trim()}
               className="w-full rounded-md bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-gray-900"
             >

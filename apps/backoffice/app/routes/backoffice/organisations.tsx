@@ -176,7 +176,7 @@ export default function BackofficeOrganisations() {
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="button"
-                            onClick={() => handleInvitationAction(entry, "accept")}
+                            onClick={() => void handleInvitationAction(entry, "accept")}
                             disabled={respondingInvitation}
                             className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
                           >
@@ -184,7 +184,7 @@ export default function BackofficeOrganisations() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleInvitationAction(entry, "reject")}
+                            onClick={() => void handleInvitationAction(entry, "reject")}
                             disabled={respondingInvitation}
                             className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
                           >
@@ -252,7 +252,7 @@ export default function BackofficeOrganisations() {
                     <button
                       type="button"
                       onClick={() =>
-                        handleSetDefaultOrganization(organization.id, organization.name)
+                        void handleSetDefaultOrganization(organization.id, organization.name)
                       }
                       disabled={settingActiveOrganization}
                       className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"

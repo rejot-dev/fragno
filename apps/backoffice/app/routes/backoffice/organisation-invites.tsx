@@ -42,7 +42,7 @@ function CopyButton({
   return (
     <button
       type="button"
-      onClick={handleCopy}
+      onClick={() => void handleCopy()}
       disabled={disabled}
       className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
     >
@@ -152,7 +152,7 @@ export default function BackofficeOrganisationInvites() {
         title="Invite a member"
         description="Create a shareable invitation link and assign default roles. Invitations are not emailed automatically."
       >
-        <form onSubmit={handleInviteSubmit} className="space-y-3">
+        <form onSubmit={(event) => void handleInviteSubmit(event)} className="space-y-3">
           <FormField
             label="Email"
             hint="Invites are not emailed automatically. Share the generated link manually or via your own hook."

@@ -249,7 +249,7 @@ export default function BackofficeLogin() {
             <div className="space-y-3">
               <button
                 type="button"
-                onClick={handleGithubSignIn}
+                onClick={() => void handleGithubSignIn()}
                 disabled={oauthPending}
                 className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
               >

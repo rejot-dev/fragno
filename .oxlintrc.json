@@ -40,7 +40,7 @@
     "typescript/no-for-in-array": "off",
     "typescript/no-implied-eval": "off",
     "typescript/no-meaningless-void-operator": "off",
-    "typescript/no-misused-promises": "off",
+    "typescript/no-misused-promises": "error",
     "typescript/no-misused-spread": "off",
     "typescript/no-mixed-enums": "off",
     "typescript/no-redundant-type-constituents": "off",

@@ -77,7 +77,7 @@ export default function BackofficeFilesExplorer() {
               </div>
               <button
                 type="button"
-                onClick={() => revalidator.revalidate()}
+                onClick={() => void revalidator.revalidate()}
                 className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
               >
                 <RefreshCcw className="h-3.5 w-3.5" />

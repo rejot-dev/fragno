@@ -287,24 +287,24 @@ export function InstancesView() {
             eventError={eventError}
             sendEventError={sendEventError}
             eventLoading={!!eventLoading}
-            onSendEvent={handleSendEvent}
+            onSendEvent={() => void handleSendEvent()}
             pauseLoading={!!pauseLoading}
             resumeLoading={!!resumeLoading}
             terminateLoading={!!terminateLoading}
             onPause={() =>
-              pauseInstance({
+              void pauseInstance({
                 path: { workflowName: selectedWorkflow, instanceId: selectedInstance },
                 body: {},
               })
             }
             onResume={() =>
-              resumeInstance({
+              void resumeInstance({
                 path: { workflowName: selectedWorkflow, instanceId: selectedInstance },
                 body: {},
               })
             }
             onTerminate={() =>
-              terminateInstance({
+              void terminateInstance({
                 path: { workflowName: selectedWorkflow, instanceId: selectedInstance },
                 body: {},
               })
