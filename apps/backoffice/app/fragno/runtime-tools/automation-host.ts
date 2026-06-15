@@ -1,3 +1,5 @@
+import { SYSTEM_BACKOFFICE_PRINCIPAL } from "@/backoffice-runtime/context";
+import { createBackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { IFileSystem } from "@/files/interface";
 import { MasterFileSystem } from "@/files/master-file-system";
@@ -101,7 +103,11 @@ export const createInteractiveBashHost = (input: CreateInteractiveBashHostInput)
     (input.runtime
       ? createRouteBackedRuntimeContext({
           runtime: input.runtime,
-          orgId: input.orgId,
+          kernel: createBackofficeKernel({ objects: input.runtime.objects }),
+          execution: {
+            actor: SYSTEM_BACKOFFICE_PRINCIPAL,
+            scope: { kind: "org", orgId: input.orgId },
+          },
           defaultActor: input.defaultActor,
         })
       : null);

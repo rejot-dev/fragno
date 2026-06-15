@@ -9,7 +9,7 @@ import type {
   ResendThreadSummary,
 } from "@fragno-dev/resend-fragment";
 
-import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type { ResendObject } from "@/backoffice-runtime/object-registry";
 import type { ResendFragment } from "@/fragno/resend";
 
 import {
@@ -286,19 +286,11 @@ export const createRouteBackedResendRuntime = (
   };
 };
 
-export const createResendRouteRuntime = ({
-  objects,
-  orgId,
-}: {
-  objects: BackofficeObjectRegistry;
-  orgId: string;
-}): ResendRuntime => {
-  const resendDo = objects.resend.forOrg(orgId);
-  return createRouteBackedResendRuntime({
+export const createResendRouteRuntime = ({ object }: { object: ResendObject }): ResendRuntime =>
+  createRouteBackedResendRuntime({
     baseUrl: "https://resend.do",
-    fetch: resendDo.fetch.bind(resendDo),
+    fetch: object.fetch.bind(object),
   });
-};
 
 const RESEND_NOT_CONFIGURED = createOrganisationNotConfiguredMessage("Resend");
 

@@ -154,6 +154,7 @@ const storeGetTool = defineAutomationStoreTool({
   namespace: "store",
   name: "get",
   description: "Get an automation store entry by key.",
+  requiredPermissions: ["read"],
   inputSchema: z.object({ key: z.string().trim().min(1) }),
   outputSchema: automationStoreEntrySchema.nullable(),
   execute: async (input, context) =>
@@ -190,6 +191,7 @@ const storeSetTool = defineAutomationStoreTool({
   namespace: "store",
   name: "set",
   description: "Create or update an automation store entry.",
+  requiredPermissions: ["modify"],
   inputSchema: automationStoreSetInputSchema,
   outputSchema: automationStoreEntrySchema,
   execute: async (input, context) =>
@@ -270,6 +272,7 @@ const storeListTool = defineAutomationStoreTool({
   namespace: "store",
   name: "list",
   description: "List automation store entries, optionally filtered by key prefix.",
+  requiredPermissions: ["read"],
   inputSchema: automationStoreListInputSchema,
   outputSchema: z.array(automationStoreEntrySchema),
   execute: async (input, context) =>
@@ -312,6 +315,7 @@ const storeDeleteTool = defineAutomationStoreTool({
   namespace: "store",
   name: "delete",
   description: "Delete an automation store entry by key.",
+  requiredPermissions: ["modify"],
   inputSchema: z.object({ key: z.string().trim().min(1) }),
   outputSchema: automationStoreDeleteResultSchema.nullable(),
   execute: async (input, context) =>
@@ -352,6 +356,10 @@ export const automationStoreRuntimeTools = [
 
 export const automationStoreToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "store",
+  permissions: {
+    read: "Read automation store entries.",
+    modify: "Create, update, and delete automation store entries.",
+  },
   tools: automationStoreRuntimeTools,
   isAvailable: (context: AutomationStoreToolContext) => !!context.runtimes.automations,
 });

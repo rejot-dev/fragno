@@ -894,7 +894,10 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteRuntime({ objects: createPiObjects(env), orgId: "acme" });
+    const runtime = createPiRouteRuntime({
+      object: createPiObjects(env).pi.forOrg("acme"),
+      orgId: "acme",
+    });
 
     const created = await runtime.createSession({
       agent: "assistant",
@@ -1087,7 +1090,10 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteRuntime({ objects: createPiObjects(env), orgId: "acme" });
+    const runtime = createPiRouteRuntime({
+      object: createPiObjects(env).pi.forOrg("acme"),
+      orgId: "acme",
+    });
     const turned = await withTimeout(
       runtime.runTurn({ sessionId: "session-2", text: "hello" }),
       "runTurn should stop after agent_end without waiting for the live events stream to close",
@@ -1204,7 +1210,10 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteRuntime({ objects: createPiObjects(env), orgId: "acme" });
+    const runtime = createPiRouteRuntime({
+      object: createPiObjects(env).pi.forOrg("acme"),
+      orgId: "acme",
+    });
     const turned = await withTimeout(
       runtime.runTurn({ sessionId: "session-2", text: "hello" }),
       "runTurn should stop after wrapped agent_end without waiting for the live events stream to close",
@@ -1413,7 +1422,10 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteRuntime({ objects: createPiObjects(env), orgId: "acme" });
+    const runtime = createPiRouteRuntime({
+      object: createPiObjects(env).pi.forOrg("acme"),
+      orgId: "acme",
+    });
     const turned = await withTimeout(
       runtime.runTurn({ sessionId: "session-2", text: "poem" }),
       "runTurn should stop after agent_end without waiting for the live events stream to close",
@@ -1455,7 +1467,10 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteRuntime({ objects: createPiObjects(env), orgId: "acme" });
+    const runtime = createPiRouteRuntime({
+      object: createPiObjects(env).pi.forOrg("acme"),
+      orgId: "acme",
+    });
 
     await expect(runtime.createSession({ agent: "missing" })).rejects.toThrow(
       "Pi fragment returned 404: Agent not found",
@@ -1500,7 +1515,10 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteRuntime({ objects: createPiObjects(env), orgId: "acme" });
+    const runtime = createPiRouteRuntime({
+      object: createPiObjects(env).pi.forOrg("acme"),
+      orgId: "acme",
+    });
 
     await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(
       "session events route did not return a jsonStream response",
@@ -1553,7 +1571,10 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteRuntime({ objects: createPiObjects(env), orgId: "acme" });
+    const runtime = createPiRouteRuntime({
+      object: createPiObjects(env).pi.forOrg("acme"),
+      orgId: "acme",
+    });
 
     await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(
       "Pi fragment returned 409: Session not ready",
@@ -1617,7 +1638,10 @@ describe("createPiRouteRuntime", () => {
       },
     } as unknown as CloudflareEnv;
 
-    const runtime = createPiRouteRuntime({ objects: createPiObjects(env), orgId: "acme" });
+    const runtime = createPiRouteRuntime({
+      object: createPiObjects(env).pi.forOrg("acme"),
+      orgId: "acme",
+    });
 
     await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(
       "Pi fragment returned 500: Detail unavailable",

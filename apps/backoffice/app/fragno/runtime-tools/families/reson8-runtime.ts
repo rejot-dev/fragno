@@ -5,7 +5,7 @@ import type {
   Reson8PrerecordedTranscription,
 } from "@fragno-dev/reson8-fragment";
 
-import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type { Reson8Object } from "@/backoffice-runtime/object-registry";
 import type { Reson8Fragment } from "@/fragno/reson8";
 
 import {
@@ -88,19 +88,11 @@ export const createRouteBackedReson8Runtime = (
   };
 };
 
-export const createReson8RouteRuntime = ({
-  objects,
-  orgId,
-}: {
-  objects: BackofficeObjectRegistry;
-  orgId: string;
-}): Reson8Runtime => {
-  const reson8Do = objects.reson8.forOrg(orgId);
-  return createRouteBackedReson8Runtime({
+export const createReson8RouteRuntime = ({ object }: { object: Reson8Object }): Reson8Runtime =>
+  createRouteBackedReson8Runtime({
     baseUrl: "https://reson8.do",
-    fetch: reson8Do.fetch.bind(reson8Do),
+    fetch: object.fetch.bind(object),
   });
-};
 
 const RESON8_NOT_CONFIGURED = createOrganisationNotConfiguredMessage("Reson8");
 

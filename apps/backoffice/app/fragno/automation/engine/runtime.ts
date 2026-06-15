@@ -1,3 +1,5 @@
+import { SYSTEM_BACKOFFICE_PRINCIPAL } from "@/backoffice-runtime/context";
+import { createBackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BashHostContext } from "@/fragno/runtime-tools/bash-host";
 import type { PiRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
@@ -66,7 +68,11 @@ export const createAutomationRuntime = ({
   };
 
   if (runtime && orgId) {
-    const routeBacked = createRouteBackedRuntimeContext({ runtime, orgId });
+    const routeBacked = createRouteBackedRuntimeContext({
+      runtime,
+      kernel: createBackofficeKernel({ objects: runtime.objects }),
+      execution: { actor: SYSTEM_BACKOFFICE_PRINCIPAL, scope: { kind: "org", orgId } },
+    });
     return {
       ...routeBacked.automations.runtime,
       ...routeBacked.otp.runtime,
@@ -112,7 +118,8 @@ export const createAutomationExecutionContext = ({
     runtimeServices && orgId
       ? createRouteBackedRuntimeContext({
           runtime: runtimeServices,
-          orgId,
+          kernel: createBackofficeKernel({ objects: runtimeServices.objects }),
+          execution: { actor: SYSTEM_BACKOFFICE_PRINCIPAL, scope: { kind: "org", orgId } },
           ...(pi ? { pi: { runtime: pi.runtime } } : {}),
         })
       : null;

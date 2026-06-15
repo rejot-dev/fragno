@@ -88,7 +88,7 @@ export const createInternalRuntime = ({
     }
 
     const mcpServers = configuredCapabilities.includes("mcp")
-      ? await createMcpRuntime({ objects, orgId })
+      ? await createMcpRuntime(objects.mcp.forOrg(orgId))
           .listServers()
           .then(({ servers }) => createMcpCodemodeServers(servers))
       : [];
@@ -111,6 +111,7 @@ const filesSeedExecuteTool = defineBackofficeRuntimeTool({
   namespace: "internal",
   name: "filesSeedExecute",
   description: "Seed the org workspace with starter files if they do not already exist.",
+  requiredPermissions: ["manage"],
   inputSchema: z.object({ force: z.boolean().optional() }),
   outputSchema: workspaceStarterFilesSeedOutputSchema,
   execute: async (input, context: InternalToolContext) =>
@@ -175,6 +176,9 @@ const internalRuntimeTools = [filesSeedExecuteTool, codemodeTypesRenderTool] as 
 
 export const internalToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "internal",
+  permissions: {
+    manage: "Run internal runtime maintenance tasks.",
+  },
   tools: internalRuntimeTools,
   hidden: true,
   isAvailable: (context: InternalToolContext) => !!context.runtimes.internal,

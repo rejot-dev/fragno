@@ -269,6 +269,7 @@ const workflowInstanceCreateTool = defineAutomationWorkflowTool({
   namespace: "workflow",
   name: "createInstance",
   description: "Create a durable workflow instance by workflow name.",
+  requiredPermissions: ["modify"],
   inputSchema: z.object({
     workflowName: z.string().trim().min(1),
     remoteWorkflowName: z.string().trim().min(1).optional(),
@@ -331,6 +332,7 @@ const workflowInstanceSendEventTool = defineAutomationWorkflowTool({
   namespace: "workflow",
   name: "sendEvent",
   description: "Send an event to a durable workflow instance.",
+  requiredPermissions: ["modify"],
   inputSchema: z.object({
     workflowName: z.string().trim().min(1),
     instanceId: z.string().trim().min(1),
@@ -391,6 +393,7 @@ const workflowInstanceRetryTool = defineAutomationWorkflowTool({
   namespace: "workflow",
   name: "retryInstance",
   description: "Retry a durable workflow instance from a selected step.",
+  requiredPermissions: ["modify"],
   inputSchema: z.object({
     workflowName: z.string().trim().min(1),
     instanceId: z.string().trim().min(1),
@@ -461,6 +464,7 @@ const workflowListTool = defineAutomationWorkflowTool({
   namespace: "workflow",
   name: "listWorkflows",
   description: "List registered durable workflows.",
+  requiredPermissions: ["read"],
   inputSchema: z.object({}),
   outputSchema: workflowListResultSchema,
   execute: async (_input, context) => {
@@ -487,6 +491,7 @@ const workflowListInstancesTool = defineAutomationWorkflowTool({
   namespace: "workflow",
   name: "listInstances",
   description: "List durable workflow instances.",
+  requiredPermissions: ["read"],
   inputSchema: z.object({
     workflowName: z.string().trim().min(1),
     status: workflowInstanceStatusSchema.shape.status.optional(),
@@ -555,6 +560,7 @@ const workflowGetInstanceTool = defineAutomationWorkflowTool({
   namespace: "workflow",
   name: "getInstance",
   description: "Get durable workflow instance details.",
+  requiredPermissions: ["read"],
   inputSchema: z.object({
     workflowName: z.string().trim().min(1),
     instanceId: z.string().trim().min(1),
@@ -603,6 +609,7 @@ const workflowHistoryTool = defineAutomationWorkflowTool({
   namespace: "workflow",
   name: "getHistory",
   description: "Get durable workflow step, event, and emission history.",
+  requiredPermissions: ["read"],
   inputSchema: z.object({
     workflowName: z.string().trim().min(1),
     instanceId: z.string().trim().min(1),
@@ -660,6 +667,10 @@ export const automationWorkflowRuntimeTools = [
 
 export const automationWorkflowToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "automations-workflow",
+  permissions: {
+    read: "Read durable workflow definitions, instances, and history.",
+    modify: "Create, signal, and retry durable workflow instances.",
+  },
   tools: automationWorkflowRuntimeTools,
   isAvailable: (context: AutomationWorkflowToolContext) => !!context.runtimes.workflow,
 });

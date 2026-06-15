@@ -257,6 +257,7 @@ export const telegramRuntimeTools = [
     namespace: "telegram",
     name: "getFile",
     description: "Resolve Telegram attachment metadata.",
+    requiredPermissions: ["read"],
     inputSchema: fileGetInputSchema,
     outputSchema: fileMetadataOutputSchema,
     execute: async (input, context: TelegramToolContext) =>
@@ -292,6 +293,7 @@ export const telegramRuntimeTools = [
     namespace: "telegram",
     name: "downloadFile",
     description: "Download a Telegram file and return its bytes.",
+    requiredPermissions: ["read"],
     inputSchema: fileDownloadInputSchema,
     outputSchema: downloadedFileOutputSchema,
     execute: async (input, context: TelegramToolContext) =>
@@ -355,6 +357,7 @@ export const telegramRuntimeTools = [
     namespace: "telegram",
     name: "sendMessage",
     description: "Queue a message to be sent to a Telegram chat.",
+    requiredPermissions: ["send"],
     inputSchema: sendMessageInputSchema,
     outputSchema: queuedMessageOutputSchema,
     execute: async (input, context: TelegramToolContext) =>
@@ -412,6 +415,7 @@ export const telegramRuntimeTools = [
     namespace: "telegram",
     name: "sendChatAction",
     description: "Send a Telegram chat action.",
+    requiredPermissions: ["send"],
     inputSchema: sendActionInputSchema,
     outputSchema: actionOutputSchema,
     execute: async (input, context: TelegramToolContext) =>
@@ -453,6 +457,7 @@ export const telegramRuntimeTools = [
     namespace: "telegram",
     name: "editMessage",
     description: "Queue an edit of an existing Telegram message.",
+    requiredPermissions: ["send"],
     inputSchema: editMessageInputSchema,
     outputSchema: queuedMessageOutputSchema,
     execute: async (input, context: TelegramToolContext) =>
@@ -509,6 +514,10 @@ export const telegramRuntimeTools = [
 
 export const telegramToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "telegram",
+  permissions: {
+    read: "Read Telegram files.",
+    send: "Send Telegram messages, chat actions, and message edits.",
+  },
   tools: telegramRuntimeTools,
   isAvailable: (context: TelegramToolContext) => !!context.runtimes.telegram,
 });

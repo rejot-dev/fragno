@@ -180,6 +180,7 @@ const threadsGetTool = defineBackofficeRuntimeTool({
   namespace: "resend",
   name: "getThread",
   description: "Load a Resend thread with a page of messages and a Markdown snapshot.",
+  requiredPermissions: ["read"],
   inputSchema: threadMessagesInputSchema,
   outputSchema: threadSnapshotOutputSchema,
   execute: async (input, context: ResendToolContext) => {
@@ -242,6 +243,7 @@ const threadsListTool = defineBackofficeRuntimeTool({
   namespace: "resend",
   name: "listThreads",
   description: "List Resend email threads.",
+  requiredPermissions: ["read"],
   inputSchema: threadListInputSchema,
   outputSchema: resendListThreadsOutputSchema,
   execute: async (input, context: ResendToolContext) => {
@@ -292,6 +294,7 @@ const threadsReplyTool = defineBackofficeRuntimeTool({
   namespace: "resend",
   name: "replyToThread",
   description: "Send a text reply into an existing Resend thread.",
+  requiredPermissions: ["send"],
   inputSchema: threadReplyInputSchema,
   outputSchema: resendThreadMutationOutputSchema,
   execute: async (input, context: ResendToolContext) => {
@@ -342,6 +345,10 @@ export const resendRuntimeTools = [threadsGetTool, threadsListTool, threadsReply
 
 export const resendToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "resend",
+  permissions: {
+    read: "Read Resend threads and messages.",
+    send: "Reply to Resend threads.",
+  },
   tools: resendRuntimeTools,
   isAvailable: (context: ResendToolContext) => !!context.runtimes.resend,
 });

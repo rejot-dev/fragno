@@ -1,4 +1,4 @@
-import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type { OtpObject } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 
 import type { OtpRuntime } from "./otp";
@@ -9,12 +9,18 @@ export type RegisteredOtpCommandContext = {
   runtime: OtpRuntime;
 };
 
+export const createUnavailableOtpRuntime = (message: string): OtpRuntime => ({
+  createClaim: async () => {
+    throw new Error(message);
+  },
+});
+
 export const createOtpRuntime = ({
-  objects,
+  object,
   config,
   orgId,
 }: {
-  objects: BackofficeObjectRegistry;
+  object: OtpObject;
   config: BackofficeRuntimeConfig;
   orgId: string;
 }): OtpRuntime => ({
@@ -31,8 +37,7 @@ export const createOtpRuntime = ({
       );
     }
 
-    const otpDo = objects.otp.forOrg(normalizedOrgId);
-    const issued = await otpDo.issueIdentityClaim({
+    const issued = await object.issueIdentityClaim({
       orgId: normalizedOrgId,
       actor,
       expiresInMinutes: ttlMinutes,

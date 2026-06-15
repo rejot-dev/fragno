@@ -125,6 +125,7 @@ const transcribePrerecordedTool = defineBackofficeRuntimeTool({
   namespace: "reson8",
   name: "transcribePrerecorded",
   description: "Transcribe a prerecorded audio file via Reson8.",
+  requiredPermissions: ["use"],
   inputSchema: transcribeInputSchema,
   outputSchema: reson8PrerecordedTranscriptionSchema,
   execute: async (input, context: Reson8ToolContext) => {
@@ -239,6 +240,9 @@ export const reson8RuntimeTools = [transcribePrerecordedTool] as const;
 
 export const reson8ToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "reson8",
+  permissions: {
+    use: "Use Reson8 transcription.",
+  },
   tools: reson8RuntimeTools,
   isAvailable: (context: Reson8ToolContext) => !!context.runtimes.reson8,
 });

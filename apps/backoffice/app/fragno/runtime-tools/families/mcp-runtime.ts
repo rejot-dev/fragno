@@ -1,7 +1,7 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { CreateServerInput, ToolCallInput } from "@fragno-dev/mcp-fragment/types";
 
-import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type { McpObject } from "@/backoffice-runtime/object-registry";
 import type { McpFragment } from "@/fragno/mcp";
 
 import {
@@ -160,16 +160,35 @@ const createRouteBackedMcpRuntime = (options: CreateRouteBackedMcpRuntimeOptions
   };
 };
 
-export const createMcpRuntime = ({
-  objects,
-  orgId,
-}: {
-  objects: BackofficeObjectRegistry;
-  orgId: string;
-}) => {
-  const mcpDo = objects.mcp.forOrg(orgId);
-  return createRouteBackedMcpRuntime({
+export const createMcpRuntime = (object: McpObject) =>
+  createRouteBackedMcpRuntime({
     baseUrl: "https://mcp.do",
-    fetch: async (outboundRequest) => mcpDo.fetch(outboundRequest),
+    fetch: async (outboundRequest) => object.fetch(outboundRequest),
   });
-};
+
+export const createUnavailableMcpRuntime = (message = MCP_NOT_CONFIGURED): McpRuntime => ({
+  listServers: async () => {
+    throw new Error(message);
+  },
+  createServer: async () => {
+    throw new Error(message);
+  },
+  deleteServer: async () => {
+    throw new Error(message);
+  },
+  refreshServer: async () => {
+    throw new Error(message);
+  },
+  callTool: async () => {
+    throw new Error(message);
+  },
+  startOAuth: async () => {
+    throw new Error(message);
+  },
+  setToken: async () => {
+    throw new Error(message);
+  },
+  getAuthStatus: async () => {
+    throw new Error(message);
+  },
+});
