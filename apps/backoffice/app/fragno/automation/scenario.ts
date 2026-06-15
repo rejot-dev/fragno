@@ -130,6 +130,21 @@ type FakeResendReplyCall = {
   body: Record<string, unknown>;
 };
 
+type FakeMcpServer = {
+  slug: string;
+  name?: string | null;
+  endpointUrl?: string;
+  authMode?: string;
+  cache?: {
+    tools?: Array<{
+      name: string;
+      title?: string;
+      description?: string;
+      inputSchema?: Record<string, unknown>;
+    }> | null;
+  } | null;
+};
+
 type TelegramAdminApi = NonNullable<
   ConstructorParameters<typeof InMemoryTelegramObject>[0]["adminApi"]
 >;
@@ -156,16 +171,26 @@ export type FakeResendApi = {
   fetch(request: Request): Promise<Response>;
 };
 
+export type FakeMcpApi = {
+  servers: FakeMcpServer[];
+  fetch(request: Request): Promise<Response>;
+  getAdminConfig(): Promise<{ configured: boolean }>;
+  resetAdminConfig(): Promise<{ configured: boolean }>;
+  setAdminConfig(): Promise<{ configured: boolean }>;
+};
+
 export type ScenarioFakes = {
   telegram?: FakeTelegramApi;
   pi?: FakePiApi;
   resend?: FakeResendApi;
+  mcp?: FakeMcpApi;
 };
 
 type ScenarioFakeFactory = {
   telegram(): FakeTelegramApi;
   pi(input?: { assistantText?: (input: { sessionId: string; text: string }) => string }): FakePiApi;
   resend(input?: { threads?: FakeResendThreadSeed[] }): FakeResendApi;
+  mcp(input?: { servers?: FakeMcpServer[] }): FakeMcpApi;
 };
 
 type FileDiffStatus = "added" | "changed" | "removed";
@@ -984,7 +1009,45 @@ const createScenarioFakeFactory = (): ScenarioFakeFactory => ({
   telegram: createFakeTelegramApi,
   pi: createFakePiApi,
   resend: createFakeResendApi,
+  mcp: createFakeMcpApi,
 });
+
+const createFakeMcpApi = (input: { servers?: FakeMcpServer[] } = {}): FakeMcpApi => {
+  let configured = false;
+  const servers = input.servers ?? [];
+
+  const normalizeServer = (server: FakeMcpServer) => ({
+    endpointUrl: "https://example.com/mcp",
+    authMode: "none",
+    ...server,
+  });
+
+  return {
+    servers,
+    fetch: async (request) => {
+      const url = new URL(request.url);
+      if (request.method === "GET" && url.pathname.endsWith("/servers")) {
+        if (!configured) {
+          return Response.json(
+            { message: "MCP is not configured for this organisation." },
+            { status: 400 },
+          );
+        }
+        return Response.json({ servers: servers.map(normalizeServer) });
+      }
+      return Response.json({ message: "Not found", code: "NOT_FOUND" }, { status: 404 });
+    },
+    getAdminConfig: async () => ({ configured }),
+    resetAdminConfig: async () => {
+      configured = false;
+      return { configured };
+    },
+    setAdminConfig: async () => {
+      configured = true;
+      return { configured };
+    },
+  };
+};
 
 const readSnapshotContent = async (fs: MasterFileSystem, path: string): Promise<string | null> => {
   try {
@@ -2633,6 +2696,27 @@ const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverr
       getAdminConfig: async () => ({ configured: true }),
       resetAdminConfig: async () => ({ configured: false }),
       setAdminConfig: async () => ({ configured: true }),
+      getDurableHookRepository: () => ({
+        getHookQueue: async () => ({
+          configured: false,
+          hooksEnabled: false,
+          namespace: null,
+          items: [],
+          cursor: undefined,
+          hasNextPage: false,
+        }),
+        getHook: async () => null,
+      }),
+    });
+  }
+
+  if (fakes.mcp) {
+    objectFactories.MCP = () => ({
+      fetch: (request: Request) => fakes.mcp!.fetch(request),
+      alarm: async () => undefined,
+      getAdminConfig: () => fakes.mcp!.getAdminConfig(),
+      resetAdminConfig: () => fakes.mcp!.resetAdminConfig(),
+      setAdminConfig: () => fakes.mcp!.setAdminConfig(),
       getDurableHookRepository: () => ({
         getHookQueue: async () => ({
           configured: false,

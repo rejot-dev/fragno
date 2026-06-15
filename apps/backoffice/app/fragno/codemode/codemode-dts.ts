@@ -16,6 +16,8 @@ import type { BackofficeRuntimeToolFamily } from "@/fragno/runtime-tools/runtime
 export const CODEMODE_DTS_PATH = "/workspace/codemode.d.ts";
 
 const ALWAYS_AVAILABLE_CODEMODE_NAMESPACES = new Set([
+  "capabilities",
+  "connections",
   "store",
   "workflow",
   "hooks",

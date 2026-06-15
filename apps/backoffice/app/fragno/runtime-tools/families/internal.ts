@@ -88,7 +88,7 @@ export const createInternalRuntime = ({
     }
 
     const mcpServers = configuredCapabilities.includes("mcp")
-      ? await createMcpRuntime({ env, orgId })
+      ? await createMcpRuntime({ objects, orgId })
           .listServers()
           .then(({ servers }) => createMcpCodemodeServers(servers))
       : [];
