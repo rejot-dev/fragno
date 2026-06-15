@@ -16,7 +16,7 @@ function SignupPage() {
   useEffect(() => {
     // If already authenticated, redirect to profile
     if (!isPending && session?.user) {
-      navigate({ to: "/profile" });
+      void navigate({ to: "/profile" });
     }
   }, [session, isPending, navigate]);
 

@@ -44,7 +44,7 @@ export function DashboardTerminalPanel({
     formData.set("commandLine", request.commandLine);
     formData.set("cwd", request.cwd);
     formData.set("cursorPosition", String(request.cursorPosition));
-    pathAutocompleteFetcher.submit(formData, { method: "post" });
+    void pathAutocompleteFetcher.submit(formData, { method: "post" });
   };
   const terminal = useDashboardTerminal({
     organizationId,

@@ -13,7 +13,7 @@ export function Chat() {
     }
 
     try {
-      sendMessage(message());
+      await sendMessage(message());
       setMessage(""); // Clear the input after sending
     } catch (error) {
       console.error(`Error: ${error instanceof Error ? error.message : "Unknown error"}`);

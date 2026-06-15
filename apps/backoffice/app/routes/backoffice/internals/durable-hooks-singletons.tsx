@@ -110,7 +110,7 @@ export default function BackofficeDurableHooksSingletons() {
     }
     const stillVisible = items.some((item) => item.id === selectedHookId);
     if (!stillVisible) {
-      navigate(`${basePath}${location.search}`, { replace: true });
+      void navigate(`${basePath}${location.search}`, { replace: true });
     }
   }, [items, selectedHookId, basePath, location.search, navigate]);
 
@@ -253,11 +253,11 @@ export default function BackofficeDurableHooksSingletons() {
                             role="button"
                             tabIndex={0}
                             aria-label={`View durable hook ${hook.hookName}`}
-                            onClick={() => navigate(detailHref)}
+                            onClick={() => void navigate(detailHref)}
                             onKeyDown={(event) => {
                               if (event.key === "Enter" || event.key === " ") {
                                 event.preventDefault();
-                                navigate(detailHref);
+                                void navigate(detailHref);
                               }
                             }}
                             className={

@@ -323,13 +323,13 @@ function BackofficeUserCard({
                   Account
                 </Menu.GroupLabel>
                 <Menu.Item
-                  onClick={() => navigate("/backoffice/organisations")}
+                  onClick={() => void navigate("/backoffice/organisations")}
                   className="flex w-full items-center justify-between border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.24em] text-[var(--bo-muted)] uppercase transition-colors data-[highlighted]:border-[color:var(--bo-border-strong)] data-[highlighted]:text-[var(--bo-fg)]"
                 >
                   Manage organisations
                 </Menu.Item>
                 <Menu.Item
-                  onClick={() => navigate("/backoffice/settings")}
+                  onClick={() => void navigate("/backoffice/settings")}
                   className="flex w-full items-center justify-between border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.24em] text-[var(--bo-muted)] uppercase transition-colors data-[highlighted]:border-[color:var(--bo-border-strong)] data-[highlighted]:text-[var(--bo-fg)]"
                 >
                   Settings
@@ -341,7 +341,7 @@ function BackofficeUserCard({
                   try {
                     await signOut({ body: {} });
                   } finally {
-                    navigate("/backoffice/login", { replace: true });
+                    await navigate("/backoffice/login", { replace: true });
                   }
                 }}
                 disabled={signingOut}

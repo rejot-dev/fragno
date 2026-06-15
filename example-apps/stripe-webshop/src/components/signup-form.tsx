@@ -40,7 +40,7 @@ export function SignupForm({ ...props }: React.ComponentProps<typeof Card>) {
         name,
       });
       // Redirect to profile on success
-      navigate({ to: "/profile" });
+      await navigate({ to: "/profile" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign up failed");
     } finally {

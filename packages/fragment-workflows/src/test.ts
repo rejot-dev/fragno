@@ -433,7 +433,7 @@ export const createWorkflowsTestRuntime = (options?: {
 
 const resolveWorkflowName = (
   workflows: WorkflowsRegistry,
-  workflowNameOrKey: (keyof WorkflowsRegistry & string) | string,
+  workflowNameOrKey: keyof WorkflowsRegistry,
 ) => {
   const lookup = workflows[String(workflowNameOrKey)];
   return lookup?.name ?? String(workflowNameOrKey);

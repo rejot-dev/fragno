@@ -100,7 +100,7 @@ export function PerspectiveControls({ children }: { children: ReactNode }) {
     setPreviewTime(null);
     setLocalPerspective(next);
     setMotionKey((current) => current + 1);
-    fetcher.submit(
+    void fetcher.submit(
       { intent: "perspective", audience: next.audience, time: next.time },
       { method: "post" },
     );

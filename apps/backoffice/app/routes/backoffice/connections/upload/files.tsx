@@ -1005,7 +1005,7 @@ export default function BackofficeOrganisationUploadFiles() {
       } finally {
         setUploadingFiles(false);
         setActiveUploadPrefix(null);
-        revalidator.revalidate();
+        await revalidator.revalidate();
       }
     },
     [revalidator, uploadHelpers, uploadingFiles, uploadQueue],
@@ -1193,7 +1193,7 @@ export default function BackofficeOrganisationUploadFiles() {
       });
     }
 
-    navigate(
+    void navigate(
       buildSelectionHref(orgId, {
         kind: "folder",
         provider: uploadTargetProvider,

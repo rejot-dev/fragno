@@ -622,7 +622,7 @@ describe("RequestOutputContext", () => {
       const ctx = new RequestOutputContext();
 
       const response = ctx.jsonStream((stream) => {
-        stream.close();
+        return stream.close();
       });
 
       expect(response).toBeInstanceOf(Response);

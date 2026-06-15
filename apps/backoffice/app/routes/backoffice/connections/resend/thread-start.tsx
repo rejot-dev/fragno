@@ -152,7 +152,7 @@ export default function BackofficeOrganisationResendThreadStart() {
 
       formRef.current?.reset();
       setNavigationError(null);
-      navigate(`${outletContext.basePath}/${encodeURIComponent(fetcher.data.threadId)}`);
+      void navigate(`${outletContext.basePath}/${encodeURIComponent(fetcher.data.threadId)}`);
       return;
     }
 

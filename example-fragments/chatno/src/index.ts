@@ -101,7 +101,7 @@ export function createChatnoClients(fragnoConfig: FragnoPublicClientConfig) {
   });
 
   function sendMessage(message: string) {
-    chatStream.mutatorStore.mutate({
+    return chatStream.mutatorStore.mutate({
       body: {
         messages: [{ type: "chat", id: crypto.randomUUID(), role: "user", content: message }],
       },

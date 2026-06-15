@@ -991,7 +991,7 @@ describe("error handling", () => {
     const { createUser } = useFragno(clientObj);
     const mutator = createUser();
 
-    mutator.mutate({
+    void mutator.mutate({
       body: { name: "John", email: "john@example.com" },
     });
 

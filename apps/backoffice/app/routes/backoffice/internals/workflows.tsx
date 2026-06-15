@@ -49,7 +49,7 @@ export default function BackofficeWorkflowsLanding() {
               const piPath = `/backoffice/internals/workflows/${organization.id}/pi`;
               const automationsPath = `/backoffice/internals/workflows/${organization.id}/automations`;
               const handleOrgClick = () => {
-                navigate(piPath);
+                void navigate(piPath);
               };
 
               return (

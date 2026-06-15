@@ -16,7 +16,7 @@ export default function BackofficeDurableHooksLanding() {
   const organizations = me.organizations ?? [];
   const navigate = useNavigate();
   const handleSingletonClick = () => {
-    navigate("/backoffice/internals/durable-hooks/singletons");
+    void navigate("/backoffice/internals/durable-hooks/singletons");
   };
 
   return (
@@ -93,7 +93,7 @@ export default function BackofficeDurableHooksLanding() {
               const piWorkflowsPath = `${organizationPath}/pi-workflows`;
               const automationsPath = `${organizationPath}/automations`;
               const handleOrgClick = () => {
-                navigate(organizationPath);
+                void navigate(organizationPath);
               };
 
               return (

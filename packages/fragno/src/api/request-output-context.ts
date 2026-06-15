@@ -171,7 +171,7 @@ export abstract class OutputContext<const TOutput, const TErrorCode extends stri
           console.error(e);
         }
       } finally {
-        stream.close();
+        await stream.close();
       }
     };
 
@@ -180,13 +180,13 @@ export abstract class OutputContext<const TOutput, const TErrorCode extends stri
         this.#runJsonStreamCallback
           ? this.#runJsonStreamCallback(runStreamCallback)
           : runStreamCallback(),
-      ).catch((error: unknown) => {
+      ).catch(async (error: unknown) => {
         console.error(error);
-        stream.close();
+        await stream.close();
       });
     } catch (error) {
       console.error(error);
-      stream.close();
+      void stream.close();
     }
 
     return new Response(stream.responseReadable, {

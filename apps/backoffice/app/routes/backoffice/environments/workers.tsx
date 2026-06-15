@@ -1591,7 +1591,7 @@ function readText(value: FormDataEntryValue | string | null, trim = true) {
 
 async function resolveActiveOrganizationId(
   request: Request,
-  context: Route.LoaderArgs["context"] | Route.ActionArgs["context"],
+  context: Route.LoaderArgs["context"],
 ): Promise<string | null> {
   const me = await getAuthMe(request, context);
   return me?.activeOrganization?.organization.id ?? null;

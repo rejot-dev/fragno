@@ -19,7 +19,7 @@ export class Forms extends DurableObject<CloudflareEnv> {
       type: "live",
     });
 
-    state.blockConcurrencyWhile(async () => {
+    void state.blockConcurrencyWhile(async () => {
       try {
         await migrate(this.#fragment);
       } catch (error) {
