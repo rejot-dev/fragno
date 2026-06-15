@@ -18,15 +18,13 @@ import type {
 
 import { BackofficeWorkerContext } from "./router-context";
 
-export const AUTH_SINGLETON_ID = "AUTH_SINGLETON_ID" as const;
-export const SANDBOX_REGISTRY_ORG_KEY_PREFIX = "SANDBOX_REGISTRY_ORG:" as const;
-export const GITHUB_WEBHOOK_ROUTER_SINGLETON_ID = "GITHUB_WEBHOOK_ROUTER_SINGLETON_ID" as const;
+export const BACKOFFICE_ADMIN_OBJECT_NAME = "admin" as const;
 
 const getBackofficeObjects = (context: Readonly<RouterContextProvider>) =>
   context.get(BackofficeWorkerContext).runtime.objects;
 
 export const getAuthDurableObject = (context: Readonly<RouterContextProvider>): AuthObject =>
-  getBackofficeObjects(context).auth.get();
+  getBackofficeObjects(context).auth.singleton();
 
 export const getAutomationsDurableObject = (
   context: Readonly<RouterContextProvider>,
@@ -85,4 +83,4 @@ export const getGitHubDurableObject = (
 
 export const getGitHubWebhookRouterDurableObject = (
   context: Readonly<RouterContextProvider>,
-): GitHubWebhookRouterObject => getBackofficeObjects(context).githubWebhookRouter.get();
+): GitHubWebhookRouterObject => getBackofficeObjects(context).githubWebhookRouter.singleton();

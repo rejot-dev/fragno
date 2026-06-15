@@ -2,7 +2,7 @@ import { Link, useLoaderData } from "react-router";
 
 import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
 import {
-  GITHUB_WEBHOOK_ROUTER_SINGLETON_ID,
+  BACKOFFICE_ADMIN_OBJECT_NAME,
   getGitHubWebhookRouterDurableObject,
 } from "@/worker-runtime/durable-objects";
 
@@ -90,7 +90,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   let snapshotError: string | null = null;
 
   try {
-    configState = await githubRouterDo.getAdminConfig(GITHUB_WEBHOOK_ROUTER_SINGLETON_ID, origin);
+    configState = await githubRouterDo.getAdminConfig(BACKOFFICE_ADMIN_OBJECT_NAME, origin);
   } catch (error) {
     configError =
       error instanceof Error ? error.message : "Failed to load GitHub app runtime configuration.";

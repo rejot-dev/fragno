@@ -21,10 +21,13 @@ import {
 import type { InMemoryBackofficeRuntimeEnv } from "./in-memory-runtime-env";
 import { defaultInMemoryBackofficeRuntimeEnv } from "./in-memory-runtime-env";
 import type {
+  BackofficeObjectAddress,
   BackofficeObjectBinding,
   BackofficeObjectBindingName,
   BackofficeObjectFactory,
 } from "./object-registry";
+import { encodeBackofficeObjectAddress } from "./object-registry";
+import { assertBackofficeObjectAddressAllowed } from "./object-scope-policy";
 import type { BackofficeRuntimeConfig, BackofficeRuntimeServices } from "./runtime-services";
 
 export type InMemoryBackofficeObjectFactory<TObject> = (input: {
@@ -222,17 +225,18 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
     this.#registerNamespaces();
   }
 
-  singleton<TObject>(binding: BackofficeObjectBinding<TObject>, name: string): TObject {
-    return this.named(binding, name);
-  }
-
-  org<TObject>(binding: BackofficeObjectBinding<TObject>, orgId: string): TObject {
-    return this.named(binding, orgId);
-  }
-
-  named<TObject>(binding: BackofficeObjectBinding<TObject>, name: string): TObject {
+  get<TObject>(
+    binding: BackofficeObjectBinding<TObject>,
+    address: BackofficeObjectAddress,
+  ): TObject {
+    if (address.binding !== binding.name) {
+      throw new Error(
+        `Backoffice object address binding ${address.binding} does not match requested binding ${binding.name}.`,
+      );
+    }
+    assertBackofficeObjectAddressAllowed(address);
     const namespace = this.#namespace<TObject>(binding);
-    return namespace.get(namespace.idFromName(name));
+    return namespace.get(namespace.idFromName(encodeBackofficeObjectAddress(address)));
   }
 
   instances(): InMemoryDurableObjectInstance<unknown>[] {

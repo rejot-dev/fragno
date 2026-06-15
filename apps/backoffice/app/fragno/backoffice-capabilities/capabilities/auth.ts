@@ -41,7 +41,7 @@ export const authCapability: BackofficeCapability = {
     {
       id: "auth",
       label: "Auth",
-      getRepository: ({ objects }) => objects.auth.get().getDurableHookRepository(),
+      getRepository: ({ objects }) => objects.auth.singleton().getDurableHookRepository(),
     },
   ],
   automationEvents: [

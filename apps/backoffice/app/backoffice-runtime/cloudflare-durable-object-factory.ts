@@ -1,6 +1,12 @@
-import type { BackofficeObjectBinding, BackofficeObjectFactory } from "./object-registry";
+import type {
+  BackofficeObjectAddress,
+  BackofficeObjectBinding,
+  BackofficeObjectFactory,
+} from "./object-registry";
 import { createBackofficeObjectRegistry } from "./object-registry";
+import { encodeBackofficeObjectAddress } from "./object-registry";
 import type { BackofficeObjectRegistry } from "./object-registry";
+import { assertBackofficeObjectAddressAllowed } from "./object-scope-policy";
 
 type DurableObjectNamespaceLike = {
   idFromName(name: string): DurableObjectId;
@@ -22,17 +28,19 @@ const getNamespace = (
 export class CloudflareDurableObjectFactory implements BackofficeObjectFactory {
   constructor(readonly env: CloudflareEnv) {}
 
-  singleton<TObject>(binding: BackofficeObjectBinding<TObject>, name: string): TObject {
-    return this.named(binding, name);
-  }
-
-  org<TObject>(binding: BackofficeObjectBinding<TObject>, orgId: string): TObject {
-    return this.named(binding, orgId);
-  }
-
-  named<TObject>(binding: BackofficeObjectBinding<TObject>, name: string): TObject {
+  get<TObject>(
+    binding: BackofficeObjectBinding<TObject>,
+    address: BackofficeObjectAddress,
+  ): TObject {
+    if (address.binding !== binding.name) {
+      throw new Error(
+        `Backoffice object address binding ${address.binding} does not match requested binding ${binding.name}.`,
+      );
+    }
+    assertBackofficeObjectAddressAllowed(address);
     const namespace = getNamespace(this.env, binding);
-    return namespace.get(namespace.idFromName(name)) as TObject;
+    const encodedName = encodeBackofficeObjectAddress(address);
+    return namespace.get(namespace.idFromName(encodedName)) as TObject;
   }
 }
 

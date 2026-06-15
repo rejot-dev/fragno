@@ -134,7 +134,7 @@ export class InMemoryGitHubObject implements GitHubObject {
       return;
     }
 
-    const routerDo = this.#runtimeServices.objects.githubWebhookRouter.get();
+    const routerDo = this.#runtimeServices.objects.githubWebhookRouter.singleton();
     const cleanup = await routerDo.clearInstallationRouting(normalizedInstallationId);
     console.info("Cleaned GitHub webhook router installation mapping after uninstall", {
       installationId: normalizedInstallationId,
