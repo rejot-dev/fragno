@@ -63,15 +63,18 @@ const getFramePayload = (frame: PiSessionEventStreamItem): unknown => {
   return frame;
 };
 
-const isTurnEndFrame = (frame: PiSessionEventStreamItem): boolean => {
+const isEventFrame = (frame: PiSessionEventStreamItem, type: string): boolean => {
   const payload = getFramePayload(frame);
   return (
-    typeof payload === "object" &&
-    payload !== null &&
-    "type" in payload &&
-    payload.type === "turn_end"
+    typeof payload === "object" && payload !== null && "type" in payload && payload.type === type
   );
 };
+
+const isTurnEndFrame = (frame: PiSessionEventStreamItem): boolean =>
+  isEventFrame(frame, "turn_end");
+
+const isAgentEndFrame = (frame: PiSessionEventStreamItem): boolean =>
+  isEventFrame(frame, "agent_end");
 
 const extractMessageText = (
   message: PiSessionDetail["agent"]["state"]["messages"][number] | undefined,
@@ -85,6 +88,11 @@ const extractMessageText = (
     .map((block) => ("text" in block && typeof block.text === "string" ? block.text : ""))
     .join("")
     .trim();
+};
+
+const extractAssistantText = (messages: PiSessionDetail["agent"]["state"]["messages"]): string => {
+  const assistantMessage = [...messages].reverse().find((message) => message.role === "assistant");
+  return extractMessageText(assistantMessage);
 };
 
 const extractTurnEndAssistantText = (
@@ -111,21 +119,31 @@ const extractTurnEndAssistantText = (
   return { found: false, text: "" };
 };
 
-const isTerminalTurnFrame = (frame: PiSessionEventStreamItem): boolean => {
-  if (!isTurnEndFrame(frame)) {
-    return false;
+const extractAgentEndAssistantText = (
+  frames: PiSessionEventStreamItem[],
+): { found: boolean; text: string } => {
+  for (const frame of [...frames].reverse()) {
+    if (!isAgentEndFrame(frame)) {
+      continue;
+    }
+
+    const payload = getFramePayload(frame);
+    if (typeof payload !== "object" || payload === null || !("messages" in payload)) {
+      continue;
+    }
+
+    const messages = payload.messages;
+    if (!Array.isArray(messages)) {
+      continue;
+    }
+
+    return {
+      found: true,
+      text: extractAssistantText(messages as PiSessionDetail["agent"]["state"]["messages"]),
+    };
   }
 
-  const payload = getFramePayload(frame);
-  if (typeof payload !== "object" || payload === null || !("message" in payload)) {
-    return true;
-  }
-
-  return (
-    extractMessageText(
-      payload.message as PiSessionDetail["agent"]["state"]["messages"][number] | undefined,
-    ).length > 0
-  );
+  return { found: false, text: "" };
 };
 
 const consumeActiveStream = async (
@@ -136,7 +154,7 @@ const consumeActiveStream = async (
   try {
     for await (const frame of stream) {
       frames.push(frame);
-      if (isTerminalTurnFrame(frame)) {
+      if (isAgentEndFrame(frame)) {
         break;
       }
     }
@@ -177,11 +195,6 @@ const createPiRouteCaller = ({
       return piDo.fetch(new Request(url.toString(), outboundRequest));
     },
   });
-};
-
-const extractAssistantText = (messages: PiSessionDetail["agent"]["state"]["messages"]): string => {
-  const assistantMessage = [...messages].reverse().find((message) => message.role === "assistant");
-  return extractMessageText(assistantMessage);
 };
 
 const closeActiveStream = async (stream: AsyncGenerator<PiSessionEventStreamItem>) => {
@@ -347,12 +360,15 @@ export const createPiRouteRuntime = ({
         }
 
         const detail = detailResponse.data;
+        const agentEndAssistantText = extractAgentEndAssistantText(frames);
         const turnEndAssistantText = extractTurnEndAssistantText(frames);
         return {
           ...detail,
-          assistantText: turnEndAssistantText.found
-            ? turnEndAssistantText.text
-            : extractAssistantText(detail.agent.state.messages),
+          assistantText: agentEndAssistantText.found
+            ? agentEndAssistantText.text
+            : turnEndAssistantText.found
+              ? turnEndAssistantText.text
+              : extractAssistantText(detail.agent.state.messages),
           commandStatus: promptResponse.data.status,
           messageStatus: promptResponse.data.status,
           stream: frames,
