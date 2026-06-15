@@ -32,11 +32,20 @@ const authSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+const mcpToolSchema = z.object({
+  name: nonEmptyString,
+  title: z.string().optional(),
+  description: z.string().optional(),
+  inputSchema: z.record(z.string(), z.unknown()).optional(),
+  annotations: z.record(z.string(), z.unknown()).optional(),
+  _meta: z.record(z.string(), z.unknown()).optional(),
+});
+
 const serverConnectionCacheSchema = z.object({
   protocolVersion: z.string().nullable().optional(),
   serverInfo: z.unknown().nullable().optional(),
   capabilities: z.unknown().nullable().optional(),
-  tools: z.array(z.unknown()).nullable().optional(),
+  tools: z.array(mcpToolSchema).nullable().optional(),
   updatedAt: z.union([z.string(), z.date()]).optional(),
 });
 
@@ -65,14 +74,6 @@ const oauthStartInputSchema = z.object({
 });
 const oauthStartOutputSchema = z.object({ authorizationUrl: z.string().url(), state: z.string() });
 const setTokenInputSchema = z.object({ slug: nonEmptyString, token: nonEmptyString });
-const mcpToolSchema = z.object({
-  name: nonEmptyString,
-  title: z.string().optional(),
-  description: z.string().optional(),
-  inputSchema: z.record(z.string(), z.unknown()).optional(),
-  annotations: z.record(z.string(), z.unknown()).optional(),
-  _meta: z.record(z.string(), z.unknown()).optional(),
-});
 const listToolsInputSchema = z.object({ slug: nonEmptyString });
 const listToolsOutputSchema = z.object({ tools: z.array(mcpToolSchema) });
 const callToolInputSchema = z.object({
@@ -89,6 +90,7 @@ export type McpAuthStatus = z.infer<typeof authStatusSchema>;
 export type McpOAuthStartInput = Omit<z.infer<typeof oauthStartInputSchema>, "slug">;
 export type McpOAuthStartOutput = z.infer<typeof oauthStartOutputSchema>;
 export type McpSetTokenInput = Omit<z.infer<typeof setTokenInputSchema>, "slug">;
+export type McpTool = z.infer<typeof mcpToolSchema>;
 export type McpListToolsOutput = z.infer<typeof listToolsOutputSchema>;
 export type McpToolCallOutput = z.infer<typeof callToolOutputSchema>;
 export type { McpRuntime } from "./mcp-runtime";

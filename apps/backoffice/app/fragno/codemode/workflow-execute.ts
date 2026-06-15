@@ -268,7 +268,7 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
     globalOutbound: null,
   });
 
-  const providers = createBackofficeCodemodeResolvedProviders({ fs, tools, context });
+  const providers = await createBackofficeCodemodeResolvedProviders({ fs, tools, context });
   const dispatcherResult = createCodemodeDispatchers(providers);
   if ("error" in dispatcherResult) {
     throw new Error(dispatcherResult.error);

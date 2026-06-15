@@ -45,7 +45,7 @@ export type DashboardCommandGroup = {
   commands: string[];
 };
 
-const pascalCase = (value: string) =>
+export const pascalCase = (value: string) =>
   value
     .split(/[^a-zA-Z0-9]+|(?=[A-Z])/)
     .filter(Boolean)

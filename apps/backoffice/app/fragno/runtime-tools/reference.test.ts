@@ -571,4 +571,35 @@ describe("runtime tool reference generation", () => {
     expect(piTypes).not.toContain("declare const sandbox");
     expect(sandboxTypes).toContain("declare const sandbox");
   });
+
+  test("renders installed MCP providers with dash-safe server slugs", () => {
+    const types = createCodemodeDts({
+      configuredCapabilityIds: ["mcp"],
+      families: runtimeToolFamilies,
+      stateTypes: "declare const state: unknown;",
+      mcpServers: [
+        {
+          slug: "cloudflare-mcp",
+          providerName: "mcp_cloudflare_mcp",
+          tools: [
+            {
+              originalName: "search-docs",
+              codemodeName: "search_docs",
+              description: "Search docs.",
+              inputSchema: {
+                type: "object",
+                properties: { query: { type: "string" } },
+                required: ["query"],
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(types).toContain("declare const mcp_cloudflare_mcp");
+    expect(types).toContain("search_docs(input: McpCloudflareMcpSearchDocsInput)");
+    expect(types).toContain("query: string");
+    expect(types).not.toContain("declare const cloudflare-mcp");
+  });
 });

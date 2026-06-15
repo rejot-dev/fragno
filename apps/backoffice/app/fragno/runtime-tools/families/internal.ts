@@ -11,8 +11,10 @@ import {
   type BackofficeCapabilityId,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import { CODEMODE_DTS_PATH, createCodemodeDts } from "@/fragno/codemode/codemode-dts";
+import { createMcpCodemodeServers } from "@/fragno/codemode/mcp-codemode-tools";
 import { STATE_TYPES } from "@/fragno/codemode/state-prompt";
 import { defineCliArgsParser, readOutputOptions } from "@/fragno/runtime-tools/bash-cli";
+import { createMcpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
 
 import {
   defineBackofficeRuntimeTool,
@@ -85,11 +87,18 @@ export const createInternalRuntime = ({
       }
     }
 
+    const mcpServers = configuredCapabilities.includes("mcp")
+      ? await createMcpRuntime({ env, orgId })
+          .listServers()
+          .then(({ servers }) => createMcpCodemodeServers(servers))
+      : [];
+
     return {
       path: CODEMODE_DTS_PATH,
       content: createCodemodeDts({
         configuredCapabilityIds: configuredCapabilities,
         families,
+        mcpServers,
         stateTypes: STATE_TYPES,
       }),
       configuredCapabilities,

@@ -1,4 +1,6 @@
 import type { IFileSystem } from "@/files/interface";
+import { createMcpCodemodeProviders } from "@/fragno/codemode/mcp-codemode-tools";
+import type { McpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
 import { createBackofficeCodemodeProviders } from "@/fragno/runtime-tools/runtime-tools";
 import type {
   AnyBackofficeRuntimeTool,
@@ -49,12 +51,12 @@ export type BackofficeCodemodeExecuteResult = ExecuteResult & {
 export const normalizeBackofficeCodemodeCode = (code: string): string =>
   normalizeCode(code.trim().replace(/;*$/, "")).trim().replace(/;*$/, "");
 
-export const createBackofficeCodemodeResolvedProviders = ({
+export const createBackofficeCodemodeResolvedProviders = async ({
   fs,
   tools = [],
   context = { runtimes: {} },
   toolCalls,
-}: BackofficeCodemodeProvidersInput): ResolvedProvider[] => {
+}: BackofficeCodemodeProvidersInput): Promise<ResolvedProvider[]> => {
   const providers: ResolvedProvider[] = [];
 
   if (fs) {
@@ -67,6 +69,17 @@ export const createBackofficeCodemodeResolvedProviders = ({
       resolveProvider(provider),
     ),
   );
+
+  if (context.runtimes.mcp) {
+    providers.push(
+      ...(
+        await createMcpCodemodeProviders({
+          runtime: context.runtimes.mcp as McpRuntime,
+          toolCalls,
+        })
+      ).map((provider) => resolveProvider(provider)),
+    );
+  }
 
   return providers;
 };
@@ -86,7 +99,12 @@ export const runBackofficeCodemode = async ({
   });
 
   const toolCalls: BackofficeRuntimeToolCall[] = [];
-  const providers = createBackofficeCodemodeResolvedProviders({ fs, tools, context, toolCalls });
+  const providers = await createBackofficeCodemodeResolvedProviders({
+    fs,
+    tools,
+    context,
+    toolCalls,
+  });
 
   const result = (await executor.execute(
     normalizeBackofficeCodemodeCode(code),
