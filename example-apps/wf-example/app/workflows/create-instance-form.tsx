@@ -134,7 +134,7 @@ export function CreateInstanceForm() {
 
           <button
             type="button"
-            onClick={handleCreateInstance}
+            onClick={() => void handleCreateInstance()}
             disabled={createLoading}
             className="mt-2 rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
           >
@@ -149,7 +149,7 @@ export function CreateInstanceForm() {
               <p className="mt-1 text-xs text-emerald-700">{createdId}</p>
               <button
                 type="button"
-                onClick={() => navigate("/instances")}
+                onClick={() => void navigate("/instances")}
                 className="mt-3 rounded-full bg-emerald-700 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-600"
               >
                 View in Instances

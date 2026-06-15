@@ -112,7 +112,7 @@ export class ResponseStream<TArray> {
   abort() {
     if (!this.aborted) {
       this.#aborted = true;
-      this.#abortSubscribers.forEach((subscriber) => subscriber());
+      this.#abortSubscribers.forEach((subscriber) => void subscriber());
     }
   }
 }

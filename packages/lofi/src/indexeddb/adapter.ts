@@ -607,8 +607,8 @@ const openDatabaseWithUpgrade = (
   onUpgrade: (db: LofiDb, tx: UpgradeTx<ArrayLike<string>>) => void | Promise<void>,
 ): Promise<LofiDb> =>
   openDB(dbName, version, {
-    upgrade: async (db, _oldVersion, _newVersion, tx) => {
-      await onUpgrade(db, tx as UpgradeTx<ArrayLike<string>>);
+    upgrade: (db, _oldVersion, _newVersion, tx) => {
+      void onUpgrade(db, tx as UpgradeTx<ArrayLike<string>>);
     },
   }).then((db) => {
     db.onversionchange = () => db.close();

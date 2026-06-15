@@ -987,7 +987,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
 
       // Define hooks type
       type TestHooks = {
-        onUserCreated: (payload: { email: string }) => void;
+        onUserCreated: (payload: { email: string }) => void | Promise<void>;
       };
 
       // Create a fragment with hooks
@@ -1294,14 +1294,14 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       );
 
       type HooksA = {
-        onAlpha: (payload: { value: string }) => void;
+        onAlpha: (payload: { value: string }) => void | Promise<void>;
       };
       type HooksB = {
-        onBeta: (payload: { value: string }) => void;
+        onBeta: (payload: { value: string }) => void | Promise<void>;
       };
 
       const hooksB: HooksB = {
-        onBeta: () => {},
+        onBeta: () => Promise.resolve(),
       };
 
       const namespaceA = sanitizeNamespace(schemaA.name);
@@ -1422,14 +1422,14 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       );
 
       type HooksA = {
-        onAlpha: (payload: { value: string }) => void;
+        onAlpha: (payload: { value: string }) => void | Promise<void>;
       };
       type HooksB = {
-        onBeta: (payload: { value: string }) => void;
+        onBeta: (payload: { value: string }) => void | Promise<void>;
       };
 
       const hooksB: HooksB = {
-        onBeta: () => {},
+        onBeta: () => Promise.resolve(),
       };
 
       const namespaceA = sanitizeNamespace(schemaA.name);
@@ -1571,14 +1571,14 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       );
 
       type HooksA = {
-        onAlpha: (payload: { value: string }) => void;
+        onAlpha: (payload: { value: string }) => void | Promise<void>;
       };
       type HooksB = {
-        onBeta: (payload: { value: string }) => void;
+        onBeta: (payload: { value: string }) => void | Promise<void>;
       };
 
       const hooksB: HooksB = {
-        onBeta: () => {},
+        onBeta: () => Promise.resolve(),
       };
 
       const namespaceA = sanitizeNamespace(schemaA.name);
@@ -1709,7 +1709,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       const mockAdapter = createMockAdapter();
 
       type TestHooks = {
-        onUserCreated: (payload: { email: string }) => void;
+        onUserCreated: (payload: { email: string }) => void | Promise<void>;
       };
 
       const definition = withDatabase(testSchema)(defineFragment("db-frag-plan-mode"))

@@ -337,12 +337,14 @@ function BackofficeUserCard({
               </Menu.Group>
               <Menu.Separator className="my-3 h-px w-full bg-[var(--bo-border)]" />
               <Menu.Item
-                onClick={async () => {
-                  try {
-                    await signOut({ body: {} });
-                  } finally {
-                    await navigate("/backoffice/login", { replace: true });
-                  }
+                onClick={() => {
+                  void (async () => {
+                    try {
+                      await signOut({ body: {} });
+                    } finally {
+                      await navigate("/backoffice/login", { replace: true });
+                    }
+                  })();
                 }}
                 disabled={signingOut}
                 className="flex w-full items-center justify-between border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.24em] text-[var(--bo-muted)] uppercase transition-colors disabled:opacity-60 data-[highlighted]:border-[color:var(--bo-border-strong)] data-[highlighted]:text-[var(--bo-fg)]"

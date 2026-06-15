@@ -1368,7 +1368,7 @@ export default function BackofficeOrganisationUploadFiles() {
                 <div className="grid gap-2">
                   <button
                     type="button"
-                    onClick={() => revalidator.revalidate()}
+                    onClick={() => void revalidator.revalidate()}
                     disabled={refreshing}
                     className="inline-flex w-full items-center justify-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
                   >

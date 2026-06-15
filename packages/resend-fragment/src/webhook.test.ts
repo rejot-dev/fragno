@@ -202,7 +202,7 @@ describe("resend-fragment webhook", () => {
       error: null,
       headers: null,
     });
-    ctx.onEmailReceived.mockImplementationOnce(async () => {
+    ctx.onEmailReceived.mockImplementationOnce(() => {
       throw new Error("transient failure");
     });
 
@@ -640,7 +640,7 @@ describe("resend-fragment webhook", () => {
     };
 
     verifyMock.mockReturnValue(payload);
-    ctx.onEmailStatusUpdated.mockImplementationOnce(async () => {
+    ctx.onEmailStatusUpdated.mockImplementationOnce(() => {
       throw new Error("transient failure");
     });
 

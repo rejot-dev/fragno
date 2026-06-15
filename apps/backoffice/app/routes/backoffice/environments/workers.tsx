@@ -963,7 +963,7 @@ function WorkerRequestView({
       ) : null}
 
       <form
-        onSubmit={handleSubmit}
+        onSubmit={(event) => void handleSubmit(event)}
         className="space-y-4 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4"
       >
         {error ? (

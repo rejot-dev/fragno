@@ -63,7 +63,12 @@ export default function Header() {
                 Plans
               </Link>
             </div>
-            <Button variant="outline" size="sm" onClick={handleSignOut} className="text-gray-900">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleSignOut()}
+              className="text-gray-900"
+            >
               Sign Out
             </Button>
           </>

@@ -231,7 +231,7 @@ export const serveCommand = define({
       }
     };
 
-    process.on("SIGINT", stop);
-    process.on("SIGTERM", stop);
+    process.on("SIGINT", () => void stop());
+    process.on("SIGTERM", () => void stop());
   },
 });

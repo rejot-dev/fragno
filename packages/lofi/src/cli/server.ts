@@ -157,8 +157,8 @@ export const serveCommand = define({
       process.exit(0);
     };
 
-    process.on("SIGINT", stop);
-    process.on("SIGTERM", stop);
+    process.on("SIGINT", () => void stop());
+    process.on("SIGTERM", () => void stop());
 
     console.log(`Lofi server listening on ${baseUrl}`);
   },

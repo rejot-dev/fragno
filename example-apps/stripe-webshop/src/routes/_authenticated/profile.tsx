@@ -171,7 +171,7 @@ function ProfilePage() {
                   <p>
                     <Button
                       variant="secondary"
-                      onClick={handleBillingPortal}
+                      onClick={() => void handleBillingPortal()}
                       disabled={isCreatingPortal}
                     >
                       Manage Billing
@@ -187,7 +187,7 @@ function ProfilePage() {
             </div>
 
             <div className="flex gap-4 pt-4">
-              <Button variant="destructive" onClick={handleSignOut}>
+              <Button variant="destructive" onClick={() => void handleSignOut()}>
                 Sign Out
               </Button>
             </div>

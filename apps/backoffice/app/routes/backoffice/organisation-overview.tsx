@@ -103,7 +103,7 @@ export default function BackofficeOrganisationOverview() {
         title="Rename organisation"
         description="Update the name shown across dashboards and invitations."
       >
-        <form onSubmit={handleNameSubmit} className="space-y-3">
+        <form onSubmit={(event) => void handleNameSubmit(event)} className="space-y-3">
           <FormField label="Organisation name">
             <input
               type="text"
