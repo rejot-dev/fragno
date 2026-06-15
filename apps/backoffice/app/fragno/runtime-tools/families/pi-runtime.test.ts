@@ -1005,7 +1005,7 @@ describe("createPiRouteRuntime", () => {
     ]);
   });
 
-  it("stops pi.session.turn stream consumption at raw turn_end", async () => {
+  it("stops pi.session.turn stream consumption at raw agent_end", async () => {
     const requests: Array<{ url: string; method: string }> = [];
     const assistantMessage = {
       role: "assistant",
@@ -1090,7 +1090,7 @@ describe("createPiRouteRuntime", () => {
     const runtime = createPiRouteRuntime({ objects: createPiObjects(env), orgId: "acme" });
     const turned = await withTimeout(
       runtime.runTurn({ sessionId: "session-2", text: "hello" }),
-      "runTurn should not wait for the live events stream to close",
+      "runTurn should stop after agent_end without waiting for the live events stream to close",
     );
 
     assert(turned.assistantText === "assistant:done");
@@ -1098,6 +1098,7 @@ describe("createPiRouteRuntime", () => {
       expect.objectContaining({ type: "snapshot" }),
       expect.objectContaining({ type: "message_end" }),
       expect.objectContaining({ type: "turn_end" }),
+      expect.objectContaining({ type: "agent_end" }),
     ]);
     expect(requests.map((request) => request.url)).toEqual([
       "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme",
@@ -1106,7 +1107,7 @@ describe("createPiRouteRuntime", () => {
     ]);
   });
 
-  it("stops pi.session.turn stream consumption at wrapped turn_end", async () => {
+  it("stops pi.session.turn stream consumption at wrapped agent_end", async () => {
     const requests: Array<{ url: string; method: string }> = [];
     const assistantMessage = {
       role: "assistant",
@@ -1206,7 +1207,7 @@ describe("createPiRouteRuntime", () => {
     const runtime = createPiRouteRuntime({ objects: createPiObjects(env), orgId: "acme" });
     const turned = await withTimeout(
       runtime.runTurn({ sessionId: "session-2", text: "hello" }),
-      "runTurn should not wait for wrapped live events stream to close",
+      "runTurn should stop after wrapped agent_end without waiting for the live events stream to close",
     );
 
     assert(turned.assistantText === "assistant:wrapped");
@@ -1217,6 +1218,7 @@ describe("createPiRouteRuntime", () => {
         payload: { type: "message_end", message: assistantMessage },
       }),
       expect.objectContaining({ kind: "step-emission", payload: { type: "turn_end" } }),
+      expect.objectContaining({ kind: "step-emission", payload: { type: "agent_end" } }),
     ]);
     expect(requests.map((request) => request.url)).toEqual([
       "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme",
@@ -1247,6 +1249,11 @@ describe("createPiRouteRuntime", () => {
     const toolCallMessage = {
       role: "assistant",
       content: [
+        {
+          type: "text",
+          text: "I’ll check the tool first.",
+          textSignature: JSON.stringify({ v: 1, id: "msg-1", phase: "commentary" }),
+        },
         {
           type: "toolCall",
           id: "call-1",
@@ -1339,6 +1346,20 @@ describe("createPiRouteRuntime", () => {
                     toolResults: [],
                   },
                 },
+                {
+                  kind: "step-emission",
+                  stepKey: "do:agent turn",
+                  epoch: 2,
+                  payload: {
+                    type: "agent_end",
+                    messages: [
+                      previousAssistantMessage,
+                      toolCallMessage,
+                      toolResultMessage,
+                      finalAssistantMessage,
+                    ],
+                  },
+                },
               ]);
             }
 
@@ -1395,7 +1416,7 @@ describe("createPiRouteRuntime", () => {
     const runtime = createPiRouteRuntime({ objects: createPiObjects(env), orgId: "acme" });
     const turned = await withTimeout(
       runtime.runTurn({ sessionId: "session-2", text: "poem" }),
-      "runTurn should not wait for wrapped live events stream to close",
+      "runTurn should stop after agent_end without waiting for the live events stream to close",
     );
 
     assert(turned.assistantText === "new answer after tool");
