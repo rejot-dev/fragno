@@ -15,7 +15,9 @@ import { createWorkflowsFragment } from "@fragno-dev/workflows";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { getModel } from "@earendil-works/pi-ai";
 
+import { SYSTEM_BACKOFFICE_PRINCIPAL } from "@/backoffice-runtime/context";
 import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
+import { createBackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createOrgFileSystem, type MasterFileSystem } from "@/files";
@@ -515,7 +517,12 @@ export const createPiBashCommandContext = ({
 }: {
   runtime: BackofficeRuntimeServices;
   orgId: string;
-}): PiBashCommandContext => createRouteBackedRuntimeContext({ runtime, orgId });
+}): PiBashCommandContext =>
+  createRouteBackedRuntimeContext({
+    runtime,
+    kernel: createBackofficeKernel({ objects: runtime.objects }),
+    execution: { actor: SYSTEM_BACKOFFICE_PRINCIPAL, scope: { kind: "org", orgId } },
+  });
 
 export const createPiRuntime = (options: {
   config: StoredPiConfig;

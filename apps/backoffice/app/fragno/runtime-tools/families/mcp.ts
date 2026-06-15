@@ -318,13 +318,21 @@ const parseToolCall = defineCliArgsParser<z.input<typeof callToolInputSchema>>("
   timeoutMs: { option: "timeout-ms", kind: "integer" },
 });
 
-const mcpRuntimeTools = [
+const mcpPermissions = {
+  "servers.read": "Read MCP server configuration and cached tool metadata.",
+  "servers.create": "Create MCP server configuration and auth state.",
+  "servers.delete": "Delete MCP server configuration and auth state.",
+  "tools.call": "Call tools exposed by configured MCP servers.",
+} as const;
+
+export const mcpRuntimeTools = [
   defineBackofficeRuntimeTool({
     id: "mcp.servers.list",
     namespace: "mcp",
     name: "listServers",
     capabilityId: "mcp",
     description: "List MCP servers configured for the current organisation.",
+    requiredPermissions: ["servers.read"],
     inputSchema: z.object({}).optional().default({}),
     outputSchema: serversOutputSchema,
     execute: async (_input, context: McpToolContext) =>
@@ -349,6 +357,7 @@ const mcpRuntimeTools = [
     name: "createServer",
     capabilityId: "mcp",
     description: "Register a remote streamable HTTP MCP server.",
+    requiredPermissions: ["servers.create"],
     inputSchema: createServerInputSchema,
     outputSchema: serverSchema,
     execute: async (input, context: McpToolContext) =>
@@ -424,6 +433,7 @@ const mcpRuntimeTools = [
     name: "deleteServer",
     capabilityId: "mcp",
     description: "Delete an MCP server and its stored auth state.",
+    requiredPermissions: ["servers.delete"],
     inputSchema: deleteServerInputSchema,
     outputSchema: deleteServerOutputSchema,
     execute: async (input, context: McpToolContext) =>
@@ -456,6 +466,7 @@ const mcpRuntimeTools = [
     name: "refreshServer",
     capabilityId: "mcp",
     description: "Refresh a configured MCP server and update its cached tool list.",
+    requiredPermissions: ["servers.read"],
     inputSchema: refreshServerInputSchema,
     outputSchema: serverRefreshOutputSchema,
     execute: async (input, context: McpToolContext) =>
@@ -491,6 +502,7 @@ const mcpRuntimeTools = [
     name: "callTool",
     capabilityId: "mcp",
     description: "Call a tool exposed by a configured MCP server.",
+    requiredPermissions: ["tools.call"],
     inputSchema: callToolInputSchema,
     outputSchema: callToolOutputSchema,
     execute: async (input, context: McpToolContext) =>
@@ -544,6 +556,7 @@ const mcpRuntimeTools = [
     name: "startOAuth",
     capabilityId: "mcp",
     description: "Start OAuth login for a configured MCP server and return the authorization URL.",
+    requiredPermissions: ["servers.create"],
     inputSchema: oauthStartInputSchema,
     outputSchema: oauthStartOutputSchema,
     execute: async (input, context: McpToolContext) =>
@@ -592,6 +605,7 @@ const mcpRuntimeTools = [
     name: "setToken",
     capabilityId: "mcp",
     description: "Store a bearer token for a configured MCP server.",
+    requiredPermissions: ["servers.create"],
     inputSchema: setTokenInputSchema,
     outputSchema: authStatusSchema,
     execute: async (input, context: McpToolContext) =>
@@ -631,6 +645,7 @@ const mcpRuntimeTools = [
 
 export const mcpToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "mcp",
+  permissions: mcpPermissions,
   tools: mcpRuntimeTools,
   isAvailable: (context: McpToolContext) => !!context.runtimes.mcp,
 });

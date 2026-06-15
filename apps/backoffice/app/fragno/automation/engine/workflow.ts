@@ -1,5 +1,7 @@
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 
+import { SYSTEM_BACKOFFICE_PRINCIPAL } from "@/backoffice-runtime/context";
+import { createBackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { MasterFileSystem } from "@/files/master-file-system";
 import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
@@ -33,7 +35,11 @@ const createWorkflowAutomationContext = ({
     throw new Error("Workflow-backed automation requires an organisation id.");
   }
 
-  const runtimeContext = createRouteBackedRuntimeContext({ runtime, orgId });
+  const runtimeContext = createRouteBackedRuntimeContext({
+    runtime,
+    kernel: createBackofficeKernel({ objects: runtime.objects }),
+    execution: { actor: SYSTEM_BACKOFFICE_PRINCIPAL, scope: { kind: "org", orgId } },
+  });
   const eventRuntime = createEventRuntime({
     objects: runtime.objects,
     event: params.automationEvent,

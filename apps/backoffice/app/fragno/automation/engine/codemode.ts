@@ -1,6 +1,8 @@
 import type { RemoteWorkflowStepHost } from "@fragno-dev/workflows/remote-workflow";
 import type { WorkflowEvent } from "@fragno-dev/workflows/workflow";
 
+import { SYSTEM_BACKOFFICE_PRINCIPAL } from "@/backoffice-runtime/context";
+import { createBackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { MasterFileSystem } from "@/files/master-file-system";
 import {
@@ -143,7 +145,11 @@ export const executePiCodemodeWorkflow = async ({
     throw new Error("Pi codemode workflow requires Backoffice runtime services.");
   }
 
-  const runtimeContext = createRouteBackedRuntimeContext({ runtime, orgId });
+  const runtimeContext = createRouteBackedRuntimeContext({
+    runtime,
+    kernel: createBackofficeKernel({ objects: runtime.objects }),
+    execution: { actor: SYSTEM_BACKOFFICE_PRINCIPAL, scope: { kind: "org", orgId } },
+  });
   const context = createBackofficeToolContext(runtimeContext);
   const tools = getAvailableRuntimeTools({
     families: runtimeToolFamilies,

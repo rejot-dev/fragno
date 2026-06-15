@@ -67,6 +67,7 @@ const createClaimTool = defineBackofficeRuntimeTool({
   namespace: "otp",
   name: "createIdentityClaim",
   description: "Create a short-lived identity claim URL for an external actor.",
+  requiredPermissions: ["create"],
   inputSchema: createClaimInputSchema,
   outputSchema: identityClaimRecordSchema,
   execute: async (input, context: OtpToolContext) =>
@@ -107,6 +108,9 @@ export const otpRuntimeTools = [createClaimTool] as const;
 
 export const otpToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "otp",
+  permissions: {
+    create: "Create OTP identity claims.",
+  },
   tools: otpRuntimeTools,
   isAvailable: (context: OtpToolContext) => !!context.runtimes.otp,
 });

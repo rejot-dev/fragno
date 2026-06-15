@@ -167,6 +167,7 @@ const sessionCreateTool = defineBackofficeRuntimeTool({
   namespace: "pi",
   name: "createSession",
   description: "Create a new Pi session.",
+  requiredPermissions: ["modify"],
   inputSchema: sessionCreateInputSchema,
   outputSchema: sessionOutputSchema,
   execute: async (input, context: PiToolContext) => {
@@ -236,6 +237,7 @@ const sessionGetTool = defineBackofficeRuntimeTool({
   namespace: "pi",
   name: "getSession",
   description: "Retrieve a Pi session by id.",
+  requiredPermissions: ["read"],
   inputSchema: sessionGetInputSchema,
   outputSchema: sessionDetailOutputSchema,
   execute: async (input, context: PiToolContext) => {
@@ -280,6 +282,7 @@ const sessionListTool = defineBackofficeRuntimeTool({
   namespace: "pi",
   name: "listSessions",
   description: "List Pi sessions ordered by creation time.",
+  requiredPermissions: ["read"],
   inputSchema: sessionListInputSchema,
   outputSchema: z.array(sessionOutputSchema),
   execute: async (input, context: PiToolContext) => {
@@ -318,6 +321,7 @@ const sessionTurnTool = defineBackofficeRuntimeTool({
   namespace: "pi",
   name: "runTurn",
   description: "Send one prompt command through a Pi active session and return the settled result.",
+  requiredPermissions: ["modify"],
   inputSchema: sessionTurnInputSchema,
   outputSchema: sessionTurnOutputSchema,
   execute: async (input, context: PiToolContext) => {
@@ -368,6 +372,10 @@ export const piRuntimeTools = [
 
 export const piToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "pi",
+  permissions: {
+    read: "Read Pi sessions.",
+    modify: "Create Pi sessions and run turns.",
+  },
   tools: piRuntimeTools,
   isAvailable: (context: PiToolContext) => !!context.runtimes.pi,
 });

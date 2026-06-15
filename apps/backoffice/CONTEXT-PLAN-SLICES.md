@@ -8,35 +8,37 @@ A slice is only valid if it can be tested through real plumbing: route-backed ru
 codemode, UI/dev routes, upload fragment routes, automation scenarios, or Durable Object-backed
 route callers. Unit tests can support the slice, but are not the proof that the slice is complete.
 
-## [ ] Slice 1 — Auth-backed selected context + scoped runtime kernel
+## [x] Slice 1 — Auth-backed selected context + scoped runtime kernel
 
 ### Goal
 
-Replace org-only runtime creation with an auth-backed selected-context model and a kernel that owns
-object/routing authorization.
+Replace org-only route-backed runtime construction with an explicit selected execution context and a
+Backoffice kernel that owns context access and scoped object resolution.
 
-This merges the foundational context, auth integration, kernel, and route-backed runtime changes
-because none of those are useful or meaningfully testable alone.
+This slice established the selected-context foundation. While implementing it, we also pulled a
+small amount of Slice 2 groundwork forward: runtime tool families now declare family-scoped
+permissions, and object-backed runtime constructors accept concrete Backoffice object types instead
+of loose `{ objects, orgId }` inputs.
 
-### Implement
+### Implemented
 
-- Add shared context types:
-  - `BackofficeContextScope`
-  - `BackofficePrincipal`
-  - `BackofficeExecutionContext`
-- Integrate with `apps/backoffice/app/fragno/auth/auth.ts`:
-  - keep `backofficeAccessTokenContextSchema` as the org-membership source;
-  - do not store selected UI context in the access token.
-- Add auth conversion/helpers:
-  - convert `BackofficeAuthPrincipal` to `BackofficePrincipal`;
-  - `requireBackofficePrincipal(...)`;
+- Added shared context types in `apps/backoffice/app/backoffice-runtime/context.ts`:
+  - `BackofficeContextScope`;
+  - `BackofficePrincipal`;
+  - `BackofficeExecutionContext`;
+  - `SYSTEM_BACKOFFICE_PRINCIPAL` for internal/system call sites.
+- Kept `backofficeAccessTokenContextSchema` as the org-membership source. Selected UI/runtime
+  context is not stored in the access token.
+- Added auth conversion/helpers in `apps/backoffice/app/fragno/auth/backoffice-principal.server.ts`:
+  - `createBackofficePrincipal(auth)` converts `BackofficeAuthPrincipal` to `BackofficePrincipal`;
+  - `requireBackofficePrincipal(request, routerContext)`;
   - `requireBackofficeContext(request, routerContext, scope)`.
-- Add Backoffice kernel:
-  - validates context access;
-  - validates object/scope support using `object-scope-policy.ts`;
-  - resolves scoped objects;
-  - returns clear unavailable/forbidden errors.
-- Replace `createRouteBackedRuntimeContext({ orgId })` with:
+- Added `BackofficeKernel` in `apps/backoffice/app/backoffice-runtime/kernel.ts`:
+  - validates selected-context access;
+  - validates object/scope support via `object-scope-policy.ts`;
+  - resolves scoped objects through `kernel.scoped(...)`;
+  - returns explicit forbidden/unavailable errors, including `Project context is not available.`
+- Replaced org-only route-backed runtime construction with:
 
 ```ts
 createRouteBackedRuntimeContext({
@@ -46,76 +48,123 @@ createRouteBackedRuntimeContext({
 });
 ```
 
-- Update all route-backed runtime context call sites.
-- Implement selected-scope runtime behavior:
-  - org scope: org-supported families work;
-  - user scope: user-supported families work;
-  - project scope: gated with clear unavailable error;
-  - unsupported object/scope combinations are unavailable.
-- Change dev/UI routes touched by runtime creation to require an authenticated selected context.
+- Updated all `createRouteBackedRuntimeContext(...)` call sites.
+  - Authenticated dev codemode now creates an org selected context from the request principal.
+  - Existing automation/Pi/scenario internal call sites use explicit system actors with org scopes
+    until later automation slices make those contexts fully selected-scope aware.
+- Implemented selected-scope runtime behavior for the route-backed runtime context:
+  - org-supported families continue to work in org scope;
+  - MCP resolves through the kernel and can target org/user scoped MCP objects;
+  - project scope is gated with `Project context is not available.`;
+  - unsupported family/scope combinations return unavailable runtimes before calling their Durable
+    Objects, e.g. Telegram in user scope.
+- Aligned object-backed runtime constructors so callers pass the concrete object they intend to use:
+  - `createMcpRuntime(mcpObject)`;
+  - `createTelegramRuntime({ object: TelegramObject })`;
+  - `createOtpRuntime({ object: OtpObject, ... })`;
+  - `createPiRouteRuntime({ object: PiObject, ... })`;
+  - `createResendRouteRuntime({ object: ResendObject })`;
+  - `createReson8RouteRuntime({ object: Reson8Object })`.
+- Added the runtime-tool permission metadata shape for the next slice:
+  - tool families require a `permissions` catalog;
+  - tools declare `requiredPermissions: string[]`;
+  - permission names are local to the family namespace;
+  - permissions were simplified to broad actions such as `read`, `modify`, `send`, `manage`, etc.
 
-Initial context rules:
+Initial context rules now enforced by the kernel:
 
 ```txt
 system scope: system actor only
-org scope: token context must include orgId
+org scope: token context must include orgId for user actors
 user scope: userId must equal actor.userId, unless actor is system
 project scope: unavailable until project model exists
 ```
 
-### End-to-end test
+### Verified
 
-Use route-backed runtime tools via dev route or scenario harness:
+Ran the Backoffice package through real project plumbing and checks:
 
-1. authenticated user with `organizationIds: [org-1]` can run org-context MCP list;
-2. same user is rejected for org-context runtime in `org-2`;
-3. same user can run user-context MCP list for their own user id;
-4. same user is rejected for another user id;
-5. user-context Telegram call fails as unavailable before hitting the Telegram DO;
-6. project context fails with `Project context is not available`.
+```sh
+pnpm exec turbo types:check --filter=./apps/backoffice --output-logs=errors-only
+pnpm exec turbo test --filter=./apps/backoffice --output-logs=errors-only
+pnpm exec turbo build --filter=./apps/backoffice --output-logs=errors-only
+pnpm run lint:fix
+pnpm run format:changed
+```
 
-### Acceptance
+### Acceptance status
 
 - Route-backed runtime context is no longer org-only.
-- Runtime object resolution goes through the kernel.
-- Auth/access-token context is the source for org access.
-- UI/dev routes can operate from one selected context.
+- Runtime object resolution for selected-context object-backed families goes through the kernel.
+- Auth/access-token context remains the source for org access.
+- Dev codemode route now operates from an authenticated selected org context.
+- Project context and unsupported object/scope combinations fail with explicit unavailable errors.
 
-## [ ] Slice 2 — Operation-authorized runtime tools + scoped codemode handles
+## [ ] Slice 2 — Permission-authorized runtime tools + scoped codemode handles
 
 ### Goal
 
-Runtime tools become operation-authorized, and codemode gets scoped handles as the canonical API.
+Runtime tools become permission-authorized, and codemode gets scoped handles as the canonical API.
 
-These belong together because scoped handles are only safe once every handle operation goes through
-the same runtime-tool authorization path.
+Slice 1 already introduced the permission metadata shape and added broad family-scoped permissions
+for existing tool families. This slice wires those declarations into runtime execution and makes
+codemode multi-scope. Scoped handles are only safe once every handle operation goes through the same
+runtime-tool authorization path.
+
+### Existing groundwork from Slice 1
+
+- `BackofficeRuntimeToolFamily` now requires a `permissions` catalog.
+- `BackofficeRuntimeTool` can declare `requiredPermissions: string[]`.
+- Permission names are local to the family namespace, e.g. MCP uses `servers.read`,
+  `servers.create`, `servers.delete`, and `tools.call` instead of a global `mcp.servers.read` enum.
+- The kernel no longer owns a hardcoded `BackofficeOperation` union. Authorization requests use
+  normalized permission requirements:
+
+```ts
+requiredPermissions: Array<{
+  namespace: string;
+  permission: string;
+}>;
+```
 
 ### Implement
 
-- Extend `BackofficeRuntimeTool` with:
+- Make `requiredPermissions` explicit for every runtime tool. Empty arrays are allowed only for
+  tools that are intentionally public within an already-authorized context.
+- Keep each family permission catalog broad and human-oriented, not one-per-method unless that is
+  actually the permission boundary. Examples:
+  - store: `read`, `modify`;
+  - workflow: `read`, `modify`;
+  - telegram/resend: `read`, `send`;
+  - sandbox/pi: `read`, `modify`;
+  - backoffice capabilities: `read`, `manage`;
+  - MCP: `servers.read`, `servers.create`, `servers.delete`, `tools.call`.
+- Normalize tool permissions before authorization:
 
 ```ts
-requiredOperation: BackofficeOperation;
-```
+const requiredPermissions = tool.requiredPermissions.map((permission) => ({
+  namespace: tool.namespace,
+  permission,
+}));
 
-- Add operation names for existing runtime tools, including:
-  - MCP read/create/delete/call;
-  - file read/write;
-  - automation read/write/trigger/route;
-  - capability use/manage.
-- Wrap runtime tool execution with:
-
-```ts
 kernel.assertAllowed({
   actor: context.actor,
   scope: context.scope,
-  operation: tool.requiredOperation,
+  requiredPermissions,
   resource,
 });
 ```
 
-- Add resource extraction where needed, e.g. MCP slug, file path, workflow name.
-- Add a kernel test-policy hook so e2e tests can deny a specific operation.
+- Extend `BackofficeToolContext` / route-backed tool context so every runtime tool execution has:
+  - `actor`;
+  - selected `scope`;
+  - `kernel`.
+- Enforce permissions in both codemode provider execution and bash command execution.
+- Add resource extraction where needed, e.g. MCP slug, file path, workflow name, capability id,
+  sandbox id.
+- Add a kernel test-policy hook so end-to-end tests can deny a specific normalized permission for a
+  scope/resource. This hook is for tests and development policy simulation; production policy can
+  remain permissive after context access succeeds.
 - Rework codemode providers around scoped handles:
 
 ```ts
@@ -133,6 +182,17 @@ await mcp.listServers();
 // same as context.current.mcp.listServers()
 ```
 
+- The scoped codemode runtime should create a selected route-backed runtime context per handle using
+  the same actor and kernel:
+
+```ts
+createRouteBackedRuntimeContext({
+  runtime,
+  kernel,
+  execution: { actor, scope: handleScope },
+});
+```
+
 - Update generated `codemode.d.ts`, codemode prompts, starter automation files, and tests.
 - Bash remains selected-context only. Do not add cross-context bash flags in this slice.
 
@@ -144,16 +204,18 @@ Use `runBackofficeCodemode(...)` with route-backed runtime context:
 2. `context.user("user-1").mcp.listServers()` hits user MCP object;
 3. default `mcp.listServers()` hits `context.current` scope;
 4. `context.project("project-1").mcp.listServers()` throws project unavailable;
-5. with kernel policy denying `mcp.servers.delete` in org scope:
-   - `context.org("org-1").mcp.listServers()` succeeds;
-   - `context.org("org-1").mcp.deleteServer(...)` returns authorization error;
+5. with kernel policy denying `{ namespace: "mcp", permission: "servers.delete" }` in org scope:
+   - `context.org("org-1").mcp.listServers()` succeeds because it requires `servers.read`;
+   - `context.org("org-1").mcp.deleteServer(...)` returns an authorization error;
    - MCP DO delete route is not called.
 
 ### Acceptance
 
-- Every runtime tool declares an operation.
-- Every runtime tool call is kernel-authorized.
+- Every runtime tool has explicit `requiredPermissions`.
+- Every runtime tool call is kernel-authorized using family-scoped permissions.
+- Kernel authorization has no hardcoded global operation enum.
 - Codemode can address multiple scopes through handles in one session.
+- Default codemode providers still target the selected current scope.
 - Old org-only codemode assumptions are removed from generated declarations/prompts.
 
 ## [ ] Slice 3 — Upload fragment Unix-like filesystem permissions

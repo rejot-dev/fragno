@@ -1,7 +1,8 @@
 import { z } from "zod";
 
+import { createBackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createOrgFileSystem } from "@/files/create-file-system";
-import { authorizeAccessTokenForOrganization } from "@/fragno/auth/access-token.server";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
@@ -40,17 +41,15 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     throw new Response("Missing organisation id", { status: 400 });
   }
 
-  const auth = await authorizeAccessTokenForOrganization(request, context, orgId);
-  if (!auth.ok) {
-    return auth.response;
-  }
+  const execution = await requireBackofficeContext(request, context, { kind: "org", orgId });
 
   const body = devCodemodeBodySchema.parse(await request.json());
 
   const { env, runtime } = context.get(BackofficeWorkerContext);
+  const kernel = createBackofficeKernel({ objects: runtime.objects });
 
   const fs = await createOrgFileSystem({ orgId, objects: runtime.objects });
-  const routeRuntimeContext = createRouteBackedRuntimeContext({ runtime, orgId });
+  const routeRuntimeContext = createRouteBackedRuntimeContext({ runtime, kernel, execution });
   const toolContext = createBackofficeToolContext(routeRuntimeContext);
 
   const result = await runBackofficeCodemode({
@@ -63,9 +62,6 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   });
 
   const headers = new Headers({ "cache-control": "no-store" });
-  for (const [name, value] of auth.headers) {
-    headers.append(name, value);
-  }
 
   return Response.json(
     {

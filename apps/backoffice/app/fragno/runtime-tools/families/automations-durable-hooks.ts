@@ -254,6 +254,7 @@ const listHooksTool = defineBackofficeRuntimeTool({
   namespace: "hooks",
   name: "list",
   description: "List durable hook queue entries for a runtime fragment.",
+  requiredPermissions: ["read"],
   inputSchema: z.object({
     fragment: durableHookFragmentSchema,
     cursor: z.string().trim().min(1).optional(),
@@ -310,6 +311,7 @@ const getHookTool = defineBackofficeRuntimeTool({
   namespace: "hooks",
   name: "get",
   description: "Get a durable hook queue entry by id.",
+  requiredPermissions: ["read"],
   inputSchema: z.object({ fragment: durableHookFragmentSchema, hookId: z.string().trim().min(1) }),
   outputSchema: durableHookRecordSchema.nullable(),
   execute: async (input, context: DurableHooksToolContext) =>
@@ -351,6 +353,7 @@ const listAutomationEventsTool = defineBackofficeRuntimeTool({
   namespace: "events",
   name: "listEvents",
   description: "List automation events queued through internal ingest hooks.",
+  requiredPermissions: ["read"],
   inputSchema: z.object({
     cursor: z.string().trim().min(1).optional(),
     pageSize: z.number().int().positive().optional(),
@@ -392,6 +395,7 @@ const getAutomationEventTool = defineBackofficeRuntimeTool({
   namespace: "events",
   name: "getEvent",
   description: "Get an automation ingest event hook queue entry by durable hook id.",
+  requiredPermissions: ["read"],
   inputSchema: z.object({ hookId: z.string().trim().min(1) }),
   outputSchema: durableHookRecordSchema.nullable(),
   execute: getAutomationEventHook,
@@ -427,12 +431,18 @@ export const automationEventsRuntimeTools = [
 
 export const hooksToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "hooks",
+  permissions: {
+    read: "Read durable hooks.",
+  },
   tools: hooksRuntimeTools,
   isAvailable: (context: DurableHooksToolContext) => !!context.runtimes.durableHooks,
 });
 
 export const automationEventsToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "events",
+  permissions: {
+    read: "Read automation events.",
+  },
   tools: automationEventsRuntimeTools,
   isAvailable: (context: DurableHooksToolContext) => !!context.runtimes.durableHooks,
 });

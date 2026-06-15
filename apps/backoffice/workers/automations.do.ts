@@ -130,7 +130,7 @@ export class InMemoryAutomationsObject implements AutomationsObject {
 
     return {
       runtime: createPiRouteRuntime({
-        objects: this.#runtimeServices.objects,
+        object: this.#runtimeServices.objects.pi.forOrg(orgId),
         orgId,
       }),
     };

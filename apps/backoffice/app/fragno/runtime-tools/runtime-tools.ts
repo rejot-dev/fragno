@@ -98,6 +98,7 @@ export type BackofficeRuntimeTool<
   name: string;
   capabilityId?: BackofficeCapabilityId;
   description: string;
+  requiredPermissions?: readonly string[];
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
   execute(input: z.output<TInputSchema>, context: TContext): Promise<z.output<TOutputSchema>>;
@@ -113,6 +114,7 @@ export type AnyBackofficeRuntimeTool = BackofficeRuntimeTool<
 
 export type BackofficeRuntimeToolFamily = {
   namespace: string;
+  permissions: Readonly<Record<string, string>>;
   tools: readonly AnyBackofficeRuntimeTool[];
   hidden?: boolean;
   isAvailable?: (context: BackofficeToolContext) => boolean;
@@ -130,22 +132,34 @@ export const defineBackofficeRuntimeToolFamily = <
   TContext extends BackofficeToolContext = BackofficeToolContext,
 >({
   namespace,
+  permissions,
   tools,
   hidden,
   isAvailable,
 }: {
   namespace: string;
+  permissions: Readonly<Record<string, string>>;
   tools: readonly BackofficeRuntimeTool<z.ZodType, z.ZodType, TContext>[];
   hidden?: boolean;
   isAvailable?: (context: TContext) => boolean;
-}): BackofficeRuntimeToolFamily => ({
-  namespace,
-  tools: tools as readonly AnyBackofficeRuntimeTool[],
-  ...(hidden ? { hidden } : {}),
-  ...(isAvailable
-    ? { isAvailable: (context: BackofficeToolContext) => isAvailable(context as TContext) }
-    : {}),
-});
+}): BackofficeRuntimeToolFamily => {
+  const declaredPermissions = { ...permissions };
+  for (const tool of tools) {
+    for (const permission of tool.requiredPermissions ?? []) {
+      declaredPermissions[permission] ??= `Use ${namespace}.${permission}.`;
+    }
+  }
+
+  return {
+    namespace,
+    permissions: declaredPermissions,
+    tools: tools as readonly AnyBackofficeRuntimeTool[],
+    ...(hidden ? { hidden } : {}),
+    ...(isAvailable
+      ? { isAvailable: (context: BackofficeToolContext) => isAvailable(context as TContext) }
+      : {}),
+  };
+};
 
 export const getAvailableRuntimeTools = ({
   families,

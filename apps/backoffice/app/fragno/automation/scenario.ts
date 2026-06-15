@@ -1,10 +1,12 @@
 import type { TelegramApi, TelegramMessage } from "@fragno-dev/telegram-fragment";
 
+import { SYSTEM_BACKOFFICE_PRINCIPAL } from "@/backoffice-runtime/context";
 import type { InMemoryObjectFactoryOverrides } from "@/backoffice-runtime/in-memory-object-factory";
 import {
   createInMemoryBackofficeRuntime,
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
+import { createBackofficeKernel } from "@/backoffice-runtime/kernel";
 import type {
   BackofficeObjectAddress,
   BackofficeObjectBindingName,
@@ -1270,7 +1272,8 @@ const getConnectionRuntime = (ctx: BackofficeScenarioContext, orgId: string) =>
   createBackofficeToolContext(
     createRouteBackedRuntimeContext({
       runtime: ctx.runtime.services,
-      orgId,
+      kernel: createBackofficeKernel({ objects: ctx.runtime.services.objects }),
+      execution: { actor: SYSTEM_BACKOFFICE_PRINCIPAL, scope: { kind: "org", orgId } },
     }),
   ).runtimes.backoffice;
 
@@ -1357,7 +1360,8 @@ const runScenarioCodemode = async (
 
   const runtimeContext = createRouteBackedRuntimeContext({
     runtime: ctx.runtime.services,
-    orgId: input.orgId,
+    kernel: createBackofficeKernel({ objects: ctx.runtime.services.objects }),
+    execution: { actor: SYSTEM_BACKOFFICE_PRINCIPAL, scope: { kind: "org", orgId: input.orgId } },
   });
   const toolContext = createBackofficeToolContext(runtimeContext);
   const loader = ctx.runtime.env.LOADER;

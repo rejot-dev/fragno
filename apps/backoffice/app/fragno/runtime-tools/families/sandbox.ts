@@ -26,6 +26,7 @@ const startInputSchema = z.object({
   startupTimeoutMs: z.number().int().positive().optional(),
   startupCommand: z.string().trim().min(1).optional(),
 });
+
 const execInputSchema = z.object({
   sandboxId: z.string().trim().min(1),
   command: z.string().trim().min(1),
@@ -88,6 +89,7 @@ const startSandboxTool = defineBackofficeRuntimeTool({
   namespace: "sandbox",
   name: "startSandbox",
   description: "Start a Cloudflare sandbox for the current organisation.",
+  requiredPermissions: ["modify"],
   inputSchema: startInputSchema,
   outputSchema: z.object({
     id: z.string().trim().min(1),
@@ -147,6 +149,7 @@ const listSandboxesTool = defineBackofficeRuntimeTool({
   namespace: "sandbox",
   name: "listSandboxes",
   description: "List Cloudflare sandboxes for the current organisation.",
+  requiredPermissions: ["read"],
   inputSchema: z.object({}),
   outputSchema: z.array(
     z.object({ id: z.string().trim().min(1), status: z.enum(["running", "stopped", "error"]) }),
@@ -173,6 +176,7 @@ const killSandboxTool = defineBackofficeRuntimeTool({
   namespace: "sandbox",
   name: "killSandbox",
   description: "Kill a Cloudflare sandbox for the current organisation.",
+  requiredPermissions: ["modify"],
   inputSchema: z.object({ sandboxId: z.string().trim().min(1) }),
   outputSchema: z.object({ sandboxId: z.string().trim().min(1), killed: z.literal(true) }),
   execute: async (input, context: SandboxToolContext) =>
@@ -205,6 +209,7 @@ const executeCommandTool = defineBackofficeRuntimeTool({
   namespace: "sandbox",
   name: "executeCommand",
   description: "Execute a command in a Cloudflare sandbox.",
+  requiredPermissions: ["modify"],
   inputSchema: execInputSchema,
   outputSchema: commandResultSchema,
   execute: async (input, context: SandboxToolContext) =>
@@ -288,6 +293,10 @@ export const sandboxRuntimeTools = [
 
 export const sandboxToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "sandbox",
+  permissions: {
+    read: "List sandboxes.",
+    modify: "Start, stop, and execute commands in sandboxes.",
+  },
   tools: sandboxRuntimeTools,
   isAvailable: (context: SandboxToolContext) => !!context.runtimes.sandbox,
 });

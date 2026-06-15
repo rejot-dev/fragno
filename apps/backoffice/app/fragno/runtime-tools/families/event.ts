@@ -61,6 +61,7 @@ const emitEventTool = defineBackofficeRuntimeTool({
   namespace: "event",
   name: "emit",
   description: "Emit another automation event for the current organisation.",
+  requiredPermissions: ["emit"],
   inputSchema: eventEmitInputSchema,
   outputSchema: eventEmitOutputSchema,
   execute: async (input, context: EventToolContext) =>
@@ -124,6 +125,9 @@ export const eventRuntimeTools = [emitEventTool] as const;
 
 export const eventToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "event",
+  permissions: {
+    emit: "Use emit.",
+  },
   tools: eventRuntimeTools,
   isAvailable: (context: EventToolContext) => !!context.runtimes.event,
 });
