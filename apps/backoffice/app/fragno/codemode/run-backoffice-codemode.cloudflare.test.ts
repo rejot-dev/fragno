@@ -9,6 +9,7 @@ import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import type { AutomationStoreRuntime } from "@/fragno/runtime-tools/families/automations-bindings";
 import { automationStoreRuntimeTools } from "@/fragno/runtime-tools/families/automations-bindings";
 import { eventRuntimeTools, type EventRuntime } from "@/fragno/runtime-tools/families/event";
+import type { McpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
 import { otpRuntimeTools, type OtpRuntime } from "@/fragno/runtime-tools/families/otp";
 import {
   telegramRuntimeTools,
@@ -307,6 +308,139 @@ describe("runBackofficeCodemode", () => {
       { providerName: "telegram", toolName: "sendMessage", toolId: "telegram.chat.send" },
       { providerName: "telegram", toolName: "downloadFile", toolId: "telegram.file.download" },
     ]);
+  });
+
+  test("calls cached MCP tools through dispatcher-safe codemode providers", async () => {
+    const calls: unknown[] = [];
+    const mcpRuntime: McpRuntime = {
+      listServers: async () => ({
+        servers: [
+          {
+            slug: "cloudflare-mcp",
+            name: "Cloudflare MCP",
+            endpointUrl: "https://example.com/mcp",
+            authMode: "none",
+            cache: {
+              tools: [
+                {
+                  name: "search-docs",
+                  description: "Search docs.",
+                  inputSchema: {
+                    type: "object",
+                    properties: { query: { type: "string" } },
+                    required: ["query"],
+                  },
+                },
+                {
+                  name: "delete",
+                  description: "Call a reserved-name tool.",
+                  inputSchema: {
+                    type: "object",
+                    properties: { query: { type: "string" } },
+                    required: ["query"],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      callTool: async (input) => {
+        calls.push(["callTool", input]);
+        return { content: [{ type: "text", text: `result for ${input.arguments?.query}` }] };
+      },
+      createServer: async () => {
+        throw new Error("not used");
+      },
+      deleteServer: async () => {
+        throw new Error("not used");
+      },
+      listTools: async () => {
+        throw new Error("not used");
+      },
+      startOAuth: async () => {
+        throw new Error("not used");
+      },
+      setToken: async () => {
+        throw new Error("not used");
+      },
+      getAuthStatus: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const result = await runBackofficeCodemode({
+      env,
+      fs: createTestMasterFileSystem({}),
+      context: { runtimes: { mcp: mcpRuntime } },
+      code: `async () => {
+        const docs = await mcp_cloudflare_mcp.search_docs({ query: "fragno" });
+        const reserved = await mcp_cloudflare_mcp.delete_({ query: "reserved" });
+        return { docs, reserved };
+      }`,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.result).toEqual({
+      docs: { content: [{ type: "text", text: "result for fragno" }] },
+      reserved: { content: [{ type: "text", text: "result for reserved" }] },
+    });
+    expect(calls).toEqual([
+      ["callTool", { slug: "cloudflare-mcp", name: "search-docs", arguments: { query: "fragno" } }],
+      ["callTool", { slug: "cloudflare-mcp", name: "delete", arguments: { query: "reserved" } }],
+    ]);
+    expect(result.toolCalls).toMatchObject([
+      {
+        providerName: "mcp_cloudflare_mcp",
+        toolName: "search_docs",
+        toolId: "mcp.cloudflare-mcp.search-docs",
+        status: "success",
+      },
+      {
+        providerName: "mcp_cloudflare_mcp",
+        toolName: "delete_",
+        toolId: "mcp.cloudflare-mcp.delete",
+        status: "success",
+      },
+    ]);
+  });
+
+  test("fails fast when MCP codemode provider discovery fails", async () => {
+    const mcpRuntime: McpRuntime = {
+      listServers: async () => {
+        throw new Error("MCP server list failed");
+      },
+      callTool: async () => {
+        throw new Error("not used");
+      },
+      createServer: async () => {
+        throw new Error("not used");
+      },
+      deleteServer: async () => {
+        throw new Error("not used");
+      },
+      listTools: async () => {
+        throw new Error("not used");
+      },
+      startOAuth: async () => {
+        throw new Error("not used");
+      },
+      setToken: async () => {
+        throw new Error("not used");
+      },
+      getAuthStatus: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    await expect(
+      runBackofficeCodemode({
+        env,
+        fs: createTestMasterFileSystem({}),
+        context: { runtimes: { mcp: mcpRuntime } },
+        code: `async () => "ok"`,
+      }),
+    ).rejects.toThrow("MCP server list failed");
   });
 
   test("does not expose runtime tools that were not provided", async () => {

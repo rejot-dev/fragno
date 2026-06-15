@@ -26,7 +26,13 @@ export const SYSTEM_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
     });
   }
 
-  if (event.eventType === "capability.configured") {
+  const shouldRefreshCodemodeTypes =
+    event.eventType === "capability.configured" ||
+    (event.source === "mcp" &&
+      (event.eventType === "server.configuration.changed" ||
+        event.eventType === "server.configuration.deleted"));
+
+  if (shouldRefreshCodemodeTypes) {
     await workflow.createInstance({
       workflowName: "automation-codemode-script",
       remoteWorkflowName: "codemode-types-refresh",
