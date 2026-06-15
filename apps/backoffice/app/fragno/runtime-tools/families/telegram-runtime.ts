@@ -4,13 +4,6 @@ import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-regis
 import type {
   TelegramRuntime,
   TelegramAutomationFileMetadata,
-  TelegramEditMessageArgs,
-  TelegramFileDownloadArgs,
-  TelegramFileGetArgs,
-  TelegramQueuedMessageOutput,
-  TelegramSendActionArgs,
-  TelegramSendMessageArgs,
-  TelegramActionOutput,
 } from "@/fragno/runtime-tools/families/telegram";
 import type { TelegramFragment } from "@/fragno/telegram";
 
@@ -20,17 +13,7 @@ import {
   throwOnRouteRuntimeError,
 } from "../runtime-errors";
 
-export type {
-  TelegramRuntime,
-  TelegramActionOutput,
-  TelegramAutomationFileMetadata,
-  TelegramEditMessageArgs,
-  TelegramFileDownloadArgs,
-  TelegramFileGetArgs,
-  TelegramQueuedMessageOutput,
-  TelegramSendActionArgs,
-  TelegramSendMessageArgs,
-};
+export type { TelegramRuntime, TelegramAutomationFileMetadata };
 
 export type RegisteredTelegramCommandContext = {
   runtime: TelegramRuntime;

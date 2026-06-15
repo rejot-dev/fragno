@@ -18,7 +18,7 @@ const UNKNOWN_MTIME = new Date(0);
 const TEXT_ENCODER = new TextEncoder();
 const TERMINAL_STATUSES = new Set(["completed", "failed"]);
 
-export type DurableHooksContributorOptions = {
+type DurableHooksContributorOptions = {
   id: string;
   mountPoint: string;
   title: string;
@@ -59,7 +59,7 @@ const entryContent = (entry: DurableHookQueueEntry): string => {
   return JSON.stringify(entry.payload ?? null, null, 2);
 };
 
-export const createDurableHooksFileContributor = (
+const createDurableHooksFileContributor = (
   options: DurableHooksContributorOptions,
 ): FileContributor => {
   const fileRoot = normalizeMountPoint(options.mountPoint);

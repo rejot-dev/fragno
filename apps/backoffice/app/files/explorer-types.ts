@@ -1,6 +1,6 @@
 import type { FileRootKind, FileRootPersistence } from "./types";
 
-export const FILES_EXPLORER_NODE_KINDS = ["root", "folder", "file"] as const;
+const FILES_EXPLORER_NODE_KINDS = ["root", "folder", "file"] as const;
 export type FilesExplorerNodeKind = (typeof FILES_EXPLORER_NODE_KINDS)[number];
 
 export type FilesExplorerNode = {

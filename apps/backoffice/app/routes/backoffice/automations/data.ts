@@ -162,12 +162,12 @@ const buildWorkspaceScriptRecord = (
   enabled: script.kind === "script",
 });
 
-export const toAutomationScriptId = (
+const toAutomationScriptId = (
   script: Pick<AutomationWorkspaceScriptEntry, "layer" | "path">,
 ): string =>
   `${AUTOMATION_SCRIPT_ID_PREFIX}${script.layer}:${normalizeAutomationScriptPath(script.path)}`;
 
-export const fromAutomationScriptId = (value: string): string => {
+const fromAutomationScriptId = (value: string): string => {
   const normalized = value.startsWith(AUTOMATION_SCRIPT_ID_PREFIX)
     ? value.slice(AUTOMATION_SCRIPT_ID_PREFIX.length)
     : value;

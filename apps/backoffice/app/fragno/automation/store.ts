@@ -51,12 +51,12 @@ export const automationStoreActorSchema: z.ZodType<AutomationEventActor> = z
   })
   .catchall(z.unknown());
 
-export const automationStoreCategorySchema = z.preprocess(
+const automationStoreCategorySchema = z.preprocess(
   normalizeStringList,
   z.array(z.string().trim().min(1)),
 );
 
-export const automationStoreCategoryInputSchema = z
+const automationStoreCategoryInputSchema = z
   .array(z.string().trim().min(1))
   .transform((value) => normalizeStringList(value));
 
@@ -100,7 +100,6 @@ export const automationStoreDeleteResultSchema = z.object({
 });
 
 export type AutomationStoreVerification = z.infer<typeof automationStoreVerificationSchema>[number];
-export type AutomationStoreSetInput = z.infer<typeof automationStoreSetInputSchema>;
 
 export class AutomationStoreVerificationError extends Error {
   constructor(message: string) {
@@ -108,7 +107,6 @@ export class AutomationStoreVerificationError extends Error {
     this.name = "AutomationStoreVerificationError";
   }
 }
-export type AutomationStoreListInput = z.infer<typeof automationStoreListInputSchema>;
 export type AutomationStoreEntry = z.infer<typeof automationStoreEntrySchema>;
 export type AutomationStoreDeleteResult = z.infer<typeof automationStoreDeleteResultSchema>;
 

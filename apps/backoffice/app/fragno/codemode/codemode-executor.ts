@@ -26,8 +26,6 @@ import {
 export {
   normalizeCode,
   resolveProvider,
-  sanitizeToolName,
-  ToolDispatcher,
   type DynamicWorkerExecutorOptions,
   type ExecuteResult,
   type Executor,
@@ -112,9 +110,7 @@ const RESERVED_PROVIDER_NAMES = new Set([
 
 const VALID_IDENTIFIER = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
 
-export const validateProviderNames = (
-  providers: readonly ResolvedProvider[],
-): string | undefined => {
+const validateProviderNames = (providers: readonly ResolvedProvider[]): string | undefined => {
   const seenNames = new Set<string>();
   for (const provider of providers) {
     if (RESERVED_PROVIDER_NAMES.has(provider.name)) {

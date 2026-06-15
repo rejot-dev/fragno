@@ -36,7 +36,7 @@ export type BackofficeRuntimeServices = {
   fragnoRuntime?: FragnoRuntime;
 };
 
-export type BackofficeRuntimeServiceOverrides = Partial<
+type BackofficeRuntimeServiceOverrides = Partial<
   Pick<BackofficeRuntimeServices, "objects" | "adapters" | "config">
 >;
 
@@ -44,9 +44,7 @@ type CreateCloudflareBackofficeRuntimeServicesOptions = {
   databaseScope?: BackofficeDatabaseAdapterScope;
 };
 
-export const createCloudflareBackofficeRuntimeConfig = (
-  env: CloudflareEnv,
-): BackofficeRuntimeConfig => ({
+const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): BackofficeRuntimeConfig => ({
   ...(env.DOCS_PUBLIC_BASE_URL?.trim()
     ? { docsPublicBaseUrl: env.DOCS_PUBLIC_BASE_URL.trim() }
     : {}),
@@ -68,7 +66,7 @@ export const createCloudflareBackofficeRuntimeConfig = (
   },
 });
 
-export const createOverriddenBackofficeRuntimeServices = (
+const createOverriddenBackofficeRuntimeServices = (
   env: CloudflareEnv,
   overrides: BackofficeRuntimeServiceOverrides,
   options: CreateCloudflareBackofficeRuntimeServicesOptions = {},
@@ -94,19 +92,3 @@ export const createCloudflareDurableObjectRuntimeServices = (
   createCloudflareBackofficeRuntimeServices(env, {
     databaseScope: createDurableObjectDatabaseAdapterScope(state),
   });
-
-export type BackofficeRuntimeServicesInput =
-  | BackofficeRuntimeServices
-  | {
-      env: CloudflareEnv;
-    };
-
-export const resolveBackofficeRuntimeServices = (
-  input: BackofficeRuntimeServicesInput,
-): BackofficeRuntimeServices => {
-  if ("env" in input) {
-    return createCloudflareBackofficeRuntimeServices(input.env);
-  }
-
-  return input;
-};

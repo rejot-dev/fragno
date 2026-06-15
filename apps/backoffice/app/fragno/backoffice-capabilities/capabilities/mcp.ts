@@ -9,22 +9,7 @@ import { createMcpCapabilityFiles } from "@/fragno/backoffice-capabilities/capab
 
 import type { McpAdminConfigResponse } from "../../../../workers/mcp.do";
 
-const optionalTrimmedString = z
-  .string()
-  .trim()
-  .transform((value) => value || undefined)
-  .optional();
-
 export const mcpConfigureInputSchema = z.object({});
-
-const mcpToolSchema = z.object({
-  name: z.string().min(1),
-  title: optionalTrimmedString,
-  description: optionalTrimmedString,
-  inputSchema: z.record(z.string(), z.unknown()).optional(),
-  annotations: z.record(z.string(), z.unknown()).optional(),
-  _meta: z.record(z.string(), z.unknown()).optional(),
-});
 
 const AUTOMATION_SOURCE = "mcp" as const;
 const AUTOMATION_EVENT_SERVER_CONFIGURATION_CHANGED = "server.configuration.changed" as const;
@@ -123,5 +108,3 @@ export const mcpCapability: BackofficeConfigurableConnectionCapability = {
     },
   ],
 };
-
-export const mcpToolDescriptorSchema = mcpToolSchema;

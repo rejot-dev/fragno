@@ -8,7 +8,6 @@ import {
 import type {
   ResendRuntime,
   ResendThreadListArgs,
-  ResendThreadMessagesArgs,
   ResendThreadOrder,
   ResendThreadsGetArgs,
   ResendThreadsReplyArgs,
@@ -351,10 +350,4 @@ export const resendToolFamily = defineBackofficeRuntimeToolFamily({
   isAvailable: (context: ResendToolContext) => !!context.runtimes.resend,
 });
 
-export type {
-  ResendRuntime,
-  ResendThreadListArgs,
-  ResendThreadMessagesArgs,
-  ResendThreadsGetArgs,
-  ResendThreadsReplyArgs,
-};
+export type { ResendRuntime };

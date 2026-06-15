@@ -69,9 +69,7 @@ const throwOnMcpRuntimeError = (
     notConfiguredMessage: MCP_NOT_CONFIGURED,
   });
 
-export const createRouteBackedMcpRuntime = (
-  options: CreateRouteBackedMcpRuntimeOptions,
-): McpRuntime => {
+const createRouteBackedMcpRuntime = (options: CreateRouteBackedMcpRuntimeOptions): McpRuntime => {
   const baseUrl = options.baseUrl.trim();
   if (!baseUrl) {
     throw new Error("MCP runtime requires a base URL");
@@ -175,30 +173,3 @@ export const createMcpRuntime = ({
     fetch: async (outboundRequest) => mcpDo.fetch(outboundRequest),
   });
 };
-
-export const createUnavailableMcpRuntime = (message = MCP_NOT_CONFIGURED): McpRuntime => ({
-  listServers: async () => {
-    throw new Error(message);
-  },
-  createServer: async () => {
-    throw new Error(message);
-  },
-  deleteServer: async () => {
-    throw new Error(message);
-  },
-  listTools: async () => {
-    throw new Error(message);
-  },
-  callTool: async () => {
-    throw new Error(message);
-  },
-  startOAuth: async () => {
-    throw new Error(message);
-  },
-  setToken: async () => {
-    throw new Error(message);
-  },
-  getAuthStatus: async () => {
-    throw new Error(message);
-  },
-});

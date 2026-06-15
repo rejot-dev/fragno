@@ -1,7 +1,6 @@
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
 
 /** Default `triggerOrder`: sorts after any explicit lower values. */
-export const AUTOMATION_TRIGGER_ORDER_LAST = 2_147_483_647;
 
 export const automationFragmentSchema = schema("automations", (s) => {
   return s.addTable("kv_store", (t) => {

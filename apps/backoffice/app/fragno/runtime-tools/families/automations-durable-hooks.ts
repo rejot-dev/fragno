@@ -15,7 +15,7 @@ import {
 
 const AUTOMATION_INGEST_EVENT_HOOK_NAME = "internalIngestEvent";
 
-export const durableHookFragmentSchema = z
+const durableHookFragmentSchema = z
   .string()
   .trim()
   .min(1)
@@ -41,12 +41,12 @@ export type DurableHooksGetArgs = {
   hookId: string;
 };
 
-export type AutomationEventsListArgs = {
+type AutomationEventsListArgs = {
   cursor?: string;
   pageSize?: number;
 };
 
-export type AutomationEventsGetArgs = {
+type AutomationEventsGetArgs = {
   hookId: string;
 };
 
@@ -57,7 +57,7 @@ export type DurableHooksRuntime = {
   ) => Promise<DurableHookQueueResponse["items"][number] | null>;
 };
 
-export type DurableHooksToolContext = BackofficeToolContext<{
+type DurableHooksToolContext = BackofficeToolContext<{
   durableHooks?: DurableHooksRuntime;
 }>;
 
@@ -425,7 +425,6 @@ export const automationEventsRuntimeTools = [
   listAutomationEventsTool,
   getAutomationEventTool,
 ] as const;
-export const durableHooksRuntimeTools = hooksRuntimeTools;
 
 export const hooksToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "hooks",
@@ -438,5 +437,3 @@ export const automationEventsToolFamily = defineBackofficeRuntimeToolFamily({
   tools: automationEventsRuntimeTools,
   isAvailable: (context: DurableHooksToolContext) => !!context.runtimes.durableHooks,
 });
-
-export const durableHooksToolFamily = hooksToolFamily;

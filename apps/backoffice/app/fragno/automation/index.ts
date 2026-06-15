@@ -5,7 +5,6 @@ import {
   automationFragmentDefinition,
   type AutomationFragmentConfig,
   type AutomationIngestResult,
-  type AutomationPiBashContext,
   type AutomationWorkflowsService,
 } from "./definition";
 import { automationFragmentRoutes } from "./routes";
@@ -27,84 +26,17 @@ export function createAutomationFragment(
     .build();
 }
 
-export { automationFragmentDefinition } from "./definition";
-export { automationFragmentSchema, AUTOMATION_TRIGGER_ORDER_LAST } from "./schema";
-export type { AutomationFragmentConfig, AutomationPiBashContext };
+export type { AutomationFragmentConfig };
 export {
-  AUTOMATION_SCRIPTS_ROOT,
   AUTOMATION_SYSTEM_ROOT,
   AUTOMATION_WORKSPACE_ROOT,
   createMinimalFileSystem,
   listAutomationWorkspaceScripts,
-  loadAutomationCatalog,
-  loadAutomationCatalogFromConfig,
   readAutomationWorkspaceScript,
-  resolveAutomationFileSystem,
 } from "./catalog";
-export type {
-  AutomationBindingCatalogEntry,
-  AutomationCatalog,
-  AutomationFileSystemConfig,
-  AutomationFileSystemResolvePurpose,
-  AutomationFileSystemResolver,
-  AutomationFileSystemResolverInput,
-  AutomationScriptCatalogEntry,
-  AutomationScriptLayer,
-  AutomationWorkspaceScriptEntry,
-} from "./catalog";
-export {
-  AUTOMATION_INTERNAL_ENTITIES,
-  AUTOMATION_SOURCES,
-  AUTOMATION_SOURCE_EVENT_TYPES,
-} from "./contracts";
+export type { AutomationScriptLayer, AutomationWorkspaceScriptEntry } from "./catalog";
+
 export type { AutomationIngestResult };
-export type {
-  AutomationCreateIdentityClaimInput,
-  AutomationCreateIdentityClaimResult,
-  AutomationEntityDefinition,
-  AutomationEntityRef,
-  AutomationEntityScope,
-  AutomationExternalEntityRef,
-  AutomationEvent,
-  AutomationEventActor,
-  AutomationEventPayload,
-  AutomationEventSubject,
-  AutomationExternalEntityDefinition,
-  AutomationInternalEntityDefinition,
-  AutomationInternalEntityType,
-  AutomationKnownEvent,
-  AutomationKnownEventType,
-  AutomationEventTypeForSource,
-  AutomationSource,
-} from "./contracts";
-export { createAutomationStoreServices } from "./bindings-storage-runtime";
-export { createRouteBackedAutomationStoreRuntime } from "./bindings-route-runtime";
-export { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
-export { createEventRuntime } from "../runtime-tools/families/event-runtime";
-export { createOtpRuntime } from "../runtime-tools/families/otp-runtime";
-export {
-  createTelegramRuntime,
-  createUnavailableTelegramRuntime,
-} from "../runtime-tools/families/telegram-runtime";
-export { createAutomationExecutionContext, createAutomationRuntime } from "./engine/runtime";
-export { executeAutomationScript, executeBashAutomation } from "../runtime-tools/automation-host";
-export { createAutomationRunResult, formatAutomationResultAsStdout } from "./run-result";
-export type {
-  AutomationRuntimeCommandContext,
-  AutomationRuntimeHostContext,
-  AutomationRuntime,
-  AutomationEmitEventResult,
-  AutomationStoreEntry,
-} from "./engine/runtime";
-export type {
-  AutomationCommandCallResult,
-  AutomationRunResult,
-  AutomationRunRuntime,
-} from "./run-result";
-export type { AutomationStoreRuntime } from "../runtime-tools/families/automations-bindings";
-export type { EventRuntime } from "../runtime-tools/families/event-runtime";
-export type { OtpRuntime } from "../runtime-tools/families/otp-runtime";
-export type {
-  TelegramAutomationFileMetadata,
-  TelegramRuntime,
-} from "../runtime-tools/families/telegram-runtime";
+export type { AutomationEvent, AutomationEventActor, AutomationEventSubject } from "./contracts";
+
+export type { AutomationRuntimeHostContext, AutomationRuntime } from "./engine/runtime";

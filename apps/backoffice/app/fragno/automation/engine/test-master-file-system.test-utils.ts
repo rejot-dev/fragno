@@ -14,7 +14,7 @@ export const createTestMasterFileSystem = (
     ],
   });
 
-export const createTestMount = (
+const createTestMount = (
   id: string,
   mountPoint: string,
   files: Record<string, string | Uint8Array>,

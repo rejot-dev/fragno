@@ -53,7 +53,7 @@ const resolvePageSize = (pageSize?: number) => {
   return Math.min(MAX_PAGE_SIZE, Math.max(1, pageSize));
 };
 
-export const serializeHookRecord = (record: DurableHookRecord): DurableHookQueueEntry => ({
+const serializeHookRecord = (record: DurableHookRecord): DurableHookQueueEntry => ({
   id: String(record.id),
   hookName: record.hookName,
   status: record.status,
@@ -66,10 +66,10 @@ export const serializeHookRecord = (record: DurableHookRecord): DurableHookQueue
   payload: record.payload as DurableHookPayload,
 });
 
-export const serializeHookRecords = (records: DurableHookRecord[]): DurableHookQueueEntry[] =>
+const serializeHookRecords = (records: DurableHookRecord[]): DurableHookQueueEntry[] =>
   records.map((record) => serializeHookRecord(record));
 
-export const loadDurableHookQueue = async (
+const loadDurableHookQueue = async (
   fragment: AnyFragnoInstantiatedDatabaseFragment,
   options: DurableHookQueueOptions = {},
 ): Promise<DurableHookQueueResponse> => {
@@ -112,7 +112,7 @@ export const loadDurableHookQueue = async (
   };
 };
 
-export const loadDurableHook = async (
+const loadDurableHook = async (
   fragment: AnyFragnoInstantiatedDatabaseFragment,
   hookId: string,
 ): Promise<DurableHookQueueEntry | null> => {
@@ -136,7 +136,7 @@ export const loadDurableHook = async (
   return serializeHookRecord(record);
 };
 
-export class DurableHookRepositoryRpcTarget<
+class DurableHookRepositoryRpcTarget<
   TOptions extends DurableHookQueueOptions = DurableHookQueueOptions,
 >
   extends RpcTarget
@@ -172,7 +172,7 @@ export const createDurableHookRepositoryRpcTarget = <
   TOptions extends DurableHookQueueOptions = DurableHookQueueOptions,
 >(
   repository: DurableHookRepository<TOptions>,
-): DurableHookRepositoryRpcTarget<TOptions> => new DurableHookRepositoryRpcTarget(repository);
+): DurableHookRepository<TOptions> => new DurableHookRepositoryRpcTarget(repository);
 
 export const createEmptyDurableHookRepository = <
   TOptions extends DurableHookQueueOptions = DurableHookQueueOptions,

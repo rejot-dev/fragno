@@ -108,7 +108,7 @@ export type AutomationWorkflowRuntime = {
   getHistory?: (input: WorkflowGetInstanceArgs) => Promise<WorkflowHistory>;
 };
 
-export type AutomationWorkflowToolContext = BackofficeToolContext<{
+type AutomationWorkflowToolContext = BackofficeToolContext<{
   workflow?: AutomationWorkflowRuntime;
 }>;
 

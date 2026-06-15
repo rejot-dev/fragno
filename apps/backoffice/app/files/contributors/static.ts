@@ -2,8 +2,7 @@ import { SYSTEM_FILE_CONTENT } from "../content/system";
 import type { FileContributor, FileMountMetadata } from "../types";
 import { createReadOnlyContentFileSystem } from "./content";
 
-export const STATIC_FILE_CONTRIBUTOR_ID = "system";
-export const STATIC_FILE_MOUNT_ID = "system";
+const STATIC_FILE_MOUNT_ID = "system";
 export const STATIC_FILE_MOUNT_POINT = "/system";
 
 export const staticFileMount: FileMountMetadata = {

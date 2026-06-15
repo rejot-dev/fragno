@@ -25,38 +25,6 @@ export interface WriteFileOptions {
 }
 
 /**
- * File system entry types
- */
-export interface FileEntry {
-  type: "file";
-  content: string | Uint8Array;
-  mode: number;
-  mtime: Date;
-}
-
-export interface DirectoryEntry {
-  type: "directory";
-  mode: number;
-  mtime: Date;
-}
-
-export interface SymlinkEntry {
-  type: "symlink";
-  target: string; // The path this symlink points to
-  mode: number;
-  mtime: Date;
-}
-
-export interface LazyFileEntry {
-  type: "file";
-  lazy: () => string | Uint8Array | Promise<string | Uint8Array>;
-  mode: number;
-  mtime: Date;
-}
-
-export type FsEntry = FileEntry | LazyFileEntry | DirectoryEntry | SymlinkEntry;
-
-/**
  * Directory entry with type information (similar to Node's Dirent)
  * Used by readdirWithFileTypes for efficient directory listing without stat calls
  */
@@ -264,25 +232,6 @@ export interface IFileSystem {
   utimes(path: string, atime: Date, mtime: Date): Promise<void>;
 }
 
-/**
- * Extended file initialization options with optional metadata
- */
-export interface FileInit {
-  content: FileContent;
-  mode?: number;
-  mtime?: Date;
-}
-
-/**
- * Lazy file provider - a function whose return value becomes the file content on first read
- */
-export type LazyFileProvider = () => string | Uint8Array | Promise<string | Uint8Array>;
-
-/**
- * Initial files can be simple content, extended options with metadata, or lazy providers
- */
-export type InitialFiles = Record<string, FileContent | FileInit | LazyFileProvider>;
-
 export const createUnsupportedFileSystem = (
   operation: (name: string, path: string) => Error,
   overrides: Partial<IFileSystem> = {},
@@ -361,8 +310,3 @@ export const createUnsupportedFileSystem = (
   },
   ...overrides,
 });
-
-/**
- * Factory function type for creating filesystem instances
- */
-export type FileSystemFactory = (initialFiles?: InitialFiles) => IFileSystem;

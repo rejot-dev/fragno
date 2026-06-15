@@ -39,7 +39,7 @@ type CreateAutomationRunResultInput<TRuntime extends AutomationRunRuntime> = {
   workflowDefinition?: BackofficeCodemodeWorkflowDefinition;
 };
 
-export const automationCommandCallResultSchema = z.object({
+const automationCommandCallResultSchema = z.object({
   command: z.string(),
   output: z.string(),
   exitCode: z.number(),
@@ -74,7 +74,7 @@ export const automationRunResultSchema = z.object({
   ),
 });
 
-export const formatAutomationResultAsStdout = (result: unknown) => {
+const formatAutomationResultAsStdout = (result: unknown) => {
   if (result === undefined) {
     return "";
   }

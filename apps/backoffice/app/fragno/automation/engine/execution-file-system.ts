@@ -13,7 +13,7 @@ const TEXT_DECODER = new TextDecoder();
 /**
  * Creates a read-only mount containing a single `/context/event.json` file.
  */
-export const createAutomationContextMount = ({
+const createAutomationContextMount = ({
   contextFiles,
 }: {
   contextFiles: Record<string, string>;
@@ -91,7 +91,7 @@ export const createAutomationContextMount = ({
  */
 const DEV_ENTRIES = ["null", "zero"] as const;
 
-export const createAutomationDevMount = (): ResolvedFileMount => {
+const createAutomationDevMount = (): ResolvedFileMount => {
   const files = new Map<string, Uint8Array>(
     DEV_ENTRIES.map((name) => [`/dev/${name}`, new Uint8Array(0)]),
   );

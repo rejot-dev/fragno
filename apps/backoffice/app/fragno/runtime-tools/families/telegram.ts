@@ -61,7 +61,7 @@ export type TelegramActionOutput = {
   ok: boolean;
 };
 
-export type TelegramDownloadedFile = {
+type TelegramDownloadedFile = {
   bytes: number[];
   contentType?: string;
 };
@@ -74,7 +74,7 @@ export type TelegramRuntime = {
   editMessage: (args: TelegramEditMessageArgs) => Promise<TelegramQueuedMessageOutput>;
 };
 
-export type TelegramFileDownloadBashArgs = TelegramFileDownloadArgs & {
+type TelegramFileDownloadBashArgs = TelegramFileDownloadArgs & {
   outputPath?: string;
 };
 
@@ -125,7 +125,7 @@ const getTelegramRuntime = (
   return runtime;
 };
 
-export const expandTelegramShortFlags = (args: string[]): string[] =>
+const expandTelegramShortFlags = (args: string[]): string[] =>
   args.map((token) => {
     if (token === "-o") {
       return "--output";
@@ -163,7 +163,7 @@ const parseTelegramFileGet = defineCliArgsParser<TelegramFileGetArgs>(
   telegramParserOptions,
 );
 
-export const parseTelegramFileDownloadBashArgs = defineCliArgsParser<TelegramFileDownloadBashArgs>(
+const parseTelegramFileDownloadBashArgs = defineCliArgsParser<TelegramFileDownloadBashArgs>(
   "telegram.file.download",
   {
     fileId: { required: true },

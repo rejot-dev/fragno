@@ -44,7 +44,7 @@ const ImageRenderer: FilesContentRenderer = {
   },
 };
 
-export const FILES_CONTENT_RENDERERS_BY_CONTENT_TYPE = new Map<string, FilesContentRenderer>([
+const FILES_CONTENT_RENDERERS_BY_CONTENT_TYPE = new Map<string, FilesContentRenderer>([
   ["text/plain", TextRenderer],
   ["text/markdown", TextRenderer],
   ["text/x-shellscript", TextRenderer],

@@ -33,10 +33,6 @@ export const identityClaimConfirmationPayloadSchema = z.object({
   subjectUserId: z.string().trim().min(1),
 });
 
-export type IdentityClaimConfirmationPayload = z.infer<
-  typeof identityClaimConfirmationPayloadSchema
->;
-
 export const buildIdentityClaimCompletionUrl = (
   publicBaseUrl: string,
   orgId: string,

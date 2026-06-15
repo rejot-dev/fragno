@@ -107,7 +107,7 @@ export const createReadOnlyContentFileSystem = (
 
 type MutableFolderEntry = FileEntryDescriptor & { kind: "folder"; children: FileEntryDescriptor[] };
 
-export const buildContentTree = (
+const buildContentTree = (
   mountPoint: string,
   artifacts: Record<string, FileSystemArtifact>,
 ): FileEntryDescriptor[] => {
@@ -172,7 +172,7 @@ export const buildContentTree = (
   return roots.slice().sort(compareEntries).map(sortEntryChildren);
 };
 
-export const listContentChildren = (
+const listContentChildren = (
   mountPoint: string,
   artifacts: Record<string, FileSystemArtifact>,
   path: string,
@@ -192,7 +192,7 @@ export const listContentChildren = (
   return entry?.kind === "folder" ? (entry.children ?? []) : [];
 };
 
-export const listContentChildNames = (
+const listContentChildNames = (
   mountPoint: string,
   artifacts: Record<string, FileSystemArtifact>,
   path: string,
@@ -202,7 +202,7 @@ export const listContentChildNames = (
   );
 };
 
-export const listContentDirents = (
+const listContentDirents = (
   mountPoint: string,
   artifacts: Record<string, FileSystemArtifact>,
   path: string,
@@ -215,7 +215,7 @@ export const listContentDirents = (
   }));
 };
 
-export const findContentEntry = (
+const findContentEntry = (
   mountPoint: string,
   artifacts: Record<string, FileSystemArtifact>,
   path: string,
@@ -224,7 +224,7 @@ export const findContentEntry = (
   return findEntryInTree(tree, path);
 };
 
-export const statContentEntry = (
+const statContentEntry = (
   mountPoint: string,
   artifacts: Record<string, FileSystemArtifact>,
   path: string,
@@ -261,7 +261,7 @@ export const statContentEntry = (
   };
 };
 
-export const readContentArtifact = (
+const readContentArtifact = (
   mountPoint: string,
   artifacts: Record<string, FileSystemArtifact>,
   path: string,
@@ -274,7 +274,7 @@ export const readContentArtifact = (
   return artifacts[relativePath] ?? null;
 };
 
-export const readContentText = (
+const readContentText = (
   mountPoint: string,
   artifacts: Record<string, FileSystemArtifact>,
   path: string,
@@ -291,7 +291,7 @@ export const readContentText = (
   return TEXT_DECODER.decode(artifact);
 };
 
-export const readContentBuffer = (
+const readContentBuffer = (
   mountPoint: string,
   artifacts: Record<string, FileSystemArtifact>,
   path: string,

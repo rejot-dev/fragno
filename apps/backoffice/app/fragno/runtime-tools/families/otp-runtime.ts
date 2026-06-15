@@ -1,9 +1,9 @@
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 
-import type { AutomationIdentityClaimRecord, OtpRuntime } from "./otp";
+import type { OtpRuntime } from "./otp";
 
-export type { AutomationIdentityClaimRecord, OtpRuntime };
+export type { OtpRuntime };
 
 export type RegisteredOtpCommandContext = {
   runtime: OtpRuntime;

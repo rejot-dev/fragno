@@ -22,18 +22,6 @@ export const createUnsupportedOperationFileSystemError = (
 ): FileSystemError =>
   new FileSystemError("ENOTSUP", `ENOTSUP: operation not supported, ${operation} '${path}'`);
 
-export const createIsDirectoryFileSystemError = (
-  operation: string,
-  path: string,
-): FileSystemError =>
-  new FileSystemError("EISDIR", `EISDIR: illegal operation on a directory, ${operation} '${path}'`);
-
-export const createNotDirectoryFileSystemError = (
-  operation: string,
-  path: string,
-): FileSystemError =>
-  new FileSystemError("ENOTDIR", `ENOTDIR: not a directory, ${operation} '${path}'`);
-
 export const createReadOnlyFileSystemError = (operation: string, path: string): FileSystemError =>
   new FileSystemError("EROFS", `EROFS: read-only file system, ${operation} '${path}'`);
 

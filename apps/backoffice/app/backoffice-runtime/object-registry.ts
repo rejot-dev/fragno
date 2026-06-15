@@ -39,7 +39,7 @@ export type DurableHookObject<TRepository = DurableHookRepository<DurableHookOpt
   getDurableHookRepository(...args: unknown[]): TRepository | Promise<TRepository>;
 };
 
-export type ScopedObjects<TObject> = {
+type ScopedObjects<TObject> = {
   singleton(): TObject;
   forOrg(orgId: string): TObject;
   forName(name: string): TObject;
@@ -138,7 +138,7 @@ export type SandboxRegistryObject = {
   untrackInstance(id: string): Promise<void>;
 };
 
-export type SandboxObject = {
+type SandboxObject = {
   getRuntimeStatus(): Promise<{ status: SandboxInstanceStatus }>;
 };
 

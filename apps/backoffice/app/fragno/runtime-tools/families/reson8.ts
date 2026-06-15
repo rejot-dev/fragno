@@ -21,13 +21,6 @@ import {
   type BackofficeToolContext,
 } from "../runtime-tools";
 
-export type Reson8PrerecordedTranscriptionInput = Omit<
-  Partial<Reson8PrerecordedTranscribeArgs>,
-  "inputPath"
-> & {
-  audio?: ArrayBuffer | ArrayBufferView | Blob | ReadableStream<Uint8Array>;
-};
-
 type Reson8ToolContext = BackofficeToolContext<{ reson8?: Reson8Runtime }>;
 
 const nonEmptyString = z.string().trim().min(1);
@@ -254,4 +247,4 @@ export const reson8ToolFamily = defineBackofficeRuntimeToolFamily({
   isAvailable: (context: Reson8ToolContext) => !!context.runtimes.reson8,
 });
 
-export type { Reson8Runtime, Reson8PrerecordedTranscribeArgs };
+export type { Reson8Runtime };

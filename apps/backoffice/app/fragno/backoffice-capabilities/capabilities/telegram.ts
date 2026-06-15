@@ -49,7 +49,7 @@ export const telegramConfigureInputSchema = z.object({
   webhookBaseUrl: requiredHttpUrl,
 });
 
-export const telegramAutomationExternalEntities = {
+const telegramAutomationExternalEntities = {
   chat: {
     scope: "external",
     source: AUTOMATION_SOURCE,

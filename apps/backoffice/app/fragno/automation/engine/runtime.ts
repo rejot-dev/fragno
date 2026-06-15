@@ -10,20 +10,15 @@ import type {
   AutomationCommandContext,
   AutomationTriggerBinding,
 } from "../../runtime-tools/automation-types";
-import type {
-  AutomationStoreRuntime,
-  AutomationStoreEntry,
-} from "../../runtime-tools/families/automations-bindings";
+import type { AutomationStoreRuntime } from "../../runtime-tools/families/automations-bindings";
+import type {} from "../../runtime-tools/families/event";
 import {
   createUnavailableEventRuntime,
   createEventRuntime,
-  type AutomationEmitEventResult,
   type EventRuntime,
 } from "../../runtime-tools/families/event-runtime";
-import {
-  type AutomationIdentityClaimRecord,
-  type OtpRuntime,
-} from "../../runtime-tools/families/otp-runtime";
+import type {} from "../../runtime-tools/families/otp";
+import { type OtpRuntime } from "../../runtime-tools/families/otp-runtime";
 import type { AutomationEvent } from "../contracts";
 
 const normalizeOrgId = (orgId: string | undefined) => orgId?.trim() || undefined;
@@ -50,8 +45,6 @@ export type AutomationRuntimeHostContext = Omit<
     runtime: OtpRuntime;
   };
 };
-
-export type { AutomationEmitEventResult, AutomationStoreEntry, AutomationIdentityClaimRecord };
 
 export const createAutomationRuntime = ({
   runtime,

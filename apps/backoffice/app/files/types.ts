@@ -3,16 +3,16 @@ import type { UploadAdminConfigResponse, UploadProvider } from "@/fragno/upload"
 
 import type { FileContent, IFileSystem } from "./interface";
 
-export const FILE_ROOT_KINDS = ["static", "upload", "custom"] as const;
+const FILE_ROOT_KINDS = ["static", "upload", "custom"] as const;
 export type FileRootKind = (typeof FILE_ROOT_KINDS)[number];
 
-export const FILE_ROOT_PERSISTENCE = ["ephemeral", "persistent", "session"] as const;
+const FILE_ROOT_PERSISTENCE = ["ephemeral", "persistent", "session"] as const;
 export type FileRootPersistence = (typeof FILE_ROOT_PERSISTENCE)[number];
 
-export const FILE_BACKEND = ["backoffice", "pi", "sandbox"] as const;
+const FILE_BACKEND = ["backoffice", "pi", "sandbox"] as const;
 export type FilesBackend = (typeof FILE_BACKEND)[number];
 
-export const FILE_ENTRY_KINDS = ["file", "folder"] as const;
+const FILE_ENTRY_KINDS = ["file", "folder"] as const;
 export type FileEntryKind = (typeof FILE_ENTRY_KINDS)[number];
 
 export type FileSystemArtifact = FileContent;

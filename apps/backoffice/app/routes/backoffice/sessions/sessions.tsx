@@ -52,7 +52,7 @@ type PiCreateSessionActionData = {
   message?: string;
 };
 
-export type PiSendMessageActionData = {
+type PiSendMessageActionData = {
   intent: "send-message";
   ok: boolean;
   message?: string;

@@ -49,7 +49,7 @@ export type PiConfigState = {
   };
 };
 
-export const PI_PROVIDER_LABELS: Record<PiModelProvider, string> = {
+const PI_PROVIDER_LABELS: Record<PiModelProvider, string> = {
   openai: "OpenAI",
   anthropic: "Anthropic",
   gemini: "Gemini",

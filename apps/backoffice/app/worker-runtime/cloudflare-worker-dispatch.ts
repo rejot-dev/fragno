@@ -1,6 +1,6 @@
 import { resolveCloudflareScriptName } from "@fragno-dev/cloudflare-fragment/script-name";
 
-export const DEV_CLOUDFLARE_WORKER_ROUTE_PREFIX = "/__dev/workers";
+const DEV_CLOUDFLARE_WORKER_ROUTE_PREFIX = "/__dev/workers";
 
 const DEVELOPMENT_MODE = "development";
 const FORWARDED_REQUEST_HEADER_DENYLIST = [
