@@ -248,6 +248,9 @@ const createMcpCodemodeRuntimeTools = ({
     })),
   );
 
+const isMcpNotConfiguredError = (error: unknown) =>
+  error instanceof Error && /MCP is not configured for this organisation\./u.test(error.message);
+
 export const createMcpCodemodeProviders = async ({
   runtime,
   toolCalls,
@@ -255,7 +258,17 @@ export const createMcpCodemodeProviders = async ({
   runtime: McpRuntime;
   toolCalls?: BackofficeRuntimeToolCall[];
 }): Promise<ToolProvider[]> => {
-  const servers = createMcpCodemodeServers((await runtime.listServers()).servers);
+  let serverList: McpListServersOutput;
+  try {
+    serverList = await runtime.listServers();
+  } catch (error) {
+    if (isMcpNotConfiguredError(error)) {
+      return [];
+    }
+    throw error;
+  }
+
+  const servers = createMcpCodemodeServers(serverList.servers);
   const tools = createMcpCodemodeRuntimeTools({ runtime, servers });
   return createBackofficeCodemodeProviders({ tools, context: { runtimes: {} }, toolCalls });
 };

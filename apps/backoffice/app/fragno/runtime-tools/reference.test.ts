@@ -545,6 +545,10 @@ describe("runtime tool reference generation", () => {
       types.indexOf("// ── Backoffice domain tool providers"),
     );
 
+    expect(domainProviderTypes).toContain("declare const capabilities");
+    expect(domainProviderTypes).toContain("declare const connections");
+    expect(domainProviderTypes).toContain("list(input: ConnectionsListInput)");
+    expect(domainProviderTypes).toContain("configure(input: ConnectionsConfigureInput)");
     expect(domainProviderTypes).toContain("declare const store");
     expect(domainProviderTypes).toContain("declare const workflow");
     expect(domainProviderTypes).toContain("createInstance(input: WorkflowCreateInstanceInput)");

@@ -219,7 +219,108 @@ describe("system automation scenarios", () => {
           then.files.contains({
             orgId: "org-1",
             path: "/workspace/codemode.d.ts",
+            text: "declare const capabilities",
+          }),
+          then.files.contains({
+            orgId: "org-1",
+            path: "/workspace/codemode.d.ts",
+            text: "declare const connections",
+          }),
+          then.files.contains({
+            orgId: "org-1",
+            path: "/workspace/codemode.d.ts",
+            text: "configure(input: ConnectionsConfigureInput)",
+          }),
+          then.files.contains({
+            orgId: "org-1",
+            path: "/workspace/codemode.d.ts",
             text: "declare const telegram",
+          }),
+          then.workflow.noErrored({ orgId: "org-1" }),
+        ],
+      }),
+    );
+  });
+
+  test("mcp server configuration changes write installed MCP codemode provider types", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "system MCP server configuration writes codemode provider types",
+
+        files: backofficeFiles.systemOnly(),
+
+        fakes: ({ fake }) => ({
+          mcp: fake.mcp({
+            servers: [
+              {
+                slug: "cloudflare-mcp",
+                name: "Cloudflare MCP",
+                cache: {
+                  tools: [
+                    {
+                      name: "search-docs",
+                      description: "Search docs.",
+                      inputSchema: {
+                        type: "object",
+                        properties: { query: { type: "string" } },
+                        required: ["query"],
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        }),
+
+        setup: ({ given }) => [
+          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          given.connection.configured({ orgId: "org-1", id: "mcp" }),
+        ],
+
+        steps: ({ when, then }) => [
+          when.automation.ingestEvent({
+            id: "mcp-server-changed-1",
+            orgId: "org-1",
+            source: "mcp",
+            eventType: "server.configuration.changed",
+            occurredAt: "2026-01-01T00:00:00.000Z",
+            payload: {
+              serverId: "cloudflare-mcp",
+              current: { tools: [{ name: "search-docs" }] },
+            },
+            actor: { scope: "internal", type: "system", id: "mcp" },
+            actors: [{ scope: "internal", type: "system", id: "mcp" }],
+            subject: { orgId: "org-1", serverId: "cloudflare-mcp" },
+          }),
+
+          then.workflow.instance({
+            instanceId: "codemode-types-refresh-mcp-server-changed-1",
+            status: "complete",
+            output: {
+              changed: true,
+              path: "/workspace/codemode.d.ts",
+            },
+          }),
+          then.files.contains({
+            orgId: "org-1",
+            path: "/workspace/codemode.d.ts",
+            text: "// ── Installed MCP tool providers",
+          }),
+          then.files.contains({
+            orgId: "org-1",
+            path: "/workspace/codemode.d.ts",
+            text: "declare const mcp_cloudflare_mcp",
+          }),
+          then.files.contains({
+            orgId: "org-1",
+            path: "/workspace/codemode.d.ts",
+            text: "search_docs(input: McpCloudflareMcpSearchDocsInput)",
+          }),
+          then.files.contains({
+            orgId: "org-1",
+            path: "/workspace/codemode.d.ts",
+            text: "query: string",
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
