@@ -66,4 +66,4 @@ async function collectCoverageFiles() {
 }
 
 // Run the function
-collectCoverageFiles();
+await collectCoverageFiles();

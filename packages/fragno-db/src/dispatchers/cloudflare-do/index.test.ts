@@ -85,7 +85,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     expect(setAlarm).toHaveBeenCalledTimes(1);
 
     const waitUntil = vi.fn();
-    handler.notify?.({ source: "request", waitUntil });
+    await handler.notify?.({ source: "request", waitUntil });
 
     expect(waitUntil).toHaveBeenCalledTimes(1);
     const [notifyPromise] = waitUntil.mock.calls[0] as [Promise<void>];

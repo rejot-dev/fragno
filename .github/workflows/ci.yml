@@ -29,7 +29,7 @@ jobs:
         run: pnpm run format:check
 
       - name: Run lint
-        run: pnpm exec oxlint
+        run: pnpm run lint:type-aware
 
   build:
     runs-on: ubuntu-latest

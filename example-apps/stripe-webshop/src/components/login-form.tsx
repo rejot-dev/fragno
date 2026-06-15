@@ -30,7 +30,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
       });
       // Redirect to the redirect param or profile page
       const redirectTo = search.redirect || "/profile";
-      navigate({ to: redirectTo });
+      await navigate({ to: redirectTo });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {

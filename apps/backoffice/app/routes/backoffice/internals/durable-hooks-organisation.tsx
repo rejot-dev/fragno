@@ -263,7 +263,7 @@ export default function BackofficeDurableHooksOrganisation() {
     }
     const stillVisible = items.some((item) => item.id === selectedHookId);
     if (!stillVisible) {
-      navigate(`${fragmentBasePath}${location.search}`, { replace: true });
+      void navigate(`${fragmentBasePath}${location.search}`, { replace: true });
     }
   }, [items, selectedHookId, fragmentBasePath, location.search, navigate]);
 
@@ -422,11 +422,11 @@ export default function BackofficeDurableHooksOrganisation() {
                             role="button"
                             tabIndex={0}
                             aria-label={`View durable hook ${hook.hookName}`}
-                            onClick={() => navigate(detailHref)}
+                            onClick={() => void navigate(detailHref)}
                             onKeyDown={(event) => {
                               if (event.key === "Enter" || event.key === " ") {
                                 event.preventDefault();
-                                navigate(detailHref);
+                                void navigate(detailHref);
                               }
                             }}
                             className={

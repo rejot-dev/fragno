@@ -494,7 +494,7 @@ export function SessionComposer({
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        submitDraft();
+        void submitDraft();
       }}
       className="flex-none border border-t-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-0"
     >
@@ -508,7 +508,7 @@ export function SessionComposer({
           onKeyDown={(event) => {
             if (event.key === "Enter" && event.metaKey) {
               event.preventDefault();
-              submitDraft();
+              void submitDraft();
             }
           }}
           placeholder={

@@ -133,7 +133,7 @@ export class InMemoryAuthObject implements AuthObject {
     const fragment = this.#createFragment();
     this.#fragment = fragment;
 
-    state.blockConcurrencyWhile(async () => {
+    void state.blockConcurrencyWhile(async () => {
       try {
         await migrate(fragment);
         this.#ensureDispatcher();

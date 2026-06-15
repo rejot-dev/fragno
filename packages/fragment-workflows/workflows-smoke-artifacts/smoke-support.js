@@ -108,7 +108,7 @@ export function createBatch(workflowName, instances) {
   });
 }
 
-export function sendEvent(workflowName, id, type, payload = undefined) {
+export function sendEvent(workflowName, id, type, payload) {
   return request(`/${workflowName}/instances/${id}/events`, {
     method: "POST",
     body: JSON.stringify({ type, payload }),

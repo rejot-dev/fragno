@@ -16,7 +16,7 @@ function AuthLayout() {
 
   useEffect(() => {
     if (!isPending && !session?.user && location.pathname !== "/login") {
-      navigate({
+      void navigate({
         to: "/login",
         search: {
           redirect: location.pathname,

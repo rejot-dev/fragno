@@ -33,4 +33,4 @@ async function printSettings() {
   }
 }
 
-printSettings();
+await printSettings();

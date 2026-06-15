@@ -52,7 +52,7 @@ export default async function handleRequest(
           const stream = createReadableStreamFromReadable(body);
 
           responseHeaders.set("Content-Type", "text/html");
-          finishServerLoad();
+          void finishServerLoad();
 
           resolve(
             new Response(stream, {

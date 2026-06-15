@@ -92,7 +92,7 @@ function ProfilePage() {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate({ to: "/" });
+    await navigate({ to: "/" });
   };
 
   const formatPrice = (cents: number) => {
@@ -322,9 +322,9 @@ function ProfilePage() {
                         }
                         onClick={() => {
                           if (isFreePlan && hasActiveSubscription && !isScheduledToCancel) {
-                            handleCancelSubscription();
+                            void handleCancelSubscription();
                           } else if (priceId) {
-                            handleUpgradeSubscription(priceId);
+                            void handleUpgradeSubscription(priceId);
                           }
                         }}
                       >

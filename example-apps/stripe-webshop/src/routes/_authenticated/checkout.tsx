@@ -47,11 +47,13 @@ function CheckoutPage() {
 
   useEffect(() => {
     if (isSuccess) {
-      // Update session as it contains our user's subscription status
-      refetchSession();
-      navigate({ to: "/profile" });
+      void (async () => {
+        // Update session as it contains our user's subscription status
+        await refetchSession();
+        await navigate({ to: "/profile" });
+      })();
     }
-  }, [isSuccess]);
+  }, [isSuccess, navigate, refetchSession]);
 
   return (
     <div className="flex min-h-svh w-full flex-col items-center justify-center p-6">

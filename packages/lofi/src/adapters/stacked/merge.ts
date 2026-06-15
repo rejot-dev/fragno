@@ -1198,10 +1198,7 @@ export const createStackedQueryEngine = <T extends AnySchema>(options: {
     (await query.findWithCursor(tableName, builder)) as CursorResult<Record<string, unknown>>;
 
   const buildRootBuilder =
-    (
-      plan: LofiReadPlan,
-      selectOverride?: undefined | true | readonly string[],
-    ): StackedFindBuilderFn =>
+    (plan: LofiReadPlan, selectOverride?: true | readonly string[]): StackedFindBuilderFn =>
     (builder) => {
       const useIndex = normalizeIndexName(plan.queryTree.useIndex);
       if (plan.queryTree.where) {
