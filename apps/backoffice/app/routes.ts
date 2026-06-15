@@ -180,7 +180,6 @@ export default [
     ]),
   ]),
 
-  route("__dev", "routes/dev/index.ts"),
   route("__dev/workers/:orgId/:appId/*", "routes/dev/cloudflare-worker-proxy.ts"),
   route("__dev/codemode/:orgId/AGENTS.md", "routes/dev/codemode-agents-org.ts"),
   route("__dev/codemode/:orgId", "routes/dev/codemode.ts"),
