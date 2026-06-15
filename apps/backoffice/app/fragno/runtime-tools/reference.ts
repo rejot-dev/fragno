@@ -137,7 +137,7 @@ const optionUsage = (option: AutomationCommandOptionSpec) => {
   return option.required ? usage : `[${usage}]`;
 };
 
-export const renderBashCommandReferenceMarkdown = (references: readonly RuntimeToolReference[]) => {
+const renderBashCommandReferenceMarkdown = (references: readonly RuntimeToolReference[]) => {
   const byNamespace = new Map<string, RuntimeToolReference[]>();
   for (const reference of references) {
     if (!reference.bash) {

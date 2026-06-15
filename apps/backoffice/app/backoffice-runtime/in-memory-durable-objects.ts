@@ -5,7 +5,7 @@ type InMemoryStorageListOptions = {
 const toAlarmTimestamp = (value: number | Date) =>
   value instanceof Date ? value.getTime() : Math.trunc(value);
 
-export class InMemoryDurableObjectState {
+class InMemoryDurableObjectState {
   readonly id: DurableObjectId;
   readonly storage: DurableObjectStorage;
 
@@ -154,7 +154,7 @@ export type InMemoryDurableObjectInstance<TObject = unknown> = {
   stub: TObject;
 };
 
-export class InMemoryDurableObjectId {
+class InMemoryDurableObjectId {
   constructor(
     readonly namespace: string,
     readonly name: string,

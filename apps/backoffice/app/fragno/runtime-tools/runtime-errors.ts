@@ -10,7 +10,7 @@ export const createOrganisationNotConfiguredMessage = (serviceName: string) =>
 
 export const isSuccessStatus = (status: number) => status >= 200 && status < 300;
 
-export const getJsonErrorField = (value: unknown, field: "message" | "code") => {
+const getJsonErrorField = (value: unknown, field: "message" | "code") => {
   if (!value || typeof value !== "object") {
     return null;
   }

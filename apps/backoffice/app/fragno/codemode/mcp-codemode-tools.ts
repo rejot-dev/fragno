@@ -117,8 +117,7 @@ const sanitizeMcpCodemodeName = (name: string) => {
   return RESERVED_CODEMODE_NAMES.has(identifier) ? `${identifier}_` : identifier;
 };
 
-export const mcpCodemodeProviderNameForSlug = (slug: string) =>
-  `mcp_${sanitizeMcpCodemodeName(slug)}`;
+const mcpCodemodeProviderNameForSlug = (slug: string) => `mcp_${sanitizeMcpCodemodeName(slug)}`;
 
 const isJsonSchemaObject = (value: unknown): value is JsonSchemaObject =>
   !!value && typeof value === "object" && !Array.isArray(value);

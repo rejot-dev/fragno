@@ -1,7 +1,7 @@
 import type { AutomationEvent, AutomationEventSubject } from "@/fragno/automation";
 
 import type { BackofficeObjectAddress, BackofficeObjectBindingName } from "./object-registry";
-import { named, org, project, singleton, user } from "./object-registry";
+import { org, project, singleton, user } from "./object-registry";
 
 const normalizeId = (value: unknown): string | null => {
   if (typeof value !== "string") {
@@ -68,11 +68,6 @@ export const resolveProjectScopedObjectAddress = (
 
   return objectAddress(binding, project({ projectId }));
 };
-
-export const resolveNamedObjectAddress = (
-  binding: BackofficeObjectBindingName,
-  name: string,
-): BackofficeObjectAddress => objectAddress(binding, named(name));
 
 export const resolveSingletonObjectAddress = (
   binding: BackofficeObjectBindingName,

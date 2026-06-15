@@ -6,10 +6,7 @@ import type {
   StoreListArgs,
   StoreSetArgs,
 } from "../runtime-tools/automation-types";
-import type {
-  AutomationStoreDeleteResult,
-  AutomationStoreEntry,
-} from "../runtime-tools/families/automations-bindings";
+import type { AutomationStoreEntry } from "../runtime-tools/families/automations-bindings";
 import { automationFragmentSchema } from "./schema";
 import {
   automationStoreDeleteResultSchema,
@@ -17,8 +14,6 @@ import {
   hasSystemCategory,
   validateAutomationStoreVerification,
 } from "./store";
-
-export type { AutomationStoreDeleteResult, AutomationStoreEntry };
 
 export class AutomationStoreProtectedEntryError extends Error {
   constructor(readonly key: string) {

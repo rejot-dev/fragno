@@ -104,7 +104,7 @@ export const bashParametersSchema = withSinclairSchema(
   }),
 );
 
-export const readParametersSchema = withSinclairSchema(
+const readParametersSchema = withSinclairSchema(
   Type.Object({
     path: Type.String({ description: "Path to the file to read (relative or absolute)." }),
     offset: Type.Optional(
@@ -114,7 +114,7 @@ export const readParametersSchema = withSinclairSchema(
   }),
 );
 
-export const execCodeModeParametersSchema = withSinclairSchema(
+const execCodeModeParametersSchema = withSinclairSchema(
   Type.Object({
     code: Type.String({
       minLength: 1,
@@ -506,7 +506,7 @@ const resolveHarnessAgentTools = (harness: PiHarnessConfig): PiToolId[] => {
   return [...tools, "read"];
 };
 
-export const isValidPiToolId = (toolId: string): toolId is (typeof PI_TOOL_IDS)[number] =>
+const isValidPiToolId = (toolId: string): toolId is (typeof PI_TOOL_IDS)[number] =>
   PI_TOOL_IDS.includes(toolId as (typeof PI_TOOL_IDS)[number]);
 
 export const createPiBashCommandContext = ({

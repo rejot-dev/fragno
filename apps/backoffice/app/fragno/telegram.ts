@@ -1,9 +1,6 @@
-import { z } from "zod";
-
 import {
   createTelegram,
   createTelegramFragment,
-  telegramAttachmentSchema,
   type TelegramApi,
   type TelegramFragmentConfig,
   type TelegramMessageHookPayload,
@@ -23,14 +20,6 @@ export type TelegramServerOptions = {
   hooks?: TelegramFragmentConfig["hooks"];
   api?: TelegramApi;
 };
-
-export const telegramMessageReceivedPayloadSchema = z.object({
-  messageId: z.string().min(1),
-  chatId: z.string().min(1),
-  fromUserId: z.string().min(1).nullable(),
-  text: z.string().nullable(),
-  attachments: z.array(telegramAttachmentSchema).optional(),
-});
 
 type SerializableTelegramMessageHookPayload = Omit<
   TelegramMessageHookPayload,

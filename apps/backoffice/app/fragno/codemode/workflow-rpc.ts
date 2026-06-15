@@ -47,7 +47,7 @@ const returnSuspensionOrThrow = (
   throw error;
 };
 
-export class WorkflowStepTxTarget extends RpcTarget {
+class WorkflowStepTxTarget extends RpcTarget {
   readonly #tx: WorkflowStepTx | WorkflowStepConsumeTx;
 
   constructor(tx: WorkflowStepTx | WorkflowStepConsumeTx) {

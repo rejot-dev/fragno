@@ -10,7 +10,7 @@ const containsControlCharacters = (value: string): boolean => {
   });
 };
 
-export const FILES_ACTION_INTENTS = ["create-folder", "delete", "write-text"] as const;
+const FILES_ACTION_INTENTS = ["create-folder", "delete", "write-text"] as const;
 export type FilesActionIntent = (typeof FILES_ACTION_INTENTS)[number];
 
 export type FilesActionResult = {

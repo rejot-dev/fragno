@@ -3,7 +3,7 @@ import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-regis
 import type { AutomationEvent } from "../../automation/contracts";
 import type { AutomationEmitEventResult, EventRuntime } from "./event";
 
-export type { AutomationEmitEventResult, EventRuntime };
+export type { EventRuntime };
 
 export type CreateEventRuntimeOptions = {
   objects: BackofficeObjectRegistry;

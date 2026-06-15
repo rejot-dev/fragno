@@ -40,9 +40,6 @@ export const ensureFolderPath = (value: string): string => {
   return value.endsWith("/") ? value : `${value}/`;
 };
 
-export const normalizeFolderPath = (value: string): string =>
-  ensureFolderPath(normalizeAbsolutePath(value));
-
 export const normalizeDirectoryPath = (value: string): string => {
   const normalized = normalizeAbsolutePath(value);
   return normalized === "/" || !value.trim().endsWith("/")
@@ -99,23 +96,6 @@ export const isMountPointParentOf = (parent: string, child: string): boolean => 
 
   for (let index = 0; index < parentSegments.length; index += 1) {
     if (parentSegments[index] !== childSegments[index]) {
-      return false;
-    }
-  }
-
-  return true;
-};
-
-export const isExactMountPointMatch = (left: string, right: string): boolean => {
-  const leftSegments = mountPointToSegments(left);
-  const rightSegments = mountPointToSegments(right);
-
-  if (leftSegments.length !== rightSegments.length) {
-    return false;
-  }
-
-  for (let index = 0; index < leftSegments.length; index += 1) {
-    if (leftSegments[index] !== rightSegments[index]) {
       return false;
     }
   }

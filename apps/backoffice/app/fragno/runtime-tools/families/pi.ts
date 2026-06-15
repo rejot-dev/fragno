@@ -374,10 +374,4 @@ export const piToolFamily = defineBackofficeRuntimeToolFamily({
   isAvailable: (context: PiToolContext) => !!context.runtimes.pi,
 });
 
-export type {
-  PiRuntime,
-  PiSessionCreateArgs,
-  PiSessionGetArgs,
-  PiSessionListArgs,
-  PiSessionTurnArgs,
-};
+export type { PiRuntime };

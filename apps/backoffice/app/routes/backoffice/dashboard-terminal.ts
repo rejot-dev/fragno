@@ -12,7 +12,7 @@ const DASHBOARD_PATH_COMPLETION_COMMANDS = new Set(["cat", "cd", "find", "ls"]);
 export const DEFAULT_CWD = "/";
 export const DASHBOARD_COMMAND_TIMEOUT_MS = 15_000;
 
-export type DashboardTerminalEntry = {
+type DashboardTerminalEntry = {
   id: string;
   command: string;
   cwd: string;

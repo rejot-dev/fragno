@@ -1,13 +1,10 @@
 import { Link, isRouteErrorResponse } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
-import type { AuthMeData } from "@/fragno/auth/auth-client";
+import type {} from "@/fragno/auth/auth-client";
 import { cn } from "@/lib/utils";
 
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "./route-errors";
-
-export type BackofficeOrganisation = AuthMeData["organizations"][number]["organization"];
-export type BackofficeOrganisationMember = AuthMeData["organizations"][number]["member"];
 
 export type OrganisationTab = "overview" | "members" | "invites";
 

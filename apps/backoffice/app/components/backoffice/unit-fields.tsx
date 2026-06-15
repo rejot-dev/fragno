@@ -264,9 +264,6 @@ const formatUsingUnits = <UnitId extends string>(
 
 export const formatBytes = (value: number) => formatUsingUnits(value, BYTE_UNITS, "bytes");
 
-export const formatDuration = (valueSeconds: number) =>
-  formatUsingUnits(valueSeconds, TIME_UNITS, "seconds");
-
 export function ByteUnitField({
   outputUnit = "bytes",
   defaultDisplayUnit = "mb",

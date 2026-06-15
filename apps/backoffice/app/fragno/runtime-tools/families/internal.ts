@@ -171,7 +171,7 @@ const codemodeTypesRenderTool = defineBackofficeRuntimeTool({
   },
 });
 
-export const internalRuntimeTools = [filesSeedExecuteTool, codemodeTypesRenderTool] as const;
+const internalRuntimeTools = [filesSeedExecuteTool, codemodeTypesRenderTool] as const;
 
 export const internalToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "internal",

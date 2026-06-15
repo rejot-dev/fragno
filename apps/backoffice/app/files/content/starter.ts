@@ -30,6 +30,3 @@ Describe the task you want to work on here.
   ...WORKSPACE_STARTER_AUTOMATION_CONTENT,
   ...GENERAL_SKILL_CONTENT,
 };
-
-export const WORKSPACE_STARTER_ROOT_DESCRIPTION =
-  "Editable starter files copied into /workspace after Upload workspace initialization.";

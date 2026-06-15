@@ -275,7 +275,7 @@ const parseToolCall = defineCliArgsParser<z.input<typeof callToolInputSchema>>("
   timeoutMs: { option: "timeout-ms", kind: "integer" },
 });
 
-export const mcpRuntimeTools = [
+const mcpRuntimeTools = [
   defineBackofficeRuntimeTool({
     id: "mcp.servers.list",
     namespace: "mcp",

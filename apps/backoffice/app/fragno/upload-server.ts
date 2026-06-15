@@ -185,12 +185,4 @@ export function createUploadServerForProvider(
   );
 }
 
-export function createUploadServer(
-  config: StoredUploadAdminConfig,
-  runtime: BackofficeFragmentRuntimeOptions,
-  env: CloudflareEnv,
-): ReturnType<typeof createUploadFragment> {
-  return createUploadServerForProvider(config, config.defaultProvider, runtime, env);
-}
-
 export type UploadFragment = ReturnType<typeof createUploadServerForProvider>;

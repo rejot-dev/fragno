@@ -41,13 +41,12 @@ import {
   toUploadDirectoryMarkerFileKey,
 } from "./upload-markers";
 
-export const UPLOAD_FILE_CONTRIBUTOR_ID = "upload";
-export const UPLOAD_FILE_MOUNT_ID = "workspace";
-export const UPLOAD_FILE_MOUNT_POINT = "/workspace";
-export const UPLOAD_R2_BINDING_FILE_MOUNT_ID = "r2";
-export const UPLOAD_R2_BINDING_FILE_MOUNT_POINT = "/r2";
-export const UPLOAD_R2_REMOTE_FILE_MOUNT_ID = "r2-remote";
-export const UPLOAD_R2_REMOTE_FILE_MOUNT_POINT = "/r2-remote";
+const UPLOAD_FILE_MOUNT_ID = "workspace";
+const UPLOAD_FILE_MOUNT_POINT = "/workspace";
+const UPLOAD_R2_BINDING_FILE_MOUNT_ID = "r2";
+const UPLOAD_R2_BINDING_FILE_MOUNT_POINT = "/r2";
+const UPLOAD_R2_REMOTE_FILE_MOUNT_ID = "r2-remote";
+const UPLOAD_R2_REMOTE_FILE_MOUNT_POINT = "/r2-remote";
 const UNKNOWN_MTIME = new Date(0);
 const TEXT_ENCODER = new TextEncoder();
 
@@ -116,7 +115,7 @@ type UploadDirectoryRecord = {
   metadata?: Record<string, unknown> | null;
 };
 
-export const uploadFileMount: FileMountMetadata & {
+const uploadFileMount: FileMountMetadata & {
   uploadProvider: typeof UPLOAD_PROVIDER_DATABASE;
 } = {
   id: UPLOAD_FILE_MOUNT_ID,
@@ -130,7 +129,7 @@ export const uploadFileMount: FileMountMetadata & {
     "Pure persistent org-scoped workspace storage routed through the Upload fragment, with no starter layering or fallback.",
 };
 
-export const uploadR2BindingFileMount: FileMountMetadata & {
+const uploadR2BindingFileMount: FileMountMetadata & {
   uploadProvider: typeof UPLOAD_PROVIDER_R2_BINDING;
 } = {
   id: UPLOAD_R2_BINDING_FILE_MOUNT_ID,
@@ -143,7 +142,7 @@ export const uploadR2BindingFileMount: FileMountMetadata & {
   description: "Persistent org-scoped uploads routed through the Upload fragment via R2 binding.",
 };
 
-export const uploadR2RemoteFileMount: FileMountMetadata & {
+const uploadR2RemoteFileMount: FileMountMetadata & {
   uploadProvider: typeof UPLOAD_PROVIDER_R2;
 } = {
   id: UPLOAD_R2_REMOTE_FILE_MOUNT_ID,
@@ -599,7 +598,7 @@ export const resolveUploadFileMount = (
   };
 };
 
-export const getConfiguredUploadProviders = (
+const getConfiguredUploadProviders = (
   uploadConfig?: UploadAdminConfigResponse | null,
 ): UploadProvider[] => {
   if (!uploadConfig) {
@@ -623,7 +622,7 @@ export const getConfiguredUploadProviders = (
   return providers;
 };
 
-export const isUploadConfigured = (
+const isUploadConfigured = (
   uploadConfig?: UploadAdminConfigResponse | null,
 ): uploadConfig is UploadAdminConfigResponse => {
   if (!uploadConfig?.configured) {
@@ -633,7 +632,7 @@ export const isUploadConfigured = (
   return getConfiguredUploadProviders(uploadConfig).length > 0;
 };
 
-export const resolvePreferredUploadProvider = (
+const resolvePreferredUploadProvider = (
   uploadConfig?: UploadAdminConfigResponse | null,
 ): UploadProvider | null => {
   if (!isUploadConfigured(uploadConfig)) {
@@ -648,7 +647,7 @@ export const resolvePreferredUploadProvider = (
   return getConfiguredUploadProviders(uploadConfig)[0] ?? null;
 };
 
-export const resolveBoundUploadProvider = (
+const resolveBoundUploadProvider = (
   uploadConfig?: UploadAdminConfigResponse | null,
   requestedProvider?: UploadProvider | null,
 ): UploadProvider => {

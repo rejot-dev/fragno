@@ -16,15 +16,14 @@ import { createUnsupportedFileSystem, type IFileSystem } from "../interface";
 import { normalizeMountPoint } from "../normalize-path";
 import type { FileContributor, FileMountMetadata, FilesContext } from "../types";
 
-export const RESEND_FILE_CONTRIBUTOR_ID = "resend";
-export const RESEND_FILE_MOUNT_ID = "resend";
-export const RESEND_FILE_MOUNT_POINT = "/resend";
+const RESEND_FILE_MOUNT_ID = "resend";
+const RESEND_FILE_MOUNT_POINT = "/resend";
 
 const PAGE_SIZE = 100;
 const UNKNOWN_MTIME = new Date(0);
 const TEXT_ENCODER = new TextEncoder();
 
-export const resendFileMount: FileMountMetadata = {
+const resendFileMount: FileMountMetadata = {
   id: RESEND_FILE_MOUNT_ID,
   kind: "custom",
   mountPoint: RESEND_FILE_MOUNT_POINT,

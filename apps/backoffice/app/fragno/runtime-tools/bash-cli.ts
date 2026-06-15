@@ -144,7 +144,7 @@ export const readStringOption = (
   return undefined;
 };
 
-export const readIntegerOption = (
+const readIntegerOption = (
   parsed: ParsedCliTokens,
   name: string,
   required = false,
@@ -162,10 +162,7 @@ export const readIntegerOption = (
   return value;
 };
 
-export const readStringArrayOption = (
-  parsed: ParsedCliTokens,
-  name: string,
-): string[] | undefined => {
+const readStringArrayOption = (parsed: ParsedCliTokens, name: string): string[] | undefined => {
   const value = parsed.options.get(name);
   if (typeof value === "undefined") {
     return undefined;
@@ -181,7 +178,7 @@ export const readStringArrayOption = (
   return nonEmptyStrings.length ? nonEmptyStrings : undefined;
 };
 
-export const readBooleanOption = (parsed: ParsedCliTokens, name: string): boolean | undefined => {
+const readBooleanOption = (parsed: ParsedCliTokens, name: string): boolean | undefined => {
   const value = parsed.options.get(name);
   if (typeof value === "undefined") {
     return undefined;
@@ -203,7 +200,7 @@ export const readBooleanOption = (parsed: ParsedCliTokens, name: string): boolea
   throw new Error(`--${name} must be true or false`);
 };
 
-export const readPositiveIntegerOption = (
+const readPositiveIntegerOption = (
   parsed: ParsedCliTokens,
   name: string,
   required = false,
@@ -218,7 +215,7 @@ export const readPositiveIntegerOption = (
   return value;
 };
 
-export const readNonNegativeIntegerOption = (
+const readNonNegativeIntegerOption = (
   parsed: ParsedCliTokens,
   name: string,
   required = false,
@@ -233,7 +230,7 @@ export const readNonNegativeIntegerOption = (
   return value;
 };
 
-export const readJsonOption = (
+const readJsonOption = (
   parsed: ParsedCliTokens,
   name: string,
   required = false,
@@ -276,15 +273,15 @@ export const readOutputOptions = (parsed: ParsedCliTokens): AutomationCommandOut
   return { format, ...(print ? { print } : {}) };
 };
 
-export const assertNoPositionals = (parsed: ParsedCliTokens, commandName: string) => {
+const assertNoPositionals = (parsed: ParsedCliTokens, commandName: string) => {
   if (parsed.positionals.length > 0) {
     throw new Error(`${commandName} does not accept positional arguments`);
   }
 };
 
-export type CliArgsReader<TArgs> = (parsed: ParsedCliTokens) => TArgs;
+type CliArgsReader<TArgs> = (parsed: ParsedCliTokens) => TArgs;
 
-export const parseNoPositionals = <TArgs>(
+const parseNoPositionals = <TArgs>(
   commandName: string,
   args: string[],
   readArgs: CliArgsReader<TArgs>,
@@ -294,7 +291,7 @@ export const parseNoPositionals = <TArgs>(
   return readArgs(parsed);
 };
 
-export const defineNoPositionalsParser =
+const defineNoPositionalsParser =
   <TArgs>(commandName: string, readArgs: CliArgsReader<TArgs>) =>
   (args: string[]): TArgs =>
     parseNoPositionals(commandName, args, readArgs);
@@ -464,7 +461,7 @@ const appendStandardCommandOptions = (options: readonly AutomationCommandOptionS
   ];
 };
 
-export const describeCommandOption = (option: AutomationCommandOptionSpec) => {
+const describeCommandOption = (option: AutomationCommandOptionSpec) => {
   const optionLine = formatCommandOptionLine(option);
   const description = option.required ? `${option.description} (required)` : option.description;
 

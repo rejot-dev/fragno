@@ -4,11 +4,10 @@ import { createUnsupportedOperationFileSystemError } from "../fs-errors";
 import { createUnsupportedFileSystem } from "../interface";
 import type { FileContributor, FileMountMetadata } from "../types";
 
-export const TMP_FILE_CONTRIBUTOR_ID = "tmp";
-export const TMP_FILE_MOUNT_ID = "tmp";
-export const TMP_FILE_MOUNT_POINT = "/tmp";
+const TMP_FILE_MOUNT_ID = "tmp";
+const TMP_FILE_MOUNT_POINT = "/tmp";
 
-export const tmpFileMount: FileMountMetadata = {
+const tmpFileMount: FileMountMetadata = {
   id: TMP_FILE_MOUNT_ID,
   kind: "custom",
   mountPoint: TMP_FILE_MOUNT_POINT,

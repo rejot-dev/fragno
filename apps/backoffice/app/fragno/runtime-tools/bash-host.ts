@@ -96,7 +96,7 @@ export type BashHost = {
   commandCallsResult: BashAutomationCommandResult[];
 };
 
-export type BashCommandFactoryInput = {
+type BashCommandFactoryInput = {
   sessionId?: string;
   commandCallsResult: BashAutomationCommandResult[];
   context: BashHostContext;

@@ -40,7 +40,7 @@ export type AutomationStoreRuntime = {
   list: (input: StoreListArgs) => Promise<AutomationStoreEntry[]>;
 };
 
-export type AutomationStoreToolContext = BackofficeToolContext<
+type AutomationStoreToolContext = BackofficeToolContext<
   { automations?: AutomationStoreRuntime },
   { actor?: AutomationEventActor | null }
 >;

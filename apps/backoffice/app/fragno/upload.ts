@@ -80,7 +80,7 @@ export type StoredUploadProviderConfigDatabase = StoredUploadProviderConfigBase 
   database: UploadDatabaseConfig;
 };
 
-export type StoredUploadProviderConfig =
+type StoredUploadProviderConfig =
   | StoredUploadProviderConfigR2
   | StoredUploadProviderConfigR2Binding
   | StoredUploadProviderConfigDatabase;
@@ -151,7 +151,7 @@ type UploadAdminProviderConfigBase = {
   updatedAt?: string;
 };
 
-export type UploadAdminProviderResponseR2 = {
+type UploadAdminProviderResponseR2 = {
   provider: typeof UPLOAD_PROVIDER_R2;
   configured: boolean;
   config?: UploadAdminProviderConfigBase & {
@@ -165,7 +165,7 @@ export type UploadAdminProviderResponseR2 = {
   };
 };
 
-export type UploadAdminProviderResponseR2Binding = {
+type UploadAdminProviderResponseR2Binding = {
   provider: typeof UPLOAD_PROVIDER_R2_BINDING;
   configured: boolean;
   config?: UploadAdminProviderConfigBase & {
@@ -173,7 +173,7 @@ export type UploadAdminProviderResponseR2Binding = {
   };
 };
 
-export type UploadAdminProviderResponseDatabase = {
+type UploadAdminProviderResponseDatabase = {
   provider: typeof UPLOAD_PROVIDER_DATABASE;
   configured: boolean;
   config?: UploadAdminProviderConfigBase;
@@ -496,7 +496,7 @@ const readOptionalIntegerField = (
   };
 };
 
-export const resolveUploadOrgPrefix = (orgId: string) => {
+const resolveUploadOrgPrefix = (orgId: string) => {
   const normalizedOrgId = normalizeOrgId(orgId);
   if (!normalizedOrgId) {
     throw new Error("Missing organisation id.");

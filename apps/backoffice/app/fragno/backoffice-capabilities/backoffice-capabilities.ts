@@ -51,14 +51,14 @@ export type ConnectionStatus = {
   verification?: { ok: boolean; message: string };
 };
 
-export type BackofficeCapabilityContext = {
+type BackofficeCapabilityContext = {
   objects: BackofficeObjectRegistry;
   config: BackofficeRuntimeConfig;
   orgId: string;
   origin: string;
 };
 
-export type BackofficeHookScope = {
+type BackofficeHookScope = {
   id: string;
   label: string;
   getRepository(
@@ -68,7 +68,7 @@ export type BackofficeHookScope = {
     | DurableHookRepository<DurableHookQueueOptions>;
 };
 
-export type BackofficeAutomationEventDescriptor = {
+type BackofficeAutomationEventDescriptor = {
   source: string;
   eventType: string;
   label: string;
@@ -157,10 +157,6 @@ export type BackofficeManagedConnectionDescriptor = BackofficeConnectionDescript
   reset?: never;
   configure?: never;
 };
-
-export type BackofficeConnectionDescriptor =
-  | BackofficeConfigurableConnectionDescriptor
-  | BackofficeManagedConnectionDescriptor;
 
 type BackofficeCapabilityBase = {
   id: BackofficeCapabilityId;
@@ -357,16 +353,3 @@ export type AutomationSource = (typeof AUTOMATION_SOURCES)[keyof typeof AUTOMATI
 
 export type AutomationEventTypeForSource<S extends AutomationSource> =
   (typeof AUTOMATION_SOURCE_EVENT_TYPES)[S][keyof (typeof AUTOMATION_SOURCE_EVENT_TYPES)[S]];
-
-export type AutomationKnownEventType = {
-  [S in AutomationSource]: AutomationEventTypeForSource<S>;
-}[AutomationSource];
-
-export type KnownAutomationEventDefinition = {
-  source: AutomationSource;
-  eventType: AutomationKnownEventType;
-  payloadSchema: z.ZodType;
-  actorSchema?: z.ZodType;
-  subjectSchema?: z.ZodType;
-  example?: unknown;
-};
