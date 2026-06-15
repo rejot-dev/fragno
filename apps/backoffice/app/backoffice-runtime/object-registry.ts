@@ -10,15 +10,14 @@ import type { Upload } from "workers/upload.do";
 
 import type { Organization } from "@fragno-dev/auth";
 
-import type { AutomationEvent, AutomationIngestResult } from "@/fragno/automation";
+import type {
+  AutomationEvent,
+  AutomationEventActor,
+  AutomationIngestResult,
+} from "@/fragno/automation";
 import type { DurableHookQueueOptions, DurableHookRepository } from "@/fragno/durable-hooks";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import type { SandboxInstanceStatus, SandboxInstanceSummary } from "@/sandbox/contracts";
-import {
-  AUTH_SINGLETON_ID,
-  GITHUB_WEBHOOK_ROUTER_SINGLETON_ID,
-  SANDBOX_REGISTRY_ORG_KEY_PREFIX,
-} from "@/worker-runtime/durable-objects";
 
 export type FetchObject = {
   fetch(request: Request): Promise<Response>;
@@ -40,16 +39,12 @@ export type DurableHookObject<TRepository = DurableHookRepository<DurableHookOpt
   getDurableHookRepository(...args: unknown[]): TRepository | Promise<TRepository>;
 };
 
-export type SingletonObject<TObject> = {
-  get(): TObject;
-};
-
-export type OrgScopedObjects<TObject> = {
+export type ScopedObjects<TObject> = {
+  singleton(): TObject;
   forOrg(orgId: string): TObject;
-};
-
-export type NamedObjects<TObject> = {
   forName(name: string): TObject;
+  forUser(input: { userId: string }): TObject;
+  forProject(input: { projectId: string }): TObject;
 };
 
 export type AdminConfigurableObject<TConfig = unknown> = {
@@ -195,74 +190,137 @@ export type BackofficeObjectBinding<_TObject> = {
   name: BackofficeObjectBindingName;
 };
 
+export type BackofficeObjectScope =
+  | { kind: "singleton" }
+  | { kind: "org"; orgId: string }
+  | { kind: "named"; name: string }
+  | { kind: "user"; userId: string }
+  | { kind: "project"; projectId: string };
+
+export type BackofficeObjectAddress = {
+  binding: BackofficeObjectBindingName;
+  scope: BackofficeObjectScope;
+};
+
 export type BackofficeObjectFactory = {
-  singleton<TObject>(binding: BackofficeObjectBinding<TObject>, name: string): TObject;
-  org<TObject>(binding: BackofficeObjectBinding<TObject>, orgId: string): TObject;
-  named<TObject>(binding: BackofficeObjectBinding<TObject>, name: string): TObject;
+  get<TObject>(
+    binding: BackofficeObjectBinding<TObject>,
+    address: BackofficeObjectAddress,
+  ): TObject;
 };
 
 const binding = <TObject>(name: BackofficeObjectBindingName): BackofficeObjectBinding<TObject> => ({
   name,
 });
 
-const singleton = <TObject>(
-  factory: BackofficeObjectFactory,
-  binding: BackofficeObjectBinding<TObject>,
-  name: string,
-): SingletonObject<TObject> => ({
-  get() {
-    return factory.singleton(binding, name);
-  },
+const validateScopeValue = (label: string, value: string): string => {
+  const normalized = value.trim();
+  if (!normalized) {
+    throw new Error(`Backoffice object address requires a non-empty ${label}.`);
+  }
+
+  return normalized;
+};
+
+const encodeScopeValue = (label: string, value: string): string =>
+  encodeURIComponent(validateScopeValue(label, value));
+
+export const singleton = (): BackofficeObjectScope => ({
+  kind: "singleton",
 });
 
-const orgScoped = <TObject>(
+export const org = (orgId: string): BackofficeObjectScope => ({
+  kind: "org",
+  orgId: validateScopeValue("org id", orgId),
+});
+
+export const named = (name: string): BackofficeObjectScope => ({
+  kind: "named",
+  name: validateScopeValue("name", name),
+});
+
+export const user = (input: { userId: string }): BackofficeObjectScope => ({
+  kind: "user",
+  userId: validateScopeValue("user id", input.userId),
+});
+
+export const project = (input: { projectId: string }): BackofficeObjectScope => ({
+  kind: "project",
+  projectId: validateScopeValue("project id", input.projectId),
+});
+
+// Operator note: this v1 encoder is a full Durable Object identity reset. Existing
+// state stored under legacy raw names is intentionally not discovered by this model.
+export const encodeBackofficeObjectAddress = (address: BackofficeObjectAddress): string => {
+  switch (address.scope.kind) {
+    case "singleton":
+      return "v1:singleton";
+    case "org":
+      return `v1:org:${encodeScopeValue("org id", address.scope.orgId)}`;
+    case "named":
+      return `v1:named:${encodeScopeValue("name", address.scope.name)}`;
+    case "user":
+      return ["v1", "user", encodeScopeValue("user id", address.scope.userId)].join(":");
+    case "project":
+      return ["v1", "project", encodeScopeValue("project id", address.scope.projectId)].join(":");
+  }
+};
+
+export const objectAddressToActor = (address: BackofficeObjectAddress): AutomationEventActor => ({
+  scope: "internal",
+  type: "object",
+  id: `${address.binding}/${encodeBackofficeObjectAddress(address)}`,
+  role: "delegate",
+});
+
+const objectAddress = (
+  objectBinding: BackofficeObjectBinding<unknown>,
+  scope: BackofficeObjectScope,
+): BackofficeObjectAddress => ({
+  binding: objectBinding.name,
+  scope,
+});
+
+const scoped = <TObject>(
   factory: BackofficeObjectFactory,
-  binding: BackofficeObjectBinding<TObject>,
-): OrgScopedObjects<TObject> => ({
+  objectBinding: BackofficeObjectBinding<TObject>,
+): ScopedObjects<TObject> => ({
+  singleton() {
+    return factory.get(objectBinding, objectAddress(objectBinding, singleton()));
+  },
   forOrg(orgId: string) {
-    return factory.org(binding, orgId);
+    return factory.get(objectBinding, objectAddress(objectBinding, org(orgId)));
   },
-});
-
-const named = <TObject>(
-  factory: BackofficeObjectFactory,
-  binding: BackofficeObjectBinding<TObject>,
-): NamedObjects<TObject> => ({
   forName(name: string) {
-    return factory.named(binding, name);
+    return factory.get(objectBinding, objectAddress(objectBinding, named(name)));
+  },
+  forUser(input: { userId: string }) {
+    return factory.get(objectBinding, objectAddress(objectBinding, user(input)));
+  },
+  forProject(input: { projectId: string }) {
+    return factory.get(objectBinding, objectAddress(objectBinding, project(input)));
   },
 });
 
 export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory) => ({
-  auth: singleton(factory, binding<AuthObject>("AUTH"), AUTH_SINGLETON_ID),
+  auth: scoped(factory, binding<AuthObject>("AUTH")),
 
-  automations: orgScoped(factory, binding<AutomationsObject>("AUTOMATIONS")),
-  telegram: orgScoped(factory, binding<TelegramObject>("TELEGRAM")),
-  otp: orgScoped(factory, binding<OtpObject>("OTP")),
-  pi: orgScoped(factory, binding<PiObject>("PI")),
-  resend: orgScoped(factory, binding<ResendObject>("RESEND")),
-  reson8: orgScoped(factory, binding<Reson8Object>("RESON8")),
-  mcp: orgScoped(factory, binding<McpObject>("MCP")),
-  upload: orgScoped(factory, binding<UploadObject>("UPLOAD")),
-  github: orgScoped(factory, binding<GitHubObject>("GITHUB")),
-  cloudflareWorkers: orgScoped(factory, binding<CloudflareWorkersObject>("CLOUDFLARE_WORKERS")),
+  automations: scoped(factory, binding<AutomationsObject>("AUTOMATIONS")),
+  telegram: scoped(factory, binding<TelegramObject>("TELEGRAM")),
+  otp: scoped(factory, binding<OtpObject>("OTP")),
+  pi: scoped(factory, binding<PiObject>("PI")),
+  resend: scoped(factory, binding<ResendObject>("RESEND")),
+  reson8: scoped(factory, binding<Reson8Object>("RESON8")),
+  mcp: scoped(factory, binding<McpObject>("MCP")),
+  upload: scoped(factory, binding<UploadObject>("UPLOAD")),
+  github: scoped(factory, binding<GitHubObject>("GITHUB")),
+  cloudflareWorkers: scoped(factory, binding<CloudflareWorkersObject>("CLOUDFLARE_WORKERS")),
 
-  githubWebhookRouter: singleton(
-    factory,
-    binding<GitHubWebhookRouterObject>("GITHUB_WEBHOOK_ROUTER"),
-    GITHUB_WEBHOOK_ROUTER_SINGLETON_ID,
-  ),
+  githubWebhookRouter: scoped(factory, binding<GitHubWebhookRouterObject>("GITHUB_WEBHOOK_ROUTER")),
 
-  sandboxRegistry: {
-    forOrg(orgId: string) {
-      return factory.named(
-        binding<SandboxRegistryObject>("SANDBOX_REGISTRY"),
-        `${SANDBOX_REGISTRY_ORG_KEY_PREFIX}${orgId}`,
-      );
-    },
-  },
+  sandboxRegistry: scoped(factory, binding<SandboxRegistryObject>("SANDBOX_REGISTRY")),
 
-  sandbox: named(factory, binding<SandboxObject>("SANDBOX")),
+  sandbox: scoped(factory, binding<SandboxObject>("SANDBOX")),
 });
 
 export type BackofficeObjectRegistry = ReturnType<typeof createBackofficeObjectRegistry>;

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createCloudflareBackofficeObjectRegistry } from "./cloudflare-durable-object-factory";
+import { CloudflareDurableObjectFactory } from "./cloudflare-durable-object-factory";
 
 const createNamespace = () => {
   const namespace = {
@@ -33,7 +34,51 @@ describe("createCloudflareBackofficeObjectRegistry", () => {
     const objects = createCloudflareBackofficeObjectRegistry(env);
     objects.automations.forOrg("org-1");
 
-    expect(automations.idFromName).toHaveBeenCalledWith("org-1");
-    expect(automations.get).toHaveBeenCalledWith("id:org-1");
+    expect(automations.idFromName).toHaveBeenCalledWith("v1:org:org-1");
+    expect(automations.get).toHaveBeenCalledWith("id:v1:org:org-1");
+  });
+
+  it("routes user and project scoped objects through the same canonical encoder", () => {
+    const upload = createNamespace();
+    const env = {
+      AUTH: createNamespace(),
+      AUTOMATIONS: createNamespace(),
+      TELEGRAM: createNamespace(),
+      OTP: createNamespace(),
+      PI: createNamespace(),
+      RESEND: createNamespace(),
+      RESON8: createNamespace(),
+      MCP: createNamespace(),
+      UPLOAD: upload,
+      GITHUB: createNamespace(),
+      CLOUDFLARE_WORKERS: createNamespace(),
+      GITHUB_WEBHOOK_ROUTER: createNamespace(),
+      SANDBOX_REGISTRY: createNamespace(),
+      SANDBOX: createNamespace(),
+    } as unknown as CloudflareEnv;
+
+    const objects = createCloudflareBackofficeObjectRegistry(env);
+    objects.upload.forUser({ userId: "user-1" });
+    objects.upload.forProject({ projectId: "project-1" });
+
+    expect(upload.idFromName).toHaveBeenNthCalledWith(1, "v1:user:user-1");
+    expect(upload.idFromName).toHaveBeenNthCalledWith(2, "v1:project:project-1");
+  });
+
+  it("rejects addresses for a different binding", () => {
+    const env = {
+      PI: createNamespace(),
+    } as unknown as CloudflareEnv;
+    const factory = new CloudflareDurableObjectFactory(env);
+
+    expect(() =>
+      factory.get(
+        { name: "PI" },
+        {
+          binding: "AUTH",
+          scope: { kind: "singleton" },
+        },
+      ),
+    ).toThrow("does not match requested binding PI");
   });
 });

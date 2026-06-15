@@ -3,7 +3,7 @@ import type { RouterContextProvider } from "react-router";
 
 import type { GitHubFragment } from "@/fragno/github";
 import {
-  GITHUB_WEBHOOK_ROUTER_SINGLETON_ID,
+  BACKOFFICE_ADMIN_OBJECT_NAME,
   getGitHubDurableObject,
   getGitHubWebhookRouterDurableObject,
 } from "@/worker-runtime/durable-objects";
@@ -140,10 +140,7 @@ export async function fetchGitHubAdminConfig(
 ): Promise<GitHubAdminConfigResult> {
   try {
     const githubRouterDo = getGitHubWebhookRouterDurableObject(context);
-    const configState = await githubRouterDo.getAdminConfig(
-      GITHUB_WEBHOOK_ROUTER_SINGLETON_ID,
-      origin,
-    );
+    const configState = await githubRouterDo.getAdminConfig(BACKOFFICE_ADMIN_OBJECT_NAME, origin);
     return { configState, configError: null };
   } catch (error) {
     return {
