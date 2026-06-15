@@ -188,6 +188,11 @@ const parseConfigure = defineCliArgsParser<{ id: string; payload: unknown; origi
 type OutputOptions = ReturnType<typeof readOutputOptions>;
 
 const readOutput = (args: string[]) => readOutputOptions(parseCliTokens(args));
+const readOutputWithoutJsonFlag = (args: string[]) => {
+  const parsed = parseCliTokens(args);
+  parsed.options.delete("json");
+  return readOutputOptions(parsed);
+};
 const shouldReturnData = (options: OutputOptions) =>
   options.format === "json" || Boolean(options.print);
 const dataFormat = <T>(data: T) => ({ data });
@@ -665,7 +670,7 @@ const connectionsConfigureTool = defineBackofficeRuntimeTool({
         ],
       },
       parse: parseConfigure,
-      outputOptions: readOutput,
+      outputOptions: readOutputWithoutJsonFlag,
       format: formatConnectionStatus,
     },
   },
@@ -950,5 +955,3 @@ export const backofficeCapabilitiesToolFamily = defineBackofficeRuntimeToolFamil
   tools: backofficeCapabilitiesRuntimeTools,
   isAvailable: (context: BackofficeCapabilitiesToolContext) => !!context.runtimes.backoffice,
 });
-
-export { backofficeCapabilities };
