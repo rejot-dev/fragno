@@ -33,7 +33,7 @@ const getBackofficeAccessTokenMethods = (context: Readonly<RouterContextProvider
         secret: resolveLiveAccessTokenSecret(env, import.meta.env.MODE === "development"),
         expiresInSeconds: 15 * 60,
         issueCookie: true,
-        acceptBearer: false,
+        acceptBearer: true,
         context: {
           schema: backofficeAccessTokenContextSchema,
           project: () => ({ organizationIds: [] }),

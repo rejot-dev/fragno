@@ -1,5 +1,5 @@
 import { createOrgFileSystem } from "@/files/create-file-system";
-import { getAuthDurableObject } from "@/worker-runtime/durable-objects";
+import { authorizeAccessTokenForOrganization } from "@/fragno/auth/access-token.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/codemode-agents-org";
@@ -17,20 +17,6 @@ const assertDevOnlyLocalRequest = (request: Request) => {
   }
 };
 
-const assertOrganizationExists = async (context: Route.LoaderArgs["context"], orgId: string) => {
-  const organizations = await getAuthDurableObject(context).getDevOrganizations();
-
-  if (!organizations.some((organization) => organization.id === orgId)) {
-    throw Response.json(
-      {
-        error: "Organization not found",
-        orgId,
-      },
-      { status: 404, headers: { "cache-control": "no-store" } },
-    );
-  }
-};
-
 const readOrgSystemGuidance = async (context: Route.LoaderArgs["context"], orgId: string) => {
   const { runtime } = context.get(BackofficeWorkerContext);
   const fs = await createOrgFileSystem({ objects: runtime.objects, orgId });
@@ -45,13 +31,19 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
     throw new Response("Missing organisation id", { status: 400 });
   }
 
-  await assertOrganizationExists(context, orgId);
-  const systemGuidance = await readOrgSystemGuidance(context, orgId);
+  const auth = await authorizeAccessTokenForOrganization(request, context, orgId);
+  if (!auth.ok) {
+    return auth.response;
+  }
 
-  return new Response(systemGuidance, {
-    headers: {
-      "cache-control": "no-store",
-      "content-type": "text/markdown; charset=utf-8",
-    },
+  const systemGuidance = await readOrgSystemGuidance(context, orgId);
+  const headers = new Headers({
+    "cache-control": "no-store",
+    "content-type": "text/markdown; charset=utf-8",
   });
+  for (const [name, value] of auth.headers) {
+    headers.append(name, value);
+  }
+
+  return new Response(systemGuidance, { headers });
 }

@@ -12,71 +12,75 @@ description:
 Use the running Backoffice dev server as the source of truth for runtime behavior. The server is
 usually `http://localhost:5173`, but may be on another Vite port such as `5174`.
 
-This skill is usually invoked when the user wants to fix bugs in the backoffice codebase
-(`apps/backoffice`).
+Use `scripts/codemode.mjs` for auth, token refresh, org discovery, and codemode calls. It stores
+local JWT state in `.agents/skills/backoffice-codemode/auth.json`; this file is gitignored. Default
+dev credentials are `wilco@rejot.dev` / `wachtwoord`.
 
 ## Required workflow
 
-1. Probe the running server before assuming a port or org id. Try Vite ports in order and use the
-   first `200` response:
+1. Probe the running server.
 
    ```bash
-   for port in 5173 5174 5175 5176 5177 5178 5179 5180; do
-     base_url="http://localhost:$port"
-     status=$(curl -sS -o /tmp/backoffice-dev-health.json -w '%{http_code}' "$base_url/__dev" || true)
-     if [ "$status" = "200" ]; then
-       echo "$base_url"
-       cat /tmp/backoffice-dev-health.json
-       break
-     fi
-   done
+   .agents/skills/backoffice-codemode/scripts/codemode.mjs probe
    ```
 
-2. Read the health JSON.
-   - The printed URL is the `BASE_URL` to use.
-   - `organizations[]` lists available orgs for the current browser/session cookies, when any.
-   - Prefer an active organization (`isActive: true`); otherwise ask the user which org id to use or
-     use the only available org.
-   - If no orgs are listed, the health route is still valid; ask the user for an org id or inspect
-     the app/auth state.
-
-3. Fetch and read the org-scoped rendered codemode instructions from the running system.
+2. Log in, or refresh if already logged in and a request returns `401`.
 
    ```bash
-   curl -sS "$BASE_URL/__dev/codemode/$ORG_ID/AGENTS.md" -o /tmp/backoffice-codemode-AGENTS.md
+   .agents/skills/backoffice-codemode/scripts/codemode.mjs login
+   .agents/skills/backoffice-codemode/scripts/codemode.mjs refresh
+   ```
+
+3. Discover the authenticated user's accessible orgs. Prefer `active`; otherwise use the only org or
+   ask the user which org id to use. Never run codemode for an org not listed here.
+
+   ```bash
+   .agents/skills/backoffice-codemode/scripts/codemode.mjs orgs
+   ```
+
+4. Fetch and read the org-scoped rendered codemode instructions.
+
+   ```bash
+   .agents/skills/backoffice-codemode/scripts/codemode.mjs agents "$ORG_ID" /tmp/backoffice-codemode-AGENTS.md
    ```
 
    Then read `/tmp/backoffice-codemode-AGENTS.md`. Treat it as authoritative for available
    `state.*`, workflow helpers, and runtime tool providers. The route reads the org's existing
    `/workspace/codemode.d.ts` file and returns those declarations inline.
 
-4. Inspect code when runtime behavior is unclear. Relevant areas:
-   - `apps/backoffice/app/routes/dev/*` — dev health, codemode, and prompt routes.
-   - `apps/backoffice/app/fragno/codemode/*` — dynamic-worker execution and filesystem state.
-   - `apps/backoffice/app/fragno/runtime-tools/*` — runtime tool definitions/providers.
-   - `apps/backoffice/app/fragno/automation/*` — automation ingestion, bindings, and execution.
-   - `apps/backoffice/app/fragno/pi/*` — Pi `execCodeMode` behavior and harness prompts.
-   - `apps/backoffice/app/fragno/codemode/workflow-*` and
-     `runtime-tools/families/automations-workflow*` — workflow codemode behavior.
-
-5. Run codemode through the dev route when you need to execute in the Backoffice runtime:
+5. Run codemode through the authenticated dev route when you need to execute in the Backoffice
+   runtime. The helper auto-refreshes once on `401`.
 
    ```bash
-   curl -sS -X POST "$BASE_URL/__dev/codemode/$ORG_ID" \
-     -H 'content-type: application/json' \
-     --data '{"code":"async () => { return await state.readdir(\"/\"); }"}'
+   .agents/skills/backoffice-codemode/scripts/codemode.mjs exec "$ORG_ID" 'async () => { return await state.readdir("/"); }'
+   ```
+
+   For larger snippets, prefer a temp file or stdin:
+
+   ```bash
+   .agents/skills/backoffice-codemode/scripts/codemode.mjs exec "$ORG_ID" --file /tmp/snippet.js
+   printf '%s\n' 'async () => await state.readdir("/")' \
+     | .agents/skills/backoffice-codemode/scripts/codemode.mjs exec "$ORG_ID" -
    ```
 
    The body supports `code` and optional `timeout`. It intentionally does not mount
    `/context/event.json`; it mirrors the Pi `execCodeMode` tool by using the org filesystem plus
    route-backed domain tools.
 
+## Relevant code
+
+Inspect code when runtime behavior is unclear. Relevant areas:
+
+- `apps/backoffice/app/fragno/runtime-tools/*` — runtime tool definitions/providers.
+- `apps/backoffice/app/fragno/automation/*` — automation ingestion, bindings, and execution.
+- `apps/backoffice/app/fragno/pi/*` — Pi `execCodeMode` behavior and harness prompts.
+- `apps/backoffice/app/fragno/codemode/workflow-*` and
+  `runtime-tools/families/automations-workflow*` — workflow codemode behavior.
+- `apps/backoffice/app/fragno/codemode/*` — dynamic-worker execution and filesystem state.
+
 ## Safety and expectations
 
-- These routes are dev-only and localhost-only. If probing returns 404, verify the app is running in
-  development mode and try the next port.
-- Do not add authentication assumptions to `__dev/*`; these routes are intentionally outside the
-  Backoffice authenticated layout.
+- These routes are dev-only, localhost-only.
 - Dynamic Worker code has no direct outbound network by default. Use exposed domain tools for
   Backoffice effects.
 - Prefer small, inspectable codemode snippets. Return JSON-serializable objects with observations,
@@ -139,17 +143,5 @@ async () => {
     meta: instance.meta,
     failedSteps: history.steps.filter((step) => step.status === "errored"),
   };
-};
-```
-
-Create a workflow instance if the rendered `AGENTS.md` shows workflow tools are available:
-
-```js
-async () => {
-  return await workflow.createInstance({
-    workflowName: "example",
-    instanceId: `dev-${crypto.randomUUID()}`,
-    params: { source: "backoffice-codemode skill" },
-  });
 };
 ```

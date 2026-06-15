@@ -63,6 +63,7 @@ yarn-error.log*
 
 # LLMs
 CLAUDE.local.md
+.agents/skills/backoffice-codemode/auth.json
 
 # Databases
 **/*.pglite
