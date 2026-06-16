@@ -10,7 +10,7 @@ import {
 } from "./in-memory-object-factory";
 import type { InMemoryBackofficeRuntimeEnv } from "./in-memory-runtime-env";
 import { createBackofficeObjectRegistry } from "./object-registry";
-import type { BackofficeObjectRegistry } from "./object-registry";
+import type { BackofficeObjectAddress, BackofficeObjectRegistry } from "./object-registry";
 import type { BackofficeRuntimeConfig, BackofficeRuntimeServices } from "./runtime-services";
 
 export type InMemoryBackofficeRuntime = {
@@ -24,6 +24,7 @@ export type InMemoryBackofficeRuntime = {
   drain(): Promise<void>;
   drainAlarms(): Promise<void>;
   drainWaitUntil(): Promise<void>;
+  hasObjectInstance(address: BackofficeObjectAddress): boolean;
   cleanup(): Promise<void>;
 };
 
@@ -134,6 +135,7 @@ export const createInMemoryBackofficeRuntime = async (
     drain,
     drainAlarms: () => objectFactory.drainAlarms(),
     drainWaitUntil: () => objectFactory.drainWaitUntil(),
+    hasObjectInstance: (address) => objectFactory.hasInstance(address),
     async cleanup() {
       await objectFactory.drainWaitUntil();
       await adapters.cleanup();

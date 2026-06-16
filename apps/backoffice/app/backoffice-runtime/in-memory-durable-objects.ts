@@ -212,6 +212,10 @@ export class InMemoryDurableObjectNamespace<TObject> {
     return stub;
   }
 
+  has(id: DurableObjectId): boolean {
+    return this.#instances.has(String(id));
+  }
+
   instances(): InMemoryDurableObjectInstance<TObject>[] {
     return [...this.#instances.values()];
   }

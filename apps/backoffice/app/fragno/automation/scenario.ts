@@ -5,6 +5,10 @@ import {
   createInMemoryBackofficeRuntime,
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
+import type {
+  BackofficeObjectAddress,
+  BackofficeObjectBindingName,
+} from "@/backoffice-runtime/object-registry";
 import { createOrgFileSystem, SYSTEM_FILE_CONTENT, WORKSPACE_STARTER_CONTENT } from "@/files";
 import type { MasterFileSystem } from "@/files";
 import {
@@ -1192,6 +1196,46 @@ const getHooks = (ctx: BackofficeScenarioContext, orgId: string) =>
     config: ctx.runtime.config,
     orgId,
   });
+
+const hookFragmentBindings: Record<string, BackofficeObjectBindingName> = {
+  auth: "AUTH",
+  automations: "AUTOMATIONS",
+  cloudflare: "CLOUDFLARE_WORKERS",
+  github: "GITHUB",
+  mcp: "MCP",
+  otp: "OTP",
+  pi: "PI",
+  "pi-workflows": "PI",
+  resend: "RESEND",
+  telegram: "TELEGRAM",
+  upload: "UPLOAD",
+};
+
+const hookFragmentObjectAddress = (
+  fragment: string,
+  orgId: string,
+): BackofficeObjectAddress | null => {
+  const binding = hookFragmentBindings[fragment];
+  if (!binding) {
+    return null;
+  }
+
+  if (binding === "AUTH") {
+    return { binding, scope: { kind: "singleton" } };
+  }
+
+  return { binding, scope: { kind: "org", orgId } };
+};
+
+const listInstantiatedHookFragments = (ctx: BackofficeScenarioContext, orgIds: string[]) =>
+  listHookScopes()
+    .filter((scope) =>
+      orgIds.some((orgId) => {
+        const address = hookFragmentObjectAddress(scope.id, orgId);
+        return address ? ctx.runtime.hasObjectInstance(address) : true;
+      }),
+    )
+    .map((scope) => scope.id);
 
 const fileExists = async (fs: MasterFileSystem, path: string): Promise<boolean> => {
   try {
@@ -2475,7 +2519,7 @@ const buildStepBuilders = <
       noFailed: (input = {}) =>
         createStep("then", "hooks.noFailed", "assert no durable hooks failed", async (ctx) => {
           const orgIds = input.orgId ? [input.orgId] : ctx.files.listOrgIds();
-          const fragments = input.fragments ?? listHookScopes().map((scope) => scope.id);
+          const fragments = input.fragments ?? listInstantiatedHookFragments(ctx, orgIds);
           const failed = [];
 
           for (const orgId of orgIds) {
