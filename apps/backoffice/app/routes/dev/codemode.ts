@@ -1,12 +1,12 @@
 import { z } from "zod";
 
-import { createBackofficeKernel } from "@/backoffice-runtime/kernel";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createOrgFileSystem } from "@/files/create-file-system";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
-import { getAvailableBackofficeRuntimeTools } from "@/fragno/runtime-tools/tool-families";
+import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/codemode";
@@ -46,7 +46,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const body = devCodemodeBodySchema.parse(await request.json());
 
   const { env, runtime } = context.get(BackofficeWorkerContext);
-  const kernel = createBackofficeKernel({ objects: runtime.objects });
+  const kernel = new BackofficeKernel({ objects: runtime.objects });
 
   const fs = await createOrgFileSystem({ orgId, objects: runtime.objects });
   const routeRuntimeContext = createRouteBackedRuntimeContext({ runtime, kernel, execution });
@@ -57,8 +57,8 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     fs,
     env,
     timeout: body.timeout,
-    context: toolContext,
-    tools: getAvailableBackofficeRuntimeTools(toolContext),
+    toolContext: toolContext,
+    families: runtimeToolFamilies,
   });
 
   const headers = new Headers({ "cache-control": "no-store" });

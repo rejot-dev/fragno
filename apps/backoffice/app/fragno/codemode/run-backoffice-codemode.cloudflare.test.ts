@@ -3,18 +3,21 @@ import { describe, expect, test, assert } from "vitest";
 import { env } from "cloudflare:workers";
 import { InMemoryFs } from "just-bash";
 
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { BackofficeObjectRegistry, McpObject } from "@/backoffice-runtime/object-registry";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { MasterFileSystem } from "@/files/master-file-system";
 import type { ResolvedFileMount } from "@/files/types";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import type { AutomationStoreRuntime } from "@/fragno/runtime-tools/families/automations-bindings";
-import { automationStoreRuntimeTools } from "@/fragno/runtime-tools/families/automations-bindings";
-import { eventRuntimeTools, type EventRuntime } from "@/fragno/runtime-tools/families/event";
+import { type EventRuntime } from "@/fragno/runtime-tools/families/event";
 import type { McpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
-import { otpRuntimeTools, type OtpRuntime } from "@/fragno/runtime-tools/families/otp";
-import {
-  telegramRuntimeTools,
-  type TelegramRuntime,
-} from "@/fragno/runtime-tools/families/telegram";
+import { type OtpRuntime } from "@/fragno/runtime-tools/families/otp";
+import { type TelegramRuntime } from "@/fragno/runtime-tools/families/telegram";
+import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { createTrustedSystemBackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
+import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
+import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 describe("runBackofficeCodemode", () => {
   test("runs dynamic worker code with state.* against a mounted filesystem", async () => {
@@ -25,6 +28,8 @@ describe("runBackofficeCodemode", () => {
     const result = await runBackofficeCodemode({
       env,
       fs,
+      families: runtimeToolFamilies,
+      toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       code: `async () => {
         const input = await state.readFile("/workspace/input.txt");
         await state.writeFile("/workspace/output.txt", input + " codemode");
@@ -47,6 +52,8 @@ describe("runBackofficeCodemode", () => {
     const result = await runBackofficeCodemode({
       env,
       fs,
+      families: runtimeToolFamilies,
+      toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       code: `state.readFile("/workspace/input.txt")`,
     });
 
@@ -58,6 +65,8 @@ describe("runBackofficeCodemode", () => {
     const result = await runBackofficeCodemode({
       env,
       fs: createTestMasterFileSystem({}),
+      families: runtimeToolFamilies,
+      toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       code: `async () => await state.find("/")`,
     });
 
@@ -99,8 +108,10 @@ describe("runBackofficeCodemode", () => {
     const result = await runBackofficeCodemode({
       env,
       fs: createTestMasterFileSystem({}),
-      tools: automationStoreRuntimeTools,
-      context: { runtimes: { automations: automationsRuntime } },
+      families: runtimeToolFamilies,
+      toolContext: createTrustedSystemBackofficeToolContext({
+        runtimes: { automations: automationsRuntime },
+      }),
       code: `async () => {
         const existing = await store.get({ key: "telegram/chat-123" });
         const bound = await store.set({
@@ -160,8 +171,8 @@ describe("runBackofficeCodemode", () => {
     const result = await runBackofficeCodemode({
       env,
       fs: createTestMasterFileSystem({}),
-      tools: eventRuntimeTools,
-      context: { runtimes: { event: eventRuntime } },
+      families: runtimeToolFamilies,
+      toolContext: createTrustedSystemBackofficeToolContext({ runtimes: { event: eventRuntime } }),
       code: `async () => {
         return await event.emit({
           eventType: "identity.bound",
@@ -211,8 +222,8 @@ describe("runBackofficeCodemode", () => {
     const result = await runBackofficeCodemode({
       env,
       fs: createTestMasterFileSystem({}),
-      tools: otpRuntimeTools,
-      context: { runtimes: { otp: otpRuntime } },
+      families: runtimeToolFamilies,
+      toolContext: createTrustedSystemBackofficeToolContext({ runtimes: { otp: otpRuntime } }),
       code: `async () => {
         return await otp.createIdentityClaim({
           actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
@@ -279,8 +290,10 @@ describe("runBackofficeCodemode", () => {
     const result = await runBackofficeCodemode({
       env,
       fs: createTestMasterFileSystem({}),
-      tools: telegramRuntimeTools,
-      context: { runtimes: { telegram: telegramRuntime } },
+      families: runtimeToolFamilies,
+      toolContext: createTrustedSystemBackofficeToolContext({
+        runtimes: { telegram: telegramRuntime },
+      }),
       code: `async () => {
         const file = await telegram.getFile({ fileId: "file-1" });
         const sent = await telegram.sendMessage({ chatId: "chat-1", text: "Hello" });
@@ -372,7 +385,8 @@ describe("runBackofficeCodemode", () => {
     const result = await runBackofficeCodemode({
       env,
       fs: createTestMasterFileSystem({}),
-      context: { runtimes: { mcp: mcpRuntime } },
+      families: runtimeToolFamilies,
+      toolContext: createTrustedSystemBackofficeToolContext({ runtimes: { mcp: mcpRuntime } }),
       code: `async () => {
         const docs = await mcp_cloudflare_mcp.search_docs({ query: "fragno" });
         const reserved = await mcp_cloudflare_mcp.delete_({ query: "reserved" });
@@ -437,7 +451,8 @@ describe("runBackofficeCodemode", () => {
       runBackofficeCodemode({
         env,
         fs: createTestMasterFileSystem({}),
-        context: { runtimes: { mcp: mcpRuntime } },
+        families: runtimeToolFamilies,
+        toolContext: createTrustedSystemBackofficeToolContext({ runtimes: { mcp: mcpRuntime } }),
         code: `async () => "ok"`,
       }),
     ).rejects.toThrow("MCP server list failed");
@@ -447,6 +462,8 @@ describe("runBackofficeCodemode", () => {
     const result = await runBackofficeCodemode({
       env,
       fs: createTestMasterFileSystem({}),
+      families: runtimeToolFamilies,
+      toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       code: `async () => {
         return await store.get({ key: "telegram/chat-123" });
       }`,
@@ -486,8 +503,10 @@ describe("runBackofficeCodemode", () => {
     const result = await runBackofficeCodemode({
       env,
       fs: createTestMasterFileSystem({}),
-      tools: automationStoreRuntimeTools,
-      context: { runtimes: { automations: automationsRuntime } },
+      families: runtimeToolFamilies,
+      toolContext: createTrustedSystemBackofficeToolContext({
+        runtimes: { automations: automationsRuntime },
+      }),
       code: `async () => {
         return await store.set({ key: "", value: "" });
       }`,
@@ -517,8 +536,8 @@ describe("runBackofficeCodemode", () => {
     const result = await runBackofficeCodemode({
       env,
       fs: createTestMasterFileSystem({}),
-      tools: otpRuntimeTools,
-      context: { runtimes: { otp: otpRuntime } },
+      families: runtimeToolFamilies,
+      toolContext: createTrustedSystemBackofficeToolContext({ runtimes: { otp: otpRuntime } }),
       code: `async () => {
         return await otp.createIdentityClaim({
           actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
@@ -538,10 +557,87 @@ describe("runBackofficeCodemode", () => {
     ]);
   });
 
+  test("supports scoped route-backed context handles and denies before Durable Object calls", async () => {
+    const calls: Array<{ scope: string; method: string; pathname: string }> = [];
+    const runtime = createScopedMcpRuntimeServices(calls);
+    const kernel = new BackofficeKernel({
+      objects: runtime.objects,
+      authorizationPolicy: (request) => {
+        if (
+          request.scope.kind === "org" &&
+          request.requiredPermissions.some(
+            (permission) =>
+              permission.namespace === "mcp" && permission.permission === "servers.delete",
+          )
+        ) {
+          return { allowed: false, message: "Denied mcp.servers.delete" };
+        }
+        return { allowed: true };
+      },
+    });
+    const routeContext = createRouteBackedRuntimeContext({
+      runtime,
+      kernel,
+      execution: {
+        actor: {
+          type: "user",
+          id: "user-1",
+          userId: "user-1",
+          organizationIds: ["org-1"],
+        },
+        scope: { kind: "org", orgId: "org-1" },
+      },
+    });
+    const context = createBackofficeToolContext(routeContext);
+
+    const result = await runBackofficeCodemode({
+      env,
+      fs: createTestMasterFileSystem({}),
+      families: runtimeToolFamilies,
+      toolContext: context,
+      code: `async () => {
+        const org = await context.org("org-1").mcp.listServers();
+        const user = await context.user("user-1").mcp.listServers();
+        const current = await mcp.listServers();
+        let projectError = null;
+        try {
+          await context.project("project-1").mcp.listServers();
+        } catch (error) {
+          projectError = error.message;
+        }
+        let deleteError = null;
+        try {
+          await context.org("org-1").mcp.deleteServer({ slug: "blocked" });
+        } catch (error) {
+          deleteError = error.message;
+        }
+        return { org, user, current, projectError, deleteError };
+      }`,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.result).toMatchObject({
+      org: { servers: [{ slug: "org-org-1" }] },
+      user: { servers: [{ slug: "user-user-1" }] },
+      current: { servers: [{ slug: "org-org-1" }] },
+      projectError: "Project context is not available.",
+      deleteError: "Denied mcp.servers.delete",
+    });
+    expect(calls).toEqual([
+      // Installed MCP provider discovery for the selected current scope.
+      { scope: "org:org-1", method: "GET", pathname: "/api/mcp/servers" },
+      { scope: "org:org-1", method: "GET", pathname: "/api/mcp/servers" },
+      { scope: "user:user-1", method: "GET", pathname: "/api/mcp/servers" },
+      { scope: "org:org-1", method: "GET", pathname: "/api/mcp/servers" },
+    ]);
+  });
+
   test("blocks direct network access by default", async () => {
     const result = await runBackofficeCodemode({
       env,
       fs: createTestMasterFileSystem({}),
+      families: runtimeToolFamilies,
+      toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       code: `async () => {
         await fetch("https://example.com/");
         return "network was reachable";
@@ -553,6 +649,85 @@ describe("runBackofficeCodemode", () => {
     expect(result.error).not.toContain("network was reachable");
   });
 });
+
+const createScopedMcpRuntimeServices = (
+  calls: Array<{ scope: string; method: string; pathname: string }>,
+): BackofficeRuntimeServices => {
+  const createMcpObject = (scope: string): McpObject => ({
+    fetch: async (request) => {
+      const url = new URL(request.url);
+      calls.push({ scope, method: request.method, pathname: url.pathname });
+      if (request.method === "GET" && url.pathname === "/api/mcp/servers") {
+        const slug = scope.replace(":", "-");
+        return Response.json({
+          servers: [
+            {
+              slug,
+              name: slug,
+              endpointUrl: "https://example.com/mcp",
+              authMode: "none",
+              cache: { tools: [] },
+            },
+          ],
+        });
+      }
+      if (request.method === "DELETE") {
+        return Response.json({ ok: true });
+      }
+      return Response.json({ error: "Unexpected MCP request" }, { status: 500 });
+    },
+    getAdminConfig: async () => ({ configured: true }),
+    resetAdminConfig: async () => ({ configured: false }),
+    setAdminConfig: async () => ({ configured: true }),
+    getDurableHookRepository: async () => ({}) as never,
+  });
+
+  const scoped = {
+    singleton: () => createMcpObject("singleton"),
+    forOrg: (orgId: string) => createMcpObject(`org:${orgId}`),
+    forName: (name: string) => createMcpObject(`name:${name}`),
+    forUser: ({ userId }: { userId: string }) => createMcpObject(`user:${userId}`),
+    forProject: ({ projectId }: { projectId: string }) => createMcpObject(`project:${projectId}`),
+  };
+  const objects = new Proxy(
+    { mcp: scoped },
+    {
+      get: (target, property) =>
+        property in target
+          ? target[property as keyof typeof target]
+          : {
+              singleton: () => createMcpObject(String(property)),
+              forOrg: () => createMcpObject(String(property)),
+              forName: () => createMcpObject(String(property)),
+              forUser: () => createMcpObject(String(property)),
+              forProject: () => createMcpObject(String(property)),
+            },
+    },
+  ) as unknown as BackofficeObjectRegistry;
+
+  return {
+    objects,
+    adapters: {} as BackofficeRuntimeServices["adapters"],
+    config: {
+      bindings: {
+        auth: false,
+        automations: false,
+        telegram: false,
+        otp: false,
+        pi: false,
+        resend: false,
+        reson8: false,
+        mcp: true,
+        upload: false,
+        github: false,
+        cloudflareWorkers: false,
+        githubWebhookRouter: false,
+        sandboxRegistry: false,
+        sandbox: false,
+      },
+    },
+  };
+};
 
 const createTestMasterFileSystem = (files: Record<string, string | Uint8Array>): MasterFileSystem =>
   new MasterFileSystem({

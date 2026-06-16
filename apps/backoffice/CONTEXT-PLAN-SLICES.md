@@ -100,7 +100,7 @@ pnpm run format:changed
 - Dev codemode route now operates from an authenticated selected org context.
 - Project context and unsupported object/scope combinations fail with explicit unavailable errors.
 
-## [ ] Slice 2 — Permission-authorized runtime tools + scoped codemode handles
+## [x] Slice 2 — Permission-authorized runtime tools + scoped codemode handles
 
 ### Goal
 
@@ -209,7 +209,23 @@ Use `runBackofficeCodemode(...)` with route-backed runtime context:
    - `context.org("org-1").mcp.deleteServer(...)` returns an authorization error;
    - MCP DO delete route is not called.
 
-### Acceptance
+### Verified
+
+Implemented and tested through the route-backed codemode path and bash command path:
+
+- every runtime tool has explicit `requiredPermissions`;
+- runtime tool execution normalizes tool permissions to `{ namespace, permission }` before calling
+  `kernel.assertAllowed(...)`;
+- kernel authorization accepts a policy hook without reintroducing a global operation enum;
+- codemode exposes `context.current`, `context.org(...)`, `context.user(...)`, and
+  `context.project(...)` scoped handles;
+- default providers such as `mcp.listServers()` still target the selected current scope;
+- generated `codemode.d.ts` now documents scoped handles as the canonical multi-context API;
+- bash runtime commands also authorize before calling runtime implementations;
+- denial of `{ namespace: "mcp", permission: "servers.delete" }` prevents the route-backed MCP
+  Durable Object call.
+
+### Acceptance status
 
 - Every runtime tool has explicit `requiredPermissions`.
 - Every runtime tool call is kernel-authorized using family-scoped permissions.

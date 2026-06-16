@@ -1,10 +1,6 @@
-import { SYSTEM_BACKOFFICE_PRINCIPAL } from "@/backoffice-runtime/context";
-import { createBackofficeKernel } from "@/backoffice-runtime/kernel";
-import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { IFileSystem } from "@/files/interface";
 import { MasterFileSystem } from "@/files/master-file-system";
 import type { AutomationScriptEngine } from "@/fragno/automation/catalog";
-import type { AutomationEventActor } from "@/fragno/automation/contracts";
 import { createAutomationExecutionFileSystem } from "@/fragno/automation/engine/execution-file-system";
 import {
   createAutomationRunResult,
@@ -12,7 +8,6 @@ import {
 } from "@/fragno/automation/run-result";
 
 import { createBashHost, type BashHost, type BashHostContext } from "./bash-host";
-import { createRouteBackedRuntimeContext } from "./route-backed-runtime-context";
 
 // ---------------------------------------------------------------------------
 // Automation execution (bash + codemode)
@@ -89,32 +84,11 @@ export const executeAutomationScript = async ({
 
 export type CreateInteractiveBashHostInput = {
   fs: IFileSystem;
-  env: CloudflareEnv;
-  runtime?: BackofficeRuntimeServices;
-  orgId: string;
   sessionId?: string;
-  defaultActor?: AutomationEventActor | null;
-  context?: BashHostContext;
+  context: BashHostContext;
 };
 
 export const createInteractiveBashHost = (input: CreateInteractiveBashHostInput): BashHost => {
-  const context =
-    input.context ??
-    (input.runtime
-      ? createRouteBackedRuntimeContext({
-          runtime: input.runtime,
-          kernel: createBackofficeKernel({ objects: input.runtime.objects }),
-          execution: {
-            actor: SYSTEM_BACKOFFICE_PRINCIPAL,
-            scope: { kind: "org", orgId: input.orgId },
-          },
-          defaultActor: input.defaultActor,
-        })
-      : null);
-  if (!context) {
-    throw new Error("Interactive bash host requires a runtime context or runtime services.");
-  }
-
   const fs =
     input.fs instanceof MasterFileSystem
       ? createAutomationExecutionFileSystem({ masterFs: input.fs })
@@ -123,6 +97,6 @@ export const createInteractiveBashHost = (input: CreateInteractiveBashHostInput)
   return createBashHost({
     fs,
     sessionId: input.sessionId,
-    context,
+    context: input.context,
   });
 };

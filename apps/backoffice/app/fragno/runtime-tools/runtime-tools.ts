@@ -1,6 +1,12 @@
 import { defineCommand } from "just-bash";
 import type { z } from "zod";
 
+import {
+  SYSTEM_BACKOFFICE_PRINCIPAL,
+  type BackofficeContextScope,
+  type BackofficePrincipal,
+} from "@/backoffice-runtime/context";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeCapabilityId } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import type { ToolProvider } from "@/fragno/codemode/codemode-executor";
 import type {
@@ -26,6 +32,34 @@ export type BackofficeToolContext<
 > = {
   runtimes: TRuntimes;
   defaults?: TDefaults;
+  actor: BackofficePrincipal;
+  scope: BackofficeContextScope;
+  kernel: BackofficeKernel;
+  createScopedContext(scope: BackofficeContextScope): BackofficeToolContext<TRuntimes, TDefaults>;
+};
+
+export const createTrustedSystemBackofficeToolContext = <
+  TRuntimes extends Record<string, unknown> = Record<string, unknown>,
+  TDefaults extends Record<string, unknown> = Record<string, unknown>,
+>({
+  runtimes,
+  defaults,
+}: {
+  runtimes: TRuntimes;
+  defaults?: TDefaults;
+}): BackofficeToolContext<TRuntimes, TDefaults> => {
+  const kernel = new BackofficeKernel({});
+  const createContext = (
+    scope: BackofficeContextScope,
+  ): BackofficeToolContext<TRuntimes, TDefaults> => ({
+    runtimes,
+    ...(typeof defaults === "undefined" ? {} : { defaults }),
+    actor: SYSTEM_BACKOFFICE_PRINCIPAL,
+    scope,
+    kernel,
+    createScopedContext: createContext,
+  });
+  return createContext({ kind: "system" });
 };
 
 export type BackofficeRuntimeToolCall = {
@@ -97,8 +131,10 @@ export type BackofficeRuntimeTool<
   namespace: string;
   name: string;
   capabilityId?: BackofficeCapabilityId;
+  authorizationNamespace?: string;
   description: string;
-  requiredPermissions?: readonly string[];
+  requiredPermissions: readonly string[];
+  getResource?(input: z.output<TInputSchema>): unknown;
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
   execute(input: z.output<TInputSchema>, context: TContext): Promise<z.output<TOutputSchema>>;
@@ -145,8 +181,12 @@ export const defineBackofficeRuntimeToolFamily = <
 }): BackofficeRuntimeToolFamily => {
   const declaredPermissions = { ...permissions };
   for (const tool of tools) {
-    for (const permission of tool.requiredPermissions ?? []) {
-      declaredPermissions[permission] ??= `Use ${namespace}.${permission}.`;
+    for (const permission of tool.requiredPermissions) {
+      if (!declaredPermissions[permission]) {
+        throw new Error(
+          `Runtime tool '${tool.id}' requires undeclared permission '${permission}' in family '${namespace}'.`,
+        );
+      }
     }
   }
 
@@ -197,12 +237,47 @@ const summarizeToolValue = (value: unknown) => {
   return summary.length > 500 ? `${summary.slice(0, 497)}...` : summary;
 };
 
-const executeBackofficeRuntimeTool = async (
+const defaultRuntimeToolResource = (input: unknown) => {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+
+  const record = input as Record<string, unknown>;
+  for (const key of ["slug", "path", "workflowName", "capabilityId", "id", "key", "sandboxId"]) {
+    if (typeof record[key] === "string" && record[key].trim()) {
+      return { [key]: record[key] };
+    }
+  }
+
+  return undefined;
+};
+
+export const assertBackofficeRuntimeToolAllowed = (
+  tool: AnyBackofficeRuntimeTool,
+  parsedInput: unknown,
+  context: BackofficeToolContext,
+) => {
+  context.kernel.assertAllowed({
+    actor: context.actor,
+    scope: context.scope,
+    requiredPermissions: tool.requiredPermissions.map((permission) => ({
+      namespace: tool.authorizationNamespace ?? tool.namespace,
+      permission,
+    })),
+    resource: tool.getResource
+      ? tool.getResource(parsedInput as never)
+      : defaultRuntimeToolResource(parsedInput),
+  });
+};
+
+export const executeBackofficeRuntimeTool = async (
   tool: AnyBackofficeRuntimeTool,
   input: unknown,
   context: BackofficeToolContext,
 ): Promise<unknown> => {
-  const output = await tool.execute(tool.inputSchema.parse(input), context);
+  const parsedInput = tool.inputSchema.parse(input);
+  assertBackofficeRuntimeToolAllowed(tool, parsedInput, context);
+  const output = await tool.execute(parsedInput, context);
   return tool.outputSchema.parse(output);
 };
 
@@ -295,17 +370,24 @@ export const createBackofficeBashCommands = ({
         const commandOutput = bash.outputOptions
           ? bash.outputOptions(args, parsed)
           : readOutputOptions(parsed);
-        const rawResult = bash.execute
-          ? await bash.execute({
-              input,
-              args,
-              context,
-              commandOutput,
-              shell: shell as unknown as BackofficeBashShellContext,
-            })
-          : bash.format
-            ? bash.format(await executeBackofficeRuntimeTool(tool, input, context), commandOutput)
-            : { data: await executeBackofficeRuntimeTool(tool, input, context) };
+        let rawResult: unknown;
+        if (bash.execute) {
+          assertBackofficeRuntimeToolAllowed(tool, input, context);
+          rawResult = await bash.execute({
+            input,
+            args,
+            context,
+            commandOutput,
+            shell: shell as unknown as BackofficeBashShellContext,
+          });
+        } else if (bash.format) {
+          rawResult = bash.format(
+            await executeBackofficeRuntimeTool(tool, input, context),
+            commandOutput,
+          );
+        } else {
+          rawResult = { data: await executeBackofficeRuntimeTool(tool, input, context) };
+        }
         const result = normalizeExecutionResult(rawResult);
         const stdout = formatCommandStdout(commandOutput, result);
         const stderr = typeof result.stderr === "string" ? result.stderr : "";

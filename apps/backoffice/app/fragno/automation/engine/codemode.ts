@@ -1,8 +1,8 @@
 import type { RemoteWorkflowStepHost } from "@fragno-dev/workflows/remote-workflow";
 import type { WorkflowEvent } from "@fragno-dev/workflows/workflow";
 
-import { SYSTEM_BACKOFFICE_PRINCIPAL } from "@/backoffice-runtime/context";
-import { createBackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { BackofficePrincipal } from "@/backoffice-runtime/context";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { MasterFileSystem } from "@/files/master-file-system";
 import {
@@ -14,10 +14,7 @@ import { runBackofficeCodemodeWorkflow } from "@/fragno/codemode/workflow-execut
 import type { PiCodemodeWorkflowParams } from "@/fragno/pi/pi-codemode-workflow";
 import type { AutomationExecutionContext } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
-import {
-  getAvailableRuntimeTools,
-  type BackofficeRuntimeToolCall,
-} from "@/fragno/runtime-tools/runtime-tools";
+import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
@@ -67,16 +64,12 @@ export const executeCodemodeAutomation = async ({
     },
   });
   const toolContext = createBackofficeToolContext(context);
-  const tools = getAvailableRuntimeTools({
-    families: runtimeToolFamilies,
-    context: toolContext,
-  });
   const result = await runBackofficeCodemode({
     code: script,
     fs: executionFs,
     env,
-    tools,
-    context: toolContext,
+    families: runtimeToolFamilies,
+    toolContext,
   });
 
   return createCodemodeAutomationRunResult({ result, context });
@@ -104,18 +97,14 @@ export const executeWorkflowCodemodeAutomation = async ({
     },
   });
   const toolContext = createBackofficeToolContext(context);
-  const tools = getAvailableRuntimeTools({
-    families: runtimeToolFamilies,
-    context: toolContext,
-  });
   const result = await runBackofficeCodemodeWorkflow({
     code: script,
     event: workflowEvent,
     remote,
     fs: executionFs,
     env,
-    tools,
-    context: toolContext,
+    families: runtimeToolFamilies,
+    toolContext,
   });
 
   return createCodemodeAutomationRunResult({ result, context });
@@ -147,22 +136,25 @@ export const executePiCodemodeWorkflow = async ({
 
   const runtimeContext = createRouteBackedRuntimeContext({
     runtime,
-    kernel: createBackofficeKernel({ objects: runtime.objects }),
-    execution: { actor: SYSTEM_BACKOFFICE_PRINCIPAL, scope: { kind: "org", orgId } },
+    kernel: new BackofficeKernel({ objects: runtime.objects }),
+    execution: {
+      actor: {
+        type: "automation",
+        id: `pi-codemode-workflow:${orgId}`,
+        organizationIds: [orgId],
+      } satisfies BackofficePrincipal,
+      scope: { kind: "org", orgId },
+    },
   });
   const context = createBackofficeToolContext(runtimeContext);
-  const tools = getAvailableRuntimeTools({
-    families: runtimeToolFamilies,
-    context,
-  });
   const result = await runBackofficeCodemodeWorkflow({
     code: params.code,
     event: workflowEvent,
     remote,
     fs: masterFs,
     env,
-    tools,
-    context,
+    families: runtimeToolFamilies,
+    toolContext: context,
   });
   if (result.error) {
     throw new Error(result.error);

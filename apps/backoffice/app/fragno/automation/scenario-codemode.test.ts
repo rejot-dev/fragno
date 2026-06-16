@@ -1,4 +1,4 @@
-import { describe, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -70,6 +70,76 @@ describe("Backoffice codemode scenarios", () => {
         ],
       }),
     );
+  });
+
+  test("runs codemode through scoped context handles", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "codemode writes state through scoped context handles",
+
+        files: backofficeFiles.workspaceStarter(),
+
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+
+        steps: ({ when, then }) => [
+          when.codemode.run({
+            orgId: "org-1",
+            label: "write store entries from scoped codemode context",
+            code: `async () => {
+  await context.current.store.set({
+    key: "scoped/current",
+    value: "from-current",
+    actor: null,
+  });
+
+  await context.org("org-1").store.set({
+    key: "scoped/org",
+    value: "from-org",
+    actor: null,
+  });
+}`,
+            assertToolCalls: ["current:store.set", "org:store.set"],
+          }),
+
+          then.store.entry({ orgId: "org-1", key: "scoped/current", value: "from-current" }),
+          then.store.entry({ orgId: "org-1", key: "scoped/org", value: "from-org" }),
+          then.codemode.toolCalls({
+            include: ["current:store.set", "org:store.set"],
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("rejects scoped codemode against a different organisation", async () => {
+    await expect(
+      runBackofficeScenario(
+        defineBackofficeScenario({
+          name: "codemode rejects writing state into another org through scoped context",
+
+          files: backofficeFiles.workspaceStarter(),
+
+          setup: ({ given }) => [
+            given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+            given.organization.exists({ id: "org-2", name: "Grace Labs" }),
+          ],
+
+          steps: ({ when }) => [
+            when.codemode.run({
+              orgId: "org-1",
+              label: "write store entry into org-2 from org-1 codemode",
+              code: `async () => {
+  await context.org("org-2").store.set({
+    key: "scoped/foreign-org",
+    value: "from-org-1-codemode",
+    actor: null,
+  });
+}`,
+            }),
+          ],
+        }),
+      ),
+    ).rejects.toThrow("Forbidden");
   });
 
   test("uses codemode setup helpers while keeping setup intent explicit", async () => {

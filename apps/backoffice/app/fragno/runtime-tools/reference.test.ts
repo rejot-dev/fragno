@@ -409,103 +409,135 @@ describe("runtime tool reference generation", () => {
   test("stringifies reson8 codemode declarations", () => {
     expect(stringifyFamilyByNamespace({ namespace: "reson8", target: "codemode" }))
       .toMatchInlineSnapshot(`
-      "// ── Backoffice domain tool providers ───────────────────────────────────
+        "// ── Backoffice domain tool providers ───────────────────────────────────
 
-      // reson8 tools
-      type Reson8TranscribePrerecordedInput = {
-        audio?: unknown;
-        encoding?: "auto" | "pcm_s16le";
-        sampleRate?: number;
-        channels?: number;
-        customModelId?: string;
-        includeTimestamps?: boolean;
-        includeWords?: boolean;
-        includeConfidence?: boolean;
-      };
-      type Reson8TranscribePrerecordedOutput = {
-        text: string;
-        start_ms?: number;
-        duration_ms?: number;
-        words?: {
-            text: string;
-            start_ms?: number;
-            duration_ms?: number;
-            confidence?: number;
-          }[];
-      };
+        // reson8 tools
+        type Reson8TranscribePrerecordedInput = {
+          audio?: unknown;
+          encoding?: "auto" | "pcm_s16le";
+          sampleRate?: number;
+          channels?: number;
+          customModelId?: string;
+          includeTimestamps?: boolean;
+          includeWords?: boolean;
+          includeConfidence?: boolean;
+        };
+        type Reson8TranscribePrerecordedOutput = {
+          text: string;
+          start_ms?: number;
+          duration_ms?: number;
+          words?: {
+              text: string;
+              start_ms?: number;
+              duration_ms?: number;
+              confidence?: number;
+            }[];
+        };
 
-      declare const reson8: {
-        /** Transcribe a prerecorded audio file via Reson8. */
-        transcribePrerecorded(input: Reson8TranscribePrerecordedInput): Promise<Reson8TranscribePrerecordedOutput>;
-      };"
-    `);
+        type Reson8CodemodeProvider = {
+          /** Transcribe a prerecorded audio file via Reson8. */
+          transcribePrerecorded(input: Reson8TranscribePrerecordedInput): Promise<Reson8TranscribePrerecordedOutput>;
+        };
+        declare const reson8: Reson8CodemodeProvider;
+
+        // Scoped context handles target a selected Backoffice context.
+        type BackofficeCodemodeScopedProviders = {
+          reson8: Reson8CodemodeProvider;
+        };
+        declare const context: {
+          /** Providers bound to the selected current context. */
+          readonly current: BackofficeCodemodeScopedProviders;
+          /** Providers bound to an organisation context. */
+          org(orgId: string): BackofficeCodemodeScopedProviders;
+          /** Providers bound to a user context. */
+          user(userId: string): BackofficeCodemodeScopedProviders;
+          /** Project contexts are reserved until the project model exists. */
+          project(projectId: string): BackofficeCodemodeScopedProviders;
+        };"
+      `);
   });
 
   test("stringifies a single codemode family for provider declarations", () => {
     expect(stringifyFamilyByNamespace({ namespace: "telegram", target: "codemode" }))
       .toMatchInlineSnapshot(`
-      "// ── Backoffice domain tool providers ───────────────────────────────────
+        "// ── Backoffice domain tool providers ───────────────────────────────────
 
-      // telegram tools
-      type TelegramGetFileInput = {
-        fileId: string;
-      };
-      type TelegramGetFileOutput = {
-        fileId: string;
-        fileUniqueId?: string | null;
-        filePath?: string | null;
-        fileSize?: number | null;
-      };
-      type TelegramDownloadFileInput = {
-        fileId: string;
-      };
-      type TelegramDownloadFileOutput = {
-        bytes: number[];
-        contentType?: string;
-      };
-      type TelegramSendMessageInput = {
-        chatId: string;
-        text: string;
-        parseMode?: "MarkdownV2" | "Markdown" | "HTML";
-        disableWebPagePreview?: boolean;
-        replyToMessageId?: number;
-      };
-      type TelegramSendMessageOutput = {
-        ok: boolean;
-        queued: boolean;
-      };
-      type TelegramSendChatActionInput = {
-        chatId: string;
-        action: "typing";
-      };
-      type TelegramSendChatActionOutput = {
-        ok: boolean;
-      };
-      type TelegramEditMessageInput = {
-        chatId: string;
-        messageId: string;
-        text: string;
-        parseMode?: "MarkdownV2" | "Markdown" | "HTML";
-        disableWebPagePreview?: boolean;
-      };
-      type TelegramEditMessageOutput = {
-        ok: boolean;
-        queued: boolean;
-      };
+        // telegram tools
+        type TelegramGetFileInput = {
+          fileId: string;
+        };
+        type TelegramGetFileOutput = {
+          fileId: string;
+          fileUniqueId?: string | null;
+          filePath?: string | null;
+          fileSize?: number | null;
+        };
+        type TelegramDownloadFileInput = {
+          fileId: string;
+        };
+        type TelegramDownloadFileOutput = {
+          bytes: number[];
+          contentType?: string;
+        };
+        type TelegramSendMessageInput = {
+          chatId: string;
+          text: string;
+          parseMode?: "MarkdownV2" | "Markdown" | "HTML";
+          disableWebPagePreview?: boolean;
+          replyToMessageId?: number;
+        };
+        type TelegramSendMessageOutput = {
+          ok: boolean;
+          queued: boolean;
+        };
+        type TelegramSendChatActionInput = {
+          chatId: string;
+          action: "typing";
+        };
+        type TelegramSendChatActionOutput = {
+          ok: boolean;
+        };
+        type TelegramEditMessageInput = {
+          chatId: string;
+          messageId: string;
+          text: string;
+          parseMode?: "MarkdownV2" | "Markdown" | "HTML";
+          disableWebPagePreview?: boolean;
+        };
+        type TelegramEditMessageOutput = {
+          ok: boolean;
+          queued: boolean;
+        };
 
-      declare const telegram: {
-        /** Resolve Telegram attachment metadata. */
-        getFile(input: TelegramGetFileInput): Promise<TelegramGetFileOutput>;
-        /** Download a Telegram file and return its bytes. */
-        downloadFile(input: TelegramDownloadFileInput): Promise<TelegramDownloadFileOutput>;
-        /** Queue a message to be sent to a Telegram chat. */
-        sendMessage(input: TelegramSendMessageInput): Promise<TelegramSendMessageOutput>;
-        /** Send a Telegram chat action. */
-        sendChatAction(input: TelegramSendChatActionInput): Promise<TelegramSendChatActionOutput>;
-        /** Queue an edit of an existing Telegram message. */
-        editMessage(input: TelegramEditMessageInput): Promise<TelegramEditMessageOutput>;
-      };"
-    `);
+        type TelegramCodemodeProvider = {
+          /** Resolve Telegram attachment metadata. */
+          getFile(input: TelegramGetFileInput): Promise<TelegramGetFileOutput>;
+          /** Download a Telegram file and return its bytes. */
+          downloadFile(input: TelegramDownloadFileInput): Promise<TelegramDownloadFileOutput>;
+          /** Queue a message to be sent to a Telegram chat. */
+          sendMessage(input: TelegramSendMessageInput): Promise<TelegramSendMessageOutput>;
+          /** Send a Telegram chat action. */
+          sendChatAction(input: TelegramSendChatActionInput): Promise<TelegramSendChatActionOutput>;
+          /** Queue an edit of an existing Telegram message. */
+          editMessage(input: TelegramEditMessageInput): Promise<TelegramEditMessageOutput>;
+        };
+        declare const telegram: TelegramCodemodeProvider;
+
+        // Scoped context handles target a selected Backoffice context.
+        type BackofficeCodemodeScopedProviders = {
+          telegram: TelegramCodemodeProvider;
+        };
+        declare const context: {
+          /** Providers bound to the selected current context. */
+          readonly current: BackofficeCodemodeScopedProviders;
+          /** Providers bound to an organisation context. */
+          org(orgId: string): BackofficeCodemodeScopedProviders;
+          /** Providers bound to a user context. */
+          user(userId: string): BackofficeCodemodeScopedProviders;
+          /** Project contexts are reserved until the project model exists. */
+          project(projectId: string): BackofficeCodemodeScopedProviders;
+        };"
+      `);
   });
 
   test("stringifies a single family for dashboard command groups", () => {

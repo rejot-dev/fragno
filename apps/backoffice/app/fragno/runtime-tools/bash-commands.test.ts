@@ -3,6 +3,8 @@ import { describe, expect, test } from "vitest";
 import { Bash, InMemoryFs } from "just-bash";
 import { z } from "zod";
 
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+
 import type { AutomationStoreRuntime } from "./families/automations-bindings";
 import { automationStoreRuntimeTools } from "./families/automations-bindings";
 import {
@@ -10,8 +12,11 @@ import {
   type BackofficeCapabilitiesRuntime,
 } from "./families/backoffice-capabilities";
 import { eventRuntimeTools, type EventRuntime } from "./families/event";
-import { createBackofficeBashCommands } from "./runtime-tools";
-import { defineBackofficeRuntimeTool } from "./runtime-tools";
+import {
+  createBackofficeBashCommands,
+  createTrustedSystemBackofficeToolContext,
+  defineBackofficeRuntimeTool,
+} from "./runtime-tools";
 
 describe("createBackofficeBashCommands", () => {
   test("routes generated bash commands through semantic runtime tools", async () => {
@@ -51,7 +56,9 @@ describe("createBackofficeBashCommands", () => {
       fs: new InMemoryFs(),
       customCommands: createBackofficeBashCommands({
         tools: automationStoreRuntimeTools,
-        context: { runtimes: { automations: automationsRuntime } },
+        context: createTrustedSystemBackofficeToolContext({
+          runtimes: { automations: automationsRuntime },
+        }),
         commandCallsResult,
       }),
     });
@@ -109,7 +116,10 @@ describe("createBackofficeBashCommands", () => {
       fs: new InMemoryFs(),
       customCommands: createBackofficeBashCommands({
         tools: automationStoreRuntimeTools,
-        context: { runtimes: { automations: automationsRuntime }, defaults: { actor } },
+        context: createTrustedSystemBackofficeToolContext({
+          runtimes: { automations: automationsRuntime },
+          defaults: { actor },
+        }),
         commandCallsResult: [],
       }),
     });
@@ -135,7 +145,9 @@ describe("createBackofficeBashCommands", () => {
       fs: new InMemoryFs(),
       customCommands: createBackofficeBashCommands({
         tools: automationStoreRuntimeTools,
-        context: { runtimes: { automations: automationsRuntime } },
+        context: createTrustedSystemBackofficeToolContext({
+          runtimes: { automations: automationsRuntime },
+        }),
         commandCallsResult: [],
       }),
     });
@@ -146,6 +158,61 @@ describe("createBackofficeBashCommands", () => {
       exitCode: 1,
       stderr: expect.stringContaining("Missing required option --actor"),
     });
+  });
+
+  test("authorizes bash commands before executing runtime tools", async () => {
+    const calls: unknown[] = [];
+    const actor = { scope: "external", source: "telegram", type: "chat", id: "chat-123" } as const;
+    const automationsRuntime: AutomationStoreRuntime = {
+      get: async (input) => {
+        calls.push(["get", input]);
+        return { key: input.key, value: "value", category: [], actor };
+      },
+      set: async (input) => {
+        calls.push(["set", input]);
+        return { key: input.key, value: input.value, category: [], actor: input.actor };
+      },
+      delete: async (input) => {
+        calls.push(["delete", input]);
+        return { ok: true, key: input.key };
+      },
+      list: async () => [],
+    };
+
+    const bash = new Bash({
+      fs: new InMemoryFs(),
+      customCommands: createBackofficeBashCommands({
+        tools: automationStoreRuntimeTools,
+        context: {
+          actor: { type: "user", id: "user-1", userId: "user-1", organizationIds: ["org-1"] },
+          scope: { kind: "org", orgId: "org-1" },
+          kernel: new BackofficeKernel({
+            authorizationPolicy: (request) =>
+              request.requiredPermissions.some(
+                (permission) =>
+                  permission.namespace === "store" && permission.permission === "modify",
+              )
+                ? { allowed: false, message: "Denied store.modify" }
+                : { allowed: true },
+          }),
+          createScopedContext: () =>
+            createTrustedSystemBackofficeToolContext({
+              runtimes: { automations: automationsRuntime },
+            }),
+          runtimes: { automations: automationsRuntime },
+        },
+        commandCallsResult: [],
+      }),
+    });
+
+    await expect(bash.exec("store.get --key telegram/chat-123")).resolves.toMatchObject({
+      exitCode: 0,
+    });
+    await expect(bash.exec("store.delete --key telegram/chat-123")).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: "Denied store.modify\n",
+    });
+    expect(calls).toEqual([["get", { key: "telegram/chat-123" }]]);
   });
 
   test("routes generated event bash commands through semantic runtime tools", async () => {
@@ -168,7 +235,7 @@ describe("createBackofficeBashCommands", () => {
       fs: new InMemoryFs(),
       customCommands: createBackofficeBashCommands({
         tools: eventRuntimeTools,
-        context: { runtimes: { event: eventRuntime } },
+        context: createTrustedSystemBackofficeToolContext({ runtimes: { event: eventRuntime } }),
         commandCallsResult,
       }),
     });
@@ -204,7 +271,9 @@ describe("createBackofficeBashCommands", () => {
       fs: new InMemoryFs(),
       customCommands: createBackofficeBashCommands({
         tools: backofficeCapabilitiesRuntimeTools,
-        context: { runtimes: { backoffice: backofficeRuntime } },
+        context: createTrustedSystemBackofficeToolContext({
+          runtimes: { backoffice: backofficeRuntime },
+        }),
         commandCallsResult: [],
       }),
     });
@@ -231,7 +300,9 @@ describe("createBackofficeBashCommands", () => {
       fs: new InMemoryFs(),
       customCommands: createBackofficeBashCommands({
         tools: backofficeCapabilitiesRuntimeTools,
-        context: { runtimes: { backoffice: backofficeRuntime } },
+        context: createTrustedSystemBackofficeToolContext({
+          runtimes: { backoffice: backofficeRuntime },
+        }),
         commandCallsResult: [],
       }),
     });
@@ -250,7 +321,9 @@ describe("createBackofficeBashCommands", () => {
       fs: new InMemoryFs(),
       customCommands: createBackofficeBashCommands({
         tools: backofficeCapabilitiesRuntimeTools,
-        context: { runtimes: { backoffice: backofficeRuntime } },
+        context: createTrustedSystemBackofficeToolContext({
+          runtimes: { backoffice: backofficeRuntime },
+        }),
         commandCallsResult: [],
       }),
     });
@@ -269,6 +342,7 @@ describe("createBackofficeBashCommands", () => {
         namespace: "test",
         name: "echo",
         description: "Echo a value.",
+        requiredPermissions: [],
         inputSchema: z.object({ value: z.string().min(1) }),
         outputSchema: z.object({ value: z.string() }),
         execute: async (input) => {
@@ -301,6 +375,7 @@ describe("createBackofficeBashCommands", () => {
         namespace: "test",
         name: "echo",
         description: "Echo a value.",
+        requiredPermissions: [],
         inputSchema: z.object({ value: z.string().min(1) }),
         outputSchema: z.object({ value: z.string() }),
         execute: async (input) => {
@@ -328,6 +403,7 @@ describe("createBackofficeBashCommands", () => {
         namespace: "test",
         name: "echo",
         description: "Echo a value.",
+        requiredPermissions: [],
         inputSchema: z.object({ value: z.string().min(1) }),
         outputSchema: z.object({ value: z.string().min(1) }),
         execute: async (input) => ({ ...input, value: "" }),
@@ -383,7 +459,7 @@ const createTestBash = (tools: Parameters<typeof createBackofficeBashCommands>[0
     fs: new InMemoryFs(),
     customCommands: createBackofficeBashCommands({
       tools,
-      context: { runtimes: {} },
+      context: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       commandCallsResult: [],
     }),
   });

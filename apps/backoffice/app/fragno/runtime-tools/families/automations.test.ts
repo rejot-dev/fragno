@@ -2,6 +2,7 @@ import { describe, expect, test, assert } from "vitest";
 
 import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 
+import { createTrustedSystemBackofficeToolContext } from "../runtime-tools";
 import { automationStoreRuntimeTools } from "./automations-bindings";
 import {
   automationEventsRuntimeTools,
@@ -178,7 +179,10 @@ describe("automation runtime tools", () => {
     };
 
     await expect(
-      catalogListTool.execute({}, { runtimes: { backoffice: runtime } }),
+      catalogListTool.execute(
+        {},
+        createTrustedSystemBackofficeToolContext({ runtimes: { backoffice: runtime } }),
+      ),
     ).resolves.toEqual([
       {
         source: "telegram",
@@ -194,7 +198,10 @@ describe("automation runtime tools", () => {
       catalogGetTool.adapters!.bash!.parse(["--source", "telegram", "--type", "message.received"]),
     );
     await expect(
-      catalogGetTool.execute(getInput, { runtimes: { backoffice: runtime } }),
+      catalogGetTool.execute(
+        getInput,
+        createTrustedSystemBackofficeToolContext({ runtimes: { backoffice: runtime } }),
+      ),
     ).resolves.toMatchObject({
       source: "telegram",
       eventType: "message.received",
@@ -204,7 +211,7 @@ describe("automation runtime tools", () => {
     await expect(
       catalogGetTool.execute(
         { source: "telegram", type: "unknown.event" },
-        { runtimes: { backoffice: runtime } },
+        createTrustedSystemBackofficeToolContext({ runtimes: { backoffice: runtime } }),
       ),
     ).resolves.toBeNull();
 
@@ -247,7 +254,10 @@ describe("automation runtime tools", () => {
     };
 
     await expect(
-      listEvents.execute({ pageSize: 20 }, { runtimes: { durableHooks: runtime } }),
+      listEvents.execute(
+        { pageSize: 20 },
+        createTrustedSystemBackofficeToolContext({ runtimes: { durableHooks: runtime } }),
+      ),
     ).resolves.toMatchObject({
       items: [
         {
@@ -259,10 +269,16 @@ describe("automation runtime tools", () => {
       ],
     });
     await expect(
-      getEvent.execute({ hookId: "event-hook" }, { runtimes: { durableHooks: runtime } }),
+      getEvent.execute(
+        { hookId: "event-hook" },
+        createTrustedSystemBackofficeToolContext({ runtimes: { durableHooks: runtime } }),
+      ),
     ).resolves.toMatchObject({ id: "event-hook", hookName: "internalIngestEvent" });
     await expect(
-      getEvent.execute({ hookId: "other-hook" }, { runtimes: { durableHooks: runtime } }),
+      getEvent.execute(
+        { hookId: "other-hook" },
+        createTrustedSystemBackofficeToolContext({ runtimes: { durableHooks: runtime } }),
+      ),
     ).resolves.toBeNull();
 
     expect(calls).toEqual([
@@ -291,7 +307,12 @@ describe("automation runtime tools", () => {
       getHook: async () => null,
     };
 
-    await expect(listEvents.execute({}, { runtimes: { durableHooks: runtime } })).rejects.toThrow();
+    await expect(
+      listEvents.execute(
+        {},
+        createTrustedSystemBackofficeToolContext({ runtimes: { durableHooks: runtime } }),
+      ),
+    ).rejects.toThrow();
   });
 
   test("parse and validate get input", () => {
@@ -378,7 +399,12 @@ describe("automation runtime tools", () => {
       ]),
     );
 
-    await expect(retryTool.execute(input, { runtimes: { workflow: runtime } })).resolves.toEqual({
+    await expect(
+      retryTool.execute(
+        input,
+        createTrustedSystemBackofficeToolContext({ runtimes: { workflow: runtime } }),
+      ),
+    ).resolves.toEqual({
       accepted: true,
       instance: { id: "run-1", details: { status: "waiting" } },
       retry: {

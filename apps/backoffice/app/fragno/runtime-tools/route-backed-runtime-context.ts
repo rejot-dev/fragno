@@ -1,5 +1,5 @@
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
-import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { BackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
@@ -34,19 +34,6 @@ import {
 import type { InteractiveBashCommandContext } from "./bash-host";
 import { getRuntimeToolNamespacesByCapability, runtimeToolFamilies } from "./tool-families";
 
-const scopeId = (execution: BackofficeExecutionContext): string => {
-  switch (execution.scope.kind) {
-    case "org":
-      return execution.scope.orgId;
-    case "user":
-      return execution.scope.userId;
-    case "system":
-      return "system";
-    case "project":
-      throw new Error("Project context is not available.");
-  }
-};
-
 export type RouteBackedRuntimeContextOptions = {
   runtime: BackofficeRuntimeServices;
   kernel: BackofficeKernel;
@@ -79,46 +66,69 @@ export const createRouteBackedRuntimeContext = ({
   defaultActor,
 }: RouteBackedRuntimeContextOptions): InteractiveBashCommandContext => {
   kernel.assertContextAccess(execution);
-  const selectedId = scopeId(execution);
+  if (execution.scope.kind === "project") {
+    throw new BackofficeUnavailableError("Project context is not available.");
+  }
+  const org = orgScope(execution);
+  const automationsObject = kernel.scoped(
+    "AUTOMATIONS",
+    execution.scope,
+    runtime.objects.automations,
+  );
 
   return {
-    ...(typeof defaultActor === "undefined" ? {} : { defaultActor }),
-    backoffice: {
-      runtime: createBackofficeCapabilitiesRuntime({
-        objects: runtime.objects,
-        config: runtime.config,
-        orgId: selectedId,
-        runtimeToolNamespacesByCapability: getRuntimeToolNamespacesByCapability(),
+    defaultActor: defaultActor ?? null,
+    backofficeExecution: execution,
+    backofficeKernel: kernel,
+    createBackofficeScopedContext: (scope) =>
+      createRouteBackedRuntimeContext({
+        runtime,
+        kernel,
+        execution: { actor: execution.actor, scope },
+        defaultActor,
       }),
-    },
+    backoffice: org
+      ? {
+          runtime: createBackofficeCapabilitiesRuntime({
+            objects: runtime.objects,
+            config: runtime.config,
+            orgId: org.orgId,
+            runtimeToolNamespacesByCapability: getRuntimeToolNamespacesByCapability(),
+          }),
+        }
+      : null,
     automation: null,
     automations: {
       runtime: createRouteBackedAutomationStoreRuntime({
-        objects: runtime.objects,
-        orgId: selectedId,
+        object: automationsObject,
+        ...(org ? { orgId: org.orgId } : {}),
       }),
     },
     workflow: {
       runtime: createRouteBackedAutomationWorkflowRuntime({
-        objects: runtime.objects,
-        orgId: selectedId,
+        object: automationsObject,
+        ...(org ? { orgId: org.orgId } : {}),
       }),
     },
-    durableHooks: {
-      runtime: createRouteBackedDurableHooksRuntime({
-        objects: runtime.objects,
-        config: runtime.config,
-        orgId: selectedId,
-      }),
-    },
-    internal: {
-      runtime: createInternalRuntime({
-        objects: runtime.objects,
-        config: runtime.config,
-        orgId: selectedId,
-        families: runtimeToolFamilies,
-      }),
-    },
+    durableHooks: org
+      ? {
+          runtime: createRouteBackedDurableHooksRuntime({
+            objects: runtime.objects,
+            config: runtime.config,
+            orgId: org.orgId,
+          }),
+        }
+      : null,
+    internal: org
+      ? {
+          runtime: createInternalRuntime({
+            objects: runtime.objects,
+            config: runtime.config,
+            orgId: org.orgId,
+            families: runtimeToolFamilies,
+          }),
+        }
+      : null,
     mcp: runtime.config.bindings.mcp
       ? {
           runtime: createMcpRuntime(kernel.scoped("MCP", execution.scope, runtime.objects.mcp)),

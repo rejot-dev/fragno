@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { PiObject } from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
@@ -15,7 +16,6 @@ import {
   type DurableHookQueueOptions,
 } from "@/fragno/durable-hooks";
 import {
-  createPiBashCommandContext,
   createPiRuntime,
   type PiRuntimeFragments,
   type PiSessionFileSystemContext,
@@ -31,6 +31,7 @@ import {
   type PiSteeringMode,
   type StoredPiConfig,
 } from "@/fragno/pi/pi-shared";
+import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 import {
   createBackofficeFragmentDurableObject,
@@ -286,15 +287,19 @@ export class InMemoryPiObject implements PiObject {
       codemode: {
         ...createPiCodemodeRuntime(this.#env),
         workflow: createRouteBackedAutomationWorkflowRuntime({
-          objects: this.#runtimeServices.objects,
+          object: this.#runtimeServices.objects.automations.forOrg(orgId),
           orgId,
         }),
       },
       sessionFileSystems: this.#sessionFileSystems,
       sessionFileSystemContext,
-      bashCommandContext: createPiBashCommandContext({
+      bashCommandContext: createRouteBackedRuntimeContext({
         runtime: this.#runtimeServices,
-        orgId,
+        kernel: new BackofficeKernel({ objects: this.#runtimeServices.objects }),
+        execution: {
+          actor: { type: "object", id: `pi:${orgId}`, organizationIds: [orgId] },
+          scope: { kind: "org", orgId },
+        },
       }),
     });
   }

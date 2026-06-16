@@ -358,6 +358,7 @@ export const mcpRuntimeTools = [
     capabilityId: "mcp",
     description: "Register a remote streamable HTTP MCP server.",
     requiredPermissions: ["servers.create"],
+    getResource: (input) => ({ slug: input.slug }),
     inputSchema: createServerInputSchema,
     outputSchema: serverSchema,
     execute: async (input, context: McpToolContext) =>
@@ -434,6 +435,7 @@ export const mcpRuntimeTools = [
     capabilityId: "mcp",
     description: "Delete an MCP server and its stored auth state.",
     requiredPermissions: ["servers.delete"],
+    getResource: (input) => ({ slug: input.slug }),
     inputSchema: deleteServerInputSchema,
     outputSchema: deleteServerOutputSchema,
     execute: async (input, context: McpToolContext) =>
@@ -467,6 +469,7 @@ export const mcpRuntimeTools = [
     capabilityId: "mcp",
     description: "Refresh a configured MCP server and update its cached tool list.",
     requiredPermissions: ["servers.read"],
+    getResource: (input) => ({ slug: input.slug }),
     inputSchema: refreshServerInputSchema,
     outputSchema: serverRefreshOutputSchema,
     execute: async (input, context: McpToolContext) =>
@@ -503,6 +506,7 @@ export const mcpRuntimeTools = [
     capabilityId: "mcp",
     description: "Call a tool exposed by a configured MCP server.",
     requiredPermissions: ["tools.call"],
+    getResource: (input) => ({ slug: input.slug, toolName: input.name }),
     inputSchema: callToolInputSchema,
     outputSchema: callToolOutputSchema,
     execute: async (input, context: McpToolContext) =>
@@ -557,6 +561,7 @@ export const mcpRuntimeTools = [
     capabilityId: "mcp",
     description: "Start OAuth login for a configured MCP server and return the authorization URL.",
     requiredPermissions: ["servers.create"],
+    getResource: (input) => ({ slug: input.slug }),
     inputSchema: oauthStartInputSchema,
     outputSchema: oauthStartOutputSchema,
     execute: async (input, context: McpToolContext) =>
@@ -606,6 +611,7 @@ export const mcpRuntimeTools = [
     capabilityId: "mcp",
     description: "Store a bearer token for a configured MCP server.",
     requiredPermissions: ["servers.create"],
+    getResource: (input) => ({ slug: input.slug }),
     inputSchema: setTokenInputSchema,
     outputSchema: authStatusSchema,
     execute: async (input, context: McpToolContext) =>

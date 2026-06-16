@@ -1,6 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
 
-import type { BackofficeToolContext } from "../runtime-tools";
+import {
+  createTrustedSystemBackofficeToolContext,
+  type BackofficeToolContext,
+} from "../runtime-tools";
 import { piRuntimeTools, type PiRuntime } from "./pi";
 
 const createRuntime = (): PiRuntime =>
@@ -99,7 +102,10 @@ describe("pi runtime tools", () => {
         updatedAt: new Date("2026-06-03T00:01:00.000Z"),
       })),
     } as unknown as PiRuntime;
-    const context: BackofficeToolContext<{ pi: PiRuntime }> = { runtimes: { pi: runtime } };
+    const context: BackofficeToolContext<{ pi: PiRuntime }> =
+      createTrustedSystemBackofficeToolContext({
+        runtimes: { pi: runtime },
+      });
 
     await expect(
       createSession.execute({ agent: "assistant", name: "Support" }, context),
@@ -134,7 +140,10 @@ describe("pi runtime tools", () => {
 
   test("invokes semantic runtime for codemode", async () => {
     const runtime = createRuntime();
-    const context: BackofficeToolContext<{ pi: PiRuntime }> = { runtimes: { pi: runtime } };
+    const context: BackofficeToolContext<{ pi: PiRuntime }> =
+      createTrustedSystemBackofficeToolContext({
+        runtimes: { pi: runtime },
+      });
 
     await expect(
       piRuntimeTools[3].execute({ sessionId: "session-1", text: "Hello" }, context),

@@ -1,12 +1,11 @@
 import type { TelegramApi, TelegramMessage } from "@fragno-dev/telegram-fragment";
 
-import { SYSTEM_BACKOFFICE_PRINCIPAL } from "@/backoffice-runtime/context";
 import type { InMemoryObjectFactoryOverrides } from "@/backoffice-runtime/in-memory-object-factory";
 import {
   createInMemoryBackofficeRuntime,
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
-import { createBackofficeKernel } from "@/backoffice-runtime/kernel";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type {
   BackofficeObjectAddress,
   BackofficeObjectBindingName,
@@ -21,7 +20,7 @@ import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/fami
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
-import { getAvailableBackofficeRuntimeTools } from "@/fragno/runtime-tools/tool-families";
+import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { listHookScopes } from "../backoffice-capabilities/backoffice-capabilities";
@@ -1182,13 +1181,13 @@ const createStep = (
 
 const getStore = (ctx: BackofficeScenarioContext, orgId: string) =>
   createRouteBackedAutomationStoreRuntime({
-    objects: ctx.runtime.objects,
+    object: ctx.runtime.objects.automations.forOrg(orgId),
     orgId,
   });
 
 const getWorkflow = (ctx: BackofficeScenarioContext, orgId: string) =>
   createRouteBackedAutomationWorkflowRuntime({
-    objects: ctx.runtime.objects,
+    object: ctx.runtime.objects.automations.forOrg(orgId),
     orgId,
   });
 
@@ -1268,12 +1267,19 @@ const getReadableScenarioFileSystem = async (
   return null;
 };
 
+const createScenarioActor = (orgId: string) => ({
+  type: "user" as const,
+  id: "scenario-user",
+  userId: "scenario-user",
+  organizationIds: [orgId],
+});
+
 const getConnectionRuntime = (ctx: BackofficeScenarioContext, orgId: string) =>
   createBackofficeToolContext(
     createRouteBackedRuntimeContext({
       runtime: ctx.runtime.services,
-      kernel: createBackofficeKernel({ objects: ctx.runtime.services.objects }),
-      execution: { actor: SYSTEM_BACKOFFICE_PRINCIPAL, scope: { kind: "org", orgId } },
+      kernel: new BackofficeKernel({ objects: ctx.runtime.services.objects }),
+      execution: { actor: createScenarioActor(orgId), scope: { kind: "org", orgId } },
     }),
   ).runtimes.backoffice;
 
@@ -1360,8 +1366,11 @@ const runScenarioCodemode = async (
 
   const runtimeContext = createRouteBackedRuntimeContext({
     runtime: ctx.runtime.services,
-    kernel: createBackofficeKernel({ objects: ctx.runtime.services.objects }),
-    execution: { actor: SYSTEM_BACKOFFICE_PRINCIPAL, scope: { kind: "org", orgId: input.orgId } },
+    kernel: new BackofficeKernel({ objects: ctx.runtime.services.objects }),
+    execution: {
+      actor: createScenarioActor(input.orgId),
+      scope: { kind: "org", orgId: input.orgId },
+    },
   });
   const toolContext = createBackofficeToolContext(runtimeContext);
   const loader = ctx.runtime.env.LOADER;
@@ -1373,8 +1382,8 @@ const runScenarioCodemode = async (
     fs: ctx.files.forOrg(input.orgId),
     env: { LOADER: loader },
     timeout: input.timeout,
-    tools: getAvailableBackofficeRuntimeTools(toolContext),
-    context: toolContext,
+    families: runtimeToolFamilies,
+    toolContext: toolContext,
   });
 
   ctx.codemodeRuns.push({
@@ -1488,7 +1497,6 @@ const buildPiCapabilityConfiguredEvent = (input: PiCapabilityConfiguredInput): A
         {
           id: input.harnessId ?? "default",
           label: input.harnessLabel ?? "Default",
-          tools: input.harnessTools ?? ["bash"],
         },
       ],
       modelCatalog: [

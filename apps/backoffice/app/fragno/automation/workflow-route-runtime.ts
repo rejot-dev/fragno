@@ -1,21 +1,17 @@
-import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
 
 import type { AutomationWorkflowRuntime } from "../runtime-tools/families/automations-workflow";
 import { createWorkflowsRouteCaller } from "./route-callers";
 
 export const createRouteBackedAutomationWorkflowRuntime = ({
-  objects,
+  object,
   orgId,
 }: {
-  objects: BackofficeObjectRegistry;
-  orgId: string;
+  object: AutomationsObject;
+  orgId?: string;
 }): AutomationWorkflowRuntime => {
-  const normalizedOrgId = orgId.trim();
-  if (!normalizedOrgId) {
-    throw new Error("Workflows backend requires an organisation id");
-  }
-
-  const callRoute = createWorkflowsRouteCaller({ objects, orgId: normalizedOrgId });
+  const normalizedOrgId = orgId?.trim() || undefined;
+  const callRoute = createWorkflowsRouteCaller({ object, orgId: normalizedOrgId });
 
   return {
     createInstance: async ({ workflowName, remoteWorkflowName, instanceId, params }) => {

@@ -1,6 +1,7 @@
 import { describe, expect, test, vi, assert } from "vitest";
 
 import * as files from "@/files";
+import { EMPTY_BASH_HOST_CONTEXT } from "@/fragno/runtime-tools/bash-host.test-utils";
 import { UPLOAD_PROVIDER_DATABASE, type UploadAdminConfigResponse } from "@/fragno/upload";
 import type { UploadFileRecord } from "@/routes/backoffice/connections/upload/data";
 
@@ -21,6 +22,7 @@ const createMockEnv = () =>
   }) as unknown as CloudflareEnv;
 
 const createMockBashContext = (): PiBashCommandContext => ({
+  ...EMPTY_BASH_HOST_CONTEXT,
   automation: null,
   automations: {
     runtime: {

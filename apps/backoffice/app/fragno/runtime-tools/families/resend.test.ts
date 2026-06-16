@@ -1,6 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
 
-import type { BackofficeToolContext } from "../runtime-tools";
+import {
+  createTrustedSystemBackofficeToolContext,
+  type BackofficeToolContext,
+} from "../runtime-tools";
 import { resendRuntimeTools, type ResendRuntime } from "./resend";
 
 const now = new Date("2026-06-03T00:00:00.000Z");
@@ -97,9 +100,10 @@ describe("resend runtime tools", () => {
 
   test("invokes the semantic runtime for codemode", async () => {
     const runtime = createRuntime();
-    const context: BackofficeToolContext<{ resend: ResendRuntime }> = {
-      runtimes: { resend: runtime },
-    };
+    const context: BackofficeToolContext<{ resend: ResendRuntime }> =
+      createTrustedSystemBackofficeToolContext({
+        runtimes: { resend: runtime },
+      });
 
     await expect(
       resendRuntimeTools[2].execute({ threadId: "thread-1", body: "Thanks" }, context),
@@ -112,9 +116,10 @@ describe("resend runtime tools", () => {
 
   test("formats resend.threads.get as markdown by default", async () => {
     const runtime = createRuntime();
-    const context: BackofficeToolContext<{ resend: ResendRuntime }> = {
-      runtimes: { resend: runtime },
-    };
+    const context: BackofficeToolContext<{ resend: ResendRuntime }> =
+      createTrustedSystemBackofficeToolContext({
+        runtimes: { resend: runtime },
+      });
     const getThread = resendRuntimeTools[0];
     const output = await getThread.execute({ threadId: "thread-1" }, context);
 

@@ -1,5 +1,6 @@
 import { Link, redirect, useOutletContext } from "react-router";
 
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { BackofficePageHeader } from "@/components/backoffice";
 import { createOrgFileSystem, type IFileSystem } from "@/files";
 import { getAuthMe } from "@/fragno/auth/auth-server";
@@ -11,6 +12,7 @@ import {
   createRuntimeToolReferences,
   renderDashboardCommandGroups,
 } from "@/fragno/runtime-tools/reference";
+import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -261,13 +263,24 @@ export async function action({ request, context }: Route.ActionArgs) {
     const { bash } = createInteractiveBashHost({
       fs: fileSystem,
       env,
-      runtime,
-      orgId: activeOrg.id,
-      defaultActor: {
-        scope: "internal",
-        type: "user",
-        id: me.user.id,
-      },
+      context: createRouteBackedRuntimeContext({
+        runtime,
+        kernel: new BackofficeKernel({ objects: runtime.objects }),
+        execution: {
+          actor: {
+            type: "user",
+            id: me.user.id,
+            userId: me.user.id,
+            organizationIds: [activeOrg.id],
+          },
+          scope: { kind: "org", orgId: activeOrg.id },
+        },
+        defaultActor: {
+          scope: "internal",
+          type: "user",
+          id: me.user.id,
+        },
+      }),
     });
 
     const startedAt = performance.now();

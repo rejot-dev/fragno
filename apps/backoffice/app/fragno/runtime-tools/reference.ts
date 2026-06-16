@@ -2,6 +2,7 @@ import { zodSchemaToTypeScript } from "@/lib/zod/zod-formatter";
 
 import type { AutomationCommandOptionSpec } from "./automation-types";
 import {
+  createTrustedSystemBackofficeToolContext,
   getAvailableRuntimeTools,
   type AnyBackofficeRuntimeTool,
   type BackofficeRuntimeToolFamily,
@@ -93,15 +94,16 @@ export const toRuntimeToolReference = (tool: AnyBackofficeRuntimeTool): RuntimeT
   };
 };
 
-export const createRuntimeToolReferenceContext = (): BackofficeToolContext => ({
-  runtimes: new Proxy<Record<string, unknown>>(
-    {},
-    {
-      get: () => ({}),
-      has: () => true,
-    },
-  ),
-});
+export const createRuntimeToolReferenceContext = (): BackofficeToolContext =>
+  createTrustedSystemBackofficeToolContext({
+    runtimes: new Proxy<Record<string, unknown>>(
+      {},
+      {
+        get: () => ({}),
+        has: () => true,
+      },
+    ),
+  });
 
 export const createRuntimeToolFamilyReference = ({
   family,
@@ -320,15 +322,38 @@ export const renderCodemodeProviderTypes = (references: readonly RuntimeToolRefe
       `// ${namespace} tools`,
       ...typeDeclarations,
       "",
-      `declare const ${namespace}: {`,
+      `type ${pascalCase(namespace)}CodemodeProvider = {`,
       ...methods,
       `};`,
+      `declare const ${namespace}: ${pascalCase(namespace)}CodemodeProvider;`,
     ].join("\n");
   });
+
+  const scopedProviderEntries = [...byNamespace.keys()].map(
+    (namespace) => `  ${namespace}: ${pascalCase(namespace)}CodemodeProvider;`,
+  );
+
+  const scopedContextSection = [
+    "// Scoped context handles target a selected Backoffice context.",
+    "type BackofficeCodemodeScopedProviders = {",
+    ...scopedProviderEntries,
+    "};",
+    "declare const context: {",
+    "  /** Providers bound to the selected current context. */",
+    "  readonly current: BackofficeCodemodeScopedProviders;",
+    "  /** Providers bound to an organisation context. */",
+    "  org(orgId: string): BackofficeCodemodeScopedProviders;",
+    "  /** Providers bound to a user context. */",
+    "  user(userId: string): BackofficeCodemodeScopedProviders;",
+    "  /** Project contexts are reserved until the project model exists. */",
+    "  project(projectId: string): BackofficeCodemodeScopedProviders;",
+    "};",
+  ].join("\n");
 
   return [
     "// ── Backoffice domain tool providers ───────────────────────────────────",
     ...providerSections,
+    scopedContextSection,
   ].join("\n\n");
 };
 

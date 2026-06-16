@@ -12,8 +12,11 @@ import { MasterFileSystem } from "@/files/master-file-system";
 import type { ResolvedFileMount } from "@/files/types";
 
 import { runBackofficeCodemodeWorkflow } from "../codemode/workflow-execute";
+import { EMPTY_BASH_HOST_CONTEXT } from "../runtime-tools/bash-host.test-utils";
 import type { AutomationStoreRuntime } from "../runtime-tools/families/automations-bindings";
 import type { AutomationWorkflowRuntime } from "../runtime-tools/families/automations-workflow";
+import { createTrustedSystemBackofficeToolContext } from "../runtime-tools/runtime-tools";
+import { runtimeToolFamilies } from "../runtime-tools/tool-families";
 import { createPiToolRegistry } from "./pi";
 import { createPiCodemodeRuntime } from "./pi-codemode";
 
@@ -35,6 +38,7 @@ describe("Pi execCodeMode tool", () => {
         objects: unusedObjects,
       },
       codemode: createPiCodemodeRuntime(env),
+      bashCommandContext: EMPTY_BASH_HOST_CONTEXT as never,
     });
 
     const execCodeModeFactory = tools.execCodeMode;
@@ -124,8 +128,8 @@ describe("Pi execCodeMode tool", () => {
         remote,
         fs: sessionFs,
         env,
-        tools: [],
-        context: { runtimes: {} },
+        families: runtimeToolFamilies,
+        toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       });
       if (result.error) {
         throw new Error(result.error);
@@ -163,6 +167,7 @@ describe("Pi execCodeMode tool", () => {
             await harness.sendEvent(workflowName, instanceId, { type, payload }),
         },
       },
+      bashCommandContext: EMPTY_BASH_HOST_CONTEXT as never,
     });
     const execCodeModeFactory = tools.execCodeMode;
     if (typeof execCodeModeFactory !== "function") {
@@ -407,8 +412,8 @@ const createExecCodeModeTool = async ({
     },
     codemode: { ...createPiCodemodeRuntime(env), workflow: workflowRuntime },
     bashCommandContext: automationsRuntime
-      ? ({ automations: { runtime: automationsRuntime } } as never)
-      : undefined,
+      ? ({ ...EMPTY_BASH_HOST_CONTEXT, automations: { runtime: automationsRuntime } } as never)
+      : (EMPTY_BASH_HOST_CONTEXT as never),
   });
 
   const execCodeModeFactory = tools.execCodeMode;

@@ -1,21 +1,17 @@
-import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
 
 import type { AutomationStoreRuntime } from "../runtime-tools/families/automations-bindings";
 import { createAutomationsRouteCaller } from "./route-callers";
 
 export const createRouteBackedAutomationStoreRuntime = ({
-  objects,
+  object,
   orgId,
 }: {
-  objects: BackofficeObjectRegistry;
-  orgId: string;
+  object: AutomationsObject;
+  orgId?: string;
 }): AutomationStoreRuntime => {
-  const normalizedOrgId = orgId.trim();
-  if (!normalizedOrgId) {
-    throw new Error("Automation store backend requires an organisation id");
-  }
-
-  const callRoute = createAutomationsRouteCaller({ objects, orgId: normalizedOrgId });
+  const normalizedOrgId = orgId?.trim() || undefined;
+  const callRoute = createAutomationsRouteCaller({ object, orgId: normalizedOrgId });
 
   return {
     get: async ({ key }) => {

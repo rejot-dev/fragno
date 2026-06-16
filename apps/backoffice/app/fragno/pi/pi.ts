@@ -15,11 +15,8 @@ import { createWorkflowsFragment } from "@fragno-dev/workflows";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { getModel } from "@earendil-works/pi-ai";
 
-import { SYSTEM_BACKOFFICE_PRINCIPAL } from "@/backoffice-runtime/context";
 import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
-import { createBackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
-import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createOrgFileSystem, type MasterFileSystem } from "@/files";
 
 import type {
@@ -36,13 +33,11 @@ import type { PiRuntime } from "../runtime-tools/families/pi";
 import type { ResendRuntime } from "../runtime-tools/families/resend";
 import type { Reson8Runtime } from "../runtime-tools/families/reson8";
 import type { TelegramRuntime } from "../runtime-tools/families/telegram-runtime";
-import { createRouteBackedRuntimeContext } from "../runtime-tools/route-backed-runtime-context";
-import {
-  getAvailableRuntimeTools,
-  type BackofficeToolContext,
-} from "../runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "../runtime-tools/tool-context";
-import { runtimeToolFamilies } from "../runtime-tools/tool-families";
+import {
+  runtimeToolFamilies,
+  type CoreBackofficeToolContext,
+} from "../runtime-tools/tool-families";
 import type { PiCodemodeWorkflowParams } from "./pi-codemode-workflow";
 import {
   PI_MODEL_CATALOG,
@@ -174,7 +169,6 @@ const createBashTool = (
   sessionId: string,
   context: PiBashCommandContext,
   env: CloudflareEnv,
-  orgId: string,
 ): AgentTool =>
   defineTool({
     name: "bash",
@@ -198,7 +192,6 @@ const createBashTool = (
       const { bash, commandCallsResult } = createInteractiveBashHost({
         fs,
         env,
-        orgId,
         sessionId,
         context,
       });
@@ -283,26 +276,21 @@ const createExecCodeModeTool = (
         throw new Error("execCodeMode is not configured for this Pi runtime.");
       }
 
-      const context: BackofficeToolContext = bashCommandContext
-        ? createBackofficeToolContext({
-            ...bashCommandContext,
-            workflow: codemode.workflow
-              ? { runtime: codemode.workflow }
-              : bashCommandContext.workflow,
-          })
-        : { runtimes: { workflow: codemode.workflow } };
+      if (!bashCommandContext) {
+        throw new Error("execCodeMode requires a Backoffice runtime context.");
+      }
 
-      const tools = getAvailableRuntimeTools({
-        families: runtimeToolFamilies,
-        context,
+      const context: CoreBackofficeToolContext = createBackofficeToolContext({
+        ...bashCommandContext,
+        workflow: codemode.workflow ? { runtime: codemode.workflow } : bashCommandContext.workflow,
       });
 
       const result = await codemode.execute({
         code,
         fs,
         env: codemode.env,
-        tools,
-        context,
+        families: runtimeToolFamilies,
+        toolContext: context,
       });
 
       if (result.workflowDefinition) {
@@ -383,13 +371,7 @@ export const createPiToolRegistry = ({
     }
 
     const fileSystem = await getSessionFs(sessionFileSystems, session.id, sessionFileSystemContext);
-    return createBashTool(
-      fileSystem,
-      session.id,
-      bashCommandContext,
-      env,
-      sessionFileSystemContext.orgId,
-    );
+    return createBashTool(fileSystem, session.id, bashCommandContext, env);
   },
   execCodeMode: async ({ session }) => {
     const fileSystem = await getSessionFs(sessionFileSystems, session.id, sessionFileSystemContext);
@@ -458,7 +440,7 @@ const buildPiRuntime = (
     config: runtime.config,
     workflows: createPiWorkflows({
       agents: runtime.config.agents,
-      tools: runtime.config.tools,
+      tools,
       skills,
       workflows: runtime.config.workflows,
       logging: runtime.config.logging,
@@ -511,19 +493,6 @@ const resolveHarnessAgentTools = (harness: PiHarnessConfig): PiToolId[] => {
 const isValidPiToolId = (toolId: string): toolId is (typeof PI_TOOL_IDS)[number] =>
   PI_TOOL_IDS.includes(toolId as (typeof PI_TOOL_IDS)[number]);
 
-export const createPiBashCommandContext = ({
-  runtime,
-  orgId,
-}: {
-  runtime: BackofficeRuntimeServices;
-  orgId: string;
-}): PiBashCommandContext =>
-  createRouteBackedRuntimeContext({
-    runtime,
-    kernel: createBackofficeKernel({ objects: runtime.objects }),
-    execution: { actor: SYSTEM_BACKOFFICE_PRINCIPAL, scope: { kind: "org", orgId } },
-  });
-
 export const createPiRuntime = (options: {
   config: StoredPiConfig;
   adapters: BackofficeDatabaseAdapterFactory;
@@ -532,7 +501,7 @@ export const createPiRuntime = (options: {
   sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
   sessionFileSystemContext: PiSessionFileSystemContext;
   bashCommandContext: PiBashCommandContext;
-  codemode?: PiCodemodeRuntime;
+  codemode: PiCodemodeRuntime;
 }): PiRuntimeFragments => {
   const adapter = options.adapters.createAdapter({
     kind: "pi",

@@ -7,11 +7,17 @@ import {
   type WorkflowsRegistry,
 } from "@fragno-dev/workflows/workflow";
 import { env } from "cloudflare:workers";
+import { InMemoryFs } from "just-bash";
 import { z } from "zod";
 
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
-import { defineBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-tools";
+import {
+  createTrustedSystemBackofficeToolContext,
+  defineBackofficeRuntimeTool,
+  defineBackofficeRuntimeToolFamily,
+} from "@/fragno/runtime-tools/runtime-tools";
+import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import { defineCodemodeWorkflowRun, runBackofficeCodemodeWorkflow } from "./workflow-execute";
 
@@ -22,6 +28,12 @@ const createHarness = async <TRegistry extends WorkflowsRegistry>(workflows: TRe
     testBuilder: buildDatabaseFragmentsTest(),
     autoTickHooks: false,
   });
+
+const createSystemWorkflowOptions = () => ({
+  fs: new InMemoryFs(),
+  families: runtimeToolFamilies,
+  toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+});
 
 describe("codemode workflow execution", () => {
   test("runs a workflow end-to-end in a dynamic worker with real runner steps", async () => {
@@ -41,6 +53,7 @@ describe("codemode workflow execution", () => {
           return { nested };
         }`,
         env,
+        createSystemWorkflowOptions(),
       ),
     );
     const harness = await createHarness({ WORKFLOW: Workflow });
@@ -94,6 +107,7 @@ describe("codemode workflow execution", () => {
           return { value, doubled };
         });`,
         env,
+        createSystemWorkflowOptions(),
       ),
     );
     const harness = await createHarness({ WORKFLOW: Workflow });
@@ -134,6 +148,9 @@ describe("codemode workflow execution", () => {
           event,
           remote,
           env,
+          fs: new InMemoryFs(),
+          families: runtimeToolFamilies,
+          toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
         });
         if (result.error) {
           throw new Error(result.error);
@@ -179,6 +196,7 @@ describe("codemode workflow execution", () => {
           return await step.do("after-sleep", async () => "done");
         }`,
         env,
+        createSystemWorkflowOptions(),
       ),
     );
     const harness = await createHarness({ WORKFLOW: Workflow });
@@ -243,6 +261,7 @@ describe("codemode workflow execution", () => {
           );
         }`,
         env,
+        createSystemWorkflowOptions(),
       ),
     );
     const harness = await createHarness({ WORKFLOW: Workflow });
@@ -276,6 +295,7 @@ describe("codemode workflow execution", () => {
       namespace: "math",
       name: "twice",
       description: "Double a number.",
+      requiredPermissions: [],
       inputSchema: z.object({ value: z.number() }),
       outputSchema: z.object({ value: z.number() }),
       execute: async (input) => {
@@ -293,8 +313,15 @@ describe("codemode workflow execution", () => {
         }`,
         env,
         {
-          tools: [doubleTool],
-          context: { runtimes: {} },
+          fs: new InMemoryFs(),
+          families: [
+            defineBackofficeRuntimeToolFamily({
+              namespace: "math",
+              permissions: {},
+              tools: [doubleTool],
+            }),
+          ],
+          toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
         },
       ),
     );
@@ -340,6 +367,7 @@ describe("codemode workflow execution", () => {
           return { before, after };
         }`,
         env,
+        createSystemWorkflowOptions(),
       ),
     );
     const harness = await createHarness({ WORKFLOW: Workflow });
@@ -393,6 +421,7 @@ describe("codemode workflow execution", () => {
           return { approved: approval.payload.approved };
         }`,
         env,
+        createSystemWorkflowOptions(),
       ),
     );
     const harness = await createHarness({ WORKFLOW: Workflow });
@@ -471,6 +500,7 @@ describe("codemode workflow execution", () => {
           return { childId: "codemode-child-created-1" };
         }`,
         env,
+        createSystemWorkflowOptions(),
       ),
     );
     const harness = await createHarness({ WORKFLOW: Workflow, CHILD: ChildWorkflow });
@@ -552,6 +582,7 @@ describe("codemode workflow execution", () => {
           return { all, raceReturn, anyReturn, settled };
         }`,
         env,
+        createSystemWorkflowOptions(),
       ),
     );
     const harness = await createHarness({ WORKFLOW: Workflow });
@@ -652,6 +683,11 @@ describe("codemode workflow execution", () => {
           });
         }`,
         env,
+        {
+          fs: new InMemoryFs(),
+          families: runtimeToolFamilies,
+          toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+        },
       ),
     );
     const harness = await createHarness({ WORKFLOW: Workflow });

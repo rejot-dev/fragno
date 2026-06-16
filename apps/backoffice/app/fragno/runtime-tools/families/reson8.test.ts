@@ -1,6 +1,9 @@
 import { describe, expect, test, vi, assert } from "vitest";
 
-import type { BackofficeToolContext } from "../runtime-tools";
+import {
+  createTrustedSystemBackofficeToolContext,
+  type BackofficeToolContext,
+} from "../runtime-tools";
 import { reson8RuntimeTools, type Reson8Runtime } from "./reson8";
 
 const createRuntime = (): Reson8Runtime =>
@@ -42,9 +45,10 @@ describe("reson8 runtime tools", () => {
 
   test("invokes semantic runtime for codemode when audio is provided", async () => {
     const runtime = createRuntime();
-    const context: BackofficeToolContext<{ reson8: Reson8Runtime }> = {
-      runtimes: { reson8: runtime },
-    };
+    const context: BackofficeToolContext<{ reson8: Reson8Runtime }> =
+      createTrustedSystemBackofficeToolContext({
+        runtimes: { reson8: runtime },
+      });
     const audio = new Uint8Array([1, 2, 3]);
 
     await expect(
@@ -60,9 +64,10 @@ describe("reson8 runtime tools", () => {
 
   test("normalizes JSON byte arrays from codemode before calling Reson8", async () => {
     const runtime = createRuntime();
-    const context: BackofficeToolContext<{ reson8: Reson8Runtime }> = {
-      runtimes: { reson8: runtime },
-    };
+    const context: BackofficeToolContext<{ reson8: Reson8Runtime }> =
+      createTrustedSystemBackofficeToolContext({
+        runtimes: { reson8: runtime },
+      });
 
     await reson8RuntimeTools[0].execute({ audio: [1, 2, 3] }, context);
 

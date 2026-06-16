@@ -9,6 +9,7 @@ import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import type { AutomationRuntimeHostContext, AutomationRuntime } from "@/fragno/automation";
 import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "@/fragno/automation/contracts";
 import { executeBashAutomation } from "@/fragno/runtime-tools/automation-host";
+import { EMPTY_BASH_HOST_CONTEXT } from "@/fragno/runtime-tools/bash-host.test-utils";
 import type { BackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
 
 import { executeCodemodeAutomation, executeWorkflowCodemodeAutomation } from "./codemode";
@@ -418,6 +419,7 @@ const createAutomationContext = (
   const runtime = options.runtime ?? createUnusedAutomationRuntime();
 
   return {
+    ...EMPTY_BASH_HOST_CONTEXT,
     backoffice: options.backofficeRuntime ? { runtime: options.backofficeRuntime } : null,
     automation: {
       event,

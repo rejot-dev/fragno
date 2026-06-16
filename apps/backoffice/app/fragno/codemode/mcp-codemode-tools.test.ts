@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import type { McpRuntime } from "../runtime-tools/families/mcp-runtime";
+import { createTrustedSystemBackofficeToolContext } from "../runtime-tools/runtime-tools";
 import { createMcpCodemodeProviders } from "./mcp-codemode-tools";
 
 const createRuntime = (overrides: Partial<McpRuntime>): McpRuntime =>
@@ -31,8 +32,11 @@ const createRuntime = (overrides: Partial<McpRuntime>): McpRuntime =>
   }) as McpRuntime;
 
 describe("MCP codemode providers", () => {
+  const context = createTrustedSystemBackofficeToolContext({ runtimes: {} });
+
   test("does not fail codemode when MCP is bound but not configured for the organisation", async () => {
     const providers = await createMcpCodemodeProviders({
+      context,
       runtime: createRuntime({
         listServers: async () => {
           throw new Error("MCP is not configured for this organisation.");
@@ -46,6 +50,7 @@ describe("MCP codemode providers", () => {
   test("surfaces unexpected MCP provider discovery errors", async () => {
     await expect(
       createMcpCodemodeProviders({
+        context,
         runtime: createRuntime({
           listServers: async () => {
             throw new Error("MCP exploded");
