@@ -225,6 +225,12 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
     this.#registerNamespaces();
   }
 
+  hasInstance(address: BackofficeObjectAddress): boolean {
+    assertBackofficeObjectAddressAllowed(address);
+    const namespace = this.#namespaces[address.binding];
+    return namespace?.has(namespace.idFromName(encodeBackofficeObjectAddress(address))) ?? false;
+  }
+
   get<TObject>(
     binding: BackofficeObjectBinding<TObject>,
     address: BackofficeObjectAddress,
