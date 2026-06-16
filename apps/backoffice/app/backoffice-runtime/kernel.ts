@@ -1,3 +1,5 @@
+import { resolveActorFilePrincipal, type FilePrincipal } from "@/files/permissions";
+
 import type {
   BackofficeContextScope,
   BackofficeExecutionContext,
@@ -87,6 +89,11 @@ export class BackofficeKernel {
         `${binding} is not available in ${scope.kind} context. Supported scopes: ${allowed.join(", ")}.`,
       );
     }
+  }
+
+  resolveFilePrincipal(context: BackofficeExecutionContext): FilePrincipal {
+    this.assertContextAccess(context);
+    return resolveActorFilePrincipal(context);
   }
 
   assertAllowed(request: BackofficeAuthorizationRequest) {

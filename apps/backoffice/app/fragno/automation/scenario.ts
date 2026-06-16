@@ -1259,6 +1259,8 @@ const getReadableScenarioFileSystem = async (
   const orgFs = await createOrgFileSystem({
     orgId,
     objects: ctx.runtime.objects,
+    kernel: new BackofficeKernel({ objects: ctx.runtime.objects }),
+    execution: { actor: createScenarioActor(orgId), scope: { kind: "org", orgId } },
   });
   if (await fileExists(orgFs, path)) {
     return orgFs;
@@ -2915,6 +2917,8 @@ const collectDiagnostics = async (ctx: BackofficeScenarioContext): Promise<unkno
       const orgFs = await createOrgFileSystem({
         orgId,
         objects: ctx.runtime.objects,
+        kernel: new BackofficeKernel({ objects: ctx.runtime.objects }),
+        execution: { actor: createScenarioActor(orgId), scope: { kind: "org", orgId } },
       });
       filesByOrg[orgId] = {
         scenarioPaths: scenarioFs.getAllPaths(),

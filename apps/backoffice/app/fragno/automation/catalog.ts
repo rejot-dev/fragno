@@ -1,5 +1,6 @@
 import {
   createMasterFileSystem,
+  createSystemFilesContext,
   normalizeRelativePath,
   type DirentEntry,
   type IFileSystem,
@@ -312,19 +313,6 @@ const toScriptCatalogEntry = async (
   };
 };
 
-/**
- * Intentionally minimal filesystem with no upload, resend, or durable hooks.
- * Only used as a last-resort fallback when no `env` or pre-built filesystem is
- * available (e.g. the bash engine runtime path). In production the automations
- * DO always supplies a full filesystem via `getAutomationFileSystem`.
- */
-export const createMinimalFileSystem = async (orgId?: string): Promise<IFileSystem> => {
-  return createMasterFileSystem({
-    orgId: orgId?.trim() || "automation-default-org",
-    uploadConfig: null,
-  });
-};
-
 export const listAutomationWorkspaceScripts = async (
   fileSystem: IFileSystem,
 ): Promise<AutomationWorkspaceScriptEntry[]> => {
@@ -387,7 +375,12 @@ export const resolveAutomationFileSystem = async (
     return config.automationFileSystem;
   }
 
-  return createMinimalFileSystem(input.orgId);
+  return createMasterFileSystem(
+    createSystemFilesContext({
+      orgId: input.orgId?.trim() || "automation-default-org",
+      uploadConfig: null,
+    }),
+  );
 };
 
 export const loadAutomationCatalog = async (

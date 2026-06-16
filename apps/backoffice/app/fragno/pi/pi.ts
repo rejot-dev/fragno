@@ -15,7 +15,9 @@ import { createWorkflowsFragment } from "@fragno-dev/workflows";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { getModel } from "@earendil-works/pi-ai";
 
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
+import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { createOrgFileSystem, type MasterFileSystem } from "@/files";
 
@@ -81,6 +83,8 @@ export type PiBashCommandContext = InteractiveBashCommandContext & {
 export type PiSessionFileSystemContext = {
   orgId: string;
   objects: BackofficeObjectRegistry;
+  kernel: BackofficeKernel;
+  execution: BackofficeExecutionContext;
 };
 
 export type PiCodemodeRuntime = {
@@ -336,6 +340,8 @@ const getSessionFs = async (
   const pendingFileSystem = createOrgFileSystem({
     orgId: context.orgId,
     objects: context.objects,
+    kernel: context.kernel,
+    execution: context.execution,
   });
 
   cache.set(sessionId, pendingFileSystem);

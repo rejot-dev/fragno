@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, test, assert } from "vitest";
 
 import { InMemoryAdapter } from "@fragno-dev/db";
 
+import { createMasterFileSystem, createSystemFilesContext } from "@/files";
+
 import type { AutomationWorkflowsService } from "./definition";
-import { createAutomationFragment, createMinimalFileSystem } from "./index";
+import { createAutomationFragment } from "./index";
 
 const createAutomation = async () => {
   const services = {
@@ -17,7 +19,11 @@ const createAutomation = async () => {
   };
 
   return createAutomationFragment(
-    { automationFileSystem: await createMinimalFileSystem("org_123") },
+    {
+      automationFileSystem: await createMasterFileSystem(
+        createSystemFilesContext({ orgId: "org_123", uploadConfig: null }),
+      ),
+    },
     {
       databaseAdapter: new InMemoryAdapter({ idSeed: "automation-routes-store-test" }),
       dbRoundtripGuard: true,

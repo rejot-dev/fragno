@@ -1,4 +1,5 @@
 import { FileSystemError } from "./fs-errors";
+import type { FileGroup, FileSubject } from "./permissions";
 
 /**
  * Supported buffer encodings
@@ -184,6 +185,13 @@ export interface IFileSystem {
    * @throws Error if path doesn't exist
    */
   chmod(path: string, mode: number): Promise<void>;
+
+  /**
+   * Change file/directory owner and optionally group.
+   *
+   * Implementations only need to provide this when ownership is meaningful for that backend.
+   */
+  chown?(path: string, owner: FileSubject, group?: FileGroup): Promise<void>;
 
   /**
    * Create a symbolic link

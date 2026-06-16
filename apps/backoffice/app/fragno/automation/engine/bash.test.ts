@@ -118,7 +118,9 @@ describe("bash command runner", () => {
     });
     const result = await executeBashAutomation({
       script: 'printf "event=%s\\n" "$(cat /context/event.json)"',
-      masterFs: new MasterFileSystem({ mounts: [] }),
+      masterFs: new MasterFileSystem({
+        mounts: [],
+      }),
       context: createRuntimeAutomationExecutionContext({
         event,
         binding: {
@@ -153,7 +155,9 @@ describe("bash command runner", () => {
 
     const result = await executeBashAutomation({
       script: 'echo "discarded" >/dev/null && echo "kept"',
-      masterFs: new MasterFileSystem({ mounts: [] }),
+      masterFs: new MasterFileSystem({
+        mounts: [],
+      }),
       context: createRuntimeAutomationExecutionContext({
         event,
         binding: { source: "telegram", eventType: "message.received", scriptId: "s-dev" },
@@ -168,7 +172,9 @@ describe("bash command runner", () => {
   });
 
   it("keeps the shared master filesystem mount list unchanged after execution", async () => {
-    const masterFs = new MasterFileSystem({ mounts: [] });
+    const masterFs = new MasterFileSystem({
+      mounts: [],
+    });
     const event = createTestEvent({
       id: "cleanup-event",
       source: "telegram",
@@ -197,7 +203,9 @@ describe("bash command runner", () => {
   });
 
   it("isolates /context/event.json across overlapping executions", async () => {
-    const masterFs = new MasterFileSystem({ mounts: [] });
+    const masterFs = new MasterFileSystem({
+      mounts: [],
+    });
     const releaseFirstRun = createDeferred();
     const firstRunBlocked = createDeferred();
 
@@ -265,7 +273,9 @@ describe("bash command runner", () => {
   });
 
   it("keeps /context and /dev available when another overlapping execution finishes", async () => {
-    const masterFs = new MasterFileSystem({ mounts: [] });
+    const masterFs = new MasterFileSystem({
+      mounts: [],
+    });
     const releaseFirstRun = createDeferred();
     const firstRunBlocked = createDeferred();
     const releaseSecondRun = createDeferred();
@@ -354,7 +364,9 @@ describe("bash command runner", () => {
   });
 
   it("skips /dev mount when one already exists on the master filesystem", async () => {
-    const masterFs = new MasterFileSystem({ mounts: [] });
+    const masterFs = new MasterFileSystem({
+      mounts: [],
+    });
     masterFs.mount({
       id: "existing-dev",
       kind: "custom",

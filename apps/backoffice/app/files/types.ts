@@ -1,7 +1,10 @@
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { DurableHookQueueOptions, DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import type { UploadAdminConfigResponse, UploadProvider } from "@/fragno/upload";
 
 import type { FileContent, IFileSystem } from "./interface";
+import type { FilePrincipal } from "./permissions";
 
 const FILE_ROOT_KINDS = ["static", "upload", "custom"] as const;
 export type FileRootKind = (typeof FILE_ROOT_KINDS)[number];
@@ -70,6 +73,9 @@ export type FilesContext = {
     getHookQueue(options?: DurableHookQueueOptions): Promise<DurableHookQueueResponse>;
   }>;
   request?: Request;
+  execution: BackofficeExecutionContext;
+  kernel: BackofficeKernel;
+  filePrincipal: FilePrincipal;
 };
 
 export type FileSystemResolution =

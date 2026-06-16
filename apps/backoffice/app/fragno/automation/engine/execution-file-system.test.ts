@@ -7,7 +7,9 @@ import { createAutomationExecutionFileSystem } from "./execution-file-system";
 describe("createAutomationExecutionFileSystem", () => {
   test("exposes automation context files under /context and device files under /dev", async () => {
     const fs = createAutomationExecutionFileSystem({
-      masterFs: new MasterFileSystem({ mounts: [] }),
+      masterFs: new MasterFileSystem({
+        mounts: [],
+      }),
       contextFiles: {
         "event.json": JSON.stringify({ id: "event-1" }),
       },

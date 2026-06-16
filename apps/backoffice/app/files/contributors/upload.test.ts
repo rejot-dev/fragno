@@ -3,11 +3,13 @@ import { describe, expect, test, assert } from "vitest";
 import { Bash, defineCommand } from "just-bash";
 
 import {
+  createSystemFilesContext,
   createUploadFileSystem,
   getBuiltInFileContributors,
+  ROOT_FILE_PRINCIPAL,
   resolveUploadFileMount,
   uploadFileContributor,
-  type FilesContext,
+  type FilePrincipal,
 } from "@/files";
 import { toUploadDirectoryMarkerFileKey } from "@/files/contributors/upload-markers";
 import {
@@ -154,7 +156,7 @@ describe("upload file contributor", () => {
     await expect(fs.stat?.("/workspace/reports/q1.txt")).resolves.toMatchObject({
       isFile: true,
       isDirectory: false,
-      mode: 0o644,
+      mode: 0o664,
       size: 5,
     });
 
@@ -262,14 +264,14 @@ describe("upload file contributor", () => {
       },
       uploadConfig,
     );
-    const context = {
+    const context = createSystemFilesContext({
       orgId: "acme-org",
       origin: runtime.baseUrl,
-      backend: "pi" as const,
+      backend: "pi",
       uploadConfig,
       uploadRuntime: runtime,
       request: new Request("https://docs.example.test/backoffice/files"),
-    } satisfies FilesContext;
+    });
     const fs = createUploadFileSystem(context, {
       provider: UPLOAD_PROVIDER_R2_BINDING,
     });
@@ -283,14 +285,14 @@ describe("upload file contributor", () => {
     const runtime = createUploadRuntime({
       "reports/q1.txt": { provider: UPLOAD_PROVIDER_R2, content: "ready" },
     });
-    const context = {
+    const context = createSystemFilesContext({
       orgId: "acme-org",
       origin: runtime.baseUrl,
-      backend: "pi" as const,
+      backend: "pi",
       uploadConfig: runtime.uploadConfig,
       uploadRuntime: runtime,
       request: new Request("https://docs.example.test/backoffice/files"),
-    } satisfies FilesContext;
+    });
     const fs = createUploadFileSystem(context, {
       provider: UPLOAD_PROVIDER_R2,
     });
@@ -306,13 +308,13 @@ describe("upload file contributor", () => {
 
   test("fails fast when a mount is bound to an unconfigured provider", () => {
     const runtime = createUploadRuntime({});
-    const context = {
+    const context = createSystemFilesContext({
       orgId: "acme-org",
       origin: runtime.baseUrl,
-      backend: "pi" as const,
+      backend: "pi",
       uploadConfig: runtime.uploadConfig,
       uploadRuntime: runtime,
-    } satisfies FilesContext;
+    });
 
     expect(() =>
       createUploadFileSystem(context, {
@@ -357,11 +359,11 @@ describe("upload file contributor", () => {
     assert(runtime.files.has(composeStorageKey(UPLOAD_PROVIDER_DATABASE, "notes/todo.md")));
     await expect(fs.readFile?.("/workspace/notes/todo.md")).resolves.toBe("- ship it");
 
-    await fs.rm?.("/workspace/reports/", { recursive: true });
+    await fs.rm?.("/workspace/reports/q1.txt", { force: true });
     await expect(fs.exists?.("/workspace/reports/q1.txt")).resolves.toBe(false);
 
-    await fs.rm?.("/workspace", { recursive: true });
-    await expect(fs.readdir?.("/workspace")).resolves.toEqual([]);
+    await fs.rm?.("/workspace/notes/todo.md", { force: true });
+    await expect(fs.readdir?.("/workspace/notes")).resolves.toEqual([]);
   });
 
   test("treats deleted upload records as missing for exact-path lookups", async () => {
@@ -505,22 +507,22 @@ describe("upload file contributor", () => {
     await expect(fs.readdir?.("/workspace/reports/")).resolves.toEqual([]);
   });
 
-  test("recursive folder deletion removes upload directory markers too", async () => {
+  test("recursive folder deletion is not supported for upload-backed folders", async () => {
     const { fs, runtime } = createUploadFs({});
 
     await fs.mkdir?.("/workspace/reports/2026", { recursive: true });
     await fs.writeFile?.("/workspace/reports/2026/q1.txt", "ready");
-    await fs.rm?.("/workspace/reports/", { recursive: true });
+    await expect(fs.rm?.("/workspace/reports/", { recursive: true })).rejects.toThrow("ENOTSUP");
 
-    await expect(fs.exists?.("/workspace/reports/")).resolves.toBe(false);
-    await expect(fs.readdir?.("/workspace")).resolves.toEqual([]);
+    await expect(fs.exists?.("/workspace/reports/")).resolves.toBe(true);
+    await expect(fs.readdir?.("/workspace")).resolves.toEqual(["reports"]);
     assert(
-      !runtime.files.has(
+      runtime.files.has(
         composeStorageKey(UPLOAD_PROVIDER_DATABASE, toUploadDirectoryMarkerFileKey("reports")),
       ),
     );
     assert(
-      !runtime.files.has(
+      runtime.files.has(
         composeStorageKey(UPLOAD_PROVIDER_DATABASE, toUploadDirectoryMarkerFileKey("reports/2026")),
       ),
     );
@@ -537,16 +539,179 @@ describe("upload file contributor", () => {
     await expect(fs.readFile?.("/workspace/reports/.fragno/dir-marker")).resolves.toBe("user file");
   });
 
-  test("contributor createFileSystem returns null when uploads are unavailable", async () => {
-    const fs = await uploadFileContributor.createFileSystem?.({
-      orgId: "acme-org",
-      backend: "backoffice",
-      uploadConfig: null,
+  test("stores owner and group metadata for files and folders created by a file principal", async () => {
+    const { fs, runtime } = createUploadFs({}, { filePrincipal: USER_ONE_ORG_PRINCIPAL });
+
+    await fs.mkdir("/workspace/reports", { recursive: true });
+    await fs.writeFile("/workspace/reports/q1.txt", "ready");
+
+    expect(
+      runtime.files.get(
+        composeStorageKey(UPLOAD_PROVIDER_DATABASE, toUploadDirectoryMarkerFileKey("reports")),
+      )?.metadata,
+    ).toMatchObject({
+      __docsFs: {
+        owner: { kind: "user", userId: "user-1" },
+        group: { kind: "org", orgId: "acme-org" },
+        mode: 0o755,
+      },
     });
+    expect(
+      runtime.files.get(composeStorageKey(UPLOAD_PROVIDER_DATABASE, "reports/q1.txt"))?.metadata,
+    ).toMatchObject({
+      __docsFs: {
+        owner: { kind: "user", userId: "user-1" },
+        group: { kind: "org", orgId: "acme-org" },
+        mode: 0o664,
+      },
+    });
+  });
+
+  test("enforces owner, group, and other write bits for upload-backed files", async () => {
+    const created = createUploadFs({}, { filePrincipal: USER_ONE_ORG_PRINCIPAL });
+    await created.fs.writeFile("/workspace/notes.md", "owner");
+    await created.fs.chmod("/workspace/notes.md", 0o644);
+
+    const sameOrg = createUploadFileSystem(
+      { ...created.context, filePrincipal: USER_TWO_ORG_PRINCIPAL },
+      { mountPoint: "/workspace" },
+    );
+    await expect(sameOrg.readFile("/workspace/notes.md")).resolves.toBe("owner");
+    await expect(sameOrg.writeFile("/workspace/notes.md", "same org denied")).rejects.toThrow(
+      "EACCES",
+    );
+
+    await created.fs.chmod("/workspace/notes.md", 0o664);
+    await sameOrg.writeFile("/workspace/notes.md", "same org allowed");
+    await expect(sameOrg.readFile("/workspace/notes.md")).resolves.toBe("same org allowed");
+
+    const otherOrg = createUploadFileSystem(
+      { ...created.context, filePrincipal: USER_THREE_OTHER_ORG_PRINCIPAL },
+      { mountPoint: "/workspace" },
+    );
+    await expect(otherOrg.writeFile("/workspace/notes.md", "other org denied")).rejects.toThrow(
+      "EACCES",
+    );
+  });
+
+  test("requires write permission on the containing directory before creating children", async () => {
+    const { fs, context } = createUploadFs({}, { filePrincipal: USER_ONE_ORG_PRINCIPAL });
+
+    await fs.mkdir("/workspace/private", { recursive: true });
+    await fs.chmod("/workspace/private", 0o700);
+
+    const sameOrg = createUploadFileSystem(
+      { ...context, filePrincipal: USER_TWO_ORG_PRINCIPAL },
+      { mountPoint: "/workspace" },
+    );
+    await expect(sameOrg.writeFile("/workspace/private/intruder.txt", "nope")).rejects.toThrow(
+      "EACCES",
+    );
+    await expect(sameOrg.mkdir("/workspace/private/child")).rejects.toThrow("EACCES");
+
+    await fs.writeFile("/workspace/private/owner.txt", "ok");
+    await expect(fs.readFile("/workspace/private/owner.txt")).resolves.toBe("ok");
+  });
+
+  test("does not support recursive upload-backed rm", async () => {
+    const { fs } = createUploadFs({}, { filePrincipal: USER_ONE_ORG_PRINCIPAL });
+    await fs.writeFile("/workspace/notes.md", "owner");
+
+    await expect(fs.rm("/workspace", { recursive: true })).rejects.toThrow("ENOTSUP");
+    await expect(fs.readFile("/workspace/notes.md")).resolves.toBe("owner");
+  });
+
+  test("always allows reading and traversing upload-backed folders", async () => {
+    const { fs, context } = createUploadFs({}, { filePrincipal: USER_ONE_ORG_PRINCIPAL });
+
+    await fs.mkdir("/workspace/private", { recursive: true });
+    await fs.writeFile("/workspace/private/secret.txt", "secret");
+    await fs.chmod("/workspace/private", 0o000);
+
+    const ownerFs = createUploadFileSystem(
+      { ...context, filePrincipal: USER_ONE_ORG_PRINCIPAL },
+      { mountPoint: "/workspace" },
+    );
+    await expect(ownerFs.readdir("/workspace/private")).resolves.toEqual(["secret.txt"]);
+    await expect(ownerFs.readFile("/workspace/private/secret.txt")).resolves.toBe("secret");
+  });
+
+  test("lets root bypass upload-backed mode checks", async () => {
+    const created = createUploadFs({}, { filePrincipal: USER_ONE_ORG_PRINCIPAL });
+    await created.fs.writeFile("/workspace/private.txt", "secret");
+    await created.fs.chmod("/workspace/private.txt", 0o000);
+
+    const rootFs = createUploadFileSystem(
+      { ...created.context, filePrincipal: ROOT_FILE_PRINCIPAL },
+      { mountPoint: "/workspace" },
+    );
+    await expect(rootFs.readFile("/workspace/private.txt")).resolves.toBe("secret");
+    await rootFs.writeFile("/workspace/private.txt", "root update");
+    await expect(rootFs.readFile("/workspace/private.txt")).resolves.toBe("root update");
+  });
+
+  test("allows only root to chown upload-backed nodes", async () => {
+    const { fs, context, runtime } = createUploadFs({}, { filePrincipal: USER_ONE_ORG_PRINCIPAL });
+    await fs.writeFile("/workspace/notes.md", "owner");
+
+    await expect(
+      fs.chown?.("/workspace/notes.md", { kind: "user", userId: "user-2" }),
+    ).rejects.toThrow("EACCES");
+
+    const rootFs = createUploadFileSystem(
+      { ...context, filePrincipal: ROOT_FILE_PRINCIPAL },
+      { mountPoint: "/workspace" },
+    );
+    await rootFs.chown?.("/workspace/notes.md", { kind: "user", userId: "user-2" });
+
+    expect(
+      runtime.files.get(composeStorageKey(UPLOAD_PROVIDER_DATABASE, "notes.md"))?.metadata,
+    ).toMatchObject({
+      __docsFs: {
+        owner: { kind: "user", userId: "user-2" },
+      },
+    });
+  });
+
+  test("contributor createFileSystem returns null when uploads are unavailable", async () => {
+    const fs = await uploadFileContributor.createFileSystem?.(
+      createSystemFilesContext({
+        orgId: "acme-org",
+        backend: "backoffice",
+        uploadConfig: null,
+      }),
+    );
 
     expect(fs).toBeNull();
   });
 });
+
+const USER_ONE_ORG_PRINCIPAL: FilePrincipal = {
+  subject: { kind: "user", userId: "user-1" },
+  primaryGroup: { kind: "org", orgId: "acme-org" },
+  groups: [
+    { kind: "org", orgId: "acme-org" },
+    { kind: "user", userId: "user-1" },
+  ],
+};
+
+const USER_TWO_ORG_PRINCIPAL: FilePrincipal = {
+  subject: { kind: "user", userId: "user-2" },
+  primaryGroup: { kind: "org", orgId: "acme-org" },
+  groups: [
+    { kind: "org", orgId: "acme-org" },
+    { kind: "user", userId: "user-2" },
+  ],
+};
+
+const USER_THREE_OTHER_ORG_PRINCIPAL: FilePrincipal = {
+  subject: { kind: "user", userId: "user-3" },
+  primaryGroup: { kind: "org", orgId: "other-org" },
+  groups: [
+    { kind: "org", orgId: "other-org" },
+    { kind: "user", userId: "user-3" },
+  ],
+};
 
 const createUploadFs = (
   seed: Record<
@@ -559,16 +724,18 @@ const createUploadFs = (
       status?: UploadFileRecord["status"];
     }
   >,
+  options: { filePrincipal?: FilePrincipal } = {},
 ) => {
   const runtime = createUploadRuntime(seed);
-  const context = {
+  const context = createSystemFilesContext({
     orgId: "acme-org",
     origin: runtime.baseUrl,
-    backend: "pi" as const,
+    backend: "pi",
     uploadConfig: runtime.uploadConfig,
     uploadRuntime: runtime,
     request: new Request("https://docs.example.test/backoffice/files"),
-  } satisfies FilesContext;
+    ...(options.filePrincipal ? { filePrincipal: options.filePrincipal } : {}),
+  });
 
   return {
     runtime,

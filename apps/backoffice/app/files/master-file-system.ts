@@ -26,6 +26,7 @@ import {
   resolvePath as resolveFilePath,
   stripTrailingSlash,
 } from "./normalize-path";
+import type { FileGroup, FileSubject } from "./permissions";
 import type {
   FileContributor,
   FileMountMetadata,
@@ -263,6 +264,16 @@ export class MasterFileSystem implements IFileSystem {
     await target.fs.chmod(path, mode);
   }
 
+  async chown(path: string, owner: FileSubject, group?: FileGroup): Promise<void> {
+    const target = this.#resolveWriteTarget(path);
+    this.#assertWritable(target.mount, path, "chown");
+    if (!target.fs.chown) {
+      throw createUnsupportedOperationFileSystemError("chown", path);
+    }
+
+    await target.fs.chown(path, owner, group);
+  }
+
   async symlink(target: string, linkPath: string): Promise<void> {
     const linkTarget = this.#resolveWriteTarget(linkPath);
     this.#assertWritable(linkTarget.mount, linkPath, "symlink");
@@ -348,8 +359,9 @@ export class MasterFileSystem implements IFileSystem {
   }
 
   #assertWritable(mount: ResolvedFileMount, path: string, operation: string): void {
+    const normalizedPath = normalizeAbsolutePath(path);
     if (mount.readOnly) {
-      throw createReadOnlyFileSystemError(operation, normalizeAbsolutePath(path));
+      throw createReadOnlyFileSystemError(operation, normalizedPath);
     }
   }
 

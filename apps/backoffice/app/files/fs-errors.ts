@@ -1,4 +1,11 @@
-export type FileSystemErrorCode = "EISDIR" | "EINVAL" | "ENOENT" | "ENOTDIR" | "ENOTSUP" | "EROFS";
+export type FileSystemErrorCode =
+  | "EACCES"
+  | "EISDIR"
+  | "EINVAL"
+  | "ENOENT"
+  | "ENOTDIR"
+  | "ENOTSUP"
+  | "EROFS";
 
 export class FileSystemError extends Error {
   readonly code: FileSystemErrorCode;
@@ -24,6 +31,12 @@ export const createUnsupportedOperationFileSystemError = (
 
 export const createReadOnlyFileSystemError = (operation: string, path: string): FileSystemError =>
   new FileSystemError("EROFS", `EROFS: read-only file system, ${operation} '${path}'`);
+
+export const createPermissionDeniedFileSystemError = (
+  operation: string,
+  path: string,
+): FileSystemError =>
+  new FileSystemError("EACCES", `EACCES: permission denied, ${operation} '${path}'`);
 
 export const createInvalidArgumentFileSystemError = (
   operation: string,

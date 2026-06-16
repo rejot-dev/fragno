@@ -1,5 +1,7 @@
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createOrgFileSystem } from "@/files/create-file-system";
 import { authorizeAccessTokenForOrganization } from "@/fragno/auth/access-token.server";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/codemode-agents-org";
@@ -17,9 +19,18 @@ const assertDevOnlyLocalRequest = (request: Request) => {
   }
 };
 
-const readOrgSystemGuidance = async (context: Route.LoaderArgs["context"], orgId: string) => {
+const readOrgSystemGuidance = async ({
+  context,
+  execution,
+  orgId,
+}: {
+  context: Route.LoaderArgs["context"];
+  execution: Awaited<ReturnType<typeof requireBackofficeContext>>;
+  orgId: string;
+}) => {
   const { runtime } = context.get(BackofficeWorkerContext);
-  const fs = await createOrgFileSystem({ objects: runtime.objects, orgId });
+  const kernel = new BackofficeKernel({ objects: runtime.objects });
+  const fs = await createOrgFileSystem({ objects: runtime.objects, orgId, kernel, execution });
   return await fs.readFile("/system/SYSTEM.md");
 };
 
@@ -36,7 +47,9 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
     return auth.response;
   }
 
-  const systemGuidance = await readOrgSystemGuidance(context, orgId);
+  const execution = await requireBackofficeContext(request, context, { kind: "org", orgId });
+
+  const systemGuidance = await readOrgSystemGuidance({ context, execution, orgId });
   const headers = new Headers({
     "cache-control": "no-store",
     "content-type": "text/markdown; charset=utf-8",

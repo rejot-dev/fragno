@@ -30,7 +30,6 @@ export type { AutomationFragmentConfig };
 export {
   AUTOMATION_SYSTEM_ROOT,
   AUTOMATION_WORKSPACE_ROOT,
-  createMinimalFileSystem,
   listAutomationWorkspaceScripts,
   readAutomationWorkspaceScript,
 } from "./catalog";

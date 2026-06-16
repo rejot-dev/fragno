@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import {
   UPLOAD_PROVIDER_DATABASE,
   UPLOAD_PROVIDER_R2,
@@ -27,6 +29,17 @@ import {
   resolvePath as resolveUploadPath,
   stripTrailingSlash,
 } from "../normalize-path";
+import {
+  ROOT_FILE_NODE_PERMISSIONS,
+  ROOT_FILE_PRINCIPAL,
+  assertFileOwnerOrRoot,
+  assertFileWritable,
+  assertRootFilePrincipal,
+  isRootFilePrincipal,
+  type FileGroup,
+  type FilePrincipal,
+  type FileSubject,
+} from "../permissions";
 import type {
   FileContributor,
   FileEntryDescriptor,
@@ -102,8 +115,9 @@ const concatBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
   return result;
 };
 const UPLOAD_FS_METADATA_KEY = "__docsFs";
-const DEFAULT_FILE_MODE = 0o644;
+const DEFAULT_FILE_MODE = 0o664;
 const DEFAULT_FOLDER_MODE = 0o755;
+const DEFAULT_MOUNT_ROOT_MODE = 0o775;
 const UPLOAD_DIRECTORY_LIST_PAGE_SIZE = "500";
 const RESERVED_UPLOAD_DIRECTORY_NAMES = new Set([".fragno"]);
 
@@ -280,7 +294,7 @@ export const createUploadFileSystem = (
     },
     async stat(path) {
       if (stripTrailingSlash(path) === mountPoint) {
-        return createRootStat();
+        return createRootStat(ctx);
       }
 
       const entry = await getEntry(path);
@@ -361,11 +375,38 @@ export const createUploadFileSystem = (
         throw new Error(`Cannot write to the mounted upload root '${mountPoint}'.`);
       }
 
-      for (const folderKey of getAncestorFolderKeys(getParentUploadFileKey(fileKey))) {
-        await ensureUploadDirectoryMarker(ctx, provider, folderKey);
+      const principal = ctx.filePrincipal ?? ROOT_FILE_PRINCIPAL;
+      const existing = await fetchUploadFileFromRuntime(ctx, provider, fileKey);
+      if (existing && !isUploadDirectoryMarker(existing)) {
+        const fsMetadata = readUploadFsMetadata(existing.metadata);
+        assertFileWritable({
+          principal,
+          node: {
+            owner: fsMetadata.owner ?? ROOT_FILE_NODE_PERMISSIONS.owner,
+            group: fsMetadata.group ?? ROOT_FILE_NODE_PERMISSIONS.group,
+            mode: normalizeUploadMode(fsMetadata.mode ?? DEFAULT_FILE_MODE),
+          },
+          operation: "write",
+          path,
+        });
       }
 
-      const existing = await fetchUploadFileFromRuntime(ctx, provider, fileKey);
+      if (!existing) {
+        await assertUploadContainingDirectoryWritable(
+          ctx,
+          provider,
+          mountPoint,
+          getParentUploadFileKey(fileKey),
+          principal,
+          "write",
+          path,
+        );
+      }
+
+      for (const folderKey of getAncestorFolderKeys(getParentUploadFileKey(fileKey))) {
+        await ensureUploadDirectoryMarker(ctx, provider, folderKey, principal);
+      }
+
       if (existing) {
         await deleteUploadRecord(ctx, existing);
       }
@@ -388,7 +429,11 @@ export const createUploadFileSystem = (
 
       const preservedMetadata = existing
         ? preserveUploadMetadataForRewrite(existing.metadata)
-        : null;
+        : mergeUploadFsMetadata(null, {
+            owner: principal.subject,
+            group: principal.primaryGroup,
+            mode: DEFAULT_FILE_MODE,
+          });
       if (preservedMetadata) {
         form.set("metadata", JSON.stringify(preservedMetadata));
       }
@@ -419,22 +464,30 @@ export const createUploadFileSystem = (
         }
       }
 
+      const principal = ctx.filePrincipal ?? ROOT_FILE_PRINCIPAL;
+      await assertUploadContainingDirectoryWritable(
+        ctx,
+        provider,
+        mountPoint,
+        getParentUploadFileKey(folderKey),
+        principal,
+        "mkdir",
+        path,
+      );
       const foldersToCreate = options?.recursive ? getAncestorFolderKeys(folderKey) : [folderKey];
       for (const ancestorFolderKey of foldersToCreate) {
-        await ensureUploadDirectoryMarker(ctx, provider, ancestorFolderKey);
+        await ensureUploadDirectoryMarker(ctx, provider, ancestorFolderKey, principal);
       }
     },
     async rm(path, options) {
+      if (options?.recursive) {
+        throw createUnsupportedOperationFileSystemError("recursive rm", path);
+      }
+
       const { fileKey, isRoot, isDirectoryPath } = toRelativeUploadPath(mountPoint, path);
 
       if (isRoot) {
-        if (!options?.recursive) {
-          throw new Error("Folder deletion requires recursive=true.");
-        }
-
-        const files = await listAllUploadFiles(ctx, provider);
-        await Promise.all(files.map((file) => deleteUploadRecord(ctx, file)));
-        return;
+        throw createUnsupportedOperationFileSystemError("rm", path);
       }
 
       if (!fileKey) {
@@ -447,7 +500,19 @@ export const createUploadFileSystem = (
       const directFile = !isDirectoryPath
         ? await fetchUploadFileFromRuntime(ctx, provider, fileKey)
         : null;
+      const principal = ctx.filePrincipal ?? ROOT_FILE_PRINCIPAL;
       if (directFile && !isUploadDirectoryMarker(directFile)) {
+        const fsMetadata = readUploadFsMetadata(directFile.metadata);
+        assertFileWritable({
+          principal,
+          node: {
+            owner: fsMetadata.owner ?? ROOT_FILE_NODE_PERMISSIONS.owner,
+            group: fsMetadata.group ?? ROOT_FILE_NODE_PERMISSIONS.group,
+            mode: normalizeUploadMode(fsMetadata.mode ?? DEFAULT_FILE_MODE),
+          },
+          operation: "rm",
+          path,
+        });
         await deleteUploadRecord(ctx, directFile);
         return;
       }
@@ -467,6 +532,22 @@ export const createUploadFileSystem = (
         throw new Error("Folder deletion requires recursive=true.");
       }
 
+      for (const file of matches) {
+        if (!isUploadDirectoryMarker(file)) {
+          const fsMetadata = readUploadFsMetadata(file.metadata);
+          assertFileWritable({
+            principal,
+            node: {
+              owner: fsMetadata.owner ?? ROOT_FILE_NODE_PERMISSIONS.owner,
+              group: fsMetadata.group ?? ROOT_FILE_NODE_PERMISSIONS.group,
+              mode: normalizeUploadMode(fsMetadata.mode ?? DEFAULT_FILE_MODE),
+            },
+            operation: "rm",
+            path,
+          });
+        }
+      }
+
       await Promise.all(matches.map((file) => deleteUploadRecord(ctx, file)));
     },
     async chmod(path, mode) {
@@ -478,6 +559,23 @@ export const createUploadFileSystem = (
         path,
         "chmod",
       );
+      const principal = ctx.filePrincipal ?? ROOT_FILE_PRINCIPAL;
+      if (!isRootFilePrincipal(principal)) {
+        const fsMetadata = readUploadFsMetadata(target.metadata);
+        assertFileOwnerOrRoot({
+          principal,
+          node: {
+            owner: fsMetadata.owner ?? ROOT_FILE_NODE_PERMISSIONS.owner,
+            group: fsMetadata.group ?? ROOT_FILE_NODE_PERMISSIONS.group,
+            mode: normalizeUploadMode(
+              fsMetadata.mode ??
+                (isUploadDirectoryMarker(target) ? DEFAULT_FOLDER_MODE : DEFAULT_FILE_MODE),
+            ),
+          },
+          operation: "chmod",
+          path,
+        });
+      }
       await updateUploadRecord(ctx, target, {
         metadata: mergeUploadFsMetadata(target.metadata, {
           mode: normalizeUploadMode(mode),
@@ -493,10 +591,42 @@ export const createUploadFileSystem = (
         path,
         "utimes",
       );
+      const fsMetadata = readUploadFsMetadata(target.metadata);
+      assertFileWritable({
+        principal: ctx.filePrincipal ?? ROOT_FILE_PRINCIPAL,
+        node: {
+          owner: fsMetadata.owner ?? ROOT_FILE_NODE_PERMISSIONS.owner,
+          group: fsMetadata.group ?? ROOT_FILE_NODE_PERMISSIONS.group,
+          mode: normalizeUploadMode(fsMetadata.mode ?? DEFAULT_FILE_MODE),
+        },
+        operation: "utimes",
+        path,
+      });
       const normalizedMtime = normalizeUploadMtime(mtime, path);
       await updateUploadRecord(ctx, target, {
         metadata: mergeUploadFsMetadata(target.metadata, {
           mtime: normalizedMtime,
+        }),
+      });
+    },
+    async chown(path, owner, group) {
+      const target = await resolveUploadMetadataMutationTarget(
+        this,
+        ctx,
+        provider,
+        mountPoint,
+        path,
+        "chown",
+      );
+      assertRootFilePrincipal({
+        principal: ctx.filePrincipal ?? ROOT_FILE_PRINCIPAL,
+        operation: "chown",
+        path,
+      });
+      await updateUploadRecord(ctx, target, {
+        metadata: mergeUploadFsMetadata(target.metadata, {
+          owner,
+          ...(group ? { group } : {}),
         }),
       });
     },
@@ -895,9 +1025,40 @@ const isUploadDirectoryMarkerDirectory = (directory: UploadDirectoryRecord): boo
 };
 
 type UploadFsMetadata = {
+  owner?: FileSubject;
+  group?: FileGroup;
   mode?: number;
   mtime?: string;
 };
+
+const backofficeContextScopeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("system") }),
+  z.object({ kind: z.literal("org"), orgId: z.string() }),
+  z.object({ kind: z.literal("user"), userId: z.string() }),
+  z.object({ kind: z.literal("project"), projectId: z.string() }),
+]);
+
+const fileSubjectSchema: z.ZodType<FileSubject> = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("root") }),
+  z.object({ kind: z.literal("user"), userId: z.string() }),
+  z.object({
+    kind: z.literal("automation"),
+    automationId: z.string(),
+    scope: backofficeContextScopeSchema,
+  }),
+  z.object({
+    kind: z.literal("object"),
+    objectType: z.string(),
+    objectId: z.string(),
+    scope: backofficeContextScopeSchema,
+  }),
+]);
+
+const fileGroupSchema: z.ZodType<FileGroup> = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("root") }),
+  z.object({ kind: z.literal("user"), userId: z.string() }),
+  z.object({ kind: z.literal("org"), orgId: z.string() }),
+]);
 
 const readUploadFsMetadata = (
   metadata: Record<string, unknown> | null | undefined,
@@ -912,6 +1073,8 @@ const readUploadFsMetadata = (
   }
 
   const rawMetadata = raw as Record<string, unknown>;
+  const owner = fileSubjectSchema.safeParse(rawMetadata.owner).data;
+  const group = fileGroupSchema.safeParse(rawMetadata.group).data;
   const mode = typeof rawMetadata.mode === "number" ? rawMetadata.mode : undefined;
   const mtime =
     typeof rawMetadata.mtime === "string" && !Number.isNaN(Date.parse(rawMetadata.mtime))
@@ -919,6 +1082,8 @@ const readUploadFsMetadata = (
       : undefined;
 
   return {
+    ...(owner ? { owner } : {}),
+    ...(group ? { group } : {}),
     ...(mode !== undefined ? { mode } : {}),
     ...(mtime ? { mtime } : {}),
   };
@@ -978,9 +1143,11 @@ const preserveUploadMetadataForRewrite = (
     ...metadata,
   } satisfies Record<string, unknown>;
   const currentFsMetadata = readUploadFsMetadata(metadata);
-  const nextFsMetadata = (
-    currentFsMetadata.mode !== undefined ? { mode: currentFsMetadata.mode } : {}
-  ) satisfies UploadFsMetadata;
+  const nextFsMetadata = {
+    ...(currentFsMetadata.owner ? { owner: currentFsMetadata.owner } : {}),
+    ...(currentFsMetadata.group ? { group: currentFsMetadata.group } : {}),
+    ...(currentFsMetadata.mode !== undefined ? { mode: currentFsMetadata.mode } : {}),
+  } satisfies UploadFsMetadata;
 
   if (Object.keys(nextFsMetadata).length === 0) {
     delete nextMetadata[UPLOAD_FS_METADATA_KEY];
@@ -1001,13 +1168,55 @@ const normalizeUploadMtime = (mtime: Date, path: string): string => {
   return mtime.toISOString();
 };
 
+const assertUploadContainingDirectoryWritable = async (
+  ctx: FilesContext,
+  provider: UploadProvider,
+  mountPoint: string,
+  folderKey: string,
+  principal: FilePrincipal,
+  operation: string,
+  path: string,
+): Promise<void> => {
+  const ancestorFolderKeys = getAncestorFolderKeys(folderKey);
+  for (let index = ancestorFolderKeys.length - 1; index >= 0; index -= 1) {
+    const marker = await fetchUploadDirectoryMarker(ctx, provider, ancestorFolderKeys[index]!);
+    if (!marker) {
+      continue;
+    }
+
+    const fsMetadata = readUploadFsMetadata(marker.metadata);
+    assertFileWritable({
+      principal,
+      node: {
+        owner: fsMetadata.owner ?? ROOT_FILE_NODE_PERMISSIONS.owner,
+        group: fsMetadata.group ?? ROOT_FILE_NODE_PERMISSIONS.group,
+        mode: normalizeUploadMode(fsMetadata.mode ?? DEFAULT_FOLDER_MODE),
+      },
+      operation,
+      path,
+    });
+    return;
+  }
+
+  assertFileWritable({
+    principal,
+    node: {
+      owner: ROOT_FILE_NODE_PERMISSIONS.owner,
+      group: principal.primaryGroup,
+      mode: DEFAULT_MOUNT_ROOT_MODE,
+    },
+    operation,
+    path: stripTrailingSlash(mountPoint) || path,
+  });
+};
+
 const resolveUploadMetadataMutationTarget = async (
   fs: Pick<IFileSystem, "stat">,
   ctx: FilesContext,
   provider: UploadProvider,
   mountPoint: string,
   path: string,
-  operation: "chmod" | "utimes",
+  operation: "chmod" | "chown" | "utimes",
 ): Promise<UploadFileRecord> => {
   const normalizedPath = path.endsWith("/") ? ensureFolderPath(path) : stripTrailingSlash(path);
   if (stripTrailingSlash(normalizedPath) === mountPoint) {
@@ -1032,7 +1241,7 @@ const resolveUploadMetadataMutationTarget = async (
     throw createPathNotFoundFileSystemError(operation, normalizedPath);
   }
 
-  await ensureUploadDirectoryMarker(ctx, provider, fileKey);
+  await ensureUploadDirectoryMarker(ctx, provider, fileKey, ROOT_FILE_PRINCIPAL);
   const marker = await fetchUploadFileFromRuntime(
     ctx,
     provider,
@@ -1066,6 +1275,7 @@ const ensureUploadDirectoryMarker = async (
   ctx: FilesContext,
   provider: UploadProvider,
   folderKey: string,
+  principal: FilePrincipal,
 ): Promise<void> => {
   if (!folderKey) {
     return;
@@ -1091,7 +1301,17 @@ const ensureUploadDirectoryMarker = async (
   form.set("provider", provider);
   form.set("fileKey", markerFileKey);
   form.set("filename", getUploadDirectoryMarkerFilename());
-  form.set("metadata", JSON.stringify(createUploadDirectoryMarkerMetadata()));
+  form.set(
+    "metadata",
+    JSON.stringify({
+      ...createUploadDirectoryMarkerMetadata(),
+      [UPLOAD_FS_METADATA_KEY]: {
+        owner: principal.subject,
+        group: principal.primaryGroup,
+        mode: DEFAULT_FOLDER_MODE,
+      },
+    }),
+  );
 
   const response = await requestUpload(ctx, "POST", "/files", { body: form });
   if (!response.ok) {
@@ -1150,13 +1370,13 @@ const buildUploadTree = (mountPoint: string, files: UploadFileRecord[]): FileEnt
         };
       }
 
-      const folderMode = readUploadMode(file);
-      if (folderMode !== undefined) {
-        folder.fs = {
-          ...folder.fs,
-          mode: folderMode,
-        };
-      }
+      const folderFsMetadata = readUploadFsMetadata(file.metadata);
+      folder.fs = {
+        ...folder.fs,
+        ...(folderFsMetadata.owner ? { owner: folderFsMetadata.owner } : {}),
+        ...(folderFsMetadata.group ? { group: folderFsMetadata.group } : {}),
+        ...(folderFsMetadata.mode !== undefined ? { mode: folderFsMetadata.mode } : {}),
+      };
       continue;
     }
 
@@ -1224,6 +1444,10 @@ const toDirectoryDescriptor = (
     title: directory.name || getLeafSegment(folderKey),
     updatedAt: directory.updatedAt ?? null,
     metadata: directory.metadata ?? null,
+    fs: {
+      mode: readUploadFsMetadata(directory.metadata).mode,
+      mtime: readUploadFsMetadata(directory.metadata).mtime,
+    },
   };
 };
 
@@ -1330,11 +1554,11 @@ const buildUploadContentUrl = (ctx: FilesContext, file: UploadFileRecord): strin
   return requestUrl.toString();
 };
 
-const createRootStat = (): FsStat => ({
+const createRootStat = (ctx?: FilesContext): FsStat => ({
   isFile: false,
   isDirectory: true,
   isSymbolicLink: false,
-  mode: DEFAULT_FOLDER_MODE,
+  mode: ctx?.filePrincipal ? DEFAULT_MOUNT_ROOT_MODE : DEFAULT_FOLDER_MODE,
   size: 0,
   mtime: UNKNOWN_MTIME,
 });

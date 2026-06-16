@@ -208,9 +208,21 @@ export async function action({ request, context }: Route.ActionArgs) {
 
     try {
       const { runtime } = context.get(BackofficeWorkerContext);
+      const kernel = new BackofficeKernel({ objects: runtime.objects });
+      const execution = {
+        actor: {
+          type: "user" as const,
+          id: me.user.id,
+          userId: me.user.id,
+          organizationIds: [activeOrg.id],
+        },
+        scope: { kind: "org" as const, orgId: activeOrg.id },
+      };
       const fileSystem = await createOrgFileSystem({
         orgId: activeOrg.id,
         objects: runtime.objects,
+        kernel,
+        execution,
       });
       return {
         ...autocompleteRequest,
@@ -256,25 +268,29 @@ export async function action({ request, context }: Route.ActionArgs) {
 
   try {
     const { env, runtime } = context.get(BackofficeWorkerContext);
+    const kernel = new BackofficeKernel({ objects: runtime.objects });
+    const execution = {
+      actor: {
+        type: "user" as const,
+        id: me.user.id,
+        userId: me.user.id,
+        organizationIds: [activeOrg.id],
+      },
+      scope: { kind: "org" as const, orgId: activeOrg.id },
+    };
     const fileSystem = await createOrgFileSystem({
       orgId: activeOrg.id,
       objects: runtime.objects,
+      kernel,
+      execution,
     });
     const { bash } = createInteractiveBashHost({
       fs: fileSystem,
       env,
       context: createRouteBackedRuntimeContext({
         runtime,
-        kernel: new BackofficeKernel({ objects: runtime.objects }),
-        execution: {
-          actor: {
-            type: "user",
-            id: me.user.id,
-            userId: me.user.id,
-            organizationIds: [activeOrg.id],
-          },
-          scope: { kind: "org", orgId: activeOrg.id },
-        },
+        kernel,
+        execution,
         defaultActor: {
           scope: "internal",
           type: "user",
