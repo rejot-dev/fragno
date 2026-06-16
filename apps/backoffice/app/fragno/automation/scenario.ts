@@ -11,6 +11,7 @@ import {
   runBackofficeCodemode,
   type BackofficeCodemodeExecuteResult,
 } from "@/fragno/codemode/execute";
+import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
@@ -75,6 +76,19 @@ type TelegramEditCall = {
 type TelegramChatActionCall = {
   method: "sendChatAction";
   body: Record<string, unknown>;
+};
+
+type TelegramGetFileCall = {
+  fileId: string;
+};
+
+type TelegramDownloadFileCall = {
+  fileId: string;
+};
+
+type FakeTelegramFile = TelegramAutomationFileMetadata & {
+  bytes: Uint8Array;
+  contentType?: string;
 };
 
 type PiSessionStatus = "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
@@ -155,7 +169,11 @@ export type FakeTelegramApi = {
   sendMessageCalls: TelegramSendCall[];
   editMessageTextCalls: TelegramEditCall[];
   sendChatActionCalls: TelegramChatActionCall[];
+  getFileCalls: TelegramGetFileCall[];
+  downloadFileCalls: TelegramDownloadFileCall[];
   setWebhookCalls: Parameters<TelegramAdminApi["setWebhook"]>[0][];
+  setFile(input: FakeTelegramFile): void;
+  getFileFixture(fileId: string): FakeTelegramFile | null;
 };
 
 export type FakePiApi = {
@@ -187,7 +205,7 @@ export type ScenarioFakes = {
 };
 
 type ScenarioFakeFactory = {
-  telegram(): FakeTelegramApi;
+  telegram(input?: { files?: FakeTelegramFile[] }): FakeTelegramApi;
   pi(input?: { assistantText?: (input: { sessionId: string; text: string }) => string }): FakePiApi;
   resend(input?: { threads?: FakeResendThreadSeed[] }): FakeResendApi;
   mcp(input?: { servers?: FakeMcpServer[] }): FakeMcpApi;
@@ -628,11 +646,22 @@ export const defineBackofficeScenario = <TVars extends ScenarioVars = ScenarioVa
   scenario: BackofficeScenarioDefinitionInput<TVars>,
 ): BackofficeScenarioDefinition<TVars> => scenario;
 
-const createFakeTelegramApi = (): FakeTelegramApi => {
+const createFakeTelegramApi = (input: { files?: FakeTelegramFile[] } = {}): FakeTelegramApi => {
   const sendMessageCalls: TelegramSendCall[] = [];
   const editMessageTextCalls: TelegramEditCall[] = [];
   const sendChatActionCalls: TelegramChatActionCall[] = [];
+  const getFileCalls: TelegramGetFileCall[] = [];
+  const downloadFileCalls: TelegramDownloadFileCall[] = [];
   const setWebhookCalls: Parameters<TelegramAdminApi["setWebhook"]>[0][] = [];
+  const filesById = new Map<string, FakeTelegramFile>();
+
+  const setFile = (file: FakeTelegramFile) => {
+    filesById.set(file.fileId, file);
+  };
+
+  for (const file of input.files ?? []) {
+    setFile(file);
+  }
 
   const buildMessage = (payload: Record<string, unknown>): TelegramMessage => ({
     messageId: sendMessageCalls.length + editMessageTextCalls.length,
@@ -653,7 +682,11 @@ const createFakeTelegramApi = (): FakeTelegramApi => {
     sendMessageCalls,
     editMessageTextCalls,
     sendChatActionCalls,
+    getFileCalls,
+    downloadFileCalls,
     setWebhookCalls,
+    setFile,
+    getFileFixture: (fileId) => filesById.get(fileId) ?? null,
     adminApi: {
       setWebhook: async (input) => {
         setWebhookCalls.push(input);
@@ -2655,17 +2688,48 @@ const buildStepBuilders = <
   },
 });
 
+const fakeTelegramFile = (fakeTelegram: FakeTelegramApi, fileId: string): FakeTelegramFile => {
+  const file = fakeTelegram.getFileFixture(fileId);
+  if (!file) {
+    throw new Error(`Fake Telegram file not found: ${fileId}`);
+  }
+  return file;
+};
+
 const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverrides => {
   const objectFactories: InMemoryObjectFactoryOverrides = {};
 
   if (fakes.telegram) {
-    objectFactories.TELEGRAM = ({ state, runtime }) =>
-      new InMemoryTelegramObject({
+    objectFactories.TELEGRAM = ({ state, runtime }) => {
+      const fakeTelegram = fakes.telegram!;
+      return new (class extends InMemoryTelegramObject {
+        async getAutomationFile(input: {
+          fileId: string;
+        }): Promise<TelegramAutomationFileMetadata> {
+          fakeTelegram.getFileCalls.push({ fileId: input.fileId });
+          const file = fakeTelegramFile(fakeTelegram, input.fileId);
+          return {
+            fileId: file.fileId,
+            fileUniqueId: file.fileUniqueId,
+            filePath: file.filePath,
+            fileSize: file.fileSize,
+          };
+        }
+
+        async downloadAutomationFile(input: { fileId: string }): Promise<Response> {
+          fakeTelegram.downloadFileCalls.push({ fileId: input.fileId });
+          const file = fakeTelegramFile(fakeTelegram, input.fileId);
+          return new Response(file.bytes.slice(), {
+            headers: file.contentType ? { "content-type": file.contentType } : undefined,
+          });
+        }
+      })({
         state,
         runtime,
-        api: fakes.telegram?.api,
-        adminApi: fakes.telegram?.adminApi,
+        api: fakeTelegram.api,
+        adminApi: fakeTelegram.adminApi,
       });
+    };
   }
 
   if (fakes.pi) {
