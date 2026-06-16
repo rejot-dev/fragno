@@ -10,16 +10,19 @@ export default mergeConfig(
   defineProject({
     plugins: [
       cloudflareTest({
-        // CI is not logged into Wrangler. Disable remote bindings so Vitest
-        // doesn't try to open a remote proxy session for the dispatch
-        // namespace configured with `remote: true` in wrangler.jsonc.
+        // Keep the Workers pool on a minimal test-only Wrangler config so it
+        // does not import the full app worker and every production binding for
+        // each Cloudflare test file.
         remoteBindings: false,
-        wrangler: { configPath: "./wrangler.jsonc" },
+        wrangler: { configPath: "./wrangler.vitest.jsonc" },
       }),
     ],
     resolve: docsVitestResolveConfig,
     test: {
       name: "cloudflare",
+      coverage: {
+        enabled: false,
+      },
       include: ["app/**/*.cloudflare.test.ts", "workers/**/*.cloudflare.test.ts"],
       deps: {
         optimizer: {
