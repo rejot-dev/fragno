@@ -7,6 +7,7 @@ import { MasterFileSystem } from "@/files/master-file-system";
 import { createInteractiveBashHost } from "./automation-host";
 import type { StoreSetArgs } from "./automation-types";
 import { createBashHost } from "./bash-host";
+import { EMPTY_BASH_HOST_CONTEXT } from "./bash-host.test-utils";
 import type { OtpRuntime } from "./families/otp-runtime";
 import type { PiRuntime } from "./families/pi-runtime";
 import type { ResendRuntime } from "./families/resend-runtime";
@@ -323,15 +324,7 @@ describe("interactive bash host", () => {
       fs: new MasterFileSystem({ mounts: [] }),
       env: {} as CloudflareEnv,
       orgId: "org-1",
-      context: {
-        automation: null,
-        automations: null,
-        otp: null,
-        pi: null,
-        reson8: null,
-        resend: null,
-        telegram: null,
-      },
+      context: EMPTY_BASH_HOST_CONTEXT,
     });
 
     const result = await bash.exec("echo discarded >/dev/null && echo kept");
@@ -347,6 +340,7 @@ describe("bash host command assembly", () => {
     const { bash, commandCallsResult } = createBashHost({
       fs: new InMemoryFs(),
       context: {
+        ...EMPTY_BASH_HOST_CONTEXT,
         automation: null,
         automations: {
           runtime: createAutomationsRuntime(),
@@ -427,6 +421,7 @@ describe("bash host command assembly", () => {
     const { bash, commandCallsResult } = createBashHost({
       fs: new InMemoryFs(),
       context: {
+        ...EMPTY_BASH_HOST_CONTEXT,
         automation: createAutomationContext(),
         automations: null,
         otp: null,
@@ -457,6 +452,7 @@ describe("bash host command assembly", () => {
     const { bash, commandCallsResult } = createBashHost({
       fs: new InMemoryFs(),
       context: {
+        ...EMPTY_BASH_HOST_CONTEXT,
         automation: null,
         automations: null,
         otp: null,

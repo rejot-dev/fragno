@@ -525,7 +525,7 @@ describe("starter OTP linking automation in memory", () => {
           }),
           then.assert("capture generated OTP id from the claim workflow binding", async (ctx) => {
             const entries = await createRouteBackedAutomationStoreRuntime({
-              objects: ctx.runtime.objects,
+              object: ctx.runtime.objects.automations.forOrg("org-1"),
               orgId: "org-1",
             }).list({
               prefix: "telegram/claim-workflow/",

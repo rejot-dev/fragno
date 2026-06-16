@@ -15,6 +15,7 @@ import {
   createBackofficeCodemodeProviders,
   type AnyBackofficeRuntimeTool,
   type BackofficeRuntimeToolCall,
+  type BackofficeToolContext,
 } from "@/fragno/runtime-tools/runtime-tools";
 import { jsonSchemaToTypeScript, type JsonSchemaObject } from "@/lib/zod/zod-formatter";
 
@@ -232,7 +233,10 @@ const createMcpCodemodeRuntimeTools = ({
       id: `mcp.${server.slug}.${tool.originalName}`,
       namespace: server.providerName,
       name: tool.codemodeName,
+      authorizationNamespace: "mcp",
       description: tool.description,
+      requiredPermissions: ["tools.call"],
+      getResource: () => ({ slug: server.slug, toolName: tool.originalName }),
       inputSchema: z.record(z.string(), z.unknown()).optional().default({}),
       outputSchema: z.record(z.string(), z.unknown()),
       execute: async (input) =>
@@ -249,9 +253,11 @@ const isMcpNotConfiguredError = (error: unknown) =>
 
 export const createMcpCodemodeProviders = async ({
   runtime,
+  context,
   toolCalls,
 }: {
   runtime: McpRuntime;
+  context: BackofficeToolContext;
   toolCalls?: BackofficeRuntimeToolCall[];
 }): Promise<ToolProvider[]> => {
   let serverList: McpListServersOutput;
@@ -266,5 +272,5 @@ export const createMcpCodemodeProviders = async ({
 
   const servers = createMcpCodemodeServers(serverList.servers);
   const tools = createMcpCodemodeRuntimeTools({ runtime, servers });
-  return createBackofficeCodemodeProviders({ tools, context: { runtimes: {} }, toolCalls });
+  return createBackofficeCodemodeProviders({ tools, context, toolCalls });
 };

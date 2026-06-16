@@ -5,6 +5,7 @@ import { InMemoryFs } from "just-bash";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 
 import { createBashHost } from "../bash-host";
+import { EMPTY_BASH_HOST_CONTEXT } from "../bash-host.test-utils";
 import type { AutomationStoreRuntime } from "./automations-bindings";
 import {
   createPiRouteRuntime,
@@ -189,6 +190,7 @@ const createPiHost = (piRuntime: PiRuntime = createPiRuntime()) => {
     fs: new InMemoryFs(),
     sessionId: "session-host",
     context: {
+      ...EMPTY_BASH_HOST_CONTEXT,
       automation: null,
       automations: {
         runtime: createAutomationStoreRuntime(),

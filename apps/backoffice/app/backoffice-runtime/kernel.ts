@@ -18,6 +18,14 @@ export type BackofficeAuthorizationRequest = {
   resource?: unknown;
 };
 
+export type BackofficeAuthorizationDecision =
+  | { allowed: true }
+  | { allowed: false; message?: string };
+
+export type BackofficeAuthorizationPolicy = (
+  request: BackofficeAuthorizationRequest,
+) => BackofficeAuthorizationDecision;
+
 export class BackofficeUnavailableError extends Error {
   constructor(message: string) {
     super(message);
@@ -36,10 +44,18 @@ const objectScopeKind = (scope: BackofficeContextScope) =>
   scope.kind === "system" ? "singleton" : scope.kind;
 
 export class BackofficeKernel {
-  readonly objects: BackofficeObjectRegistry;
+  readonly objects?: BackofficeObjectRegistry;
+  readonly #authorizationPolicy?: BackofficeAuthorizationPolicy;
 
-  constructor({ objects }: { objects: BackofficeObjectRegistry }) {
+  constructor({
+    objects,
+    authorizationPolicy,
+  }: {
+    objects?: BackofficeObjectRegistry;
+    authorizationPolicy?: BackofficeAuthorizationPolicy;
+  }) {
     this.objects = objects;
+    this.#authorizationPolicy = authorizationPolicy;
   }
 
   assertContextAccess({ actor, scope }: BackofficeExecutionContext) {
@@ -75,6 +91,15 @@ export class BackofficeKernel {
 
   assertAllowed(request: BackofficeAuthorizationRequest) {
     this.assertContextAccess({ actor: request.actor, scope: request.scope });
+
+    if (request.requiredPermissions.length === 0) {
+      return;
+    }
+
+    const decision = this.#authorizationPolicy?.(request) ?? { allowed: true };
+    if (!decision.allowed) {
+      throw new BackofficeForbiddenError(decision.message ?? "Forbidden");
+    }
   }
 
   scoped<T>(
@@ -100,6 +125,3 @@ export class BackofficeKernel {
     }
   }
 }
-
-export const createBackofficeKernel = (input: { objects: BackofficeObjectRegistry }) =>
-  new BackofficeKernel(input);

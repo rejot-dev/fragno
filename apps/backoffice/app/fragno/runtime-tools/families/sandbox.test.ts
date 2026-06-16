@@ -2,7 +2,11 @@ import { describe, expect, test, vi } from "vitest";
 
 import { Bash, InMemoryFs } from "just-bash";
 
-import { createBackofficeBashCommands, type BackofficeToolContext } from "../runtime-tools";
+import {
+  createBackofficeBashCommands,
+  createTrustedSystemBackofficeToolContext,
+  type BackofficeToolContext,
+} from "../runtime-tools";
 import { sandboxRuntimeTools, type SandboxRuntime } from "./sandbox";
 
 const createRuntime = (): SandboxRuntime => ({
@@ -22,7 +26,7 @@ const createBash = (runtime: SandboxRuntime) =>
     fs: new InMemoryFs(),
     customCommands: createBackofficeBashCommands({
       tools: sandboxRuntimeTools,
-      context: { runtimes: { sandbox: runtime } },
+      context: createTrustedSystemBackofficeToolContext({ runtimes: { sandbox: runtime } }),
       commandCallsResult: [],
     }),
   });
@@ -66,9 +70,10 @@ describe("sandbox runtime tools", () => {
 
   test("invokes semantic runtime for codemode", async () => {
     const runtime = createRuntime();
-    const context: BackofficeToolContext<{ sandbox: SandboxRuntime }> = {
-      runtimes: { sandbox: runtime },
-    };
+    const context: BackofficeToolContext<{ sandbox: SandboxRuntime }> =
+      createTrustedSystemBackofficeToolContext({
+        runtimes: { sandbox: runtime },
+      });
 
     await expect(
       sandboxRuntimeTools[3].execute({ sandboxId: "dev", command: "pwd" }, context),

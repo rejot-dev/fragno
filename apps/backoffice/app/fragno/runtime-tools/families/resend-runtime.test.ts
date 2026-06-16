@@ -2,7 +2,8 @@ import { describe, expect, it, assert } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
-import { createBashHost, EMPTY_BASH_HOST_CONTEXT } from "../bash-host";
+import { createBashHost } from "../bash-host";
+import { EMPTY_BASH_HOST_CONTEXT } from "../bash-host.test-utils";
 import {
   NotConfiguredError,
   createRouteBackedResendRuntime,

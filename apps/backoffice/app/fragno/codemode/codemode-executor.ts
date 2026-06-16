@@ -94,6 +94,7 @@ function __isFragnoCodemodeWorkflowDefinition(value) {
 `;
 
 const RESERVED_PROVIDER_NAMES = new Set([
+  "context",
   "__dispatchers",
   "__logs",
   "__CODEMODE_BINARY_TAG",
@@ -127,20 +128,51 @@ const validateProviderNames = (providers: readonly ResolvedProvider[]): string |
   return undefined;
 };
 
+const INTERNAL_PROVIDER_NAMES = new Set(["__context"]);
+
+const createScopedContextProxySource = () => String.raw`
+    const __createScopedContextHandle = (scope) => new Proxy({}, {
+      get: (_, namespace) => {
+        if (typeof namespace !== "string") return undefined;
+        return new Proxy({}, {
+          get: (_, toolName) => {
+            if (typeof toolName !== "string") return undefined;
+            return async (...args) => {
+              const resJson = await __dispatchers.__context.call("callScoped", __stringifyForCodemode([{ scope, namespace, toolName, args }]));
+              const data = __parseForCodemode(resJson);
+              if (data.error) throw new Error(data.error);
+              return data.result;
+            };
+          }
+        });
+      }
+    });
+    const context = {
+      get current() { return __createScopedContextHandle({ kind: "current" }); },
+      org: (orgId) => __createScopedContextHandle({ kind: "org", orgId: String(orgId) }),
+      user: (userId) => __createScopedContextHandle({ kind: "user", userId: String(userId) }),
+      project: (projectId) => __createScopedContextHandle({ kind: "project", projectId: String(projectId) }),
+    };`;
+
 export const createCodemodeProviderProxySource = (providers: readonly ResolvedProvider[]): string =>
-  providers
-    .map(
-      (provider) =>
-        `    const ${provider.name} = new Proxy({}, {\n` +
-        `      get: (_, toolName) => async (...args) => {\n` +
-        `        const resJson = await __dispatchers.${provider.name}.call(String(toolName), __stringifyForCodemode(args));\n` +
-        `        const data = __parseForCodemode(resJson);\n` +
-        `        if (data.error) throw new Error(data.error);\n` +
-        `        return data.result;\n` +
-        `      }\n` +
-        `    });`,
-    )
-    .join("\n");
+  [
+    ...providers
+      .filter((provider) => !INTERNAL_PROVIDER_NAMES.has(provider.name))
+      .map(
+        (provider) =>
+          `    const ${provider.name} = new Proxy({}, {\n` +
+          `      get: (_, toolName) => async (...args) => {\n` +
+          `        const resJson = await __dispatchers.${provider.name}.call(String(toolName), __stringifyForCodemode(args));\n` +
+          `        const data = __parseForCodemode(resJson);\n` +
+          `        if (data.error) throw new Error(data.error);\n` +
+          `        return data.result;\n` +
+          `      }\n` +
+          `    });`,
+      ),
+    ...(providers.some((provider) => provider.name === "__context")
+      ? [createScopedContextProxySource()]
+      : []),
+  ].join("\n");
 
 export const createCodemodeDispatchers = (
   providers: readonly ResolvedProvider[],

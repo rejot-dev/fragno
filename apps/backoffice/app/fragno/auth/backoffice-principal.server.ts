@@ -5,7 +5,7 @@ import type {
   BackofficePrincipal,
   BackofficeContextScope,
 } from "@/backoffice-runtime/context";
-import { createBackofficeKernel } from "@/backoffice-runtime/kernel";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { requireAuthPrincipal, type BackofficeAuthPrincipal } from "./access-token.server";
@@ -32,7 +32,7 @@ export const requireBackofficeContext = async (
   scope: BackofficeContextScope,
 ): Promise<BackofficeExecutionContext> => {
   const actor = await requireBackofficePrincipal(request, routerContext);
-  createBackofficeKernel({
+  new BackofficeKernel({
     objects: routerContext.get(BackofficeWorkerContext).runtime.objects,
   }).assertContextAccess({ actor, scope });
   return { actor, scope };

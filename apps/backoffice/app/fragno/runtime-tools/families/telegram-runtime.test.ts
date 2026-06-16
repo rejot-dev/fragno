@@ -3,6 +3,7 @@ import { describe, expect, it, assert } from "vitest";
 import { InMemoryFs } from "just-bash";
 
 import { createBashHost } from "../bash-host";
+import { EMPTY_BASH_HOST_CONTEXT } from "../bash-host.test-utils";
 import { createRouteBackedTelegramRuntime, type TelegramRuntime } from "./telegram-runtime";
 
 const createTelegramRuntime = (overrides: Partial<TelegramRuntime> = {}): TelegramRuntime => ({
@@ -25,6 +26,7 @@ describe("telegram bash command registration", () => {
     const { bash, commandCallsResult } = createBashHost({
       fs,
       context: {
+        ...EMPTY_BASH_HOST_CONTEXT,
         automation: null,
         automations: null,
         otp: null,
@@ -68,6 +70,7 @@ describe("telegram bash command registration", () => {
     const { bash, commandCallsResult } = createBashHost({
       fs,
       context: {
+        ...EMPTY_BASH_HOST_CONTEXT,
         automation: null,
         automations: null,
         otp: null,
@@ -123,6 +126,7 @@ describe("telegram bash command registration", () => {
     const { bash, commandCallsResult } = createBashHost({
       fs,
       context: {
+        ...EMPTY_BASH_HOST_CONTEXT,
         automation: null,
         automations: null,
         otp: null,
@@ -158,6 +162,7 @@ describe("telegram bash command registration", () => {
     const { bash } = createBashHost({
       fs,
       context: {
+        ...EMPTY_BASH_HOST_CONTEXT,
         automation: null,
         automations: null,
         otp: null,
@@ -182,6 +187,7 @@ describe("telegram bash command registration", () => {
     const { bash } = createBashHost({
       fs,
       context: {
+        ...EMPTY_BASH_HOST_CONTEXT,
         automation: null,
         automations: null,
         otp: null,
@@ -208,6 +214,7 @@ describe("telegram bash command registration", () => {
     const { bash, commandCallsResult } = createBashHost({
       fs,
       context: {
+        ...EMPTY_BASH_HOST_CONTEXT,
         automation: null,
         automations: null,
         otp: null,
@@ -250,6 +257,7 @@ describe("telegram bash command registration", () => {
     const { bash } = createBashHost({
       fs,
       context: {
+        ...EMPTY_BASH_HOST_CONTEXT,
         automation: null,
         automations: null,
         otp: null,
@@ -285,6 +293,7 @@ describe("telegram bash command registration", () => {
     const { bash, commandCallsResult } = createBashHost({
       fs: new InMemoryFs(),
       context: {
+        ...EMPTY_BASH_HOST_CONTEXT,
         automation: null,
         automations: null,
         otp: null,

@@ -7,7 +7,7 @@ import type { RemoteWorkflowRunFn, WorkflowEvent } from "@fragno-dev/workflows/w
 
 import type { IFileSystem } from "@/files/interface";
 import type {
-  AnyBackofficeRuntimeTool,
+  BackofficeRuntimeToolFamily,
   BackofficeToolContext,
 } from "@/fragno/runtime-tools/runtime-tools";
 
@@ -54,9 +54,9 @@ type WorkflowWorkerEntrypoint<TParams, TOutput> = {
 };
 
 export type BackofficeCodemodeWorkflowOptions = {
-  fs?: IFileSystem;
-  tools?: readonly AnyBackofficeRuntimeTool[];
-  context?: BackofficeToolContext;
+  fs: IFileSystem;
+  families: readonly BackofficeRuntimeToolFamily[];
+  toolContext: BackofficeToolContext;
 };
 
 const createRemoteWorkflowWorkerCode = ({
@@ -254,8 +254,8 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
   remote,
   env,
   fs,
-  tools,
-  context,
+  families,
+  toolContext,
 }: {
   code: string;
   event: WorkflowEvent<TParams>;
@@ -268,7 +268,11 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
     globalOutbound: null,
   });
 
-  const providers = await createBackofficeCodemodeResolvedProviders({ fs, tools, context });
+  const providers = await createBackofficeCodemodeResolvedProviders({
+    fs,
+    families,
+    toolContext,
+  });
   const dispatcherResult = createCodemodeDispatchers(providers);
   if ("error" in dispatcherResult) {
     throw new Error(dispatcherResult.error);
@@ -323,7 +327,7 @@ export const runBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput =
 export const defineCodemodeWorkflowRun = <TParams = unknown, TOutput = unknown>(
   code: string,
   env: BackofficeCodemodeEnv,
-  options: BackofficeCodemodeWorkflowOptions = {},
+  options: BackofficeCodemodeWorkflowOptions,
 ): RemoteWorkflowRunFn<TParams, TOutput> => {
   return async (event, remote) => {
     return await executeBackofficeCodemodeWorkflow<TParams, TOutput>({

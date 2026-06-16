@@ -152,6 +152,7 @@ const codemodeTypesRenderTool = defineBackofficeRuntimeTool({
   name: "codemodeTypesRender",
   description:
     "Render the org-scoped codemode TypeScript declarations for configured capabilities.",
+  requiredPermissions: ["read"],
   inputSchema: z.object({}).optional().default({}),
   outputSchema: codemodeTypesRenderOutputSchema,
   execute: async (_input, context: InternalToolContext) =>
@@ -177,6 +178,7 @@ const internalRuntimeTools = [filesSeedExecuteTool, codemodeTypesRenderTool] as 
 export const internalToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "internal",
   permissions: {
+    read: "Read internal runtime generated artifacts.",
     manage: "Run internal runtime maintenance tasks.",
   },
   tools: internalRuntimeTools,

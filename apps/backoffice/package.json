@@ -13,6 +13,7 @@
     "dev": "react-router dev",
     "preview": "pnpm run build && vite preview",
     "types:check": "tsgo -b --noEmit",
+    "types:check:watch": "tsgo -b --noEmit --watch",
     "types:generate": "wrangler types --env-interface CloudflareEnv --env-file .dev.vars.example && react-router typegen",
     "test": "vitest run",
     "test:watch": "vitest"

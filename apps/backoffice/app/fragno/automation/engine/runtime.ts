@@ -1,5 +1,5 @@
-import { SYSTEM_BACKOFFICE_PRINCIPAL } from "@/backoffice-runtime/context";
-import { createBackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { BackofficePrincipal } from "@/backoffice-runtime/context";
+import { BackofficeForbiddenError, BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BashHostContext } from "@/fragno/runtime-tools/bash-host";
 import type { PiRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
@@ -24,6 +24,17 @@ import { type OtpRuntime } from "../../runtime-tools/families/otp-runtime";
 import type { AutomationEvent } from "../contracts";
 
 const normalizeOrgId = (orgId: string | undefined) => orgId?.trim() || undefined;
+
+export const createAutomationBackofficePrincipal = (
+  event: AutomationEvent,
+): BackofficePrincipal => {
+  const orgId = normalizeOrgId(event.orgId);
+  return {
+    type: "automation",
+    id: `automation:${event.id}`,
+    ...(orgId ? { organizationIds: [orgId] } : {}),
+  };
+};
 
 export type AutomationPiBashContext = {
   runtime: PiRuntime;
@@ -70,8 +81,11 @@ export const createAutomationRuntime = ({
   if (runtime && orgId) {
     const routeBacked = createRouteBackedRuntimeContext({
       runtime,
-      kernel: createBackofficeKernel({ objects: runtime.objects }),
-      execution: { actor: SYSTEM_BACKOFFICE_PRINCIPAL, scope: { kind: "org", orgId } },
+      kernel: new BackofficeKernel({ objects: runtime.objects }),
+      execution: {
+        actor: createAutomationBackofficePrincipal(eventWithOrgId),
+        scope: { kind: "org", orgId },
+      },
     });
     return {
       ...routeBacked.automations.runtime,
@@ -118,14 +132,30 @@ export const createAutomationExecutionContext = ({
     runtimeServices && orgId
       ? createRouteBackedRuntimeContext({
           runtime: runtimeServices,
-          kernel: createBackofficeKernel({ objects: runtimeServices.objects }),
-          execution: { actor: SYSTEM_BACKOFFICE_PRINCIPAL, scope: { kind: "org", orgId } },
+          kernel: new BackofficeKernel({ objects: runtimeServices.objects }),
+          execution: {
+            actor: createAutomationBackofficePrincipal(eventWithOrgId),
+            scope: { kind: "org", orgId },
+          },
           ...(pi ? { pi: { runtime: pi.runtime } } : {}),
         })
       : null;
 
+  const fallbackExecution = {
+    actor: createAutomationBackofficePrincipal(eventWithOrgId),
+    scope: orgId
+      ? ({ kind: "org", orgId } as const)
+      : ({ kind: "project", projectId: "unavailable" } as const),
+  };
+
   return {
     ...(routeBacked ?? {
+      defaultActor: null,
+      backofficeExecution: fallbackExecution,
+      backofficeKernel: new BackofficeKernel({}),
+      createBackofficeScopedContext: () => {
+        throw new BackofficeForbiddenError("Backoffice runtime services are not configured.");
+      },
       backoffice: null,
       workflow: null,
       durableHooks: null,

@@ -2,26 +2,26 @@ import { createRouteCaller } from "@fragno-dev/core/api";
 
 import type { WorkflowsFragment } from "@fragno-dev/workflows";
 
-import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
 
 import type { createAutomationFragment } from "./index";
 
 type AutomationFragment = ReturnType<typeof createAutomationFragment>;
 
 type CreateAutomationsRouteCallerOptions = {
-  objects: BackofficeObjectRegistry;
-  orgId: string;
+  object: AutomationsObject;
+  orgId?: string;
 };
 
-const createAutomationsDoFetch = (options: CreateAutomationsRouteCallerOptions) => {
-  const { objects, orgId } = options;
-  const automationsDo = objects.automations.forOrg(orgId);
-  return async (outboundRequest: Request) => {
+const createAutomationsDoFetch =
+  ({ object, orgId }: CreateAutomationsRouteCallerOptions) =>
+  async (outboundRequest: Request) => {
     const url = new URL(outboundRequest.url);
-    url.searchParams.set("orgId", orgId);
-    return automationsDo.fetch(new Request(url.toString(), outboundRequest));
+    if (orgId) {
+      url.searchParams.set("orgId", orgId);
+    }
+    return object.fetch(new Request(url.toString(), outboundRequest));
   };
-};
 
 export const createAutomationsRouteCaller = (
   options: CreateAutomationsRouteCallerOptions,

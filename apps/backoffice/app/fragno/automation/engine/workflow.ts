@@ -1,7 +1,6 @@
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 
-import { SYSTEM_BACKOFFICE_PRINCIPAL } from "@/backoffice-runtime/context";
-import { createBackofficeKernel } from "@/backoffice-runtime/kernel";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { MasterFileSystem } from "@/files/master-file-system";
 import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
@@ -13,7 +12,7 @@ import type { AutomationTriggerBinding } from "../../runtime-tools/automation-ty
 import { AUTOMATION_WORKSPACE_ROOT, type AutomationFileSystemConfig } from "../catalog";
 import { resolveAutomationFileSystem } from "../catalog";
 import type { AutomationEvent } from "../contracts";
-import type { AutomationRuntimeHostContext } from "./runtime";
+import { createAutomationBackofficePrincipal, type AutomationRuntimeHostContext } from "./runtime";
 
 export type AutomationCodemodeWorkflowParams = {
   automationEvent: AutomationEvent;
@@ -37,8 +36,11 @@ const createWorkflowAutomationContext = ({
 
   const runtimeContext = createRouteBackedRuntimeContext({
     runtime,
-    kernel: createBackofficeKernel({ objects: runtime.objects }),
-    execution: { actor: SYSTEM_BACKOFFICE_PRINCIPAL, scope: { kind: "org", orgId } },
+    kernel: new BackofficeKernel({ objects: runtime.objects }),
+    execution: {
+      actor: createAutomationBackofficePrincipal(params.automationEvent),
+      scope: { kind: "org", orgId },
+    },
   });
   const eventRuntime = createEventRuntime({
     objects: runtime.objects,

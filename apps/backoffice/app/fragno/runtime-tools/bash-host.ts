@@ -2,6 +2,11 @@ import { createRequire } from "node:module";
 
 import type { Bash } from "just-bash";
 
+import type {
+  BackofficeContextScope,
+  BackofficeExecutionContext,
+} from "@/backoffice-runtime/context";
+import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
 import {
   createBackofficeBashCommands,
@@ -42,8 +47,11 @@ export type RegisteredEventBashCommandContext = AutomationCommandContext & {
 };
 
 export type BashHostContext = {
-  defaultActor?: AutomationEventActor | null;
-  backoffice?: { runtime: BackofficeCapabilitiesRuntime } | null;
+  defaultActor: AutomationEventActor | null;
+  backofficeExecution: BackofficeExecutionContext;
+  backofficeKernel: BackofficeKernel;
+  createBackofficeScopedContext(scope: BackofficeContextScope): BashHostContext;
+  backoffice: { runtime: BackofficeCapabilitiesRuntime } | null;
   automation: RegisteredEventBashCommandContext | null;
   automations: RegisteredAutomationsBashCommandContext | null;
   workflow?: { runtime: AutomationWorkflowRuntime } | null;
@@ -56,22 +64,6 @@ export type BashHostContext = {
   resend: RegisteredResendCommandContext | null;
   sandbox?: { runtime: SandboxRuntime } | null;
   telegram: RegisteredTelegramCommandContext | null;
-};
-
-export const EMPTY_BASH_HOST_CONTEXT: BashHostContext = {
-  backoffice: null,
-  automation: null,
-  automations: null,
-  workflow: null,
-  durableHooks: null,
-  internal: null,
-  mcp: null,
-  otp: null,
-  pi: null,
-  reson8: null,
-  resend: null,
-  sandbox: null,
-  telegram: null,
 };
 
 export type InteractiveBashCommandContext = Omit<BashHostContext, "automation"> & {
