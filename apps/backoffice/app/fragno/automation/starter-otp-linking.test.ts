@@ -196,6 +196,67 @@ describe("starter OTP linking automation in memory", () => {
     );
   });
 
+  test("starts separate Telegram user-linking workflows for separate /start event ids", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "starter telegram /start creates event-keyed linking workflows",
+
+        files: backofficeFiles.workspaceStarter(),
+
+        fakes: ({ fake }) => ({
+          telegram: fake.telegram(),
+        }),
+
+        setup: ({ given }) => [
+          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          given.telegram.configured({
+            orgId: "org-1",
+            botUsername: "fragno_bot",
+          }),
+        ],
+
+        steps: ({ when, then }) => [
+          when.telegram.receivesMessage({
+            orgId: "org-1",
+            updateId: 10_001,
+            messageId: 501,
+            chatId: "1001",
+            text: "/start",
+            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+          }),
+          when.telegram.receivesMessage({
+            orgId: "org-1",
+            updateId: 10_002,
+            messageId: 502,
+            chatId: "1001",
+            text: "/start",
+            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+          }),
+
+          then.assert("assert two claim links were sent", (ctx) => {
+            const calls = ctx.fakes.telegram?.sendMessageCalls ?? [];
+            if (calls.length !== 2) {
+              throw new Error(`Expected two claim link messages, got ${calls.length}.`);
+            }
+          }),
+          then.workflow.instance({
+            remoteWorkflowName: "telegram-user-linking",
+            instanceId: "telegram-link-telegram-org-1-10001-1001-501",
+            status: "waiting",
+            waitingFor: "identity-claim-completed",
+          }),
+          then.workflow.instance({
+            remoteWorkflowName: "telegram-user-linking",
+            instanceId: "telegram-link-telegram-org-1-10002-1001-502",
+            status: "waiting",
+            waitingFor: "identity-claim-completed",
+          }),
+          then.workflow.noErrored({ orgId: "org-1" }),
+        ],
+      }),
+    );
+  });
+
   test("routes Telegram /start for an already linked chat", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
