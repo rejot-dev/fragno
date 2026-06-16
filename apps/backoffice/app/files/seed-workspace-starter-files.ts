@@ -1,4 +1,5 @@
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import { createSystemFilesContext } from "@/files";
 import { GENERAL_SKILL_CONTENT } from "@/files/content/skills";
 import { WORKSPACE_STARTER_AUTOMATION_CONTENT } from "@/files/content/starter-automations";
 import { createUploadFileSystem } from "@/files/contributors/upload";
@@ -39,15 +40,16 @@ export const seedWorkspaceStarterFiles = async ({
   const uploadConfig = await uploadDo.getAdminConfig();
   const provider = uploadConfig.defaultProvider ?? "database";
   const fs = createUploadFileSystem(
-    {
+    createSystemFilesContext({
       orgId,
+      objects,
       uploadConfig,
       uploadRuntime: {
         baseUrl: "https://files.internal",
         fetch: async (input) =>
           uploadDo.fetch(input instanceof Request ? input : new Request(input)),
       },
-    },
+    }),
     { mountPoint: "/workspace", provider },
   );
 

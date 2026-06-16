@@ -1,3 +1,5 @@
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { DurableHookQueueOptions, DurableHookQueueResponse } from "@/fragno/durable-hooks";
 
@@ -14,6 +16,8 @@ export type CreateOrgFileSystemOptions = {
    * instead of going through an external stub (avoids deadlock during init).
    */
   automationHookQueue?: (opts?: DurableHookQueueOptions) => Promise<DurableHookQueueResponse>;
+  execution: BackofficeExecutionContext;
+  kernel: BackofficeKernel;
 };
 
 export const createOrgFileSystem = async (
@@ -52,6 +56,8 @@ export const createOrgFileSystem = async (
     },
   ];
 
+  const filePrincipal = options.kernel.resolveFilePrincipal(options.execution);
+
   return createMasterFileSystem({
     orgId,
     origin: INTERNAL_ORIGIN,
@@ -59,5 +65,8 @@ export const createOrgFileSystem = async (
     uploadRuntime,
     resendRuntime,
     durableHooksRuntimes,
+    execution: options.execution,
+    kernel: options.kernel,
+    filePrincipal,
   });
 };

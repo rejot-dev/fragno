@@ -1,5 +1,6 @@
 import type { RouterContextProvider } from "react-router";
 
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
   createOrgFileSystem,
   ensureFolderPath,
@@ -14,6 +15,7 @@ import {
   type FilesNodeDetail,
   type MasterFileSystem,
 } from "@/files";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 export type FilesExplorerLoaderData = {
@@ -32,15 +34,18 @@ export type FilesExplorerActionResult =
     };
 
 export async function createBackofficeFilesFileSystem({
+  request,
   context,
   orgId,
 }: {
-  request?: Request;
+  request: Request;
   context: Readonly<RouterContextProvider>;
   orgId: string;
 }): Promise<MasterFileSystem> {
   const { runtime } = context.get(BackofficeWorkerContext);
-  return createOrgFileSystem({ orgId, objects: runtime.objects });
+  const kernel = new BackofficeKernel({ objects: runtime.objects });
+  const execution = await requireBackofficeContext(request, context, { kind: "org", orgId });
+  return createOrgFileSystem({ orgId, objects: runtime.objects, kernel, execution });
 }
 
 export async function loadFilesExplorerData({

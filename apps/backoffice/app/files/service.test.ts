@@ -2,6 +2,7 @@ import { describe, expect, test, assert } from "vitest";
 
 import {
   createMasterFileSystem,
+  createSystemFilesContext,
   getFilesNodeDetail,
   listFilesChildren,
   listFilesTree,
@@ -45,12 +46,14 @@ const createUploadConfig = (
 describe("files service", () => {
   test("lists mounts in deterministic order", async () => {
     const runtime = createUploadRuntime();
-    const master = await createMasterFileSystem({
-      orgId: "org_123",
-      backend: "backoffice",
-      uploadConfig: runtime.uploadConfig,
-      uploadRuntime: runtime,
-    } satisfies FilesContext);
+    const master = await createMasterFileSystem(
+      createSystemFilesContext({
+        orgId: "org_123",
+        backend: "backoffice",
+        uploadConfig: runtime.uploadConfig,
+        uploadRuntime: runtime,
+      }),
+    );
 
     expect(
       master.mounts.map((mount) => [mount.mountPoint, mount.id, mount.uploadProvider ?? null]),
@@ -66,12 +69,14 @@ describe("files service", () => {
     const runtime = createUploadRuntime({
       "README.md": { content: "custom workspace readme" },
     });
-    const master = await createMasterFileSystem({
-      orgId: "org_123",
-      backend: "backoffice",
-      uploadConfig: runtime.uploadConfig,
-      uploadRuntime: runtime,
-    } satisfies FilesContext);
+    const master = await createMasterFileSystem(
+      createSystemFilesContext({
+        orgId: "org_123",
+        backend: "backoffice",
+        uploadConfig: runtime.uploadConfig,
+        uploadRuntime: runtime,
+      }),
+    );
 
     const tree = await listFilesTree(master);
     expect(tree.map((node) => node.path)).toEqual(["/system", "/workspace", "/r2-remote", "/tmp"]);
@@ -112,13 +117,17 @@ describe("files service", () => {
         contentType: "image/png",
       },
     });
-    const master = await createMasterFileSystem({
-      orgId: "org_123",
-      backend: "backoffice",
-      uploadConfig: runtime.uploadConfig,
-      uploadRuntime: runtime,
-      request: new Request("https://docs.example.test/backoffice/files/org_123?path=%2Fworkspace"),
-    } satisfies FilesContext);
+    const master = await createMasterFileSystem(
+      createSystemFilesContext({
+        orgId: "org_123",
+        backend: "backoffice",
+        uploadConfig: runtime.uploadConfig,
+        uploadRuntime: runtime,
+        request: new Request(
+          "https://docs.example.test/backoffice/files/org_123?path=%2Fworkspace",
+        ),
+      }),
+    );
 
     const detail = await getFilesNodeDetail(master, "/workspace/hello/logo.png");
     expect(detail?.node).toMatchObject({
@@ -160,11 +169,13 @@ describe("files service", () => {
   });
 
   test("does not mount workspace when Upload is unavailable", async () => {
-    const master = await createMasterFileSystem({
-      orgId: "org_123",
-      backend: "backoffice",
-      uploadConfig: null,
-    } satisfies FilesContext);
+    const master = await createMasterFileSystem(
+      createSystemFilesContext({
+        orgId: "org_123",
+        backend: "backoffice",
+        uploadConfig: null,
+      }),
+    );
 
     const tree = await listFilesTree(master);
     expect(tree.map((node) => node.path)).toEqual(["/system", "/tmp"]);
@@ -179,11 +190,13 @@ describe("files service", () => {
   });
 
   test("returns empty results for unknown built-in paths", async () => {
-    const master = await createMasterFileSystem({
-      orgId: "org_123",
-      backend: "backoffice",
-      uploadConfig: null,
-    } satisfies FilesContext);
+    const master = await createMasterFileSystem(
+      createSystemFilesContext({
+        orgId: "org_123",
+        backend: "backoffice",
+        uploadConfig: null,
+      }),
+    );
 
     await expect(getFilesNodeDetail(master, "/workspace/missing.txt")).resolves.toBeNull();
     await expect(listFilesChildren(master, "/workspace/missing/")).resolves.toEqual([]);

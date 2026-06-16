@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const { createOrgFileSystemMock } = vi.hoisted(() => ({
+const { createOrgFileSystemMock, requireBackofficeContextMock } = vi.hoisted(() => ({
   createOrgFileSystemMock: vi.fn(),
+  requireBackofficeContextMock: vi.fn(),
 }));
 
 vi.mock("@/files", async (importOriginal) => {
@@ -12,12 +13,27 @@ vi.mock("@/files", async (importOriginal) => {
   };
 });
 
+vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
+  requireBackofficeContext: requireBackofficeContextMock,
+}));
+
 import { loadAutomationScriptSource, loadAutomationWorkspaceData } from "./data";
 
 const mockContext = { get: () => ({ runtime: { objects: {} }, env: {} }) } as never;
+const request = new Request("https://backoffice.test/automations");
 
 beforeEach(() => {
   createOrgFileSystemMock.mockReset();
+  requireBackofficeContextMock.mockReset();
+  requireBackofficeContextMock.mockResolvedValue({
+    actor: {
+      type: "user",
+      id: "user-1",
+      userId: "user-1",
+      organizationIds: ["acme-org"],
+    },
+    scope: { kind: "org", orgId: "acme-org" },
+  });
 });
 
 describe("automation backoffice workspace data", () => {
@@ -32,6 +48,7 @@ describe("automation backoffice workspace data", () => {
     createOrgFileSystemMock.mockResolvedValue(fileSystem.fs);
 
     const result = await loadAutomationWorkspaceData({
+      request,
       context: mockContext,
       orgId: "acme-org",
     });
@@ -78,6 +95,7 @@ describe("automation backoffice workspace data", () => {
     createOrgFileSystemMock.mockResolvedValue(fileSystem.fs);
 
     const result = await loadAutomationScriptSource({
+      request,
       context: mockContext,
       orgId: "acme-org",
       scriptId: "automation-script:workspace:lazy.sh",

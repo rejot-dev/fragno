@@ -1,7 +1,9 @@
 import { z } from "zod";
 
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createOrgFileSystem } from "@/files/create-file-system";
 import { authorizeAccessTokenForOrganization } from "@/fragno/auth/access-token.server";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -78,7 +80,9 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const timeoutMs = body.timeout ?? DASHBOARD_COMMAND_TIMEOUT_MS;
 
   const { env, runtime } = context.get(BackofficeWorkerContext);
-  const fs = await createOrgFileSystem({ orgId, objects: runtime.objects });
+  const kernel = new BackofficeKernel({ objects: runtime.objects });
+  const execution = await requireBackofficeContext(request, context, { kind: "org", orgId });
+  const fs = await createOrgFileSystem({ orgId, objects: runtime.objects, kernel, execution });
   const { bash, commandCallsResult } = createInteractiveBashHost({
     fs,
     env,

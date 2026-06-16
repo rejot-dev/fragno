@@ -4,6 +4,7 @@ import {
 } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject } from "cloudflare:workers";
 
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
@@ -115,9 +116,19 @@ export class InMemoryAutomationsObject implements AutomationsObject {
       throw new Error("Automation file system requires an organisation id");
     }
 
+    const execution = {
+      actor: {
+        type: "automation" as const,
+        id: `automations:${normalizedOrgId}`,
+        organizationIds: [normalizedOrgId],
+      },
+      scope: { kind: "org" as const, orgId: normalizedOrgId },
+    };
     return createOrgFileSystem({
       orgId: normalizedOrgId,
       objects: this.#runtimeServices.objects,
+      kernel: new BackofficeKernel({ objects: this.#runtimeServices.objects }),
+      execution,
       automationHookQueue: (opts) => this.getDurableHookRepository("automation").getHookQueue(opts),
     });
   }

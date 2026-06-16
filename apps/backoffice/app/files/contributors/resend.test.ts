@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import type { IFileSystem } from "@/files";
+import { createSystemFilesContext, type IFileSystem } from "@/files";
 
 import { resendFileContributor } from "./resend";
 
@@ -170,21 +170,25 @@ beforeEach(() => {
 
 describe("resend file contributor", () => {
   test("createFileSystem returns null when resendRuntime is not provided", () => {
-    const resolved = resendFileContributor.createFileSystem?.({
-      orgId: "org_123",
-    });
+    const resolved = resendFileContributor.createFileSystem?.(
+      createSystemFilesContext({
+        orgId: "org_123",
+      }),
+    );
 
     expect(resolved).toBeNull();
   });
 
   test("accepts an injected resend runtime", async () => {
-    const resolved = await resendFileContributor.createFileSystem?.({
-      orgId: "org_123",
-      resendRuntime: {
-        baseUrl: "https://pi.internal",
-        fetch: async (request: Request) => await resendRequestHandler(request),
-      },
-    });
+    const resolved = await resendFileContributor.createFileSystem?.(
+      createSystemFilesContext({
+        orgId: "org_123",
+        resendRuntime: {
+          baseUrl: "https://pi.internal",
+          fetch: async (request: Request) => await resendRequestHandler(request),
+        },
+      }),
+    );
 
     expect(resolved).not.toBeNull();
     if (!resolved) {
@@ -196,13 +200,15 @@ describe("resend file contributor", () => {
   });
 
   test("loads thread list and renders markdown files", async () => {
-    const resolved = await resendFileContributor.createFileSystem?.({
-      orgId: "org_123",
-      resendRuntime: {
-        baseUrl: "https://pi.internal",
-        fetch: async (request: Request) => await resendRequestHandler(request),
-      },
-    });
+    const resolved = await resendFileContributor.createFileSystem?.(
+      createSystemFilesContext({
+        orgId: "org_123",
+        resendRuntime: {
+          baseUrl: "https://pi.internal",
+          fetch: async (request: Request) => await resendRequestHandler(request),
+        },
+      }),
+    );
 
     expect(resolved).not.toBeNull();
     if (!resolved) {
@@ -227,14 +233,16 @@ describe("resend file contributor", () => {
   });
 
   test("reads fresh thread lists and thread content on every access", async () => {
-    const resolved = await resendFileContributor.createFileSystem?.({
-      orgId: "org_123",
-      backend: "pi",
-      resendRuntime: {
-        baseUrl: "https://pi.internal",
-        fetch: async (request: Request) => await resendRequestHandler(request),
-      },
-    });
+    const resolved = await resendFileContributor.createFileSystem?.(
+      createSystemFilesContext({
+        orgId: "org_123",
+        backend: "pi",
+        resendRuntime: {
+          baseUrl: "https://pi.internal",
+          fetch: async (request: Request) => await resendRequestHandler(request),
+        },
+      }),
+    );
 
     expect(resolved).not.toBeNull();
     if (!resolved) {

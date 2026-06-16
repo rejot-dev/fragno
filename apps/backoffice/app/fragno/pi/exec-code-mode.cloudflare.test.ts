@@ -7,6 +7,7 @@ import { InMemoryFs } from "just-bash";
 
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { MasterFileSystem } from "@/files/master-file-system";
 import type { ResolvedFileMount } from "@/files/types";
@@ -22,6 +23,21 @@ import { createPiCodemodeRuntime } from "./pi-codemode";
 
 const unusedObjects = {} as BackofficeObjectRegistry;
 
+const createPiSessionFileSystemContext = () => ({
+  orgId: "org-1",
+  objects: unusedObjects,
+  kernel: new BackofficeKernel({ objects: unusedObjects }),
+  execution: {
+    actor: {
+      type: "user" as const,
+      id: "test-user",
+      userId: "test-user",
+      organizationIds: ["org-1"],
+    },
+    scope: { kind: "org" as const, orgId: "org-1" },
+  },
+});
+
 describe("Pi execCodeMode tool", () => {
   test("runs codemode against a session filesystem and persists writes", async () => {
     const fs = createTestMasterFileSystem({
@@ -33,10 +49,7 @@ describe("Pi execCodeMode tool", () => {
 
     const tools = createPiToolRegistry({
       sessionFileSystems,
-      sessionFileSystemContext: {
-        orgId: "org-1",
-        objects: unusedObjects,
-      },
+      sessionFileSystemContext: createPiSessionFileSystemContext(),
       codemode: createPiCodemodeRuntime(env),
       bashCommandContext: EMPTY_BASH_HOST_CONTEXT as never,
     });
@@ -145,10 +158,7 @@ describe("Pi execCodeMode tool", () => {
 
     const tools = createPiToolRegistry({
       sessionFileSystems,
-      sessionFileSystemContext: {
-        orgId: "org-1",
-        objects: unusedObjects,
-      },
+      sessionFileSystemContext: createPiSessionFileSystemContext(),
       codemode: {
         ...createPiCodemodeRuntime(env),
         workflow: {
@@ -406,10 +416,7 @@ const createExecCodeModeTool = async ({
 
   const tools = createPiToolRegistry({
     sessionFileSystems,
-    sessionFileSystemContext: {
-      orgId: "org-1",
-      objects: unusedObjects,
-    },
+    sessionFileSystemContext: createPiSessionFileSystemContext(),
     codemode: { ...createPiCodemodeRuntime(env), workflow: workflowRuntime },
     bashCommandContext: automationsRuntime
       ? ({ ...EMPTY_BASH_HOST_CONTEXT, automations: { runtime: automationsRuntime } } as never)

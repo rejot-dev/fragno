@@ -1,7 +1,9 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { RouterContextProvider } from "react-router";
 
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createOrgFileSystem } from "@/files";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import {
   AUTOMATION_SYSTEM_ROOT,
   AUTOMATION_WORKSPACE_ROOT,
@@ -95,14 +97,18 @@ const toRecordArray = <T extends Record<string, unknown>>(value: unknown): T[] =
 };
 
 const createBackofficeAutomationFileSystem = async ({
+  request,
   context,
   orgId,
 }: {
+  request: Request;
   context: Readonly<RouterContextProvider>;
   orgId: string;
 }) => {
   const { runtime } = context.get(BackofficeWorkerContext);
-  return createOrgFileSystem({ orgId, objects: runtime.objects });
+  const kernel = new BackofficeKernel({ objects: runtime.objects });
+  const execution = await requireBackofficeContext(request, context, { kind: "org", orgId });
+  return createOrgFileSystem({ orgId, objects: runtime.objects, kernel, execution });
 };
 
 const normalizeAutomationScriptPath = (value: string) => {
@@ -207,16 +213,18 @@ export const toExternalId = (value: unknown): string => {
 };
 
 export async function loadAutomationWorkspaceData({
+  request,
   context,
   orgId,
 }: {
+  request: Request;
   context: Readonly<RouterContextProvider>;
   orgId: string;
 }): Promise<{
   scripts: AutomationScriptRecord[];
   scriptsError: string | null;
 }> {
-  const fileSystem = await createBackofficeAutomationFileSystem({ context, orgId });
+  const fileSystem = await createBackofficeAutomationFileSystem({ request, context, orgId });
 
   let workspaceScripts: AutomationWorkspaceScriptEntry[] = [];
   let workspaceScriptsError: string | null = null;
@@ -240,15 +248,17 @@ export async function loadAutomationWorkspaceData({
 }
 
 export async function loadAutomationScriptSource({
+  request,
   context,
   orgId,
   scriptId,
 }: {
+  request: Request;
   context: Readonly<RouterContextProvider>;
   orgId: string;
   scriptId: string;
 }): Promise<AutomationScriptSourceRecord> {
-  const fileSystem = await createBackofficeAutomationFileSystem({ context, orgId });
+  const fileSystem = await createBackofficeAutomationFileSystem({ request, context, orgId });
 
   try {
     const script = await readAutomationWorkspaceScript(

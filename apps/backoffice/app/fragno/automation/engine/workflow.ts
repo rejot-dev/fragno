@@ -161,7 +161,9 @@ export const definePiCodemodeWorkflow = (config: {
     const { executePiCodemodeWorkflow } = await import("./codemode");
     return await executePiCodemodeWorkflow({
       params,
-      masterFs: new MasterFileSystem({ mounts: [] }),
+      masterFs: new MasterFileSystem({
+        mounts: [],
+      }),
       env: config.env,
       runtime: config.runtime,
       workflowEvent: event,

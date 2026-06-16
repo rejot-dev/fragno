@@ -2,14 +2,18 @@ import { beforeEach, describe, expect, test, assert } from "vitest";
 
 import { InMemoryAdapter } from "@fragno-dev/db";
 
-import { SYSTEM_AUTOMATION_SCRIPT_PATHS } from "@/files";
+import {
+  createMasterFileSystem,
+  createSystemFilesContext,
+  SYSTEM_AUTOMATION_SCRIPT_PATHS,
+} from "@/files";
 
 import type { AutomationWorkflowsService } from "./definition";
 import { createTestMasterFileSystem } from "./engine/test-master-file-system.test-utils";
-import { createAutomationFragment, createMinimalFileSystem } from "./index";
+import { createAutomationFragment } from "./index";
 
 const createAutomation = (options?: {
-  automationFileSystem?: Awaited<ReturnType<typeof createMinimalFileSystem>>;
+  automationFileSystem?: Awaited<ReturnType<typeof createMasterFileSystem>>;
 }) => {
   const services = {
     workflows: {
@@ -39,7 +43,9 @@ describe("automation routes /scripts", () => {
 
   beforeEach(async () => {
     fragment = createAutomation({
-      automationFileSystem: await createMinimalFileSystem("org_123"),
+      automationFileSystem: await createMasterFileSystem(
+        createSystemFilesContext({ orgId: "org_123", uploadConfig: null }),
+      ),
     });
   });
 

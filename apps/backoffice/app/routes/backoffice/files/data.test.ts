@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, test, vi, assert } from "vitest";
 
-const { createOrgFileSystemMock } = vi.hoisted(() => ({
+const { createOrgFileSystemMock, requireBackofficeContextMock } = vi.hoisted(() => ({
   createOrgFileSystemMock: vi.fn(),
+  requireBackofficeContextMock: vi.fn(),
 }));
 
 vi.mock("@/files", async (importOriginal) => {
@@ -12,8 +13,13 @@ vi.mock("@/files", async (importOriginal) => {
   };
 });
 
+vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
+  requireBackofficeContext: requireBackofficeContextMock,
+}));
+
 import {
   createMasterFileSystem,
+  createSystemFilesContext,
   createUnsupportedFileSystem,
   getBuiltInFileContributors,
   type FileContributor,
@@ -32,11 +38,20 @@ const registerFileContributor = (contributor: FileContributor): void => {
 beforeEach(() => {
   contributors.length = 0;
   createOrgFileSystemMock.mockReset();
+  requireBackofficeContextMock.mockReset();
+  requireBackofficeContextMock.mockResolvedValue({
+    actor: {
+      type: "user",
+      id: "user-1",
+      userId: "user-1",
+      organizationIds: ["acme-org"],
+    },
+    scope: { kind: "org", orgId: "acme-org" },
+  });
   createOrgFileSystemMock.mockImplementation(() =>
-    createMasterFileSystem(
-      { orgId: "acme-org", uploadConfig: null },
-      { contributors: [...getBuiltInFileContributors(), ...contributors] },
-    ),
+    createMasterFileSystem(createSystemFilesContext({ orgId: "acme-org", uploadConfig: null }), {
+      contributors: [...getBuiltInFileContributors(), ...contributors],
+    }),
   );
 });
 

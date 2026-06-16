@@ -234,125 +234,62 @@ Implemented and tested through the route-backed codemode path and bash command p
 - Default codemode providers still target the selected current scope.
 - Old org-only codemode assumptions are removed from generated declarations/prompts.
 
-## [ ] Slice 3 — Upload fragment Unix-like filesystem permissions
+## [x] Slice 3 — Backoffice filesystem principals + simple write permissions
 
 ### Goal
 
-Implement Unix-like filesystem permissions in `packages/fragment-upload` itself and wire request
-principals through upload routes/services.
+Add Backoffice-owned filesystem principals and upload-backed node metadata without making the
+workspace behave like a full Unix filesystem.
 
-This is one slice because metadata without enforcement is not valuable, and enforcement cannot be
-validated without metadata and route/service plumbing.
+`packages/fragment-upload` stays a generic upload/blob fragment. Backoffice owns the filesystem view
+(`/workspace`, `/system`, `/tmp`, mounted upload providers, codemode, automations), so selected
+actor/scope mapping, owner/group/mode metadata, and write enforcement live in Backoffice's
+filesystem layer.
 
-### Implement
+During implementation we intentionally simplified the original Unix-like plan:
 
-In `packages/fragment-upload`:
+- read and traversal permissions are always available inside an accessible mount;
+- directory execute bits are not enforced;
+- directory read bits are not enforced;
+- creating new files/folders does not require parent directory write/execute checks;
+- existing file mutation checks only whether the current principal can write that specific file;
+- `/system` and other read-only mounts are protected by mount-level `readOnly`, not by path policy;
+- `/workspace/**` is ordinary workspace content, including `codemode.d.ts`, automation routers, and
+  workflow files.
 
-- Add to `src/types.ts`:
+### Implemented
+
+- Added Backoffice filesystem principal types under `apps/backoffice/app/files/permissions.ts`.
+  Typed objects are the model; colon-delimited strings exist only as helper-produced keys for
+  comparisons/logging if needed.
 
 ```ts
+type FileSubject =
+  | { kind: "root" }
+  | { kind: "user"; userId: string }
+  | { kind: "automation"; automationId: string; scope: BackofficeContextScope }
+  | { kind: "object"; objectType: string; objectId: string; scope: BackofficeContextScope };
+
+type FileGroup =
+  | { kind: "root" }
+  | { kind: "user"; userId: string }
+  | { kind: "org"; orgId: string };
+
 export type FilePrincipal = {
-  uid: string;
-  gids?: string[];
-};
-
-export const ROOT_FILE_PRINCIPAL: FilePrincipal = {
-  uid: "root",
-  gids: ["root"],
+  subject: FileSubject;
+  primaryGroup: FileGroup;
+  groups: FileGroup[];
 };
 ```
 
-- Add `fs_node` table to `src/schema.ts`:
-
-```txt
-provider
-key
-kind: "file" | "directory"
-ownerUid
-groupId
-mode
-createdAt
-updatedAt
-deletedAt
-```
-
-- Keep existing `file` table for upload/file metadata.
-- Add node helpers and permission helpers, e.g. `src/permissions.ts`.
-- Treat provider root `/` as implicit root-owned `0755` when no node exists.
-- File upload/create creates a file node:
-  - owner: `filePrincipal.uid`;
-  - group: first `filePrincipal.gids`, else owner uid;
-  - mode: `0644` default.
-- Directory create creates a directory node with mode `0755` default.
-- Add `filePrincipal?: FilePrincipal` to all file-affecting service inputs:
-  - list;
-  - get/read/download;
-  - create upload;
-  - complete upload;
-  - update file;
-  - delete file;
-  - directory create/list/delete where present.
-- If omitted, principal defaults to root.
-- Enforce:
-
-```txt
-read file: read bit on file + execute bit on parent directories
-write file: write bit on file + execute bit on parent directories
-create file: write+execute on parent directory
-list directory: read+execute on directory
-rename/delete: write+execute on parent directory
-chmod: root or owner
-chown: root only
-root bypasses permission bits
-```
-
-- Add upload config resolver:
+- Added typed comparison helpers instead of stringifying/parsing principals:
 
 ```ts
-permissions?: {
-  resolveFilePrincipal?(input: { request: Request }):
-    | FilePrincipal
-    | null
-    | undefined
-    | Promise<FilePrincipal | null | undefined>;
-};
+sameFileSubject(left: FileSubject, right: FileSubject): boolean;
+sameFileGroup(left: FileGroup, right: FileGroup): boolean;
 ```
 
-- Routes call the resolver and default to root when it returns nothing.
-- Do not trust arbitrary public headers as principals.
-
-### End-to-end test
-
-Through upload fragment routes, not just services:
-
-1. upload/create a file as `user:1`; verify `fs_node.ownerUid === "user:1"`, group and mode;
-2. request without a resolver/principal creates root-owned file;
-3. owner can write their `0644` file;
-4. different user can read but cannot write `0644` file;
-5. group member can write `0664` file;
-6. user without execute on parent cannot read child;
-7. root can read/write regardless of mode;
-8. non-root cannot chown.
-
-### Acceptance
-
-- `packages/fragment-upload` enforces permissions independently of Backoffice.
-- All upload route/service paths accept and honor `filePrincipal`.
-- Omitted principal means root.
-
-## [ ] Slice 4 — Backoffice filesystem principal mapping + protected executable paths
-
-### Goal
-
-Backoffice maps authenticated/runtime actors to upload `FilePrincipal`s and adds semantic protection
-for executable/system paths.
-
-This is separate from Slice 3 because Slice 3 makes upload safe in isolation; this slice proves
-Backoffice uses it correctly.
-
-### Implement
-
-- Kernel method:
+- Added kernel-backed principal mapping:
 
 ```ts
 kernel.resolveFilePrincipal({ actor, scope }): FilePrincipal
@@ -361,60 +298,137 @@ kernel.resolveFilePrincipal({ actor, scope }): FilePrincipal
 Initial mapping:
 
 ```txt
-user -> uid user:<userId>, gids [user:<userId>, org:<each organizationId>]
-system -> root
-automation -> uid automation:<id>
-object -> uid object:<id>
+user actor in org scope -> subject { kind: "user", userId }, primaryGroup { kind: "org", orgId }, groups [org, user]
+user actor in user scope -> subject { kind: "user", userId }, primaryGroup { kind: "user", userId }, groups [user]
+system actor -> ROOT_FILE_PRINCIPAL
+automation actor -> subject { kind: "automation", automationId, scope }, primaryGroup from selected scope
+object actor -> subject { kind: "object", objectType, objectId, scope }, primaryGroup from selected scope
 ```
 
-- Update Backoffice upload/file runtimes to pass kernel-derived `filePrincipal` into the upload
-  fragment for every file operation.
-- Internal seed/setup paths intentionally omit `filePrincipal` or use system actor to write as root.
-- Add protected path classifier:
+- Made filesystem contexts explicit and breaking-change strict:
+  - `FilesContext.execution` is required;
+  - `FilesContext.kernel` is required;
+  - `FilesContext.filePrincipal` is required;
+  - `CreateOrgFileSystemOptions.execution` is required;
+  - `CreateOrgFileSystemOptions.kernel` is required.
+- Added `createSystemFilesContext(...)` for internal seed/setup/test paths that intentionally need a
+  system/root filesystem context.
+- Threaded the resolved `filePrincipal` into Backoffice filesystem construction and operations:
+  - UI file actions/routes;
+  - dev codemode state file reads/writes;
+  - dashboard/Pi bash master filesystem access;
+  - automation script browsing routes;
+  - automation Durable Object filesystem access;
+  - Pi session filesystems;
+  - scenario diagnostics that resolve org filesystems.
+- Stored upload-backed filesystem node metadata in Backoffice's upload filesystem layer, extending
+  the existing `metadata.__docsFs` shape:
 
 ```txt
-/workspace/automations/router.cm.js
-/workspace/automations/**/*.workflow.js
-/workspace/codemode.d.ts
-/system/**
+owner: FileSubject
+group: FileGroup
+mode: number
+mtime?: string
 ```
 
-- Writes to protected paths require both:
-  - `files.write`
-  - `files.manageExecutable`
-- Apply checks in:
-  - UI file actions/routes;
-  - codemode file writes;
-  - Backoffice route-backed file runtime;
-  - automation file writes if they can mutate workspace files.
-- Upload fragment still performs mode checks after Backoffice semantic authorization.
+- Parsed persisted `__docsFs.owner` and `__docsFs.group` through Zod schemas instead of bespoke
+  object parsers.
+- File create/write creates metadata when no file exists:
+  - owner: `filePrincipal.subject`;
+  - group: `filePrincipal.primaryGroup`;
+  - mode: `0664` default.
+- Directory marker creation creates metadata:
+  - owner: `filePrincipal.subject`;
+  - group: `filePrincipal.primaryGroup`;
+  - mode: `0755` default.
+- Owner/group/mode are preserved across rewrites unless an explicit chmod/chown operation changes
+  them.
+- Simplified permission helpers to write-only semantics:
 
-### End-to-end test
+```ts
+hasFileWritePermission(principal, node): boolean;
+assertFileWritable({ principal, node, operation, path }): void;
+```
 
-Through Backoffice file/codemode APIs against the upload fragment:
+- Upload-backed enforcement now checks only existing file mutations:
 
-1. authenticated user writes `/workspace/notes.md`; resulting `fs_node.ownerUid` is `user:<id>`;
-2. another user in same org can read/write only according to upload mode bits;
-3. internal seed path creates root-owned file;
-4. actor with `files.write` but not `files.manageExecutable` can write notes but cannot write
-   `/workspace/automations/router.cm.js`;
-5. actor with both Backoffice permissions is still denied if upload Unix mode denies write;
-6. codemode `context.user(userId).files.writeFile(...)` writes as that user principal, not root.
+```txt
+read file: always allowed within accessible mount
+list directory: always allowed within accessible mount
+traverse directory: always allowed within accessible mount
+create file/folder: allowed if mount is writable; creates metadata for the new node
+write existing file: requires write permission on that file's owner/group/other write bits
+append existing file: same as write through writeFile
+utimes existing node: requires write permission on that node
+remove existing file: requires write permission on that file
+recursive remove directory: requires write permission for each real file being deleted
+chmod: root or owner
+chown: root only
+root: bypasses write permission bits
+```
 
-### Acceptance
+- Directory marker modes are metadata/display only. They do not gate reading, traversal, creation,
+  or deletion.
+- Kept `chown` support only where the Backoffice filesystem needs it. Unsupported POSIX surface area
+  was not added just to be complete.
+- Removed the protected executable/system path classifier from the filesystem layer:
+  - `/system/**` is already protected by read-only mounts;
+  - `/workspace/codemode.d.ts`, `/workspace/automations/router.cm.js`, and
+    `/workspace/automations/**/*.workflow.js` are normal workspace files;
+  - successful mutation of those files requires the same write metadata as any other workspace file,
+    not an extra `files.manageExecutable` semantic permission.
+- Raw upload fragment routes remain generic. Backoffice workspace/system files are expected to be
+  mutated through Backoffice file APIs, codemode, runtime tools, or internal system setup paths
+  rather than by trusting arbitrary public upload headers.
 
-- Backoffice request paths no longer accidentally write as root.
-- Protected executable/system paths require semantic Backoffice permission and upload write access.
-- Errors distinguish Backoffice authorization failure from upload filesystem permission failure.
+### Verified
 
-## [ ] Slice 5 — Scoped automations and explicit event routing
+Tested the simplified model through the Backoffice mounted filesystem and upload-backed workspace
+contributor:
+
+```sh
+pnpm run format:changed
+pnpm exec turbo types:check --filter=./apps/backoffice --output-logs=errors-only
+pnpm exec turbo test --filter=./apps/backoffice -- --run app/files/master-file-system.test.ts app/files/contributors/upload.test.ts --reporter=dot
+```
+
+Covered by tests/plumbing:
+
+1. authenticated user writes `/workspace/notes.md`; stored filesystem metadata has owner
+   `{ kind: "user", userId }`, expected group object, and default file mode `0664`;
+2. internal seed/setup paths can use explicit system/root filesystem contexts;
+3. owner can write their file;
+4. different user in the same org can write a group-writable `0664` file;
+5. user outside the owning group cannot write unless other-write allows it;
+6. reads and directory traversal ignore read/execute bits, including directories with mode `0000`;
+7. root can read/write regardless of write bits;
+8. non-root cannot chown;
+9. chmod remains owner/root-only;
+10. executable-looking workspace paths such as `/workspace/automations/router.cm.js` are normal
+    writable files and do not trigger semantic protected-path authorization.
+
+### Acceptance status
+
+- Backoffice request/runtime paths that represent a selected user/object/automation now pass an
+  execution context and no longer accidentally write as root.
+- Backoffice's mounted filesystem stores owner/group/mode metadata for upload-backed workspace
+  files.
+- Upload-backed workspace enforcement is intentionally simple: reads/traversal are allowed, while
+  existing file mutations require write permission on the specific file being mutated.
+- `/system` protection comes from read-only mounts.
+- `/workspace/**` remains modifiable workspace content as long as the mount is writable and the
+  file's write metadata allows the mutation.
+- `packages/fragment-upload` remains generic upload storage and does not own Backoffice filesystem
+  principals.
+
+## [ ] Slice 4 — Scoped automations and explicit event routing
 
 ### Goal
 
 Make automation execution selected-scope aware and authorize explicit cross-scope routing.
 
-This is last because it depends on selected context, operation authorization, codemode/runtime
-updates, and protected router files.
+This is last because it depends on selected context, runtime-tool authorization, codemode/runtime
+updates, and the simplified principal-aware workspace filesystem.
 
 ### Implement
 
@@ -427,7 +441,8 @@ updates, and protected router files.
 - Automation filesystem resolution uses the selected scope and Backoffice file principal mapping.
 - Event emit/forward API accepts explicit target scope.
 - Cross-scope emit checks `automations.routeEvent`.
-- Router/workflow files are already protected by Slice 4.
+- Router/workflow files are normal workspace files. Editing them is controlled by the same workspace
+  write metadata as any other file; event routing authorization happens at runtime.
 - Update automation scenario helpers/content to use scoped handles and selected execution context.
 
 ### End-to-end test
@@ -447,7 +462,7 @@ Automation scenario test:
 - Event flow is explicit router behavior.
 - Cross-scope routing is operation-authorized.
 
-## [ ] Slice 6 — Cleanup: remove org-only model remnants
+## [ ] Slice 5 — Cleanup: remove org-only model remnants
 
 ### Goal
 

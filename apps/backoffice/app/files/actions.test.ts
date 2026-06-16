@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test, assert } from "vitest";
 
 import {
   createMasterFileSystem,
+  createSystemFilesContext,
   createUnsupportedFileSystem,
   performFilesAction,
   type FileContributor,
@@ -9,11 +10,11 @@ import {
   type FilesContext,
 } from "@/files";
 
-const context: FilesContext = {
+const context: FilesContext = createSystemFilesContext({
   orgId: "org_123",
   backend: "backoffice",
   uploadConfig: null,
-};
+});
 
 const contributors: FileContributor[] = [];
 

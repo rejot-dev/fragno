@@ -1,5 +1,6 @@
 import { describe, expect, test, vi, assert } from "vitest";
 
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import * as files from "@/files";
 import { EMPTY_BASH_HOST_CONTEXT } from "@/fragno/runtime-tools/bash-host.test-utils";
 import { UPLOAD_PROVIDER_DATABASE, type UploadAdminConfigResponse } from "@/fragno/upload";
@@ -545,13 +546,25 @@ const createContext = (
   const resend = options.resend ? createResendStub() : createEmptyStub();
   const automations = createEmptyStub();
 
+  const objects = {
+    upload: { forOrg: () => upload },
+    resend: { forOrg: () => resend },
+    automations: { forOrg: () => automations },
+  } as unknown as PiSessionFileSystemContext["objects"];
+
   return {
     orgId: "acme-org",
-    objects: {
-      upload: { forOrg: () => upload },
-      resend: { forOrg: () => resend },
-      automations: { forOrg: () => automations },
-    } as unknown as PiSessionFileSystemContext["objects"],
+    objects,
+    kernel: new BackofficeKernel({ objects }),
+    execution: {
+      actor: {
+        type: "user",
+        id: "test-user",
+        userId: "test-user",
+        organizationIds: ["acme-org"],
+      },
+      scope: { kind: "org", orgId: "acme-org" },
+    },
   };
 };
 

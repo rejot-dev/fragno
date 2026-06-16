@@ -274,9 +274,16 @@ export class InMemoryPiObject implements PiObject {
       throw new Error("Stored Pi config is missing an organisation id.");
     }
 
+    const kernel = new BackofficeKernel({ objects: this.#runtimeServices.objects });
+    const execution = {
+      actor: { type: "object" as const, id: `pi:${orgId}`, organizationIds: [orgId] },
+      scope: { kind: "org" as const, orgId },
+    };
     const sessionFileSystemContext: PiSessionFileSystemContext = {
       orgId,
       objects: this.#runtimeServices.objects,
+      kernel,
+      execution,
     };
 
     return createPiRuntime({
@@ -295,11 +302,8 @@ export class InMemoryPiObject implements PiObject {
       sessionFileSystemContext,
       bashCommandContext: createRouteBackedRuntimeContext({
         runtime: this.#runtimeServices,
-        kernel: new BackofficeKernel({ objects: this.#runtimeServices.objects }),
-        execution: {
-          actor: { type: "object", id: `pi:${orgId}`, organizationIds: [orgId] },
-          scope: { kind: "org", orgId },
-        },
+        kernel,
+        execution,
       }),
     });
   }

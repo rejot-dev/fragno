@@ -2,17 +2,20 @@ import { beforeEach, describe, expect, test, assert } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+
 import { getBuiltInFileContributors } from "./contributors";
 import { createReadOnlyFileSystemError } from "./fs-errors";
 import { createUnsupportedFileSystem, type FileContent, type FsStat } from "./interface";
 import { createMasterFileSystem, MasterFileSystem } from "./master-file-system";
 import { isMountPointParentOf, normalizeMountPoint, normalizeRelativePath } from "./normalize-path";
+import { createSystemFilesContext } from "./system-context";
 import type { FileContributor, FilesContext } from "./types";
 
-const context = {
+const context = createSystemFilesContext({
   orgId: "org_123",
-  backend: "backoffice" as const,
-} satisfies FilesContext;
+  backend: "backoffice",
+}) satisfies FilesContext;
 
 const DIRECTORY_STAT: FsStat = {
   isFile: false,
@@ -306,6 +309,48 @@ describe("createMasterFileSystem", () => {
     );
   });
 
+  test("treats executable-looking workspace paths as normal writable files", async () => {
+    const { contributor } = await createInMemoryContributor({
+      id: "workspace",
+      mountPoint: "/workspace",
+      files: {
+        "/workspace/automations/router.cm.js": "export default {};",
+      },
+    });
+    registerFileContributor(contributor);
+
+    const checkedPermissions: string[] = [];
+    const execution = {
+      actor: {
+        type: "user" as const,
+        id: "user-1",
+        userId: "user-1",
+        organizationIds: ["org_123"],
+      },
+      scope: { kind: "org" as const, orgId: "org_123" },
+    };
+    const kernel = new BackofficeKernel({
+      authorizationPolicy(request) {
+        checkedPermissions.push(
+          ...request.requiredPermissions.map(
+            (permission) => `${permission.namespace}.${permission.permission}`,
+          ),
+        );
+        return { allowed: false, message: "semantic authorization should not run" };
+      },
+    });
+    const master = await createTestMasterFileSystem({
+      orgId: "org_123",
+      backend: "backoffice",
+      execution,
+      kernel,
+      filePrincipal: kernel.resolveFilePrincipal(execution),
+    });
+
+    await master.writeFile("/workspace/automations/router.cm.js", "ok");
+    expect(checkedPermissions).toEqual([]);
+  });
+
   test("delegates chmod, symlink, link, readlink, realpath, and utimes when supported", async () => {
     const calls = [] as string[];
 
@@ -491,7 +536,9 @@ describe("createMasterFileSystem", () => {
   });
 
   test("mount and unmount can be used as a bracket around execution", async () => {
-    const master = new MasterFileSystem({ mounts: [] });
+    const master = new MasterFileSystem({
+      mounts: [],
+    });
 
     master.mount({
       id: "temp",

@@ -41,6 +41,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
   return {
     selectedScriptSource: await loadAutomationScriptSource({
+      request,
       context,
       orgId: params.orgId,
       scriptId: selectedScriptId,

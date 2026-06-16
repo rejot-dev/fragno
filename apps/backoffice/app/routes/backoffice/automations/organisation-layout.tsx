@@ -81,7 +81,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const storePrefix = url.searchParams.get("prefix") ?? "";
 
   const [workspaceResult, storeResult] = await Promise.all([
-    loadAutomationWorkspaceData({ context, orgId: params.orgId }),
+    loadAutomationWorkspaceData({ request, context, orgId: params.orgId }),
     fetchAutomationStoreEntries(request, context, params.orgId),
   ]);
 
