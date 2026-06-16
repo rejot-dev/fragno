@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fragno-back-office-vitest",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "main": "./workers/vitest-env.ts",
+  "worker_loaders": [
+    {
+      "binding": "LOADER",
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "OUTBOX_HARNESS",
+        "class_name": "OutboxHarnessDurableObject",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["OutboxHarnessDurableObject"],
+    },
+  ],
+}

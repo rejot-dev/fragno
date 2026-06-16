@@ -11,6 +11,9 @@ export default mergeConfig(
     test: {
       name: "node",
       environment: "node",
+      coverage: {
+        enabled: false,
+      },
       include: ["app/**/*.test.ts", "workers/**/*.test.ts", "scripts/**/*.test.ts"],
       exclude: ["app/**/*.cloudflare.test.ts", "workers/**/*.cloudflare.test.ts"],
     },

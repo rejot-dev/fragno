@@ -21,7 +21,14 @@ type TestOutboxItem = {
   failUntilAttempt?: number;
 };
 
-const getStub = (name: string) => env.TELEGRAM.get(env.TELEGRAM.idFromName(name));
+type OutboxHarnessEnv = typeof env & {
+  OUTBOX_HARNESS: DurableObjectNamespace;
+};
+
+const getStub = (name: string) => {
+  const namespace = (env as OutboxHarnessEnv).OUTBOX_HARNESS;
+  return namespace.get(namespace.idFromName(name));
+};
 
 const runOutboxHarness = async <TResult>(
   stub: DurableObjectStub,
