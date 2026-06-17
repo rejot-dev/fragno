@@ -3,6 +3,7 @@ import { z } from "zod";
 import { defineRoutes } from "@fragno-dev/core";
 
 import { mcpFragmentDefinition } from "./definition";
+import { buildAuthDiagnostics, errorMessage, refreshOutputSchema } from "./diagnostics";
 import {
   assertAllowedEndpoint,
   callMcpTool,
@@ -40,7 +41,6 @@ const serversOutputSchema = z.object({ servers: z.array(serverOutputSchema) });
 const authStatusSchema = z.object({ authenticated: z.boolean(), mode: z.string() });
 const oauthStartOutputSchema = z.object({ authorizationUrl: z.string(), state: z.string() });
 const oauthCallbackOutputSchema = z.object({ authenticated: z.boolean(), mode: z.string() });
-const toolListSchema = z.object({ tools: z.array(z.unknown()) });
 const toolResultSchema = z.record(z.string(), z.unknown());
 
 function publicServer(
@@ -127,7 +127,9 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                   expiresAt: null,
                 });
               }
-              uow.triggerHook("internalRefreshServerConfiguration", { serverId: body.slug });
+              if (body.auth.type !== "oauth") {
+                uow.triggerHook("internalRefreshServerConfiguration", { serverId: body.slug });
+              }
               return { exists: false as const };
             })
             .execute();
@@ -323,6 +325,7 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                   expiresAt: null,
                 });
               }
+              uow.triggerHook("internalRefreshServerConfiguration", { serverId: pathParams.slug });
               return { found: true as const };
             })
             .execute();
@@ -451,40 +454,46 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
       }),
 
       defineRoute({
-        method: "GET",
-        path: "/servers/:slug/tools",
-        outputSchema: toolListSchema,
-        errorCodes: ["SERVER_NOT_FOUND", "MCP_ERROR"],
+        method: "POST",
+        path: "/servers/:slug/refresh",
+        outputSchema: refreshOutputSchema,
+        errorCodes: ["SERVER_NOT_FOUND"],
         handler: async function ({ pathParams }, { json, error }) {
-          try {
-            let prepared:
-              | {
-                  serverId: string;
-                  authChanges?: AuthPersistenceChanges;
-                  toolsOperation: Awaited<ReturnType<typeof listMcpTools<AuthPersistenceChanges>>>;
-                }
-              | undefined;
+          const checkedAt = new Date().toISOString();
+          let prepared:
+            | {
+                authChanges?: AuthPersistenceChanges;
+                toolsOperation: Awaited<ReturnType<typeof listMcpTools<AuthPersistenceChanges>>>;
+              }
+            | undefined;
+          let authError: unknown;
 
-            const result = await this.handlerTx()
-              .retrieve(({ forSchema }) =>
-                forSchema(mcpSchema)
-                  .findFirst("server_configuration", (b) =>
-                    b.whereIndex("primary", (eb) => eb("id", "=", pathParams.slug)),
-                  )
-                  .find("secret", (b) =>
-                    b.whereIndex("idx_secret_server_kind", (eb) =>
-                      eb("serverId", "=", pathParams.slug),
-                    ),
-                  )
-                  .findFirst("server_connection_cache", (b) =>
-                    b.whereIndex("primary", (eb) => eb("id", "=", pathParams.slug)),
+          const result = await this.handlerTx()
+            .retrieve(({ forSchema }) =>
+              forSchema(mcpSchema)
+                .findFirst("server_configuration", (b) =>
+                  b.whereIndex("primary", (eb) => eb("id", "=", pathParams.slug)),
+                )
+                .find("secret", (b) =>
+                  b.whereIndex("idx_secret_server_kind", (eb) =>
+                    eb("serverId", "=", pathParams.slug),
                   ),
-              )
-              .afterRetrieve(async (_uow, [server, secrets]) => {
-                if (!server) {
-                  return;
-                }
+                )
+                .findFirst("server_connection_cache", (b) =>
+                  b.whereIndex("primary", (eb) => eb("id", "=", pathParams.slug)),
+                )
+                .find("oauthState", (b) =>
+                  b.whereIndex("idx_oauth_state_server", (eb) =>
+                    eb("serverId", "=", pathParams.slug),
+                  ),
+                ),
+            )
+            .afterRetrieve(async (_uow, [server, secrets]) => {
+              if (!server) {
+                return;
+              }
 
+              try {
                 const auth = await createMcpOperationAuth({ config, server, secrets });
                 const toolsOperation = await listMcpTools({
                   endpointUrl: server.endpointUrl,
@@ -492,107 +501,184 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                   fetchImplementation: config.fetch,
                 });
                 prepared = {
-                  serverId: server.id.toString(),
                   authChanges: toolsOperation.authChanges,
                   toolsOperation,
                 };
-              })
-              .mutate(({ forSchema, retrieveResult: [server, secrets, cache] }) => {
-                if (!server) {
-                  return { found: false as const };
-                }
-                if (!prepared) {
-                  throw new Error("MCP operation was not prepared");
-                }
+              } catch (err) {
+                authError = err;
+              }
+            })
+            .mutate(({ forSchema, retrieveResult: [server, secrets, cache, oauthStates] }) => {
+              if (!server) {
+                return { found: false as const };
+              }
 
-                const preparedOperation = prepared;
-                const uow = forSchema(mcpSchema);
-                const upsertSecret = (kind: string, payload: string, expiresAt: Date | null) => {
-                  const existing = secrets.find((secret) => secret.kind === kind);
-                  if (existing) {
-                    uow.update("secret", existing.id, (b) =>
-                      b.set({ payload, expiresAt, updatedAt: b.now() }).check(),
-                    );
-                    return;
-                  }
-                  uow.create("secret", {
-                    id: `${preparedOperation.serverId}:${kind}`,
-                    serverId: preparedOperation.serverId,
-                    kind,
-                    payload,
-                    expiresAt,
-                  });
+              const serverId = server.id.toString();
+              const previousTools = Array.isArray(cache?.tools) ? cache.tools : null;
+              const baseDiagnostics = {
+                checkedAt,
+                server: publicServer(server),
+                cache: {
+                  presentBeforeCheck: Boolean(cache),
+                  previousToolCount: previousTools?.length ?? null,
+                  updatedToolCount: null,
+                },
+              };
+
+              if (authError) {
+                return {
+                  found: true as const,
+                  refresh: {
+                    ...baseDiagnostics,
+                    ok: false,
+                    tools: [],
+                    stage: "auth" as const,
+                    auth: buildAuthDiagnostics({
+                      mode: server.authMode,
+                      secrets,
+                      oauthStates,
+                    }),
+                    live: {
+                      reachable: false,
+                      listToolsOk: false,
+                      toolCount: null,
+                      protocolVersion: null,
+                      serverInfo: null,
+                      capabilities: null,
+                    },
+                    error: { code: "AUTH_ERROR", message: errorMessage(authError) },
+                  },
                 };
+              }
 
-                if (preparedOperation.authChanges?.clientInformationPayload) {
-                  upsertSecret(
-                    "oauth-client",
-                    preparedOperation.authChanges.clientInformationPayload,
-                    null,
-                  );
-                }
-                if (preparedOperation.authChanges?.discoveryStatePayload) {
-                  upsertSecret(
-                    "oauth-discovery",
-                    preparedOperation.authChanges.discoveryStatePayload,
-                    null,
-                  );
-                }
-                if (preparedOperation.authChanges?.authPayload) {
-                  upsertSecret(
-                    "auth",
-                    preparedOperation.authChanges.authPayload,
-                    preparedOperation.authChanges.authExpiresAt ?? null,
-                  );
-                }
+              if (!prepared) {
+                throw new Error("MCP refresh operation was not prepared");
+              }
 
-                if (!preparedOperation.toolsOperation.ok) {
-                  return {
-                    found: true as const,
-                    error:
-                      preparedOperation.toolsOperation.error instanceof Error
-                        ? preparedOperation.toolsOperation.error.message
-                        : String(preparedOperation.toolsOperation.error),
-                  };
+              const preparedOperation = prepared;
+              const uow = forSchema(mcpSchema);
+              const upsertSecret = (kind: string, payload: string, expiresAt: Date | null) => {
+                const existing = secrets.find((secret) => secret.kind === kind);
+                if (existing) {
+                  uow.update("secret", existing.id, (b) =>
+                    b.set({ payload, expiresAt, updatedAt: b.now() }).check(),
+                  );
+                  return;
                 }
-
-                const tools = Array.isArray(preparedOperation.toolsOperation.result.tools)
-                  ? preparedOperation.toolsOperation.result.tools
-                  : [];
-                const previousTools = Array.isArray(cache?.tools) ? cache.tools : null;
-                if (!previousTools || JSON.stringify(previousTools) !== JSON.stringify(tools)) {
-                  uow.triggerHook("onServerConfigurationChanged", {
-                    serverId: pathParams.slug,
-                    current: { tools },
-                  });
-                }
-                uow.delete("server_connection_cache", pathParams.slug);
-                uow.create("server_connection_cache", {
-                  id: pathParams.slug,
-                  serverId: pathParams.slug,
-                  protocolVersion:
-                    preparedOperation.toolsOperation.metadata.protocolVersion ?? null,
-                  serverInfo: preparedOperation.toolsOperation.metadata.serverInfo ?? null,
-                  capabilities: preparedOperation.toolsOperation.metadata.capabilities ?? null,
-                  tools,
+                uow.create("secret", {
+                  id: `${serverId}:${kind}`,
+                  serverId,
+                  kind,
+                  payload,
+                  expiresAt,
                 });
-                return { found: true as const, tools };
-              })
-              .execute();
+              };
 
-            if (!result.found) {
-              return error({ code: "SERVER_NOT_FOUND", message: "MCP server not found" }, 404);
-            }
-            if ("error" in result) {
-              return error(
-                { code: "MCP_ERROR", message: result.error ?? "MCP operation failed" },
-                502,
-              );
-            }
-            return json({ tools: result.tools });
-          } catch (err) {
-            return error({ code: "MCP_ERROR", message: (err as Error).message }, 502);
+              if (preparedOperation.authChanges?.clientInformationPayload) {
+                upsertSecret(
+                  "oauth-client",
+                  preparedOperation.authChanges.clientInformationPayload,
+                  null,
+                );
+              }
+              if (preparedOperation.authChanges?.discoveryStatePayload) {
+                upsertSecret(
+                  "oauth-discovery",
+                  preparedOperation.authChanges.discoveryStatePayload,
+                  null,
+                );
+              }
+              if (preparedOperation.authChanges?.authPayload) {
+                upsertSecret(
+                  "auth",
+                  preparedOperation.authChanges.authPayload,
+                  preparedOperation.authChanges.authExpiresAt ?? null,
+                );
+              }
+
+              const auth = buildAuthDiagnostics({
+                mode: server.authMode,
+                secrets,
+                oauthStates,
+                authChanges: preparedOperation.authChanges,
+              });
+
+              if (!preparedOperation.toolsOperation.ok) {
+                return {
+                  found: true as const,
+                  refresh: {
+                    ...baseDiagnostics,
+                    ok: false,
+                    tools: [],
+                    stage: "list_tools" as const,
+                    auth,
+                    live: {
+                      reachable: false,
+                      listToolsOk: false,
+                      toolCount: null,
+                      protocolVersion: null,
+                      serverInfo: null,
+                      capabilities: null,
+                    },
+                    error: {
+                      code: "MCP_ERROR",
+                      message: errorMessage(preparedOperation.toolsOperation.error),
+                    },
+                  },
+                };
+              }
+
+              const tools = Array.isArray(preparedOperation.toolsOperation.result.tools)
+                ? preparedOperation.toolsOperation.result.tools
+                : [];
+              if (!previousTools || JSON.stringify(previousTools) !== JSON.stringify(tools)) {
+                uow.triggerHook("onServerConfigurationChanged", {
+                  serverId,
+                  current: { tools },
+                });
+              }
+              uow.delete("server_connection_cache", serverId);
+              uow.create("server_connection_cache", {
+                id: serverId,
+                serverId,
+                protocolVersion: preparedOperation.toolsOperation.metadata.protocolVersion ?? null,
+                serverInfo: preparedOperation.toolsOperation.metadata.serverInfo ?? null,
+                capabilities: preparedOperation.toolsOperation.metadata.capabilities ?? null,
+                tools,
+              });
+
+              return {
+                found: true as const,
+                refresh: {
+                  ...baseDiagnostics,
+                  ok: true,
+                  tools,
+                  stage: null,
+                  auth,
+                  live: {
+                    reachable: true,
+                    listToolsOk: true,
+                    toolCount: tools.length,
+                    protocolVersion:
+                      preparedOperation.toolsOperation.metadata.protocolVersion ?? null,
+                    serverInfo: preparedOperation.toolsOperation.metadata.serverInfo ?? null,
+                    capabilities: preparedOperation.toolsOperation.metadata.capabilities ?? null,
+                  },
+                  cache: {
+                    ...baseDiagnostics.cache,
+                    updatedToolCount: tools.length,
+                  },
+                  error: null,
+                },
+              };
+            })
+            .execute();
+
+          if (!result.found) {
+            return error({ code: "SERVER_NOT_FOUND", message: "MCP server not found" }, 404);
           }
+
+          return json(result.refresh);
         },
       }),
 

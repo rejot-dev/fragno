@@ -83,6 +83,39 @@ async function readAuthSecret(fragmentResult: McpTestFragmentResult, serverId: s
   )[0];
 }
 
+async function completeOAuthFlow(
+  fragment: McpTestFragmentResult["fragment"],
+  input: {
+    slug: string;
+    clientId: string;
+    clientSecret: string;
+    scope?: string;
+  },
+) {
+  const start = await fragment.callRoute("POST", "/servers/:slug/auth/start", {
+    pathParams: { slug: input.slug },
+    body: {
+      clientId: input.clientId,
+      clientSecret: input.clientSecret,
+      scope: input.scope,
+    },
+  });
+  assert(start.type === "json");
+
+  const authorizeResponse = await fetch(start.data.authorizationUrl, { redirect: "manual" });
+  const location = authorizeResponse.headers.get("location");
+  assert(location);
+
+  const callbackUrl = new URL(location);
+  const callback = await fragment.callRoute("GET", "/oauth/callback", {
+    query: Object.fromEntries(callbackUrl.searchParams),
+  });
+  assert(callback.type === "json");
+  expect(callback.data).toEqual({ authenticated: true, mode: "oauth" });
+
+  return callback;
+}
+
 async function replaceStoredOAuthTokenWithExpiredAccessToken(
   fragmentResult: McpTestFragmentResult,
   serverId: string,
@@ -199,7 +232,7 @@ describe("mcp-fragment", () => {
     expect(clients.createServer).toBeDefined();
     expect(clients.useServers).toBeDefined();
     expect(clients.useServer).toBeDefined();
-    expect(clients.useTools).toBeDefined();
+    expect(clients.refreshServer).toBeDefined();
     expect(clients.callTool).toBeDefined();
     expect(clients.setToken).toBeDefined();
   });
@@ -216,14 +249,14 @@ describe("mcp-fragment", () => {
       endpointUrl: jsonMcpServer.endpointUrl,
     });
 
-    const bearerTools = await fragment.callRoute("GET", "/servers/:slug/tools", {
+    const bearerTools = await fragment.callRoute("POST", "/servers/:slug/refresh", {
       pathParams: { slug: "bearer-without-provider" },
     });
     assert(bearerTools.type === "json");
     expect(bearerTools.data.tools).toEqual([expect.objectContaining({ name: "echo" })]);
     expect(staticOAuthMcpServer.getTokenRequestCount()).toBe(tokenRequestsBefore);
 
-    const noAuthTools = await fragment.callRoute("GET", "/servers/:slug/tools", {
+    const noAuthTools = await fragment.callRoute("POST", "/servers/:slug/refresh", {
       pathParams: { slug: "no-auth-without-provider" },
     });
     assert(noAuthTools.type === "json");
@@ -329,7 +362,7 @@ describe("mcp-fragment", () => {
       auth: { type: "bearer", token: bearerToken },
     });
 
-    const tools = await fragment.callRoute("GET", "/servers/:slug/tools", {
+    const tools = await fragment.callRoute("POST", "/servers/:slug/refresh", {
       pathParams: { slug: "sse-tools" },
     });
 
@@ -359,7 +392,7 @@ describe("mcp-fragment", () => {
     await createServer(fragment, { slug: "cache-tools", endpointUrl: jsonMcpServer.endpointUrl });
 
     const before = jsonMcpServer.getMcpRequestCount();
-    const tools = await fragment.callRoute("GET", "/servers/:slug/tools", {
+    const tools = await fragment.callRoute("POST", "/servers/:slug/refresh", {
       pathParams: { slug: "cache-tools" },
     });
     assert(tools.type === "json");
@@ -380,7 +413,7 @@ describe("mcp-fragment", () => {
   test("returns cached connection data from server read routes", async () => {
     await createServer(fragment, { slug: "read-cache", endpointUrl: jsonMcpServer.endpointUrl });
 
-    const tools = await fragment.callRoute("GET", "/servers/:slug/tools", {
+    const tools = await fragment.callRoute("POST", "/servers/:slug/refresh", {
       pathParams: { slug: "read-cache" },
     });
     assert(tools.type === "json");
@@ -407,16 +440,111 @@ describe("mcp-fragment", () => {
     );
   });
 
+  test("checks live diagnostics and refreshes the server connection cache", async () => {
+    await createServer(fragment, {
+      slug: "diagnostics-refresh-cache",
+      endpointUrl: jsonMcpServer.endpointUrl,
+      auth: { type: "oauth" },
+    });
+
+    const diagnostics = await fragment.callRoute("POST", "/servers/:slug/refresh", {
+      pathParams: { slug: "diagnostics-refresh-cache" },
+    });
+    assert(diagnostics.type === "json");
+
+    expect(diagnostics.data).toMatchObject({
+      ok: true,
+      stage: null,
+      server: {
+        slug: "diagnostics-refresh-cache",
+        endpointUrl: jsonMcpServer.endpointUrl,
+        authMode: "oauth",
+      },
+      auth: {
+        authenticated: false,
+        mode: "oauth",
+        tokenPresent: false,
+      },
+      live: {
+        reachable: true,
+        listToolsOk: true,
+        toolCount: 1,
+      },
+      cache: {
+        presentBeforeCheck: false,
+        previousToolCount: null,
+        updatedToolCount: 1,
+      },
+      error: null,
+    });
+
+    const cache = await readConnectionCache(setup.fragments.mcp, "diagnostics-refresh-cache");
+    expect(cache).toEqual(
+      expect.objectContaining({
+        tools: [expect.objectContaining({ name: "echo" })],
+      }),
+    );
+
+    await drainDurableHooks(fragment);
+    expect(onServerConfigurationChanged).toHaveBeenCalledWith(
+      {
+        serverId: "diagnostics-refresh-cache",
+        current: { tools: [expect.objectContaining({ name: "echo" })] },
+      },
+      expect.any(String),
+    );
+  });
+
+  test("returns diagnostics for live MCP failures", async () => {
+    await createServer(fragment, {
+      slug: "diagnostics-live-failure",
+      endpointUrl: staticOAuthMcpServer.endpointUrl,
+      auth: { type: "oauth" },
+    });
+
+    const diagnostics = await fragment.callRoute("POST", "/servers/:slug/refresh", {
+      pathParams: { slug: "diagnostics-live-failure" },
+    });
+    assert(diagnostics.type === "json");
+
+    expect(diagnostics.data).toMatchObject({
+      ok: false,
+      stage: "list_tools",
+      server: {
+        slug: "diagnostics-live-failure",
+        endpointUrl: staticOAuthMcpServer.endpointUrl,
+        authMode: "oauth",
+      },
+      auth: {
+        authenticated: false,
+        mode: "oauth",
+        tokenPresent: false,
+      },
+      live: {
+        reachable: false,
+        listToolsOk: false,
+        toolCount: null,
+      },
+      cache: {
+        presentBeforeCheck: false,
+        previousToolCount: null,
+        updatedToolCount: null,
+      },
+      error: { code: "MCP_ERROR" },
+    });
+    expect(await readConnectionCache(setup.fragments.mcp, "diagnostics-live-failure")).toBeNull();
+  });
+
   test("refreshes tools instead of serving cached tool lists", async () => {
     await createServer(fragment, { slug: "refresh-tools", endpointUrl: jsonMcpServer.endpointUrl });
 
-    const first = await fragment.callRoute("GET", "/servers/:slug/tools", {
+    const first = await fragment.callRoute("POST", "/servers/:slug/refresh", {
       pathParams: { slug: "refresh-tools" },
     });
     assert(first.type === "json");
 
     const afterFirst = jsonMcpServer.getMcpRequestCount();
-    const refreshed = await fragment.callRoute("GET", "/servers/:slug/tools", {
+    const refreshed = await fragment.callRoute("POST", "/servers/:slug/refresh", {
       pathParams: { slug: "refresh-tools" },
     });
     assert(refreshed.type === "json");
@@ -449,10 +577,120 @@ describe("mcp-fragment", () => {
     );
   });
 
+  test("does not refresh OAuth server configuration before OAuth completes", async () => {
+    await createServer(fragment, {
+      slug: "oauth-waits-for-callback",
+      endpointUrl: staticOAuthMcpServer.endpointUrl,
+      auth: { type: "oauth" },
+    });
+
+    await drainDurableHooks(fragment);
+
+    expect(await readConnectionCache(setup.fragments.mcp, "oauth-waits-for-callback")).toBeNull();
+    expect(onServerConfigurationChanged).not.toHaveBeenCalled();
+  });
+
+  test("refreshes OAuth server configuration from durable hook after OAuth callback", async () => {
+    await createServer(fragment, {
+      slug: "oauth-refresh-after-callback",
+      endpointUrl: staticOAuthMcpServer.endpointUrl,
+      auth: { type: "oauth" },
+    });
+
+    const start = await fragment.callRoute("POST", "/servers/:slug/auth/start", {
+      pathParams: { slug: "oauth-refresh-after-callback" },
+      body: {
+        clientId: "static-client",
+        clientSecret: "static-secret",
+        scope: "tools",
+      },
+    });
+    assert(start.type === "json");
+
+    const authorizeResponse = await fetch(start.data.authorizationUrl, { redirect: "manual" });
+    const location = authorizeResponse.headers.get("location");
+    assert(location);
+    const callbackUrl = new URL(location);
+
+    const callback = await fragment.callRoute("GET", "/oauth/callback", {
+      query: Object.fromEntries(callbackUrl.searchParams),
+    });
+    assert(callback.type === "json");
+    expect(callback.data).toEqual({ authenticated: true, mode: "oauth" });
+
+    await drainDurableHooks(fragment);
+
+    const cache = await readConnectionCache(setup.fragments.mcp, "oauth-refresh-after-callback");
+    expect(cache).toEqual(
+      expect.objectContaining({
+        tools: [expect.objectContaining({ name: "echo" })],
+      }),
+    );
+    expect(onServerConfigurationChanged).toHaveBeenCalledTimes(1);
+    expect(onServerConfigurationChanged).toHaveBeenCalledWith(
+      {
+        serverId: "oauth-refresh-after-callback",
+        current: { tools: [expect.objectContaining({ name: "echo" })] },
+      },
+      expect.any(String),
+    );
+  });
+
+  test("refreshes OAuth server configuration again after re-authenticating a cached server", async () => {
+    const slug = "oauth-refresh-after-reauth";
+    await createServer(fragment, {
+      slug,
+      endpointUrl: staticOAuthMcpServer.endpointUrl,
+      auth: { type: "oauth" },
+    });
+
+    await completeOAuthFlow(fragment, {
+      slug,
+      clientId: "static-client",
+      clientSecret: "static-secret",
+      scope: "tools",
+    });
+    await drainDurableHooks(fragment);
+
+    expect(await readConnectionCache(setup.fragments.mcp, slug)).toEqual(
+      expect.objectContaining({
+        tools: [expect.objectContaining({ name: "echo" })],
+      }),
+    );
+
+    vi.clearAllMocks();
+
+    await completeOAuthFlow(fragment, {
+      slug,
+      clientId: "static-client",
+      clientSecret: "static-secret",
+      scope: "tools",
+    });
+
+    expect(await readConnectionCache(setup.fragments.mcp, slug)).toBeNull();
+
+    await drainDurableHooks(fragment);
+
+    const refreshedCache = await readConnectionCache(setup.fragments.mcp, slug);
+    expect(refreshedCache).toEqual(
+      expect.objectContaining({
+        tools: [expect.objectContaining({ name: "echo" })],
+      }),
+    );
+    expect(onServerConfigurationChanged).toHaveBeenCalledTimes(1);
+    expect(onServerConfigurationChanged).toHaveBeenCalledWith(
+      {
+        serverId: slug,
+        current: { tools: [expect.objectContaining({ name: "echo" })] },
+      },
+      expect.any(String),
+    );
+  });
+
   test("triggers durable hook when tools are first cached", async () => {
     await createServer(fragment, { slug: "new-tools", endpointUrl: jsonMcpServer.endpointUrl });
 
-    const refreshed = await fragment.callRoute("GET", "/servers/:slug/tools", {
+    const refreshed = await fragment.callRoute("POST", "/servers/:slug/refresh", {
       pathParams: { slug: "new-tools" },
     });
     assert(refreshed.type === "json");
@@ -488,7 +726,7 @@ describe("mcp-fragment", () => {
       throw new Error("Failed to seed stale tools cache");
     }
 
-    const refreshed = await fragment.callRoute("GET", "/servers/:slug/tools", {
+    const refreshed = await fragment.callRoute("POST", "/servers/:slug/refresh", {
       pathParams: { slug: "changed-tools" },
     });
     assert(refreshed.type === "json");
@@ -528,7 +766,7 @@ describe("mcp-fragment", () => {
 
   test("does not serve stale cached tools after deleting a server", async () => {
     await createServer(fragment, { slug: "delete-cache", endpointUrl: jsonMcpServer.endpointUrl });
-    const tools = await fragment.callRoute("GET", "/servers/:slug/tools", {
+    const tools = await fragment.callRoute("POST", "/servers/:slug/refresh", {
       pathParams: { slug: "delete-cache" },
     });
     assert(tools.type === "json");
@@ -540,7 +778,7 @@ describe("mcp-fragment", () => {
     assert(deleted.type === "empty");
 
     expect(await readConnectionCache(setup.fragments.mcp, "delete-cache")).toBeNull();
-    const cached = await fragment.callRoute("GET", "/servers/:slug/tools", {
+    const cached = await fragment.callRoute("POST", "/servers/:slug/refresh", {
       pathParams: { slug: "delete-cache" },
     });
     assert(cached.type === "error");
@@ -583,6 +821,8 @@ describe("mcp-fragment", () => {
   });
 
   test("persists explicit OAuth client credentials across the auth callback", async () => {
+    const tokenRequestsBefore = staticOAuthMcpServer.getTokenRequestCount();
+
     await createServer(fragment, {
       slug: "static-oauth-tools",
       endpointUrl: staticOAuthMcpServer.endpointUrl,
@@ -618,7 +858,7 @@ describe("mcp-fragment", () => {
     });
     assert(result.type === "json");
     expect(result.data["structuredContent"]).toEqual({ echoed: "from-static-oauth" });
-    assert(staticOAuthMcpServer.getTokenRequestCount() === 2);
+    assert(staticOAuthMcpServer.getTokenRequestCount() === tokenRequestsBefore + 2);
   });
 
   test("retains existing OAuth refresh token when the refresh response omits one", async () => {
@@ -768,11 +1008,12 @@ describe("mcp-fragment", () => {
       "rotating-oauth-list-tools",
     );
 
-    const result = await fragment.callRoute("GET", "/servers/:slug/tools", {
+    const result = await fragment.callRoute("POST", "/servers/:slug/refresh", {
       pathParams: { slug: "rotating-oauth-list-tools" },
     });
 
-    assert(result.type === "error");
+    assert(result.type === "json");
+    expect(result.data).toMatchObject({ ok: false, error: { code: "MCP_ERROR" }, tools: [] });
     const authSecret = await readAuthSecret(setup.fragments.mcp, "rotating-oauth-list-tools");
     assert(authSecret);
     expect(parseSecretPayload<{ tokens: { refresh_token?: string } }>(authSecret.payload)).toEqual(
@@ -794,11 +1035,12 @@ describe("mcp-fragment", () => {
       },
     });
 
-    const result = await fragment.callRoute("GET", "/servers/:slug/tools", {
+    const result = await fragment.callRoute("POST", "/servers/:slug/refresh", {
       pathParams: { slug: "failed-client-credentials-tools" },
     });
 
-    assert(result.type === "error");
+    assert(result.type === "json");
+    expect(result.data).toMatchObject({ ok: false, error: { code: "MCP_ERROR" }, tools: [] });
     const authSecret = await readAuthSecret(setup.fragments.mcp, "failed-client-credentials-tools");
     assert(authSecret);
     expect(parseSecretPayload<{ tokens?: { access_token?: string } }>(authSecret.payload)).toEqual(
@@ -831,7 +1073,7 @@ describe("mcp-fragment", () => {
     expect(result.data["structuredContent"]).toEqual({ echoed: "from-client-credentials" });
     expect(clientCredentialsMcpServer.getTokenRequestCount()).toBe(tokenRequestsBefore + 1);
 
-    const tools = await fragment.callRoute("GET", "/servers/:slug/tools", {
+    const tools = await fragment.callRoute("POST", "/servers/:slug/refresh", {
       pathParams: { slug: "client-credentials-tools" },
     });
     assert(tools.type === "json");
@@ -846,23 +1088,19 @@ describe("mcp-fragment", () => {
       auth: { type: "bearer", token: "wrong" },
     });
 
-    const result = await fragment.callRoute("GET", "/servers/:slug/tools", {
+    const result = await fragment.callRoute("POST", "/servers/:slug/refresh", {
       pathParams: { slug: "bad-auth" },
     });
 
-    assert(result.type === "error");
-    if (result.type !== "error") {
-      return;
-    }
-    assert(result.status === 502);
-    expect(result.error).toMatchObject({ code: "MCP_ERROR" });
-    expect(result.error.message).toContain("Unauthorized");
+    assert(result.type === "json");
+    expect(result.data).toMatchObject({ ok: false, error: { code: "MCP_ERROR" }, tools: [] });
+    expect(result.data.error?.message).toContain("Unauthorized");
   });
 
   test("returns and caches an empty tool list for MCP servers that do not advertise tools", async () => {
     await createServer(fragment, { slug: "no-tools", endpointUrl: noToolsMcpServer.endpointUrl });
 
-    const result = await fragment.callRoute("GET", "/servers/:slug/tools", {
+    const result = await fragment.callRoute("POST", "/servers/:slug/refresh", {
       pathParams: { slug: "no-tools" },
     });
     assert(result.type === "json");

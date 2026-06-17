@@ -1,5 +1,5 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
-import type { CreateServerInput, McpTool, ToolCallInput } from "@fragno-dev/mcp-fragment/types";
+import type { CreateServerInput, ToolCallInput } from "@fragno-dev/mcp-fragment/types";
 
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { McpFragment } from "@/fragno/mcp";
@@ -13,9 +13,9 @@ import type {
   McpAuthStatus,
   McpCreateServerOutput,
   McpListServersOutput,
-  McpListToolsOutput,
   McpOAuthStartInput,
   McpOAuthStartOutput,
+  McpServerRefreshOutput,
   McpSetTokenInput,
   McpToolCallOutput,
 } from "./mcp";
@@ -24,7 +24,7 @@ export type McpRuntime = {
   listServers: () => Promise<McpListServersOutput>;
   createServer: (input: CreateServerInput) => Promise<McpCreateServerOutput>;
   deleteServer: (input: { slug: string }) => Promise<{ ok: true }>;
-  listTools: (input: { slug: string }) => Promise<McpListToolsOutput>;
+  refreshServer: (input: { slug: string }) => Promise<McpServerRefreshOutput>;
   callTool: (input: { slug: string } & ToolCallInput) => Promise<McpToolCallOutput>;
   startOAuth: (input: { slug: string } & McpOAuthStartInput) => Promise<McpOAuthStartOutput>;
   setToken: (input: { slug: string } & McpSetTokenInput) => Promise<McpAuthStatus>;
@@ -101,12 +101,12 @@ const createRouteBackedMcpRuntime = (options: CreateRouteBackedMcpRuntimeOptions
       }
       return throwOnMcpRuntimeError(response, "mcp.servers.delete");
     },
-    listTools: async ({ slug }) => {
-      const response = await callRoute("GET", "/servers/:slug/tools", {
+    refreshServer: async ({ slug }) => {
+      const response = await callRoute("POST", "/servers/:slug/refresh", {
         pathParams: { slug: normalizeSlug(slug) },
       });
       if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data as { tools: McpTool[] };
+        return response.data as McpServerRefreshOutput;
       }
       return throwOnMcpRuntimeError(response, "mcp.servers.refresh");
     },

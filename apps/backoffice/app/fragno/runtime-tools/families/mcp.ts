@@ -74,8 +74,41 @@ const oauthStartInputSchema = z.object({
 });
 const oauthStartOutputSchema = z.object({ authorizationUrl: z.string().url(), state: z.string() });
 const setTokenInputSchema = z.object({ slug: nonEmptyString, token: nonEmptyString });
-const listToolsInputSchema = z.object({ slug: nonEmptyString });
-const listToolsOutputSchema = z.object({ tools: z.array(mcpToolSchema) });
+const refreshServerInputSchema = z.object({ slug: nonEmptyString });
+const serverRefreshOutputSchema = z.object({
+  ok: z.boolean(),
+  tools: z.array(mcpToolSchema),
+  stage: z.enum(["auth", "list_tools"]).nullable(),
+  checkedAt: z.string(),
+  server: serverSchema.omit({ cache: true }),
+  auth: z.object({
+    authenticated: z.boolean(),
+    mode: z.string(),
+    tokenPresent: z.boolean(),
+    expiresAt: z.union([z.string(), z.date()]).nullable(),
+    expired: z.boolean().nullable(),
+    scopes: z.object({
+      requested: z.array(z.string()).nullable(),
+      granted: z.array(z.string()).nullable(),
+      missing: z.array(z.string()).nullable(),
+      raw: z.string().nullable(),
+    }),
+  }),
+  live: z.object({
+    reachable: z.boolean(),
+    listToolsOk: z.boolean(),
+    toolCount: z.number().nullable(),
+    protocolVersion: z.string().nullable(),
+    serverInfo: z.unknown().nullable(),
+    capabilities: z.unknown().nullable(),
+  }),
+  cache: z.object({
+    presentBeforeCheck: z.boolean(),
+    previousToolCount: z.number().nullable(),
+    updatedToolCount: z.number().nullable(),
+  }),
+  error: z.object({ code: z.string(), message: z.string() }).nullable(),
+});
 const callToolInputSchema = z.object({
   slug: nonEmptyString,
   name: nonEmptyString,
@@ -91,7 +124,7 @@ export type McpOAuthStartInput = Omit<z.infer<typeof oauthStartInputSchema>, "sl
 export type McpOAuthStartOutput = z.infer<typeof oauthStartOutputSchema>;
 export type McpSetTokenInput = Omit<z.infer<typeof setTokenInputSchema>, "slug">;
 export type McpTool = z.infer<typeof mcpToolSchema>;
-export type McpListToolsOutput = z.infer<typeof listToolsOutputSchema>;
+export type McpServerRefreshOutput = z.infer<typeof serverRefreshOutputSchema>;
 export type McpToolCallOutput = z.infer<typeof callToolOutputSchema>;
 export type { McpRuntime } from "./mcp-runtime";
 
@@ -174,13 +207,17 @@ const renderServerRows = (servers: readonly z.infer<typeof serverSchema>[]) =>
 const renderServers = (result: McpListServersOutput) =>
   result.servers.length ? renderServerRows(result.servers) : "No MCP servers configured.";
 
-const renderTools = (result: McpListToolsOutput) =>
-  result.tools.length
+const renderTools = (result: McpServerRefreshOutput) => {
+  if (!result.ok) {
+    return `MCP refresh failed: ${result.error?.message ?? "unknown error"}`;
+  }
+  return result.tools.length
     ? renderTable(
         ["tool", "title", "description"],
         result.tools.map((tool) => [tool.name, tool.title, tool.description]),
       )
     : "No tools advertised.";
+};
 
 const renderToolCall = (result: McpToolCallOutput) => {
   const content = result["content"];
@@ -413,10 +450,10 @@ const mcpRuntimeTools = [
     name: "refreshServer",
     capabilityId: "mcp",
     description: "Refresh a configured MCP server and update its cached tool list.",
-    inputSchema: listToolsInputSchema,
-    outputSchema: listToolsOutputSchema,
+    inputSchema: refreshServerInputSchema,
+    outputSchema: serverRefreshOutputSchema,
     execute: async (input, context: McpToolContext) =>
-      await getMcpRuntime(context.runtimes.mcp).listTools(input),
+      await getMcpRuntime(context.runtimes.mcp).refreshServer(input),
     adapters: {
       bash: {
         command: "mcp.servers.refresh",

@@ -1,21 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Form,
   Link,
   useActionData,
+  useFetcher,
   useLoaderData,
   useNavigation,
   useSearchParams,
 } from "react-router";
+import { Streamdown } from "streamdown";
 
 import { FormField } from "@/components/backoffice";
 import { mcpCapability } from "@/fragno/backoffice-capabilities/capabilities/mcp";
+import { jsonSchemaToTypeScript, type JsonSchemaObject } from "@/lib/zod/zod-formatter";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/configuration";
 import {
   createMcpActionRouteCaller,
   fetchMcpServers,
+  type McpServerRefreshState,
   type McpServerSummary,
   type McpServerToolsState,
 } from "./data";
@@ -25,7 +29,7 @@ type McpActionData = {
   intent: string;
   message: string;
   authorizationUrl?: string;
-  serverTools?: McpServerToolsState;
+  serverRefresh?: McpServerRefreshState;
 };
 
 type McpConfigurationLoaderData = {
@@ -198,25 +202,26 @@ export async function action({ request, context, params }: Route.ActionArgs) {
       } satisfies McpActionData;
     }
 
-    if (intent === "fetch-tools") {
+    if (intent === "refresh-server") {
       const slug = getFormString(formData, "slug");
-      const response = await callRoute("GET", "/servers/:slug/tools", {
+      const response = await callRoute("POST", "/servers/:slug/refresh", {
         pathParams: { slug },
       });
       if (response.type === "json" && response.status >= 200 && response.status < 300) {
+        const refresh = response.data as McpServerRefreshState["refresh"];
         return {
-          ok: true,
+          ok: refresh.ok,
           intent,
-          message: "MCP tools loaded.",
-          serverTools: { slug, tools: response.data.tools as McpServerToolsState["tools"] },
+          message: refresh.ok
+            ? "Connection check passed and tool cache refreshed."
+            : refresh.error?.message || "Connection check failed.",
+          serverRefresh: { slug, refresh },
         } satisfies McpActionData;
       }
-      const message = routeResponseMessage(response) || "Unable to load tools.";
       return {
         ok: false,
         intent,
-        message,
-        serverTools: { slug, tools: [], error: message },
+        message: routeResponseMessage(response) || "Unable to check server.",
       } satisfies McpActionData;
     }
 
@@ -236,12 +241,10 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     return { ok: false, intent, message: "Unknown MCP action." } satisfies McpActionData;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to update MCP server.";
-    const slug = intent === "fetch-tools" ? getFormString(formData, "slug") : "";
     return {
       ok: false,
       intent,
       message,
-      ...(slug ? { serverTools: { slug, tools: [], error: message } } : {}),
     } satisfies McpActionData;
   }
 }
@@ -380,150 +383,460 @@ function ServerConfigureForm({
   );
 }
 
+const formatMaybeDate = (value?: string | Date | null) =>
+  value ? new Date(value).toLocaleString() : "-";
+
+const normalizeToolTypeName = (name: string) => {
+  const pascal = name
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join("");
+  const safe = pascal || "Tool";
+  return /^\d/.test(safe) ? `Tool${safe}` : safe;
+};
+
+const toolInputTypeScript = (tool: McpServerToolsState["tools"][number]) => {
+  const typeName = `${normalizeToolTypeName(tool.name)}Input`;
+  const schema = tool.inputSchema as JsonSchemaObject | undefined;
+  return `type ${typeName} = ${jsonSchemaToTypeScript(schema)};`;
+};
+
+const toolInputJson = (tool: McpServerToolsState["tools"][number]) =>
+  JSON.stringify(tool.inputSchema ?? {}, null, 2);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value && typeof value === "object" && !Array.isArray(value));
+
+const isScopeToken = (scope: string) => /^[a-z][a-z0-9:_./-]{1,}$/i.test(scope);
+
+const splitScopes = (value: string) =>
+  value
+    .replace(/[`*_]/g, "")
+    .split(/[\s,]+/)
+    .map((scope) => scope.trim().replace(/^[[({]+|[\])}.;:]+$/g, ""))
+    .filter(isScopeToken);
+
+const listStrings = (value: unknown) => {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => (typeof item === "string" ? splitScopes(item) : []));
+  }
+  if (typeof value === "string" && value.trim()) {
+    return splitScopes(value);
+  }
+  return [];
+};
+
+const requiredScopesLinePattern =
+  /^\s*(?:[-*]\s*)?(?:#{1,6}\s*)?(?:\*\*)?(?:required\s+|requires\s+)?(?:oauth\s+)?scopes?(?:\*\*)?\s*:?\s*(.*?)\s*$/i;
+const trailingInlineScopePattern = /(?:\s+|^)`([^`]+)`\s*$/;
+const bulletScopePattern = /^\s*[-*]\s+(.+?)\s*$/;
+
+const descriptionWithoutRequiredScopes = (description: string | undefined) => {
+  const scopes: string[] = [];
+  const visibleLines: string[] = [];
+  let inRequiredScopesList = false;
+
+  for (const line of description?.split("\n") ?? []) {
+    const requiredScopesLine = line.match(requiredScopesLinePattern);
+    if (requiredScopesLine) {
+      scopes.push(...splitScopes(requiredScopesLine[1] ?? ""));
+      inRequiredScopesList = true;
+      continue;
+    }
+
+    if (inRequiredScopesList) {
+      if (!line.trim()) {
+        inRequiredScopesList = false;
+        visibleLines.push(line);
+        continue;
+      }
+
+      const bulletScope = line.match(bulletScopePattern);
+      if (bulletScope) {
+        scopes.push(...splitScopes(bulletScope[1] ?? ""));
+        continue;
+      }
+
+      inRequiredScopesList = false;
+    }
+
+    let visibleLine = line;
+    const trailingInlineScope = visibleLine.match(trailingInlineScopePattern);
+    if (trailingInlineScope && /[.!?]\s*$/.test(visibleLine.slice(0, trailingInlineScope.index))) {
+      const trailingScopes = splitScopes(trailingInlineScope[1] ?? "");
+      if (trailingScopes.length > 0) {
+        scopes.push(...trailingScopes);
+        visibleLine = visibleLine.slice(0, trailingInlineScope.index).trimEnd();
+      }
+    }
+
+    if (visibleLine.trim()) {
+      visibleLines.push(visibleLine.trimEnd());
+    }
+  }
+
+  return {
+    description: visibleLines.join("\n").trim(),
+    scopes,
+  };
+};
+
+const toolScopes = (tool: McpServerToolsState["tools"][number]) => {
+  const annotations = isRecord(tool.annotations) ? tool.annotations : {};
+  const meta = isRecord(tool._meta) ? tool._meta : {};
+  const scopes = [
+    ...listStrings(annotations.requiredScopes),
+    ...listStrings(annotations.required_scopes),
+    ...listStrings(meta.requiredScopes),
+    ...listStrings(meta.required_scopes),
+    ...descriptionWithoutRequiredScopes(tool.description).scopes,
+  ];
+  return [...new Set(scopes)];
+};
+
+const toolDescription = (description: string | undefined) =>
+  descriptionWithoutRequiredScopes(description).description;
+
+function ServerStatusPanel({
+  server,
+  refreshState,
+  checkingServer,
+}: {
+  server: McpServerSummary;
+  refreshState: McpServerRefreshState | undefined;
+  checkingServer: boolean;
+}) {
+  const refresh = refreshState?.refresh;
+  const cacheToolCount = Array.isArray(server.cache?.tools) ? server.cache.tools.length : 0;
+  return (
+    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+            Connection
+          </p>
+          <h2 className="mt-2 text-2xl leading-tight font-semibold text-balance text-[var(--bo-fg)]">
+            {server.name || server.slug}
+          </h2>
+          <p className="mt-2 max-w-4xl text-sm break-all text-[var(--bo-muted)]">
+            {server.endpointUrl}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Form method="post">
+            <input type="hidden" name="intent" value="refresh-server" />
+            <input type="hidden" name="slug" value={server.slug} />
+            <button
+              type="submit"
+              disabled={checkingServer}
+              className="min-h-10 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-transform active:scale-[0.96] disabled:opacity-60"
+            >
+              {checkingServer ? "Refreshing…" : "Refresh"}
+            </button>
+          </Form>
+          <Form method="post">
+            <input type="hidden" name="intent" value="delete-server" />
+            <input type="hidden" name="slug" value={server.slug} />
+            <button
+              type="submit"
+              className="min-h-10 border border-red-500/40 px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-red-500 uppercase transition-transform active:scale-[0.96]"
+            >
+              Delete
+            </button>
+          </Form>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 text-xs text-[var(--bo-muted)] md:grid-cols-4">
+        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
+          <p className="text-[9px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">Auth</p>
+          <p className="mt-2 font-medium text-[var(--bo-fg)]">
+            {refresh?.auth.authenticated ? "Authenticated" : refresh ? "Needs attention" : "-"}
+          </p>
+          <p className="mt-1">Expires {formatMaybeDate(refresh?.auth.expiresAt)}</p>
+        </div>
+        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
+          <p className="text-[9px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">Cached</p>
+          <p className="mt-2 font-medium text-[var(--bo-fg)] tabular-nums">
+            {cacheToolCount} tools
+          </p>
+          {server.cache?.updatedAt ? (
+            <p className="mt-1">{new Date(server.cache.updatedAt).toLocaleString()}</p>
+          ) : null}
+        </div>
+        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
+          <p className="text-[9px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">Live</p>
+          <p className="mt-2 font-medium text-[var(--bo-fg)] tabular-nums">
+            {refresh?.live.listToolsOk
+              ? `${refresh.live.toolCount ?? 0} tools`
+              : refresh
+                ? "Discovery failed"
+                : "-"}
+          </p>
+          <p className="mt-1">
+            Protocol {refresh?.live.protocolVersion ?? server.cache?.protocolVersion ?? "-"}
+          </p>
+        </div>
+        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
+          <p className="text-[9px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">Checked</p>
+          <p className="mt-2 font-medium text-[var(--bo-fg)]">
+            {formatMaybeDate(refresh?.checkedAt)}
+          </p>
+        </div>
+
+        {refresh?.error ? (
+          <div className="border border-red-500/40 bg-red-500/5 p-3 text-red-500 md:col-span-4">
+            {refresh.error.code}: {refresh.error.message}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ToolDescription({ description }: { description: string }) {
+  return (
+    <Streamdown
+      mode="static"
+      className="bo-session-markdown text-sm leading-6 text-pretty"
+      controls={{ code: true, table: true }}
+      skipHtml
+    >
+      {description}
+    </Streamdown>
+  );
+}
+
+type ToolRepresentationMode = "ts" | "json";
+
+function ToolsList({ tools }: { tools: McpServerToolsState["tools"] }) {
+  const [query, setQuery] = useState("");
+  const [representationMode, setRepresentationMode] = useState<ToolRepresentationMode>("ts");
+  const filteredTools = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) {
+      return tools;
+    }
+    return tools.filter((tool) => tool.name.toLowerCase().includes(normalizedQuery));
+  }, [query, tools]);
+
+  return (
+    <div className="space-y-4">
+      <div className="sticky top-0 z-10 bg-[var(--bo-panel)] pb-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-64 flex-1">
+            <label className="block text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+              Search Tools
+            </label>
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search by tool name…"
+              className="mt-2 min-h-11 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] outline-none placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)]"
+            />
+          </div>
+          <div>
+            <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">Mode</p>
+            <div className="mt-2 flex min-h-11 border border-[color:var(--bo-border)]">
+              {(
+                [
+                  ["ts", "TS"],
+                  ["json", "JSON"],
+                ] as const
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={representationMode === mode}
+                  onClick={() => setRepresentationMode(mode)}
+                  className={`border-r border-[color:var(--bo-border)] px-3 py-2 text-[10px] font-semibold tracking-[0.18em] uppercase last:border-r-0 ${
+                    representationMode === mode
+                      ? "bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
+                      : "bg-[var(--bo-panel-2)] text-[var(--bo-muted-2)] hover:text-[var(--bo-fg)]"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {filteredTools.length ? (
+        <ol className="space-y-3">
+          {filteredTools.map((tool) => {
+            const scopes = toolScopes(tool);
+            const description = toolDescription(tool.description);
+            return (
+              <li key={tool.name} className="border border-[color:var(--bo-border)] p-4">
+                <div className="flex min-w-0 items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h3 className="text-lg leading-tight font-semibold text-balance text-[var(--bo-fg)]">
+                      {tool.title || tool.name}
+                    </h3>
+                    <p className="mt-1 font-mono text-xs break-all text-[var(--bo-muted-2)]">
+                      {tool.name}
+                    </p>
+                  </div>
+                  {scopes.length ? (
+                    <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                      {scopes.map((scope) => (
+                        <span
+                          key={scope}
+                          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[9px] tracking-[0.12em] text-[var(--bo-muted-2)] uppercase"
+                        >
+                          {scope}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="mt-4">
+                  {description ? (
+                    <ToolDescription description={description} />
+                  ) : (
+                    <p className="text-sm text-[var(--bo-muted-2)]">No description provided.</p>
+                  )}
+                </div>
+
+                <div className="mt-4 border-t border-[color:var(--bo-border)] pt-4">
+                  <p className="mb-2 text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                    {representationMode === "ts" ? "Input type" : "Input schema"}
+                  </p>
+                  <pre className="max-h-96 overflow-auto bg-[var(--bo-panel-2)] p-3 font-mono text-[11px] leading-relaxed whitespace-pre text-[var(--bo-fg)]">
+                    <code>
+                      {representationMode === "ts"
+                        ? toolInputTypeScript(tool)
+                        : toolInputJson(tool)}
+                    </code>
+                  </pre>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      ) : (
+        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-8 text-center text-sm text-[var(--bo-muted)]">
+          No tool names match “{query.trim()}”.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ServerDetail({
   server,
   toolsState,
-  fetchingTools,
+  refreshState,
+  checkingServer,
 }: {
   server: McpServerSummary;
   toolsState: McpServerToolsState | undefined;
-  fetchingTools: boolean;
+  refreshState: McpServerRefreshState | undefined;
+  checkingServer: boolean;
 }) {
+  const refresh = refreshState?.refresh;
+  const authNeedsAttention = refresh
+    ? !refresh.auth.authenticated ||
+      refresh.auth.expired === true ||
+      Boolean(refresh.auth.scopes.missing?.length) ||
+      Boolean(refresh.error)
+    : false;
+  const showOAuthControls = server.authMode === "oauth";
+  const showBearerControls = server.authMode === "bearer";
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-            {server.authMode}
-          </p>
-          <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">
-            {server.name || server.slug}
-          </h2>
-          <p className="mt-2 text-sm break-all text-[var(--bo-muted)]">{server.endpointUrl}</p>
-        </div>
-        <Form method="post">
-          <input type="hidden" name="intent" value="delete-server" />
-          <input type="hidden" name="slug" value={server.slug} />
-          <button
-            type="submit"
-            className="min-h-10 border border-red-500/40 px-3 py-2 text-[10px] tracking-[0.22em] text-red-500 uppercase transition-transform active:scale-[0.96]"
-          >
-            Delete
-          </button>
-        </Form>
-      </div>
+      <div className="space-y-4">
+        <ServerStatusPanel
+          server={server}
+          refreshState={refreshState}
+          checkingServer={checkingServer}
+        />
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        {server.authMode === "oauth" ? (
-          <Form
-            method="post"
-            className="space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3"
-          >
-            <input type="hidden" name="intent" value="start-oauth" />
-            <input type="hidden" name="slug" value={server.slug} />
-            <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-              Authentication
-            </p>
-            <input
-              name="scope"
-              placeholder="scope override (optional)"
-              className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-xs text-[var(--bo-fg)]"
-            />
-            <button
-              type="submit"
-              className="min-h-10 border border-[color:var(--bo-border)] px-3 py-2 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] active:scale-[0.96]"
+        <div className="grid gap-4 xl:grid-cols-2">
+          {showOAuthControls ? (
+            <Form
+              method="post"
+              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4"
             >
-              Start OAuth
-            </button>
-          </Form>
-        ) : null}
-
-        {server.authMode === "bearer" ? (
-          <Form
-            method="post"
-            className="space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3"
-          >
-            <input type="hidden" name="intent" value="set-token" />
-            <input type="hidden" name="slug" value={server.slug} />
-            <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-              Authentication
-            </p>
-            <input
-              type="password"
-              name="token"
-              placeholder="Bearer token"
-              required
-              className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-xs text-[var(--bo-fg)]"
-            />
-            <button
-              type="submit"
-              className="min-h-10 border border-[color:var(--bo-border)] px-3 py-2 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] active:scale-[0.96]"
-            >
-              Save token
-            </button>
-          </Form>
-        ) : null}
-
-        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3">
-          <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">Tools</p>
-          <p className="mt-2 text-sm text-[var(--bo-muted)]">
-            Cached tool discovery is shown automatically when available. Refresh connects to the
-            selected server.
-          </p>
-          {server.cache?.protocolVersion ? (
-            <p className="mt-2 text-xs text-[var(--bo-muted-2)]">
-              Protocol {server.cache.protocolVersion}
-              {server.cache.updatedAt
-                ? ` · cached ${new Date(server.cache.updatedAt).toLocaleString()}`
-                : ""}
-            </p>
+              <input type="hidden" name="intent" value="start-oauth" />
+              <input type="hidden" name="slug" value={server.slug} />
+              <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                {authNeedsAttention ? "Authentication required" : "OAuth authentication"}
+              </p>
+              <p className="mt-2 text-sm text-pretty text-[var(--bo-muted)]">
+                {authNeedsAttention
+                  ? "OAuth needs attention for this server. Start the provider flow, then this page will refresh the tool cache automatically when you return."
+                  : "Re-run OAuth to replace or expand the current provider authorization."}
+              </p>
+              <input
+                name="scope"
+                placeholder="scope override (optional)"
+                className="mt-3 min-h-10 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-xs text-[var(--bo-fg)] outline-none placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)]"
+              />
+              <button
+                type="submit"
+                className="mt-3 min-h-10 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-transform active:scale-[0.96]"
+              >
+                {authNeedsAttention ? "Start OAuth" : "Reauthorize OAuth"}
+              </button>
+            </Form>
           ) : null}
-          <Form method="post" className="mt-3">
-            <input type="hidden" name="intent" value="fetch-tools" />
-            <input type="hidden" name="slug" value={server.slug} />
-            <button
-              type="submit"
-              disabled={fetchingTools}
-              className="min-h-10 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-transform active:scale-[0.96] disabled:opacity-60"
+
+          {showBearerControls ? (
+            <Form
+              method="post"
+              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4"
             >
-              {fetchingTools ? "Fetching…" : toolsState ? "Refresh tools" : "Fetch tools"}
-            </button>
-          </Form>
+              <input type="hidden" name="intent" value="set-token" />
+              <input type="hidden" name="slug" value={server.slug} />
+              <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                {authNeedsAttention ? "Token required" : "Bearer token"}
+              </p>
+              <p className="mt-2 text-sm text-pretty text-[var(--bo-muted)]">
+                {authNeedsAttention
+                  ? "Save a bearer token before Backoffice can discover tools for this server."
+                  : "Save a replacement bearer token if the current token is revoked, expired, or missing scopes."}
+              </p>
+              <input
+                type="password"
+                name="token"
+                placeholder="Bearer token"
+                required
+                className="mt-3 min-h-10 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-xs text-[var(--bo-fg)] outline-none placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)]"
+              />
+              <button
+                type="submit"
+                className="mt-3 min-h-10 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-transform active:scale-[0.96]"
+              >
+                {authNeedsAttention ? "Save token" : "Update token"}
+              </button>
+            </Form>
+          ) : null}
         </div>
       </div>
 
-      <div className="mt-4 min-h-0 flex-1 overflow-auto pr-1">
+      <div className="relative mt-5 min-h-0 flex-1 overflow-auto pr-1">
         {toolsState?.error ? (
-          <div className="border border-red-500/40 bg-red-500/5 p-3 text-sm text-red-500">
+          <div className="mb-4 border border-red-500/40 bg-red-500/5 p-4 text-sm text-red-500">
             Tools unavailable: {toolsState.error}
           </div>
         ) : null}
         {toolsState && toolsState.tools.length > 0 ? (
-          <div className="grid gap-2 xl:grid-cols-2">
-            {toolsState.tools.map((tool) => (
-              <div
-                key={tool.name}
-                className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3"
-              >
-                <p className="font-semibold text-[var(--bo-fg)]">{tool.title || tool.name}</p>
-                {tool.description ? (
-                  <p className="mt-1 text-xs text-[var(--bo-muted)]">{tool.description}</p>
-                ) : null}
-                {tool.inputSchema ? (
-                  <pre className="mt-2 max-h-56 overflow-auto text-[10px] whitespace-pre-wrap text-[var(--bo-muted-2)]">
-                    {JSON.stringify(tool.inputSchema, null, 2)}
-                  </pre>
-                ) : null}
-              </div>
-            ))}
-          </div>
+          <ToolsList key={server.slug} tools={toolsState.tools} />
         ) : toolsState && !toolsState.error ? (
-          <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4 text-sm text-[var(--bo-muted)]">
+          <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-8 text-center text-sm text-[var(--bo-muted)]">
             No tools advertised.
           </div>
         ) : !toolsState ? (
-          <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4 text-sm text-[var(--bo-muted)]">
-            Select fetch tools to inspect this server's advertised capabilities.
+          <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-8 text-center text-sm text-[var(--bo-muted)]">
+            Cached tools will appear here immediately; the live refresh starts when you select the
+            server.
           </div>
         ) : null}
       </div>
@@ -534,10 +847,14 @@ function ServerDetail({
 export default function BackofficeOrganisationMcpConfiguration() {
   const { servers, serversError } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
+  const refreshFetcher = useFetcher<typeof action>();
+  const lastAutoRefreshSlug = useRef<string | null>(null);
   const navigation = useNavigation();
   const [searchParams] = useSearchParams();
   const [authTab, setAuthTab] = useState<AuthTab>("oauth");
-  const [toolsByServer, setToolsByServer] = useState(() => new Map<string, McpServerToolsState>());
+  const [refreshByServer, setRefreshByServer] = useState(
+    () => new Map<string, McpServerRefreshState>(),
+  );
 
   const saving = navigation.state === "submitting";
   const submittingIntent = navigation.formData?.get("intent");
@@ -551,20 +868,47 @@ export default function BackofficeOrganisationMcpConfiguration() {
   const saveSuccess = actionData?.ok ? actionData.message : null;
 
   useEffect(() => {
-    const serverTools = actionData?.serverTools;
-    if (!serverTools) {
+    const serverRefresh = actionData?.serverRefresh;
+    if (!serverRefresh) {
       return;
     }
-    setToolsByServer((previous) => {
+    setRefreshByServer((previous) => {
       const next = new Map(previous);
-      next.set(serverTools.slug, serverTools);
+      next.set(serverRefresh.slug, serverRefresh);
       return next;
     });
   }, [actionData]);
 
   useEffect(() => {
+    const serverRefresh = refreshFetcher.data?.serverRefresh;
+    if (!serverRefresh) {
+      return;
+    }
+    setRefreshByServer((previous) => {
+      const next = new Map(previous);
+      next.set(serverRefresh.slug, serverRefresh);
+      return next;
+    });
+  }, [refreshFetcher.data]);
+
+  useEffect(() => {
+    if (!selectedServer || isConfiguring) {
+      lastAutoRefreshSlug.current = null;
+      return;
+    }
+    if (lastAutoRefreshSlug.current === selectedServer.slug) {
+      return;
+    }
+    lastAutoRefreshSlug.current = selectedServer.slug;
+    const formData = new FormData();
+    formData.set("intent", "refresh-server");
+    formData.set("slug", selectedServer.slug);
+    void refreshFetcher.submit(formData, { method: "post" });
+  }, [isConfiguring, selectedServer?.slug, refreshFetcher]);
+
+  useEffect(() => {
     const slugs = new Set(servers.map((server) => server.slug));
-    setToolsByServer((previous) => {
+    setRefreshByServer((previous) => {
       if ([...previous.keys()].every((slug) => slugs.has(slug))) {
         return previous;
       }
@@ -572,11 +916,30 @@ export default function BackofficeOrganisationMcpConfiguration() {
     });
   }, [servers]);
 
+  const selectedRefreshState = selectedServer
+    ? refreshByServer.get(selectedServer.slug)
+    : undefined;
+  const refreshFetcherSlug = refreshFetcher.formData?.get("slug");
+  const refreshFetcherIntent = refreshFetcher.formData?.get("intent");
+  const isAutoRefreshingSelected =
+    refreshFetcher.state !== "idle" &&
+    refreshFetcherIntent === "refresh-server" &&
+    refreshFetcherSlug === selectedServer?.slug;
+  const cachedTools = Array.isArray(selectedServer?.cache?.tools) ? selectedServer.cache.tools : [];
   const selectedToolsState = selectedServer
-    ? (toolsByServer.get(selectedServer.slug) ??
-      (Array.isArray(selectedServer.cache?.tools)
-        ? { slug: selectedServer.slug, tools: selectedServer.cache.tools }
-        : undefined))
+    ? selectedRefreshState
+      ? {
+          slug: selectedServer.slug,
+          tools: selectedRefreshState.refresh.tools.length
+            ? selectedRefreshState.refresh.tools
+            : cachedTools,
+          ...(selectedRefreshState.refresh.error
+            ? { error: selectedRefreshState.refresh.error.message }
+            : {}),
+        }
+      : cachedTools.length
+        ? { slug: selectedServer.slug, tools: cachedTools }
+        : undefined
     : undefined;
 
   const configureLinkClass = isConfiguring
@@ -684,8 +1047,10 @@ export default function BackofficeOrganisationMcpConfiguration() {
           <ServerDetail
             server={selectedServer}
             toolsState={selectedToolsState}
-            fetchingTools={
-              submittingIntent === "fetch-tools" && submittingSlug === selectedServer.slug
+            refreshState={selectedRefreshState}
+            checkingServer={
+              isAutoRefreshingSelected ||
+              (submittingIntent === "refresh-server" && submittingSlug === selectedServer.slug)
             }
           />
         ) : (

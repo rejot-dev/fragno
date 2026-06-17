@@ -12,7 +12,7 @@ const createRuntime = (overrides: Partial<McpRuntime>): McpRuntime =>
     deleteServer: async () => {
       throw new Error("not implemented");
     },
-    listTools: async () => {
+    refreshServer: async () => {
       throw new Error("not implemented");
     },
     callTool: async () => {
