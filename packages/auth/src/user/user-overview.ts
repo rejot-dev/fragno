@@ -90,15 +90,12 @@ export function createUserOverviewServices() {
   };
 }
 
-const sortBySchema = z.enum(["email", "createdAt"]);
-const sortOrderSchema = z.enum(["asc", "desc"]);
-
 export const userOverviewRoutesFactory = defineRoutes<typeof authFragmentDefinition>().create(
   ({ services }) => {
     const querySchema = z.object({
       search: z.string().optional(),
-      sortBy: sortBySchema.default("createdAt"),
-      sortOrder: sortOrderSchema.default("desc"),
+      sortBy: z.enum(["email", "createdAt"]).default("createdAt"),
+      sortOrder: z.enum(["asc", "desc"]).default("desc"),
       pageSize: z.coerce.number().int().min(1).max(100).default(20),
     });
 
@@ -129,7 +126,7 @@ export const userOverviewRoutesFactory = defineRoutes<typeof authFragmentDefinit
           ),
           cursor: z.string().optional(),
           hasNextPage: z.boolean(),
-          sortBy: sortBySchema,
+          sortBy: z.enum(["email", "createdAt"]),
         }),
         errorCodes: ["invalid_input"],
         handler: async function ({ query }, { json, error }) {

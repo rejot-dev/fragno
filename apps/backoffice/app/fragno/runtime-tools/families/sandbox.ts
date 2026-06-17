@@ -19,23 +19,16 @@ export type { SandboxRuntime } from "./sandbox-runtime";
 
 type SandboxToolContext = BackofficeToolContext<{ sandbox?: SandboxRuntime }>;
 
-const nonEmptyString = z.string().trim().min(1);
-
-const sandboxStatusSchema = z.enum(["running", "stopped", "error"]);
-const sandboxSummarySchema = z.object({ id: nonEmptyString, status: sandboxStatusSchema });
 const startInputSchema = z.object({
-  id: nonEmptyString,
+  id: z.string().trim().min(1),
   keepAlive: z.boolean().optional(),
   sleepAfter: z.union([z.string(), z.number()]).optional(),
   startupTimeoutMs: z.number().int().positive().optional(),
-  startupCommand: nonEmptyString.optional(),
+  startupCommand: z.string().trim().min(1).optional(),
 });
-const listInputSchema = z.object({});
-const killInputSchema = z.object({ sandboxId: nonEmptyString });
-const killOutputSchema = z.object({ sandboxId: nonEmptyString, killed: z.literal(true) });
 const execInputSchema = z.object({
-  sandboxId: nonEmptyString,
-  command: nonEmptyString,
+  sandboxId: z.string().trim().min(1),
+  command: z.string().trim().min(1),
   timeoutMs: z.number().int().positive().optional(),
 });
 const commandResultSchema = z.discriminatedUnion("ok", [
@@ -96,7 +89,10 @@ const startSandboxTool = defineBackofficeRuntimeTool({
   name: "startSandbox",
   description: "Start a Cloudflare sandbox for the current organisation.",
   inputSchema: startInputSchema,
-  outputSchema: sandboxSummarySchema,
+  outputSchema: z.object({
+    id: z.string().trim().min(1),
+    status: z.enum(["running", "stopped", "error"]),
+  }),
   execute: async (input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).startSandbox(input),
   adapters: {
@@ -151,8 +147,10 @@ const listSandboxesTool = defineBackofficeRuntimeTool({
   namespace: "sandbox",
   name: "listSandboxes",
   description: "List Cloudflare sandboxes for the current organisation.",
-  inputSchema: listInputSchema,
-  outputSchema: z.array(sandboxSummarySchema),
+  inputSchema: z.object({}),
+  outputSchema: z.array(
+    z.object({ id: z.string().trim().min(1), status: z.enum(["running", "stopped", "error"]) }),
+  ),
   execute: async (_input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).listSandboxes(),
   adapters: {
@@ -175,8 +173,8 @@ const killSandboxTool = defineBackofficeRuntimeTool({
   namespace: "sandbox",
   name: "killSandbox",
   description: "Kill a Cloudflare sandbox for the current organisation.",
-  inputSchema: killInputSchema,
-  outputSchema: killOutputSchema,
+  inputSchema: z.object({ sandboxId: z.string().trim().min(1) }),
+  outputSchema: z.object({ sandboxId: z.string().trim().min(1), killed: z.literal(true) }),
   execute: async (input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).killSandbox(input),
   adapters: {

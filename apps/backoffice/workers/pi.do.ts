@@ -50,10 +50,6 @@ const apiKeySchema = z
   .transform((value) => value || undefined)
   .optional();
 
-const thinkingLevelSchema = z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]).optional();
-
-const steeringModeSchema = z.enum(["all", "one-at-a-time"]).optional();
-
 const harnessSchema = z.object({
   id: z
     .string()
@@ -70,8 +66,8 @@ const harnessSchema = z.object({
     .optional(),
   systemPrompt: z.string().trim().min(1, "Harness system prompt is required."),
   tools: z.array(z.enum(PI_TOOL_IDS)).default([]),
-  thinkingLevel: thinkingLevelSchema,
-  steeringMode: steeringModeSchema,
+  thinkingLevel: z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]).optional(),
+  steeringMode: z.enum(["all", "one-at-a-time"]).optional(),
   toolConfig: z.unknown().optional(),
 });
 

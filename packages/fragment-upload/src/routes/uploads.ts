@@ -17,16 +17,12 @@ import {
   toFileMetadata,
 } from "./shared";
 
-const uploadStrategySchema = z.enum(["direct-single", "direct-multipart", "proxy"]);
-const safeIntSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
-const legacyFileKeyPartsSchema = z.array(z.union([z.string(), z.number().int()]));
-
 const createUploadInputSchema = z.object({
   provider: providerNamespaceSchema.optional(),
-  keyParts: legacyFileKeyPartsSchema.optional(),
+  keyParts: z.array(z.union([z.string(), z.number().int()])).optional(),
   fileKey: z.string().optional(),
   filename: z.string().min(1),
-  sizeBytes: safeIntSchema,
+  sizeBytes: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   contentType: z.string().min(1),
   checksum: checksumSchema.optional(),
   tags: z.array(z.string()).optional(),
@@ -36,7 +32,7 @@ const createUploadInputSchema = z.object({
 });
 
 const progressSchema = z.object({
-  bytesUploaded: safeIntSchema.optional(),
+  bytesUploaded: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
   partsUploaded: z.number().int().min(0).optional(),
 });
 
@@ -50,7 +46,7 @@ const completePartsSchema = z.object({
       z.object({
         partNumber: z.number().int().min(1),
         etag: z.string().min(1),
-        sizeBytes: safeIntSchema,
+        sizeBytes: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
       }),
     )
     .min(1),
@@ -90,7 +86,7 @@ const createUploadOutputSchema = uploadRouteDataSchema.extend({
   uploadId: z.string(),
   fileKey: z.string(),
   status: z.enum(["created", "in_progress"]),
-  strategy: uploadStrategySchema,
+  strategy: z.enum(["direct-single", "direct-multipart", "proxy"]),
   expiresAt: z.date(),
 });
 
@@ -98,7 +94,7 @@ const uploadStatusSchema = uploadRouteDataSchema.extend({
   uploadId: z.string(),
   fileKey: z.string(),
   status: z.enum(["created", "in_progress", "completed", "aborted", "failed", "expired"]),
-  strategy: uploadStrategySchema,
+  strategy: z.enum(["direct-single", "direct-multipart", "proxy"]),
   expectedSizeBytes: z.number(),
   bytesUploaded: z.number(),
   partsUploaded: z.number(),

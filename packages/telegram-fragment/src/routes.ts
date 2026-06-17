@@ -111,13 +111,11 @@ const actionSchema = z.enum([
   "upload_video_note",
 ]);
 
-const positiveIntSchema = z.coerce.number().int().positive();
-
 const sendMessageSchema = z.object({
   text: z.string().min(1),
   parseMode: z.enum(["MarkdownV2", "Markdown", "HTML"]).optional(),
   disableWebPagePreview: z.boolean().optional(),
-  replyToMessageId: positiveIntSchema.optional(),
+  replyToMessageId: z.coerce.number().int().positive().optional(),
 });
 
 const editMessageSchema = z.object({
@@ -450,7 +448,11 @@ export const telegramRoutesFactory = defineRoutes(telegramFragmentDefinition).cr
         errorCodes: ["INVALID_MESSAGE_ID"] as const,
         handler: async function ({ pathParams, input }, { json, error }) {
           const payload = await input.valid();
-          const messageIdResult = positiveIntSchema.safeParse(pathParams.messageId);
+          const messageIdResult = z.coerce
+            .number()
+            .int()
+            .positive()
+            .safeParse(pathParams.messageId);
           if (!messageIdResult.success) {
             return error({ message: "Invalid message id", code: "INVALID_MESSAGE_ID" }, 400);
           }

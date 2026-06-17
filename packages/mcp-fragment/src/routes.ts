@@ -37,12 +37,6 @@ const serverOutputSchema = z.object({
   cache: serverConnectionCacheOutputSchema.nullable().optional(),
 });
 
-const serversOutputSchema = z.object({ servers: z.array(serverOutputSchema) });
-const authStatusSchema = z.object({ authenticated: z.boolean(), mode: z.string() });
-const oauthStartOutputSchema = z.object({ authorizationUrl: z.string(), state: z.string() });
-const oauthCallbackOutputSchema = z.object({ authenticated: z.boolean(), mode: z.string() });
-const toolResultSchema = z.record(z.string(), z.unknown());
-
 function publicServer(
   server: {
     id: { toString(): string } | string;
@@ -145,7 +139,7 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
       defineRoute({
         method: "GET",
         path: "/servers",
-        outputSchema: serversOutputSchema,
+        outputSchema: z.object({ servers: z.array(serverOutputSchema) }),
         handler: async function (_, { json }) {
           const [servers, caches] = await this.handlerTx()
             .retrieve(({ forSchema }) =>
@@ -241,7 +235,7 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
       defineRoute({
         method: "GET",
         path: "/servers/:slug/auth/status",
-        outputSchema: authStatusSchema,
+        outputSchema: z.object({ authenticated: z.boolean(), mode: z.string() }),
         errorCodes: ["SERVER_NOT_FOUND"],
         handler: async function ({ pathParams }, { json, error }) {
           const [server, secret] = await this.handlerTx()
@@ -281,7 +275,7 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
         method: "POST",
         path: "/servers/:slug/auth/token",
         inputSchema: tokenAuthInputSchema,
-        outputSchema: authStatusSchema,
+        outputSchema: z.object({ authenticated: z.boolean(), mode: z.string() }),
         errorCodes: ["SERVER_NOT_FOUND"],
         handler: async function ({ input, pathParams }, { json, error }) {
           const { token } = await input.valid();
@@ -340,7 +334,7 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
         method: "POST",
         path: "/servers/:slug/auth/start",
         inputSchema: oauthStartInputSchema,
-        outputSchema: oauthStartOutputSchema,
+        outputSchema: z.object({ authorizationUrl: z.string(), state: z.string() }),
         errorCodes: ["SERVER_NOT_FOUND", "OAUTH_ERROR"],
         handler: async function ({ input, pathParams }, { json, error }) {
           const body = await input.valid();
@@ -373,7 +367,7 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
       defineRoute({
         method: "GET",
         path: "/oauth/callback",
-        outputSchema: oauthCallbackOutputSchema,
+        outputSchema: z.object({ authenticated: z.boolean(), mode: z.string() }),
         errorCodes: ["SERVER_NOT_FOUND", "OAUTH_ERROR", "INVALID_OAUTH_STATE"],
         handler: async function ({ query }, { json, error }) {
           const code = query.get("code");
@@ -686,7 +680,7 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
         method: "POST",
         path: "/servers/:slug/tools/execute",
         inputSchema: toolCallInputSchema,
-        outputSchema: toolResultSchema,
+        outputSchema: z.record(z.string(), z.unknown()),
         errorCodes: ["SERVER_NOT_FOUND", "MCP_ERROR"],
         handler: async function ({ input, pathParams }, { json, error }) {
           const body = await input.valid();

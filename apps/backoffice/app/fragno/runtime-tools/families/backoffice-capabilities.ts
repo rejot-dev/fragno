@@ -48,8 +48,6 @@ type BackofficeCapabilitiesToolContext = BackofficeToolContext<{
   backoffice?: BackofficeCapabilitiesRuntime;
 }>;
 
-const nonEmptyString = z.string().trim().min(1);
-
 const capabilitySummarySchema = z.object({
   id: z.string(),
   label: z.string(),
@@ -130,17 +128,15 @@ const connectionSchemaOutputSchema = z.object({
 });
 export type ConnectionSchemaOutput = z.infer<typeof connectionSchemaOutputSchema>;
 
-const jsonSchemaSchema = z.record(z.string(), z.unknown());
-
 const automationEventDescriptorSchema = z.object({
   source: z.string(),
   eventType: z.string(),
   label: z.string(),
   description: z.string().optional(),
   capabilityId: z.string(),
-  payloadSchema: jsonSchemaSchema.optional(),
-  actorSchema: jsonSchemaSchema.optional(),
-  subjectSchema: jsonSchemaSchema.optional(),
+  payloadSchema: z.record(z.string(), z.unknown()).optional(),
+  actorSchema: z.record(z.string(), z.unknown()).optional(),
+  subjectSchema: z.record(z.string(), z.unknown()).optional(),
   example: z.unknown().optional(),
 });
 const automationEventsCatalogListOutputSchema = z.array(
@@ -151,8 +147,8 @@ const automationEventsCatalogListOutputSchema = z.array(
   }),
 );
 const automationEventCatalogGetInputSchema = z.object({
-  source: nonEmptyString,
-  type: nonEmptyString,
+  source: z.string().trim().min(1),
+  type: z.string().trim().min(1),
 });
 const automationEventCatalogGetOutputSchema = automationEventDescriptorSchema.nullable();
 export type AutomationEventCatalogEntry = z.infer<typeof automationEventDescriptorSchema>;
@@ -455,7 +451,7 @@ const connectionsGetTool = defineBackofficeRuntimeTool({
   namespace: "connections",
   name: "get",
   description: "Get one Backoffice connection status with masked configuration values.",
-  inputSchema: z.object({ id: nonEmptyString }),
+  inputSchema: z.object({ id: z.string().trim().min(1) }),
   outputSchema: connectionStatusSchema,
   execute: async (input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).getConnection(input),
@@ -487,7 +483,7 @@ const connectionsSetupTool = defineBackofficeRuntimeTool({
   namespace: "connections",
   name: "setup",
   description: "Show human steps for configuring a Backoffice connection.",
-  inputSchema: z.object({ id: nonEmptyString }),
+  inputSchema: z.object({ id: z.string().trim().min(1) }),
   outputSchema: connectionSetupOutputSchema,
   execute: async (input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).setupConnection(input),
@@ -519,7 +515,7 @@ const connectionsSchemaTool = defineBackofficeRuntimeTool({
   namespace: "connections",
   name: "schema",
   description: "Show the accepted configuration fields for a Backoffice connection.",
-  inputSchema: z.object({ id: nonEmptyString }),
+  inputSchema: z.object({ id: z.string().trim().min(1) }),
   outputSchema: connectionSchemaOutputSchema,
   execute: async (input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).getConnectionSchema(input),
@@ -554,7 +550,7 @@ const connectionsVerifyTool = defineBackofficeRuntimeTool({
   namespace: "connections",
   name: "verify",
   description: "Verify a Backoffice connection without changing its configuration.",
-  inputSchema: z.object({ id: nonEmptyString }),
+  inputSchema: z.object({ id: z.string().trim().min(1) }),
   outputSchema: connectionStatusSchema,
   execute: async (input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).verifyConnection(input),
@@ -589,7 +585,7 @@ const connectionsResetTool = defineBackofficeRuntimeTool({
   namespace: "connections",
   name: "reset",
   description: "Reset a Backoffice connection configuration. Requires --confirm <id>.",
-  inputSchema: z.object({ id: nonEmptyString, confirm: nonEmptyString }),
+  inputSchema: z.object({ id: z.string().trim().min(1), confirm: z.string().trim().min(1) }),
   outputSchema: connectionStatusSchema,
   execute: async (input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).resetConnection(input),
@@ -630,9 +626,9 @@ const connectionsConfigureTool = defineBackofficeRuntimeTool({
   description:
     "Configure a Backoffice connection. Secrets are accepted in input but masked in output.",
   inputSchema: z.object({
-    id: nonEmptyString,
+    id: z.string().trim().min(1),
     payload: z.unknown(),
-    origin: nonEmptyString.optional(),
+    origin: z.string().trim().min(1).optional(),
   }),
   outputSchema: connectionStatusSchema,
   execute: async (input, context: BackofficeCapabilitiesToolContext) =>
