@@ -5,7 +5,8 @@
     "./packages-private/oxlint-plugins/tsdown-exports-sync.js",
     "./packages-private/oxlint-plugins/fragment-dev-browser-exports.js",
     "./packages-private/oxlint-plugins/docs-icons-sync.js",
-    "./packages-private/oxlint-plugins/vitest-assert-json-response.js"
+    "./packages-private/oxlint-plugins/vitest-assert-json-response.js",
+    "./packages-private/oxlint-plugins/zod-inline-schema-definitions.js"
   ],
   "env": {
     "builtin": true
@@ -90,6 +91,7 @@
     "fragment-dev-browser-exports/exports-match": "error",
     "docs-icons-sync/used-icons": "error",
     "vitest-assert-json-response/assert-json-response": "error",
+    "zod-inline-schema-definitions/inline-one-line": "error",
     "for-direction": "error",
     "no-async-promise-executor": "error",
     "no-case-declarations": "error",
