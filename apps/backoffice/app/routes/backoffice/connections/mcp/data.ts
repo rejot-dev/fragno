@@ -27,12 +27,54 @@ export type McpToolSummary = {
   title?: string;
   description?: string;
   inputSchema?: Record<string, unknown>;
+  annotations?: Record<string, unknown>;
+  _meta?: Record<string, unknown>;
 };
 
 export type McpServerToolsState = {
   slug: string;
   tools: McpToolSummary[];
   error?: string;
+};
+
+export type McpServerRefresh = {
+  ok: boolean;
+  tools: McpToolSummary[];
+  stage: "auth" | "list_tools" | null;
+  checkedAt: string;
+  server: Omit<McpServerSummary, "cache">;
+  auth: {
+    authenticated: boolean;
+    mode: string;
+    tokenPresent: boolean;
+    expiresAt: string | Date | null;
+    expired: boolean | null;
+    scopes: {
+      requested: string[] | null;
+      granted: string[] | null;
+      missing: string[] | null;
+      raw: string | null;
+    };
+  };
+  live: {
+    reachable: boolean;
+    listToolsOk: boolean;
+    toolCount: number | null;
+    protocolVersion: string | null;
+    serverInfo: unknown | null;
+    capabilities: unknown | null;
+  };
+  cache: {
+    presentBeforeCheck: boolean;
+    previousToolCount: number | null;
+    updatedToolCount: number | null;
+  };
+  error: { code: string; message: string } | null;
+};
+
+export type McpServerRefreshState = {
+  slug: string;
+  refresh: McpServerRefresh;
 };
 
 const routeResponseMessage = (response: {

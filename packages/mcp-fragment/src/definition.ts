@@ -354,6 +354,7 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
               if (retrieveResult.cache) {
                 uow.delete("server_connection_cache", retrieveResult.cache.id);
               }
+              uow.triggerHook("internalRefreshServerConfiguration", { serverId });
             }
             if (retrieveResult.changes.consumeStateId) {
               uow.update("oauthState", input.stateId, (b) => b.set({ consumedAt: b.now() }));

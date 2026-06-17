@@ -78,10 +78,10 @@ const mcp = createMcpFragmentClients({ baseUrl: "/mcp" });
 // Hooks
 mcp.useServers;
 mcp.useServer;
-mcp.useTools;
 
 // Mutators
 mcp.createServer;
+mcp.refreshServer;
 mcp.setToken;
 mcp.startOAuth;
 mcp.deleteAuth;
@@ -107,7 +107,8 @@ Auth:
 
 Tools:
 
-- `GET /servers/:slug/tools` - connect to the MCP server and list tools.
+- `POST /servers/:slug/refresh` - connect to the MCP server, refresh cached tools, and return live
+  diagnostics.
 - `POST /servers/:slug/tools/execute` - connect to the MCP server and call one tool.
 
 ## Registering servers
@@ -226,8 +227,8 @@ The callback route:
 
 ### 4. Tool operations use stored OAuth tokens
 
-After callback completion, `GET /servers/:slug/tools` and `POST /servers/:slug/tools/execute` read
-the stored OAuth token payload from the DB and send the access token as a bearer token when
+After callback completion, `POST /servers/:slug/refresh` and `POST /servers/:slug/tools/execute`
+read the stored OAuth token payload from the DB and send the access token as a bearer token when
 connecting to the MCP server.
 
 The fragment still connects per operation. MCP session IDs are used only inside a single operation
@@ -236,7 +237,8 @@ by the SDK transport and are not stored or reused across requests.
 ## Calling tools
 
 ```ts
-const tools = await mcp.useTools.store({ pathParams: { slug: "oauth-tools" } });
+const refresh = await mcp.refreshServer.mutate({}, { pathParams: { slug: "oauth-tools" } });
+const tools = refresh.tools;
 
 const result = await mcp.callTool.mutate(
   {

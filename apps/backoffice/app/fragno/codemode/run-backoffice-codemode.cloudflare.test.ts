@@ -355,7 +355,7 @@ describe("runBackofficeCodemode", () => {
       deleteServer: async () => {
         throw new Error("not used");
       },
-      listTools: async () => {
+      refreshServer: async () => {
         throw new Error("not used");
       },
       startOAuth: async () => {
@@ -419,7 +419,7 @@ describe("runBackofficeCodemode", () => {
       deleteServer: async () => {
         throw new Error("not used");
       },
-      listTools: async () => {
+      refreshServer: async () => {
         throw new Error("not used");
       },
       startOAuth: async () => {

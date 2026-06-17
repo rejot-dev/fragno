@@ -120,9 +120,8 @@ const isBackofficeMeResponse = (status, body) => {
 
   return (
     (status === 400 || status === 401) &&
-    body.error &&
-    typeof body.error === "object" &&
-    body.error.code === "credential_invalid"
+    (body.code === "credential_invalid" ||
+      (body.error && typeof body.error === "object" && body.error.code === "credential_invalid"))
   );
 };
 
