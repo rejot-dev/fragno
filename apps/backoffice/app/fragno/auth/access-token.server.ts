@@ -167,7 +167,10 @@ export const authorizeAccessTokenForOrganization = async (
   request: Request,
   context: Readonly<RouterContextProvider>,
   orgId: string,
-): Promise<{ ok: true; headers: Array<[string, string]> } | { ok: false; response: Response }> => {
+): Promise<
+  | { ok: true; principal: BackofficeAuthPrincipal; headers: Array<[string, string]> }
+  | { ok: false; response: Response }
+> => {
   try {
     const auth = await resolveAuthPrincipal(request, context);
     if (!auth.ok) {
@@ -193,7 +196,7 @@ export const authorizeAccessTokenForOrganization = async (
       return { ok: false, response: new Response("Forbidden", { status: 403 }) };
     }
 
-    return { ok: true, headers: auth.headers };
+    return { ok: true, principal: auth.principal, headers: auth.headers };
   } catch (error) {
     if (error instanceof Response) {
       return { ok: false, response: error };

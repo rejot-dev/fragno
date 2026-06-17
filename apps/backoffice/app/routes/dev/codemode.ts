@@ -28,24 +28,6 @@ const assertDevOnlyLocalRequest = (request: Request) => {
   }
 };
 
-const parseJsonBody = async (request: Request) => {
-  try {
-    return devCodemodeBodySchema.parse(await request.json());
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      throw Response.json(
-        {
-          error: "Invalid dev codemode request body",
-          issues: error.issues,
-        },
-        { status: 400 },
-      );
-    }
-
-    throw Response.json({ error: "Request body must be valid JSON" }, { status: 400 });
-  }
-};
-
 export async function loader() {
   throw new Response("Method Not Allowed", { status: 405 });
 }
@@ -63,7 +45,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     return auth.response;
   }
 
-  const body = await parseJsonBody(request);
+  const body = devCodemodeBodySchema.parse(await request.json());
 
   const { env, runtime } = context.get(BackofficeWorkerContext);
 

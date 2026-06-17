@@ -12,33 +12,26 @@ description:
 Use the running Backoffice dev server as the source of truth for runtime behavior. The server is
 usually `http://localhost:5173`, but may be on another Vite port such as `5174`.
 
-Use `scripts/codemode.mjs` for auth, token refresh, org discovery, and codemode calls. It stores
-local JWT state in `.agents/skills/backoffice-codemode/auth.json`; this file is gitignored. Default
-dev credentials are `wilco@rejot.dev` / `wachtwoord`.
+Use `scripts/codemode.mjs` for auth, org discovery, and codemode calls. It stores local JWT state in
+`.agents/skills/backoffice-codemode/auth.json`; this file is gitignored. Default dev credentials are
+`wilco@rejot.dev` / `wachtwoord`.
 
 ## Required workflow
 
-1. Probe the running server.
-
-   ```bash
-   .agents/skills/backoffice-codemode/scripts/codemode.mjs probe
-   ```
-
-2. Log in, or refresh if already logged in and a request returns `401`.
+1. Run the canonical bootstrap command.
 
    ```bash
    .agents/skills/backoffice-codemode/scripts/codemode.mjs login
-   .agents/skills/backoffice-codemode/scripts/codemode.mjs refresh
    ```
 
-3. Discover the authenticated user's accessible orgs. Prefer `active`; otherwise use the only org or
-   ask the user which org id to use. Never run codemode for an org not listed here.
+   `login` always probes the running Backoffice server, warns if multiple matching dev servers are
+   running, refreshes or signs in with the default dev credentials, stores auth state, and prints
+   the authenticated user plus accessible orgs. Prefer `active`; otherwise use the only org or ask
+   the user which org id to use. Never run codemode for an org not listed here.
 
-   ```bash
-   .agents/skills/backoffice-codemode/scripts/codemode.mjs orgs
-   ```
+   `probe` exists only as a low-level debug command to print the detected base URL.
 
-4. Fetch and read the org-scoped rendered codemode instructions.
+2. Fetch and read the org-scoped rendered codemode instructions.
 
    ```bash
    .agents/skills/backoffice-codemode/scripts/codemode.mjs agents "$ORG_ID" /tmp/backoffice-codemode-AGENTS.md
@@ -48,8 +41,8 @@ dev credentials are `wilco@rejot.dev` / `wachtwoord`.
    `state.*`, workflow helpers, and runtime tool providers. The route reads the org's existing
    `/workspace/codemode.d.ts` file and returns those declarations inline.
 
-5. Run codemode through the authenticated dev route when you need to execute in the Backoffice
-   runtime. The helper auto-refreshes once on `401`.
+3. Run codemode through the authenticated dev route when you need to execute in the Backoffice
+   runtime. The helper auto-authenticates if needed.
 
    ```bash
    .agents/skills/backoffice-codemode/scripts/codemode.mjs exec "$ORG_ID" 'async () => { return await state.readdir("/"); }'
@@ -86,6 +79,20 @@ Inspect code when runtime behavior is unclear. Relevant areas:
 - Prefer small, inspectable codemode snippets. Return JSON-serializable objects with observations,
   file paths changed, and tool call results.
 - For filesystem edits, prefer `state.planEdits()` then `state.applyEditPlan()`.
+
+## Bash route
+
+Use the dev bash route when a dashboard-style shell command is enough and codemode is unnecessary:
+
+```bash
+.agents/skills/backoffice-codemode/scripts/codemode.mjs bash "$ORG_ID" 'ls /workspace'
+.agents/skills/backoffice-codemode/scripts/codemode.mjs bash "$ORG_ID" --cwd /workspace 'find . -maxdepth 2'
+printf '%s\n' 'pwd && ls' | .agents/skills/backoffice-codemode/scripts/codemode.mjs bash "$ORG_ID" -
+```
+
+It calls `POST /__dev/codemode/:orgId/bash`, runs against the org filesystem with the same
+runtime-tool bash adapter as the dashboard terminal, and returns `stdout`, `stderr`, combined
+`output`, `exitCode`, `nextCwd`, and runtime `commandCalls`.
 
 ## Debugging examples
 
