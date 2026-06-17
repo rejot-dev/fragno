@@ -94,6 +94,7 @@ export type CreateInteractiveBashHostInput = {
   sessionId?: string;
   defaultActor?: AutomationEventActor | null;
   context?: BashHostContext;
+  includeDevMount?: boolean;
 };
 
 export const createInteractiveBashHost = (input: CreateInteractiveBashHostInput): BashHost => {
@@ -110,8 +111,13 @@ export const createInteractiveBashHost = (input: CreateInteractiveBashHostInput)
     throw new Error("Interactive bash host requires a runtime context or runtime services.");
   }
 
+  const fs =
+    input.includeDevMount && input.fs instanceof MasterFileSystem
+      ? createAutomationExecutionFileSystem({ masterFs: input.fs, includeDevMount: true })
+      : input.fs;
+
   return createBashHost({
-    fs: input.fs,
+    fs,
     sessionId: input.sessionId,
     context,
   });

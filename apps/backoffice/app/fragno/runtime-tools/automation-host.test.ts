@@ -2,6 +2,9 @@ import { describe, expect, it, assert } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
+import { MasterFileSystem } from "@/files/master-file-system";
+
+import { createInteractiveBashHost } from "./automation-host";
 import type { StoreSetArgs } from "./automation-types";
 import { createBashHost } from "./bash-host";
 import type { OtpRuntime } from "./families/otp-runtime";
@@ -312,6 +315,32 @@ const createAutomationContext = () => ({
       eventType,
     }),
   },
+});
+
+describe("interactive bash host", () => {
+  it("mounts /dev/null for dashboard-style commands backed by a master filesystem", async () => {
+    const { bash } = createInteractiveBashHost({
+      fs: new MasterFileSystem({ mounts: [] }),
+      env: {} as CloudflareEnv,
+      orgId: "org-1",
+      includeDevMount: true,
+      context: {
+        automation: null,
+        automations: null,
+        otp: null,
+        pi: null,
+        reson8: null,
+        resend: null,
+        telegram: null,
+      },
+    });
+
+    const result = await bash.exec("echo discarded >/dev/null && echo kept");
+
+    assert(result.exitCode === 0);
+    assert(result.stdout === "kept\n");
+    assert(result.stderr === "");
+  });
 });
 
 describe("bash host command assembly", () => {

@@ -102,6 +102,30 @@ type BashCommandFactoryInput = {
   context: BashHostContext;
 };
 
+const ensureWritableDevNull = (fs: BashOptions["fs"]) => {
+  const mutableFs = fs as
+    | {
+        mkdirSync?: (path: string, options?: { recursive?: boolean }) => void;
+        writeFileSync?: (path: string, content: string) => void;
+        existsSync?: (path: string) => boolean;
+      }
+    | undefined;
+
+  if (!mutableFs?.mkdirSync || !mutableFs.writeFileSync) {
+    return;
+  }
+
+  try {
+    mutableFs.mkdirSync("/dev", { recursive: true });
+    if (!mutableFs.existsSync?.("/dev/null")) {
+      mutableFs.writeFileSync("/dev/null", "");
+    }
+  } catch {
+    // Some filesystem adapters do not expose writable root mounts. Those hosts
+    // can opt into the MasterFileSystem-backed /dev mount instead.
+  }
+};
+
 const createRegisteredBashCommands = (input: BashCommandFactoryInput) => {
   const context = createBackofficeToolContext(input.context);
   const tools = getAvailableRuntimeTools({
@@ -127,10 +151,13 @@ export const createBashHost = (input: CreateBashHostInput): BashHost => {
     context: input.context,
   };
 
+  ensureWritableDevNull(input.fs);
+
   return {
     bash: new Bash({
       fs: input.fs,
       env: input.env,
+      defenseInDepth: false,
       customCommands: createRegisteredBashCommands(commandInput),
     }),
     sessionId: input.sessionId,
