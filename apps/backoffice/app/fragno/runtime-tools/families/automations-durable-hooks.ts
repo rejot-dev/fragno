@@ -61,7 +61,6 @@ type DurableHooksToolContext = BackofficeToolContext<{
   durableHooks?: DurableHooksRuntime;
 }>;
 
-const nonEmptyString = z.string().trim().min(1);
 const durableHookRecordSchema = z.object({
   id: z.string(),
   hookName: z.string(),
@@ -257,7 +256,7 @@ const listHooksTool = defineBackofficeRuntimeTool({
   description: "List durable hook queue entries for a runtime fragment.",
   inputSchema: z.object({
     fragment: durableHookFragmentSchema,
-    cursor: nonEmptyString.optional(),
+    cursor: z.string().trim().min(1).optional(),
     pageSize: z.number().int().positive().optional(),
   }),
   outputSchema: durableHookQueueResponseSchema,
@@ -311,7 +310,7 @@ const getHookTool = defineBackofficeRuntimeTool({
   namespace: "hooks",
   name: "get",
   description: "Get a durable hook queue entry by id.",
-  inputSchema: z.object({ fragment: durableHookFragmentSchema, hookId: nonEmptyString }),
+  inputSchema: z.object({ fragment: durableHookFragmentSchema, hookId: z.string().trim().min(1) }),
   outputSchema: durableHookRecordSchema.nullable(),
   execute: async (input, context: DurableHooksToolContext) =>
     await getDurableHooksRuntime(context.runtimes.durableHooks).getHook(input),
@@ -353,7 +352,7 @@ const listAutomationEventsTool = defineBackofficeRuntimeTool({
   name: "listEvents",
   description: "List automation events queued through internal ingest hooks.",
   inputSchema: z.object({
-    cursor: nonEmptyString.optional(),
+    cursor: z.string().trim().min(1).optional(),
     pageSize: z.number().int().positive().optional(),
   }),
   outputSchema: automationEventsQueueResponseSchema,
@@ -393,7 +392,7 @@ const getAutomationEventTool = defineBackofficeRuntimeTool({
   namespace: "events",
   name: "getEvent",
   description: "Get an automation ingest event hook queue entry by durable hook id.",
-  inputSchema: z.object({ hookId: nonEmptyString }),
+  inputSchema: z.object({ hookId: z.string().trim().min(1) }),
   outputSchema: durableHookRecordSchema.nullable(),
   execute: getAutomationEventHook,
   adapters: {

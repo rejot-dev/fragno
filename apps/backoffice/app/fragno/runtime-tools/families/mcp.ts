@@ -14,26 +14,25 @@ import {
 } from "../runtime-tools";
 import type { McpRuntime } from "./mcp-runtime";
 
-const nonEmptyString = z.string().trim().min(1);
 const authSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("none") }),
-  z.object({ type: z.literal("bearer"), token: nonEmptyString }),
+  z.object({ type: z.literal("bearer"), token: z.string().trim().min(1) }),
   z.object({
     type: z.literal("oauth"),
-    clientId: nonEmptyString.optional(),
-    clientSecret: nonEmptyString.optional(),
-    scopes: z.array(nonEmptyString).optional(),
+    clientId: z.string().trim().min(1).optional(),
+    clientSecret: z.string().trim().min(1).optional(),
+    scopes: z.array(z.string().trim().min(1)).optional(),
   }),
   z.object({
     type: z.literal("client_credentials"),
-    clientId: nonEmptyString,
-    clientSecret: nonEmptyString,
-    scopes: z.array(nonEmptyString).optional(),
+    clientId: z.string().trim().min(1),
+    clientSecret: z.string().trim().min(1),
+    scopes: z.array(z.string().trim().min(1)).optional(),
   }),
 ]);
 
 const mcpToolSchema = z.object({
-  name: nonEmptyString,
+  name: z.string().trim().min(1),
   title: z.string().optional(),
   description: z.string().optional(),
   inputSchema: z.record(z.string(), z.unknown()).optional(),
@@ -50,31 +49,38 @@ const serverConnectionCacheSchema = z.object({
 });
 
 const serverSchema = z.object({
-  slug: nonEmptyString,
+  slug: z.string().trim().min(1),
   name: z.string().nullable().optional(),
-  endpointUrl: nonEmptyString,
-  authMode: nonEmptyString,
+  endpointUrl: z.string().trim().min(1),
+  authMode: z.string().trim().min(1),
   cache: serverConnectionCacheSchema.nullable().optional(),
 });
 const serversOutputSchema = z.object({ servers: z.array(serverSchema) });
 const createServerInputSchema = z.object({
-  slug: nonEmptyString.regex(/^[a-z0-9][a-z0-9-]*$/),
+  slug: z
+    .string()
+    .trim()
+    .min(1)
+    .regex(/^[a-z0-9][a-z0-9-]*$/),
   name: z.string().trim().optional(),
   endpointUrl: z.string().url(),
   auth: authSchema.default({ type: "none" }),
 });
-const deleteServerInputSchema = z.object({ slug: nonEmptyString });
+const deleteServerInputSchema = z.object({ slug: z.string().trim().min(1) });
 const deleteServerOutputSchema = z.object({ ok: z.literal(true) });
 const authStatusSchema = z.object({ authenticated: z.boolean(), mode: z.string() });
 const oauthStartInputSchema = z.object({
-  slug: nonEmptyString,
+  slug: z.string().trim().min(1),
   scope: z.string().trim().optional(),
   clientId: z.string().trim().optional(),
   clientSecret: z.string().trim().optional(),
 });
 const oauthStartOutputSchema = z.object({ authorizationUrl: z.string().url(), state: z.string() });
-const setTokenInputSchema = z.object({ slug: nonEmptyString, token: nonEmptyString });
-const refreshServerInputSchema = z.object({ slug: nonEmptyString });
+const setTokenInputSchema = z.object({
+  slug: z.string().trim().min(1),
+  token: z.string().trim().min(1),
+});
+const refreshServerInputSchema = z.object({ slug: z.string().trim().min(1) });
 const serverRefreshOutputSchema = z.object({
   ok: z.boolean(),
   tools: z.array(mcpToolSchema),
@@ -110,8 +116,8 @@ const serverRefreshOutputSchema = z.object({
   error: z.object({ code: z.string(), message: z.string() }).nullable(),
 });
 const callToolInputSchema = z.object({
-  slug: nonEmptyString,
-  name: nonEmptyString,
+  slug: z.string().trim().min(1),
+  name: z.string().trim().min(1),
   arguments: z.record(z.string(), z.unknown()).optional(),
   timeoutMs: z.number().int().positive().max(120_000).optional(),
 });

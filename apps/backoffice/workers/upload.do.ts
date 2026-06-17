@@ -47,8 +47,6 @@ const uploadProviderSchema = z.enum([
   UPLOAD_PROVIDER_R2_BINDING,
 ]);
 
-const uploadProviderInputSchema = z.string().trim().pipe(uploadProviderSchema);
-
 const setAdminConfigArgsSchema = z.object({
   orgId: z.string().trim().min(1, "Missing organisation id."),
 });
@@ -70,7 +68,7 @@ const hookQueueOptionsSchema = z
   .optional();
 
 const parseUploadProviderInput = (value: string): ProviderResolution => {
-  const parsed = uploadProviderInputSchema.safeParse(value);
+  const parsed = z.string().trim().pipe(uploadProviderSchema).safeParse(value);
   if (!parsed.success) {
     return { provider: null, invalidProvider: value.trim() || value };
   }

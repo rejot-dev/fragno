@@ -112,8 +112,6 @@ type AutomationWorkflowToolContext = BackofficeToolContext<{
   workflow?: AutomationWorkflowRuntime;
 }>;
 
-const nonEmptyString = z.string().trim().min(1);
-
 const workflowInstanceStatusSchema = z.object({
   status: z.enum(["active", "paused", "errored", "terminated", "complete", "waiting"]),
   error: z.object({ name: z.string(), message: z.string() }).optional(),
@@ -121,18 +119,18 @@ const workflowInstanceStatusSchema = z.object({
 });
 
 const workflowCreateInstanceResultSchema = z.object({
-  workflowName: nonEmptyString,
-  instanceId: nonEmptyString,
+  workflowName: z.string().trim().min(1),
+  instanceId: z.string().trim().min(1),
 });
 
 const workflowListResultSchema = z.object({
-  workflows: z.array(z.object({ name: nonEmptyString })),
+  workflows: z.array(z.object({ name: z.string().trim().min(1) })),
 });
 
 const workflowListInstancesResultSchema = z.object({
   instances: z.array(
     z.object({
-      id: nonEmptyString,
+      id: z.string().trim().min(1),
       details: workflowInstanceStatusSchema,
       createdAt: z.union([z.string(), z.date()]),
     }),
@@ -142,7 +140,7 @@ const workflowListInstancesResultSchema = z.object({
 });
 
 const workflowInstanceDetailsSchema = z.object({
-  id: nonEmptyString,
+  id: z.string().trim().min(1),
   details: workflowInstanceStatusSchema,
   meta: z.record(z.string(), z.unknown()),
 });
@@ -150,11 +148,11 @@ const workflowInstanceDetailsSchema = z.object({
 const workflowRetryInstanceResultSchema = z.object({
   accepted: z.literal(true),
   instance: z.object({
-    id: nonEmptyString,
+    id: z.string().trim().min(1),
     details: workflowInstanceStatusSchema,
   }),
   retry: z.object({
-    stepKey: nonEmptyString,
+    stepKey: z.string().trim().min(1),
     attempts: z.number(),
     maxAttempts: z.number(),
     scheduledAt: z.union([z.string(), z.date()]),
@@ -272,9 +270,9 @@ const workflowInstanceCreateTool = defineAutomationWorkflowTool({
   name: "createInstance",
   description: "Create a durable workflow instance by workflow name.",
   inputSchema: z.object({
-    workflowName: nonEmptyString,
-    remoteWorkflowName: nonEmptyString.optional(),
-    instanceId: nonEmptyString.optional(),
+    workflowName: z.string().trim().min(1),
+    remoteWorkflowName: z.string().trim().min(1).optional(),
+    instanceId: z.string().trim().min(1).optional(),
     params: z.unknown().optional(),
   }),
   outputSchema: workflowCreateInstanceResultSchema,
@@ -334,9 +332,9 @@ const workflowInstanceSendEventTool = defineAutomationWorkflowTool({
   name: "sendEvent",
   description: "Send an event to a durable workflow instance.",
   inputSchema: z.object({
-    workflowName: nonEmptyString,
-    instanceId: nonEmptyString,
-    type: nonEmptyString,
+    workflowName: z.string().trim().min(1),
+    instanceId: z.string().trim().min(1),
+    type: z.string().trim().min(1),
     payload: z.unknown().optional(),
   }),
   outputSchema: z.unknown(),
@@ -394,11 +392,11 @@ const workflowInstanceRetryTool = defineAutomationWorkflowTool({
   name: "retryInstance",
   description: "Retry a durable workflow instance from a selected step.",
   inputSchema: z.object({
-    workflowName: nonEmptyString,
-    instanceId: nonEmptyString,
-    stepKey: nonEmptyString.optional(),
+    workflowName: z.string().trim().min(1),
+    instanceId: z.string().trim().min(1),
+    stepKey: z.string().trim().min(1).optional(),
     delayMs: z.number().int().nonnegative().optional(),
-    reason: nonEmptyString.optional(),
+    reason: z.string().trim().min(1).optional(),
   }),
   outputSchema: workflowRetryInstanceResultSchema,
   execute: async (input, context) => {
@@ -490,11 +488,11 @@ const workflowListInstancesTool = defineAutomationWorkflowTool({
   name: "listInstances",
   description: "List durable workflow instances.",
   inputSchema: z.object({
-    workflowName: nonEmptyString,
+    workflowName: z.string().trim().min(1),
     status: workflowInstanceStatusSchema.shape.status.optional(),
-    remoteWorkflowName: nonEmptyString.optional(),
+    remoteWorkflowName: z.string().trim().min(1).optional(),
     pageSize: z.number().int().positive().optional(),
-    cursor: nonEmptyString.optional(),
+    cursor: z.string().trim().min(1).optional(),
   }),
   outputSchema: workflowListInstancesResultSchema,
   execute: async (input, context) => {
@@ -557,7 +555,10 @@ const workflowGetInstanceTool = defineAutomationWorkflowTool({
   namespace: "workflow",
   name: "getInstance",
   description: "Get durable workflow instance details.",
-  inputSchema: z.object({ workflowName: nonEmptyString, instanceId: nonEmptyString }),
+  inputSchema: z.object({
+    workflowName: z.string().trim().min(1),
+    instanceId: z.string().trim().min(1),
+  }),
   outputSchema: workflowInstanceDetailsSchema,
   execute: async (input, context) => {
     const runtime = getAutomationWorkflowRuntime(context.runtimes.workflow);
@@ -602,7 +603,10 @@ const workflowHistoryTool = defineAutomationWorkflowTool({
   namespace: "workflow",
   name: "getHistory",
   description: "Get durable workflow step, event, and emission history.",
-  inputSchema: z.object({ workflowName: nonEmptyString, instanceId: nonEmptyString }),
+  inputSchema: z.object({
+    workflowName: z.string().trim().min(1),
+    instanceId: z.string().trim().min(1),
+  }),
   outputSchema: workflowHistorySchema,
   execute: async (input, context) => {
     const runtime = getAutomationWorkflowRuntime(context.runtimes.workflow);

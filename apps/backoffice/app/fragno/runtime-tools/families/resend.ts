@@ -24,24 +24,20 @@ const MAX_PAGE_SIZE = 100;
 
 type ResendToolContext = BackofficeToolContext<{ resend?: ResendRuntime }>;
 
-const nonEmptyString = z.string().trim().min(1);
-const orderSchema = z.enum(["asc", "desc"]).optional();
-const pageSizeSchema = z.number().int().min(1).max(MAX_PAGE_SIZE).optional();
-
 const threadListInputSchema = z.object({
-  cursor: nonEmptyString.optional(),
-  pageSize: pageSizeSchema,
-  order: orderSchema,
+  cursor: z.string().trim().min(1).optional(),
+  pageSize: z.number().int().min(1).max(MAX_PAGE_SIZE).optional(),
+  order: z.enum(["asc", "desc"]).optional(),
 });
 
 const threadMessagesInputSchema = threadListInputSchema.extend({
-  threadId: nonEmptyString,
+  threadId: z.string().trim().min(1),
 });
 
 const threadReplyInputSchema = z.object({
-  threadId: nonEmptyString,
-  subject: nonEmptyString.optional(),
-  body: nonEmptyString,
+  threadId: z.string().trim().min(1),
+  subject: z.string().trim().min(1).optional(),
+  body: z.string().trim().min(1),
 });
 
 const resendThreadSummaryOutputSchema = z.object({

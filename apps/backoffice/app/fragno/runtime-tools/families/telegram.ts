@@ -80,13 +80,10 @@ type TelegramFileDownloadBashArgs = TelegramFileDownloadArgs & {
 
 type TelegramToolContext = BackofficeToolContext<{ telegram?: TelegramRuntime }>;
 
-const nonEmptyString = z.string().trim().min(1);
-const parseModeSchema = z.enum(["MarkdownV2", "Markdown", "HTML"]);
-
-const fileGetInputSchema = z.object({ fileId: nonEmptyString });
-const fileDownloadInputSchema = z.object({ fileId: nonEmptyString });
+const fileGetInputSchema = z.object({ fileId: z.string().trim().min(1) });
+const fileDownloadInputSchema = z.object({ fileId: z.string().trim().min(1) });
 const fileMetadataOutputSchema = z.object({
-  fileId: nonEmptyString,
+  fileId: z.string().trim().min(1),
   fileUniqueId: z.string().nullable().optional(),
   filePath: z.string().nullable().optional(),
   fileSize: z.number().int().nullable().optional(),
@@ -96,21 +93,21 @@ const downloadedFileOutputSchema = z.object({
   contentType: z.string().optional(),
 });
 const sendMessageInputSchema = z.object({
-  chatId: nonEmptyString,
-  text: nonEmptyString,
-  parseMode: parseModeSchema.optional(),
+  chatId: z.string().trim().min(1),
+  text: z.string().trim().min(1),
+  parseMode: z.enum(["MarkdownV2", "Markdown", "HTML"]).optional(),
   disableWebPagePreview: z.boolean().optional(),
   replyToMessageId: z.number().int().optional(),
 });
 const sendActionInputSchema = z.object({
-  chatId: nonEmptyString,
+  chatId: z.string().trim().min(1),
   action: z.literal("typing"),
 });
 const editMessageInputSchema = z.object({
-  chatId: nonEmptyString,
-  messageId: nonEmptyString,
-  text: nonEmptyString,
-  parseMode: parseModeSchema.optional(),
+  chatId: z.string().trim().min(1),
+  messageId: z.string().trim().min(1),
+  text: z.string().trim().min(1),
+  parseMode: z.enum(["MarkdownV2", "Markdown", "HTML"]).optional(),
   disableWebPagePreview: z.boolean().optional(),
 });
 const queuedMessageOutputSchema = z.object({ ok: z.boolean(), queued: z.boolean() });
@@ -149,7 +146,7 @@ const defaultStructuredOutput = (_args: string[], parsed: ParsedCliTokens) => {
 
 const parseModeField = {
   option: "parse-mode",
-  transform: (value: string) => parseModeSchema.parse(value),
+  transform: (value: string) => z.enum(["MarkdownV2", "Markdown", "HTML"]).parse(value),
 };
 
 const telegramParserOptions = { normalizeArgs: expandTelegramShortFlags };

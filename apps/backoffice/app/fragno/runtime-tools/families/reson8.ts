@@ -23,16 +23,12 @@ import {
 
 type Reson8ToolContext = BackofficeToolContext<{ reson8?: Reson8Runtime }>;
 
-const nonEmptyString = z.string().trim().min(1);
-const encodingSchema = z.enum(["auto", "pcm_s16le"]).optional();
-const positiveIntegerSchema = z.number().int().positive().optional();
-
 const transcribeInputSchema = z.object({
   audio: z.unknown().optional(),
-  encoding: encodingSchema,
-  sampleRate: positiveIntegerSchema,
-  channels: positiveIntegerSchema,
-  customModelId: nonEmptyString.optional(),
+  encoding: z.enum(["auto", "pcm_s16le"]).optional(),
+  sampleRate: z.number().int().positive().optional(),
+  channels: z.number().int().positive().optional(),
+  customModelId: z.string().trim().min(1).optional(),
   includeTimestamps: z.boolean().optional(),
   includeWords: z.boolean().optional(),
   includeConfidence: z.boolean().optional(),

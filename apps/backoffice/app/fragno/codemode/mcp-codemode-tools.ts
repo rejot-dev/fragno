@@ -105,9 +105,6 @@ const RESERVED_CODEMODE_NAMES = new Set([
   "__proto__",
 ]);
 
-const mcpToolInputSchema = z.record(z.string(), z.unknown()).optional().default({});
-const mcpToolOutputSchema = z.record(z.string(), z.unknown());
-
 const sanitizeMcpCodemodeName = (name: string) => {
   const sanitized = name
     .trim()
@@ -236,8 +233,8 @@ const createMcpCodemodeRuntimeTools = ({
       namespace: server.providerName,
       name: tool.codemodeName,
       description: tool.description,
-      inputSchema: mcpToolInputSchema,
-      outputSchema: mcpToolOutputSchema,
+      inputSchema: z.record(z.string(), z.unknown()).optional().default({}),
+      outputSchema: z.record(z.string(), z.unknown()),
       execute: async (input) =>
         await runtime.callTool({
           slug: server.slug,

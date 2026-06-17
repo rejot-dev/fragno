@@ -25,13 +25,11 @@ export type OtpRuntime = {
 
 type OtpToolContext = BackofficeToolContext<{ otp?: OtpRuntime }>;
 
-const nonEmptyString = z.string().trim().min(1);
-
 const actorSchema = z.object({
   scope: z.literal("external"),
-  source: nonEmptyString,
-  type: nonEmptyString,
-  id: nonEmptyString,
+  source: z.string().trim().min(1),
+  type: z.string().trim().min(1),
+  id: z.string().trim().min(1),
 });
 
 const createClaimInputSchema = z.object({
@@ -40,13 +38,13 @@ const createClaimInputSchema = z.object({
 });
 
 const identityClaimRecordSchema = z.object({
-  url: nonEmptyString,
-  otpId: nonEmptyString,
-  externalId: nonEmptyString,
-  code: nonEmptyString,
+  url: z.string().trim().min(1),
+  otpId: z.string().trim().min(1),
+  externalId: z.string().trim().min(1),
+  code: z.string().trim().min(1),
   actor: actorSchema,
-  type: nonEmptyString.optional(),
-  expiresAt: nonEmptyString.optional(),
+  type: z.string().trim().min(1).optional(),
+  expiresAt: z.string().trim().min(1).optional(),
 });
 
 const getOtpRuntime = (runtime: OtpToolContext["runtimes"]["otp"]): OtpRuntime => {

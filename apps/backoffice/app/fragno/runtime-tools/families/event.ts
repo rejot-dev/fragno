@@ -23,23 +23,21 @@ export type EventRuntime = {
 
 type EventToolContext = BackofficeToolContext<{ event?: EventRuntime }>;
 
-const nonEmptyString = z.string().trim().min(1);
-
 const eventEmitInputSchema = z.object({
-  eventType: nonEmptyString,
-  source: nonEmptyString.optional(),
-  externalActorId: nonEmptyString.optional(),
-  actorType: nonEmptyString.optional(),
-  subjectUserId: nonEmptyString.optional(),
+  eventType: z.string().trim().min(1),
+  source: z.string().trim().min(1).optional(),
+  externalActorId: z.string().trim().min(1).optional(),
+  actorType: z.string().trim().min(1).optional(),
+  subjectUserId: z.string().trim().min(1).optional(),
   payload: z.record(z.string(), z.unknown()).optional(),
 });
 
 const eventEmitOutputSchema = z.object({
   accepted: z.boolean(),
-  eventId: nonEmptyString,
-  orgId: nonEmptyString.optional(),
-  source: nonEmptyString,
-  eventType: nonEmptyString,
+  eventId: z.string().trim().min(1),
+  orgId: z.string().trim().min(1).optional(),
+  source: z.string().trim().min(1),
+  eventType: z.string().trim().min(1),
 });
 
 const getEventRuntime = (runtime: EventToolContext["runtimes"]["event"]): EventRuntime => {

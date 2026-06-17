@@ -5,11 +5,9 @@ import { decodeCursor, type Cursor } from "@fragno-dev/db";
 
 import { mailingListFragmentDefinition, type SortField } from "./definition";
 
-const sortBySchema = z.enum(["email", "subscribedAt"]);
-
 const queryParamsSchema = z.object({
   search: z.string().optional(),
-  sortBy: sortBySchema.catch("subscribedAt"),
+  sortBy: z.enum(["email", "subscribedAt"]).catch("subscribedAt"),
   sortOrder: z.enum(["asc", "desc"]).catch("desc"),
   pageSize: z.coerce.number().min(1).max(100).catch(20),
   cursor: z.string().optional(),
@@ -61,7 +59,7 @@ export const mailingListRoutesFactory = defineRoutes(mailingListFragmentDefiniti
           ),
           cursor: z.string().optional(),
           hasNextPage: z.boolean(),
-          sortBy: sortBySchema,
+          sortBy: z.enum(["email", "subscribedAt"]),
         }),
         handler: async function ({ query }, { json }) {
           const params = parseQueryParams(query);

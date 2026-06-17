@@ -45,8 +45,6 @@ type AutomationStoreToolContext = BackofficeToolContext<
   { actor?: AutomationEventActor | null }
 >;
 
-const nonEmptyString = z.string().trim().min(1);
-
 const readJsonValueOption = (parsed: ParsedCliTokens, name: string, required = false) => {
   const raw = readStringOption(parsed, name, required);
   if (typeof raw === "undefined") {
@@ -156,7 +154,7 @@ const storeGetTool = defineAutomationStoreTool({
   namespace: "store",
   name: "get",
   description: "Get an automation store entry by key.",
-  inputSchema: z.object({ key: nonEmptyString }),
+  inputSchema: z.object({ key: z.string().trim().min(1) }),
   outputSchema: automationStoreEntrySchema.nullable(),
   execute: async (input, context) =>
     await getAutomationStoreRuntime(context.runtimes.automations).get(input),
@@ -314,7 +312,7 @@ const storeDeleteTool = defineAutomationStoreTool({
   namespace: "store",
   name: "delete",
   description: "Delete an automation store entry by key.",
-  inputSchema: z.object({ key: nonEmptyString }),
+  inputSchema: z.object({ key: z.string().trim().min(1) }),
   outputSchema: automationStoreDeleteResultSchema.nullable(),
   execute: async (input, context) =>
     await getAutomationStoreRuntime(context.runtimes.automations).delete(input),

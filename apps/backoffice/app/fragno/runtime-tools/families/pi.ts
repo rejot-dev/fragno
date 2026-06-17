@@ -22,8 +22,6 @@ import {
 
 type PiToolContext = BackofficeToolContext<{ pi?: PiRuntime }>;
 
-const nonEmptyString = z.string().trim().min(1);
-
 const PI_SESSION_STATUSES = [
   "active",
   "paused",
@@ -69,16 +67,16 @@ const sessionDetailBaseOutputSchema = sessionBaseOutputSchema.omit({ agent: true
 });
 
 const sessionCreateInputSchema = z.object({
-  agent: nonEmptyString,
-  name: nonEmptyString.optional(),
-  systemMessage: nonEmptyString.optional(),
+  agent: z.string().trim().min(1),
+  name: z.string().trim().min(1).optional(),
+  systemMessage: z.string().trim().min(1).optional(),
   metadata: z.unknown().optional(),
-  tags: z.array(nonEmptyString).optional(),
+  tags: z.array(z.string().trim().min(1)).optional(),
   steeringMode: z.enum(["all", "one-at-a-time"]).optional(),
 });
 
 const sessionGetInputSchema = z.object({
-  sessionId: nonEmptyString,
+  sessionId: z.string().trim().min(1),
   events: z.boolean().optional(),
   trace: z.boolean().optional(),
   turns: z.boolean().optional(),
@@ -89,8 +87,8 @@ const sessionListInputSchema = z.object({
 });
 
 const sessionTurnInputSchema = z.object({
-  sessionId: nonEmptyString,
-  text: nonEmptyString,
+  sessionId: z.string().trim().min(1),
+  text: z.string().trim().min(1),
 });
 
 const sessionExtraOutputSchema = {
