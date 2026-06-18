@@ -43,9 +43,9 @@ export { SYSTEM_AUTOMATION_SCRIPT_PATHS } from "./content/system-automations";
 export { STARTER_AUTOMATION_SCRIPT_PATHS } from "./content/starter-automations";
 export { SYSTEM_FILE_CONTENT, SYSTEM_GUIDANCE } from "./content/system";
 export { MasterFileSystem, createMasterFileSystem } from "./master-file-system";
-
-export { createOrgFileSystem } from "./create-file-system";
-export type { CreateOrgFileSystemOptions } from "./create-file-system";
+export type { CreateMasterFileSystemOptions } from "./master-file-system";
+export { createBackofficeFileSystem } from "./create-file-system";
+export type { CreateBackofficeFileSystemOptions } from "./create-file-system";
 export { createSystemFilesContext } from "./system-context";
 export {
   getFilesNodeDetail,

@@ -2,7 +2,7 @@ import { Link, redirect, useOutletContext } from "react-router";
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { BackofficePageHeader } from "@/components/backoffice";
-import { createOrgFileSystem, type IFileSystem } from "@/files";
+import { createBackofficeFileSystem, type IFileSystem } from "@/files";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import type { AutomationCommandOptionSpec } from "@/fragno/runtime-tools/automation-types";
@@ -218,7 +218,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         },
         scope: { kind: "org" as const, orgId: activeOrg.id },
       };
-      const fileSystem = await createOrgFileSystem({
+      const fileSystem = await createBackofficeFileSystem({
         objects: runtime.objects,
         kernel,
         execution,
@@ -266,7 +266,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   try {
-    const { env, runtime } = context.get(BackofficeWorkerContext);
+    const { runtime } = context.get(BackofficeWorkerContext);
     const kernel = new BackofficeKernel({ objects: runtime.objects });
     const execution = {
       actor: {
@@ -277,14 +277,13 @@ export async function action({ request, context }: Route.ActionArgs) {
       },
       scope: { kind: "org" as const, orgId: activeOrg.id },
     };
-    const fileSystem = await createOrgFileSystem({
+    const fileSystem = await createBackofficeFileSystem({
       objects: runtime.objects,
       kernel,
       execution,
     });
     const { bash } = createInteractiveBashHost({
       fs: fileSystem,
-      env,
       context: createRouteBackedRuntimeContext({
         runtime,
         kernel,

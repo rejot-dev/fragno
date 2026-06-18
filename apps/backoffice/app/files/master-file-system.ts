@@ -449,12 +449,6 @@ export const createMasterFileSystem = async (
   context: FilesContext,
   options: CreateMasterFileSystemOptions = {},
 ): Promise<MasterFileSystem> => {
-  if (context.execution.scope.kind !== "org") {
-    throw new Error(
-      `File system context requires an organisation scope, got ${context.execution.scope.kind}.`,
-    );
-  }
-
   const contributors = options.contributors ?? getBuiltInFileContributors();
   const mounts = [] as ResolvedFileMount[];
 

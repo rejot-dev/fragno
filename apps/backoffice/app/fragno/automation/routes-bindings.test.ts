@@ -21,7 +21,7 @@ const createAutomation = async () => {
   return createAutomationFragment(
     {
       automationFileSystem: await createMasterFileSystem(
-        createSystemFilesContext({ orgId: "org_123", uploadConfig: null }),
+        createSystemFilesContext({ orgId: "org_123" }),
       ),
     },
     {

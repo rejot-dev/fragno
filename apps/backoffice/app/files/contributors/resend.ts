@@ -1,5 +1,6 @@
 import type { ResendThreadMessage, ResendThreadSummary } from "@fragno-dev/resend-fragment";
 
+import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
 import {
   NotConfiguredError,
   buildResendThreadMarkdown,
@@ -184,14 +185,27 @@ export const resendFileContributor: FileContributor = {
 };
 
 const createResendRuntime = (ctx: FilesContext): ResendRuntime | null => {
-  if (!ctx.resendRuntime) {
+  if (!ctx.objects) {
+    return null;
+  }
+
+  let resendObject;
+  try {
+    resendObject = ctx.kernel.scoped("RESEND", ctx.execution.scope, ctx.objects.resend);
+  } catch (error) {
+    if (error instanceof BackofficeUnavailableError) {
+      return null;
+    }
+    throw error;
+  }
+  if (!resendObject?.fetch) {
     return null;
   }
 
   return createRouteBackedResendRuntime({
-    baseUrl: ctx.resendRuntime.baseUrl ?? ctx.origin ?? "https://resend.runtime",
-    headers: ctx.resendRuntime.headers,
-    fetch: ctx.resendRuntime.fetch,
+    baseUrl: ctx.origin ?? "https://resend.runtime",
+    fetch: async (input: RequestInfo | URL) =>
+      resendObject.fetch(input instanceof Request ? input : new Request(input)),
   });
 };
 

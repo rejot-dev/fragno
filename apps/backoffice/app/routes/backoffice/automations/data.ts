@@ -2,7 +2,7 @@ import { createRouteCaller } from "@fragno-dev/core/api";
 import type { RouterContextProvider } from "react-router";
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { createOrgFileSystem } from "@/files";
+import { createBackofficeFileSystem } from "@/files";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import {
   AUTOMATION_SYSTEM_ROOT,
@@ -108,7 +108,7 @@ const createBackofficeAutomationFileSystem = async ({
   const { runtime } = context.get(BackofficeWorkerContext);
   const kernel = new BackofficeKernel({ objects: runtime.objects });
   const execution = await requireBackofficeContext(request, context, { kind: "org", orgId });
-  return createOrgFileSystem({ objects: runtime.objects, kernel, execution });
+  return createBackofficeFileSystem({ objects: runtime.objects, kernel, execution });
 };
 
 const normalizeAutomationScriptPath = (value: string) => {

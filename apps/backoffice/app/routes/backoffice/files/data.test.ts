@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi, assert } from "vitest";
 
-const { createOrgFileSystemMock, requireBackofficeContextMock } = vi.hoisted(() => ({
-  createOrgFileSystemMock: vi.fn(),
+const { createBackofficeFileSystemMock, requireBackofficeContextMock } = vi.hoisted(() => ({
+  createBackofficeFileSystemMock: vi.fn(),
   requireBackofficeContextMock: vi.fn(),
 }));
 
@@ -9,7 +9,7 @@ vi.mock("@/files", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/files")>();
   return {
     ...actual,
-    createOrgFileSystem: createOrgFileSystemMock,
+    createBackofficeFileSystem: createBackofficeFileSystemMock,
   };
 });
 
@@ -37,7 +37,7 @@ const registerFileContributor = (contributor: FileContributor): void => {
 
 beforeEach(() => {
   contributors.length = 0;
-  createOrgFileSystemMock.mockReset();
+  createBackofficeFileSystemMock.mockReset();
   requireBackofficeContextMock.mockReset();
   requireBackofficeContextMock.mockResolvedValue({
     actor: {
@@ -48,8 +48,8 @@ beforeEach(() => {
     },
     scope: { kind: "org", orgId: "acme-org" },
   });
-  createOrgFileSystemMock.mockImplementation(() =>
-    createMasterFileSystem(createSystemFilesContext({ orgId: "acme-org", uploadConfig: null }), {
+  createBackofficeFileSystemMock.mockImplementation(() =>
+    createMasterFileSystem(createSystemFilesContext({ orgId: "acme-org" }), {
       contributors: [...getBuiltInFileContributors(), ...contributors],
     }),
   );

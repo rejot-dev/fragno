@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi, assert } from "vitest";
 
-const { getAuthMeMock, createOrgFileSystemMock, requireBackofficeContextMock } = vi.hoisted(
+const { getAuthMeMock, createBackofficeFileSystemMock, requireBackofficeContextMock } = vi.hoisted(
   () => ({
     getAuthMeMock: vi.fn(),
-    createOrgFileSystemMock: vi.fn(),
+    createBackofficeFileSystemMock: vi.fn(),
     requireBackofficeContextMock: vi.fn(),
   }),
 );
@@ -20,7 +20,7 @@ vi.mock("@/files", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/files")>();
   return {
     ...actual,
-    createOrgFileSystem: createOrgFileSystemMock,
+    createBackofficeFileSystem: createBackofficeFileSystemMock,
   };
 });
 
@@ -46,7 +46,7 @@ describe("backoffice files download route", () => {
   beforeEach(() => {
     contributors.length = 0;
     getAuthMeMock.mockReset();
-    createOrgFileSystemMock.mockReset();
+    createBackofficeFileSystemMock.mockReset();
     requireBackofficeContextMock.mockReset();
     requireBackofficeContextMock.mockResolvedValue({
       actor: {
@@ -57,8 +57,8 @@ describe("backoffice files download route", () => {
       },
       scope: { kind: "org", orgId: "org_123" },
     });
-    createOrgFileSystemMock.mockImplementation(() =>
-      createMasterFileSystem(createSystemFilesContext({ orgId: "org_123", uploadConfig: null }), {
+    createBackofficeFileSystemMock.mockImplementation(() =>
+      createMasterFileSystem(createSystemFilesContext({ orgId: "org_123" }), {
         contributors: [...getBuiltInFileContributors(), ...contributors],
       }),
     );

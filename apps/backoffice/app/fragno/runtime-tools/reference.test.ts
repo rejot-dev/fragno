@@ -592,6 +592,18 @@ describe("runtime tool reference generation", () => {
     expect(domainProviderTypes).not.toContain("declare const telegram");
   });
 
+  test("renders scoped context handles without old org-only helper names", () => {
+    const types = createCodemodeDts({ families: runtimeToolFamilies, stateTypes: STATE_TYPES });
+
+    expect(types).toContain("readonly current: BackofficeCodemodeScopedProviders;");
+    expect(types).toContain("org(orgId: string): BackofficeCodemodeScopedProviders;");
+    expect(types).toContain("user(userId: string): BackofficeCodemodeScopedProviders;");
+    expect(types).toContain("Project contexts are reserved until the project model exists.");
+    expect(types).not.toContain("createOrg");
+    expect(types).not.toContain("OrgFileSystem");
+    expect(types).not.toContain("org-only");
+  });
+
   test("renders sandbox provider types from the sandbox capability", () => {
     const piTypes = createCodemodeDts({
       configuredCapabilityIds: ["pi"],

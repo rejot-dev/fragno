@@ -44,7 +44,7 @@ describe("automation routes /scripts", () => {
   beforeEach(async () => {
     fragment = createAutomation({
       automationFileSystem: await createMasterFileSystem(
-        createSystemFilesContext({ orgId: "org_123", uploadConfig: null }),
+        createSystemFilesContext({ orgId: "org_123" }),
       ),
     });
   });

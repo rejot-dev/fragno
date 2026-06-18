@@ -19,7 +19,7 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
-import { createOrgFileSystem, type MasterFileSystem } from "@/files";
+import { createBackofficeFileSystem, type MasterFileSystem } from "@/files";
 
 import type {
   BackofficeCodemodeEnv,
@@ -172,7 +172,6 @@ const createBashTool = (
   fs: MasterFileSystem,
   sessionId: string,
   context: PiBashCommandContext,
-  env: CloudflareEnv,
 ): AgentTool =>
   defineTool({
     name: "bash",
@@ -195,7 +194,6 @@ const createBashTool = (
 
       const { bash, commandCallsResult } = createInteractiveBashHost({
         fs,
-        env,
         sessionId,
         context,
       });
@@ -337,7 +335,7 @@ const getSessionFs = async (
     return existing;
   }
 
-  const pendingFileSystem = createOrgFileSystem({
+  const pendingFileSystem = createBackofficeFileSystem({
     objects: context.objects,
     kernel: context.kernel,
     execution: context.execution,
@@ -376,7 +374,7 @@ export const createPiToolRegistry = ({
     }
 
     const fileSystem = await getSessionFs(sessionFileSystems, session.id, sessionFileSystemContext);
-    return createBashTool(fileSystem, session.id, bashCommandContext, env);
+    return createBashTool(fileSystem, session.id, bashCommandContext);
   },
   execCodeMode: async ({ session }) => {
     const fileSystem = await getSessionFs(sessionFileSystems, session.id, sessionFileSystemContext);

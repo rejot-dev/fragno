@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useParams } from "react-router";
 
-import { createOrgPiClient } from "@/fragno/pi/pi-client";
+import { createPiClient } from "@/fragno/pi/pi-client";
 
 const stringifyJson = (value: unknown) =>
   JSON.stringify(
@@ -38,7 +38,7 @@ export default function BackofficeOrganisationPiDebugSessionDetail() {
   const resolvedOrgId = orgId ?? "";
   const resolvedWorkflowName = workflowName ?? "";
   const resolvedSessionId = sessionId ?? "";
-  const pi = useMemo(() => createOrgPiClient(resolvedOrgId), [resolvedOrgId]);
+  const pi = useMemo(() => createPiClient(resolvedOrgId), [resolvedOrgId]);
   const sessionPath = { workflowName: resolvedWorkflowName, sessionId: resolvedSessionId };
   const sessionDetail = pi.useSessionDetail({ path: sessionPath });
   const sessionEvents = pi.useSessionEvents({ path: sessionPath });
