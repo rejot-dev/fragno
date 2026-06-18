@@ -218,6 +218,7 @@ describe("Pi bash tool", () => {
       exitCode: 0,
     });
     expect((lsResult.details as { stdout: string }).stdout.split("\n")).toEqual([
+      "dev",
       "events",
       "resend",
       "system",

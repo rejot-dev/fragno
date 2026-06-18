@@ -32,7 +32,6 @@ export const executeBashAutomation = async ({
   const executionFs = createAutomationExecutionFileSystem({
     masterFs,
     contextFiles: { "event.json": JSON.stringify(context.automation.event) },
-    includeDevMount: true,
   });
 
   const { bash, commandCallsResult } = createBashHost({
@@ -94,7 +93,6 @@ export type CreateInteractiveBashHostInput = {
   sessionId?: string;
   defaultActor?: AutomationEventActor | null;
   context?: BashHostContext;
-  includeDevMount?: boolean;
 };
 
 export const createInteractiveBashHost = (input: CreateInteractiveBashHostInput): BashHost => {
@@ -112,8 +110,8 @@ export const createInteractiveBashHost = (input: CreateInteractiveBashHostInput)
   }
 
   const fs =
-    input.includeDevMount && input.fs instanceof MasterFileSystem
-      ? createAutomationExecutionFileSystem({ masterFs: input.fs, includeDevMount: true })
+    input.fs instanceof MasterFileSystem
+      ? createAutomationExecutionFileSystem({ masterFs: input.fs })
       : input.fs;
 
   return createBashHost({

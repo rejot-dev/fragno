@@ -1,4 +1,6 @@
-import { Bash } from "just-bash";
+import { createRequire } from "node:module";
+
+import type { Bash } from "just-bash";
 
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
 import {
@@ -23,6 +25,13 @@ import type { RegisteredReson8CommandContext } from "./families/reson8-runtime";
 import type { SandboxRuntime } from "./families/sandbox-runtime";
 import type { RegisteredTelegramCommandContext } from "./families/telegram-runtime";
 import { isomorphicGitCommand } from "./isomorphic-git-command";
+
+const require = createRequire(import.meta.url);
+// just-bash's ESM bundle is split into lazy chunks. With defense-in-depth enabled,
+// those internal lazy imports can trip the dynamic-import guard while handling plain
+// shell assignments. The CJS bundle is single-file, so it keeps the guard enabled
+// without importing just-bash's own chunks during script execution.
+const { Bash: BashRuntime } = require("just-bash") as typeof import("just-bash");
 
 export type RegisteredAutomationsBashCommandContext = {
   runtime: AutomationStoreRuntime;
@@ -79,7 +88,7 @@ export type InteractiveBashCommandContext = Omit<BashHostContext, "automation"> 
   telegram: NonNullable<BashHostContext["telegram"]>;
 };
 
-type BashOptions = NonNullable<ConstructorParameters<typeof Bash>[0]>;
+type BashOptions = NonNullable<ConstructorParameters<typeof BashRuntime>[0]>;
 
 type CreateBashHostInput = {
   fs: BashOptions["fs"];
@@ -100,30 +109,6 @@ type BashCommandFactoryInput = {
   sessionId?: string;
   commandCallsResult: BashAutomationCommandResult[];
   context: BashHostContext;
-};
-
-const ensureWritableDevNull = (fs: BashOptions["fs"]) => {
-  const mutableFs = fs as
-    | {
-        mkdirSync?: (path: string, options?: { recursive?: boolean }) => void;
-        writeFileSync?: (path: string, content: string) => void;
-        existsSync?: (path: string) => boolean;
-      }
-    | undefined;
-
-  if (!mutableFs?.mkdirSync || !mutableFs.writeFileSync) {
-    return;
-  }
-
-  try {
-    mutableFs.mkdirSync("/dev", { recursive: true });
-    if (!mutableFs.existsSync?.("/dev/null")) {
-      mutableFs.writeFileSync("/dev/null", "");
-    }
-  } catch {
-    // Some filesystem adapters do not expose writable root mounts. Those hosts
-    // can opt into the MasterFileSystem-backed /dev mount instead.
-  }
 };
 
 const createRegisteredBashCommands = (input: BashCommandFactoryInput) => {
@@ -151,13 +136,11 @@ export const createBashHost = (input: CreateBashHostInput): BashHost => {
     context: input.context,
   };
 
-  ensureWritableDevNull(input.fs);
-
   return {
-    bash: new Bash({
+    bash: new BashRuntime({
       fs: input.fs,
       env: input.env,
-      defenseInDepth: false,
+      defenseInDepth: true,
       customCommands: createRegisteredBashCommands(commandInput),
     }),
     sessionId: input.sessionId,
