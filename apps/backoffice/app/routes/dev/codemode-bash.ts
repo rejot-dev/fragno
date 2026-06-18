@@ -84,7 +84,6 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     env,
     runtime,
     orgId,
-    includeDevMount: true,
     defaultActor: {
       scope: "internal",
       type: "user",

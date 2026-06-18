@@ -131,11 +131,9 @@ const createAutomationDevMount = (): ResolvedFileMount => {
 export const createAutomationExecutionFileSystem = ({
   masterFs,
   contextFiles,
-  includeDevMount = false,
 }: {
   masterFs: MasterFileSystem;
   contextFiles?: Record<string, string>;
-  includeDevMount?: boolean;
 }): MasterFileSystem => {
   const baseMounts = masterFs.mounts.filter((mount) => mount.mountPoint !== "/context");
   const executionFs = new MasterFileSystem({ mounts: [...baseMounts] });
@@ -144,7 +142,7 @@ export const createAutomationExecutionFileSystem = ({
     executionFs.mount(createAutomationContextMount({ contextFiles }));
   }
 
-  if (includeDevMount && !baseMounts.some((mount) => mount.mountPoint === "/dev")) {
+  if (!baseMounts.some((mount) => mount.mountPoint === "/dev")) {
     executionFs.mount(createAutomationDevMount());
   }
 

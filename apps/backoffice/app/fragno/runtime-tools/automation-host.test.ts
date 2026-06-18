@@ -323,7 +323,6 @@ describe("interactive bash host", () => {
       fs: new MasterFileSystem({ mounts: [] }),
       env: {} as CloudflareEnv,
       orgId: "org-1",
-      includeDevMount: true,
       context: {
         automation: null,
         automations: null,
