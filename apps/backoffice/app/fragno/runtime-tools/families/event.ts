@@ -9,10 +9,17 @@ import {
   type BackofficeToolContext,
 } from "../runtime-tools";
 
+const contextScopeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("system") }),
+  z.object({ kind: z.literal("org"), orgId: z.string().trim().min(1) }),
+  z.object({ kind: z.literal("user"), userId: z.string().trim().min(1) }),
+  z.object({ kind: z.literal("project"), projectId: z.string().trim().min(1) }),
+]);
+
 export type AutomationEmitEventResult = {
   accepted: boolean;
   eventId: string;
-  orgId?: string;
+  scope: z.infer<typeof contextScopeSchema>;
   source: string;
   eventType: string;
 };
@@ -30,12 +37,13 @@ const eventEmitInputSchema = z.object({
   actorType: z.string().trim().min(1).optional(),
   subjectUserId: z.string().trim().min(1).optional(),
   payload: z.record(z.string(), z.unknown()).optional(),
+  targetScope: contextScopeSchema.optional(),
 });
 
 const eventEmitOutputSchema = z.object({
   accepted: z.boolean(),
   eventId: z.string().trim().min(1),
-  orgId: z.string().trim().min(1).optional(),
+  scope: contextScopeSchema,
   source: z.string().trim().min(1),
   eventType: z.string().trim().min(1),
 });
@@ -54,6 +62,7 @@ const parseEventEmitArgs = defineCliArgsParser<EventEmitArgs>("event.emit", {
   actorType: {},
   subjectUserId: {},
   payload: { kind: "json", option: "payload-json" },
+  targetScope: { kind: "json", option: "target-scope-json" },
 });
 
 const emitEventTool = defineBackofficeRuntimeTool({
@@ -109,6 +118,12 @@ const emitEventTool = defineBackofficeRuntimeTool({
             valueName: "json",
             description: "Event payload as JSON object",
           },
+          {
+            name: "target-scope-json",
+            valueRequired: true,
+            valueName: "json",
+            description: 'Target scope as JSON, e.g. {"kind":"org","orgId":"org-1"}',
+          },
         ],
         examples: [
           "event.emit --event-type identity.binding.completed --source otp --format json",
@@ -126,7 +141,8 @@ export const eventRuntimeTools = [emitEventTool] as const;
 export const eventToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "event",
   permissions: {
-    emit: "Use emit.",
+    emit: "Emit automation events within the current scope.",
+    route: "Route automation events to another selected scope.",
   },
   tools: eventRuntimeTools,
   isAvailable: (context: EventToolContext) => !!context.runtimes.event,

@@ -12,18 +12,19 @@ import type { FilesContext } from "./types";
  */
 export const createSystemFilesContext = (
   context: Omit<FilesContext, "execution" | "kernel" | "filePrincipal"> & {
+    orgId?: string;
     objects?: BackofficeObjectRegistry;
     execution?: BackofficeExecutionContext;
     filePrincipal?: FilesContext["filePrincipal"];
   },
 ): FilesContext => {
   const objects = context.objects ?? ({} as BackofficeObjectRegistry);
-  const { objects: _objects, execution, filePrincipal, ...filesContext } = context;
+  const { orgId, objects: _objects, execution, filePrincipal, ...filesContext } = context;
   const resolvedExecution =
     execution ??
     ({
       actor: { type: "system", id: "files-system" },
-      scope: { kind: "org", orgId: context.orgId },
+      scope: { kind: "org", orgId: orgId ?? "system-files" },
     } satisfies BackofficeExecutionContext);
   const kernel = new BackofficeKernel({ objects });
 

@@ -247,7 +247,7 @@ export class InMemoryPiObject implements PiObject {
 
           await this.#runtimeServices.objects.automations.forOrg(stored.orgId).ingestEvent({
             id: item.id,
-            orgId: stored.orgId,
+            scope: { kind: "org", orgId: stored.orgId },
             source: "pi",
             eventType: "capability.configured",
             occurredAt: item.createdAt,

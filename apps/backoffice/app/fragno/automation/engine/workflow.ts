@@ -1,5 +1,6 @@
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { MasterFileSystem } from "@/files/master-file-system";
@@ -12,7 +13,7 @@ import type { AutomationTriggerBinding } from "../../runtime-tools/automation-ty
 import { AUTOMATION_WORKSPACE_ROOT, type AutomationFileSystemConfig } from "../catalog";
 import { resolveAutomationFileSystem } from "../catalog";
 import type { AutomationEvent } from "../contracts";
-import { createAutomationBackofficePrincipal, type AutomationRuntimeHostContext } from "./runtime";
+import { type AutomationRuntimeHostContext } from "./runtime";
 
 export type AutomationCodemodeWorkflowParams = {
   automationEvent: AutomationEvent;
@@ -29,22 +30,27 @@ const createWorkflowAutomationContext = ({
   runtime: BackofficeRuntimeServices;
   params: AutomationCodemodeWorkflowParams;
 }): AutomationRuntimeHostContext => {
-  const orgId = params.automationEvent.orgId?.trim() || undefined;
-  if (!orgId) {
-    throw new Error("Workflow-backed automation requires an organisation id.");
-  }
-
+  const kernel = new BackofficeKernel({ objects: runtime.objects });
+  const execution: BackofficeExecutionContext = {
+    actor: {
+      type: "automation",
+      id: `automation:${params.automationEvent.id}`,
+      ...(params.automationEvent.scope.kind === "org"
+        ? { organizationIds: [params.automationEvent.scope.orgId] }
+        : {}),
+    },
+    scope: params.automationEvent.scope,
+  };
   const runtimeContext = createRouteBackedRuntimeContext({
     runtime,
-    kernel: new BackofficeKernel({ objects: runtime.objects }),
-    execution: {
-      actor: createAutomationBackofficePrincipal(params.automationEvent),
-      scope: { kind: "org", orgId },
-    },
+    kernel,
+    execution,
   });
   const eventRuntime = createEventRuntime({
     objects: runtime.objects,
     event: params.automationEvent,
+    kernel,
+    execution,
   });
   const automationRuntime = {
     ...runtimeContext.automations.runtime,
@@ -52,6 +58,7 @@ const createWorkflowAutomationContext = ({
     ...eventRuntime,
   };
 
+  const eventScope = params.automationEvent.scope;
   const scriptPath = params.workflowScriptPath ?? params.binding?.scriptPath ?? "workflow.js";
   const binding = params.binding ?? {
     id: `workflow:${scriptPath}`,
@@ -76,7 +83,7 @@ const createWorkflowAutomationContext = ({
     ...runtimeContext,
     automation: {
       event: params.automationEvent,
-      orgId,
+      orgId: eventScope.kind === "org" ? eventScope.orgId : undefined,
       binding: {
         source: binding.source,
         eventType: binding.eventType,
@@ -110,7 +117,16 @@ export const defineAutomationCodemodeWorkflow = (
 
     const params = event.payload as AutomationCodemodeWorkflowParams;
     const resolvedFs = await resolveAutomationFileSystem(config, {
-      orgId: params.automationEvent.orgId?.trim() || undefined,
+      execution: {
+        actor: {
+          type: "automation",
+          id: `automation:${params.automationEvent.id}`,
+          ...(params.automationEvent.scope.kind === "org"
+            ? { organizationIds: [params.automationEvent.scope.orgId] }
+            : {}),
+        },
+        scope: params.automationEvent.scope,
+      },
       purpose: "runtime",
     });
     if (!(resolvedFs instanceof MasterFileSystem)) {

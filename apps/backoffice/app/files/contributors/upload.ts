@@ -1544,11 +1544,14 @@ const readResponseMessage = async (response: Response, fallback: string): Promis
 };
 
 const buildUploadContentUrl = (ctx: FilesContext, file: UploadFileRecord): string | undefined => {
-  if (!ctx.request) {
+  if (!ctx.request || ctx.execution.scope.kind !== "org") {
     return undefined;
   }
 
-  const requestUrl = new URL(`/api/upload/${ctx.orgId}/files/by-key/content`, ctx.request.url);
+  const requestUrl = new URL(
+    `/api/upload/${ctx.execution.scope.orgId}/files/by-key/content`,
+    ctx.request.url,
+  );
   requestUrl.searchParams.set("provider", file.provider);
   requestUrl.searchParams.set("key", file.fileKey);
   return requestUrl.toString();

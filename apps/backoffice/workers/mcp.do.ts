@@ -117,7 +117,7 @@ export class InMemoryMcpObject implements McpObject {
               serverId: payload.serverId,
               idempotencyKey,
             }),
-            orgId: stored.orgId,
+            scope: { kind: "org", orgId: stored.orgId },
             source: "mcp",
             eventType: "server.configuration.changed",
             occurredAt: new Date().toISOString(),
@@ -137,7 +137,7 @@ export class InMemoryMcpObject implements McpObject {
               serverId: payload.serverId,
               idempotencyKey,
             }),
-            orgId: stored.orgId,
+            scope: { kind: "org", orgId: stored.orgId },
             source: "mcp",
             eventType: "server.configuration.deleted",
             occurredAt: new Date().toISOString(),
@@ -163,7 +163,7 @@ export class InMemoryMcpObject implements McpObject {
 
           await this.#runtimeServices.objects.automations.forOrg(stored.orgId).ingestEvent({
             id: item.id,
-            orgId: stored.orgId,
+            scope: { kind: "org", orgId: stored.orgId },
             source: "mcp",
             eventType: "capability.configured",
             occurredAt: item.createdAt,

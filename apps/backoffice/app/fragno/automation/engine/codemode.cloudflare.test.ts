@@ -20,7 +20,7 @@ describe("executeCodemodeAutomation", () => {
     const masterFs = createTestMasterFileSystem({});
     const event: AutomationEvent = {
       id: "event-codemode-1",
-      orgId: "org-1",
+      scope: { kind: "org", orgId: "org-1" },
       source: "test",
       eventType: "message.received",
       occurredAt: "2026-06-03T00:00:00.000Z",
@@ -65,7 +65,7 @@ describe("executeCodemodeAutomation", () => {
     const runtime = createRecordingAutomationRuntime(calls);
     const event: AutomationEvent = {
       id: "event-codemode-bind-actor",
-      orgId: "org-1",
+      scope: { kind: "org", orgId: "org-1" },
       source: "telegram",
       eventType: "message.received",
       occurredAt: "2026-06-03T00:00:00.000Z",
@@ -127,7 +127,7 @@ describe("executeCodemodeAutomation", () => {
     const calls: unknown[] = [];
     const event: AutomationEvent = {
       id: "event-codemode-configure-upload",
-      orgId: "org-1",
+      scope: { kind: "org", orgId: "org-1" },
       source: "auth",
       eventType: "organization.created",
       occurredAt: "2026-06-12T00:00:00.000Z",
@@ -178,7 +178,7 @@ describe("executeCodemodeAutomation", () => {
     const calls: unknown[] = [];
     const event: AutomationEvent = {
       id: "event-workflow-configure-upload",
-      orgId: "org-1",
+      scope: { kind: "org", orgId: "org-1" },
       source: "auth",
       eventType: "organization.created",
       occurredAt: "2026-06-12T00:00:00.000Z",
@@ -249,7 +249,7 @@ describe("executeCodemodeAutomation", () => {
     const runtime = createRecordingAutomationRuntime(calls);
     const eventFixture: AutomationEvent = {
       id: "event-codemode-emit-event",
-      orgId: "org-1",
+      scope: { kind: "org", orgId: "org-1" },
       source: "telegram",
       eventType: "message.received",
       occurredAt: "2026-06-03T00:00:00.000Z",
@@ -305,7 +305,7 @@ describe("executeCodemodeAutomation", () => {
     const runtime = createRecordingAutomationRuntime(calls);
     const event: AutomationEvent = {
       id: "event-shared-tool-definition",
-      orgId: "org-1",
+      scope: { kind: "org", orgId: "org-1" },
       source: "telegram",
       eventType: "message.received",
       occurredAt: "2026-06-03T00:00:00.000Z",
@@ -370,7 +370,7 @@ describe("executeCodemodeAutomation", () => {
     const calls: unknown[] = [];
     const event: AutomationEvent = {
       id: "event-codemode-invalid-tool-call",
-      orgId: "org-1",
+      scope: { kind: "org", orgId: "org-1" },
       source: "telegram",
       eventType: "message.received",
       occurredAt: "2026-06-03T00:00:00.000Z",
@@ -423,7 +423,7 @@ const createAutomationContext = (
     backoffice: options.backofficeRuntime ? { runtime: options.backofficeRuntime } : null,
     automation: {
       event,
-      orgId: event.orgId,
+      orgId: event.scope.kind === "org" ? event.scope.orgId : undefined,
       binding: {
         id: "codemode-binding",
         source: event.source,
@@ -524,6 +524,7 @@ const createRecordingAutomationRuntime = (calls: unknown[]): AutomationRuntime =
     return {
       accepted: true,
       eventId: "emitted-1",
+      scope: input.targetScope ?? { kind: "org", orgId: "org-1" },
       source: input.source ?? "telegram",
       eventType: input.eventType,
     };

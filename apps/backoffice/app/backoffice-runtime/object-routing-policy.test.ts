@@ -12,6 +12,7 @@ import {
 
 const event = (input: Partial<AutomationEvent> = {}): AutomationEvent => ({
   id: "event-1",
+  scope: { kind: "org", orgId: "org-1" },
   source: "test",
   eventType: "test.event",
   occurredAt: "2026-01-01T00:00:00.000Z",
@@ -30,7 +31,7 @@ describe("object routing policy", () => {
     expect(
       resolveOrgScopedObjectAddress(
         "AUTOMATIONS",
-        event({ orgId: "org-1", subject: { orgId: "org-1" } }),
+        event({ scope: { kind: "org", orgId: "org-1" }, subject: { orgId: "org-1" } }),
       ),
     ).toEqual({
       binding: "AUTOMATIONS",
@@ -65,18 +66,23 @@ describe("object routing policy", () => {
   });
 
   it("rejects conflicting top-level and subject org ids", () => {
-    expect(() => resolveEventOrgId(event({ orgId: "org-1", subject: { orgId: "org-2" } }))).toThrow(
-      "does not match subject org id",
-    );
+    expect(() =>
+      resolveEventOrgId(
+        event({ scope: { kind: "org", orgId: "org-1" }, subject: { orgId: "org-2" } }),
+      ),
+    ).toThrow("does not match subject org id");
   });
 
   it("rejects actor-only events when user routing has no subject user id", () => {
-    expect(() => resolveUserScopedObjectAddress("PI", event({ orgId: "org-1" }))).toThrow(
-      "missing subject user id",
-    );
+    expect(() => resolveUserScopedObjectAddress("PI", event())).toThrow("missing subject user id");
   });
 
   it("rejects actor-only events when no org id exists", () => {
-    expect(() => resolveOrgScopedObjectAddress("AUTOMATIONS", event())).toThrow("missing org id");
+    expect(() =>
+      resolveOrgScopedObjectAddress(
+        "AUTOMATIONS",
+        event({ scope: { kind: "user", userId: "user-1" } }),
+      ),
+    ).toThrow("expected org scope");
   });
 });

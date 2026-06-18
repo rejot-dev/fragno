@@ -1,5 +1,6 @@
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { MasterFileSystem } from "@/files";
 
 import type { BackofficeDatabaseAdapterFactory } from "./database-adapters";
@@ -31,7 +32,7 @@ export type InMemoryBackofficeRuntime = {
 export type CreateInMemoryBackofficeRuntimeOptions = {
   env?: Partial<InMemoryBackofficeRuntimeEnv>;
   getAutomationFileSystem?: (input: {
-    orgId?: string;
+    execution: BackofficeExecutionContext;
     purpose?: string;
   }) => Promise<MasterFileSystem>;
   objectFactories?: InMemoryObjectFactoryOverrides;

@@ -1182,13 +1182,11 @@ const createStep = (
 const getStore = (ctx: BackofficeScenarioContext, orgId: string) =>
   createRouteBackedAutomationStoreRuntime({
     object: ctx.runtime.objects.automations.forOrg(orgId),
-    orgId,
   });
 
 const getWorkflow = (ctx: BackofficeScenarioContext, orgId: string) =>
   createRouteBackedAutomationWorkflowRuntime({
     object: ctx.runtime.objects.automations.forOrg(orgId),
-    orgId,
   });
 
 const getHooks = (ctx: BackofficeScenarioContext, orgId: string) =>
@@ -1257,7 +1255,6 @@ const getReadableScenarioFileSystem = async (
   }
 
   const orgFs = await createOrgFileSystem({
-    orgId,
     objects: ctx.runtime.objects,
     kernel: new BackofficeKernel({ objects: ctx.runtime.objects }),
     execution: { actor: createScenarioActor(orgId), scope: { kind: "org", orgId } },
@@ -1406,13 +1403,12 @@ const runScenarioCodemode = async (
 };
 
 const ingestAutomationEvent = async (ctx: BackofficeScenarioContext, event: AutomationEvent) => {
-  const orgId = event.orgId?.trim();
-  if (!orgId) {
-    throw new Error("Automation scenario events require an organisation id.");
+  if (event.scope.kind !== "org") {
+    throw new Error("Automation scenario events require an organisation scope.");
   }
 
-  ctx.rememberOrg(orgId);
-  await ctx.runtime.objects.automations.forOrg(orgId).ingestEvent(event);
+  ctx.rememberOrg(event.scope.orgId);
+  await ctx.runtime.objects.automations.forOrg(event.scope.orgId).ingestEvent(event);
 };
 
 const buildOrganizationCreatedEvent = (input: OrganizationCreatedInput): AutomationEvent => {
@@ -1422,7 +1418,7 @@ const buildOrganizationCreatedEvent = (input: OrganizationCreatedInput): Automat
 
   return {
     id: input.eventId ?? `auth:organization.created:${input.id}`,
-    orgId: input.id,
+    scope: { kind: "org", orgId: input.id },
     source: "auth",
     eventType: "organization.created",
     occurredAt: now,
@@ -1461,7 +1457,7 @@ const buildOrganizationCreatedEvent = (input: OrganizationCreatedInput): Automat
 
 const buildCapabilityConfiguredEvent = (input: CapabilityConfiguredInput): AutomationEvent => ({
   id: input.eventId ?? `${input.source ?? input.capabilityId}:capability.configured:${input.orgId}`,
-  orgId: input.orgId,
+  scope: { kind: "org", orgId: input.orgId },
   source: input.source ?? input.capabilityId,
   eventType: "capability.configured",
   occurredAt: "2026-01-01T00:00:00.000Z",
@@ -1521,7 +1517,7 @@ const buildIdentityClaimCompletedEvent = (input: ConfirmClaimInput): AutomationE
 
   return {
     id: input.eventId ?? `identity-claim-completed:${input.otpId}`,
-    orgId: input.orgId,
+    scope: { kind: "org", orgId: input.orgId },
     source: "otp",
     eventType: "identity.claim.completed",
     occurredAt: "2026-01-01T00:00:00.000Z",
@@ -2478,7 +2474,6 @@ const buildStepBuilders = <
               });
               for (const instance of response?.instances ?? []) {
                 errored.push({
-                  orgId,
                   workflowName: entry.name,
                   instanceId: instance.id,
                   details: instance.details,
@@ -2515,7 +2510,6 @@ const buildStepBuilders = <
                 const items = queue.items.filter((item) => item.status !== "completed");
                 if (items.length > 0) {
                   unfinished.push({
-                    orgId,
                     fragment,
                     items,
                   });
@@ -2554,7 +2548,6 @@ const buildStepBuilders = <
               const items = queue.items.filter((item) => item.status === "failed");
               if (items.length > 0) {
                 failed.push({
-                  orgId,
                   fragment,
                   items,
                 });
@@ -2915,7 +2908,6 @@ const collectDiagnostics = async (ctx: BackofficeScenarioContext): Promise<unkno
     try {
       const scenarioFs = ctx.files.forOrg(orgId);
       const orgFs = await createOrgFileSystem({
-        orgId,
         objects: ctx.runtime.objects,
         kernel: new BackofficeKernel({ objects: ctx.runtime.objects }),
         execution: { actor: createScenarioActor(orgId), scope: { kind: "org", orgId } },
@@ -3014,7 +3006,8 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
   );
   const fakes = scenario.fakes?.({ fake: createScenarioFakeFactory() }) ?? {};
   const runtime = await createInMemoryBackofficeRuntime({
-    getAutomationFileSystem: async ({ orgId }) => files.forOrg(orgId),
+    getAutomationFileSystem: async ({ execution }) =>
+      files.forOrg(execution.scope.kind === "org" ? execution.scope.orgId : undefined),
     objectFactories: createObjectFactories(fakes),
   });
   const journal: ScenarioJournal = { entries: [] };

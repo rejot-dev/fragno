@@ -293,6 +293,7 @@ const createTelegramRuntime = () => ({
 const createAutomationContext = () => ({
   event: {
     id: "event-1",
+    scope: { kind: "org" as const, orgId: "org-1" },
     source: "telegram",
     eventType: "message.received",
     occurredAt: "2026-01-01T00:00:00.000Z",
@@ -311,7 +312,7 @@ const createAutomationContext = () => ({
     emitEvent: async ({ eventType, source }: { eventType: string; source?: string }) => ({
       accepted: true,
       eventId: "emitted-1",
-      orgId: "org-1",
+      scope: { kind: "org" as const, orgId: "org-1" },
       source: source ?? "telegram",
       eventType,
     }),
@@ -322,8 +323,6 @@ describe("interactive bash host", () => {
   it("mounts /dev/null for dashboard-style commands backed by a master filesystem", async () => {
     const { bash } = createInteractiveBashHost({
       fs: new MasterFileSystem({ mounts: [] }),
-      env: {} as CloudflareEnv,
-      orgId: "org-1",
       context: EMPTY_BASH_HOST_CONTEXT,
     });
 

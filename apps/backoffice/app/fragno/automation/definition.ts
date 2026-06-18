@@ -4,6 +4,10 @@ import { defineFragment } from "@fragno-dev/core";
 import { withDatabase, type TxResult } from "@fragno-dev/db";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
+import type {
+  BackofficeContextScope,
+  BackofficeExecutionContext,
+} from "@/backoffice-runtime/context";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { MasterFileSystem } from "@/files/master-file-system";
 import { executeAutomationScript } from "@/fragno/runtime-tools/automation-host";
@@ -25,7 +29,7 @@ import { automationFragmentSchema } from "./schema";
 export type AutomationIngestResult = {
   accepted: boolean;
   eventId: string;
-  orgId?: string;
+  scope: BackofficeContextScope;
   source: string;
   eventType: string;
 };
@@ -54,7 +58,7 @@ export interface AutomationFragmentConfig extends AutomationFileSystemConfig {
 const buildIngestResult = (event: AutomationEvent): AutomationIngestResult => ({
   accepted: true,
   eventId: event.id,
-  orgId: event.orgId?.trim() || undefined,
+  scope: event.scope,
   source: event.source,
   eventType: event.eventType,
 });
@@ -65,7 +69,14 @@ export const buildAutomationWorkflowInstanceId = (eventId: string, bindingId: st
   `${toWorkflowIdentifier(eventId)}--${toWorkflowIdentifier(bindingId)}`;
 
 const buildCatalogResolverInput = (event: AutomationEvent): AutomationFileSystemResolverInput => ({
-  orgId: event.orgId?.trim() || undefined,
+  execution: {
+    actor: {
+      type: "automation",
+      id: `automation:${event.id}`,
+      ...(event.scope.kind === "org" ? { organizationIds: [event.scope.orgId] } : {}),
+    },
+    scope: event.scope,
+  } satisfies BackofficeExecutionContext,
   purpose: "runtime",
 });
 
@@ -91,7 +102,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
             eventId: payload.id,
             source: payload.source,
             eventType: payload.eventType,
-            orgId: payload.orgId,
+            scope: payload.scope,
           });
           return;
         }

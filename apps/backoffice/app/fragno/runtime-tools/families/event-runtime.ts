@@ -1,29 +1,63 @@
+import type {
+  BackofficeContextScope,
+  BackofficeExecutionContext,
+} from "@/backoffice-runtime/context";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 
 import type { AutomationEvent } from "../../automation/contracts";
-import type { AutomationEmitEventResult, EventRuntime } from "./event";
+import type { EventRuntime } from "./event";
 
 export type { EventRuntime };
 
 export type CreateEventRuntimeOptions = {
   objects: BackofficeObjectRegistry;
   event: AutomationEvent;
+  kernel?: BackofficeKernel;
+  execution?: BackofficeExecutionContext;
 };
 
-const buildIngestResult = (event: AutomationEvent): AutomationEmitEventResult => ({
-  accepted: true,
-  eventId: event.id,
-  orgId: event.orgId?.trim() || undefined,
-  source: event.source,
-  eventType: event.eventType,
-});
+const sameScope = (left: BackofficeContextScope, right: BackofficeContextScope): boolean => {
+  if (left.kind !== right.kind) {
+    return false;
+  }
+
+  switch (left.kind) {
+    case "system":
+      return right.kind === "system";
+    case "org":
+      return right.kind === "org" && left.orgId === right.orgId;
+    case "user":
+      return right.kind === "user" && left.userId === right.userId;
+    case "project":
+      return right.kind === "project" && left.projectId === right.projectId;
+  }
+};
 
 export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRuntime => ({
-  emitEvent: async ({ eventType, source, externalActorId, actorType, subjectUserId, payload }) => {
+  emitEvent: async ({
+    eventType,
+    source,
+    externalActorId,
+    actorType,
+    subjectUserId,
+    payload,
+    targetScope,
+  }) => {
     const { event } = options;
-    const orgId = event.orgId?.trim();
-    if (!orgId) {
-      throw new Error("event.emit requires an organisation id");
+    const currentScope = event.scope;
+    const resolvedTargetScope = targetScope ?? currentScope;
+
+    if (!sameScope(resolvedTargetScope, currentScope)) {
+      if (!options.kernel || !options.execution) {
+        throw new Error("event.emit cross-scope routing requires a Backoffice kernel");
+      }
+      options.kernel.assertAllowed({
+        actor: options.execution.actor,
+        scope: resolvedTargetScope,
+        requiredPermissions: [{ namespace: "event", permission: "route" }],
+        resource: { sourceScope: currentScope, targetScope: resolvedTargetScope },
+      });
     }
 
     const nextSource = source ?? event.source;
@@ -39,7 +73,7 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
       : baseActor;
     const nextEvent: AutomationEvent = {
       id: `${event.id}:${eventType}:${crypto.randomUUID()}`,
-      orgId,
+      scope: resolvedTargetScope,
       source: nextSource,
       eventType,
       occurredAt: new Date().toISOString(),
@@ -52,9 +86,18 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
       subject: subjectUserId ? { userId: subjectUserId } : (event.subject ?? null),
     };
 
-    await options.objects.automations.forOrg(orgId).triggerIngestEvent(nextEvent);
+    const targetObject = options.kernel
+      ? options.kernel.scoped("AUTOMATIONS", resolvedTargetScope, options.objects.automations)
+      : options.objects.automations.for(resolvedTargetScope);
+    await targetObject.triggerIngestEvent(nextEvent);
 
-    return buildIngestResult(nextEvent);
+    return {
+      accepted: true,
+      eventId: nextEvent.id,
+      scope: nextEvent.scope,
+      source: nextEvent.source,
+      eventType: nextEvent.eventType,
+    };
   },
 });
 

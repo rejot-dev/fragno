@@ -19,6 +19,8 @@ import type { DurableHookQueueOptions, DurableHookRepository } from "@/fragno/du
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import type { SandboxInstanceStatus, SandboxInstanceSummary } from "@/sandbox/contracts";
 
+import type { BackofficeContextScope } from "./context";
+
 export type FetchObject = {
   fetch(request: Request): Promise<Response>;
 };
@@ -41,6 +43,7 @@ export type DurableHookObject<TRepository = DurableHookRepository<DurableHookOpt
 
 type ScopedObjects<TObject> = {
   singleton(): TObject;
+  "for"(scope: BackofficeContextScope): TObject;
   forOrg(orgId: string): TObject;
   forName(name: string): TObject;
   forUser(input: { userId: string }): TObject;
@@ -287,6 +290,24 @@ const scoped = <TObject>(
 ): ScopedObjects<TObject> => ({
   singleton() {
     return factory.get(objectBinding, objectAddress(objectBinding, singleton()));
+  },
+  for(scope: BackofficeContextScope) {
+    switch (scope.kind) {
+      case "system":
+        return factory.get(objectBinding, objectAddress(objectBinding, singleton()));
+      case "org":
+        return factory.get(objectBinding, objectAddress(objectBinding, org(scope.orgId)));
+      case "user":
+        return factory.get(
+          objectBinding,
+          objectAddress(objectBinding, user({ userId: scope.userId })),
+        );
+      case "project":
+        return factory.get(
+          objectBinding,
+          objectAddress(objectBinding, project({ projectId: scope.projectId })),
+        );
+    }
   },
   forOrg(orgId: string) {
     return factory.get(objectBinding, objectAddress(objectBinding, org(orgId)));

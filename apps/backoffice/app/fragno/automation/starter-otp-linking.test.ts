@@ -45,7 +45,7 @@ const telegramMessageEvent = ({
 
   return {
     id,
-    orgId: "org-1",
+    scope: { kind: "org", orgId: "org-1" },
     source: "telegram",
     eventType: "message.received",
     occurredAt: "2026-01-01T00:00:00.000Z",
@@ -81,7 +81,7 @@ const identityClaimCompletedEvent = ({
 
   return {
     id: `identity-claim-completed:${otpId}`,
-    orgId: "org-1",
+    scope: { kind: "org", orgId: "org-1" },
     source: "otp",
     eventType: "identity.claim.completed",
     occurredAt: "2026-01-01T00:00:00.000Z",

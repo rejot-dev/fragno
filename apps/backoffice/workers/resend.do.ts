@@ -320,7 +320,7 @@ export class InMemoryResendObject implements ResendObject {
 
           await this.#runtimeServices.objects.automations.forOrg(stored.orgId).ingestEvent({
             id: item.id,
-            orgId: stored.orgId,
+            scope: { kind: "org", orgId: stored.orgId },
             source: "resend",
             eventType: "capability.configured",
             occurredAt: item.createdAt,

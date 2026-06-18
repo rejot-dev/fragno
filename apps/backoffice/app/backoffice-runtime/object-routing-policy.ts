@@ -23,21 +23,18 @@ const objectAddress = (
 });
 
 export const resolveEventOrgId = (event: AutomationEvent): string => {
-  const eventOrgId = normalizeId(event.orgId);
-  const subjectOrgId = subjectField(event.subject, "orgId");
+  if (event.scope.kind !== "org") {
+    throw new Error(`Cannot route automation event ${event.id}: expected org scope.`);
+  }
 
-  if (eventOrgId && subjectOrgId && eventOrgId !== subjectOrgId) {
+  const subjectOrgId = subjectField(event.subject, "orgId");
+  if (subjectOrgId && event.scope.orgId !== subjectOrgId) {
     throw new Error(
-      `Cannot route automation event ${event.id}: event org id ${eventOrgId} does not match subject org id ${subjectOrgId}.`,
+      `Cannot route automation event ${event.id}: event org id ${event.scope.orgId} does not match subject org id ${subjectOrgId}.`,
     );
   }
 
-  const orgId = subjectOrgId ?? eventOrgId;
-  if (!orgId) {
-    throw new Error(`Cannot route automation event ${event.id}: missing org id.`);
-  }
-
-  return orgId;
+  return event.scope.orgId;
 };
 
 export const resolveOrgScopedObjectAddress = (

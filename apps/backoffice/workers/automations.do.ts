@@ -4,13 +4,27 @@ import {
 } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject } from "cloudflare:workers";
 
+import type {
+  BackofficeContextScope,
+  BackofficeExecutionContext,
+} from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
+import type {
+  AutomationsObject,
+  BackofficeObjectRegistry,
+} from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
-import { createOrgFileSystem, type MasterFileSystem } from "@/files";
+import {
+  createMasterFileSystem,
+  createOrgFileSystem,
+  createSystemFilesContext,
+  staticFileContributor,
+  type MasterFileSystem,
+} from "@/files";
+import { tmpFileContributor } from "@/files/contributors/tmp";
 import type {
   AutomationEvent,
   AutomationFragmentConfig,
@@ -25,15 +39,59 @@ import {
   createDurableHookRepository,
   createEmptyDurableHookRepository,
   type DurableHookQueueOptions,
+  type DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
 import { createPiRouteRuntime } from "@/fragno/pi/pi";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 
 export type AutomationsFileSystemResolver = (input: {
-  orgId?: string;
+  execution: BackofficeExecutionContext;
   purpose?: string;
 }) => Promise<MasterFileSystem>;
+
+const automationCatalogOrgIdForScope = (scope: BackofficeContextScope): string => {
+  switch (scope.kind) {
+    case "system":
+      return "automation-catalog-system";
+    case "org":
+      return scope.orgId;
+    case "user":
+      return `automation-catalog-user-${scope.userId}`;
+    case "project":
+      return `automation-catalog-project-${scope.projectId}`;
+  }
+};
+
+export const createDefaultAutomationFileSystem = async ({
+  objects,
+  kernel,
+  execution,
+  automationHookQueue,
+}: {
+  objects: BackofficeObjectRegistry;
+  kernel: BackofficeKernel;
+  execution: BackofficeExecutionContext;
+  automationHookQueue?: (opts?: DurableHookQueueOptions) => Promise<DurableHookQueueResponse>;
+}): Promise<MasterFileSystem> => {
+  if (execution.scope.kind === "org") {
+    return createOrgFileSystem({
+      objects,
+      kernel,
+      execution,
+      ...(automationHookQueue ? { automationHookQueue } : {}),
+    });
+  }
+
+  return createMasterFileSystem(
+    createSystemFilesContext({
+      orgId: automationCatalogOrgIdForScope(execution.scope),
+      objects,
+      uploadConfig: null,
+    }),
+    { contributors: [staticFileContributor, tmpFileContributor] },
+  );
+};
 
 export class InMemoryAutomationsObject implements AutomationsObject {
   #env: AutomationFragmentConfig["env"] | undefined;
@@ -72,12 +130,12 @@ export class InMemoryAutomationsObject implements AutomationsObject {
             env: this.#env,
             runtime: this.#runtimeServices,
             createPiAutomationContext: this.#createPiAutomationContext.bind(this),
-            getAutomationFileSystem: async ({ orgId, purpose }) => {
+            getAutomationFileSystem: async ({ execution, purpose }) => {
               if (this.#getAutomationFileSystem) {
-                return await this.#getAutomationFileSystem({ orgId, purpose });
+                return await this.#getAutomationFileSystem({ execution, purpose });
               }
 
-              return await this.#createAutomationFileSystem(orgId);
+              return await this.#createAutomationFileSystem(execution);
             },
           },
         );
@@ -110,22 +168,8 @@ export class InMemoryAutomationsObject implements AutomationsObject {
     });
   }
 
-  async #createAutomationFileSystem(orgId?: string) {
-    const normalizedOrgId = orgId?.trim();
-    if (!normalizedOrgId) {
-      throw new Error("Automation file system requires an organisation id");
-    }
-
-    const execution = {
-      actor: {
-        type: "automation" as const,
-        id: `automations:${normalizedOrgId}`,
-        organizationIds: [normalizedOrgId],
-      },
-      scope: { kind: "org" as const, orgId: normalizedOrgId },
-    };
-    return createOrgFileSystem({
-      orgId: normalizedOrgId,
+  async #createAutomationFileSystem(execution: BackofficeExecutionContext) {
+    return createDefaultAutomationFileSystem({
       objects: this.#runtimeServices.objects,
       kernel: new BackofficeKernel({ objects: this.#runtimeServices.objects }),
       execution,
@@ -134,15 +178,15 @@ export class InMemoryAutomationsObject implements AutomationsObject {
   }
 
   async #createPiAutomationContext(input: { event: AutomationEvent; idempotencyKey: string }) {
-    const orgId = input.event.orgId?.trim();
-    if (!orgId) {
+    const scope = input.event.scope;
+    if (scope?.kind !== "org") {
       return undefined;
     }
 
     return {
       runtime: createPiRouteRuntime({
-        object: this.#runtimeServices.objects.pi.forOrg(orgId),
-        orgId,
+        object: this.#runtimeServices.objects.pi.forOrg(scope.orgId),
+        orgId: scope.orgId,
       }),
     };
   }

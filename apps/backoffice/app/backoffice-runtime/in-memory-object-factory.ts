@@ -1,3 +1,4 @@
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { MasterFileSystem } from "@/files";
 
 import { InMemoryAuthObject } from "../../workers/auth.do";
@@ -47,7 +48,7 @@ export type InMemoryObjectFactoryOptions = {
   env?: Partial<InMemoryBackofficeRuntimeEnv>;
   getRuntimeServices: () => BackofficeRuntimeServices;
   getAutomationFileSystem?: (input: {
-    orgId?: string;
+    execution: BackofficeExecutionContext;
     purpose?: string;
   }) => Promise<MasterFileSystem>;
   objectFactories?: InMemoryObjectFactoryOverrides;

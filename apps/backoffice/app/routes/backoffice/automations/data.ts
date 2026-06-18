@@ -108,7 +108,7 @@ const createBackofficeAutomationFileSystem = async ({
   const { runtime } = context.get(BackofficeWorkerContext);
   const kernel = new BackofficeKernel({ objects: runtime.objects });
   const execution = await requireBackofficeContext(request, context, { kind: "org", orgId });
-  return createOrgFileSystem({ orgId, objects: runtime.objects, kernel, execution });
+  return createOrgFileSystem({ objects: runtime.objects, kernel, execution });
 };
 
 const normalizeAutomationScriptPath = (value: string) => {

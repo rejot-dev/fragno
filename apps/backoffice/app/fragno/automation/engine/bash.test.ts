@@ -32,7 +32,7 @@ const runtime: AutomationRuntime = {
   emitEvent: async (input) => ({
     accepted: true,
     eventId: "emitted-1",
-    orgId: undefined,
+    scope: input.targetScope ?? { kind: "org", orgId: "org-1" },
     source: input.source ?? "otp",
     eventType: input.eventType,
   }),
@@ -46,12 +46,13 @@ const createAutomationRuntime = (
 });
 
 const createTestEvent = (
-  event: Omit<AutomationEvent, "actor" | "actors"> &
-    Partial<Pick<AutomationEvent, "actor" | "actors">>,
+  event: Omit<AutomationEvent, "actor" | "actors" | "scope"> &
+    Partial<Pick<AutomationEvent, "actor" | "actors" | "scope">>,
 ): AutomationEvent => {
   const actor = event.actor ?? AUTOMATION_SYSTEM_ACTOR;
   return {
     ...event,
+    scope: event.scope ?? { kind: "org", orgId: "org-1" },
     actor,
     actors: event.actors ?? [actor],
   };
@@ -91,7 +92,7 @@ describe("bash command runner", () => {
   it("provides /context/event.json for automation runs", async () => {
     const event: AutomationEvent = {
       id: "event-123",
-      orgId: "org-1",
+      scope: { kind: "org", orgId: "org-1" },
       source: "telegram",
       eventType: "message.received",
       occurredAt: "2026-01-01T00:00:00.000Z",
@@ -137,7 +138,7 @@ describe("bash command runner", () => {
     assert(result.exitCode === 0);
     assert(
       result.stdout.trim() ===
-        'event={"id":"event-123","orgId":"org-1","source":"telegram","eventType":"message.received","occurredAt":"2026-01-01T00:00:00.000Z","payload":{"messageId":"message-1","chatId":"chat-1","fromUserId":"from-1","text":"/start"},"actor":{"scope":"external","source":"telegram","type":"chat","id":"chat-1"},"actors":[{"scope":"external","source":"telegram","type":"chat","id":"chat-1"}],"subject":{"userId":"user-1"}}',
+        'event={"id":"event-123","scope":{"kind":"org","orgId":"org-1"},"source":"telegram","eventType":"message.received","occurredAt":"2026-01-01T00:00:00.000Z","payload":{"messageId":"message-1","chatId":"chat-1","fromUserId":"from-1","text":"/start"},"actor":{"scope":"external","source":"telegram","type":"chat","id":"chat-1"},"actors":[{"scope":"external","source":"telegram","type":"chat","id":"chat-1"}],"subject":{"userId":"user-1"}}',
     );
   });
 
@@ -211,7 +212,7 @@ describe("bash command runner", () => {
 
     const firstEvent: AutomationEvent = createTestEvent({
       id: "event-overlap-a",
-      orgId: "org-1",
+      scope: { kind: "org", orgId: "org-1" },
       source: "telegram",
       eventType: "message.received",
       occurredAt: "2026-01-01T00:00:00.000Z",
@@ -219,7 +220,7 @@ describe("bash command runner", () => {
     });
     const secondEvent: AutomationEvent = createTestEvent({
       id: "event-overlap-b",
-      orgId: "org-1",
+      scope: { kind: "org", orgId: "org-1" },
       source: "telegram",
       eventType: "message.received",
       occurredAt: "2026-01-01T00:00:00.000Z",
@@ -239,7 +240,7 @@ describe("bash command runner", () => {
             return {
               accepted: true,
               eventId: `emitted:${input.eventType}`,
-              orgId: "org-1",
+              scope: { kind: "org", orgId: "org-1" },
               source: input.source ?? "test",
               eventType: input.eventType,
             };
@@ -283,7 +284,7 @@ describe("bash command runner", () => {
 
     const firstEvent: AutomationEvent = createTestEvent({
       id: "event-cleanup-a",
-      orgId: "org-1",
+      scope: { kind: "org", orgId: "org-1" },
       source: "telegram",
       eventType: "message.received",
       occurredAt: "2026-01-01T00:00:00.000Z",
@@ -291,7 +292,7 @@ describe("bash command runner", () => {
     });
     const secondEvent: AutomationEvent = createTestEvent({
       id: "event-cleanup-b",
-      orgId: "org-1",
+      scope: { kind: "org", orgId: "org-1" },
       source: "telegram",
       eventType: "message.received",
       occurredAt: "2026-01-01T00:00:00.000Z",
@@ -311,7 +312,7 @@ describe("bash command runner", () => {
             return {
               accepted: true,
               eventId: `emitted:${input.eventType}`,
-              orgId: "org-1",
+              scope: { kind: "org", orgId: "org-1" },
               source: input.source ?? "test",
               eventType: input.eventType,
             };
@@ -339,7 +340,7 @@ describe("bash command runner", () => {
             return {
               accepted: true,
               eventId: `emitted:${input.eventType}`,
-              orgId: "org-1",
+              scope: { kind: "org", orgId: "org-1" },
               source: input.source ?? "test",
               eventType: input.eventType,
             };

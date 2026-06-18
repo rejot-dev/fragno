@@ -421,46 +421,55 @@ Covered by tests/plumbing:
 - `packages/fragment-upload` remains generic upload storage and does not own Backoffice filesystem
   principals.
 
-## [ ] Slice 4 — Scoped automations and explicit event routing
+## [x] Slice 4 — Scoped automations and explicit event routing
 
 ### Goal
 
 Make automation execution selected-scope aware and authorize explicit cross-scope routing.
 
-This is last because it depends on selected context, runtime-tool authorization, codemode/runtime
-updates, and the simplified principal-aware workspace filesystem.
+This slice makes automation events explicitly scoped. `AutomationEvent.scope` is now the required
+selected-context source of truth for runtime execution, object routing, filesystem access, and
+emitted events. Top-level automation-event `orgId` compatibility has been removed.
 
-### Implement
+### Implemented
 
-- Replace automation org-only context with `BackofficeExecutionContext`.
-- Automation object resolution:
-  - system execution -> singleton automations;
-  - org execution -> org automations;
-  - user execution -> user automations;
-  - project execution -> gated until project model exists.
-- Automation filesystem resolution uses the selected scope and Backoffice file principal mapping.
-- Event emit/forward API accepts explicit target scope.
-- Cross-scope emit checks `automations.routeEvent`.
-- Router/workflow files are normal workspace files. Editing them is controlled by the same workspace
-  write metadata as any other file; event routing authorization happens at runtime.
-- Update automation scenario helpers/content to use scoped handles and selected execution context.
+- Made selected `scope` required on `AutomationEvent` and added `targetScope` to `event.emit`
+  inputs.
+- Removed top-level automation-event `orgId` compatibility. Event producers, tests, scenarios, and
+  generated emitted events now use explicit scoped events.
+- Added automation execution helpers that turn `event.scope` into `BackofficeExecutionContext`.
+- Runtime automation contexts now use `BackofficeExecutionContext` instead of constructing an
+  org-only context from event metadata.
+- Automation object resolution for emitted events now targets the selected scope through the kernel:
+  - org scope -> org automations;
+  - user scope -> user automations;
+  - system scope -> singleton automations;
+  - project scope -> kernel-gated unavailable context.
+- Automation filesystem resolver inputs now receive the selected execution context instead of an
+  org-id-only input. In-memory/scenario plumbing resolves org filesystems from that context.
+- `event.emit` defaults to the current event scope and accepts explicit `targetScope` for routing.
+- Cross-scope emits perform an additional authorization check for
+  `{ namespace: "event", permission: "route" }` before enqueueing the target automation event.
+- Denied cross-scope emits fail before calling the target Automations Durable Object.
+- Router/workflow files remain normal workspace files. Editing them stays controlled by workspace
+  write metadata; routing authorization is runtime behavior.
 
-### End-to-end test
+### Verified
 
-Automation scenario test:
+```sh
+pnpm --dir apps/backoffice exec vitest run app/fragno/runtime-tools/families/event-runtime.test.ts
+pnpm --dir apps/backoffice exec vitest run app/fragno/automation/scenario-system-automations.test.ts
+pnpm exec turbo types:check --filter=@fragno-apps/backoffice-rr --output-logs=errors-only
+pnpm exec turbo test --filter=@fragno-apps/backoffice-rr --output-logs=errors-only
+```
 
-1. org-scoped event runs org automation router;
-2. user-scoped event runs user automation router;
-3. org router emits user-scoped event only when kernel allows `automations.routeEvent`;
-4. denied cross-scope route does not enqueue target automation;
-5. automation codemode script can call `context.current` and explicit scoped handles under the same
-   actor permissions.
+### Acceptance status
 
-### Acceptance
-
-- Automations are no longer hard-coded to org scope.
-- Event flow is explicit router behavior.
-- Cross-scope routing is operation-authorized.
+- Automation execution is no longer hard-coded to org scope; every automation event has an explicit
+  selected scope.
+- Event flow supports explicit router behavior through `targetScope`.
+- Cross-scope routing is operation-authorized with `event.route`.
+- Legacy top-level `orgId` automation events are no longer supported.
 
 ## [ ] Slice 5 — Cleanup: remove org-only model remnants
 

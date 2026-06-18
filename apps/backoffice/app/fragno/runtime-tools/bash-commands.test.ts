@@ -224,7 +224,7 @@ describe("createBackofficeBashCommands", () => {
         return {
           accepted: true,
           eventId: "event-2",
-          orgId: "org-1",
+          scope: input.targetScope ?? { kind: "org", orgId: "org-1" },
           source: input.source ?? "telegram",
           eventType: input.eventType,
         };
@@ -242,14 +242,54 @@ describe("createBackofficeBashCommands", () => {
 
     await expect(
       bash.exec(
-        'event.emit --event-type identity.bound --source otp --payload-json \'{"plan":"basic"}\' --print eventId',
+        'event.emit --event-type identity.bound --source otp --payload-json \'{"plan":"basic"}\' --target-scope-json \'{"kind":"org","orgId":"org-2"}\' --print eventId',
       ),
     ).resolves.toMatchObject({ stdout: "event-2\n", exitCode: 0 });
 
     expect(calls).toEqual([
-      ["emitEvent", { eventType: "identity.bound", source: "otp", payload: { plan: "basic" } }],
+      [
+        "emitEvent",
+        {
+          eventType: "identity.bound",
+          source: "otp",
+          payload: { plan: "basic" },
+          targetScope: { kind: "org", orgId: "org-2" },
+        },
+      ],
     ]);
     expect(commandCallsResult).toEqual([{ command: "event.emit", output: "event-2", exitCode: 0 }]);
+  });
+
+  test("rejects invalid event target scopes before executing the event runtime", async () => {
+    const calls: unknown[] = [];
+    const eventRuntime: EventRuntime = {
+      emitEvent: async (input) => {
+        calls.push(input);
+        return {
+          accepted: true,
+          eventId: "event-2",
+          scope: { kind: "org", orgId: "org-1" },
+          source: input.source ?? "telegram",
+          eventType: input.eventType,
+        };
+      },
+    };
+
+    const bash = new Bash({
+      fs: new InMemoryFs(),
+      customCommands: createBackofficeBashCommands({
+        tools: eventRuntimeTools,
+        context: createTrustedSystemBackofficeToolContext({ runtimes: { event: eventRuntime } }),
+        commandCallsResult: [],
+      }),
+    });
+
+    await expect(
+      bash.exec(
+        'event.emit --event-type identity.bound --target-scope-json \'{"kind":"org","orgId":""}\'',
+      ),
+    ).resolves.toMatchObject({ exitCode: 1, stdout: "" });
+    expect(calls).toEqual([]);
   });
 
   test("passes connections.configure --json as the payload option", async () => {

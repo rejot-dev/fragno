@@ -9,7 +9,6 @@ import { createMasterFileSystem, type MasterFileSystem } from "./master-file-sys
 const INTERNAL_ORIGIN = "https://files.internal";
 
 export type CreateOrgFileSystemOptions = {
-  orgId: string;
   objects: BackofficeObjectRegistry;
   /**
    * Override for the automations DO to call its own getHookQueue() directly
@@ -23,7 +22,13 @@ export type CreateOrgFileSystemOptions = {
 export const createOrgFileSystem = async (
   options: CreateOrgFileSystemOptions,
 ): Promise<MasterFileSystem> => {
-  const { orgId, objects } = options;
+  const { objects } = options;
+  if (options.execution.scope.kind !== "org") {
+    throw new Error(
+      `Org file system requires an organisation scope, got ${options.execution.scope.kind}.`,
+    );
+  }
+  const orgId = options.execution.scope.orgId;
 
   let uploadConfig = null;
   let uploadRuntime: { baseUrl: string; fetch: typeof fetch } | undefined;
@@ -59,7 +64,6 @@ export const createOrgFileSystem = async (
   const filePrincipal = options.kernel.resolveFilePrincipal(options.execution);
 
   return createMasterFileSystem({
-    orgId,
     origin: INTERNAL_ORIGIN,
     uploadConfig,
     uploadRuntime,

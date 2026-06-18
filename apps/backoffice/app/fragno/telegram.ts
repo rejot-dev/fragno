@@ -47,7 +47,7 @@ export const buildTelegramAutomationEvent = (
   payload: SerializableTelegramMessageHookPayload,
 ): AutomationKnownEvent<typeof AUTOMATION_SOURCES.telegram> => ({
   id: `telegram:${orgId}:${payload.updateId}:${payload.messageId}`,
-  orgId,
+  scope: { kind: "org", orgId },
   source: AUTOMATION_SOURCES.telegram,
   eventType: AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived,
   occurredAt: toIsoString(payload.sentAt, "sentAt"),

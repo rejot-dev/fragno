@@ -82,7 +82,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const { env, runtime } = context.get(BackofficeWorkerContext);
   const kernel = new BackofficeKernel({ objects: runtime.objects });
   const execution = await requireBackofficeContext(request, context, { kind: "org", orgId });
-  const fs = await createOrgFileSystem({ orgId, objects: runtime.objects, kernel, execution });
+  const fs = await createOrgFileSystem({ objects: runtime.objects, kernel, execution });
   const { bash, commandCallsResult } = createInteractiveBashHost({
     fs,
     env,

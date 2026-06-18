@@ -126,7 +126,7 @@ export const buildGitHubAutomationEvent = ({
 
   return {
     id: `github:${orgId}:${meta.deliveryId}`,
-    orgId,
+    scope: { kind: "org", orgId },
     source: "github",
     eventType: "webhook.received",
     occurredAt: meta.receivedAt ?? new Date().toISOString(),

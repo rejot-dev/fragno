@@ -127,7 +127,7 @@ export class InMemoryReson8Object implements Reson8Object {
 
           await this.#runtime.objects.automations.forOrg(stored.orgId).ingestEvent({
             id: item.id,
-            orgId: stored.orgId,
+            scope: { kind: "org", orgId: stored.orgId },
             source: "reson8",
             eventType: "capability.configured",
             occurredAt: item.createdAt,
