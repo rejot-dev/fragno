@@ -161,7 +161,7 @@ describe("runBackofficeCodemode", () => {
         return {
           accepted: true,
           eventId: "event-2",
-          orgId: "org-1",
+          scope: input.targetScope ?? { kind: "org", orgId: "org-1" },
           source: input.source ?? "telegram",
           eventType: input.eventType,
         };
@@ -186,7 +186,7 @@ describe("runBackofficeCodemode", () => {
     expect(result.result).toEqual({
       accepted: true,
       eventId: "event-2",
-      orgId: "org-1",
+      scope: { kind: "org", orgId: "org-1" },
       source: "otp",
       eventType: "identity.bound",
     });

@@ -1,3 +1,5 @@
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+
 import type {
   AutomationEvent,
   AutomationEventActor,
@@ -59,6 +61,7 @@ export type EventEmitArgs = {
   actorType?: string;
   subjectUserId?: string;
   payload?: Record<string, unknown>;
+  targetScope?: BackofficeContextScope;
 };
 
 export type AutomationCommandOptionSpec = {

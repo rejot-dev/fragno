@@ -1,3 +1,4 @@
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import {
   createMasterFileSystem,
   createSystemFilesContext,
@@ -15,7 +16,7 @@ const AUTOMATION_ROOTS = [AUTOMATION_SYSTEM_ROOT, AUTOMATION_WORKSPACE_ROOT] as 
 export type AutomationFileSystemResolvePurpose = "route" | "runtime";
 
 export type AutomationFileSystemResolverInput = {
-  orgId?: string;
+  execution: BackofficeExecutionContext;
   purpose: AutomationFileSystemResolvePurpose;
 };
 
@@ -377,7 +378,10 @@ export const resolveAutomationFileSystem = async (
 
   return createMasterFileSystem(
     createSystemFilesContext({
-      orgId: input.orgId?.trim() || "automation-default-org",
+      orgId:
+        input.execution.scope.kind === "org"
+          ? input.execution.scope.orgId
+          : "automation-default-org",
       uploadConfig: null,
     }),
   );

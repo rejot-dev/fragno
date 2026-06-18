@@ -23,7 +23,7 @@ import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from
 
 const systemUnrelatedEvent = {
   id: "github:issue.opened:1",
-  orgId: "org-1",
+  scope: { kind: "org", orgId: "org-1" },
   source: "github",
   eventType: "issue.opened",
   occurredAt: "2026-01-01T00:00:00.000Z",
@@ -281,7 +281,7 @@ describe("system automation scenarios", () => {
         steps: ({ when, then }) => [
           when.automation.ingestEvent({
             id: "mcp-server-changed-1",
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             source: "mcp",
             eventType: "server.configuration.changed",
             occurredAt: "2026-01-01T00:00:00.000Z",

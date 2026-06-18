@@ -1,4 +1,4 @@
-import type { BackofficePrincipal } from "@/backoffice-runtime/context";
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { BackofficeForbiddenError, BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BashHostContext } from "@/fragno/runtime-tools/bash-host";
@@ -22,19 +22,6 @@ import {
 import type {} from "../../runtime-tools/families/otp";
 import { type OtpRuntime } from "../../runtime-tools/families/otp-runtime";
 import type { AutomationEvent } from "../contracts";
-
-const normalizeOrgId = (orgId: string | undefined) => orgId?.trim() || undefined;
-
-export const createAutomationBackofficePrincipal = (
-  event: AutomationEvent,
-): BackofficePrincipal => {
-  const orgId = normalizeOrgId(event.orgId);
-  return {
-    type: "automation",
-    id: `automation:${event.id}`,
-    ...(orgId ? { organizationIds: [orgId] } : {}),
-  };
-};
 
 export type AutomationPiBashContext = {
   runtime: PiRuntime;
@@ -66,43 +53,46 @@ export const createAutomationRuntime = ({
   runtime?: BackofficeRuntimeServices;
   event: AutomationEvent;
 }): AutomationRuntime => {
-  const orgId = normalizeOrgId(event.orgId);
-  const eventWithOrgId: AutomationEvent = {
-    ...event,
-    orgId,
-  };
-  const requireOrgRouteBackend = (toolName: string) => {
+  const requireRouteBackend = (toolName: string) => {
     if (!runtime) {
       throw new Error(`${toolName} is not configured`);
     }
-    throw new Error(`${toolName} requires an organisation id`);
+    throw new Error(`${toolName} is not available in ${event.scope.kind} automation scope`);
   };
 
-  if (runtime && orgId) {
+  if (runtime) {
+    const kernel = new BackofficeKernel({ objects: runtime.objects });
+    const execution: BackofficeExecutionContext = {
+      actor: {
+        type: "automation",
+        id: `automation:${event.id}`,
+        ...(event.scope.kind === "org" ? { organizationIds: [event.scope.orgId] } : {}),
+      },
+      scope: event.scope,
+    };
     const routeBacked = createRouteBackedRuntimeContext({
       runtime,
-      kernel: new BackofficeKernel({ objects: runtime.objects }),
-      execution: {
-        actor: createAutomationBackofficePrincipal(eventWithOrgId),
-        scope: { kind: "org", orgId },
-      },
+      kernel,
+      execution,
     });
     return {
       ...routeBacked.automations.runtime,
       ...routeBacked.otp.runtime,
       ...createEventRuntime({
         objects: runtime.objects,
-        event: eventWithOrgId,
+        event,
+        kernel,
+        execution,
       }),
     };
   }
 
   return {
-    get: async () => requireOrgRouteBackend("store.get"),
-    set: async () => requireOrgRouteBackend("store.set"),
-    delete: async () => requireOrgRouteBackend("store.delete"),
-    list: async () => requireOrgRouteBackend("store.list"),
-    createClaim: async () => requireOrgRouteBackend("otp.identity.create-claim"),
+    get: async () => requireRouteBackend("store.get"),
+    set: async () => requireRouteBackend("store.set"),
+    delete: async () => requireRouteBackend("store.delete"),
+    list: async () => requireRouteBackend("store.list"),
+    createClaim: async () => requireRouteBackend("otp.identity.create-claim"),
     ...createUnavailableEventRuntime(),
   };
 };
@@ -122,36 +112,28 @@ export const createAutomationExecutionContext = ({
   runtimeServices?: BackofficeRuntimeServices;
   pi: AutomationPiBashContext | null;
 }): AutomationRuntimeHostContext => {
-  const orgId = normalizeOrgId(event.orgId);
-  const eventWithOrgId: AutomationEvent = {
-    ...event,
-    orgId,
+  const execution: BackofficeExecutionContext = {
+    actor: {
+      type: "automation",
+      id: `automation:${event.id}`,
+      ...(event.scope.kind === "org" ? { organizationIds: [event.scope.orgId] } : {}),
+    },
+    scope: event.scope,
   };
 
-  const routeBacked =
-    runtimeServices && orgId
-      ? createRouteBackedRuntimeContext({
-          runtime: runtimeServices,
-          kernel: new BackofficeKernel({ objects: runtimeServices.objects }),
-          execution: {
-            actor: createAutomationBackofficePrincipal(eventWithOrgId),
-            scope: { kind: "org", orgId },
-          },
-          ...(pi ? { pi: { runtime: pi.runtime } } : {}),
-        })
-      : null;
-
-  const fallbackExecution = {
-    actor: createAutomationBackofficePrincipal(eventWithOrgId),
-    scope: orgId
-      ? ({ kind: "org", orgId } as const)
-      : ({ kind: "project", projectId: "unavailable" } as const),
-  };
+  const routeBacked = runtimeServices
+    ? createRouteBackedRuntimeContext({
+        runtime: runtimeServices,
+        kernel: new BackofficeKernel({ objects: runtimeServices.objects }),
+        execution,
+        ...(pi ? { pi: { runtime: pi.runtime } } : {}),
+      })
+    : null;
 
   return {
     ...(routeBacked ?? {
       defaultActor: null,
-      backofficeExecution: fallbackExecution,
+      backofficeExecution: execution,
       backofficeKernel: new BackofficeKernel({}),
       createBackofficeScopedContext: () => {
         throw new BackofficeForbiddenError("Backoffice runtime services are not configured.");
@@ -167,17 +149,13 @@ export const createAutomationExecutionContext = ({
       telegram: { runtime: createUnavailableTelegramRuntime() },
     }),
     automation: {
-      event: eventWithOrgId,
-      orgId,
+      event,
+      orgId: event.scope.kind === "org" ? event.scope.orgId : undefined,
       binding,
       idempotencyKey,
       runtime,
     },
-    automations: routeBacked?.automations
-      ? { ...routeBacked.automations, runtime }
-      : {
-          runtime,
-        },
+    automations: routeBacked?.automations ? { ...routeBacked.automations, runtime } : { runtime },
     otp: {
       runtime,
     },

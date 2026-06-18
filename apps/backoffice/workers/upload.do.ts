@@ -183,7 +183,7 @@ export class InMemoryUploadObject implements UploadObject {
             .forOrg(stored.namespace.orgId)
             .ingestEvent({
               id: item.id,
-              orgId: stored.namespace.orgId,
+              scope: { kind: "org", orgId: stored.namespace.orgId },
               source: "upload",
               eventType: "capability.configured",
               occurredAt: item.createdAt,

@@ -140,6 +140,7 @@ describe("runtime tool reference generation", () => {
             "actor-type",
             "subject-user-id",
             "payload-json",
+            "target-scope-json",
           ],
         },
       ],

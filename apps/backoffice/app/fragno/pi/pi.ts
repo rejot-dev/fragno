@@ -306,10 +306,10 @@ const createExecCodeModeTool = (
           remoteWorkflowName: result.workflowDefinition.name,
           instanceId: `${sessionId}--${_toolCallId}`,
           params: {
+            orgId,
             code,
             sessionId,
             toolCallId: _toolCallId,
-            orgId,
           } satisfies PiCodemodeWorkflowParams,
         });
       }
@@ -338,7 +338,6 @@ const getSessionFs = async (
   }
 
   const pendingFileSystem = createOrgFileSystem({
-    orgId: context.orgId,
     objects: context.objects,
     kernel: context.kernel,
     execution: context.execution,

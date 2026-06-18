@@ -76,7 +76,7 @@ const dispatchOrganizationEvent = async (
 
   await runtime.objects.automations.forOrg(organization.id).ingestEvent({
     id: `${AUTH_AUTOMATION_SOURCE}:${eventType}:${organization.id}:${occurredAt}`,
-    orgId: organization.id,
+    scope: { kind: "org", orgId: organization.id },
     source: AUTH_AUTOMATION_SOURCE,
     eventType,
     occurredAt,

@@ -89,5 +89,21 @@ describe("createBackofficeObjectRegistry", () => {
       binding: "AUTH",
       scope: { kind: "project", projectId: "project_1" },
     });
+    expect(objects.auth.for({ kind: "system" })).toEqual({
+      binding: "AUTH",
+      scope: { kind: "singleton" },
+    });
+    expect(objects.auth.for({ kind: "org", orgId: "org_1" })).toEqual({
+      binding: "AUTH",
+      scope: { kind: "org", orgId: "org_1" },
+    });
+    expect(objects.auth.for({ kind: "user", userId: "user_1" })).toEqual({
+      binding: "AUTH",
+      scope: { kind: "user", userId: "user_1" },
+    });
+    expect(objects.auth.for({ kind: "project", projectId: "project_1" })).toEqual({
+      binding: "AUTH",
+      scope: { kind: "project", projectId: "project_1" },
+    });
   });
 });

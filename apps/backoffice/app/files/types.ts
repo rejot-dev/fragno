@@ -54,7 +54,6 @@ export type FileEntryDescriptor = {
 };
 
 export type FilesContext = {
-  orgId: string;
   origin?: string;
   backend?: FilesBackend;
   uploadConfig?: UploadAdminConfigResponse | null;

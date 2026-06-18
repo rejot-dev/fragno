@@ -1,3 +1,4 @@
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import {
   AUTOMATION_SOURCES,
   AUTOMATION_SOURCE_EVENT_TYPES,
@@ -69,7 +70,7 @@ export type AutomationEventSubject = {
 
 export type AutomationEvent = {
   id: string;
-  orgId?: string;
+  scope: BackofficeContextScope;
   source: string;
   eventType: string;
   occurredAt: string;
@@ -85,4 +86,21 @@ export type AutomationKnownEvent<S extends AutomationSource = AutomationSource> 
 > & {
   source: S;
   eventType: AutomationEventTypeForSource<S>;
+};
+
+export type AutomationCreateIdentityClaimInput = {
+  scope: BackofficeContextScope;
+  actor: AutomationEventActor;
+  ttlMinutes?: number;
+  event: AutomationEvent;
+  idempotencyKey: string;
+};
+
+export type AutomationCreateIdentityClaimResult = {
+  url: string;
+  externalId: string;
+  code: string;
+  actor: AutomationEventActor;
+  type?: string;
+  expiresAt?: string;
 };

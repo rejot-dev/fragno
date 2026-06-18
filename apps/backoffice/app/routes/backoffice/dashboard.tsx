@@ -219,7 +219,6 @@ export async function action({ request, context }: Route.ActionArgs) {
         scope: { kind: "org" as const, orgId: activeOrg.id },
       };
       const fileSystem = await createOrgFileSystem({
-        orgId: activeOrg.id,
         objects: runtime.objects,
         kernel,
         execution,
@@ -279,7 +278,6 @@ export async function action({ request, context }: Route.ActionArgs) {
       scope: { kind: "org" as const, orgId: activeOrg.id },
     };
     const fileSystem = await createOrgFileSystem({
-      orgId: activeOrg.id,
       objects: runtime.objects,
       kernel,
       execution,

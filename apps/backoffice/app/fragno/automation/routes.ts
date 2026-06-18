@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 
+import { SYSTEM_BACKOFFICE_PRINCIPAL } from "@/backoffice-runtime/context";
+
 import { AutomationStoreProtectedEntryError } from "./bindings-storage-runtime";
 import { loadAutomationCatalogFromConfig } from "./catalog";
 import { automationFragmentDefinition } from "./definition";
@@ -20,7 +22,13 @@ export const automationFragmentRoutes = defineRoutes(automationFragmentDefinitio
   ({ defineRoute, config, services }) => {
     const loadRouteCatalog = (query: URLSearchParams) =>
       loadAutomationCatalogFromConfig(config, {
-        orgId: getOrgIdFromRequestQuery(query),
+        execution: {
+          actor: SYSTEM_BACKOFFICE_PRINCIPAL,
+          scope: {
+            kind: "org",
+            orgId: getOrgIdFromRequestQuery(query) ?? "automation-default-org",
+          },
+        },
         purpose: "route",
       });
 
