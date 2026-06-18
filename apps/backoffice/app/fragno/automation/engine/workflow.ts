@@ -26,9 +26,11 @@ export type AutomationCodemodeWorkflowParams = {
 const createWorkflowAutomationContext = ({
   runtime,
   params,
+  fileSystem,
 }: {
   runtime: BackofficeRuntimeServices;
   params: AutomationCodemodeWorkflowParams;
+  fileSystem: MasterFileSystem;
 }): AutomationRuntimeHostContext => {
   const kernel = new BackofficeKernel({ objects: runtime.objects });
   const execution: BackofficeExecutionContext = {
@@ -45,6 +47,7 @@ const createWorkflowAutomationContext = ({
     runtime,
     kernel,
     execution,
+    fileSystem,
   });
   const eventRuntime = createEventRuntime({
     objects: runtime.objects,
@@ -147,7 +150,11 @@ export const defineAutomationCodemodeWorkflow = (
       throw new Error("Workflow-backed codemode automation requires Backoffice runtime services.");
     }
 
-    const context = createWorkflowAutomationContext({ runtime: config.runtime, params });
+    const context = createWorkflowAutomationContext({
+      runtime: config.runtime,
+      params,
+      fileSystem: resolvedFs,
+    });
     const result = await executeWorkflowCodemodeAutomation({
       script,
       context,

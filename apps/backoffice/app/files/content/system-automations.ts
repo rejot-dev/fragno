@@ -71,12 +71,7 @@ export const SYSTEM_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
     });
 
     const codemodeTypes = await step.do("write codemode dts", async () => {
-      const rendered = await internal.codemodeTypesRender({});
-      await state.writeFile(rendered.path, rendered.content);
-      return {
-        path: rendered.path,
-        configuredCapabilities: rendered.configuredCapabilities,
-      };
+      return await internal.codemodeTypesSync({});
     });
 
     return { ...configured, seeded, codemodeTypes };
@@ -86,33 +81,9 @@ export const SYSTEM_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
   "automations/codemode-types-refresh.workflow.js": `defineWorkflow(
   { name: "codemode-types-refresh" },
   async (_event, step) => {
-    const rendered = await step.do("render codemode dts", async () => {
-      return await internal.codemodeTypesRender({});
+    return await step.do("sync codemode dts", async () => {
+      return await internal.codemodeTypesSync({});
     });
-
-    const existing = await step.do("read existing codemode dts", async () => {
-      return (await state.exists(rendered.path))
-        ? await state.readFile(rendered.path)
-        : null;
-    });
-
-    if (existing === rendered.content) {
-      return {
-        changed: false,
-        path: rendered.path,
-        configuredCapabilities: rendered.configuredCapabilities,
-      };
-    }
-
-    await step.do("write codemode dts", async () => {
-      await state.writeFile(rendered.path, rendered.content);
-    });
-
-    return {
-      changed: true,
-      path: rendered.path,
-      configuredCapabilities: rendered.configuredCapabilities,
-    };
   },
 );
 `,

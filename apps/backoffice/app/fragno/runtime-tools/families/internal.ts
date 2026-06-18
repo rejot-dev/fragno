@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
+import { createMasterFileSystem, createSystemFilesContext } from "@/files";
+import type { IFileSystem } from "@/files/interface";
 import {
   seedWorkspaceStarterFiles,
   type WorkspaceStarterFilesSeedOutput,
@@ -23,15 +25,15 @@ import {
   type BackofficeToolContext,
 } from "../runtime-tools";
 
-export type CodemodeTypesRenderOutput = {
+export type CodemodeTypesSyncOutput = {
   path: typeof CODEMODE_DTS_PATH;
-  content: string;
+  changed: boolean;
   configuredCapabilities: BackofficeCapabilityId[];
 };
 
 export type InternalRuntime = {
   seedWorkspaceStarterFiles(input?: { force?: boolean }): Promise<WorkspaceStarterFilesSeedOutput>;
-  renderCodemodeTypes(): Promise<CodemodeTypesRenderOutput>;
+  syncCodemodeTypes(): Promise<CodemodeTypesSyncOutput>;
 };
 
 type InternalToolContext = BackofficeToolContext<{ internal?: InternalRuntime }>;
@@ -44,9 +46,9 @@ const workspaceStarterFilesSeedOutputSchema = z.object({
   skipped: z.array(z.string()),
 });
 
-const codemodeTypesRenderOutputSchema = z.object({
+const codemodeTypesSyncOutputSchema = z.object({
   path: z.literal(CODEMODE_DTS_PATH),
-  content: z.string(),
+  changed: z.boolean(),
   configuredCapabilities: z.array(z.string()),
 });
 
@@ -63,16 +65,20 @@ export const createInternalRuntime = ({
   orgId,
   origin = "https://backoffice.local",
   families,
+  fileSystem,
 }: {
   objects: BackofficeObjectRegistry;
   config: BackofficeRuntimeConfig;
   orgId: string;
   origin?: string;
   families: readonly BackofficeRuntimeToolFamily[];
-}): InternalRuntime => ({
-  seedWorkspaceStarterFiles: async (input) =>
-    await seedWorkspaceStarterFiles({ objects, orgId, force: input?.force }),
-  renderCodemodeTypes: async () => {
+  fileSystem?: IFileSystem;
+}): InternalRuntime => {
+  const renderCodemodeTypes = async (): Promise<{
+    path: typeof CODEMODE_DTS_PATH;
+    content: string;
+    configuredCapabilities: BackofficeCapabilityId[];
+  }> => {
     const configuredCapabilities: BackofficeCapabilityId[] = [];
 
     for (const capability of backofficeCapabilities) {
@@ -103,8 +109,54 @@ export const createInternalRuntime = ({
       }),
       configuredCapabilities,
     };
-  },
-});
+  };
+
+  return {
+    seedWorkspaceStarterFiles: async (input) =>
+      await seedWorkspaceStarterFiles({ objects, orgId, force: input?.force }),
+    syncCodemodeTypes: async () => {
+      const rendered = await renderCodemodeTypes();
+      let fs = fileSystem;
+      let existing: string | null = null;
+
+      if (fs) {
+        try {
+          existing = (await fs.exists(rendered.path)) ? await fs.readFile(rendered.path) : null;
+        } catch {
+          fs = undefined;
+        }
+      }
+
+      if (!fs) {
+        fs = await createMasterFileSystem(createSystemFilesContext({ objects, orgId, origin }));
+        existing = (await fs.exists(rendered.path)) ? await fs.readFile(rendered.path) : null;
+      }
+      const changed = existing !== rendered.content;
+
+      if (changed) {
+        try {
+          await fs.writeFile(rendered.path, rendered.content);
+        } catch (error) {
+          if (!fileSystem || fs !== fileSystem) {
+            throw error;
+          }
+
+          fs = await createMasterFileSystem(createSystemFilesContext({ objects, orgId, origin }));
+          existing = (await fs.exists(rendered.path)) ? await fs.readFile(rendered.path) : null;
+          if (existing !== rendered.content) {
+            await fs.writeFile(rendered.path, rendered.content);
+          }
+        }
+      }
+
+      return {
+        path: rendered.path,
+        changed,
+        configuredCapabilities: rendered.configuredCapabilities,
+      };
+    },
+  };
+};
 
 const filesSeedExecuteTool = defineBackofficeRuntimeTool({
   id: "internal.files.seed.execute",
@@ -146,34 +198,37 @@ const filesSeedExecuteTool = defineBackofficeRuntimeTool({
   },
 });
 
-const codemodeTypesRenderTool = defineBackofficeRuntimeTool({
-  id: "internal.codemode.types.render",
+const codemodeTypesSyncTool = defineBackofficeRuntimeTool({
+  id: "internal.codemode.types.sync",
   namespace: "internal",
-  name: "codemodeTypesRender",
-  description:
-    "Render the org-scoped codemode TypeScript declarations for configured capabilities.",
-  requiredPermissions: ["read"],
+  name: "codemodeTypesSync",
+  description: "Render and write the org-scoped codemode TypeScript declarations if changed.",
+  requiredPermissions: ["manage"],
   inputSchema: z.object({}).optional().default({}),
-  outputSchema: codemodeTypesRenderOutputSchema,
+  outputSchema: codemodeTypesSyncOutputSchema,
   execute: async (_input, context: InternalToolContext) =>
-    await getRuntime(context).renderCodemodeTypes(),
+    await getRuntime(context).syncCodemodeTypes(),
   adapters: {
     bash: {
-      command: "internal.codemode.types.render",
+      command: "internal.codemode.types.sync",
       help: {
-        summary: "internal.codemode.types.render renders /workspace/codemode.d.ts content.",
+        summary: "internal.codemode.types.sync writes /workspace/codemode.d.ts if changed.",
         options: [],
-        examples: ["internal.codemode.types.render --format json --print content"],
+        examples: ["internal.codemode.types.sync --format json"],
       },
       parse: () => ({}),
       outputOptions: (_args, parsed) => readOutputOptions(parsed),
       format: (output, options) =>
-        options.format === "json" || options.print ? { data: output } : { stdout: output.content },
+        options.format === "json" || options.print
+          ? { data: output }
+          : {
+              stdout: `path=${output.path}\nchanged=${output.changed ? "yes" : "no"}\nconfiguredCapabilities=${output.configuredCapabilities.join(",")}\n`,
+            },
     },
   },
 });
 
-const internalRuntimeTools = [filesSeedExecuteTool, codemodeTypesRenderTool] as const;
+const internalRuntimeTools = [filesSeedExecuteTool, codemodeTypesSyncTool] as const;
 
 export const internalToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "internal",
