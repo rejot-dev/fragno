@@ -1,6 +1,13 @@
-import { describe, test, vi } from "vitest";
+import { describe, expect, test, vi, assert } from "vitest";
+
+import {
+  createInMemoryBackofficeRuntime,
+  type InMemoryBackofficeRuntime,
+} from "@/backoffice-runtime/in-memory-runtime";
+import { createMasterFileSystem, createSystemFilesContext } from "@/files";
 
 import type { AutomationEvent } from "./contracts";
+import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -48,6 +55,83 @@ const systemUnrelatedEvent = {
 } satisfies AutomationEvent;
 
 describe("system automation scenarios", () => {
+  test("auth organization.created initializes upload-backed workspace files", async () => {
+    const orgId = "org-real";
+    let runtime!: InMemoryBackofficeRuntime;
+    runtime = await createInMemoryBackofficeRuntime({
+      getAutomationFileSystem: async ({ execution }) =>
+        await createMasterFileSystem(
+          createSystemFilesContext({ objects: runtime.objects, execution }),
+        ),
+    });
+
+    try {
+      await runtime.objects.automations.forOrg(orgId).ingestEvent({
+        id: `auth:organization.created:${orgId}`,
+        scope: { kind: "org", orgId },
+        source: "auth",
+        eventType: "organization.created",
+        occurredAt: "2026-01-01T00:00:00.000Z",
+        payload: {
+          organization: {
+            id: orgId,
+            name: "Ada Labs",
+            slug: "ada-labs",
+            logoUrl: null,
+            metadata: null,
+            createdBy: "user-1",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            deletedAt: null,
+          },
+        },
+        actor: {
+          scope: "internal",
+          type: "user",
+          id: "user-1",
+          email: "ada@example.com",
+          role: "user",
+        },
+        actors: [
+          {
+            scope: "internal",
+            type: "user",
+            id: "user-1",
+            email: "ada@example.com",
+            role: "user",
+          },
+        ],
+        subject: { orgId },
+      } satisfies AutomationEvent);
+
+      await runtime.drain();
+
+      const workflow = createRouteBackedAutomationWorkflowRuntime({
+        object: runtime.objects.automations.forOrg(orgId),
+      });
+      const listInstances = workflow.listInstances;
+      if (!listInstances) {
+        throw new Error("Workflow listInstances runtime helper is unavailable.");
+      }
+      const instances = await listInstances({
+        workflowName: "automation-codemode-script",
+        remoteWorkflowName: "workspace-file-initialization",
+      });
+      expect(instances.instances).toHaveLength(1);
+      assert(instances.instances[0]!.details.status === "complete");
+
+      const fs = await createMasterFileSystem(
+        createSystemFilesContext({ objects: runtime.objects, orgId }),
+      );
+      await expect(fs.readFile("/workspace/AGENTS.md")).resolves.toContain("Workspace guidance");
+      await expect(fs.readFile("/workspace/codemode.d.ts")).resolves.toContain(
+        "declare const capabilities",
+      );
+    } finally {
+      await runtime.cleanup();
+    }
+  });
+
   test("auth organization.created initializes workspace files", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
@@ -214,7 +298,7 @@ describe("system automation scenarios", () => {
           }),
           then.workflow.steps({
             instanceId: "codemode-types-refresh-telegram-capability-1",
-            include: ["render codemode dts", "read existing codemode dts", "write codemode dts"],
+            include: ["sync codemode dts"],
           }),
           then.files.contains({
             orgId: "org-1",
@@ -440,7 +524,7 @@ describe("system automation scenarios", () => {
           }),
           then.workflow.steps({
             instanceId: "codemode-types-refresh-telegram-capability-second",
-            include: ["render codemode dts", "read existing codemode dts"],
+            include: ["sync codemode dts"],
           }),
           then.files.contains({
             orgId: "org-1",
