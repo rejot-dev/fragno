@@ -13,7 +13,6 @@ import {
 const context: FilesContext = createSystemFilesContext({
   orgId: "org_123",
   backend: "backoffice",
-  uploadConfig: null,
 });
 
 const contributors: FileContributor[] = [];

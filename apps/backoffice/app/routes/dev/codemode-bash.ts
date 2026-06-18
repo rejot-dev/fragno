@@ -1,10 +1,11 @@
 import { z } from "zod";
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { createOrgFileSystem } from "@/files/create-file-system";
+import { createBackofficeFileSystem } from "@/files/create-file-system";
 import { authorizeAccessTokenForOrganization } from "@/fragno/auth/access-token.server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
+import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import {
@@ -79,20 +80,22 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const cwd = body.cwd ?? DEFAULT_CWD;
   const timeoutMs = body.timeout ?? DASHBOARD_COMMAND_TIMEOUT_MS;
 
-  const { env, runtime } = context.get(BackofficeWorkerContext);
+  const { runtime } = context.get(BackofficeWorkerContext);
   const kernel = new BackofficeKernel({ objects: runtime.objects });
   const execution = await requireBackofficeContext(request, context, { kind: "org", orgId });
-  const fs = await createOrgFileSystem({ objects: runtime.objects, kernel, execution });
+  const fs = await createBackofficeFileSystem({ objects: runtime.objects, kernel, execution });
   const { bash, commandCallsResult } = createInteractiveBashHost({
     fs,
-    env,
-    runtime,
-    orgId,
-    defaultActor: {
-      scope: "internal",
-      type: "user",
-      id: auth.principal.user.id,
-    },
+    context: createRouteBackedRuntimeContext({
+      runtime,
+      kernel,
+      execution,
+      defaultActor: {
+        scope: "internal",
+        type: "user",
+        id: auth.principal.user.id,
+      },
+    }),
   });
 
   const headers = new Headers({ "cache-control": "no-store" });

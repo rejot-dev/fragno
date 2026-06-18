@@ -1,5 +1,5 @@
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { createOrgFileSystem } from "@/files/create-file-system";
+import { createBackofficeFileSystem } from "@/files/create-file-system";
 import { authorizeAccessTokenForOrganization } from "@/fragno/auth/access-token.server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -28,7 +28,7 @@ const readOrgSystemGuidance = async ({
 }) => {
   const { runtime } = context.get(BackofficeWorkerContext);
   const kernel = new BackofficeKernel({ objects: runtime.objects });
-  const fs = await createOrgFileSystem({ objects: runtime.objects, kernel, execution });
+  const fs = await createBackofficeFileSystem({ objects: runtime.objects, kernel, execution });
   return await fs.readFile("/system/SYSTEM.md");
 };
 

@@ -18,8 +18,8 @@ import {
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
 import {
+  createBackofficeFileSystem,
   createMasterFileSystem,
-  createOrgFileSystem,
   createSystemFilesContext,
   staticFileContributor,
   type MasterFileSystem,
@@ -75,7 +75,7 @@ export const createDefaultAutomationFileSystem = async ({
   automationHookQueue?: (opts?: DurableHookQueueOptions) => Promise<DurableHookQueueResponse>;
 }): Promise<MasterFileSystem> => {
   if (execution.scope.kind === "org") {
-    return createOrgFileSystem({
+    return createBackofficeFileSystem({
       objects,
       kernel,
       execution,
@@ -87,7 +87,6 @@ export const createDefaultAutomationFileSystem = async ({
     createSystemFilesContext({
       orgId: automationCatalogOrgIdForScope(execution.scope),
       objects,
-      uploadConfig: null,
     }),
     { contributors: [staticFileContributor, tmpFileContributor] },
   );

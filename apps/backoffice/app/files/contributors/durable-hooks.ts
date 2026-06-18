@@ -1,3 +1,4 @@
+import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
 import type {
   DurableHookQueueEntry,
   DurableHookQueueOptions,
@@ -242,8 +243,41 @@ const createDurableHooksFileContributor = (
 };
 
 const resolveRuntime = (ctx: FilesContext, contributorId: string): DurableHooksRuntime | null => {
-  const match = ctx.durableHooksRuntimes?.find((r) => r.contributorId === contributorId);
-  return match ?? null;
+  if (contributorId !== "durable-hooks-automation") {
+    return null;
+  }
+
+  if (ctx.automationHookQueue) {
+    return { getHookQueue: ctx.automationHookQueue };
+  }
+
+  if (!ctx.objects?.automations) {
+    return null;
+  }
+
+  let automationsObject;
+  try {
+    automationsObject = ctx.kernel.scoped(
+      "AUTOMATIONS",
+      ctx.execution.scope,
+      ctx.objects.automations,
+    );
+  } catch (error) {
+    if (error instanceof BackofficeUnavailableError) {
+      return null;
+    }
+    throw error;
+  }
+  if (!automationsObject?.getDurableHookRepository) {
+    return null;
+  }
+
+  return {
+    getHookQueue: async (options) => {
+      const repository = await automationsObject.getDurableHookRepository("automation");
+      return repository.getHookQueue(options);
+    },
+  };
 };
 
 const loadHookEntries = async (

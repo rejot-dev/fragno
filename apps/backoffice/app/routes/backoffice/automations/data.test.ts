@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const { createOrgFileSystemMock, requireBackofficeContextMock } = vi.hoisted(() => ({
-  createOrgFileSystemMock: vi.fn(),
+const { createBackofficeFileSystemMock, requireBackofficeContextMock } = vi.hoisted(() => ({
+  createBackofficeFileSystemMock: vi.fn(),
   requireBackofficeContextMock: vi.fn(),
 }));
 
@@ -9,7 +9,7 @@ vi.mock("@/files", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/files")>();
   return {
     ...actual,
-    createOrgFileSystem: createOrgFileSystemMock,
+    createBackofficeFileSystem: createBackofficeFileSystemMock,
   };
 });
 
@@ -23,7 +23,7 @@ const mockContext = { get: () => ({ runtime: { objects: {} }, env: {} }) } as ne
 const request = new Request("https://backoffice.test/automations");
 
 beforeEach(() => {
-  createOrgFileSystemMock.mockReset();
+  createBackofficeFileSystemMock.mockReset();
   requireBackofficeContextMock.mockReset();
   requireBackofficeContextMock.mockResolvedValue({
     actor: {
@@ -45,7 +45,7 @@ describe("automation backoffice workspace data", () => {
       "/workspace/automations/workflow.workflow.js":
         "defineWorkflow({ name: 'x' }, async () => {})",
     });
-    createOrgFileSystemMock.mockResolvedValue(fileSystem.fs);
+    createBackofficeFileSystemMock.mockResolvedValue(fileSystem.fs);
 
     const result = await loadAutomationWorkspaceData({
       request,
@@ -92,7 +92,7 @@ describe("automation backoffice workspace data", () => {
     const fileSystem = createStubAutomationFileSystem({
       "/workspace/automations/lazy.sh": 'echo "lazy"',
     });
-    createOrgFileSystemMock.mockResolvedValue(fileSystem.fs);
+    createBackofficeFileSystemMock.mockResolvedValue(fileSystem.fs);
 
     const result = await loadAutomationScriptSource({
       request,

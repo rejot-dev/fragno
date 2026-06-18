@@ -1,35 +1,46 @@
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import { SYSTEM_BACKOFFICE_PRINCIPAL } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 
-import type { FilesContext } from "./types";
+import type { FilePrincipal } from "./permissions";
+import type { FilesBackend, FilesContext } from "./types";
+
+export type CreateSystemFilesContextOptions = {
+  origin?: string;
+  backend?: FilesBackend;
+  request?: Request;
+  orgId?: string;
+  objects?: BackofficeObjectRegistry;
+  execution?: BackofficeExecutionContext;
+  filePrincipal?: FilePrincipal;
+  automationHookQueue?: FilesContext["automationHookQueue"];
+};
 
 /**
  * Creates a root/system filesystem context for trusted internal callers.
  *
- * This is not a request-user helper. Production setup/seed/catalog paths use it when they
- * intentionally need system ownership, and tests use it for explicit root fixtures.
+ * This helper does not manufacture fake org-scoped objects. Object-backed contributors are only
+ * available when a real BackofficeObjectRegistry is supplied, and otherwise simply do not mount.
  */
-export const createSystemFilesContext = (
-  context: Omit<FilesContext, "execution" | "kernel" | "filePrincipal"> & {
-    orgId?: string;
-    objects?: BackofficeObjectRegistry;
-    execution?: BackofficeExecutionContext;
-    filePrincipal?: FilesContext["filePrincipal"];
-  },
-): FilesContext => {
-  const objects = context.objects ?? ({} as BackofficeObjectRegistry);
-  const { orgId, objects: _objects, execution, filePrincipal, ...filesContext } = context;
+export const createSystemFilesContext = ({
+  orgId,
+  objects,
+  execution,
+  filePrincipal,
+  ...filesContext
+}: CreateSystemFilesContextOptions = {}): FilesContext => {
   const resolvedExecution =
     execution ??
     ({
-      actor: { type: "system", id: "files-system" },
-      scope: { kind: "org", orgId: orgId ?? "system-files" },
+      actor: SYSTEM_BACKOFFICE_PRINCIPAL,
+      scope: orgId ? { kind: "org", orgId } : { kind: "system" },
     } satisfies BackofficeExecutionContext);
   const kernel = new BackofficeKernel({ objects });
 
   return {
     ...filesContext,
+    ...(objects ? { objects } : {}),
     execution: resolvedExecution,
     kernel,
     filePrincipal: filePrincipal ?? kernel.resolveFilePrincipal(resolvedExecution),

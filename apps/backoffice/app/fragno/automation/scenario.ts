@@ -10,7 +10,11 @@ import type {
   BackofficeObjectAddress,
   BackofficeObjectBindingName,
 } from "@/backoffice-runtime/object-registry";
-import { createOrgFileSystem, SYSTEM_FILE_CONTENT, WORKSPACE_STARTER_CONTENT } from "@/files";
+import {
+  createBackofficeFileSystem,
+  SYSTEM_FILE_CONTENT,
+  WORKSPACE_STARTER_CONTENT,
+} from "@/files";
 import type { MasterFileSystem } from "@/files";
 import {
   runBackofficeCodemode,
@@ -1254,7 +1258,7 @@ const getReadableScenarioFileSystem = async (
     return scenarioFs;
   }
 
-  const orgFs = await createOrgFileSystem({
+  const orgFs = await createBackofficeFileSystem({
     objects: ctx.runtime.objects,
     kernel: new BackofficeKernel({ objects: ctx.runtime.objects }),
     execution: { actor: createScenarioActor(orgId), scope: { kind: "org", orgId } },
@@ -2907,7 +2911,7 @@ const collectDiagnostics = async (ctx: BackofficeScenarioContext): Promise<unkno
 
     try {
       const scenarioFs = ctx.files.forOrg(orgId);
-      const orgFs = await createOrgFileSystem({
+      const orgFs = await createBackofficeFileSystem({
         objects: ctx.runtime.objects,
         kernel: new BackofficeKernel({ objects: ctx.runtime.objects }),
         execution: { actor: createScenarioActor(orgId), scope: { kind: "org", orgId } },

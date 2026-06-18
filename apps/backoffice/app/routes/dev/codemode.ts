@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { createOrgFileSystem } from "@/files/create-file-system";
+import { createBackofficeFileSystem } from "@/files/create-file-system";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
@@ -48,7 +48,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const { env, runtime } = context.get(BackofficeWorkerContext);
   const kernel = new BackofficeKernel({ objects: runtime.objects });
 
-  const fs = await createOrgFileSystem({ objects: runtime.objects, kernel, execution });
+  const fs = await createBackofficeFileSystem({ objects: runtime.objects, kernel, execution });
   const routeRuntimeContext = createRouteBackedRuntimeContext({ runtime, kernel, execution });
   const toolContext = createBackofficeToolContext(routeRuntimeContext);
 

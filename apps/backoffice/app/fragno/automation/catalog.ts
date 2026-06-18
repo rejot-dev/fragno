@@ -376,15 +376,7 @@ export const resolveAutomationFileSystem = async (
     return config.automationFileSystem;
   }
 
-  return createMasterFileSystem(
-    createSystemFilesContext({
-      orgId:
-        input.execution.scope.kind === "org"
-          ? input.execution.scope.orgId
-          : "automation-default-org",
-      uploadConfig: null,
-    }),
-  );
+  return createMasterFileSystem(createSystemFilesContext({ execution: input.execution }));
 };
 
 export const loadAutomationCatalog = async (

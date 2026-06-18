@@ -64,15 +64,12 @@ describe("createMasterFileSystem", () => {
     ]);
   });
 
-  test("requires an organisation execution scope", async () => {
-    await expect(
-      createTestMasterFileSystem({
-        ...context,
-        execution: { actor: { type: "system", id: "system" }, scope: { kind: "system" } },
-      }),
-    ).rejects.toThrow(/requires an organisation scope/);
+  test("supports system execution scope for non-object-backed mounts", async () => {
+    const resolved = await createTestMasterFileSystem({
+      ...context,
+      execution: { actor: { type: "system", id: "system" }, scope: { kind: "system" } },
+    });
 
-    const resolved = await createTestMasterFileSystem();
     expect(resolved.mounts.map((mount) => mount.mountPoint)).toEqual(["/system", "/tmp"]);
   });
 
@@ -345,6 +342,7 @@ describe("createMasterFileSystem", () => {
     const master = await createTestMasterFileSystem({
       backend: "backoffice",
       execution,
+      objects: context.objects,
       kernel,
       filePrincipal: kernel.resolveFilePrincipal(execution),
     });

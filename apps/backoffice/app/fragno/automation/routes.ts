@@ -20,17 +20,16 @@ const getOrgIdFromRequestQuery = (query: URLSearchParams) =>
 
 export const automationFragmentRoutes = defineRoutes(automationFragmentDefinition).create(
   ({ defineRoute, config, services }) => {
-    const loadRouteCatalog = (query: URLSearchParams) =>
-      loadAutomationCatalogFromConfig(config, {
+    const loadRouteCatalog = (query: URLSearchParams) => {
+      const orgId = getOrgIdFromRequestQuery(query);
+      return loadAutomationCatalogFromConfig(config, {
         execution: {
           actor: SYSTEM_BACKOFFICE_PRINCIPAL,
-          scope: {
-            kind: "org",
-            orgId: getOrgIdFromRequestQuery(query) ?? "automation-default-org",
-          },
+          scope: orgId ? { kind: "org", orgId } : { kind: "system" },
         },
         purpose: "route",
       });
+    };
 
     return [
       defineRoute({

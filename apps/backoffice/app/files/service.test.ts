@@ -6,8 +6,8 @@ import {
   getFilesNodeDetail,
   listFilesChildren,
   listFilesTree,
-  type FilesContext,
 } from "@/files";
+import { createFilesTestObjectRegistry } from "@/files/test-object-registry";
 import {
   UPLOAD_PROVIDER_DATABASE,
   UPLOAD_PROVIDER_R2,
@@ -50,8 +50,10 @@ describe("files service", () => {
       createSystemFilesContext({
         orgId: "org_123",
         backend: "backoffice",
-        uploadConfig: runtime.uploadConfig,
-        uploadRuntime: runtime,
+        objects: createFilesTestObjectRegistry({
+          uploadConfig: runtime.uploadConfig,
+          uploadRuntime: runtime,
+        }),
       }),
     );
 
@@ -73,8 +75,10 @@ describe("files service", () => {
       createSystemFilesContext({
         orgId: "org_123",
         backend: "backoffice",
-        uploadConfig: runtime.uploadConfig,
-        uploadRuntime: runtime,
+        objects: createFilesTestObjectRegistry({
+          uploadConfig: runtime.uploadConfig,
+          uploadRuntime: runtime,
+        }),
       }),
     );
 
@@ -121,8 +125,10 @@ describe("files service", () => {
       createSystemFilesContext({
         orgId: "org_123",
         backend: "backoffice",
-        uploadConfig: runtime.uploadConfig,
-        uploadRuntime: runtime,
+        objects: createFilesTestObjectRegistry({
+          uploadConfig: runtime.uploadConfig,
+          uploadRuntime: runtime,
+        }),
         request: new Request(
           "https://docs.example.test/backoffice/files/org_123?path=%2Fworkspace",
         ),
@@ -173,7 +179,6 @@ describe("files service", () => {
       createSystemFilesContext({
         orgId: "org_123",
         backend: "backoffice",
-        uploadConfig: null,
       }),
     );
 
@@ -194,7 +199,6 @@ describe("files service", () => {
       createSystemFilesContext({
         orgId: "org_123",
         backend: "backoffice",
-        uploadConfig: null,
       }),
     );
 
@@ -348,7 +352,9 @@ const createUploadRuntime = (
 
       return new Response("Not Found", { status: 404 });
     },
-  } satisfies NonNullable<FilesContext["uploadRuntime"]> & {
+  } satisfies {
+    baseUrl: string;
+    fetch(request: Request): Promise<Response>;
     uploadConfig: UploadAdminConfigResponse;
     files: Map<string, UploadFileRecord>;
     contents: Map<string, Uint8Array>;

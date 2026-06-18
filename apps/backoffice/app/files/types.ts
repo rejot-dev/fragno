@@ -1,7 +1,8 @@
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { DurableHookQueueOptions, DurableHookQueueResponse } from "@/fragno/durable-hooks";
-import type { UploadAdminConfigResponse, UploadProvider } from "@/fragno/upload";
+import type { UploadProvider } from "@/fragno/upload";
 
 import type { FileContent, IFileSystem } from "./interface";
 import type { FilePrincipal } from "./permissions";
@@ -56,25 +57,12 @@ export type FileEntryDescriptor = {
 export type FilesContext = {
   origin?: string;
   backend?: FilesBackend;
-  uploadConfig?: UploadAdminConfigResponse | null;
-  uploadRuntime?: {
-    baseUrl?: string;
-    headers?: HeadersInit;
-    fetch(request: Request): Promise<Response>;
-  };
-  resendRuntime?: {
-    baseUrl?: string;
-    headers?: HeadersInit;
-    fetch(request: Request): Promise<Response>;
-  };
-  durableHooksRuntimes?: Array<{
-    contributorId: string;
-    getHookQueue(options?: DurableHookQueueOptions): Promise<DurableHookQueueResponse>;
-  }>;
   request?: Request;
+  objects?: BackofficeObjectRegistry;
   execution: BackofficeExecutionContext;
   kernel: BackofficeKernel;
   filePrincipal: FilePrincipal;
+  automationHookQueue?: (options?: DurableHookQueueOptions) => Promise<DurableHookQueueResponse>;
 };
 
 export type FileSystemResolution =

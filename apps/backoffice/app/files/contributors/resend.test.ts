@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { createSystemFilesContext, type IFileSystem } from "@/files";
+import { createFilesTestObjectRegistry } from "@/files/test-object-registry";
 
 import { resendFileContributor } from "./resend";
 
@@ -183,10 +184,12 @@ describe("resend file contributor", () => {
     const resolved = await resendFileContributor.createFileSystem?.(
       createSystemFilesContext({
         orgId: "org_123",
-        resendRuntime: {
-          baseUrl: "https://pi.internal",
-          fetch: async (request: Request) => await resendRequestHandler(request),
-        },
+        objects: createFilesTestObjectRegistry({
+          resendRuntime: {
+            baseUrl: "https://pi.internal",
+            fetch: async (request: Request) => await resendRequestHandler(request),
+          },
+        }),
       }),
     );
 
@@ -203,10 +206,12 @@ describe("resend file contributor", () => {
     const resolved = await resendFileContributor.createFileSystem?.(
       createSystemFilesContext({
         orgId: "org_123",
-        resendRuntime: {
-          baseUrl: "https://pi.internal",
-          fetch: async (request: Request) => await resendRequestHandler(request),
-        },
+        objects: createFilesTestObjectRegistry({
+          resendRuntime: {
+            baseUrl: "https://pi.internal",
+            fetch: async (request: Request) => await resendRequestHandler(request),
+          },
+        }),
       }),
     );
 
@@ -237,10 +242,12 @@ describe("resend file contributor", () => {
       createSystemFilesContext({
         orgId: "org_123",
         backend: "pi",
-        resendRuntime: {
-          baseUrl: "https://pi.internal",
-          fetch: async (request: Request) => await resendRequestHandler(request),
-        },
+        objects: createFilesTestObjectRegistry({
+          resendRuntime: {
+            baseUrl: "https://pi.internal",
+            fetch: async (request: Request) => await resendRequestHandler(request),
+          },
+        }),
       }),
     );
 

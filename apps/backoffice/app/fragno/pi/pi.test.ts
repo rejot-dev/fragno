@@ -113,7 +113,7 @@ const createMockBashContext = (): PiBashCommandContext => ({
 
 describe("Backoffice Pi skills", () => {
   test("loads starter skills from the Pi filesystem", async () => {
-    const fs = await files.createOrgFileSystem(createContext());
+    const fs = await files.createBackofficeFileSystem(createContext());
     const skills = await loadBackofficePiSkills(fs);
 
     expect(Object.keys(skills)).toContain("building-automations");
@@ -222,7 +222,6 @@ describe("Pi bash tool", () => {
     });
     expect((lsResult.details as { stdout: string }).stdout.split("\n")).toEqual([
       "dev",
-      "events",
       "resend",
       "system",
       "tmp",
@@ -460,17 +459,17 @@ describe("Pi bash tool", () => {
   });
 
   test("deduplicates concurrent session filesystem initialization", async () => {
-    const createOrgFileSystem = files.createOrgFileSystem;
+    const createBackofficeFileSystem = files.createBackofficeFileSystem;
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
 
-    const createOrgFileSystemSpy = vi
-      .spyOn(files, "createOrgFileSystem")
+    const createBackofficeFileSystemSpy = vi
+      .spyOn(files, "createBackofficeFileSystem")
       .mockImplementation(async (options) => {
         await gate;
-        return createOrgFileSystem(options);
+        return createBackofficeFileSystem(options);
       });
 
     try {
@@ -499,7 +498,7 @@ describe("Pi bash tool", () => {
       const secondToolPromise = bashFactory(toolContext);
 
       await Promise.resolve();
-      expect(createOrgFileSystemSpy).toHaveBeenCalledTimes(1);
+      expect(createBackofficeFileSystemSpy).toHaveBeenCalledTimes(1);
 
       release();
 
@@ -522,7 +521,7 @@ describe("Pi bash tool", () => {
         exitCode: 0,
       });
     } finally {
-      createOrgFileSystemSpy.mockRestore();
+      createBackofficeFileSystemSpy.mockRestore();
     }
   });
 });

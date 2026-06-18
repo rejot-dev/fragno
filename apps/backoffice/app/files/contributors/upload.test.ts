@@ -12,6 +12,7 @@ import {
   type FilePrincipal,
 } from "@/files";
 import { toUploadDirectoryMarkerFileKey } from "@/files/contributors/upload-markers";
+import { createFilesTestObjectRegistry } from "@/files/test-object-registry";
 import {
   UPLOAD_PROVIDER_DATABASE,
   UPLOAD_PROVIDER_R2,
@@ -205,6 +206,7 @@ describe("upload file contributor", () => {
     });
     const fs = createUploadFileSystem(context, {
       mountPoint: "/scratch",
+      provider: UPLOAD_PROVIDER_DATABASE,
     });
 
     await expect(fs.readdir?.("/scratch")).resolves.toEqual(["README.md"]);
@@ -268,8 +270,7 @@ describe("upload file contributor", () => {
       orgId: "acme-org",
       origin: runtime.baseUrl,
       backend: "pi",
-      uploadConfig,
-      uploadRuntime: runtime,
+      objects: createFilesTestObjectRegistry({ uploadConfig, uploadRuntime: runtime }),
       request: new Request("https://docs.example.test/backoffice/files"),
     });
     const fs = createUploadFileSystem(context, {
@@ -289,8 +290,10 @@ describe("upload file contributor", () => {
       orgId: "acme-org",
       origin: runtime.baseUrl,
       backend: "pi",
-      uploadConfig: runtime.uploadConfig,
-      uploadRuntime: runtime,
+      objects: createFilesTestObjectRegistry({
+        uploadConfig: runtime.uploadConfig,
+        uploadRuntime: runtime,
+      }),
       request: new Request("https://docs.example.test/backoffice/files"),
     });
     const fs = createUploadFileSystem(context, {
@@ -306,21 +309,24 @@ describe("upload file contributor", () => {
     assert(!runtime.requests.some((request) => request.startsWith("GET /api/upload/files?")));
   });
 
-  test("fails fast when a mount is bound to an unconfigured provider", () => {
+  test("routes a directly-created upload filesystem to the explicitly bound provider", async () => {
     const runtime = createUploadRuntime({});
     const context = createSystemFilesContext({
       orgId: "acme-org",
       origin: runtime.baseUrl,
       backend: "pi",
-      uploadConfig: runtime.uploadConfig,
-      uploadRuntime: runtime,
+      objects: createFilesTestObjectRegistry({
+        uploadConfig: runtime.uploadConfig,
+        uploadRuntime: runtime,
+      }),
     });
 
-    expect(() =>
-      createUploadFileSystem(context, {
-        provider: UPLOAD_PROVIDER_R2_BINDING,
-      }),
-    ).toThrow("Upload provider 'r2-binding' is not configured.");
+    const fs = createUploadFileSystem(context, {
+      provider: UPLOAD_PROVIDER_R2_BINDING,
+    });
+
+    await fs.writeFile("/workspace/report.txt", "hello");
+    assert(runtime.requests.some((request) => request.includes("provider=r2-binding")));
   });
 
   test("preserves binary stdout when bash redirection writes upload-backed files", async () => {
@@ -574,7 +580,7 @@ describe("upload file contributor", () => {
 
     const sameOrg = createUploadFileSystem(
       { ...created.context, filePrincipal: USER_TWO_ORG_PRINCIPAL },
-      { mountPoint: "/workspace" },
+      { mountPoint: "/workspace", provider: UPLOAD_PROVIDER_DATABASE },
     );
     await expect(sameOrg.readFile("/workspace/notes.md")).resolves.toBe("owner");
     await expect(sameOrg.writeFile("/workspace/notes.md", "same org denied")).rejects.toThrow(
@@ -587,7 +593,7 @@ describe("upload file contributor", () => {
 
     const otherOrg = createUploadFileSystem(
       { ...created.context, filePrincipal: USER_THREE_OTHER_ORG_PRINCIPAL },
-      { mountPoint: "/workspace" },
+      { mountPoint: "/workspace", provider: UPLOAD_PROVIDER_DATABASE },
     );
     await expect(otherOrg.writeFile("/workspace/notes.md", "other org denied")).rejects.toThrow(
       "EACCES",
@@ -602,7 +608,7 @@ describe("upload file contributor", () => {
 
     const sameOrg = createUploadFileSystem(
       { ...context, filePrincipal: USER_TWO_ORG_PRINCIPAL },
-      { mountPoint: "/workspace" },
+      { mountPoint: "/workspace", provider: UPLOAD_PROVIDER_DATABASE },
     );
     await expect(sameOrg.writeFile("/workspace/private/intruder.txt", "nope")).rejects.toThrow(
       "EACCES",
@@ -630,7 +636,7 @@ describe("upload file contributor", () => {
 
     const ownerFs = createUploadFileSystem(
       { ...context, filePrincipal: USER_ONE_ORG_PRINCIPAL },
-      { mountPoint: "/workspace" },
+      { mountPoint: "/workspace", provider: UPLOAD_PROVIDER_DATABASE },
     );
     await expect(ownerFs.readdir("/workspace/private")).resolves.toEqual(["secret.txt"]);
     await expect(ownerFs.readFile("/workspace/private/secret.txt")).resolves.toBe("secret");
@@ -643,7 +649,7 @@ describe("upload file contributor", () => {
 
     const rootFs = createUploadFileSystem(
       { ...created.context, filePrincipal: ROOT_FILE_PRINCIPAL },
-      { mountPoint: "/workspace" },
+      { mountPoint: "/workspace", provider: UPLOAD_PROVIDER_DATABASE },
     );
     await expect(rootFs.readFile("/workspace/private.txt")).resolves.toBe("secret");
     await rootFs.writeFile("/workspace/private.txt", "root update");
@@ -660,7 +666,7 @@ describe("upload file contributor", () => {
 
     const rootFs = createUploadFileSystem(
       { ...context, filePrincipal: ROOT_FILE_PRINCIPAL },
-      { mountPoint: "/workspace" },
+      { mountPoint: "/workspace", provider: UPLOAD_PROVIDER_DATABASE },
     );
     await rootFs.chown?.("/workspace/notes.md", { kind: "user", userId: "user-2" });
 
@@ -678,7 +684,6 @@ describe("upload file contributor", () => {
       createSystemFilesContext({
         orgId: "acme-org",
         backend: "backoffice",
-        uploadConfig: null,
       }),
     );
 
@@ -731,8 +736,10 @@ const createUploadFs = (
     orgId: "acme-org",
     origin: runtime.baseUrl,
     backend: "pi",
-    uploadConfig: runtime.uploadConfig,
-    uploadRuntime: runtime,
+    objects: createFilesTestObjectRegistry({
+      uploadConfig: runtime.uploadConfig,
+      uploadRuntime: runtime,
+    }),
     request: new Request("https://docs.example.test/backoffice/files"),
     ...(options.filePrincipal ? { filePrincipal: options.filePrincipal } : {}),
   });
@@ -740,7 +747,7 @@ const createUploadFs = (
   return {
     runtime,
     context,
-    fs: createUploadFileSystem(context),
+    fs: createUploadFileSystem(context, { provider: UPLOAD_PROVIDER_DATABASE }),
   };
 };
 

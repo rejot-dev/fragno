@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useLoaderData, useOutletContext, useParams } from "react-router";
 
-import { createOrgPiClient } from "@/fragno/pi/pi-client";
+import { createPiClient } from "@/fragno/pi/pi-client";
 import { findPiModelOption, parsePiAgentName } from "@/fragno/pi/pi-shared";
 
 import type { Route } from "./+types/session-detail";
@@ -51,7 +51,7 @@ export default function BackofficeOrganisationPiSessionDetail() {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const pi = useMemo(() => createOrgPiClient(orgId), [orgId]);
+  const pi = useMemo(() => createPiClient(orgId), [orgId]);
   const liveSession = pi.useSession({
     path: { workflowName: session.workflowName, sessionId: session.id },
     initialData: session,

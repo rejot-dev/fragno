@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
 import {
   UPLOAD_PROVIDER_DATABASE,
   UPLOAD_PROVIDER_R2,
@@ -176,11 +177,12 @@ const createUploadProviderContributor = (
   ...mount,
   ...createUnsupportedFileSystem(createUnsupportedOperationFileSystemError),
   async createFileSystem(ctx) {
-    if (!isUploadConfigured(ctx.uploadConfig)) {
+    const uploadConfig = await getUploadConfig(ctx);
+    if (!isUploadConfigured(uploadConfig)) {
       return null;
     }
 
-    if (!ctx.uploadConfig.providers[mount.uploadProvider]?.configured) {
+    if (!uploadConfig.providers[mount.uploadProvider]?.configured) {
       return null;
     }
 
@@ -189,7 +191,7 @@ const createUploadProviderContributor = (
         mountPoint: mount.mountPoint,
         provider: mount.uploadProvider,
       }),
-      mount: resolveUploadFileMount(ctx.uploadConfig, {
+      mount: resolveUploadFileMount(uploadConfig, {
         mountPoint: mount.mountPoint,
         provider: mount.uploadProvider,
       }) ?? {
@@ -207,7 +209,7 @@ export const uploadR2RemoteFileContributor =
 
 export type CreateUploadFileSystemOptions = {
   mountPoint?: string;
-  provider?: UploadProvider;
+  provider: UploadProvider;
 };
 
 const readUploadFileContentResponse = async ({
@@ -248,10 +250,10 @@ const normalizeUploadContentType = (contentType: string | null | undefined): str
 
 export const createUploadFileSystem = (
   ctx: FilesContext,
-  options: CreateUploadFileSystemOptions = {},
+  options: CreateUploadFileSystemOptions,
 ): IFileSystem => {
   const mountPoint = normalizeAbsolutePath(options.mountPoint ?? UPLOAD_FILE_MOUNT_POINT);
-  const provider = resolveBoundUploadProvider(ctx.uploadConfig, options.provider);
+  const { provider } = options;
 
   const getEntry = async (path: string): Promise<FileEntryDescriptor | null> => {
     const normalizedPath = path.endsWith("/") ? ensureFolderPath(path) : stripTrailingSlash(path);
@@ -1483,15 +1485,23 @@ const sortTree = (entries: FileEntryDescriptor[]): FileEntryDescriptor[] => {
     });
 };
 
-const requireUploadRuntime = (ctx: FilesContext) => {
-  if (!ctx.uploadRuntime) {
-    throw new Error(
-      "Upload contributor requires uploadRuntime to be provided via createOrgFileSystem.",
-    );
+const getUploadObject = (ctx: FilesContext) => {
+  if (!ctx.objects) {
+    return null;
   }
 
-  return ctx.uploadRuntime;
+  try {
+    return ctx.kernel.scoped("UPLOAD", ctx.execution.scope, ctx.objects.upload);
+  } catch (error) {
+    if (error instanceof BackofficeUnavailableError) {
+      return null;
+    }
+    throw error;
+  }
 };
+
+const getUploadConfig = async (ctx: FilesContext): Promise<UploadAdminConfigResponse | null> =>
+  (await getUploadObject(ctx)?.getAdminConfig()) ?? null;
 
 const requestUpload = async (
   ctx: FilesContext,
@@ -1503,17 +1513,17 @@ const requestUpload = async (
     headers?: HeadersInit;
   } = {},
 ): Promise<Response> => {
-  const runtime = requireUploadRuntime(ctx);
-  const url = new URL(
-    `/api/upload${path}`,
-    runtime.baseUrl ?? ctx.origin ?? "https://files.internal",
-  );
+  const uploadObject = getUploadObject(ctx);
+  if (!uploadObject) {
+    throw new Error("Upload filesystem requires Backoffice objects.");
+  }
+  const url = new URL(`/api/upload${path}`, ctx.origin ?? "https://files.internal");
 
   for (const [key, value] of Object.entries(options.query ?? {})) {
     url.searchParams.set(key, value);
   }
 
-  const headers = runtime.headers ? new Headers(runtime.headers) : new Headers();
+  const headers = new Headers();
   for (const [key, value] of new Headers(options.headers)) {
     headers.set(key, value);
   }
@@ -1521,7 +1531,7 @@ const requestUpload = async (
     headers.delete("content-type");
   }
 
-  return runtime.fetch(
+  return uploadObject.fetch(
     new Request(url, {
       method,
       headers,
