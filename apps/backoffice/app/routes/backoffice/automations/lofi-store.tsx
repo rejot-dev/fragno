@@ -57,7 +57,8 @@ const automationsLofiRuntimes = createLofiRuntimeRegistry({
           outboxUrl: `/api/automations/${encodeURIComponent(orgId)}/_internal/outbox`,
         },
       ],
-      pollIntervalMs: 300,
+      outboxTransport: "stream",
+      streamReconnectIntervalMs: 300,
     }),
 });
 

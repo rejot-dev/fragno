@@ -4,12 +4,17 @@ export type {
   IndexedDbAdapterOptions,
   InMemoryLofiAdapterOptions,
   LofiAdapter,
+  LofiClientBaseOptions,
   LofiClientOptions,
   LofiMutation,
+  LofiOutboxTransport,
+  LofiOutboxTransportOptions,
+  LofiPollOutboxOptions,
   LofiQueryEngineOptions,
   LofiQueryableAdapter,
   LofiQueryInterface,
   LofiSchemaRegistration,
+  LofiStreamOutboxOptions,
   LofiSyncResult,
 } from "./types";
 
