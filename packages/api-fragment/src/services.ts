@@ -269,7 +269,12 @@ export async function performApiRequest(args: {
     const responseBody = contentType.includes("application/json")
       ? await response.json()
       : await response.text();
-    return { status: response.status, headers: responseHeaders, body: responseBody };
+    return {
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders,
+      body: responseBody,
+    };
   } finally {
     if (timeout) {
       clearTimeout(timeout);
