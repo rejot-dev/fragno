@@ -83,9 +83,7 @@ export const getScopePrimaryFileGroup = (scope: BackofficeContextScope): FileGro
     case "user":
       return { kind: "user", userId: scope.userId };
     case "project":
-      // Project-scoped files are gated elsewhere until the project model exists. Use root as a
-      // conservative fallback so callers do not accidentally mint a fake project group.
-      return { kind: "root" };
+      return { kind: "org", orgId: scope.orgId };
   }
 };
 
@@ -214,6 +212,8 @@ const sameContextScope = (left: BackofficeContextScope, right: BackofficeContext
     case "user":
       return right.kind === "user" && left.userId === right.userId;
     case "project":
-      return right.kind === "project" && left.projectId === right.projectId;
+      return (
+        right.kind === "project" && left.orgId === right.orgId && left.projectId === right.projectId
+      );
   }
 };

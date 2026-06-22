@@ -7,6 +7,7 @@ import {
   type AutomationIngestResult,
   type AutomationWorkflowsService,
 } from "./definition";
+import type { AutomationProjectExecutionTarget } from "./projects";
 import { automationFragmentRoutes } from "./routes";
 
 type AutomationFragmentServices = {
@@ -14,7 +15,7 @@ type AutomationFragmentServices = {
 };
 
 export function createAutomationFragment(
-  config: AutomationFragmentConfig = {},
+  config: AutomationFragmentConfig,
   options: FragnoPublicConfigWithDatabase,
   services: AutomationFragmentServices,
 ) {
@@ -35,7 +36,7 @@ export {
 } from "./catalog";
 export type { AutomationScriptLayer, AutomationWorkspaceScriptEntry } from "./catalog";
 
-export type { AutomationIngestResult };
+export type { AutomationIngestResult, AutomationProjectExecutionTarget };
 export type { AutomationEvent, AutomationEventActor, AutomationEventSubject } from "./contracts";
 
 export type { AutomationRuntimeHostContext, AutomationRuntime } from "./engine/runtime";

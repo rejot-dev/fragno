@@ -26,6 +26,14 @@ export const SYSTEM_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
     });
   }
 
+  if (event.source === "automations" && event.eventType === "project.created") {
+    const projectId = event.subject?.projectId ?? event.payload.project?.id;
+    if (!projectId) {
+      throw new Error("project.created event is missing subject.projectId.");
+    }
+    await internal.projectFilesConfigure({ projectId });
+  }
+
   const shouldRefreshCodemodeTypes =
     event.eventType === "capability.configured" ||
     (event.source === "mcp" &&

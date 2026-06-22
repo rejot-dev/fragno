@@ -7,7 +7,13 @@ import { createMasterFileSystem, createSystemFilesContext } from "@/files";
 import type { AutomationWorkflowsService } from "./definition";
 import { createAutomationFragment } from "./index";
 
-const createAutomation = async () => {
+const createAutomation = async (
+  options: {
+    ownerScope?:
+      | { kind: "org"; orgId: string }
+      | { kind: "project"; orgId: string; projectId: string };
+  } = {},
+) => {
   const services = {
     workflows: {
       createInstance: async () => ({}),
@@ -20,6 +26,7 @@ const createAutomation = async () => {
 
   return createAutomationFragment(
     {
+      ownerScope: options.ownerScope ?? { kind: "org", orgId: "org_123" },
       automationFileSystem: await createMasterFileSystem(
         createSystemFilesContext({ orgId: "org_123" }),
       ),
@@ -34,6 +41,11 @@ const createAutomation = async () => {
   );
 };
 
+const projectIdValue = (id: unknown): string =>
+  typeof id === "object" && id && "externalId" in id
+    ? String((id as { externalId: unknown }).externalId)
+    : String((id as { valueOf(): unknown }).valueOf());
+
 const actor = {
   scope: "external",
   source: "telegram",
@@ -45,6 +57,111 @@ let fragment: Awaited<ReturnType<typeof createAutomation>>;
 
 beforeEach(async () => {
   fragment = await createAutomation();
+});
+
+describe("automation routes /projects", () => {
+  test("creates, lists, looks up, updates, and archives projects", async () => {
+    const createResponse = await fragment.callRoute("POST", "/projects", {
+      body: {
+        name: "Launch Plan",
+        createdByUserId: "user_1",
+      },
+    });
+
+    assert(createResponse.type === "json");
+    if (createResponse.type !== "json") {
+      return;
+    }
+    expect(createResponse.data).toMatchObject({
+      slug: "launch-plan",
+      name: "Launch Plan",
+      description: null,
+      archivedAt: null,
+      createdByUserId: "user_1",
+    });
+
+    const listResponse = await fragment.callRoute("GET", "/projects");
+    assert(listResponse.type === "json");
+    if (listResponse.type === "json") {
+      expect(listResponse.data.map((project) => project.slug)).toEqual(["launch-plan"]);
+    }
+
+    const projectId = projectIdValue(createResponse.data.id);
+    const getResponse = await fragment.callRoute("GET", "/projects/:projectId", {
+      pathParams: { projectId },
+    });
+    assert(getResponse.type === "json");
+    if (getResponse.type === "json") {
+      expect(projectIdValue(getResponse.data.id)).toBe(projectId);
+    }
+
+    const updateResponse = await fragment.callRoute("PATCH", "/projects/:projectId", {
+      pathParams: { projectId },
+      body: {
+        slug: "launch-v2",
+        description: "Ready to ship.",
+      },
+    });
+    assert(updateResponse.type === "json");
+    if (updateResponse.type === "json") {
+      expect(updateResponse.data).toMatchObject({
+        id: createResponse.data.id,
+        slug: "launch-v2",
+        description: "Ready to ship.",
+      });
+    }
+
+    const archiveResponse = await fragment.callRoute("DELETE", "/projects/:projectId", {
+      pathParams: { projectId },
+    });
+    assert(archiveResponse.type === "json");
+    if (archiveResponse.type === "json") {
+      expect(archiveResponse.data.archivedAt).toBeTruthy();
+    }
+
+    const listAfterArchiveResponse = await fragment.callRoute("GET", "/projects");
+    assert(listAfterArchiveResponse.type === "json");
+    if (listAfterArchiveResponse.type === "json") {
+      expect(listAfterArchiveResponse.data).toHaveLength(1);
+      expect(listAfterArchiveResponse.data[0]?.archivedAt).toBeTruthy();
+    }
+  });
+
+  test("keeps project slugs unique within the Automations object", async () => {
+    const body = {
+      slug: "shared",
+      name: "Shared",
+      createdByUserId: "user_1",
+    };
+    await fragment.callRoute("POST", "/projects", { body });
+
+    const conflictResponse = await fragment.callRoute("POST", "/projects", { body });
+    assert(conflictResponse.type === "error");
+    if (conflictResponse.type === "error") {
+      assert(conflictResponse.status === 409);
+      assert(conflictResponse.error.code === "PROJECT_SLUG_CONFLICT");
+    }
+  });
+
+  test("requires org ownership to create projects", async () => {
+    const projectOwnedFragment = await createAutomation({
+      ownerScope: { kind: "project", orgId: "org_123", projectId: "project_123" },
+    });
+
+    const response = await projectOwnedFragment.callRoute("POST", "/projects", {
+      body: {
+        name: "No Owner",
+        createdByUserId: "user_1",
+      },
+    });
+
+    assert(response.type === "error");
+    if (response.type === "error") {
+      expect(response.error.message).toContain(
+        "Projects can only be created in org-scoped Automations.",
+      );
+    }
+  });
 });
 
 describe("automation routes /store", () => {

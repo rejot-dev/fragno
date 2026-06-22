@@ -59,10 +59,50 @@ type ScopedCodemodeCallInput = {
     | { kind: "current" }
     | { kind: "org"; orgId: string }
     | { kind: "user"; userId: string }
-    | { kind: "project"; projectId: string };
+    | { kind: "project"; orgId?: string; projectId: string };
   namespace: string;
   toolName: string;
   args: unknown[];
+};
+
+const callScopedTool = async (
+  input: ScopedCodemodeCallInput,
+  scopedContext: BackofficeToolContext,
+  families: readonly BackofficeRuntimeToolFamily[],
+  toolCalls?: BackofficeRuntimeToolCall[],
+) => {
+  const tool = families
+    .flatMap((family) => {
+      if (family.isAvailable && !family.isAvailable(scopedContext)) {
+        return [];
+      }
+      return [...family.tools];
+    })
+    .find(
+      (candidate) => candidate.namespace === input.namespace && candidate.name === input.toolName,
+    );
+  if (!tool) {
+    throw new Error(`Unknown scoped tool: ${input.namespace}.${input.toolName}`);
+  }
+
+  const call: BackofficeRuntimeToolCall = {
+    providerName: `${input.scope.kind}:${input.namespace}`,
+    toolName: input.toolName,
+    toolId: tool.id,
+    inputSummary: JSON.stringify(input.args[0] ?? null),
+    status: "success",
+  };
+  try {
+    const output = await executeBackofficeRuntimeTool(tool, input.args[0], scopedContext);
+    call.resultSummary = JSON.stringify(output);
+    toolCalls?.push(call);
+    return output;
+  } catch (error) {
+    call.status = "error";
+    call.error = error instanceof Error ? error.message : String(error);
+    toolCalls?.push(call);
+    throw error;
+  }
 };
 
 const createBackofficeScopedCodemodeProvider = ({
@@ -79,40 +119,36 @@ const createBackofficeScopedCodemodeProvider = ({
     callScoped: async (rawInput: unknown) => {
       const input = rawInput as ScopedCodemodeCallInput;
       const scope = input.scope.kind === "current" ? context.scope : input.scope;
-      const scopedContext = context.createScopedContext(scope);
-      const tool = families
-        .flatMap((family) => {
-          if (family.isAvailable && !family.isAvailable(scopedContext)) {
-            return [];
-          }
-          return [...family.tools];
-        })
-        .find(
-          (candidate) =>
-            candidate.namespace === input.namespace && candidate.name === input.toolName,
+      if (scope.kind === "project" && !scope.orgId) {
+        if (context.scope.kind !== "org" && context.scope.kind !== "project") {
+          throw new Error("Project scoped codemode handles require a current org context.");
+        }
+        return await callScopedTool(
+          input,
+          context.createScopedContext({ ...scope, orgId: context.scope.orgId }),
+          families,
+          toolCalls,
         );
-      if (!tool) {
-        throw new Error(`Unknown scoped tool: ${input.namespace}.${input.toolName}`);
       }
 
-      const call: BackofficeRuntimeToolCall = {
-        providerName: `${input.scope.kind}:${input.namespace}`,
-        toolName: input.toolName,
-        toolId: tool.id,
-        inputSummary: JSON.stringify(input.args[0] ?? null),
-        status: "success",
-      };
-      try {
-        const output = await executeBackofficeRuntimeTool(tool, input.args[0], scopedContext);
-        call.resultSummary = JSON.stringify(output);
-        toolCalls?.push(call);
-        return output;
-      } catch (error) {
-        call.status = "error";
-        call.error = error instanceof Error ? error.message : String(error);
-        toolCalls?.push(call);
-        throw error;
+      if (scope.kind === "project") {
+        const orgId = scope.orgId;
+        if (!orgId) {
+          throw new Error("Project scoped codemode handles require an org id.");
+        }
+        return await callScopedTool(
+          input,
+          context.createScopedContext({
+            kind: "project",
+            orgId,
+            projectId: scope.projectId,
+          }),
+          families,
+          toolCalls,
+        );
       }
+
+      return await callScopedTool(input, context.createScopedContext(scope), families, toolCalls);
     },
   },
 });

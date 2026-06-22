@@ -23,8 +23,8 @@ const objectAddress = (
 });
 
 export const resolveEventOrgId = (event: AutomationEvent): string => {
-  if (event.scope.kind !== "org") {
-    throw new Error(`Cannot route automation event ${event.id}: expected org scope.`);
+  if (event.scope.kind !== "org" && event.scope.kind !== "project") {
+    throw new Error(`Cannot route automation event ${event.id}: expected org-backed scope.`);
   }
 
   const subjectOrgId = subjectField(event.subject, "orgId");
@@ -63,7 +63,7 @@ export const resolveProjectScopedObjectAddress = (
     throw new Error(`Cannot route automation event ${event.id}: missing subject project id.`);
   }
 
-  return objectAddress(binding, project({ projectId }));
+  return objectAddress(binding, project({ orgId: resolveEventOrgId(event), projectId }));
 };
 
 export const resolveSingletonObjectAddress = (

@@ -56,14 +56,16 @@ describe("InMemoryObjectFactory", () => {
     const objects = createBackofficeObjectRegistry(factory);
 
     const projectOne = objects.upload.forProject({
+      orgId: "org-1",
       projectId: "project-1",
     }) as unknown as NamedObjectStub;
     const projectTwo = objects.upload.forProject({
+      orgId: "org-1",
       projectId: "project-2",
     }) as unknown as NamedObjectStub;
 
-    assert(projectOne.name === "UPLOAD:v1:project:project-1");
-    assert(projectTwo.name === "UPLOAD:v1:project:project-2");
+    assert(projectOne.name === "UPLOAD:v1:project:org-1:project-1");
+    assert(projectTwo.name === "UPLOAD:v1:project:org-1:project-2");
     expect(projectTwo).not.toBe(projectOne);
   });
 

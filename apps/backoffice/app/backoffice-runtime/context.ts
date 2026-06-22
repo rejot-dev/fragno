@@ -2,7 +2,7 @@ export type BackofficeContextScope =
   | { kind: "system" }
   | { kind: "org"; orgId: string }
   | { kind: "user"; userId: string }
-  | { kind: "project"; projectId: string };
+  | { kind: "project"; orgId: string; projectId: string };
 
 export type BackofficePrincipal =
   | {

@@ -222,6 +222,7 @@ describe("Pi bash tool", () => {
     });
     expect((lsResult.details as { stdout: string }).stdout.split("\n")).toEqual([
       "dev",
+      "projects",
       "resend",
       "system",
       "tmp",

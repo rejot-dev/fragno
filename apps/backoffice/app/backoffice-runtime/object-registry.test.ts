@@ -31,7 +31,7 @@ const address = (
     case "user":
       return { binding, scope: { kind: "user", userId: "user-1" } };
     case "project":
-      return { binding, scope: { kind: "project", projectId: "project-1" } };
+      return { binding, scope: { kind: "project", orgId: "org-1", projectId: "project-1" } };
   }
 };
 
@@ -43,8 +43,8 @@ describe("encodeBackofficeObjectAddress", () => {
     ["user", { binding: "PI", scope: user({ userId: "user_456" }) }, "v1:user:user_456"],
     [
       "project",
-      { binding: "PI", scope: project({ projectId: "project_789" }) },
-      "v1:project:project_789",
+      { binding: "PI", scope: project({ orgId: "org_123", projectId: "project_789" }) },
+      "v1:project:org_123:project_789",
     ],
   ] satisfies Array<[string, BackofficeObjectAddress, string]>)(
     "encodes %s scope with stable v1 names",
@@ -80,7 +80,8 @@ describe("encodeBackofficeObjectAddress", () => {
     ["org id", () => org("")],
     ["name", () => named(" ")],
     ["user id", () => user({ userId: "" })],
-    ["project id", () => project({ projectId: "" })],
+    ["project org id", () => project({ orgId: "", projectId: "project_1" })],
+    ["project id", () => project({ orgId: "org_1", projectId: "" })],
   ])("rejects an empty %s", (_label, callback) => {
     expect(callback).toThrow(/Backoffice object address requires a non-empty/);
   });
@@ -146,9 +147,9 @@ describe("createBackofficeObjectRegistry", () => {
       binding: "AUTH",
       scope: { kind: "user", userId: "user_1" },
     });
-    expect(objects.auth.forProject({ projectId: "project_1" })).toEqual({
+    expect(objects.auth.forProject({ orgId: "org_1", projectId: "project_1" })).toEqual({
       binding: "AUTH",
-      scope: { kind: "project", projectId: "project_1" },
+      scope: { kind: "project", orgId: "org_1", projectId: "project_1" },
     });
     expect(objects.auth.for({ kind: "system" })).toEqual({
       binding: "AUTH",
@@ -162,9 +163,9 @@ describe("createBackofficeObjectRegistry", () => {
       binding: "AUTH",
       scope: { kind: "user", userId: "user_1" },
     });
-    expect(objects.auth.for({ kind: "project", projectId: "project_1" })).toEqual({
+    expect(objects.auth.for({ kind: "project", orgId: "org_1", projectId: "project_1" })).toEqual({
       binding: "AUTH",
-      scope: { kind: "project", projectId: "project_1" },
+      scope: { kind: "project", orgId: "org_1", projectId: "project_1" },
     });
   });
 });

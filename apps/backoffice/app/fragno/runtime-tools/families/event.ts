@@ -13,7 +13,11 @@ const contextScopeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("system") }),
   z.object({ kind: z.literal("org"), orgId: z.string().trim().min(1) }),
   z.object({ kind: z.literal("user"), userId: z.string().trim().min(1) }),
-  z.object({ kind: z.literal("project"), projectId: z.string().trim().min(1) }),
+  z.object({
+    kind: z.literal("project"),
+    orgId: z.string().trim().min(1),
+    projectId: z.string().trim().min(1),
+  }),
 ]);
 
 export type AutomationEmitEventResult = {

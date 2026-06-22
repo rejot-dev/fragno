@@ -90,6 +90,10 @@ describe("automation content", () => {
         ) &&
         systemRouter.includes('remoteWorkflowName: "workspace-file-initialization"') &&
         systemRouter.includes('"/system/automations/workspace-file-initialization.workflow.js"'),
+      systemRouterConfiguresProjectFileSystem:
+        systemRouter.includes(
+          'event.source === "automations" && event.eventType === "project.created"',
+        ) && systemRouter.includes("internal.projectFilesConfigure({ projectId })"),
       routerStoresDefaultPiAgent:
         router.includes("event.payload.harnesses") &&
         router.includes("event.payload.modelCatalog") &&
@@ -104,8 +108,17 @@ describe("automation content", () => {
       routerStartsTelegramUserPiLinkingWorkflow: true,
       routerHandlesPiConfigured: true,
       systemRouterStartsWorkspaceFileInitializationWorkflow: true,
+      systemRouterConfiguresProjectFileSystem: true,
       routerStoresDefaultPiAgent: true,
     });
+  });
+
+  test("project creation system router configures project upload database filesystem", () => {
+    const router = readSystemAutomation(SYSTEM_AUTOMATION_SCRIPT_PATHS.systemRouter);
+
+    expect(router).toContain('event.eventType === "project.created"');
+    expect(router).toContain("event.subject?.projectId ?? event.payload.project?.id");
+    expect(router).toContain("internal.projectFilesConfigure({ projectId })");
   });
 
   test("organization creation workflow configures upload database connection", () => {

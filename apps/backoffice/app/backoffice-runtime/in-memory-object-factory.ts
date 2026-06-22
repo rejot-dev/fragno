@@ -15,6 +15,7 @@ import { InMemoryReson8Object } from "../../workers/reson8.do";
 import { InMemorySandboxRegistryObject } from "../../workers/sandbox-registry.do";
 import { InMemoryTelegramObject } from "../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../workers/upload.do";
+import type { BackofficeContextScope } from "./context";
 import {
   InMemoryDurableObjectNamespace,
   type InMemoryDurableObjectFactory,
@@ -39,6 +40,7 @@ export type InMemoryBackofficeObjectFactory<TObject> = (input: {
   env: InMemoryBackofficeRuntimeEnv;
   runtime: BackofficeRuntimeServices;
   getAutomationFileSystem?: InMemoryObjectFactoryOptions["getAutomationFileSystem"];
+  ownerScope?: BackofficeContextScope;
 }) => TObject;
 
 export type InMemoryObjectFactoryOverrides = Partial<
@@ -56,6 +58,22 @@ export type InMemoryObjectFactoryOptions = {
 };
 
 type NamespaceMap = Record<string, InMemoryDurableObjectNamespace<unknown>>;
+
+const ownerScopeFromAddress = (
+  address: BackofficeObjectAddress,
+): BackofficeContextScope | undefined => {
+  if (address.scope.kind === "org") {
+    return { kind: "org", orgId: address.scope.orgId };
+  }
+  if (address.scope.kind === "project") {
+    return {
+      kind: "project",
+      orgId: address.scope.orgId,
+      projectId: address.scope.projectId,
+    };
+  }
+  return undefined;
+};
 
 class UnavailableInMemoryDurableObject {
   async fetch() {
@@ -103,6 +121,10 @@ class UnavailableInMemoryDurableObject {
   }
 
   async redeliverFailedInstallationWebhooks() {}
+
+  async resolveProjectForExecution() {
+    return null;
+  }
 
   async getInstances() {
     return [];
@@ -204,12 +226,13 @@ const inMemoryObjectFactories = {
       env: env as never,
       runtime,
     }),
-  AUTOMATIONS: ({ state, env, runtime, getAutomationFileSystem }) =>
+  AUTOMATIONS: ({ state, env, runtime, getAutomationFileSystem, ownerScope }) =>
     new InMemoryAutomationsObject({
       state,
       env,
       runtime,
       getAutomationFileSystem,
+      ownerScope,
     }),
 } satisfies Record<BackofficeObjectBindingName, InMemoryBackofficeObjectFactory<unknown>>;
 
@@ -220,6 +243,7 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
   #getRuntimeServices: () => BackofficeRuntimeServices;
   #getAutomationFileSystem?: InMemoryObjectFactoryOptions["getAutomationFileSystem"];
   #objectFactories?: InMemoryObjectFactoryOverrides;
+  #ownerScopes = new Map<string, BackofficeContextScope | undefined>();
   #timeOffsetMs = 0;
 
   constructor(options: InMemoryObjectFactoryOptions) {
@@ -250,7 +274,9 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
     }
     assertBackofficeObjectAddressAllowed(address);
     const namespace = this.#namespace<TObject>(binding);
-    return namespace.get(namespace.idFromName(encodeBackofficeObjectAddress(address)));
+    const encodedName = encodeBackofficeObjectAddress(address);
+    this.#ownerScopes.set(`${binding.name}:${encodedName}`, ownerScopeFromAddress(address));
+    return namespace.get(namespace.idFromName(encodedName));
   }
 
   instances(): InMemoryDurableObjectInstance<unknown>[] {
@@ -352,6 +378,7 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
           env: this.env,
           runtime: this.#getRuntimeServices(),
           getAutomationFileSystem: this.#getAutomationFileSystem,
+          ownerScope: this.#ownerScopes.get(input.name),
         }),
     }) as InMemoryDurableObjectNamespace<unknown>;
   }

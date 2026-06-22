@@ -236,6 +236,7 @@ type BackofficeScenarioFilePreset = {
 
 export type BackofficeScenarioFileSystems = {
   forOrg(orgId?: string): MasterFileSystem;
+  forProject(projectId: string): MasterFileSystem;
   listOrgIds(): string[];
   diff(orgId?: string): Promise<FileDiffEntry[]>;
 };
@@ -354,6 +355,16 @@ type ConnectionConfiguredInput = {
   orgId: string;
   id: string;
   payload?: unknown;
+};
+
+type ProjectCreateInput = {
+  orgId: string;
+  slug?: string;
+  name: string;
+  description?: string | null;
+  createdByUserId: string;
+  captureIdAs?: string;
+  label?: string;
 };
 
 type CodemodeStoreSetInput = StoreEntryInput & {
@@ -533,6 +544,9 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
     };
     automation: {
       ingestEvent(input: AutomationEvent): BackofficeScenarioStep;
+    };
+    project: {
+      create(input: ProjectCreateInput): BackofficeScenarioStep;
     };
     codemode: {
       run(input: BackofficeScenarioCodemodeInput): BackofficeScenarioStep;
@@ -1150,19 +1164,25 @@ const createScenarioFileSystems = (
   orgIds: Set<string>,
 ): BackofficeScenarioFileSystems => {
   const byOrg = new Map<string, MasterFileSystem>();
+  const byProject = new Map<string, MasterFileSystem>();
 
-  const forOrg = (orgId = "__default__") => {
-    orgIds.add(orgId);
-    let fs = byOrg.get(orgId);
+  const getScopedFs = (map: Map<string, MasterFileSystem>, key: string) => {
+    let fs = map.get(key);
     if (!fs) {
       fs = preset.createFileSystem();
-      byOrg.set(orgId, fs);
+      map.set(key, fs);
     }
     return fs;
   };
 
+  const forOrg = (orgId = "__default__") => {
+    orgIds.add(orgId);
+    return getScopedFs(byOrg, orgId);
+  };
+
   return {
     forOrg,
+    forProject: (projectId) => getScopedFs(byProject, projectId),
     listOrgIds: () => Array.from(orgIds),
     diff: async (orgId = "__default__") =>
       diffSnapshots(preset.snapshot, await snapshotFileSystem(forOrg(orgId))),
@@ -1646,6 +1666,9 @@ const resolveScenarioValue = async <TVars extends ScenarioVars, TValue>(
     ? await (value as (ctx: BackofficeScenarioContext<TVars>) => Promise<TValue> | TValue)(ctx)
     : value;
 
+const scenarioIdString = (id: unknown): string =>
+  typeof id === "object" && id && "externalId" in id ? String(id.externalId) : String(id);
+
 type ScenarioWorkflowInstance = {
   orgId: string;
   workflowName: string;
@@ -1952,6 +1975,40 @@ const buildStepBuilders = <
           "automation.ingestEvent",
           `ingest automation event ${input.source}/${input.eventType}`,
           (ctx) => ingestAutomationEvent(ctx, input),
+        ),
+    },
+    project: {
+      create: (input) =>
+        createStep(
+          "when",
+          "project.create",
+          input.label ?? `create project ${input.orgId}:${input.slug ?? input.name}`,
+          async (ctx) => {
+            ctx.rememberOrg(input.orgId);
+            const response = await ctx.runtime.objects.automations.forOrg(input.orgId).fetch(
+              new Request("https://automations.local/api/automations/bindings/projects", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                  slug: input.slug,
+                  name: input.name,
+                  description: input.description,
+                  createdByUserId: input.createdByUserId,
+                }),
+              }),
+            );
+
+            if (!response.ok) {
+              throw new Error(
+                `Project creation failed (${response.status}): ${await response.text()}`,
+              );
+            }
+
+            if (input.captureIdAs) {
+              const project = (await response.json()) as { id: unknown };
+              ctx.vars[input.captureIdAs] = scenarioIdString(project.id);
+            }
+          },
         ),
     },
     codemode: {
@@ -3011,7 +3068,9 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
   const fakes = scenario.fakes?.({ fake: createScenarioFakeFactory() }) ?? {};
   const runtime = await createInMemoryBackofficeRuntime({
     getAutomationFileSystem: async ({ execution }) =>
-      files.forOrg(execution.scope.kind === "org" ? execution.scope.orgId : undefined),
+      execution.scope.kind === "project"
+        ? files.forProject(execution.scope.projectId)
+        : files.forOrg(execution.scope.kind === "org" ? execution.scope.orgId : undefined),
     objectFactories: createObjectFactories(fakes),
   });
   const journal: ScenarioJournal = { entries: [] };

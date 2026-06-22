@@ -15,6 +15,7 @@ import type {
   AutomationEvent,
   AutomationEventActor,
   AutomationIngestResult,
+  AutomationProjectExecutionTarget,
 } from "@/fragno/automation";
 import type { DurableHookQueueOptions, DurableHookRepository } from "@/fragno/durable-hooks";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
@@ -48,7 +49,7 @@ type ScopedObjects<TObject> = {
   forOrg(orgId: string): TObject;
   forName(name: string): TObject;
   forUser(input: { userId: string }): TObject;
-  forProject(input: { projectId: string }): TObject;
+  forProject(input: { orgId: string; projectId: string }): TObject;
 };
 
 export type AdminConfigurableObject<TConfig = unknown> = {
@@ -81,6 +82,10 @@ export type AutomationsObject = FetchObject &
   DurableHookObject & {
     triggerIngestEvent(event: AutomationEvent): Promise<AutomationIngestResult>;
     ingestEvent(event: AutomationEvent): Promise<AutomationIngestResult>;
+    resolveProjectForExecution(input: {
+      projectId?: string;
+      slug?: string;
+    }): Promise<AutomationProjectExecutionTarget | null>;
   };
 
 export type TelegramObject = FetchObject &
@@ -205,7 +210,7 @@ export type BackofficeObjectScope =
   | { kind: "org"; orgId: string }
   | { kind: "named"; name: string }
   | { kind: "user"; userId: string }
-  | { kind: "project"; projectId: string };
+  | { kind: "project"; orgId: string; projectId: string };
 
 export type BackofficeObjectAddress = {
   binding: BackofficeObjectBindingName;
@@ -290,8 +295,9 @@ export const user = (input: { userId: string }): BackofficeObjectScope => ({
   userId: validateScopeValue("user id", input.userId),
 });
 
-export const project = (input: { projectId: string }): BackofficeObjectScope => ({
+export const project = (input: { orgId: string; projectId: string }): BackofficeObjectScope => ({
   kind: "project",
+  orgId: validateScopeValue("org id", input.orgId),
   projectId: validateScopeValue("project id", input.projectId),
 });
 
@@ -308,7 +314,12 @@ export const encodeBackofficeObjectAddress = (address: BackofficeObjectAddress):
     case "user":
       return ["v1", "user", encodeScopeValue("user id", address.scope.userId)].join(":");
     case "project":
-      return ["v1", "project", encodeScopeValue("project id", address.scope.projectId)].join(":");
+      return [
+        "v1",
+        "project",
+        encodeScopeValue("org id", address.scope.orgId),
+        encodeScopeValue("project id", address.scope.projectId),
+      ].join(":");
   }
 };
 
@@ -348,7 +359,7 @@ const scoped = <TObject>(
       case "project":
         return factory.get(
           objectBinding,
-          objectAddress(objectBinding, project({ projectId: scope.projectId })),
+          objectAddress(objectBinding, project({ orgId: scope.orgId, projectId: scope.projectId })),
         );
     }
   },
@@ -361,7 +372,7 @@ const scoped = <TObject>(
   forUser(input: { userId: string }) {
     return factory.get(objectBinding, objectAddress(objectBinding, user(input)));
   },
-  forProject(input: { projectId: string }) {
+  forProject(input: { orgId: string; projectId: string }) {
     return factory.get(objectBinding, objectAddress(objectBinding, project(input)));
   },
 });
