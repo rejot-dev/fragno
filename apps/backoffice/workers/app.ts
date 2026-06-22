@@ -3,6 +3,7 @@ import System from "typebox/system";
 
 import { createCloudflareBackofficeRuntimeServices } from "../app/backoffice-runtime/runtime-services";
 import { BackofficeWorkerContext } from "../app/worker-runtime/router-context";
+import { Api } from "./api.do";
 import { Auth } from "./auth.do";
 import { Automations } from "./automations.do";
 import { CloudflareWorkers } from "./cloudflare-wfp.do";
@@ -19,6 +20,7 @@ import { Telegram } from "./telegram.do";
 import { Upload } from "./upload.do";
 
 // Export Durable Object classes
+export { Api };
 export { Auth };
 export { Automations };
 export { Telegram };

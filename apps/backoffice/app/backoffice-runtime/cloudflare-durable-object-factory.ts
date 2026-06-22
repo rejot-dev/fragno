@@ -4,9 +4,9 @@ import type {
   BackofficeObjectFactory,
 } from "./object-registry";
 import { createBackofficeObjectRegistry } from "./object-registry";
+import { assertBackofficeObjectAddressAllowed } from "./object-registry";
 import { encodeBackofficeObjectAddress } from "./object-registry";
 import type { BackofficeObjectRegistry } from "./object-registry";
-import { assertBackofficeObjectAddressAllowed } from "./object-scope-policy";
 
 type DurableObjectNamespaceLike = {
   idFromName(name: string): DurableObjectId;

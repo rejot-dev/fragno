@@ -13,6 +13,7 @@ export const createBackofficeToolContext = (
     durableHooks: context.durableHooks?.runtime,
     event: context.automation?.runtime,
     internal: context.internal?.runtime,
+    api: context.api?.runtime,
     mcp: context.mcp?.runtime,
     otp: context.otp?.runtime,
     pi: context.pi?.runtime,

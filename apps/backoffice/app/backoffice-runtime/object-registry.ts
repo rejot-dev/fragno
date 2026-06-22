@@ -1,3 +1,4 @@
+import type { Api } from "workers/api.do";
 import type { GitHubWebhookRouter } from "workers/github-webhook-router.do";
 import type { GitHub } from "workers/github.do";
 import type { Mcp } from "workers/mcp.do";
@@ -69,6 +70,11 @@ export type AuthObject = FetchObject &
       >
     >;
   };
+
+export type ApiObject = FetchObject &
+  AlarmableObject &
+  DurableHookObject &
+  AdminConfigurableObject<AwaitedMethodReturn<Api, "getAdminConfig">>;
 
 export type AutomationsObject = FetchObject &
   AlarmableObject &
@@ -174,6 +180,7 @@ export type GitHubWebhookRouterObject = {
 };
 
 export type BackofficeObjectBindingName =
+  | "API"
   | "AUTH"
   | "AUTOMATIONS"
   | "TELEGRAM"
@@ -203,6 +210,42 @@ export type BackofficeObjectScope =
 export type BackofficeObjectAddress = {
   binding: BackofficeObjectBindingName;
   scope: BackofficeObjectScope;
+};
+
+export type BackofficeObjectScopeKind = BackofficeObjectScope["kind"];
+
+export const backofficeObjectScopePolicy = {
+  API: ["org", "user", "project"],
+  AUTH: ["singleton"],
+
+  AUTOMATIONS: ["singleton", "org", "user", "project"],
+
+  TELEGRAM: ["org"],
+  OTP: ["org"],
+  RESEND: ["org"],
+  RESON8: ["org"],
+  MCP: ["org", "user"],
+  UPLOAD: ["org", "user", "project"],
+  GITHUB: ["org"],
+  CLOUDFLARE_WORKERS: ["org"],
+
+  PI: ["org"],
+
+  GITHUB_WEBHOOK_ROUTER: ["singleton"],
+
+  SANDBOX_REGISTRY: ["org"],
+
+  SANDBOX: ["named"],
+} satisfies Record<BackofficeObjectBindingName, readonly BackofficeObjectScopeKind[]>;
+
+export const assertBackofficeObjectAddressAllowed = (address: BackofficeObjectAddress) => {
+  const allowedScopes: readonly BackofficeObjectScopeKind[] =
+    backofficeObjectScopePolicy[address.binding];
+  if (!allowedScopes.includes(address.scope.kind)) {
+    throw new Error(
+      `Backoffice object ${address.binding} cannot be instantiated with ${address.scope.kind} scope. Allowed scopes: ${allowedScopes.join(", ")}.`,
+    );
+  }
 };
 
 export type BackofficeObjectFactory = {
@@ -324,6 +367,7 @@ const scoped = <TObject>(
 });
 
 export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory) => ({
+  api: scoped(factory, binding<ApiObject>("API")),
   auth: scoped(factory, binding<AuthObject>("AUTH")),
 
   automations: scoped(factory, binding<AutomationsObject>("AUTOMATIONS")),

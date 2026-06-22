@@ -6,9 +6,16 @@ import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bin
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
 import { createRouteBackedDurableHooksRuntime } from "@/fragno/automation/durable-hooks-route-runtime";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
+import {
+  createApiRuntime,
+  createUnavailableApiRuntime,
+} from "@/fragno/runtime-tools/families/api-runtime";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
 import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
-import { createMcpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
+import {
+  createMcpRuntime,
+  createUnavailableMcpRuntime,
+} from "@/fragno/runtime-tools/families/mcp-runtime";
 import {
   createOtpRuntime,
   createUnavailableOtpRuntime,
@@ -57,9 +64,6 @@ const unavailableRuntime = <T>(message: string): T =>
     },
   ) as T;
 
-const orgScope = (execution: BackofficeExecutionContext): { orgId: string } | null =>
-  execution.scope.kind === "org" ? { orgId: execution.scope.orgId } : null;
-
 export const createRouteBackedRuntimeContext = ({
   runtime,
   kernel,
@@ -72,7 +76,7 @@ export const createRouteBackedRuntimeContext = ({
   if (execution.scope.kind === "project") {
     throw new BackofficeUnavailableError("Project context is not available.");
   }
-  const org = orgScope(execution);
+  const org = execution.scope.kind === "org" ? { orgId: execution.scope.orgId } : null;
   const automationsObject = kernel.scoped(
     "AUTOMATIONS",
     execution.scope,
@@ -134,37 +138,48 @@ export const createRouteBackedRuntimeContext = ({
           }),
         }
       : null,
+    api: runtime.config.bindings.api
+      ? {
+          runtime:
+            execution.scope.kind === "org" || execution.scope.kind === "user"
+              ? createApiRuntime(kernel.scoped("API", execution.scope, runtime.objects.api))
+              : createUnavailableApiRuntime(unavailableMessage("API", execution)),
+        }
+      : null,
     mcp: runtime.config.bindings.mcp
       ? {
-          runtime: createMcpRuntime(kernel.scoped("MCP", execution.scope, runtime.objects.mcp)),
+          runtime:
+            execution.scope.kind === "org" || execution.scope.kind === "user"
+              ? createMcpRuntime(kernel.scoped("MCP", execution.scope, runtime.objects.mcp))
+              : createUnavailableMcpRuntime(unavailableMessage("MCP", execution)),
         }
       : null,
     otp: {
-      runtime: orgScope(execution)
+      runtime: org
         ? createOtpRuntime({
             object: kernel.scoped("OTP", execution.scope, runtime.objects.otp),
             config: runtime.config,
-            orgId: orgScope(execution)!.orgId,
+            orgId: org.orgId,
           })
         : createUnavailableOtpRuntime(unavailableMessage("OTP", execution)),
     },
     pi: pi ?? {
-      runtime: orgScope(execution)
+      runtime: org
         ? createPiRouteRuntime({
             object: kernel.scoped("PI", execution.scope, runtime.objects.pi),
-            orgId: orgScope(execution)!.orgId,
+            orgId: org.orgId,
           })
         : createUnavailablePiRuntime(unavailableMessage("PI", execution)),
     },
     reson8: {
-      runtime: orgScope(execution)
+      runtime: org
         ? createReson8RouteRuntime({
             object: kernel.scoped("RESON8", execution.scope, runtime.objects.reson8),
           })
         : createUnavailableReson8Runtime(unavailableMessage("RESON8", execution)),
     },
     resend: {
-      runtime: orgScope(execution)
+      runtime: org
         ? createResendRouteRuntime({
             object: kernel.scoped("RESEND", execution.scope, runtime.objects.resend),
           })
@@ -173,10 +188,10 @@ export const createRouteBackedRuntimeContext = ({
     sandbox:
       runtime.config.bindings.sandbox && runtime.config.bindings.sandboxRegistry
         ? {
-            runtime: orgScope(execution)
+            runtime: org
               ? createSandboxRouteRuntime({
                   objects: runtime.objects,
-                  orgId: orgScope(execution)!.orgId,
+                  orgId: org.orgId,
                 })
               : unavailableRuntime(unavailableMessage("SANDBOX", execution)),
           }

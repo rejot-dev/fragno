@@ -24,6 +24,7 @@
     "@cloudflare/sandbox": "^0.7.12",
     "@earendil-works/pi-agent-core": "^0.75.4",
     "@earendil-works/pi-ai": "^0.75.4",
+    "@fragno-dev/api-fragment": "workspace:*",
     "@fragno-dev/auth": "workspace:*",
     "@fragno-dev/cloudflare-fragment": "workspace:*",
     "@fragno-dev/core": "workspace:*",

@@ -1,5 +1,6 @@
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
 
+import { apiToolFamily, type ApiRuntime } from "./families/api";
 import {
   automationStoreToolFamily,
   type AutomationStoreRuntime,
@@ -39,6 +40,7 @@ export type CoreBackofficeRuntimeMap = {
   durableHooks?: DurableHooksRuntime;
   event?: EventRuntime;
   internal?: InternalRuntime;
+  api?: ApiRuntime;
   mcp?: McpRuntime;
   otp?: OtpRuntime;
   pi?: PiRuntime;
@@ -60,6 +62,7 @@ export const runtimeToolFamilies = [
   hooksToolFamily,
   automationEventsToolFamily,
   eventToolFamily,
+  apiToolFamily,
   mcpToolFamily,
   otpToolFamily,
   piToolFamily,
@@ -79,6 +82,7 @@ const namespaceCapabilityIds = {
   hooks: "automations",
   events: "automations",
   event: "automations",
+  api: "api",
   mcp: "mcp",
   otp: "otp",
   pi: "pi",

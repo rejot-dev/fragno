@@ -77,6 +77,10 @@
   "durable_objects": {
     "bindings": [
       {
+        "name": "API",
+        "class_name": "Api",
+      },
+      {
         "name": "AUTH",
         "class_name": "Auth",
       },
@@ -194,6 +198,10 @@
     {
       "tag": "v16",
       "new_sqlite_classes": ["Mcp"],
+    },
+    {
+      "tag": "v17",
+      "new_sqlite_classes": ["Api"],
     },
   ],
   "rules": [

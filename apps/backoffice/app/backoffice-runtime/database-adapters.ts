@@ -6,6 +6,7 @@ import type { DatabaseAdapter } from "@fragno-dev/db";
 type AnyBackofficeDatabaseAdapter = DatabaseAdapter<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 export type BackofficeDatabaseAdapterKind =
+  | "api"
   | "auth"
   | "automations"
   | "cloudflareWorkers"
