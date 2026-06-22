@@ -32,11 +32,26 @@ export function createApiFragmentClients(fragnoConfig: FragnoPublicClientConfig 
     startOAuth: builder.createMutator("POST", "/connections/:slug/auth/oauth/start"),
     deleteAuth: builder.createMutator("DELETE", "/connections/:slug/auth"),
     request: builder.createMutator("POST", "/connections/:slug/request"),
+    useWebhookEndpoints: builder.createHook("/webhooks/endpoints"),
+    useWebhookEndpoint: builder.createHook("/webhooks/endpoints/:endpointId"),
+    createWebhookEndpoint: builder.createMutator("PUT", "/webhooks/endpoints/:endpointId"),
+    updateWebhookEndpoint: builder.createMutator("PATCH", "/webhooks/endpoints/:endpointId"),
+    deleteWebhookEndpoint: builder.createMutator("DELETE", "/webhooks/endpoints/:endpointId"),
   };
 }
 
 export { apiFragmentDefinition } from "./definition";
 export { apiRoutesFactory } from "./routes";
 export { apiSchema } from "./schema";
-export type { ApiFragmentConfig } from "./definition";
-export type { ApiConnection, ApiConnectionInput, ApiRequestInput, AuthConfig } from "./api-types";
+export type { ApiFragmentConfig, WebhookReceivedPayload } from "./definition";
+export type {
+  ApiConnection,
+  ApiConnectionInput,
+  ApiRequestInput,
+  AuthConfig,
+  UpdateWebhookEndpointInput,
+  WebhookDeliveryIdentity,
+  WebhookEndpoint,
+  WebhookEndpointAuthInput,
+  WebhookEndpointInput,
+} from "./api-types";

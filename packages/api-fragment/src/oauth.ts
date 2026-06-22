@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { AuthConfig } from "./api-types";
+import { asciiToBase64, sha256Base64Url } from "./crypto";
 
 export interface OAuthTokens {
   tokenType?: string;
@@ -33,40 +34,10 @@ const oauthTokenResponseSchema = z
   })
   .passthrough();
 
-function assertAscii(value: string, label: string) {
-  for (let index = 0; index < value.length; index += 1) {
-    if (value.charCodeAt(index) > 0x7f) {
-      throw new Error(`${label} must contain ASCII characters only`);
-    }
-  }
-}
-
-function asciiToBase64(value: string, label: string) {
-  assertAscii(value, label);
-  return btoa(value);
-}
-
-function bytesToBase64(bytes: Uint8Array) {
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary);
-}
-
-export function bytesToBase64Url(bytes: Uint8Array) {
-  return bytesToBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-export function randomBase64Url(bytes = 32) {
-  const data = new Uint8Array(bytes);
-  crypto.getRandomValues(data);
-  return bytesToBase64Url(data);
-}
+export { bytesToBase64Url, randomBase64Url } from "./crypto";
 
 export async function createCodeChallenge(codeVerifier: string) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(codeVerifier));
-  return bytesToBase64Url(new Uint8Array(digest));
+  return await sha256Base64Url(codeVerifier);
 }
 
 export function createAuthorizationUrl(args: {

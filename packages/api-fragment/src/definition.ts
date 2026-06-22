@@ -37,6 +37,29 @@ export interface ApiConnectionAvailablePayload {
   authMode: string;
 }
 
+interface InternalWebhookReceivedPayload {
+  endpointId: string;
+  deliveryId: string;
+  hookId: string;
+  receivedAt: string;
+  headers: Record<string, string>;
+  query: Record<string, string>;
+  rawBody: string;
+  body: Record<string, unknown>;
+  contentType: string | null;
+}
+
+export interface WebhookReceivedPayload {
+  endpointId: string;
+  deliveryId: string;
+  hookId: string;
+  receivedAt: string;
+  headers: Record<string, string>;
+  query: Record<string, string>;
+  body: Record<string, unknown>;
+  contentType: string | null;
+}
+
 export interface ApiFragmentHooksConfig {
   onConnectionChanged?: (
     payload: ApiConnectionChangedPayload,
@@ -50,6 +73,7 @@ export interface ApiFragmentHooksConfig {
     payload: ApiConnectionAvailablePayload,
     idempotencyKey: string,
   ) => Promise<void> | void;
+  onWebhookReceived?: (payload: WebhookReceivedPayload) => Promise<void> | void;
 }
 
 export type ApiFragmentConfig = BaseApiFragmentConfig & ApiFragmentHooksConfig;
@@ -58,6 +82,7 @@ export type ApiHooksMap = {
   onConnectionChanged: HookFn<ApiConnectionChangedPayload>;
   onConnectionDeleted: HookFn<ApiConnectionDeletedPayload>;
   onConnectionAvailable: HookFn<ApiConnectionAvailablePayload>;
+  onWebhookReceived: HookFn<InternalWebhookReceivedPayload>;
 };
 
 function connectionHookSnapshot(connection: {
@@ -87,6 +112,18 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
     }),
     onConnectionAvailable: defineHook(async function (payload) {
       await config.onConnectionAvailable?.(payload, this.idempotencyKey);
+    }),
+    onWebhookReceived: defineHook(async function (payload) {
+      await config.onWebhookReceived?.({
+        endpointId: payload.endpointId,
+        deliveryId: payload.deliveryId,
+        hookId: payload.hookId,
+        receivedAt: payload.receivedAt,
+        headers: payload.headers,
+        query: payload.query,
+        body: payload.body,
+        contentType: payload.contentType,
+      });
     }),
   }))
   .providesBaseService(({ defineService, config }) =>

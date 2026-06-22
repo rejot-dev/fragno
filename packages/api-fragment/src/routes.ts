@@ -1,19 +1,35 @@
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
+import { isUniqueConstraintError } from "@fragno-dev/db";
 
 import {
   apiConnectionOutputSchema,
   apiRequestInputSchema,
   createApiConnectionInputSchema,
+  createWebhookEndpointInputSchema,
   oauthStartInputSchema,
   tokenAuthInputSchema,
+  updateWebhookEndpointInputSchema,
+  webhookEndpointOutputSchema,
+  type WebhookDeliveryIdentity,
+  type WebhookEndpoint,
+  type WebhookEndpointAuthInput,
 } from "./api-types";
+import { sha256Base64Url } from "./crypto";
 import { apiFragmentDefinition } from "./definition";
 import { apiSchema } from "./schema";
 import { assertAllowedBaseUrl, storedAuthPayloadSchema } from "./services";
+import {
+  getSensitiveWebhookAuthValues,
+  getWebhookAuthSecretRefs,
+  verifyWebhookAuth,
+  type WebhookAuthConfig,
+} from "./webhooks/auth";
 
 const connectionsOutputSchema = z.object({ connections: z.array(apiConnectionOutputSchema) });
+const webhookEndpointsOutputSchema = z.object({ endpoints: z.array(webhookEndpointOutputSchema) });
+const webhookReceivedOutputSchema = z.object({ accepted: z.boolean() });
 const authStatusSchema = z.object({
   authenticated: z.boolean(),
   mode: z.string(),
@@ -70,8 +86,569 @@ function connectionHookSnapshot(connection: {
   };
 }
 
+type WebhookSecretDraft = { ref: string; payload: string };
+
+function webhookSecretId(endpointId: string, ref: string) {
+  return `${endpointId}:${ref}`;
+}
+
+function webhookEndpointAuthStorage(auth: WebhookEndpointAuthInput): {
+  authConfig: WebhookAuthConfig;
+  secrets: WebhookSecretDraft[];
+} {
+  if (auth.type === "none") {
+    return { authConfig: { type: "none" }, secrets: [] };
+  }
+  if (auth.type === "bearer") {
+    return {
+      authConfig: { type: "bearer", tokenRef: "token" },
+      secrets: [{ ref: "token", payload: auth.token }],
+    };
+  }
+  if (auth.type === "apiKey") {
+    return {
+      authConfig: {
+        type: "apiKey",
+        location: auth.location,
+        name: auth.name,
+        secretRef: "secret",
+      },
+      secrets: [{ ref: "secret", payload: auth.secret }],
+    };
+  }
+  if (auth.type === "basic") {
+    return {
+      authConfig: { type: "basic", usernameRef: "username", passwordRef: "password" },
+      secrets: [
+        { ref: "username", payload: auth.username },
+        { ref: "password", payload: auth.password },
+      ],
+    };
+  }
+
+  return {
+    authConfig: {
+      type: "hmac",
+      secretRef: "secret",
+      algorithm: auth.algorithm,
+      signature: auth.signature,
+      signedPayload: auth.signedPayload,
+    },
+    secrets: [{ ref: "secret", payload: auth.secret }],
+  };
+}
+
+function parseWebhookEndpointStatus(status: string): "active" | "disabled" {
+  if (status === "active" || status === "disabled") {
+    return status;
+  }
+  throw new Error(`Unexpected webhook endpoint status: ${status}`);
+}
+
+function recordFromSearchParams(
+  query: URLSearchParams,
+  sensitiveQueryNames: ReadonlySet<string>,
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [name, value] of query.entries()) {
+    result[name] = sensitiveQueryNames.has(name) ? "[redacted]" : value;
+  }
+  return result;
+}
+
+function recordFromHeaders(
+  headers: Headers,
+  sensitiveHeaderNames: ReadonlySet<string>,
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [name, value] of headers.entries()) {
+    result[name] = sensitiveHeaderNames.has(name.toLowerCase()) ? "[redacted]" : value;
+  }
+  return result;
+}
+
+type WebhookJsonBodyResult =
+  | { ok: true; body: Record<string, unknown> }
+  | { ok: false; reason: "invalid_json" | "invalid_value" };
+
+type WebhookDeliveryIdentityResult =
+  | { ok: true; deliveryId: string }
+  | { ok: false; reason: "missing" | "invalid_value" };
+
+function parseWebhookJsonBody(rawBody: string | undefined): WebhookJsonBodyResult {
+  let value: unknown;
+  try {
+    value = JSON.parse(rawBody ?? "");
+  } catch {
+    return { ok: false, reason: "invalid_json" };
+  }
+  if (!isJsonObject(value)) {
+    return { ok: false, reason: "invalid_value" };
+  }
+  return { ok: true, body: value };
+}
+
+function extractWebhookDeliveryId(input: {
+  identity: WebhookDeliveryIdentity;
+  headers: Headers;
+  query: URLSearchParams;
+  body: Record<string, unknown>;
+}): WebhookDeliveryIdentityResult {
+  if (input.identity.type === "header") {
+    return normalizeWebhookDeliveryId(input.headers.get(input.identity.name));
+  }
+  if (input.identity.type === "query") {
+    return normalizeWebhookDeliveryId(input.query.get(input.identity.name));
+  }
+
+  let value: unknown = input.body;
+  for (const segment of input.identity.path) {
+    if (!isJsonObject(value) || !(segment in value)) {
+      return { ok: false, reason: "missing" };
+    }
+    value = value[segment];
+  }
+  return normalizeWebhookDeliveryId(value);
+}
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeWebhookDeliveryId(value: unknown): WebhookDeliveryIdentityResult {
+  if (typeof value !== "string" && typeof value !== "number") {
+    return value == null
+      ? { ok: false, reason: "missing" }
+      : { ok: false, reason: "invalid_value" };
+  }
+  const deliveryId = `${value}`.trim();
+  if (!deliveryId) {
+    return { ok: false, reason: "missing" };
+  }
+  return { ok: true, deliveryId };
+}
+
+async function webhookHookId(endpointId: string, deliveryId: string) {
+  return `webhook_${await sha256Base64Url(`${endpointId}\0${deliveryId}`)}`;
+}
+
+function publicWebhookEndpoint(endpoint: {
+  id: { toString(): string } | string;
+  name: string;
+  status: string;
+  authConfig: WebhookAuthConfig;
+  deliveryIdentity: WebhookDeliveryIdentity;
+  createdAt?: Date;
+  updatedAt?: Date;
+}): WebhookEndpoint {
+  return {
+    id: endpoint.id.toString(),
+    name: endpoint.name,
+    status: parseWebhookEndpointStatus(endpoint.status),
+    authConfig: endpoint.authConfig,
+    deliveryIdentity: endpoint.deliveryIdentity,
+    secretRefs: [...getWebhookAuthSecretRefs(endpoint.authConfig)],
+    createdAt: endpoint.createdAt,
+    updatedAt: endpoint.updatedAt,
+  };
+}
+
 export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
   ({ services, defineRoute, config }) => [
+    defineRoute({
+      method: "PUT",
+      path: "/webhooks/endpoints/:endpointId",
+      inputSchema: createWebhookEndpointInputSchema,
+      outputSchema: webhookEndpointOutputSchema,
+      handler: async function ({ input, pathParams }, { json }) {
+        const body = await input.valid();
+        const authStorage = webhookEndpointAuthStorage(body.auth);
+        const result = await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(apiSchema)
+              .findFirst("webhookEndpoint", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", pathParams.endpointId)),
+              )
+              .find("webhookSecret", (b) =>
+                b.whereIndex("idx_webhook_secret_endpoint_ref", (eb) =>
+                  eb("endpointId", "=", pathParams.endpointId),
+                ),
+              ),
+          )
+          .mutate(({ forSchema, retrieveResult: [existing, existingSecrets] }) => {
+            const uow = forSchema(apiSchema);
+            if (existing) {
+              uow.update("webhookEndpoint", existing.id, (b) =>
+                b
+                  .set({
+                    name: body.name,
+                    status: body.status,
+                    authConfig: authStorage.authConfig,
+                    deliveryIdentity: body.deliveryIdentity,
+                    updatedAt: b.now(),
+                  })
+                  .check(),
+              );
+            } else {
+              uow.create("webhookEndpoint", {
+                id: pathParams.endpointId,
+                name: body.name,
+                status: body.status,
+                authConfig: authStorage.authConfig,
+                deliveryIdentity: body.deliveryIdentity,
+              });
+            }
+
+            const nextSecretRefs = new Set(authStorage.secrets.map((secret) => secret.ref));
+            for (const secret of existingSecrets) {
+              if (!nextSecretRefs.has(secret.ref)) {
+                uow.delete("webhookSecret", secret.id);
+              }
+            }
+            for (const secret of authStorage.secrets) {
+              const existingSecret = existingSecrets.find(
+                (candidate) => candidate.ref === secret.ref,
+              );
+              if (existingSecret) {
+                uow.update("webhookSecret", existingSecret.id, (b) =>
+                  b.set({ payload: secret.payload, updatedAt: b.now() }).check(),
+                );
+              } else {
+                uow.create("webhookSecret", {
+                  id: webhookSecretId(pathParams.endpointId, secret.ref),
+                  endpointId: pathParams.endpointId,
+                  ref: secret.ref,
+                  payload: secret.payload,
+                });
+              }
+            }
+
+            return {
+              created: !existing,
+              endpoint: {
+                id: pathParams.endpointId,
+                name: body.name,
+                status: body.status,
+                authConfig: authStorage.authConfig,
+                deliveryIdentity: body.deliveryIdentity,
+                createdAt: existing?.createdAt,
+              },
+            };
+          })
+          .execute();
+
+        return json(publicWebhookEndpoint(result.endpoint), result.created ? 201 : 200);
+      },
+    }),
+
+    defineRoute({
+      method: "GET",
+      path: "/webhooks/endpoints",
+      outputSchema: webhookEndpointsOutputSchema,
+      handler: async function (_, { json }) {
+        const [endpoints] = await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(apiSchema).find("webhookEndpoint", (b) => b.whereIndex("primary")),
+          )
+          .execute();
+        return json({ endpoints: endpoints.map(publicWebhookEndpoint) });
+      },
+    }),
+
+    defineRoute({
+      method: "GET",
+      path: "/webhooks/endpoints/:endpointId",
+      outputSchema: webhookEndpointOutputSchema,
+      errorCodes: ["WEBHOOK_ENDPOINT_NOT_FOUND"],
+      handler: async function ({ pathParams }, { json, error }) {
+        const [endpoint] = await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(apiSchema).findFirst("webhookEndpoint", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", pathParams.endpointId)),
+            ),
+          )
+          .execute();
+        if (!endpoint) {
+          return error(
+            { code: "WEBHOOK_ENDPOINT_NOT_FOUND", message: "Webhook endpoint not found" },
+            404,
+          );
+        }
+        return json(publicWebhookEndpoint(endpoint));
+      },
+    }),
+
+    defineRoute({
+      method: "POST",
+      path: "/webhooks/endpoints/:endpointId/events",
+      errorCodes: [
+        "WEBHOOK_ENDPOINT_NOT_FOUND",
+        "WEBHOOK_ENDPOINT_DISABLED",
+        "WEBHOOK_AUTH_FAILED",
+        "WEBHOOK_BODY_INVALID",
+        "WEBHOOK_DELIVERY_ID_MISSING",
+        "WEBHOOK_DELIVERY_ID_INVALID",
+      ],
+      outputSchema: webhookReceivedOutputSchema,
+      handler: async function ({ pathParams, headers, query, rawBody, request }, { json, error }) {
+        let result:
+          | {
+              ok: true;
+            }
+          | {
+              ok: false;
+              code:
+                | "WEBHOOK_ENDPOINT_NOT_FOUND"
+                | "WEBHOOK_ENDPOINT_DISABLED"
+                | "WEBHOOK_AUTH_FAILED"
+                | "WEBHOOK_BODY_INVALID"
+                | "WEBHOOK_DELIVERY_ID_MISSING"
+                | "WEBHOOK_DELIVERY_ID_INVALID";
+              reason?: string;
+            };
+        try {
+          result = await this.handlerTx()
+            .retrieve(({ forSchema }) =>
+              forSchema(apiSchema)
+                .findFirst("webhookEndpoint", (b) =>
+                  b.whereIndex("primary", (eb) => eb("id", "=", pathParams.endpointId)),
+                )
+                .find("webhookSecret", (b) =>
+                  b.whereIndex("idx_webhook_secret_endpoint_ref", (eb) =>
+                    eb("endpointId", "=", pathParams.endpointId),
+                  ),
+                ),
+            )
+            .transformRetrieve(async ([endpoint, secrets]) => {
+              if (!endpoint) {
+                return { ok: false as const, code: "WEBHOOK_ENDPOINT_NOT_FOUND" as const };
+              }
+              if (endpoint.status !== "active") {
+                return { ok: false as const, code: "WEBHOOK_ENDPOINT_DISABLED" as const };
+              }
+
+              const authConfig = endpoint.authConfig;
+              const secretValues = new Map(secrets.map((secret) => [secret.ref, secret.payload]));
+              if (!request) {
+                throw new Error("Webhook receive route requires a web-standard Request");
+              }
+              const auth = await verifyWebhookAuth({
+                config: authConfig,
+                request,
+                secrets: { get: async (ref) => secretValues.get(ref) },
+              });
+              if (!auth.ok) {
+                return {
+                  ok: false as const,
+                  code: "WEBHOOK_AUTH_FAILED" as const,
+                  reason: auth.reason,
+                };
+              }
+
+              const body = parseWebhookJsonBody(rawBody);
+              if (!body.ok) {
+                return { ok: false as const, code: "WEBHOOK_BODY_INVALID" as const };
+              }
+
+              const deliveryIdentity = endpoint.deliveryIdentity;
+              const deliveryId = extractWebhookDeliveryId({
+                identity: deliveryIdentity,
+                headers,
+                query,
+                body: body.body,
+              });
+              if (!deliveryId.ok) {
+                return {
+                  ok: false as const,
+                  code:
+                    deliveryId.reason === "missing"
+                      ? ("WEBHOOK_DELIVERY_ID_MISSING" as const)
+                      : ("WEBHOOK_DELIVERY_ID_INVALID" as const),
+                };
+              }
+
+              return {
+                ok: true as const,
+                authConfig,
+                deliveryId: deliveryId.deliveryId,
+                hookId: await webhookHookId(pathParams.endpointId, deliveryId.deliveryId),
+                body: body.body,
+              };
+            })
+            .mutate(({ forSchema, retrieveResult }) => {
+              if (!retrieveResult.ok) {
+                return retrieveResult;
+              }
+
+              const sensitiveValues = getSensitiveWebhookAuthValues(retrieveResult.authConfig);
+              const sensitiveHeaderNames = new Set(
+                sensitiveValues
+                  .filter((value) => value.location === "header")
+                  .map((value) => value.name.toLowerCase()),
+              );
+              const sensitiveQueryNames = new Set(
+                sensitiveValues
+                  .filter((value) => value.location === "query")
+                  .map((value) => value.name),
+              );
+
+              const uow = forSchema(apiSchema);
+              uow.triggerHook(
+                "onWebhookReceived",
+                {
+                  endpointId: pathParams.endpointId,
+                  deliveryId: retrieveResult.deliveryId,
+                  hookId: retrieveResult.hookId,
+                  receivedAt: new Date().toISOString(),
+                  headers: recordFromHeaders(headers, sensitiveHeaderNames),
+                  query: recordFromSearchParams(query, sensitiveQueryNames),
+                  rawBody: rawBody ?? "",
+                  body: retrieveResult.body,
+                  contentType: headers.get("content-type"),
+                },
+                { id: retrieveResult.hookId },
+              );
+              return { ok: true as const };
+            })
+            .execute();
+        } catch (err) {
+          if (isUniqueConstraintError(err)) {
+            return json({ accepted: true }, 202);
+          }
+          throw err;
+        }
+
+        if (!result.ok) {
+          if (result.code === "WEBHOOK_ENDPOINT_NOT_FOUND") {
+            return error({ code: result.code, message: "Webhook endpoint not found" }, 404);
+          }
+          if (result.code === "WEBHOOK_ENDPOINT_DISABLED") {
+            return error({ code: result.code, message: "Webhook endpoint is disabled" }, 409);
+          }
+          if (result.code === "WEBHOOK_BODY_INVALID") {
+            return error({ code: result.code, message: "Webhook body must be a JSON object" }, 400);
+          }
+          if (result.code === "WEBHOOK_DELIVERY_ID_MISSING") {
+            return error({ code: result.code, message: "Webhook delivery ID is missing" }, 400);
+          }
+          if (result.code === "WEBHOOK_DELIVERY_ID_INVALID") {
+            return error({ code: result.code, message: "Webhook delivery ID is invalid" }, 400);
+          }
+          return error({ code: result.code, message: "Webhook authentication failed" }, 401);
+        }
+
+        return json({ accepted: true }, 202);
+      },
+    }),
+
+    defineRoute({
+      method: "PATCH",
+      path: "/webhooks/endpoints/:endpointId",
+      inputSchema: updateWebhookEndpointInputSchema,
+      outputSchema: webhookEndpointOutputSchema,
+      errorCodes: ["WEBHOOK_ENDPOINT_NOT_FOUND"],
+      handler: async function ({ input, pathParams }, { json, error }) {
+        const body = await input.valid();
+        const authStorage = body.auth ? webhookEndpointAuthStorage(body.auth) : null;
+        const result = await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(apiSchema)
+              .findFirst("webhookEndpoint", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", pathParams.endpointId)),
+              )
+              .find("webhookSecret", (b) =>
+                b.whereIndex("idx_webhook_secret_endpoint_ref", (eb) =>
+                  eb("endpointId", "=", pathParams.endpointId),
+                ),
+              ),
+          )
+          .mutate(({ forSchema, retrieveResult: [endpoint, secrets] }) => {
+            if (!endpoint) {
+              return { found: false as const };
+            }
+            const uow = forSchema(apiSchema);
+            const authConfig = authStorage?.authConfig ?? endpoint.authConfig;
+            const deliveryIdentity = body.deliveryIdentity ?? endpoint.deliveryIdentity;
+            const next = {
+              id: endpoint.id,
+              name: body.name ?? endpoint.name,
+              status: body.status ?? endpoint.status,
+              authConfig,
+              deliveryIdentity,
+              createdAt: endpoint.createdAt,
+            };
+            uow.update("webhookEndpoint", endpoint.id, (b) =>
+              b
+                .set({
+                  name: next.name,
+                  status: next.status,
+                  authConfig,
+                  deliveryIdentity,
+                  updatedAt: b.now(),
+                })
+                .check(),
+            );
+            if (authStorage) {
+              for (const secret of secrets) {
+                uow.delete("webhookSecret", secret.id);
+              }
+              for (const secret of authStorage.secrets) {
+                uow.create("webhookSecret", {
+                  id: webhookSecretId(pathParams.endpointId, secret.ref),
+                  endpointId: pathParams.endpointId,
+                  ref: secret.ref,
+                  payload: secret.payload,
+                });
+              }
+            }
+            return { found: true as const, endpoint: next };
+          })
+          .execute();
+
+        if (!result.found) {
+          return error(
+            { code: "WEBHOOK_ENDPOINT_NOT_FOUND", message: "Webhook endpoint not found" },
+            404,
+          );
+        }
+
+        return json(publicWebhookEndpoint(result.endpoint));
+      },
+    }),
+
+    defineRoute({
+      method: "DELETE",
+      path: "/webhooks/endpoints/:endpointId",
+      handler: async function ({ pathParams }, { empty }) {
+        await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(apiSchema)
+              .findFirst("webhookEndpoint", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", pathParams.endpointId)),
+              )
+              .find("webhookSecret", (b) =>
+                b.whereIndex("idx_webhook_secret_endpoint_ref", (eb) =>
+                  eb("endpointId", "=", pathParams.endpointId),
+                ),
+              ),
+          )
+          .mutate(({ forSchema, retrieveResult: [endpoint, secrets] }) => {
+            if (!endpoint) {
+              return { deleted: false as const };
+            }
+            const uow = forSchema(apiSchema);
+            for (const secret of secrets) {
+              uow.delete("webhookSecret", secret.id);
+            }
+            uow.delete("webhookEndpoint", endpoint.id);
+            return { deleted: true as const };
+          })
+          .execute();
+
+        return empty(204);
+      },
+    }),
+
     defineRoute({
       method: "PUT",
       path: "/connections/:slug",

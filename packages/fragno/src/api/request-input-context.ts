@@ -22,6 +22,7 @@ export class RequestInputContext<
   readonly #searchParams: URLSearchParams;
   readonly #headers: Headers;
   readonly #body: string | undefined;
+  readonly #request: Request | undefined;
   readonly #parsedBody: RequestBodyType;
   readonly #inputSchema: TInputSchema | undefined;
   readonly #shouldValidateInput: boolean;
@@ -44,6 +45,7 @@ export class RequestInputContext<
     this.#searchParams = config.searchParams;
     this.#headers = config.headers;
     this.#body = config.rawBody;
+    this.#request = config.request;
     this.#parsedBody = config.parsedBody;
     this.#inputSchema = config.inputSchema;
     this.#shouldValidateInput = config.shouldValidateInput ?? true;
@@ -72,6 +74,7 @@ export class RequestInputContext<
       pathParams: config.state.pathParams as ExtractPathParams<TPath>,
       searchParams: config.state.searchParams,
       headers: config.state.headers,
+      request: config.request,
       parsedBody: config.state.body,
       rawBody: config.rawBody,
       inputSchema: config.inputSchema,
@@ -153,6 +156,10 @@ export class RequestInputContext<
 
   get rawBody(): string | undefined {
     return this.#body;
+  }
+
+  get request(): Request | undefined {
+    return this.#request;
   }
 
   /**
