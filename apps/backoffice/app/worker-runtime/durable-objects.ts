@@ -1,6 +1,7 @@
 import type { RouterContextProvider } from "react-router";
 
 import type {
+  ApiObject,
   AuthObject,
   AutomationsObject,
   CloudflareWorkersObject,
@@ -22,6 +23,11 @@ export const BACKOFFICE_ADMIN_OBJECT_NAME = "admin" as const;
 
 const getBackofficeObjects = (context: Readonly<RouterContextProvider>) =>
   context.get(BackofficeWorkerContext).runtime.objects;
+
+export const getApiDurableObject = (
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+): ApiObject => getBackofficeObjects(context).api.forOrg(orgId);
 
 export const getAuthDurableObject = (context: Readonly<RouterContextProvider>): AuthObject =>
   getBackofficeObjects(context).auth.singleton();

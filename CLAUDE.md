@@ -122,3 +122,7 @@ E.g.
 And Oxlint + Oxfmt: `pnpm run lint:fix && pnpm run format:changed`
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Other rules
+
+- If you see changes unrelated to your work, prefer to keep them.

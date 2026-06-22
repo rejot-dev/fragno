@@ -1,6 +1,7 @@
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { MasterFileSystem } from "@/files";
 
+import { InMemoryApiObject } from "../../workers/api.do";
 import { InMemoryAuthObject } from "../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../workers/automations.do";
 import { InMemoryCloudflareWorkersObject } from "../../workers/cloudflare-wfp.do";
@@ -27,8 +28,8 @@ import type {
   BackofficeObjectBindingName,
   BackofficeObjectFactory,
 } from "./object-registry";
+import { assertBackofficeObjectAddressAllowed } from "./object-registry";
 import { encodeBackofficeObjectAddress } from "./object-registry";
-import { assertBackofficeObjectAddressAllowed } from "./object-scope-policy";
 import type { BackofficeRuntimeConfig, BackofficeRuntimeServices } from "./runtime-services";
 
 export type InMemoryBackofficeObjectFactory<TObject> = (input: {
@@ -127,6 +128,12 @@ class UnavailableInMemoryDurableObject {
 const createUnavailableObject = () => new UnavailableInMemoryDurableObject();
 
 const inMemoryObjectFactories = {
+  API: ({ state, env, runtime }) =>
+    new InMemoryApiObject({
+      state,
+      env,
+      runtime,
+    }),
   AUTH: ({ state, env, runtime }) =>
     new InMemoryAuthObject({
       state,
@@ -298,6 +305,7 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
         ? { docsPublicBaseUrl: this.env.DOCS_PUBLIC_BASE_URL.trim() }
         : {}),
       bindings: {
+        api: this.#hasNamespace("API"),
         auth: this.#hasNamespace("AUTH"),
         automations: this.#hasNamespace("AUTOMATIONS"),
         telegram: this.#hasNamespace("TELEGRAM"),

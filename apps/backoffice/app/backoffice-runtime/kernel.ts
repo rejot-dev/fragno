@@ -6,7 +6,7 @@ import type {
   BackofficePrincipal,
 } from "./context";
 import type { BackofficeObjectBindingName, BackofficeObjectRegistry } from "./object-registry";
-import { backofficeObjectScopePolicy } from "./object-scope-policy";
+import { backofficeObjectScopePolicy } from "./object-registry";
 
 export type BackofficePermissionRequirement = {
   namespace: string;

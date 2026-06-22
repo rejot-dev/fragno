@@ -12,6 +12,7 @@ import type { BackofficeObjectRegistry } from "./object-registry";
 export type BackofficeRuntimeConfig = {
   docsPublicBaseUrl?: string;
   bindings: {
+    api: boolean;
     auth: boolean;
     automations: boolean;
     telegram: boolean;
@@ -49,6 +50,7 @@ const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): Backoffice
     ? { docsPublicBaseUrl: env.DOCS_PUBLIC_BASE_URL.trim() }
     : {}),
   bindings: {
+    api: Boolean(env.API),
     auth: Boolean(env.AUTH),
     automations: Boolean(env.AUTOMATIONS),
     telegram: Boolean(env.TELEGRAM),

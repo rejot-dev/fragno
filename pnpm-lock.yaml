@@ -115,6 +115,9 @@ importers:
       '@earendil-works/pi-ai':
         specifier: ^0.75.4
         version: 0.75.5(patch_hash=f60f0b72fe619f0fcb96686efc80a0d239e1a7b36d4915e722b60eca03cfecd4)(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.5))(ws@8.21.0)(zod@4.3.5)
+      '@fragno-dev/api-fragment':
+        specifier: workspace:*
+        version: link:../../packages/api-fragment
       '@fragno-dev/auth':
         specifier: workspace:*
         version: link:../../packages/auth
@@ -214,7 +217,7 @@ importers:
         version: 1.40.1(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))(workerd@1.20260609.1)(wrangler@4.99.0(@cloudflare/workers-types@4.20260610.1))
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.15.2
-        version: 0.15.2(@cloudflare/workers-types@4.20260610.1)(@vitest/runner@4.1.8)(@vitest/snapshot@4.1.8)(vitest@4.1.8)
+        version: 0.15.2(@cloudflare/workers-types@4.20260610.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.8)
       '@cloudflare/workers-types':
         specifier: ^4.20260504.1
         version: 4.20260610.1
@@ -414,7 +417,7 @@ importers:
         version: 1.40.1(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))(workerd@1.20260317.1)(wrangler@4.99.0(@cloudflare/workers-types@4.20260610.1))
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.13.0
-        version: 0.13.5(@cloudflare/workers-types@4.20260610.1)(@vitest/runner@4.1.8)(@vitest/snapshot@4.1.8)(vitest@4.1.8)
+        version: 0.13.5(@cloudflare/workers-types@4.20260610.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.8)
       '@cloudflare/workers-types':
         specifier: ^4.20260301.1
         version: 4.20260610.1
@@ -714,7 +717,7 @@ importers:
         version: link:../../example-fragments/example-fragment
       next:
         specifier: ^16.1.3
-        version: 16.2.9(@babel/core@7.29.7)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 16.2.9(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       react:
         specifier: 'catalog:'
         version: 19.2.7
@@ -967,7 +970,7 @@ importers:
         version: 1.168.25(crossws@0.4.6(srvx@0.11.16))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vite-plugin-solid@2.11.12(@testing-library/jest-dom@6.9.1)(solid-js@1.9.13)(vite@8.0.16(@types/node@22.19.20)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)))(vite@8.0.16(@types/node@22.19.20)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))(webpack@5.107.2(esbuild@0.28.0))
       better-auth:
         specifier: ^1.4.15
-        version: 1.6.16(1a67f6e7929738bf28e8204c959fb86c)
+        version: 1.6.16(ae26155262dd0b38d3c677b340ad2f09)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -1571,6 +1574,61 @@ importers:
       nyc:
         specifier: ^17.1.0
         version: 17.1.0
+
+  packages/api-fragment:
+    dependencies:
+      '@fragno-dev/core':
+        specifier: workspace:*
+        version: link:../fragno
+      '@fragno-dev/db':
+        specifier: workspace:*
+        version: link:../fragno-db
+      '@standard-schema/spec':
+        specifier: ^1.0.0
+        version: 1.1.0
+      '@typescript/native-preview':
+        specifier: 'catalog:'
+        version: 7.0.0-dev.20260615.1
+      better-sqlite3:
+        specifier: ^12.5.0
+        version: 12.10.0
+      react:
+        specifier: '>=18.0.0'
+        version: 19.2.7
+      solid-js:
+        specifier: '>=1.0.0'
+        version: 1.9.13
+      svelte:
+        specifier: '>=4.0.0'
+        version: 5.56.3
+      vue:
+        specifier: '>=3.0.0'
+        version: 3.5.35(typescript@5.9.3)
+      zod:
+        specifier: 4.3.5
+        version: 4.3.5
+    devDependencies:
+      '@fragno-dev/test':
+        specifier: workspace:*
+        version: link:../fragno-test
+      '@fragno-dev/unplugin-fragno':
+        specifier: workspace:*
+        version: link:../unplugin-fragno
+      '@fragno-private/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages-private/typescript-config
+      '@fragno-private/vitest-config':
+        specifier: workspace:*
+        version: link:../../packages-private/vitest-config
+      '@vitest/coverage-istanbul':
+        specifier: ^4.1.0
+        version: 4.1.8(vitest@4.1.8)
+      tsdown:
+        specifier: ^0.20.3
+        version: 0.20.3(@emnapi/core@1.11.0)(@emnapi/runtime@1.11.0)(@typescript/native-preview@7.0.0-dev.20260615.1)(typescript@5.9.3)
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.8(@types/node@25.9.3)(@vitest/coverage-istanbul@4.1.8)(@vitest/ui@4.1.8)(happy-dom@20.10.2)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@25.9.3)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
 
   packages/auth:
     dependencies:
@@ -16810,7 +16868,7 @@ snapshots:
   '@astrojs/telemetry@3.3.0':
     dependencies:
       ci-info: 4.4.0
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       dlv: 1.1.3
       dset: 3.1.4
       is-docker: 3.0.0
@@ -17115,7 +17173,7 @@ snapshots:
       '@babel/types': 7.29.7
       '@jridgewell/remapping': 2.3.5
       convert-source-map: 2.0.0
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       gensync: 1.0.0-beta.2
       json5: 2.2.3
       semver: 6.3.1
@@ -17333,7 +17391,7 @@ snapshots:
       '@babel/parser': 7.29.7
       '@babel/template': 7.29.7
       '@babel/types': 7.29.7
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -17728,10 +17786,10 @@ snapshots:
       - utf-8-validate
       - workerd
 
-  '@cloudflare/vitest-pool-workers@0.13.5(@cloudflare/workers-types@4.20260610.1)(@vitest/runner@4.1.8)(@vitest/snapshot@4.1.8)(vitest@4.1.8)':
+  '@cloudflare/vitest-pool-workers@0.13.5(@cloudflare/workers-types@4.20260610.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.8)':
     dependencies:
-      '@vitest/runner': 4.1.8
-      '@vitest/snapshot': 4.1.8
+      '@vitest/runner': 4.1.9
+      '@vitest/snapshot': 4.1.9
       cjs-module-lexer: 1.4.3
       esbuild: 0.27.3
       miniflare: 4.20260317.3
@@ -17743,10 +17801,10 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@cloudflare/vitest-pool-workers@0.15.2(@cloudflare/workers-types@4.20260610.1)(@vitest/runner@4.1.8)(@vitest/snapshot@4.1.8)(vitest@4.1.8)':
+  '@cloudflare/vitest-pool-workers@0.15.2(@cloudflare/workers-types@4.20260610.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.8)':
     dependencies:
-      '@vitest/runner': 4.1.8
-      '@vitest/snapshot': 4.1.8
+      '@vitest/runner': 4.1.9
+      '@vitest/snapshot': 4.1.9
       cjs-module-lexer: 1.4.3
       esbuild: 0.27.3
       miniflare: 4.20260430.0
@@ -18288,7 +18346,7 @@ snapshots:
   '@eslint/config-array@0.21.2':
     dependencies:
       '@eslint/object-schema': 2.1.7
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       minimatch: 3.1.5
     transitivePeerDependencies:
       - supports-color
@@ -18304,7 +18362,7 @@ snapshots:
   '@eslint/eslintrc@2.1.4':
     dependencies:
       ajv: 6.15.0
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       espree: 9.6.1
       globals: 13.24.0
       ignore: 5.3.2
@@ -18318,7 +18376,7 @@ snapshots:
   '@eslint/eslintrc@3.3.5':
     dependencies:
       ajv: 6.15.0
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       espree: 10.4.0
       globals: 14.0.0
       ignore: 5.3.2
@@ -18517,7 +18575,7 @@ snapshots:
   '@humanwhocodes/config-array@0.13.0':
     dependencies:
       '@humanwhocodes/object-schema': 2.0.3
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       minimatch: 3.1.5
     transitivePeerDependencies:
       - supports-color
@@ -18739,7 +18797,7 @@ snapshots:
 
   '@kwsites/file-exists@1.1.1':
     dependencies:
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -19005,7 +19063,7 @@ snapshots:
       citty: 0.2.2
       confbox: 0.2.4
       consola: 3.4.2
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       defu: 6.1.7
       exsolve: 1.0.8
       fuse.js: 7.4.2
@@ -22199,7 +22257,7 @@ snapshots:
 
   '@tokenizer/inflate@0.4.1':
     dependencies:
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       token-types: 6.1.2
     transitivePeerDependencies:
       - supports-color
@@ -22698,7 +22756,7 @@ snapshots:
       magicast: 0.5.3
       obug: 2.1.2
       tinyrainbow: 3.1.0
-      vitest: 4.1.8(@types/node@24.13.1)(@vitest/coverage-istanbul@4.1.8)(@vitest/ui@4.1.8)(happy-dom@20.10.2)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
+      vitest: 4.1.8(@types/node@25.9.3)(@vitest/coverage-istanbul@4.1.8)(@vitest/ui@4.1.8)(happy-dom@20.10.2)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@25.9.3)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
     transitivePeerDependencies:
       - supports-color
 
@@ -22829,7 +22887,7 @@ snapshots:
       sirv: 3.0.2
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.0
-      vitest: 4.1.8(@types/node@24.13.1)(@vitest/coverage-istanbul@4.1.8)(@vitest/ui@4.1.8)(happy-dom@20.10.2)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
+      vitest: 4.1.8(@types/node@25.9.3)(@vitest/coverage-istanbul@4.1.8)(@vitest/ui@4.1.8)(happy-dom@20.10.2)(jsdom@27.4.0(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@25.9.3)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
     optional: true
 
   '@vitest/ui@4.1.8(vitest@4.1.9)':
@@ -23391,7 +23449,7 @@ snapshots:
       common-ancestor-path: 1.0.1
       cookie: 1.1.1
       cssesc: 3.0.0
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       deterministic-object-hash: 2.0.2
       devalue: 5.8.1
       diff: 8.0.4
@@ -23581,7 +23639,7 @@ snapshots:
 
   before-after-hook@4.0.0: {}
 
-  better-auth@1.6.16(1a67f6e7929738bf28e8204c959fb86c):
+  better-auth@1.6.16(ae26155262dd0b38d3c677b340ad2f09):
     dependencies:
       '@better-auth/core': 1.6.16(@better-auth/utils@0.4.1)(@better-fetch/fetch@1.2.2)(@cloudflare/workers-types@4.20260610.1)(better-call@1.3.6(zod@4.3.5))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
       '@better-auth/drizzle-adapter': 1.6.16(@better-auth/core@1.6.16(@better-auth/utils@0.4.1)(@better-fetch/fetch@1.2.2)(@cloudflare/workers-types@4.20260610.1)(better-call@1.3.6(zod@4.3.5))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0))(@better-auth/utils@0.4.1)(drizzle-orm@0.44.7(@cloudflare/workers-types@4.20260610.1)(@electric-sql/pglite@0.3.16)(@libsql/client@0.15.15)(@prisma/client@6.19.3(prisma@6.19.3(typescript@6.0.3))(typescript@6.0.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(better-sqlite3@12.10.0)(kysely@0.28.17)(mysql2@3.22.5(@types/node@22.19.20))(pg@8.21.0)(prisma@6.19.3(typescript@6.0.3))(sql.js@1.14.1))
@@ -23608,7 +23666,7 @@ snapshots:
       drizzle-kit: 0.31.10
       drizzle-orm: 0.44.7(@cloudflare/workers-types@4.20260610.1)(@electric-sql/pglite@0.3.16)(@libsql/client@0.15.15)(@prisma/client@6.19.3(prisma@6.19.3(typescript@6.0.3))(typescript@6.0.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(better-sqlite3@12.10.0)(kysely@0.28.17)(mysql2@3.22.5(@types/node@22.19.20))(pg@8.21.0)(prisma@6.19.3(typescript@6.0.3))(sql.js@1.14.1)
       mysql2: 3.22.5(@types/node@22.19.20)
-      next: 16.2.9(@babel/core@7.29.7)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      next: 16.2.9(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       pg: 8.21.0
       prisma: 6.19.3(typescript@6.0.3)
       react: 19.2.7
@@ -23686,7 +23744,7 @@ snapshots:
     dependencies:
       bytes: 3.1.2
       content-type: 1.0.5
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       http-errors: 2.0.1
       iconv-lite: 0.7.2
       on-finished: 2.4.1
@@ -25085,7 +25143,7 @@ snapshots:
       ajv: 6.15.0
       chalk: 4.1.2
       cross-spawn: 7.0.6
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       doctrine: 3.0.0
       escape-string-regexp: 4.0.0
       eslint-scope: 7.2.2
@@ -25132,7 +25190,7 @@ snapshots:
       ajv: 6.15.0
       chalk: 4.1.2
       cross-spawn: 7.0.6
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       escape-string-regexp: 4.0.0
       eslint-scope: 8.4.0
       eslint-visitor-keys: 4.2.1
@@ -25342,7 +25400,7 @@ snapshots:
       content-type: 1.0.5
       cookie: 0.7.2
       cookie-signature: 1.2.2
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       depd: 2.0.0
       encodeurl: 2.0.0
       escape-html: 1.0.3
@@ -25567,7 +25625,7 @@ snapshots:
 
   finalhandler@2.1.1:
     dependencies:
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       encodeurl: 2.0.0
       escape-html: 1.0.3
       on-finished: 2.4.1
@@ -25609,7 +25667,7 @@ snapshots:
 
   follow-redirects@1.16.0(debug@4.4.3):
     optionalDependencies:
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
 
   fontace@0.4.1:
     dependencies:
@@ -25729,7 +25787,7 @@ snapshots:
       '@types/mdast': 4.0.4
       '@types/react': 19.2.17
       lucide-react: 0.555.0(react@19.2.7)
-      next: 16.2.9(@babel/core@7.29.7)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      next: 16.2.9(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
       react-router: 7.17.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -25761,7 +25819,7 @@ snapshots:
       '@types/mdast': 4.0.4
       '@types/mdx': 2.0.14
       '@types/react': 19.2.17
-      next: 16.2.9(@babel/core@7.29.7)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      next: 16.2.9(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       react: 19.2.7
       vite: 8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)
     transitivePeerDependencies:
@@ -25795,7 +25853,7 @@ snapshots:
       unist-util-visit: 5.1.0
     optionalDependencies:
       '@types/react': 19.2.17
-      next: 16.2.9(@babel/core@7.29.7)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      next: 16.2.9(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
     transitivePeerDependencies:
       - '@emotion/is-prop-valid'
       - '@types/react-dom'
@@ -26282,14 +26340,14 @@ snapshots:
   http-proxy-agent@7.0.2:
     dependencies:
       agent-base: 7.1.4
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
     transitivePeerDependencies:
       - supports-color
 
   http-proxy-middleware@3.0.6:
     dependencies:
       '@types/http-proxy': 1.17.17
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       http-proxy: 1.18.1(debug@4.4.3)
       is-glob: 4.0.3
       is-plain-object: 5.0.0
@@ -26310,7 +26368,7 @@ snapshots:
   https-proxy-agent@7.0.6:
     dependencies:
       agent-base: 7.1.4
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -26408,7 +26466,7 @@ snapshots:
     dependencies:
       '@ioredis/commands': 1.10.0
       cluster-key-slot: 1.1.1
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       denque: 2.1.0
       redis-errors: 1.2.0
       redis-parser: 3.0.0
@@ -26674,7 +26732,7 @@ snapshots:
 
   istanbul-lib-source-maps@4.0.1:
     dependencies:
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       istanbul-lib-coverage: 3.2.2
       source-map: 0.6.1
     transitivePeerDependencies:
@@ -26894,7 +26952,7 @@ snapshots:
 
   koa-send@5.0.1:
     dependencies:
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       http-errors: 1.8.1
       resolve-path: 1.4.0
     transitivePeerDependencies:
@@ -26914,7 +26972,7 @@ snapshots:
       content-disposition: 0.5.4
       content-type: 1.0.5
       cookies: 0.9.1
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       delegates: 1.0.0
       depd: 2.0.0
       destroy: 1.2.0
@@ -27761,7 +27819,7 @@ snapshots:
   micromark@4.0.2:
     dependencies:
       '@types/debug': 4.1.13
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       decode-named-character-reference: 1.3.0
       devlop: 1.1.0
       micromark-core-commonmark: 2.0.3
@@ -28019,7 +28077,7 @@ snapshots:
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
 
-  next@16.2.9(@babel/core@7.29.7)(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
+  next@16.2.9(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
     dependencies:
       '@next/env': 16.2.9
       '@swc/helpers': 0.5.15
@@ -28028,7 +28086,7 @@ snapshots:
       postcss: 8.4.31
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
-      styled-jsx: 5.1.6(@babel/core@7.29.7)(react@19.2.7)
+      styled-jsx: 5.1.6(react@19.2.7)
     optionalDependencies:
       '@next/swc-darwin-arm64': 16.2.9
       '@next/swc-darwin-x64': 16.2.9
@@ -29779,7 +29837,7 @@ snapshots:
       '@babel/types': 7.29.7
       ast-kit: 2.2.0
       birpc: 2.9.0
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       dts-resolver: 2.1.3
       get-tsconfig: 4.14.0
       rolldown: 1.0.0-beta.9
@@ -29798,7 +29856,7 @@ snapshots:
       '@babel/types': 7.29.7
       ast-kit: 2.2.0
       birpc: 2.9.0
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       dts-resolver: 2.1.3
       get-tsconfig: 4.14.0
       rolldown: 1.1.0
@@ -30045,7 +30103,7 @@ snapshots:
 
   router@2.2.0:
     dependencies:
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       depd: 2.0.0
       is-promise: 4.0.0
       parseurl: 1.3.3
@@ -30155,7 +30213,7 @@ snapshots:
 
   send@1.2.1:
     dependencies:
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       encodeurl: 2.0.0
       escape-html: 1.0.3
       etag: 1.8.1
@@ -30361,7 +30419,7 @@ snapshots:
       '@kwsites/promise-deferred': 1.1.1
       '@simple-git/args-pathspec': 1.0.3
       '@simple-git/argv-parser': 1.1.1
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -30613,12 +30671,10 @@ snapshots:
     dependencies:
       inline-style-parser: 0.2.7
 
-  styled-jsx@5.1.6(@babel/core@7.29.7)(react@19.2.7):
+  styled-jsx@5.1.6(react@19.2.7):
     dependencies:
       client-only: 0.0.1
       react: 19.2.7
-    optionalDependencies:
-      '@babel/core': 7.29.7
 
   stylehacks@8.0.0(postcss@8.5.15):
     dependencies:
@@ -30919,7 +30975,7 @@ snapshots:
       ansis: 4.3.1
       cac: 6.7.14
       chokidar: 4.0.3
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       diff: 8.0.4
       empathic: 1.1.0
       hookable: 5.5.3
@@ -30943,7 +30999,7 @@ snapshots:
       ansis: 4.3.1
       cac: 6.7.14
       chokidar: 4.0.3
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       diff: 8.0.4
       empathic: 2.0.1
       hookable: 5.5.3
@@ -30966,7 +31022,7 @@ snapshots:
       ansis: 4.3.1
       cac: 6.7.14
       chokidar: 4.0.3
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       diff: 8.0.4
       empathic: 2.0.1
       hookable: 5.5.3
@@ -31558,7 +31614,7 @@ snapshots:
   vite-node@3.2.4(@types/node@22.19.20)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0):
     dependencies:
       cac: 6.7.14
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       es-module-lexer: 1.7.0
       pathe: 2.0.3
       vite: 7.3.5(@types/node@22.19.20)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)
@@ -31579,7 +31635,7 @@ snapshots:
   vite-node@3.2.4(@types/node@24.13.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0):
     dependencies:
       cac: 6.7.14
-      debug: 4.4.3(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@5.5.0)
       es-module-lexer: 1.7.0
       pathe: 2.0.3
       vite: 7.3.5(@types/node@24.13.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)

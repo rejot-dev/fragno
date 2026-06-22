@@ -17,6 +17,10 @@ export default [
       route("connections/resend", "routes/backoffice/connections/resend/index.tsx"),
       route("connections/reson8", "routes/backoffice/connections/reson8/index.tsx"),
       route("connections/mcp", "routes/backoffice/connections/mcp/index.tsx"),
+      route(
+        "connections/api/oauth-complete",
+        "routes/backoffice/connections/api-oauth-complete.tsx",
+      ),
       route("connections/telegram", "routes/backoffice/connections/telegram/index.tsx"),
       route("connections/github", "routes/backoffice/connections/github/index.tsx"),
       route(
@@ -191,6 +195,7 @@ export default [
     route("resend/:orgId/*", "routes/api/resend.ts"),
     route("reson8/:orgId/*", "routes/api/reson8.ts"),
     route("mcp/:orgId/*", "routes/api/mcp.ts"),
+    route("http/:orgId/*", "routes/api/api.ts"),
     route("telegram/:orgId/*", "routes/api/telegram.ts"),
     route("otp/:orgId/*", "routes/api/otp.ts"),
     route("github/webhooks", "routes/api/github-webhooks.ts"),

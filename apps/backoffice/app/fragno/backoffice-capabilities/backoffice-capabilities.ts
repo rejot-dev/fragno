@@ -6,6 +6,7 @@ import type { AutomationExternalEntityDefinition } from "@/fragno/automation/con
 import type { DurableHookQueueOptions, DurableHookRepository } from "@/fragno/durable-hooks";
 import { zodSchemaToJsonSchema } from "@/lib/zod/zod-formatter";
 
+import { apiCapability } from "./capabilities/api";
 import {
   AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED,
   AUTH_AUTOMATION_EVENT_ORGANIZATION_UPDATED,
@@ -27,6 +28,7 @@ import { uploadCapability } from "./capabilities/upload";
 export type BackofficeCapabilityKind = "connection" | "system";
 
 export type BackofficeCapabilityId =
+  | "api"
   | "automations"
   | "auth"
   | "cloudflare"
@@ -190,6 +192,7 @@ export type BackofficeSystemCapability = BackofficeCapabilityBase & {
 export type BackofficeCapability = BackofficeConnectionCapability | BackofficeSystemCapability;
 
 export const backofficeCapabilities: readonly BackofficeCapability[] = [
+  apiCapability,
   telegramCapability,
   mcpCapability,
   resendCapability,
