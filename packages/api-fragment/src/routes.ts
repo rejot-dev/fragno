@@ -24,9 +24,15 @@ const oauthStartOutputSchema = z.object({ authorizationUrl: z.string(), state: z
 const oauthCallbackOutputSchema = z.object({ authenticated: z.boolean(), mode: z.string() });
 const requestOutputSchema = z.object({
   status: z.number(),
+  statusText: z.string(),
   headers: z.record(z.string(), z.string()),
   body: z.unknown(),
 });
+
+const logApiRouteError = (message: string, err: unknown) => {
+  const detail = err instanceof Error ? err.message : String(err);
+  console.error(message, detail, err);
+};
 
 function publicConnection(connection: {
   id: { toString(): string } | string;
@@ -77,7 +83,11 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
         try {
           assertAllowedBaseUrl(body.baseUrl, config);
         } catch (err) {
-          return error({ code: "BASE_URL_NOT_ALLOWED", message: (err as Error).message }, 400);
+          logApiRouteError("API connection base URL rejected", err);
+          return error(
+            { code: "BASE_URL_NOT_ALLOWED", message: "API base URL is not allowed" },
+            400,
+          );
         }
 
         const payload = body.auth.type === "none" ? undefined : JSON.stringify(body.auth);
@@ -328,7 +338,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
       path: "/connections/:slug/auth/oauth/start",
       inputSchema: oauthStartInputSchema,
       outputSchema: oauthStartOutputSchema,
-      errorCodes: ["CONNECTION_NOT_FOUND", "OAUTH_ERROR"],
+      errorCodes: ["CONNECTION_NOT_FOUND", "AUTH_NOT_CONFIGURED", "AUTH_NOT_OAUTH", "OAUTH_ERROR"],
       handler: async function ({ input, pathParams }, { json, error }) {
         const body = await input.valid();
         const state = `${pathParams.slug}:${crypto.randomUUID()}`;
@@ -347,14 +357,27 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
             )
             .execute();
           if (!result.found) {
+            if (result.reason === "connection_not_found") {
+              return error(
+                { code: "CONNECTION_NOT_FOUND", message: "API connection not found" },
+                404,
+              );
+            }
+            if (result.reason === "auth_not_configured") {
+              return error(
+                { code: "AUTH_NOT_CONFIGURED", message: "API connection auth is not configured" },
+                400,
+              );
+            }
             return error(
-              { code: "CONNECTION_NOT_FOUND", message: "API connection not found" },
-              404,
+              { code: "AUTH_NOT_OAUTH", message: "API connection auth is not OAuth" },
+              400,
             );
           }
           return json({ authorizationUrl: result.authorizationUrl, state });
         } catch (err) {
-          return error({ code: "OAUTH_ERROR", message: (err as Error).message }, 502);
+          logApiRouteError("API OAuth start failed", err);
+          return error({ code: "OAUTH_ERROR", message: "An authentication error occurred" }, 502);
         }
       },
     }),
@@ -363,7 +386,13 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
       method: "GET",
       path: "/oauth/callback",
       outputSchema: oauthCallbackOutputSchema,
-      errorCodes: ["CONNECTION_NOT_FOUND", "OAUTH_ERROR", "INVALID_OAUTH_STATE"],
+      errorCodes: [
+        "CONNECTION_NOT_FOUND",
+        "AUTH_NOT_CONFIGURED",
+        "AUTH_NOT_OAUTH",
+        "OAUTH_ERROR",
+        "INVALID_OAUTH_STATE",
+      ],
       handler: async function ({ query }, { json, error }) {
         const code = query.get("code");
         const stateId = query.get("state");
@@ -384,11 +413,24 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
                 404,
               );
             }
+            if (result.reason === "auth_not_configured") {
+              return error(
+                { code: "AUTH_NOT_CONFIGURED", message: "API connection auth is not configured" },
+                400,
+              );
+            }
+            if (result.reason === "auth_not_oauth") {
+              return error(
+                { code: "AUTH_NOT_OAUTH", message: "API connection auth is not OAuth" },
+                400,
+              );
+            }
             return error({ code: "INVALID_OAUTH_STATE", message: "Invalid OAuth state" }, 400);
           }
           return json({ authenticated: true, mode: "oauth" });
         } catch (err) {
-          return error({ code: "OAUTH_ERROR", message: (err as Error).message }, 502);
+          logApiRouteError("API OAuth callback failed", err);
+          return error({ code: "OAUTH_ERROR", message: "An authentication error occurred" }, 502);
         }
       },
     }),
@@ -473,7 +515,11 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
           }
           return json(result.response);
         } catch (err) {
-          return error({ code: "API_REQUEST_ERROR", message: (err as Error).message }, 502);
+          logApiRouteError("API request failed", err);
+          return error(
+            { code: "API_REQUEST_ERROR", message: "An API request error occurred" },
+            502,
+          );
         }
       },
     }),
