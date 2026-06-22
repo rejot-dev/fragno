@@ -1,6 +1,4 @@
-import { createRequire } from "node:module";
-
-import type { Bash } from "just-bash";
+import { Bash as BashRuntime, type Bash } from "just-bash";
 
 import type {
   BackofficeContextScope,
@@ -30,13 +28,6 @@ import type { RegisteredReson8CommandContext } from "./families/reson8-runtime";
 import type { SandboxRuntime } from "./families/sandbox-runtime";
 import type { RegisteredTelegramCommandContext } from "./families/telegram-runtime";
 import { isomorphicGitCommand } from "./isomorphic-git-command";
-
-const require = createRequire(import.meta.url);
-// just-bash's ESM bundle is split into lazy chunks. With defense-in-depth enabled,
-// those internal lazy imports can trip the dynamic-import guard while handling plain
-// shell assignments. The CJS bundle is single-file, so it keeps the guard enabled
-// without importing just-bash's own chunks during script execution.
-const { Bash: BashRuntime } = require("just-bash") as typeof import("just-bash");
 
 export type RegisteredAutomationsBashCommandContext = {
   runtime: AutomationStoreRuntime;
