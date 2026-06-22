@@ -60,6 +60,11 @@
       "types": "./dist/node/api-types.d.ts",
       "default": "./dist/node/api-types.js"
     },
+    "./webhooks/auth": {
+      "development": "./src/webhooks/auth.ts",
+      "types": "./dist/node/webhooks/auth.d.ts",
+      "default": "./dist/node/webhooks/auth.js"
+    },
     "./dist/node/api-types.js": {
       "types": "./dist/node/api-types.d.ts",
       "default": "./dist/node/api-types.js"

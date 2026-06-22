@@ -28,6 +28,7 @@ export default defineConfig([
       "./src/routes.ts",
       "./src/schema.ts",
       "./src/api-types.ts",
+      "./src/webhooks/auth.ts",
     ],
     dts: true,
     failOnWarn: true,
