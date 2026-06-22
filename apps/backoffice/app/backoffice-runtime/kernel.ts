@@ -67,10 +67,10 @@ export class BackofficeKernel {
     if (scope.kind === "system") {
       throw new BackofficeForbiddenError("System context requires system actor.");
     }
-    if (scope.kind === "project") {
-      throw new BackofficeUnavailableError("Project context is not available.");
-    }
-    if (scope.kind === "org" && !actor.organizationIds?.includes(scope.orgId)) {
+    if (
+      (scope.kind === "org" || scope.kind === "project") &&
+      !actor.organizationIds?.includes(scope.orgId)
+    ) {
       throw new BackofficeForbiddenError("Forbidden");
     }
     if (scope.kind === "user" && actor.type === "user" && actor.userId !== scope.userId) {
@@ -79,9 +79,6 @@ export class BackofficeKernel {
   }
 
   assertObjectAvailable(binding: BackofficeObjectBindingName, scope: BackofficeContextScope) {
-    if (scope.kind === "project") {
-      throw new BackofficeUnavailableError("Project context is not available.");
-    }
     const physicalScope = objectScopeKind(scope);
     const allowed = backofficeObjectScopePolicy[binding];
     if (!allowed.includes(physicalScope as never)) {
@@ -116,7 +113,7 @@ export class BackofficeKernel {
       singleton(): T;
       forOrg(id: string): T;
       forUser(input: { userId: string }): T;
-      forProject(input: { projectId: string }): T;
+      forProject(input: { orgId: string; projectId: string }): T;
     },
   ): T {
     this.assertObjectAvailable(binding, scope);
@@ -128,7 +125,7 @@ export class BackofficeKernel {
       case "user":
         return family.forUser({ userId: scope.userId });
       case "project":
-        return family.forProject({ projectId: scope.projectId });
+        return family.forProject({ orgId: scope.orgId, projectId: scope.projectId });
     }
   }
 }

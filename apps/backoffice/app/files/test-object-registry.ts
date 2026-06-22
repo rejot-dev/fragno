@@ -8,7 +8,7 @@ type TestScopedObjects<TObject> = {
   forOrg(orgId: string): TObject;
   forName(name: string): TObject;
   forUser(input: { userId: string }): TObject;
-  forProject(input: { projectId: string }): TObject;
+  forProject(input: { orgId: string; projectId: string }): TObject;
 };
 
 const scopedObject = <TObject>(object: TObject | undefined): TestScopedObjects<TObject> => ({

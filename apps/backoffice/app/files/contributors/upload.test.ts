@@ -115,6 +115,7 @@ describe("upload file contributor", () => {
       "workspace",
       "r2",
       "r2-remote",
+      "project-workspaces",
       "tmp",
       "resend",
       "durable-hooks-automation",

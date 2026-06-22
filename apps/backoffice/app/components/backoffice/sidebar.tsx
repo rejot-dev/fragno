@@ -25,10 +25,20 @@ function createNavItems(activeOrganizationId?: string | null): NavItem[] {
   const mcpPath = activeOrganizationId
     ? `/backoffice/connections/mcp/${activeOrganizationId}`
     : "/backoffice/connections/mcp";
+  const automationChildren = activeOrganizationId
+    ? [
+        { label: "Scripts", to: `/backoffice/automations/${activeOrganizationId}/scripts` },
+        { label: "Store", to: `/backoffice/automations/${activeOrganizationId}/store` },
+      ]
+    : undefined;
+  const projectsPath = activeOrganizationId
+    ? `/backoffice/projects/${activeOrganizationId}`
+    : "/backoffice/projects";
 
   return [
     { label: "Dashboard", to: "/backoffice", end: true },
-    { label: "Automations", to: "/backoffice/automations" },
+    { label: "Projects", to: projectsPath },
+    { label: "Automations", to: "/backoffice/automations", children: automationChildren },
     { label: "Sessions", to: "/backoffice/sessions" },
     { label: "Files", to: "/backoffice/files" },
     {

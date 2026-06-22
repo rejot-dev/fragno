@@ -34,7 +34,8 @@ export const createAutomationsRuntime = (
     | "createPiAutomationContext"
     | "automationFileSystem"
     | "getAutomationFileSystem"
-  > = {},
+    | "ownerScope"
+  >,
 ) => {
   const databaseAdapter = runtime.adapters.createAdapter({
     kind: "automations",
@@ -60,6 +61,7 @@ export const createAutomationsRuntime = (
       createPiAutomationContext: config.createPiAutomationContext,
       automationFileSystem: config.automationFileSystem,
       getAutomationFileSystem: config.getAutomationFileSystem,
+      ownerScope: config.ownerScope,
     },
     {
       databaseAdapter,

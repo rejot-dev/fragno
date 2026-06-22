@@ -24,6 +24,7 @@ import type { AutomationCodemodeWorkflowParams } from "./engine/workflow";
 
 export type { AutomationPiBashContext } from "./engine/runtime";
 import { createAutomationStoreServices } from "./bindings-storage-runtime";
+import { createAutomationProjectServices } from "./projects-storage-runtime";
 import { automationFragmentSchema } from "./schema";
 
 export type AutomationIngestResult = {
@@ -49,6 +50,7 @@ export type AutomationWorkflowsService = Pick<
 export interface AutomationFragmentConfig extends AutomationFileSystemConfig {
   env?: CloudflareEnv;
   runtime?: BackofficeRuntimeServices;
+  ownerScope: BackofficeContextScope;
   createPiAutomationContext?: (input: {
     event: AutomationEvent;
     idempotencyKey: string;
@@ -73,7 +75,9 @@ const buildCatalogResolverInput = (event: AutomationEvent): AutomationFileSystem
     actor: {
       type: "automation",
       id: `automation:${event.id}`,
-      ...(event.scope.kind === "org" ? { organizationIds: [event.scope.orgId] } : {}),
+      ...(event.scope.kind === "org" || event.scope.kind === "project"
+        ? { organizationIds: [event.scope.orgId] }
+        : {}),
     },
     scope: event.scope,
   } satisfies BackofficeExecutionContext,
@@ -190,11 +194,15 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       }),
     };
   })
-  .providesBaseService(({ defineService }) => {
+  .providesBaseService(({ defineService, config }) => {
     const storeServices = createAutomationStoreServices(defineService);
+    const projectServices = createAutomationProjectServices(defineService, {
+      ownerScope: config.ownerScope,
+    });
 
     return defineService({
       ...storeServices,
+      ...projectServices,
       ingestEvent: function (event: AutomationEvent) {
         return this.serviceTx(automationFragmentSchema)
           .mutate(({ uow }) => {

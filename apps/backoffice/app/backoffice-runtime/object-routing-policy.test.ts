@@ -54,7 +54,7 @@ describe("object routing policy", () => {
       ),
     ).toEqual({
       binding: "PI",
-      scope: { kind: "project", projectId: "project-1" },
+      scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
     });
   });
 
@@ -83,6 +83,6 @@ describe("object routing policy", () => {
         "AUTOMATIONS",
         event({ scope: { kind: "user", userId: "user-1" } }),
       ),
-    ).toThrow("expected org scope");
+    ).toThrow("expected org-backed scope");
   });
 });

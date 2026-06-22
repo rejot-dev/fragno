@@ -66,7 +66,9 @@ export const createAutomationRuntime = ({
       actor: {
         type: "automation",
         id: `automation:${event.id}`,
-        ...(event.scope.kind === "org" ? { organizationIds: [event.scope.orgId] } : {}),
+        ...(event.scope.kind === "org" || event.scope.kind === "project"
+          ? { organizationIds: [event.scope.orgId] }
+          : {}),
       },
       scope: event.scope,
     };
@@ -116,7 +118,9 @@ export const createAutomationExecutionContext = ({
     actor: {
       type: "automation",
       id: `automation:${event.id}`,
-      ...(event.scope.kind === "org" ? { organizationIds: [event.scope.orgId] } : {}),
+      ...(event.scope.kind === "org" || event.scope.kind === "project"
+        ? { organizationIds: [event.scope.orgId] }
+        : {}),
     },
     scope: event.scope,
   };
@@ -150,7 +154,10 @@ export const createAutomationExecutionContext = ({
     }),
     automation: {
       event,
-      orgId: event.scope.kind === "org" ? event.scope.orgId : undefined,
+      orgId:
+        event.scope.kind === "org" || event.scope.kind === "project"
+          ? event.scope.orgId
+          : undefined,
       binding,
       idempotencyKey,
       runtime,

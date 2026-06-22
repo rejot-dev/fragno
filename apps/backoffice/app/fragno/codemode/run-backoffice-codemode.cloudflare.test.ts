@@ -3,11 +3,13 @@ import { describe, expect, test, assert } from "vitest";
 import { env } from "cloudflare:workers";
 import { InMemoryFs } from "just-bash";
 
+import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry, McpObject } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { MasterFileSystem } from "@/files/master-file-system";
 import type { ResolvedFileMount } from "@/files/types";
+import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import type { AutomationStoreRuntime } from "@/fragno/runtime-tools/families/automations-bindings";
 import { type EventRuntime } from "@/fragno/runtime-tools/families/event";
@@ -620,7 +622,7 @@ describe("runBackofficeCodemode", () => {
       org: { servers: [{ slug: "org-org-1" }] },
       user: { servers: [{ slug: "user-user-1" }] },
       current: { servers: [{ slug: "org-org-1" }] },
-      projectError: "Project context is not available.",
+      projectError: "Unknown scoped tool: mcp.listServers",
       deleteError: "Denied mcp.servers.delete",
     });
     expect(calls).toEqual([
@@ -630,6 +632,76 @@ describe("runBackofficeCodemode", () => {
       { scope: "user:user-1", method: "GET", pathname: "/api/mcp/servers" },
       { scope: "org:org-1", method: "GET", pathname: "/api/mcp/servers" },
     ]);
+  });
+
+  test("runs project-scoped automation store tools through codemode handles", async () => {
+    const runtime = await createInMemoryBackofficeRuntime({ env: { LOADER: env.LOADER } });
+    try {
+      const kernel = new BackofficeKernel({ objects: runtime.objects });
+      const routeContext = createRouteBackedRuntimeContext({
+        runtime: runtime.services,
+        kernel,
+        execution: {
+          actor: {
+            type: "user",
+            id: "user-1",
+            userId: "user-1",
+            organizationIds: ["org-1"],
+          },
+          scope: { kind: "org", orgId: "org-1" },
+        },
+      });
+
+      const result = await runBackofficeCodemode({
+        env,
+        fs: createTestMasterFileSystem({}),
+        families: runtimeToolFamilies,
+        toolContext: createBackofficeToolContext(routeContext),
+        code: `async () => {
+          await context.project("project-1").store.set({
+            key: "project-key",
+            value: "from-project",
+            actor: { scope: "internal", type: "system", id: "test" },
+          });
+          await context.current.store.set({
+            key: "org-key",
+            value: "from-org",
+            actor: { scope: "internal", type: "system", id: "test" },
+          });
+          return {
+            project: await context.project("project-1").store.get({ key: "project-key" }),
+            org: await context.current.store.get({ key: "org-key" }),
+          };
+        }`,
+      });
+
+      expect(result.error).toBeUndefined();
+      expect(result.result).toMatchObject({
+        project: { key: "project-key", value: "from-project" },
+        org: { key: "org-key", value: "from-org" },
+      });
+
+      const projectStore = createRouteBackedAutomationStoreRuntime({
+        object: runtime.objects.automations.forProject({ orgId: "org-1", projectId: "project-1" }),
+      });
+      const orgStore = createRouteBackedAutomationStoreRuntime({
+        object: runtime.objects.automations.forOrg("org-1"),
+      });
+      await expect(projectStore.get({ key: "project-key" })).resolves.toMatchObject({
+        value: "from-project",
+      });
+      await expect(orgStore.get({ key: "org-key" })).resolves.toMatchObject({
+        value: "from-org",
+      });
+      assert(
+        runtime.hasObjectInstance({
+          binding: "AUTOMATIONS",
+          scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
+        }),
+      );
+    } finally {
+      await runtime.cleanup();
+    }
   });
 
   test("blocks direct network access by default", async () => {
@@ -687,7 +759,8 @@ const createScopedMcpRuntimeServices = (
     forOrg: (orgId: string) => createMcpObject(`org:${orgId}`),
     forName: (name: string) => createMcpObject(`name:${name}`),
     forUser: ({ userId }: { userId: string }) => createMcpObject(`user:${userId}`),
-    forProject: ({ projectId }: { projectId: string }) => createMcpObject(`project:${projectId}`),
+    forProject: ({ orgId, projectId }: { orgId: string; projectId: string }) =>
+      createMcpObject(`project:${orgId}:${projectId}`),
   };
   const objects = new Proxy(
     { mcp: scoped },

@@ -2,12 +2,14 @@ import { z } from "zod";
 
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
-import { createMasterFileSystem, createSystemFilesContext } from "@/files";
+import { FileSystemError } from "@/files/fs-errors";
 import type { IFileSystem } from "@/files/interface";
+import { createMasterFileSystem } from "@/files/master-file-system";
 import {
   seedWorkspaceStarterFiles,
   type WorkspaceStarterFilesSeedOutput,
 } from "@/files/seed-workspace-starter-files";
+import { createSystemFilesContext } from "@/files/system-context";
 import {
   backofficeCapabilities,
   type BackofficeCapabilityId,
@@ -31,9 +33,20 @@ export type CodemodeTypesSyncOutput = {
   configuredCapabilities: BackofficeCapabilityId[];
 };
 
+export type ProjectDatabaseFileSystemConfigureOutput = {
+  projectId: string;
+  provider: "database";
+  configured: boolean;
+  created: string[];
+  skipped: string[];
+};
+
 export type InternalRuntime = {
   seedWorkspaceStarterFiles(input?: { force?: boolean }): Promise<WorkspaceStarterFilesSeedOutput>;
   syncCodemodeTypes(): Promise<CodemodeTypesSyncOutput>;
+  configureProjectDatabaseFileSystem(input: {
+    projectId: string;
+  }): Promise<ProjectDatabaseFileSystemConfigureOutput>;
 };
 
 type InternalToolContext = BackofficeToolContext<{ internal?: InternalRuntime }>;
@@ -50,6 +63,14 @@ const codemodeTypesSyncOutputSchema = z.object({
   path: z.literal(CODEMODE_DTS_PATH),
   changed: z.boolean(),
   configuredCapabilities: z.array(z.string()),
+});
+
+const projectDatabaseFileSystemConfigureOutputSchema = z.object({
+  projectId: z.string(),
+  provider: z.literal("database"),
+  configured: z.boolean(),
+  created: z.array(z.string()),
+  skipped: z.array(z.string()),
 });
 
 const getRuntime = (context: InternalToolContext) => {
@@ -114,6 +135,47 @@ export const createInternalRuntime = ({
   return {
     seedWorkspaceStarterFiles: async (input) =>
       await seedWorkspaceStarterFiles({ objects, orgId, force: input?.force }),
+    configureProjectDatabaseFileSystem: async ({ projectId }) => {
+      const uploadObject = objects.upload.forProject({ orgId, projectId });
+      const config = await uploadObject.setAdminConfig(
+        { provider: "database", defaultProvider: "database" },
+        orgId,
+        origin,
+      );
+      const fs = await createMasterFileSystem(
+        createSystemFilesContext({
+          objects,
+          execution: {
+            actor: { type: "system", id: "backoffice-project-files" },
+            scope: { kind: "project", orgId, projectId },
+          },
+        }),
+      );
+      const created: string[] = [];
+      const skipped: string[] = [];
+      const readmePath = "/workspace/README.md";
+      try {
+        await fs.readFileBuffer(readmePath);
+        skipped.push(readmePath);
+      } catch (error) {
+        if (!(error instanceof FileSystemError) || error.code !== "ENOENT") {
+          throw error;
+        }
+        await fs.writeFile(
+          readmePath,
+          `# Project workspace\n\nThis is the db-backed workspace for project ${projectId}.\n`,
+        );
+        created.push(readmePath);
+      }
+
+      return {
+        projectId,
+        provider: "database",
+        configured: config.providers.database?.configured === true,
+        created,
+        skipped,
+      };
+    },
     syncCodemodeTypes: async () => {
       const rendered = await renderCodemodeTypes();
       let fs = fileSystem;
@@ -198,6 +260,38 @@ const filesSeedExecuteTool = defineBackofficeRuntimeTool({
   },
 });
 
+const projectFilesConfigureTool = defineBackofficeRuntimeTool({
+  id: "internal.project.files.configure",
+  namespace: "internal",
+  name: "projectFilesConfigure",
+  description: "Configure a project-scoped database-backed workspace filesystem.",
+  requiredPermissions: ["manage"],
+  inputSchema: z.object({ projectId: z.string().trim().min(1) }),
+  outputSchema: projectDatabaseFileSystemConfigureOutputSchema,
+  execute: async (input, context: InternalToolContext) =>
+    await getRuntime(context).configureProjectDatabaseFileSystem(input),
+  adapters: {
+    bash: {
+      command: "internal.project.files.configure",
+      help: {
+        summary: "internal.project.files.configure configures a db-backed project workspace.",
+        options: [{ name: "projectId", description: "Project id to configure." }],
+        examples: ["internal.project.files.configure --projectId project_123 --format json"],
+      },
+      parse: defineCliArgsParser<{ projectId: string }>("internal.project.files.configure", {
+        projectId: { required: true },
+      }),
+      outputOptions: (_args, parsed) => readOutputOptions(parsed),
+      format: (output, options) =>
+        options.format === "json" || options.print
+          ? { data: output }
+          : {
+              stdout: `projectId=${output.projectId}\nprovider=${output.provider}\nconfigured=${output.configured ? "yes" : "no"}\ncreated=${output.created.length}\nskipped=${output.skipped.length}\n`,
+            },
+    },
+  },
+});
+
 const codemodeTypesSyncTool = defineBackofficeRuntimeTool({
   id: "internal.codemode.types.sync",
   namespace: "internal",
@@ -228,7 +322,11 @@ const codemodeTypesSyncTool = defineBackofficeRuntimeTool({
   },
 });
 
-const internalRuntimeTools = [filesSeedExecuteTool, codemodeTypesSyncTool] as const;
+const internalRuntimeTools = [
+  filesSeedExecuteTool,
+  projectFilesConfigureTool,
+  codemodeTypesSyncTool,
+] as const;
 
 export const internalToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "internal",

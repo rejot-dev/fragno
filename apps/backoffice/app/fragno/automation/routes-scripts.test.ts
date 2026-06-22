@@ -27,6 +27,7 @@ const createAutomation = (options?: {
 
   return createAutomationFragment(
     {
+      ownerScope: { kind: "org", orgId: "org_123" },
       automationFileSystem: options?.automationFileSystem,
     },
     {

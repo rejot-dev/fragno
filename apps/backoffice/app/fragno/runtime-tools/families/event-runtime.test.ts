@@ -104,6 +104,76 @@ describe("createEventRuntime.emitEvent", () => {
     );
   });
 
+  it("resolves project targets through the owning org before enqueueing", async () => {
+    const triggerProjectIngestEvent = vi.fn(async () => undefined);
+    const resolveProjectForExecution = vi.fn(async () => ({
+      projectId: "project-1",
+      slug: "launch",
+      name: "Launch",
+    }));
+    const objects = {
+      automations: {
+        forOrg: vi.fn(() => ({ resolveProjectForExecution })),
+        forProject: vi.fn(() => ({ triggerIngestEvent: triggerProjectIngestEvent })),
+      },
+    } as unknown as BackofficeObjectRegistry;
+    const runtime = createEventRuntime({
+      objects,
+      kernel: new BackofficeKernel({ objects }),
+      execution: {
+        actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
+        scope: { kind: "org", orgId: "org-1" },
+      },
+      event: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
+    });
+
+    await expect(
+      runtime.emitEvent({
+        eventType: "project.event",
+        targetScope: { kind: "project", orgId: "org-1", projectId: "project-1" },
+      }),
+    ).resolves.toMatchObject({
+      accepted: true,
+      scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
+    });
+
+    expect(resolveProjectForExecution).toHaveBeenCalledWith({ projectId: "project-1" });
+    expect(triggerProjectIngestEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
+        subject: expect.objectContaining({ orgId: "org-1", projectId: "project-1" }),
+      }),
+    );
+  });
+
+  it("does not enqueue events for unavailable projects", async () => {
+    const triggerProjectIngestEvent = vi.fn(async () => undefined);
+    const objects = {
+      automations: {
+        forOrg: vi.fn(() => ({ resolveProjectForExecution: vi.fn(async () => null) })),
+        forProject: vi.fn(() => ({ triggerIngestEvent: triggerProjectIngestEvent })),
+      },
+    } as unknown as BackofficeObjectRegistry;
+    const runtime = createEventRuntime({
+      objects,
+      kernel: new BackofficeKernel({ objects }),
+      execution: {
+        actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
+        scope: { kind: "org", orgId: "org-1" },
+      },
+      event: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
+    });
+
+    await expect(
+      runtime.emitEvent({
+        eventType: "project.event",
+        targetScope: { kind: "project", orgId: "org-1", projectId: "missing" },
+      }),
+    ).rejects.toThrow("Project 'missing' is not available.");
+
+    expect(triggerProjectIngestEvent).not.toHaveBeenCalled();
+  });
+
   it("does not enqueue events when the actor cannot access the target org", async () => {
     const triggerOrgIngestEvent = vi.fn(async () => undefined);
     const objects = {

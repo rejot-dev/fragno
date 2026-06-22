@@ -1,4 +1,5 @@
 import { automationHooksFileContributor } from "./durable-hooks";
+import { projectWorkspacesFileContributor } from "./project-workspaces";
 import { resendFileContributor } from "./resend";
 import { staticFileContributor } from "./static";
 import { tmpFileContributor } from "./tmp";
@@ -13,6 +14,7 @@ const BUILT_IN_FILE_CONTRIBUTORS = [
   uploadFileContributor,
   uploadR2BindingFileContributor,
   uploadR2RemoteFileContributor,
+  projectWorkspacesFileContributor,
   tmpFileContributor,
   resendFileContributor,
   automationHooksFileContributor,

@@ -30,7 +30,9 @@ const sameScope = (left: BackofficeContextScope, right: BackofficeContextScope):
     case "user":
       return right.kind === "user" && left.userId === right.userId;
     case "project":
-      return right.kind === "project" && left.projectId === right.projectId;
+      return (
+        right.kind === "project" && left.orgId === right.orgId && left.projectId === right.projectId
+      );
   }
 };
 
@@ -60,6 +62,17 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
       });
     }
 
+    const targetProject =
+      resolvedTargetScope.kind === "project"
+        ? await options.objects.automations
+            .forOrg(resolvedTargetScope.orgId)
+            .resolveProjectForExecution({ projectId: resolvedTargetScope.projectId })
+        : null;
+
+    if (resolvedTargetScope.kind === "project" && !targetProject) {
+      throw new Error(`Project '${resolvedTargetScope.projectId}' is not available.`);
+    }
+
     const nextSource = source ?? event.source;
     const baseActor = event.actor;
     const baseActors = event.actors;
@@ -83,7 +96,17 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
           : {},
       actor: nextActor,
       actors: externalActorId ? [...baseActors, nextActor] : baseActors,
-      subject: subjectUserId ? { userId: subjectUserId } : (event.subject ?? null),
+      subject:
+        resolvedTargetScope.kind === "project"
+          ? {
+              ...event.subject,
+              orgId: resolvedTargetScope.orgId,
+              projectId: targetProject!.projectId,
+              ...(subjectUserId ? { userId: subjectUserId } : {}),
+            }
+          : subjectUserId
+            ? { userId: subjectUserId }
+            : (event.subject ?? null),
     };
 
     const targetObject = options.kernel

@@ -1037,7 +1037,7 @@ const backofficeContextScopeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("system") }),
   z.object({ kind: z.literal("org"), orgId: z.string() }),
   z.object({ kind: z.literal("user"), userId: z.string() }),
-  z.object({ kind: z.literal("project"), projectId: z.string() }),
+  z.object({ kind: z.literal("project"), orgId: z.string(), projectId: z.string() }),
 ]);
 
 const fileSubjectSchema: z.ZodType<FileSubject> = z.discriminatedUnion("kind", [

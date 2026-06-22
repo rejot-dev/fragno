@@ -157,6 +157,60 @@ describe("system automation scenarios", () => {
     }
   });
 
+  test("project.created initializes db-backed project workspace files", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario<{ projectId: string }>({
+        name: "system project creation initializes project workspace files",
+
+        files: backofficeFiles.systemOnly(),
+        vars: () => ({ projectId: "" }),
+
+        setup: ({ given }) => [
+          given.organization.exists({ id: "org-1", name: "Ada Labs", ownerUserId: "user-1" }),
+        ],
+
+        steps: ({ when, runner, then }) => [
+          when.project.create({
+            orgId: "org-1",
+            slug: "alpha-project",
+            name: "Alpha Project",
+            createdByUserId: "user-1",
+            captureIdAs: "projectId",
+          }),
+
+          runner.drain(),
+
+          then.assert("project upload database provider is configured", async (ctx) => {
+            const config = await ctx.runtime.objects.upload
+              .forProject({ orgId: "org-1", projectId: ctx.vars.projectId })
+              .getAdminConfig();
+            assert(config.providers.database?.configured);
+          }),
+
+          then.files.contains({
+            orgId: "org-1",
+            path: "/projects/alpha-project/README.md",
+            text: "Project workspace",
+          }),
+
+          then.assert("project README is writable through the org filesystem", async (ctx) => {
+            const fs = await createMasterFileSystem(
+              createSystemFilesContext({ objects: ctx.runtime.objects, orgId: "org-1" }),
+            );
+            await fs.writeFile(
+              "/projects/alpha-project/README.md",
+              "# Alpha Project\n\nUpdated through /projects.",
+            );
+            await expect(fs.readFile("/projects/alpha-project/README.md")).resolves.toContain(
+              "Updated through /projects.",
+            );
+          }),
+          then.workflow.noErrored({ orgId: "org-1" }),
+        ],
+      }),
+    );
+  });
+
   test("auth organization.created initializes workspace files", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({

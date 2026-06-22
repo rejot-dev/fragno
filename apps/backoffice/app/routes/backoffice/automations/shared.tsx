@@ -85,7 +85,7 @@ export function AutomationHeader({
       ]}
       eyebrow="Automations"
       title={`Automations for ${organisationName ?? orgId}`}
-      description="Inspect system and workspace automation scripts for this organisation. System scripts are read-only; workspace scripts can be edited under /workspace/automations."
+      description="Inspect system and workspace automation scripts and review store bindings for this organisation."
       actions={
         <Link
           to={`/backoffice/organisations/${orgId}`}

@@ -59,6 +59,17 @@ export type AutomationStoreEntryRecord = {
   updatedAt?: string | Date | null;
 };
 
+export type AutomationProjectRecord = {
+  id?: AutomationIdLike;
+  slug?: string | null;
+  name?: string | null;
+  description?: string | null;
+  archivedAt?: string | Date | null;
+  createdByUserId?: string | null;
+  createdAt?: string | Date | null;
+  updatedAt?: string | Date | null;
+};
+
 export type AutomationScriptSourceRecord = {
   script: string | null;
   scriptError: string | null;
@@ -209,6 +220,11 @@ export const toExternalId = (value: unknown): string => {
     return value.id;
   }
 
+  const primitive = typeof value.valueOf === "function" ? value.valueOf() : null;
+  if (typeof primitive === "string" && primitive !== "[object Object]") {
+    return primitive;
+  }
+
   return "";
 };
 
@@ -315,6 +331,140 @@ export async function fetchAutomationStoreEntries(
     return {
       storeEntries: [],
       storeEntriesError: formatErrorMessage(error, "Failed to load automation store entries."),
+    };
+  }
+}
+
+export async function fetchAutomationProjects(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+): Promise<{
+  projects: AutomationProjectRecord[];
+  projectsError: string | null;
+}> {
+  try {
+    const callRoute = createAutomationsRouteCaller(request, context, orgId);
+    const response = await callRoute("GET", "/projects");
+
+    if (response.type === "json" && isSuccessStatus(response.status)) {
+      return {
+        projects: toRecordArray<AutomationProjectRecord>(response.data),
+        projectsError: null,
+      };
+    }
+
+    if (response.type === "error") {
+      return {
+        projects: [],
+        projectsError: response.error.message,
+      };
+    }
+
+    return {
+      projects: [],
+      projectsError: `Failed to fetch automation projects (${response.status}).`,
+    };
+  } catch (error) {
+    return {
+      projects: [],
+      projectsError: formatErrorMessage(error, "Failed to load automation projects."),
+    };
+  }
+}
+
+export async function createAutomationProject(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+  input: {
+    name: string;
+    slug?: string;
+    description?: string | null;
+    createdByUserId: string;
+  },
+): Promise<{ project: AutomationProjectRecord | null; error: string | null }> {
+  try {
+    const callRoute = createAutomationsRouteCaller(request, context, orgId);
+    const response = await callRoute("POST", "/projects", { body: input });
+
+    if (response.type === "json" && isSuccessStatus(response.status)) {
+      return { project: response.data as AutomationProjectRecord, error: null };
+    }
+
+    if (response.type === "error") {
+      return { project: null, error: response.error.message };
+    }
+
+    return { project: null, error: `Failed to create automation project (${response.status}).` };
+  } catch (error) {
+    return {
+      project: null,
+      error: formatErrorMessage(error, "Failed to create automation project."),
+    };
+  }
+}
+
+export async function updateAutomationProject(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+  projectId: string,
+  input: {
+    name?: string;
+    slug?: string;
+    description?: string | null;
+  },
+): Promise<{ project: AutomationProjectRecord | null; error: string | null }> {
+  try {
+    const callRoute = createAutomationsRouteCaller(request, context, orgId);
+    const response = await callRoute("PATCH", "/projects/:projectId", {
+      pathParams: { projectId },
+      body: input,
+    });
+
+    if (response.type === "json" && isSuccessStatus(response.status)) {
+      return { project: response.data as AutomationProjectRecord, error: null };
+    }
+
+    if (response.type === "error") {
+      return { project: null, error: response.error.message };
+    }
+
+    return { project: null, error: `Failed to update automation project (${response.status}).` };
+  } catch (error) {
+    return {
+      project: null,
+      error: formatErrorMessage(error, "Failed to update automation project."),
+    };
+  }
+}
+
+export async function archiveAutomationProject(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+  projectId: string,
+): Promise<{ project: AutomationProjectRecord | null; error: string | null }> {
+  try {
+    const callRoute = createAutomationsRouteCaller(request, context, orgId);
+    const response = await callRoute("DELETE", "/projects/:projectId", {
+      pathParams: { projectId },
+    });
+
+    if (response.type === "json" && isSuccessStatus(response.status)) {
+      return { project: response.data as AutomationProjectRecord, error: null };
+    }
+
+    if (response.type === "error") {
+      return { project: null, error: response.error.message };
+    }
+
+    return { project: null, error: `Failed to archive automation project (${response.status}).` };
+  } catch (error) {
+    return {
+      project: null,
+      error: formatErrorMessage(error, "Failed to archive automation project."),
     };
   }
 }

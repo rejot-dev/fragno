@@ -1,7 +1,3 @@
-import {
-  createFragmentDurableObjectHost,
-  type FragmentDurableObjectHost,
-} from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject } from "cloudflare:workers";
 
 import type {
@@ -29,26 +25,51 @@ import type {
   AutomationEvent,
   AutomationFragmentConfig,
   AutomationIngestResult,
+  AutomationProjectExecutionTarget,
 } from "@/fragno/automation";
-import {
-  buildNotConfiguredResponse,
-  createAutomationsRuntime,
-  type AutomationsRuntime,
-} from "@/fragno/automation/automations";
-import {
-  createDurableHookRepository,
-  createEmptyDurableHookRepository,
-  type DurableHookQueueOptions,
-  type DurableHookQueueResponse,
-} from "@/fragno/durable-hooks";
+import { createAutomationsRuntime, type AutomationsRuntime } from "@/fragno/automation/automations";
+import type { DurableHookQueueOptions, DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import { createPiRouteRuntime } from "@/fragno/pi/pi";
 
-import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
+import {
+  createBackofficeFragmentDurableObject,
+  type BackofficeFragmentDurableObject,
+  type BackofficeObjectState,
+} from "./lib/backoffice-fragment-durable-object";
 
 export type AutomationsFileSystemResolver = (input: {
   execution: BackofficeExecutionContext;
   purpose?: string;
 }) => Promise<MasterFileSystem>;
+
+type AutomationDurableObjectOwnerScope = Extract<
+  BackofficeContextScope,
+  { kind: "org" | "project" }
+>;
+
+type AutomationDurableObjectConfig = {
+  orgId: string;
+  ownerScope: AutomationDurableObjectOwnerScope;
+};
+
+const automationConfigForScope = (
+  scope: BackofficeContextScope | undefined,
+): AutomationDurableObjectConfig | null => {
+  if (scope?.kind === "org") {
+    return { orgId: scope.orgId, ownerScope: scope };
+  }
+
+  if (scope?.kind === "project") {
+    return { orgId: scope.orgId, ownerScope: scope };
+  }
+
+  return null;
+};
+
+const automationConfigForOrgId = (orgId: string): AutomationDurableObjectConfig => ({
+  orgId,
+  ownerScope: { kind: "org", orgId },
+});
 
 const automationCatalogOrgIdForScope = (scope: BackofficeContextScope): string => {
   switch (scope.kind) {
@@ -74,7 +95,7 @@ export const createDefaultAutomationFileSystem = async ({
   execution: BackofficeExecutionContext;
   automationHookQueue?: (opts?: DurableHookQueueOptions) => Promise<DurableHookQueueResponse>;
 }): Promise<MasterFileSystem> => {
-  if (execution.scope.kind === "org") {
+  if (execution.scope.kind === "org" || execution.scope.kind === "project") {
     return createBackofficeFileSystem({
       objects,
       kernel,
@@ -96,8 +117,11 @@ export class InMemoryAutomationsObject implements AutomationsObject {
   #env: AutomationFragmentConfig["env"] | undefined;
   #state: BackofficeObjectState;
   #runtimeServices: BackofficeRuntimeServices;
-  #runtime: AutomationsRuntime | null = null;
-  #host: FragmentDurableObjectHost<void, AutomationsRuntime>;
+  #host: BackofficeFragmentDurableObject<
+    AutomationDurableObjectConfig,
+    AutomationDurableObjectConfig,
+    AutomationsRuntime
+  >;
   #getAutomationFileSystem?: AutomationsFileSystemResolver;
   private readonly automationRoutePrefix = "/api/automations";
 
@@ -106,28 +130,34 @@ export class InMemoryAutomationsObject implements AutomationsObject {
     env,
     runtime,
     getAutomationFileSystem,
+    ownerScope,
   }: {
     state: BackofficeObjectState;
     env?: unknown;
     runtime: BackofficeRuntimeServices;
     getAutomationFileSystem?: AutomationsFileSystemResolver;
+    ownerScope?: BackofficeContextScope;
   }) {
     this.#env = env as AutomationFragmentConfig["env"];
     this.#state = state;
     this.#runtimeServices = runtime;
     this.#getAutomationFileSystem = getAutomationFileSystem;
-    this.#host = createFragmentDurableObjectHost({
+    this.#host = createBackofficeFragmentDurableObject({
       name: "Automations",
       state,
       env,
-      createRuntime: () => {
-        const runtime: AutomationsRuntime = createAutomationsRuntime(
+      isConfigured: (stored): stored is AutomationDurableObjectConfig =>
+        typeof stored?.orgId === "string" && stored.orgId.trim().length > 0,
+      getStoredOrgId: (stored) => stored.orgId,
+      createRuntime: (config) =>
+        createAutomationsRuntime(
           {
             adapters: this.#runtimeServices.adapters,
           },
           {
             env: this.#env,
             runtime: this.#runtimeServices,
+            ownerScope: config.ownerScope,
             createPiAutomationContext: this.#createPiAutomationContext.bind(this),
             getAutomationFileSystem: async ({ execution, purpose }) => {
               if (this.#getAutomationFileSystem) {
@@ -137,9 +167,7 @@ export class InMemoryAutomationsObject implements AutomationsObject {
               return await this.#createAutomationFileSystem(execution);
             },
           },
-        );
-        return runtime;
-      },
+        ),
       getMigrationFragments: (runtime) => [runtime.workflowsFragment, runtime.automationFragment],
       hostRuntime: (runtime, { hostFragment }) => ({
         ...runtime,
@@ -156,17 +184,56 @@ export class InMemoryAutomationsObject implements AutomationsObject {
         },
         { id: "workflows", target: (runtime) => runtime.workflowsFragment },
       ],
-      onProcessError: (error) => {
-        console.error("Automations durable hook processor error", error);
-      },
-      onDispatcherError: (error) => {
-        console.warn("Automations durable hook processor disabled", error);
-      },
     });
 
     void state.blockConcurrencyWhile(async () => {
-      this.#runtime = await this.#host.initialize(undefined);
+      const stored = await this.#host.loadStored();
+      const initialConfig = stored ?? automationConfigForScope(ownerScope);
+      if (initialConfig) {
+        await this.#host.storeAndInitialize(initialConfig);
+        return;
+      }
+
+      await this.#host.initializeFromStored(null);
     });
+  }
+
+  async #ensureConfigured(config: AutomationDurableObjectConfig | null): Promise<void> {
+    if (!config) {
+      return;
+    }
+
+    const configured = this.#host.getConfigured();
+    if (configured) {
+      this.#host.assertSameOrg(configured.stored, config.orgId);
+      if (JSON.stringify(configured.stored.ownerScope) === JSON.stringify(config.ownerScope)) {
+        return;
+      }
+    }
+
+    await this.#state.blockConcurrencyWhile(async () => {
+      const latest = this.#host.getConfigured();
+      if (latest) {
+        this.#host.assertSameOrg(latest.stored, config.orgId);
+        if (JSON.stringify(latest.stored.ownerScope) === JSON.stringify(config.ownerScope)) {
+          return;
+        }
+      }
+      await this.#host.storeAndInitialize(config);
+    });
+  }
+
+  async #ensureConfiguredForRequest(request: Request): Promise<void> {
+    if (this.#host.getConfigured()) {
+      return;
+    }
+
+    const orgId = new URL(request.url).searchParams.get("orgId")?.trim();
+    if (!orgId) {
+      return;
+    }
+
+    await this.#ensureConfigured(automationConfigForOrgId(orgId));
   }
 
   async #createAutomationFileSystem(execution: BackofficeExecutionContext) {
@@ -180,7 +247,7 @@ export class InMemoryAutomationsObject implements AutomationsObject {
 
   async #createPiAutomationContext(input: { event: AutomationEvent; idempotencyKey: string }) {
     const scope = input.event.scope;
-    if (scope?.kind !== "org") {
+    if (scope?.kind !== "org" && scope?.kind !== "project") {
       return undefined;
     }
 
@@ -193,19 +260,27 @@ export class InMemoryAutomationsObject implements AutomationsObject {
   }
 
   async triggerIngestEvent(event: AutomationEvent): Promise<AutomationIngestResult> {
-    if (!this.#runtime?.automationFragment) {
-      throw new Error("Automations runtime is not ready.");
-    }
+    await this.#ensureConfigured(automationConfigForScope(event.scope));
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
 
-    const result = await this.#runtime.automationFragment.callServices(() =>
-      this.#runtime!.automationFragment.services.ingestEvent(event),
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.ingestEvent(event),
     );
-
-    return result;
   }
 
   async ingestEvent(event: AutomationEvent): Promise<AutomationIngestResult> {
     return await this.triggerIngestEvent(event);
+  }
+
+  async resolveProjectForExecution(input: {
+    projectId?: string;
+    slug?: string;
+  }): Promise<AutomationProjectExecutionTarget | null> {
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.resolveProjectForExecution(input),
+    );
   }
 
   async alarm() {
@@ -214,25 +289,16 @@ export class InMemoryAutomationsObject implements AutomationsObject {
 
   getDurableHookRepository(fragment?: "workflows" | "automation") {
     type Options = DurableHookQueueOptions & { fragment?: "workflows" | "automation" };
-    if (!this.#runtime?.workflowsFragment || !this.#runtime?.automationFragment) {
-      return createEmptyDurableHookRepository<Options>();
-    }
-
-    return createDurableHookRepository<Options>((options) =>
+    return this.#host.getDurableHookRepository<Options>((state, options) =>
       (options?.fragment ?? fragment) === "workflows"
-        ? this.#runtime!.workflowsFragment
-        : this.#runtime!.automationFragment,
+        ? state.runtime.workflowsFragment
+        : state.runtime.automationFragment,
     );
   }
 
   async fetch(request: Request): Promise<Response> {
-    if (!this.#runtime?.workflowsFragment || !this.#runtime?.automationFragment) {
-      return buildNotConfiguredResponse();
-    }
-
-    return await this.#host.fetch(this.#runtime, request, {
-      waitUntil: this.#state.waitUntil.bind(this.#state),
-    });
+    await this.#ensureConfiguredForRequest(request);
+    return await this.#host.fetch(request);
   }
 }
 
@@ -254,6 +320,13 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
 
   async ingestEvent(event: AutomationEvent): Promise<AutomationIngestResult> {
     return await this.#object.ingestEvent(event);
+  }
+
+  async resolveProjectForExecution(input: {
+    projectId?: string;
+    slug?: string;
+  }): Promise<AutomationProjectExecutionTarget | null> {
+    return await this.#object.resolveProjectForExecution(input);
   }
 
   async alarm() {
