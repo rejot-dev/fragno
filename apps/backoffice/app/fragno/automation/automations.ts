@@ -49,7 +49,8 @@ export const createAutomationsRuntime = (
     },
     {
       databaseAdapter,
-      mountRoute: "/api/automations",
+      mountRoute: "/api/automations-workflows",
+      outbox: { enabled: true },
     },
   );
   const automationFragment = createAutomationFragment(
@@ -62,7 +63,8 @@ export const createAutomationsRuntime = (
     },
     {
       databaseAdapter,
-      mountRoute: "/api/automations/bindings",
+      mountRoute: "/api/automations",
+      outbox: { enabled: true },
     },
     {
       workflows: workflowsFragment.services,

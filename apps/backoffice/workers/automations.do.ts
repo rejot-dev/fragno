@@ -99,7 +99,7 @@ export class InMemoryAutomationsObject implements AutomationsObject {
   #runtime: AutomationsRuntime | null = null;
   #host: FragmentDurableObjectHost<void, AutomationsRuntime>;
   #getAutomationFileSystem?: AutomationsFileSystemResolver;
-  private readonly automationRoutePrefix = "/api/automations/bindings";
+  private readonly automationRoutePrefix = "/api/automations";
 
   constructor({
     state,
@@ -149,7 +149,9 @@ export class InMemoryAutomationsObject implements AutomationsObject {
       mounts: [
         {
           id: "automation",
-          match: ({ pathname }) => pathname.startsWith(this.automationRoutePrefix),
+          match: ({ pathname }) =>
+            pathname === this.automationRoutePrefix ||
+            pathname.startsWith(`${this.automationRoutePrefix}/`),
           target: (runtime) => runtime.automationFragment,
         },
         { id: "workflows", target: (runtime) => runtime.workflowsFragment },

@@ -530,7 +530,7 @@ export const createPiRuntime = (options: {
     },
     {
       databaseAdapter: adapter,
-      mountRoute: "/api/workflows",
+      mountRoute: "/api/pi-workflows",
     },
   );
 

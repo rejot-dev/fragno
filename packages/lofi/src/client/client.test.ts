@@ -94,6 +94,29 @@ describe("LofiClient", () => {
     ]);
   });
 
+  it("accepts relative outbox URLs", async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(typeof input === "string" ? input : input.toString());
+      assert(url.pathname === "/api/outbox");
+      assert(url.searchParams.get("limit") === "500");
+      return new Response(JSON.stringify([]), { status: 200 });
+    });
+
+    const client = new LofiClient({
+      outboxUrl: "/api/outbox",
+      endpointName: "app-outbox",
+      adapter: {
+        applyOutboxEntry: async () => ({ applied: true }),
+        getMeta: async () => undefined,
+        setMeta: async () => undefined,
+      },
+      fetch: fetcher as unknown as typeof fetch,
+    });
+
+    await expect(client.syncOnce()).resolves.toEqual({ appliedEntries: 0 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it("returns without error when aborted before fetch", async () => {
     const controller = new AbortController();
     controller.abort();

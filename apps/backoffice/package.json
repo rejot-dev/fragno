@@ -30,6 +30,7 @@
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/github-app-fragment": "workspace:*",
+    "@fragno-dev/lofi": "workspace:*",
     "@fragno-dev/mcp-fragment": "workspace:*",
     "@fragno-dev/otp-fragment": "workspace:*",
     "@fragno-dev/pi-fragment": "workspace:*",

@@ -27,7 +27,8 @@ const createAutomation = async () => {
     {
       databaseAdapter: new InMemoryAdapter({ idSeed: "automation-routes-store-test" }),
       dbRoundtripGuard: true,
-      mountRoute: "/api/automations/bindings",
+      mountRoute: "/api/automations",
+      outbox: { enabled: true },
     },
     services,
   );
@@ -47,6 +48,25 @@ beforeEach(async () => {
 });
 
 describe("automation routes /store", () => {
+  test("exposes store mutations through the internal outbox", async () => {
+    await fragment.callRoute("POST", "/store/set", {
+      body: {
+        key: "telegram/chat-123",
+        value: "user-55",
+        actor,
+        description: "Telegram chat binding",
+        category: ["telegram"],
+      },
+    });
+
+    const outboxResponse = await fragment.callRouteRaw("GET", "/_internal/outbox" as never);
+    const entries = (await outboxResponse.json()) as Array<{ payload: unknown }>;
+
+    assert(outboxResponse.status === 200);
+    expect(entries.length).toBeGreaterThan(0);
+    expect(JSON.stringify(entries)).toContain("telegram/chat-123");
+  });
+
   test("sets and gets a store entry", async () => {
     const setResponse = await fragment.callRoute("POST", "/store/set", {
       body: {

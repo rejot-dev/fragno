@@ -78,7 +78,7 @@ const createAutomationsRouteCaller = (
   const automationsDo = getAutomationsDurableObject(context, orgId);
   return createRouteCaller<AutomationFragment>({
     baseUrl: request.url,
-    mountRoute: "/api/automations/bindings",
+    mountRoute: "/api/automations",
     baseHeaders: request.headers,
     fetch: async (outboundRequest) => {
       const url = new URL(outboundRequest.url);

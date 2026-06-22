@@ -32,7 +32,7 @@ const createAutomation = (options?: {
     {
       databaseAdapter: new InMemoryAdapter({ idSeed: "automation-routes-scripts-test" }),
       dbRoundtripGuard: true,
-      mountRoute: "/api/automations/bindings",
+      mountRoute: "/api/automations",
     },
     services,
   );

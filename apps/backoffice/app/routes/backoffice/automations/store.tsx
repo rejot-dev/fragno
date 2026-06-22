@@ -2,6 +2,7 @@ import { Form, useActionData, useNavigation, useOutletContext } from "react-rout
 
 import type { Route } from "./+types/store";
 import { deleteAutomationStoreEntry } from "./data";
+import { useLofiAutomationStoreEntries } from "./lofi-store";
 import type { AutomationLayoutContext } from "./shared";
 import { formatTimestamp } from "./shared";
 
@@ -61,8 +62,13 @@ const formatActor = (actor: AutomationLayoutContext["storeEntries"][number]["act
 };
 
 export default function BackofficeOrganisationAutomationStore() {
-  const { storeEntries, storeEntriesError, storePrefix } =
+  const { orgId, storeEntries, storeEntriesError, storePrefix } =
     useOutletContext<AutomationLayoutContext>();
+  const lofiStore = useLofiAutomationStoreEntries({
+    orgId,
+    initialEntries: storeEntries,
+    prefix: storePrefix,
+  });
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const pendingKey =
@@ -105,9 +111,11 @@ export default function BackofficeOrganisationAutomationStore() {
         </button>
       </Form>
 
-      {storeEntriesError ? (
+      {storeEntriesError || lofiStore.error ? (
         <div className="border border-red-400/40 bg-red-500/8 p-4 text-sm text-red-700 dark:text-red-200">
-          Could not load store entries from the automations service: {storeEntriesError}
+          {storeEntriesError
+            ? `Could not load store entries from the automations service: ${storeEntriesError}`
+            : `Could not sync local automation store updates: ${lofiStore.error}`}
         </div>
       ) : (
         <div className="backoffice-scroll overflow-x-auto border border-[color:var(--bo-border)]">
@@ -141,7 +149,7 @@ export default function BackofficeOrganisationAutomationStore() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-              {storeEntries.map((entry) => {
+              {lofiStore.entries.map((entry) => {
                 const isSubmitting = pendingKey === entry.key;
                 const isSystemEntry = entry.category.includes("system");
 

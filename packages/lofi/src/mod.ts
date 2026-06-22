@@ -1,4 +1,5 @@
-export type { AsyncQueryFindFamily } from "./query-types";
+export type { AsyncQueryFindFamily, LofiQueryFindResult } from "./query-types";
+export type { LofiFindBuilder } from "./query/read-plan";
 export type {
   IndexedDbAdapterOptions,
   InMemoryLofiAdapterOptions,
@@ -21,3 +22,16 @@ export { LofiOverlayManager } from "./optimistic/overlay-manager";
 export { LofiSubmitClient } from "./submit/client";
 export { applyOutboxEntries, rebaseSubmitQueue } from "./submit/rebase";
 export { createLocalHandlerTx, runLocalHandlerCommand } from "./submit/local-handler-tx";
+export { createLofiQueryStore, createLofiRuntime, createLofiRuntimeRegistry } from "./reactive";
+export type {
+  LofiQueryState,
+  LofiQueryStore,
+  LofiQueryStoreOptions,
+  LofiRuntime,
+  LofiRuntimeOptions,
+  LofiRuntimeRegistry,
+  LofiRuntimeRegistryOptions,
+  LofiRuntimeSource,
+  LofiRuntimeStatus,
+  LofiRuntimeSyncResult,
+} from "./reactive";

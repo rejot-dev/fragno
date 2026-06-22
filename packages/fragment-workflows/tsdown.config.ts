@@ -6,6 +6,7 @@ export default defineConfig([
     ignoreWatch: ["./dist"],
     entry: [
       "./src/index.ts",
+      "./src/schema.ts",
       "./src/workflow.ts",
       "./src/debug-log.ts",
       "./src/stream-step-emissions.ts",
@@ -31,6 +32,7 @@ export default defineConfig([
   {
     ignoreWatch: ["./dist"],
     entry: [
+      "./src/schema.ts",
       "./src/client/clients.ts",
       "./src/client/react.ts",
       "./src/client/svelte.ts",
@@ -40,7 +42,7 @@ export default defineConfig([
     ],
     dts: true,
     platform: "browser",
-    outDir: "./dist/browser/client",
+    outDir: "./dist/browser",
     unbundle: true,
     plugins: [unpluginFragno({ platform: "browser" })],
     noExternal: [/^@fragno-dev\/core\//],
