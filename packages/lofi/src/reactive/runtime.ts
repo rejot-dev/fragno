@@ -11,8 +11,11 @@ import type {
 export type LofiRuntimeSource = {
   id: string;
   outboxUrl: string;
+  outboxStreamUrl?: string;
+  outboxTransport?: LofiClientOptions["outboxTransport"];
   cursorKey?: string;
   pollIntervalMs?: number;
+  streamReconnectIntervalMs?: number;
   limit?: number;
 };
 
@@ -46,7 +49,9 @@ export type LofiRuntimeOptions = {
   sources?: LofiRuntimeSource[];
   outboxUrl?: string;
   fetch?: typeof fetch;
+  outboxTransport?: LofiClientOptions["outboxTransport"];
   pollIntervalMs?: number;
+  streamReconnectIntervalMs?: number;
   limit?: number;
   signal?: AbortSignal;
   autoStart?: boolean;
@@ -167,25 +172,39 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
     }
 
     const cursorKey = source.cursorKey ?? `${options.endpointName}:${source.id}:outbox`;
-    const clientOptions: LofiClientOptions = {
+    const commonClientOptions = {
       endpointName: options.endpointName,
       outboxUrl: source.outboxUrl,
       adapter: options.adapter,
       cursorKey,
-      pollIntervalMs: source.pollIntervalMs ?? options.pollIntervalMs,
       limit: source.limit ?? options.limit,
       fetch: options.fetch,
       signal: options.signal,
-      onSyncComplete: (result) => {
+      onSyncComplete: (result: LofiSyncResult) => {
         markSourceResult(source.id, result);
         if (result.appliedEntries > 0) {
           refresh();
         }
       },
-      onError: (error) => {
+      onError: (error: unknown) => {
         markSourceError(source.id, error);
       },
     };
+    const outboxTransport = source.outboxTransport ?? options.outboxTransport ?? "poll";
+    const clientOptions: LofiClientOptions =
+      outboxTransport === "stream"
+        ? {
+            ...commonClientOptions,
+            outboxTransport: "stream",
+            outboxStreamUrl: source.outboxStreamUrl,
+            streamReconnectIntervalMs:
+              source.streamReconnectIntervalMs ?? options.streamReconnectIntervalMs,
+          }
+        : {
+            ...commonClientOptions,
+            outboxTransport: "poll",
+            pollIntervalMs: source.pollIntervalMs ?? options.pollIntervalMs,
+          };
 
     return {
       source,

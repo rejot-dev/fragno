@@ -2,7 +2,8 @@ import { defineRoutes } from "@fragno-dev/core";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
-import type { DatabaseHandlerContext } from "../db-fragment-definition-builder";
+import { BufferedDatabasePump } from "../buffered-pump";
+import type { DatabaseHandlerContext, DatabaseHandlerTx } from "../db-fragment-definition-builder";
 import type { OutboxEntry } from "../outbox/outbox";
 import { submitSyncRequest, type SyncRequestRecord } from "../sync/submit";
 import type { SubmitRequest, SyncCommandDefinition } from "../sync/types";
@@ -25,6 +26,7 @@ type InternalDescribeResponse = {
   routes: {
     internal: "/_internal";
     outbox?: "/_internal/outbox";
+    outboxStream?: "/_internal/outbox/stream";
   };
 };
 
@@ -37,6 +39,31 @@ type InternalDescribeError = {
 };
 
 const ADAPTER_IDENTITY_KEY = "adapter_identity" as const;
+const OUTBOX_STREAM_PUMP_INTERVAL_MS = 100;
+
+type QueryLimitResult =
+  | { ok: true; limit: number | undefined }
+  | { ok: false; response: { error: string; code: "INVALID_LIMIT" }; status: 400 };
+
+const parseLimitQueryParam = (limitValue: string | null): QueryLimitResult => {
+  if (limitValue === null) {
+    return { ok: true, limit: undefined };
+  }
+
+  const parsed = Number.parseInt(limitValue, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return {
+      ok: false,
+      response: {
+        error: "Invalid limit query parameter.",
+        code: "INVALID_LIMIT",
+      },
+      status: 400,
+    };
+  }
+
+  return { ok: true, limit: parsed };
+};
 
 const passthroughInputSchema: StandardSchemaV1 = {
   "~standard": {
@@ -141,6 +168,7 @@ export const createInternalFragmentDescribeRoutes = () =>
           routes: {
             internal: "/_internal",
             outbox: outboxEnabled ? "/_internal/outbox" : undefined,
+            outboxStream: outboxEnabled ? "/_internal/outbox/stream" : undefined,
           },
         };
 
@@ -172,22 +200,12 @@ export const createInternalFragmentOutboxRoutes = () =>
         // Query params are validated manually and the response shape is stable (OutboxEntry[]),
         // while the public API surface is still gated behind adapter config.
         const afterVersionstamp = input.query.get("afterVersionstamp") ?? undefined;
-        const limitValue = input.query.get("limit");
-        let limit: number | undefined;
-
-        if (limitValue !== null) {
-          const parsed = Number.parseInt(limitValue, 10);
-          if (!Number.isFinite(parsed) || parsed < 1) {
-            return json(
-              {
-                error: "Invalid limit query parameter.",
-                code: "INVALID_LIMIT",
-              },
-              { status: 400 },
-            );
-          }
-          limit = parsed;
+        const limitResult = parseLimitQueryParam(input.query.get("limit"));
+        if (!limitResult.ok) {
+          return json(limitResult.response, { status: limitResult.status });
         }
+
+        const limit = limitResult.limit;
 
         const entries = await this.handlerTx()
           .withServiceCalls(
@@ -197,6 +215,84 @@ export const createInternalFragmentOutboxRoutes = () =>
           .execute();
 
         return json(entries);
+      },
+    }),
+    defineRoute({
+      method: "GET",
+      path: "/outbox/stream",
+      handler: async function (input, { json, jsonStream }) {
+        const registry = config.registry;
+        if (!registry || !registry.isOutboxEnabled()) {
+          return json(
+            {
+              error: {
+                code: "OUTBOX_UNAVAILABLE",
+                message: "Outbox is not enabled for this adapter.",
+              },
+            },
+            { status: 404 },
+          );
+        }
+
+        let afterVersionstamp = input.query.get("afterVersionstamp") ?? undefined;
+        const limitResult = parseLimitQueryParam(input.query.get("limit"));
+        if (!limitResult.ok) {
+          return json(limitResult.response, { status: limitResult.status });
+        }
+
+        const listEntries = async (handlerTx: DatabaseHandlerTx): Promise<OutboxEntry[]> => {
+          const entries = await handlerTx()
+            .withServiceCalls(
+              () =>
+                [
+                  services.outboxService.list({
+                    afterVersionstamp,
+                    limit: limitResult.limit,
+                  }),
+                ] as const,
+            )
+            .transform(({ serviceResult: [result] }) => result as OutboxEntry[])
+            .execute();
+
+          afterVersionstamp = entries[entries.length - 1]?.versionstamp ?? afterVersionstamp;
+          return entries;
+        };
+
+        const initialEntries = await listEntries((options) => this.handlerTx(options));
+
+        return jsonStream(async (stream) => {
+          const pump = new BufferedDatabasePump<never, never, OutboxEntry>({
+            handlerTx: (options) => this.handlerTx(options),
+            intervalMs: OUTBOX_STREAM_PUMP_INTERVAL_MS,
+            cursorForObservedItem: (entry) => entry.versionstamp,
+            onError: (error) => console.error("[outbox-stream] flush failed", error),
+            flush: async ({ handlerTx }) => ({ observedItems: await listEntries(handlerTx) }),
+          });
+
+          let stopObserving = () => {};
+          const waitForAbort = new Promise<void>((resolve) => {
+            stream.onAbort(() => {
+              stopObserving();
+              pump.stop();
+              resolve();
+            });
+          });
+
+          stopObserving = pump.observe(async (entry) => {
+            await stream.writeRaw(`${JSON.stringify(entry)}\n`);
+          });
+
+          try {
+            for (const entry of initialEntries) {
+              await stream.writeRaw(`${JSON.stringify(entry)}\n`);
+            }
+            await pump.flushNow();
+            await waitForAbort;
+          } finally {
+            stopObserving();
+            pump.stop();
+          }
+        });
       },
     }),
   ]);

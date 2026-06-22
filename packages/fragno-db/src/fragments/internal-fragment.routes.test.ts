@@ -8,6 +8,7 @@ import { defineFragment, instantiate } from "@fragno-dev/core";
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
 import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
 import { getInternalFragment, getRegistryForAdapterSync } from "../internal/adapter-registry";
+import type { DatabaseRequestContext } from "../mod";
 import type { TxResult } from "../query/unit-of-work/execute-unit-of-work";
 import { schema, idColumn, column } from "../schema/create";
 import type { SyncCommandDefinition } from "../sync/types";
@@ -150,6 +151,7 @@ describe("internal fragment describe routes", () => {
     const response = await alphaFragment.callRouteRaw("GET", "/_internal" as never);
     const payload = await response.json();
     assert(payload.routes.outbox === "/_internal/outbox");
+    assert(payload.routes.outboxStream === "/_internal/outbox/stream");
     expect(payload.fragments).toEqual(
       expect.arrayContaining([{ name: "alpha-fragment", mountRoute: "/alpha" }]),
     );
@@ -179,7 +181,76 @@ describe("internal fragment describe routes", () => {
     const noOutboxResponse = await gammaFragment.callRouteRaw("GET", "/_internal/outbox" as never);
     assert(noOutboxResponse.status === 404);
 
+    const noOutboxStreamResponse = await gammaFragment.callRouteRaw(
+      "GET",
+      "/_internal/outbox/stream" as never,
+    );
+    assert(noOutboxStreamResponse.status === 404);
+
     await closeNoOutbox();
+  });
+
+  it("streams outbox entries after the requested versionstamp", async () => {
+    const { adapter, close } = await setupAdapter();
+
+    const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
+    const alphaFragment = instantiate(alphaDef)
+      .withOptions({
+        databaseAdapter: adapter,
+        mountRoute: "/alpha",
+        outbox: { enabled: true },
+      })
+      .build();
+
+    const namespace = (alphaFragment.$internal.deps as { namespace: string | null }).namespace;
+    const migrations = adapter.prepareMigrations(alphaSchema, namespace);
+    await migrations.executeWithDriver(adapter.driver, 0);
+
+    const createAlphaItem = async (name: string) => {
+      await alphaFragment.inContext(async function (this: DatabaseRequestContext) {
+        await this.handlerTx()
+          .mutate(({ forSchema }) => forSchema(alphaSchema).create("alpha_items", { name }))
+          .execute();
+      });
+    };
+
+    await createAlphaItem("first");
+    const outboxResponse = await alphaFragment.callRoute("GET", "/_internal/outbox" as never);
+    assert(outboxResponse.type === "json");
+    const existingEntries = outboxResponse.data as Array<{ versionstamp: string }>;
+    expect(existingEntries).toHaveLength(1);
+
+    await createAlphaItem("second");
+
+    const streamResponse = await alphaFragment.callRoute(
+      "GET",
+      "/_internal/outbox/stream" as never,
+      {
+        query: {
+          afterVersionstamp: existingEntries[0].versionstamp,
+          limit: "1",
+        },
+      } as unknown as Parameters<typeof alphaFragment.callRoute>[2],
+    );
+    assert(streamResponse.status === 200);
+    assert(streamResponse.type === "jsonStream");
+
+    try {
+      const nextFrame = await Promise.race([
+        streamResponse.stream.next(),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("Timed out waiting for outbox stream frame.")), 1_000);
+        }),
+      ]);
+      assert(nextFrame.done === false);
+      const streamedEntry = nextFrame.value as { versionstamp: string };
+      expect(streamedEntry.versionstamp).toEqual(expect.any(String));
+      expect(streamedEntry.versionstamp).not.toBe(existingEntries[0].versionstamp);
+    } finally {
+      await streamResponse.stream.return(undefined);
+    }
+
+    await close();
   });
 
   it("throws when two fragments claim the same namespace", async () => {

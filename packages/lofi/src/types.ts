@@ -6,12 +6,29 @@ import type { OutboxEntry } from "@fragno-dev/db";
 import type { InMemoryLofiStore } from "./adapters/in-memory/store";
 import type { AsyncQueryFindFamily } from "./query-types";
 
-export type LofiClientOptions = {
+export type LofiOutboxTransport = "poll" | "stream";
+
+export type LofiPollOutboxOptions = {
+  outboxTransport?: "poll";
+  pollIntervalMs?: number;
+  outboxStreamUrl?: never;
+  streamReconnectIntervalMs?: never;
+};
+
+export type LofiStreamOutboxOptions = {
+  outboxTransport: "stream";
+  outboxStreamUrl?: string;
+  streamReconnectIntervalMs?: number;
+  pollIntervalMs?: never;
+};
+
+export type LofiOutboxTransportOptions = LofiPollOutboxOptions | LofiStreamOutboxOptions;
+
+export type LofiClientBaseOptions = {
   outboxUrl: string;
   endpointName: string;
   adapter: LofiAdapter;
   fetch?: typeof fetch;
-  pollIntervalMs?: number;
   limit?: number;
   cursorKey?: string;
   onSyncApplied?: (result: LofiSyncResult) => void | Promise<void>;
@@ -19,6 +36,8 @@ export type LofiClientOptions = {
   onError?: (error: unknown) => void;
   signal?: AbortSignal;
 };
+
+export type LofiClientOptions = LofiClientBaseOptions & LofiOutboxTransportOptions;
 
 export type LofiSyncResult = {
   appliedEntries: number;

@@ -1,7 +1,12 @@
 import type { OutboxEntry, OutboxPayload } from "@fragno-dev/db";
 
 import { decodeOutboxPayload, resolveOutboxRefs } from "../outbox";
-import type { LofiClientOptions, LofiMutation, LofiSyncResult } from "../types";
+import type {
+  LofiClientOptions,
+  LofiMutation,
+  LofiOutboxTransport,
+  LofiSyncResult,
+} from "../types";
 
 type LofiSyncOptions = { signal?: AbortSignal };
 
@@ -22,9 +27,12 @@ const DEFAULT_LIMIT = 500;
 export class LofiClient {
   private readonly adapter: LofiClientOptions["adapter"];
   private readonly outboxUrl: string;
+  private readonly outboxStreamUrl: string;
   private readonly endpointName: string;
   private readonly fetcher: typeof fetch;
+  private readonly outboxTransport: LofiOutboxTransport;
   private readonly pollIntervalMs: number;
+  private readonly streamReconnectIntervalMs: number;
   private readonly limit: number;
   private readonly cursorKey?: string;
   private readonly onSyncApplied?: (result: LofiSyncResult) => void | Promise<void>;
@@ -35,16 +43,22 @@ export class LofiClient {
   private intervalId: ReturnType<typeof setInterval> | undefined;
   private inFlight?: Promise<LofiSyncResult>;
   private inFlightController?: AbortController;
+  private streamController?: AbortController;
+  private streamPromise?: Promise<void>;
   private loopSignal?: AbortSignal;
   private loopSignalListener?: () => void;
+  private running = false;
 
   constructor(options: LofiClientOptions) {
     this.adapter = options.adapter;
     this.outboxUrl = options.outboxUrl;
+    this.outboxStreamUrl = options.outboxStreamUrl ?? buildOutboxStreamUrl(options.outboxUrl);
     this.endpointName = options.endpointName;
     const defaultFetch = fetch.bind(globalThis);
     this.fetcher = options.fetch ?? defaultFetch;
+    this.outboxTransport = options.outboxTransport ?? "poll";
     this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+    this.streamReconnectIntervalMs = options.streamReconnectIntervalMs ?? this.pollIntervalMs;
     this.limit = options.limit ?? DEFAULT_LIMIT;
     this.cursorKey = options.cursorKey;
     this.onSyncApplied = options.onSyncApplied;
@@ -54,16 +68,28 @@ export class LofiClient {
   }
 
   start(options?: { signal?: AbortSignal }): void {
-    if (this.intervalId) {
+    if (this.running) {
       return;
     }
 
+    this.running = true;
     this.loopSignal = options?.signal ?? this.defaultSignal;
+
+    if (this.loopSignal?.aborted) {
+      this.running = false;
+      this.loopSignal = undefined;
+      return;
+    }
 
     if (this.loopSignal) {
       const abortListener = () => this.stop();
       this.loopSignal.addEventListener("abort", abortListener, { once: true });
       this.loopSignalListener = () => this.loopSignal?.removeEventListener("abort", abortListener);
+    }
+
+    if (this.outboxTransport === "stream") {
+      this.startStreamLoop();
+      return;
     }
 
     void this.syncOnce({ signal: this.loopSignal }).catch((error) => {
@@ -94,6 +120,8 @@ export class LofiClient {
   }
 
   stop(): void {
+    this.running = false;
+
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = undefined;
@@ -104,8 +132,13 @@ export class LofiClient {
       this.loopSignalListener = undefined;
     }
 
+    const streamController = this.streamController;
+    this.streamController = undefined;
+    this.streamPromise = undefined;
+
     this.loopSignal = undefined;
     this.inFlightController?.abort();
+    streamController?.abort();
   }
 
   async syncOnce(options?: LofiSyncOptions): Promise<LofiSyncResult> {
@@ -159,21 +192,10 @@ export class LofiClient {
             return { appliedEntries, lastVersionstamp };
           }
 
-          const mutations = decodeOutboxEntry(entry);
-          const resolvedMutations = entry.refMap
-            ? mutations.map((mutation) => resolveOutboxRefs(mutation, entry.refMap ?? {}))
-            : mutations;
+          const result = await this.applyEntry({ entry, cursorKey, sourceKey });
 
-          const result = await this.adapter.applyOutboxEntry({
-            sourceKey,
-            versionstamp: entry.versionstamp,
-            uowId: entry.uowId,
-            mutations: resolvedMutations,
-          });
-
-          lastVersionstamp = entry.versionstamp;
-          await this.adapter.setMeta(cursorKey, entry.versionstamp);
-          cursor = entry.versionstamp;
+          lastVersionstamp = result.lastVersionstamp;
+          cursor = result.lastVersionstamp;
 
           if (result.applied) {
             appliedEntries += 1;
@@ -203,6 +225,117 @@ export class LofiClient {
     await this.onSyncComplete?.(result);
 
     return result;
+  }
+
+  private startStreamLoop(): void {
+    if (this.streamPromise) {
+      return;
+    }
+
+    const controller = new AbortController();
+    this.streamController = controller;
+    const cleanup = attachAbortSignal(controller, this.loopSignal);
+
+    const promise = this.runStreamLoop(controller.signal)
+      .catch((error) => {
+        if (isAbortError(error)) {
+          return;
+        }
+
+        this.handleLoopError(error);
+      })
+      .finally(() => {
+        cleanup();
+        if (this.streamPromise === promise) {
+          this.streamPromise = undefined;
+        }
+        if (this.streamController === controller) {
+          this.streamController = undefined;
+        }
+      });
+
+    this.streamPromise = promise;
+  }
+
+  private async runStreamLoop(signal: AbortSignal): Promise<void> {
+    if (signal.aborted) {
+      return;
+    }
+
+    const cursorKey = this.cursorKey ?? `${this.endpointName}::outbox`;
+    const sourceKey = cursorKey;
+
+    while (!signal.aborted) {
+      const cursor = await this.adapter.getMeta(cursorKey);
+
+      try {
+        const response = await this.fetcher(
+          buildOutboxUrl(this.outboxStreamUrl, cursor, this.limit),
+          { signal },
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `Outbox stream request failed: ${response.status} ${response.statusText}`,
+          );
+        }
+
+        for await (const entry of parseOutboxEntryStream(response, signal)) {
+          if (signal.aborted) {
+            return;
+          }
+
+          const result = await this.applyEntry({ entry, cursorKey, sourceKey });
+          const syncResult = {
+            appliedEntries: result.applied ? 1 : 0,
+            lastVersionstamp: result.lastVersionstamp,
+          };
+
+          if (result.applied) {
+            await this.onSyncApplied?.(syncResult);
+          }
+          await this.onSyncComplete?.(syncResult);
+        }
+      } catch (error) {
+        if (signal.aborted || isAbortError(error)) {
+          return;
+        }
+
+        if (!isReconnectableStreamError(error)) {
+          throw error;
+        }
+
+        this.onError?.(error);
+      }
+
+      await sleep(this.streamReconnectIntervalMs, signal);
+    }
+  }
+
+  private async applyEntry({
+    entry,
+    cursorKey,
+    sourceKey,
+  }: {
+    entry: OutboxEntry;
+    cursorKey: string;
+    sourceKey: string;
+  }): Promise<{ applied: boolean; lastVersionstamp: string }> {
+    const mutations = decodeOutboxEntry(entry);
+    const resolvedMutations = entry.refMap
+      ? mutations.map((mutation) => resolveOutboxRefs(mutation, entry.refMap ?? {}))
+      : mutations;
+
+    const result = await this.adapter.applyOutboxEntry({
+      sourceKey,
+      versionstamp: entry.versionstamp,
+      uowId: entry.uowId,
+      mutations: resolvedMutations,
+    });
+
+    await this.adapter.setMeta(cursorKey, entry.versionstamp);
+
+    return { applied: result.applied, lastVersionstamp: entry.versionstamp };
   }
 
   private async *fetchPages(options: OutboxFetchOptions): AsyncGenerator<OutboxPageResult> {
@@ -279,6 +412,70 @@ function toLofiMutation(mutation: OutboxPayload["mutations"][number]): LofiMutat
   };
 }
 
+async function* parseOutboxEntryStream(
+  response: Response,
+  signal: AbortSignal,
+): AsyncGenerator<OutboxEntry> {
+  if (!response.body) {
+    throw new Error("Invalid outbox stream response body");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let completed = false;
+
+  try {
+    while (!signal.aborted) {
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await reader.read();
+      } catch (error) {
+        if (signal.aborted || isAbortError(error)) {
+          throw error;
+        }
+        throw new OutboxStreamReadError(error);
+      }
+
+      const { done, value } = chunk;
+      if (done) {
+        completed = true;
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        if (line.trim().length === 0) {
+          continue;
+        }
+        yield JSON.parse(line) as OutboxEntry;
+      }
+    }
+
+    if (!signal.aborted && buffer.trim().length > 0) {
+      yield JSON.parse(buffer) as OutboxEntry;
+    }
+  } finally {
+    if (!completed) {
+      await reader.cancel();
+    }
+    reader.releaseLock();
+  }
+}
+
+class OutboxStreamReadError extends Error {
+  readonly originalError: unknown;
+
+  constructor(cause: unknown) {
+    super("Outbox stream read failed");
+    this.name = "OutboxStreamReadError";
+    this.originalError = cause;
+  }
+}
+
 function buildOutboxUrl(outboxUrl: string, afterVersionstamp: string | undefined, limit: number) {
   const url = new URL(outboxUrl, getUrlBase());
   const params = new URLSearchParams(url.search);
@@ -295,12 +492,43 @@ function buildOutboxUrl(outboxUrl: string, afterVersionstamp: string | undefined
   return url.toString();
 }
 
+function buildOutboxStreamUrl(outboxUrl: string): string {
+  const url = new URL(outboxUrl, getUrlBase());
+  const pathname = url.pathname.replace(/\/+$/, "");
+
+  if (pathname.endsWith("/_internal/outbox/stream")) {
+    url.pathname = pathname;
+    return url.toString();
+  }
+
+  url.pathname = `${pathname}/stream`;
+  return url.toString();
+}
+
 function getUrlBase(): string | undefined {
   if (typeof globalThis.location?.href === "string") {
     return globalThis.location.href;
   }
 
   return "http://localhost";
+}
+
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+  });
 }
 
 function attachAbortSignal(controller: AbortController, signal?: AbortSignal) {
@@ -324,4 +552,8 @@ function isAbortError(error: unknown): boolean {
   }
 
   return "name" in error && error.name === "AbortError";
+}
+
+function isReconnectableStreamError(error: unknown): boolean {
+  return error instanceof OutboxStreamReadError || error instanceof TypeError;
 }
