@@ -234,7 +234,8 @@ export class InMemoryPiObject implements PiObject {
       mounts: [
         {
           id: "workflows",
-          match: ({ pathname }) => pathname.startsWith("/api/workflows"),
+          match: ({ pathname }) =>
+            pathname === "/api/pi-workflows" || pathname.startsWith("/api/pi-workflows/"),
           target: (runtime) => runtime.workflowsFragment,
         },
         { id: "pi", target: (runtime) => runtime.piFragment },

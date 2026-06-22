@@ -40,7 +40,7 @@ type QueryRow<TTable extends AnyTable, TBuilderResult> = SelectResult<
   Extract<ExtractQueryTreeBuilderSelect<TBuilderResult>, SelectClause<TTable>>
 >;
 
-type QueryFindResult<TTable extends AnyTable, TBuilderResult> =
+export type LofiQueryFindResult<TTable extends AnyTable, TBuilderResult> =
   ExtractQueryTreeBuilderCount<TBuilderResult> extends true
     ? number
     : QueryRow<TTable, TBuilderResult>[];
@@ -58,7 +58,7 @@ export interface AsyncQueryFindFamily<TSchema extends AnySchema> {
   find: <TableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
     table: TableName,
     builderFn: (builder: LofiFindBuilder<TSchema, TableName>) => TBuilderResult,
-  ) => Promise<QueryFindResult<TSchema["tables"][TableName], TBuilderResult>>;
+  ) => Promise<LofiQueryFindResult<TSchema["tables"][TableName], TBuilderResult>>;
 
   findWithCursor: <TableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
     table: TableName,

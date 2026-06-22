@@ -15,6 +15,7 @@ export type LofiClientOptions = {
   limit?: number;
   cursorKey?: string;
   onSyncApplied?: (result: LofiSyncResult) => void | Promise<void>;
+  onSyncComplete?: (result: LofiSyncResult) => void | Promise<void>;
   onError?: (error: unknown) => void;
   signal?: AbortSignal;
 };

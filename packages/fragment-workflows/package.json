@@ -19,6 +19,11 @@
       "types": "./dist/node/index.d.ts",
       "default": "./dist/node/index.js"
     },
+    "./schema": {
+      "types": "./dist/browser/schema.d.ts",
+      "browser": "./dist/browser/schema.js",
+      "default": "./dist/node/schema.js"
+    },
     "./workflow": {
       "types": "./dist/node/workflow.d.ts",
       "default": "./dist/node/workflow.js"

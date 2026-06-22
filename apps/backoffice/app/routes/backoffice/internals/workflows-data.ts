@@ -205,7 +205,8 @@ const createWorkflowsRouteCaller = (
     fragment === "automations"
       ? getAutomationsDurableObject(context, orgId)
       : getPiDurableObject(context, orgId);
-  const mountRoute = fragment === "automations" ? "/api/automations" : "/api/workflows";
+  const mountRoute =
+    fragment === "automations" ? "/api/automations-workflows" : "/api/pi-workflows";
 
   return createRouteCaller<WorkflowsFragment>({
     baseUrl: request.url,

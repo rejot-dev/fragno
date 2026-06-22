@@ -416,6 +416,44 @@ const clientCommands: LofiSubmitCommandDefinition[] = [
 ];
 
 describe("Lofi scenario DSL", () => {
+  it("constructs reactive query stores and records emissions", async () => {
+    const scenario = defineScenario({
+      name: "reactive-store-sync",
+      server: {
+        fragmentName: "lofi-test",
+        schema: appSchema,
+        syncCommands,
+      },
+      clientCommands,
+      clients: {
+        a: { endpointName: "client-a", adapter: { type: "in-memory" } },
+      },
+      steps: [
+        steps.createStore("a", "users", "users", (b) => b.whereIndex("primary"), {
+          initialData: [],
+        }),
+        steps.command("a", "createUser", { id: "user-1", name: "Ada" }, { submit: true }),
+        steps.sync("a"),
+        steps.waitForStore("a", "users", (state) =>
+          Array.isArray(state.data)
+            ? state.data.some((row) => (row as { name?: unknown }).name === "Ada")
+            : false,
+        ),
+        steps.readStore("a", "users", "users"),
+        steps.assertStoreEmissions("a", "users", (values) => {
+          assert(values.some((value) => value.loading));
+          expect(values.at(-1)?.data).toEqual([expect.objectContaining({ name: "Ada" })]);
+        }),
+        steps.assert((ctx) => {
+          expect(ctx.vars.users).toEqual([expect.objectContaining({ name: "Ada" })]);
+        }),
+      ],
+    });
+
+    const ctx = await runScenarioWithIndexedDb(scenario);
+    await ctx.cleanup();
+  });
+
   it("keeps optimistic state while a conflicting command remains queued", async () => {
     const scenario = defineScenario({
       name: "conflict-rebase",

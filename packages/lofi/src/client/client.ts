@@ -28,6 +28,7 @@ export class LofiClient {
   private readonly limit: number;
   private readonly cursorKey?: string;
   private readonly onSyncApplied?: (result: LofiSyncResult) => void | Promise<void>;
+  private readonly onSyncComplete?: (result: LofiSyncResult) => void | Promise<void>;
   private readonly onError?: (error: unknown) => void;
   private readonly defaultSignal?: AbortSignal;
 
@@ -47,6 +48,7 @@ export class LofiClient {
     this.limit = options.limit ?? DEFAULT_LIMIT;
     this.cursorKey = options.cursorKey;
     this.onSyncApplied = options.onSyncApplied;
+    this.onSyncComplete = options.onSyncComplete;
     this.onError = options.onError;
     this.defaultSignal = options.signal;
   }
@@ -198,6 +200,7 @@ export class LofiClient {
     if (appliedEntries > 0) {
       await this.onSyncApplied?.(result);
     }
+    await this.onSyncComplete?.(result);
 
     return result;
   }
@@ -277,7 +280,7 @@ function toLofiMutation(mutation: OutboxPayload["mutations"][number]): LofiMutat
 }
 
 function buildOutboxUrl(outboxUrl: string, afterVersionstamp: string | undefined, limit: number) {
-  const url = new URL(outboxUrl);
+  const url = new URL(outboxUrl, getUrlBase());
   const params = new URLSearchParams(url.search);
 
   if (afterVersionstamp) {
@@ -290,6 +293,14 @@ function buildOutboxUrl(outboxUrl: string, afterVersionstamp: string | undefined
   url.search = params.toString();
 
   return url.toString();
+}
+
+function getUrlBase(): string | undefined {
+  if (typeof globalThis.location?.href === "string") {
+    return globalThis.location.href;
+  }
+
+  return "http://localhost";
 }
 
 function attachAbortSignal(controller: AbortController, signal?: AbortSignal) {

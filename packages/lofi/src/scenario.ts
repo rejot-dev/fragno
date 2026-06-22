@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 
 import type { AnySchema } from "@fragno-dev/db/schema";
+import type { ReadableAtom } from "nanostores";
 
 import { defineFragment, instantiate, type AnyFragnoInstantiatedFragment } from "@fragno-dev/core";
 import { InMemoryAdapter, withDatabase, type SyncCommandRegistry } from "@fragno-dev/db";
@@ -13,6 +14,9 @@ import { StackedLofiAdapter } from "./adapters/stacked/adapter";
 import { LofiClient } from "./client/client";
 import { IndexedDbAdapter } from "./indexeddb/adapter";
 import { LofiOverlayManager } from "./optimistic/overlay-manager";
+import type { LofiFindBuilder } from "./query/read-plan";
+import { createLofiQueryStore, createLofiRuntime } from "./reactive";
+import type { LofiQueryState, LofiRuntime, LofiRuntimeSyncResult } from "./reactive";
 import { LofiSubmitClient } from "./submit/client";
 import type {
   LofiAdapter,
@@ -39,9 +43,17 @@ export type ScenarioServerConfig<TSchema extends AnySchema = AnySchema> =
       baseUrl?: string;
     };
 
+export type ScenarioOutboxSourceConfig = {
+  id: string;
+  outboxUrl?: string | ((options: { baseUrl: string }) => string);
+  cursorKey?: string;
+  pollIntervalMs?: number;
+};
+
 export type ScenarioClientConfig = {
   endpointName: string;
   adapter?: ScenarioClientAdapterConfig;
+  sources?: ScenarioOutboxSourceConfig[];
 };
 
 export type ScenarioClientAdapterConfig =
@@ -154,7 +166,7 @@ export type ScenarioContext<
   clients: Record<string, ScenarioClient<TSchema, TCommandContext>>;
   vars: Partial<TVars>;
   lastSubmit: Record<string, LofiSubmitResponse | undefined>;
-  lastSync: Record<string, LofiSyncResult | undefined>;
+  lastSync: Record<string, LofiSyncResult | LofiRuntimeSyncResult | undefined>;
   cleanup: () => Promise<void>;
 };
 
@@ -164,6 +176,7 @@ export type ScenarioClient<TSchema extends AnySchema = AnySchema, TCommandContex
   adapter: LofiAdapter & LofiQueryableAdapter;
   submit: LofiSubmitClient<TCommandContext>;
   sync: LofiClient;
+  runtime: LofiRuntime;
   query: LofiQueryInterface<TSchema>;
   baseQuery: LofiQueryInterface<TSchema>;
   overlayQuery?: LofiQueryInterface<TSchema>;
@@ -175,7 +188,15 @@ export type ScenarioClient<TSchema extends AnySchema = AnySchema, TCommandContex
   stores: {
     base?: InMemoryLofiStore;
     overlay?: InMemoryLofiStore;
+    reactive?: Record<string, ReadableAtom<LofiQueryState<unknown>>>;
   };
+  storeProbes: Record<
+    string,
+    {
+      values: LofiQueryState<unknown>[];
+      unsubscribe: () => void;
+    }
+  >;
   overlayManager?: LofiOverlayManager<TCommandContext>;
 };
 
@@ -226,6 +247,46 @@ export type ScenarioSubmitStep = {
 export type ScenarioSyncStep = {
   type: "sync";
   client: string;
+  sourceId?: string;
+};
+
+export type ScenarioCreateStoreStep<
+  TSchema extends AnySchema = AnySchema,
+  TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
+> = {
+  type: "createStore";
+  client: string;
+  name: string;
+  table: keyof TSchema["tables"] & string;
+  query: (builder: unknown) => unknown;
+  initialData?: unknown;
+  map?: (rows: unknown, ctx: ScenarioContext<TSchema, TCommandContext, TVars>) => unknown;
+};
+
+export type ScenarioReadStoreStep<
+  TVars extends ScenarioVars = ScenarioVars,
+  K extends keyof TVars = keyof TVars,
+> = {
+  type: "readStore";
+  client: string;
+  name: string;
+  storeAs: K;
+};
+
+export type ScenarioWaitForStoreStep = {
+  type: "waitForStore";
+  client: string;
+  name: string;
+  predicate: (state: LofiQueryState<unknown>) => boolean;
+  timeoutMs?: number;
+};
+
+export type ScenarioAssertStoreEmissionsStep = {
+  type: "assertStoreEmissions";
+  client: string;
+  name: string;
+  assert: (values: LofiQueryState<unknown>[]) => void | Promise<void>;
 };
 
 export type ScenarioReadStepWithStore<
@@ -279,6 +340,10 @@ export type ScenarioStep<
   | ScenarioSubmitStep
   | ScenarioSyncStep
   | ScenarioReadStep<TSchema, TCommandContext, TVars>
+  | ScenarioCreateStoreStep<TSchema, TCommandContext, TVars>
+  | ScenarioReadStoreStep<TVars>
+  | ScenarioWaitForStoreStep
+  | ScenarioAssertStoreEmissionsStep
   | ScenarioAssertStep<TSchema, TCommandContext, TVars>;
 
 export function defineScenario<
@@ -363,7 +428,11 @@ function command<
 }
 
 const submit = (client: string): ScenarioSubmitStep => ({ type: "submit", client });
-const sync = (client: string): ScenarioSyncStep => ({ type: "sync", client });
+const sync = (client: string, sourceId?: string): ScenarioSyncStep => ({
+  type: "sync",
+  client,
+  sourceId,
+});
 function read<
   TSchema extends AnySchema = AnySchema,
   TCommandContext = unknown,
@@ -417,6 +486,61 @@ function assert<
     assert,
   };
 }
+const createStore = <
+  TSchema extends AnySchema = AnySchema,
+  TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
+  TTableName extends keyof TSchema["tables"] & string = keyof TSchema["tables"] & string,
+>(
+  client: string,
+  name: string,
+  table: TTableName,
+  query: (builder: LofiFindBuilder<TSchema, TTableName>) => unknown,
+  options?: {
+    initialData?: unknown;
+    map?: (rows: unknown, ctx: ScenarioContext<TSchema, TCommandContext, TVars>) => unknown;
+  },
+): ScenarioCreateStoreStep<TSchema, TCommandContext, TVars> => ({
+  type: "createStore",
+  client,
+  name,
+  table,
+  query: query as (builder: unknown) => unknown,
+  initialData: options?.initialData,
+  map: options?.map,
+});
+const readStore = <TVars extends ScenarioVars = ScenarioVars, K extends keyof TVars = keyof TVars>(
+  client: string,
+  name: string,
+  storeAs: K,
+): ScenarioReadStoreStep<TVars, K> => ({
+  type: "readStore",
+  client,
+  name,
+  storeAs,
+});
+const waitForStore = (
+  client: string,
+  name: string,
+  predicate: (state: LofiQueryState<unknown>) => boolean,
+  options?: { timeoutMs?: number },
+): ScenarioWaitForStoreStep => ({
+  type: "waitForStore",
+  client,
+  name,
+  predicate,
+  timeoutMs: options?.timeoutMs,
+});
+const assertStoreEmissions = (
+  client: string,
+  name: string,
+  assert: (values: LofiQueryState<unknown>[]) => void | Promise<void>,
+): ScenarioAssertStoreEmissionsStep => ({
+  type: "assertStoreEmissions",
+  client,
+  name,
+  assert,
+});
 export const createScenarioSteps = <
   TSchema extends AnySchema = AnySchema,
   TCommandContext = unknown,
@@ -478,6 +602,21 @@ export const createScenarioSteps = <
       storeAs?: undefined,
     ): ScenarioReadStepNoStore<TSchema, TCommandContext, TVars>;
   },
+  createStore: <TTableName extends keyof TSchema["tables"] & string>(
+    client: string,
+    name: string,
+    table: TTableName,
+    query: (builder: LofiFindBuilder<TSchema, TTableName>) => unknown,
+    options?: {
+      initialData?: unknown;
+      map?: (rows: unknown, ctx: ScenarioContext<TSchema, TCommandContext, TVars>) => unknown;
+    },
+  ) =>
+    createStore<TSchema, TCommandContext, TVars, TTableName>(client, name, table, query, options),
+  readStore: <K extends keyof TVars>(client: string, name: string, storeAs: K) =>
+    readStore<TVars, K>(client, name, storeAs),
+  waitForStore,
+  assertStoreEmissions,
   assert: (assertFn: ScenarioAssertStep<TSchema, TCommandContext, TVars>["assert"]) =>
     assert<TSchema, TCommandContext, TVars>(assertFn),
 });
@@ -580,6 +719,38 @@ const resolveMountRoute = (fragment: ScenarioFragment): string | undefined => {
   return undefined;
 };
 
+const resolveScenarioOutboxUrl = (source: ScenarioOutboxSourceConfig, baseUrl: string): string => {
+  if (typeof source.outboxUrl === "function") {
+    return source.outboxUrl({ baseUrl });
+  }
+  return source.outboxUrl ?? `${baseUrl}/_internal/outbox`;
+};
+
+const waitForScenarioStore = async (
+  store: ReadableAtom<LofiQueryState<unknown>>,
+  predicate: (state: LofiQueryState<unknown>) => boolean,
+  timeoutMs = 1000,
+): Promise<void> => {
+  const start = Date.now();
+  while (!predicate(store.get())) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error("Timed out waiting for scenario store.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+};
+
+const getScenarioReactiveStore = <TSchema extends AnySchema, TCommandContext>(
+  client: ScenarioClient<TSchema, TCommandContext>,
+  name: string,
+): ReadableAtom<LofiQueryState<unknown>> => {
+  const store = client.stores.reactive?.[name];
+  if (!store) {
+    throw new Error(`Unknown scenario store: ${client.name}.${name}`);
+  }
+  return store;
+};
+
 const resolveCommandTarget = <TCommandContext = unknown>(
   commandName: string,
   commands: ReadonlyArray<LofiSubmitCommandDefinition<unknown, TCommandContext>>,
@@ -638,6 +809,7 @@ export const runScenario = async <
   }
 
   const shouldStartServer = typeof scenario.server.port === "number";
+  const cleanupCallbacks: Array<() => void> = [];
   const baseUrlOverride = scenario.server.baseUrl;
   let fetcher: typeof fetch = createServerFetch(fragment);
   let baseUrl = baseUrlOverride ?? "http://lofi-scenario.test";
@@ -666,6 +838,12 @@ export const runScenario = async <
     lastSubmit: {},
     lastSync: {},
     cleanup: async () => {
+      for (const cleanup of cleanupCallbacks.splice(0).reverse()) {
+        cleanup();
+      }
+      for (const client of Object.values(context.clients)) {
+        client.runtime.stop();
+      }
       if (closeServer) {
         await closeServer();
       }
@@ -681,6 +859,7 @@ export const runScenario = async <
     const clientCommands = Array.from(scenario.clientCommands) as Array<
       LofiSubmitCommandDefinition<unknown, TCommandContext>
     >;
+    const schema = scenario.server.schema;
 
     for (const [name, clientConfig] of Object.entries(scenario.clients)) {
       const dbName = `lofi-scenario-${scenario.name}-${name}-${Math.random().toString(16).slice(2)}`;
@@ -690,7 +869,6 @@ export const runScenario = async <
             createClientContext(name)
         : undefined;
       const adapterConfig = clientConfig.adapter;
-      const schema = scenario.server.schema;
 
       const adapters: ScenarioClientAdapters<TCommandContext> = (() => {
         if (!adapterConfig || adapterConfig.type === "indexeddb") {
@@ -775,6 +953,18 @@ export const runScenario = async <
         adapter: adapters.adapter,
         fetch: fetcher,
       });
+      const runtimeSources = (clientConfig.sources ?? [{ id: "default" }]).map((source) => ({
+        id: source.id,
+        outboxUrl: resolveScenarioOutboxUrl(source, baseUrl),
+        cursorKey: source.cursorKey,
+        pollIntervalMs: source.pollIntervalMs,
+      }));
+      const runtime = createLofiRuntime({
+        endpointName: clientConfig.endpointName,
+        adapter: adapters.adapter,
+        sources: runtimeSources,
+        fetch: fetcher,
+      });
 
       const queryAdapter = adapters.stackedAdapter ?? adapters.baseAdapter;
 
@@ -784,6 +974,7 @@ export const runScenario = async <
         adapter: adapters.adapter,
         submit,
         sync,
+        runtime,
         query: queryAdapter.createQueryEngine(schema),
         baseQuery: adapters.baseAdapter.createQueryEngine(schema),
         overlayQuery: adapters.overlayAdapter
@@ -797,7 +988,9 @@ export const runScenario = async <
         stores: {
           base: adapters.baseStore,
           overlay: adapters.overlayStore,
+          reactive: {},
         },
+        storeProbes: {},
         overlayManager: adapters.overlayManager,
       };
     }
@@ -845,7 +1038,7 @@ export const runScenario = async <
       }
 
       if (step.type === "sync") {
-        context.lastSync[step.client] = await client.sync.syncOnce();
+        context.lastSync[step.client] = await client.runtime.syncOnce(step.sourceId);
         continue;
       }
 
@@ -854,6 +1047,55 @@ export const runScenario = async <
         if (step.storeAs !== undefined) {
           context.vars[step.storeAs] = result as TVars[keyof TVars];
         }
+        continue;
+      }
+
+      if (step.type === "createStore") {
+        const storeOptions = step.map
+          ? {
+              initialData: step.initialData,
+              map: (rows: unknown) => step.map?.(rows, context),
+            }
+          : { initialData: step.initialData };
+        const store = createLofiQueryStore(
+          client.runtime,
+          schema,
+          step.table as keyof TSchema["tables"] & string,
+          step.query as (
+            builder: LofiFindBuilder<TSchema, keyof TSchema["tables"] & string>,
+          ) => unknown,
+          storeOptions as never,
+        );
+        const values: LofiQueryState<unknown>[] = [];
+        const unsubscribe = store.subscribe((value) => values.push(value));
+        cleanupCallbacks.push(unsubscribe);
+        client.stores.reactive ??= {};
+        client.stores.reactive[step.name] = store;
+        client.storeProbes[step.name] = { values, unsubscribe };
+        continue;
+      }
+
+      if (step.type === "readStore") {
+        const store = getScenarioReactiveStore(client, step.name);
+        context.vars[step.storeAs] = store.get().data as TVars[keyof TVars];
+        continue;
+      }
+
+      if (step.type === "waitForStore") {
+        await waitForScenarioStore(
+          getScenarioReactiveStore(client, step.name),
+          step.predicate,
+          step.timeoutMs,
+        );
+        continue;
+      }
+
+      if (step.type === "assertStoreEmissions") {
+        const probe = client.storeProbes[step.name];
+        if (!probe) {
+          throw new Error(`Unknown scenario store probe: ${client.name}.${step.name}`);
+        }
+        await step.assert(probe.values);
         continue;
       }
     }
