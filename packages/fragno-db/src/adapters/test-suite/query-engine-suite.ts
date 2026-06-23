@@ -1,7 +1,11 @@
 import { describe, expect, it, assert } from "vitest";
 
+import superjson, { type SuperJSONResult } from "superjson";
+
 import { DatabaseConstraintError } from "../../errors";
 import { internalSchema } from "../../fragments/internal-fragment";
+import { getOutboxStateForAdapter } from "../../internal/outbox-state";
+import type { OutboxPayload } from "../../outbox/outbox";
 import { Cursor } from "../../query/cursor";
 import {
   createHandlerTxBuilder,
@@ -325,6 +329,45 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
         }
       },
     );
+
+    it("writes outbox payloads with materialized uow.now() values", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const outboxState = getOutboxStateForAdapter(adapter);
+        outboxState.config.enabled = true;
+        outboxState.enabledSchemaKeys.add(namespace);
+
+        const create = createSuiteUnitOfWork(adapter, "create-outbox-now-event");
+        const uowId = create.idempotencyKey;
+        create.create("events", {
+          id: "outbox-now-event",
+          name: "Outbox Now",
+          created_at: create.now(),
+          happened_on: new Date("2026-01-01T00:00:00.000Z"),
+          payload: { ok: true },
+          big_score: 1n,
+        });
+        assert((await create.executeMutations()).success);
+
+        const [entries] = await adapter
+          .createUnitOfWork(internalSchema, null, "read-outbox-now-entry")
+          .find("fragno_db_outbox", (b) =>
+            b.whereIndex("idx_outbox_uow", (eb) => eb("uowId", "=", uowId)),
+          )
+          .executeRetrieve();
+
+        expect(entries).toHaveLength(1);
+        const payload = superjson.deserialize(
+          entries[0].payload as SuperJSONResult,
+        ) as OutboxPayload;
+        const mutation = payload.mutations[0];
+        assert(mutation.op === "create");
+        expect(mutation.values["created_at"]).toBeInstanceOf(Date);
+        expect(mutation.values["created_at"]).not.toMatchObject({ tag: "db-now" });
+      } finally {
+        await close?.();
+      }
+    });
 
     it("fails a UOW when check() sees a changed version and rolls back following mutations", async () => {
       const { adapter, close } = await createContext();

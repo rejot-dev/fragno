@@ -1,4 +1,5 @@
 import { internalSchema } from "../fragments/internal-fragment.schema";
+import { getDbNowOffsetMs, isDbNow } from "../query/db-now";
 import type { MutationOperation } from "../query/unit-of-work/unit-of-work";
 import type { AnySchema, AnyTable } from "../schema/create";
 import { FragnoId, FragnoReference, getTableForeignKey } from "../schema/create";
@@ -88,16 +89,53 @@ export function buildOutboxPlan(operations: MutationOperation<AnySchema>[]): Out
   return { drafts, lookups };
 }
 
-export function finalizeOutboxPayload(plan: OutboxPlan, transactionVersion: bigint): OutboxPayload {
+export function finalizeOutboxPayload(
+  plan: OutboxPlan,
+  transactionVersion: bigint,
+  options: { now: Date },
+): OutboxPayload {
   const mutations: OutboxMutation[] = plan.drafts.map((draft, index) => {
     const versionstamp = versionstampToHex(encodeVersionstamp(transactionVersion, index));
-    return { ...draft, versionstamp };
+    const materialized = materializeOutboxMutationDbNow(draft, options.now);
+    return { ...materialized, versionstamp };
   });
 
   return {
     version: 1,
     mutations,
   };
+}
+
+function materializeOutboxMutationDbNow(
+  mutation: OutboxMutationDraft,
+  now: Date,
+): OutboxMutationDraft {
+  if (mutation.op === "create") {
+    return { ...mutation, values: materializeOutboxDbNowValues(mutation.values, now) };
+  }
+
+  if (mutation.op === "update") {
+    return { ...mutation, set: materializeOutboxDbNowValues(mutation.set, now) };
+  }
+
+  return mutation;
+}
+
+function materializeOutboxDbNowValues(
+  values: Record<string, unknown>,
+  now: Date,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(values).map(([key, value]) => [key, materializeOutboxDbNowValue(value, now)]),
+  );
+}
+
+function materializeOutboxDbNowValue(value: unknown, now: Date): unknown {
+  if (isDbNow(value)) {
+    return new Date(now.getTime() + getDbNowOffsetMs(value));
+  }
+
+  return value;
 }
 
 function encodeOutboxValues(options: {

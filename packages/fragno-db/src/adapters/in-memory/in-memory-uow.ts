@@ -1104,7 +1104,7 @@ const reserveOutboxVersion = (
   store: InMemoryStore,
   options: ResolvedInMemoryAdapterOptions,
   resolverFactory?: ResolverFactory,
-): { version: bigint; rollback: () => void } => {
+): { version: bigint; now: Date; rollback: () => void } => {
   const resolver = getResolver(internalSchema, null, resolverFactory);
   const namespaceStore = getNamespaceStore(store, internalSchema, null, resolver);
   const settingsTable = internalSchema.tables[SETTINGS_TABLE_NAME];
@@ -1143,7 +1143,7 @@ const reserveOutboxVersion = (
       set: { value: next.toString() },
     };
     const rollback = updateRow(updateOp, namespaceStore, tableStore, options, resolver);
-    return { version: next, rollback: rollback ?? (() => {}) };
+    return { version: next, now: options.clock.now(), rollback: rollback ?? (() => {}) };
   }
 
   const createOp: Extract<MutationOperation<AnySchema>, { type: "create" }> = {
@@ -1168,7 +1168,7 @@ const reserveOutboxVersion = (
     tableStore.nextInternalId = previousInternalId;
   };
 
-  return { version: 0n, rollback };
+  return { version: 0n, now: options.clock.now(), rollback };
 };
 
 const resolveOutboxRefMap = (
@@ -1423,13 +1423,12 @@ export const createInMemoryUowExecutor = (
       : [];
     const outboxPlan = outboxOperations.length > 0 ? buildOutboxPlan(outboxOperations) : null;
     const shouldWriteOutbox = outboxEnabled && outboxPlan !== null && outboxPlan.drafts.length > 0;
-    let outboxVersion: bigint | null = null;
+    let outboxReservation: ReturnType<typeof reserveOutboxVersion> | null = null;
 
     try {
       if (shouldWriteOutbox) {
-        const reservation = reserveOutboxVersion(store, options, resolverFactory);
-        outboxVersion = reservation.version;
-        rollbackActions.push(reservation.rollback);
+        outboxReservation = reserveOutboxVersion(store, options, resolverFactory);
+        rollbackActions.push(outboxReservation.rollback);
       }
 
       for (const compiled of mutationBatch) {
@@ -1532,7 +1531,7 @@ export const createInMemoryUowExecutor = (
         throw new Error(`Unsupported in-memory mutation "${operation.type}".`);
       }
 
-      if (shouldWriteOutbox && outboxPlan && outboxVersion !== null) {
+      if (shouldWriteOutbox && outboxPlan && outboxReservation !== null) {
         const uowId = mutationBatch[0]?.uowId;
         if (!uowId) {
           throw new Error("Outbox mutation batch is missing uowId.");
@@ -1544,9 +1543,11 @@ export const createInMemoryUowExecutor = (
           resolverFactory,
           schemaByNamespace,
         );
-        const payload = finalizeOutboxPayload(outboxPlan, outboxVersion);
+        const payload = finalizeOutboxPayload(outboxPlan, outboxReservation.version, {
+          now: outboxReservation.now,
+        });
         const payloadSerialized = superjson.serialize(payload);
-        const versionstamp = versionstampToHex(encodeVersionstamp(outboxVersion, 0));
+        const versionstamp = versionstampToHex(encodeVersionstamp(outboxReservation.version, 0));
         rollbackActions.push(
           ...insertOutboxMutationRows(store, options, resolverFactory, {
             entryVersionstamp: versionstamp,
