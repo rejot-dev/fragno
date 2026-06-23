@@ -24,6 +24,7 @@ const outboxSchema = schema("outbox", (s) => {
       return t
         .addColumn("id", idColumn())
         .addColumn("email", column("string"))
+        .addColumn("createdAt", column("timestamp").nullable())
         .createIndex("idx_users_email", ["email"], { unique: true });
     })
     .addTable("posts", (t) => {
@@ -188,6 +189,17 @@ async function createUser(fragment: AnyFragnoInstantiatedDatabaseFragment, email
   });
 }
 
+async function createUserWithDbNow(fragment: AnyFragnoInstantiatedDatabaseFragment, email: string) {
+  return fragment.inContext(async function (this: DatabaseRequestContext) {
+    await this.handlerTx()
+      .mutate(({ forSchema }) => {
+        const uow = forSchema(outboxSchema);
+        return uow.create("users", { email, createdAt: uow.now() });
+      })
+      .execute();
+  });
+}
+
 async function createPost(
   fragment: AnyFragnoInstantiatedDatabaseFragment,
   title: string,
@@ -265,6 +277,25 @@ describe("Fragno DB Outbox", () => {
 
     const afterInternal = await listOutbox(internalFragment);
     expect(afterInternal).toHaveLength(2);
+
+    await cleanup();
+  });
+
+  it("materializes db-now values before serializing outbox payloads", async () => {
+    const { fragment, internalFragment, cleanup } = await buildOutboxTest({
+      type: "kysely-sqlite",
+      outboxEnabled: true,
+    });
+
+    await createUserWithDbNow(fragment, "db-now@example.com");
+
+    const entries = await listOutbox(internalFragment);
+    expect(entries).toHaveLength(1);
+    const payload = superjson.deserialize(entries[0].payload as SuperJSONResult) as OutboxPayload;
+    const mutation = payload.mutations[0];
+    assert(mutation.op === "create");
+    expect(mutation.values["createdAt"]).toBeInstanceOf(Date);
+    expect(mutation.values["createdAt"]).not.toMatchObject({ tag: "db-now" });
 
     await cleanup();
   });

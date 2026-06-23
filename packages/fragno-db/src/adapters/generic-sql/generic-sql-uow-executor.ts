@@ -94,10 +94,10 @@ export async function executeMutation(
 
   try {
     await adapter.transaction(async (tx) => {
-      let outboxVersion: bigint | null = null;
+      let outboxReservation: ReservedOutboxVersion | null = null;
 
       if (shouldWriteOutbox) {
-        outboxVersion = await reserveOutboxVersion(tx, driverConfig, options.dialect);
+        outboxReservation = await reserveOutboxVersion(tx, driverConfig, options.dialect);
       }
 
       for (const compiledMutation of mutationBatch) {
@@ -145,7 +145,7 @@ export async function executeMutation(
         }
       }
 
-      if (shouldWriteOutbox && outboxPlan && outboxVersion !== null) {
+      if (shouldWriteOutbox && outboxPlan && outboxReservation !== null) {
         const uowId = mutationBatch[0]?.uowId;
         if (!uowId) {
           throw new Error("Outbox mutation batch is missing uowId.");
@@ -157,9 +157,11 @@ export async function executeMutation(
           outboxPlan.lookups,
           namingStrategy,
         );
-        const payload = finalizeOutboxPayload(outboxPlan, outboxVersion);
+        const payload = finalizeOutboxPayload(outboxPlan, outboxReservation.version, {
+          now: outboxReservation.now,
+        });
         const payloadSerialized = superjson.serialize(payload);
-        const versionstamp = versionstampToHex(encodeVersionstamp(outboxVersion, 0));
+        const versionstamp = versionstampToHex(encodeVersionstamp(outboxReservation.version, 0));
 
         await insertOutboxMutationRows(tx, driverConfig, {
           entryVersionstamp: versionstamp,
@@ -224,11 +226,16 @@ export function createExecutor(
   };
 }
 
+type ReservedOutboxVersion = {
+  version: bigint;
+  now: Date;
+};
+
 async function reserveOutboxVersion(
   tx: SqlDriverAdapter,
   driverConfig: DriverConfig,
   dialect: Dialect,
-): Promise<bigint> {
+): Promise<ReservedOutboxVersion> {
   const key = `${SETTINGS_NAMESPACE}.outbox_version`;
   const id = createId();
 
@@ -241,19 +248,18 @@ async function reserveOutboxVersion(
               values (${id}, ${key}, '0')
               on conflict (key) do update
                 set value = (fragno_db_settings.value::bigint + 1)::text
-              returning value;
+              returning value, floor(extract(epoch from CURRENT_TIMESTAMP) * 1000)::bigint as "nowMs";
             `
           : sql`
               insert into fragno_db_settings (id, key, value)
               values (${id}, ${key}, '0')
               on conflict (key) do update
                 set value = cast(fragno_db_settings.value as integer) + 1
-              returning value;
+              returning value, cast((julianday('now') - 2440587.5) * 86400000 as integer) as nowMs;
             `;
 
       const result = await tx.executeQuery(query.compile(dialect));
-      const value = result.rows[0]?.["value"];
-      return parseOutboxVersionValue(value);
+      return parseReservedOutboxVersion(result.rows[0]);
     }
     case "update-returning": {
       const query =
@@ -262,21 +268,20 @@ async function reserveOutboxVersion(
               update fragno_db_settings
               set value = (fragno_db_settings.value::bigint + 1)::text
               where key = ${key}
-              returning value;
+              returning value, floor(extract(epoch from CURRENT_TIMESTAMP) * 1000)::bigint as "nowMs";
             `
           : sql`
               update fragno_db_settings
               set value = cast(fragno_db_settings.value as integer) + 1
               where key = ${key}
-              returning value;
+              returning value, cast((julianday('now') - 2440587.5) * 86400000 as integer) as nowMs;
             `;
 
       const result = await tx.executeQuery(query.compile(dialect));
-      const value = result.rows[0]?.["value"];
-      if (value === undefined) {
+      if (!result.rows[0] || result.rows[0]["value"] === undefined) {
         throw new Error("Outbox version row was not found for update-returning strategy.");
       }
-      return parseOutboxVersionValue(value);
+      return parseReservedOutboxVersion(result.rows[0]);
     }
     case "insert-on-duplicate-last-insert-id": {
       const insertQuery = sql`
@@ -287,12 +292,30 @@ async function reserveOutboxVersion(
 
       await tx.executeQuery(insertQuery.compile(dialect));
 
-      const selectQuery = sql`select LAST_INSERT_ID() as value;`;
+      const selectQuery = sql`
+        select LAST_INSERT_ID() as value,
+          cast(unix_timestamp(current_timestamp(3)) * 1000 as unsigned) as nowMs;
+      `;
       const result = await tx.executeQuery(selectQuery.compile(dialect));
-      const value = result.rows[0]?.["value"];
-      return parseOutboxVersionValue(value);
+      return parseReservedOutboxVersion(result.rows[0]);
     }
   }
+}
+
+function parseReservedOutboxVersion(
+  row: Record<string, unknown> | undefined,
+): ReservedOutboxVersion {
+  const value = row?.["value"];
+  const nowMs = row?.["nowMs"] ?? row?.["nowms"];
+
+  if (typeof nowMs !== "number" && typeof nowMs !== "bigint" && typeof nowMs !== "string") {
+    throw new Error(`Invalid outbox reservation timestamp: ${String(nowMs)}`);
+  }
+
+  return {
+    version: parseOutboxVersionValue(value),
+    now: new Date(Number(nowMs)),
+  };
 }
 
 async function resolveOutboxRefMap(

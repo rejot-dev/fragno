@@ -33,6 +33,7 @@ const appSchema = schema("app", (s) => {
         .addColumn("id", idColumn())
         .addColumn("email", column("string"))
         .addColumn("age", column("integer"))
+        .addColumn("createdAt", column("timestamp").nullable())
         .createIndex("idx_email", ["email"], { unique: true })
         .createIndex("idx_age", ["age"]),
     )
@@ -208,6 +209,51 @@ describe("outbox sync integration", () => {
       );
       expect(joined).toHaveLength(1);
       assert(joined[0].author?.email === "beta@example.com");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("stores materialized outbox timestamps instead of db-now sentinels", async () => {
+    const { db, internalFragment, cleanup } = await buildOutboxContext();
+
+    try {
+      {
+        const uow = db.createUnitOfWork("seed-user-timestamp");
+        uow.create("users", {
+          email: "timestamp@example.com",
+          age: 50,
+          createdAt: uow.now(),
+        });
+        const { success } = await uow.executeMutations();
+        if (!success) {
+          throw new Error("Failed to create timestamp user");
+        }
+      }
+
+      const expectedEntries = await listOutbox(internalFragment);
+      const adapter = new IndexedDbAdapter({
+        dbName: createDbName(),
+        endpointName: "app",
+        schemas: [{ schema: appSchema }],
+      });
+      const client = new LofiClient({
+        outboxUrl: "https://example.com/outbox",
+        endpointName: "app",
+        adapter,
+        fetch: (async () => new Response(JSON.stringify(expectedEntries))) as typeof fetch,
+      });
+
+      await client.syncOnce();
+
+      const query = adapter.createQueryEngine(appSchema);
+      const user = await query.find("users", (b) =>
+        b.whereIndex("idx_email", (eb) => eb("email", "=", "timestamp@example.com")),
+      );
+
+      expect(user).toHaveLength(1);
+      expect(user[0].createdAt).toBeInstanceOf(Date);
+      expect(user[0].createdAt).not.toMatchObject({ tag: "db-now" });
     } finally {
       await cleanup();
     }
