@@ -1,7 +1,8 @@
 import { Link, useLoaderData, useOutletContext, useSearchParams } from "react-router";
 
 import type { Route } from "./+types/scripts";
-import { loadAutomationScriptSource } from "./data";
+import { loadAutomationScriptSource } from "./data.server";
+import { automationScopeFromRouteParams, automationScopeTabPath } from "./scope";
 import type { AutomationLayoutContext } from "./shared";
 import { AutomationNotice } from "./shared";
 
@@ -26,10 +27,6 @@ const compareScriptsWithRouterFirst = <TScript extends { path: string; key: stri
 };
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
   const url = new URL(request.url);
   const selectedScriptId = url.searchParams.get("script")?.trim() ?? "";
 
@@ -43,7 +40,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     selectedScriptSource: await loadAutomationScriptSource({
       request,
       context,
-      orgId: params.orgId,
+      scope: automationScopeFromRouteParams(params),
       scriptId: selectedScriptId,
     }),
   };
@@ -73,13 +70,13 @@ function ScriptSourcePanel({
 }
 
 export default function BackofficeOrganisationAutomationScripts() {
-  const { orgId, scripts, scriptsError } = useOutletContext<AutomationLayoutContext>();
+  const { selectedScope, scripts, scriptsError } = useOutletContext<AutomationLayoutContext>();
   const loaderData = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
   const selectedScriptId = searchParams.get("script")?.trim() ?? "";
   const selectedScript = scripts.find((script) => script.id === selectedScriptId) ?? null;
   const isDetailVisible = Boolean(selectedScript);
-  const basePath = `/backoffice/automations/${orgId}/scripts`;
+  const basePath = automationScopeTabPath(selectedScope, "scripts");
   const hasScriptLoadError = Boolean(scriptsError);
   const scriptSections = [
     {

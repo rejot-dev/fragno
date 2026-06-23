@@ -22,7 +22,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  return redirect(`/backoffice/automations/${orgId}/scripts`);
+  return redirect(`/backoffice/automations/org/${orgId}/scripts`);
 }
 
 export default function BackofficeAutomationsIndex() {

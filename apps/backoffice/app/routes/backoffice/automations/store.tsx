@@ -1,8 +1,11 @@
 import { Form, useActionData, useNavigation, useOutletContext } from "react-router";
 
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
+
 import type { Route } from "./+types/store";
-import { deleteAutomationStoreEntry } from "./data";
+import { deleteAutomationStoreEntry } from "./data.server";
 import { useLofiAutomationStoreEntries } from "./lofi-store";
+import { automationScopeFromRouteParams } from "./scope";
 import type { AutomationLayoutContext } from "./shared";
 import { formatTimestamp } from "./shared";
 
@@ -13,10 +16,6 @@ type StoreActionData = {
 };
 
 export async function action({ request, params, context }: Route.ActionArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
   const formData = await request.formData();
   const intent = String(formData.get("intent") ?? "").trim();
   const key = String(formData.get("key") ?? "").trim();
@@ -35,7 +34,10 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     } satisfies StoreActionData;
   }
 
-  const result = await deleteAutomationStoreEntry(request, context, params.orgId, key);
+  const scope = automationScopeFromRouteParams(params);
+  await requireBackofficeContext(request, context, scope);
+
+  const result = await deleteAutomationStoreEntry(request, context, scope, key);
 
   if (!result.ok) {
     return {

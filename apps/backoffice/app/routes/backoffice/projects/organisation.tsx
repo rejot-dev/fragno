@@ -14,13 +14,13 @@ import { BackofficePageHeader } from "@/components/backoffice";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
+import { toExternalId } from "../automations/data";
 import {
   archiveAutomationProject,
   createAutomationProject,
   fetchAutomationProjects,
-  toExternalId,
   updateAutomationProject,
-} from "../automations/data";
+} from "../automations/data.server";
 import { formatTimestamp } from "../automations/shared";
 import {
   getRouteErrorMessage,

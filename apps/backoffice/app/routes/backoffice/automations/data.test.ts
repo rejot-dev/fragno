@@ -17,7 +17,7 @@ vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
   requireBackofficeContext: requireBackofficeContextMock,
 }));
 
-import { loadAutomationScriptSource, loadAutomationWorkspaceData } from "./data";
+import { loadAutomationScriptSource, loadAutomationWorkspaceData } from "./data.server";
 
 const mockContext = { get: () => ({ runtime: { objects: {} }, env: {} }) } as never;
 const request = new Request("https://backoffice.test/automations");
