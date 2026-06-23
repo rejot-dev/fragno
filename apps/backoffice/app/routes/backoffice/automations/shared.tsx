@@ -6,6 +6,11 @@ import type { AuthMeData } from "@/fragno/auth/auth-client";
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
 
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "../route-errors";
+import {
+  automationScopeTabPath,
+  type AutomationScopeOption,
+  type AutomationUiScope,
+} from "./scope";
 
 type BackofficeOrganisation = AuthMeData["organizations"][number]["organization"];
 
@@ -38,6 +43,9 @@ export type AutomationStoreItem = {
 export type AutomationLayoutContext = {
   orgId: string;
   organisation: BackofficeOrganisation;
+  selectedScope: AutomationUiScope;
+  scopeOptions: AutomationScopeOption[];
+  projectsError: string | null;
   scripts: AutomationScriptItem[];
   storeEntries: AutomationStoreItem[];
   storePrefix: string;
@@ -69,47 +77,111 @@ export const formatTimestamp = (value?: string | Date | null) => {
   return `${month} ${day}, ${year}, ${hours}:${minutes} UTC`;
 };
 
-export function AutomationHeader({
-  orgId,
-  organisationName,
-}: {
-  orgId: string;
-  organisationName?: string | null;
-}) {
+export function AutomationHeader({ selectedScope }: { selectedScope: AutomationUiScope }) {
+  const scopeLabel = selectedScope.label;
+  const orgId =
+    selectedScope.kind === "org" || selectedScope.kind === "project" ? selectedScope.orgId : null;
+
   return (
     <BackofficePageHeader
       breadcrumbs={[
         { label: "Backoffice", to: "/backoffice" },
         { label: "Automations", to: "/backoffice/automations" },
-        { label: organisationName ?? orgId },
+        { label: scopeLabel },
       ]}
       eyebrow="Automations"
-      title={`Automations for ${organisationName ?? orgId}`}
-      description="Inspect system and workspace automation scripts and review store bindings for this organisation."
+      title={`Automations for ${scopeLabel}`}
+      description="Inspect system and workspace automation scripts and review store bindings for the selected scope."
       actions={
-        <Link
-          to={`/backoffice/organisations/${orgId}`}
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-        >
-          View organisation
-        </Link>
+        orgId ? (
+          <Link
+            to={`/backoffice/organisations/${orgId}`}
+            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+          >
+            View organisation
+          </Link>
+        ) : null
       }
     />
   );
 }
 
-export function AutomationTabs({ orgId, activeTab }: { orgId: string; activeTab: AutomationTab }) {
-  const basePath = `/backoffice/automations/${orgId}`;
+export function AutomationScopePicker({
+  selectedScope,
+  scopeOptions,
+  projectsError,
+}: {
+  selectedScope: AutomationUiScope;
+  scopeOptions: AutomationScopeOption[];
+  projectsError: string | null;
+}) {
+  const selectedId =
+    selectedScope.kind === "project"
+      ? `project:${selectedScope.projectId}`
+      : selectedScope.kind === "org"
+        ? `org:${selectedScope.orgId}`
+        : `user:${selectedScope.userId}`;
+
+  return (
+    <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">Scope</p>
+          <p className="mt-1 text-sm text-[var(--bo-muted)]">
+            Select which automation runtime to inspect.
+          </p>
+        </div>
+        {projectsError ? (
+          <p className="text-xs text-red-700 dark:text-red-200">{projectsError}</p>
+        ) : null}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {scopeOptions.map((option) => {
+          const isActive = option.id === selectedId;
+          return (
+            <Link
+              key={option.id}
+              to={option.to}
+              className={
+                isActive
+                  ? "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-left text-[var(--bo-accent-fg)]"
+                  : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-left text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+              }
+            >
+              <span className="block text-[10px] font-semibold tracking-[0.22em] uppercase">
+                {option.kind}
+              </span>
+              <span className="mt-1 block text-sm font-medium text-[var(--bo-fg)]">
+                {option.label}
+              </span>
+              <span className="mt-1 block text-xs text-[var(--bo-muted-2)]">
+                {option.description}
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+export function AutomationTabs({
+  selectedScope,
+  activeTab,
+}: {
+  selectedScope: AutomationUiScope;
+  activeTab: AutomationTab;
+}) {
   const tabs = [
     {
       id: "scripts" as const,
       label: "Scripts",
-      to: `${basePath}/scripts`,
+      to: automationScopeTabPath(selectedScope, "scripts"),
     },
     {
       id: "store" as const,
       label: "Store",
-      to: `${basePath}/store`,
+      to: automationScopeTabPath(selectedScope, "store"),
     },
   ];
 
@@ -140,7 +212,7 @@ export function AutomationErrorBoundary({
   params,
 }: {
   error: unknown;
-  params: { orgId?: string };
+  params: { orgId?: string; scopeId?: string; scopeKind?: string };
 }) {
   let statusCode = 500;
   let message = "An unexpected error occurred.";
@@ -159,7 +231,13 @@ export function AutomationErrorBoundary({
 
   return (
     <div className="space-y-4">
-      <AutomationHeader orgId={params.orgId ?? "organisation"} organisationName="Error" />
+      <AutomationHeader
+        selectedScope={{
+          kind: "org",
+          orgId: params.orgId ?? params.scopeId ?? "organisation",
+          label: "Error",
+        }}
+      />
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
         <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           {statusCode} · {statusText}

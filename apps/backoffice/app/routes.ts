@@ -35,11 +35,12 @@ export default [
         "automations/:orgId/claims/complete",
         "routes/backoffice/automations/claims-complete.tsx",
       ),
-      route("automations/:orgId", "routes/backoffice/automations/organisation-layout.tsx", [
-        index("routes/backoffice/automations/organisation-index.tsx"),
+      route("automations/:scopeKind/:scopeId", "routes/backoffice/automations/scope-layout.tsx", [
+        index("routes/backoffice/automations/scope-index.tsx"),
         route("scripts", "routes/backoffice/automations/scripts.tsx"),
         route("store", "routes/backoffice/automations/store.tsx"),
       ]),
+
       route("environments", "routes/backoffice/environments/index.tsx"),
       route("environments/workers", "routes/backoffice/environments/workers.tsx"),
       route("environments/cf-sandbox", "routes/backoffice/environments/cf-sandbox.tsx"),

@@ -44,7 +44,7 @@ export type AutomationsFileSystemResolver = (input: {
 
 type AutomationDurableObjectOwnerScope = Extract<
   BackofficeContextScope,
-  { kind: "org" | "project" }
+  { kind: "org" | "project" | "user" }
 >;
 
 type AutomationDurableObjectConfig = {
@@ -61,6 +61,10 @@ const automationConfigForScope = (
 
   if (scope?.kind === "project") {
     return { orgId: scope.orgId, ownerScope: scope };
+  }
+
+  if (scope?.kind === "user") {
+    return { orgId: `user:${scope.userId}`, ownerScope: scope };
   }
 
   return null;
@@ -228,7 +232,28 @@ export class InMemoryAutomationsObject implements AutomationsObject {
       return;
     }
 
-    const orgId = new URL(request.url).searchParams.get("orgId")?.trim();
+    const url = new URL(request.url);
+    const scopeKind = url.searchParams.get("scopeKind")?.trim();
+    const orgId = url.searchParams.get("orgId")?.trim();
+    const projectId = url.searchParams.get("projectId")?.trim();
+    const userId = url.searchParams.get("userId")?.trim();
+
+    if (scopeKind === "project" && orgId && projectId) {
+      await this.#ensureConfigured({
+        orgId,
+        ownerScope: { kind: "project", orgId, projectId },
+      });
+      return;
+    }
+
+    if (scopeKind === "user" && userId) {
+      await this.#ensureConfigured({
+        orgId: `user:${userId}`,
+        ownerScope: { kind: "user", userId },
+      });
+      return;
+    }
+
     if (!orgId) {
       return;
     }
