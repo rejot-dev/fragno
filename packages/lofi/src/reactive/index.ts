@@ -1,9 +1,10 @@
-export { createLofiRuntime } from "./runtime";
+export { createLofiRuntime, isLofiRuntimeBootstrapped } from "./runtime";
 export type {
   LofiRuntime,
   LofiRuntimeOptions,
   LofiRuntimeSource,
   LofiRuntimeStatus,
+  LofiRuntimeStatusValue,
   LofiRuntimeSyncResult,
 } from "./runtime";
 export { createLofiQueryStore } from "./query-store";

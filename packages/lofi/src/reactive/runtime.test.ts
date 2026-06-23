@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, assert } from "vitest";
 
 import { InMemoryLofiAdapter } from "../adapters/in-memory/adapter";
-import { createLofiRuntime } from "./runtime";
+import { isLofiRuntimeBootstrapped, createLofiRuntime } from "./runtime";
 import { createOutboxEntry, createUserMutation, reactiveTestSchema, waitFor } from "./test-utils";
 
 const createJsonFetcher = (entriesByUrl: Record<string, unknown[]>): typeof fetch =>
@@ -69,6 +69,7 @@ describe("createLofiRuntime", () => {
       sources: [{ id: "org-a", outboxUrl: "https://example.com/org-a/outbox" }],
       fetch: fetcher as unknown as typeof fetch,
       pollIntervalMs: 5,
+      bootstrap: false,
     });
 
     runtime.start();
@@ -81,6 +82,53 @@ describe("createLofiRuntime", () => {
     assert(runtime.$status.get().lastError === undefined);
     assert(runtime.$status.get().sources["org-a"]?.lastSyncAt !== undefined);
     runtime.stop();
+  });
+
+  it("keeps bootstrap status while the initial sync is in flight", async () => {
+    const adapter = new InMemoryLofiAdapter({
+      endpointName: "app",
+      schemas: [reactiveTestSchema],
+    });
+    let resolveBootstrap: (response: Response) => void = () => undefined;
+    const bootstrapResponse = new Promise<Response>((resolve) => {
+      resolveBootstrap = resolve;
+    });
+    const runtime = createLofiRuntime({
+      endpointName: "app",
+      adapter,
+      sources: [{ id: "org-a", outboxUrl: "https://example.com/org-a/outbox" }],
+      fetch: (async () => bootstrapResponse) as typeof fetch,
+    });
+
+    const bootstrapPromise = runtime.bootstrap();
+    await waitFor(() => runtime.$status.get().status === "bootstrapping");
+    assert(runtime.$status.get().sources["org-a"]?.status === "bootstrapping");
+
+    resolveBootstrap(new Response(JSON.stringify([]), { status: 200 }));
+    await bootstrapPromise;
+    assert(runtime.$status.get().sources["org-a"]?.status === "bootstrapped");
+  });
+
+  it("skips bootstrap fetch when the persisted bootstrap marker is complete", async () => {
+    const adapter = new InMemoryLofiAdapter({
+      endpointName: "app",
+      schemas: [reactiveTestSchema],
+    });
+    await adapter.setMeta("app:org-a:outbox", "001");
+    await adapter.setMeta("app:org-a:outbox::bootstrap", "complete");
+    const fetcher = vi.fn(async () => new Response(JSON.stringify([]), { status: 200 }));
+    const runtime = createLofiRuntime({
+      endpointName: "app",
+      adapter,
+      sources: [{ id: "org-a", outboxUrl: "https://example.com/org-a/outbox" }],
+      fetch: fetcher as unknown as typeof fetch,
+    });
+
+    const result = await runtime.bootstrap();
+
+    assert(result.sources["org-a"]?.lastVersionstamp === "001");
+    assert(isLofiRuntimeBootstrapped(runtime.$status.get()));
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("uses independent cursor keys for multiple sources", async () => {

@@ -3,7 +3,7 @@ import { atom, onMount, type ReadableAtom } from "nanostores";
 
 import type { LofiQueryFindResult } from "../query-types";
 import type { LofiFindBuilder } from "../query/read-plan";
-import type { LofiRuntime } from "./runtime";
+import { isLofiRuntimeBootstrapped, type LofiRuntime } from "./runtime";
 
 export type LofiQueryState<TData> = {
   data: TData;
@@ -131,14 +131,41 @@ export function createLofiQueryStore<
   queryStore.refresh = runQuery;
 
   onMount($store, () => {
+    let mounted = true;
     const releaseRuntime = runtime.retain();
     const unsubscribeRevision = runtime.$revision.listen(() => {
-      void runQuery();
+      if (isLofiRuntimeBootstrapped(runtime.$status.get())) {
+        void runQuery();
+      }
     });
 
-    void runQuery();
+    $store.set({
+      ...$store.get(),
+      loading: true,
+      error: null,
+    });
+
+    void runtime
+      .whenBootstrapped()
+      .then(() => {
+        if (mounted) {
+          void runQuery();
+        }
+      })
+      .catch((error) => {
+        if (!mounted) {
+          return;
+        }
+
+        $store.set({
+          ...$store.get(),
+          loading: false,
+          error,
+        });
+      });
 
     return () => {
+      mounted = false;
       unsubscribeRevision();
       releaseRuntime();
     };

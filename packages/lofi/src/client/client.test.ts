@@ -317,6 +317,7 @@ describe("LofiClient", () => {
 
     await expect(client.syncOnce({ signal: controller.signal })).resolves.toEqual({
       appliedEntries: 0,
+      aborted: true,
     });
     expect(fetcher).not.toHaveBeenCalled();
   });
@@ -361,6 +362,6 @@ describe("LofiClient", () => {
     const promise = client.syncOnce({ signal: controller.signal });
     controller.abort();
 
-    await expect(promise).resolves.toEqual({ appliedEntries: 0 });
+    await expect(promise).resolves.toEqual({ appliedEntries: 0, aborted: true });
   });
 });

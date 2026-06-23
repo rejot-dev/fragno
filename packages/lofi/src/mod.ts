@@ -27,7 +27,12 @@ export { LofiOverlayManager } from "./optimistic/overlay-manager";
 export { LofiSubmitClient } from "./submit/client";
 export { applyOutboxEntries, rebaseSubmitQueue } from "./submit/rebase";
 export { createLocalHandlerTx, runLocalHandlerCommand } from "./submit/local-handler-tx";
-export { createLofiQueryStore, createLofiRuntime, createLofiRuntimeRegistry } from "./reactive";
+export {
+  createLofiQueryStore,
+  createLofiRuntime,
+  createLofiRuntimeRegistry,
+  isLofiRuntimeBootstrapped,
+} from "./reactive";
 export type {
   LofiQueryState,
   LofiQueryStore,
@@ -38,5 +43,6 @@ export type {
   LofiRuntimeRegistryOptions,
   LofiRuntimeSource,
   LofiRuntimeStatus,
+  LofiRuntimeStatusValue,
   LofiRuntimeSyncResult,
 } from "./reactive";
