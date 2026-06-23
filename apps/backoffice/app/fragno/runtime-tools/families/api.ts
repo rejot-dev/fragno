@@ -1,3 +1,8 @@
+import {
+  createWebhookEndpointInputSchema as apiFragmentCreateWebhookEndpointInputSchema,
+  updateWebhookEndpointInputSchema as apiFragmentUpdateWebhookEndpointInputSchema,
+  webhookEndpointOutputSchema,
+} from "@fragno-dev/api-fragment/types";
 import { z } from "zod";
 
 import {
@@ -91,6 +96,18 @@ const requestOutputSchema = z.object({
   body: z.unknown().nullable(),
 });
 
+const webhookEndpointSchema = webhookEndpointOutputSchema.extend({
+  publicUrl: z.string().url().nullable(),
+});
+const webhookEndpointsOutputSchema = z.object({ endpoints: z.array(webhookEndpointSchema) });
+const webhookEndpointCreateInputSchema = apiFragmentCreateWebhookEndpointInputSchema.extend({
+  endpointId: z.string().trim().min(1),
+});
+const webhookEndpointUpdateInputSchema = apiFragmentUpdateWebhookEndpointInputSchema.extend({
+  endpointId: z.string().trim().min(1),
+});
+const endpointInputSchema = z.object({ endpointId: z.string().trim().min(1) });
+
 export type ApiConnection = z.infer<typeof connectionSchema>;
 export type ApiListConnectionsOutput = z.infer<typeof connectionsOutputSchema>;
 export type ApiAuthStatus = z.infer<typeof authStatusSchema>;
@@ -98,6 +115,16 @@ export type ApiSetTokenInput = Omit<z.infer<typeof setTokenInputSchema>, "slug">
 export type ApiOAuthStartInput = Omit<z.infer<typeof oauthStartInputSchema>, "slug">;
 export type ApiOAuthStartOutput = z.infer<typeof oauthStartOutputSchema>;
 export type ApiRequestOutput = z.infer<typeof requestOutputSchema>;
+export type ApiWebhookEndpoint = z.infer<typeof webhookEndpointSchema>;
+export type ApiWebhookEndpointsOutput = z.infer<typeof webhookEndpointsOutputSchema>;
+export type ApiWebhookEndpointInput = Omit<
+  z.infer<typeof webhookEndpointCreateInputSchema>,
+  "endpointId"
+>;
+export type ApiWebhookEndpointUpdateInput = Omit<
+  z.infer<typeof webhookEndpointUpdateInputSchema>,
+  "endpointId"
+>;
 export type { ApiRuntime } from "./api-runtime";
 
 type ApiToolContext = BackofficeToolContext<{ api?: ApiRuntime }>;
@@ -172,6 +199,17 @@ const renderRequest = (result: ApiRequestOutput) => {
   const body = typeof result.body === "string" ? result.body : JSON.stringify(result.body, null, 2);
   return [`${result.status} ${result.statusText}`, body].filter(Boolean).join("\n");
 };
+
+const renderWebhookEndpointRows = (endpoints: readonly ApiWebhookEndpoint[]) =>
+  renderTable(
+    ["endpoint", "name", "status", "public URL"],
+    endpoints.map((endpoint) => [endpoint.id, endpoint.name, endpoint.status, endpoint.publicUrl]),
+  );
+
+const renderWebhookEndpoints = (result: ApiWebhookEndpointsOutput) =>
+  result.endpoints.length
+    ? renderWebhookEndpointRows(result.endpoints)
+    : "No API webhook endpoints configured.";
 
 const parseScopes = (value: string | undefined) =>
   value
@@ -261,12 +299,37 @@ const parseRequest = defineCliArgsParser<z.input<typeof requestInputSchema>>("ap
   body: { option: "body" },
   timeoutMs: { option: "timeout-ms", kind: "integer" },
 });
+const parseEndpoint = defineCliArgsParser<{ endpointId: string }>("api.webhooks.endpoint", {
+  endpointId: { required: true, option: "endpoint" },
+});
+const parseWebhookCreate = defineCliArgsParser<z.input<typeof webhookEndpointCreateInputSchema>>(
+  "api.webhooks.create",
+  {
+    endpointId: { required: true, option: "endpoint" },
+    name: { required: true },
+    status: {},
+    deliveryIdentity: { required: true, option: "delivery-identity-json", kind: "json" },
+    auth: { required: true, option: "auth-json", kind: "json" },
+  },
+);
+const parseWebhookUpdate = defineCliArgsParser<z.input<typeof webhookEndpointUpdateInputSchema>>(
+  "api.webhooks.update",
+  {
+    endpointId: { required: true, option: "endpoint" },
+    name: {},
+    status: {},
+    deliveryIdentity: { option: "delivery-identity-json", kind: "json" },
+    auth: { option: "auth-json", kind: "json" },
+  },
+);
 
 const apiPermissions = {
   "connections.read": "Read API connection configuration and auth status.",
   "connections.create": "Create API connections and auth state.",
   "connections.delete": "Delete API connections and auth state.",
   "requests.execute": "Execute HTTP requests through configured API connections.",
+  "webhooks.read": "Read API webhook endpoint configuration.",
+  "webhooks.manage": "Create, update, and delete API webhook endpoints.",
 } as const;
 
 export const apiRuntimeTools = [
@@ -589,6 +652,222 @@ export const apiRuntimeTools = [
         parse: parseSlug,
         outputOptions: defaultOutput,
         format: textOrDataFormat(() => "Deleted API connection auth."),
+      },
+    },
+  }),
+  defineBackofficeRuntimeTool({
+    id: "api.webhooks.list",
+    namespace: "api",
+    name: "listWebhookEndpoints",
+    capabilityId: "api",
+    description: "List API webhook endpoints configured for the current scope.",
+    requiredPermissions: ["webhooks.read"],
+    inputSchema: z.object({}).optional().default({}),
+    outputSchema: webhookEndpointsOutputSchema,
+    execute: async (_input, context: ApiToolContext) =>
+      await getApiRuntime(context.runtimes.api).listWebhookEndpoints(),
+    adapters: {
+      bash: {
+        command: "api.webhooks.list",
+        help: {
+          summary: "api.webhooks.list lists configured API webhook endpoints.",
+          options: [],
+          examples: ["api.webhooks.list"],
+        },
+        parse: defineEmptyArgsParser("api.webhooks.list"),
+        outputOptions: defaultOutput,
+        format: textOrDataFormat(renderWebhookEndpoints),
+      },
+    },
+  }),
+  defineBackofficeRuntimeTool({
+    id: "api.webhooks.get",
+    namespace: "api",
+    name: "getWebhookEndpoint",
+    capabilityId: "api",
+    description: "Read an API webhook endpoint.",
+    requiredPermissions: ["webhooks.read"],
+    getResource: (input) => ({ endpointId: input.endpointId }),
+    inputSchema: endpointInputSchema,
+    outputSchema: webhookEndpointSchema,
+    execute: async (input, context: ApiToolContext) =>
+      await getApiRuntime(context.runtimes.api).getWebhookEndpoint(input),
+    adapters: {
+      bash: {
+        command: "api.webhooks.get",
+        help: {
+          summary: "api.webhooks.get shows an API webhook endpoint.",
+          options: [
+            {
+              name: "endpoint",
+              required: true,
+              valueRequired: true,
+              valueName: "id",
+              description: "Endpoint id",
+            },
+          ],
+          examples: ["api.webhooks.get --endpoint stripe"],
+        },
+        parse: parseEndpoint,
+        outputOptions: defaultOutput,
+        format: textOrDataFormat((endpoint: ApiWebhookEndpoint) =>
+          renderWebhookEndpointRows([endpoint]),
+        ),
+      },
+    },
+  }),
+  defineBackofficeRuntimeTool({
+    id: "api.webhooks.create",
+    namespace: "api",
+    name: "createWebhookEndpoint",
+    capabilityId: "api",
+    description: "Create or replace an API webhook endpoint.",
+    requiredPermissions: ["webhooks.manage"],
+    getResource: (input) => ({ endpointId: input.endpointId }),
+    inputSchema: webhookEndpointCreateInputSchema,
+    outputSchema: webhookEndpointSchema,
+    execute: async (input, context: ApiToolContext) =>
+      await getApiRuntime(context.runtimes.api).createWebhookEndpoint(input),
+    adapters: {
+      bash: {
+        command: "api.webhooks.create",
+        help: {
+          summary: "api.webhooks.create configures an API webhook endpoint.",
+          options: [
+            {
+              name: "endpoint",
+              required: true,
+              valueRequired: true,
+              valueName: "id",
+              description: "Endpoint id",
+            },
+            {
+              name: "name",
+              required: true,
+              valueRequired: true,
+              valueName: "name",
+              description: "Display name",
+            },
+            {
+              name: "status",
+              valueRequired: true,
+              valueName: "draft|active|disabled",
+              description: "Endpoint status",
+            },
+            {
+              name: "delivery-identity-json",
+              required: true,
+              valueRequired: true,
+              valueName: "json",
+              description: "Delivery id extractor",
+            },
+            {
+              name: "auth-json",
+              required: true,
+              valueRequired: true,
+              valueName: "json",
+              description: "Webhook auth config with secret values",
+            },
+          ],
+          examples: [
+            'api.webhooks.create --endpoint stripe --name Stripe --delivery-identity-json \'{"type":"header","name":"stripe-signature"}\' --auth-json \'{"type":"none"}\'',
+          ],
+        },
+        parse: parseWebhookCreate,
+        outputOptions: defaultOutput,
+        format: textOrDataFormat(
+          (endpoint: ApiWebhookEndpoint) =>
+            `Created API webhook endpoint\n\n${renderWebhookEndpointRows([endpoint])}`,
+        ),
+      },
+    },
+  }),
+  defineBackofficeRuntimeTool({
+    id: "api.webhooks.update",
+    namespace: "api",
+    name: "updateWebhookEndpoint",
+    capabilityId: "api",
+    description: "Update an API webhook endpoint.",
+    requiredPermissions: ["webhooks.manage"],
+    getResource: (input) => ({ endpointId: input.endpointId }),
+    inputSchema: webhookEndpointUpdateInputSchema,
+    outputSchema: webhookEndpointSchema,
+    execute: async (input, context: ApiToolContext) =>
+      await getApiRuntime(context.runtimes.api).updateWebhookEndpoint(input),
+    adapters: {
+      bash: {
+        command: "api.webhooks.update",
+        help: {
+          summary: "api.webhooks.update updates an API webhook endpoint.",
+          options: [
+            {
+              name: "endpoint",
+              required: true,
+              valueRequired: true,
+              valueName: "id",
+              description: "Endpoint id",
+            },
+            { name: "name", valueRequired: true, valueName: "name", description: "Display name" },
+            {
+              name: "status",
+              valueRequired: true,
+              valueName: "draft|active|disabled",
+              description: "Endpoint status",
+            },
+            {
+              name: "delivery-identity-json",
+              valueRequired: true,
+              valueName: "json",
+              description: "Delivery id extractor",
+            },
+            {
+              name: "auth-json",
+              valueRequired: true,
+              valueName: "json",
+              description: "Webhook auth config with secret values",
+            },
+          ],
+          examples: ["api.webhooks.update --endpoint stripe --status disabled"],
+        },
+        parse: parseWebhookUpdate,
+        outputOptions: defaultOutput,
+        format: textOrDataFormat((endpoint: ApiWebhookEndpoint) =>
+          renderWebhookEndpointRows([endpoint]),
+        ),
+      },
+    },
+  }),
+  defineBackofficeRuntimeTool({
+    id: "api.webhooks.delete",
+    namespace: "api",
+    name: "deleteWebhookEndpoint",
+    capabilityId: "api",
+    description: "Delete an API webhook endpoint.",
+    requiredPermissions: ["webhooks.manage"],
+    getResource: (input) => ({ endpointId: input.endpointId }),
+    inputSchema: endpointInputSchema,
+    outputSchema: deleteOutputSchema,
+    execute: async (input, context: ApiToolContext) =>
+      await getApiRuntime(context.runtimes.api).deleteWebhookEndpoint(input),
+    adapters: {
+      bash: {
+        command: "api.webhooks.delete",
+        help: {
+          summary: "api.webhooks.delete removes an API webhook endpoint.",
+          options: [
+            {
+              name: "endpoint",
+              required: true,
+              valueRequired: true,
+              valueName: "id",
+              description: "Endpoint id",
+            },
+          ],
+          examples: ["api.webhooks.delete --endpoint stripe"],
+        },
+        parse: parseEndpoint,
+        outputOptions: defaultOutput,
+        format: textOrDataFormat(() => "Deleted API webhook endpoint."),
       },
     },
   }),

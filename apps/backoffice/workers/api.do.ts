@@ -74,6 +74,12 @@ const buildConnectionAvailableEventId = (input: {
   idempotencyKey: string;
 }) => `api:connection.available:${input.orgId}:${input.connectionId}:${input.idempotencyKey}`;
 
+const buildWebhookReceivedEventId = (input: {
+  orgId: string;
+  endpointId: string;
+  hookId: string;
+}) => `api:webhook.received:${input.orgId}:${input.endpointId}:${input.hookId}`;
+
 function buildConfigResponse(
   env: ApiObjectEnv,
   config: StoredApiConfig | null,
@@ -173,6 +179,27 @@ export class InMemoryApiObject implements ApiObject {
             subject: {
               orgId: stored.orgId,
               connectionId: payload.connectionId,
+            },
+          });
+        },
+        onWebhookReceived: async (payload) => {
+          await this.#runtimeServices.objects.automations.forOrg(stored.orgId).ingestEvent({
+            id: buildWebhookReceivedEventId({
+              orgId: stored.orgId,
+              endpointId: payload.endpointId,
+              hookId: payload.hookId,
+            }),
+            scope: { kind: "org", orgId: stored.orgId },
+            source: "api",
+            eventType: "webhook.received",
+            occurredAt: payload.receivedAt,
+            payload: { ...payload },
+            actor: AUTOMATION_SYSTEM_ACTOR,
+            actors: [AUTOMATION_SYSTEM_ACTOR],
+            subject: {
+              orgId: stored.orgId,
+              endpointId: payload.endpointId,
+              deliveryId: payload.deliveryId,
             },
           });
         },

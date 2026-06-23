@@ -11,6 +11,7 @@ export type ApiConfig = Pick<
   | "onConnectionChanged"
   | "onConnectionDeleted"
   | "onConnectionAvailable"
+  | "onWebhookReceived"
 >;
 
 export const resolveApiPublicBaseUrl = ({ baseUrl, orgId }: { baseUrl: string; orgId: string }) => {
@@ -36,6 +37,7 @@ export function createApiServer(
       onConnectionChanged: config.onConnectionChanged,
       onConnectionDeleted: config.onConnectionDeleted,
       onConnectionAvailable: config.onConnectionAvailable,
+      onWebhookReceived: config.onWebhookReceived,
     },
     {
       databaseAdapter: runtime.adapters.createAdapter({

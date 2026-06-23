@@ -138,8 +138,8 @@ function webhookEndpointAuthStorage(auth: WebhookEndpointAuthInput): {
   };
 }
 
-function parseWebhookEndpointStatus(status: string): "active" | "disabled" {
-  if (status === "active" || status === "disabled") {
+function parseWebhookEndpointStatus(status: string): "draft" | "active" | "disabled" {
+  if (status === "draft" || status === "active" || status === "disabled") {
     return status;
   }
   throw new Error(`Unexpected webhook endpoint status: ${status}`);
@@ -384,6 +384,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
       errorCodes: [
         "WEBHOOK_ENDPOINT_NOT_FOUND",
         "WEBHOOK_ENDPOINT_DISABLED",
+        "WEBHOOK_ENDPOINT_DRAFT",
         "WEBHOOK_AUTH_FAILED",
         "WEBHOOK_BODY_INVALID",
         "WEBHOOK_DELIVERY_ID_MISSING",
@@ -400,6 +401,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
               code:
                 | "WEBHOOK_ENDPOINT_NOT_FOUND"
                 | "WEBHOOK_ENDPOINT_DISABLED"
+                | "WEBHOOK_ENDPOINT_DRAFT"
                 | "WEBHOOK_AUTH_FAILED"
                 | "WEBHOOK_BODY_INVALID"
                 | "WEBHOOK_DELIVERY_ID_MISSING"
@@ -422,6 +424,9 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
             .transformRetrieve(async ([endpoint, secrets]) => {
               if (!endpoint) {
                 return { ok: false as const, code: "WEBHOOK_ENDPOINT_NOT_FOUND" as const };
+              }
+              if (endpoint.status === "draft") {
+                return { ok: false as const, code: "WEBHOOK_ENDPOINT_DRAFT" as const };
               }
               if (endpoint.status !== "active") {
                 return { ok: false as const, code: "WEBHOOK_ENDPOINT_DISABLED" as const };
@@ -524,6 +529,12 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
           }
           if (result.code === "WEBHOOK_ENDPOINT_DISABLED") {
             return error({ code: result.code, message: "Webhook endpoint is disabled" }, 409);
+          }
+          if (result.code === "WEBHOOK_ENDPOINT_DRAFT") {
+            return error(
+              { code: result.code, message: "Webhook endpoint is not configured yet" },
+              409,
+            );
           }
           if (result.code === "WEBHOOK_BODY_INVALID") {
             return error({ code: result.code, message: "Webhook body must be a JSON object" }, 400);

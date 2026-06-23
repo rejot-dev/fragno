@@ -126,10 +126,12 @@ export const webhookEndpointAuthInputSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+export const webhookEndpointStatusSchema = z.enum(["draft", "active", "disabled"]);
+
 export const webhookEndpointOutputSchema = z.object({
   id: z.string(),
   name: z.string(),
-  status: z.enum(["active", "disabled"]),
+  status: webhookEndpointStatusSchema,
   authConfig: webhookAuthConfigSchema,
   deliveryIdentity: webhookDeliveryIdentitySchema,
   secretRefs: z.array(z.string()),
@@ -139,14 +141,14 @@ export const webhookEndpointOutputSchema = z.object({
 
 export const createWebhookEndpointInputSchema = z.object({
   name: z.string().min(1),
-  status: z.enum(["active", "disabled"]).default("active"),
+  status: webhookEndpointStatusSchema.default("active"),
   deliveryIdentity: webhookDeliveryIdentitySchema,
   auth: webhookEndpointAuthInputSchema,
 });
 
 export const updateWebhookEndpointInputSchema = z.object({
   name: z.string().min(1).optional(),
-  status: z.enum(["active", "disabled"]).optional(),
+  status: webhookEndpointStatusSchema.optional(),
   deliveryIdentity: webhookDeliveryIdentitySchema.optional(),
   auth: webhookEndpointAuthInputSchema.optional(),
 });

@@ -12,6 +12,19 @@ type RouteContext = Route.LoaderArgs["context"];
 const API_INTERNAL_PREFIX = "/api/api";
 const API_PUBLIC_PREFIX = "/api/http";
 
+const isPublicWebhookReceiveRequest = (request: Request, orgId: string) => {
+  if (request.method !== "POST") {
+    return false;
+  }
+  const url = new URL(request.url);
+  const prefix = `${API_PUBLIC_PREFIX}/${orgId}/webhooks/endpoints/`;
+  if (!url.pathname.startsWith(prefix)) {
+    return false;
+  }
+  const [endpointId, tail, ...rest] = url.pathname.slice(prefix.length).split("/");
+  return Boolean(endpointId) && tail === "events" && rest.length === 0;
+};
+
 const forwardToApi = async (request: Request, context: RouteContext, orgId: string | undefined) => {
   if (!orgId) {
     return new Response("Missing organisation id", { status: 400 });
@@ -21,7 +34,10 @@ const forwardToApi = async (request: Request, context: RouteContext, orgId: stri
     return handleBackofficeApiOAuthCallback(request, context, orgId);
   }
 
-  const auth = await authorizeAccessTokenForOrganization(request, context, orgId);
+  const isPublicWebhookReceive = isPublicWebhookReceiveRequest(request, orgId);
+  const auth = isPublicWebhookReceive
+    ? { ok: true as const, headers: [] }
+    : await authorizeAccessTokenForOrganization(request, context, orgId);
   if (!auth.ok) {
     return auth.response;
   }
