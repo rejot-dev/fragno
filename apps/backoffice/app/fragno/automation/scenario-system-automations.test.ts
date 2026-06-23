@@ -10,6 +10,8 @@ import {
   createMasterFileSystem,
   createSystemFilesContext,
 } from "@/files";
+import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
+import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 import type { AutomationEvent } from "./contracts";
 import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
@@ -274,6 +276,48 @@ describe("system automation scenarios", () => {
             orgId: "org-1",
             path: "/workspace/codemode.d.ts",
             text: "declare",
+          }),
+          then.assert(
+            "workspace automations directory is writable through dashboard bash",
+            async (ctx) => {
+              const orgId = "org-1";
+              const kernel = new BackofficeKernel({ objects: ctx.runtime.objects });
+              const execution = {
+                actor: {
+                  scope: "internal" as const,
+                  type: "user" as const,
+                  id: "scenario-user",
+                  userId: "scenario-user",
+                  organizationIds: [orgId],
+                },
+                scope: { kind: "org" as const, orgId },
+              };
+              const fs = await createBackofficeFileSystem({
+                objects: ctx.runtime.objects,
+                kernel,
+                execution,
+              });
+              const { bash } = createInteractiveBashHost({
+                fs,
+                context: createRouteBackedRuntimeContext({
+                  runtime: ctx.runtime.services,
+                  kernel,
+                  execution,
+                  defaultActor: execution.actor,
+                }),
+              });
+
+              const result = await bash.exec(
+                "touch /workspace/automations/writable-check.workflow.js && echo 'writable: true' > /workspace/automations/writable-check.workflow.js",
+                { cwd: "/" },
+              );
+              assert(result.exitCode === 0);
+            },
+          ),
+          then.files.contains({
+            orgId: "org-1",
+            path: "/workspace/automations/writable-check.workflow.js",
+            text: "writable: true",
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],

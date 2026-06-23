@@ -1310,7 +1310,7 @@ const ensureUploadDirectoryMarker = async (
       [UPLOAD_FS_METADATA_KEY]: {
         owner: principal.subject,
         group: principal.primaryGroup,
-        mode: DEFAULT_FOLDER_MODE,
+        mode: isRootFilePrincipal(principal) ? DEFAULT_MOUNT_ROOT_MODE : DEFAULT_FOLDER_MODE,
       },
     }),
   );

@@ -100,7 +100,7 @@ export const resolveActorFilePrincipal = ({
       subject: ROOT_FILE_PRINCIPAL.subject,
       primaryGroup,
       groups: sameFileGroup(primaryGroup, ROOT_FILE_PRINCIPAL.primaryGroup)
-        ? [primaryGroup]
+        ? [ROOT_FILE_PRINCIPAL.primaryGroup]
         : [ROOT_FILE_PRINCIPAL.primaryGroup, primaryGroup],
     };
   }
