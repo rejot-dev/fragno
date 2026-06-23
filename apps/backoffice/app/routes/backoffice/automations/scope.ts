@@ -1,4 +1,8 @@
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import {
+  backofficeScopeFromRouteParams,
+  backofficeScopeRouteId,
+} from "@/backoffice-runtime/scope-codec";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 
 import type { AutomationProjectRecord } from "./data";
@@ -37,28 +41,22 @@ export const toBackofficeScope = (scope: AutomationUiScope): BackofficeContextSc
   }
 };
 
-const projectScopeId = (orgId: string, projectId: string) => `${orgId}~${projectId}`;
-
-const parseProjectScopeId = (scopeId: string) => {
-  const [orgId, ...projectIdParts] = scopeId.split("~");
-  const projectId = projectIdParts.join("~");
-  return orgId && projectId ? { orgId, projectId } : null;
-};
-
 export const automationScopeBasePath = (scope: AutomationUiScope) => {
   switch (scope.kind) {
     case "org":
       return `/backoffice/automations/org/${encodeURIComponent(scope.orgId)}`;
     case "project":
-      return `/backoffice/automations/project/${encodeURIComponent(projectScopeId(scope.orgId, scope.projectId))}`;
+      return `/backoffice/automations/project/${encodeURIComponent(backofficeScopeRouteId(scope))}`;
     case "user":
       return `/backoffice/automations/user/${encodeURIComponent(scope.userId)}`;
   }
 };
 
+export type AutomationScopeTab = "scripts" | "store" | "mcp";
+
 export const automationScopeTabPath = (
   scope: AutomationUiScope,
-  tab: "scripts" | "store" = "scripts",
+  tab: AutomationScopeTab = "scripts",
 ) => `${automationScopeBasePath(scope)}/${tab}`;
 
 export const createAutomationScopeOptions = ({
@@ -71,7 +69,7 @@ export const createAutomationScopeOptions = ({
   organisations: Organisation[];
   projects: AutomationProjectRecord[];
   user: AuthMeData["user"];
-  currentTab: "scripts" | "store";
+  currentTab: AutomationScopeTab;
   projectOrgId: string;
 }): AutomationScopeOption[] => {
   const orgOptions = organisations.map((organisation) => ({
@@ -126,19 +124,18 @@ export const automationScopeFromRouteParams = (params: {
   scopeKind?: string;
   scopeId?: string;
 }): BackofficeContextScope => {
-  if (params.scopeKind === "org" && params.scopeId) {
-    return { kind: "org", orgId: params.scopeId };
-  }
-  if (params.scopeKind === "project" && params.scopeId) {
-    const parsed = parseProjectScopeId(params.scopeId);
-    if (parsed) {
-      return { kind: "project", orgId: parsed.orgId, projectId: parsed.projectId };
+  try {
+    const scope = backofficeScopeFromRouteParams(params);
+    if (!scope) {
+      throw new Response("Not Found", { status: 404 });
     }
+    return scope;
+  } catch (error) {
+    if (error instanceof Response) {
+      throw error;
+    }
+    throw new Response("Not Found", { status: 404 });
   }
-  if (params.scopeKind === "user" && params.scopeId) {
-    return { kind: "user", userId: params.scopeId };
-  }
-  throw new Response("Not Found", { status: 404 });
 };
 
 export const resolveAutomationUiScope = ({
@@ -152,22 +149,22 @@ export const resolveAutomationUiScope = ({
   projects: AutomationProjectRecord[];
   user: AuthMeData["user"];
 }): AutomationUiScope => {
-  const scopeKind = params.scopeKind;
-  const scopeId = params.scopeId;
+  let parsed;
+  try {
+    parsed = backofficeScopeFromRouteParams(params);
+  } catch {
+    throw new Response("Not Found", { status: 404 });
+  }
 
-  if (scopeKind === "org" && scopeId) {
-    const organisation = organisations.find((entry) => entry.id === scopeId);
+  if (parsed?.kind === "org") {
+    const organisation = organisations.find((entry) => entry.id === parsed.orgId);
     if (!organisation) {
       throw new Response("Not Found", { status: 404 });
     }
     return { kind: "org", orgId: organisation.id, label: organisation.name ?? organisation.id };
   }
 
-  if (scopeKind === "project" && scopeId) {
-    const parsed = parseProjectScopeId(scopeId);
-    if (!parsed) {
-      throw new Response("Not Found", { status: 404 });
-    }
+  if (parsed?.kind === "project") {
     const organisation = organisations.find((entry) => entry.id === parsed.orgId);
     if (!organisation) {
       throw new Response("Not Found", { status: 404 });
@@ -184,7 +181,7 @@ export const resolveAutomationUiScope = ({
     };
   }
 
-  if (scopeKind === "user" && scopeId === user.id) {
+  if (parsed?.kind === "user" && parsed.userId === user.id) {
     return { kind: "user", userId: user.id, label: userName(user) };
   }
 

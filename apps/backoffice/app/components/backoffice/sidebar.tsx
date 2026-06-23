@@ -22,9 +22,6 @@ function createNavItems(activeOrganizationId?: string | null): NavItem[] {
   const githubPath = activeOrganizationId
     ? `/backoffice/connections/github/${activeOrganizationId}`
     : "/backoffice/connections/github";
-  const mcpPath = activeOrganizationId
-    ? `/backoffice/connections/mcp/${activeOrganizationId}`
-    : "/backoffice/connections/mcp";
   const automationBasePath = activeOrganizationId
     ? `/backoffice/automations/org/${activeOrganizationId}`
     : "/backoffice/automations";
@@ -32,6 +29,7 @@ function createNavItems(activeOrganizationId?: string | null): NavItem[] {
     ? [
         { label: "Scripts", to: `${automationBasePath}/scripts` },
         { label: "Store", to: `${automationBasePath}/store` },
+        { label: "MCP", to: `${automationBasePath}/mcp` },
       ]
     : undefined;
   const projectsPath = activeOrganizationId
@@ -52,7 +50,6 @@ function createNavItems(activeOrganizationId?: string | null): NavItem[] {
         { label: "Resend", to: "/backoffice/connections/resend" },
         { label: "Reson8", to: "/backoffice/connections/reson8" },
         { label: "GitHub", to: githubPath },
-        { label: "MCP", to: mcpPath },
         { label: "Upload", to: "/backoffice/connections/upload" },
       ],
     },

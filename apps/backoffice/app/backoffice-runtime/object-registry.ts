@@ -229,7 +229,7 @@ export const backofficeObjectScopePolicy = {
   OTP: ["org"],
   RESEND: ["org"],
   RESON8: ["org"],
-  MCP: ["org", "user"],
+  MCP: ["org", "user", "project"],
   UPLOAD: ["org", "user", "project"],
   GITHUB: ["org"],
   CLOUDFLARE_WORKERS: ["org"],

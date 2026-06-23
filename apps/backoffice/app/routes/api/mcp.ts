@@ -1,8 +1,9 @@
+import { backofficeScopeFromSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import {
   handleBackofficeMcpOAuthCallback,
   isBackofficeMcpOAuthCallbackRequest,
 } from "@/fragno/mcp-oauth-proxy";
-import { getMcpDurableObject } from "@/worker-runtime/durable-objects";
+import { getMcpObjectForScope } from "@/routes/backoffice/connections/mcp/data";
 
 import type { Route } from "./+types/mcp";
 
@@ -10,23 +11,44 @@ type RouteContext = Route.LoaderArgs["context"];
 
 const MCP_PUBLIC_PREFIX = "/api/mcp";
 
-const forwardToMcp = async (request: Request, context: RouteContext, orgId: string | undefined) => {
-  if (!orgId) {
-    return new Response("Missing organisation id", { status: 400 });
+const forwardToMcp = async (
+  request: Request,
+  context: RouteContext,
+  scopePathSegment: string | undefined,
+) => {
+  if (!scopePathSegment) {
+    return new Response("Missing MCP scope", { status: 400 });
   }
 
-  if (isBackofficeMcpOAuthCallbackRequest(request, orgId)) {
-    return handleBackofficeMcpOAuthCallback(request, context, orgId);
+  if (isBackofficeMcpOAuthCallbackRequest(request, scopePathSegment)) {
+    return handleBackofficeMcpOAuthCallback(request, context, scopePathSegment);
   }
 
-  const mcpDo = getMcpDurableObject(context, orgId);
+  let scope;
+  try {
+    scope = backofficeScopeFromSinglePathSegment(scopePathSegment);
+  } catch {
+    return new Response("Invalid MCP scope", { status: 400 });
+  }
+
+  const mcpDo = getMcpObjectForScope(context, scope);
   const url = new URL(request.url);
-  const prefix = `${MCP_PUBLIC_PREFIX}/${orgId}`;
+  const encodedScopeSegment = encodeURIComponent(scopePathSegment);
+  const prefix = `${MCP_PUBLIC_PREFIX}/${encodedScopeSegment}`;
   if (url.pathname.startsWith(prefix)) {
     const suffix = url.pathname.slice(prefix.length);
     url.pathname = `${MCP_PUBLIC_PREFIX}${suffix}`;
   }
-  url.searchParams.set("orgId", orgId);
+  url.searchParams.set("scopeKind", scope.kind);
+  if (scope.kind === "org" || scope.kind === "project") {
+    url.searchParams.set("orgId", scope.orgId);
+  }
+  if (scope.kind === "project") {
+    url.searchParams.set("projectId", scope.projectId);
+  }
+  if (scope.kind === "user") {
+    url.searchParams.set("userId", scope.userId);
+  }
 
   return mcpDo.fetch(new Request(url.toString(), request));
 };

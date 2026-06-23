@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi, assert } from "vitest";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -105,6 +105,48 @@ describe("Backoffice codemode scenarios", () => {
           then.store.entry({ orgId: "org-1", key: "scoped/org", value: "from-org" }),
           then.codemode.toolCalls({
             include: ["current:store.set", "org:store.set"],
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("exposes user-scoped MCP connection tools from scoped codemode handles", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "codemode user scoped context configures MCP connections",
+
+        files: backofficeFiles.workspaceStarter(),
+
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+
+        steps: ({ when, then }) => [
+          when.codemode.run({
+            orgId: "org-1",
+            label: "configure user-scoped MCP from codemode",
+            code: `async () => {
+  const before = await context.user("scenario-user").connections.get({ id: "mcp" });
+  const configured = await context.user("scenario-user").connections.configure({
+    id: "mcp",
+    payload: {},
+  });
+  const after = await context.user("scenario-user").connections.get({ id: "mcp" });
+
+  return { before, configured, after };
+}`,
+            assertToolCalls: ["user:connections.get", "user:connections.configure"],
+          }),
+
+          then.assert("user scoped MCP connection was configured", (ctx) => {
+            const result = ctx.codemodeRuns.at(-1)?.result.result as {
+              before?: { configured: boolean };
+              configured?: { configured: boolean; config?: { publicBaseUrl?: string } };
+              after?: { configured: boolean; config?: { publicBaseUrl?: string } };
+            };
+            assert(!result.before?.configured);
+            assert(result.configured?.configured);
+            assert(result.after?.configured);
+            expect(result.after?.config?.publicBaseUrl).toContain("/api/mcp/user%3Ascenario-user");
           }),
         ],
       }),

@@ -30,7 +30,13 @@ const getDurableHookRepository = async ({
       `Unknown hook fragment '${fragment}'. Run hooks.scopes.list to discover available hook scopes.`,
     );
   }
-  return await scope.getRepository({ objects, config, orgId, origin: "https://backoffice.local" });
+  return await scope.getRepository({
+    objects,
+    config,
+    scope: { kind: "org", orgId },
+    orgId,
+    origin: "https://backoffice.local",
+  });
 };
 
 export const createRouteBackedDurableHooksRuntime = ({

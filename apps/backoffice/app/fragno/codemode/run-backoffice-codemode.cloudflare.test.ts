@@ -601,19 +601,15 @@ describe("runBackofficeCodemode", () => {
         const org = await context.org("org-1").mcp.listServers();
         const user = await context.user("user-1").mcp.listServers();
         const current = await mcp.listServers();
-        let projectError = null;
-        try {
-          await context.project("project-1").mcp.listServers();
-        } catch (error) {
-          projectError = error.message;
-        }
+        const project = await context.project("project-1").mcp.listServers();
+        const projectError = null;
         let deleteError = null;
         try {
           await context.org("org-1").mcp.deleteServer({ slug: "blocked" });
         } catch (error) {
           deleteError = error.message;
         }
-        return { org, user, current, projectError, deleteError };
+        return { org, user, current, project, projectError, deleteError };
       }`,
     });
 
@@ -622,7 +618,8 @@ describe("runBackofficeCodemode", () => {
       org: { servers: [{ slug: "org-org-1" }] },
       user: { servers: [{ slug: "user-user-1" }] },
       current: { servers: [{ slug: "org-org-1" }] },
-      projectError: "Unknown scoped tool: mcp.listServers",
+      project: { servers: [{ slug: "project-org-1:project-1" }] },
+      projectError: null,
       deleteError: "Denied mcp.servers.delete",
     });
     expect(calls).toEqual([
@@ -631,6 +628,7 @@ describe("runBackofficeCodemode", () => {
       { scope: "org:org-1", method: "GET", pathname: "/api/mcp/servers" },
       { scope: "user:user-1", method: "GET", pathname: "/api/mcp/servers" },
       { scope: "org:org-1", method: "GET", pathname: "/api/mcp/servers" },
+      { scope: "project:org-1:project-1", method: "GET", pathname: "/api/mcp/servers" },
     ]);
   });
 

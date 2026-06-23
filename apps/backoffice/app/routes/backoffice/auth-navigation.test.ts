@@ -26,8 +26,8 @@ describe("sanitizeBackofficeReturnTo", () => {
   test("allows org-scoped MCP OAuth callback paths so login can resume OAuth", () => {
     assert(
       sanitizeBackofficeReturnTo(
-        "/api/mcp/org_123/oauth/callback?code=abc&state=cloudflare%3Astate#ignored",
-      ) === "/api/mcp/org_123/oauth/callback?code=abc&state=cloudflare%3Astate",
+        "/api/mcp/org%3Aorg_123/oauth/callback?code=abc&state=cloudflare%3Astate#ignored",
+      ) === "/api/mcp/org%3Aorg_123/oauth/callback?code=abc&state=cloudflare%3Astate",
     );
   });
 
@@ -35,9 +35,9 @@ describe("sanitizeBackofficeReturnTo", () => {
     expect(sanitizeBackofficeReturnTo("/docs")).toBeNull();
     expect(sanitizeBackofficeReturnTo("/backoffice-login")).toBeNull();
     expect(sanitizeBackofficeReturnTo("/backoffice/../docs")).toBeNull();
-    expect(sanitizeBackofficeReturnTo("/api/mcp/org_123/servers")).toBeNull();
-    expect(sanitizeBackofficeReturnTo("/api/mcp/org_123/oauth/callback/extra")).toBeNull();
-    expect(sanitizeBackofficeReturnTo("/api/mcp/org_123/oauth/authorize")).toBeNull();
+    expect(sanitizeBackofficeReturnTo("/api/mcp/org%3Aorg_123/servers")).toBeNull();
+    expect(sanitizeBackofficeReturnTo("/api/mcp/org%3Aorg_123/oauth/callback/extra")).toBeNull();
+    expect(sanitizeBackofficeReturnTo("/api/mcp/org%3Aorg_123/oauth/authorize")).toBeNull();
   });
 });
 
@@ -48,12 +48,14 @@ describe("backoffice auth navigation helpers", () => {
         "/backoffice/login?returnTo=%2Fbackoffice%2Fsettings%3Ftab%3Dmembers",
     );
     assert(
-      buildBackofficeLoginPath("/api/mcp/org_123/oauth/callback?code=abc&state=cloudflare%3As") ===
-        "/backoffice/login?returnTo=%2Fapi%2Fmcp%2Forg_123%2Foauth%2Fcallback%3Fcode%3Dabc%26state%3Dcloudflare%253As",
+      buildBackofficeLoginPath(
+        "/api/mcp/org%3Aorg_123/oauth/callback?code=abc&state=cloudflare%3As",
+      ) ===
+        "/backoffice/login?returnTo=%2Fapi%2Fmcp%2Forg%253Aorg_123%2Foauth%2Fcallback%3Fcode%3Dabc%26state%3Dcloudflare%253As",
     );
     expect(
       buildBackofficeLoginPath(
-        "/api/mcp/org_123/oauth/authorize?authorizationUrl=https%3A%2F%2Fmoneybird.com%2Foauth%2Fauthorize",
+        "/api/mcp/org%3Aorg_123/oauth/authorize?authorizationUrl=https%3A%2F%2Fmoneybird.com%2Foauth%2Fauthorize",
       ),
     ).toBe(BACKOFFICE_LOGIN_PATH);
     expect(buildBackofficeLoginPath("/backoffice/login?x=1")).toBe(BACKOFFICE_LOGIN_PATH);
@@ -67,12 +69,12 @@ describe("backoffice auth navigation helpers", () => {
     );
     assert(
       readBackofficeReturnTo(
-        "http://localhost/backoffice/login?returnTo=%2Fapi%2Fmcp%2Forg_123%2Foauth%2Fcallback%3Fcode%3Dabc%26state%3Dcloudflare%253As",
-      ) === "/api/mcp/org_123/oauth/callback?code=abc&state=cloudflare%3As",
+        "http://localhost/backoffice/login?returnTo=%2Fapi%2Fmcp%2Forg%253Aorg_123%2Foauth%2Fcallback%3Fcode%3Dabc%26state%3Dcloudflare%253As",
+      ) === "/api/mcp/org%3Aorg_123/oauth/callback?code=abc&state=cloudflare%3As",
     );
     expect(
       readBackofficeReturnTo(
-        "http://localhost/backoffice/login?returnTo=%2Fapi%2Fmcp%2Forg_123%2Foauth%2Fauthorize%3FauthorizationUrl%3Dhttps%253A%252F%252Fmoneybird.com%252Foauth%252Fauthorize",
+        "http://localhost/backoffice/login?returnTo=%2Fapi%2Fmcp%2Forg%253Aorg_123%2Foauth%2Fauthorize%3FauthorizationUrl%3Dhttps%253A%252F%252Fmoneybird.com%252Foauth%252Fauthorize",
       ),
     ).toBe(BACKOFFICE_HOME_PATH);
     expect(

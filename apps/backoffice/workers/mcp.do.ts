@@ -6,6 +6,10 @@ import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
+import {
+  backofficeScopeSinglePathSegment,
+  type BackofficeRoutableScope,
+} from "@/backoffice-runtime/scope-codec";
 import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
 import { mcpConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/mcp";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
@@ -27,7 +31,7 @@ type McpObjectEnv = {
 };
 
 type StoredMcpConfig = {
-  orgId: string;
+  scope: BackofficeRoutableScope;
   createdAt: string;
   updatedAt: string;
 };
@@ -41,8 +45,18 @@ export type McpAdminConfigResponse = {
   };
 };
 
+const mcpOwnerScopeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("org"), orgId: z.string().trim().min(1) }),
+  z.object({
+    kind: z.literal("project"),
+    orgId: z.string().trim().min(1),
+    projectId: z.string().trim().min(1),
+  }),
+  z.object({ kind: z.literal("user"), userId: z.string().trim().min(1) }),
+]);
+
 const setAdminConfigInputSchema = mcpConfigureInputSchema.extend({
-  orgId: z.string().trim().min(1, "Missing organisation id."),
+  scope: mcpOwnerScopeSchema,
 });
 
 const readMcpPublicOrigin = (env: McpObjectEnv) => {
@@ -53,20 +67,40 @@ const readMcpPublicOrigin = (env: McpObjectEnv) => {
   return origin;
 };
 
-const resolvePublicBaseUrl = (env: McpObjectEnv, orgId: string) =>
-  resolveMcpPublicBaseUrl({ baseUrl: readMcpPublicOrigin(env), orgId });
+const resolvePublicBaseUrl = (env: McpObjectEnv, scope: BackofficeRoutableScope) =>
+  resolveMcpPublicBaseUrl({ baseUrl: readMcpPublicOrigin(env), scope });
+
+const assertSameScope = (existing: StoredMcpConfig | null, nextScope: BackofficeRoutableScope) => {
+  if (!existing) {
+    return;
+  }
+
+  if (
+    backofficeScopeSinglePathSegment(existing.scope) !== backofficeScopeSinglePathSegment(nextScope)
+  ) {
+    throw new Error("MCP is already configured for a different scope.");
+  }
+};
+
+const scopeSubject = (scope: BackofficeRoutableScope, serverId?: string) => ({
+  scope,
+  ...(scope.kind === "org" || scope.kind === "project" ? { orgId: scope.orgId } : {}),
+  ...(serverId ? { serverId } : {}),
+});
 
 const buildServerConfigurationChangedEventId = (input: {
-  orgId: string;
+  scopeKey: string;
   serverId: string;
   idempotencyKey: string;
-}) => `mcp:server.configuration.changed:${input.orgId}:${input.serverId}:${input.idempotencyKey}`;
+}) =>
+  `mcp:server.configuration.changed:${input.scopeKey}:${input.serverId}:${input.idempotencyKey}`;
 
 const buildServerConfigurationDeletedEventId = (input: {
-  orgId: string;
+  scopeKey: string;
   serverId: string;
   idempotencyKey: string;
-}) => `mcp:server.configuration.deleted:${input.orgId}:${input.serverId}:${input.idempotencyKey}`;
+}) =>
+  `mcp:server.configuration.deleted:${input.scopeKey}:${input.serverId}:${input.idempotencyKey}`;
 
 function buildConfigResponse(
   env: McpObjectEnv,
@@ -79,7 +113,7 @@ function buildConfigResponse(
   return {
     configured: true,
     config: {
-      publicBaseUrl: resolvePublicBaseUrl(env, config.orgId),
+      publicBaseUrl: resolvePublicBaseUrl(env, config.scope),
       createdAt: config.createdAt,
       updatedAt: config.updatedAt,
     },
@@ -108,46 +142,49 @@ export class InMemoryMcpObject implements McpObject {
       name: "MCP",
       state,
       env: this.#env,
+      getStoredOrgId: (stored) => {
+        const scope = stored.scope;
+        if (scope.kind === "org" || scope.kind === "project") {
+          return scope.orgId;
+        }
+        return `user:${scope.userId}`;
+      },
       toSource: (stored) => ({
-        publicBaseUrl: resolvePublicBaseUrl(this.#env, stored.orgId),
+        publicBaseUrl: resolvePublicBaseUrl(this.#env, stored.scope),
         onServerConfigurationChanged: async (payload, idempotencyKey) => {
-          await this.#runtimeServices.objects.automations.forOrg(stored.orgId).ingestEvent({
+          const scope = stored.scope;
+          await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
             id: buildServerConfigurationChangedEventId({
-              orgId: stored.orgId,
+              scopeKey: backofficeScopeSinglePathSegment(scope),
               serverId: payload.serverId,
               idempotencyKey,
             }),
-            scope: { kind: "org", orgId: stored.orgId },
+            scope,
             source: "mcp",
             eventType: "server.configuration.changed",
             occurredAt: new Date().toISOString(),
             payload: { ...payload },
             actor: AUTOMATION_SYSTEM_ACTOR,
             actors: [AUTOMATION_SYSTEM_ACTOR],
-            subject: {
-              orgId: stored.orgId,
-              serverId: payload.serverId,
-            },
+            subject: scopeSubject(scope, payload.serverId),
           });
         },
         onServerConfigurationDeleted: async (payload, idempotencyKey) => {
-          await this.#runtimeServices.objects.automations.forOrg(stored.orgId).ingestEvent({
+          const scope = stored.scope;
+          await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
             id: buildServerConfigurationDeletedEventId({
-              orgId: stored.orgId,
+              scopeKey: backofficeScopeSinglePathSegment(scope),
               serverId: payload.serverId,
               idempotencyKey,
             }),
-            scope: { kind: "org", orgId: stored.orgId },
+            scope,
             source: "mcp",
             eventType: "server.configuration.deleted",
             occurredAt: new Date().toISOString(),
             payload: { ...payload },
             actor: AUTOMATION_SYSTEM_ACTOR,
             actors: [AUTOMATION_SYSTEM_ACTOR],
-            subject: {
-              orgId: stored.orgId,
-              serverId: payload.serverId,
-            },
+            subject: scopeSubject(scope, payload.serverId),
           });
         },
       }),
@@ -161,9 +198,10 @@ export class InMemoryMcpObject implements McpObject {
             return;
           }
 
-          await this.#runtimeServices.objects.automations.forOrg(stored.orgId).ingestEvent({
+          const scope = stored.scope;
+          await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
             id: item.id,
-            scope: { kind: "org", orgId: stored.orgId },
+            scope,
             source: "mcp",
             eventType: "capability.configured",
             occurredAt: item.createdAt,
@@ -174,7 +212,7 @@ export class InMemoryMcpObject implements McpObject {
             actor: AUTOMATION_SYSTEM_ACTOR,
             actors: [AUTOMATION_SYSTEM_ACTOR],
             subject: {
-              orgId: stored.orgId,
+              ...scopeSubject(scope),
               capabilityId: "mcp",
             },
           });
@@ -209,12 +247,13 @@ export class InMemoryMcpObject implements McpObject {
 
   async setAdminConfig(payload: unknown): Promise<McpAdminConfigResponse> {
     const parsed = setAdminConfigInputSchema.parse(payload);
+    const scope = parsed.scope;
     const existing = await this.#host.loadStored();
-    this.#host.assertSameOrg(existing, parsed.orgId);
+    assertSameScope(existing, scope);
 
     const now = new Date().toISOString();
     const stored: StoredMcpConfig = {
-      orgId: parsed.orgId,
+      scope,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
@@ -223,7 +262,7 @@ export class InMemoryMcpObject implements McpObject {
       await this.#host.storeAndInitialize(stored);
       const configuredAt = new Date().toISOString();
       await this.#host.dispatch({
-        id: `mcp:capability.configured:${parsed.orgId}:${configuredAt}`,
+        id: `mcp:capability.configured:${backofficeScopeSinglePathSegment(scope)}:${configuredAt}`,
         type: "capability.configured",
         createdAt: configuredAt,
       });

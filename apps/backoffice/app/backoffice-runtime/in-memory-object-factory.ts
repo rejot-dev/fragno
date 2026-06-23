@@ -72,6 +72,9 @@ const ownerScopeFromAddress = (
       projectId: address.scope.projectId,
     };
   }
+  if (address.scope.kind === "user") {
+    return { kind: "user", userId: address.scope.userId };
+  }
   return undefined;
 };
 

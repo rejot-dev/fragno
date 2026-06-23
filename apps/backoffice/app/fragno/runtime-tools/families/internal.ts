@@ -108,7 +108,13 @@ export const createInternalRuntime = ({
         continue;
       }
 
-      const status = await capability.connection.getStatus({ objects, config, orgId, origin });
+      const status = await capability.connection.getStatus({
+        objects,
+        config,
+        scope: { kind: "org", orgId },
+        orgId,
+        origin,
+      });
       if (status.configured) {
         configuredCapabilities.push(capability.id);
       }
