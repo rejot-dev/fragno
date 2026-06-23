@@ -6,7 +6,7 @@ import {
   isDurableHookOrgFragment,
 } from "./durable-hooks-organisation-state";
 
-const DEFAULT_FRAGMENT: DurableHooksOrgFragment = "pi";
+const DEFAULT_FRAGMENT: DurableHooksOrgFragment = "api";
 
 export async function loader({ params, request }: Route.LoaderArgs) {
   if (!params.orgId) {

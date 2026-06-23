@@ -6,6 +6,7 @@ import type {
   ConnectionStatus,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import { createApiCapabilityFiles } from "@/fragno/backoffice-capabilities/capabilities/api-files";
+import { createApiWebhooksCapabilityFiles } from "@/fragno/backoffice-capabilities/capabilities/api-webhooks-files";
 
 import type { ApiAdminConfigResponse } from "../../../../workers/api.do";
 
@@ -15,6 +16,7 @@ const AUTOMATION_SOURCE = "api" as const;
 const AUTOMATION_EVENT_CONNECTION_CHANGED = "connection.changed" as const;
 const AUTOMATION_EVENT_CONNECTION_DELETED = "connection.deleted" as const;
 const AUTOMATION_EVENT_CONNECTION_AVAILABLE = "connection.available" as const;
+const AUTOMATION_EVENT_WEBHOOK_RECEIVED = "webhook.received" as const;
 
 const apiConnectionSnapshotSchema = z.object({
   slug: z.string().min(1),
@@ -45,6 +47,23 @@ const apiConnectionSubjectSchema = z.object({
   connectionId: z.string().min(1),
 });
 
+const apiWebhookReceivedPayloadSchema = z.object({
+  endpointId: z.string().min(1),
+  deliveryId: z.string().min(1),
+  hookId: z.string().min(1),
+  receivedAt: z.string().min(1),
+  headers: z.record(z.string(), z.string()),
+  query: z.record(z.string(), z.string()),
+  body: z.record(z.string(), z.unknown()),
+  contentType: z.string().nullable(),
+});
+
+const apiWebhookSubjectSchema = z.object({
+  orgId: z.string().min(1),
+  endpointId: z.string().min(1),
+  deliveryId: z.string().min(1),
+});
+
 const capability = { id: "api", label: "API", kind: "connection" } as const;
 const getApiDo = (objects: BackofficeObjectRegistry, orgId: string) => objects.api.forOrg(orgId);
 
@@ -69,7 +88,10 @@ export const apiCapability: BackofficeConfigurableConnectionCapability = {
   ...capability,
   runtimeToolNamespaces: ["api"],
   get files() {
-    return createApiCapabilityFiles();
+    return {
+      ...createApiCapabilityFiles(),
+      ...createApiWebhooksCapabilityFiles(),
+    };
   },
   connection: {
     configurable: true,
@@ -131,6 +153,24 @@ export const apiCapability: BackofficeConfigurableConnectionCapability = {
           authMode: "bearer",
           status: "active",
         },
+      },
+    },
+    {
+      source: AUTOMATION_SOURCE,
+      eventType: AUTOMATION_EVENT_WEBHOOK_RECEIVED,
+      label: "API webhook received",
+      description: "Fires when an API webhook endpoint receives and authenticates a delivery.",
+      payloadSchema: apiWebhookReceivedPayloadSchema,
+      subjectSchema: apiWebhookSubjectSchema,
+      example: {
+        endpointId: "stripe",
+        deliveryId: "evt_123",
+        hookId: "webhook_abc123",
+        receivedAt: "2026-06-23T12:00:00.000Z",
+        headers: { "content-type": "application/json" },
+        query: {},
+        body: { type: "payment_intent.succeeded" },
+        contentType: "application/json",
       },
     },
     {

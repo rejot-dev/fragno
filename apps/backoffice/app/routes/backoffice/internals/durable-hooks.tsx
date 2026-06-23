@@ -4,6 +4,8 @@ import { Link, useNavigate, useOutletContext } from "react-router";
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
+import { DURABLE_HOOK_ORG_FRAGMENTS, FRAGMENT_LABELS } from "./durable-hooks-organisation-state";
+
 export function meta() {
   return [
     { title: "Backoffice Durable Hooks" },
@@ -83,15 +85,11 @@ export default function BackofficeDurableHooksLanding() {
           ) : (
             organizations.map(({ organization }) => {
               const organizationPath = `/backoffice/internals/durable-hooks/${organization.id}`;
-              const cloudflarePath = `${organizationPath}/cloudflare`;
-              const telegramPath = `${organizationPath}/telegram`;
-              const mcpPath = `${organizationPath}/mcp`;
-              const resendPath = `${organizationPath}/resend`;
-              const githubPath = `${organizationPath}/github`;
-              const uploadPath = `${organizationPath}/upload`;
-              const piPath = `${organizationPath}/pi`;
-              const piWorkflowsPath = `${organizationPath}/pi-workflows`;
-              const automationsPath = `${organizationPath}/automations`;
+              const fragmentLinks = DURABLE_HOOK_ORG_FRAGMENTS.map((fragment) => ({
+                id: fragment,
+                label: FRAGMENT_LABELS[fragment],
+                to: `${organizationPath}/${fragment}`,
+              }));
               const handleOrgClick = () => {
                 void navigate(organizationPath);
               };
@@ -123,69 +121,16 @@ export default function BackofficeDurableHooksLanding() {
                   </div>
 
                   <div className="mt-auto flex flex-wrap items-center gap-2 pt-4">
-                    <Link
-                      to={cloudflarePath}
-                      onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
-                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                    >
-                      Workers
-                    </Link>
-                    <Link
-                      to={telegramPath}
-                      onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
-                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                    >
-                      Telegram
-                    </Link>
-                    <Link
-                      to={mcpPath}
-                      onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
-                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                    >
-                      MCP
-                    </Link>
-                    <Link
-                      to={resendPath}
-                      onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
-                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                    >
-                      Resend
-                    </Link>
-                    <Link
-                      to={githubPath}
-                      onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
-                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                    >
-                      GitHub
-                    </Link>
-                    <Link
-                      to={uploadPath}
-                      onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
-                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                    >
-                      Upload
-                    </Link>
-                    <Link
-                      to={piPath}
-                      onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
-                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                    >
-                      Pi
-                    </Link>
-                    <Link
-                      to={piWorkflowsPath}
-                      onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
-                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                    >
-                      Pi workflows
-                    </Link>
-                    <Link
-                      to={automationsPath}
-                      onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
-                      className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                    >
-                      Automations
-                    </Link>
+                    {fragmentLinks.map((fragment) => (
+                      <Link
+                        key={fragment.id}
+                        to={fragment.to}
+                        onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
+                        className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                      >
+                        {fragment.label}
+                      </Link>
+                    ))}
                   </div>
                 </div>
               );

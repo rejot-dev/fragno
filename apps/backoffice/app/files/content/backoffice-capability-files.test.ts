@@ -23,45 +23,40 @@ const readSkillName = (skill: string) => {
 };
 
 describe("Backoffice capability system skills", () => {
-  test("capabilities with files contribute one spec-shaped static skill", () => {
+  test("capability skills are spec-shaped static skills", () => {
     for (const capability of backofficeCapabilities) {
       const skillPaths = Object.keys(capability.files ?? {}).filter(
         (path) => path.startsWith("skills/") && path.endsWith("/SKILL.md"),
       );
 
-      if (!capability.files) {
-        expect(skillPaths).toEqual([]);
-        continue;
+      expect(skillPaths).toHaveLength(Object.keys(capability.files ?? {}).length);
+
+      for (const skillPath of skillPaths) {
+        const skill = readSystemText(skillPath);
+        const skillName = readSkillName(skill);
+
+        expect(skillName).toMatch(skillNamePattern);
+        expect(skillPath).toBe(`skills/${skillName}/SKILL.md`);
+        expect(capability.files?.[skillPath]).toBe(skill);
+        expect(skill).toContain("description:");
+        expect(skill).toContain("#");
+        expect(SYSTEM_CONTENT[`skills/${skillName}/references/configuration.md`]).toBeUndefined();
+        expect(SYSTEM_CONTENT[`skills/${skillName}/references/events.md`]).toBeUndefined();
+        expect(SYSTEM_CONTENT[`skills/${skillName}/references/tools.md`]).toBeUndefined();
       }
-
-      expect(skillPaths).toHaveLength(1);
-      const skillPath = skillPaths[0]!;
-      const skill = readSystemText(skillPath);
-      const skillName = readSkillName(skill);
-
-      expect(skillName).toMatch(skillNamePattern);
-      expect(skillPath).toBe(`skills/${skillName}/SKILL.md`);
-      expect(capability.files[skillPath]).toBe(skill);
-      expect(skill).toContain("description:");
-      expect(skill).toContain("#");
-      expect(SYSTEM_CONTENT[`skills/${skillName}/references/configuration.md`]).toBeUndefined();
-      expect(SYSTEM_CONTENT[`skills/${skillName}/references/events.md`]).toBeUndefined();
-      expect(SYSTEM_CONTENT[`skills/${skillName}/references/tools.md`]).toBeUndefined();
     }
   });
 
-  test("skips skills that are covered by system guidance or do not add capability-specific detail", () => {
-    const capabilityIdsWithoutSkills = backofficeCapabilities
-      .filter((capability) => !capability.files)
-      .map((capability) => capability.id);
+  test("some capabilities intentionally rely on general system guidance instead of specific skills", () => {
+    const capabilityIdsWithoutSkills = new Set(
+      backofficeCapabilities
+        .filter((capability) => !capability.files)
+        .map((capability) => capability.id),
+    );
 
-    expect(capabilityIdsWithoutSkills).toEqual([
-      "sandbox",
-      "automations",
-      "github",
-      "cloudflare",
-      "auth",
-    ]);
+    expect(capabilityIdsWithoutSkills).toEqual(
+      new Set(["sandbox", "automations", "github", "cloudflare", "auth"]),
+    );
   });
 
   test("Telegram skill documents its primary event and tools", () => {

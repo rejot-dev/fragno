@@ -6,6 +6,7 @@ import { BackofficePageHeader } from "@/components/backoffice";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import type { DurableHookQueueEntry, DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import {
+  getApiDurableObject,
   getCloudflareWorkersDurableObject,
   getAutomationsDurableObject,
   getGitHubDurableObject,
@@ -91,6 +92,13 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   try {
     const queueData = await (async (): Promise<DurableHookQueueResponse> => {
       switch (fragment) {
+        case "api": {
+          const repository = await getApiDurableObject(
+            context,
+            params.orgId,
+          ).getDurableHookRepository();
+          return await repository.getHookQueue({ cursor, pageSize });
+        }
         case "cloudflare": {
           const repository = await getCloudflareWorkersDurableObject(
             context,

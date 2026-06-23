@@ -124,8 +124,7 @@ Cataloged automation events:
 - \`source\`: \`api\`, \`eventType\`: \`connection.changed\` — fires when an API connection is created or its configuration changes.
 - \`source\`: \`api\`, \`eventType\`: \`connection.deleted\` — fires when an API connection is deleted.
 - \`source\`: \`api\`, \`eventType\`: \`connection.available\` — fires when auth becomes usable after bearer setup, OAuth callback, or client-credentials token acquisition.
-
-Hook payloads include \`connectionId\` and a connection snapshot with \`slug\`, \`name\`, \`baseUrl\`, \`authMode\`, and \`status\`.
+Connection hook payloads include \`connectionId\` and a connection snapshot with \`slug\`, \`name\`, \`baseUrl\`, \`authMode\`, and \`status\`.
 `,
     tools: `# API tools
 
@@ -153,6 +152,7 @@ await api.request({
   headers: { Accept: "application/json" },
   timeoutMs: 30_000,
 });
+
 \`\`\`
 
 Bash runtime commands include \`api.connections.list\`, \`api.connections.create\`, \`api.connections.delete\`, \`api.auth.status\`, \`api.auth.token\`, \`api.oauth.start\`, \`api.auth.delete\`, and \`api.request\`.
