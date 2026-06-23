@@ -26,8 +26,7 @@ const EMPTY_QUERY_STATE: LofiQueryState<AutomationStoreItem[]> = {
 };
 
 const IDLE_RUNTIME_STATUS: LofiRuntimeStatus = {
-  running: false,
-  syncing: false,
+  status: "idle",
   sources: {},
 };
 

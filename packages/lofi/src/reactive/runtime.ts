@@ -19,23 +19,33 @@ export type LofiRuntimeSource = {
   limit?: number;
 };
 
+export type LofiRuntimeStatusValue =
+  | "idle"
+  | "bootstrapping"
+  | "bootstrapped"
+  | "running"
+  | "syncing";
+
+export type LofiRuntimeSourceStatusValue = Exclude<LofiRuntimeStatusValue, "running">;
+
+export type LofiRuntimeSourceStatus = {
+  status: LofiRuntimeSourceStatusValue;
+  lastSyncAt?: number;
+  lastVersionstamp?: string;
+  lastError?: unknown;
+};
+
 export type LofiRuntimeStatus = {
-  running: boolean;
-  syncing: boolean;
+  status: LofiRuntimeStatusValue;
   lastSyncAt?: number;
   lastVersionstamp?: string;
   lastAppliedSourceId?: string;
   lastError?: unknown;
-  sources: Record<
-    string,
-    {
-      syncing: boolean;
-      lastSyncAt?: number;
-      lastVersionstamp?: string;
-      lastError?: unknown;
-    }
-  >;
+  sources: Record<string, LofiRuntimeSourceStatus>;
 };
+
+export const isLofiRuntimeBootstrapped = (status: LofiRuntimeStatus): boolean =>
+  Object.values(status.sources).every((source) => source.status === "bootstrapped");
 
 export type LofiRuntimeSyncResult = {
   appliedEntries: number;
@@ -56,6 +66,7 @@ export type LofiRuntimeOptions = {
   signal?: AbortSignal;
   autoStart?: boolean;
   keepAlive?: boolean;
+  bootstrap?: boolean;
 };
 
 export type LofiRuntime = {
@@ -66,6 +77,8 @@ export type LofiRuntime = {
   start: () => void;
   stop: () => void;
   retain: () => () => void;
+  bootstrap: () => Promise<LofiRuntimeSyncResult>;
+  whenBootstrapped: () => Promise<void>;
   syncOnce: (sourceId?: string) => Promise<LofiRuntimeSyncResult>;
   refresh: () => void;
   addSource: (source: LofiRuntimeSource) => void;
@@ -74,12 +87,12 @@ export type LofiRuntime = {
 
 type SourceRuntime = {
   source: LofiRuntimeSource;
+  cursorKey: string;
   client: LofiClient;
 };
 
-const createInitialStatus = (): LofiRuntimeStatus => ({
-  running: false,
-  syncing: false,
+const createInitialStatus = (status: LofiRuntimeStatusValue): LofiRuntimeStatus => ({
+  status,
   sources: {},
 });
 
@@ -95,71 +108,194 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
     throw new Error("createLofiRuntime requires at least one source or outboxUrl.");
   }
 
-  const $status = atom<LofiRuntimeStatus>(createInitialStatus());
+  const bootstrapEnabled = options.bootstrap ?? true;
+  let running = false;
+  const $status = atom<LofiRuntimeStatus>(
+    createInitialStatus(bootstrapEnabled ? "idle" : "bootstrapped"),
+  );
   const $revision = atom(0);
   const sourceRuntimes = new Map<string, SourceRuntime>();
   let retainCount = 0;
+  let bootstrapPromise: Promise<LofiRuntimeSyncResult> | undefined;
 
   const updateStatus = (updater: (status: LofiRuntimeStatus) => LofiRuntimeStatus): void => {
     $status.set(updater($status.get()));
   };
 
+  const getBootstrapMetaKey = (cursorKey: string): string => `${cursorKey}::bootstrap`;
+
+  const sourceStatusValue = (status: LofiRuntimeSourceStatusValue): LofiRuntimeSourceStatusValue =>
+    status;
+
+  const sourceStatusDefaults = (): { status: LofiRuntimeSourceStatusValue } => ({
+    status: bootstrapEnabled ? "idle" : "bootstrapped",
+  });
+
+  const getRuntimeStatus = (sources: LofiRuntimeStatus["sources"]): LofiRuntimeStatusValue => {
+    const sourceStatuses = Object.values(sources);
+
+    if (sourceStatuses.some((source) => source.status === "bootstrapping")) {
+      return "bootstrapping";
+    }
+
+    if (sourceStatuses.some((source) => source.status === "syncing")) {
+      return "syncing";
+    }
+
+    if (running) {
+      return "running";
+    }
+
+    if (
+      !bootstrapEnabled ||
+      (sourceStatuses.length > 0 &&
+        sourceStatuses.every((source) => source.status === "bootstrapped"))
+    ) {
+      return "bootstrapped";
+    }
+
+    return "idle";
+  };
+
+  const isBootstrapped = (): boolean =>
+    !bootstrapEnabled || isLofiRuntimeBootstrapped($status.get());
+
   const markSourceSyncing = (sourceId: string, syncing: boolean): void => {
-    updateStatus((status) => ({
-      ...status,
-      syncing:
-        syncing ||
-        Object.entries(status.sources).some(([id, source]) => id !== sourceId && source.syncing),
-      sources: {
-        ...status.sources,
+    updateStatus((current) => {
+      const sources: LofiRuntimeStatus["sources"] = {
+        ...current.sources,
         [sourceId]: {
-          ...status.sources[sourceId],
-          syncing,
+          ...sourceStatusDefaults(),
+          ...current.sources[sourceId],
+          status: sourceStatusValue(
+            syncing
+              ? current.sources[sourceId]?.status === "bootstrapping"
+                ? "bootstrapping"
+                : "syncing"
+              : (current.sources[sourceId]?.status ?? "idle"),
+          ),
         },
-      },
-    }));
+      };
+
+      return {
+        ...current,
+        status: getRuntimeStatus(sources),
+        sources,
+      };
+    });
   };
 
   const markSourceResult = (sourceId: string, result: LofiSyncResult): void => {
     const now = Date.now();
-    updateStatus((status) => ({
-      ...status,
-      syncing: Object.entries(status.sources).some(
-        ([id, source]) => id !== sourceId && source.syncing,
-      ),
-      lastSyncAt: now,
-      lastVersionstamp: result.lastVersionstamp ?? status.lastVersionstamp,
-      ...(result.appliedEntries > 0 ? { lastAppliedSourceId: sourceId } : {}),
-      lastError: undefined,
-      sources: {
-        ...status.sources,
+    updateStatus((current) => {
+      const sources: LofiRuntimeStatus["sources"] = {
+        ...current.sources,
         [sourceId]: {
-          ...status.sources[sourceId],
-          syncing: false,
+          ...sourceStatusDefaults(),
+          ...current.sources[sourceId],
+          status: sourceStatusValue(
+            current.sources[sourceId]?.status === "bootstrapping"
+              ? "bootstrapping"
+              : "bootstrapped",
+          ),
           lastSyncAt: now,
-          lastVersionstamp: result.lastVersionstamp ?? status.sources[sourceId]?.lastVersionstamp,
+          lastVersionstamp: result.lastVersionstamp ?? current.sources[sourceId]?.lastVersionstamp,
           lastError: undefined,
         },
-      },
-    }));
+      };
+
+      return {
+        ...current,
+        status: getRuntimeStatus(sources),
+        lastSyncAt: now,
+        lastVersionstamp: result.lastVersionstamp ?? current.lastVersionstamp,
+        ...(result.appliedEntries > 0 ? { lastAppliedSourceId: sourceId } : {}),
+        lastError: undefined,
+        sources,
+      };
+    });
   };
 
   const markSourceError = (sourceId: string, error: unknown): void => {
-    updateStatus((status) => ({
-      ...status,
-      syncing: Object.entries(status.sources).some(
-        ([id, source]) => id !== sourceId && source.syncing,
-      ),
-      lastError: error,
-      sources: {
-        ...status.sources,
+    updateStatus((current) => {
+      const sources: LofiRuntimeStatus["sources"] = {
+        ...current.sources,
         [sourceId]: {
-          ...status.sources[sourceId],
-          syncing: false,
+          ...sourceStatusDefaults(),
+          ...current.sources[sourceId],
+          status: sourceStatusValue(
+            current.sources[sourceId]?.status === "bootstrapped" ? "bootstrapped" : "idle",
+          ),
           lastError: error,
         },
-      },
-    }));
+      };
+
+      return {
+        ...current,
+        status: getRuntimeStatus(sources),
+        lastError: error,
+        sources,
+      };
+    });
+  };
+
+  const markSourceBootstrapping = (sourceId: string): void => {
+    updateStatus((current) => {
+      const sources: LofiRuntimeStatus["sources"] = {
+        ...current.sources,
+        [sourceId]: {
+          ...sourceStatusDefaults(),
+          ...current.sources[sourceId],
+          status: sourceStatusValue("bootstrapping"),
+        },
+      };
+
+      return {
+        ...current,
+        status: getRuntimeStatus(sources),
+        sources,
+      };
+    });
+  };
+
+  const markSourceBootstrapped = (sourceId: string): void => {
+    updateStatus((status) => {
+      const sources: LofiRuntimeStatus["sources"] = {
+        ...status.sources,
+        [sourceId]: {
+          ...sourceStatusDefaults(),
+          ...status.sources[sourceId],
+          status: sourceStatusValue("bootstrapped"),
+        },
+      };
+
+      return {
+        ...status,
+        status: getRuntimeStatus(sources),
+        sources,
+      };
+    });
+  };
+
+  const markSourceBootstrapIdle = (sourceId: string): void => {
+    updateStatus((status) => {
+      const sources: LofiRuntimeStatus["sources"] = {
+        ...status.sources,
+        [sourceId]: {
+          ...sourceStatusDefaults(),
+          ...status.sources[sourceId],
+          status: sourceStatusValue(
+            status.sources[sourceId]?.status === "bootstrapped" ? "bootstrapped" : "idle",
+          ),
+        },
+      };
+
+      return {
+        ...status,
+        status: getRuntimeStatus(sources),
+        sources,
+      };
+    });
   };
 
   const refresh = (): void => {
@@ -208,6 +344,7 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
 
     return {
       source,
+      cursorKey,
       client: new LofiClient(clientOptions),
     };
   };
@@ -219,16 +356,29 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
 
     const runtime = createSourceRuntime(source);
     sourceRuntimes.set(source.id, runtime);
-    updateStatus((status) => ({
-      ...status,
-      sources: {
+    updateStatus((status) => {
+      const sources: LofiRuntimeStatus["sources"] = {
         ...status.sources,
-        [source.id]: status.sources[source.id] ?? { syncing: false },
-      },
-    }));
+        [source.id]: status.sources[source.id] ?? sourceStatusDefaults(),
+      };
 
-    if ($status.get().running) {
-      runtime.client.start({ signal: options.signal });
+      return {
+        ...status,
+        status: getRuntimeStatus(sources),
+        sources,
+      };
+    });
+
+    if (running) {
+      if (bootstrapEnabled) {
+        void bootstrap().then(() => {
+          if (running && sourceRuntimes.has(source.id)) {
+            runtime.client.start({ signal: options.signal });
+          }
+        });
+      } else {
+        runtime.client.start({ signal: options.signal });
+      }
     }
   };
 
@@ -245,29 +395,66 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
       delete nextSources[sourceId];
       return {
         ...status,
-        syncing: Object.values(nextSources).some((entry) => entry.syncing),
+        status: getRuntimeStatus(nextSources),
         sources: nextSources,
       };
     });
   };
 
-  const start = (): void => {
-    const status = $status.get();
-    if (status.running) {
-      return;
-    }
-
-    updateStatus((current) => ({ ...current, running: true }));
+  const startLiveClients = (): void => {
     for (const runtime of sourceRuntimes.values()) {
       runtime.client.start({ signal: options.signal });
     }
+  };
+
+  const start = (): void => {
+    if (running) {
+      return;
+    }
+
+    running = true;
+    updateStatus((current) => ({ ...current, status: getRuntimeStatus(current.sources) }));
+
+    if (!bootstrapEnabled) {
+      startLiveClients();
+      return;
+    }
+
+    void bootstrap()
+      .then(() => {
+        if (running) {
+          startLiveClients();
+        }
+      })
+      .catch((error) => {
+        running = false;
+        updateStatus((current) => ({ ...current, status: getRuntimeStatus(current.sources) }));
+        throw error;
+      });
   };
 
   const stop = (): void => {
     for (const runtime of sourceRuntimes.values()) {
       runtime.client.stop();
     }
-    updateStatus((status) => ({ ...status, running: false, syncing: false }));
+    running = false;
+    updateStatus((current) => {
+      const sources: LofiRuntimeStatus["sources"] = Object.fromEntries(
+        Object.entries(current.sources).map(([sourceId, source]) => [
+          sourceId,
+          {
+            ...source,
+            status: sourceStatusValue(source.status === "bootstrapped" ? "bootstrapped" : "idle"),
+          },
+        ]),
+      );
+
+      return {
+        ...current,
+        status: getRuntimeStatus(sources),
+        sources,
+      };
+    });
   };
 
   const retain = (): (() => void) => {
@@ -298,12 +485,28 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
     markSourceSyncing(sourceId, true);
     try {
       const result = await runtime.client.syncOnce({ signal: options.signal });
+      if (result.aborted) {
+        markSourceBootstrapIdle(sourceId);
+        return result;
+      }
+
       markSourceResult(sourceId, result);
       return result;
     } catch (error) {
       markSourceError(sourceId, error);
       throw error;
     }
+  };
+
+  const summarizeSyncResults = (
+    sourceResults: Record<string, LofiSyncResult>,
+  ): LofiRuntimeSyncResult => {
+    const results = Object.values(sourceResults);
+    return {
+      appliedEntries: results.reduce((total, result) => total + result.appliedEntries, 0),
+      lastVersionstamp: results.findLast((result) => result.lastVersionstamp)?.lastVersionstamp,
+      sources: sourceResults,
+    };
   };
 
   const syncOnce = async (sourceId?: string): Promise<LofiRuntimeSyncResult> => {
@@ -314,12 +517,79 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
       sourceResults[targetSourceId] = await syncSourceOnce(targetSourceId);
     }
 
-    const results = Object.values(sourceResults);
-    return {
-      appliedEntries: results.reduce((total, result) => total + result.appliedEntries, 0),
-      lastVersionstamp: results.findLast((result) => result.lastVersionstamp)?.lastVersionstamp,
-      sources: sourceResults,
-    };
+    return summarizeSyncResults(sourceResults);
+  };
+
+  const bootstrapSource = async (sourceId: string): Promise<LofiSyncResult> => {
+    const runtime = sourceRuntimes.get(sourceId);
+    if (!runtime) {
+      throw new Error(`Unknown Lofi runtime source: ${sourceId}`);
+    }
+
+    markSourceBootstrapping(sourceId);
+    const bootstrapMetaKey = getBootstrapMetaKey(runtime.cursorKey);
+    const bootstrapStatus = await options.adapter.getMeta(bootstrapMetaKey);
+
+    if (bootstrapStatus === "complete") {
+      markSourceBootstrapped(sourceId);
+      return {
+        appliedEntries: 0,
+        lastVersionstamp: await options.adapter.getMeta(runtime.cursorKey),
+      };
+    }
+
+    try {
+      const result = await syncSourceOnce(sourceId);
+      if (result.aborted) {
+        throw createAbortError();
+      }
+
+      await options.adapter.setMeta(bootstrapMetaKey, "complete");
+      markSourceBootstrapped(sourceId);
+      return result;
+    } catch (error) {
+      if (isAbortError(error)) {
+        markSourceBootstrapIdle(sourceId);
+      } else {
+        markSourceError(sourceId, error);
+      }
+      throw error;
+    }
+  };
+
+  const runBootstrap = async (): Promise<LofiRuntimeSyncResult> => {
+    if (!bootstrapEnabled) {
+      return summarizeSyncResults({});
+    }
+
+    const sourceResults: Record<string, LofiSyncResult> = {};
+    for (const sourceId of sourceRuntimes.keys()) {
+      sourceResults[sourceId] = await bootstrapSource(sourceId);
+    }
+    return summarizeSyncResults(sourceResults);
+  };
+
+  const bootstrap = (): Promise<LofiRuntimeSyncResult> => {
+    if (!bootstrapEnabled || isBootstrapped()) {
+      return Promise.resolve(summarizeSyncResults({}));
+    }
+
+    if (bootstrapPromise) {
+      return bootstrapPromise;
+    }
+
+    bootstrapPromise = runBootstrap().finally(() => {
+      bootstrapPromise = undefined;
+    });
+    return bootstrapPromise;
+  };
+
+  const whenBootstrapped = async (): Promise<void> => {
+    if (!bootstrapEnabled || isBootstrapped()) {
+      return;
+    }
+
+    await bootstrap();
   };
 
   for (const source of sources) {
@@ -338,9 +608,20 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
     start,
     stop,
     retain,
+    bootstrap,
+    whenBootstrapped,
     syncOnce,
     refresh,
     addSource,
     removeSource,
   };
 };
+
+const createAbortError = (): Error => {
+  const error = new Error("Lofi bootstrap aborted.");
+  error.name = "AbortError";
+  return error;
+};
+
+const isAbortError = (error: unknown): boolean =>
+  error instanceof Error && error.name === "AbortError";

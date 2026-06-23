@@ -42,6 +42,7 @@ export type LofiClientOptions = LofiClientBaseOptions & LofiOutboxTransportOptio
 export type LofiSyncResult = {
   appliedEntries: number;
   lastVersionstamp?: string;
+  aborted?: boolean;
 };
 
 export type LofiSchemaRegistration = { schema: AnySchema };

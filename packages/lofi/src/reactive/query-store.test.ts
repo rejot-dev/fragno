@@ -3,7 +3,7 @@ import { describe, expect, it, assert } from "vitest";
 import { InMemoryLofiAdapter } from "../adapters/in-memory/adapter";
 import { createLofiQueryStore } from "./query-store";
 import { createLofiRuntime } from "./runtime";
-import { createUserMutation, reactiveTestSchema, waitFor } from "./test-utils";
+import { createOutboxEntry, createUserMutation, reactiveTestSchema, waitFor } from "./test-utils";
 
 describe("createLofiQueryStore", () => {
   it("loads rows on mount and exposes query state", async () => {
@@ -37,6 +37,65 @@ describe("createLofiQueryStore", () => {
     assert(!$users.get().loading);
     expect($users.get().error).toBeNull();
     assert(values.some((value) => value.loading));
+
+    unlisten();
+  });
+
+  it("waits for runtime bootstrap before running the first query", async () => {
+    const adapter = new InMemoryLofiAdapter({
+      endpointName: "app",
+      schemas: [reactiveTestSchema],
+    });
+    await adapter.applyMutations([createUserMutation("cached-user", "Cached")]);
+
+    let resolveBootstrap: (response: Response) => void = () => undefined;
+    const bootstrapResponse = new Promise<Response>((resolve) => {
+      resolveBootstrap = resolve;
+    });
+    let fetchCount = 0;
+    const runtime = createLofiRuntime({
+      endpointName: "app",
+      adapter,
+      outboxUrl: "https://example.com/outbox",
+      fetch: (async () => {
+        fetchCount += 1;
+        if (fetchCount === 1) {
+          return bootstrapResponse;
+        }
+        return new Response(JSON.stringify([]));
+      }) as typeof fetch,
+    });
+    const $users = createLofiQueryStore(
+      runtime,
+      reactiveTestSchema,
+      "users",
+      (b) => b.whereIndex("primary"),
+      { initialData: [] },
+    );
+
+    const unlisten = $users.subscribe(() => undefined);
+
+    await waitFor(() => $users.get().loading);
+    expect($users.get().data).toEqual([]);
+    assert(!$users.get().synced);
+
+    resolveBootstrap(
+      new Response(
+        JSON.stringify([
+          createOutboxEntry({
+            versionstamp: "001",
+            mutations: [createUserMutation("synced-user", "Synced", "001")],
+          }),
+        ]),
+      ),
+    );
+
+    await waitFor(() => $users.get().synced);
+    expect($users.get().data).toEqual([
+      expect.objectContaining({ name: "Cached" }),
+      expect.objectContaining({ name: "Synced" }),
+    ]);
+    assert((await adapter.getMeta("app:default:outbox::bootstrap")) === "complete");
 
     unlisten();
   });

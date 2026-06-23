@@ -148,7 +148,7 @@ export class LofiClient {
 
     const signal = options?.signal ?? this.defaultSignal;
     if (signal?.aborted) {
-      return { appliedEntries: 0 };
+      return { appliedEntries: 0, aborted: true };
     }
 
     const controller = new AbortController();
@@ -171,7 +171,7 @@ export class LofiClient {
 
   private async runSyncOnce(signal: AbortSignal): Promise<LofiSyncResult> {
     if (signal.aborted) {
-      return { appliedEntries: 0 };
+      return { appliedEntries: 0, aborted: true };
     }
 
     const cursorKey = this.cursorKey ?? `${this.endpointName}::outbox`;
@@ -189,7 +189,7 @@ export class LofiClient {
 
         for (const entry of page.entries) {
           if (signal.aborted) {
-            return { appliedEntries, lastVersionstamp };
+            return { appliedEntries, lastVersionstamp, aborted: true };
           }
 
           const result = await this.applyEntry({ entry, cursorKey, sourceKey });
@@ -202,7 +202,7 @@ export class LofiClient {
           }
 
           if (signal.aborted) {
-            return { appliedEntries, lastVersionstamp };
+            return { appliedEntries, lastVersionstamp, aborted: true };
           }
         }
 
@@ -212,9 +212,13 @@ export class LofiClient {
       }
     } catch (error) {
       if (isAbortError(error)) {
-        return { appliedEntries, lastVersionstamp };
+        return { appliedEntries, lastVersionstamp, aborted: true };
       }
       throw error;
+    }
+
+    if (signal.aborted) {
+      return { appliedEntries, lastVersionstamp, aborted: true };
     }
 
     const result = { appliedEntries, lastVersionstamp };
