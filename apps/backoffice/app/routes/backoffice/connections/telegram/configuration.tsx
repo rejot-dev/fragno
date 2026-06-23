@@ -153,6 +153,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     const status = await telegramCapability.connection.configure({
       objects: runtime.objects,
       config: runtime.config,
+      scope: { kind: "org", orgId: params.orgId },
       orgId: params.orgId,
       origin,
       payload: validation.payload,

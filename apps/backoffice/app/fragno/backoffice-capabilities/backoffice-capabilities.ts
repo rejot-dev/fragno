@@ -1,6 +1,10 @@
 import type { z } from "zod";
 
-import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import type {
+  BackofficeObjectBindingName,
+  BackofficeObjectRegistry,
+} from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import type { AutomationExternalEntityDefinition } from "@/fragno/automation/contracts";
 import type { DurableHookQueueOptions, DurableHookRepository } from "@/fragno/durable-hooks";
@@ -53,9 +57,10 @@ export type ConnectionStatus = {
   verification?: { ok: boolean; message: string };
 };
 
-type BackofficeCapabilityContext = {
+export type BackofficeCapabilityContext = {
   objects: BackofficeObjectRegistry;
   config: BackofficeRuntimeConfig;
+  scope: BackofficeContextScope;
   orgId: string;
   origin: string;
 };
@@ -140,6 +145,7 @@ ${tools}
 type BackofficeConnectionInput = BackofficeCapabilityContext;
 
 type BackofficeConnectionDescriptorBase = {
+  objectBinding?: BackofficeObjectBindingName;
   getStatus(input: BackofficeConnectionInput): Promise<ConnectionStatus>;
   verify?(input: BackofficeConnectionInput): Promise<ConnectionStatus>;
 };
@@ -224,15 +230,6 @@ export const backofficeConnectionCatalog: readonly BackofficeConnectionCatalogEn
     configurable: true,
     description: "Capture chat activity, configure webhooks, and send messages as a bot.",
     routeSegment: "telegram",
-  },
-  {
-    id: "mcp",
-    label: "MCP",
-    kind: "connection",
-    configurable: true,
-    description:
-      "Register remote MCP servers, authenticate with OAuth or tokens, and inspect tools.",
-    routeSegment: "mcp",
   },
   {
     id: "resend",

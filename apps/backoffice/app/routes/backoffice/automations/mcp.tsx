@@ -11,18 +11,19 @@ import {
 import { Streamdown } from "streamdown";
 
 import { FormField } from "@/components/backoffice";
-import { mcpCapability } from "@/fragno/backoffice-capabilities/capabilities/mcp";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { jsonSchemaToTypeScript, type JsonSchemaObject } from "@/lib/zod/zod-formatter";
-import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-import type { Route } from "./+types/configuration";
 import {
-  createMcpActionRouteCaller,
-  fetchMcpServers,
+  createMcpActionRouteCallerForScope,
+  ensureMcpConfiguredForScope,
+  fetchMcpServersForScope,
   type McpServerRefreshState,
   type McpServerSummary,
   type McpServerToolsState,
-} from "./data";
+} from "../connections/mcp/data";
+import type { Route } from "./+types/mcp";
+import { automationScopeFromRouteParams } from "./scope";
 
 type McpActionData = {
   ok: boolean;
@@ -68,58 +69,26 @@ const parseScopes = (value: string) =>
 const selectedServerPath = (slug: string) => `?server=${encodeURIComponent(slug)}`;
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const scope = automationScopeFromRouteParams(params);
+  await requireBackofficeContext(request, context, scope);
+  await ensureMcpConfiguredForScope(context, scope);
 
-  const { runtime } = context.get(BackofficeWorkerContext);
-  const capabilityContext = {
-    objects: runtime.objects,
-    config: runtime.config,
-    scope: { kind: "org" as const, orgId: params.orgId },
-    orgId: params.orgId,
-    origin: new URL(request.url).origin,
-  };
-  const status = await mcpCapability.connection.getStatus(capabilityContext);
-  if (!status.configured) {
-    await mcpCapability.connection.configure({
-      ...capabilityContext,
-      payload: {},
-    });
-  }
-
-  const { servers, serversError } = await fetchMcpServers(request, context, params.orgId);
+  const { servers, serversError } = await fetchMcpServersForScope(request, context, scope);
 
   return { servers, serversError } satisfies McpConfigurationLoaderData;
 }
 
 export async function action({ request, context, params }: Route.ActionArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const scope = automationScopeFromRouteParams(params);
+  await requireBackofficeContext(request, context, scope);
 
   const formData = await request.formData();
   const intent = getFormString(formData, "intent") || "add-server";
-  const origin = new URL(request.url).origin;
-  const { runtime } = context.get(BackofficeWorkerContext);
-  const capabilityContext = {
-    objects: runtime.objects,
-    config: runtime.config,
-    scope: { kind: "org" as const, orgId: params.orgId },
-    orgId: params.orgId,
-    origin,
-  };
 
   try {
-    const status = await mcpCapability.connection.getStatus(capabilityContext);
-    if (!status.configured) {
-      await mcpCapability.connection.configure({
-        ...capabilityContext,
-        payload: {},
-      });
-    }
+    await ensureMcpConfiguredForScope(context, scope);
 
-    const callRoute = createMcpActionRouteCaller(request, context, params.orgId);
+    const callRoute = createMcpActionRouteCallerForScope(request, context, scope);
 
     if (intent === "add-server") {
       const slug = getFormString(formData, "slug");
@@ -862,6 +831,7 @@ export default function BackofficeOrganisationMcpConfiguration() {
   const submittingIntent = navigation.formData?.get("intent");
   const submittingSlug = navigation.formData?.get("slug");
   const selectedSlug = searchParams.get("server");
+  const oauthStatus = searchParams.get("oauth");
   const isConfiguring = searchParams.get("configure") === "1";
   const selectedServer = selectedSlug
     ? (servers.find((server) => server.slug === selectedSlug) ?? null)
@@ -1015,6 +985,15 @@ export default function BackofficeOrganisationMcpConfiguration() {
       </div>
 
       <div className="flex min-h-0 flex-col gap-3">
+        {oauthStatus === "error" ? (
+          <div className="border border-red-500/40 bg-red-500/5 p-3 text-sm text-red-500">
+            MCP OAuth could not be completed.
+          </div>
+        ) : oauthStatus === "success" ? (
+          <div className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] p-3 text-sm text-[var(--bo-accent-fg)]">
+            MCP OAuth authentication complete.
+          </div>
+        ) : null}
         {saveError ? (
           <div className="border border-red-500/40 bg-red-500/5 p-3 text-sm text-red-500">
             {saveError}

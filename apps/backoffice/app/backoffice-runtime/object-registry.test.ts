@@ -97,7 +97,7 @@ describe("backoffice object scope policy", () => {
       OTP: ["org"],
       RESEND: ["org"],
       RESON8: ["org"],
-      MCP: ["org", "user"],
+      MCP: ["org", "user", "project"],
       UPLOAD: ["org", "user", "project"],
       GITHUB: ["org"],
       CLOUDFLARE_WORKERS: ["org"],
@@ -113,6 +113,7 @@ describe("backoffice object scope policy", () => {
     assertBackofficeObjectAddressAllowed(address("API", "user"));
     assertBackofficeObjectAddressAllowed(address("UPLOAD", "project"));
     assertBackofficeObjectAddressAllowed(address("MCP", "user"));
+    assertBackofficeObjectAddressAllowed(address("MCP", "project"));
     assertBackofficeObjectAddressAllowed(address("PI", "org"));
   });
 

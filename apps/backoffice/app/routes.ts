@@ -39,6 +39,7 @@ export default [
         index("routes/backoffice/automations/scope-index.tsx"),
         route("scripts", "routes/backoffice/automations/scripts.tsx"),
         route("store", "routes/backoffice/automations/store.tsx"),
+        route("mcp", "routes/backoffice/automations/mcp.tsx"),
       ]),
 
       route("environments", "routes/backoffice/environments/index.tsx"),

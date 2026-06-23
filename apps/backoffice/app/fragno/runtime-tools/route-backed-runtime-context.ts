@@ -1,6 +1,7 @@
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { BackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import type { IFileSystem } from "@/files/interface";
 import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
@@ -109,12 +110,12 @@ export const createRouteBackedRuntimeContext = ({
         defaultActor,
         fileSystem,
       }),
-    backoffice: org
+    backoffice: isBackofficeRoutableScope(execution.scope)
       ? {
           runtime: createBackofficeCapabilitiesRuntime({
             objects: runtime.objects,
             config: runtime.config,
-            orgId: org.orgId,
+            scope: execution.scope,
             runtimeToolNamespacesByCapability: getRuntimeToolNamespacesByCapability(),
           }),
         }

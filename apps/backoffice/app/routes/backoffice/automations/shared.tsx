@@ -53,7 +53,7 @@ export type AutomationLayoutContext = {
   storeEntriesError: string | null;
 };
 
-export type AutomationTab = "scripts" | "store";
+export type AutomationTab = "scripts" | "store" | "mcp";
 
 export const formatTimestamp = (value?: string | Date | null) => {
   if (!value) {
@@ -91,7 +91,7 @@ export function AutomationHeader({ selectedScope }: { selectedScope: AutomationU
       ]}
       eyebrow="Automations"
       title={`Automations for ${scopeLabel}`}
-      description="Inspect system and workspace automation scripts and review store bindings for the selected scope."
+      description="Inspect automation scripts, MCP servers, and store bindings for the selected scope."
       actions={
         orgId ? (
           <Link
@@ -182,6 +182,11 @@ export function AutomationTabs({
       id: "store" as const,
       label: "Store",
       to: automationScopeTabPath(selectedScope, "store"),
+    },
+    {
+      id: "mcp" as const,
+      label: "MCP",
+      to: automationScopeTabPath(selectedScope, "mcp"),
     },
   ];
 

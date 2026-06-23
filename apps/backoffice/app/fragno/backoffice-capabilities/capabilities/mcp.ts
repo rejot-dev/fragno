@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type {
   BackofficeConfigurableConnectionCapability,
   ConnectionStatus,
@@ -27,12 +26,12 @@ const mcpServerConfigurationDeletedPayloadSchema = z.object({
 });
 
 const mcpServerConfigurationSubjectSchema = z.object({
-  orgId: z.string().min(1),
+  orgId: z.string().min(1).optional(),
+  scope: z.unknown().optional(),
   serverId: z.string().min(1),
 });
 
 const capability = { id: "mcp", label: "MCP", kind: "connection" } as const;
-const getMcpDo = (objects: BackofficeObjectRegistry, orgId: string) => objects.mcp.forOrg(orgId);
 
 const toMcpStatus = (response: McpAdminConfigResponse): ConnectionStatus => {
   if (!response.configured) {
@@ -59,19 +58,20 @@ export const mcpCapability: BackofficeConfigurableConnectionCapability = {
   },
   connection: {
     configurable: true,
+    objectBinding: "MCP",
     configureInputSchema: mcpConfigureInputSchema,
     configureFields: [],
-    getStatus: async ({ objects, orgId }) =>
-      toMcpStatus(await getMcpDo(objects, orgId).getAdminConfig()),
-    verify: async ({ objects, orgId }) =>
-      toMcpStatus(await getMcpDo(objects, orgId).getAdminConfig()),
-    reset: async ({ objects, orgId }) =>
-      toMcpStatus(await getMcpDo(objects, orgId).resetAdminConfig()),
-    configure: async ({ objects, orgId, payload }) =>
+    getStatus: async ({ objects, scope }) =>
+      toMcpStatus(await objects.mcp.for(scope).getAdminConfig()),
+    verify: async ({ objects, scope }) =>
+      toMcpStatus(await objects.mcp.for(scope).getAdminConfig()),
+    reset: async ({ objects, scope }) =>
+      toMcpStatus(await objects.mcp.for(scope).resetAdminConfig()),
+    configure: async ({ objects, scope, payload }) =>
       toMcpStatus(
-        await getMcpDo(objects, orgId).setAdminConfig({
+        await objects.mcp.for(scope).setAdminConfig({
           ...mcpConfigureInputSchema.parse(payload),
-          orgId,
+          scope,
         }),
       ),
   },
@@ -79,7 +79,7 @@ export const mcpCapability: BackofficeConfigurableConnectionCapability = {
     {
       id: "mcp",
       label: "MCP",
-      getRepository: ({ objects, orgId }) => getMcpDo(objects, orgId).getDurableHookRepository(),
+      getRepository: ({ objects, scope }) => objects.mcp.for(scope).getDurableHookRepository(),
     },
   ],
   automationEvents: [

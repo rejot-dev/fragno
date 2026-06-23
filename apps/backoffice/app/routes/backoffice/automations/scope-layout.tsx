@@ -63,8 +63,16 @@ const normalizeStoreEntries = (
   return entries.sort((left, right) => left.key.localeCompare(right.key));
 };
 
-const currentTabFromPath = (pathname: string): AutomationTab =>
-  pathname.replace(/\/+$/, "").split("/").includes("store") ? "store" : "scripts";
+const currentTabFromPath = (pathname: string): AutomationTab => {
+  const segments = pathname.replace(/\/+$/, "").split("/");
+  if (segments.includes("mcp")) {
+    return "mcp";
+  }
+  if (segments.includes("store")) {
+    return "store";
+  }
+  return "scripts";
+};
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   const me = await getAuthMe(request, context);
