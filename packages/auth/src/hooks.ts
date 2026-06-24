@@ -36,12 +36,26 @@ export interface InvitationExpiredHookPayload {
 // Synchronous to ensure checks run before mutations are committed.
 export type BeforeCreateUserHook = (payload: BeforeCreateUserPayload) => void;
 
+export interface AuthHookContext {
+  idempotencyKey: string;
+  hookId: string;
+}
+
 export interface AuthHooks {
-  onUserCreated?: (payload: UserHookPayload) => Promise<void> | void;
-  onUserRoleUpdated?: (payload: UserHookPayload) => Promise<void> | void;
-  onUserPasswordChanged?: (payload: UserHookPayload) => Promise<void> | void;
-  onCredentialIssued?: (payload: CredentialHookPayload) => Promise<void> | void;
-  onCredentialInvalidated?: (payload: CredentialHookPayload) => Promise<void> | void;
+  onUserCreated?: (payload: UserHookPayload, context: AuthHookContext) => Promise<void> | void;
+  onUserRoleUpdated?: (payload: UserHookPayload, context: AuthHookContext) => Promise<void> | void;
+  onUserPasswordChanged?: (
+    payload: UserHookPayload,
+    context: AuthHookContext,
+  ) => Promise<void> | void;
+  onCredentialIssued?: (
+    payload: CredentialHookPayload,
+    context: AuthHookContext,
+  ) => Promise<void> | void;
+  onCredentialInvalidated?: (
+    payload: CredentialHookPayload,
+    context: AuthHookContext,
+  ) => Promise<void> | void;
 }
 
 export type AuthHooksMap = {

@@ -1,3 +1,4 @@
+import type { AuthHookContext } from "../hooks";
 import type { Role, UserSummary } from "../types";
 
 export type DefaultOrganizationRole = "owner" | "admin" | "member";
@@ -88,23 +89,50 @@ export interface OrganizationInvitationHookPayload<TRole extends string = Defaul
 }
 
 export interface OrganizationHooks<TRole extends string = DefaultOrganizationRole> {
-  onOrganizationCreated?: (payload: OrganizationHookPayload) => Promise<void> | void;
-  onOrganizationUpdated?: (payload: OrganizationHookPayload) => Promise<void> | void;
-  onOrganizationDeleted?: (payload: OrganizationHookPayload) => Promise<void> | void;
-  onMemberAdded?: (payload: OrganizationMemberHookPayload<TRole>) => Promise<void> | void;
-  onMemberRemoved?: (payload: OrganizationMemberHookPayload<TRole>) => Promise<void> | void;
-  onMemberRolesUpdated?: (payload: OrganizationMemberHookPayload<TRole>) => Promise<void> | void;
-  onInvitationCreated?: (payload: OrganizationInvitationHookPayload<TRole>) => Promise<void> | void;
+  onOrganizationCreated?: (
+    payload: OrganizationHookPayload,
+    context: AuthHookContext,
+  ) => Promise<void> | void;
+  onOrganizationUpdated?: (
+    payload: OrganizationHookPayload,
+    context: AuthHookContext,
+  ) => Promise<void> | void;
+  onOrganizationDeleted?: (
+    payload: OrganizationHookPayload,
+    context: AuthHookContext,
+  ) => Promise<void> | void;
+  onMemberAdded?: (
+    payload: OrganizationMemberHookPayload<TRole>,
+    context: AuthHookContext,
+  ) => Promise<void> | void;
+  onMemberRemoved?: (
+    payload: OrganizationMemberHookPayload<TRole>,
+    context: AuthHookContext,
+  ) => Promise<void> | void;
+  onMemberRolesUpdated?: (
+    payload: OrganizationMemberHookPayload<TRole>,
+    context: AuthHookContext,
+  ) => Promise<void> | void;
+  onInvitationCreated?: (
+    payload: OrganizationInvitationHookPayload<TRole>,
+    context: AuthHookContext,
+  ) => Promise<void> | void;
   onInvitationAccepted?: (
     payload: OrganizationInvitationHookPayload<TRole>,
+    context: AuthHookContext,
   ) => Promise<void> | void;
   onInvitationRejected?: (
     payload: OrganizationInvitationHookPayload<TRole>,
+    context: AuthHookContext,
   ) => Promise<void> | void;
   onInvitationCanceled?: (
     payload: OrganizationInvitationHookPayload<TRole>,
+    context: AuthHookContext,
   ) => Promise<void> | void;
-  onInvitationExpired?: (payload: OrganizationInvitationHookPayload<TRole>) => Promise<void> | void;
+  onInvitationExpired?: (
+    payload: OrganizationInvitationHookPayload<TRole>,
+    context: AuthHookContext,
+  ) => Promise<void> | void;
 }
 
 export interface AutoCreateOrganizationConfig {

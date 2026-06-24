@@ -66,6 +66,7 @@ const dispatchOrganizationEvent = async (
   runtime: BackofficeRuntimeServices,
   eventType: AuthOrganizationAutomationEventType,
   payload: OrganizationHookPayload,
+  hookId: string,
 ) => {
   const { organization } = payload;
   const occurredAt = toIsoString(
@@ -75,7 +76,7 @@ const dispatchOrganizationEvent = async (
   );
 
   await runtime.objects.automations.forOrg(organization.id).ingestEvent({
-    id: `${AUTH_AUTOMATION_SOURCE}:${eventType}:${organization.id}:${occurredAt}`,
+    id: hookId,
     scope: { kind: "org", orgId: organization.id },
     source: AUTH_AUTOMATION_SOURCE,
     eventType,
@@ -90,11 +91,21 @@ const dispatchOrganizationEvent = async (
 const createOrganizationAutomationHooks = (
   runtime: BackofficeRuntimeServices,
 ): OrganizationHooks => ({
-  onOrganizationCreated: async (payload) => {
-    await dispatchOrganizationEvent(runtime, AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED, payload);
+  onOrganizationCreated: async (payload, context) => {
+    await dispatchOrganizationEvent(
+      runtime,
+      AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED,
+      payload,
+      context.hookId,
+    );
   },
-  onOrganizationUpdated: async (payload) => {
-    await dispatchOrganizationEvent(runtime, AUTH_AUTOMATION_EVENT_ORGANIZATION_UPDATED, payload);
+  onOrganizationUpdated: async (payload, context) => {
+    await dispatchOrganizationEvent(
+      runtime,
+      AUTH_AUTOMATION_EVENT_ORGANIZATION_UPDATED,
+      payload,
+      context.hookId,
+    );
   },
 });
 
