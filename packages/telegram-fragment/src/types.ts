@@ -417,10 +417,24 @@ export type TelegramOutgoingHookPayload = {
   payload: Record<string, unknown>;
 };
 
+export type TelegramHookContext = {
+  idempotencyKey: string;
+  hookId: string;
+};
+
 export type TelegramHooks = {
-  onMessageReceived?: (payload: TelegramMessageHookPayload) => Promise<void> | void;
-  onCommandMatched?: (payload: TelegramCommandHookPayload) => Promise<void> | void;
-  onChatMemberUpdated?: (payload: TelegramChatMemberHookPayload) => Promise<void> | void;
+  onMessageReceived?: (
+    payload: TelegramMessageHookPayload,
+    context: TelegramHookContext,
+  ) => Promise<void> | void;
+  onCommandMatched?: (
+    payload: TelegramCommandHookPayload,
+    context: TelegramHookContext,
+  ) => Promise<void> | void;
+  onChatMemberUpdated?: (
+    payload: TelegramChatMemberHookPayload,
+    context: TelegramHookContext,
+  ) => Promise<void> | void;
 };
 
 export type TelegramInternalHookPayload = {

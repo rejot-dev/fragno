@@ -125,7 +125,7 @@ export const buildGitHubAutomationEvent = ({
   const actor = githubActor(payload, meta.installationId);
 
   return {
-    id: `github:${orgId}:${meta.deliveryId}`,
+    id: meta.hookId,
     scope: { kind: "org", orgId },
     source: "github",
     eventType: "webhook.received",

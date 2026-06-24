@@ -15,6 +15,7 @@ import type {
 import type {
   OtpConfirmedHookPayload,
   OtpExpiredHookPayload,
+  OtpHookContext,
   OtpHooks,
   OtpHooksMap,
   OtpIssuedHookPayload,
@@ -70,6 +71,7 @@ export type {
   OtpInvalidateResult,
   OtpIssueResult,
   OtpPayload,
+  OtpHookContext,
   OtpHooks,
   OtpHooksMap,
   OtpIssuedHookPayload,

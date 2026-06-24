@@ -153,7 +153,7 @@ describe("otp fragment", async () => {
         createdAt: expect.any(Date),
         expiresAt: expect.any(Date),
       }),
-      expect.any(String),
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
     );
 
     expect(onOtpConfirmed).toHaveBeenCalledTimes(1);
@@ -168,7 +168,7 @@ describe("otp fragment", async () => {
         expiresAt: expect.any(Date),
         confirmedAt: expect.any(Date),
       }),
-      expect.any(String),
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
     );
 
     const storedOtp = await (async () => {
@@ -339,7 +339,7 @@ describe("otp fragment", async () => {
           expiresAt: expect.any(Date),
           expiredAt: expect.any(Date),
         }),
-        expect.any(String),
+        expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
       );
 
       const storedOtp = await (async () => {
@@ -518,7 +518,7 @@ describe("otp fragment", async () => {
           code: issueResponse.data.code,
           expiredAt: expect.any(Date),
         }),
-        expect.any(String),
+        expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
       );
 
       const storedAfterHooks = await (async () => {

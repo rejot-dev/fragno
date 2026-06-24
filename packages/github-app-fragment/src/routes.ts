@@ -3,6 +3,7 @@ import { FragnoId } from "@fragno-dev/db/schema";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
+import { isUniqueConstraintError } from "@fragno-dev/db";
 
 import type { GitHubInstallationDetails, GitHubInstallationRepository } from "./github/api";
 import { githubAppFragmentDefinition } from "./github/definition";
@@ -233,12 +234,18 @@ export const githubAppRoutesFactory = defineRoutes(githubAppFragmentDefinition).
             receivedAt: now.toISOString(),
           };
 
-          await this.handlerTx()
-            .mutate(({ forSchema }) => {
-              const uow = forSchema(githubAppSchema);
-              uow.triggerHook("processWebhook", webhookPayload);
-            })
-            .execute();
+          try {
+            await this.handlerTx()
+              .mutate(({ forSchema }) => {
+                const uow = forSchema(githubAppSchema);
+                uow.triggerHook("processWebhook", webhookPayload, { id: deliveryId });
+              })
+              .execute();
+          } catch (err) {
+            if (!isUniqueConstraintError(err)) {
+              throw err;
+            }
+          }
 
           return empty(204);
         },

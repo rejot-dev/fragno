@@ -237,6 +237,7 @@ export const createWebhookProcessor = (config: Pick<GitHubAppFragmentConfig, "we
       event: data.event,
       action: data.action,
       installationId: data.installationId,
+      hookId: this.hookId.toString(),
       receivedAt: data.receivedAt ?? null,
     };
     const webhook = asSupportedWebhook(data);

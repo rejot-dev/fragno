@@ -71,8 +71,9 @@ export const buildIdentityClaimCompletedAutomationEvent = (input: {
   userId: string;
   otp: SerializableResolvedOtpConfirmedPayload;
   claim: IdentityClaimPayload;
+  eventId?: string;
 }): AutomationKnownEvent<typeof AUTOMATION_SOURCES.otp> => ({
-  id: `identity-claim-completed:${input.otp.id}`,
+  id: input.eventId ?? `identity-claim-completed:${input.otp.id}`,
   scope: { kind: "org", orgId: input.orgId },
   source: AUTOMATION_SOURCES.otp,
   eventType: AUTOMATION_SOURCE_EVENT_TYPES.otp.identityClaimCompleted,

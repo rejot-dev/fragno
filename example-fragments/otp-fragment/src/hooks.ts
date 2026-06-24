@@ -46,18 +46,23 @@ export interface ResolvedOtpExpiredHookPayload extends ResolvedOtpBasePayload {
   expiredAt: Date;
 }
 
+export interface OtpHookContext {
+  idempotencyKey: string;
+  hookId: string;
+}
+
 export interface OtpHooks {
   onOtpIssued?: (
     payload: ResolvedOtpIssuedHookPayload,
-    idempotencyKey: string,
+    context: OtpHookContext,
   ) => Promise<void> | void;
   onOtpConfirmed?: (
     payload: ResolvedOtpConfirmedHookPayload,
-    idempotencyKey: string,
+    context: OtpHookContext,
   ) => Promise<void> | void;
   onOtpExpired?: (
     payload: ResolvedOtpExpiredHookPayload,
-    idempotencyKey: string,
+    context: OtpHookContext,
   ) => Promise<void> | void;
 }
 

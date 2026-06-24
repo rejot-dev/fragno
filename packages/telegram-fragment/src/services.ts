@@ -693,16 +693,20 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
             };
 
             if (shouldTriggerMessage) {
-              uow.triggerHook("onCommandMatched", {
-                updateId,
-                messageId: messageSummary.id,
-                chatId,
-                fromUserId,
-                commandName: commandMatch.name,
-                args: commandMatch.args,
-                raw: commandMatch.raw,
-                sentAt,
-              });
+              uow.triggerHook(
+                "onCommandMatched",
+                {
+                  updateId,
+                  messageId: messageSummary.id,
+                  chatId,
+                  fromUserId,
+                  commandName: commandMatch.name,
+                  args: commandMatch.args,
+                  raw: commandMatch.raw,
+                  sentAt,
+                },
+                { id: `command:${updateId}` },
+              );
             }
           }
         }
@@ -721,11 +725,13 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
             editedAt: messageSummary.editedAt,
           };
 
-          uow.triggerHook("onMessageReceived", payload);
+          uow.triggerHook("onMessageReceived", payload, { id: `message:${updateId}` });
         }
 
-        for (const payload of memberPayloads) {
-          uow.triggerHook("onChatMemberUpdated", payload);
+        for (const [index, payload] of memberPayloads.entries()) {
+          uow.triggerHook("onChatMemberUpdated", payload, {
+            id: `chat-member:${updateId}:${index}`,
+          });
         }
 
         return {

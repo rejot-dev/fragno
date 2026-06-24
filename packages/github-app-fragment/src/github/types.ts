@@ -7,6 +7,7 @@ export type GitHubAppWebhookMeta = {
   event: string;
   action: string | null;
   installationId: string;
+  hookId: string;
   receivedAt?: string | null;
 };
 
