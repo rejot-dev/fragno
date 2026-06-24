@@ -7,8 +7,9 @@ import {
   type AutomationIngestResult,
   type AutomationWorkflowsService,
 } from "./definition";
+import { automationProjectRoutes } from "./project-routes";
 import type { AutomationProjectExecutionTarget } from "./projects";
-import { automationFragmentRoutes } from "./routes";
+import { automationStoreRoutes } from "./store-routes";
 
 type AutomationFragmentServices = {
   workflows: AutomationWorkflowsService;
@@ -21,7 +22,7 @@ export function createAutomationFragment(
 ) {
   return instantiate(automationFragmentDefinition)
     .withConfig(config)
-    .withRoutes([automationFragmentRoutes])
+    .withRoutes([automationProjectRoutes, automationStoreRoutes])
     .withOptions(options)
     .withServices(services)
     .build();
