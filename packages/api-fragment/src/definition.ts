@@ -60,18 +60,23 @@ export interface WebhookReceivedPayload {
   contentType: string | null;
 }
 
+export interface ApiHookContext {
+  idempotencyKey: string;
+  hookId: string;
+}
+
 export interface ApiFragmentHooksConfig {
   onConnectionChanged?: (
     payload: ApiConnectionChangedPayload,
-    idempotencyKey: string,
+    context: ApiHookContext,
   ) => Promise<void> | void;
   onConnectionDeleted?: (
     payload: ApiConnectionDeletedPayload,
-    idempotencyKey: string,
+    context: ApiHookContext,
   ) => Promise<void> | void;
   onConnectionAvailable?: (
     payload: ApiConnectionAvailablePayload,
-    idempotencyKey: string,
+    context: ApiHookContext,
   ) => Promise<void> | void;
   onWebhookReceived?: (payload: WebhookReceivedPayload) => Promise<void> | void;
 }
@@ -105,13 +110,22 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
   .extend(withDatabase(apiSchema))
   .provideHooks<ApiHooksMap>(({ defineHook, config }) => ({
     onConnectionChanged: defineHook(async function (payload) {
-      await config.onConnectionChanged?.(payload, this.idempotencyKey);
+      await config.onConnectionChanged?.(payload, {
+        idempotencyKey: this.idempotencyKey,
+        hookId: this.hookId.toString(),
+      });
     }),
     onConnectionDeleted: defineHook(async function (payload) {
-      await config.onConnectionDeleted?.(payload, this.idempotencyKey);
+      await config.onConnectionDeleted?.(payload, {
+        idempotencyKey: this.idempotencyKey,
+        hookId: this.hookId.toString(),
+      });
     }),
     onConnectionAvailable: defineHook(async function (payload) {
-      await config.onConnectionAvailable?.(payload, this.idempotencyKey);
+      await config.onConnectionAvailable?.(payload, {
+        idempotencyKey: this.idempotencyKey,
+        hookId: this.hookId.toString(),
+      });
     }),
     onWebhookReceived: defineHook(async function (payload) {
       await config.onWebhookReceived?.({

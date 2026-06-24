@@ -25,14 +25,19 @@ export interface McpServerConfigurationDeletedPayload {
   serverId: string;
 }
 
+export interface McpHookContext {
+  idempotencyKey: string;
+  hookId: string;
+}
+
 export interface McpFragmentHooksConfig {
   onServerConfigurationChanged?: (
     payload: McpServerConfigurationChangedPayload,
-    idempotencyKey: string,
+    context: McpHookContext,
   ) => Promise<void> | void;
   onServerConfigurationDeleted?: (
     payload: McpServerConfigurationDeletedPayload,
-    idempotencyKey: string,
+    context: McpHookContext,
   ) => Promise<void> | void;
 }
 
@@ -177,10 +182,16 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
       }
     }),
     onServerConfigurationChanged: defineHook(async function (payload) {
-      await config.onServerConfigurationChanged?.(payload, this.idempotencyKey);
+      await config.onServerConfigurationChanged?.(payload, {
+        idempotencyKey: this.idempotencyKey,
+        hookId: this.hookId.toString(),
+      });
     }),
     onServerConfigurationDeleted: defineHook(async function (payload) {
-      await config.onServerConfigurationDeleted?.(payload, this.idempotencyKey);
+      await config.onServerConfigurationDeleted?.(payload, {
+        idempotencyKey: this.idempotencyKey,
+        hookId: this.hookId.toString(),
+      });
     }),
   }))
   .providesBaseService(({ defineService, config }) =>
