@@ -79,7 +79,15 @@ type BackofficeSidebarProps = {
   isLoading?: boolean;
 };
 
-export function BackofficeSidebar({ me, isLoading }: BackofficeSidebarProps) {
+type BackofficeSidebarActionProps = {
+  closeOverlaySidebar?: () => void;
+};
+
+export function BackofficeSidebar({
+  me,
+  isLoading,
+  closeOverlaySidebar,
+}: BackofficeSidebarProps & BackofficeSidebarActionProps) {
   return (
     <>
       <aside className="relative hidden min-w-0 shrink-0 border-r border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-4 py-4 lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-72">
@@ -97,7 +105,12 @@ export function BackofficeSidebar({ me, isLoading }: BackofficeSidebarProps) {
             className="h-full w-screen translate-x-[var(--drawer-swipe-movement-x,0px)] border-r border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-4 py-4 text-[var(--bo-fg)] shadow-[0_20px_50px_rgba(15,23,42,0.25)] transition-transform duration-200 ease-out data-[ending-style]:-translate-x-full data-[starting-style]:-translate-x-full sm:w-[min(88vw,20rem)] dark:shadow-[0_24px_60px_rgba(0,0,0,0.6)]"
           >
             <Drawer.Content className="h-full">
-              <BackofficeSidebarContent me={me} isLoading={isLoading} showClose />
+              <BackofficeSidebarContent
+                me={me}
+                isLoading={isLoading}
+                showClose
+                closeOverlaySidebar={closeOverlaySidebar}
+              />
             </Drawer.Content>
           </Drawer.Popup>
         </Drawer.Viewport>
@@ -110,7 +123,8 @@ function BackofficeSidebarContent({
   me,
   isLoading,
   showClose = false,
-}: BackofficeSidebarProps & { showClose?: boolean }) {
+  closeOverlaySidebar,
+}: BackofficeSidebarProps & { showClose?: boolean } & BackofficeSidebarActionProps) {
   const [portalContainer, setPortalContainer] = useState<HTMLDivElement | null>(null);
   const { data: meData, loading: meLoading } = authClient.useMe();
   const effectiveMe = meData ?? me ?? null;
@@ -151,7 +165,12 @@ function BackofficeSidebarContent({
                 <ul className="space-y-3">
                   {navItems.map((item) => (
                     <li key={item.to} className="space-y-2">
-                      <BackofficeSidebarLink to={item.to} label={item.label} end={item.end} />
+                      <BackofficeSidebarLink
+                        to={item.to}
+                        label={item.label}
+                        end={item.end}
+                        onPress={closeOverlaySidebar}
+                      />
                       {item.children ? (
                         <ul className="ml-3 space-y-2 border-l border-[color:var(--bo-border)] pl-3">
                           {item.children.map((child) => (
@@ -161,6 +180,7 @@ function BackofficeSidebarContent({
                                 label={child.label}
                                 end={child.end}
                                 variant="sub"
+                                onPress={closeOverlaySidebar}
                               />
                             </li>
                           ))}
@@ -196,6 +216,7 @@ function BackofficeSidebarContent({
                 portalContainer={portalContainer}
                 me={effectiveMe}
                 isLoading={sessionLoading}
+                closeOverlaySidebar={closeOverlaySidebar}
               />
             </div>
           </div>
@@ -220,17 +241,20 @@ function BackofficeSidebarLink({
   to,
   end,
   variant = "primary",
+  onPress,
 }: {
   label: string;
   to: string;
   end?: boolean;
   variant?: "primary" | "sub";
+  onPress?: () => void;
 }) {
   const showSuffix = variant === "primary";
   return (
     <NavLink
       to={to}
       end={end}
+      onClick={onPress}
       className={({ isActive }: { isActive: boolean }) =>
         cn(
           "flex items-center justify-between border px-3 py-2 font-semibold transition-colors",
@@ -253,11 +277,12 @@ function BackofficeUserCard({
   portalContainer,
   me,
   isLoading,
+  closeOverlaySidebar,
 }: {
   portalContainer: HTMLDivElement | null;
   me: AuthMeData | null;
   isLoading?: boolean;
-}) {
+} & BackofficeSidebarActionProps) {
   const { mutate: signOut, loading: signingOut } = authClient.useSignOut();
   const navigate = useNavigate();
   const user = me?.user ?? null;
@@ -300,6 +325,7 @@ function BackofficeUserCard({
         <p className="text-xs text-[var(--bo-muted)]">Sign in to access the backoffice.</p>
         <Link
           to="/backoffice/login"
+          onClick={closeOverlaySidebar}
           className="mt-3 inline-flex w-full items-center justify-between border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
         >
           Sign in
@@ -334,13 +360,19 @@ function BackofficeUserCard({
                   Account
                 </Menu.GroupLabel>
                 <Menu.Item
-                  onClick={() => void navigate("/backoffice/organisations")}
+                  onClick={() => {
+                    closeOverlaySidebar?.();
+                    void navigate("/backoffice/organisations");
+                  }}
                   className="flex w-full items-center justify-between border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.24em] text-[var(--bo-muted)] uppercase transition-colors data-[highlighted]:border-[color:var(--bo-border-strong)] data-[highlighted]:text-[var(--bo-fg)]"
                 >
                   Manage organisations
                 </Menu.Item>
                 <Menu.Item
-                  onClick={() => void navigate("/backoffice/settings")}
+                  onClick={() => {
+                    closeOverlaySidebar?.();
+                    void navigate("/backoffice/settings");
+                  }}
                   className="flex w-full items-center justify-between border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.24em] text-[var(--bo-muted)] uppercase transition-colors data-[highlighted]:border-[color:var(--bo-border-strong)] data-[highlighted]:text-[var(--bo-fg)]"
                 >
                   Settings
@@ -349,6 +381,7 @@ function BackofficeUserCard({
               <Menu.Separator className="my-3 h-px w-full bg-[var(--bo-border)]" />
               <Menu.Item
                 onClick={() => {
+                  closeOverlaySidebar?.();
                   void (async () => {
                     try {
                       await signOut({ body: {} });
