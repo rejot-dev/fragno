@@ -145,7 +145,7 @@ const createAutomationsRouteCaller = (
   const automationsDo = kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
   return createRouteCaller<AutomationFragment>({
     baseUrl: request.url,
-    mountRoute: "/api/automations/bindings",
+    mountRoute: "/api/automations",
     baseHeaders: request.headers,
     fetch: async (outboundRequest) => {
       const url = new URL(outboundRequest.url);
