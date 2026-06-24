@@ -201,64 +201,69 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
       respondedAt: invitation.respondedAt ?? null,
     });
 
+    const hookContext = (context: { idempotencyKey: string; hookId: { toString(): string } }) => ({
+      idempotencyKey: context.idempotencyKey,
+      hookId: context.hookId.toString(),
+    });
+
     const baseHooks = {
       onUserCreated: defineHook<UserHookPayload>(async function (payload) {
-        await authHooks?.onUserCreated?.(payload);
+        await authHooks?.onUserCreated?.(payload, hookContext(this));
       }),
       onUserRoleUpdated: defineHook<UserHookPayload>(async function (payload) {
-        await authHooks?.onUserRoleUpdated?.(payload);
+        await authHooks?.onUserRoleUpdated?.(payload, hookContext(this));
       }),
       onUserPasswordChanged: defineHook<UserHookPayload>(async function (payload) {
-        await authHooks?.onUserPasswordChanged?.(payload);
+        await authHooks?.onUserPasswordChanged?.(payload, hookContext(this));
       }),
       onCredentialIssued: defineHook<CredentialHookPayload>(async function (payload) {
-        await authHooks?.onCredentialIssued?.(payload);
+        await authHooks?.onCredentialIssued?.(payload, hookContext(this));
       }),
       onCredentialInvalidated: defineHook<CredentialHookPayload>(async function (payload) {
-        await authHooks?.onCredentialInvalidated?.(payload);
+        await authHooks?.onCredentialInvalidated?.(payload, hookContext(this));
       }),
     };
 
     return {
       ...baseHooks,
       onOrganizationCreated: defineHook<OrganizationHookPayload>(async function (payload) {
-        await organizationHooks?.onOrganizationCreated?.(payload);
+        await organizationHooks?.onOrganizationCreated?.(payload, hookContext(this));
       }),
       onOrganizationUpdated: defineHook<OrganizationHookPayload>(async function (payload) {
-        await organizationHooks?.onOrganizationUpdated?.(payload);
+        await organizationHooks?.onOrganizationUpdated?.(payload, hookContext(this));
       }),
       onOrganizationDeleted: defineHook<OrganizationHookPayload>(async function (payload) {
-        await organizationHooks?.onOrganizationDeleted?.(payload);
+        await organizationHooks?.onOrganizationDeleted?.(payload, hookContext(this));
       }),
       onMemberAdded: defineHook<OrganizationMemberHookPayload<string>>(async function (payload) {
-        await organizationHooks?.onMemberAdded?.(payload);
+        await organizationHooks?.onMemberAdded?.(payload, hookContext(this));
       }),
       onMemberRemoved: defineHook<OrganizationMemberHookPayload<string>>(async function (payload) {
-        await organizationHooks?.onMemberRemoved?.(payload);
+        await organizationHooks?.onMemberRemoved?.(payload, hookContext(this));
       }),
       onMemberRolesUpdated: defineHook<OrganizationMemberHookPayload<string>>(
         async function (payload) {
-          await organizationHooks?.onMemberRolesUpdated?.(payload);
+          await organizationHooks?.onMemberRolesUpdated?.(payload, hookContext(this));
         },
       ),
       onInvitationCreated: defineHook<OrganizationInvitationHookPayload<string>>(
         async function (payload) {
-          await organizationHooks?.onInvitationCreated?.(payload);
+          await organizationHooks?.onInvitationCreated?.(payload, hookContext(this));
         },
       ),
       onInvitationAccepted: defineHook<OrganizationInvitationHookPayload<string>>(
         async function (payload) {
-          await organizationHooks?.onInvitationAccepted?.(payload);
+          await organizationHooks?.onInvitationAccepted?.(payload, hookContext(this));
         },
       ),
       onInvitationRejected: defineHook<OrganizationInvitationHookPayload<string>>(
         async function (payload) {
-          await organizationHooks?.onInvitationRejected?.(payload);
+          await organizationHooks?.onInvitationRejected?.(payload, hookContext(this));
         },
       ),
       onInvitationCanceled: defineHook<OrganizationInvitationHookPayload<string>>(
         async function (payload) {
-          await organizationHooks?.onInvitationCanceled?.(payload);
+          await organizationHooks?.onInvitationCanceled?.(payload, hookContext(this));
         },
       ),
       onInvitationExpired: defineHook<InvitationExpiredHookPayload>(async function (payload) {
@@ -325,11 +330,14 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
           .execute();
 
         if (result.shouldNotify) {
-          await organizationHooks?.onInvitationExpired?.({
-            organization: result.organization,
-            invitation: result.invitation,
-            actor: null,
-          });
+          await organizationHooks?.onInvitationExpired?.(
+            {
+              organization: result.organization,
+              invitation: result.invitation,
+              actor: null,
+            },
+            hookContext(this),
+          );
         }
       }),
     };
@@ -947,6 +955,7 @@ export type { FragnoRouteConfig } from "@fragno-dev/core/api";
 export type { GetUsersParams, UserResult, SortField, SortOrder };
 export type AuthMeData = Awaited<ReturnType<ReturnType<typeof createAuthFragmentClients>["me"]>>;
 export type {
+  AuthHookContext,
   AuthHooks,
   BeforeCreateUserHook,
   BeforeCreateUserPayload,
