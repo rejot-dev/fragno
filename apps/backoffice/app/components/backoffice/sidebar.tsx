@@ -27,8 +27,10 @@ function createNavItems(activeOrganizationId?: string | null): NavItem[] {
     : "/backoffice/automations";
   const automationChildren = activeOrganizationId
     ? [
-        { label: "Scripts", to: `${automationBasePath}/scripts` },
+        { label: "Automations", to: `${automationBasePath}/scripts` },
         { label: "Store", to: `${automationBasePath}/store` },
+        { label: "Events", to: `${automationBasePath}/events` },
+        { label: "Events Catalog", to: `${automationBasePath}/events-catalog` },
         { label: "API", to: `${automationBasePath}/api` },
         { label: "MCP", to: `${automationBasePath}/mcp` },
       ]

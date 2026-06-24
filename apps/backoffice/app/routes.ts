@@ -41,6 +41,7 @@ export default [
         route("store", "routes/backoffice/automations/store.tsx"),
         route("api", "routes/backoffice/automations/api.tsx"),
         route("events", "routes/backoffice/automations/events.tsx"),
+        route("events-catalog", "routes/backoffice/automations/events-catalog.tsx"),
         route("mcp", "routes/backoffice/automations/mcp.tsx"),
       ]),
 

@@ -53,7 +53,7 @@ export type AutomationLayoutContext = {
   storeEntriesError: string | null;
 };
 
-export type AutomationTab = "scripts" | "store" | "api" | "events" | "mcp";
+export type AutomationTab = "scripts" | "store" | "api" | "events" | "events-catalog" | "mcp";
 
 export const formatTimestamp = (value?: string | Date | null) => {
   if (!value) {
@@ -187,6 +187,11 @@ export function AutomationTabs({
       id: "events" as const,
       label: "Events",
       to: automationScopeTabPath(selectedScope, "events"),
+    },
+    {
+      id: "events-catalog" as const,
+      label: "Events Catalog",
+      to: automationScopeTabPath(selectedScope, "events-catalog"),
     },
     {
       id: "api" as const,
