@@ -155,7 +155,7 @@ responses are returned as text. Binary responses are out of scope for the MVP.
 - `onConnectionAvailable` receives `{ connectionId, connection, authMode }` when usable auth is
   present after bearer setup, OAuth callback, or client-credentials token acquisition.
 
-Hook callbacks receive Fragno's durable-hook idempotency key as their second argument.
+Hook callbacks receive a context object as their second argument: `{ idempotencyKey, hookId }`.
 
 ## Security notes
 

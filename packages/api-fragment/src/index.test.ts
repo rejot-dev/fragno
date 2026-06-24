@@ -165,14 +165,14 @@ describe("api-fragment", () => {
         connectionId: "example",
         connection: expect.objectContaining({ slug: "example" }),
       }),
-      expect.any(String),
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
     );
     expect(onConnectionDeleted).toHaveBeenCalledWith(
       expect.objectContaining({
         connectionId: "example",
         previous: expect.objectContaining({ slug: "example" }),
       }),
-      expect.any(String),
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
     );
 
     await setup.test.cleanup();
@@ -233,7 +233,7 @@ describe("api-fragment", () => {
     await drainDurableHooks(fragment);
     expect(onConnectionAvailable).toHaveBeenCalledWith(
       expect.objectContaining({ connectionId: "bearer", authMode: "bearer" }),
-      expect.any(String),
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
     );
 
     await setup.test.cleanup();
@@ -408,7 +408,7 @@ describe("api-fragment", () => {
     await drainDurableHooks(fragment);
     expect(onConnectionAvailable).toHaveBeenCalledWith(
       expect.objectContaining({ connectionId: slug, authMode: "oauth" }),
-      expect.any(String),
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
     );
 
     await setup.test.cleanup();
