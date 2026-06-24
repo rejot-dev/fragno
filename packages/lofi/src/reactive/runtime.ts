@@ -77,7 +77,7 @@ export type LofiRuntime = {
   start: () => void;
   stop: () => void;
   retain: () => () => void;
-  bootstrap: () => Promise<LofiRuntimeSyncResult>;
+  bootstrap: (sourceId?: string) => Promise<LofiRuntimeSyncResult>;
   whenBootstrapped: () => Promise<void>;
   syncOnce: (sourceId?: string) => Promise<LofiRuntimeSyncResult>;
   refresh: () => void;
@@ -569,8 +569,22 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
     return summarizeSyncResults(sourceResults);
   };
 
-  const bootstrap = (): Promise<LofiRuntimeSyncResult> => {
-    if (!bootstrapEnabled || isBootstrapped()) {
+  const bootstrap = (sourceId?: string): Promise<LofiRuntimeSyncResult> => {
+    if (!bootstrapEnabled) {
+      return Promise.resolve(summarizeSyncResults({}));
+    }
+
+    if (sourceId) {
+      const sourceStatus = $status.get().sources[sourceId];
+      if (sourceStatus?.status === "bootstrapped") {
+        return Promise.resolve(summarizeSyncResults({}));
+      }
+      return bootstrapSource(sourceId).then((result) =>
+        summarizeSyncResults({ [sourceId]: result }),
+      );
+    }
+
+    if (isBootstrapped()) {
       return Promise.resolve(summarizeSyncResults({}));
     }
 

@@ -41,7 +41,7 @@ describe("createLofiQueryStore", () => {
     unlisten();
   });
 
-  it("waits for runtime bootstrap before running the first query", async () => {
+  it("keeps initial data visible until runtime bootstrap completes", async () => {
     const adapter = new InMemoryLofiAdapter({
       endpointName: "app",
       schemas: [reactiveTestSchema],
@@ -70,14 +70,22 @@ describe("createLofiQueryStore", () => {
       reactiveTestSchema,
       "users",
       (b) => b.whereIndex("primary"),
-      { initialData: [] },
+      {
+        initialData: ["SSR Alice"],
+        map: (rows) => rows.map((row) => row.name),
+      },
     );
 
     const unlisten = $users.subscribe(() => undefined);
 
     await waitFor(() => $users.get().loading);
-    expect($users.get().data).toEqual([]);
-    assert(!$users.get().synced);
+    runtime.refresh();
+    expect($users.get()).toMatchObject({
+      data: ["SSR Alice"],
+      loading: true,
+      synced: false,
+      error: null,
+    });
 
     resolveBootstrap(
       new Response(
@@ -91,10 +99,7 @@ describe("createLofiQueryStore", () => {
     );
 
     await waitFor(() => $users.get().synced);
-    expect($users.get().data).toEqual([
-      expect.objectContaining({ name: "Cached" }),
-      expect.objectContaining({ name: "Synced" }),
-    ]);
+    expect($users.get().data).toEqual(["Cached", "Synced"]);
     assert((await adapter.getMeta("app:default:outbox::bootstrap")) === "complete");
 
     unlisten();
