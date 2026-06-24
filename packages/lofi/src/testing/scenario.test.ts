@@ -19,10 +19,12 @@ import {
   IDBRequest,
   IDBTransaction,
 } from "fake-indexeddb";
+import superjson from "superjson";
 
 import { ConcurrencyConflictError, defineSyncCommands } from "@fragno-dev/db";
 
 import { StackedLofiAdapter } from "../adapters/stacked/adapter";
+import type { LofiQueryState } from "../reactive";
 import type { LofiSubmitCommandDefinition, LofiSyncCommandTxFactory } from "../types";
 import { createScenarioSteps, defineScenario, runScenario } from "./scenario";
 import type { ScenarioDefinition } from "./scenario";
@@ -60,6 +62,9 @@ type ScenarioVars = {
   persistedUser?: UserRow | null;
   nonOptimisticUser?: UserRow | null;
   users?: UserRow[];
+  beforeMountState?: LofiQueryState<string[]>;
+  duringBootstrapState?: LofiQueryState<string[]>;
+  finalStoreState?: LofiQueryState<string[]>;
   baseUsers?: UserRow[];
   overlayUsers?: UserRow[];
   usersB?: UserRow[];
@@ -89,6 +94,34 @@ const createIndexedDbGlobals = () => ({
   IDBOpenDBRequest,
   IDBRequest,
   IDBTransaction,
+});
+
+const createDeferred = <T>() => {
+  let resolve: (value: T) => void = () => undefined;
+  let reject: (error: unknown) => void = () => undefined;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+};
+
+const createUserOutboxEntry = (options: { versionstamp: string; id: string; name: string }) => ({
+  versionstamp: options.versionstamp,
+  uowId: `uow-${options.versionstamp}`,
+  payload: superjson.serialize({
+    version: 1,
+    mutations: [
+      {
+        op: "create" as const,
+        schema: appSchema.name,
+        table: "users",
+        externalId: options.id,
+        values: { name: options.name },
+        versionstamp: options.versionstamp,
+      },
+    ],
+  }),
 });
 
 const runScenarioWithIndexedDb = async <
@@ -446,6 +479,131 @@ describe("Lofi scenario DSL", () => {
         }),
         steps.assert((ctx) => {
           expect(ctx.vars.users).toEqual([expect.objectContaining({ name: "Ada" })]);
+        }),
+      ],
+    });
+
+    const ctx = await runScenarioWithIndexedDb(scenario);
+    await ctx.cleanup();
+  });
+
+  it("bootstraps a scenario client and persists the bootstrap marker", async () => {
+    const scenario = defineScenario({
+      name: "bootstrap-client",
+      server: {
+        fragmentName: "lofi-test",
+        schema: appSchema,
+        syncCommands,
+      },
+      clientCommands,
+      clients: {
+        a: { endpointName: "client-a", adapter: { type: "in-memory" } },
+      },
+      steps: [
+        steps.command("a", "createUser", { id: "user-1", name: "Ada" }, { submit: true }),
+        steps.bootstrap("a", "default"),
+        steps.read(
+          "a",
+          (_ctx, client) =>
+            client.query.find("users", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", "user-1")),
+            ),
+          "users",
+        ),
+        steps.assert(async (ctx) => {
+          assert(ctx.lastBootstrap["a"]?.sources["default"]?.appliedEntries === 1);
+          expect(ctx.vars.users).toEqual([expect.objectContaining({ name: "Ada" })]);
+          assert(
+            (await ctx.clients["a"]?.adapter.getMeta("client-a:default:outbox::bootstrap")) ===
+              "complete",
+          );
+        }),
+      ],
+    });
+
+    const ctx = await runScenarioWithIndexedDb(scenario);
+    await ctx.cleanup();
+  });
+
+  it("models SSR store data staying visible until bootstrap finishes", async () => {
+    const bootstrapResponse = createDeferred<Response>();
+    let outboxFetchCount = 0;
+    const scenario = defineScenario({
+      name: "ssr-bootstrap-store",
+      server: {
+        fragmentName: "lofi-test",
+        schema: appSchema,
+        syncCommands,
+      },
+      clientCommands,
+      clients: {
+        a: {
+          endpointName: "client-a",
+          adapter: { type: "in-memory" },
+          fetch: ({ baseFetch }) =>
+            (async (input, init) => {
+              const url = new URL(typeof input === "string" ? input : input.toString());
+              if (url.pathname.endsWith("/_internal/outbox")) {
+                outboxFetchCount += 1;
+                return bootstrapResponse.promise;
+              }
+              return baseFetch(input, init);
+            }) as typeof fetch,
+        },
+      },
+      steps: [
+        steps.createStore("a", "users", "users", (b) => b.whereIndex("primary"), {
+          initialData: () => ["SSR Alice"],
+          map: (rows) => (rows as UserRow[]).map((row) => row.name),
+          mount: false,
+        }),
+        steps.readStoreState("a", "users", "beforeMountState"),
+        steps.assert((ctx) => {
+          expect(ctx.vars.beforeMountState).toMatchObject({
+            data: ["SSR Alice"],
+            loading: false,
+            synced: false,
+            error: null,
+          });
+          assert(outboxFetchCount === 0);
+        }),
+        steps.mountStore("a", "users"),
+        steps.waitForStore(
+          "a",
+          "users",
+          (state) =>
+            state.loading &&
+            Array.isArray(state.data) &&
+            state.data[0] === "SSR Alice" &&
+            outboxFetchCount === 1,
+        ),
+        steps.readStoreState("a", "users", "duringBootstrapState"),
+        steps.assert((ctx) => {
+          expect(ctx.vars.duringBootstrapState).toMatchObject({
+            data: ["SSR Alice"],
+            loading: true,
+            synced: false,
+            error: null,
+          });
+          assert(outboxFetchCount === 1);
+          bootstrapResponse.resolve(
+            new Response(
+              JSON.stringify([
+                createUserOutboxEntry({ versionstamp: "001", id: "user-1", name: "Synced" }),
+              ]),
+            ),
+          );
+        }),
+        steps.waitForBootstrap("a"),
+        steps.waitForStore("a", "users", (state) => state.synced),
+        steps.readStoreState("a", "users", "finalStoreState"),
+        steps.assert((ctx) => {
+          expect(ctx.vars.finalStoreState).toMatchObject({
+            data: ["Synced"],
+            loading: false,
+            synced: true,
+            error: null,
+          });
         }),
       ],
     });
