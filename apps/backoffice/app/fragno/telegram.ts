@@ -45,8 +45,9 @@ const toIsoString = (value: Date | string, fieldName: string) => {
 export const buildTelegramAutomationEvent = (
   orgId: string,
   payload: SerializableTelegramMessageHookPayload,
+  eventId = `telegram:${orgId}:${payload.updateId}:${payload.messageId}`,
 ): AutomationKnownEvent<typeof AUTOMATION_SOURCES.telegram> => ({
-  id: `telegram:${orgId}:${payload.updateId}:${payload.messageId}`,
+  id: eventId,
   scope: { kind: "org", orgId },
   source: AUTOMATION_SOURCES.telegram,
   eventType: AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived,

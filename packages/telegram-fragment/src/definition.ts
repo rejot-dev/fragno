@@ -43,6 +43,10 @@ export const telegramFragmentDefinition = defineFragment<TelegramFragmentConfig>
     const api = deps.telegramApi;
     const hooks = config.hooks;
     const buildProcessIncomingUpdateOps = createProcessIncomingUpdateOps(config);
+    const hookContext = (context: { idempotencyKey: string; hookId: { toString(): string } }) => ({
+      idempotencyKey: context.idempotencyKey,
+      hookId: context.hookId.toString(),
+    });
 
     return {
       internalOutgoingMessage: defineHook(async function (payload) {
@@ -151,13 +155,13 @@ export const telegramFragmentDefinition = defineFragment<TelegramFragmentConfig>
         }
       }),
       onMessageReceived: defineHook(async function (payload) {
-        await hooks?.onMessageReceived?.(payload);
+        await hooks?.onMessageReceived?.(payload, hookContext(this));
       }),
       onCommandMatched: defineHook(async function (payload) {
-        await hooks?.onCommandMatched?.(payload);
+        await hooks?.onCommandMatched?.(payload, hookContext(this));
       }),
       onChatMemberUpdated: defineHook(async function (payload) {
-        await hooks?.onChatMemberUpdated?.(payload);
+        await hooks?.onChatMemberUpdated?.(payload, hookContext(this));
       }),
     };
   })

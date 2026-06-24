@@ -66,6 +66,7 @@ export type {
   TelegramCommandScope,
   TelegramFragmentConfig,
   TelegramFragmentDeps,
+  TelegramHookContext,
   TelegramHooks,
   TelegramMessage,
   TelegramMessageHookPayload,

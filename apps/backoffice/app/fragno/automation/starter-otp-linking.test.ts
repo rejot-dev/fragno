@@ -241,13 +241,13 @@ describe("starter OTP linking automation in memory", () => {
           }),
           then.workflow.instance({
             remoteWorkflowName: "telegram-user-linking",
-            instanceId: "telegram-link-telegram-org-1-10001-1001-501",
+            instanceId: "telegram-link-message-10001",
             status: "waiting",
             waitingFor: "identity-claim-completed",
           }),
           then.workflow.instance({
             remoteWorkflowName: "telegram-user-linking",
-            instanceId: "telegram-link-telegram-org-1-10002-1001-502",
+            instanceId: "telegram-link-message-10002",
             status: "waiting",
             waitingFor: "identity-claim-completed",
           }),

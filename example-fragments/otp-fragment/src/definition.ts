@@ -160,78 +160,85 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
     validateOtpCodeConfig(config);
     return {};
   })
-  .provideHooks<OtpHooksMap>(({ defineHook, config }) => ({
-    onOtpIssued: defineHook(async function (payload) {
-      await config.hooks?.onOtpIssued?.(
-        resolveIssuedHookPayload(payload, this.createdAt),
-        this.idempotencyKey,
-      );
-    }),
-    onOtpConfirmed: defineHook(async function (payload) {
-      await config.hooks?.onOtpConfirmed?.(
-        resolveConfirmedHookPayload(payload, this.createdAt),
-        this.idempotencyKey,
-      );
-    }),
-    onOtpExpired: defineHook(async function (payload) {
-      await config.hooks?.onOtpExpired?.(
-        resolveExpiredHookPayload(payload, this.createdAt),
-        this.idempotencyKey,
-      );
-    }),
-    expireOtp: defineHook(async function ({ otpId }) {
-      const result = await this.handlerTx()
-        .retrieve(({ forSchema }) =>
-          forSchema(otpSchema).findFirst("otp", (b) =>
-            b.whereIndex("idx_otp_id_status_expiresAt", (eb) =>
-              eb.and(
-                eb("id", "=", otpId),
-                eb("status", "=", "pending"),
-                eb("expiresAt", "<=", eb.now()),
+  .provideHooks<OtpHooksMap>(({ defineHook, config }) => {
+    const hookContext = (context: { idempotencyKey: string; hookId: { toString(): string } }) => ({
+      idempotencyKey: context.idempotencyKey,
+      hookId: context.hookId.toString(),
+    });
+
+    return {
+      onOtpIssued: defineHook(async function (payload) {
+        await config.hooks?.onOtpIssued?.(
+          resolveIssuedHookPayload(payload, this.createdAt),
+          hookContext(this),
+        );
+      }),
+      onOtpConfirmed: defineHook(async function (payload) {
+        await config.hooks?.onOtpConfirmed?.(
+          resolveConfirmedHookPayload(payload, this.createdAt),
+          hookContext(this),
+        );
+      }),
+      onOtpExpired: defineHook(async function (payload) {
+        await config.hooks?.onOtpExpired?.(
+          resolveExpiredHookPayload(payload, this.createdAt),
+          hookContext(this),
+        );
+      }),
+      expireOtp: defineHook(async function ({ otpId }) {
+        const result = await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(otpSchema).findFirst("otp", (b) =>
+              b.whereIndex("idx_otp_id_status_expiresAt", (eb) =>
+                eb.and(
+                  eb("id", "=", otpId),
+                  eb("status", "=", "pending"),
+                  eb("expiresAt", "<=", eb.now()),
+                ),
               ),
             ),
-          ),
-        )
-        .mutate(({ forSchema, retrieveResult: [otp] }) => {
-          if (!otp) {
-            return { action: "skip" as const };
-          }
+          )
+          .mutate(({ forSchema, retrieveResult: [otp] }) => {
+            if (!otp) {
+              return { action: "skip" as const };
+            }
 
-          const uow = forSchema(otpSchema);
-          const expiredAt = uow.now();
-          const issuedPayload = buildIssuedPayload({
-            id: otp.id.valueOf(),
-            externalId: otp.externalId,
-            type: otp.type as OtpType,
-            code: otp.code,
-            expiresAt: otp.expiresAt,
-            createdAt: otp.createdAt,
-            payload: normalizeOtpPayload(otp.payload),
-          });
-          const payload = buildExpiredPayload(issuedPayload, expiredAt);
+            const uow = forSchema(otpSchema);
+            const expiredAt = uow.now();
+            const issuedPayload = buildIssuedPayload({
+              id: otp.id.valueOf(),
+              externalId: otp.externalId,
+              type: otp.type as OtpType,
+              code: otp.code,
+              expiresAt: otp.expiresAt,
+              createdAt: otp.createdAt,
+              payload: normalizeOtpPayload(otp.payload),
+            });
+            const payload = buildExpiredPayload(issuedPayload, expiredAt);
 
-          uow.update("otp", otp.id, (b) =>
-            b
-              .set({
-                status: "expired",
-                expiredAt,
-              })
-              .check(),
-          );
+            uow.update("otp", otp.id, (b) =>
+              b
+                .set({
+                  status: "expired",
+                  expiredAt,
+                })
+                .check(),
+            );
 
-          uow.triggerHook("onOtpExpired", payload);
+            uow.triggerHook("onOtpExpired", payload);
 
-          return {
-            action: "expired" as const,
-          };
-        })
-        .execute();
+            return {
+              action: "expired" as const,
+            };
+          })
+          .execute();
 
-      if (result.action === "expired") {
-        return;
-      }
-    }),
-  }))
+        if (result.action === "expired") {
+          return;
+        }
+      }),
+    };
+  })
   .providesService("otp", ({ defineService, config }) =>
     defineService({
       issueOtp: function (

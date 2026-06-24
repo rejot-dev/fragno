@@ -286,7 +286,7 @@ export class InMemoryTelegramObject implements TelegramObject {
           {
             api: this.#api,
             hooks: {
-              onMessageReceived: async (payload) => {
+              onMessageReceived: async (payload, context) => {
                 const runtime = this.#host.getConfigured();
                 if (!runtime) {
                   console.warn(
@@ -303,7 +303,9 @@ export class InMemoryTelegramObject implements TelegramObject {
                 const { scope } = runtime.stored;
                 await this.#runtime.objects.automations
                   .for(scope)
-                  .triggerIngestEvent(buildTelegramAutomationEvent(scope.orgId, payload));
+                  .triggerIngestEvent(
+                    buildTelegramAutomationEvent(scope.orgId, payload, context.hookId),
+                  );
               },
             },
           },

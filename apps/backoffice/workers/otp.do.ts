@@ -131,7 +131,7 @@ export class InMemoryOtpObject implements OtpObject {
     });
   }
 
-  async #handleOtpConfirmed(payload: ResolvedOtpConfirmedHookPayload) {
+  async #handleOtpConfirmed(payload: ResolvedOtpConfirmedHookPayload, context: { hookId: string }) {
     if (payload.type !== IDENTITY_LINK_TYPE) {
       return;
     }
@@ -167,6 +167,7 @@ export class InMemoryOtpObject implements OtpObject {
         userId: confirmation.subjectUserId,
         otp: payload,
         claim,
+        eventId: context.hookId,
       }),
     );
   }
