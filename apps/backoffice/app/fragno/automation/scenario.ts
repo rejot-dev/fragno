@@ -1986,7 +1986,7 @@ const buildStepBuilders = <
           async (ctx) => {
             ctx.rememberOrg(input.orgId);
             const response = await ctx.runtime.objects.automations.forOrg(input.orgId).fetch(
-              new Request("https://automations.local/api/automations/bindings/projects", {
+              new Request("https://automations.local/api/automations/projects", {
                 method: "POST",
                 headers: { "content-type": "application/json" },
                 body: JSON.stringify({
