@@ -6,6 +6,7 @@ import type {
   CloudflareFragmentConfig,
 } from "@fragno-dev/cloudflare-fragment";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { CloudflareWorkersObject } from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
@@ -30,7 +31,7 @@ type CloudflareWorkersObjectEnv = {
 };
 
 type StoredCloudflareWorkersConfig = {
-  orgId: string;
+  scope: Extract<BackofficeContextScope, { kind: "org" }>;
 };
 
 const CONFIG_KEY = "cloudflare-workers-config";
@@ -55,10 +56,13 @@ type CloudflareWorkersHookQueueInput = DurableHookQueueOptions & {
 };
 
 const storedCloudflareWorkersConfigSchema: z.ZodType<StoredCloudflareWorkersConfig> = z.object({
-  orgId: z
-    .string()
-    .trim()
-    .min(1, "Stored Cloudflare Workers config is missing an organisation id."),
+  scope: z.object({
+    kind: z.literal("org"),
+    orgId: z
+      .string()
+      .trim()
+      .min(1, "Stored Cloudflare Workers config is missing an organisation id."),
+  }),
 });
 
 const hookQueueInputSchema = z.object({
@@ -78,7 +82,7 @@ const hookQueueInputSchema = z.object({
 
 const resolveCloudflareWorkersConfig = (
   env: CloudflareWorkersObjectEnv,
-  orgId: string,
+  scope: Extract<BackofficeContextScope, { kind: "org" }>,
 ): CloudflareWorkersConfigResolution => {
   const accountId = env.CLOUDFLARE_WORKERS_ACCOUNT_ID?.trim() ?? "";
   const apiToken = env.CLOUDFLARE_WORKERS_API_TOKEN?.trim() ?? "";
@@ -109,8 +113,8 @@ const resolveCloudflareWorkersConfig = (
         namespace: CLOUDFLARE_WFP_NAMESPACE,
       },
       compatibilityDate: COMPATIBILITY_DATE,
-      deploymentTagPrefix: `fragno-${orgId}`,
-      scriptNamePrefix: `fragno-${orgId}`,
+      deploymentTagPrefix: `fragno-${scope.orgId}`,
+      scriptNamePrefix: `fragno-${scope.orgId}`,
       scriptNameSuffix: "worker",
     },
   };
@@ -131,13 +135,16 @@ const notConfiguredResponse = (
     { status: 400 },
   );
 
-const orgMismatchResponse = (expectedOrgId: string, orgId: string) =>
+const scopeMismatchResponse = (
+  expectedScope: Extract<BackofficeContextScope, { kind: "org" }>,
+  scope: Extract<BackofficeContextScope, { kind: "org" }>,
+) =>
   Response.json(
     {
-      message: `Cloudflare Workers Durable Object is bound to organisation "${expectedOrgId}" and cannot serve requests for organisation "${orgId}".`,
-      code: "ORG_ID_MISMATCH",
-      expectedOrgId,
-      orgId,
+      message: "Cloudflare Workers Durable Object is bound to a different scope.",
+      code: "SCOPE_MISMATCH",
+      expectedScope,
+      scope,
     },
     { status: 409 },
   );
@@ -174,10 +181,10 @@ export class InMemoryCloudflareWorkersObject implements CloudflareWorkersObject 
         if (!stored) {
           return false;
         }
-        return resolveCloudflareWorkersConfig(this.#env, stored.orgId).ok;
+        return resolveCloudflareWorkersConfig(this.#env, stored.scope).ok;
       },
       toSource: (stored) => {
-        const resolution = resolveCloudflareWorkersConfig(this.#env, stored.orgId);
+        const resolution = resolveCloudflareWorkersConfig(this.#env, stored.scope);
         if (!resolution.ok) {
           throw new Error(
             resolution.error ??
@@ -197,16 +204,16 @@ export class InMemoryCloudflareWorkersObject implements CloudflareWorkersObject 
     });
   }
 
-  async #configureOrgIfNeeded(orgId: string) {
+  async #configureScopeIfNeeded(scope: Extract<BackofficeContextScope, { kind: "org" }>) {
     const stored = await this.#host.loadStored();
-    this.#host.assertSameOrg(stored, orgId);
+    this.#host.assertSameScope(stored, scope);
 
     if (stored) {
       await this.#host.initializeFromStored(stored);
       return;
     }
 
-    await this.#host.storeAndInitialize({ orgId });
+    await this.#host.storeAndInitialize({ scope });
   }
 
   async alarm() {
@@ -221,7 +228,7 @@ export class InMemoryCloudflareWorkersObject implements CloudflareWorkersObject 
     const parseAndConfigure = async (input: CloudflareWorkersHookQueueInput) => {
       const parsed = hookQueueInputSchema.parse(input);
       await this.#state.blockConcurrencyWhile(async () => {
-        await this.#configureOrgIfNeeded(parsed.orgId);
+        await this.#configureScopeIfNeeded({ kind: "org", orgId: parsed.orgId });
       });
       return parsed;
     };
@@ -236,24 +243,28 @@ export class InMemoryCloudflareWorkersObject implements CloudflareWorkersObject 
 
   async fetch(request: Request): Promise<Response> {
     const orgId = resolveRequestOrgId(request);
+    const requestScope = orgId ? ({ kind: "org", orgId } as const) : null;
     const stored = await this.#host.loadStored();
-    const storedOrgId = this.#host.getStoredOrgId(stored);
+    const storedScope = this.#host.getStoredScope(stored) as Extract<
+      BackofficeContextScope,
+      { kind: "org" }
+    > | null;
 
-    if (!storedOrgId && !orgId) {
+    if (!storedScope && !requestScope) {
       return notConfiguredResponse({
         ok: false,
         missing: [],
-        error: "Missing organisation id for Cloudflare Workers runtime.",
+        error: "Missing scope for Cloudflare Workers runtime.",
       });
     }
 
-    if (storedOrgId && orgId && storedOrgId !== orgId) {
-      return orgMismatchResponse(storedOrgId, orgId);
+    if (storedScope && requestScope && storedScope.orgId !== requestScope.orgId) {
+      return scopeMismatchResponse(storedScope, requestScope);
     }
 
-    if (orgId) {
+    if (requestScope) {
       await this.#state.blockConcurrencyWhile(async () => {
-        await this.#configureOrgIfNeeded(orgId);
+        await this.#configureScopeIfNeeded(requestScope);
       });
     } else if (stored) {
       await this.#host.initializeFromStored(stored);
@@ -261,9 +272,9 @@ export class InMemoryCloudflareWorkersObject implements CloudflareWorkersObject 
 
     const configured = this.#host.getConfigured();
     if (!configured) {
-      const effectiveOrgId = storedOrgId ?? orgId;
-      const resolution = effectiveOrgId
-        ? resolveCloudflareWorkersConfig(this.#env, effectiveOrgId)
+      const effectiveScope = storedScope ?? requestScope;
+      const resolution = effectiveScope
+        ? resolveCloudflareWorkersConfig(this.#env, effectiveScope)
         : null;
       return notConfiguredResponse(resolution?.ok ? null : (resolution ?? null));
     }

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Link, isRouteErrorResponse } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
@@ -53,7 +53,7 @@ export type AutomationLayoutContext = {
   storeEntriesError: string | null;
 };
 
-export type AutomationTab = "scripts" | "store" | "mcp";
+export type AutomationTab = "scripts" | "store" | "api" | "events" | "mcp";
 
 export const formatTimestamp = (value?: string | Date | null) => {
   if (!value) {
@@ -91,7 +91,7 @@ export function AutomationHeader({ selectedScope }: { selectedScope: AutomationU
       ]}
       eyebrow="Automations"
       title={`Automations for ${scopeLabel}`}
-      description="Inspect automation scripts, MCP servers, and store bindings for the selected scope."
+      description="Inspect automation scripts, API connections, events, MCP servers, and store bindings for the selected scope."
       actions={
         orgId ? (
           <Link
@@ -175,13 +175,23 @@ export function AutomationTabs({
   const tabs = [
     {
       id: "scripts" as const,
-      label: "Scripts",
+      label: "Automations",
       to: automationScopeTabPath(selectedScope, "scripts"),
     },
     {
       id: "store" as const,
       label: "Store",
       to: automationScopeTabPath(selectedScope, "store"),
+    },
+    {
+      id: "events" as const,
+      label: "Events",
+      to: automationScopeTabPath(selectedScope, "events"),
+    },
+    {
+      id: "api" as const,
+      label: "API",
+      to: automationScopeTabPath(selectedScope, "api"),
     },
     {
       id: "mcp" as const,
@@ -203,9 +213,14 @@ export function AutomationTabs({
           : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]";
 
         return (
-          <Link key={tab.id} to={tab.to} role="tab" aria-selected={isActive} className={className}>
-            {tab.label}
-          </Link>
+          <Fragment key={tab.id}>
+            {tab.id === "store" || tab.id === "api" ? (
+              <span className="h-6 w-px bg-[var(--bo-border)]" aria-hidden="true" />
+            ) : null}
+            <Link to={tab.to} role="tab" aria-selected={isActive} className={className}>
+              {tab.label}
+            </Link>
+          </Fragment>
         );
       })}
     </div>

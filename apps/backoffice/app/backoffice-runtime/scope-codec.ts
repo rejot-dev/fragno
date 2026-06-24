@@ -1,4 +1,4 @@
-import type { BackofficeContextScope } from "./context";
+import { backofficeContextScopesEqual, type BackofficeContextScope } from "./context";
 
 export type BackofficeRoutableScope = Extract<
   BackofficeContextScope,
@@ -94,6 +94,21 @@ export const backofficeScopeSinglePathSegment = (scope: BackofficeRoutableScope)
       return `project:${encodeScopeComponent(scope.orgId)}:${encodeScopeComponent(scope.projectId)}`;
     case "user":
       return `user:${encodeScopeComponent(scope.userId)}`;
+  }
+};
+
+export const backofficeRoutableScopesEqual = (
+  left: BackofficeRoutableScope,
+  right: BackofficeRoutableScope,
+) => backofficeContextScopesEqual(left, right);
+
+export const assertSameBackofficeRoutableScope = (
+  existing: BackofficeRoutableScope | null,
+  next: BackofficeRoutableScope,
+  message = "Already configured for a different scope.",
+) => {
+  if (existing && !backofficeRoutableScopesEqual(existing, next)) {
+    throw new Error(message);
   }
 };
 

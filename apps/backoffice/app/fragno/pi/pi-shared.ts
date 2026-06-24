@@ -1,3 +1,4 @@
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { SYSTEM_FILE_CONTENT, SYSTEM_GUIDANCE } from "@/files";
 
 export type PiSteeringMode = "all" | "one-at-a-time";
@@ -23,7 +24,7 @@ export type PiHarnessConfig = {
 };
 
 export type StoredPiConfig = {
-  orgId: string;
+  scope: Extract<BackofficeContextScope, { kind: "org" }>;
   apiKeys: {
     openai?: string;
     anthropic?: string;

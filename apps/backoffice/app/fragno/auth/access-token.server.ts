@@ -2,6 +2,7 @@ import type { RouterContextProvider } from "react-router";
 
 import { createAuthAccessTokenMethods, type AuthPrincipal } from "@fragno-dev/auth";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import {
   ACCESS_TOKEN_AUDIENCE,
   ACCESS_TOKEN_ISSUER,
@@ -163,10 +164,40 @@ export const requireOrganizationAccess = async (
   return principal;
 };
 
-export const authorizeAccessTokenForOrganization = async (
+const authFailureResponse = (
+  reason: Exclude<Awaited<ReturnType<typeof resolveAuthPrincipal>>, { ok: true }>["reason"],
+) =>
+  new Response(
+    reason === "malformed"
+      ? "Malformed authentication"
+      : reason === "multiple"
+        ? "Multiple authentication credentials"
+        : reason === "missing"
+          ? "Authentication required"
+          : reason === "expired"
+            ? "Authentication expired"
+            : "Invalid credential",
+    { status: 401 },
+  );
+
+const principalHasScopeAccess = (
+  principal: BackofficeAuthPrincipal,
+  scope: BackofficeContextScope,
+) => {
+  const tokenContext = parseBackofficeAccessTokenContext(principal.auth.sessionContext);
+  if (scope.kind === "user") {
+    return principal.user.id === scope.userId;
+  }
+  if (scope.kind === "org" || scope.kind === "project") {
+    return tokenContext?.organizationIds.includes(scope.orgId) ?? false;
+  }
+  return false;
+};
+
+export const authorizeAccessTokenForScope = async (
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  scope: BackofficeContextScope,
 ): Promise<
   | { ok: true; principal: BackofficeAuthPrincipal; headers: Array<[string, string]> }
   | { ok: false; response: Response }
@@ -174,25 +205,10 @@ export const authorizeAccessTokenForOrganization = async (
   try {
     const auth = await resolveAuthPrincipal(request, context);
     if (!auth.ok) {
-      return {
-        ok: false,
-        response: new Response(
-          auth.reason === "malformed"
-            ? "Malformed authentication"
-            : auth.reason === "multiple"
-              ? "Multiple authentication credentials"
-              : auth.reason === "missing"
-                ? "Authentication required"
-                : auth.reason === "expired"
-                  ? "Authentication expired"
-                  : "Invalid credential",
-          { status: 401 },
-        ),
-      };
+      return { ok: false, response: authFailureResponse(auth.reason) };
     }
 
-    const tokenContext = parseBackofficeAccessTokenContext(auth.principal.auth.sessionContext);
-    if (!tokenContext?.organizationIds.includes(orgId)) {
+    if (!principalHasScopeAccess(auth.principal, scope)) {
       return { ok: false, response: new Response("Forbidden", { status: 403 }) };
     }
 
@@ -204,3 +220,9 @@ export const authorizeAccessTokenForOrganization = async (
     throw error;
   }
 };
+
+export const authorizeAccessTokenForOrganization = async (
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+) => await authorizeAccessTokenForScope(request, context, { kind: "org", orgId });

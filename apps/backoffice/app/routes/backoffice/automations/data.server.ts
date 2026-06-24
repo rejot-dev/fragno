@@ -10,9 +10,11 @@ import {
   AUTOMATION_WORKSPACE_ROOT,
   listAutomationWorkspaceScripts,
   readAutomationWorkspaceScript,
+  type AutomationEvent,
   type AutomationWorkspaceScriptEntry,
   type createAutomationFragment,
 } from "@/fragno/automation";
+import type { DurableHookQueueEntry } from "@/fragno/durable-hooks";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import {
@@ -29,6 +31,84 @@ import type {
 type AutomationFragment = ReturnType<typeof createAutomationFragment>;
 
 const AUTOMATION_SCRIPT_ID_PREFIX = "automation-script:";
+const AUTOMATION_INGEST_EVENT_HOOK_NAME = "internalIngestEvent";
+
+export type AutomationEventHookRecord = {
+  hookId: string;
+  hookStatus: DurableHookQueueEntry["status"];
+  attempts: number;
+  maxAttempts: number;
+  createdAt: string | null;
+  error: string | null;
+  id: string | null;
+  source: string;
+  eventType: string;
+  occurredAt: string | null;
+  actor: AutomationEvent["actor"] | null;
+  actors: AutomationEvent["actors"];
+  subject: AutomationEvent["subject"];
+  scope: AutomationEvent["scope"] | null;
+  payload: AutomationEvent["payload"] | null;
+};
+
+export type AutomationEventsResult = {
+  configured: boolean;
+  hooksEnabled: boolean;
+  namespace: string | null;
+  events: AutomationEventHookRecord[];
+  cursor?: string;
+  hasNextPage: boolean;
+  eventsError: string | null;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const asString = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() ? value : null;
+
+const asAutomationActor = (value: unknown): AutomationEvent["actor"] | null =>
+  isRecord(value) && asString(value.scope) && asString(value.type) && asString(value.id)
+    ? (value as AutomationEvent["actor"])
+    : null;
+
+const isAutomationActor = (
+  value: AutomationEvent["actor"] | null,
+): value is AutomationEvent["actor"] => Boolean(value);
+
+const asAutomationActors = (value: unknown): AutomationEvent["actors"] =>
+  Array.isArray(value) ? value.map(asAutomationActor).filter(isAutomationActor) : [];
+
+const normalizeAutomationEventHook = (
+  hook: DurableHookQueueEntry,
+): AutomationEventHookRecord | null => {
+  if (hook.hookName !== AUTOMATION_INGEST_EVENT_HOOK_NAME) {
+    return null;
+  }
+
+  const payload = isRecord(hook.payload) ? hook.payload : {};
+  const event = isRecord(payload.event) ? payload.event : payload;
+  const actor = asAutomationActor(event.actor);
+
+  return {
+    hookId: hook.id,
+    hookStatus: hook.status,
+    attempts: hook.attempts,
+    maxAttempts: hook.maxAttempts,
+    createdAt: hook.createdAt,
+    error: hook.error,
+    id: asString(event.id),
+    source: asString(event.source) ?? "—",
+    eventType: asString(event.eventType) ?? "—",
+    occurredAt: asString(event.occurredAt),
+    actor,
+    actors: asAutomationActors(event.actors),
+    subject: isRecord(event.subject) ? (event.subject as AutomationEvent["subject"]) : null,
+    scope: isRecord(event.scope) ? (event.scope as AutomationEvent["scope"]) : null,
+    payload: isRecord(event.payload) ? (event.payload as AutomationEvent["payload"]) : null,
+  };
+};
+
 const formatErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
 
@@ -39,6 +119,20 @@ const scopeOrgId = (scope: BackofficeContextScope) => {
     return scope.orgId;
   }
   return undefined;
+};
+
+const applyAutomationScopeQuery = (url: URL, scope: BackofficeContextScope) => {
+  const orgId = scopeOrgId(scope);
+  url.searchParams.set("scopeKind", scope.kind);
+  if (orgId) {
+    url.searchParams.set("orgId", orgId);
+  }
+  if (scope.kind === "project") {
+    url.searchParams.set("projectId", scope.projectId);
+  }
+  if (scope.kind === "user") {
+    url.searchParams.set("userId", scope.userId);
+  }
 };
 
 const createAutomationsRouteCaller = (
@@ -55,17 +149,7 @@ const createAutomationsRouteCaller = (
     baseHeaders: request.headers,
     fetch: async (outboundRequest) => {
       const url = new URL(outboundRequest.url);
-      const orgId = scopeOrgId(scope);
-      url.searchParams.set("scopeKind", scope.kind);
-      if (orgId) {
-        url.searchParams.set("orgId", orgId);
-      }
-      if (scope.kind === "project") {
-        url.searchParams.set("projectId", scope.projectId);
-      }
-      if (scope.kind === "user") {
-        url.searchParams.set("userId", scope.userId);
-      }
+      applyAutomationScopeQuery(url, scope);
       return automationsDo.fetch(new Request(url.toString(), outboundRequest));
     },
   });
@@ -300,6 +384,45 @@ export async function fetchAutomationStoreEntries(
     return {
       storeEntries: [],
       storeEntriesError: formatErrorMessage(error, "Failed to load automation store entries."),
+    };
+  }
+}
+
+export async function fetchAutomationEvents(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+  options: { cursor?: string; pageSize?: number } = {},
+): Promise<AutomationEventsResult> {
+  try {
+    const { runtime } = context.get(BackofficeWorkerContext);
+    const kernel = new BackofficeKernel({ objects: runtime.objects });
+    const automationsDo = kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
+    const ensureUrl = new URL("/__backoffice/automations/ensure-configured", request.url);
+    applyAutomationScopeQuery(ensureUrl, scope);
+    await automationsDo.fetch(new Request(ensureUrl, { headers: request.headers }));
+    const repository = await automationsDo.getDurableHookRepository("automation");
+    const queueData = await repository.getHookQueue(options);
+
+    return {
+      configured: queueData.configured,
+      hooksEnabled: queueData.hooksEnabled,
+      namespace: queueData.namespace,
+      events: queueData.items
+        .map(normalizeAutomationEventHook)
+        .filter((event): event is AutomationEventHookRecord => Boolean(event)),
+      cursor: queueData.cursor,
+      hasNextPage: queueData.hasNextPage,
+      eventsError: null,
+    };
+  } catch (error) {
+    return {
+      configured: false,
+      hooksEnabled: false,
+      namespace: null,
+      events: [],
+      hasNextPage: false,
+      eventsError: formatErrorMessage(error, "Failed to load automation events."),
     };
   }
 }

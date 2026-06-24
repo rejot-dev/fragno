@@ -7,18 +7,14 @@ import {
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
 import {
-  backofficeScopeSinglePathSegment,
+  assertSameBackofficeRoutableScope,
   type BackofficeRoutableScope,
 } from "@/backoffice-runtime/scope-codec";
 import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
 import { mcpConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/mcp";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
-import {
-  createMcpServer,
-  resolveMcpPublicBaseUrl,
-  type McpConfig,
-  type McpFragment,
-} from "@/fragno/mcp";
+import { createMcpServer, type McpConfig, type McpFragment } from "@/fragno/mcp";
+import { MCP_PUBLIC_PREFIX, scopedPublicBaseUrl } from "@/fragno/scoped-public-fragment-routes";
 
 import {
   createBackofficeFragmentDurableObject,
@@ -67,40 +63,11 @@ const readMcpPublicOrigin = (env: McpObjectEnv) => {
   return origin;
 };
 
-const resolvePublicBaseUrl = (env: McpObjectEnv, scope: BackofficeRoutableScope) =>
-  resolveMcpPublicBaseUrl({ baseUrl: readMcpPublicOrigin(env), scope });
-
-const assertSameScope = (existing: StoredMcpConfig | null, nextScope: BackofficeRoutableScope) => {
-  if (!existing) {
-    return;
-  }
-
-  if (
-    backofficeScopeSinglePathSegment(existing.scope) !== backofficeScopeSinglePathSegment(nextScope)
-  ) {
-    throw new Error("MCP is already configured for a different scope.");
-  }
-};
-
 const scopeSubject = (scope: BackofficeRoutableScope, serverId?: string) => ({
   scope,
   ...(scope.kind === "org" || scope.kind === "project" ? { orgId: scope.orgId } : {}),
   ...(serverId ? { serverId } : {}),
 });
-
-const buildServerConfigurationChangedEventId = (input: {
-  scopeKey: string;
-  serverId: string;
-  idempotencyKey: string;
-}) =>
-  `mcp:server.configuration.changed:${input.scopeKey}:${input.serverId}:${input.idempotencyKey}`;
-
-const buildServerConfigurationDeletedEventId = (input: {
-  scopeKey: string;
-  serverId: string;
-  idempotencyKey: string;
-}) =>
-  `mcp:server.configuration.deleted:${input.scopeKey}:${input.serverId}:${input.idempotencyKey}`;
 
 function buildConfigResponse(
   env: McpObjectEnv,
@@ -113,7 +80,11 @@ function buildConfigResponse(
   return {
     configured: true,
     config: {
-      publicBaseUrl: resolvePublicBaseUrl(env, config.scope),
+      publicBaseUrl: scopedPublicBaseUrl({
+        baseUrl: readMcpPublicOrigin(env),
+        publicPrefix: MCP_PUBLIC_PREFIX,
+        scope: config.scope,
+      }),
       createdAt: config.createdAt,
       updatedAt: config.updatedAt,
     },
@@ -142,23 +113,17 @@ export class InMemoryMcpObject implements McpObject {
       name: "MCP",
       state,
       env: this.#env,
-      getStoredOrgId: (stored) => {
-        const scope = stored.scope;
-        if (scope.kind === "org" || scope.kind === "project") {
-          return scope.orgId;
-        }
-        return `user:${scope.userId}`;
-      },
+      getStoredScope: (stored) => stored.scope,
       toSource: (stored) => ({
-        publicBaseUrl: resolvePublicBaseUrl(this.#env, stored.scope),
-        onServerConfigurationChanged: async (payload, idempotencyKey) => {
+        publicBaseUrl: scopedPublicBaseUrl({
+          baseUrl: readMcpPublicOrigin(this.#env),
+          publicPrefix: MCP_PUBLIC_PREFIX,
+          scope: stored.scope,
+        }),
+        onServerConfigurationChanged: async (payload, context) => {
           const scope = stored.scope;
           await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
-            id: buildServerConfigurationChangedEventId({
-              scopeKey: backofficeScopeSinglePathSegment(scope),
-              serverId: payload.serverId,
-              idempotencyKey,
-            }),
+            id: context.hookId,
             scope,
             source: "mcp",
             eventType: "server.configuration.changed",
@@ -169,14 +134,10 @@ export class InMemoryMcpObject implements McpObject {
             subject: scopeSubject(scope, payload.serverId),
           });
         },
-        onServerConfigurationDeleted: async (payload, idempotencyKey) => {
+        onServerConfigurationDeleted: async (payload, context) => {
           const scope = stored.scope;
           await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
-            id: buildServerConfigurationDeletedEventId({
-              scopeKey: backofficeScopeSinglePathSegment(scope),
-              serverId: payload.serverId,
-              idempotencyKey,
-            }),
+            id: context.hookId,
             scope,
             source: "mcp",
             eventType: "server.configuration.deleted",
@@ -249,7 +210,11 @@ export class InMemoryMcpObject implements McpObject {
     const parsed = setAdminConfigInputSchema.parse(payload);
     const scope = parsed.scope;
     const existing = await this.#host.loadStored();
-    assertSameScope(existing, scope);
+    assertSameBackofficeRoutableScope(
+      existing?.scope ?? null,
+      scope,
+      "MCP is already configured for a different scope.",
+    );
 
     const now = new Date().toISOString();
     const stored: StoredMcpConfig = {
@@ -262,7 +227,7 @@ export class InMemoryMcpObject implements McpObject {
       await this.#host.storeAndInitialize(stored);
       const configuredAt = new Date().toISOString();
       await this.#host.dispatch({
-        id: `mcp:capability.configured:${backofficeScopeSinglePathSegment(scope)}:${configuredAt}`,
+        id: crypto.randomUUID(),
         type: "capability.configured",
         createdAt: configuredAt,
       });

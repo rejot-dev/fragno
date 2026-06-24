@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import type { McpRuntime } from "../runtime-tools/families/mcp-runtime";
+import { NotConfiguredError } from "../runtime-tools/runtime-errors";
 import { createTrustedSystemBackofficeToolContext } from "../runtime-tools/runtime-tools";
 import { createMcpCodemodeProviders } from "./mcp-codemode-tools";
 
@@ -34,12 +35,12 @@ const createRuntime = (overrides: Partial<McpRuntime>): McpRuntime =>
 describe("MCP codemode providers", () => {
   const context = createTrustedSystemBackofficeToolContext({ runtimes: {} });
 
-  test("does not fail codemode when MCP is bound but not configured for the organisation", async () => {
+  test("does not fail codemode when MCP is bound but not configured for the scope", async () => {
     const providers = await createMcpCodemodeProviders({
       context,
       runtime: createRuntime({
         listServers: async () => {
-          throw new Error("MCP is not configured for this organisation.");
+          throw new NotConfiguredError("MCP is not configured for this scope.");
         },
       }),
     });

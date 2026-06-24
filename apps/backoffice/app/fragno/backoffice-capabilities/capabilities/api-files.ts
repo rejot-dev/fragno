@@ -24,7 +24,7 @@ await connections.configure({ id: "api", payload: {} });
 
 - Create each external API connection with a stable lowercase slug and a base URL.
 - Use \`api.*\` methods for API connections.
-- Register the public OAuth callback route \`/api/http/:orgId/oauth/callback\` for organisation-scoped OAuth connections.
+- Register the public OAuth callback route \`/api/http/:scope/oauth/callback\` for scoped OAuth connections.
 - Use relative request paths, for example \`/v1/customers\`. If the user gives \`https://example.com/v1/customers\` and the connection base URL is \`https://example.com\`, call \`api.request\` with \`path: "/v1/customers"\`.
 - Let stored connection auth replace caller-provided \`Authorization\` headers.
 - If the user supplies a client secret in the session and asks you to configure the connection, pass it to \`api.createConnection\` and keep the final response secret-free.

@@ -6,12 +6,12 @@ function isBackofficePath(pathname: string): boolean {
   return pathname === BACKOFFICE_HOME_PATH || pathname.startsWith(`${BACKOFFICE_HOME_PATH}/`);
 }
 
-function isMcpOAuthCallbackPath(pathname: string): boolean {
-  return /^\/api\/mcp\/[^/]+\/oauth\/callback$/.test(pathname);
+function isScopedFragmentOAuthCallbackPath(pathname: string): boolean {
+  return /^\/api\/(?:mcp|http)\/[^/]+\/oauth\/callback$/.test(pathname);
 }
 
 function isAllowedBackofficeReturnToPath(pathname: string): boolean {
-  return isBackofficePath(pathname) || isMcpOAuthCallbackPath(pathname);
+  return isBackofficePath(pathname) || isScopedFragmentOAuthCallbackPath(pathname);
 }
 
 export function sanitizeBackofficeReturnTo(value: string | null | undefined): string | null {
@@ -20,7 +20,11 @@ export function sanitizeBackofficeReturnTo(value: string | null | undefined): st
   }
 
   const trimmed = value.trim();
-  if (!trimmed.startsWith(BACKOFFICE_HOME_PATH) && !trimmed.startsWith("/api/mcp/")) {
+  if (
+    !trimmed.startsWith(BACKOFFICE_HOME_PATH) &&
+    !trimmed.startsWith("/api/mcp/") &&
+    !trimmed.startsWith("/api/http/")
+  ) {
     return null;
   }
 

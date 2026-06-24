@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type {
   BackofficeConfigurableConnectionCapability,
@@ -42,8 +43,12 @@ const apiConnectionAvailablePayloadSchema = z.object({
   authMode: z.string().min(1),
 });
 
-const apiConnectionSubjectSchema = z.object({
-  orgId: z.string().min(1),
+const apiScopeSubjectSchema = z.object({
+  scope: z.object({ kind: z.string().min(1) }).passthrough(),
+  orgId: z.string().min(1).optional(),
+});
+
+const apiConnectionSubjectSchema = apiScopeSubjectSchema.extend({
   connectionId: z.string().min(1),
 });
 
@@ -58,14 +63,19 @@ const apiWebhookReceivedPayloadSchema = z.object({
   contentType: z.string().nullable(),
 });
 
-const apiWebhookSubjectSchema = z.object({
-  orgId: z.string().min(1),
+const apiWebhookSubjectSchema = apiScopeSubjectSchema.extend({
   endpointId: z.string().min(1),
   deliveryId: z.string().min(1),
 });
 
 const capability = { id: "api", label: "API", kind: "connection" } as const;
-const getApiDo = (objects: BackofficeObjectRegistry, orgId: string) => objects.api.forOrg(orgId);
+const getApiDo = ({
+  objects,
+  scope,
+}: {
+  objects: BackofficeObjectRegistry;
+  scope: BackofficeContextScope;
+}) => objects.api.for(scope);
 
 const toApiStatus = (response: ApiAdminConfigResponse): ConnectionStatus => {
   if (!response.configured) {
@@ -97,17 +107,17 @@ export const apiCapability: BackofficeConfigurableConnectionCapability = {
     configurable: true,
     configureInputSchema: apiConfigureInputSchema,
     configureFields: [],
-    getStatus: async ({ objects, orgId }) =>
-      toApiStatus(await getApiDo(objects, orgId).getAdminConfig()),
-    verify: async ({ objects, orgId }) =>
-      toApiStatus(await getApiDo(objects, orgId).getAdminConfig()),
-    reset: async ({ objects, orgId }) =>
-      toApiStatus(await getApiDo(objects, orgId).resetAdminConfig()),
-    configure: async ({ objects, orgId, payload }) =>
+    getStatus: async ({ objects, scope }) =>
+      toApiStatus(await getApiDo({ objects, scope }).getAdminConfig()),
+    verify: async ({ objects, scope }) =>
+      toApiStatus(await getApiDo({ objects, scope }).getAdminConfig()),
+    reset: async ({ objects, scope }) =>
+      toApiStatus(await getApiDo({ objects, scope }).resetAdminConfig()),
+    configure: async ({ objects, scope, payload }) =>
       toApiStatus(
-        await getApiDo(objects, orgId).setAdminConfig({
+        await getApiDo({ objects, scope }).setAdminConfig({
           ...apiConfigureInputSchema.parse(payload),
-          orgId,
+          scope,
         }),
       ),
   },
@@ -115,7 +125,8 @@ export const apiCapability: BackofficeConfigurableConnectionCapability = {
     {
       id: "api",
       label: "API",
-      getRepository: ({ objects, orgId }) => getApiDo(objects, orgId).getDurableHookRepository(),
+      getRepository: ({ objects, scope }) =>
+        getApiDo({ objects, scope }).getDurableHookRepository(),
     },
   ],
   automationEvents: [

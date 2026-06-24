@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { Reson8Object } from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
@@ -17,7 +18,7 @@ import {
 } from "./lib/backoffice-fragment-durable-object";
 
 type StoredReson8Config = {
-  orgId: string;
+  scope: Extract<BackofficeContextScope, { kind: "org" }>;
   apiKey: string;
   createdAt: string;
   updatedAt: string;
@@ -54,7 +55,10 @@ const maskSecret = (value: string) => {
 };
 
 const storedReson8ConfigSchema: z.ZodType<StoredReson8Config> = z.object({
-  orgId: z.string().trim().min(1, "Stored Reson8 config is missing an organisation id."),
+  scope: z.object({
+    kind: z.literal("org"),
+    orgId: z.string().trim().min(1, "Stored Reson8 config is missing an organisation id."),
+  }),
   apiKey: z.string().trim().min(1, "Stored Reson8 config is missing an API key."),
   createdAt: z.string().trim().min(1, "Stored Reson8 config is missing createdAt."),
   updatedAt: z.string().trim().min(1, "Stored Reson8 config is missing updatedAt."),
@@ -114,7 +118,7 @@ export class InMemoryReson8Object implements Reson8Object {
       configKey: CONFIG_KEY,
       parseStored: (raw) => storedReson8ConfigSchema.parse(raw),
       isConfigured: (stored): stored is StoredReson8Config =>
-        Boolean(stored?.orgId && stored.apiKey),
+        Boolean(stored?.scope && stored.apiKey),
       toSource: (stored) => ({ apiKey: stored.apiKey }),
       createRuntime: (source) => createReson8Server(source),
       getMigrationFragments: () => [],
@@ -125,9 +129,10 @@ export class InMemoryReson8Object implements Reson8Object {
             return;
           }
 
-          await this.#runtime.objects.automations.forOrg(stored.orgId).ingestEvent({
+          const { scope } = stored;
+          await this.#runtime.objects.automations.for(scope).ingestEvent({
             id: item.id,
-            scope: { kind: "org", orgId: stored.orgId },
+            scope,
             source: "reson8",
             eventType: "capability.configured",
             occurredAt: item.createdAt,
@@ -138,7 +143,7 @@ export class InMemoryReson8Object implements Reson8Object {
             actor: AUTOMATION_SYSTEM_ACTOR,
             actors: [AUTOMATION_SYSTEM_ACTOR],
             subject: {
-              orgId: stored.orgId,
+              orgId: scope.orgId,
               capabilityId: "reson8",
             },
           });
@@ -257,7 +262,8 @@ export class InMemoryReson8Object implements Reson8Object {
     }
 
     const existing = await this.#host.loadStored();
-    this.#host.assertSameOrg(existing, normalizedOrgId);
+    const scope = { kind: "org" as const, orgId: normalizedOrgId };
+    this.#host.assertSameScope(existing, scope);
 
     const parsed = setAdminConfigInputSchema.parse(payload);
     const apiKey = parsed.apiKey ?? existing?.apiKey ?? "";
@@ -267,7 +273,7 @@ export class InMemoryReson8Object implements Reson8Object {
 
     const now = new Date().toISOString();
     const stored: StoredReson8Config = {
-      orgId: normalizedOrgId,
+      scope,
       apiKey,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
@@ -277,7 +283,7 @@ export class InMemoryReson8Object implements Reson8Object {
       await this.#host.storeAndInitialize(stored);
       const configuredAt = new Date().toISOString();
       await this.#host.dispatch({
-        id: `reson8:capability.configured:${normalizedOrgId}:${configuredAt}`,
+        id: crypto.randomUUID(),
         type: "capability.configured",
         createdAt: configuredAt,
       });

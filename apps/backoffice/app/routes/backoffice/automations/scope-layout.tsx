@@ -1,5 +1,6 @@
 import { Outlet } from "react-router";
 
+import { backofficeScopeFromRouteParams } from "@/backoffice-runtime/scope-codec";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
@@ -68,6 +69,12 @@ const currentTabFromPath = (pathname: string): AutomationTab => {
   if (segments.includes("mcp")) {
     return "mcp";
   }
+  if (segments.includes("api")) {
+    return "api";
+  }
+  if (segments.includes("events")) {
+    return "events";
+  }
   if (segments.includes("store")) {
     return "store";
   }
@@ -85,13 +92,15 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
 
   const organisations = me.organizations.map((entry) => entry.organization);
+  let parsedRouteScope;
+  try {
+    parsedRouteScope = backofficeScopeFromRouteParams(params);
+  } catch {
+    throw new Response("Not Found", { status: 404 });
+  }
   const selectedRouteScope =
-    params.scopeKind && params.scopeId
-      ? params.scopeKind === "project"
-        ? params.scopeId.split("~", 1)[0]
-        : params.scopeKind === "org"
-          ? params.scopeId
-          : undefined
+    parsedRouteScope?.kind === "project" || parsedRouteScope?.kind === "org"
+      ? parsedRouteScope.orgId
       : undefined;
   const activeOrgId =
     selectedRouteScope ?? me.activeOrganization?.organization.id ?? organisations[0]?.id ?? null;

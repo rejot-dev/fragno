@@ -1,6 +1,6 @@
-import type {
-  BackofficeContextScope,
-  BackofficeExecutionContext,
+import {
+  backofficeContextScopesEqual,
+  type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
@@ -17,25 +17,6 @@ export type CreateEventRuntimeOptions = {
   execution?: BackofficeExecutionContext;
 };
 
-const sameScope = (left: BackofficeContextScope, right: BackofficeContextScope): boolean => {
-  if (left.kind !== right.kind) {
-    return false;
-  }
-
-  switch (left.kind) {
-    case "system":
-      return right.kind === "system";
-    case "org":
-      return right.kind === "org" && left.orgId === right.orgId;
-    case "user":
-      return right.kind === "user" && left.userId === right.userId;
-    case "project":
-      return (
-        right.kind === "project" && left.orgId === right.orgId && left.projectId === right.projectId
-      );
-  }
-};
-
 export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRuntime => ({
   emitEvent: async ({
     eventType,
@@ -50,7 +31,7 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
     const currentScope = event.scope;
     const resolvedTargetScope = targetScope ?? currentScope;
 
-    if (!sameScope(resolvedTargetScope, currentScope)) {
+    if (!backofficeContextScopesEqual(resolvedTargetScope, currentScope)) {
       if (!options.kernel || !options.execution) {
         throw new Error("event.emit cross-scope routing requires a Backoffice kernel");
       }

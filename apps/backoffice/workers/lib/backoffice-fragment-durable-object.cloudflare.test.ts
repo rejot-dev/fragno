@@ -6,7 +6,7 @@ import { env } from "cloudflare:workers";
 import { createBackofficeFragmentDurableObject } from "./backoffice-fragment-durable-object";
 
 type TestStoredConfig = {
-  orgId: string;
+  scope: { kind: "org"; orgId: string };
   value: string;
 };
 
@@ -84,7 +84,10 @@ const runOutboxHarness = async <TResult>(
       },
     });
 
-    await state.storage.put("outbox-harness-config", { orgId: "org-1", value: "configured" });
+    await state.storage.put("outbox-harness-config", {
+      scope: { kind: "org", orgId: "org-1" },
+      value: "configured",
+    });
     return await callback({ host, state });
   });
 

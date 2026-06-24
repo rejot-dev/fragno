@@ -44,15 +44,15 @@ export const toBackofficeScope = (scope: AutomationUiScope): BackofficeContextSc
 export const automationScopeBasePath = (scope: AutomationUiScope) => {
   switch (scope.kind) {
     case "org":
-      return `/backoffice/automations/org/${encodeURIComponent(scope.orgId)}`;
+      return `/backoffice/automations/org/${backofficeScopeRouteId(scope)}`;
     case "project":
-      return `/backoffice/automations/project/${encodeURIComponent(backofficeScopeRouteId(scope))}`;
+      return `/backoffice/automations/project/${backofficeScopeRouteId(scope)}`;
     case "user":
-      return `/backoffice/automations/user/${encodeURIComponent(scope.userId)}`;
+      return `/backoffice/automations/user/${backofficeScopeRouteId(scope)}`;
   }
 };
 
-export type AutomationScopeTab = "scripts" | "store" | "mcp";
+export type AutomationScopeTab = "scripts" | "store" | "api" | "events" | "mcp";
 
 export const automationScopeTabPath = (
   scope: AutomationUiScope,

@@ -9,6 +9,11 @@ import {
 import type { AnyFragnoInstantiatedDatabaseFragment } from "@fragno-dev/db/durable-hooks";
 
 import {
+  backofficeContextScopesEqual,
+  type BackofficeContextScope,
+} from "@/backoffice-runtime/context";
+import { backofficeScopeFromSinglePathSegment } from "@/backoffice-runtime/scope-codec";
+import {
   createDurableHookRepository,
   createDurableHookRepositoryRpcTarget,
   createEmptyDurableHookRepository,
@@ -65,9 +70,8 @@ type ConfiguredRuntimeState<TStored, TSource, TRuntime> = Extract<
  * 4. Create/migrate a Fragno runtime with the generic `createFragmentDurableObjectHost`.
  * 5. Reuse the runtime while the derived `source` fingerprint is unchanged.
  *
- * Organisation binding is always enabled. Configured stored records must expose a string `orgId`,
- * admin updates can use `assertSameOrg(...)`, and `fetch(...)` rejects `?orgId=` mismatches with a
- * standard 409 `ORG_ID_MISMATCH` response.
+ * Stored configs expose a Backoffice owner scope. When a request includes an internal `?scope=`
+ * guard, `fetch(...)` rejects mismatches before forwarding to the hosted fragment.
  */
 export type BackofficeDurableHookDependencies = {
   createRepository: typeof createDurableHookRepository;
@@ -99,7 +103,7 @@ export type BackofficeObjectState = Pick<
 
 export type BackofficeFragmentDurableObjectCreateRuntimeContext<TEnv = CloudflareEnv> =
   FragmentDurableObjectHostContext<TEnv> & {
-    orgId: string;
+    scope: BackofficeContextScope;
   };
 
 export type BackofficeFragmentDurableObjectOptions<
@@ -164,8 +168,8 @@ export type BackofficeFragmentDurableObjectOptions<
   ) => readonly AnyFragnoInstantiatedDatabaseFragment[];
   /** Wrap fragments inside a multi-fragment runtime so direct `callRoute`/`callServices` notify hooks. */
   hostRuntime?: (runtime: TRuntime, context: FragmentDurableObjectRuntimeHostContext) => TRuntime;
-  /** Override how the persisted config's organisation id is read. Defaults to top-level `stored.orgId`. */
-  getStoredOrgId?: (stored: TStored) => string | null;
+  /** Override how the persisted config's owner scope is read. Defaults to top-level `stored.scope`. */
+  getStoredScope?: (stored: TStored) => BackofficeContextScope | null;
   /** Request routing table for multi-fragment runtimes. Omit for a single fragment with `handler`. */
   mounts?: readonly FragmentDurableObjectMount<TRuntime>[];
   /** Minimal persisted outbox support. Items are stored separately from config. */
@@ -206,15 +210,15 @@ export type BackofficeFragmentDurableObject<
   getConfigured: () => ConfiguredRuntimeState<TStored, TSource, TRuntime> | null;
   /** Return the configured runtime state, or throw when this DO is not currently configured. */
   requireConfigured: (message?: string) => ConfiguredRuntimeState<TStored, TSource, TRuntime>;
-  /** Resolve the org id by reading and trimming `stored.orgId`. */
-  getStoredOrgId: (stored: TStored | null) => string | null;
-  /** Throw if an admin update attempts to bind this DO to a different org. */
-  assertSameOrg: (stored: TStored | null, orgId: string) => void;
+  /** Resolve the stored owner scope. */
+  getStoredScope: (stored: TStored | null) => BackofficeContextScope | null;
+  /** Throw if an admin update attempts to bind this DO to a different scope. */
+  assertSameScope: (stored: TStored | null, scope: BackofficeContextScope) => void;
   /** Persist an outbox item and schedule alarm processing. */
   dispatch: (item: TOutbox) => Promise<void>;
   /** Forward the Durable Object alarm to the current durable-hooks dispatcher, if any, then process outbox. */
   alarm: () => Promise<void>;
-  /** Fetch through the configured runtime/mounts, including not-configured and org-bound checks. */
+  /** Fetch through the configured runtime/mounts, including not-configured and scope-bound checks. */
   fetch: (request: Request, context?: FragmentDurableObjectFetchContext) => Promise<Response>;
   /**
    * Return durable hook accessors for a selected fragment.
@@ -236,30 +240,52 @@ const defaultConfigKey = (name: string) => `${name.toLowerCase()}-config`;
 const defaultNotConfiguredResponse = (name: string) =>
   Response.json(
     {
-      message: `${name} is not configured for this organisation.`,
+      message: `${name} is not configured for this scope.`,
       code: "NOT_CONFIGURED",
     },
     { status: 400 },
   );
 
-const defaultOrgMismatchResponse = (name: string, expectedOrgId: string, orgId: string) =>
+const defaultScopeMismatchResponse = (
+  name: string,
+  expectedScope: BackofficeContextScope,
+  scope: BackofficeContextScope,
+) =>
   Response.json(
     {
-      message: `${name} Durable Object is bound to organisation "${expectedOrgId}" and cannot serve requests for organisation "${orgId}".`,
-      code: "ORG_ID_MISMATCH",
-      expectedOrgId,
-      orgId,
+      message: `${name} Durable Object is bound to a different scope.`,
+      code: "SCOPE_MISMATCH",
+      expectedScope,
+      scope,
     },
     { status: 409 },
   );
 
-const readDefaultOrgId = (stored: unknown) => {
-  if (!stored || typeof stored !== "object" || !("orgId" in stored)) {
+const invalidScopeGuardResponse = (message: string) =>
+  Response.json({ message, code: "INVALID_SCOPE_GUARD" }, { status: 400 });
+
+const readDefaultScope = (stored: unknown): BackofficeContextScope | null => {
+  if (!stored || typeof stored !== "object" || !("scope" in stored)) {
     return null;
   }
 
-  const orgId = (stored as { orgId?: unknown }).orgId;
-  return typeof orgId === "string" && orgId.trim() ? orgId.trim() : null;
+  const scope = (stored as { scope?: unknown }).scope;
+  return scope && typeof scope === "object" && "kind" in scope
+    ? (scope as BackofficeContextScope)
+    : null;
+};
+
+const scopeFromRequestGuard = (request: Request) => {
+  const encodedScope = new URL(request.url).searchParams.get("scope")?.trim();
+  if (!encodedScope) {
+    return { ok: true as const, scope: null };
+  }
+
+  try {
+    return { ok: true as const, scope: backofficeScopeFromSinglePathSegment(encodedScope) };
+  } catch {
+    return { ok: false as const, response: invalidScopeGuardResponse("Invalid scope guard.") };
+  }
 };
 
 export function createBackofficeFragmentDurableObject<
@@ -296,16 +322,16 @@ export function createBackofficeFragmentDurableObject<
     }
   };
 
-  let initializingOrgId: string | null = null;
+  let initializingScope: BackofficeContextScope | null = null;
   const fragmentHost = createFragmentDurableObjectHost({
     name: options.name,
     state: options.state as DurableObjectState,
     env: options.env,
     createRuntime: (source: TSource, context: FragmentDurableObjectHostContext<TEnv>) => {
-      if (!initializingOrgId) {
-        throw new Error(`${options.name} runtime initialization requires an organisation id.`);
+      if (!initializingScope) {
+        throw new Error(`${options.name} runtime initialization requires a scope.`);
       }
-      return options.createRuntime(source, { ...context, orgId: initializingOrgId });
+      return options.createRuntime(source, { ...context, scope: initializingScope });
     },
     getMigrationFragments: options.getMigrationFragments,
     getHookFragments: options.getHookFragments,
@@ -327,31 +353,29 @@ export function createBackofficeFragmentDurableObject<
     null;
   let initializingFingerprint: string | null = null;
 
-  const getStoredOrgId = (stored: TStored | null) => {
+  const getStoredScope = (stored: TStored | null) => {
     if (!stored) {
       return null;
     }
 
-    return options.getStoredOrgId ? options.getStoredOrgId(stored) : readDefaultOrgId(stored);
+    return options.getStoredScope ? options.getStoredScope(stored) : readDefaultScope(stored);
   };
 
-  const requireStoredOrgId = (stored: TStored) => {
-    const orgId = getStoredOrgId(stored);
-    if (!orgId) {
-      throw new Error(`Stored ${options.name} config is missing an organisation id.`);
+  const requireStoredScope = (stored: TStored) => {
+    const scope = getStoredScope(stored);
+    if (!scope) {
+      throw new Error(`Stored ${options.name} config is missing a scope.`);
     }
-    return orgId;
+    return scope;
   };
 
-  const assertSameOrg = (stored: TStored | null, orgId: string) => {
-    const expectedOrgId = getStoredOrgId(stored);
-    if (!expectedOrgId || expectedOrgId === orgId) {
+  const assertSameScope = (stored: TStored | null, scope: BackofficeContextScope) => {
+    const expectedScope = getStoredScope(stored);
+    if (!expectedScope || backofficeContextScopesEqual(expectedScope, scope)) {
       return;
     }
 
-    throw new Error(
-      `${options.name} Durable Object is already bound to organisation "${expectedOrgId}".`,
-    );
+    throw new Error(`${options.name} Durable Object is already bound to a different scope.`);
   };
 
   const loadStored = async () => {
@@ -370,7 +394,7 @@ export function createBackofficeFragmentDurableObject<
       return current;
     }
 
-    const orgId = requireStoredOrgId(stored);
+    const scope = requireStoredScope(stored);
 
     const source = toSource(stored);
     const nextFingerprint = fingerprint(source, stored);
@@ -386,7 +410,7 @@ export function createBackofficeFragmentDurableObject<
     }
 
     initializingFingerprint = nextFingerprint;
-    initializingOrgId = orgId;
+    initializingScope = scope;
     initializing = fragmentHost
       .initialize(source)
       .then(async (runtime) => {
@@ -407,7 +431,7 @@ export function createBackofficeFragmentDurableObject<
       .finally(() => {
         initializing = null;
         initializingFingerprint = null;
-        initializingOrgId = null;
+        initializingScope = null;
       });
 
     return initializing;
@@ -505,19 +529,25 @@ export function createBackofficeFragmentDurableObject<
     }
   };
 
-  const assertRequestOrgMatches = (request: Request) => {
+  const assertRequestScopeMatches = (request: Request) => {
     if (!current.configured) {
       return null;
     }
 
-    const expectedOrgId = getStoredOrgId(current.stored);
-    const orgId = new URL(request.url).searchParams.get("orgId")?.trim();
-
-    if (!expectedOrgId || !orgId || expectedOrgId === orgId) {
+    const requestScope = scopeFromRequestGuard(request);
+    if (!requestScope.ok) {
+      return requestScope.response;
+    }
+    if (!requestScope.scope) {
       return null;
     }
 
-    return defaultOrgMismatchResponse(options.name, expectedOrgId, orgId);
+    const expectedScope = getStoredScope(current.stored);
+    if (!expectedScope || backofficeContextScopesEqual(expectedScope, requestScope.scope)) {
+      return null;
+    }
+
+    return defaultScopeMismatchResponse(options.name, expectedScope, requestScope.scope);
   };
 
   return {
@@ -544,8 +574,8 @@ export function createBackofficeFragmentDurableObject<
       }
       return current;
     },
-    getStoredOrgId,
-    assertSameOrg,
+    getStoredScope,
+    assertSameScope,
     async dispatch(item) {
       if (!options.outbox) {
         throw new Error(`${options.name} outbox is not configured.`);
@@ -575,9 +605,9 @@ export function createBackofficeFragmentDurableObject<
         return defaultNotConfiguredResponse(options.name);
       }
 
-      const orgMismatchResponse = assertRequestOrgMatches(request);
-      if (orgMismatchResponse) {
-        return orgMismatchResponse;
+      const scopeMismatchResponse = assertRequestScopeMatches(request);
+      if (scopeMismatchResponse) {
+        return scopeMismatchResponse;
       }
 
       return await fragmentHost.fetch(current.runtime, request, {

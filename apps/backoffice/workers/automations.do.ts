@@ -48,31 +48,21 @@ type AutomationDurableObjectOwnerScope = Extract<
 >;
 
 type AutomationDurableObjectConfig = {
-  orgId: string;
-  ownerScope: AutomationDurableObjectOwnerScope;
+  scope: AutomationDurableObjectOwnerScope;
 };
 
 const automationConfigForScope = (
   scope: BackofficeContextScope | undefined,
 ): AutomationDurableObjectConfig | null => {
-  if (scope?.kind === "org") {
-    return { orgId: scope.orgId, ownerScope: scope };
-  }
-
-  if (scope?.kind === "project") {
-    return { orgId: scope.orgId, ownerScope: scope };
-  }
-
-  if (scope?.kind === "user") {
-    return { orgId: `user:${scope.userId}`, ownerScope: scope };
+  if (scope?.kind === "org" || scope?.kind === "project" || scope?.kind === "user") {
+    return { scope };
   }
 
   return null;
 };
 
 const automationConfigForOrgId = (orgId: string): AutomationDurableObjectConfig => ({
-  orgId,
-  ownerScope: { kind: "org", orgId },
+  scope: { kind: "org", orgId },
 });
 
 const automationCatalogOrgIdForScope = (scope: BackofficeContextScope): string => {
@@ -150,9 +140,7 @@ export class InMemoryAutomationsObject implements AutomationsObject {
       name: "Automations",
       state,
       env,
-      isConfigured: (stored): stored is AutomationDurableObjectConfig =>
-        typeof stored?.orgId === "string" && stored.orgId.trim().length > 0,
-      getStoredOrgId: (stored) => stored.orgId,
+      isConfigured: (stored): stored is AutomationDurableObjectConfig => Boolean(stored?.scope),
       createRuntime: (config) =>
         createAutomationsRuntime(
           {
@@ -161,7 +149,7 @@ export class InMemoryAutomationsObject implements AutomationsObject {
           {
             env: this.#env,
             runtime: this.#runtimeServices,
-            ownerScope: config.ownerScope,
+            ownerScope: config.scope,
             createPiAutomationContext: this.#createPiAutomationContext.bind(this),
             getAutomationFileSystem: async ({ execution, purpose }) => {
               if (this.#getAutomationFileSystem) {
@@ -209,8 +197,8 @@ export class InMemoryAutomationsObject implements AutomationsObject {
 
     const configured = this.#host.getConfigured();
     if (configured) {
-      this.#host.assertSameOrg(configured.stored, config.orgId);
-      if (JSON.stringify(configured.stored.ownerScope) === JSON.stringify(config.ownerScope)) {
+      this.#host.assertSameScope(configured.stored, config.scope);
+      if (JSON.stringify(configured.stored.scope) === JSON.stringify(config.scope)) {
         return;
       }
     }
@@ -218,8 +206,8 @@ export class InMemoryAutomationsObject implements AutomationsObject {
     await this.#state.blockConcurrencyWhile(async () => {
       const latest = this.#host.getConfigured();
       if (latest) {
-        this.#host.assertSameOrg(latest.stored, config.orgId);
-        if (JSON.stringify(latest.stored.ownerScope) === JSON.stringify(config.ownerScope)) {
+        this.#host.assertSameScope(latest.stored, config.scope);
+        if (JSON.stringify(latest.stored.scope) === JSON.stringify(config.scope)) {
           return;
         }
       }
@@ -239,18 +227,12 @@ export class InMemoryAutomationsObject implements AutomationsObject {
     const userId = url.searchParams.get("userId")?.trim();
 
     if (scopeKind === "project" && orgId && projectId) {
-      await this.#ensureConfigured({
-        orgId,
-        ownerScope: { kind: "project", orgId, projectId },
-      });
+      await this.#ensureConfigured({ scope: { kind: "project", orgId, projectId } });
       return;
     }
 
     if (scopeKind === "user" && userId) {
-      await this.#ensureConfigured({
-        orgId: `user:${userId}`,
-        ownerScope: { kind: "user", userId },
-      });
+      await this.#ensureConfigured({ scope: { kind: "user", userId } });
       return;
     }
 
