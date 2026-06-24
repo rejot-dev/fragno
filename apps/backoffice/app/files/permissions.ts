@@ -97,7 +97,14 @@ export const resolveActorFilePrincipal = ({
   scope: BackofficeContextScope;
 }): FilePrincipal => {
   if (actor.type === "system") {
-    return ROOT_FILE_PRINCIPAL;
+    const primaryGroup = getScopePrimaryFileGroup(scope);
+    return {
+      subject: ROOT_FILE_PRINCIPAL.subject,
+      primaryGroup,
+      groups: sameFileGroup(primaryGroup, ROOT_FILE_PRINCIPAL.primaryGroup)
+        ? [primaryGroup]
+        : [ROOT_FILE_PRINCIPAL.primaryGroup, primaryGroup],
+    };
   }
 
   if (actor.type === "user") {

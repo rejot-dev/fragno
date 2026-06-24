@@ -11,7 +11,12 @@ import {
   uploadFileContributor,
   type FilePrincipal,
 } from "@/files";
-import { toUploadDirectoryMarkerFileKey } from "@/files/contributors/upload-markers";
+import { WORKSPACE_STARTER_CONTENT } from "@/files/content/starter";
+import {
+  createUploadDirectoryMarkerMetadata,
+  toUploadDirectoryMarkerFileKey,
+} from "@/files/contributors/upload-markers";
+import { seedWorkspaceStarterFiles } from "@/files/seed-workspace-starter-files";
 import { createFilesTestObjectRegistry } from "@/files/test-object-registry";
 import {
   UPLOAD_PROVIDER_DATABASE,
@@ -559,7 +564,7 @@ describe("upload file contributor", () => {
       __docsFs: {
         owner: { kind: "user", userId: "user-1" },
         group: { kind: "org", orgId: "acme-org" },
-        mode: 0o755,
+        mode: 0o775,
       },
     });
     expect(
@@ -677,6 +682,89 @@ describe("upload file contributor", () => {
         owner: { kind: "user", userId: "user-2" },
       },
     });
+  });
+
+  test("force seeding resets starter file and folder permissions without deleting custom files", async () => {
+    const runtime = createUploadRuntime({
+      [toUploadDirectoryMarkerFileKey("automations")]: {
+        content: "",
+        contentType: "application/x.fragno-directory-marker",
+        metadata: {
+          ...createUploadDirectoryMarkerMetadata(),
+          __docsFs: {
+            owner: { kind: "root" },
+            group: { kind: "root" },
+            mode: 0o755,
+          },
+        },
+      },
+      "automations/router.cm.js": {
+        content: "stale router",
+        metadata: {
+          __docsFs: {
+            owner: { kind: "root" },
+            group: { kind: "root" },
+            mode: 0o644,
+          },
+        },
+      },
+      "automations/custom.cm.js": {
+        content: "custom automation",
+        metadata: {
+          __docsFs: {
+            owner: { kind: "user", userId: "user-1" },
+            group: { kind: "org", orgId: "acme-org" },
+            mode: 0o664,
+          },
+        },
+      },
+    });
+    const objects = createFilesTestObjectRegistry({
+      uploadConfig: runtime.uploadConfig,
+      uploadRuntime: runtime,
+    });
+
+    await expect(
+      seedWorkspaceStarterFiles({ objects, orgId: "acme-org", force: true }),
+    ).resolves.toMatchObject({
+      force: true,
+      overwritten: expect.arrayContaining(["/workspace/automations/router.cm.js"]),
+    });
+
+    expect(
+      runtime.files.get(
+        composeStorageKey(UPLOAD_PROVIDER_DATABASE, toUploadDirectoryMarkerFileKey("automations")),
+      )?.metadata,
+    ).toMatchObject({
+      __docsFs: {
+        owner: { kind: "root" },
+        group: { kind: "org", orgId: "acme-org" },
+        mode: 0o775,
+      },
+    });
+    expect(
+      runtime.files.get(composeStorageKey(UPLOAD_PROVIDER_DATABASE, "automations/router.cm.js"))
+        ?.metadata,
+    ).toMatchObject({
+      __docsFs: {
+        owner: { kind: "root" },
+        group: { kind: "org", orgId: "acme-org" },
+        mode: 0o664,
+      },
+    });
+    await expect(
+      createUploadFileSystem(
+        createSystemFilesContext({
+          orgId: "acme-org",
+          origin: runtime.baseUrl,
+          objects,
+        }),
+        { provider: UPLOAD_PROVIDER_DATABASE },
+      ).readFile("/workspace/automations/router.cm.js"),
+    ).resolves.toBe(WORKSPACE_STARTER_CONTENT["automations/router.cm.js"]);
+    assert(
+      runtime.files.has(composeStorageKey(UPLOAD_PROVIDER_DATABASE, "automations/custom.cm.js")),
+    );
   });
 
   test("contributor createFileSystem returns null when uploads are unavailable", async () => {
