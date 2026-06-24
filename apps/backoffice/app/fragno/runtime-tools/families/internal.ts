@@ -176,7 +176,7 @@ const filesSeedExecuteTool = defineBackofficeRuntimeTool({
         options: [
           {
             name: "force",
-            description: "Overwrite starter files that already exist.",
+            description: "Replace starter files and repair starter file/folder permissions.",
           },
         ],
         examples: [

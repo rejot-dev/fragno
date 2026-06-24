@@ -4,7 +4,12 @@ import {
   createInMemoryBackofficeRuntime,
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
-import { createMasterFileSystem, createSystemFilesContext } from "@/files";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import {
+  createBackofficeFileSystem,
+  createMasterFileSystem,
+  createSystemFilesContext,
+} from "@/files";
 
 import type { AutomationEvent } from "./contracts";
 import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
@@ -126,6 +131,26 @@ describe("system automation scenarios", () => {
       await expect(fs.readFile("/workspace/AGENTS.md")).resolves.toContain("Workspace guidance");
       await expect(fs.readFile("/workspace/codemode.d.ts")).resolves.toContain(
         "declare const capabilities",
+      );
+
+      const userFs = await createBackofficeFileSystem({
+        objects: runtime.objects,
+        kernel: new BackofficeKernel({ objects: runtime.objects }),
+        execution: {
+          actor: {
+            type: "user",
+            id: "user-1",
+            userId: "user-1",
+            organizationIds: [orgId],
+          },
+          scope: { kind: "org", orgId },
+        },
+      });
+      await expect(
+        userFs.writeFile("/workspace/automations/bla.txt", "dashboard can write"),
+      ).resolves.toBeUndefined();
+      await expect(userFs.readFile("/workspace/automations/bla.txt")).resolves.toBe(
+        "dashboard can write",
       );
     } finally {
       await runtime.cleanup();

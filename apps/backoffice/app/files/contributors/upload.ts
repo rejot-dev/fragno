@@ -117,7 +117,7 @@ const concatBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
 };
 const UPLOAD_FS_METADATA_KEY = "__docsFs";
 const DEFAULT_FILE_MODE = 0o664;
-const DEFAULT_FOLDER_MODE = 0o755;
+const DEFAULT_FOLDER_MODE = 0o775;
 const DEFAULT_MOUNT_ROOT_MODE = 0o775;
 const UPLOAD_DIRECTORY_LIST_PAGE_SIZE = "500";
 const RESERVED_UPLOAD_DIRECTORY_NAMES = new Set([".fragno"]);
