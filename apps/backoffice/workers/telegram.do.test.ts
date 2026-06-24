@@ -181,7 +181,7 @@ describe("Telegram Durable Object", () => {
 
     await telegram.setAdminConfig(VALID_PAYLOAD, "https://example.com");
 
-    expect(store.get(CONFIG_KEY)).toMatchObject({ orgId: "acme" });
+    expect(store.get(CONFIG_KEY)).toMatchObject({ scope: { kind: "org", orgId: "acme" } });
     expect(createTelegramServerMock).toHaveBeenCalledWith(
       expect.objectContaining({
         botToken: VALID_PAYLOAD.botToken,
@@ -224,28 +224,28 @@ describe("Telegram Durable Object", () => {
 
     await expect(
       telegram.setAdminConfig({ ...VALID_PAYLOAD, orgId: "other-org" }, "https://example.com"),
-    ).rejects.toThrowError('Telegram Durable Object is already bound to organisation "acme".');
+    ).rejects.toThrowError("Telegram Durable Object is already bound to a different scope.");
   });
 
-  test("rejects requests whose orgId does not match the bound durable object", async () => {
+  test("rejects requests whose scope guard does not match the bound durable object", async () => {
     const { state } = createState();
     const telegram = new Telegram(state, {} as CloudflareEnv);
 
     await telegram.setAdminConfig(VALID_PAYLOAD, "https://example.com");
 
     const response = await telegram.fetch(
-      new Request("https://example.com/api/telegram/webhook?orgId=other-org"),
+      new Request("https://example.com/api/telegram/webhook?scope=org:other-org"),
     );
 
     await expect(response.json()).resolves.toMatchObject({
-      code: "ORG_ID_MISMATCH",
-      expectedOrgId: "acme",
-      orgId: "other-org",
+      code: "SCOPE_MISMATCH",
+      expectedScope: { kind: "org", orgId: "acme" },
+      scope: { kind: "org", orgId: "other-org" },
     });
     assert(response.status === 409);
   });
 
-  test("rejects stored config without an org id during initialization", async () => {
+  test("rejects stored config without a scope during initialization", async () => {
     const createdAt = "2026-03-16T00:00:00.000Z";
     const { state, waitForBlockConcurrency } = createState([
       [
@@ -262,7 +262,7 @@ describe("Telegram Durable Object", () => {
     new Telegram(state, {} as CloudflareEnv);
 
     await expect(waitForBlockConcurrency()).rejects.toThrowError(
-      "Stored Telegram config is missing an organisation id.",
+      "Stored Telegram config is missing a scope.",
     );
   });
 

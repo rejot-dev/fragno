@@ -23,6 +23,24 @@ export type BackofficeExecutionContext = {
   scope: BackofficeContextScope;
 };
 
+export const backofficeContextScopesEqual = (
+  left: BackofficeContextScope,
+  right: BackofficeContextScope,
+): boolean => {
+  switch (left.kind) {
+    case "system":
+      return right.kind === "system";
+    case "org":
+      return right.kind === "org" && left.orgId === right.orgId;
+    case "user":
+      return right.kind === "user" && left.userId === right.userId;
+    case "project":
+      return (
+        right.kind === "project" && left.orgId === right.orgId && left.projectId === right.projectId
+      );
+  }
+};
+
 export const SYSTEM_BACKOFFICE_PRINCIPAL: BackofficePrincipal = {
   type: "system",
   id: "system",

@@ -14,18 +14,6 @@ export type ApiConfig = Pick<
   | "onWebhookReceived"
 >;
 
-export const resolveApiPublicBaseUrl = ({ baseUrl, orgId }: { baseUrl: string; orgId: string }) => {
-  const parsed = new URL(baseUrl);
-  const mountPath = `/api/http/${orgId}`;
-  const trimmedPath = parsed.pathname.replace(/\/+$/, "");
-  if (trimmedPath !== mountPath) {
-    parsed.pathname = `${trimmedPath}${mountPath}`.replace(/\/+/g, "/");
-  }
-  parsed.search = "";
-  parsed.hash = "";
-  return parsed.toString().replace(/\/+$/, "");
-};
-
 export function createApiServer(
   config: ApiConfig,
   runtime: BackofficeFragmentRuntimeOptions,

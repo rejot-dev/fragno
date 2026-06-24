@@ -159,7 +159,7 @@ export class InMemoryUploadObject implements UploadObject {
         }
         return configuredProvidersFromResponse(buildUploadAdminConfigResponse(stored)).length > 0;
       },
-      getStoredOrgId: (stored) => stored.namespace.orgId,
+      getStoredScope: (stored) => ({ kind: "org", orgId: stored.namespace.orgId }),
       durableHooks,
       createRuntime: (stored) => this.#createRuntime(stored),
       getMigrationFragments: (runtime) => [...runtime.fragmentsByProvider.values()],
@@ -366,7 +366,7 @@ export class InMemoryUploadObject implements UploadObject {
         await this.#host.storeAndInitialize(resolved.config);
         const configuredAt = new Date().toISOString();
         await this.#host.dispatch({
-          id: `upload:capability.configured:${args.orgId}:${configuredAt}`,
+          id: crypto.randomUUID(),
           type: "capability.configured",
           createdAt: configuredAt,
         });

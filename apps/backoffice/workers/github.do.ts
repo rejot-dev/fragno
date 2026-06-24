@@ -5,6 +5,7 @@ import {
   type GitHubAppFragmentConfig,
 } from "@fragno-dev/github-app-fragment";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { GitHubObject } from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
@@ -25,7 +26,7 @@ import {
 } from "./lib/backoffice-fragment-durable-object";
 
 type StoredGitHubConfig = {
-  orgId: string;
+  scope: Extract<BackofficeContextScope, { kind: "org" }>;
   source: GitHubAppFragmentConfig;
 };
 
@@ -76,14 +77,10 @@ export class InMemoryGitHubObject implements GitHubObject {
                   return;
                 }
 
-                const orgId = this.#host.getStoredOrgId(runtime.stored);
-                if (!orgId) {
-                  throw new Error("Stored GitHub config is missing an organisation id.");
-                }
-
+                const { scope } = runtime.stored;
                 await this.#runtimeServices.objects.automations
-                  .forOrg(orgId)
-                  .ingestEvent(buildGitHubAutomationEvent({ orgId, event, meta }));
+                  .for(scope)
+                  .ingestEvent(buildGitHubAutomationEvent({ orgId: scope.orgId, event, meta }));
               });
 
               register("installation.deleted", async ({ payload }, idempotencyKey) => {
@@ -118,13 +115,14 @@ export class InMemoryGitHubObject implements GitHubObject {
 
     const source = extractFragmentConfig(this.#configResolution.config);
     const existing = await this.#host.loadStored();
-    this.#host.assertSameOrg(existing, normalizedOrgId);
+    const scope = { kind: "org" as const, orgId: normalizedOrgId };
+    this.#host.assertSameScope(existing, scope);
     if (existing && configsEqual(existing.source, source)) {
       return;
     }
 
     await this.#state.blockConcurrencyWhile(async () => {
-      await this.#host.storeAndInitialize({ orgId: normalizedOrgId, source });
+      await this.#host.storeAndInitialize({ scope, source });
     });
   }
 

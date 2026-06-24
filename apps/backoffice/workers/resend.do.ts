@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import type { ResendFragmentConfig } from "@fragno-dev/resend-fragment";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { ResendObject } from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
@@ -21,7 +22,7 @@ import {
 } from "./lib/backoffice-fragment-durable-object";
 
 type StoredResendConfig = Omit<ResendConfig, "webhookSecret"> & {
-  orgId: string;
+  scope: Extract<BackofficeContextScope, { kind: "org" }>;
   webhookBaseUrl?: string;
   webhookId?: string;
   webhookSecret?: string;
@@ -110,7 +111,10 @@ const stringListSchema = z
   .optional();
 
 const storedResendConfigSchema: z.ZodType<StoredResendConfig> = z.object({
-  orgId: z.string().trim().min(1, "Stored Resend config is missing an organisation id."),
+  scope: z.object({
+    kind: z.literal("org"),
+    orgId: z.string().trim().min(1, "Stored Resend config is missing an organisation id."),
+  }),
   apiKey: z.string().trim().min(1, "Stored Resend config is missing an API key."),
   defaultFrom: z.string().trim().min(1, "Stored Resend config is missing defaultFrom."),
   defaultReplyTo: stringListSchema,
@@ -298,7 +302,7 @@ export class InMemoryResendObject implements ResendObject {
       configKey: CONFIG_KEY,
       parseStored: (raw) => storedResendConfigSchema.parse(raw),
       isConfigured: (stored): stored is StoredResendConfig =>
-        Boolean(stored?.orgId && stored.apiKey && stored.webhookSecret && stored.defaultFrom),
+        Boolean(stored?.scope && stored.apiKey && stored.webhookSecret && stored.defaultFrom),
       toSource: (stored) => ({
         apiKey: stored.apiKey,
         webhookSecret: stored.webhookSecret ?? "",
@@ -318,9 +322,10 @@ export class InMemoryResendObject implements ResendObject {
             return;
           }
 
-          await this.#runtimeServices.objects.automations.forOrg(stored.orgId).ingestEvent({
+          const { scope } = stored;
+          await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
             id: item.id,
-            scope: { kind: "org", orgId: stored.orgId },
+            scope,
             source: "resend",
             eventType: "capability.configured",
             occurredAt: item.createdAt,
@@ -331,7 +336,7 @@ export class InMemoryResendObject implements ResendObject {
             actor: AUTOMATION_SYSTEM_ACTOR,
             actors: [AUTOMATION_SYSTEM_ACTOR],
             subject: {
-              orgId: stored.orgId,
+              orgId: scope.orgId,
               capabilityId: "resend",
             },
           });
@@ -368,7 +373,8 @@ export class InMemoryResendObject implements ResendObject {
 
     return await this.#state.blockConcurrencyWhile(async () => {
       const existing = await this.#host.loadStored();
-      this.#host.assertSameOrg(existing, normalizedOrgId);
+      const scope = { kind: "org" as const, orgId: normalizedOrgId };
+      this.#host.assertSameScope(existing, scope);
 
       const parsed = await parseConfigInput(payload, existing);
       if (!parsed.ok) {
@@ -382,7 +388,7 @@ export class InMemoryResendObject implements ResendObject {
           : (parsed.data.defaultReplyTo ?? undefined);
       const webhookBaseUrl = parsed.data.webhookBaseUrl;
       const stored: StoredResendConfig = {
-        orgId: normalizedOrgId,
+        scope,
         apiKey: parsed.data.apiKey,
         defaultFrom: parsed.data.defaultFrom,
         defaultReplyTo,
@@ -418,7 +424,7 @@ export class InMemoryResendObject implements ResendObject {
           await this.#host.storeAndInitialize(stored);
           const configuredAt = new Date().toISOString();
           await this.#host.dispatch({
-            id: `resend:capability.configured:${normalizedOrgId}:${configuredAt}`,
+            id: crypto.randomUUID(),
             type: "capability.configured",
             createdAt: configuredAt,
           });

@@ -76,7 +76,7 @@ describe("CloudflareWorkers Durable Object", () => {
     resolveCloudflareDispatchNamespaceNameMock.mockClear();
   });
 
-  test("stores the first org id once and rejects rebinding to another org", async () => {
+  test("stores the first scope once and rejects rebinding to another scope", async () => {
     const state = createState();
     const workers = new CloudflareWorkers(state, {} as CloudflareEnv);
 
@@ -85,19 +85,21 @@ describe("CloudflareWorkers Durable Object", () => {
     ).resolves.toEqual(EMPTY_QUEUE);
 
     expect(state.storage.put).toHaveBeenCalledTimes(1);
-    expect(state.storage.put).toHaveBeenCalledWith(CONFIG_KEY, { orgId: "acme" });
+    expect(state.storage.put).toHaveBeenCalledWith(CONFIG_KEY, {
+      scope: { kind: "org", orgId: "acme" },
+    });
 
     await expect(
       workers.getDurableHookRepository().getHookQueue({ orgId: "other-org" }),
     ).rejects.toThrowError(
-      'Cloudflare Workers Durable Object is already bound to organisation "acme".',
+      "Cloudflare Workers Durable Object is already bound to a different scope.",
     );
 
     expect(state.storage.put).toHaveBeenCalledTimes(1);
   });
 
-  test("accepts the same stored org id without rewriting storage", async () => {
-    const state = createState({ [CONFIG_KEY]: { orgId: "acme" } });
+  test("accepts the same stored scope without rewriting storage", async () => {
+    const state = createState({ [CONFIG_KEY]: { scope: { kind: "org", orgId: "acme" } } });
     const workers = new CloudflareWorkers(state, {} as CloudflareEnv);
 
     await expect(
@@ -108,22 +110,22 @@ describe("CloudflareWorkers Durable Object", () => {
     expect(state.storage.put).not.toHaveBeenCalled();
   });
 
-  test("rejects a different org id when one is already stored", async () => {
-    const state = createState({ [CONFIG_KEY]: { orgId: "acme" } });
+  test("rejects a different scope when one is already stored", async () => {
+    const state = createState({ [CONFIG_KEY]: { scope: { kind: "org", orgId: "acme" } } });
     const workers = new CloudflareWorkers(state, {} as CloudflareEnv);
 
     await expect(
       workers.getDurableHookRepository().getHookQueue({ orgId: "other-org" }),
     ).rejects.toThrowError(
-      'Cloudflare Workers Durable Object is already bound to organisation "acme".',
+      "Cloudflare Workers Durable Object is already bound to a different scope.",
     );
 
     expect(state.storage.get).toHaveBeenCalledWith(CONFIG_KEY);
     expect(state.storage.put).not.toHaveBeenCalled();
   });
 
-  test("returns a standard org mismatch response for fetch requests", async () => {
-    const state = createState({ [CONFIG_KEY]: { orgId: "acme" } });
+  test("returns a standard scope mismatch response for fetch requests", async () => {
+    const state = createState({ [CONFIG_KEY]: { scope: { kind: "org", orgId: "acme" } } });
     const workers = new CloudflareWorkers(state, {} as CloudflareEnv);
 
     const response = await workers.fetch(
@@ -132,9 +134,9 @@ describe("CloudflareWorkers Durable Object", () => {
 
     assert(response.status === 409);
     await expect(response.json()).resolves.toMatchObject({
-      code: "ORG_ID_MISMATCH",
-      expectedOrgId: "acme",
-      orgId: "other-org",
+      code: "SCOPE_MISMATCH",
+      expectedScope: { kind: "org", orgId: "acme" },
+      scope: { kind: "org", orgId: "other-org" },
     });
     expect(state.storage.put).not.toHaveBeenCalled();
   });

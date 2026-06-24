@@ -29,6 +29,7 @@ function createNavItems(activeOrganizationId?: string | null): NavItem[] {
     ? [
         { label: "Scripts", to: `${automationBasePath}/scripts` },
         { label: "Store", to: `${automationBasePath}/store` },
+        { label: "API", to: `${automationBasePath}/api` },
         { label: "MCP", to: `${automationBasePath}/mcp` },
       ]
     : undefined;

@@ -7,10 +7,7 @@ import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bin
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
 import { createRouteBackedDurableHooksRuntime } from "@/fragno/automation/durable-hooks-route-runtime";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
-import {
-  createApiRuntime,
-  createUnavailableApiRuntime,
-} from "@/fragno/runtime-tools/families/api-runtime";
+import { createApiRuntime } from "@/fragno/runtime-tools/families/api-runtime";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
 import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
 import { createMcpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
@@ -154,12 +151,12 @@ export const createRouteBackedRuntimeContext = ({
         }
       : null,
     api: runtime.config.bindings.api
-      ? {
-          runtime:
-            execution.scope.kind === "org" || execution.scope.kind === "user"
-              ? createApiRuntime(kernel.scoped("API", execution.scope, runtime.objects.api))
-              : createUnavailableApiRuntime(unavailableMessage("API", execution)),
-        }
+      ? (() => {
+          const object = unavailableObject(() =>
+            kernel.scoped("API", execution.scope, runtime.objects.api),
+          );
+          return object ? { runtime: createApiRuntime(object) } : null;
+        })()
       : null,
     mcp: runtime.config.bindings.mcp
       ? (() => {

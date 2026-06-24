@@ -1,76 +1,76 @@
+import type { ApiObject } from "@/backoffice-runtime/object-registry";
+import { backofficeScopeRouteId } from "@/backoffice-runtime/scope-codec";
 import {
-  handleBackofficeApiOAuthCallback,
-  isBackofficeApiOAuthCallbackRequest,
-} from "@/fragno/api-oauth-proxy";
-import { authorizeAccessTokenForOrganization } from "@/fragno/auth/access-token.server";
-import { getApiDurableObject } from "@/worker-runtime/durable-objects";
+  forwardScopedPublicRequest,
+  type ScopedPublicFragmentProxy,
+} from "@/fragno/scoped-public-fragment-proxy";
+import {
+  API_INTERNAL_OAUTH_CALLBACK_PATH,
+  API_INTERNAL_PREFIX,
+  API_PUBLIC_PREFIX,
+} from "@/fragno/scoped-public-fragment-routes";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/api";
 
-type RouteContext = Route.LoaderArgs["context"];
-
-const API_INTERNAL_PREFIX = "/api/api";
-const API_PUBLIC_PREFIX = "/api/http";
-
-const isPublicWebhookReceiveRequest = (request: Request, orgId: string) => {
+const isPublicWebhookReceiveRequest = (request: Request, _scope: unknown, suffix: string) => {
   if (request.method !== "POST") {
     return false;
   }
-  const url = new URL(request.url);
-  const prefix = `${API_PUBLIC_PREFIX}/${orgId}/webhooks/endpoints/`;
-  if (!url.pathname.startsWith(prefix)) {
+  if (!suffix.startsWith("/webhooks/endpoints/")) {
     return false;
   }
-  const [endpointId, tail, ...rest] = url.pathname.slice(prefix.length).split("/");
+  const [endpointId, tail, ...rest] = suffix.slice("/webhooks/endpoints/".length).split("/");
   return Boolean(endpointId) && tail === "events" && rest.length === 0;
 };
 
-const forwardToApi = async (request: Request, context: RouteContext, orgId: string | undefined) => {
-  if (!orgId) {
-    return new Response("Missing organisation id", { status: 400 });
-  }
+const apiPublicProxy = {
+  publicPrefix: API_PUBLIC_PREFIX,
+  internalPrefix: API_INTERNAL_PREFIX,
+  getObjectForScope: (context, scope) =>
+    context.get(BackofficeWorkerContext).runtime.objects.api.for(scope),
+  isAnonymousRequest: isPublicWebhookReceiveRequest,
+  oauth: {
+    internalCallbackPath: API_INTERNAL_OAUTH_CALLBACK_PATH,
+    invalidResponse: (message) => new Response(message, { status: 502 }),
+    redirect: ({ request, scope, status, code, message }) => {
+      const redirectUrl = new URL(
+        `/backoffice/automations/${scope.kind}/${encodeURIComponent(backofficeScopeRouteId(scope))}/api`,
+        request.url,
+      );
+      redirectUrl.searchParams.set("tab", "connections");
+      redirectUrl.searchParams.set("oauth", status);
 
-  if (isBackofficeApiOAuthCallbackRequest(request, orgId)) {
-    return handleBackofficeApiOAuthCallback(request, context, orgId);
-  }
+      const connectionSlug = new URL(request.url).searchParams.get("state")?.split(":")[0]?.trim();
+      if (connectionSlug) {
+        redirectUrl.searchParams.set("connection", connectionSlug);
+      }
+      if (code) {
+        redirectUrl.searchParams.set("code", code);
+      }
+      if (message) {
+        redirectUrl.searchParams.set("message", message);
+      }
 
-  const isPublicWebhookReceive = isPublicWebhookReceiveRequest(request, orgId);
-  const auth = isPublicWebhookReceive
-    ? { ok: true as const, headers: [] }
-    : await authorizeAccessTokenForOrganization(request, context, orgId);
-  if (!auth.ok) {
-    return auth.response;
-  }
-
-  const apiDo = getApiDurableObject(context, orgId);
-  const url = new URL(request.url);
-  const prefix = `${API_PUBLIC_PREFIX}/${orgId}`;
-  if (url.pathname.startsWith(prefix)) {
-    const suffix = url.pathname.slice(prefix.length);
-    url.pathname = `${API_INTERNAL_PREFIX}${suffix}`;
-  }
-  url.searchParams.set("orgId", orgId);
-
-  const response = await apiDo.fetch(new Request(url.toString(), request));
-  if (auth.headers.length === 0) {
-    return response;
-  }
-
-  const headers = new Headers(response.headers);
-  for (const [name, value] of auth.headers) {
-    headers.append(name, value);
-  }
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
-};
+      return Response.redirect(redirectUrl, 302);
+    },
+  },
+} satisfies ScopedPublicFragmentProxy<ApiObject>;
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {
-  return forwardToApi(request, context, params.orgId);
+  return forwardScopedPublicRequest({
+    request,
+    context,
+    scopePathSegment: params.scopeSegment,
+    proxy: apiPublicProxy,
+  });
 }
 
 export async function action({ request, context, params }: Route.ActionArgs) {
-  return forwardToApi(request, context, params.orgId);
+  return forwardScopedPublicRequest({
+    request,
+    context,
+    scopePathSegment: params.scopeSegment,
+    proxy: apiPublicProxy,
+  });
 }

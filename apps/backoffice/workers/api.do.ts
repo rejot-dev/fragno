@@ -7,14 +7,14 @@ import {
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
 import {
-  createApiServer,
-  resolveApiPublicBaseUrl,
-  type ApiConfig,
-  type ApiFragment,
-} from "@/fragno/api";
+  assertSameBackofficeRoutableScope,
+  type BackofficeRoutableScope,
+} from "@/backoffice-runtime/scope-codec";
+import { createApiServer, type ApiConfig, type ApiFragment } from "@/fragno/api";
 import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
 import { apiConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/api";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
+import { API_PUBLIC_PREFIX, scopedPublicBaseUrl } from "@/fragno/scoped-public-fragment-routes";
 
 import {
   createBackofficeFragmentDurableObject,
@@ -27,7 +27,7 @@ type ApiObjectEnv = {
 };
 
 type StoredApiConfig = {
-  orgId: string;
+  scope: BackofficeRoutableScope;
   createdAt: string;
   updatedAt: string;
 };
@@ -41,8 +41,18 @@ export type ApiAdminConfigResponse = {
   };
 };
 
+const apiOwnerScopeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("org"), orgId: z.string().trim().min(1) }),
+  z.object({
+    kind: z.literal("project"),
+    orgId: z.string().trim().min(1),
+    projectId: z.string().trim().min(1),
+  }),
+  z.object({ kind: z.literal("user"), userId: z.string().trim().min(1) }),
+]);
+
 const setAdminConfigInputSchema = apiConfigureInputSchema.extend({
-  orgId: z.string().trim().min(1, "Missing organisation id."),
+  scope: apiOwnerScopeSchema,
 });
 
 const readApiPublicOrigin = (env: ApiObjectEnv) => {
@@ -53,32 +63,11 @@ const readApiPublicOrigin = (env: ApiObjectEnv) => {
   return origin;
 };
 
-const resolvePublicBaseUrl = (env: ApiObjectEnv, orgId: string) =>
-  resolveApiPublicBaseUrl({ baseUrl: readApiPublicOrigin(env), orgId });
-
-const buildConnectionChangedEventId = (input: {
-  orgId: string;
-  connectionId: string;
-  idempotencyKey: string;
-}) => `api:connection.changed:${input.orgId}:${input.connectionId}:${input.idempotencyKey}`;
-
-const buildConnectionDeletedEventId = (input: {
-  orgId: string;
-  connectionId: string;
-  idempotencyKey: string;
-}) => `api:connection.deleted:${input.orgId}:${input.connectionId}:${input.idempotencyKey}`;
-
-const buildConnectionAvailableEventId = (input: {
-  orgId: string;
-  connectionId: string;
-  idempotencyKey: string;
-}) => `api:connection.available:${input.orgId}:${input.connectionId}:${input.idempotencyKey}`;
-
-const buildWebhookReceivedEventId = (input: {
-  orgId: string;
-  endpointId: string;
-  hookId: string;
-}) => `api:webhook.received:${input.orgId}:${input.endpointId}:${input.hookId}`;
+const scopeSubject = (scope: BackofficeRoutableScope, subject?: Record<string, unknown>) => ({
+  scope,
+  ...(scope.kind === "org" || scope.kind === "project" ? { orgId: scope.orgId } : {}),
+  ...subject,
+});
 
 function buildConfigResponse(
   env: ApiObjectEnv,
@@ -91,7 +80,11 @@ function buildConfigResponse(
   return {
     configured: true,
     config: {
-      publicBaseUrl: resolvePublicBaseUrl(env, config.orgId),
+      publicBaseUrl: scopedPublicBaseUrl({
+        baseUrl: readApiPublicOrigin(env),
+        publicPrefix: API_PUBLIC_PREFIX,
+        scope: config.scope,
+      }),
       createdAt: config.createdAt,
       updatedAt: config.updatedAt,
     },
@@ -120,87 +113,70 @@ export class InMemoryApiObject implements ApiObject {
       name: "API",
       state,
       env: this.#env,
+      getStoredScope: (stored) => stored.scope,
       toSource: (stored) => ({
-        publicBaseUrl: resolvePublicBaseUrl(this.#env, stored.orgId),
-        onConnectionChanged: async (payload, idempotencyKey) => {
-          await this.#runtimeServices.objects.automations.forOrg(stored.orgId).ingestEvent({
-            id: buildConnectionChangedEventId({
-              orgId: stored.orgId,
-              connectionId: payload.connectionId,
-              idempotencyKey,
-            }),
-            scope: { kind: "org", orgId: stored.orgId },
+        publicBaseUrl: scopedPublicBaseUrl({
+          baseUrl: readApiPublicOrigin(this.#env),
+          publicPrefix: API_PUBLIC_PREFIX,
+          scope: stored.scope,
+        }),
+        onConnectionChanged: async (payload, context) => {
+          const scope = stored.scope;
+          await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
+            id: context.hookId,
+            scope,
             source: "api",
             eventType: "connection.changed",
             occurredAt: new Date().toISOString(),
             payload: { ...payload },
             actor: AUTOMATION_SYSTEM_ACTOR,
             actors: [AUTOMATION_SYSTEM_ACTOR],
-            subject: {
-              orgId: stored.orgId,
-              connectionId: payload.connectionId,
-            },
+            subject: scopeSubject(scope, { connectionId: payload.connectionId }),
           });
         },
-        onConnectionDeleted: async (payload, idempotencyKey) => {
-          await this.#runtimeServices.objects.automations.forOrg(stored.orgId).ingestEvent({
-            id: buildConnectionDeletedEventId({
-              orgId: stored.orgId,
-              connectionId: payload.connectionId,
-              idempotencyKey,
-            }),
-            scope: { kind: "org", orgId: stored.orgId },
+        onConnectionDeleted: async (payload, context) => {
+          const scope = stored.scope;
+          await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
+            id: context.hookId,
+            scope,
             source: "api",
             eventType: "connection.deleted",
             occurredAt: new Date().toISOString(),
             payload: { ...payload },
             actor: AUTOMATION_SYSTEM_ACTOR,
             actors: [AUTOMATION_SYSTEM_ACTOR],
-            subject: {
-              orgId: stored.orgId,
-              connectionId: payload.connectionId,
-            },
+            subject: scopeSubject(scope, { connectionId: payload.connectionId }),
           });
         },
-        onConnectionAvailable: async (payload, idempotencyKey) => {
-          await this.#runtimeServices.objects.automations.forOrg(stored.orgId).ingestEvent({
-            id: buildConnectionAvailableEventId({
-              orgId: stored.orgId,
-              connectionId: payload.connectionId,
-              idempotencyKey,
-            }),
-            scope: { kind: "org", orgId: stored.orgId },
+        onConnectionAvailable: async (payload, context) => {
+          const scope = stored.scope;
+          await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
+            id: context.hookId,
+            scope,
             source: "api",
             eventType: "connection.available",
             occurredAt: new Date().toISOString(),
             payload: { ...payload },
             actor: AUTOMATION_SYSTEM_ACTOR,
             actors: [AUTOMATION_SYSTEM_ACTOR],
-            subject: {
-              orgId: stored.orgId,
-              connectionId: payload.connectionId,
-            },
+            subject: scopeSubject(scope, { connectionId: payload.connectionId }),
           });
         },
         onWebhookReceived: async (payload) => {
-          await this.#runtimeServices.objects.automations.forOrg(stored.orgId).ingestEvent({
-            id: buildWebhookReceivedEventId({
-              orgId: stored.orgId,
-              endpointId: payload.endpointId,
-              hookId: payload.hookId,
-            }),
-            scope: { kind: "org", orgId: stored.orgId },
+          const scope = stored.scope;
+          await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
+            id: payload.hookId,
+            scope,
             source: "api",
             eventType: "webhook.received",
             occurredAt: payload.receivedAt,
             payload: { ...payload },
             actor: AUTOMATION_SYSTEM_ACTOR,
             actors: [AUTOMATION_SYSTEM_ACTOR],
-            subject: {
-              orgId: stored.orgId,
+            subject: scopeSubject(scope, {
               endpointId: payload.endpointId,
               deliveryId: payload.deliveryId,
-            },
+            }),
           });
         },
       }),
@@ -214,9 +190,10 @@ export class InMemoryApiObject implements ApiObject {
             return;
           }
 
-          await this.#runtimeServices.objects.automations.forOrg(stored.orgId).ingestEvent({
+          const scope = stored.scope;
+          await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
             id: item.id,
-            scope: { kind: "org", orgId: stored.orgId },
+            scope,
             source: "api",
             eventType: "capability.configured",
             occurredAt: item.createdAt,
@@ -226,10 +203,7 @@ export class InMemoryApiObject implements ApiObject {
             },
             actor: AUTOMATION_SYSTEM_ACTOR,
             actors: [AUTOMATION_SYSTEM_ACTOR],
-            subject: {
-              orgId: stored.orgId,
-              capabilityId: "api",
-            },
+            subject: scopeSubject(scope, { capabilityId: "api" }),
           });
         },
       },
@@ -262,12 +236,17 @@ export class InMemoryApiObject implements ApiObject {
 
   async setAdminConfig(payload: unknown): Promise<ApiAdminConfigResponse> {
     const parsed = setAdminConfigInputSchema.parse(payload);
+    const scope = parsed.scope;
     const existing = await this.#host.loadStored();
-    this.#host.assertSameOrg(existing, parsed.orgId);
+    assertSameBackofficeRoutableScope(
+      existing?.scope ?? null,
+      scope,
+      "API is already configured for a different scope.",
+    );
 
     const now = new Date().toISOString();
     const stored: StoredApiConfig = {
-      orgId: parsed.orgId,
+      scope,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
@@ -276,7 +255,7 @@ export class InMemoryApiObject implements ApiObject {
       await this.#host.storeAndInitialize(stored);
       const configuredAt = new Date().toISOString();
       await this.#host.dispatch({
-        id: `api:capability.configured:${parsed.orgId}:${configuredAt}`,
+        id: crypto.randomUUID(),
         type: "capability.configured",
         createdAt: configuredAt,
       });

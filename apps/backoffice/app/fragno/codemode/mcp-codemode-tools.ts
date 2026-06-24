@@ -11,6 +11,7 @@ import {
   renderCodemodeProviderTypes,
   type RuntimeToolReference,
 } from "@/fragno/runtime-tools/reference";
+import { NotConfiguredError } from "@/fragno/runtime-tools/runtime-errors";
 import {
   createBackofficeCodemodeProviders,
   type AnyBackofficeRuntimeTool,
@@ -248,8 +249,7 @@ const createMcpCodemodeRuntimeTools = ({
     })),
   );
 
-const isMcpNotConfiguredError = (error: unknown) =>
-  error instanceof Error && /MCP is not configured for this organisation\./u.test(error.message);
+const isMcpNotConfiguredError = (error: unknown) => error instanceof NotConfiguredError;
 
 export const createMcpCodemodeProviders = async ({
   runtime,

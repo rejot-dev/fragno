@@ -1,4 +1,8 @@
-import type { BackofficeContextScope, BackofficePrincipal } from "@/backoffice-runtime/context";
+import {
+  backofficeContextScopesEqual,
+  type BackofficeContextScope,
+  type BackofficePrincipal,
+} from "@/backoffice-runtime/context";
 
 import { createPermissionDeniedFileSystemError } from "./fs-errors";
 import { normalizeAbsolutePath } from "./normalize-path";
@@ -48,14 +52,14 @@ export const sameFileSubject = (left: FileSubject, right: FileSubject): boolean 
       return (
         right.kind === "automation" &&
         left.automationId === right.automationId &&
-        sameContextScope(left.scope, right.scope)
+        backofficeContextScopesEqual(left.scope, right.scope)
       );
     case "object":
       return (
         right.kind === "object" &&
         left.objectType === right.objectType &&
         left.objectId === right.objectId &&
-        sameContextScope(left.scope, right.scope)
+        backofficeContextScopesEqual(left.scope, right.scope)
       );
   }
 };
@@ -200,20 +204,5 @@ export const assertRootFilePrincipal = ({
 }): void => {
   if (!isRootFilePrincipal(principal)) {
     throw createPermissionDeniedFileSystemError(operation, normalizeAbsolutePath(path));
-  }
-};
-
-const sameContextScope = (left: BackofficeContextScope, right: BackofficeContextScope): boolean => {
-  switch (left.kind) {
-    case "system":
-      return right.kind === "system";
-    case "org":
-      return right.kind === "org" && left.orgId === right.orgId;
-    case "user":
-      return right.kind === "user" && left.userId === right.userId;
-    case "project":
-      return (
-        right.kind === "project" && left.orgId === right.orgId && left.projectId === right.projectId
-      );
   }
 };

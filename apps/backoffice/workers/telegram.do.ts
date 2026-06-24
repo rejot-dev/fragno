@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import type { TelegramApi, TelegramFragmentConfig } from "@fragno-dev/telegram-fragment";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { TelegramObject } from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
@@ -26,7 +27,7 @@ import {
 } from "./lib/backoffice-fragment-durable-object";
 
 type StoredTelegramConfig = TelegramConfig & {
-  orgId: string;
+  scope: Extract<BackofficeContextScope, { kind: "org" }>;
   webhookBaseUrl?: string;
   createdAt: string;
   updatedAt: string;
@@ -299,14 +300,10 @@ export class InMemoryTelegramObject implements TelegramObject {
                   return;
                 }
 
-                const orgId = this.#host.getStoredOrgId(runtime.stored);
-                if (!orgId) {
-                  throw new Error("Stored Telegram config is missing an organisation id.");
-                }
-
+                const { scope } = runtime.stored;
                 await this.#runtime.objects.automations
-                  .forOrg(orgId)
-                  .triggerIngestEvent(buildTelegramAutomationEvent(orgId, payload));
+                  .for(scope)
+                  .triggerIngestEvent(buildTelegramAutomationEvent(scope.orgId, payload));
               },
             },
           },
@@ -317,9 +314,10 @@ export class InMemoryTelegramObject implements TelegramObject {
             return;
           }
 
-          await this.#runtime.objects.automations.forOrg(stored.orgId).ingestEvent({
+          const { scope } = stored;
+          await this.#runtime.objects.automations.for(scope).ingestEvent({
             id: item.id,
-            scope: { kind: "org", orgId: stored.orgId },
+            scope,
             source: "telegram",
             eventType: "capability.configured",
             occurredAt: item.createdAt,
@@ -330,7 +328,7 @@ export class InMemoryTelegramObject implements TelegramObject {
             actor: AUTOMATION_SYSTEM_ACTOR,
             actors: [AUTOMATION_SYSTEM_ACTOR],
             subject: {
-              orgId: stored.orgId,
+              orgId: scope.orgId,
               capabilityId: "telegram",
             },
           });
@@ -436,17 +434,18 @@ export class InMemoryTelegramObject implements TelegramObject {
 
   async setAdminConfig(payload: unknown, origin: string): Promise<TelegramAdminConfigResponse> {
     const parsed = setAdminConfigInputSchema.parse(payload);
-    const normalizedOrgId = parsed.orgId;
+    const { orgId: normalizedOrgId, ...config } = parsed;
 
     const existing = await this.#host.loadStored();
-    this.#host.assertSameOrg(existing, normalizedOrgId);
+    const scope = { kind: "org" as const, orgId: normalizedOrgId };
+    this.#host.assertSameScope(existing, scope);
 
     const now = new Date().toISOString();
     const createdAt = existing?.createdAt ?? now;
     const stored: StoredTelegramConfig = {
-      ...parsed,
-      orgId: normalizedOrgId,
-      webhookBaseUrl: parsed.webhookBaseUrl,
+      ...config,
+      scope,
+      webhookBaseUrl: config.webhookBaseUrl,
       createdAt,
       updatedAt: now,
     };
@@ -456,7 +455,7 @@ export class InMemoryTelegramObject implements TelegramObject {
         await this.#host.storeAndInitialize(stored);
         const configuredAt = new Date().toISOString();
         await this.#host.dispatch({
-          id: `telegram:capability.configured:${normalizedOrgId}:${configuredAt}`,
+          id: crypto.randomUUID(),
           type: "capability.configured",
           createdAt: configuredAt,
         });

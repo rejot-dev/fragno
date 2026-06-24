@@ -1,62 +1,57 @@
-import { backofficeScopeFromSinglePathSegment } from "@/backoffice-runtime/scope-codec";
+import type { McpObject } from "@/backoffice-runtime/object-registry";
+import { backofficeScopeRouteId } from "@/backoffice-runtime/scope-codec";
 import {
-  handleBackofficeMcpOAuthCallback,
-  isBackofficeMcpOAuthCallbackRequest,
-} from "@/fragno/mcp-oauth-proxy";
-import { getMcpObjectForScope } from "@/routes/backoffice/connections/mcp/data";
+  forwardScopedPublicRequest,
+  type ScopedPublicFragmentProxy,
+} from "@/fragno/scoped-public-fragment-proxy";
+import {
+  MCP_INTERNAL_OAUTH_CALLBACK_PATH,
+  MCP_INTERNAL_PREFIX,
+  MCP_PUBLIC_PREFIX,
+} from "@/fragno/scoped-public-fragment-routes";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/mcp";
 
-type RouteContext = Route.LoaderArgs["context"];
+const mcpPublicProxy = {
+  publicPrefix: MCP_PUBLIC_PREFIX,
+  internalPrefix: MCP_INTERNAL_PREFIX,
+  getObjectForScope: (context, scope) =>
+    context.get(BackofficeWorkerContext).runtime.objects.mcp.for(scope),
+  oauth: {
+    internalCallbackPath: MCP_INTERNAL_OAUTH_CALLBACK_PATH,
+    invalidResponse: (message) => new Response(message, { status: 502 }),
+    redirect: ({ request, scope, status }) => {
+      const redirectUrl = new URL(
+        `/backoffice/automations/${scope.kind}/${encodeURIComponent(backofficeScopeRouteId(scope))}/mcp`,
+        request.url,
+      );
+      redirectUrl.searchParams.set("oauth", status);
 
-const MCP_PUBLIC_PREFIX = "/api/mcp";
+      const serverSlug = new URL(request.url).searchParams.get("state")?.split(":")[0]?.trim();
+      if (serverSlug) {
+        redirectUrl.searchParams.set("server", serverSlug);
+      }
 
-const forwardToMcp = async (
-  request: Request,
-  context: RouteContext,
-  scopePathSegment: string | undefined,
-) => {
-  if (!scopePathSegment) {
-    return new Response("Missing MCP scope", { status: 400 });
-  }
-
-  if (isBackofficeMcpOAuthCallbackRequest(request, scopePathSegment)) {
-    return handleBackofficeMcpOAuthCallback(request, context, scopePathSegment);
-  }
-
-  let scope;
-  try {
-    scope = backofficeScopeFromSinglePathSegment(scopePathSegment);
-  } catch {
-    return new Response("Invalid MCP scope", { status: 400 });
-  }
-
-  const mcpDo = getMcpObjectForScope(context, scope);
-  const url = new URL(request.url);
-  const encodedScopeSegment = encodeURIComponent(scopePathSegment);
-  const prefix = `${MCP_PUBLIC_PREFIX}/${encodedScopeSegment}`;
-  if (url.pathname.startsWith(prefix)) {
-    const suffix = url.pathname.slice(prefix.length);
-    url.pathname = `${MCP_PUBLIC_PREFIX}${suffix}`;
-  }
-  url.searchParams.set("scopeKind", scope.kind);
-  if (scope.kind === "org" || scope.kind === "project") {
-    url.searchParams.set("orgId", scope.orgId);
-  }
-  if (scope.kind === "project") {
-    url.searchParams.set("projectId", scope.projectId);
-  }
-  if (scope.kind === "user") {
-    url.searchParams.set("userId", scope.userId);
-  }
-
-  return mcpDo.fetch(new Request(url.toString(), request));
-};
+      return Response.redirect(redirectUrl, 302);
+    },
+  },
+} satisfies ScopedPublicFragmentProxy<McpObject>;
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {
-  return forwardToMcp(request, context, params.orgId);
+  return forwardScopedPublicRequest({
+    request,
+    context,
+    scopePathSegment: params.scopeSegment,
+    proxy: mcpPublicProxy,
+  });
 }
 
 export async function action({ request, context, params }: Route.ActionArgs) {
-  return forwardToMcp(request, context, params.orgId);
+  return forwardScopedPublicRequest({
+    request,
+    context,
+    scopePathSegment: params.scopeSegment,
+    proxy: mcpPublicProxy,
+  });
 }

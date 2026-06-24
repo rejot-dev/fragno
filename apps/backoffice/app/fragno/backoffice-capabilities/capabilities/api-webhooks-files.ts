@@ -70,7 +70,7 @@ await hooks.list({ fragment: "api", pageSize: 10 });
 \`\`\`
 
 Notes:
-- Public receive URLs look like \`/api/http/:orgId/webhooks/endpoints/:endpointId/events\`.
+- Public receive URLs look like \`/api/http/:scope/webhooks/endpoints/:endpointId/events\`.
 - Return the exact \`webhook.publicUrl\` after creating or updating an endpoint; do not manually assemble the final URL unless you are only explaining the URL shape before creation.
 
 

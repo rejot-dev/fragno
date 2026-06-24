@@ -88,7 +88,10 @@ const harnessesSchema = z.array(harnessSchema).superRefine((harnesses, context) 
 });
 
 const storedPiConfigSchema: z.ZodType<StoredPiConfig> = z.object({
-  orgId: z.string().trim().min(1, "Stored Pi config is missing an organisation id."),
+  scope: z.object({
+    kind: z.literal("org"),
+    orgId: z.string().trim().min(1, "Stored Pi config is missing an organisation id."),
+  }),
   apiKeys: z.object({
     openai: apiKeySchema,
     anthropic: apiKeySchema,
@@ -150,12 +153,12 @@ const isConfigured = (config: StoredPiConfig | null) => {
   if (!config) {
     return false;
   }
-  const hasOrgId = typeof config.orgId === "string" && config.orgId.trim().length > 0;
+  const hasScope = config.scope.kind === "org" && config.scope.orgId.trim().length > 0;
   const hasKeys = Boolean(
     config.apiKeys.openai || config.apiKeys.anthropic || config.apiKeys.gemini,
   );
   const hasHarnesses = resolvePiHarnesses(config.harnesses).length > 0;
-  return hasOrgId && hasKeys && hasHarnesses;
+  return hasScope && hasKeys && hasHarnesses;
 };
 
 const buildConfigState = (config: StoredPiConfig | null): PiConfigState => {
@@ -166,7 +169,7 @@ const buildConfigState = (config: StoredPiConfig | null): PiConfigState => {
   return {
     configured: isConfigured(config),
     config: {
-      orgId: config.orgId,
+      orgId: config.scope.orgId,
       apiKeys: {
         openai: maskSecret(config.apiKeys.openai),
         anthropic: maskSecret(config.apiKeys.anthropic),
@@ -220,7 +223,7 @@ export class InMemoryPiObject implements PiObject {
       isConfigured: (stored): stored is StoredPiConfig => isConfigured(stored),
       fingerprint: (config) =>
         JSON.stringify({
-          orgId: config.orgId,
+          scope: config.scope,
           apiKeys: config.apiKeys,
           harnesses: resolvePiHarnesses(config.harnesses),
         }),
@@ -246,9 +249,10 @@ export class InMemoryPiObject implements PiObject {
             return;
           }
 
-          await this.#runtimeServices.objects.automations.forOrg(stored.orgId).ingestEvent({
+          const { scope } = stored;
+          await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
             id: item.id,
-            scope: { kind: "org", orgId: stored.orgId },
+            scope,
             source: "pi",
             eventType: "capability.configured",
             occurredAt: item.createdAt,
@@ -256,7 +260,7 @@ export class InMemoryPiObject implements PiObject {
             actor: AUTOMATION_SYSTEM_ACTOR,
             actors: [AUTOMATION_SYSTEM_ACTOR],
             subject: {
-              orgId: stored.orgId,
+              orgId: scope.orgId,
               capabilityId: "pi",
             },
           });
@@ -270,10 +274,7 @@ export class InMemoryPiObject implements PiObject {
   }
 
   #createRuntime(config: StoredPiConfig) {
-    const orgId = this.#host.getStoredOrgId(config);
-    if (!orgId) {
-      throw new Error("Stored Pi config is missing an organisation id.");
-    }
+    const orgId = config.scope.orgId;
 
     const kernel = new BackofficeKernel({ objects: this.#runtimeServices.objects });
     const execution = {
@@ -330,12 +331,13 @@ export class InMemoryPiObject implements PiObject {
     const normalizedOrgId = parsed.orgId;
 
     const existing = await this.#host.loadStored();
-    this.#host.assertSameOrg(existing, normalizedOrgId);
+    const scope = { kind: "org" as const, orgId: normalizedOrgId };
+    this.#host.assertSameScope(existing, scope);
 
     const now = new Date().toISOString();
     const parsedApiKeys = parsed.apiKeys ?? {};
     const stored: StoredPiConfig = {
-      orgId: normalizedOrgId,
+      scope,
       apiKeys: {
         openai: hasOwn(parsedApiKeys, "openai") ? parsedApiKeys.openai : existing?.apiKeys.openai,
         anthropic: hasOwn(parsedApiKeys, "anthropic")
@@ -358,7 +360,7 @@ export class InMemoryPiObject implements PiObject {
 
         if (isConfigured(parsedStored)) {
           await this.#host.dispatch({
-            id: `pi:capability.configured:${normalizedOrgId}:${now}`,
+            id: crypto.randomUUID(),
             type: "capability.configured",
             createdAt: now,
           });
