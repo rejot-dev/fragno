@@ -2,8 +2,6 @@ import { Link } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
 
-import { toCfSandboxPath } from "./cf-sandbox-path";
-
 const ENVIRONMENTS = [
   {
     id: "workers",
@@ -12,13 +10,6 @@ const ENVIRONMENTS = [
       "Queue and inspect Cloudflare Workers deployments against the shared dispatch namespace.",
     status: "Available",
     to: "/backoffice/environments/workers",
-  },
-  {
-    id: "cf-sandbox",
-    name: "CF Sandbox",
-    description:
-      "Validate fragment behavior against the Cloudflare sandbox runtime before promoting changes.",
-    status: "Available",
   },
 ];
 
@@ -30,8 +21,6 @@ export function meta() {
 }
 
 export default function BackofficeEnvironments() {
-  const cfSandboxPath = toCfSandboxPath({});
-
   return (
     <div className="space-y-4">
       <BackofficePageHeader
@@ -63,7 +52,7 @@ export default function BackofficeEnvironments() {
             <p className="mt-4 text-sm text-[var(--bo-muted)]">{environment.description}</p>
             <div className="mt-4">
               <Link
-                to={cfSandboxPath}
+                to={environment.to}
                 className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
               >
                 Open

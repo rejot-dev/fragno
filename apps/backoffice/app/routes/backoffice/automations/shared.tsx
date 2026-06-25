@@ -65,7 +65,8 @@ export type AutomationTab =
   | "api"
   | "events"
   | "events-catalog"
-  | "mcp";
+  | "mcp"
+  | "sandboxes";
 
 export const formatTimestamp = (value?: string | Date | null) => {
   if (!value) {
@@ -103,7 +104,7 @@ export function AutomationHeader({ selectedScope }: { selectedScope: AutomationU
       ]}
       eyebrow="Automations"
       title={`Automations for ${scopeLabel}`}
-      description="Inspect automation scripts, API connections, events, MCP servers, and store bindings for the selected scope."
+      description="Inspect automation scripts, API connections, events, MCP servers, sandboxes, and store bindings for the selected scope."
       actions={
         orgId ? (
           <Link
@@ -222,7 +223,14 @@ export function AutomationTabs({
       label: "MCP",
       to: automationScopeTabPath(selectedScope, "mcp"),
     },
-  ].filter((tab) => selectedScope.kind !== "system" || (tab.id !== "api" && tab.id !== "mcp"));
+    {
+      id: "sandboxes" as const,
+      label: "Sandboxes",
+      to: automationScopeTabPath(selectedScope, "sandboxes"),
+    },
+  ].filter(
+    (tab) => selectedScope.kind !== "system" || !["api", "mcp", "sandboxes"].includes(tab.id),
+  );
 
   return (
     <div
@@ -238,7 +246,7 @@ export function AutomationTabs({
 
         return (
           <Fragment key={tab.id}>
-            {tab.id === "store" || tab.id === "api" ? (
+            {tab.id === "store" || tab.id === "api" || tab.id === "sandboxes" ? (
               <span className="h-6 w-px bg-[var(--bo-border)]" aria-hidden="true" />
             ) : null}
             <Link to={tab.to} role="tab" aria-selected={isActive} className={className}>

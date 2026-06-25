@@ -78,6 +78,9 @@ const normalizeStoreEntries = (
 
 const currentTabFromPath = (pathname: string): AutomationTab => {
   const segments = pathname.replace(/\/+$/, "").split("/");
+  if (segments.includes("sandboxes")) {
+    return "sandboxes";
+  }
   if (segments.includes("mcp")) {
     return "mcp";
   }

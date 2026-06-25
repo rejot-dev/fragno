@@ -52,7 +52,7 @@ describe("workers.route-state", () => {
   test("returns null for a different route", () => {
     expect(
       readWorkersRouteState({
-        pathname: "/backoffice/environments/cf-sandbox",
+        pathname: "/backoffice/environments/other",
         search: "?worker=alpha",
       }),
     ).toBeNull();
