@@ -74,10 +74,10 @@ export type AutomationWorkspaceScriptEntry = {
 
 const AUTOMATION_ROOT_RELATIVES = AUTOMATION_ROOTS.map((root) => root.slice(1));
 
-const inferWorkspaceScriptEngine = (path: string): AutomationScriptEngine =>
+export const inferWorkspaceScriptEngine = (path: string): AutomationScriptEngine =>
   path.endsWith(".cm.js") ? "codemode" : "bash";
 
-const normalizeScriptRelativePath = (value: string, label = "Automation script"): string => {
+export const normalizeScriptRelativePath = (value: string, label = "Automation script"): string => {
   const trimmed = value.trim();
   if (!trimmed) {
     throw new Error(`${label} path is empty.`);
@@ -112,7 +112,7 @@ const normalizeScriptRelativePath = (value: string, label = "Automation script")
   }
 };
 
-const toAbsoluteAutomationPath = (relativePath: string) =>
+export const toAbsoluteAutomationPath = (relativePath: string) =>
   `${AUTOMATION_WORKSPACE_ROOT}/${normalizeRelativePath(relativePath)}`;
 
 const getAutomationRootForPath = (absolutePath: string) =>

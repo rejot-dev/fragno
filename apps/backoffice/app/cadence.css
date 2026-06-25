@@ -1,0 +1,219 @@
+/*
+ * Cadence — modern automation studio
+ *
+ * A self-contained, light-only visual identity scoped under [data-cadence-root]
+ * so it never collides with the existing backoffice theme. A soft warm-white
+ * canvas, white rounded cards with diffuse shadows, a smooth orange primary, and
+ * warm accents. Typography is Plus Jakarta Sans throughout — geometric,
+ * friendly, bold display weights.
+ */
+
+[data-cadence-root] {
+  --cad-font-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --cad-font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --cad-font-mono: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+
+  /* Surfaces */
+  --cad-bg: oklch(0.985 0.004 70);
+  --cad-bg-2: oklch(0.972 0.006 68);
+  --cad-panel: oklch(1 0 0);
+  --cad-panel-2: oklch(0.99 0.005 70);
+  --cad-panel-hover: oklch(0.982 0.006 68);
+
+  /* Borders / hairlines (very light) */
+  --cad-line: oklch(0.935 0.006 66);
+  --cad-line-strong: oklch(0.885 0.008 64);
+
+  /* Ink */
+  --cad-fg: oklch(0.25 0.012 60);
+  --cad-muted: oklch(0.52 0.01 62);
+  --cad-muted-2: oklch(0.64 0.009 64);
+
+  /* Orange — the primary accent (token name kept as --cad-brass*) */
+  --cad-brass: oklch(0.62 0.16 52);
+  --cad-brass-strong: oklch(0.55 0.17 48);
+  --cad-brass-bg: oklch(0.955 0.04 62);
+  --cad-brass-line: oklch(0.86 0.085 62);
+
+  /* Green — success / running cleanly (token name kept as --cad-verdigris*) */
+  --cad-verdigris: oklch(0.62 0.14 162);
+  --cad-verdigris-bg: oklch(0.94 0.05 162);
+
+  /* Error / alert */
+  --cad-rose: oklch(0.6 0.2 22);
+  --cad-rose-bg: oklch(0.945 0.04 20);
+
+  /* A single, very subtle elevation — used sparingly */
+  --cad-shadow: 0 1px 2px oklch(0.3 0.02 60 / 5%);
+
+  color-scheme: light;
+  font-family: var(--cad-font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Display type — bold geometric headings */
+.cad-display {
+  font-family: var(--cad-font-display);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+/* Accent emphasis inside a heading */
+.cad-display-italic {
+  font-family: var(--cad-font-display);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: var(--cad-brass);
+}
+
+/* Tabular figures for metrics / timestamps */
+.cad-mono {
+  font-family: var(--cad-font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Small uppercase labels */
+.cad-eyebrow {
+  font-family: var(--cad-font-sans);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* Flat canvas */
+.cad-stage {
+  background-color: var(--cad-bg);
+}
+
+/* Pulse for live / in-progress status dots */
+@keyframes cad-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.78);
+  }
+}
+
+.cad-pulse {
+  animation: cad-pulse 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cad-pulse {
+    animation: none;
+  }
+}
+
+/* Running step: cycle the border color (set via --cad-run-color) between the
+   status color and the neutral line instead of scaling the whole node. */
+@keyframes cad-border-cycle {
+  0%,
+  100% {
+    border-color: var(--cad-run-color, var(--cad-brass));
+  }
+  50% {
+    border-color: var(--cad-line);
+  }
+}
+
+.cad-running-border {
+  animation: cad-border-cycle 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cad-running-border {
+    animation: none;
+  }
+}
+
+/* Markdown prose — light styling for streamed compose text blocks. */
+.cad-prose > * + * {
+  margin-top: 0.75em;
+}
+.cad-prose h1,
+.cad-prose h2,
+.cad-prose h3 {
+  font-family: var(--cad-font-display);
+  font-weight: 600;
+  line-height: 1.25;
+}
+.cad-prose h1 {
+  font-size: 1.4em;
+}
+.cad-prose h2 {
+  font-size: 1.2em;
+}
+.cad-prose h3 {
+  font-size: 1.05em;
+}
+.cad-prose ul,
+.cad-prose ol {
+  padding-left: 1.4em;
+}
+.cad-prose ul {
+  list-style: disc;
+}
+.cad-prose ol {
+  list-style: decimal;
+}
+.cad-prose li + li {
+  margin-top: 0.25em;
+}
+.cad-prose a {
+  color: var(--cad-brass-strong);
+  text-decoration: underline;
+}
+.cad-prose code {
+  font-family: var(--cad-font-mono);
+  font-size: 0.9em;
+  background-color: var(--cad-panel-2);
+  border: 1px solid var(--cad-line);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+.cad-prose pre {
+  font-family: var(--cad-font-mono);
+  background-color: var(--cad-bg-2);
+  border: 1px solid var(--cad-line);
+  border-radius: 8px;
+  padding: 0.75em 1em;
+  overflow-x: auto;
+}
+.cad-prose pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+/* Buttons (and link/role buttons) get a pointer cursor; disabled ones don't. */
+[data-cadence-root] button,
+[data-cadence-root] [role="button"] {
+  cursor: pointer;
+}
+[data-cadence-root] button:disabled,
+[data-cadence-root] [role="button"][aria-disabled="true"] {
+  cursor: default;
+}
+
+.cad-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--cad-line-strong) transparent;
+}
+.cad-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+.cad-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--cad-line-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.cad-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--cad-muted-2);
+}
