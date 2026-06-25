@@ -2,7 +2,13 @@ import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { SYSTEM_FILE_CONTENT } from "@/files";
 
 export type PiSteeringMode = "all" | "one-at-a-time";
-export type PiThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type PiThinkingLevel =
+  | "off"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh";
 
 export type PiModelProvider = "openai" | "anthropic" | "gemini";
 
@@ -65,14 +71,35 @@ export const PI_PROVIDER_TO_MODEL_PROVIDER = {
 export const PI_MODEL_CATALOG: PiModelOption[] = [
   { provider: "openai", name: "gpt-5.4-mini", label: "GPT-5.4 mini" },
   { provider: "openai", name: "gpt-5.5", label: "GPT-5.5" },
-  { provider: "anthropic", name: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
-  { provider: "anthropic", name: "claude-sonnet-4-5", label: "Claude Sonnet 4.5" },
+  {
+    provider: "anthropic",
+    name: "claude-haiku-4-5",
+    label: "Claude Haiku 4.5",
+  },
+  {
+    provider: "anthropic",
+    name: "claude-sonnet-4-5",
+    label: "Claude Sonnet 4.5",
+  },
   { provider: "anthropic", name: "claude-opus-4-5", label: "Claude Opus 4.5" },
   { provider: "gemini", name: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
-  { provider: "gemini", name: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (Preview)" },
+  {
+    provider: "gemini",
+    name: "gemini-3.1-pro-preview",
+    label: "Gemini 3.1 Pro (Preview)",
+  },
 ];
 
-export const PI_TOOL_IDS = ["bash", "execCodeMode", "read"] as const;
+export const PI_TOOL_IDS = [
+  "bash",
+  "execCodeMode",
+  "read",
+  "listAutomations",
+  "showWorkflow",
+  "validateAutomation",
+  "writeAutomation",
+  "runAutomation",
+] as const;
 export type PiToolId = (typeof PI_TOOL_IDS)[number];
 
 export const DEFAULT_PI_HARNESSES: PiHarnessConfig[] = [
@@ -86,9 +113,12 @@ export const DEFAULT_PI_HARNESSES: PiHarnessConfig[] = [
   },
 ];
 
-export const DEFAULT_PI_HARNESS: PiHarnessConfig = DEFAULT_PI_HARNESSES[0] as PiHarnessConfig;
+export const DEFAULT_PI_HARNESS: PiHarnessConfig =
+  DEFAULT_PI_HARNESSES[0] as PiHarnessConfig;
 
-export const resolvePiHarnesses = (harnesses?: PiHarnessConfig[] | null): PiHarnessConfig[] => {
+export const resolvePiHarnesses = (
+  harnesses?: PiHarnessConfig[] | null,
+): PiHarnessConfig[] => {
   if (Array.isArray(harnesses) && harnesses.length > 0) {
     return harnesses;
   }
@@ -119,5 +149,7 @@ export const parsePiAgentName = (agent: string) => {
 };
 
 export const findPiModelOption = (provider: PiModelProvider, name: string) => {
-  return PI_MODEL_CATALOG.find((option) => option.provider === provider && option.name === name);
+  return PI_MODEL_CATALOG.find(
+    (option) => option.provider === provider && option.name === name,
+  );
 };
