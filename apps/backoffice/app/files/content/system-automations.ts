@@ -1,58 +1,12 @@
 import type { FileSystemArtifact } from "../types";
 
 export const SYSTEM_AUTOMATION_SCRIPT_PATHS = {
-  systemRouter: "automations/router.cm.js",
   workspaceFileInitialization: "automations/workspace-file-initialization.workflow.js",
+  projectFilesConfigure: "automations/project-files-configure.workflow.js",
   codemodeTypesRefresh: "automations/codemode-types-refresh.workflow.js",
 } as const;
 
 export const SYSTEM_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
-  "automations/router.cm.js": `async () => {
-  const event = await state.readFile("/context/event.json").then(JSON.parse);
-
-  const instanceIdForEvent = (prefix) => {
-    return prefix + "-" + event.id.replace(/[^a-zA-Z0-9-_]/g, "-");
-  };
-
-  if (event.source === "auth" && event.eventType === "organization.created") {
-    await workflow.createInstance({
-      workflowName: "automation-codemode-script",
-      remoteWorkflowName: "workspace-file-initialization",
-      instanceId: instanceIdForEvent("workspace-file-initialization"),
-      params: {
-        automationEvent: event,
-        workflowScriptPath: "/system/automations/workspace-file-initialization.workflow.js",
-      },
-    });
-  }
-
-  if (event.source === "automations" && event.eventType === "project.created") {
-    const projectId = event.subject?.projectId ?? event.payload.project?.id;
-    if (!projectId) {
-      throw new Error("project.created event is missing subject.projectId.");
-    }
-    await internal.projectFilesConfigure({ projectId });
-  }
-
-  const shouldRefreshCodemodeTypes =
-    event.eventType === "capability.configured" ||
-    (event.source === "mcp" &&
-      (event.eventType === "server.configuration.changed" ||
-        event.eventType === "server.configuration.deleted"));
-
-  if (shouldRefreshCodemodeTypes) {
-    await workflow.createInstance({
-      workflowName: "automation-codemode-script",
-      remoteWorkflowName: "codemode-types-refresh",
-      instanceId: instanceIdForEvent("codemode-types-refresh"),
-      params: {
-        automationEvent: event,
-        workflowScriptPath: "/system/automations/codemode-types-refresh.workflow.js",
-      },
-    });
-  }
-};
-`,
   "automations/workspace-file-initialization.workflow.js": `defineWorkflow(
   { name: "workspace-file-initialization" },
   async (event, step) => {
@@ -78,11 +32,38 @@ export const SYSTEM_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
       return await internal.filesSeedExecute({});
     });
 
+    const automationRoutes = await step.do("seed starter automation routes", async () => {
+      return await internal.automationsRoutesSeedStarter({});
+    });
+
     const codemodeTypes = await step.do("write codemode dts", async () => {
       return await internal.codemodeTypesSync({});
     });
 
-    return { ...configured, seeded, codemodeTypes };
+    return { ...configured, seeded, automationRoutes, codemodeTypes };
+  },
+);
+`,
+  "automations/project-files-configure.workflow.js": `defineWorkflow(
+  { name: "project-files-configure" },
+  async (event, step) => {
+    const automationEvent = event.payload.automationEvent;
+
+    if (
+      automationEvent.source !== "automations" ||
+      automationEvent.eventType !== "project.created"
+    ) {
+      return { skipped: true, reason: "not-project-created" };
+    }
+
+    const projectId = automationEvent.subject?.projectId ?? automationEvent.payload.project?.id;
+    if (!projectId) {
+      throw new Error("project.created event is missing subject.projectId.");
+    }
+
+    return await step.do("configure project database filesystem", async () => {
+      return await internal.projectFilesConfigure({ projectId });
+    });
   },
 );
 `,

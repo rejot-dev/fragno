@@ -7,12 +7,13 @@ import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/scope-layout";
 import {
   fetchAutomationProjects,
+  fetchAutomationRoutes,
   fetchAutomationStoreEntries,
   loadAutomationWorkspaceData,
   toExternalId,
 } from "./data.server";
 import { createAutomationScopeOptions, resolveAutomationUiScope, toBackofficeScope } from "./scope";
-import type { AutomationScriptItem, AutomationStoreItem } from "./shared";
+import type { AutomationRouteItem, AutomationScriptItem, AutomationStoreItem } from "./shared";
 import {
   AutomationErrorBoundary,
   AutomationHeader,
@@ -47,6 +48,13 @@ const normalizeScripts = (
     );
 };
 
+const normalizeRoutes = (
+  routes: Awaited<ReturnType<typeof fetchAutomationRoutes>>["routes"],
+): AutomationRouteItem[] =>
+  [...routes].sort(
+    (left, right) => left.priority - right.priority || left.id.localeCompare(right.id),
+  );
+
 const normalizeStoreEntries = (
   storedEntries: Awaited<ReturnType<typeof fetchAutomationStoreEntries>>["storeEntries"],
 ) => {
@@ -68,6 +76,9 @@ const currentTabFromPath = (pathname: string): AutomationTab => {
   const segments = pathname.replace(/\/+$/, "").split("/");
   if (segments.includes("mcp")) {
     return "mcp";
+  }
+  if (segments.includes("router")) {
+    return "router";
   }
   if (segments.includes("api")) {
     return "api";
@@ -132,8 +143,9 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const requestUrl = new URL(request.url);
   const currentTab = currentTabFromPath(requestUrl.pathname);
 
-  const [workspaceResult, storeResult] = await Promise.all([
+  const [workspaceResult, routesResult, storeResult] = await Promise.all([
     loadAutomationWorkspaceData({ request, context, scope: backofficeScope }),
+    fetchAutomationRoutes(request, context, backofficeScope),
     fetchAutomationStoreEntries(request, context, backofficeScope),
   ]);
 
@@ -151,8 +163,10 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
       projectOrgId: activeOrgId,
     }),
     scripts: normalizeScripts(workspaceResult.scripts),
+    routes: normalizeRoutes(routesResult.routes),
     storeEntries: normalizeStoreEntries(storeResult.storeEntries),
     scriptsError: workspaceResult.scriptsError,
+    routesError: routesResult.routesError,
     storeEntriesError: storeResult.storeEntriesError,
     projectsError: projectsResult.projectsError,
     storePrefix: requestUrl.searchParams.get("prefix") ?? "",

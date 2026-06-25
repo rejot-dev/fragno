@@ -1,4 +1,4 @@
-import type { AutomationScriptLayer } from "@/fragno/automation";
+import type { AutomationRouteDefinition, AutomationScriptLayer } from "@/fragno/automation";
 import type { AutomationScriptEngine } from "@/fragno/automation/catalog";
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
 
@@ -46,6 +46,8 @@ export type AutomationProjectRecord = {
   createdAt?: string | Date | null;
   updatedAt?: string | Date | null;
 };
+
+export type AutomationRouteRecord = AutomationRouteDefinition;
 
 export type AutomationScriptSourceRecord = {
   script: string | null;

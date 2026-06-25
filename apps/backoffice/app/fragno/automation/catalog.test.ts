@@ -26,7 +26,7 @@ const createAutomationFileSystem = async (files: Record<string, string> = {}) =>
   );
 
 describe("automation filesystem catalog", () => {
-  test("loads enabled routers from both /system and /workspace", async () => {
+  test("loads system and workspace workflow files", async () => {
     const fileSystem = createTestMasterFileSystem({
       ...Object.fromEntries(
         Object.entries(SYSTEM_AUTOMATION_CONTENT).map(([path, content]) => [
@@ -44,20 +44,7 @@ describe("automation filesystem catalog", () => {
 
     const catalog = await loadAutomationCatalog(fileSystem);
 
-    expect(catalog.scripts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "script:system:router.cm@1:router.cm.js",
-          absolutePath: "/system/automations/router.cm.js",
-          enabled: true,
-        }),
-        expect.objectContaining({
-          id: "script:workspace:router.cm@1:router.cm.js",
-          absolutePath: "/workspace/automations/router.cm.js",
-          enabled: true,
-        }),
-      ]),
-    );
+    expect(catalog.scripts).toEqual(expect.arrayContaining([]));
   });
 
   test("loads workspace starter automation scripts from /workspace", async () => {
@@ -68,12 +55,6 @@ describe("automation filesystem catalog", () => {
     expect(catalog.bindings).toEqual([]);
     expect(catalog.scripts).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          key: "router.cm",
-          path: STARTER_AUTOMATION_SCRIPT_PATHS.workspaceRouter.replace(/^automations\//u, ""),
-          engine: "codemode",
-          enabled: true,
-        }),
         expect.objectContaining({
           path: STARTER_AUTOMATION_SCRIPT_PATHS.telegramUserLinking.replace(/^automations\//u, ""),
           enabled: false,

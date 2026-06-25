@@ -10,6 +10,7 @@ import type { AutomationRuntimeHostContext, AutomationRuntime } from "@/fragno/a
 import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "@/fragno/automation/contracts";
 import { executeBashAutomation } from "@/fragno/runtime-tools/automation-host";
 import { EMPTY_BASH_HOST_CONTEXT } from "@/fragno/runtime-tools/bash-host.test-utils";
+import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
 import type { BackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
 
 import { executeCodemodeAutomation, executeWorkflowCodemodeAutomation } from "./codemode";
@@ -448,6 +449,7 @@ const createAutomationContext = (
 };
 
 const createUnusedAutomationRuntime = (): AutomationRuntime => ({
+  ...createUnavailableAutomationRouterRuntime(),
   get: async () => {
     throw new Error("get should not be called in this test.");
   },
@@ -495,6 +497,7 @@ const createRecordingBackofficeRuntime = (calls: unknown[]): BackofficeCapabilit
   ) as BackofficeCapabilitiesRuntime;
 
 const createRecordingAutomationRuntime = (calls: unknown[]): AutomationRuntime => ({
+  ...createUnavailableAutomationRouterRuntime(),
   get: async (input) => {
     calls.push(["get", input]);
     return null;

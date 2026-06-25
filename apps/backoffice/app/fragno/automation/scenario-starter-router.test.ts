@@ -21,6 +21,28 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
 
+const customAutomationEvent = ({
+  id,
+  source = "custom",
+  eventType = "thing.happened",
+  payload = {},
+}: {
+  id: string;
+  source?: string;
+  eventType?: string;
+  payload?: Record<string, unknown>;
+}): AutomationEvent => ({
+  id,
+  scope: { kind: "org", orgId: "org-1" },
+  source,
+  eventType,
+  occurredAt: "2026-01-01T00:00:00.000Z",
+  payload,
+  actor: { scope: "internal", type: "system", id: "scenario", role: "system" },
+  actors: [{ scope: "internal", type: "system", id: "scenario", role: "system" }],
+  subject: { orgId: "org-1" },
+});
+
 const telegramMessageEvent = ({
   id,
   text,
@@ -54,6 +76,347 @@ const telegramMessageEvent = ({
 };
 
 describe("starter automation router scenarios", () => {
+  test("scenario router helpers seed and inspect starter routes", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "scenario router helpers inspect starter routes",
+
+        files: backofficeFiles.workspaceStarter(),
+
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+
+        steps: ({ when, then }) => [
+          when.router.seedStarter({ orgId: "org-1" }),
+
+          then.router.routes({
+            orgId: "org-1",
+            include: [
+              {
+                id: "telegram-test-command",
+                source: "telegram",
+                eventType: "message.received",
+                matcher: { path: "$.payload.text", op: "eq", value: "/test" },
+                action: {
+                  kind: "start_workflow",
+                  remoteWorkflowName: "telegram-test-command",
+                  workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
+                },
+              },
+              {
+                id: "telegram-identity-claim-completed",
+                action: {
+                  kind: "send_workflow_event",
+                  target: {
+                    kind: "stored_instance_id",
+                    keyTemplate: "telegram/claim-workflow/${event.payload.otpId}",
+                  },
+                  eventType: "identity-claim-completed",
+                },
+              },
+              "pi-default-agent-configure",
+            ],
+          }),
+          then.router.route({
+            orgId: "org-1",
+            id: "telegram-pi-linking",
+            enabled: true,
+            priority: 120,
+          }),
+          then.router.missing({ orgId: "org-1", id: "no-such-route" }),
+          then.workflow.noErrored({ orgId: "org-1" }),
+        ],
+      }),
+    );
+  });
+
+  test("disabling a starter route stops it from starting workflows", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "scenario router disables starter route",
+
+        files: backofficeFiles.workspaceStarter(),
+
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+
+        steps: ({ when, then }) => [
+          when.router.seedStarter({ orgId: "org-1" }),
+          when.router.updateRoute({ orgId: "org-1", id: "telegram-test-command", enabled: false }),
+          then.router.route({ orgId: "org-1", id: "telegram-test-command", enabled: false }),
+
+          when.automation.ingestEvent(telegramMessageEvent({ id: "disabled-test", text: "/test" })),
+
+          then.workflow.missing({
+            remoteWorkflowName: "telegram-test-command",
+            instanceId: "telegram-test-disabled-test",
+          }),
+          then.workflow.noErrored({ orgId: "org-1" }),
+        ],
+      }),
+    );
+  });
+
+  test("updating a starter route matcher changes which events start it", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "scenario router updates starter matcher",
+
+        files: backofficeFiles.workspaceStarter(),
+
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+
+        steps: ({ when, then }) => [
+          when.router.seedStarter({ orgId: "org-1" }),
+          when.router.updateRoute({
+            orgId: "org-1",
+            id: "telegram-test-command",
+            matcher: { path: "$.payload.text", op: "eq", value: "!test" },
+          }),
+          then.router.route({
+            orgId: "org-1",
+            id: "telegram-test-command",
+            matcher: { path: "$.payload.text", op: "eq", value: "!test" },
+          }),
+
+          when.automation.ingestEvent(telegramMessageEvent({ id: "old-test", text: "/test" })),
+          when.automation.ingestEvent(telegramMessageEvent({ id: "bang-test", text: "!test" })),
+
+          then.workflow.missing({
+            remoteWorkflowName: "telegram-test-command",
+            instanceId: "telegram-test-old-test",
+          }),
+          then.workflow.instance({
+            remoteWorkflowName: "telegram-test-command",
+            instanceId: "telegram-test-bang-test",
+            status: "complete",
+            output: { skipped: true, reason: "not-test-command" },
+          }),
+          then.workflow.noErrored({ orgId: "org-1" }),
+        ],
+      }),
+    );
+  });
+
+  test("creating a route starts a custom workflow for matching events", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "scenario router creates custom start route",
+
+        files: backofficeFiles.workspaceStarter(),
+
+        setup: ({ given }) => [
+          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          given.direct.file({
+            orgId: "org-1",
+            path: "/workspace/automations/custom-alpha.workflow.js",
+            content: `defineWorkflow(
+  { name: "custom-alpha" },
+  async (event, step) => {
+    const automationEvent = event.payload.automationEvent;
+    await step.do("store custom route hit", async () => {
+      await store.set({
+        key: "custom/" + automationEvent.id,
+        value: automationEvent.payload.kind,
+        actor: automationEvent.actor,
+        category: ["test", "router"],
+      });
+    });
+    return { eventId: automationEvent.id, kind: automationEvent.payload.kind };
+  },
+);
+`,
+          }),
+          given.router.route({
+            orgId: "org-1",
+            id: "custom-alpha",
+            name: "Custom alpha",
+            enabled: true,
+            source: "custom",
+            eventType: "thing.happened",
+            matcher: { path: "$.payload.kind", op: "eq", value: "alpha" },
+            priority: 50,
+            action: {
+              kind: "start_workflow",
+              workflowName: "automation-codemode-script",
+              remoteWorkflowName: "custom-alpha",
+              workflowScriptPath: "/workspace/automations/custom-alpha.workflow.js",
+              instanceIdTemplate: "custom-alpha-${event.id}",
+            },
+          }),
+        ],
+
+        steps: ({ when, then }) => [
+          then.router.route({
+            orgId: "org-1",
+            id: "custom-alpha",
+            source: "custom",
+            eventType: "thing.happened",
+          }),
+
+          when.automation.ingestEvent(
+            customAutomationEvent({ id: "alpha-1", payload: { kind: "alpha" } }),
+          ),
+          when.automation.ingestEvent(
+            customAutomationEvent({ id: "beta-1", payload: { kind: "beta" } }),
+          ),
+
+          then.workflow.instance({
+            remoteWorkflowName: "custom-alpha",
+            instanceId: "custom-alpha-alpha-1",
+            status: "complete",
+            output: { eventId: "alpha-1", kind: "alpha" },
+          }),
+          then.workflow.missing({
+            remoteWorkflowName: "custom-alpha",
+            instanceId: "custom-alpha-beta-1",
+          }),
+          then.store.entry({ orgId: "org-1", key: "custom/alpha-1", value: "alpha" }),
+          then.store.missing({ orgId: "org-1", key: "custom/beta-1" }),
+          then.workflow.noErrored({ orgId: "org-1" }),
+        ],
+      }),
+    );
+  });
+
+  test("start_workflow route skips cleanly when the workflow file is missing", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "scenario router missing workflow file skips",
+
+        files: backofficeFiles.workspaceStarter(),
+
+        setup: ({ given }) => [
+          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          given.router.route({
+            orgId: "org-1",
+            id: "missing-workflow-file",
+            name: "Missing workflow file",
+            enabled: true,
+            source: "custom",
+            eventType: "thing.happened",
+            matcher: { path: "$.payload.kind", op: "eq", value: "missing-file" },
+            priority: 50,
+            action: {
+              kind: "start_workflow",
+              workflowName: "automation-codemode-script",
+              remoteWorkflowName: "missing-workflow-file",
+              workflowScriptPath: "/workspace/automations/missing-workflow-file.workflow.js",
+              instanceIdTemplate: "missing-workflow-file-${event.id}",
+            },
+          }),
+        ],
+
+        steps: ({ when, then }) => [
+          when.automation.ingestEvent(
+            customAutomationEvent({ id: "missing-file-1", payload: { kind: "missing-file" } }),
+          ),
+
+          then.workflow.instance({
+            remoteWorkflowName: "missing-workflow-file",
+            instanceId: "missing-workflow-file-missing-file-1",
+            status: "complete",
+            output: {
+              skipped: true,
+              reason: "workflow-script-not-found",
+              workflowScriptPath: "/workspace/automations/missing-workflow-file.workflow.js",
+            },
+          }),
+          then.workflow.noErrored({ orgId: "org-1" }),
+        ],
+      }),
+    );
+  });
+
+  test("send_workflow_event routes wake a workflow from a stored instance id", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "scenario router sends workflow event",
+
+        files: backofficeFiles.workspaceStarter(),
+
+        setup: ({ given }) => [
+          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          given.direct.file({
+            orgId: "org-1",
+            path: "/workspace/automations/custom-waiter.workflow.js",
+            content: `defineWorkflow(
+  { name: "custom-waiter" },
+  async (_event, step) => {
+    const signal = await step.waitForEvent("custom-signal", {
+      type: "custom-signal",
+      timeout: "15 minutes",
+    });
+    const signalEvent = signal.payload;
+    await step.do("store custom signal", async () => {
+      await store.set({
+        key: "signal/" + signalEvent.payload.key,
+        value: signalEvent.payload.value,
+        actor: signalEvent.actor,
+        category: ["test", "router"],
+      });
+    });
+    return { received: signalEvent.payload.value };
+  },
+);
+`,
+          }),
+          given.store.entry({ orgId: "org-1", key: "waiter/alpha", value: "waiter-1" }),
+          given.router.route({
+            orgId: "org-1",
+            id: "custom-signal-forwarder",
+            name: "Custom signal forwarder",
+            enabled: true,
+            source: "custom",
+            eventType: "signal.received",
+            matcher: { path: "$.payload.key", op: "eq", value: "alpha" },
+            priority: 40,
+            action: {
+              kind: "send_workflow_event",
+              workflowName: "automation-codemode-script",
+              target: { kind: "stored_instance_id", keyTemplate: "waiter/${event.payload.key}" },
+              eventType: "custom-signal",
+              payload: "$event",
+            },
+          }),
+        ],
+
+        steps: ({ when, then }) => [
+          when.workflow.createInstance({
+            orgId: "org-1",
+            remoteWorkflowName: "custom-waiter",
+            instanceId: "waiter-1",
+            params: {
+              automationEvent: customAutomationEvent({ id: "waiter-bootstrap" }),
+              workflowScriptPath: "/workspace/automations/custom-waiter.workflow.js",
+            },
+          }),
+          then.workflow.instance({
+            remoteWorkflowName: "custom-waiter",
+            instanceId: "waiter-1",
+            status: "waiting",
+            waitingFor: "custom-signal",
+          }),
+
+          when.automation.ingestEvent(
+            customAutomationEvent({
+              id: "signal-1",
+              eventType: "signal.received",
+              payload: { key: "alpha", value: "delivered" },
+            }),
+          ),
+
+          then.workflow.instance({
+            remoteWorkflowName: "custom-waiter",
+            instanceId: "waiter-1",
+            status: "complete",
+            output: { received: "delivered" },
+          }),
+          then.store.entry({ orgId: "org-1", key: "signal/alpha", value: "delivered" }),
+          then.workflow.noErrored({ orgId: "org-1" }),
+        ],
+      }),
+    );
+  });
+
   test("pi capability.configured stores the default Pi agent", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
@@ -74,6 +437,12 @@ describe("starter automation router scenarios", () => {
             modelLabel: "GPT-5 mini",
           }),
 
+          then.workflow.instance({
+            remoteWorkflowName: "pi-default-agent-configure",
+            instanceId: "pi-default-agent-configure-pi-capability-configured-org-1",
+            status: "complete",
+            output: { stored: true, value: "default::openai::gpt-5-mini" },
+          }),
           then.store.entry({
             orgId: "org-1",
             key: "pi/pi-default-agent",
@@ -116,6 +485,11 @@ describe("starter automation router scenarios", () => {
             harnessId: "default",
             modelProvider: "openai",
             modelName: "gpt-5-mini",
+          }),
+          then.workflow.instance({
+            remoteWorkflowName: "pi-default-agent-configure",
+            instanceId: "pi-default-agent-configure-pi-capability-configured-org-1",
+            status: "complete",
           }),
 
           when.telegram.receivesMessage({

@@ -27,7 +27,7 @@ export const GENERAL_SKILL_CONTENT: Record<string, FileSystemArtifact> = {
     name: "building-automations",
     title: "Building Automations",
     description:
-      "Build Backoffice automations in codemode. Use when creating event router behavior, wiring useful configured connections together, reading the event catalog, updating /workspace/automations/router.cm.js, or adding durable workflow scripts. ONLY use when the user is explicit about wanting an automation/workflow.",
+      "Build Backoffice automations in codemode. Use when creating event-triggered workflow behavior, wiring useful configured connections together, reading the event catalog, or adding durable workflow scripts. ONLY use when the user is explicit about wanting an automation/workflow.",
     body: `Use this skill when the user wants the system to react to events from connections such as Telegram, Pi, OTP, or future integrations.
 
 ## Codemode-first workflow
@@ -42,15 +42,15 @@ const telegramMessage = await events.eventsCatalogGet({
 });
 \`\`\`
 
-2. Read the current router at \`/workspace/automations/router.cm.js\`. It is the default event entrypoint and already demonstrates routing Telegram, OTP, and Pi events.
+2. Inspect the existing workflow files under \`/workspace/automations/\`. Starter event routing is database-backed; workflow files remain user-editable.
 
 \`\`\`js
-const router = await state.readFile("/workspace/automations/router.cm.js");
+const files = await state.find("/workspace/automations", { type: "file", maxDepth: 2 });
 \`\`\`
 
-3. Add small routing logic to the router. Filter early by \`event.source\` and \`event.eventType\`; do not perform long-running work in the router.
+3. For long-running behavior, create a new \`*.workflow.js\` file under \`/workspace/automations/\`. Use \`state.writeFile\` when authoring from codemode.
 
-4. For long-running behavior, create a new \`*.workflow.js\` file under \`/workspace/automations/\` and start it from the router with \`workflow.createInstance\`. Use \`state.writeFile\` when authoring from codemode.
+4. Create or update database-backed routing rules with the \`router\` provider. Routes decide when a workflow starts or receives an event; workflow files decide what happens after the route fires.
 
 5. If the automation depends on an external service, check whether the matching connection is configured. If not, use the Configuring Connections skill and work with the user to collect credentials or public URLs.
 
@@ -68,26 +68,45 @@ await state.writeFile(
 );
 \`\`\`
 
-## Router pattern
+## Trigger pattern
+
+Automation routes are stored in the Automations database. Workflow implementations live in \`/workspace/automations/*.workflow.js\`. Routes decide **when** automation behavior runs; workflow files decide **what** runs.
+
+A route matches an incoming event by \`source\`, \`eventType\`, and an optional matcher JSON object. When matched, the route either starts \`automation-codemode-script\` with a workflow script path or sends an event to an existing \`automation-codemode-script\` instance.
+
+Do not create or edit legacy \`router.cm.js\` files. Use \`router.list({})\` to inspect current rules, \`router.get({ id })\` to inspect one rule, \`router.create({...})\` to add a route, and \`router.update({...})\` to patch an existing route.
 
 \`\`\`js
-async () => {
-  const event = await state.readFile("/context/event.json").then(JSON.parse);
+await router.create({
+  id: "telegram-hello",
+  name: "Telegram hello",
+  source: "telegram",
+  eventType: "message.received",
+  matcher: { path: "$.payload.text", op: "startsWith", value: "/hello" },
+  priority: 1000,
+  action: {
+    kind: "start_workflow",
+    remoteWorkflowName: "telegram-hello",
+    workflowScriptPath: "/workspace/automations/telegram-hello.workflow.js",
+    instanceIdTemplate: "telegram-hello-\${event}",
+  },
+});
 
-  if (event.source !== "telegram" || event.eventType !== "message.received") {
-    return;
-  }
+await router.update({
+  id: "telegram-hello",
+  enabled: false,
+});
+\`\`\`
 
-  await workflow.createInstance({
-    workflowName: "automation-codemode-script",
-    remoteWorkflowName: "my-new-workflow",
-    instanceId: "my-new-workflow-" + event.id,
-    params: {
-      automationEvent: event,
-      workflowScriptPath: "/workspace/automations/my-new-workflow.workflow.js",
-    },
-  });
-};
+For \`send_workflow_event\` actions, provide a \`target\`: use \`{ kind: "instance_id", template }\` when the event can render the workflow instance id directly, or \`{ kind: "stored_instance_id", keyTemplate }\` when the router should render a store key, read that store value, and use it as the workflow instance id.
+
+Bash equivalents:
+
+\`\`\`bash
+router.list --format json
+router.get --id telegram-hello --format json
+router.create --json '{"id":"telegram-hello","name":"Telegram hello","source":"telegram","eventType":"message.received","priority":1000,"action":{"kind":"start_workflow","remoteWorkflowName":"telegram-hello","workflowScriptPath":"/workspace/automations/telegram-hello.workflow.js","instanceIdTemplate":"telegram-hello-\${event}"}}' --format json
+router.update --id telegram-hello --json '{"enabled":false}'
 \`\`\`
 
 ## Using the automation store

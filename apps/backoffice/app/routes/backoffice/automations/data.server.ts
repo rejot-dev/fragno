@@ -23,6 +23,7 @@ import {
 } from "../action-result";
 import type {
   AutomationProjectRecord,
+  AutomationRouteRecord,
   AutomationScriptRecord,
   AutomationScriptSourceRecord,
   AutomationStoreEntryRecord,
@@ -342,6 +343,44 @@ export async function loadAutomationScriptSource({
     return {
       script: null,
       scriptError: formatErrorMessage(error, "Failed to load automation script source."),
+    };
+  }
+}
+
+export async function fetchAutomationRoutes(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+): Promise<{
+  routes: AutomationRouteRecord[];
+  routesError: string | null;
+}> {
+  try {
+    const callRoute = createAutomationsRouteCaller(request, context, scope);
+    const response = await callRoute("GET", "/routes");
+
+    if (response.type === "json" && isSuccessStatus(response.status)) {
+      return {
+        routes: toRecordArray<AutomationRouteRecord>(response.data),
+        routesError: null,
+      };
+    }
+
+    if (response.type === "error") {
+      return {
+        routes: [],
+        routesError: response.error.message,
+      };
+    }
+
+    return {
+      routes: [],
+      routesError: `Failed to fetch automation routes (${response.status}).`,
+    };
+  } catch (error) {
+    return {
+      routes: [],
+      routesError: formatErrorMessage(error, "Failed to load automation routes."),
     };
   }
 }

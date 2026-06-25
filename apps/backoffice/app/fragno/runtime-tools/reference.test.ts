@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 
+import { backofficeCapabilities } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import { createCodemodeDts } from "@/fragno/codemode/codemode-dts";
 import { STATE_TYPES } from "@/fragno/codemode/state-prompt";
 
@@ -570,6 +571,89 @@ describe("runtime tool reference generation", () => {
     expect(types).toContain("retryInstance(input: WorkflowRetryInstanceInput)");
     expect(types).toContain("declare const event");
     expect(types).toContain("declare const telegram");
+  });
+
+  test("renders full codemode declarations with every capability enabled", () => {
+    expect(() =>
+      createCodemodeDts({
+        configuredCapabilityIds: backofficeCapabilities.map((capability) => capability.id),
+        families: runtimeToolFamilies,
+        stateTypes: STATE_TYPES,
+      }),
+    ).not.toThrow();
+  });
+
+  test("renders recursive automation route matchers as named codemode types", () => {
+    const types = stringifyFamilyByNamespace({ namespace: "router", target: "codemode" });
+
+    expect(types).toContain("type AutomationEventMatcher =");
+    expect(types).toContain("all: AutomationEventMatcher[];");
+    expect(types).toContain("any: AutomationEventMatcher[];");
+    expect(types).toContain("not: AutomationEventMatcher;");
+    expect(types).toContain("matcher: AutomationEventMatcher | null;");
+    expect(types).not.toContain("matcher: unknown | null;");
+    expect(types.match(/type AutomationEventMatcher =/g)).toHaveLength(1);
+  });
+
+  test("renders recursive automation route matchers in generated codemode dts", () => {
+    const types = createCodemodeDts({
+      configuredCapabilityIds: ["automations"],
+      families: runtimeToolFamilies,
+      stateTypes: "declare const state: unknown;",
+    });
+
+    expect(types).toContain("declare const router");
+    expect(types).toContain("type AutomationEventMatcher =");
+    expect(types).toContain("matcher: AutomationEventMatcher | null;");
+    expect(types).not.toContain("matcher: unknown | null;");
+    expect(types.match(/type AutomationEventMatcher =/g)).toHaveLength(1);
+  });
+
+  test("emits shared recursive matcher declarations before route input and output aliases", () => {
+    const types = stringifyFamilyByNamespace({ namespace: "router", target: "codemode" });
+    const matcherIndex = types.indexOf("type AutomationEventMatcher =");
+    const listOutputIndex = types.indexOf("type RouterListOutput =");
+    const createInputIndex = types.indexOf("type RouterCreateInput =");
+    const updateInputIndex = types.indexOf("type RouterUpdateInput =");
+
+    expect(matcherIndex).toBeGreaterThanOrEqual(0);
+    expect(matcherIndex).toBeLessThan(listOutputIndex);
+    expect(matcherIndex).toBeLessThan(createInputIndex);
+    expect(matcherIndex).toBeLessThan(updateInputIndex);
+    expect(types).toContain("create(input: RouterCreateInput): Promise<RouterCreateOutput>");
+    expect(types).toContain("update(input: RouterUpdateInput): Promise<RouterUpdateOutput>");
+  });
+
+  test("dedupes automation route and action declarations in router codemode types", () => {
+    const types = stringifyFamilyByNamespace({ namespace: "router", target: "codemode" });
+
+    expect(types).toContain("type RouterListOutput = AutomationRoute[];");
+    expect(types).toContain("type RouterGetOutput = AutomationRoute | null;");
+    expect(types).toContain("type RouterCreateOutput = AutomationRoute;");
+    expect(types).toContain("type RouterUpdateOutput = AutomationRoute | null;");
+    expect(types).toContain("action: AutomationRouteAction;");
+    expect(types).toContain("action: AutomationRouteActionInput;");
+    expect(types).toContain("action?: AutomationRouteActionInput;");
+    expect(types).toContain("target: AutomationWorkflowEventTarget;");
+    expect(types).toContain(
+      "type AutomationWorkflowEventTarget = AutomationWorkflowEventInstanceIdTarget | AutomationWorkflowEventStoredInstanceIdTarget;",
+    );
+    expect(types).toContain('kind: "stored_instance_id";');
+    expect(types).toContain("keyTemplate: string;");
+    expect(types).toContain(
+      "type AutomationRouteAction = AutomationStartWorkflowAction | AutomationSendWorkflowEventAction;",
+    );
+    expect(types).toContain(
+      "type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput;",
+    );
+    expect(types).toContain("type AutomationStartWorkflowAction = {");
+    expect(types).toContain("type AutomationStartWorkflowActionInput = {");
+    expect(types).toContain("workflowName: string;");
+    expect(types).toContain("workflowName?: string;");
+    expect(types.match(/type AutomationRoute =/g)).toHaveLength(1);
+    expect(types.match(/type AutomationRouteAction =/g)).toHaveLength(1);
+    expect(types.match(/type AutomationRouteActionInput =/g)).toHaveLength(1);
+    expect(types.match(/type AutomationWorkflowEventTarget =/g)).toHaveLength(1);
   });
 
   test("renders codemode prompt types from the default dynamic codemode family list", () => {

@@ -9,6 +9,7 @@ import {
   hooksRuntimeTools,
   type DurableHooksRuntime,
 } from "./automations-durable-hooks";
+import { automationRouterRuntimeTools } from "./automations-routing";
 import {
   automationWorkflowRuntimeTools,
   type AutomationWorkflowRuntime,
@@ -56,6 +57,12 @@ describe("automation runtime tools", () => {
       "store.set",
       "store.delete",
       "store.list",
+    ]);
+    expect(automationRouterRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
+      "router.list",
+      "router.get",
+      "router.create",
+      "router.update",
     ]);
     expect(automationWorkflowRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
       "workflow.list",

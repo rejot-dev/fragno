@@ -1,102 +1,13 @@
 import type { FileSystemArtifact } from "../types";
 
 export const STARTER_AUTOMATION_SCRIPT_PATHS = {
-  workspaceRouter: "automations/router.cm.js",
   telegramUserLinking: "automations/telegram-user-linking.workflow.js",
   telegramUserPiLinking: "automations/telegram-user-pi-linking.workflow.js",
   telegramTestCommand: "automations/telegram-test-command.workflow.js",
+  piDefaultAgentConfigure: "automations/pi-default-agent-configure.workflow.js",
 } as const;
 
 export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
-  "automations/router.cm.js": `async () => {
-  const event = await state.readFile("/context/event.json").then(JSON.parse);
-
-  const instanceIdForEvent = (prefix) => {
-    return prefix + "-" + event.id.replace(/[^a-zA-Z0-9-_]/g, "-");
-  };
-
-  if (event.source === "pi" && event.eventType === "capability.configured") {
-    const harness = event.payload.harnesses[0];
-    const model = event.payload.modelCatalog[0];
-
-    if (harness && model) {
-      await store.set({
-        key: "pi/pi-default-agent",
-        value: harness.id + "::" + model.provider + "::" + model.name,
-        actor: event.actor,
-        description: "Default Pi agent for automation-created sessions.",
-        category: ["pi"],
-      });
-    }
-  }
-
-  if (
-    event.source === "telegram" &&
-    event.eventType === "message.received" &&
-    typeof event.payload.text === "string"
-  ) {
-    const text = event.payload.text;
-
-    if (text === "/start") {
-      const instanceId = instanceIdForEvent("telegram-link");
-      await workflow.createInstance({
-        workflowName: "automation-codemode-script",
-        remoteWorkflowName: "telegram-user-linking",
-        instanceId,
-        params: {
-          automationEvent: event,
-          workflowInstanceId: instanceId,
-          workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
-        },
-      });
-    }
-
-    if (text === "/test") {
-      await workflow.createInstance({
-        workflowName: "automation-codemode-script",
-        remoteWorkflowName: "telegram-test-command",
-        instanceId: instanceIdForEvent("telegram-test"),
-        params: {
-          automationEvent: event,
-          workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
-        },
-      });
-    }
-
-    if (text === "/pi" || !text.startsWith("/")) {
-      await workflow.createInstance({
-        workflowName: "automation-codemode-script",
-        remoteWorkflowName: "telegram-user-pi-linking",
-        instanceId: instanceIdForEvent("telegram-pi"),
-        params: {
-          automationEvent: event,
-          workflowScriptPath: "/workspace/automations/telegram-user-pi-linking.workflow.js",
-        },
-      });
-    }
-  }
-
-  if (event.source === "otp" && event.eventType === "identity.claim.completed") {
-    const otpId = event.payload.otpId;
-
-    if (event.actor.source === "telegram") {
-      const workflowBinding = await store.get({
-        key: "telegram/claim-workflow/" + otpId,
-      });
-      const instanceId = workflowBinding?.value ?? "";
-
-      if (instanceId) {
-        await workflow.sendEvent({
-          workflowName: "automation-codemode-script",
-          instanceId,
-          type: "identity-claim-completed",
-          payload: event,
-        });
-      }
-    }
-  }
-};
-`,
   "automations/telegram-user-linking.workflow.js": `defineWorkflow(
   { name: "telegram-user-linking" },
   async (event, step) => {
@@ -353,6 +264,46 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArti
     });
 
     return { sessionId: piSession.sessionId };
+  },
+);
+`,
+  "automations/pi-default-agent-configure.workflow.js": `defineWorkflow(
+  { name: "pi-default-agent-configure" },
+  async (event, step) => {
+    const automationEvent = event.payload.automationEvent;
+
+    if (
+      automationEvent.source !== "pi" ||
+      automationEvent.eventType !== "capability.configured"
+    ) {
+      return { skipped: true, reason: "not-pi-capability-configured" };
+    }
+
+    const harnessId = automationEvent.payload?.harnesses?.[0]?.id;
+    const modelProvider = automationEvent.payload?.modelCatalog?.[0]?.provider;
+    const modelName = automationEvent.payload?.modelCatalog?.[0]?.name;
+
+    if (
+      typeof harnessId !== "string" ||
+      typeof modelProvider !== "string" ||
+      typeof modelName !== "string"
+    ) {
+      return { skipped: true, reason: "missing-pi-default-agent-parts" };
+    }
+
+    const value = harnessId + "::" + modelProvider + "::" + modelName;
+
+    await step.do("store default pi agent", async () => {
+      await store.set({
+        key: "pi/pi-default-agent",
+        value,
+        actor: automationEvent.actor,
+        description: "Default Pi agent for automation-created sessions.",
+        category: ["pi"],
+      });
+    });
+
+    return { stored: true, value };
   },
 );
 `,

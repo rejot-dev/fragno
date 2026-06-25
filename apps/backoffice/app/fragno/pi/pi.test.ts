@@ -3,6 +3,7 @@ import { describe, expect, test, vi, assert } from "vitest";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import * as files from "@/files";
 import { EMPTY_BASH_HOST_CONTEXT } from "@/fragno/runtime-tools/bash-host.test-utils";
+import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
 import { UPLOAD_PROVIDER_DATABASE, type UploadAdminConfigResponse } from "@/fragno/upload";
 import type { UploadFileRecord } from "@/routes/backoffice/connections/upload/data";
 
@@ -27,6 +28,7 @@ const createMockBashContext = (): PiBashCommandContext => ({
   automation: null,
   automations: {
     runtime: {
+      ...createUnavailableAutomationRouterRuntime(),
       get: async () => {
         throw new Error("not available in test");
       },
@@ -285,13 +287,15 @@ describe("Pi bash tool", () => {
     } as never);
 
     const result = await tool.execute("tool-call-automations-1", {
-      script: "cat /system/automations/router.cm.js",
+      script: "cat /system/automations/workspace-file-initialization.workflow.js",
     } as never);
     expect(result.details).toMatchObject({
       stderr: "",
       exitCode: 0,
     });
-    expect((result.details as { stdout: string }).stdout).toContain("workflow.createInstance");
+    expect((result.details as { stdout: string }).stdout).toContain(
+      "workspace-file-initialization",
+    );
   });
 
   test("mounts resend thread snapshots when a resend runtime is available", async () => {

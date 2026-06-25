@@ -5,8 +5,9 @@ import { InMemoryFs } from "just-bash";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 
 import { createBashHost } from "../bash-host";
+import type { RegisteredAutomationsRuntime } from "../bash-host";
 import { EMPTY_BASH_HOST_CONTEXT } from "../bash-host.test-utils";
-import type { AutomationStoreRuntime } from "./automations-bindings";
+import { createUnavailableAutomationRouterRuntime } from "./automations-routing";
 import {
   createPiRouteRuntime,
   type PiRuntime,
@@ -160,7 +161,8 @@ const automationStoreActor = {
   id: "actor-1",
 } as const;
 
-const createAutomationStoreRuntime = (): AutomationStoreRuntime => ({
+const createAutomationStoreRuntime = (): RegisteredAutomationsRuntime => ({
+  ...createUnavailableAutomationRouterRuntime(),
   get: async ({ key }) => {
     if (key !== "telegram/actor-1") {
       return null;

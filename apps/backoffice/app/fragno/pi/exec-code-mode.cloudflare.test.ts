@@ -13,8 +13,9 @@ import { MasterFileSystem } from "@/files/master-file-system";
 import type { ResolvedFileMount } from "@/files/types";
 
 import { runBackofficeCodemodeWorkflow } from "../codemode/workflow-execute";
+import type { RegisteredAutomationsRuntime } from "../runtime-tools/bash-host";
 import { EMPTY_BASH_HOST_CONTEXT } from "../runtime-tools/bash-host.test-utils";
-import type { AutomationStoreRuntime } from "../runtime-tools/families/automations-bindings";
+import { createUnavailableAutomationRouterRuntime } from "../runtime-tools/families/automations-routing";
 import type { AutomationWorkflowRuntime } from "../runtime-tools/families/automations-workflow";
 import { createTrustedSystemBackofficeToolContext } from "../runtime-tools/runtime-tools";
 import { runtimeToolFamilies } from "../runtime-tools/tool-families";
@@ -282,7 +283,8 @@ describe("Pi execCodeMode tool", () => {
   test("calls automation identity domain tools through codemode", async () => {
     const calls: unknown[] = [];
     const actor = { scope: "external", source: "telegram", type: "chat", id: "chat-123" } as const;
-    const automationsRuntime: AutomationStoreRuntime = {
+    const automationsRuntime: RegisteredAutomationsRuntime = {
+      ...createUnavailableAutomationRouterRuntime(),
       get: async (input) => {
         calls.push(["get", input]);
         return {
@@ -365,7 +367,8 @@ describe("Pi execCodeMode tool", () => {
   test("rejects domain tool validation errors so the agent records a failed tool result", async () => {
     const calls: unknown[] = [];
     const actor = { scope: "external", source: "telegram", type: "chat", id: "chat-123" } as const;
-    const automationsRuntime: AutomationStoreRuntime = {
+    const automationsRuntime: RegisteredAutomationsRuntime = {
+      ...createUnavailableAutomationRouterRuntime(),
       get: async (input) => {
         calls.push(["get", input]);
         return null;
@@ -406,7 +409,7 @@ const createExecCodeModeTool = async ({
   automationsRuntime,
   workflowRuntime,
 }: {
-  automationsRuntime?: AutomationStoreRuntime;
+  automationsRuntime?: RegisteredAutomationsRuntime;
   workflowRuntime?: AutomationWorkflowRuntime;
 }) => {
   const fs = createTestMasterFileSystem({});

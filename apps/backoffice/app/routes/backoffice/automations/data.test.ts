@@ -39,8 +39,9 @@ beforeEach(() => {
 describe("automation backoffice workspace data", () => {
   test("shows filesystem scripts from both roots", async () => {
     const fileSystem = createStubAutomationFileSystem({
-      "/system/automations/router.cm.js": "async () => true",
-      "/workspace/automations/router.cm.js": "async () => true",
+      "/system/automations/workspace-file-initialization.workflow.js":
+        "defineWorkflow({ name: 'workspace-file-initialization' }, async () => {})",
+      "/workspace/automations/custom.cm.js": "async () => true",
       "/workspace/automations/unbound.sh": 'echo "unbound"',
       "/workspace/automations/workflow.workflow.js":
         "defineWorkflow({ name: 'x' }, async () => {})",
@@ -57,19 +58,19 @@ describe("automation backoffice workspace data", () => {
     expect(result.scripts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "automation-script:system:router.cm.js",
-          key: "router.cm",
+          id: "automation-script:system:workspace-file-initialization.workflow.js",
+          key: "workspace-file-initialization.workflow",
           layer: "system",
           readOnly: true,
-          path: "router.cm.js",
-          enabled: true,
+          path: "workspace-file-initialization.workflow.js",
+          enabled: false,
         }),
         expect.objectContaining({
-          id: "automation-script:workspace:router.cm.js",
-          key: "router.cm",
+          id: "automation-script:workspace:custom.cm.js",
+          key: "custom.cm",
           layer: "workspace",
           readOnly: false,
-          path: "router.cm.js",
+          path: "custom.cm.js",
           enabled: true,
         }),
         expect.objectContaining({

@@ -4,6 +4,7 @@ import { createUnsupportedOperationFileSystemError } from "@/files/fs-errors";
 import { createUnsupportedFileSystem } from "@/files/interface";
 import { MasterFileSystem } from "@/files/master-file-system";
 import { executeBashAutomation } from "@/fragno/runtime-tools/automation-host";
+import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
 
 import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "../contracts";
 import {
@@ -13,6 +14,7 @@ import {
 } from "./runtime";
 
 const runtime: AutomationRuntime = {
+  ...createUnavailableAutomationRouterRuntime(),
   get: async () => null,
   set: async (input) => ({
     key: input.key,

@@ -3,6 +3,7 @@ import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import { FileSystemError } from "@/files/fs-errors";
 import { MasterFileSystem } from "@/files/master-file-system";
 import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
 import type { PiCodemodeWorkflowParams } from "@/fragno/pi/pi-codemode-workflow";
@@ -23,6 +24,9 @@ export type AutomationCodemodeWorkflowParams = {
   workflowScriptPath?: string;
 };
 
+const automationEventOrganizationIds = (event: AutomationEvent) =>
+  event.scope.kind === "org" || event.scope.kind === "project" ? [event.scope.orgId] : undefined;
+
 const createWorkflowAutomationContext = ({
   runtime,
   params,
@@ -33,13 +37,12 @@ const createWorkflowAutomationContext = ({
   fileSystem: MasterFileSystem;
 }): AutomationRuntimeHostContext => {
   const kernel = new BackofficeKernel({ objects: runtime.objects });
+  const organizationIds = automationEventOrganizationIds(params.automationEvent);
   const execution: BackofficeExecutionContext = {
     actor: {
       type: "automation",
       id: `automation:${params.automationEvent.id}`,
-      ...(params.automationEvent.scope.kind === "org"
-        ? { organizationIds: [params.automationEvent.scope.orgId] }
-        : {}),
+      ...(organizationIds ? { organizationIds } : {}),
     },
     scope: params.automationEvent.scope,
   };
@@ -110,6 +113,14 @@ const createWorkflowAutomationContext = ({
   };
 };
 
+const isMissingWorkflowScriptError = (error: unknown) => {
+  if (error instanceof FileSystemError) {
+    return error.code === "ENOENT";
+  }
+
+  return error instanceof Error && /ENOENT:.*no such file or directory/u.test(error.message);
+};
+
 export const defineAutomationCodemodeWorkflow = (
   config: AutomationFileSystemConfig & { env?: CloudflareEnv; runtime?: BackofficeRuntimeServices },
 ) =>
@@ -119,14 +130,13 @@ export const defineAutomationCodemodeWorkflow = (
     }
 
     const params = event.payload as AutomationCodemodeWorkflowParams;
+    const organizationIds = automationEventOrganizationIds(params.automationEvent);
     const resolvedFs = await resolveAutomationFileSystem(config, {
       execution: {
         actor: {
           type: "automation",
           id: `automation:${params.automationEvent.id}`,
-          ...(params.automationEvent.scope.kind === "org"
-            ? { organizationIds: [params.automationEvent.scope.orgId] }
-            : {}),
+          ...(organizationIds ? { organizationIds } : {}),
         },
         scope: params.automationEvent.scope,
       },
@@ -136,11 +146,22 @@ export const defineAutomationCodemodeWorkflow = (
       throw new Error("Automation filesystem must be a MasterFileSystem.");
     }
 
-    const script =
-      params.script ??
-      (params.workflowScriptPath
-        ? await resolvedFs.readFile(params.workflowScriptPath, "utf-8")
-        : null);
+    let script = params.script ?? null;
+    if (!script && params.workflowScriptPath) {
+      try {
+        script = await resolvedFs.readFile(params.workflowScriptPath, "utf-8");
+      } catch (error) {
+        if (!isMissingWorkflowScriptError(error)) {
+          throw error;
+        }
+
+        return {
+          skipped: true,
+          reason: "workflow-script-not-found",
+          workflowScriptPath: params.workflowScriptPath,
+        };
+      }
+    }
     if (!script) {
       throw new Error("Automation codemode workflow requires either script or workflowScriptPath.");
     }

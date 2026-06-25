@@ -43,7 +43,7 @@ describe("createDefaultAutomationFileSystem", () => {
     const catalog = await loadAutomationCatalog(fs);
 
     expect(catalog.scripts.map((script) => script.absolutePath)).toContain(
-      "/system/automations/router.cm.js",
+      "/system/automations/workspace-file-initialization.workflow.js",
     );
   });
 
@@ -56,7 +56,7 @@ describe("createDefaultAutomationFileSystem", () => {
     const catalog = await loadAutomationCatalog(fs);
 
     expect(catalog.scripts.map((script) => script.absolutePath)).toContain(
-      "/system/automations/router.cm.js",
+      "/system/automations/workspace-file-initialization.workflow.js",
     );
   });
 });

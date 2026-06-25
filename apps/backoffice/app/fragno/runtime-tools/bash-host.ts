@@ -17,6 +17,7 @@ import type { AutomationCommandContext, BashAutomationCommandResult } from "./au
 import type { RegisteredApiCommandContext } from "./families/api-runtime";
 import type { AutomationStoreRuntime } from "./families/automations-bindings";
 import type { DurableHooksRuntime } from "./families/automations-durable-hooks";
+import type { AutomationRouterRuntime } from "./families/automations-routing";
 import type { AutomationWorkflowRuntime } from "./families/automations-workflow";
 import type { BackofficeCapabilitiesRuntime } from "./families/backoffice-capabilities";
 import type { EventRuntime } from "./families/event-runtime";
@@ -30,8 +31,10 @@ import type { SandboxRuntime } from "./families/sandbox-runtime";
 import type { RegisteredTelegramCommandContext } from "./families/telegram-runtime";
 import { isomorphicGitCommand } from "./isomorphic-git-command";
 
+export type RegisteredAutomationsRuntime = AutomationStoreRuntime & AutomationRouterRuntime;
+
 export type RegisteredAutomationsBashCommandContext = {
-  runtime: AutomationStoreRuntime;
+  runtime: RegisteredAutomationsRuntime;
 };
 
 export type RegisteredEventBashCommandContext = AutomationCommandContext & {

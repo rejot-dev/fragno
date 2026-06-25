@@ -32,6 +32,9 @@ import { createRouteBackedAutomationStoreRuntime } from "./bindings-route-runtim
 import type { AutomationEvent } from "./contracts";
 import { createRouteBackedDurableHooksRuntime } from "./durable-hooks-route-runtime";
 import { createTestMasterFileSystem } from "./engine/test-master-file-system.test-utils";
+import type { AutomationRouteDefinition } from "./routing";
+import { createRouteBackedAutomationRouterRuntime } from "./routing-route-runtime";
+import type { AutomationRouteCreateInput, AutomationRouteUpdateInput } from "./routing-schemas";
 import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
 
 type ScenarioVars = Record<string, unknown>;
@@ -504,6 +507,30 @@ type FileDiffInput = {
 
 type TimeAdvanceInput = string | number;
 
+type RouterCreateRouteInput = AutomationRouteCreateInput & { orgId: string; label?: string };
+
+type RouterUpdateRouteInput = AutomationRouteUpdateInput & { orgId: string; label?: string };
+
+type RouterSeedStarterInput = { orgId: string };
+
+type DeepPartial<T> = T extends readonly (infer TItem)[]
+  ? readonly DeepPartial<TItem>[]
+  : T extends object
+    ? { [TKey in keyof T]?: DeepPartial<T[TKey]> }
+    : T;
+
+type RouterRouteAssertionInput = {
+  orgId: string;
+  id: string;
+} & DeepPartial<AutomationRouteDefinition>;
+
+type RouterRoutesAssertionInput = {
+  orgId: string;
+  include?: readonly (string | ({ id: string } & DeepPartial<AutomationRouteDefinition>))[];
+  exclude?: readonly string[];
+  count?: number;
+};
+
 export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = ScenarioVars> = {
   given: {
     organization: {
@@ -517,6 +544,9 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
     };
     store: {
       entry(input: StoreEntryInput): BackofficeScenarioStep;
+    };
+    router: {
+      route(input: RouterCreateRouteInput): BackofficeScenarioStep;
     };
     connection: {
       configured(input: ConnectionConfiguredInput): BackofficeScenarioStep;
@@ -544,6 +574,11 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
     };
     automation: {
       ingestEvent(input: AutomationEvent): BackofficeScenarioStep;
+    };
+    router: {
+      seedStarter(input: RouterSeedStarterInput): BackofficeScenarioStep;
+      createRoute(input: RouterCreateRouteInput): BackofficeScenarioStep;
+      updateRoute(input: RouterUpdateRouteInput): BackofficeScenarioStep;
     };
     project: {
       create(input: ProjectCreateInput): BackofficeScenarioStep;
@@ -585,6 +620,11 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
       entry(input: StoreEntryInput): BackofficeScenarioStep;
       missing(input: Omit<StoreEntryInput, "value">): BackofficeScenarioStep;
       entries(input: StoreEntriesInput): BackofficeScenarioStep;
+    };
+    router: {
+      route(input: RouterRouteAssertionInput): BackofficeScenarioStep;
+      missing(input: { orgId: string; id: string }): BackofficeScenarioStep;
+      routes(input: RouterRoutesAssertionInput): BackofficeScenarioStep;
     };
     workflow: {
       instance(input: WorkflowInstanceInput): BackofficeScenarioStep;
@@ -1206,11 +1246,19 @@ const createStep = (
 const getStore = (ctx: BackofficeScenarioContext, orgId: string) =>
   createRouteBackedAutomationStoreRuntime({
     object: ctx.runtime.objects.automations.forOrg(orgId),
+    scope: { kind: "org", orgId },
   });
 
 const getWorkflow = (ctx: BackofficeScenarioContext, orgId: string) =>
   createRouteBackedAutomationWorkflowRuntime({
     object: ctx.runtime.objects.automations.forOrg(orgId),
+    scope: { kind: "org", orgId },
+  });
+
+const getRouter = (ctx: BackofficeScenarioContext, orgId: string) =>
+  createRouteBackedAutomationRouterRuntime({
+    object: ctx.runtime.objects.automations.forOrg(orgId),
+    scope: { kind: "org", orgId },
   });
 
 const getHooks = (ctx: BackofficeScenarioContext, orgId: string) =>
@@ -1640,6 +1688,19 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
 const assertPartialMatch = (actual: unknown, expected: unknown, path = "value") => {
+  if (Array.isArray(expected)) {
+    if (!Array.isArray(actual)) {
+      throw new Error(`Expected ${path} to be an array, got ${JSON.stringify(actual)}.`);
+    }
+    if (actual.length !== expected.length) {
+      throw new Error(`Expected ${path} to have ${expected.length} items, got ${actual.length}.`);
+    }
+    expected.forEach((expectedValue, index) => {
+      assertPartialMatch(actual[index], expectedValue, `${path}[${index}]`);
+    });
+    return;
+  }
+
   if (!isRecord(expected)) {
     if (actual !== expected) {
       throw new Error(
@@ -1736,13 +1797,16 @@ const buildStepBuilders = <
           "given",
           "organization.exists",
           `setup organization ${input.id}`,
-          (ctx) => {
+          async (ctx) => {
             ctx.rememberOrg(input.id);
             ctx.vars[`organization:${input.id}`] = {
               id: input.id,
               name: input.name,
               ownerUserId: input.ownerUserId,
             };
+            await ctx.runtime.objects.automations
+              .forOrg(input.id)
+              .seedStarterAutomationRoutes({ scope: { kind: "org", orgId: input.id } });
           },
           { drain: false },
         ),
@@ -1803,6 +1867,19 @@ const buildStepBuilders = <
               value: input.value,
               actor: null,
             });
+          },
+        ),
+    },
+    router: {
+      route: (input) =>
+        createStep(
+          "given",
+          "router.route",
+          input.label ?? `setup route ${input.orgId}:${input.id}`,
+          async (ctx) => {
+            ctx.rememberOrg(input.orgId);
+            const { orgId, label: _label, ...route } = input;
+            await getRouter(ctx, orgId).createRoute(route);
           },
         ),
     },
@@ -1975,6 +2052,45 @@ const buildStepBuilders = <
           "automation.ingestEvent",
           `ingest automation event ${input.source}/${input.eventType}`,
           (ctx) => ingestAutomationEvent(ctx, input),
+        ),
+    },
+    router: {
+      seedStarter: (input) =>
+        createStep(
+          "when",
+          "router.seedStarter",
+          `seed starter routes for ${input.orgId}`,
+          async (ctx) => {
+            ctx.rememberOrg(input.orgId);
+            await ctx.runtime.objects.automations
+              .forOrg(input.orgId)
+              .seedStarterAutomationRoutes({ scope: { kind: "org", orgId: input.orgId } });
+          },
+        ),
+      createRoute: (input) =>
+        createStep(
+          "when",
+          "router.createRoute",
+          input.label ?? `create route ${input.orgId}:${input.id}`,
+          async (ctx) => {
+            ctx.rememberOrg(input.orgId);
+            const { orgId, label: _label, ...route } = input;
+            await getRouter(ctx, orgId).createRoute(route);
+          },
+        ),
+      updateRoute: (input) =>
+        createStep(
+          "when",
+          "router.updateRoute",
+          input.label ?? `update route ${input.orgId}:${input.id}`,
+          async (ctx) => {
+            ctx.rememberOrg(input.orgId);
+            const { orgId, label: _label, ...patch } = input;
+            const route = await getRouter(ctx, orgId).updateRoute(patch);
+            if (!route) {
+              throw new Error(`Automation route ${input.id} was not found.`);
+            }
+          },
         ),
     },
     project: {
@@ -2345,6 +2461,81 @@ const buildStepBuilders = <
             }
           },
         ),
+    },
+    router: {
+      route: (input) =>
+        createStep(
+          "then",
+          "router.route",
+          `assert route ${input.orgId}:${input.id}`,
+          async (ctx) => {
+            ctx.rememberOrg(input.orgId);
+            const route = await getRouter(ctx, input.orgId).getRoute({ id: input.id });
+            if (!route) {
+              throw new Error(`Expected automation route ${input.id} to exist.`);
+            }
+
+            const { orgId: _orgId, ...expected } = input;
+            assertPartialMatch(route, expected, `route.${input.id}`);
+          },
+        ),
+      missing: (input) =>
+        createStep(
+          "then",
+          "router.missing",
+          `assert route missing ${input.orgId}:${input.id}`,
+          async (ctx) => {
+            ctx.rememberOrg(input.orgId);
+            const route = await getRouter(ctx, input.orgId).getRoute({ id: input.id });
+            if (route) {
+              throw new Error(
+                `Expected automation route ${input.id} to be missing, got ${JSON.stringify(route)}.`,
+              );
+            }
+          },
+        ),
+      routes: (input) =>
+        createStep("then", "router.routes", `assert routes for ${input.orgId}`, async (ctx) => {
+          ctx.rememberOrg(input.orgId);
+          const routes = await getRouter(ctx, input.orgId).listRoutes();
+          if (typeof input.count === "number" && routes.length !== input.count) {
+            throw new Error(
+              `Expected ${input.count} automation routes, got ${routes.length}: ${JSON.stringify(
+                routes.map((route) => route.id),
+              )}`,
+            );
+          }
+
+          for (const expected of input.include ?? []) {
+            if (typeof expected === "string") {
+              if (!routes.some((route) => route.id === expected)) {
+                throw new Error(
+                  `Expected automation route ${expected} to exist. Routes: ${JSON.stringify(
+                    routes.map((route) => route.id),
+                  )}`,
+                );
+              }
+              continue;
+            }
+
+            const route = routes.find((candidate) => candidate.id === expected.id);
+            if (!route) {
+              throw new Error(
+                `Expected automation route ${expected.id} to exist. Routes: ${JSON.stringify(
+                  routes.map((candidate) => candidate.id),
+                )}`,
+              );
+            }
+            assertPartialMatch(route, expected, `route.${expected.id}`);
+          }
+
+          const unexpected = (input.exclude ?? []).filter((id) =>
+            routes.some((route) => route.id === id),
+          );
+          if (unexpected.length > 0) {
+            throw new Error(`Expected routes to be missing: ${JSON.stringify(unexpected)}.`);
+          }
+        }),
     },
     workflow: {
       instance: (input) =>

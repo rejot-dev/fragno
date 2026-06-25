@@ -19,6 +19,7 @@ import type {
   SandboxInstanceRecord,
   SandboxInstanceRequestInput,
   SandboxProvider,
+  StarterAutomationRoutesSeedResult,
 } from "@/fragno/automation";
 import type { DurableHookQueueOptions, DurableHookRepository } from "@/fragno/durable-hooks";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
@@ -85,6 +86,9 @@ export type AutomationsObject = FetchObject &
   DurableHookObject & {
     triggerIngestEvent(event: AutomationEvent): Promise<AutomationIngestResult>;
     ingestEvent(event: AutomationEvent): Promise<AutomationIngestResult>;
+    seedStarterAutomationRoutes(input?: {
+      scope?: BackofficeContextScope;
+    }): Promise<StarterAutomationRoutesSeedResult>;
     resolveProjectForExecution(input: {
       projectId?: string;
       slug?: string;

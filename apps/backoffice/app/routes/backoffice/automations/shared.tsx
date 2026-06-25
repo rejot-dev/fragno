@@ -3,6 +3,7 @@ import { Link, isRouteErrorResponse } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
+import type { AutomationRouteDefinition } from "@/fragno/automation";
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
 
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "../route-errors";
@@ -29,6 +30,8 @@ export type AutomationScriptItem = {
   enabled: boolean;
 };
 
+export type AutomationRouteItem = AutomationRouteDefinition;
+
 export type AutomationStoreItem = {
   id: string;
   key: string;
@@ -47,13 +50,22 @@ export type AutomationLayoutContext = {
   scopeOptions: AutomationScopeOption[];
   projectsError: string | null;
   scripts: AutomationScriptItem[];
+  routes: AutomationRouteItem[];
   storeEntries: AutomationStoreItem[];
   storePrefix: string;
   scriptsError: string | null;
+  routesError: string | null;
   storeEntriesError: string | null;
 };
 
-export type AutomationTab = "scripts" | "store" | "api" | "events" | "events-catalog" | "mcp";
+export type AutomationTab =
+  | "scripts"
+  | "router"
+  | "store"
+  | "api"
+  | "events"
+  | "events-catalog"
+  | "mcp";
 
 export const formatTimestamp = (value?: string | Date | null) => {
   if (!value) {
@@ -177,6 +189,11 @@ export function AutomationTabs({
       id: "scripts" as const,
       label: "Automations",
       to: automationScopeTabPath(selectedScope, "scripts"),
+    },
+    {
+      id: "router" as const,
+      label: "Router",
+      to: automationScopeTabPath(selectedScope, "router"),
     },
     {
       id: "store" as const,

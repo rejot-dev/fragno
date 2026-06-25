@@ -1,4 +1,8 @@
-import { column, idColumn, schema } from "@fragno-dev/db/schema";
+import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
+
+import type { AutomationEventMatcher, AutomationRouteAction } from "./routing";
+
+const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
 
 export const automationFragmentSchema = schema("automations", (s) => {
   return s
@@ -65,5 +69,27 @@ export const automationFragmentSchema = schema("automations", (s) => {
         .createIndex("idx_sandbox_instance_provider", ["provider"])
         .createIndex("idx_sandbox_instance_status", ["status"])
         .createIndex("idx_sandbox_instance_workflowInstanceId", ["workflowInstanceId"]);
+    })
+    .addTable("automation_route", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("name", column("string"))
+        .addColumn("enabled", column("bool"))
+        .addColumn("source", column("string"))
+        .addColumn("eventType", column("string"))
+        .addColumn("matcher", jsonColumn<AutomationEventMatcher>().nullable())
+        .addColumn("action", jsonColumn<AutomationRouteAction>())
+        .addColumn("priority", column("integer"))
+        .addColumn("description", column("text").nullable())
+        .addColumn(
+          "createdAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .addColumn(
+          "updatedAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .createIndex("idx_automation_route_enabled_source_type", ["enabled", "source", "eventType"])
+        .createIndex("idx_automation_route_priority_id", ["priority", "id"]);
     });
 });

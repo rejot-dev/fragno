@@ -11,7 +11,8 @@ import { MasterFileSystem } from "@/files/master-file-system";
 import type { ResolvedFileMount } from "@/files/types";
 import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
-import type { AutomationStoreRuntime } from "@/fragno/runtime-tools/families/automations-bindings";
+import type { RegisteredAutomationsRuntime } from "@/fragno/runtime-tools/bash-host";
+import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
 import { type EventRuntime } from "@/fragno/runtime-tools/families/event";
 import type { McpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
 import { type OtpRuntime } from "@/fragno/runtime-tools/families/otp";
@@ -78,7 +79,8 @@ describe("runBackofficeCodemode", () => {
   test("calls automation identity tools through codemode providers", async () => {
     const calls: unknown[] = [];
     const actor = { scope: "external", source: "telegram", type: "chat", id: "chat-123" } as const;
-    const automationsRuntime: AutomationStoreRuntime = {
+    const automationsRuntime: RegisteredAutomationsRuntime = {
+      ...createUnavailableAutomationRouterRuntime(),
       get: async (input) => {
         calls.push(["get", input]);
         return {
@@ -478,7 +480,8 @@ describe("runBackofficeCodemode", () => {
   test("rejects invalid runtime tool input before calling the runtime", async () => {
     const calls: unknown[] = [];
     const actor = { scope: "external", source: "telegram", type: "chat", id: "chat-123" } as const;
-    const automationsRuntime: AutomationStoreRuntime = {
+    const automationsRuntime: RegisteredAutomationsRuntime = {
+      ...createUnavailableAutomationRouterRuntime(),
       get: async (input) => {
         calls.push(["get", input]);
         return null;
@@ -681,9 +684,11 @@ describe("runBackofficeCodemode", () => {
 
       const projectStore = createRouteBackedAutomationStoreRuntime({
         object: runtime.objects.automations.forProject({ orgId: "org-1", projectId: "project-1" }),
+        scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
       });
       const orgStore = createRouteBackedAutomationStoreRuntime({
         object: runtime.objects.automations.forOrg("org-1"),
+        scope: { kind: "org", orgId: "org-1" },
       });
       await expect(projectStore.get({ key: "project-key" })).resolves.toMatchObject({
         value: "from-project",

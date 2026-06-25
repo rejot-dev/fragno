@@ -38,6 +38,7 @@ export default [
       route("automations/:scopeKind/:scopeId", "routes/backoffice/automations/scope-layout.tsx", [
         index("routes/backoffice/automations/scope-index.tsx"),
         route("scripts", "routes/backoffice/automations/scripts.tsx"),
+        route("router", "routes/backoffice/automations/router.tsx"),
         route("store", "routes/backoffice/automations/store.tsx"),
         route("api", "routes/backoffice/automations/api.tsx"),
         route("events", "routes/backoffice/automations/events.tsx"),

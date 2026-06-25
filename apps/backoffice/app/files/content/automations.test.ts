@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 
+import { STARTER_AUTOMATION_ROUTES } from "@/fragno/automation/content/starter-routing";
 import { AUTOMATION_SOURCE_EVENT_TYPES } from "@/fragno/automation/contracts";
 
 import {
@@ -60,65 +61,77 @@ describe("automation content", () => {
     expect(workflow).toContain("store.set(");
   });
 
-  test("workspace router starts user-editable workflows and system router starts upload setup", () => {
-    const router = readWorkspaceAutomation(STARTER_AUTOMATION_SCRIPT_PATHS.workspaceRouter);
-    const systemRouter = readSystemAutomation(SYSTEM_AUTOMATION_SCRIPT_PATHS.systemRouter);
+  test("DB starter routes start user-editable workflows", () => {
+    const routes = STARTER_AUTOMATION_ROUTES;
     const identityClaimCompleted = AUTOMATION_SOURCE_EVENT_TYPES.otp.identityClaimCompleted;
     const piCapabilityConfigured = AUTOMATION_SOURCE_EVENT_TYPES.pi.capabilityConfigured;
 
-    expect({
-      routerHandlesContractEvent: router.includes(
-        `event.eventType === "${identityClaimCompleted}"`,
-      ),
-      routerUsesEventIdPrefixForStart: router.includes('instanceIdForEvent("telegram-link")'),
-      routerStartsTelegramUserLinkingWorkflow:
-        router.includes('remoteWorkflowName: "telegram-user-linking"') &&
-        router.includes('"/workspace/automations/telegram-user-linking.workflow.js"'),
-      routerSendsWorkflowSafeEvent: router.includes('type: "identity-claim-completed"'),
-      routerStartsTelegramTestCommandWorkflow:
-        router.includes("workflowScriptPath:") &&
-        router.includes('"/workspace/automations/telegram-test-command.workflow.js"'),
-      routerStartsTelegramUserPiLinkingWorkflow:
-        router.includes('remoteWorkflowName: "telegram-user-pi-linking"') &&
-        router.includes('"/workspace/automations/telegram-user-pi-linking.workflow.js"'),
-      routerHandlesPiConfigured:
-        router.includes('event.source === "pi"') &&
-        router.includes(`event.eventType === "${piCapabilityConfigured}"`),
-      systemRouterStartsWorkspaceFileInitializationWorkflow:
-        systemRouter.includes(
-          'event.source === "auth" && event.eventType === "organization.created"',
-        ) &&
-        systemRouter.includes('remoteWorkflowName: "workspace-file-initialization"') &&
-        systemRouter.includes('"/system/automations/workspace-file-initialization.workflow.js"'),
-      systemRouterConfiguresProjectFileSystem:
-        systemRouter.includes(
-          'event.source === "automations" && event.eventType === "project.created"',
-        ) && systemRouter.includes("internal.projectFilesConfigure({ projectId })"),
-      routerStoresDefaultPiAgent:
-        router.includes("event.payload.harnesses") &&
-        router.includes("event.payload.modelCatalog") &&
-        router.includes('key: "pi/pi-default-agent"') &&
-        router.includes('value: harness.id + "::" + model.provider + "::" + model.name'),
-    }).toEqual({
-      routerHandlesContractEvent: true,
-      routerUsesEventIdPrefixForStart: true,
-      routerStartsTelegramUserLinkingWorkflow: true,
-      routerSendsWorkflowSafeEvent: true,
-      routerStartsTelegramTestCommandWorkflow: true,
-      routerStartsTelegramUserPiLinkingWorkflow: true,
-      routerHandlesPiConfigured: true,
-      systemRouterStartsWorkspaceFileInitializationWorkflow: true,
-      systemRouterConfiguresProjectFileSystem: true,
-      routerStoresDefaultPiAgent: true,
-    });
-  });
-
-  test("project creation system router configures project upload database filesystem", () => {
-    const router = readSystemAutomation(SYSTEM_AUTOMATION_SCRIPT_PATHS.systemRouter);
-
-    expect(router).toContain('event.eventType === "project.created"');
-    expect(router).toContain("event.subject?.projectId ?? event.payload.project?.id");
-    expect(router).toContain("internal.projectFilesConfigure({ projectId })");
+    expect(identityClaimCompleted).toBe("identity.claim.completed");
+    expect(piCapabilityConfigured).toBe("capability.configured");
+    expect(routes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "telegram",
+          eventType: "message.received",
+          action: expect.objectContaining({
+            remoteWorkflowName: "telegram-user-linking",
+            workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
+          }),
+        }),
+        expect.objectContaining({
+          source: "telegram",
+          eventType: "message.received",
+          action: expect.objectContaining({
+            remoteWorkflowName: "telegram-test-command",
+            workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
+          }),
+        }),
+        expect.objectContaining({
+          source: "telegram",
+          eventType: "message.received",
+          action: expect.objectContaining({
+            remoteWorkflowName: "telegram-user-pi-linking",
+            workflowScriptPath: "/workspace/automations/telegram-user-pi-linking.workflow.js",
+          }),
+        }),
+        expect.objectContaining({
+          source: "auth",
+          eventType: "organization.created",
+          action: expect.objectContaining({
+            remoteWorkflowName: "workspace-file-initialization",
+            workflowScriptPath: "/system/automations/workspace-file-initialization.workflow.js",
+          }),
+        }),
+        expect.objectContaining({
+          source: "automations",
+          eventType: "project.created",
+          action: expect.objectContaining({
+            remoteWorkflowName: "project-files-configure",
+            workflowScriptPath: "/system/automations/project-files-configure.workflow.js",
+          }),
+        }),
+        expect.objectContaining({
+          source: "otp",
+          eventType: "identity.claim.completed",
+          action: expect.objectContaining({
+            kind: "send_workflow_event",
+            target: {
+              kind: "stored_instance_id",
+              keyTemplate: "telegram/claim-workflow/${event.payload.otpId}",
+            },
+            eventType: "identity-claim-completed",
+          }),
+        }),
+        expect.objectContaining({
+          source: "pi",
+          eventType: "capability.configured",
+          action: expect.objectContaining({
+            remoteWorkflowName: "pi-default-agent-configure",
+            workflowScriptPath: "/workspace/automations/pi-default-agent-configure.workflow.js",
+          }),
+        }),
+      ]),
+    );
   });
 
   test("organization creation workflow configures upload database connection", () => {
@@ -131,5 +144,24 @@ describe("automation content", () => {
     expect(workflow).toContain("connections.configure({");
     expect(workflow).toContain('id: "upload"');
     expect(workflow).toContain('payload: { provider: "database" }');
+  });
+
+  test("project creation workflow configures project files", () => {
+    const workflow = readSystemAutomation(SYSTEM_AUTOMATION_SCRIPT_PATHS.projectFilesConfigure);
+
+    expect(workflow).toContain('{ name: "project-files-configure" }');
+    expect(workflow).toContain('automationEvent.eventType !== "project.created"');
+    expect(workflow).toContain("internal.projectFilesConfigure({ projectId })");
+  });
+
+  test("Pi capability workflow stores the default agent", () => {
+    const workflow = readWorkspaceAutomation(
+      STARTER_AUTOMATION_SCRIPT_PATHS.piDefaultAgentConfigure,
+    );
+
+    expect(workflow).toContain('{ name: "pi-default-agent-configure" }');
+    expect(workflow).toContain('automationEvent.eventType !== "capability.configured"');
+    expect(workflow).toContain('key: "pi/pi-default-agent"');
+    expect(workflow).toContain('category: ["pi"]');
   });
 });
