@@ -12,8 +12,10 @@ import {
   type LofiRuntimeStatus,
 } from "@fragno-dev/lofi";
 
+import { backofficeScopeRouteId } from "@/backoffice-runtime/scope-codec";
 import { automationFragmentSchema } from "@/fragno/automation/schema";
 
+import type { AutomationUiScope } from "./scope";
 import type { AutomationStoreItem } from "./shared";
 
 const AUTOMATIONS_BINDINGS_ENDPOINT = "automations-bindings";
@@ -35,25 +37,66 @@ type AutomationEntriesRuntime = {
   $entries: LofiQueryStore<AutomationStoreItem[]>;
 };
 
+type AutomationStoreScopeRuntimeConfig = {
+  scopeKey: string;
+  dbName: string;
+  sourceId: string;
+  outboxUrl: string;
+};
+
 type ReadableStore<T> = {
   get: () => T;
   listen: (listener: (value: T) => void) => () => void;
 };
 
+const scopeRouteId = (scope: AutomationUiScope): string => {
+  switch (scope.kind) {
+    case "system":
+      return "system";
+    case "org":
+      return backofficeScopeRouteId({ kind: "org", orgId: scope.orgId });
+    case "project":
+      return backofficeScopeRouteId({
+        kind: "project",
+        orgId: scope.orgId,
+        projectId: scope.projectId,
+      });
+    case "user":
+      return backofficeScopeRouteId({ kind: "user", userId: scope.userId });
+  }
+};
+
+const sanitizeScopeKeyForDatabaseName = (scopeKey: string) =>
+  scopeKey.replace(/[^a-zA-Z0-9_-]+/g, "_");
+
+const automationStoreScopeRuntimeConfig = (
+  scope: AutomationUiScope,
+): AutomationStoreScopeRuntimeConfig => {
+  const routeId = scopeRouteId(scope);
+  const scopeKey = `${scope.kind}:${routeId}`;
+
+  return {
+    scopeKey,
+    dbName: `fragno_lofi_backoffice_automations_${sanitizeScopeKeyForDatabaseName(scopeKey)}`,
+    sourceId: scopeKey,
+    outboxUrl: `/api/automations-scoped/${scope.kind}/${encodeURIComponent(routeId)}/_internal/outbox`,
+  };
+};
+
 const automationsLofiRuntimes = createLofiRuntimeRegistry({
-  getKey: ({ orgId }: { orgId: string }) => orgId,
-  createRuntime: ({ orgId }) =>
+  getKey: ({ scopeKey }: AutomationStoreScopeRuntimeConfig) => scopeKey,
+  createRuntime: ({ dbName, sourceId, outboxUrl }) =>
     createLofiRuntime({
       endpointName: AUTOMATIONS_BINDINGS_ENDPOINT,
       adapter: new IndexedDbAdapter({
-        dbName: `fragno_lofi_backoffice_automations_${orgId}`,
+        dbName,
         endpointName: AUTOMATIONS_BINDINGS_ENDPOINT,
         schemas: [{ schema: automationFragmentSchema }, { schema: workflowsSchema }],
       }),
       sources: [
         {
-          id: orgId,
-          outboxUrl: `/api/automations/${encodeURIComponent(orgId)}/_internal/outbox`,
+          id: sourceId,
+          outboxUrl,
         },
       ],
       outboxTransport: "stream",
@@ -61,15 +104,17 @@ const automationsLofiRuntimes = createLofiRuntimeRegistry({
     }),
 });
 
-const automationEntriesByOrg = new Map<string, AutomationEntriesRuntime>();
+const automationEntriesByScope = new Map<string, AutomationEntriesRuntime>();
 
-const getAutomationEntriesRuntime = (orgId: string): AutomationEntriesRuntime => {
-  const existing = automationEntriesByOrg.get(orgId);
+const getAutomationEntriesRuntime = (
+  config: AutomationStoreScopeRuntimeConfig,
+): AutomationEntriesRuntime => {
+  const existing = automationEntriesByScope.get(config.scopeKey);
   if (existing) {
     return existing;
   }
 
-  const runtime = automationsLofiRuntimes.get({ orgId });
+  const runtime = automationsLofiRuntimes.get(config);
   const $entries = createLofiQueryStore(
     runtime,
     automationFragmentSchema,
@@ -96,7 +141,7 @@ const getAutomationEntriesRuntime = (orgId: string): AutomationEntriesRuntime =>
     },
   );
   const created = { runtime, $entries };
-  automationEntriesByOrg.set(orgId, created);
+  automationEntriesByScope.set(config.scopeKey, created);
   return created;
 };
 
@@ -117,17 +162,18 @@ const errorMessage = (error: unknown): string | null => {
 };
 
 export const useLofiAutomationStoreEntries = ({
-  orgId,
+  scope,
   initialEntries,
   prefix,
 }: {
-  orgId: string;
+  scope: AutomationUiScope;
   initialEntries: AutomationStoreItem[];
   prefix: string;
 }) => {
+  const scopeConfig = useMemo(() => automationStoreScopeRuntimeConfig(scope), [scope]);
   const lofi = useMemo(
-    () => (typeof window === "undefined" ? null : getAutomationEntriesRuntime(orgId)),
-    [orgId],
+    () => (typeof window === "undefined" ? null : getAutomationEntriesRuntime(scopeConfig)),
+    [scopeConfig],
   );
   const queryState = useNanostore(lofi?.$entries ?? null, EMPTY_QUERY_STATE);
   const runtimeStatus = useNanostore(lofi?.runtime.$status ?? null, IDLE_RUNTIME_STATUS);

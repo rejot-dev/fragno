@@ -65,7 +65,10 @@ export class BackofficeKernel {
       return;
     }
     if (scope.kind === "system") {
-      throw new BackofficeForbiddenError("System context requires system actor.");
+      if (actor.type === "user" && actor.role === "admin") {
+        return;
+      }
+      throw new BackofficeForbiddenError("System context requires an admin or system actor.");
     }
     if (
       (scope.kind === "org" || scope.kind === "project") &&
