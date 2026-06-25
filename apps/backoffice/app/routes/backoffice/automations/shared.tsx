@@ -128,11 +128,13 @@ export function AutomationScopePicker({
   projectsError: string | null;
 }) {
   const selectedId =
-    selectedScope.kind === "project"
-      ? `project:${selectedScope.projectId}`
-      : selectedScope.kind === "org"
-        ? `org:${selectedScope.orgId}`
-        : `user:${selectedScope.userId}`;
+    selectedScope.kind === "system"
+      ? "system:system"
+      : selectedScope.kind === "project"
+        ? `project:${selectedScope.projectId}`
+        : selectedScope.kind === "org"
+          ? `org:${selectedScope.orgId}`
+          : `user:${selectedScope.userId}`;
 
   return (
     <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
@@ -220,7 +222,7 @@ export function AutomationTabs({
       label: "MCP",
       to: automationScopeTabPath(selectedScope, "mcp"),
     },
-  ];
+  ].filter((tab) => selectedScope.kind !== "system" || (tab.id !== "api" && tab.id !== "mcp"));
 
   return (
     <div

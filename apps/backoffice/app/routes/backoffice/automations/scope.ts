@@ -8,9 +8,10 @@ import type { AuthMeData } from "@/fragno/auth/auth-client";
 import type { AutomationProjectRecord } from "./data";
 import { toExternalId } from "./data";
 
-export type AutomationScopeKind = "org" | "project" | "user";
+export type AutomationScopeKind = "system" | "org" | "project" | "user";
 
 export type AutomationUiScope =
+  | { kind: "system"; label: string }
   | { kind: "org"; orgId: string; label: string }
   | { kind: "project"; orgId: string; projectId: string; label: string }
   | { kind: "user"; userId: string; label: string };
@@ -25,13 +26,19 @@ export type AutomationScopeOption = {
 
 type Organisation = AuthMeData["organizations"][number]["organization"];
 
+const SYSTEM_AUTOMATION_SCOPE_ID = "system";
+const SYSTEM_AUTOMATION_SCOPE_LABEL = "System";
+
 const userName = (user: AuthMeData["user"]) => user.email ?? user.id;
+const isAutomationAdmin = (user: AuthMeData["user"]) => user.role === "admin";
 
 const projectLabel = (project: AutomationProjectRecord) =>
   project.name?.trim() || project.slug?.trim() || toExternalId(project.id) || "Untitled project";
 
 export const toBackofficeScope = (scope: AutomationUiScope): BackofficeContextScope => {
   switch (scope.kind) {
+    case "system":
+      return { kind: "system" };
     case "org":
       return { kind: "org", orgId: scope.orgId };
     case "project":
@@ -43,6 +50,8 @@ export const toBackofficeScope = (scope: AutomationUiScope): BackofficeContextSc
 
 export const automationScopeBasePath = (scope: AutomationUiScope) => {
   switch (scope.kind) {
+    case "system":
+      return `/backoffice/automations/system/${SYSTEM_AUTOMATION_SCOPE_ID}`;
     case "org":
       return `/backoffice/automations/org/${backofficeScopeRouteId(scope)}`;
     case "project":
@@ -113,8 +122,24 @@ export const createAutomationScopeOptions = ({
     .filter((option) => option.to.includes("/project/"));
 
   const userScope = { kind: "user" as const, userId: user.id, label: userName(user) };
+  const systemTab = currentTab === "api" || currentTab === "mcp" ? "scripts" : currentTab;
+  const systemOptions: AutomationScopeOption[] = isAutomationAdmin(user)
+    ? [
+        {
+          id: `system:${SYSTEM_AUTOMATION_SCOPE_ID}`,
+          kind: "system",
+          label: SYSTEM_AUTOMATION_SCOPE_LABEL,
+          description: "Global system automation scope",
+          to: automationScopeTabPath(
+            { kind: "system", label: SYSTEM_AUTOMATION_SCOPE_LABEL },
+            systemTab,
+          ),
+        },
+      ]
+    : [];
 
   return [
+    ...systemOptions,
     ...orgOptions,
     ...projectOptions,
     {
@@ -127,12 +152,26 @@ export const createAutomationScopeOptions = ({
   ];
 };
 
+const automationRouteScopeFromParams = (params: {
+  scopeKind?: string;
+  scopeId?: string;
+}): BackofficeContextScope | null => {
+  if (params.scopeKind === "system") {
+    if (params.scopeId === SYSTEM_AUTOMATION_SCOPE_ID) {
+      return { kind: "system" };
+    }
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  return backofficeScopeFromRouteParams(params);
+};
+
 export const automationScopeFromRouteParams = (params: {
   scopeKind?: string;
   scopeId?: string;
 }): BackofficeContextScope => {
   try {
-    const scope = backofficeScopeFromRouteParams(params);
+    const scope = automationRouteScopeFromParams(params);
     if (!scope) {
       throw new Response("Not Found", { status: 404 });
     }
@@ -158,9 +197,16 @@ export const resolveAutomationUiScope = ({
 }): AutomationUiScope => {
   let parsed;
   try {
-    parsed = backofficeScopeFromRouteParams(params);
+    parsed = automationRouteScopeFromParams(params);
   } catch {
     throw new Response("Not Found", { status: 404 });
+  }
+
+  if (parsed?.kind === "system") {
+    if (!isAutomationAdmin(user)) {
+      throw new Response("Not Found", { status: 404 });
+    }
+    return { kind: "system", label: SYSTEM_AUTOMATION_SCOPE_LABEL };
   }
 
   if (parsed?.kind === "org") {

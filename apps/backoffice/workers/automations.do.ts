@@ -48,24 +48,13 @@ export type AutomationsFileSystemResolver = (input: {
   purpose?: string;
 }) => Promise<MasterFileSystem>;
 
-type AutomationDurableObjectOwnerScope = Extract<
-  BackofficeContextScope,
-  { kind: "org" | "project" | "user" }
->;
-
 type AutomationDurableObjectConfig = {
-  scope: AutomationDurableObjectOwnerScope;
+  scope: BackofficeContextScope;
 };
 
 const automationConfigForScope = (
   scope: BackofficeContextScope | undefined,
-): AutomationDurableObjectConfig | null => {
-  if (scope?.kind === "org" || scope?.kind === "project" || scope?.kind === "user") {
-    return { scope };
-  }
-
-  return null;
-};
+): AutomationDurableObjectConfig | null => (scope ? { scope } : null);
 
 const automationConfigForOrgId = (orgId: string): AutomationDurableObjectConfig => ({
   scope: { kind: "org", orgId },
@@ -264,6 +253,11 @@ export class InMemoryAutomationsObject implements AutomationsObject {
 
     if (scopeKind === "user" && userId) {
       await this.#ensureConfigured({ scope: { kind: "user", userId } });
+      return;
+    }
+
+    if (scopeKind === "system") {
+      await this.#ensureConfigured({ scope: { kind: "system" } });
       return;
     }
 

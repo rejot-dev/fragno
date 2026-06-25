@@ -64,10 +64,10 @@ const formatActor = (actor: AutomationLayoutContext["storeEntries"][number]["act
 };
 
 export default function BackofficeOrganisationAutomationStore() {
-  const { orgId, storeEntries, storeEntriesError, storePrefix } =
+  const { selectedScope, storeEntries, storeEntriesError, storePrefix } =
     useOutletContext<AutomationLayoutContext>();
   const lofiStore = useLofiAutomationStoreEntries({
-    orgId,
+    scope: selectedScope,
     initialEntries: storeEntries,
     prefix: storePrefix,
   });

@@ -9,6 +9,7 @@ import type {
   OrganizationHookPayload,
   OrganizationHooks,
   UserSummary,
+  BeforeCreateUserHook,
 } from "@fragno-dev/auth";
 import { migrate } from "@fragno-dev/db";
 
@@ -88,6 +89,15 @@ const dispatchOrganizationEvent = async (
   });
 };
 
+const createDevRejotAdminHook = (): BeforeCreateUserHook | undefined => {
+  if (import.meta.env.MODE !== "development") {
+    return undefined;
+  }
+
+  return ({ email }) =>
+    email.trim().toLowerCase().endsWith("@rejot.dev") ? { role: "admin" } : undefined;
+};
+
 const createOrganizationAutomationHooks = (
   runtime: BackofficeRuntimeServices,
 ): OrganizationHooks => ({
@@ -161,7 +171,11 @@ export class InMemoryAuthObject implements AuthObject {
         env: this.#env,
         adapters: this.#runtimeServices.adapters,
       },
-      { baseUrl, organizationHooks: createOrganizationAutomationHooks(this.#runtimeServices) },
+      {
+        baseUrl,
+        beforeCreateUser: createDevRejotAdminHook(),
+        organizationHooks: createOrganizationAutomationHooks(this.#runtimeServices),
+      },
     );
   }
 

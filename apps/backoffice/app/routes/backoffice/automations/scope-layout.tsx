@@ -1,6 +1,5 @@
 import { Outlet } from "react-router";
 
-import { backofficeScopeFromRouteParams } from "@/backoffice-runtime/scope-codec";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
@@ -12,7 +11,12 @@ import {
   loadAutomationWorkspaceData,
   toExternalId,
 } from "./data.server";
-import { createAutomationScopeOptions, resolveAutomationUiScope, toBackofficeScope } from "./scope";
+import {
+  automationScopeFromRouteParams,
+  createAutomationScopeOptions,
+  resolveAutomationUiScope,
+  toBackofficeScope,
+} from "./scope";
 import type { AutomationRouteItem, AutomationScriptItem, AutomationStoreItem } from "./shared";
 import {
   AutomationErrorBoundary,
@@ -108,7 +112,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const organisations = me.organizations.map((entry) => entry.organization);
   let parsedRouteScope;
   try {
-    parsedRouteScope = backofficeScopeFromRouteParams(params);
+    parsedRouteScope = automationScopeFromRouteParams(params);
   } catch {
     throw new Response("Not Found", { status: 404 });
   }
@@ -150,7 +154,10 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   ]);
 
   return {
-    orgId: selectedScope.kind === "user" ? activeOrgId : selectedScope.orgId,
+    orgId:
+      selectedScope.kind === "org" || selectedScope.kind === "project"
+        ? selectedScope.orgId
+        : activeOrgId,
     organisation:
       organisations.find((organisation) => organisation.id === activeOrgId) ?? organisations[0],
     user: me.user,
