@@ -271,3 +271,38 @@ describe("auth-fragment beforeCreateUser hook", async () => {
     expect(hookCalls).toContain("allowed@test.com");
   });
 });
+
+describe("auth-fragment beforeCreateUser role override", async () => {
+  const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "kysely-sqlite" })
+    .withFragment(
+      "auth",
+      instantiate(authFragmentDefinition)
+        .withConfig({
+          beforeCreateUser: ({ email }) =>
+            email.endsWith("@admins.test") ? { role: "admin" } : undefined,
+        })
+        .withRoutes([userActionsRoutesFactory, sessionRoutesFactory]),
+    )
+    .build();
+
+  const fragment = fragments.auth;
+
+  afterAll(async () => {
+    await test.cleanup();
+  });
+
+  it("can promote users during email/password sign-up", async () => {
+    const response = await fragment.callRoute("POST", "/sign-up", {
+      body: { email: "ada@admins.test", password: "password" },
+    });
+
+    assert(response.type === "json");
+    const meResponse = await fragment.callRoute("GET", "/me", {
+      headers: authHeaders(response.data.auth.token as string),
+    });
+
+    assert(meResponse.type === "json");
+    assert(meResponse.data.user.role === "admin");
+  });
+});

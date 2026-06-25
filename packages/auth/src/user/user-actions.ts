@@ -68,9 +68,8 @@ export function createUserServices(
   options?: AutoCreateOrganizationOptions,
   beforeCreateUser?: BeforeCreateUserHook,
 ) {
-  const runBeforeCreateUser = (email: string, role: "user" | "admin") => {
-    beforeCreateUser?.({ email, role });
-  };
+  const resolveCreateUserRole = (email: string, role: "user" | "admin") =>
+    beforeCreateUser?.({ email, role })?.role ?? role;
 
   const createUserUnvalidated = function (
     this: AuthServiceContext,
@@ -81,17 +80,17 @@ export function createUserServices(
   ) {
     return this.serviceTx(authSchema)
       .mutate(({ uow }) => {
-        runBeforeCreateUser(email, role);
+        const resolvedRole = resolveCreateUserRole(email, role);
         const now = new Date();
         const id = uow.create("user", {
           email,
           passwordHash,
-          role,
+          role: resolvedRole,
         });
         const userSummary = mapUserSummary({
           id: id.valueOf(),
           email,
-          role,
+          role: resolvedRole,
           bannedAt: null,
         });
 
@@ -122,7 +121,7 @@ export function createUserServices(
         return {
           id: id.valueOf(),
           email,
-          role,
+          role: resolvedRole,
         };
       })
       .build();
@@ -231,12 +230,12 @@ export function createUserServices(
           }
 
           const now = new Date();
-          runBeforeCreateUser(email, "user");
+          const role = resolveCreateUserRole(email, "user");
 
           const userId = uow.create("user", {
             email,
             passwordHash,
-            role: "user",
+            role,
           });
 
           const autoOrganization = createAutoOrganization(uow, {
@@ -254,7 +253,7 @@ export function createUserServices(
           const userSummary = mapUserSummary({
             id: userId.valueOf(),
             email,
-            role: "user",
+            role,
             bannedAt: null,
           });
 
@@ -292,7 +291,7 @@ export function createUserServices(
             user: {
               id: userId.valueOf(),
               email,
-              role: "user" as const,
+              role,
             },
           };
 
