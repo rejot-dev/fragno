@@ -1,0 +1,36 @@
+{
+  "name": "@fragno-dev/workflow-visualizer",
+  "version": "0.0.1",
+  "description": "Static interpreter that derives a realtime graph of the Fragno automation pipeline (events -> router -> scripts -> workflows -> steps) from source code, as a JSON snapshot plus a patch stream for live visualization.",
+  "homepage": "https://fragno.dev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/workflow-visualizer"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
+    "types:check": "tsgo --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest --watch"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.28.6"
+  },
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@types/node": "^22.19.7",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -14,6 +14,8 @@ import {
   type AutomationWorkspaceScriptEntry,
   type createAutomationFragment,
 } from "@/fragno/automation";
+import { writeAutomationScript } from "@/fragno/automation/authoring";
+import { loadAutomationCatalog, type AutomationCatalog } from "@/fragno/automation/catalog";
 import type { DurableHookQueueEntry } from "@/fragno/durable-hooks";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -305,6 +307,67 @@ export async function loadAutomationWorkspaceData({
       ),
     scriptsError: workspaceScriptsError,
   };
+}
+
+/**
+ * Load the full automation catalog (system + workspace scripts, with bodies) for
+ * the given scope. Used by the workflow-graph loader to build the pipeline graph.
+ */
+export async function loadAutomationCatalogWithSources({
+  request,
+  context,
+  scope,
+  orgId,
+}: {
+  request: Request;
+  context: Readonly<RouterContextProvider>;
+  scope?: BackofficeContextScope;
+  orgId?: string;
+}): Promise<AutomationCatalog> {
+  const resolvedScope = scope ?? (orgId ? { kind: "org" as const, orgId } : null);
+  if (!resolvedScope) {
+    throw new Error("Automation scope is required.");
+  }
+  const fileSystem = await createBackofficeAutomationFileSystem({
+    request,
+    context,
+    scope: resolvedScope,
+  });
+
+  return loadAutomationCatalog(fileSystem);
+}
+
+/**
+ * Persist an edited automation script body back to its file, validating it first.
+ * System-layer scripts are read-only and rejected by `writeAutomationScript`.
+ */
+export async function writeAutomationScriptSource({
+  request,
+  context,
+  scope,
+  orgId,
+  absolutePath,
+  body,
+}: {
+  request: Request;
+  context: Readonly<RouterContextProvider>;
+  scope?: BackofficeContextScope;
+  orgId?: string;
+  absolutePath: string;
+  body: string;
+}): Promise<{ ok: boolean; error: string | null }> {
+  const resolvedScope = scope ?? (orgId ? { kind: "org" as const, orgId } : null);
+  if (!resolvedScope) {
+    throw new Error("Automation scope is required.");
+  }
+  const fileSystem = await createBackofficeAutomationFileSystem({
+    request,
+    context,
+    scope: resolvedScope,
+  });
+
+  const result = await writeAutomationScript(fileSystem, { path: absolutePath, body });
+  return { ok: result.ok, error: result.ok ? null : (result.error ?? null) };
 }
 
 export async function loadAutomationScriptSource({
