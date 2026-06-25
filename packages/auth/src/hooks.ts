@@ -33,8 +33,10 @@ export interface InvitationExpiredHookPayload {
   invitationId: string;
 }
 
+export type BeforeCreateUserResult = void | { role?: UserSummary["role"] };
+
 // Synchronous to ensure checks run before mutations are committed.
-export type BeforeCreateUserHook = (payload: BeforeCreateUserPayload) => void;
+export type BeforeCreateUserHook = (payload: BeforeCreateUserPayload) => BeforeCreateUserResult;
 
 export interface AuthHookContext {
   idempotencyKey: string;

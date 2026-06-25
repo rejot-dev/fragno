@@ -411,17 +411,17 @@ export function createOAuthServices(options: {
                 return { ok: false as const, code: "email_required" as const };
               }
 
-              options.beforeCreateUser?.({ email, role: "user" });
+              const role = options.beforeCreateUser?.({ email, role: "user" })?.role ?? "user";
               const userId = uow.create("user", {
                 email,
                 passwordHash: null,
-                role: "user",
+                role,
               });
 
               resolvedUser = {
                 id: userId.valueOf(),
                 email,
-                role: "user",
+                role,
                 bannedAt: null,
                 members: [],
               };

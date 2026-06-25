@@ -5,6 +5,7 @@ import {
   createAuthFragment,
   github,
   type AuthOAuthConfig,
+  type BeforeCreateUserHook,
   type OrganizationHooks,
 } from "@fragno-dev/auth";
 
@@ -22,6 +23,7 @@ export type AuthInit =
 
 type AuthServerOptions = {
   baseUrl?: string;
+  beforeCreateUser?: BeforeCreateUserHook;
   organizationHooks?: OrganizationHooks;
 };
 
@@ -123,6 +125,7 @@ export function createAuthServer(init: AuthInit, options: AuthServerOptions = {}
         secure: !isDev,
         path: "/",
       },
+      beforeCreateUser: options.beforeCreateUser,
       organizations: {
         autoCreateOrganization: {},
         ...(options.organizationHooks ? { hooks: options.organizationHooks } : {}),
