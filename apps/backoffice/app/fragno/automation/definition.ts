@@ -11,6 +11,7 @@ import type {
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { MasterFileSystem } from "@/files/master-file-system";
 import { executeAutomationScript } from "@/fragno/runtime-tools/automation-host";
+import type { SandboxRuntimeProvider } from "@/sandbox/contracts";
 
 import type { AutomationFileSystemConfig, AutomationFileSystemResolverInput } from "./catalog";
 import { loadAutomationCatalog, resolveAutomationFileSystem } from "./catalog";
@@ -25,6 +26,7 @@ import type { AutomationCodemodeWorkflowParams } from "./engine/workflow";
 export type { AutomationPiBashContext } from "./engine/runtime";
 import { createAutomationStoreServices } from "./bindings-storage-runtime";
 import { createAutomationProjectServices } from "./projects-storage-runtime";
+import { createAutomationSandboxServices } from "./sandboxes-storage-runtime";
 import { automationFragmentSchema } from "./schema";
 
 export type AutomationIngestResult = {
@@ -51,6 +53,7 @@ export interface AutomationFragmentConfig extends AutomationFileSystemConfig {
   env?: CloudflareEnv;
   runtime?: BackofficeRuntimeServices;
   ownerScope: BackofficeContextScope;
+  sandboxProviders?: Record<string, SandboxRuntimeProvider>;
   createPiAutomationContext?: (input: {
     event: AutomationEvent;
     idempotencyKey: string;
@@ -194,15 +197,20 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       }),
     };
   })
-  .providesBaseService(({ defineService, config }) => {
+  .providesBaseService(({ defineService, config, serviceDeps }) => {
     const storeServices = createAutomationStoreServices(defineService);
     const projectServices = createAutomationProjectServices(defineService, {
       ownerScope: config.ownerScope,
+    });
+    const sandboxServices = createAutomationSandboxServices(defineService, {
+      workflows: serviceDeps.workflows,
+      sandboxProviders: config.sandboxProviders,
     });
 
     return defineService({
       ...storeServices,
       ...projectServices,
+      ...sandboxServices,
       ingestEvent: function (event: AutomationEvent) {
         return this.serviceTx(automationFragmentSchema)
           .mutate(({ uow }) => {

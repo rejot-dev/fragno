@@ -117,10 +117,6 @@
         "class_name": "Sandbox",
       },
       {
-        "name": "SANDBOX_REGISTRY",
-        "class_name": "SandboxRegistry",
-      },
-      {
         "name": "GITHUB",
         "class_name": "GitHub",
       },
@@ -202,6 +198,10 @@
     {
       "tag": "v17",
       "new_sqlite_classes": ["Api"],
+    },
+    {
+      "tag": "v18",
+      "deleted_classes": ["SandboxRegistry"],
     },
   ],
   "rules": [

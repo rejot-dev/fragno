@@ -198,7 +198,7 @@ export const createRouteBackedRuntimeContext = ({
         : createUnavailableResendRuntime(unavailableMessage("RESEND", execution)),
     },
     sandbox:
-      runtime.config.bindings.sandbox && runtime.config.bindings.sandboxRegistry
+      runtime.config.bindings.sandbox && runtime.config.bindings.automations
         ? {
             runtime: selectedOrg
               ? createSandboxRouteRuntime({

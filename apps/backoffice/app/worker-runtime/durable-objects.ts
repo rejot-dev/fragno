@@ -12,7 +12,6 @@ import type {
   PiObject,
   ResendObject,
   Reson8Object,
-  SandboxRegistryObject,
   TelegramObject,
   UploadObject,
 } from "@/backoffice-runtime/object-registry";
@@ -76,11 +75,6 @@ export const getPiDurableObject = (
   context: Readonly<RouterContextProvider>,
   orgId: string,
 ): PiObject => getBackofficeObjects(context).pi.forOrg(orgId);
-
-export const getSandboxRegistryDurableObject = (
-  context: Readonly<RouterContextProvider>,
-  orgId: string,
-): SandboxRegistryObject => getBackofficeObjects(context).sandboxRegistry.forOrg(orgId);
 
 export const getGitHubDurableObject = (
   context: Readonly<RouterContextProvider>,

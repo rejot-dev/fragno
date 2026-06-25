@@ -12,7 +12,6 @@ import { InMemoryOtpObject } from "../../workers/otp.do";
 import { InMemoryPiObject } from "../../workers/pi.do";
 import { InMemoryResendObject } from "../../workers/resend.do";
 import { InMemoryReson8Object } from "../../workers/reson8.do";
-import { InMemorySandboxRegistryObject } from "../../workers/sandbox-registry.do";
 import { InMemoryTelegramObject } from "../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../workers/upload.do";
 import type { BackofficeContextScope } from "./context";
@@ -129,17 +128,21 @@ class UnavailableInMemoryDurableObject {
     return null;
   }
 
-  async getInstances() {
+  async listSandboxInstances() {
     return [];
   }
 
-  async getInstance() {
+  async getSandboxInstance() {
     return null;
   }
 
-  async trackInstance() {}
+  async requestSandboxInstance() {
+    throw new Error("Automations is not configured.");
+  }
 
-  async untrackInstance() {}
+  async requestSandboxInstanceStop() {
+    return null;
+  }
 
   async getRuntimeStatus() {
     return { status: "stopped" };
@@ -207,11 +210,6 @@ const inMemoryObjectFactories = {
       runtime,
     }),
   SANDBOX: createUnavailableObject,
-  SANDBOX_REGISTRY: ({ state, runtime }) =>
-    new InMemorySandboxRegistryObject({
-      state,
-      runtime,
-    }),
   GITHUB: ({ state, env, runtime }) =>
     new InMemoryGitHubObject({
       state,
@@ -347,7 +345,6 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
         github: this.#hasNamespace("GITHUB"),
         cloudflareWorkers: this.#hasNamespace("CLOUDFLARE_WORKERS"),
         githubWebhookRouter: this.#hasNamespace("GITHUB_WEBHOOK_ROUTER"),
-        sandboxRegistry: this.#hasNamespace("SANDBOX_REGISTRY"),
         sandbox: this.#hasNamespace("SANDBOX"),
       },
     };

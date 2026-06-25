@@ -11,9 +11,9 @@ export const sandboxCapability: BackofficeCapability = {
       id: "sandbox",
       label: "Sandbox",
       kind: "connection",
-      configured: config.bindings.sandbox && config.bindings.sandboxRegistry,
+      configured: config.bindings.sandbox && config.bindings.automations,
       config: { configurationScope: "environment" },
-      nextSteps: ["Configure Cloudflare Sandbox and Sandbox Registry bindings."],
+      nextSteps: ["Configure Cloudflare Sandbox and Automations bindings."],
     }),
   },
 };

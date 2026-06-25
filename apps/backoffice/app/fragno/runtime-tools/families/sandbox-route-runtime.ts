@@ -1,8 +1,6 @@
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
-import {
-  createCloudflareSandboxManager,
-  type CloudflareSandboxManagerOptions,
-} from "@/sandbox/cloudflare-sandbox-manager";
+import { createCloudflareSandboxProvider } from "@/sandbox/cloudflare-sandbox-provider";
+import type { SandboxRuntimeHandle } from "@/sandbox/contracts";
 
 import { createSandboxRuntime, type SandboxRuntime } from "./sandbox-runtime";
 
@@ -15,7 +13,7 @@ type SandboxRouteConfiguration = SandboxRouteOptions & {
   sandboxName: { name: string };
 };
 
-type SandboxRouteHandle = Awaited<ReturnType<CloudflareSandboxManagerOptions["sdk"]["getSandbox"]>>;
+type SandboxRouteHandle = SandboxRuntimeHandle;
 
 type ConfigurableSandboxRouteStub = SandboxRouteHandle & {
   configure?(configuration: SandboxRouteConfiguration): Promise<void>;
@@ -63,18 +61,19 @@ export const createSandboxRouteRuntime = ({
     throw new Error("Sandbox runtime requires an organisation id");
   }
 
-  const manager = createCloudflareSandboxManager({
-    sandboxNamespace: {} as CloudflareEnv["SANDBOX"],
-    sandboxIdScope: normalizedOrgId,
-    registry: objects.sandboxRegistry.forOrg(normalizedOrgId),
-    sdk: {
-      async getSandbox(_namespace, id, options) {
-        const stub = objects.sandbox.forName(id) as unknown as ConfigurableSandboxRouteStub;
-        await applySandboxRouteConfiguration(stub, id, options);
-        return stub;
+  return createSandboxRuntime({
+    lifecycle: objects.automations.forOrg(normalizedOrgId),
+    provider: createCloudflareSandboxProvider({
+      sandboxNamespace: {} as CloudflareEnv["SANDBOX"],
+      sdk: {
+        async getSandbox(_namespace, id, options) {
+          const stub = objects.sandbox.forName(id) as unknown as ConfigurableSandboxRouteStub;
+          await applySandboxRouteConfiguration(stub, id, options);
+          return stub;
+        },
       },
-    },
+    }),
+    sandboxIdScope: normalizedOrgId,
+    ownerScope: { kind: "org", orgId: normalizedOrgId },
   });
-
-  return createSandboxRuntime(manager);
 };
