@@ -230,20 +230,6 @@ export function ComposeTranscript({
         isError?: unknown;
         details?: unknown;
       };
-      // Temporary diagnostic: fires for *every* execCodeMode result, including
-      // errored ones (which the guard below skips). If this never logs when you
-      // run codemode, the agent isn't calling execCodeMode in compose; if it logs
-      // with isError:true / hasGraph:false, the server bundle is stale.
-      if (result.toolName === "execCodeMode") {
-        const d = result.details as { workflowGraph?: unknown; code?: unknown } | undefined;
-        console.warn("[codemode] execCodeMode result seen", {
-          isError: result.isError,
-          hasDetails: result.details !== undefined,
-          hasGraph: d?.workflowGraph !== undefined,
-          hasCode: typeof d?.code === "string",
-          detailKeys: result.details ? Object.keys(result.details as object) : null,
-        });
-      }
       if (result.role !== "toolResult" || result.isError === true) {
         return;
       }
@@ -408,7 +394,7 @@ export function ComposeTranscript({
 }
 
 const RUN_TERMINAL = new Set(["complete", "errored", "terminated"]);
-const RUN_OUTPUT_POLL_MS = 3500;
+const RUN_OUTPUT_POLL_MS = 1000;
 
 /**
  * Track a codemode run's durable instance and surface its final output once the
@@ -435,7 +421,7 @@ function useCodemodeRunOutput(
       return;
     }
     const controller = new AbortController();
-    const base = `/api/automations/${encodeURIComponent(orgId)}/${encodeURIComponent(
+    const base = `/api/automations-workflows/${encodeURIComponent(orgId)}/${encodeURIComponent(
       workflowName,
     )}/instances/${encodeURIComponent(instanceId)}`;
     let timer: ReturnType<typeof setInterval> | null = null;

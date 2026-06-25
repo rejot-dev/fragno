@@ -8,8 +8,10 @@
  * can highlight what is running / done / errored.
  *
  * No server imports — this runs in the browser. The endpoints are reached through
- * the existing `/api/automations/:orgId/*` catch-all (forwarded to the Automations
- * Durable Object, where `automation-codemode-script` is registered).
+ * the `/api/automations-workflows/:orgId/*` catch-all (forwarded to the Automations
+ * Durable Object's *workflows* fragment, where `pi-codemode-script` is registered).
+ * Note the `-workflows` mount: the bare `/api/automations/:orgId/*` catch-all targets
+ * the automation fragment, which does not expose workflow instance endpoints.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -152,7 +154,7 @@ export function useWorkflowRun({
     const controller = new AbortController();
     abortRef.current = controller;
     const { signal } = controller;
-    const base = `/api/automations/${encodeURIComponent(orgId)}/${encodeURIComponent(
+    const base = `/api/automations-workflows/${encodeURIComponent(orgId)}/${encodeURIComponent(
       runWorkflowName,
     )}/instances/${encodeURIComponent(instanceId)}`;
 
