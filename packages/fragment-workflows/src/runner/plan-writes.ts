@@ -8,6 +8,7 @@ import type {
   AnyTxResult,
   WorkflowRegistryEntry,
   WorkflowStepWorkflowOperation,
+  WorkflowTerminalHookPayload,
 } from "../workflow";
 import { validateAndNormalizeWorkflowOperation } from "../workflow-operation";
 import type { RunnerState } from "./state";
@@ -255,6 +256,11 @@ export function applyOutcome(
   });
 
   if (outcome.type !== "suspended") {
+    if (outcome.type === "completed") {
+      triggerWorkflowTerminalHook(uow, instance, "complete");
+    } else if (outcome.type === "errored") {
+      triggerWorkflowTerminalHook(uow, instance, "errored");
+    }
     return;
   }
 
@@ -284,4 +290,18 @@ export function applyOutcome(
     },
     { processAt },
   );
+}
+
+export function triggerWorkflowTerminalHook(
+  uow: IUnitOfWork,
+  instance: WorkflowInstanceRecord,
+  status: WorkflowTerminalHookPayload["status"],
+) {
+  const namespace = uow.forSchema(workflowsSchema).namespace ?? workflowsSchema.name;
+  uow.triggerHook(namespace, "onWorkflowTerminal", {
+    workflowName: instance.workflowName,
+    instanceId: instance.instanceId,
+    instanceRef: String(instance.id),
+    status,
+  } satisfies WorkflowTerminalHookPayload);
 }

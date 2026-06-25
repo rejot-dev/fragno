@@ -412,8 +412,16 @@ export type WorkflowStepEmissionsCleanupHookPayload = {
   epoch: string;
 };
 
+export type WorkflowTerminalHookPayload = {
+  workflowName: string;
+  instanceId: string;
+  instanceRef: string;
+  status: "complete" | "errored" | "terminated";
+};
+
 export type WorkflowsHooks = {
   onWorkflowEnqueued: (payload: WorkflowEnqueuedHookPayload) => void | Promise<void>;
+  onWorkflowTerminal: (payload: WorkflowTerminalHookPayload) => void | Promise<void>;
   onWorkflowStepEmissionsCleanup: (
     payload: WorkflowStepEmissionsCleanupHookPayload,
   ) => void | Promise<void>;
@@ -431,6 +439,7 @@ export type WorkflowManagementAction = "pause" | "resume" | "terminate";
 export interface WorkflowsFragmentConfig<TRegistry extends WorkflowsRegistry = WorkflowsRegistry> {
   workflows?: TRegistry;
   dispatcher?: WorkflowsDispatcher;
+  onWorkflowTerminal?: (payload: WorkflowTerminalHookPayload) => void | Promise<void>;
   /**
    * Disable built-in durable hook ticking (useful for tests that drive ticks manually).
    * Defaults to true.

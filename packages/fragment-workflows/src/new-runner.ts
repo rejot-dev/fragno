@@ -5,7 +5,12 @@ import { BufferedPumpScopeAlreadyOpenError } from "@fragno-dev/db/buffered-pump"
 
 import type { DatabaseRequestContext, IUnitOfWork } from "@fragno-dev/db";
 
-import { applyOutcome, applyRunnerMutations, type RunnerTaskOutcome } from "./runner/plan-writes";
+import {
+  applyOutcome,
+  applyRunnerMutations,
+  triggerWorkflowTerminalHook,
+  type RunnerTaskOutcome,
+} from "./runner/plan-writes";
 import { createRunnerState, type RunnerState } from "./runner/state";
 import { isRunnerStepSuspended, RunnerStep } from "./runner/step";
 import {
@@ -507,6 +512,7 @@ async function markInstanceErrored(
           })
           .check();
       });
+      triggerWorkflowTerminalHook(uow, instance, "errored");
       updated = true;
     },
   })

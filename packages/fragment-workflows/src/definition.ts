@@ -29,6 +29,7 @@ import type {
   WorkflowInstanceCurrentStep,
   WorkflowInstanceMetadata,
   WorkflowRegistryEntry,
+  WorkflowTerminalHookPayload,
   WorkflowsFragmentConfig,
 } from "./workflow";
 import { validateAndNormalizeWorkflowOperation } from "./workflow-operation";
@@ -321,6 +322,9 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           stepEmissions: deps.stepEmissions,
           payload: { ...payload, timestamp },
         });
+      }),
+      onWorkflowTerminal: defineHook(async function (payload: WorkflowTerminalHookPayload) {
+        await config.onWorkflowTerminal?.(payload);
       }),
       onWorkflowStepEmissionsCleanup: defineHook(async function (payload) {
         await this.handlerTx()
@@ -805,6 +809,12 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                 })
                 .check(),
             );
+            uow.triggerHook("onWorkflowTerminal", {
+              workflowName: instance.workflowName,
+              instanceId: instance.instanceId,
+              instanceRef: String(instance.id),
+              status: "terminated",
+            } satisfies WorkflowTerminalHookPayload);
             return buildInstanceStatus({
               status: "terminated",
               output: instance.output,
@@ -942,7 +952,13 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
       sendEvent: function (
         workflowName: string,
         instanceId: string,
-        options: { id?: string; type: string; payload?: unknown; createdAt?: Date },
+        options: {
+          id?: string;
+          type: string;
+          payload?: unknown;
+          createdAt?: Date;
+          ignoreTerminal?: boolean;
+        },
       ) {
         const eventId = options.id ?? randomUuid();
         const instanceRef = buildScopedInstanceRowId(workflowName, instanceId);
@@ -985,6 +1001,9 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
 
             const currentStatus = buildInstanceStatus(instance).status;
             if (isTerminalStatus(currentStatus)) {
+              if (options.ignoreTerminal) {
+                return buildInstanceStatus(instance);
+              }
               throw new Error("INSTANCE_TERMINAL");
             }
 

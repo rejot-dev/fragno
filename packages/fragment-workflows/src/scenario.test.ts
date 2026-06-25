@@ -50,6 +50,56 @@ describe("workflows scenario DSL", () => {
     });
   });
 
+  test("emits terminal hooks when workflow instances complete", async () => {
+    const workflows = { sleep: SleepWorkflow };
+
+    type ScenarioVars = {
+      hooks?: WorkflowScenarioHookRow[];
+    };
+
+    const scenario = defineScenario<typeof workflows, ScenarioVars>({
+      name: "terminal-hook-complete",
+      workflows,
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
+          workflow: "sleep",
+          id: "terminal-hook-1",
+          params: { note: "alpha" },
+        }),
+        runner.advanceTimeAndRunUntilIdle({
+          workflow: "sleep",
+          instanceId: "terminal-hook-1",
+          advanceBy: "1 hour",
+        }),
+        workflow.read({
+          read: (ctx) =>
+            ctx.state.internal.getHooks({
+              hookName: "onWorkflowTerminal",
+              workflowName: "sleep-workflow",
+              instanceId: "terminal-hook-1",
+            }),
+          storeAs: "hooks",
+        }),
+        workflow.assert((ctx) => {
+          expect(ctx.vars.hooks).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                hookName: "onWorkflowTerminal",
+                payload: expect.objectContaining({
+                  workflowName: "sleep-workflow",
+                  instanceId: "terminal-hook-1",
+                  status: "complete",
+                }),
+              }),
+            ]),
+          );
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
   test("drives sleep + event flows and captures history", async () => {
     const workflows = {
       sleep: SleepWorkflow,
