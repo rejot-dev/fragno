@@ -68,7 +68,8 @@ export type AutomationScopeTab =
   | "api"
   | "events"
   | "events-catalog"
-  | "mcp";
+  | "mcp"
+  | "sandboxes";
 
 export const automationScopeTabPath = (
   scope: AutomationUiScope,
@@ -122,7 +123,7 @@ export const createAutomationScopeOptions = ({
     .filter((option) => option.to.includes("/project/"));
 
   const userScope = { kind: "user" as const, userId: user.id, label: userName(user) };
-  const systemTab = currentTab === "api" || currentTab === "mcp" ? "scripts" : currentTab;
+  const systemTab = ["api", "mcp", "sandboxes"].includes(currentTab) ? "scripts" : currentTab;
   const systemOptions: AutomationScopeOption[] = isAutomationAdmin(user)
     ? [
         {

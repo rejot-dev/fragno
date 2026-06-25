@@ -3,20 +3,25 @@ import { Menu } from "@base-ui/react/menu";
 import { Separator } from "@base-ui/react/separator";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, NavLink, useNavigate } from "react-router";
+import { Link, NavLink, useLocation, useNavigate } from "react-router";
 
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 import { authClient } from "@/fragno/auth/auth-client";
 import { cn } from "@/lib/utils";
-import { toCfSandboxPath } from "@/routes/backoffice/environments/cf-sandbox-path";
 import { toWorkersPath } from "@/routes/backoffice/environments/workers.route-state";
 
 type NavItem = {
   label: string;
   to: string;
   end?: boolean;
+  isActive?: (pathname: string) => boolean;
   children?: NavItem[];
 };
+
+const isAutomationTabPath = (tab: string) => (pathname: string) =>
+  new RegExp(`^/backoffice/automations/(?:system|org|project|user)/[^/]+/${tab}(?:/|$)`).test(
+    pathname.replace(/\/+$/u, ""),
+  );
 
 function createNavItems(activeOrganizationId?: string | null): NavItem[] {
   const githubPath = activeOrganizationId
@@ -27,12 +32,33 @@ function createNavItems(activeOrganizationId?: string | null): NavItem[] {
     : "/backoffice/automations";
   const automationChildren = activeOrganizationId
     ? [
-        { label: "Automations", to: `${automationBasePath}/scripts` },
-        { label: "Store", to: `${automationBasePath}/store` },
-        { label: "Events", to: `${automationBasePath}/events` },
-        { label: "Events Catalog", to: `${automationBasePath}/events-catalog` },
-        { label: "API", to: `${automationBasePath}/api` },
-        { label: "MCP", to: `${automationBasePath}/mcp` },
+        {
+          label: "Automations",
+          to: `${automationBasePath}/scripts`,
+          isActive: isAutomationTabPath("scripts"),
+        },
+        {
+          label: "Store",
+          to: `${automationBasePath}/store`,
+          isActive: isAutomationTabPath("store"),
+        },
+        {
+          label: "Events",
+          to: `${automationBasePath}/events`,
+          isActive: isAutomationTabPath("events"),
+        },
+        {
+          label: "Events Catalog",
+          to: `${automationBasePath}/events-catalog`,
+          isActive: isAutomationTabPath("events-catalog"),
+        },
+        { label: "API", to: `${automationBasePath}/api`, isActive: isAutomationTabPath("api") },
+        { label: "MCP", to: `${automationBasePath}/mcp`, isActive: isAutomationTabPath("mcp") },
+        {
+          label: "Sandboxes",
+          to: `${automationBasePath}/sandboxes`,
+          isActive: isAutomationTabPath("sandboxes"),
+        },
       ]
     : undefined;
   const projectsPath = activeOrganizationId
@@ -59,10 +85,7 @@ function createNavItems(activeOrganizationId?: string | null): NavItem[] {
     {
       label: "Environments",
       to: "/backoffice/environments",
-      children: [
-        { label: "Workers", to: toWorkersPath({}) },
-        { label: "CF Sandbox", to: toCfSandboxPath({}) },
-      ],
+      children: [{ label: "Workers", to: toWorkersPath({}) }],
     },
     {
       label: "Internals",
@@ -171,6 +194,7 @@ function BackofficeSidebarContent({
                         to={item.to}
                         label={item.label}
                         end={item.end}
+                        isActive={item.isActive}
                         onPress={closeOverlaySidebar}
                       />
                       {item.children ? (
@@ -182,6 +206,7 @@ function BackofficeSidebarContent({
                                 label={child.label}
                                 end={child.end}
                                 variant="sub"
+                                isActive={child.isActive}
                                 onPress={closeOverlaySidebar}
                               />
                             </li>
@@ -243,29 +268,33 @@ function BackofficeSidebarLink({
   to,
   end,
   variant = "primary",
+  isActive: isActiveOverride,
   onPress,
 }: {
   label: string;
   to: string;
   end?: boolean;
   variant?: "primary" | "sub";
+  isActive?: (pathname: string) => boolean;
   onPress?: () => void;
 }) {
+  const location = useLocation();
   const showSuffix = variant === "primary";
   return (
     <NavLink
       to={to}
       end={end}
       onClick={onPress}
-      className={({ isActive }: { isActive: boolean }) =>
-        cn(
+      className={({ isActive }: { isActive: boolean }) => {
+        const active = isActive || Boolean(isActiveOverride?.(location.pathname));
+        return cn(
           "flex items-center justify-between border px-3 py-2 font-semibold transition-colors",
           variant === "sub" ? "text-xs" : "text-sm",
-          isActive
+          active
             ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
             : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)] hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]",
-        )
-      }
+        );
+      }}
     >
       <span>{label}</span>
       {showSuffix ? (

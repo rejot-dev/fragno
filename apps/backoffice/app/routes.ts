@@ -44,11 +44,11 @@ export default [
         route("events", "routes/backoffice/automations/events.tsx"),
         route("events-catalog", "routes/backoffice/automations/events-catalog.tsx"),
         route("mcp", "routes/backoffice/automations/mcp.tsx"),
+        route("sandboxes", "routes/backoffice/automations/sandboxes.tsx"),
       ]),
 
       route("environments", "routes/backoffice/environments/index.tsx"),
       route("environments/workers", "routes/backoffice/environments/workers.tsx"),
-      route("environments/cf-sandbox", "routes/backoffice/environments/cf-sandbox.tsx"),
       route(
         "connections/resend/:orgId",
         "routes/backoffice/connections/resend/organisation-layout.tsx",

@@ -1,6 +1,14 @@
-import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
+import {
+  Form,
+  Link,
+  redirect,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+  useOutletContext,
+} from "react-router";
 
-import { BackofficePageHeader } from "@/components/backoffice";
+import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import type {
   SandboxCommandResult,
@@ -9,19 +17,20 @@ import type {
   StartSandboxOptions,
 } from "@/sandbox/contracts";
 import { parseSleepAfterInput } from "@/sandbox/sleep-after";
-import { getSandboxRuntime } from "@/worker-runtime/sandbox-manager";
+import { getScopedSandboxRuntime } from "@/worker-runtime/sandbox-manager";
 
-import type { Route } from "./+types/cf-sandbox";
-import { toCfSandboxPath, type CfSandboxView } from "./cf-sandbox-path";
+import type { Route } from "./+types/sandboxes";
+import { fetchAutomationProjects, toExternalId } from "./data.server";
+import { automationScopeFromRouteParams, automationScopeTabPath } from "./scope";
+import type { AutomationLayoutContext } from "./shared";
 
-type CfSandboxLoaderData = {
-  organizationId: string | null;
-  organizationName: string | null;
-  needsActiveOrganization: boolean;
-  activeInstances: SandboxInstanceSummary[];
+type SandboxView = "new" | "detail";
+
+type ScopedSandboxLoaderData = {
+  sandboxes: SandboxInstanceSummary[];
   selectedSandbox: SandboxInstanceSummary | null;
   selectedSandboxId: string | null;
-  view: CfSandboxView;
+  view: SandboxView;
   loadError: string | null;
 };
 
@@ -76,149 +85,82 @@ const STATUS_CLASSES: Record<SandboxInstanceStatus, string> = {
   requested:
     "border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]",
   starting:
-    "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)] shadow-[0_0_0_1px_rgba(43,92,230,0.18)]",
+    "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]",
   running:
-    "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)] shadow-[0_0_0_1px_rgba(43,92,230,0.18)]",
+    "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]",
   stopping:
     "border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]",
   stopped: "border border-[color:var(--bo-border)] bg-[var(--bo-panel)] text-[var(--bo-muted-2)]",
   error: "border border-red-300 bg-red-100 text-red-700 shadow-[0_0_0_1px_rgba(220,38,38,0.14)]",
 };
 
-const ACTIVE_ORGANIZATION_REQUIRED_MESSAGE =
-  "Set an active organisation before using the CF Sandbox.";
+type SandboxPathOptions = { view?: "new" } | { view: "detail"; sandboxId: string };
 
 export function meta() {
   return [
-    { title: "Backoffice CF Sandbox" },
-    { name: "description", content: "Manage the Cloudflare sandbox environment." },
+    { title: "Automation sandboxes" },
+    {
+      name: "description",
+      content: "Manage Cloudflare sandboxes for the selected automation scope.",
+    },
   ];
 }
 
-export async function loader({ request, context }: Route.LoaderArgs) {
+export async function loader({ request, params, context }: Route.LoaderArgs) {
   const searchParams = new URL(request.url).searchParams;
   const requestedView = searchParams.get("view") === "new" ? "new" : "detail";
   const requestedSandboxId = readText(searchParams.get("sandbox"));
-  const me = await getAuthMe(request, context);
-  const activeOrganization = me?.activeOrganization ?? null;
-
-  if (!activeOrganization) {
-    return {
-      organizationId: null,
-      organizationName: null,
-      needsActiveOrganization: true,
-      activeInstances: [],
-      selectedSandbox: null,
-      selectedSandboxId: requestedSandboxId || null,
-      view: requestedView,
-      loadError: null,
-    } satisfies CfSandboxLoaderData;
-  }
-
-  const organizationId = activeOrganization.organization.id;
-  const organizationName = activeOrganization.organization.name;
-  const sandboxRuntime = getSandboxRuntime(context, organizationId);
+  const scope = await requireSandboxScopeAccess({ request, params, context });
+  const sandboxRuntime = getScopedSandboxRuntime(context, scope);
 
   try {
-    const allInstances = await sandboxRuntime.listSandboxes();
-    const activeInstances = allInstances.filter((instance) => instance.status !== "stopped");
+    const sandboxes = await sandboxRuntime.listSandboxes();
 
     if (requestedView === "new") {
       return {
-        organizationId,
-        organizationName,
-        needsActiveOrganization: false,
-        activeInstances,
+        sandboxes,
         selectedSandbox: null,
         selectedSandboxId: null,
         view: "new",
         loadError: null,
-      } satisfies CfSandboxLoaderData;
+      } satisfies ScopedSandboxLoaderData;
     }
 
     if (requestedSandboxId) {
       return {
-        organizationId,
-        organizationName,
-        needsActiveOrganization: false,
-        activeInstances,
-        selectedSandbox:
-          allInstances.find((instance) => instance.id === requestedSandboxId) ?? null,
+        sandboxes,
+        selectedSandbox: sandboxes.find((instance) => instance.id === requestedSandboxId) ?? null,
         selectedSandboxId: requestedSandboxId,
         view: "detail",
         loadError: null,
-      } satisfies CfSandboxLoaderData;
+      } satisfies ScopedSandboxLoaderData;
     }
 
-    const fallback = activeInstances[0] ?? null;
+    const fallback =
+      sandboxes.find((instance) => instance.status !== "stopped") ?? sandboxes[0] ?? null;
     return {
-      organizationId,
-      organizationName,
-      needsActiveOrganization: false,
-      activeInstances,
+      sandboxes,
       selectedSandbox: fallback,
       selectedSandboxId: fallback?.id ?? null,
       view: fallback ? "detail" : "new",
       loadError: null,
-    } satisfies CfSandboxLoaderData;
+    } satisfies ScopedSandboxLoaderData;
   } catch (error) {
     return {
-      organizationId,
-      organizationName,
-      needsActiveOrganization: false,
-      activeInstances: [],
+      sandboxes: [],
       selectedSandbox: null,
       selectedSandboxId: null,
       view: "new",
       loadError: toErrorMessage(error),
-    } satisfies CfSandboxLoaderData;
+    } satisfies ScopedSandboxLoaderData;
   }
 }
 
-export async function action({ request, context }: Route.ActionArgs) {
+export async function action({ request, params, context }: Route.ActionArgs) {
   const formData = await request.formData();
   const intent = readText(formData.get("intent"));
-  const me = await getAuthMe(request, context);
-  const organizationId = me?.activeOrganization?.organization.id ?? null;
-
-  if (!organizationId) {
-    if (intent === "start") {
-      return {
-        intent: "start",
-        ok: false,
-        message: ACTIVE_ORGANIZATION_REQUIRED_MESSAGE,
-        values: readNewSandboxFormValues(formData),
-      } satisfies StartActionError;
-    }
-
-    if (intent === "exec") {
-      return {
-        intent: "exec",
-        sandboxId: readText(formData.get("sandboxId")),
-        command: readText(formData.get("command")),
-        timeoutMs: toPositiveIntegerOrUndefined(readText(formData.get("timeoutMs"))),
-        result: {
-          ok: false,
-          reason: "internal_error",
-          message: ACTIVE_ORGANIZATION_REQUIRED_MESSAGE,
-          retryable: false,
-        },
-      } satisfies ExecuteActionResult;
-    }
-
-    if (intent === "kill") {
-      return {
-        intent: "kill",
-        ok: false,
-        sandboxId: readText(formData.get("sandboxId")),
-        message: ACTIVE_ORGANIZATION_REQUIRED_MESSAGE,
-      } satisfies KillActionError;
-    }
-
-    throw new Response(ACTIVE_ORGANIZATION_REQUIRED_MESSAGE, { status: 400 });
-  }
-
-  const sandboxRuntime = getSandboxRuntime(context, organizationId);
+  const scope = await requireSandboxScopeAccess({ request, params, context });
+  const sandboxRuntime = getScopedSandboxRuntime(context, scope);
 
   if (intent === "start") {
     const values = readNewSandboxFormValues(formData);
@@ -246,7 +188,9 @@ export async function action({ request, context }: Route.ActionArgs) {
 
     try {
       instance = await sandboxRuntime.startSandbox(options);
-      return redirect(toCfSandboxPath({ view: "detail", sandboxId: instance.id }));
+      return redirect(
+        toSandboxPathFromRequest(request, { view: "detail", sandboxId: instance.id }),
+      );
     } catch (error) {
       if (instance?.id) {
         try {
@@ -341,7 +285,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
     try {
       await sandboxRuntime.killSandbox({ sandboxId });
-      return redirect(toCfSandboxPath({ view: "new" }));
+      return redirect(toSandboxPathFromRequest(request, { view: "new" }));
     } catch (error) {
       return {
         intent: "kill",
@@ -355,22 +299,17 @@ export async function action({ request, context }: Route.ActionArgs) {
   throw new Response("Unsupported sandbox action", { status: 400 });
 }
 
-export default function BackofficeEnvironmentCfSandbox() {
-  const {
-    organizationName,
-    needsActiveOrganization,
-    activeInstances,
-    selectedSandbox,
-    selectedSandboxId,
-    view,
-    loadError,
-  } = useLoaderData<typeof loader>();
+export default function BackofficeAutomationSandboxes() {
+  const { selectedScope } = useOutletContext<AutomationLayoutContext>();
+  const { sandboxes, selectedSandbox, selectedSandboxId, view, loadError } =
+    useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const activeIntent = navigation.formData?.get("intent");
   const isStarting = navigation.state === "submitting" && activeIntent === "start";
   const isExecuting = navigation.state === "submitting" && activeIntent === "exec";
   const isKilling = navigation.state === "submitting" && activeIntent === "kill";
+  const basePath = automationScopeTabPath(selectedScope, "sandboxes");
 
   const startError =
     actionData?.intent === "start" && actionData.ok === false ? actionData.message : null;
@@ -395,150 +334,105 @@ export default function BackofficeEnvironmentCfSandbox() {
   const commandDisabled = !selectedSandbox || selectedSandbox.status !== "running";
 
   return (
-    <div className="space-y-4">
-      <BackofficePageHeader
-        breadcrumbs={[
-          { label: "Backoffice", to: "/backoffice" },
-          { label: "Environments", to: "/backoffice/environments" },
-          { label: "CF Sandbox" },
-        ]}
-        eyebrow="Environment"
-        title="CF Sandbox workspace."
-        description={
-          organizationName
-            ? `Start isolated sandboxes, inspect health, and run commands for ${organizationName}.`
-            : "Start isolated sandboxes, inspect health, and run commands against active instances."
-        }
-        actions={
+    <section className="grid gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">
+      <aside className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)]">
+        <div>
+          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+            Sandboxes
+          </p>
+          <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Instances</h2>
+        </div>
+
+        <div className="mt-4 space-y-2">
           <Link
-            to="/backoffice/environments"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+            to={toSandboxPath(basePath, { view: "new" })}
+            preventScrollReset
+            aria-current={view === "new" ? "page" : undefined}
+            className={
+              view === "new"
+                ? "block w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-3 text-left text-[var(--bo-accent-fg)]"
+                : "block w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3 text-left text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+            }
           >
-            Back to environments
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-[var(--bo-fg)]">Create sandbox</p>
+              <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[9px] tracking-[0.22em] uppercase">
+                New
+              </span>
+            </div>
           </Link>
-        }
-      />
 
-      <section className="grid gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">
-        <aside className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)]">
-          <div className="mb-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-xs text-[var(--bo-muted)]">
-            <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-              Organisation scope
-            </span>
-            <p className="mt-1 font-semibold text-[var(--bo-fg)]">
-              {organizationName ?? "No active organisation"}
-            </p>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-              Active sandboxes
-            </p>
-            <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted)] uppercase">
-              {activeInstances.length}
-            </span>
-          </div>
-
-          <div className="mt-3 space-y-2">
-            <Link
-              to={toCfSandboxPath({ view: "new" })}
-              aria-current={view === "new" ? "page" : undefined}
-              className={
-                view === "new"
-                  ? "block border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-3 text-[var(--bo-accent-fg)] shadow-[0_0_0_1px_rgba(43,92,230,0.14)]"
-                  : "block border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3 text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)]"
-              }
-            >
-              <p className="text-[10px] tracking-[0.24em] uppercase">New sandbox</p>
-              <p className="mt-2 text-sm font-semibold">Create a fresh instance</p>
-            </Link>
-
-            {activeInstances.length === 0 ? (
-              <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3 text-xs text-[var(--bo-muted)]">
-                No active instances yet.
-              </div>
-            ) : (
-              activeInstances.map((instance) => {
-                const isSelected =
-                  view === "detail" && selectedSandboxId && selectedSandboxId === instance.id;
-                return (
-                  <Link
-                    key={instance.id}
-                    to={toCfSandboxPath({ view: "detail", sandboxId: instance.id })}
-                    aria-current={isSelected ? "page" : undefined}
-                    className={
-                      isSelected
-                        ? "block border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-3 text-[var(--bo-accent-fg)] shadow-[0_0_0_1px_rgba(43,92,230,0.14)]"
-                        : "block border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3 text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)]"
-                    }
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="truncate text-sm font-semibold">{instance.id}</p>
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-[9px] font-semibold tracking-[0.16em] whitespace-nowrap uppercase ${STATUS_CLASSES[instance.status]}`}
-                      >
-                        {STATUS_LABELS[instance.status]}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-xs text-[var(--bo-muted-2)]">
-                      Live status from sandbox runtime
-                    </p>
-                  </Link>
-                );
-              })
-            )}
-          </div>
-        </aside>
-
-        <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)]">
-          {needsActiveOrganization ? (
-            <div className="space-y-4">
-              <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                Active organisation required
-              </p>
-              <p className="text-sm text-[var(--bo-muted)]">
-                {ACTIVE_ORGANIZATION_REQUIRED_MESSAGE}
-              </p>
-              <Link
-                to="/backoffice/organisations"
-                className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
-              >
-                Open organisations
-              </Link>
+          {!loadError && sandboxes.length === 0 ? (
+            <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3 text-xs text-[var(--bo-muted)]">
+              No sandbox instances yet.
             </div>
-          ) : loadError ? (
-            <div className="border border-red-300 bg-red-100 p-3 text-sm text-red-700">
-              {loadError}
-            </div>
-          ) : view === "new" ? (
-            <NewSandboxView values={startValues} error={startError} isStarting={isStarting} />
-          ) : selectedSandbox ? (
-            <SandboxDetailView
-              sandbox={selectedSandbox}
-              commandRun={commandRun}
-              commandDisabled={commandDisabled}
-              killError={killError}
-              isExecuting={isExecuting}
-              isKilling={isKilling}
-            />
           ) : (
-            <div className="space-y-4">
-              <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                Sandbox not found
-              </p>
-              <p className="text-sm text-[var(--bo-muted)]">
-                The selected sandbox instance is no longer available.
-              </p>
-              <Link
-                to={toCfSandboxPath({ view: "new" })}
-                className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
-              >
-                Create new sandbox
-              </Link>
-            </div>
+            sandboxes.map((instance) => {
+              const isSelected =
+                view === "detail" && selectedSandboxId && selectedSandboxId === instance.id;
+              return (
+                <Link
+                  key={instance.id}
+                  to={toSandboxPath(basePath, { view: "detail", sandboxId: instance.id })}
+                  aria-current={isSelected ? "page" : undefined}
+                  className={
+                    isSelected
+                      ? "block border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-3 text-[var(--bo-accent-fg)] shadow-[0_0_0_1px_rgba(43,92,230,0.14)]"
+                      : "block border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3 text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)]"
+                  }
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="truncate text-sm font-semibold">{instance.id}</p>
+                    <span
+                      className={`px-2.5 py-1 text-[9px] font-semibold tracking-[0.16em] whitespace-nowrap uppercase ${STATUS_CLASSES[instance.status]}`}
+                    >
+                      {STATUS_LABELS[instance.status]}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs text-[var(--bo-muted-2)]">
+                    Automation-scoped sandbox runtime
+                  </p>
+                </Link>
+              );
+            })
           )}
-        </section>
+        </div>
+      </aside>
+
+      <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)]">
+        {loadError ? (
+          <div className="border border-red-300 bg-red-100 p-3 text-sm text-red-700">
+            {loadError}
+          </div>
+        ) : view === "new" ? (
+          <NewSandboxView values={startValues} error={startError} isStarting={isStarting} />
+        ) : selectedSandbox ? (
+          <SandboxDetailView
+            sandbox={selectedSandbox}
+            commandRun={commandRun}
+            commandDisabled={commandDisabled}
+            killError={killError}
+            isExecuting={isExecuting}
+            isKilling={isKilling}
+          />
+        ) : (
+          <div className="space-y-4">
+            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+              Sandbox not found
+            </p>
+            <p className="text-sm text-[var(--bo-muted)]">
+              The selected sandbox instance is no longer available for this automation scope.
+            </p>
+            <Link
+              to={toSandboxPath(basePath, { view: "new" })}
+              className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
+            >
+              Create new sandbox
+            </Link>
+          </div>
+        )}
       </section>
-    </div>
+    </section>
   );
 }
 
@@ -711,24 +605,25 @@ function SandboxDetailView({
             Inspect runtime status and run commands against this instance.
           </p>
         </div>
-        <span
-          className={`rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-[0.16em] uppercase ${STATUS_CLASSES[sandbox.status]}`}
-        >
-          {STATUS_LABELS[sandbox.status]}
-        </span>
-      </div>
-
-      <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-4">
-        <DetailItem
-          label="Runtime status"
-          value={STATUS_LABELS[sandbox.status]}
-          description="Resolved from the current sandbox runtime state."
-        />
-        <DetailItem
-          label="Registry record"
-          value="Tracked by id"
-          description="Registry stores only sandbox ids and reads live status on request."
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Form method="post" className="contents">
+            <input type="hidden" name="intent" value="kill" />
+            <input type="hidden" name="sandboxId" value={sandbox.id} />
+            <button
+              type="submit"
+              disabled={isKilling}
+              className="inline-flex border border-red-300 bg-red-100 px-3 py-1 text-[10px] font-semibold tracking-[0.16em] text-red-700 uppercase transition-colors hover:border-red-400 hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {isKilling ? "Stopping..." : "Stop"}
+            </button>
+          </Form>
+          <span
+            className={`px-2.5 py-1 text-[10px] font-semibold tracking-[0.16em] uppercase ${STATUS_CLASSES[sandbox.status]}`}
+          >
+            {STATUS_LABELS[sandbox.status]}
+          </span>
+          {killError ? <p className="basis-full text-xs text-red-700">{killError}</p> : null}
+        </div>
       </div>
 
       <div className="space-y-4 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
@@ -807,22 +702,6 @@ function SandboxDetailView({
           <p className="text-sm text-[var(--bo-muted)]">Run a command to view stdout and stderr.</p>
         )}
       </div>
-
-      <Form method="post" className="space-y-2 border border-red-200 bg-red-50 p-3">
-        <input type="hidden" name="intent" value="kill" />
-        <input type="hidden" name="sandboxId" value={sandbox.id} />
-        <button
-          type="submit"
-          disabled={isKilling}
-          className="inline-flex border border-red-300 bg-red-100 px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-red-700 uppercase transition-colors hover:border-red-400 hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          {isKilling ? "Stopping..." : "Kill sandbox"}
-        </button>
-        <p className="text-xs text-red-700">
-          Destroys the sandbox runtime and deletes the sandbox instance.
-        </p>
-        {killError ? <p className="text-sm text-red-700">{killError}</p> : null}
-      </Form>
     </div>
   );
 }
@@ -853,24 +732,6 @@ function CommandOutput({ command, result }: { command: string; result: SandboxCo
   );
 }
 
-function DetailItem({
-  label,
-  value,
-  description,
-}: {
-  label: string;
-  value: string;
-  description: string;
-}) {
-  return (
-    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-      <p className="text-[10px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">{label}</p>
-      <p className="mt-2 text-sm font-medium text-[var(--bo-fg)]">{value || "—"}</p>
-      <p className="mt-1 text-xs text-[var(--bo-muted)]">{description}</p>
-    </div>
-  );
-}
-
 function LogBlock({ label, value }: { label: "stdout" | "stderr"; value?: string }) {
   return (
     <div className="space-y-1">
@@ -880,6 +741,73 @@ function LogBlock({ label, value }: { label: "stdout" | "stderr"; value?: string
       </pre>
     </div>
   );
+}
+
+function toSandboxPath(basePath: string, options: SandboxPathOptions = {}) {
+  const params = new URLSearchParams();
+  if (options.view === "new") {
+    params.set("view", "new");
+  } else if (options.view === "detail") {
+    params.set("sandbox", options.sandboxId);
+  }
+
+  const query = params.toString();
+  return query ? `${basePath}?${query}` : basePath;
+}
+
+function toSandboxPathFromRequest(request: Request, options: SandboxPathOptions = {}) {
+  const url = new URL(request.url);
+  return toSandboxPath(url.pathname.replace(/\/+$/, ""), options);
+}
+
+async function requireSandboxScopeAccess({
+  request,
+  params,
+  context,
+}: Pick<Route.LoaderArgs, "request" | "params" | "context">): Promise<BackofficeRoutableScope> {
+  const me = await getAuthMe(request, context);
+  if (!me?.user) {
+    throw new Response("Unauthorized", { status: 401 });
+  }
+
+  const scope = automationScopeFromRouteParams(params);
+  if (scope.kind === "system") {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  if (scope.kind === "user") {
+    if (scope.userId !== me.user.id) {
+      throw new Response("Not Found", { status: 404 });
+    }
+    return scope;
+  }
+
+  const hasOrgAccess = me.organizations.some((entry) => entry.organization.id === scope.orgId);
+  if (!hasOrgAccess) {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  if (scope.kind === "project") {
+    const projectsResult = await fetchAutomationProjects(request, context, scope.orgId);
+    if (projectsResult.projectsError) {
+      throw Response.json(
+        {
+          code: "AUTOMATION_PROJECTS_UNAVAILABLE",
+          message: projectsResult.projectsError,
+        },
+        { status: 502, statusText: "Bad Gateway" },
+      );
+    }
+
+    const project = projectsResult.projects.find(
+      (entry) => toExternalId(entry.id) === scope.projectId,
+    );
+    if (!project || project.archivedAt) {
+      throw new Response("Not Found", { status: 404 });
+    }
+  }
+
+  return scope;
 }
 
 function readNewSandboxFormValues(formData: FormData): NewSandboxFormValues {
