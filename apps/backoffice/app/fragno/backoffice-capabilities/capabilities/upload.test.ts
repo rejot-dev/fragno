@@ -6,6 +6,7 @@ import { seedWorkspaceStarterFiles } from "@/files/seed-workspace-starter-files"
 describe("workspace starter file seeding", () => {
   test("copies missing starter files without resolving them as folders", async () => {
     const requests: Array<{ method: string; pathname: string }> = [];
+    const writtenMetadata: Array<Record<string, unknown>> = [];
     const uploadDo = {
       getAdminConfig: vi.fn(async () => ({
         configured: true,
@@ -15,6 +16,14 @@ describe("workspace starter file seeding", () => {
       fetch: vi.fn(async (request: Request) => {
         const url = new URL(request.url);
         requests.push({ method: request.method, pathname: url.pathname });
+
+        if (request.method === "POST" && url.pathname === "/api/upload/files") {
+          const form = await request.clone().formData();
+          const metadata = form.get("metadata");
+          if (typeof metadata === "string") {
+            writtenMetadata.push(JSON.parse(metadata) as Record<string, unknown>);
+          }
+        }
 
         if (request.method === "GET" && url.pathname === "/api/upload/files") {
           return new Response("folder resolution should not be used during starter copy", {
@@ -54,5 +63,12 @@ describe("workspace starter file seeding", () => {
     expect(uploadDo.getAdminConfig).toHaveBeenCalledOnce();
     expect(requests).not.toContainEqual({ method: "GET", pathname: "/api/upload/files" });
     assert(requests.some((request) => request.method === "POST"));
+
+    // Starter files must be group-owned by the org (not root), so org members can
+    // edit them afterwards instead of hitting EACCES on the read-only "other" bits.
+    assert(writtenMetadata.length > 0);
+    for (const metadata of writtenMetadata) {
+      expect(metadata.__docsFs).toMatchObject({ group: { kind: "org", orgId: "org-1" } });
+    }
   });
 });

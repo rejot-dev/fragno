@@ -31,7 +31,11 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   };
 });
 
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
+vi.mock("cloudflare:workers", () => ({
+  DurableObject,
+  RpcTarget,
+  WorkerEntrypoint,
+}));
 
 import {
   backofficeFiles,
@@ -160,7 +164,9 @@ describe("system automation scenarios", () => {
       });
       const listInstances = workflow.listInstances;
       if (!listInstances) {
-        throw new Error("Workflow listInstances runtime helper is unavailable.");
+        throw new Error(
+          "Workflow listInstances runtime helper is unavailable.",
+        );
       }
       const instances = await listInstances({
         workflowName: "automation-codemode-script",
@@ -183,24 +189,33 @@ describe("system automation scenarios", () => {
         fs.readFile("/workspace/codemode/providers/capabilities.d.ts"),
       ).resolves.toContain("declare const capabilities");
 
-      const userFs = await createBackofficeFileSystem({
-        objects: runtime.objects,
-        kernel: new BackofficeKernel({ objects: runtime.objects }),
-        execution: {
-          actor: {
-            type: "user",
-            id: "user-1",
-            userId: "user-1",
-            organizationIds: [orgId],
+      // Regression: an org member (not root) must be able to edit a seeded
+      // workspace automation. Seeded files are group-owned by the org, so the
+      // member's group-write bit applies instead of the read-only "other" bits
+      // that previously failed their save with EACCES.
+      const memberFs = await createMasterFileSystem(
+        createSystemFilesContext({
+          objects: runtime.objects,
+          execution: {
+            actor: {
+              type: "user",
+              id: "user-1",
+              userId: "user-1",
+              email: "ada@example.com",
+              role: "user",
+              organizationIds: [orgId],
+            },
+            scope: { kind: "org", orgId },
           },
-          scope: { kind: "org", orgId },
-        },
-      });
+        }),
+      );
+      const telegramPath =
+        "/workspace/automations/telegram-test-command.workflow.js";
       await expect(
-        userFs.writeFile("/workspace/automations/bla.txt", "dashboard can write"),
+        memberFs.writeFile(telegramPath, "// edited by org member\n"),
       ).resolves.toBeUndefined();
-      await expect(userFs.readFile("/workspace/automations/bla.txt")).resolves.toBe(
-        "dashboard can write",
+      await expect(memberFs.readFile(telegramPath)).resolves.toContain(
+        "edited by org member",
       );
     } finally {
       await runtime.cleanup();
@@ -239,12 +254,15 @@ describe("system automation scenarios", () => {
 
           runner.drain(),
 
-          then.assert("project upload database provider is configured", async (ctx) => {
-            const config = await ctx.runtime.objects.upload
-              .forProject({ orgId: "org-1", projectId: ctx.vars.projectId })
-              .getAdminConfig();
-            assert(config.providers.database?.configured);
-          }),
+          then.assert(
+            "project upload database provider is configured",
+            async (ctx) => {
+              const config = await ctx.runtime.objects.upload
+                .forProject({ orgId: "org-1", projectId: ctx.vars.projectId })
+                .getAdminConfig();
+              assert(config.providers.database?.configured);
+            },
+          ),
 
           then.files.contains({
             orgId: "org-1",
@@ -270,6 +288,7 @@ describe("system automation scenarios", () => {
               "Updated through /projects.",
             );
           }),
+          then.workflow.noErrored({ orgId: "org-1" }),
         ],
       }),
     );
@@ -384,7 +403,9 @@ describe("system automation scenarios", () => {
             "workspace automations directory is writable through dashboard bash",
             async (ctx) => {
               const orgId = "org-1";
-              const kernel = new BackofficeKernel({ objects: ctx.runtime.objects });
+              const kernel = new BackofficeKernel({
+                objects: ctx.runtime.objects,
+              });
               const execution = {
                 actor: {
                   scope: "internal" as const,
@@ -556,7 +577,9 @@ describe("system automation scenarios", () => {
 
         files: backofficeFiles.systemOnly(),
 
-        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        setup: ({ given }) => [
+          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+        ],
 
         steps: ({ when, then }) => [
           when.automation.ingestEvent(systemUnrelatedEvent),
@@ -580,7 +603,9 @@ describe("system automation scenarios", () => {
 
         files: backofficeFiles.systemOnly(),
 
-        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        setup: ({ given }) => [
+          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+        ],
 
         steps: ({ when, then }) => [
           when.workflow.createInstance({
@@ -589,7 +614,8 @@ describe("system automation scenarios", () => {
             instanceId: "workspace-file-initialization-skip",
             params: {
               automationEvent: systemUnrelatedEvent,
-              workflowScriptPath: "/system/automations/workspace-file-initialization.workflow.js",
+              workflowScriptPath:
+                "/system/automations/workspace-file-initialization.workflow.js",
             },
           }),
 

@@ -496,7 +496,7 @@ export async function runWorkflow({
   try {
     const runtime = createRouteBackedAutomationWorkflowRuntime({
       object: getAutomationsDurableObject(context, orgId),
-      orgId,
+      scope: { kind: "org", orgId },
     });
     const created = await runtime.createInstance({
       workflowName: AUTOMATION_CODEMODE_WORKFLOW,
