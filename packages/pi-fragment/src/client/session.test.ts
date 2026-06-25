@@ -7,6 +7,7 @@ import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
 
 import type { PiSessionEventStreamItem } from "../pi/types";
 import {
+  createDirectFetchPiSessionTransport,
   createInitialPiSessionStoreState,
   createPiSessionStore,
   createStorePiSessionTransport,
@@ -102,6 +103,41 @@ describe("Pi session stream reducer", () => {
     const toolEndEvent = { type: "tool_execution_end", toolCallId: "tool_1" } as AgentEvent;
     state = reducePiSessionStreamFrame(state, toolEndEvent, { now: 8 });
     expect(state.events).toContain(toolEndEvent);
+  });
+
+  it("drops the buffered events on a fresh snapshot so a reconnect does not duplicate messages", () => {
+    let state = createInitialPiSessionStoreState({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+    });
+
+    // First connection: an assistant turn streams in and completes.
+    state = reducePiSessionStreamFrame(state, { type: "snapshot", state: snapshot }, { now: 1 });
+    state = reducePiSessionStreamFrame(state, { type: "message_start" } as AgentEvent, { now: 2 });
+    state = reducePiSessionStreamFrame(
+      state,
+      { type: "message_end", message: message("hello") } as AgentEvent,
+      { now: 3 },
+    );
+    expect(state.agent?.messages).toEqual([message("hello")]);
+
+    // Reconnect: the server replays a snapshot that already contains the committed
+    // message. The buffered events must be cleared so it isn't appended a second time.
+    state = reducePiSessionStreamFrame(
+      state,
+      { type: "snapshot", state: { messages: [message("hello")] } },
+      { now: 4 },
+    );
+    expect(state.events).toEqual([]);
+
+    // A new turn on the reconnected stream appends once, not on top of a replay.
+    state = reducePiSessionStreamFrame(state, { type: "message_start" } as AgentEvent, { now: 5 });
+    state = reducePiSessionStreamFrame(
+      state,
+      { type: "message_end", message: message("world") } as AgentEvent,
+      { now: 6 },
+    );
+    expect(state.agent?.messages).toEqual([message("hello"), message("world")]);
   });
 
   it("replaces an abandoned partial assistant message when recovery starts a new stream", () => {
@@ -677,6 +713,127 @@ describe("createStorePiSessionTransport", () => {
     controller.abort();
     await expect(next).rejects.toThrow("Request was aborted");
     assert(eventsStore.listenerCount() === 0);
+  });
+});
+
+describe("createDirectFetchPiSessionTransport", () => {
+  const ndjsonResponse = (chunks: string[], init?: ResponseInit) => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(encoder.encode(chunk));
+        }
+        controller.close();
+      },
+    });
+    return new Response(body, init);
+  };
+
+  const directTransport = (fetcher: typeof fetch) =>
+    createDirectFetchPiSessionTransport({
+      buildEventsUrl: ({ workflowName, sessionId }) =>
+        `/api/pi/${workflowName}/${sessionId}/events`,
+      getFetcher: () => ({ fetcher }),
+      sendCommand: async () => ({ accepted: true, commandId: "cmd_1", status: "active" }),
+    });
+
+  it("streams ndjson frames from fetch and ends the iterable on a clean EOF", async () => {
+    // The snapshot frame is split across two read chunks to exercise line buffering.
+    const fetcher = vi.fn(async () =>
+      ndjsonResponse([
+        `${JSON.stringify({ type: "snapshot", state: snapshot }).slice(0, 10)}`,
+        `${JSON.stringify({ type: "snapshot", state: snapshot }).slice(10)}\n`,
+        `${JSON.stringify({ type: "agent_start" })}\n`,
+      ]),
+    ) as unknown as typeof fetch;
+
+    const frames = await directTransport(fetcher).openEvents({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+      signal: new AbortController().signal,
+    });
+
+    const collected: unknown[] = [];
+    for await (const frame of frames) {
+      collected.push(frame);
+    }
+
+    assert(
+      (fetcher as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] ===
+        "/api/pi/workflow_1/session_1/events",
+    );
+    expect(collected).toEqual([{ type: "snapshot", state: snapshot }, { type: "agent_start" }]);
+  });
+
+  it("issues a fresh request on every connect", async () => {
+    const fetcher = vi.fn(async () =>
+      ndjsonResponse([`${JSON.stringify({ type: "snapshot", state: snapshot })}\n`]),
+    ) as unknown as typeof fetch;
+    const transport = directTransport(fetcher);
+    const args = {
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+      signal: new AbortController().signal,
+    };
+
+    for (const frames of [await transport.openEvents(args), await transport.openEvents(args)]) {
+      for await (const _frame of frames) {
+        // drain
+      }
+    }
+
+    assert((fetcher as unknown as ReturnType<typeof vi.fn>).mock.calls.length === 2);
+  });
+
+  it("surfaces a 404 as a fatal FragnoClientApiError", async () => {
+    const fetcher = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ message: "gone", code: "SESSION_NOT_FOUND" }), {
+          status: 404,
+        }),
+    ) as unknown as typeof fetch;
+
+    const frames = await directTransport(fetcher).openEvents({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+      signal: new AbortController().signal,
+    });
+
+    await expect(frames[Symbol.asyncIterator]().next()).rejects.toBeInstanceOf(
+      FragnoClientApiError,
+    );
+  });
+
+  it("translates an aborted fetch into an abort error", async () => {
+    const controller = new AbortController();
+    const fetcher = vi.fn(async () => {
+      controller.abort();
+      throw new DOMException("aborted", "AbortError");
+    }) as unknown as typeof fetch;
+
+    const frames = await directTransport(fetcher).openEvents({
+      workflowName: "workflow_1",
+      sessionId: "session_1",
+      signal: controller.signal,
+    });
+
+    await expect(frames[Symbol.asyncIterator]().next()).rejects.toThrow("Request was aborted");
+  });
+
+  it("reconnects through the store after each stream EOFs", async () => {
+    let opens = 0;
+    const fetcher = vi.fn(async () => {
+      opens += 1;
+      return ndjsonResponse([`${JSON.stringify({ type: "snapshot", state: snapshot })}\n`]);
+    }) as unknown as typeof fetch;
+
+    const store = createStore(directTransport(fetcher), { retryDelay: () => 5 });
+    const unsubscribe = store.subscribe(() => {});
+
+    await vi.waitFor(() => expect(opens).toBeGreaterThanOrEqual(2));
+
+    unsubscribe();
   });
 });
 
