@@ -26,10 +26,15 @@ import type {
   AutomationFragmentConfig,
   AutomationIngestResult,
   AutomationProjectExecutionTarget,
+  SandboxInstanceRecord,
+  SandboxInstanceRequestInput,
+  SandboxProvider,
 } from "@/fragno/automation";
 import { createAutomationsRuntime, type AutomationsRuntime } from "@/fragno/automation/automations";
 import type { DurableHookQueueOptions, DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import { createPiRouteRuntime } from "@/fragno/pi/pi";
+import { createCloudflareSandboxProvider } from "@/sandbox/cloudflare-sandbox-provider";
+import { CLOUDFLARE_SANDBOX_PROVIDER } from "@/sandbox/contracts";
 
 import {
   createBackofficeFragmentDurableObject,
@@ -64,6 +69,18 @@ const automationConfigForScope = (
 const automationConfigForOrgId = (orgId: string): AutomationDurableObjectConfig => ({
   scope: { kind: "org", orgId },
 });
+
+const ACTIVE_SANDBOX_INSTANCE_STATUSES = new Set<SandboxInstanceRecord["status"]>([
+  "requested",
+  "starting",
+  "running",
+  "stopping",
+]);
+
+const isActiveSandboxInstance = (
+  instance: SandboxInstanceRecord | null | undefined,
+): instance is SandboxInstanceRecord =>
+  Boolean(instance && ACTIVE_SANDBOX_INSTANCE_STATUSES.has(instance.status));
 
 const automationCatalogOrgIdForScope = (scope: BackofficeContextScope): string => {
   switch (scope.kind) {
@@ -150,6 +167,19 @@ export class InMemoryAutomationsObject implements AutomationsObject {
             env: this.#env,
             runtime: this.#runtimeServices,
             ownerScope: config.scope,
+            sandboxProviders: this.#env?.SANDBOX
+              ? {
+                  [CLOUDFLARE_SANDBOX_PROVIDER]: createCloudflareSandboxProvider({
+                    sandboxNamespace: this.#env.SANDBOX,
+                    sdk: {
+                      async getSandbox(namespace, id, options) {
+                        const { getSandbox } = await import("@cloudflare/sandbox");
+                        return getSandbox(namespace, id, options) as never;
+                      },
+                    },
+                  }),
+                }
+              : undefined,
             createPiAutomationContext: this.#createPiAutomationContext.bind(this),
             getAutomationFileSystem: async ({ execution, purpose }) => {
               if (this.#getAutomationFileSystem) {
@@ -266,6 +296,20 @@ export class InMemoryAutomationsObject implements AutomationsObject {
     };
   }
 
+  async #ensureConfiguredFromStored(): Promise<void> {
+    if (this.#host.getConfigured()) {
+      return;
+    }
+
+    await this.#state.blockConcurrencyWhile(async () => {
+      if (this.#host.getConfigured()) {
+        return;
+      }
+
+      await this.#host.initializeFromStored(await this.#host.loadStored());
+    });
+  }
+
   async triggerIngestEvent(event: AutomationEvent): Promise<AutomationIngestResult> {
     await this.#ensureConfigured(automationConfigForScope(event.scope));
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
@@ -283,10 +327,73 @@ export class InMemoryAutomationsObject implements AutomationsObject {
     projectId?: string;
     slug?: string;
   }): Promise<AutomationProjectExecutionTarget | null> {
+    await this.#ensureConfiguredFromStored();
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
 
     return await runtime.automationFragment.callServices(() =>
       runtime.automationFragment.services.resolveProjectForExecution(input),
+    );
+  }
+
+  async listSandboxInstances(input?: {
+    provider?: SandboxProvider;
+    limit?: number;
+  }): Promise<SandboxInstanceRecord[]> {
+    await this.#ensureConfiguredFromStored();
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.listSandboxInstances(input),
+    );
+  }
+
+  async getSandboxInstance(input: { id: string }): Promise<SandboxInstanceRecord | null> {
+    await this.#ensureConfiguredFromStored();
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.getSandboxInstance(input),
+    );
+  }
+
+  async requestSandboxInstance(
+    input: SandboxInstanceRequestInput & { ownerScope?: BackofficeContextScope },
+  ): Promise<SandboxInstanceRecord> {
+    await this.#ensureConfigured(automationConfigForScope(input.ownerScope));
+    await this.#ensureConfiguredFromStored();
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+    const existing = await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.getSandboxInstance({ id: input.id }),
+    );
+    if (isActiveSandboxInstance(existing)) {
+      return existing;
+    }
+
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.requestSandboxInstance(input),
+    );
+  }
+
+  async requestSandboxInstanceStop(input: {
+    id: string;
+    ownerScope?: BackofficeContextScope;
+  }): Promise<SandboxInstanceRecord | null> {
+    await this.#ensureConfigured(automationConfigForScope(input.ownerScope));
+    await this.#ensureConfiguredFromStored();
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+    const instance = await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.getSandboxInstance({ id: input.id }),
+    );
+    const workflowInstanceId = instance?.workflowInstanceId;
+    if (!workflowInstanceId) {
+      return instance;
+    }
+
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.requestSandboxInstanceStop({
+        id: input.id,
+        workflowInstanceId,
+      }),
     );
   }
 
@@ -334,6 +441,30 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
     slug?: string;
   }): Promise<AutomationProjectExecutionTarget | null> {
     return await this.#object.resolveProjectForExecution(input);
+  }
+
+  async listSandboxInstances(input?: {
+    provider?: SandboxProvider;
+    limit?: number;
+  }): Promise<SandboxInstanceRecord[]> {
+    return await this.#object.listSandboxInstances(input);
+  }
+
+  async getSandboxInstance(input: { id: string }): Promise<SandboxInstanceRecord | null> {
+    return await this.#object.getSandboxInstance(input);
+  }
+
+  async requestSandboxInstance(
+    input: SandboxInstanceRequestInput & { ownerScope?: BackofficeContextScope },
+  ): Promise<SandboxInstanceRecord> {
+    return await this.#object.requestSandboxInstance(input);
+  }
+
+  async requestSandboxInstanceStop(input: {
+    id: string;
+    ownerScope?: BackofficeContextScope;
+  }): Promise<SandboxInstanceRecord | null> {
+    return await this.#object.requestSandboxInstanceStop(input);
   }
 
   async alarm() {

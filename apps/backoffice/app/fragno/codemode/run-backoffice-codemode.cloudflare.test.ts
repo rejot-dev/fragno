@@ -794,7 +794,6 @@ const createScopedMcpRuntimeServices = (
         github: false,
         cloudflareWorkers: false,
         githubWebhookRouter: false,
-        sandboxRegistry: false,
         sandbox: false,
       },
     },

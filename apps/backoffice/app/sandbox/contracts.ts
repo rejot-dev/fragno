@@ -1,4 +1,13 @@
-export type SandboxInstanceStatus = "running" | "stopped" | "error";
+export type SandboxInstanceStatus =
+  | "requested"
+  | "starting"
+  | "running"
+  | "stopping"
+  | "stopped"
+  | "error";
+export type SandboxProviderId = "cloudflare";
+
+export const CLOUDFLARE_SANDBOX_PROVIDER = "cloudflare" satisfies SandboxProviderId;
 
 export type SandboxInstanceSummary = {
   id: string;
@@ -11,6 +20,19 @@ export type StartSandboxOptions = {
   sleepAfter?: string | number;
   startupTimeoutMs?: number;
   startupCommand?: string;
+};
+
+export type SandboxRuntimeHandleOptions = Pick<StartSandboxOptions, "keepAlive" | "sleepAfter">;
+
+export type SandboxRuntimeExecOptions = {
+  timeout?: number;
+};
+
+export type SandboxRuntimeExecResult = {
+  success: boolean;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
 };
 
 export type ExecuteSandboxCommandOptions = {
@@ -80,9 +102,17 @@ export interface SandboxHandle {
   exists(path: string): Promise<FileExistsResult>;
 }
 
-export interface SandboxManager {
-  listInstances(): Promise<SandboxInstanceSummary[]>;
-  startInstance(options: StartSandboxOptions): Promise<SandboxInstanceSummary>;
-  killInstance(sandboxId: string): Promise<void>;
-  getHandle(sandboxId: string): Promise<SandboxHandle | null>;
+export interface SandboxRuntimeHandle extends SandboxHandle {
+  exec(command: string, options?: SandboxRuntimeExecOptions): Promise<SandboxRuntimeExecResult>;
+  destroy(): Promise<void>;
+  getRuntimeStatus(): Promise<{ status: SandboxInstanceStatus }>;
+}
+
+export interface SandboxRuntimeProvider {
+  readonly provider: SandboxProviderId;
+  getHandle(
+    id: string,
+    options?: SandboxRuntimeHandleOptions,
+  ): SandboxRuntimeHandle | Promise<SandboxRuntimeHandle>;
+  getStatus(id: string, existingHandle?: SandboxRuntimeHandle): Promise<SandboxInstanceStatus>;
 }

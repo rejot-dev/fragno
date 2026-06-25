@@ -27,6 +27,15 @@ const startInputSchema = z.object({
   startupCommand: z.string().trim().min(1).optional(),
 });
 
+const sandboxStatusSchema = z.enum([
+  "requested",
+  "starting",
+  "running",
+  "stopping",
+  "stopped",
+  "error",
+]);
+
 const execInputSchema = z.object({
   sandboxId: z.string().trim().min(1),
   command: z.string().trim().min(1),
@@ -93,7 +102,7 @@ const startSandboxTool = defineBackofficeRuntimeTool({
   inputSchema: startInputSchema,
   outputSchema: z.object({
     id: z.string().trim().min(1),
-    status: z.enum(["running", "stopped", "error"]),
+    status: sandboxStatusSchema,
   }),
   execute: async (input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).startSandbox(input),
@@ -151,16 +160,14 @@ const listSandboxesTool = defineBackofficeRuntimeTool({
   description: "List Cloudflare sandboxes for the current organisation.",
   requiredPermissions: ["read"],
   inputSchema: z.object({}),
-  outputSchema: z.array(
-    z.object({ id: z.string().trim().min(1), status: z.enum(["running", "stopped", "error"]) }),
-  ),
+  outputSchema: z.array(z.object({ id: z.string().trim().min(1), status: sandboxStatusSchema })),
   execute: async (_input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).listSandboxes(),
   adapters: {
     bash: {
       command: "sandbox.list",
       help: {
-        summary: "sandbox.list lists tracked Cloudflare sandboxes.",
+        summary: "sandbox.list lists Backoffice-managed Cloudflare sandbox instances.",
         options: [],
         examples: ["sandbox.list --format json"],
       },

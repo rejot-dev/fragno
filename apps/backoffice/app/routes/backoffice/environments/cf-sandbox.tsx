@@ -9,7 +9,7 @@ import type {
   StartSandboxOptions,
 } from "@/sandbox/contracts";
 import { parseSleepAfterInput } from "@/sandbox/sleep-after";
-import { getSandboxManager } from "@/worker-runtime/sandbox-manager";
+import { getSandboxRuntime } from "@/worker-runtime/sandbox-manager";
 
 import type { Route } from "./+types/cf-sandbox";
 import { toCfSandboxPath, type CfSandboxView } from "./cf-sandbox-path";
@@ -64,14 +64,23 @@ const DEFAULT_NEW_SANDBOX_VALUES: NewSandboxFormValues = {
 };
 
 const STATUS_LABELS: Record<SandboxInstanceStatus, string> = {
+  requested: "Requested",
+  starting: "Starting",
   running: "Running",
+  stopping: "Stopping",
   stopped: "Stopped",
   error: "Error",
 };
 
 const STATUS_CLASSES: Record<SandboxInstanceStatus, string> = {
+  requested:
+    "border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]",
+  starting:
+    "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)] shadow-[0_0_0_1px_rgba(43,92,230,0.18)]",
   running:
     "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)] shadow-[0_0_0_1px_rgba(43,92,230,0.18)]",
+  stopping:
+    "border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]",
   stopped: "border border-[color:var(--bo-border)] bg-[var(--bo-panel)] text-[var(--bo-muted-2)]",
   error: "border border-red-300 bg-red-100 text-red-700 shadow-[0_0_0_1px_rgba(220,38,38,0.14)]",
 };
@@ -108,10 +117,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
   const organizationId = activeOrganization.organization.id;
   const organizationName = activeOrganization.organization.name;
-  const manager = getSandboxManager(context, organizationId);
+  const sandboxRuntime = getSandboxRuntime(context, organizationId);
 
   try {
-    const allInstances = await manager.listInstances();
+    const allInstances = await sandboxRuntime.listSandboxes();
     const activeInstances = allInstances.filter((instance) => instance.status !== "stopped");
 
     if (requestedView === "new") {
@@ -209,7 +218,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     throw new Response(ACTIVE_ORGANIZATION_REQUIRED_MESSAGE, { status: 400 });
   }
 
-  const manager = getSandboxManager(context, organizationId);
+  const sandboxRuntime = getSandboxRuntime(context, organizationId);
 
   if (intent === "start") {
     const values = readNewSandboxFormValues(formData);
@@ -236,12 +245,12 @@ export async function action({ request, context }: Route.ActionArgs) {
     let instance: SandboxInstanceSummary | null = null;
 
     try {
-      instance = await manager.startInstance(options);
+      instance = await sandboxRuntime.startSandbox(options);
       return redirect(toCfSandboxPath({ view: "detail", sandboxId: instance.id }));
     } catch (error) {
       if (instance?.id) {
         try {
-          await manager.killInstance(instance.id);
+          await sandboxRuntime.killSandbox({ sandboxId: instance.id });
         } catch (cleanupError) {
           console.error("Failed to cleanup partially bootstrapped sandbox", {
             sandboxId: instance.id,
@@ -295,23 +304,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     }
 
     try {
-      const handle = await manager.getHandle(sandboxId);
-      if (!handle) {
-        return {
-          intent: "exec",
-          sandboxId,
-          command,
-          timeoutMs,
-          result: {
-            ok: false,
-            reason: "sandbox_unavailable",
-            message: `Sandbox "${sandboxId}" is unavailable.`,
-            retryable: true,
-          },
-        } satisfies ExecuteActionResult;
-      }
-
-      const result = await handle.executeCommand(command, { timeoutMs });
+      const result = await sandboxRuntime.executeCommand({ sandboxId, command, timeoutMs });
       return {
         intent: "exec",
         sandboxId,
@@ -347,7 +340,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     }
 
     try {
-      await manager.killInstance(sandboxId);
+      await sandboxRuntime.killSandbox({ sandboxId });
       return redirect(toCfSandboxPath({ view: "new" }));
     } catch (error) {
       return {
@@ -533,7 +526,7 @@ export default function BackofficeEnvironmentCfSandbox() {
                 Sandbox not found
               </p>
               <p className="text-sm text-[var(--bo-muted)]">
-                The selected sandbox is no longer available in the registry.
+                The selected sandbox instance is no longer available.
               </p>
               <Link
                 to={toCfSandboxPath({ view: "new" })}
@@ -826,7 +819,7 @@ function SandboxDetailView({
           {isKilling ? "Stopping..." : "Kill sandbox"}
         </button>
         <p className="text-xs text-red-700">
-          Destroys the sandbox instance and removes it from the tracked list.
+          Destroys the sandbox runtime and deletes the sandbox instance.
         </p>
         {killError ? <p className="text-sm text-red-700">{killError}</p> : null}
       </Form>

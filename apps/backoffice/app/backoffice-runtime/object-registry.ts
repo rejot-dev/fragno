@@ -16,10 +16,13 @@ import type {
   AutomationEventActor,
   AutomationIngestResult,
   AutomationProjectExecutionTarget,
+  SandboxInstanceRecord,
+  SandboxInstanceRequestInput,
+  SandboxProvider,
 } from "@/fragno/automation";
 import type { DurableHookQueueOptions, DurableHookRepository } from "@/fragno/durable-hooks";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
-import type { SandboxInstanceStatus, SandboxInstanceSummary } from "@/sandbox/contracts";
+import type { SandboxInstanceStatus } from "@/sandbox/contracts";
 
 import type { BackofficeContextScope } from "./context";
 
@@ -86,6 +89,18 @@ export type AutomationsObject = FetchObject &
       projectId?: string;
       slug?: string;
     }): Promise<AutomationProjectExecutionTarget | null>;
+    listSandboxInstances(input?: {
+      provider?: SandboxProvider;
+      limit?: number;
+    }): Promise<SandboxInstanceRecord[]>;
+    getSandboxInstance(input: { id: string }): Promise<SandboxInstanceRecord | null>;
+    requestSandboxInstance(
+      input: SandboxInstanceRequestInput & { ownerScope?: BackofficeContextScope },
+    ): Promise<SandboxInstanceRecord>;
+    requestSandboxInstanceStop(input: {
+      id: string;
+      ownerScope?: BackofficeContextScope;
+    }): Promise<SandboxInstanceRecord | null>;
   };
 
 export type TelegramObject = FetchObject &
@@ -145,13 +160,6 @@ export type GitHubObject = FetchObject &
   };
 export type CloudflareWorkersObject = FetchObject & AlarmableObject & DurableHookObject;
 
-export type SandboxRegistryObject = {
-  getInstances(): Promise<SandboxInstanceSummary[]>;
-  getInstance(id: string): Promise<SandboxInstanceSummary | null>;
-  trackInstance(id: string): Promise<void>;
-  untrackInstance(id: string): Promise<void>;
-};
-
 type SandboxObject = {
   getRuntimeStatus(): Promise<{ status: SandboxInstanceStatus }>;
 };
@@ -198,7 +206,6 @@ export type BackofficeObjectBindingName =
   | "GITHUB"
   | "CLOUDFLARE_WORKERS"
   | "GITHUB_WEBHOOK_ROUTER"
-  | "SANDBOX_REGISTRY"
   | "SANDBOX";
 
 export type BackofficeObjectBinding<_TObject> = {
@@ -237,8 +244,6 @@ export const backofficeObjectScopePolicy = {
   PI: ["org"],
 
   GITHUB_WEBHOOK_ROUTER: ["singleton"],
-
-  SANDBOX_REGISTRY: ["org"],
 
   SANDBOX: ["named"],
 } satisfies Record<BackofficeObjectBindingName, readonly BackofficeObjectScopeKind[]>;
@@ -393,8 +398,6 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   cloudflareWorkers: scoped(factory, binding<CloudflareWorkersObject>("CLOUDFLARE_WORKERS")),
 
   githubWebhookRouter: scoped(factory, binding<GitHubWebhookRouterObject>("GITHUB_WEBHOOK_ROUTER")),
-
-  sandboxRegistry: scoped(factory, binding<SandboxRegistryObject>("SANDBOX_REGISTRY")),
 
   sandbox: scoped(factory, binding<SandboxObject>("SANDBOX")),
 });

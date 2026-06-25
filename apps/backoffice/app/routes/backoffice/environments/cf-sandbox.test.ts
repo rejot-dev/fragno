@@ -1,8 +1,8 @@
 import { describe, expect, test, vi, assert } from "vitest";
 
-const { getAuthMeMock, getSandboxManagerMock } = vi.hoisted(() => ({
+const { getAuthMeMock, getSandboxRuntimeMock } = vi.hoisted(() => ({
   getAuthMeMock: vi.fn(),
-  getSandboxManagerMock: vi.fn(),
+  getSandboxRuntimeMock: vi.fn(),
 }));
 
 vi.mock("@/fragno/auth/auth-server", () => ({
@@ -10,7 +10,7 @@ vi.mock("@/fragno/auth/auth-server", () => ({
 }));
 
 vi.mock("@/worker-runtime/sandbox-manager", () => ({
-  getSandboxManager: getSandboxManagerMock,
+  getSandboxRuntime: getSandboxRuntimeMock,
 }));
 
 import { action } from "./cf-sandbox";
@@ -33,13 +33,13 @@ describe("CF Sandbox action", () => {
       activeOrganization: { organization: { id: "org_123" } },
     });
 
-    const manager = {
-      startInstance: vi.fn(async () => ({ id: "sandbox-1", status: "running" as const })),
-      getHandle: vi.fn(),
-      killInstance: vi.fn(),
-      listInstances: vi.fn(),
+    const sandboxRuntime = {
+      startSandbox: vi.fn(async () => ({ id: "sandbox-1", status: "running" as const })),
+      executeCommand: vi.fn(),
+      killSandbox: vi.fn(),
+      listSandboxes: vi.fn(),
     };
-    getSandboxManagerMock.mockReturnValue(manager);
+    getSandboxRuntimeMock.mockReturnValue(sandboxRuntime);
 
     const formData = new FormData();
     formData.set("intent", "start");
@@ -54,10 +54,10 @@ describe("CF Sandbox action", () => {
       params: {},
     } as never);
 
-    expect(manager.startInstance).toHaveBeenCalledWith(
+    expect(sandboxRuntime.startSandbox).toHaveBeenCalledWith(
       expect.objectContaining({ id: "sandbox-1", startupCommand: "true" }),
     );
-    expect(manager.getHandle).not.toHaveBeenCalled();
+    expect(sandboxRuntime.executeCommand).not.toHaveBeenCalled();
     expect(response).toBeInstanceOf(Response);
     assert(
       (response as Response).headers.get("Location") ===

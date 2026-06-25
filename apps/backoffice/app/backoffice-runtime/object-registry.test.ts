@@ -103,7 +103,6 @@ describe("backoffice object scope policy", () => {
       CLOUDFLARE_WORKERS: ["org"],
       PI: ["org"],
       GITHUB_WEBHOOK_ROUTER: ["singleton"],
-      SANDBOX_REGISTRY: ["org"],
       SANDBOX: ["named"],
     });
   });

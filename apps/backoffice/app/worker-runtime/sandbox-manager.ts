@@ -2,29 +2,35 @@ import type { RouterContextProvider } from "react-router";
 
 import { getSandbox } from "@cloudflare/sandbox";
 
-import { createCloudflareSandboxManager } from "@/sandbox/cloudflare-sandbox-manager";
-import type { SandboxManager } from "@/sandbox/contracts";
+import {
+  createSandboxRuntime,
+  type SandboxRuntime,
+} from "@/fragno/runtime-tools/families/sandbox-runtime";
+import { createCloudflareSandboxProvider } from "@/sandbox/cloudflare-sandbox-provider";
 
-import { getSandboxRegistryDurableObject } from "./durable-objects";
+import { getAutomationsDurableObject } from "./durable-objects";
 import { BackofficeWorkerContext } from "./router-context";
 
 /**
- * Creates the Cloudflare sandbox manager for route loaders/actions.
+ * Creates the sandbox runtime for route loaders/actions.
  */
-export function getSandboxManager(
+export function getSandboxRuntime(
   context: Readonly<RouterContextProvider>,
   organizationId: string,
-): SandboxManager {
+): SandboxRuntime {
   const { env } = context.get(BackofficeWorkerContext);
 
-  return createCloudflareSandboxManager({
-    sandboxNamespace: env.SANDBOX,
-    sandboxIdScope: organizationId,
-    registry: getSandboxRegistryDurableObject(context, organizationId),
-    sdk: {
-      getSandbox(namespace, id, options) {
-        return getSandbox(namespace, id, options);
+  return createSandboxRuntime({
+    lifecycle: getAutomationsDurableObject(context, organizationId),
+    provider: createCloudflareSandboxProvider({
+      sandboxNamespace: env.SANDBOX,
+      sdk: {
+        getSandbox(namespace, id, options) {
+          return getSandbox(namespace, id, options) as never;
+        },
       },
-    },
+    }),
+    sandboxIdScope: organizationId,
+    ownerScope: { kind: "org", orgId: organizationId },
   });
 }

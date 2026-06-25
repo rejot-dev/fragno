@@ -9,6 +9,12 @@ import {
 } from "./definition";
 import { automationProjectRoutes } from "./project-routes";
 import type { AutomationProjectExecutionTarget } from "./projects";
+import type {
+  SandboxInstanceRecord,
+  SandboxInstanceRequestInput,
+  SandboxInstanceStatus,
+  SandboxProvider,
+} from "./sandboxes";
 import { automationStoreRoutes } from "./store-routes";
 
 type AutomationFragmentServices = {
@@ -37,7 +43,15 @@ export {
 } from "./catalog";
 export type { AutomationScriptLayer, AutomationWorkspaceScriptEntry } from "./catalog";
 
-export type { AutomationIngestResult, AutomationProjectExecutionTarget };
+export { CLOUDFLARE_SANDBOX_PROVIDER } from "./sandboxes";
+export type {
+  AutomationIngestResult,
+  AutomationProjectExecutionTarget,
+  SandboxInstanceRecord,
+  SandboxInstanceRequestInput,
+  SandboxInstanceStatus,
+  SandboxProvider,
+};
 export type { AutomationEvent, AutomationEventActor, AutomationEventSubject } from "./contracts";
 
 export type { AutomationRuntimeHostContext, AutomationRuntime } from "./engine/runtime";
