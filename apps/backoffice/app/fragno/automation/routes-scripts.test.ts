@@ -59,11 +59,6 @@ describe("automation routes /scripts", () => {
       expect(response.data).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            path: SYSTEM_AUTOMATION_SCRIPT_PATHS.systemRouter.replace(/^automations\//u, ""),
-            engine: "codemode",
-            enabled: true,
-          }),
-          expect.objectContaining({
             path: SYSTEM_AUTOMATION_SCRIPT_PATHS.workspaceFileInitialization.replace(
               /^automations\//u,
               "",

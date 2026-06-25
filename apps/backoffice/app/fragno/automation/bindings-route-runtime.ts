@@ -1,3 +1,4 @@
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
 
 import type { AutomationStoreRuntime } from "../runtime-tools/families/automations-bindings";
@@ -5,13 +6,12 @@ import { createAutomationsRouteCaller } from "./route-callers";
 
 export const createRouteBackedAutomationStoreRuntime = ({
   object,
-  orgId,
+  scope,
 }: {
   object: AutomationsObject;
-  orgId?: string;
+  scope?: BackofficeContextScope;
 }): AutomationStoreRuntime => {
-  const normalizedOrgId = orgId?.trim() || undefined;
-  const callRoute = createAutomationsRouteCaller({ object, orgId: normalizedOrgId });
+  const callRoute = createAutomationsRouteCaller({ object, scope });
 
   return {
     get: async ({ key }) => {

@@ -1,3 +1,4 @@
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
 
 import type { AutomationWorkflowRuntime } from "../runtime-tools/families/automations-workflow";
@@ -5,13 +6,12 @@ import { createWorkflowsRouteCaller } from "./route-callers";
 
 export const createRouteBackedAutomationWorkflowRuntime = ({
   object,
-  orgId,
+  scope,
 }: {
   object: AutomationsObject;
-  orgId?: string;
+  scope?: BackofficeContextScope;
 }): AutomationWorkflowRuntime => {
-  const normalizedOrgId = orgId?.trim() || undefined;
-  const callRoute = createWorkflowsRouteCaller({ object, orgId: normalizedOrgId });
+  const callRoute = createWorkflowsRouteCaller({ object, scope });
 
   return {
     createInstance: async ({ workflowName, remoteWorkflowName, instanceId, params }) => {

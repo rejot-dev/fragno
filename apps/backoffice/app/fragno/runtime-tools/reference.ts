@@ -1,4 +1,4 @@
-import { zodSchemaToTypeScript } from "@/lib/zod/zod-formatter";
+import { zodSchemaToTypeScriptRender } from "@/lib/zod/zod-formatter";
 
 import type { AutomationCommandOptionSpec } from "./automation-types";
 import {
@@ -17,6 +17,8 @@ export type RuntimeToolCodemodeReference = {
   outputTypeName: string;
   inputType: string;
   outputType: string;
+  inputTypeDeclarations?: string[];
+  outputTypeDeclarations?: string[];
 };
 
 export type RuntimeToolBashReference = {
@@ -66,6 +68,12 @@ const firstLine = (value: string) => value.trim().split("\n")[0]?.trim() ?? "";
 export const toRuntimeToolReference = (tool: AnyBackofficeRuntimeTool): RuntimeToolReference => {
   const inputTypeName = typeNameFor(tool, "Input");
   const outputTypeName = typeNameFor(tool, "Output");
+  const inputType = zodSchemaToTypeScriptRender(tool.inputSchema, "input", {
+    rootTypeName: inputTypeName,
+  });
+  const outputType = zodSchemaToTypeScriptRender(tool.outputSchema, "output", {
+    rootTypeName: outputTypeName,
+  });
   const bash = tool.adapters?.bash;
 
   if (!bash) {
@@ -82,8 +90,10 @@ export const toRuntimeToolReference = (tool: AnyBackofficeRuntimeTool): RuntimeT
       description: tool.reference?.codemode?.description ?? tool.description,
       inputTypeName,
       outputTypeName,
-      inputType: zodSchemaToTypeScript(tool.inputSchema, "input"),
-      outputType: zodSchemaToTypeScript(tool.outputSchema, "output"),
+      inputType: inputType.type,
+      outputType: outputType.type,
+      inputTypeDeclarations: inputType.declarations,
+      outputTypeDeclarations: outputType.declarations,
     },
     bash: {
       command: bash.command,
@@ -302,11 +312,29 @@ export const renderCodemodeProviderTypes = (references: readonly RuntimeToolRefe
     ]);
   }
 
+  const renderedSharedTypeDeclarations = new Set<string>();
   const providerSections = [...byNamespace.entries()].map(([namespace, namespaceReferences]) => {
-    const typeDeclarations = namespaceReferences.flatMap((reference) => {
-      const { inputTypeName, outputTypeName, inputType, outputType } = reference.codemode;
-      return [`type ${inputTypeName} = ${inputType};`, `type ${outputTypeName} = ${outputType};`];
+    const sharedTypeDeclarations = [
+      ...new Set(
+        namespaceReferences.flatMap((reference) => [
+          ...(reference.codemode.inputTypeDeclarations ?? []),
+          ...(reference.codemode.outputTypeDeclarations ?? []),
+        ]),
+      ),
+    ].filter((declaration) => {
+      if (renderedSharedTypeDeclarations.has(declaration)) {
+        return false;
+      }
+      renderedSharedTypeDeclarations.add(declaration);
+      return true;
     });
+    const typeDeclarations = [
+      ...sharedTypeDeclarations,
+      ...namespaceReferences.flatMap((reference) => {
+        const { inputTypeName, outputTypeName, inputType, outputType } = reference.codemode;
+        return [`type ${inputTypeName} = ${inputType};`, `type ${outputTypeName} = ${outputType};`];
+      }),
+    ];
 
     const methods = namespaceReferences.map((reference) => {
       const { toolName, description, inputTypeName, outputTypeName } = reference.codemode;

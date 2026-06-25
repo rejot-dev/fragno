@@ -10,6 +10,7 @@ import {
   type WorkspaceStarterFilesSeedOutput,
 } from "@/files/seed-workspace-starter-files";
 import { createSystemFilesContext } from "@/files/system-context";
+import type { StarterAutomationRoutesSeedResult } from "@/fragno/automation";
 import {
   backofficeCapabilities,
   type BackofficeCapabilityId,
@@ -47,6 +48,7 @@ export type InternalRuntime = {
   configureProjectDatabaseFileSystem(input: {
     projectId: string;
   }): Promise<ProjectDatabaseFileSystemConfigureOutput>;
+  seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult>;
 };
 
 type InternalToolContext = BackofficeToolContext<{ internal?: InternalRuntime }>;
@@ -69,6 +71,11 @@ const projectDatabaseFileSystemConfigureOutputSchema = z.object({
   projectId: z.string(),
   provider: z.literal("database"),
   configured: z.boolean(),
+  created: z.array(z.string()),
+  skipped: z.array(z.string()),
+});
+
+const starterAutomationRoutesSeedOutputSchema = z.object({
   created: z.array(z.string()),
   skipped: z.array(z.string()),
 });
@@ -141,6 +148,10 @@ export const createInternalRuntime = ({
   return {
     seedWorkspaceStarterFiles: async (input) =>
       await seedWorkspaceStarterFiles({ objects, orgId, force: input?.force }),
+    seedStarterAutomationRoutes: async () =>
+      await objects.automations
+        .forOrg(orgId)
+        .seedStarterAutomationRoutes({ scope: { kind: "org", orgId } }),
     configureProjectDatabaseFileSystem: async ({ projectId }) => {
       const uploadObject = objects.upload.forProject({ orgId, projectId });
       const config = await uploadObject.setAdminConfig(
@@ -298,6 +309,40 @@ const projectFilesConfigureTool = defineBackofficeRuntimeTool({
   },
 });
 
+const automationRoutesSeedStarterTool = defineBackofficeRuntimeTool({
+  id: "internal.automations.routes.seed-starter",
+  namespace: "internal",
+  name: "automationsRoutesSeedStarter",
+  description: "Seed the default database-backed automation routes.",
+  requiredPermissions: ["manage"],
+  inputSchema: z.object({}).optional().default({}),
+  outputSchema: starterAutomationRoutesSeedOutputSchema,
+  execute: async (_input, context: InternalToolContext) =>
+    await getRuntime(context).seedStarterAutomationRoutes(),
+  adapters: {
+    bash: {
+      command: "internal.automations.routes.seed-starter",
+      help: {
+        summary:
+          "internal.automations.routes.seed-starter seeds the default automation route rows.",
+        options: [],
+        examples: ["internal.automations.routes.seed-starter --format json"],
+      },
+      parse: defineCliArgsParser<Record<string, never>>(
+        "internal.automations.routes.seed-starter",
+        {},
+      ),
+      outputOptions: (_args, parsed) => readOutputOptions(parsed),
+      format: (output, options) =>
+        options.format === "json" || options.print
+          ? { data: output }
+          : {
+              stdout: `created=${output.created.length}\nskipped=${output.skipped.length}\n`,
+            },
+    },
+  },
+});
+
 const codemodeTypesSyncTool = defineBackofficeRuntimeTool({
   id: "internal.codemode.types.sync",
   namespace: "internal",
@@ -331,6 +376,7 @@ const codemodeTypesSyncTool = defineBackofficeRuntimeTool({
 const internalRuntimeTools = [
   filesSeedExecuteTool,
   projectFilesConfigureTool,
+  automationRoutesSeedStarterTool,
   codemodeTypesSyncTool,
 ] as const;
 

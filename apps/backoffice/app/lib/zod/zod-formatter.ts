@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 export type JsonSchemaObject = {
+  id?: string;
+  title?: string;
   type?: string | string[];
   description?: string;
   format?: string;
@@ -14,6 +16,13 @@ export type JsonSchemaObject = {
   const?: unknown;
   enum?: unknown[];
   $ref?: string;
+  $defs?: Record<string, JsonSchemaObject>;
+  definitions?: Record<string, JsonSchemaObject>;
+};
+
+export type JsonSchemaTypeScriptRender = {
+  declarations: string[];
+  type: string;
 };
 
 export const zodSchemaToJsonSchema = (
@@ -29,11 +38,16 @@ export const zodSchemaToJsonSchema = (
     unrepresentable: "any",
     reused: "inline",
     override: ({ zodSchema, jsonSchema }) => {
+      const metadata = (zodSchema as unknown as z.ZodType).meta?.();
+      if (io === "input" && typeof metadata?.codemodeInputId === "string") {
+        jsonSchema.id = metadata.codemodeInputId;
+      }
       if ((zodSchema as unknown as z.ZodType)._zod.def.type === "date") {
         jsonSchema.type = "string";
         jsonSchema.format = "date-time";
       }
       delete jsonSchema["~standard"];
+      delete jsonSchema.codemodeInputId;
     },
   }) as JsonSchemaObject;
 };
@@ -82,26 +96,137 @@ const renderSchemaJSDoc = (description: string) => {
   return ["/**", ...lines.map((line) => ` * ${line}`), " */"].join("\n");
 };
 
-const renderProperty = ({
-  name,
-  schema,
-  required,
-  depth,
-}: {
-  name: string;
-  schema: JsonSchemaObject;
-  required: boolean;
-  depth: number;
-}) => {
-  const key = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
-  const property = `${key}${required ? "" : "?"}: ${jsonSchemaToTypeScript(schema, depth)};`;
-  const jsDoc = schemaJSDoc(schema);
-  return jsDoc ? `${renderSchemaJSDoc(jsDoc)}\n${property}` : property;
+type JsonSchemaTypeScriptContext = {
+  rootSchema: JsonSchemaObject;
+  rootTypeName?: string;
+  referencedDeclarationRefs: Set<string>;
+  typeNamesByRef: Map<string, string>;
+  usedTypeNames: Set<string>;
 };
 
-export const jsonSchemaToTypeScript = (schema: JsonSchemaObject | undefined, depth = 0): string => {
-  if (!schema || Object.keys(schema).length === 0 || schema.$ref) {
+const TYPE_NAME_RESERVED_WORDS = new Set([
+  "any",
+  "boolean",
+  "false",
+  "never",
+  "null",
+  "number",
+  "object",
+  "string",
+  "symbol",
+  "true",
+  "unknown",
+  "void",
+]);
+
+const decodeJsonPointerSegment = (value: string) =>
+  decodeURIComponent(value).replace(/~1/g, "/").replace(/~0/g, "~");
+
+const jsonPointerSegments = (ref: string) => ref.slice(2).split("/").map(decodeJsonPointerSegment);
+
+const pascalCase = (value: string) =>
+  value
+    .split(/[^a-zA-Z0-9]+|(?=[A-Z])/)
+    .filter(Boolean)
+    .map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`)
+    .join("");
+
+const sanitizeTypeName = (value: string, fallback = "Schema") => {
+  const candidate = /^[A-Za-z_$][\w$]*$/u.test(value) ? value : pascalCase(value);
+  const withFallback = candidate || fallback;
+  const prefixed = /^[A-Za-z_$]/u.test(withFallback) ? withFallback : `${fallback}${withFallback}`;
+  return TYPE_NAME_RESERVED_WORDS.has(prefixed) ? `${fallback}${prefixed}` : prefixed;
+};
+
+const fallbackTypeNameForRef = (ref: string, rootTypeName?: string) => {
+  const lastSegment = jsonPointerSegments(ref).at(-1) ?? "Schema";
+  const generatedSchemaMatch = /^__schema(\d+)$/u.exec(lastSegment);
+  if (generatedSchemaMatch) {
+    return `${rootTypeName ? sanitizeTypeName(rootTypeName, "Root") : ""}Schema${generatedSchemaMatch[1]}`;
+  }
+  return sanitizeTypeName(lastSegment);
+};
+
+const resolveLocalRef = (
+  rootSchema: JsonSchemaObject,
+  ref: string,
+): JsonSchemaObject | undefined => {
+  if (ref === "#") {
+    return rootSchema;
+  }
+  if (!ref.startsWith("#/")) {
+    return undefined;
+  }
+
+  let current: unknown = rootSchema;
+  for (const segment of jsonPointerSegments(ref)) {
+    if (!current || typeof current !== "object" || !(segment in current)) {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[segment];
+  }
+
+  return current && typeof current === "object" ? (current as JsonSchemaObject) : undefined;
+};
+
+const isDeclarationRef = (ref: string) => {
+  const [firstSegment] = jsonPointerSegments(ref);
+  return firstSegment === "$defs" || firstSegment === "definitions";
+};
+
+const typeNameForRef = (
+  ref: string,
+  schema: JsonSchemaObject,
+  context: JsonSchemaTypeScriptContext,
+) => {
+  const existing = context.typeNamesByRef.get(ref);
+  if (existing) {
+    return existing;
+  }
+
+  const baseName = sanitizeTypeName(
+    typeof schema.id === "string" && schema.id.trim()
+      ? schema.id.trim()
+      : fallbackTypeNameForRef(ref, context.rootTypeName),
+  );
+  let typeName = baseName;
+  let suffix = 2;
+  while (context.usedTypeNames.has(typeName)) {
+    typeName = `${baseName}${suffix}`;
+    suffix += 1;
+  }
+
+  context.usedTypeNames.add(typeName);
+  context.typeNamesByRef.set(ref, typeName);
+  return typeName;
+};
+
+const resolveRefType = (ref: string, context: JsonSchemaTypeScriptContext) => {
+  if (ref === "#") {
+    return context.rootTypeName ?? "unknown";
+  }
+
+  const referencedSchema = resolveLocalRef(context.rootSchema, ref);
+  if (!referencedSchema || !isDeclarationRef(ref)) {
     return "unknown";
+  }
+
+  const typeName = typeNameForRef(ref, referencedSchema, context);
+  context.referencedDeclarationRefs.add(ref);
+  return typeName;
+};
+
+const renderJsonSchemaType = (
+  schema: JsonSchemaObject | undefined,
+  depth: number,
+  context: JsonSchemaTypeScriptContext,
+): string => {
+  if (!schema || Object.keys(schema).length === 0) {
+    return "unknown";
+  }
+
+  if (schema.$ref) {
+    return resolveRefType(schema.$ref, context);
   }
 
   if (schema.const !== undefined) {
@@ -113,20 +238,20 @@ export const jsonSchemaToTypeScript = (schema: JsonSchemaObject | undefined, dep
   }
 
   if (schema.oneOf?.length) {
-    return renderUnion(schema.oneOf.map((entry) => jsonSchemaToTypeScript(entry, depth)));
+    return renderUnion(schema.oneOf.map((entry) => renderJsonSchemaType(entry, depth, context)));
   }
 
   if (schema.anyOf?.length) {
-    return renderUnion(schema.anyOf.map((entry) => jsonSchemaToTypeScript(entry, depth)));
+    return renderUnion(schema.anyOf.map((entry) => renderJsonSchemaType(entry, depth, context)));
   }
 
   if (schema.allOf?.length) {
-    return schema.allOf.map((entry) => jsonSchemaToTypeScript(entry, depth)).join(" & ");
+    return schema.allOf.map((entry) => renderJsonSchemaType(entry, depth, context)).join(" & ");
   }
 
   if (Array.isArray(schema.type)) {
     return renderUnion(
-      schema.type.map((type) => jsonSchemaToTypeScript({ ...schema, type }, depth)),
+      schema.type.map((type) => renderJsonSchemaType({ ...schema, type }, depth, context)),
     );
   }
 
@@ -142,9 +267,9 @@ export const jsonSchemaToTypeScript = (schema: JsonSchemaObject | undefined, dep
       return "string";
     case "array": {
       if (Array.isArray(schema.items)) {
-        return `[${schema.items.map((item) => jsonSchemaToTypeScript(item, depth)).join(", ")}]`;
+        return `[${schema.items.map((item) => renderJsonSchemaType(item, depth, context)).join(", ")}]`;
       }
-      const itemType = jsonSchemaToTypeScript(schema.items, depth);
+      const itemType = renderJsonSchemaType(schema.items, depth, context);
       return itemType.includes(" | ") ? `(${itemType})[]` : `${itemType}[]`;
     }
     case "object": {
@@ -156,12 +281,13 @@ export const jsonSchemaToTypeScript = (schema: JsonSchemaObject | undefined, dep
           schema: propertySchema,
           required: required.has(name),
           depth: depth + 1,
+          context,
         }),
       );
 
       if (schema.additionalProperties && typeof schema.additionalProperties === "object") {
         propertyLines.push(
-          `[key: string]: ${jsonSchemaToTypeScript(schema.additionalProperties, depth + 1)};`,
+          `[key: string]: ${renderJsonSchemaType(schema.additionalProperties, depth + 1, context)};`,
         );
       } else if (schema.additionalProperties === true) {
         propertyLines.push("[key: string]: unknown;");
@@ -171,20 +297,122 @@ export const jsonSchemaToTypeScript = (schema: JsonSchemaObject | undefined, dep
         return "Record<string, unknown>";
       }
 
-      return `{\n${indent(propertyLines.join("\n"), (depth + 1) * 2)}\n${" ".repeat(depth * 2)}}`;
+      return `\n{\n${indent(propertyLines.join("\n"), (depth + 1) * 2)}\n${" ".repeat(depth * 2)}}`.trimStart();
     }
     default:
       return "unknown";
   }
 };
 
-export const zodSchemaToTypeScript = (schema: z.ZodType, io: "input" | "output") => {
-  try {
-    return jsonSchemaToTypeScript(zodSchemaToJsonSchema(schema, io));
-  } catch {
+const renderProperty = ({
+  name,
+  schema,
+  required,
+  depth,
+  context,
+}: {
+  name: string;
+  schema: JsonSchemaObject;
+  required: boolean;
+  depth: number;
+  context: JsonSchemaTypeScriptContext;
+}) => {
+  const key = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
+  const property = `${key}${required ? "" : "?"}: ${renderJsonSchemaType(schema, depth, context)};`;
+  const jsDoc = schemaJSDoc(schema);
+  return jsDoc ? `${renderSchemaJSDoc(jsDoc)}\n${property}` : property;
+};
+
+const createRenderContext = (
+  schema: JsonSchemaObject,
+  rootTypeName?: string,
+): JsonSchemaTypeScriptContext => ({
+  rootSchema: schema,
+  rootTypeName,
+  referencedDeclarationRefs: new Set(),
+  typeNamesByRef: new Map(),
+  usedTypeNames: new Set(rootTypeName ? [rootTypeName] : []),
+});
+
+const renderReferencedDeclarations = (context: JsonSchemaTypeScriptContext) => {
+  const declarations: string[] = [];
+  const renderedRefs = new Set<string>();
+  const pendingRefs = [...context.referencedDeclarationRefs];
+
+  for (let index = 0; index < pendingRefs.length; index += 1) {
+    const ref = pendingRefs[index];
+    if (renderedRefs.has(ref)) {
+      continue;
+    }
+
+    const schema = resolveLocalRef(context.rootSchema, ref);
+    if (!schema) {
+      continue;
+    }
+
+    renderedRefs.add(ref);
+    const typeName = typeNameForRef(ref, schema, context);
+    const type = renderJsonSchemaType(schema, 0, context);
+    declarations.push(`type ${typeName} = ${type};`);
+
+    for (const discoveredRef of context.referencedDeclarationRefs) {
+      if (!renderedRefs.has(discoveredRef) && !pendingRefs.includes(discoveredRef)) {
+        pendingRefs.push(discoveredRef);
+      }
+    }
+  }
+
+  return declarations;
+};
+
+export const jsonSchemaToTypeScriptRender = (
+  schema: JsonSchemaObject | undefined,
+  options: { rootTypeName?: string } = {},
+): JsonSchemaTypeScriptRender => {
+  if (!schema || Object.keys(schema).length === 0) {
+    return { declarations: [], type: "unknown" };
+  }
+
+  const context = createRenderContext(schema, options.rootTypeName);
+  const rootSchemaTypeName =
+    options.rootTypeName && typeof schema.id === "string" && schema.id.trim()
+      ? sanitizeTypeName(schema.id.trim())
+      : undefined;
+
+  if (rootSchemaTypeName && rootSchemaTypeName !== options.rootTypeName) {
+    context.usedTypeNames.add(rootSchemaTypeName);
+    const rootType = renderJsonSchemaType(schema, 0, context);
+    return {
+      declarations: [
+        ...renderReferencedDeclarations(context),
+        `type ${rootSchemaTypeName} = ${rootType};`,
+      ],
+      type: rootSchemaTypeName,
+    };
+  }
+
+  const type = renderJsonSchemaType(schema, 0, context);
+  return { declarations: renderReferencedDeclarations(context), type };
+};
+
+export const jsonSchemaToTypeScript = (schema: JsonSchemaObject | undefined, depth = 0): string => {
+  if (!schema || Object.keys(schema).length === 0) {
     return "unknown";
   }
+
+  const context = createRenderContext(schema);
+  return renderJsonSchemaType(schema, depth, context);
 };
+
+export const zodSchemaToTypeScriptRender = (
+  schema: z.ZodType,
+  io: "input" | "output",
+  options: { rootTypeName?: string } = {},
+): JsonSchemaTypeScriptRender =>
+  jsonSchemaToTypeScriptRender(zodSchemaToJsonSchema(schema, io), options);
+
+export const zodSchemaToTypeScript = (schema: z.ZodType, io: "input" | "output") =>
+  zodSchemaToTypeScriptRender(schema, io).type;
 
 const renderFieldLiteral = (value: unknown) => {
   if (value === null) {
@@ -196,6 +424,9 @@ const renderFieldLiteral = (value: unknown) => {
 const renderFieldType = (schema: JsonSchemaObject | undefined): string => {
   if (!schema || Object.keys(schema).length === 0) {
     return "unknown";
+  }
+  if (schema.$ref) {
+    return schema.$ref.split("/").at(-1) ?? "unknown";
   }
   if (schema.const !== undefined) {
     return renderFieldLiteral(schema.const);

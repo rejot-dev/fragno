@@ -699,8 +699,8 @@ describe("upload file contributor", () => {
           },
         },
       },
-      "automations/router.cm.js": {
-        content: "stale router",
+      "automations/telegram-user-linking.workflow.js": {
+        content: "stale workflow",
         metadata: {
           __docsFs: {
             owner: { kind: "root" },
@@ -729,7 +729,9 @@ describe("upload file contributor", () => {
       seedWorkspaceStarterFiles({ objects, orgId: "acme-org", force: true }),
     ).resolves.toMatchObject({
       force: true,
-      overwritten: expect.arrayContaining(["/workspace/automations/router.cm.js"]),
+      overwritten: expect.arrayContaining([
+        "/workspace/automations/telegram-user-linking.workflow.js",
+      ]),
     });
 
     expect(
@@ -744,8 +746,12 @@ describe("upload file contributor", () => {
       },
     });
     expect(
-      runtime.files.get(composeStorageKey(UPLOAD_PROVIDER_DATABASE, "automations/router.cm.js"))
-        ?.metadata,
+      runtime.files.get(
+        composeStorageKey(
+          UPLOAD_PROVIDER_DATABASE,
+          "automations/telegram-user-linking.workflow.js",
+        ),
+      )?.metadata,
     ).toMatchObject({
       __docsFs: {
         owner: { kind: "root" },
@@ -761,8 +767,8 @@ describe("upload file contributor", () => {
           objects,
         }),
         { provider: UPLOAD_PROVIDER_DATABASE },
-      ).readFile("/workspace/automations/router.cm.js"),
-    ).resolves.toBe(WORKSPACE_STARTER_CONTENT["automations/router.cm.js"]);
+      ).readFile("/workspace/automations/telegram-user-linking.workflow.js"),
+    ).resolves.toBe(WORKSPACE_STARTER_CONTENT["automations/telegram-user-linking.workflow.js"]);
     assert(
       runtime.files.has(composeStorageKey(UPLOAD_PROVIDER_DATABASE, "automations/custom.cm.js")),
     );

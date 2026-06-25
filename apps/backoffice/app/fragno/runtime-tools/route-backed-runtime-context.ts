@@ -6,6 +6,7 @@ import type { IFileSystem } from "@/files/interface";
 import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
 import { createRouteBackedDurableHooksRuntime } from "@/fragno/automation/durable-hooks-route-runtime";
+import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import { createApiRuntime } from "@/fragno/runtime-tools/families/api-runtime";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
@@ -119,15 +120,21 @@ export const createRouteBackedRuntimeContext = ({
       : null,
     automation: null,
     automations: {
-      runtime: createRouteBackedAutomationStoreRuntime({
-        object: automationsObject,
-        ...(org ? { orgId: org.orgId } : {}),
-      }),
+      runtime: {
+        ...createRouteBackedAutomationStoreRuntime({
+          object: automationsObject,
+          scope: execution.scope,
+        }),
+        ...createRouteBackedAutomationRouterRuntime({
+          object: automationsObject,
+          scope: execution.scope,
+        }),
+      },
     },
     workflow: {
       runtime: createRouteBackedAutomationWorkflowRuntime({
         object: automationsObject,
-        ...(org ? { orgId: org.orgId } : {}),
+        scope: execution.scope,
       }),
     },
     durableHooks: org

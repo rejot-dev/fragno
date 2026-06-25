@@ -81,6 +81,7 @@ describe("Backoffice capability system skills", () => {
     expect(readSystemText("skills/building-automations/SKILL.md")).toContain(
       "events.eventsCatalogList",
     );
+    expect(readSystemText("skills/building-automations/SKILL.md")).toContain("router.create");
     expect(readSystemText("skills/configuring-connections/SKILL.md")).toContain(
       "connections.configure",
     );

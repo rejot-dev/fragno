@@ -115,6 +115,7 @@ describe("system automation scenarios", () => {
 
       const workflow = createRouteBackedAutomationWorkflowRuntime({
         object: runtime.objects.automations.forOrg(orgId),
+        scope: { kind: "org", orgId },
       });
       const listInstances = workflow.listInstances;
       if (!listInstances) {
@@ -172,6 +173,8 @@ describe("system automation scenarios", () => {
         ],
 
         steps: ({ when, runner, then }) => [
+          when.router.seedStarter({ orgId: "org-1" }),
+
           when.project.create({
             orgId: "org-1",
             slug: "alpha-project",
@@ -256,7 +259,7 @@ describe("system automation scenarios", () => {
           }),
 
           then.files.exists({ orgId: "org-1", path: "/workspace/AGENTS.md" }),
-          then.files.exists({
+          then.files.missing({
             orgId: "org-1",
             path: "/workspace/automations/router.cm.js",
           }),

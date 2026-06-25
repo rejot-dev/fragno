@@ -29,6 +29,7 @@ import type {
   SandboxInstanceRecord,
   SandboxInstanceRequestInput,
   SandboxProvider,
+  StarterAutomationRoutesSeedResult,
 } from "@/fragno/automation";
 import { createAutomationsRuntime, type AutomationsRuntime } from "@/fragno/automation/automations";
 import type { DurableHookQueueOptions, DurableHookQueueResponse } from "@/fragno/durable-hooks";
@@ -310,6 +311,17 @@ export class InMemoryAutomationsObject implements AutomationsObject {
     });
   }
 
+  async seedStarterAutomationRoutes(input?: {
+    scope?: BackofficeContextScope;
+  }): Promise<StarterAutomationRoutesSeedResult> {
+    await this.#ensureConfigured(automationConfigForScope(input?.scope));
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.seedStarterAutomationRoutes(),
+    );
+  }
+
   async triggerIngestEvent(event: AutomationEvent): Promise<AutomationIngestResult> {
     await this.#ensureConfigured(automationConfigForScope(event.scope));
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
@@ -426,6 +438,12 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
       env,
       runtime: createCloudflareDurableObjectRuntimeServices(env, state),
     });
+  }
+
+  async seedStarterAutomationRoutes(input?: {
+    scope?: BackofficeContextScope;
+  }): Promise<StarterAutomationRoutesSeedResult> {
+    return await this.#object.seedStarterAutomationRoutes(input);
   }
 
   async triggerIngestEvent(event: AutomationEvent): Promise<AutomationIngestResult> {

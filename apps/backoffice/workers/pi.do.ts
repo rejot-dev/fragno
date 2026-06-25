@@ -297,7 +297,7 @@ export class InMemoryPiObject implements PiObject {
         ...createPiCodemodeRuntime(this.#env),
         workflow: createRouteBackedAutomationWorkflowRuntime({
           object: this.#runtimeServices.objects.automations.forOrg(orgId),
-          orgId,
+          scope: { kind: "org", orgId },
         }),
       },
       sessionFileSystems: this.#sessionFileSystems,

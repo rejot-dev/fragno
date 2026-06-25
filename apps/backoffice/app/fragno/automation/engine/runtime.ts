@@ -13,6 +13,7 @@ import type {
   AutomationTriggerBinding,
 } from "../../runtime-tools/automation-types";
 import type { AutomationStoreRuntime } from "../../runtime-tools/families/automations-bindings";
+import type { AutomationRouterRuntime } from "../../runtime-tools/families/automations-routing";
 import type {} from "../../runtime-tools/families/event";
 import {
   createUnavailableEventRuntime,
@@ -27,7 +28,10 @@ export type AutomationPiBashContext = {
   runtime: PiRuntime;
 };
 
-export type AutomationRuntime = AutomationStoreRuntime & OtpRuntime & EventRuntime;
+export type AutomationRuntime = AutomationStoreRuntime &
+  AutomationRouterRuntime &
+  OtpRuntime &
+  EventRuntime;
 
 export type AutomationRuntimeCommandContext = AutomationCommandContext & {
   runtime: AutomationRuntime;
@@ -39,7 +43,7 @@ export type AutomationRuntimeHostContext = Omit<
 > & {
   automation: AutomationRuntimeCommandContext;
   automations: {
-    runtime: AutomationStoreRuntime;
+    runtime: AutomationStoreRuntime & AutomationRouterRuntime;
   };
   otp: {
     runtime: OtpRuntime;
@@ -94,6 +98,10 @@ export const createAutomationRuntime = ({
     set: async () => requireRouteBackend("store.set"),
     delete: async () => requireRouteBackend("store.delete"),
     list: async () => requireRouteBackend("store.list"),
+    listRoutes: async () => requireRouteBackend("router.list"),
+    getRoute: async () => requireRouteBackend("router.get"),
+    createRoute: async () => requireRouteBackend("router.create"),
+    updateRoute: async () => requireRouteBackend("router.update"),
     createClaim: async () => requireRouteBackend("otp.identity.create-claim"),
     ...createUnavailableEventRuntime(),
   };

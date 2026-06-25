@@ -8,12 +8,10 @@ import {
 } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createMasterFileSystem, createSystemFilesContext } from "@/files";
-import { createTestMasterFileSystem } from "@/fragno/automation/engine/test-master-file-system.test-utils";
 import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
 import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
-import { createRouteBackedAutomationStoreRuntime } from "./bindings-route-runtime";
 import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "./contracts";
 import { createAutomationsRouteCaller } from "./route-callers";
 
@@ -54,33 +52,36 @@ describe("project automation event routing", () => {
     runtime = null;
   });
 
-  test("forwards org events into active project automations and uses project-local store", async () => {
+  test("forwards org events into active project automation routes", async () => {
     const orgId = "org-1";
-    const projectFileSystems = new Map<string, ReturnType<typeof createTestMasterFileSystem>>();
-    const orgFileSystem = createTestMasterFileSystem({});
 
     runtime = await createInMemoryBackofficeRuntime({
       env: { LOADER: env.LOADER },
-      getAutomationFileSystem: async ({ execution }) => {
-        if (execution.scope.kind === "project") {
-          let fs = projectFileSystems.get(execution.scope.projectId);
-          if (!fs) {
-            fs = createTestMasterFileSystem({
-              "/workspace/automations/project-store.sh": `event_id="$(jq -r '.id' /context/event.json)"
-store.set --key project/last-event --value "$event_id" --actor '{"scope":"internal","type":"system","id":"project-test"}'
-`,
-            });
-            projectFileSystems.set(execution.scope.projectId, fs);
-          }
-          return fs;
-        }
-
-        return orgFileSystem;
-      },
     });
 
     const orgAutomations = runtime.objects.automations.forOrg(orgId);
-    const orgRoutes = createAutomationsRouteCaller({ object: orgAutomations });
+    const orgRoutes = createAutomationsRouteCaller({
+      object: orgAutomations,
+      scope: { kind: "org", orgId },
+    });
+    await orgRoutes("POST", "/routes", {
+      body: {
+        id: "system-project-files-configure",
+        name: "Configure project files",
+        enabled: false,
+        source: "automations",
+        eventType: "project.created",
+        matcher: null,
+        priority: 15,
+        action: {
+          kind: "start_workflow",
+          workflowName: "automation-codemode-script",
+          remoteWorkflowName: "project-files-configure",
+          workflowScriptPath: "/system/automations/project-files-configure.workflow.js",
+          instanceIdTemplate: "project-files-configure-${event.id}",
+        },
+      },
+    });
     const createProjectResponse = await orgRoutes("POST", "/projects", {
       body: {
         name: "Launch Plan",
@@ -94,6 +95,33 @@ store.set --key project/last-event --value "$event_id" --actor '{"scope":"intern
     }
 
     const projectId = idValue(createProjectResponse.data.id);
+    const projectAutomations = runtime.objects.automations.forProject({ orgId, projectId });
+    const createRouteResponse = await projectAutomations.fetch(
+      new Request(
+        `https://automations.do/api/automations/routes?scopeKind=project&orgId=${orgId}&projectId=${projectId}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            id: "project-store-route",
+            name: "Project store route",
+            enabled: true,
+            source: "test",
+            eventType: "project.event",
+            matcher: null,
+            priority: 50,
+            action: {
+              kind: "start_workflow",
+              workflowName: "automation-codemode-script",
+              remoteWorkflowName: "project-store",
+              workflowScriptPath: "/workspace/automations/project-store.workflow.js",
+              instanceIdTemplate: "project-store-${event.id}",
+            },
+          }),
+        },
+      ),
+    );
+    assert(createRouteResponse.status === 201);
     const event: AutomationEvent = {
       id: "org-event-1",
       scope: { kind: "org", orgId },
@@ -128,13 +156,22 @@ store.set --key project/last-event --value "$event_id" --actor '{"scope":"intern
 
     await runtime.drain();
 
-    const projectStore = createRouteBackedAutomationStoreRuntime({
-      object: runtime.objects.automations.forProject({ orgId, projectId }),
-    });
-    await expect(projectStore.get({ key: "project/last-event" })).resolves.toMatchObject({
-      key: "project/last-event",
-      value: expect.stringContaining("project.event"),
-    });
+    const workflowsResponse = await projectAutomations.fetch(
+      new Request(
+        `https://automations.do/api/automations-workflows/automation-codemode-script/instances?scopeKind=project&orgId=${orgId}&projectId=${projectId}`,
+      ),
+    );
+    assert(workflowsResponse.status === 200);
+    const workflows = (await workflowsResponse.json()) as {
+      instances: Array<{ id: string }>;
+    };
+    expect(workflows.instances).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: expect.stringContaining("project-store-org-event-1-project-event-"),
+        }),
+      ]),
+    );
   });
 
   test("emits project.created hooks and mounts configured project workspaces by slug", async () => {
@@ -142,7 +179,10 @@ store.set --key project/last-event --value "$event_id" --actor '{"scope":"intern
     runtime = await createInMemoryBackofficeRuntime({ env: { LOADER: env.LOADER } });
 
     const orgAutomations = runtime.objects.automations.forOrg(orgId);
-    const orgRoutes = createAutomationsRouteCaller({ object: orgAutomations });
+    const orgRoutes = createAutomationsRouteCaller({
+      object: orgAutomations,
+      scope: { kind: "org", orgId },
+    });
     const createProjectResponse = await orgRoutes("POST", "/projects", {
       body: {
         name: "Mounted Plan",
@@ -218,7 +258,10 @@ store.set --key project/last-event --value "$event_id" --actor '{"scope":"intern
     runtime = await createInMemoryBackofficeRuntime({ env: { LOADER: env.LOADER } });
 
     const orgAutomations = runtime.objects.automations.forOrg(orgId);
-    const orgRoutes = createAutomationsRouteCaller({ object: orgAutomations });
+    const orgRoutes = createAutomationsRouteCaller({
+      object: orgAutomations,
+      scope: { kind: "org", orgId },
+    });
     const createProjectResponse = await orgRoutes("POST", "/projects", {
       body: {
         name: "Archived Plan",

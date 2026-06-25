@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, test, assert } from "vitest";
 
 import { InMemoryAdapter } from "@fragno-dev/db";
+import { drainDurableHooks } from "@fragno-dev/test";
 
 import { createMasterFileSystem, createSystemFilesContext } from "@/files";
 
+import { STARTER_AUTOMATION_ROUTES } from "./content/starter-routing";
+import type { AutomationEvent } from "./contracts";
 import type { AutomationWorkflowsService } from "./definition";
 import { createAutomationFragment } from "./index";
 
@@ -12,16 +15,19 @@ const createAutomation = async (
     ownerScope?:
       | { kind: "org"; orgId: string }
       | { kind: "project"; orgId: string; projectId: string };
+    workflows?: AutomationWorkflowsService;
   } = {},
 ) => {
   const services = {
-    workflows: {
-      createInstance: async () => ({}),
-      getInstanceStatus: async () => [],
-      getLiveInstanceState: async () => ({}),
-      restoreInstanceState: async () => ({}),
-      sendEvent: async () => ({}),
-    } as unknown as AutomationWorkflowsService,
+    workflows:
+      options.workflows ??
+      ({
+        createInstance: async () => ({}),
+        getInstanceStatus: async () => [],
+        getLiveInstanceState: async () => ({}),
+        restoreInstanceState: async () => ({}),
+        sendEvent: async () => ({}),
+      } as unknown as AutomationWorkflowsService),
   };
 
   return createAutomationFragment(
@@ -57,6 +63,158 @@ let fragment: Awaited<ReturnType<typeof createAutomation>>;
 
 beforeEach(async () => {
   fragment = await createAutomation();
+});
+
+describe("automation routes /routes", () => {
+  test("lists and seeds starter automation routes", async () => {
+    await fragment.inContext(async function () {
+      await this.handlerTx()
+        .withServiceCalls(() => [fragment.services.seedStarterAutomationRoutes()] as const)
+        .execute();
+    });
+
+    const response = await fragment.callRoute("GET", "/routes");
+
+    assert(response.type === "json");
+    if (response.type === "json") {
+      expect(response.data.map((route) => route.id)).toEqual(
+        [...STARTER_AUTOMATION_ROUTES]
+          .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
+          .map((route) => route.id),
+      );
+      expect(response.data).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "telegram-identity-claim-completed",
+            action: expect.objectContaining({ kind: "send_workflow_event" }),
+          }),
+          expect.objectContaining({
+            id: "system-project-files-configure",
+            action: expect.objectContaining({
+              kind: "start_workflow",
+              remoteWorkflowName: "project-files-configure",
+            }),
+          }),
+        ]),
+      );
+    }
+  });
+
+  test("creates and updates automation routes", async () => {
+    const createResponse = await fragment.callRoute("POST", "/routes", {
+      body: {
+        id: "telegram-hello",
+        name: "Telegram hello",
+        enabled: true,
+        source: "telegram",
+        eventType: "message.received",
+        matcher: { path: "$.payload.text", op: "startsWith", value: "/hello" },
+        priority: 1000,
+        action: {
+          kind: "start_workflow",
+          workflowName: "automation-codemode-script",
+          remoteWorkflowName: "telegram-hello",
+          workflowScriptPath: "/workspace/automations/telegram-hello.workflow.js",
+          instanceIdTemplate: "telegram-hello-${event}",
+        },
+      },
+    });
+
+    assert(createResponse.type === "json");
+    if (createResponse.type !== "json") {
+      return;
+    }
+    expect(createResponse.data).toMatchObject({
+      id: "telegram-hello",
+      enabled: true,
+      priority: 1000,
+      action: expect.objectContaining({ workflowName: "automation-codemode-script" }),
+    });
+
+    const updateResponse = await fragment.callRoute("PATCH", "/routes/:routeId", {
+      pathParams: { routeId: "telegram-hello" },
+      body: {
+        enabled: false,
+        priority: 900,
+        description: "Disabled while testing.",
+      },
+    });
+
+    assert(updateResponse.type === "json");
+    if (updateResponse.type === "json") {
+      expect(updateResponse.data).toMatchObject({
+        id: "telegram-hello",
+        enabled: false,
+        priority: 900,
+        description: "Disabled while testing.",
+        matcher: { path: "$.payload.text", op: "startsWith", value: "/hello" },
+      });
+    }
+  });
+
+  test("send workflow event routes use deterministic event ids", async () => {
+    const sendEvents: Array<{ workflowName: string; instanceId: string; event: { id?: string } }> =
+      [];
+    fragment = await createAutomation({
+      workflows: {
+        createInstance: async () => ({}),
+        getInstanceStatus: async () => [],
+        sendEvent: async (workflowName: string, instanceId: string, event: { id?: string }) => {
+          sendEvents.push({ workflowName, instanceId, event });
+          return {};
+        },
+      } as unknown as AutomationWorkflowsService,
+    });
+
+    await fragment.callRoute("POST", "/store/set", {
+      body: {
+        key: "waiter/alpha",
+        value: "waiter-1",
+        actor,
+      },
+    });
+    await fragment.callRoute("POST", "/routes", {
+      body: {
+        id: "custom-signal-forwarder",
+        name: "Custom signal forwarder",
+        enabled: true,
+        source: "custom",
+        eventType: "signal.received",
+        matcher: null,
+        priority: 50,
+        action: {
+          kind: "send_workflow_event",
+          workflowName: "automation-codemode-script",
+          target: { kind: "stored_instance_id", keyTemplate: "waiter/${event.payload.key}" },
+          eventType: "custom-signal",
+          payload: "$event",
+        },
+      },
+    });
+
+    const event: AutomationEvent = {
+      id: "signal-1",
+      scope: { kind: "org", orgId: "org_123" },
+      source: "custom",
+      eventType: "signal.received",
+      occurredAt: "2026-01-01T00:00:00.000Z",
+      payload: { key: "alpha" },
+      actor,
+      actors: [actor],
+      subject: { orgId: "org_123" },
+    };
+
+    await fragment.callServices(() => fragment.services.ingestEvent(event));
+    await drainDurableHooks(fragment);
+
+    expect(sendEvents).toEqual([
+      {
+        workflowName: "automation-codemode-script",
+        instanceId: "waiter-1",
+        event: expect.objectContaining({ id: "custom-signal-forwarder:signal-1" }),
+      },
+    ]);
+  });
 });
 
 describe("automation routes /projects", () => {

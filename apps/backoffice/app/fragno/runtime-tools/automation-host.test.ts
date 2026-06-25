@@ -8,6 +8,7 @@ import { createInteractiveBashHost } from "./automation-host";
 import type { StoreSetArgs } from "./automation-types";
 import { createBashHost } from "./bash-host";
 import { EMPTY_BASH_HOST_CONTEXT } from "./bash-host.test-utils";
+import { createUnavailableAutomationRouterRuntime } from "./families/automations-routing";
 import type { OtpRuntime } from "./families/otp-runtime";
 import type { PiRuntime } from "./families/pi-runtime";
 import type { ResendRuntime } from "./families/resend-runtime";
@@ -21,6 +22,7 @@ const automationStoreActor = {
 } as const;
 
 const createAutomationsRuntime = () => ({
+  ...createUnavailableAutomationRouterRuntime(),
   get: async () => ({
     source: "telegram",
     key: "actor-1",

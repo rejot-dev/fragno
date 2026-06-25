@@ -442,7 +442,7 @@ export default function BackofficeDashboard() {
             </p>
             <ul className="mt-2 space-y-2 text-sm text-[var(--bo-muted)]">
               <li>• ls, cat, find, pwd</li>
-              <li>• isogit clone / status against the virtual filesystem</li>
+              <li>• isogit clone / status</li>
               {DASHBOARD_COMMAND_GROUPS.map((group) => (
                 <li key={group.namespace}>
                   • {group.namespace}: {group.commands.join(" / ")}

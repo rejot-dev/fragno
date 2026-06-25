@@ -52,7 +52,14 @@ export const automationScopeBasePath = (scope: AutomationUiScope) => {
   }
 };
 
-export type AutomationScopeTab = "scripts" | "store" | "api" | "events" | "events-catalog" | "mcp";
+export type AutomationScopeTab =
+  | "scripts"
+  | "router"
+  | "store"
+  | "api"
+  | "events"
+  | "events-catalog"
+  | "mcp";
 
 export const automationScopeTabPath = (
   scope: AutomationUiScope,

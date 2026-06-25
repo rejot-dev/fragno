@@ -9,6 +9,7 @@ import {
 } from "./definition";
 import { automationProjectRoutes } from "./project-routes";
 import type { AutomationProjectExecutionTarget } from "./projects";
+import { automationRouteRoutes } from "./route-routes";
 import type {
   SandboxInstanceRecord,
   SandboxInstanceRequestInput,
@@ -28,7 +29,7 @@ export function createAutomationFragment(
 ) {
   return instantiate(automationFragmentDefinition)
     .withConfig(config)
-    .withRoutes([automationProjectRoutes, automationStoreRoutes])
+    .withRoutes([automationProjectRoutes, automationRouteRoutes, automationStoreRoutes])
     .withOptions(options)
     .withServices(services)
     .build();
@@ -42,6 +43,8 @@ export {
   readAutomationWorkspaceScript,
 } from "./catalog";
 export type { AutomationScriptLayer, AutomationWorkspaceScriptEntry } from "./catalog";
+export { STARTER_AUTOMATION_ROUTES } from "./content/starter-routing";
+export type { AutomationRouteDefinition, StarterAutomationRoutesSeedResult } from "./routing";
 
 export { CLOUDFLARE_SANDBOX_PROVIDER } from "./sandboxes";
 export type {

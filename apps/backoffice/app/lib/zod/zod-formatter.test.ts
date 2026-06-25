@@ -4,8 +4,10 @@ import { z } from "zod";
 
 import {
   formatJsonSchemaFields,
+  jsonSchemaToTypeScriptRender,
   zodSchemaToJsonSchema,
   zodSchemaToTypeScript,
+  zodSchemaToTypeScriptRender,
 } from "./zod-formatter";
 
 describe("zodSchemaToJsonSchema", () => {
@@ -125,6 +127,323 @@ describe("zodSchemaToTypeScript", () => {
         occurredAt: string;
       }"
     `);
+  });
+
+  test("resolves named recursive refs from zod metadata", () => {
+    type RecursiveFormatterNode =
+      | { value: string }
+      | { all: RecursiveFormatterNode[] }
+      | { not: RecursiveFormatterNode };
+    const nodeSchema: z.ZodType<RecursiveFormatterNode> = z
+      .lazy(() =>
+        z.union([
+          z.object({ value: z.string() }),
+          z.object({ all: z.array(nodeSchema) }),
+          z.object({ not: nodeSchema }),
+        ]),
+      )
+      .meta({ id: "RecursiveFormatterNode" });
+
+    try {
+      expect(
+        zodSchemaToTypeScriptRender(z.object({ node: nodeSchema.nullable() }), "output", {
+          rootTypeName: "RecursiveFormatterInput",
+        }),
+      ).toMatchInlineSnapshot(`
+        {
+          "declarations": [
+            "type RecursiveFormatterNode = {
+          value: string;
+        } | {
+          all: RecursiveFormatterNode[];
+        } | {
+          not: RecursiveFormatterNode;
+        };",
+          ],
+          "type": "{
+          node: RecursiveFormatterNode | null;
+        }",
+        }
+      `);
+    } finally {
+      z.globalRegistry.remove(nodeSchema);
+    }
+  });
+
+  test("gives generated recursive defs stable root-scoped names", () => {
+    expect(
+      jsonSchemaToTypeScriptRender(
+        {
+          type: "object",
+          properties: {
+            child: { $ref: "#/$defs/__schema0" },
+          },
+          required: ["child"],
+          $defs: {
+            __schema0: {
+              anyOf: [
+                { type: "object", properties: { value: { type: "string" } }, required: ["value"] },
+                {
+                  type: "object",
+                  properties: { children: { type: "array", items: { $ref: "#/$defs/__schema0" } } },
+                  required: ["children"],
+                },
+              ],
+            },
+          },
+        },
+        { rootTypeName: "GeneratedRefInput" },
+      ),
+    ).toMatchInlineSnapshot(`
+      {
+        "declarations": [
+          "type GeneratedRefInputSchema0 = {
+        value: string;
+      } | {
+        children: GeneratedRefInputSchema0[];
+      };",
+        ],
+        "type": "{
+        child: GeneratedRefInputSchema0;
+      }",
+      }
+    `);
+  });
+
+  test("renders local definition refs and discovers nested declaration refs", () => {
+    expect(
+      jsonSchemaToTypeScriptRender(
+        {
+          type: "object",
+          properties: {
+            primary: { $ref: "#/$defs/Primary" },
+          },
+          required: ["primary"],
+          $defs: {
+            Primary: {
+              type: "object",
+              properties: {
+                secondary: { $ref: "#/$defs/Secondary" },
+              },
+              required: ["secondary"],
+            },
+            Secondary: {
+              type: "object",
+              properties: {
+                label: { type: "string" },
+              },
+              required: ["label"],
+            },
+          },
+        },
+        { rootTypeName: "NestedRefInput" },
+      ),
+    ).toMatchInlineSnapshot(`
+      {
+        "declarations": [
+          "type Primary = {
+        secondary: Secondary;
+      };",
+          "type Secondary = {
+        label: string;
+      };",
+        ],
+        "type": "{
+        primary: Primary;
+      }",
+      }
+    `);
+  });
+
+  test("supports legacy definitions refs", () => {
+    expect(
+      jsonSchemaToTypeScriptRender(
+        {
+          type: "object",
+          properties: {
+            address: { $ref: "#/definitions/address-model" },
+          },
+          required: ["address"],
+          definitions: {
+            "address-model": {
+              id: "AddressModel",
+              type: "object",
+              properties: {
+                city: { type: "string" },
+              },
+              required: ["city"],
+            },
+          },
+        },
+        { rootTypeName: "LegacyDefinitionInput" },
+      ),
+    ).toMatchInlineSnapshot(`
+      {
+        "declarations": [
+          "type AddressModel = {
+        city: string;
+      };",
+        ],
+        "type": "{
+        address: AddressModel;
+      }",
+      }
+    `);
+  });
+
+  test("keeps unresolved or external refs unknown", () => {
+    expect(
+      jsonSchemaToTypeScriptRender(
+        {
+          type: "object",
+          properties: {
+            external: { $ref: "https://example.com/schemas/External" },
+            missing: { $ref: "#/$defs/Missing" },
+            inlineObjectProperty: { $ref: "#/properties/external" },
+          },
+          required: ["external", "missing", "inlineObjectProperty"],
+        },
+        { rootTypeName: "UnknownRefsInput" },
+      ),
+    ).toMatchInlineSnapshot(`
+      {
+        "declarations": [],
+        "type": "{
+        external: unknown;
+        missing: unknown;
+        inlineObjectProperty: unknown;
+      }",
+      }
+    `);
+  });
+
+  test("uses root type name for self refs", () => {
+    expect(
+      jsonSchemaToTypeScriptRender(
+        {
+          type: "object",
+          properties: {
+            parent: { anyOf: [{ $ref: "#" }, { type: "null" }] },
+            value: { type: "string" },
+          },
+          required: ["parent", "value"],
+        },
+        { rootTypeName: "SelfRefNode" },
+      ),
+    ).toMatchInlineSnapshot(`
+      {
+        "declarations": [],
+        "type": "{
+        parent: SelfRefNode | null;
+        value: string;
+      }",
+      }
+    `);
+  });
+
+  test("sanitizes definition names and avoids collisions with the root type name", () => {
+    expect(
+      jsonSchemaToTypeScriptRender(
+        {
+          type: "object",
+          properties: {
+            rootLike: { $ref: "#/$defs/RouteInput" },
+            dashed: { $ref: "#/$defs/dashed-name" },
+            reserved: { $ref: "#/$defs/string" },
+          },
+          required: ["rootLike", "dashed", "reserved"],
+          $defs: {
+            RouteInput: { type: "string" },
+            "dashed-name": { type: "number" },
+            string: { type: "boolean" },
+          },
+        },
+        { rootTypeName: "RouteInput" },
+      ),
+    ).toMatchInlineSnapshot(`
+      {
+        "declarations": [
+          "type RouteInput2 = string;",
+          "type DashedName = number;",
+          "type Schemastring = boolean;",
+        ],
+        "type": "{
+        rootLike: RouteInput2;
+        dashed: DashedName;
+        reserved: Schemastring;
+      }",
+      }
+    `);
+  });
+
+  test("uses schema ids as root aliases when they differ from generated tool type names", () => {
+    expect(
+      jsonSchemaToTypeScriptRender(
+        {
+          id: "ReusableRoute",
+          type: "object",
+          properties: {
+            id: { type: "string" },
+          },
+          required: ["id"],
+        },
+        { rootTypeName: "RouterCreateOutput" },
+      ),
+    ).toMatchInlineSnapshot(`
+      {
+        "declarations": [
+          "type ReusableRoute = {
+        id: string;
+      };",
+        ],
+        "type": "ReusableRoute",
+      }
+    `);
+  });
+
+  test("uses codemodeInputId metadata for input-only declaration names", () => {
+    const actionSchema = z
+      .object({
+        kind: z.literal("example"),
+        defaulted: z.string().default("default"),
+      })
+      .meta({ id: "ExampleAction", codemodeInputId: "ExampleActionInput" });
+    const routeSchema = z.object({ action: actionSchema });
+
+    try {
+      expect(
+        zodSchemaToTypeScriptRender(routeSchema, "input", { rootTypeName: "ExampleRouteInput" }),
+      ).toMatchInlineSnapshot(`
+        {
+          "declarations": [
+            "type ExampleActionInput = {
+          kind: "example";
+          defaulted?: string;
+        };",
+          ],
+          "type": "{
+          action: ExampleActionInput;
+        }",
+        }
+      `);
+      expect(
+        zodSchemaToTypeScriptRender(routeSchema, "output", { rootTypeName: "ExampleRouteOutput" }),
+      ).toMatchInlineSnapshot(`
+        {
+          "declarations": [
+            "type ExampleAction = {
+          kind: "example";
+          defaulted: string;
+        };",
+          ],
+          "type": "{
+          action: ExampleAction;
+        }",
+        }
+      `);
+    } finally {
+      z.globalRegistry.remove(actionSchema);
+    }
   });
 });
 

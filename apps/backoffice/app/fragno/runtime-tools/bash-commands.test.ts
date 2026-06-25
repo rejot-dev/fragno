@@ -5,8 +5,9 @@ import { z } from "zod";
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 
-import type { AutomationStoreRuntime } from "./families/automations-bindings";
+import type { RegisteredAutomationsRuntime } from "./bash-host";
 import { automationStoreRuntimeTools } from "./families/automations-bindings";
+import { createUnavailableAutomationRouterRuntime } from "./families/automations-routing";
 import {
   backofficeCapabilitiesRuntimeTools,
   type BackofficeCapabilitiesRuntime,
@@ -23,7 +24,8 @@ describe("createBackofficeBashCommands", () => {
     const calls: unknown[] = [];
     const commandCallsResult: { command: string; output: string; exitCode: number }[] = [];
     const actor = { scope: "external", source: "telegram", type: "chat", id: "chat-123" } as const;
-    const automationsRuntime: AutomationStoreRuntime = {
+    const automationsRuntime: RegisteredAutomationsRuntime = {
+      ...createUnavailableAutomationRouterRuntime(),
       get: async (input) => {
         calls.push(["get", input]);
         return {
@@ -102,7 +104,8 @@ describe("createBackofficeBashCommands", () => {
   test("uses the default actor for store.set when --actor is omitted", async () => {
     const calls: unknown[] = [];
     const actor = { scope: "internal", type: "user", id: "user-1" } as const;
-    const automationsRuntime: AutomationStoreRuntime = {
+    const automationsRuntime: RegisteredAutomationsRuntime = {
+      ...createUnavailableAutomationRouterRuntime(),
       get: async () => null,
       set: async (input) => {
         calls.push(["set", input]);
@@ -132,7 +135,8 @@ describe("createBackofficeBashCommands", () => {
   });
 
   test("requires store.set --actor when no default actor is available", async () => {
-    const automationsRuntime: AutomationStoreRuntime = {
+    const automationsRuntime: RegisteredAutomationsRuntime = {
+      ...createUnavailableAutomationRouterRuntime(),
       get: async () => null,
       set: async () => {
         throw new Error("set should not be called");
@@ -163,7 +167,8 @@ describe("createBackofficeBashCommands", () => {
   test("authorizes bash commands before executing runtime tools", async () => {
     const calls: unknown[] = [];
     const actor = { scope: "external", source: "telegram", type: "chat", id: "chat-123" } as const;
-    const automationsRuntime: AutomationStoreRuntime = {
+    const automationsRuntime: RegisteredAutomationsRuntime = {
+      ...createUnavailableAutomationRouterRuntime(),
       get: async (input) => {
         calls.push(["get", input]);
         return { key: input.key, value: "value", category: [], actor };
