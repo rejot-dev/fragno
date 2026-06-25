@@ -39,7 +39,15 @@ export type Executor = {
   ): Promise<ExecuteResult>;
 };
 
-export const normalizeCode = (code: string): string => code.trim();
+export const normalizeCode = (code: string): string => {
+  const trimmed = code.trim();
+  // The executor injects the snippet as a parenthesized expression: `(<code>)`.
+  // A leading `return` is a statement and is a SyntaxError in expression position
+  // ("Unexpected token 'return'"), which crashes the worker before it can run.
+  // LLMs occasionally emit `return defineWorkflow(...)`, so strip a single leading
+  // `return` to keep the snippet runnable.
+  return trimmed.replace(/^return\b\s*/u, "");
+};
 
 export const sanitizeToolName = (name: string): string => {
   const sanitized = name.replace(/[^a-zA-Z0-9_$]/gu, "_");
