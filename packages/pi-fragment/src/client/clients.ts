@@ -3,8 +3,8 @@ import { createClientBuilder, type FragnoPublicClientConfig } from "@fragno-dev/
 import { piFragmentDefinition } from "../pi/definition";
 import { piRoutesFactory } from "../routes";
 import {
+  createDirectFetchPiSessionTransport,
   createPiSessionStore,
-  createStorePiSessionTransport,
   type PiSessionStoreArgs,
   type PiSessionStoreDeps,
 } from "./session";
@@ -51,9 +51,17 @@ export function createPiFragmentClients(fragnoConfig: PiFragmentClientConfig = {
     },
   );
 
-  const defaultSessionTransport = createStorePiSessionTransport({
-    openEventsStore: ({ workflowName, sessionId }) =>
-      useSessionEvents.store({ path: { workflowName, sessionId } }),
+  // The live session subscribes to `/events` straight from `fetch` rather than
+  // through the deduped streaming query store, so each (re)connect issues a fresh
+  // request and the iterable ends on the server's clean EOF — which is what lets
+  // the session store reconnect after the route's idle timeout. (`useSessionEvents`
+  // is kept for one-shot snapshots and debug surfaces.)
+  const defaultSessionTransport = createDirectFetchPiSessionTransport({
+    buildEventsUrl: ({ workflowName, sessionId }) =>
+      builder.buildUrl("/workflows/:workflowName/sessions/:sessionId/events", {
+        path: { workflowName, sessionId },
+      }),
+    getFetcher: () => builder.getFetcher(),
     sendCommand: async ({ workflowName, sessionId, command }) => {
       const ack = await useCommandSession.mutateQuery({
         path: { workflowName, sessionId },
