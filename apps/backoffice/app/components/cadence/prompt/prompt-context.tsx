@@ -73,10 +73,30 @@ export type CodemodeEntry = {
   title: string;
   output?: string;
   /**
+   * Whether the run actually defined a workflow (vs. a plain script that just
+   * computed a value). Only a workflow has a graph + durable run worth showing in
+   * the workbench; a plain script renders as read-only code beside its output.
+   */
+  isWorkflow: boolean;
+  /**
    * The durable run the agent scheduled for this code, when one was created. The
    * panel subscribes to it for realtime progress (step highlighting + emissions).
    */
   run?: { workflowName: string; instanceId: string };
+};
+
+/**
+ * A past session shown in the exec history menu. It is a trimmed {@link PiSession}
+ * (loaded by the exec route) — enough to label the row and, on click, rebuild the
+ * {@link ComposeSessionRef} the transcript subscribes to.
+ */
+export type ComposeHistorySession = {
+  id: string;
+  name: string | null;
+  status: string;
+  workflowName: string;
+  agentName: string;
+  updatedAt: string | Date;
 };
 
 /** The compose session: everything the output block needs to render a result. */
@@ -123,6 +143,14 @@ type PromptContextValue = {
   isSubmitting: boolean;
   /** The compose session (status, prompt, output blocks, active view). */
   compose: ComposeSession;
+  /** Past sessions for this org, newest first, shown in the history menu. */
+  history: ComposeHistorySession[];
+  /** The id of the session currently bound to the surface, if any. */
+  activeSessionId: string | null;
+  /** Reopen a past session: bind it to the surface so the transcript renders it and follow-ups continue it. */
+  resumeSession: (session: ComposeHistorySession) => void;
+  /** Clear the surface back to an empty composer, ready to start a fresh session. */
+  startNewSession: () => void;
   /** Conduct a compose draft: start a session (or follow up on the current one) and render the transcript. */
   conduct: (text: string) => void;
   /** Block-level output actions (e.g. opening a workflow in the build playground). */
@@ -160,11 +188,14 @@ const PromptContext = createContext<PromptContextValue | null>(null);
 export function PromptProvider({
   organizationId,
   organizationName,
+  history = [],
   onConduct,
   children,
 }: {
   organizationId?: string | null;
   organizationName?: string | null;
+  /** Past sessions for the active org (loaded by the route), newest first. */
+  history?: ComposeHistorySession[];
   onConduct?: (text: string) => void;
   children: ReactNode;
 }) {
@@ -344,6 +375,31 @@ export function PromptProvider({
     setWorkflowRefreshToken((token) => token + 1);
   }, []);
 
+  // Reopen a past session: bind it to the surface as a ready session. The output
+  // block then renders <ComposeTranscript> for it (loading its history via the Pi
+  // client), and the next prompt continues it as a follow-up. Any companion panel
+  // from the previous session is dismissed, since it belonged to that conversation.
+  const resumeSession = useCallback((session: ComposeHistorySession) => {
+    setCompose({
+      status: "ready",
+      prompt: null,
+      session: {
+        id: session.id,
+        workflowName: session.workflowName,
+        agentName: session.agentName,
+      },
+      blocks: [],
+      view: { kind: "stream" },
+      workspace: { kind: "none" },
+      error: null,
+    });
+  }, []);
+
+  // Drop back to an empty composer so the next prompt starts a fresh session.
+  const startNewSession = useCallback(() => {
+    setCompose(IDLE_COMPOSE);
+  }, []);
+
   const outputActions = useMemo<OutputActions>(() => ({ openBuild }), [openBuild]);
 
   const value = useMemo(
@@ -359,6 +415,10 @@ export function PromptProvider({
       commandFetcher,
       isSubmitting,
       compose,
+      history,
+      activeSessionId: compose.session?.id ?? null,
+      resumeSession,
+      startNewSession,
       conduct,
       outputActions,
       closeBuild,
@@ -382,6 +442,9 @@ export function PromptProvider({
       commandFetcher,
       isSubmitting,
       compose,
+      history,
+      resumeSession,
+      startNewSession,
       conduct,
       outputActions,
       closeBuild,

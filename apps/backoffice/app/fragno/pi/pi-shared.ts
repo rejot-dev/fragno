@@ -90,16 +90,7 @@ export const PI_MODEL_CATALOG: PiModelOption[] = [
   },
 ];
 
-export const PI_TOOL_IDS = [
-  "bash",
-  "execCodeMode",
-  "read",
-  "listAutomations",
-  "showWorkflow",
-  "validateAutomation",
-  "writeAutomation",
-  "runAutomation",
-] as const;
+export const PI_TOOL_IDS = ["bash", "execCodeMode", "read"] as const;
 export type PiToolId = (typeof PI_TOOL_IDS)[number];
 
 export const DEFAULT_PI_HARNESSES: PiHarnessConfig[] = [

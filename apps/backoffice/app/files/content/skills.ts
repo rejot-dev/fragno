@@ -30,17 +30,6 @@ export const GENERAL_SKILL_CONTENT: Record<string, FileSystemArtifact> = {
       "Build Backoffice automations in codemode. Use when creating event-triggered workflow behavior, wiring useful configured connections together, reading the event catalog, or adding durable workflow scripts. ONLY use when the user is explicit about wanting an automation/workflow.",
     body: `Use this skill when the user wants the system to react to events from connections such as Telegram, Pi, OTP, or future integrations.
 
-## Preferred: dedicated automation tools
-
-Author automations with the first-class tools instead of writing files by hand — they validate against the workflow parser and keep the workspace consistent:
-
-- \`listAutomations\` — see the existing router and workflow files and their parsed step shape.
-- \`validateAutomation({ path, body })\` — parse a candidate script WITHOUT writing it. Returns diagnostics (errors/warnings) and the step graph. Always validate before writing.
-- \`writeAutomation({ path, body })\` — validate then write into \`/workspace/automations\`. It REFUSES to write when the script has error-level diagnostics, so fix everything \`validateAutomation\` reports first. System scripts are read-only.
-- \`runAutomation({ path, eventType, source?, payload? })\` — run an authored script with a synthetic trigger event to smoke-test it, then check the workflows view for its progress.
-
-The conventions below (router in \`router.cm.js\`, workflows in \`*.workflow.js\`, the \`store\` provider) still apply — these tools just give you a validated path to write them. Read \`/workspace/codemode.d.ts\` for the typed provider/step surface.
-
 ## Codemode-first workflow
 
 1. Inspect available event shapes with the codemode events provider:

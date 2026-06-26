@@ -50,9 +50,9 @@ export function PromptComposer() {
 
   return (
     <CadencePanel className="overflow-hidden">
-      <div className="flex items-center justify-between gap-3 border-b border-[color:var(--cad-line)] px-5 py-3">
+      <div className="flex items-center justify-between gap-3 border-b border-[color:var(--cad-line)] px-4 py-2">
         <span className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-[var(--cad-brass)]" />
+          <Sparkles className="h-3.5 w-3.5 text-[var(--cad-brass)]" />
           <span className="cad-eyebrow text-[var(--cad-muted)]">Compose a new automation</span>
         </span>
         <PromptModeToggle />
@@ -67,12 +67,12 @@ export function PromptComposer() {
             handleConduct();
           }
         }}
-        rows={5}
+        rows={3}
         placeholder="e.g. When a customer cancels, survey them, revoke access at period end, and flag the account for win-back."
-        className="cad-scroll block w-full resize-none bg-transparent px-5 py-4 text-sm leading-relaxed text-[var(--cad-fg)] placeholder:text-[var(--cad-muted-2)] focus:outline-none"
+        className="cad-scroll block w-full resize-none bg-transparent px-4 py-3 text-sm leading-relaxed text-[var(--cad-fg)] placeholder:text-[var(--cad-muted-2)] focus:outline-none"
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--cad-line)] px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--cad-line)] px-4 py-2">
         <span className="cad-mono text-xs text-[var(--cad-muted-2)]">
           ⌘↵ to conduct · / for the dev console
         </span>
