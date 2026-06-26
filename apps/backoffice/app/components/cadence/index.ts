@@ -11,5 +11,12 @@ export {
   CadenceButton,
   CadenceGhostButton,
 } from "./primitives";
-export { Prompt, PromptOutput, PromptProvider, usePrompt, type PromptMode } from "./prompt";
+export {
+  Prompt,
+  PromptOutput,
+  PromptProvider,
+  usePrompt,
+  type PromptMode,
+  type ComposeHistorySession,
+} from "./prompt";
 export { CadenceCodeEditor, type CodeEditorEngine } from "./code-editor";

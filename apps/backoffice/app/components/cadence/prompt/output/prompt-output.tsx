@@ -11,9 +11,6 @@
  * beyond closing the build view.
  */
 
-import { Sparkles, TerminalSquare, Workflow } from "lucide-react";
-
-import { CadencePanel } from "@/components/cadence/primitives";
 import { cn } from "@/lib/utils";
 
 import { DevTranscript } from "../dev/dev-transcript";
@@ -22,14 +19,18 @@ import { BuildPlayground } from "./build/build-playground";
 import { ComposeTranscript } from "./compose-transcript";
 import { OutputActionsProvider } from "./output-actions";
 import { OutputStream } from "./output-stream";
+import { SessionHistory } from "./session-history";
 
 export function PromptOutput({ className }: { className?: string }) {
   const {
     mode,
     organizationId,
-    organizationName,
     terminal,
     compose,
+    history,
+    activeSessionId,
+    resumeSession,
+    startNewSession,
     outputActions,
     closeBuild,
     updateBuildGraph,
@@ -38,17 +39,21 @@ export function PromptOutput({ className }: { className?: string }) {
     refreshWorkflow,
   } = usePrompt();
 
-  const isBuild = mode === "compose" && compose.view.kind === "build";
+  // History is a compose-only affordance — dev mode has its own transcript.
+  const showHistory = mode === "compose" && compose.view.kind !== "build";
 
   return (
-    <CadencePanel
-      className={cn(
-        "flex min-h-[22rem] flex-col overflow-hidden",
-        isBuild ? "h-[70vh] max-h-[70vh]" : "max-h-[60vh]",
-        className,
-      )}
-    >
-      <OutputHeader mode={mode} organizationName={organizationName} view={compose.view.kind} />
+    <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", className)}>
+      {showHistory ? (
+        <div className="mx-auto flex w-full max-w-4xl justify-end px-5 pt-3">
+          <SessionHistory
+            history={history}
+            activeSessionId={activeSessionId}
+            onResume={resumeSession}
+            onNew={startNewSession}
+          />
+        </div>
+      ) : null}
 
       {mode === "dev" ? (
         <DevTranscript entries={terminal.terminalHistory} scrollRef={terminal.terminalRef} />
@@ -84,35 +89,6 @@ export function PromptOutput({ className }: { className?: string }) {
           )}
         </OutputActionsProvider>
       )}
-    </CadencePanel>
-  );
-}
-
-function OutputHeader({
-  mode,
-  organizationName,
-  view,
-}: {
-  mode: "compose" | "dev";
-  organizationName?: string | null;
-  view: "stream" | "build";
-}) {
-  const { icon, label } =
-    mode === "dev"
-      ? {
-          icon: <TerminalSquare className="h-4 w-4 text-[var(--cad-brass)]" />,
-          label: `Dev transcript${organizationName ? ` · ${organizationName}` : ""}`,
-        }
-      : view === "build"
-        ? { icon: <Workflow className="h-4 w-4 text-[var(--cad-brass)]" />, label: "Build" }
-        : { icon: <Sparkles className="h-4 w-4 text-[var(--cad-brass)]" />, label: "Output" };
-
-  return (
-    <div className="flex items-center justify-between gap-3 border-b border-[color:var(--cad-line)] px-5 py-3">
-      <span className="flex items-center gap-2">
-        {icon}
-        <span className="cad-eyebrow text-[var(--cad-muted)]">{label}</span>
-      </span>
     </div>
   );
 }

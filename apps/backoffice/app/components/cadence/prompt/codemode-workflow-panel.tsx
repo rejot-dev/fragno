@@ -1,15 +1,20 @@
 /*
- * The companion panel for a codemode workflow — the workflow an agent ran via
+ * The companion panel for a codemode run — the code an agent ran via
  * `execCodeMode`. There is no file on disk to load: the `execCodeMode` tool
- * parses its own output server-side and returns the graph plus the source it
- * ran. We feed those into the same {@link WorkflowWorkbench} the workflows page
- * uses, via a synthetic read-only source, so the codemode view matches it node
- * for node — only run/save are dropped (there is no file to execute or persist),
- * and the run's captured output is shown beneath the panels.
+ * parses its own output server-side and returns the code plus, when the code
+ * defined a workflow, its graph.
+ *
+ *   - A workflow run feeds the graph + source into the same {@link WorkflowWorkbench}
+ *     the workflows page uses, via a synthetic read-only source, so the view
+ *     matches it node for node — only run/save are dropped (there is no file to
+ *     execute or persist), and the run's captured output is shown beneath the panels.
+ *   - A plain script run (no workflow) has no graph worth showing, so it renders
+ *     the read-only code beside its captured output.
  */
 
 import { Terminal } from "lucide-react";
 
+import { CadenceCodeEditor } from "@/components/cadence/code-editor";
 import { WorkflowWorkbench } from "@/components/cadence/workflow-graph/workflow-workbench";
 import { cn } from "@/lib/utils";
 import type { WorkflowSource } from "@/routes/cadence/workflow-graph.server";
@@ -37,17 +42,6 @@ export function CodemodeWorkflowPanel({
     return null;
   }
 
-  // A synthetic source so the workbench can render the code beside the graph.
-  // There is no file behind it, so it is read-only and cannot be run.
-  const source: WorkflowSource = {
-    absolutePath: "",
-    path: active.title,
-    engine: "codemode",
-    body: active.code,
-    readOnly: true,
-    inputFields: [],
-  };
-
   return (
     <CompanionPanel
       icon={<Terminal className="h-4 w-4 shrink-0 text-[var(--cad-brass)]" />}
@@ -57,23 +51,61 @@ export function CodemodeWorkflowPanel({
       flush
     >
       <CodemodeTabs entries={entries} activeIndex={activeIndex} onSelect={onSelectTab} />
-      <WorkflowWorkbench
-        // Remount per tab so the workbench's view-mode/parse state resets cleanly.
-        key={active.id}
-        workflow={active.title}
-        source={source}
-        loaderGraph={active.graph}
-        events={[]}
-        orgId={orgId}
-        readOnly
-        canRun={false}
-        flushHeader
-        // Subscribe to the run the agent scheduled so the graph lights up live.
-        trackInstanceId={active.run?.instanceId}
-        runWorkflowName={active.run?.workflowName}
-        footer={active.output ? <CodemodeOutput output={active.output} /> : null}
-      />
+      {active.isWorkflow ? (
+        <CodemodeWorkflowView key={active.id} entry={active} orgId={orgId} />
+      ) : (
+        <CodemodeScriptView key={active.id} entry={active} />
+      )}
     </CompanionPanel>
+  );
+}
+
+/** A workflow run: the full workbench (graph + code) with live run highlighting. */
+function CodemodeWorkflowView({ entry, orgId }: { entry: CodemodeEntry; orgId: string | null }) {
+  // A synthetic source so the workbench can render the code beside the graph.
+  // There is no file behind it, so it is read-only and cannot be run.
+  const source: WorkflowSource = {
+    absolutePath: "",
+    path: entry.title,
+    engine: "codemode",
+    body: entry.code,
+    readOnly: true,
+    inputFields: [],
+  };
+
+  return (
+    <WorkflowWorkbench
+      workflow={entry.title}
+      source={source}
+      loaderGraph={entry.graph}
+      events={[]}
+      orgId={orgId}
+      readOnly
+      canRun={false}
+      flushHeader
+      // Subscribe to the run the agent scheduled so the graph lights up live.
+      trackInstanceId={entry.run?.instanceId}
+      runWorkflowName={entry.run?.workflowName}
+      footer={entry.output ? <CodemodeOutput output={entry.output} /> : null}
+    />
+  );
+}
+
+/** A plain script run (no workflow): the read-only code beside its captured output. */
+function CodemodeScriptView({ entry }: { entry: CodemodeEntry }) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pt-4 pb-4">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[color:var(--cad-line)]">
+        <CadenceCodeEditor
+          value={entry.code}
+          engine="codemode"
+          readOnly
+          onChange={() => {}}
+          onSave={() => {}}
+        />
+      </div>
+      {entry.output ? <CodemodeOutput output={entry.output} /> : null}
+    </div>
   );
 }
 

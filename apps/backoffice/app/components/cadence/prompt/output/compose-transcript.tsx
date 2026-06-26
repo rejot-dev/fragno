@@ -8,7 +8,7 @@
  * agent's reply), plus a compact note for tool activity and a working indicator.
  */
 
-import { AlertTriangle, ChevronRight, Sparkles, Workflow, Wrench } from "lucide-react";
+import { AlertTriangle, ChevronRight, Sparkles, Terminal, Workflow, Wrench } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 
@@ -29,6 +29,8 @@ type CodemodeRowEntry = {
   output?: string;
   /** The scheduled durable run, when one was created — drives live highlighting. */
   run?: CodemodeRunHandle;
+  /** True when the code defined a workflow; false for a plain script run. */
+  isWorkflow: boolean;
 };
 
 type TranscriptRow =
@@ -75,8 +77,11 @@ function extractToolNames(content: unknown): string[] {
 
 /**
  * Build the codemode panel entry from an `execCodeMode` tool result, or null when
- * it carries no parsed workflow (e.g. it failed before producing one). The entry
- * id is the tool-call id, so the same run always maps to the same panel tab.
+ * it carries no code (e.g. it failed before running). A run is a workflow only
+ * when the code returned a workflow definition; a plain script run still gets an
+ * entry, flagged `isWorkflow: false` so the panel shows its code + output instead
+ * of the graph workbench. The entry id is the tool-call id, so the same run always
+ * maps to the same panel tab.
  */
 function codemodeEntryFromResult(
   message: { toolCallId?: unknown; details?: unknown },
@@ -91,11 +96,15 @@ function codemodeEntryFromResult(
         run?: { workflowName?: unknown; instanceId?: unknown };
       }
     | undefined;
+  // The server always parses a graph for any run it executed, workflow or not —
+  // we just don't render it for a plain script (see `isWorkflow` below).
   const graph = details?.workflowGraph as CodemodeWorkflowGraph | undefined;
   const code = typeof details?.code === "string" ? details.code : undefined;
   if (!graph || !code) {
     return null;
   }
+  // A run is only a workflow when the executed code returned a workflow definition.
+  const isWorkflow = Boolean(details?.workflowDefinition);
   // The scheduled run handle, present only when the durable run was created.
   const run =
     typeof details?.run?.workflowName === "string" && typeof details?.run?.instanceId === "string"
@@ -108,9 +117,12 @@ function codemodeEntryFromResult(
     title:
       typeof details?.workflowDefinition?.name === "string"
         ? details.workflowDefinition.name
-        : "Codemode workflow",
+        : isWorkflow
+          ? "Codemode workflow"
+          : "Codemode run",
     output: typeof details?.outputText === "string" ? details.outputText : undefined,
     run,
+    isWorkflow,
   };
 }
 
@@ -140,9 +152,11 @@ function toRows(
     // A tool's result — render its actual output, not just the call name, so the
     // output view shows what each tool produced (codemode logs, command output…).
     if (role === "toolResult") {
-      // A codemode run with a parsed workflow becomes a clickable row that opens
-      // the companion panel at its tab (keyed by tool-call id, so it re-selects
-      // rather than duplicates). Falls through to plain output when it didn't parse.
+      // A codemode run becomes a clickable row that opens the companion panel at
+      // its tab (keyed by tool-call id, so it re-selects rather than duplicates) —
+      // the workbench for a workflow, the code + output for a plain script. Falls
+      // through to plain output only when there's nothing to open (e.g. it errored
+      // before running).
       if (message.toolName === "execCodeMode") {
         const entry = codemodeEntryFromResult(message, index);
         if (entry) {
@@ -214,6 +228,21 @@ export function ComposeTranscript({
 
   const rows = useMemo(() => toRows(live.messages), [live.messages]);
 
+  // Drive the working indicator off genuine agent activity, not connection state.
+  // The event stream closes and reopens on the route's ~60s idle timeout, which
+  // flips the connection to "connecting"/"retrying" each cycle — keying the
+  // indicator on `readyForInput` (which needs an *open* connection) made it flash
+  // on every reconnect. The send and any in-flight tool calls survive a reconnect
+  // (snapshot replay restores them), so this stays steady across the churn.
+  const working = live.sending || live.draftToolCalls.length > 0 || live.runningTools.length > 0;
+  // Likewise, suppress the transient reconnect text so it never flashes in.
+  const reconnecting =
+    live.state.connectionStatus === "retrying" || live.state.connectionStatus === "connecting";
+  const workingStatusText = reconnecting ? "Working…" : live.statusText || "Working…";
+  // Only surface a hard, terminal connection failure — a transient retry blip
+  // would otherwise flash an error message in and out.
+  const fatalError = live.state.connectionStatus === "error" ? live.error : null;
+
   // React to the agent's workflow tool *results* (not calls — calls stream in
   // before the tool runs, with raw/partial args):
   //   - `showWorkflow` → open the companion panel at the resolved canonical name
@@ -248,13 +277,16 @@ export function ComposeTranscript({
         return;
       }
 
-      // Codemode always runs a workflow; the tool attaches its parsed graph + the
-      // source it ran, so open the companion viewer on the result the first time.
+      // Auto-open the companion viewer only for a workflow run the first time it
+      // lands. A plain script run isn't opened by default — its transcript row
+      // stays clickable, so the user opens its code + output on demand.
       if (result.toolName === "execCodeMode" && onShowCodemode) {
         const entry = codemodeEntryFromResult(result, index);
         if (entry) {
           handledToolResults.current.add(key);
-          onShowCodemode(entry);
+          if (entry.isWorkflow) {
+            onShowCodemode(entry);
+          }
         }
         return;
       }
@@ -309,9 +341,9 @@ export function ComposeTranscript({
     <div
       ref={scrollRef}
       onScroll={handleScroll}
-      className="cad-scroll min-h-0 flex-1 overflow-auto px-5 py-5"
+      className="cad-scroll min-h-0 flex-1 overflow-auto"
     >
-      <div ref={contentRef}>
+      <div ref={contentRef} className="mx-auto w-full max-w-4xl px-5 py-5">
         {prompt && !hasUserRow ? (
           <p className="mb-4 flex items-start gap-2 text-xs text-[var(--cad-muted)]">
             <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--cad-brass)]" />
@@ -345,10 +377,18 @@ export function ComposeTranscript({
                   <button
                     type="button"
                     onClick={() => onShowCodemode?.(row.entry)}
-                    title="Open in the workflow panel"
+                    title={
+                      row.entry.isWorkflow
+                        ? "Open in the workflow panel"
+                        : "Open in the codemode panel"
+                    }
                     className="group flex items-center gap-1.5 text-left text-xs text-[var(--cad-muted-2)] hover:text-[var(--cad-fg)]"
                   >
-                    <Workflow className="h-3 w-3 shrink-0 text-[var(--cad-brass)]" />
+                    {row.entry.isWorkflow ? (
+                      <Workflow className="h-3 w-3 shrink-0 text-[var(--cad-brass)]" />
+                    ) : (
+                      <Terminal className="h-3 w-3 shrink-0 text-[var(--cad-brass)]" />
+                    )}
                     <span className="font-mono">execCodeMode</span>
                     <span className="truncate text-[var(--cad-muted)]">· {row.entry.title}</span>
                     <span className="text-[var(--cad-brass-strong)] opacity-0 transition-opacity group-hover:opacity-100">
@@ -380,12 +420,12 @@ export function ComposeTranscript({
           })}
         </div>
 
-        {live.error ? (
-          <p className="mt-4 text-xs text-[var(--cad-rose)]">{live.error}</p>
-        ) : !live.readyForInput ? (
+        {fatalError ? (
+          <p className="mt-4 text-xs text-[var(--cad-rose)]">{fatalError}</p>
+        ) : working ? (
           <p className="mt-4 flex items-center gap-2 text-xs text-[var(--cad-muted-2)]">
             <span className="cad-pulse inline-block h-2 w-2 rounded-full bg-[var(--cad-brass)]" />
-            {live.statusText || "Working…"}
+            {workingStatusText}
           </p>
         ) : null}
       </div>

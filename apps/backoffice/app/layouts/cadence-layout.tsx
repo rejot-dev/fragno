@@ -63,28 +63,33 @@ export function ErrorBoundary() {
   const debugDetails =
     import.meta.env.MODE === "development" ? getRouteErrorDebugDetails(error) : null;
 
+  // The errored route may be full-bleed (e.g. exec), which strips the shell's
+  // content padding. Carry our own padded column so the error page reads the
+  // same regardless of the route it replaced.
   return (
     <CadenceShell me={null}>
-      <CadencePageHeader
-        eyebrow="Error"
-        title={title}
-        description={description}
-        actions={
-          <Link to="/">
-            <CadenceGhostButton type="button">Back to Exec</CadenceGhostButton>
-          </Link>
-        }
-      />
-      {debugDetails ? (
-        <details className="border border-[color:var(--cad-line)] bg-[var(--cad-panel)] p-4" open>
-          <summary className="cad-eyebrow cursor-pointer text-[var(--cad-muted-2)]">
-            Error details
-          </summary>
-          <pre className="cad-mono mt-3 max-h-[60vh] overflow-auto border border-[color:var(--cad-line)] bg-[var(--cad-bg-2)] p-3 text-xs whitespace-pre-wrap text-[var(--cad-fg)]">
-            {debugDetails}
-          </pre>
-        </details>
-      ) : null}
+      <div className="mx-auto w-full max-w-6xl space-y-10 px-4 py-8 md:px-8 lg:px-12 lg:py-12">
+        <CadencePageHeader
+          eyebrow="Error"
+          title={title}
+          description={description}
+          actions={
+            <Link to="/">
+              <CadenceGhostButton type="button">Back to Exec</CadenceGhostButton>
+            </Link>
+          }
+        />
+        {debugDetails ? (
+          <details className="border border-[color:var(--cad-line)] bg-[var(--cad-panel)] p-4" open>
+            <summary className="cad-eyebrow cursor-pointer text-[var(--cad-muted-2)]">
+              Error details
+            </summary>
+            <pre className="cad-mono mt-3 max-h-[60vh] overflow-auto border border-[color:var(--cad-line)] bg-[var(--cad-bg-2)] p-3 text-xs whitespace-pre-wrap text-[var(--cad-fg)]">
+              {debugDetails}
+            </pre>
+          </details>
+        ) : null}
+      </div>
     </CadenceShell>
   );
 }
