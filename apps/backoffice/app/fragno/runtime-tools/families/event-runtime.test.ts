@@ -25,6 +25,58 @@ const createEvent = (overrides: Partial<AutomationEvent> = {}): AutomationEvent 
 });
 
 describe("createEventRuntime.emitEvent", () => {
+  it("emits from an interactive Backoffice context without a base automation event", async () => {
+    const triggerIngestEvent = vi.fn(async () => undefined);
+    const objects = {
+      automations: {
+        forOrg: vi.fn(() => ({ triggerIngestEvent })),
+      },
+    } as unknown as BackofficeObjectRegistry;
+    const runtime = createEventRuntime({
+      objects,
+      kernel: new BackofficeKernel({ objects }),
+      execution: {
+        actor: {
+          type: "user",
+          id: "user-1",
+          userId: "user-1",
+          organizationIds: ["org-1"],
+        },
+        scope: { kind: "org", orgId: "org-1" },
+      },
+    });
+
+    await expect(
+      runtime.emitEvent({ eventType: "custom.event", payload: { ok: true } }),
+    ).resolves.toMatchObject({
+      accepted: true,
+      scope: { kind: "org", orgId: "org-1" },
+      source: "backoffice",
+      eventType: "custom.event",
+    });
+
+    expect(triggerIngestEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: expect.stringMatching(/^backoffice:custom\.event:/u),
+        actor: {
+          scope: "internal",
+          type: "user",
+          id: "user-1",
+          role: "principal",
+        },
+        actors: [
+          {
+            scope: "internal",
+            type: "user",
+            id: "user-1",
+            role: "principal",
+          },
+        ],
+        payload: { ok: true },
+      }),
+    );
+  });
+
   it("normalizes array payloads to an empty object", async () => {
     const triggerIngestEvent = vi.fn(async () => undefined);
     const objects = {

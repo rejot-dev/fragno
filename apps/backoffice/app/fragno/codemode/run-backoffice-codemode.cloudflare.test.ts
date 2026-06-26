@@ -635,6 +635,57 @@ describe("runBackofficeCodemode", () => {
     ]);
   });
 
+  test("runs route-backed event emit tools through codemode handles", async () => {
+    const runtime = await createInMemoryBackofficeRuntime({ env: { LOADER: env.LOADER } });
+    try {
+      const routeContext = createRouteBackedRuntimeContext({
+        runtime: runtime.services,
+        kernel: new BackofficeKernel({ objects: runtime.objects }),
+        execution: {
+          actor: {
+            type: "user",
+            id: "user-1",
+            userId: "user-1",
+            organizationIds: ["org-1"],
+          },
+          scope: { kind: "org", orgId: "org-1" },
+        },
+      });
+
+      const result = await runBackofficeCodemode({
+        env,
+        fs: createTestMasterFileSystem({}),
+        families: runtimeToolFamilies,
+        toolContext: createBackofficeToolContext(routeContext),
+        code: `async () => {
+          return await event.emit({
+            eventType: "dashboard.test",
+            source: "codemode",
+            payload: { ok: true },
+          });
+        }`,
+      });
+
+      expect(result.error).toBeUndefined();
+      expect(result.result).toMatchObject({
+        accepted: true,
+        scope: { kind: "org", orgId: "org-1" },
+        source: "codemode",
+        eventType: "dashboard.test",
+      });
+      expect(result.toolCalls).toMatchObject([
+        {
+          providerName: "event",
+          toolName: "emit",
+          toolId: "event.emit",
+          status: "success",
+        },
+      ]);
+    } finally {
+      await runtime.cleanup();
+    }
+  });
+
   test("runs project-scoped automation store tools through codemode handles", async () => {
     const runtime = await createInMemoryBackofficeRuntime({ env: { LOADER: env.LOADER } });
     try {
