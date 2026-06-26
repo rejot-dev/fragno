@@ -1,21 +1,56 @@
 import {
   backofficeContextScopesEqual,
   type BackofficeExecutionContext,
+  type BackofficePrincipal,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 
-import type { AutomationEvent } from "../../automation/contracts";
+import {
+  AUTOMATION_SYSTEM_ACTOR,
+  type AutomationEvent,
+  type AutomationEventActor,
+} from "../../automation/contracts";
 import type { EventRuntime } from "./event";
 
 export type { EventRuntime };
 
 export type CreateEventRuntimeOptions = {
   objects: BackofficeObjectRegistry;
-  event: AutomationEvent;
+  event?: AutomationEvent;
   kernel?: BackofficeKernel;
   execution?: BackofficeExecutionContext;
+  defaultSource?: string;
 };
+
+const automationActorFromPrincipal = (
+  actor: BackofficePrincipal | undefined,
+): AutomationEventActor => {
+  if (!actor || actor.type === "system") {
+    return AUTOMATION_SYSTEM_ACTOR;
+  }
+
+  if (actor.type === "user") {
+    return {
+      scope: "internal",
+      type: "user",
+      id: actor.userId,
+      role: "principal",
+    };
+  }
+
+  return {
+    scope: "internal",
+    type: actor.type,
+    id: actor.id,
+    role: actor.type === "object" ? "delegate" : "principal",
+  };
+};
+
+const normalizeEventPayload = (payload: Record<string, unknown> | undefined) =>
+  payload !== null && Array.isArray(payload) === false && typeof payload === "object"
+    ? payload
+    : {};
 
 export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRuntime => ({
   emitEvent: async ({
@@ -28,7 +63,7 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
     targetScope,
   }) => {
     const { event } = options;
-    const currentScope = event.scope;
+    const currentScope = event?.scope ?? options.execution?.scope ?? { kind: "system" };
     const resolvedTargetScope = targetScope ?? currentScope;
 
     if (!backofficeContextScopesEqual(resolvedTargetScope, currentScope)) {
@@ -54,9 +89,9 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
       throw new Error(`Project '${resolvedTargetScope.projectId}' is not available.`);
     }
 
-    const nextSource = source ?? event.source;
-    const baseActor = event.actor;
-    const baseActors = event.actors;
+    const nextSource = source ?? event?.source ?? options.defaultSource ?? "backoffice";
+    const baseActor = event?.actor ?? automationActorFromPrincipal(options.execution?.actor);
+    const baseActors = event?.actors ?? [baseActor];
     const nextActor = externalActorId
       ? {
           scope: "external" as const,
@@ -66,28 +101,27 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
         }
       : baseActor;
     const nextEvent: AutomationEvent = {
-      id: `${event.id}:${eventType}:${crypto.randomUUID()}`,
+      id: event
+        ? `${event.id}:${eventType}:${crypto.randomUUID()}`
+        : `${nextSource}:${eventType}:${crypto.randomUUID()}`,
       scope: resolvedTargetScope,
       source: nextSource,
       eventType,
       occurredAt: new Date().toISOString(),
-      payload:
-        payload !== null && Array.isArray(payload) === false && typeof payload === "object"
-          ? (payload as Record<string, unknown>)
-          : {},
+      payload: normalizeEventPayload(payload),
       actor: nextActor,
       actors: externalActorId ? [...baseActors, nextActor] : baseActors,
       subject:
         resolvedTargetScope.kind === "project"
           ? {
-              ...event.subject,
+              ...event?.subject,
               orgId: resolvedTargetScope.orgId,
               projectId: targetProject!.projectId,
               ...(subjectUserId ? { userId: subjectUserId } : {}),
             }
           : subjectUserId
             ? { userId: subjectUserId }
-            : (event.subject ?? null),
+            : (event?.subject ?? null),
     };
 
     const targetObject = options.kernel

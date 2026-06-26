@@ -9,6 +9,7 @@ import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/ro
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import { createApiRuntime } from "@/fragno/runtime-tools/families/api-runtime";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
+import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
 import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
 import { createMcpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
 import {
@@ -115,6 +116,13 @@ export const createRouteBackedRuntimeContext = ({
         }
       : null,
     automation: null,
+    event: {
+      runtime: createEventRuntime({
+        objects: runtime.objects,
+        kernel,
+        execution,
+      }),
+    },
     automations: {
       runtime: {
         ...createRouteBackedAutomationStoreRuntime({

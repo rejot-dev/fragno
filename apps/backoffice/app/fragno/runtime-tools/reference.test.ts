@@ -695,6 +695,7 @@ describe("runtime tool reference generation", () => {
       "/workspace/codemode/providers/connections.d.ts",
     );
     const workflowTypes = readGeneratedFile(files, "/workspace/codemode/providers/workflow.d.ts");
+    const eventTypes = readGeneratedFile(files, "/workspace/codemode/providers/event.d.ts");
     const otpTypes = readGeneratedFile(files, "/workspace/codemode/providers/otp.d.ts");
 
     expect(capabilitiesTypes).toContain("declare const capabilities");
@@ -708,6 +709,8 @@ describe("runtime tool reference generation", () => {
     expect(workflowTypes).toContain("createInstance(input: WorkflowCreateInstanceInput)");
     expect(workflowTypes).toContain("getInstance(input: WorkflowGetInstanceInput)");
     expect(workflowTypes).toContain("retryInstance(input: WorkflowRetryInstanceInput)");
+    expect(eventTypes).toContain("declare const event");
+    expect(eventTypes).toContain("emit(input: EventEmitInput)");
     expect(otpTypes).toContain("declare const otp");
     assert(!files.some((file) => file.path === "/workspace/codemode/providers/pi.d.ts"));
     assert(!files.some((file) => file.path === "/workspace/codemode/providers/telegram.d.ts"));

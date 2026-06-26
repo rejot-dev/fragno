@@ -48,6 +48,7 @@ export type BashHostContext = {
   createBackofficeScopedContext(scope: BackofficeContextScope): BashHostContext;
   backoffice: { runtime: BackofficeCapabilitiesRuntime } | null;
   automation: RegisteredEventBashCommandContext | null;
+  event?: { runtime: EventRuntime } | null;
   automations: RegisteredAutomationsBashCommandContext | null;
   workflow?: { runtime: AutomationWorkflowRuntime } | null;
   durableHooks?: { runtime: DurableHooksRuntime } | null;
