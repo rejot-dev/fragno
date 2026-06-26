@@ -303,7 +303,7 @@ declare function defineWorkflow<TPayload = unknown, TOutput = unknown>(
   run: (event: WorkflowEvent<TPayload>, step: WorkflowStep) => Promise<TOutput> | TOutput,
 ): unknown;`;
 
-export const renderCodemodeProviderTypes = (references: readonly RuntimeToolReference[]) => {
+const groupReferencesByNamespace = (references: readonly RuntimeToolReference[]) => {
   const byNamespace = new Map<string, RuntimeToolReference[]>();
   for (const reference of references) {
     byNamespace.set(reference.namespace, [
@@ -311,57 +311,78 @@ export const renderCodemodeProviderTypes = (references: readonly RuntimeToolRefe
       reference,
     ]);
   }
+  return byNamespace;
+};
 
-  const renderedSharedTypeDeclarations = new Set<string>();
-  const providerSections = [...byNamespace.entries()].map(([namespace, namespaceReferences]) => {
-    const sharedTypeDeclarations = [
-      ...new Set(
-        namespaceReferences.flatMap((reference) => [
-          ...(reference.codemode.inputTypeDeclarations ?? []),
-          ...(reference.codemode.outputTypeDeclarations ?? []),
-        ]),
-      ),
-    ].filter((declaration) => {
-      if (renderedSharedTypeDeclarations.has(declaration)) {
-        return false;
-      }
-      renderedSharedTypeDeclarations.add(declaration);
+const renderCodemodeProviderSection = ({
+  namespace,
+  references,
+  renderedSharedTypeDeclarations,
+}: {
+  namespace: string;
+  references: readonly RuntimeToolReference[];
+  renderedSharedTypeDeclarations?: Set<string>;
+}) => {
+  const sharedTypeDeclarations = [
+    ...new Set(
+      references.flatMap((reference) => [
+        ...(reference.codemode.inputTypeDeclarations ?? []),
+        ...(reference.codemode.outputTypeDeclarations ?? []),
+      ]),
+    ),
+  ].filter((declaration) => {
+    if (!renderedSharedTypeDeclarations) {
       return true;
-    });
-    const typeDeclarations = [
-      ...sharedTypeDeclarations,
-      ...namespaceReferences.flatMap((reference) => {
-        const { inputTypeName, outputTypeName, inputType, outputType } = reference.codemode;
-        return [`type ${inputTypeName} = ${inputType};`, `type ${outputTypeName} = ${outputType};`];
-      }),
-    ];
+    }
+    if (renderedSharedTypeDeclarations.has(declaration)) {
+      return false;
+    }
+    renderedSharedTypeDeclarations.add(declaration);
+    return true;
+  });
+  const typeDeclarations = [
+    ...sharedTypeDeclarations,
+    ...references.flatMap((reference) => {
+      const { inputTypeName, outputTypeName, inputType, outputType } = reference.codemode;
+      return [`type ${inputTypeName} = ${inputType};`, `type ${outputTypeName} = ${outputType};`];
+    }),
+  ];
 
-    const methods = namespaceReferences.map((reference) => {
-      const { toolName, description, inputTypeName, outputTypeName } = reference.codemode;
-      return [
-        renderJSDoc(description, 2),
-        `  ${toolName}(input: ${inputTypeName}): Promise<${outputTypeName}>;`,
-      ]
-        .filter(Boolean)
-        .join("\n");
-    });
-
+  const methods = references.map((reference) => {
+    const { toolName, description, inputTypeName, outputTypeName } = reference.codemode;
     return [
-      `// ${namespace} tools`,
-      ...typeDeclarations,
-      "",
-      `type ${pascalCase(namespace)}CodemodeProvider = {`,
-      ...methods,
-      `};`,
-      `declare const ${namespace}: ${pascalCase(namespace)}CodemodeProvider;`,
-    ].join("\n");
+      renderJSDoc(description, 2),
+      `  ${toolName}(input: ${inputTypeName}): Promise<${outputTypeName}>;`,
+    ]
+      .filter(Boolean)
+      .join("\n");
   });
 
-  const scopedProviderEntries = [...byNamespace.keys()].map(
+  return [
+    `// ${namespace} tools`,
+    ...typeDeclarations,
+    "",
+    `type ${pascalCase(namespace)}CodemodeProvider = {`,
+    ...methods,
+    `};`,
+    `declare const ${namespace}: ${pascalCase(namespace)}CodemodeProvider;`,
+  ].join("\n");
+};
+
+export const renderCodemodeProviderNamespaceTypes = ({
+  namespace,
+  references,
+}: {
+  namespace: string;
+  references: readonly RuntimeToolReference[];
+}) => renderCodemodeProviderSection({ namespace, references });
+
+export const renderCodemodeScopedContextTypes = (namespaces: readonly string[]) => {
+  const scopedProviderEntries = namespaces.map(
     (namespace) => `  ${namespace}: ${pascalCase(namespace)}CodemodeProvider;`,
   );
 
-  const scopedContextSection = [
+  return [
     "// Scoped context handles target a selected Backoffice context.",
     "type BackofficeCodemodeScopedProviders = {",
     ...scopedProviderEntries,
@@ -377,11 +398,23 @@ export const renderCodemodeProviderTypes = (references: readonly RuntimeToolRefe
     "  project(projectId: string): BackofficeCodemodeScopedProviders;",
     "};",
   ].join("\n");
+};
+
+export const renderCodemodeProviderTypes = (references: readonly RuntimeToolReference[]) => {
+  const byNamespace = groupReferencesByNamespace(references);
+  const renderedSharedTypeDeclarations = new Set<string>();
+  const providerSections = [...byNamespace.entries()].map(([namespace, namespaceReferences]) =>
+    renderCodemodeProviderSection({
+      namespace,
+      references: namespaceReferences,
+      renderedSharedTypeDeclarations,
+    }),
+  );
 
   return [
     "// ── Backoffice domain tool providers ───────────────────────────────────",
     ...providerSections,
-    scopedContextSection,
+    renderCodemodeScopedContextTypes([...byNamespace.keys()]),
   ].join("\n\n");
 };
 

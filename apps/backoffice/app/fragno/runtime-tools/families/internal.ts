@@ -1,7 +1,10 @@
 import { z } from "zod";
 
+import { SYSTEM_BACKOFFICE_PRINCIPAL } from "@/backoffice-runtime/context";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
+import { createBackofficeFileSystem } from "@/files/create-file-system";
 import { FileSystemError } from "@/files/fs-errors";
 import type { IFileSystem } from "@/files/interface";
 import { createMasterFileSystem } from "@/files/master-file-system";
@@ -15,7 +18,13 @@ import {
   backofficeCapabilities,
   type BackofficeCapabilityId,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
-import { CODEMODE_DTS_PATH, createCodemodeDts } from "@/fragno/codemode/codemode-dts";
+import {
+  CODEMODE_PROVIDER_TYPES_DIR_PATH,
+  CODEMODE_SYSTEM_DTS_PATH,
+  CODEMODE_TYPES_DIR_PATH,
+  createCodemodeTypeFiles,
+  type CodemodeTypeFile,
+} from "@/fragno/codemode/codemode-dts";
 import { createMcpCodemodeServers } from "@/fragno/codemode/mcp-codemode-tools";
 import { STATE_TYPES } from "@/fragno/codemode/state-prompt";
 import { defineCliArgsParser, readOutputOptions } from "@/fragno/runtime-tools/bash-cli";
@@ -29,7 +38,7 @@ import {
 } from "../runtime-tools";
 
 export type CodemodeTypesSyncOutput = {
-  path: typeof CODEMODE_DTS_PATH;
+  path: typeof CODEMODE_SYSTEM_DTS_PATH;
   changed: boolean;
   configuredCapabilities: BackofficeCapabilityId[];
 };
@@ -62,7 +71,7 @@ const workspaceStarterFilesSeedOutputSchema = z.object({
 });
 
 const codemodeTypesSyncOutputSchema = z.object({
-  path: z.literal(CODEMODE_DTS_PATH),
+  path: z.literal(CODEMODE_SYSTEM_DTS_PATH),
   changed: z.boolean(),
   configuredCapabilities: z.array(z.string()),
 });
@@ -87,24 +96,65 @@ const getRuntime = (context: InternalToolContext) => {
   return context.runtimes.internal;
 };
 
+const ensureDirectory = async (fs: IFileSystem, path: string) => {
+  if (await fs.exists(path)) {
+    const stat = await fs.stat(path);
+    if (!stat.isDirectory) {
+      throw new Error(`Codemode types path exists but is not a directory: ${path}`);
+    }
+    return;
+  }
+
+  await fs.mkdir(path, { recursive: true });
+};
+
+const syncCodemodeTypeFiles = async (
+  fs: IFileSystem,
+  files: readonly CodemodeTypeFile[],
+): Promise<boolean> => {
+  await ensureDirectory(fs, CODEMODE_TYPES_DIR_PATH);
+  await ensureDirectory(fs, CODEMODE_PROVIDER_TYPES_DIR_PATH);
+
+  const expectedPaths = new Set(files.map((file) => file.path));
+  let changed = false;
+
+  for (const name of await fs.readdir(CODEMODE_PROVIDER_TYPES_DIR_PATH)) {
+    const path = `${CODEMODE_PROVIDER_TYPES_DIR_PATH}/${name}`;
+    if (!name.endsWith(".d.ts") || expectedPaths.has(path)) {
+      continue;
+    }
+    await fs.rm(path, { force: true });
+    changed = true;
+  }
+
+  for (const file of files) {
+    const existing = (await fs.exists(file.path)) ? await fs.readFile(file.path) : null;
+    if (existing === file.content) {
+      continue;
+    }
+    await fs.writeFile(file.path, file.content);
+    changed = true;
+  }
+
+  return changed;
+};
+
 export const createInternalRuntime = ({
   objects,
   config,
   orgId,
   origin = "https://backoffice.local",
   families,
-  fileSystem,
 }: {
   objects: BackofficeObjectRegistry;
   config: BackofficeRuntimeConfig;
   orgId: string;
   origin?: string;
   families: readonly BackofficeRuntimeToolFamily[];
-  fileSystem?: IFileSystem;
 }): InternalRuntime => {
   const renderCodemodeTypes = async (): Promise<{
-    path: typeof CODEMODE_DTS_PATH;
-    content: string;
+    path: typeof CODEMODE_SYSTEM_DTS_PATH;
+    files: CodemodeTypeFile[];
     configuredCapabilities: BackofficeCapabilityId[];
   }> => {
     const configuredCapabilities: BackofficeCapabilityId[] = [];
@@ -134,8 +184,8 @@ export const createInternalRuntime = ({
       : [];
 
     return {
-      path: CODEMODE_DTS_PATH,
-      content: createCodemodeDts({
+      path: CODEMODE_SYSTEM_DTS_PATH,
+      files: createCodemodeTypeFiles({
         configuredCapabilityIds: configuredCapabilities,
         families,
         mcpServers,
@@ -195,38 +245,16 @@ export const createInternalRuntime = ({
     },
     syncCodemodeTypes: async () => {
       const rendered = await renderCodemodeTypes();
-      let fs = fileSystem;
-      let existing: string | null = null;
-
-      if (fs) {
-        try {
-          existing = (await fs.exists(rendered.path)) ? await fs.readFile(rendered.path) : null;
-        } catch {
-          fs = undefined;
-        }
-      }
-
-      if (!fs) {
-        fs = await createMasterFileSystem(createSystemFilesContext({ objects, orgId, origin }));
-        existing = (await fs.exists(rendered.path)) ? await fs.readFile(rendered.path) : null;
-      }
-      const changed = existing !== rendered.content;
-
-      if (changed) {
-        try {
-          await fs.writeFile(rendered.path, rendered.content);
-        } catch (error) {
-          if (!fileSystem || fs !== fileSystem) {
-            throw error;
-          }
-
-          fs = await createMasterFileSystem(createSystemFilesContext({ objects, orgId, origin }));
-          existing = (await fs.exists(rendered.path)) ? await fs.readFile(rendered.path) : null;
-          if (existing !== rendered.content) {
-            await fs.writeFile(rendered.path, rendered.content);
-          }
-        }
-      }
+      const kernel = new BackofficeKernel({ objects });
+      const fs = await createBackofficeFileSystem({
+        objects,
+        kernel,
+        execution: {
+          actor: SYSTEM_BACKOFFICE_PRINCIPAL,
+          scope: { kind: "org", orgId },
+        },
+      });
+      const changed = await syncCodemodeTypeFiles(fs, rendered.files);
 
       return {
         path: rendered.path,
@@ -357,7 +385,7 @@ const codemodeTypesSyncTool = defineBackofficeRuntimeTool({
     bash: {
       command: "internal.codemode.types.sync",
       help: {
-        summary: "internal.codemode.types.sync writes /workspace/codemode.d.ts if changed.",
+        summary: "internal.codemode.types.sync writes /workspace/codemode/system.d.ts if changed.",
         options: [],
         examples: ["internal.codemode.types.sync --format json"],
       },

@@ -11,7 +11,12 @@ import { piFragmentDefinition } from "./definition";
 import type { PiWorkflowDefinition } from "./dsl";
 import { compilePiWorkflow } from "./dsl";
 import type { PiSkillRegistrySource } from "./skills";
-import type { PiAgentRegistry, PiFragmentConfig, PiToolRegistry } from "./types";
+import type {
+  PiAgentRegistry,
+  PiFragmentConfig,
+  PiSystemPromptResolver,
+  PiToolRegistry,
+} from "./types";
 import { type PiAgentRunner } from "./workflow/pi-agent-step";
 
 export type { PiAgentRunner };
@@ -26,6 +31,7 @@ type WorkflowsOptions = {
   skills?: PiSkillRegistrySource;
   logging?: PiFragmentConfig["logging"];
   agentRunner?: PiAgentRunner;
+  resolveSystemPrompt?: PiSystemPromptResolver;
   workflows?: PiWorkflowDefinition[];
 };
 

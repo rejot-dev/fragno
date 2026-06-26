@@ -764,6 +764,73 @@ describe("definePiWorkflow", () => {
     );
   });
 
+  it("resolves the system prompt before appending skill catalogs", async () => {
+    let observedSystemPrompt: string | undefined;
+    const agentRunner: PiAgentRunner = async (_operation, runtime) => {
+      observedSystemPrompt = runtime.session.systemPrompt;
+      return {
+        stopReason: "stop",
+        messages: runtime.turn.messages,
+        events: [],
+        errorMessage: null,
+      };
+    };
+    const config: PiFragmentConfig = {
+      agents: {
+        default: {
+          name: "default",
+          systemPrompt: "Base prompt.",
+          model: mockModel,
+          skills: ["fragno"],
+        },
+      },
+      tools: {},
+      skills: {
+        fragno: { name: "fragno", description: "Use when working on Fragno fragments." },
+      },
+    };
+    const workflow = compilePiWorkflow(
+      definePiWorkflow({ name: "pi-resolved-system-prompt" }, async (ctx) => {
+        await ctx.agentStep("default").prompt("ask", { input: { text: "hello" } });
+        return { ok: true };
+      }),
+      {
+        agents: config.agents,
+        tools: config.tools,
+        skills: config.skills,
+        agentRunner,
+        resolveSystemPrompt: async ({ baseSystemPrompt, sessionId }) =>
+          `${baseSystemPrompt}\nResolved for ${sessionId}.`,
+      },
+    );
+
+    await runScenario(
+      defineScenario({
+        name: "pi-resolved-system-prompt",
+        workflows: { custom: workflow },
+        harness: {
+          configureFragments: (harness) => ({
+            pi: instantiate(piFragmentDefinition)
+              .withConfig(config)
+              .withServices({ workflows: harness.fragment.services }),
+          }),
+        },
+        runners: ["worker"],
+        steps: ({ runners, workflow }) => [
+          runners.worker.initializeAndRunUntilIdle({ workflow: "custom", id: "session-1" }),
+          workflow.read({
+            read: (ctx) => ctx.state.getStatus("custom", "session-1"),
+            assert: (status) => {
+              assert(status.status === "complete");
+              expect(observedSystemPrompt).toContain("Base prompt.\nResolved for session-1.");
+              expect(observedSystemPrompt).toContain("<available_skills>");
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
   it("appends the selected skill catalog to the agent system prompt", async () => {
     let observedSystemPrompt: string | undefined;
     const agentRunner: PiAgentRunner = async (_operation, runtime) => {

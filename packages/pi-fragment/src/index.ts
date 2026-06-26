@@ -38,6 +38,8 @@ export type {
   PiSessionDetail,
   PiSessionEventStreamItem,
   PiSessionStatus,
+  PiSystemPromptResolver,
+  PiSystemPromptResolverContext,
   PiTool,
   PiToolContext,
   PiToolDefinition,

@@ -1,5 +1,5 @@
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import { SYSTEM_FILE_CONTENT, SYSTEM_GUIDANCE } from "@/files";
+import { SYSTEM_FILE_CONTENT } from "@/files";
 
 export type PiSteeringMode = "all" | "one-at-a-time";
 export type PiThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -62,21 +62,6 @@ export const PI_PROVIDER_TO_MODEL_PROVIDER = {
   gemini: "google",
 } as const satisfies Record<PiModelProvider, string>;
 
-const DEFAULT_SYSTEM_PROMPT = (() => {
-  const systemFile = SYSTEM_FILE_CONTENT["SYSTEM.md"];
-  const fallback = SYSTEM_GUIDANCE;
-
-  if (typeof systemFile === "string") {
-    return systemFile.trim();
-  }
-
-  if (systemFile === null || systemFile === undefined) {
-    return fallback;
-  }
-
-  return new TextDecoder().decode(systemFile).trim();
-})();
-
 export const PI_MODEL_CATALOG: PiModelOption[] = [
   { provider: "openai", name: "gpt-5.4-mini", label: "GPT-5.4 mini" },
   { provider: "openai", name: "gpt-5.5", label: "GPT-5.5" },
@@ -96,7 +81,7 @@ export const DEFAULT_PI_HARNESSES: PiHarnessConfig[] = [
     label: "Default",
     description:
       "Built-in harness with codemode, read, and bash access to the combined session filesystem.",
-    systemPrompt: DEFAULT_SYSTEM_PROMPT,
+    systemPrompt: SYSTEM_FILE_CONTENT["SYSTEM.md"],
     tools: ["execCodeMode", "read", "bash"],
   },
 ];

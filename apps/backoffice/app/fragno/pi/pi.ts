@@ -8,6 +8,7 @@ import {
   createPiWorkflows,
   interactiveChatWorkflow,
   type PiBuilder,
+  type PiSystemPromptResolver,
   type PiTool,
 } from "@fragno-dev/pi-fragment";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
@@ -20,6 +21,7 @@ import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/data
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { createBackofficeFileSystem, type MasterFileSystem } from "@/files";
+import { renderCodemodeSystemPrompt } from "@/fragno/codemode/codemode-system-prompt";
 
 import type {
   BackofficeCodemodeEnv,
@@ -427,10 +429,25 @@ const createBackofficePiSkillResolver =
     return loadBackofficePiSkills(fileSystem);
   };
 
+const createBackofficePiSystemPromptResolver =
+  (options: {
+    sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
+    sessionFileSystemContext: PiSessionFileSystemContext;
+  }): PiSystemPromptResolver =>
+  async ({ sessionId, baseSystemPrompt }) => {
+    const fileSystem = await getSessionFs(
+      options.sessionFileSystems,
+      sessionId,
+      options.sessionFileSystemContext,
+    );
+    return await renderCodemodeSystemPrompt({ fileSystem, guidance: baseSystemPrompt });
+  };
+
 const buildPiRuntime = (
   config: StoredPiConfig,
   tools: Record<PiToolId, PiTool>,
   skills: PiSkillRegistryResolver,
+  resolveSystemPrompt: PiSystemPromptResolver,
 ) => {
   const builder = createBackofficePiBuilder(tools);
 
@@ -447,6 +464,7 @@ const buildPiRuntime = (
       agents: runtime.config.agents,
       tools,
       skills,
+      resolveSystemPrompt,
       workflows: runtime.config.workflows,
       logging: runtime.config.logging,
     }),
@@ -523,7 +541,11 @@ export const createPiRuntime = (options: {
     sessionFileSystems: options.sessionFileSystems,
     sessionFileSystemContext: options.sessionFileSystemContext,
   });
-  const pi = buildPiRuntime(options.config, tools, skills);
+  const resolveSystemPrompt = createBackofficePiSystemPromptResolver({
+    sessionFileSystems: options.sessionFileSystems,
+    sessionFileSystemContext: options.sessionFileSystemContext,
+  });
+  const pi = buildPiRuntime(options.config, tools, skills, resolveSystemPrompt);
 
   const workflowsFragment = createWorkflowsFragment(
     {

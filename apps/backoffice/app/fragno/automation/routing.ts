@@ -124,7 +124,7 @@ export const evaluateAutomationEventMatcher = (
     return value === matcher.value;
   }
   if (matcher.op === "neq") {
-    return typeof value !== "undefined" && value !== matcher.value;
+    return value !== matcher.value;
   }
   if (matcher.op === "startsWith") {
     return (

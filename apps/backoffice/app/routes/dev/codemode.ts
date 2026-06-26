@@ -49,7 +49,11 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const kernel = new BackofficeKernel({ objects: runtime.objects });
 
   const fs = await createBackofficeFileSystem({ objects: runtime.objects, kernel, execution });
-  const routeRuntimeContext = createRouteBackedRuntimeContext({ runtime, kernel, execution });
+  const routeRuntimeContext = createRouteBackedRuntimeContext({
+    runtime,
+    kernel,
+    execution,
+  });
   const toolContext = createBackofficeToolContext(routeRuntimeContext);
 
   const result = await runBackofficeCodemode({
