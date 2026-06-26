@@ -6,11 +6,7 @@ import type {
   McpRuntime,
   McpTool,
 } from "@/fragno/runtime-tools/families/mcp";
-import {
-  pascalCase,
-  renderCodemodeProviderTypes,
-  type RuntimeToolReference,
-} from "@/fragno/runtime-tools/reference";
+import { pascalCase, type RuntimeToolReference } from "@/fragno/runtime-tools/reference";
 import { NotConfiguredError } from "@/fragno/runtime-tools/runtime-errors";
 import {
   createBackofficeCodemodeProviders,
@@ -185,7 +181,7 @@ const inputTypeNameFor = (server: McpCodemodeServer, tool: McpCodemodeTool) =>
 const outputTypeNameFor = (server: McpCodemodeServer, tool: McpCodemodeTool) =>
   `Mcp${pascalCase(server.slug) || "Server"}${pascalCase(tool.codemodeName)}Output`;
 
-const createMcpCodemodeReferences = (
+export const createMcpCodemodeReferences = (
   servers: readonly McpCodemodeServer[],
 ): RuntimeToolReference[] =>
   servers.flatMap((server) =>
@@ -210,17 +206,6 @@ const createMcpCodemodeReferences = (
       },
     })),
   );
-
-export const renderMcpCodemodeProviderTypes = (servers: readonly McpCodemodeServer[]) => {
-  if (!servers.length) {
-    return "";
-  }
-
-  return renderCodemodeProviderTypes(createMcpCodemodeReferences(servers)).replace(
-    "// ── Backoffice domain tool providers ───────────────────────────────────",
-    "// ── Installed MCP tool providers ───────────────────────────────────────",
-  );
-};
 
 const createMcpCodemodeRuntimeTools = ({
   runtime,

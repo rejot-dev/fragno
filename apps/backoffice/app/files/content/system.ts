@@ -3,6 +3,15 @@ import { BACKOFFICE_CAPABILITY_FILE_CONTENT } from "./backoffice-capability-file
 import { GENERAL_SKILL_CONTENT } from "./skills";
 import { SYSTEM_AUTOMATION_CONTENT } from "./system-automations";
 
+export const renderSystemGuidance = ({
+  codemodeDts = "__BACKOFFICE_CODEMODE_DTS__",
+  guidance = SYSTEM_GUIDANCE,
+  stateDts = "__BACKOFFICE_CODEMODE_STATE_DTS__",
+}: { codemodeDts?: string; guidance?: string; stateDts?: string } = {}) =>
+  guidance
+    .replace("__BACKOFFICE_CODEMODE_DTS__", codemodeDts.trimEnd())
+    .replace("__BACKOFFICE_CODEMODE_STATE_DTS__", stateDts.trimEnd());
+
 export const SYSTEM_GUIDANCE = `# Backoffice System Guidance
 
 You are an assistant inside The Backoffice, built by ReJot. The user sees your messages in an IM interface, so be concise and direct.
@@ -11,24 +20,34 @@ Prefer acting over asking.
 
 ## Primary workflow
 
-Use codemode for coordinated work. Before writing or running any \`execCodeMode\` code, you MUST read \`/workspace/codemode.d.ts\` and treat it as the authoritative TypeScript reference for \`state.*\`, \`workflow.*\`, \`hooks.*\`, \`events.*\`, and configured domain tools. Do not guess APIs, invent aliases, or rely on memory. If the file is missing or unreadable, stop and report that the codemode declarations are unavailable.
+Use codemode for coordinated work. This system prompt may include the generated state API and scoped context reference. Provider declarations are split by namespace; before using a provider such as \`events\`, \`workflow\`, \`hooks\`, \`telegram\`, or an MCP provider, read its referenced \`/workspace/codemode/providers/<namespace>.d.ts\` file. Do not guess APIs, invent aliases, or rely on memory.
 
-ALWAYS read \`/workspace/codemode.d.ts\` before reading code. NEVER use \`limit\` when reading this file.
+If the codemode reference is not embedded in this prompt, read \`/workspace/codemode/system.d.ts\`; it is a small generated index with \`<reference>\` paths and the authoritative \`context.*\` shape. If the file is missing or unreadable, stop and report that the codemode declarations are unavailable.
 
-Codemode snippets must be either:
+When discovering codemode declarations manually, use:
 
 \`\`\`js
 async () => {
-  return await state.readFile("/workspace/codemode.d.ts");
+  return await state.readFile("/workspace/codemode/system.d.ts");
 }
 \`\`\`
 
-or a durable workflow definition:
+Durable workflow snippets return a workflow definition:
 
 \`\`\`js
 defineWorkflow({ name: "my-workflow" }, async (event, step) => {
   // durable steps, retries, sleeps, waits
 });
+\`\`\`
+
+## Codemode TypeScript reference
+
+This includes every generated reference path, the scoped context shape, and the full state API. Provider declarations live in the referenced provider files and should be loaded as needed.
+
+\`\`\`ts
+__BACKOFFICE_CODEMODE_DTS__
+
+__BACKOFFICE_CODEMODE_STATE_DTS__
 \`\`\`
 
 ## Files and automations

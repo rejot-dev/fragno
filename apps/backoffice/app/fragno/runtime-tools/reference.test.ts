@@ -1,7 +1,11 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import { backofficeCapabilities } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
-import { createCodemodeDts } from "@/fragno/codemode/codemode-dts";
+import {
+  CODEMODE_STATE_DTS_PATH,
+  CODEMODE_SYSTEM_DTS_PATH,
+  createCodemodeTypeFiles,
+} from "@/fragno/codemode/codemode-dts";
 import { STATE_TYPES } from "@/fragno/codemode/state-prompt";
 
 import {
@@ -50,6 +54,12 @@ const stringifyFamilyByNamespace = ({
     reference: createRuntimeToolFamilyReference({ family: findBashFamily(namespace) }),
     target,
   });
+
+const readGeneratedFile = (files: readonly { path: string; content: string }[], path: string) => {
+  const file = files.find((candidate) => candidate.path === path);
+  assert(file, `Missing generated file ${path}`);
+  return file.content;
+};
 
 describe("runtime tool reference generation", () => {
   test.each([
@@ -573,14 +583,28 @@ describe("runtime tool reference generation", () => {
     expect(types).toContain("declare const telegram");
   });
 
-  test("renders full codemode declarations with every capability enabled", () => {
+  test("renders split codemode declarations with every capability enabled", () => {
     expect(() =>
-      createCodemodeDts({
+      createCodemodeTypeFiles({
         configuredCapabilityIds: backofficeCapabilities.map((capability) => capability.id),
         families: runtimeToolFamilies,
         stateTypes: STATE_TYPES,
       }),
     ).not.toThrow();
+  });
+
+  test("renders split codemode index without referencing state declarations", () => {
+    const files = createCodemodeTypeFiles({
+      families: runtimeToolFamilies,
+      stateTypes: STATE_TYPES,
+    });
+    const index = files.find((file) => file.path === CODEMODE_SYSTEM_DTS_PATH)?.content;
+
+    expect(index).toContain('/// <reference path="/workspace/codemode/workflow-authoring.d.ts" />');
+    expect(index).toContain("type BackofficeCodemodeScopedProviders = {");
+    expect(index).toContain("declare const context");
+    expect(index).not.toContain('/// <reference path="/workspace/codemode/state.d.ts" />');
+    assert(files.some((file) => file.path === CODEMODE_STATE_DTS_PATH));
   });
 
   test("renders recursive automation route matchers as named codemode types", () => {
@@ -595,12 +619,13 @@ describe("runtime tool reference generation", () => {
     expect(types.match(/type AutomationEventMatcher =/g)).toHaveLength(1);
   });
 
-  test("renders recursive automation route matchers in generated codemode dts", () => {
-    const types = createCodemodeDts({
+  test("renders recursive automation route matchers in generated router provider types", () => {
+    const files = createCodemodeTypeFiles({
       configuredCapabilityIds: ["automations"],
       families: runtimeToolFamilies,
       stateTypes: "declare const state: unknown;",
     });
+    const types = readGeneratedFile(files, "/workspace/codemode/providers/router.d.ts");
 
     expect(types).toContain("declare const router");
     expect(types).toContain("type AutomationEventMatcher =");
@@ -656,28 +681,44 @@ describe("runtime tool reference generation", () => {
     expect(types.match(/type AutomationWorkflowEventTarget =/g)).toHaveLength(1);
   });
 
-  test("renders codemode prompt types from the default dynamic codemode family list", () => {
-    const types = createCodemodeDts({ families: runtimeToolFamilies, stateTypes: STATE_TYPES });
-    const domainProviderTypes = types.slice(
-      types.indexOf("// ── Backoffice domain tool providers"),
+  test("renders codemode provider files from the default dynamic codemode family list", () => {
+    const files = createCodemodeTypeFiles({
+      families: runtimeToolFamilies,
+      stateTypes: STATE_TYPES,
+    });
+    const capabilitiesTypes = readGeneratedFile(
+      files,
+      "/workspace/codemode/providers/capabilities.d.ts",
     );
+    const connectionsTypes = readGeneratedFile(
+      files,
+      "/workspace/codemode/providers/connections.d.ts",
+    );
+    const workflowTypes = readGeneratedFile(files, "/workspace/codemode/providers/workflow.d.ts");
+    const otpTypes = readGeneratedFile(files, "/workspace/codemode/providers/otp.d.ts");
 
-    expect(domainProviderTypes).toContain("declare const capabilities");
-    expect(domainProviderTypes).toContain("declare const connections");
-    expect(domainProviderTypes).toContain("list(input: ConnectionsListInput)");
-    expect(domainProviderTypes).toContain("configure(input: ConnectionsConfigureInput)");
-    expect(domainProviderTypes).toContain("declare const store");
-    expect(domainProviderTypes).toContain("declare const workflow");
-    expect(domainProviderTypes).toContain("createInstance(input: WorkflowCreateInstanceInput)");
-    expect(domainProviderTypes).toContain("getInstance(input: WorkflowGetInstanceInput)");
-    expect(domainProviderTypes).toContain("retryInstance(input: WorkflowRetryInstanceInput)");
-    expect(domainProviderTypes).toContain("declare const otp");
-    expect(domainProviderTypes).not.toContain("declare const pi");
-    expect(domainProviderTypes).not.toContain("declare const telegram");
+    expect(capabilitiesTypes).toContain("declare const capabilities");
+    expect(connectionsTypes).toContain("declare const connections");
+    expect(connectionsTypes).toContain("list(input: ConnectionsListInput)");
+    expect(connectionsTypes).toContain("configure(input: ConnectionsConfigureInput)");
+    expect(readGeneratedFile(files, "/workspace/codemode/providers/store.d.ts")).toContain(
+      "declare const store",
+    );
+    expect(workflowTypes).toContain("declare const workflow");
+    expect(workflowTypes).toContain("createInstance(input: WorkflowCreateInstanceInput)");
+    expect(workflowTypes).toContain("getInstance(input: WorkflowGetInstanceInput)");
+    expect(workflowTypes).toContain("retryInstance(input: WorkflowRetryInstanceInput)");
+    expect(otpTypes).toContain("declare const otp");
+    assert(!files.some((file) => file.path === "/workspace/codemode/providers/pi.d.ts"));
+    assert(!files.some((file) => file.path === "/workspace/codemode/providers/telegram.d.ts"));
   });
 
-  test("renders scoped context handles without old org-only helper names", () => {
-    const types = createCodemodeDts({ families: runtimeToolFamilies, stateTypes: STATE_TYPES });
+  test("renders scoped context handles", () => {
+    const files = createCodemodeTypeFiles({
+      families: runtimeToolFamilies,
+      stateTypes: STATE_TYPES,
+    });
+    const types = readGeneratedFile(files, CODEMODE_SYSTEM_DTS_PATH);
 
     expect(types).toContain("readonly current: BackofficeCodemodeScopedProviders;");
     expect(types).toContain("org(orgId: string): BackofficeCodemodeScopedProviders;");
@@ -689,24 +730,28 @@ describe("runtime tool reference generation", () => {
   });
 
   test("renders sandbox provider types from the sandbox capability", () => {
-    const piTypes = createCodemodeDts({
+    const piFiles = createCodemodeTypeFiles({
       configuredCapabilityIds: ["pi"],
       families: runtimeToolFamilies,
       stateTypes: "declare const state: unknown;",
     });
-    const sandboxTypes = createCodemodeDts({
+    const sandboxFiles = createCodemodeTypeFiles({
       configuredCapabilityIds: ["sandbox"],
       families: runtimeToolFamilies,
       stateTypes: "declare const state: unknown;",
     });
 
-    expect(piTypes).toContain("declare const pi");
-    expect(piTypes).not.toContain("declare const sandbox");
-    expect(sandboxTypes).toContain("declare const sandbox");
+    expect(readGeneratedFile(piFiles, "/workspace/codemode/providers/pi.d.ts")).toContain(
+      "declare const pi",
+    );
+    assert(!piFiles.some((file) => file.path === "/workspace/codemode/providers/sandbox.d.ts"));
+    expect(readGeneratedFile(sandboxFiles, "/workspace/codemode/providers/sandbox.d.ts")).toContain(
+      "declare const sandbox",
+    );
   });
 
   test("renders installed MCP providers with dash-safe server slugs", () => {
-    const types = createCodemodeDts({
+    const files = createCodemodeTypeFiles({
       configuredCapabilityIds: ["mcp"],
       families: runtimeToolFamilies,
       stateTypes: "declare const state: unknown;",
@@ -729,6 +774,7 @@ describe("runtime tool reference generation", () => {
         },
       ],
     });
+    const types = readGeneratedFile(files, "/workspace/codemode/providers/mcp_cloudflare_mcp.d.ts");
 
     expect(types).toContain("declare const mcp_cloudflare_mcp");
     expect(types).toContain("search_docs(input: McpCloudflareMcpSearchDocsInput)");

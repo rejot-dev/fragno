@@ -31,15 +31,17 @@ Use `scripts/codemode.mjs` for auth, org discovery, and codemode calls. It store
 
    `probe` exists only as a low-level debug command to print the detected base URL.
 
-2. Fetch and read the org-scoped rendered codemode instructions.
+2. Fetch and read the org-scoped rendered codemode system prompt.
 
    ```bash
-   .agents/skills/backoffice-codemode/scripts/codemode.mjs agents "$ORG_ID" /tmp/backoffice-codemode-AGENTS.md
+   .agents/skills/backoffice-codemode/scripts/codemode.mjs system "$ORG_ID" /tmp/backoffice-codemode-SYSTEM.md
    ```
 
-   Then read `/tmp/backoffice-codemode-AGENTS.md`. Treat it as authoritative for available
+   If `$ORG_ID` is omitted, `system` uses the first organization returned for the logged-in user.
+   Then read `/tmp/backoffice-codemode-SYSTEM.md`. Treat it as authoritative for available
    `state.*`, workflow helpers, and runtime tool providers. The route reads the org's existing
-   `/workspace/codemode.d.ts` file and returns those declarations inline.
+   `/workspace/codemode/system.d.ts` index and includes the generated state and scoped context
+   declarations inline.
 
 3. Run codemode through the authenticated dev route when you need to execute in the Backoffice
    runtime. The helper auto-authenticates if needed.

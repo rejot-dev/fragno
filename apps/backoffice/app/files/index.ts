@@ -41,7 +41,7 @@ export {
 export { WORKSPACE_STARTER_CONTENT } from "./content/starter";
 export { SYSTEM_AUTOMATION_SCRIPT_PATHS } from "./content/system-automations";
 export { STARTER_AUTOMATION_SCRIPT_PATHS } from "./content/starter-automations";
-export { SYSTEM_FILE_CONTENT, SYSTEM_GUIDANCE } from "./content/system";
+export { SYSTEM_FILE_CONTENT, SYSTEM_GUIDANCE, renderSystemGuidance } from "./content/system";
 export { MasterFileSystem, createMasterFileSystem } from "./master-file-system";
 export type { CreateMasterFileSystemOptions } from "./master-file-system";
 export { createBackofficeFileSystem } from "./create-file-system";

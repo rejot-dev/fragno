@@ -28,6 +28,7 @@ import type {
   PiAgentRegistry,
   PiFragmentConfig,
   PiPromptInput,
+  PiSystemPromptResolver,
   PiTool,
   PiToolDefinition,
   PiToolRegistry,
@@ -168,6 +169,7 @@ export type CompilePiWorkflowOptions = {
   tools?: PiToolRegistry;
   skills?: PiSkillRegistrySource;
   agentRunner?: PiAgentRunner;
+  resolveSystemPrompt?: PiSystemPromptResolver;
 };
 
 const stopOnToolNames = (tools: Array<string | PiToolDefinition> | undefined) =>
@@ -332,18 +334,21 @@ export const compilePiWorkflow = <
             stopOnTools: stopOnToolNames(runOptions.stopOnTools),
             toolExecution: runOptions.toolExecution,
             prepareRuntime: async (runtime) => {
-              const agentSkills = await resolveAgentSkills(agent, options.skills, {
+              const turnId = runOptions.turnId ?? `${event.instanceId}:${name}`;
+              const promptContext = {
                 agentName,
                 workflowName: definition.name,
                 sessionId: event.instanceId,
-                turnId: runOptions.turnId ?? `${event.instanceId}:${name}`,
-              });
+                turnId,
+              };
+              const agentSkills = await resolveAgentSkills(agent, options.skills, promptContext);
+              const baseSystemPrompt = runOptions.systemPrompt ?? agent.systemPrompt;
+              const resolvedSystemPrompt = options.resolveSystemPrompt
+                ? await options.resolveSystemPrompt({ ...promptContext, baseSystemPrompt })
+                : baseSystemPrompt;
               const systemPrompt = agentSkills.length
-                ? appendSkillCatalogToSystemPrompt(
-                    runOptions.systemPrompt ?? agent.systemPrompt,
-                    agentSkills,
-                  )
-                : (runOptions.systemPrompt ?? agent.systemPrompt);
+                ? appendSkillCatalogToSystemPrompt(resolvedSystemPrompt, agentSkills)
+                : resolvedSystemPrompt;
               const messages = appendSkillInvocationMessage({
                 messages: runOptions.messages ?? [],
                 agentName,

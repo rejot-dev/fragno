@@ -84,6 +84,18 @@ export type PiAgentDefinition = {
 
 export type PiAgentRegistry = Record<string, PiAgentDefinition>;
 
+export type PiSystemPromptResolverContext = {
+  agentName: string;
+  workflowName: string;
+  sessionId: string;
+  turnId: string;
+  baseSystemPrompt: string;
+};
+
+export type PiSystemPromptResolver = (
+  context: PiSystemPromptResolverContext,
+) => string | Promise<string>;
+
 export type PiSessionStepEmissionFrame = {
   kind: "step-emission";
   actor: string;

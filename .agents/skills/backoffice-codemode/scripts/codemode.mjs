@@ -14,7 +14,8 @@ const usage = () => {
   console.error(`Usage:
   codemode.mjs login [--email EMAIL] [--password PASSWORD]
   codemode.mjs probe
-  codemode.mjs agents <orgId> [outputFile]
+  codemode.mjs system [orgId] [outputFile]
+    Fetch rendered SYSTEM.md. If orgId is omitted, uses the first org for the logged-in user.
   codemode.mjs exec <orgId> (--file file.js | - | "async () => { ... }") [--timeout ms]
   codemode.mjs bash <orgId> (--file script.sh | - | "ls -la") [--cwd path] [--timeout ms]
 
@@ -320,21 +321,27 @@ const authedFetch = async (path, options = {}) => {
   });
 };
 
-const fetchAgents = async (args) => {
-  const orgId = args.shift();
+const resolveDefaultOrgId = (me) => {
+  const orgId = me.organizations?.[0]?.organization?.id;
   if (!orgId) {
-    usage();
+    throw new Error("The authenticated user has no organizations.");
   }
-  const outputFile = args.shift() ?? "/tmp/backoffice-codemode-AGENTS.md";
+  return orgId;
+};
+
+const fetchSystem = async (args) => {
+  const session = await ensureSession();
+  const orgId = args.shift() ?? resolveDefaultOrgId(session.me);
+  const outputFile = args.shift() ?? "/tmp/backoffice-codemode-SYSTEM.md";
   if (args.length > 0) {
     usage();
   }
 
-  const response = await authedFetch(`/__dev/codemode/${encodeURIComponent(orgId)}/AGENTS.md`, {
+  const response = await authedFetch(`/__dev/codemode/${encodeURIComponent(orgId)}/SYSTEM.md`, {
     retryOnStatuses: [401, 403],
   });
   if (!response.ok) {
-    await assertOk(response, "Fetch AGENTS.md");
+    await assertOk(response, "Fetch SYSTEM.md");
   }
   await writeFile(outputFile, await response.text());
   console.log(outputFile);
@@ -416,8 +423,8 @@ try {
     await login(args);
   } else if (command === "probe") {
     await probe();
-  } else if (command === "agents") {
-    await fetchAgents(args);
+  } else if (command === "system") {
+    await fetchSystem(args);
   } else if (command === "exec") {
     await execCodemode(args);
   } else if (command === "bash") {

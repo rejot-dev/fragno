@@ -2,7 +2,6 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { BackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
-import type { IFileSystem } from "@/files/interface";
 import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
 import { createRouteBackedDurableHooksRuntime } from "@/fragno/automation/durable-hooks-route-runtime";
@@ -44,7 +43,6 @@ export type RouteBackedRuntimeContextOptions = {
   execution: BackofficeExecutionContext;
   pi?: { runtime: PiRuntime } | null;
   defaultActor?: AutomationEventActor | null;
-  fileSystem?: IFileSystem;
 };
 
 const unavailableMessage = (family: string, execution: BackofficeExecutionContext) =>
@@ -85,7 +83,6 @@ export const createRouteBackedRuntimeContext = ({
   execution,
   pi,
   defaultActor,
-  fileSystem,
 }: RouteBackedRuntimeContextOptions): InteractiveBashCommandContext => {
   kernel.assertContextAccess(execution);
   const org = ownerOrgScope(execution);
@@ -106,7 +103,6 @@ export const createRouteBackedRuntimeContext = ({
         kernel,
         execution: { actor: execution.actor, scope },
         defaultActor,
-        fileSystem,
       }),
     backoffice: isBackofficeRoutableScope(execution.scope)
       ? {
@@ -153,7 +149,6 @@ export const createRouteBackedRuntimeContext = ({
             config: runtime.config,
             orgId: org.orgId,
             families: runtimeToolFamilies,
-            fileSystem,
           }),
         }
       : null,

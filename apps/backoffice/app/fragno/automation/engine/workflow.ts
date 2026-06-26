@@ -30,11 +30,9 @@ const automationEventOrganizationIds = (event: AutomationEvent) =>
 const createWorkflowAutomationContext = ({
   runtime,
   params,
-  fileSystem,
 }: {
   runtime: BackofficeRuntimeServices;
   params: AutomationCodemodeWorkflowParams;
-  fileSystem: MasterFileSystem;
 }): AutomationRuntimeHostContext => {
   const kernel = new BackofficeKernel({ objects: runtime.objects });
   const organizationIds = automationEventOrganizationIds(params.automationEvent);
@@ -50,7 +48,6 @@ const createWorkflowAutomationContext = ({
     runtime,
     kernel,
     execution,
-    fileSystem,
   });
   const eventRuntime = createEventRuntime({
     objects: runtime.objects,
@@ -174,7 +171,6 @@ export const defineAutomationCodemodeWorkflow = (
     const context = createWorkflowAutomationContext({
       runtime: config.runtime,
       params,
-      fileSystem: resolvedFs,
     });
     const result = await executeWorkflowCodemodeAutomation({
       script,
