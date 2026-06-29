@@ -67,12 +67,16 @@ import { Telegram } from "./telegram.do";
 const CONFIG_KEY = "telegram-config";
 
 const VALID_PAYLOAD = {
-  orgId: "acme",
   botToken: "123456:telegram-bot-token",
   webhookSecretToken: "telegram-webhook-secret",
   botUsername: "fragno_bot",
   webhookBaseUrl: "https://example.com",
 };
+
+const createTelegramObject = (
+  state: DurableObjectState,
+  scope: Parameters<Telegram["init"]>[0] = { kind: "org", orgId: "acme" },
+) => new Telegram(state, {} as CloudflareEnv).init(scope);
 
 const createState = (initialEntries?: Array<[string, unknown]>) => {
   const store = new Map<string, unknown>(initialEntries);
@@ -177,7 +181,7 @@ describe("Telegram Durable Object", () => {
 
   test("binds the fragment to the durable object's organisation", async () => {
     const { state, store } = createState();
-    const telegram = new Telegram(state, {} as CloudflareEnv);
+    const telegram = createTelegramObject(state);
 
     await telegram.setAdminConfig(VALID_PAYLOAD, "https://example.com");
 
@@ -203,7 +207,7 @@ describe("Telegram Durable Object", () => {
 
   test("uses the configured Telegram API base URL when registering the webhook", async () => {
     const { state } = createState();
-    const telegram = new Telegram(state, {} as CloudflareEnv);
+    const telegram = createTelegramObject(state);
 
     await telegram.setAdminConfig(
       { ...VALID_PAYLOAD, apiBaseUrl: "https://telegram.example" },
@@ -216,20 +220,50 @@ describe("Telegram Durable Object", () => {
     );
   });
 
-  test("rejects attempts to rebind admin config to a different organisation", async () => {
-    const { state } = createState();
-    const telegram = new Telegram(state, {} as CloudflareEnv);
+  test("can be configured for the system scope", async () => {
+    const { state, store } = createState();
+    const telegram = createTelegramObject(state, { kind: "system" });
 
     await telegram.setAdminConfig(VALID_PAYLOAD, "https://example.com");
 
-    await expect(
-      telegram.setAdminConfig({ ...VALID_PAYLOAD, orgId: "other-org" }, "https://example.com"),
-    ).rejects.toThrowError("Telegram Durable Object is already bound to a different scope.");
+    expect(store.get(CONFIG_KEY)).toMatchObject({ scope: { kind: "system" } });
+    expect(fetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        body: expect.stringContaining("/api/telegram/system/telegram/webhook"),
+      }),
+    );
+  });
+
+  test("can be configured for a user scope", async () => {
+    const { state, store } = createState();
+    const telegram = createTelegramObject(state, { kind: "user", userId: "user-1" });
+
+    await telegram.setAdminConfig(VALID_PAYLOAD, "https://example.com");
+
+    expect(store.get(CONFIG_KEY)).toMatchObject({ scope: { kind: "user", userId: "user-1" } });
+    expect(fetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        body: expect.stringContaining("/api/telegram/user:user-1/telegram/webhook"),
+      }),
+    );
+  });
+
+  test("rejects attempts to initialize the same object for a different organisation", async () => {
+    const { state } = createState();
+    const telegram = new Telegram(state, {} as CloudflareEnv);
+
+    telegram.init({ kind: "org", orgId: "acme" });
+
+    expect(() => telegram.init({ kind: "org", orgId: "other-org" })).toThrowError(
+      "Backoffice object method scope does not match object address scope.",
+    );
   });
 
   test("rejects requests whose scope guard does not match the bound durable object", async () => {
     const { state } = createState();
-    const telegram = new Telegram(state, {} as CloudflareEnv);
+    const telegram = createTelegramObject(state);
 
     await telegram.setAdminConfig(VALID_PAYLOAD, "https://example.com");
 
@@ -268,7 +302,7 @@ describe("Telegram Durable Object", () => {
 
   test("resolves normalized automation file metadata through Telegram getFile", async () => {
     const { state } = createState();
-    const telegram = new Telegram(state, {} as CloudflareEnv);
+    const telegram = createTelegramObject(state);
 
     await telegram.setAdminConfig(VALID_PAYLOAD, "https://example.com");
 
@@ -282,7 +316,7 @@ describe("Telegram Durable Object", () => {
 
   test("downloads raw automation file bytes through Telegram file endpoint", async () => {
     const { state } = createState();
-    const telegram = new Telegram(state, {} as CloudflareEnv);
+    const telegram = createTelegramObject(state);
 
     await telegram.setAdminConfig(VALID_PAYLOAD, "https://example.com");
 

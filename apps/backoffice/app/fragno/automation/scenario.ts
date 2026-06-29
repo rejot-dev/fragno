@@ -1501,7 +1501,7 @@ const ingestSystemAutomationEvent = async (
   }
 
   const systemAutomations = ctx.runtime.objects.automations.singleton();
-  await systemAutomations.seedStarterAutomationRoutes({ scope: { kind: "system" } });
+  await systemAutomations.seedStarterAutomationRoutes();
   await systemAutomations.ingestEvent({ ...event, scope: { kind: "system" } });
 };
 
@@ -1518,7 +1518,7 @@ const ingestAutomationEvent = async (ctx: BackofficeScenarioContext, event: Auto
   ctx.rememberOrg(event.scope.orgId);
   if (isSystemRoutedAutomationEvent(event)) {
     const systemAutomations = ctx.runtime.objects.automations.singleton();
-    await systemAutomations.seedStarterAutomationRoutes({ scope: { kind: "system" } });
+    await systemAutomations.seedStarterAutomationRoutes();
     await systemAutomations.ingestEvent({ ...event, id: `system:${event.id}` });
   }
   await ctx.runtime.objects.automations.forOrg(event.scope.orgId).ingestEvent(event);
@@ -1845,9 +1845,7 @@ const buildStepBuilders = <
               name: input.name,
               ownerUserId: input.ownerUserId,
             };
-            await ctx.runtime.objects.automations
-              .forOrg(input.id)
-              .seedStarterAutomationRoutes({ scope: { kind: "org", orgId: input.id } });
+            await ctx.runtime.objects.automations.forOrg(input.id).seedStarterAutomationRoutes();
           },
           { drain: false },
         ),
@@ -2103,9 +2101,7 @@ const buildStepBuilders = <
           `seed starter routes for ${input.orgId}`,
           async (ctx) => {
             ctx.rememberOrg(input.orgId);
-            await ctx.runtime.objects.automations
-              .forOrg(input.orgId)
-              .seedStarterAutomationRoutes({ scope: { kind: "org", orgId: input.orgId } });
+            await ctx.runtime.objects.automations.forOrg(input.orgId).seedStarterAutomationRoutes();
           },
         ),
       createRoute: (input) =>
@@ -2752,7 +2748,7 @@ const buildStepBuilders = <
       noErrored: (input = {}) =>
         createStep("then", "workflow.noErrored", "assert no workflows errored", async (ctx) => {
           const orgIds = input.orgId
-            ? [SYSTEM_WORKFLOW_TARGET_ID, input.orgId]
+            ? [input.orgId]
             : [SYSTEM_WORKFLOW_TARGET_ID, ...ctx.files.listOrgIds()];
           const errored = [];
 

@@ -1,5 +1,7 @@
 import { backofficeContextScopesEqual, type BackofficeContextScope } from "./context";
 
+export type BackofficeSinglePathScope = BackofficeContextScope;
+
 export type BackofficeRoutableScope = Extract<
   BackofficeContextScope,
   { kind: "org" | "project" | "user" }
@@ -86,8 +88,10 @@ export const backofficeScopeFromRouteParams = ({
   return invalidScope(`Unknown scope kind '${scopeKind}'.`);
 };
 
-export const backofficeScopeSinglePathSegment = (scope: BackofficeRoutableScope) => {
+export const backofficeContextScopeSinglePathSegment = (scope: BackofficeSinglePathScope) => {
   switch (scope.kind) {
+    case "system":
+      return "system";
     case "org":
       return `org:${encodeScopeComponent(scope.orgId)}`;
     case "project":
@@ -96,6 +100,9 @@ export const backofficeScopeSinglePathSegment = (scope: BackofficeRoutableScope)
       return `user:${encodeScopeComponent(scope.userId)}`;
   }
 };
+
+export const backofficeScopeSinglePathSegment = (scope: BackofficeRoutableScope) =>
+  backofficeContextScopeSinglePathSegment(scope);
 
 export const backofficeRoutableScopesEqual = (
   left: BackofficeRoutableScope,
@@ -112,9 +119,18 @@ export const assertSameBackofficeRoutableScope = (
   }
 };
 
-export const backofficeScopeFromSinglePathSegment = (segment: string): BackofficeRoutableScope => {
+export const backofficeContextScopeFromSinglePathSegment = (
+  segment: string,
+): BackofficeSinglePathScope => {
   const parts = segment.split(":");
   const [scopeKind] = parts;
+
+  if (scopeKind === "system") {
+    if (parts.length !== 1) {
+      invalidScope("System scope does not accept id components.");
+    }
+    return { kind: "system" };
+  }
 
   if (scopeKind === "org") {
     if (parts.length !== 2) {
@@ -142,4 +158,12 @@ export const backofficeScopeFromSinglePathSegment = (segment: string): Backoffic
   }
 
   return invalidScope(`Unknown scope kind '${scopeKind}'.`);
+};
+
+export const backofficeScopeFromSinglePathSegment = (segment: string): BackofficeRoutableScope => {
+  const scope = backofficeContextScopeFromSinglePathSegment(segment);
+  if (scope.kind === "system") {
+    return invalidScope("System scope is not routable here.");
+  }
+  return scope;
 };

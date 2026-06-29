@@ -6,6 +6,7 @@ import {
   type TelegramMessageHookPayload,
 } from "@fragno-dev/telegram-fragment";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 
 import type { AutomationKnownEvent } from "./automation/contracts";
@@ -42,13 +43,26 @@ const toIsoString = (value: Date | string, fieldName: string) => {
   return parsed.toISOString();
 };
 
+const telegramEventScopeId = (scope: BackofficeContextScope) => {
+  switch (scope.kind) {
+    case "system":
+      return "system";
+    case "org":
+      return `org:${scope.orgId}`;
+    case "project":
+      return `project:${scope.orgId}:${scope.projectId}`;
+    case "user":
+      return `user:${scope.userId}`;
+  }
+};
+
 export const buildTelegramAutomationEvent = (
-  orgId: string,
+  scope: BackofficeContextScope,
   payload: SerializableTelegramMessageHookPayload,
-  eventId = `telegram:${orgId}:${payload.updateId}:${payload.messageId}`,
+  eventId = `telegram:${telegramEventScopeId(scope)}:${payload.updateId}:${payload.messageId}`,
 ): AutomationKnownEvent<typeof AUTOMATION_SOURCES.telegram> => ({
   id: eventId,
-  scope: { kind: "org", orgId },
+  scope,
   source: AUTOMATION_SOURCES.telegram,
   eventType: AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived,
   occurredAt: toIsoString(payload.sentAt, "sentAt"),

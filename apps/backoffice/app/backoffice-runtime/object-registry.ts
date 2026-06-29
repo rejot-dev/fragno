@@ -6,7 +6,7 @@ import type { Otp } from "workers/otp.do";
 import type { Pi } from "workers/pi.do";
 import type { Resend } from "workers/resend.do";
 import type { Reson8 } from "workers/reson8.do";
-import type { Telegram } from "workers/telegram.do";
+import type { TelegramAdminConfigResponse } from "workers/telegram.do";
 import type { Upload } from "workers/upload.do";
 
 import type { Organization } from "@fragno-dev/auth";
@@ -86,9 +86,7 @@ export type AutomationsObject = FetchObject &
   DurableHookObject & {
     triggerIngestEvent(event: AutomationEvent): Promise<AutomationIngestResult>;
     ingestEvent(event: AutomationEvent): Promise<AutomationIngestResult>;
-    seedStarterAutomationRoutes(input?: {
-      scope?: BackofficeContextScope;
-    }): Promise<StarterAutomationRoutesSeedResult>;
+    seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult>;
     resolveProjectForExecution(input: {
       projectId?: string;
       slug?: string;
@@ -98,19 +96,14 @@ export type AutomationsObject = FetchObject &
       limit?: number;
     }): Promise<SandboxInstanceRecord[]>;
     getSandboxInstance(input: { id: string }): Promise<SandboxInstanceRecord | null>;
-    requestSandboxInstance(
-      input: SandboxInstanceRequestInput & { ownerScope?: BackofficeContextScope },
-    ): Promise<SandboxInstanceRecord>;
-    requestSandboxInstanceStop(input: {
-      id: string;
-      ownerScope?: BackofficeContextScope;
-    }): Promise<SandboxInstanceRecord | null>;
+    requestSandboxInstance(input: SandboxInstanceRequestInput): Promise<SandboxInstanceRecord>;
+    requestSandboxInstanceStop(input: { id: string }): Promise<SandboxInstanceRecord | null>;
   };
 
 export type TelegramObject = FetchObject &
   AlarmableObject &
   DurableHookObject &
-  AdminConfigurableObject<AwaitedMethodReturn<Telegram, "getAdminConfig">> & {
+  AdminConfigurableObject<TelegramAdminConfigResponse> & {
     getAutomationFile(input: { fileId: string }): Promise<TelegramAutomationFileMetadata>;
     downloadAutomationFile(input: { fileId: string }): Promise<Response>;
   };
@@ -212,7 +205,7 @@ export type BackofficeObjectBindingName =
   | "GITHUB_WEBHOOK_ROUTER"
   | "SANDBOX";
 
-export type BackofficeObjectBinding<_TObject> = {
+export type BackofficeObjectBinding<_TObject, _TRawObject = _TObject> = {
   name: BackofficeObjectBindingName;
 };
 
@@ -236,7 +229,7 @@ export const backofficeObjectScopePolicy = {
 
   AUTOMATIONS: ["singleton", "org", "user", "project"],
 
-  TELEGRAM: ["org"],
+  TELEGRAM: ["singleton", "org", "user"],
   OTP: ["org"],
   RESEND: ["org"],
   RESON8: ["org"],
@@ -263,10 +256,10 @@ export const assertBackofficeObjectAddressAllowed = (address: BackofficeObjectAd
 };
 
 export type BackofficeObjectFactory = {
-  get<TObject>(
-    binding: BackofficeObjectBinding<TObject>,
+  get<TObject, TRawObject = TObject>(
+    binding: BackofficeObjectBinding<TObject, TRawObject>,
     address: BackofficeObjectAddress,
-  ): TObject;
+  ): TRawObject;
 };
 
 const binding = <TObject>(name: BackofficeObjectBindingName): BackofficeObjectBinding<TObject> => ({
@@ -339,6 +332,52 @@ export const objectAddressToActor = (address: BackofficeObjectAddress): Automati
   role: "delegate",
 });
 
+export const objectScopeToContextScope = (scope: BackofficeObjectScope): BackofficeContextScope => {
+  switch (scope.kind) {
+    case "singleton":
+      return { kind: "system" };
+    case "org":
+      return { kind: "org", orgId: scope.orgId };
+    case "user":
+      return { kind: "user", userId: scope.userId };
+    case "project":
+      return {
+        kind: "project",
+        orgId: scope.orgId,
+        projectId: scope.projectId,
+      };
+    case "named":
+      throw new Error("Named Backoffice object scopes do not have a Backoffice context scope.");
+  }
+};
+
+type BackofficeRpcResult<TResult> = Promise<TResult> &
+  (TResult extends object ? BackofficeRpcObject<TResult> : unknown);
+
+type BackofficeRpcMethod<TValue> = TValue extends (...args: infer TArgs) => infer TResult
+  ? ((...args: TArgs) => BackofficeRpcResult<Awaited<TResult>>) & {
+      bind?: never;
+      call?: never;
+      apply?: never;
+    }
+  : BackofficeRpcResult<Awaited<TValue>>;
+
+type BackofficeRpcMember<TValue> = undefined extends TValue
+  ? BackofficeRpcMethod<Exclude<TValue, undefined>> | undefined
+  : BackofficeRpcMethod<TValue>;
+
+export type BackofficeRpcObject<TObject> = Promise<TObject> & {
+  [TKey in keyof TObject]: BackofficeRpcMember<TObject[TKey]>;
+};
+
+type RemoteInitializableScopedObject<TObject> = {
+  init(scope: BackofficeContextScope): BackofficeRpcObject<TObject>;
+};
+
+const initializedBinding = <TObject>(
+  name: BackofficeObjectBindingName,
+): BackofficeObjectBinding<TObject, RemoteInitializableScopedObject<TObject>> => ({ name });
+
 const objectAddress = (
   objectBinding: BackofficeObjectBinding<unknown>,
   scope: BackofficeObjectScope,
@@ -347,42 +386,126 @@ const objectAddress = (
   scope,
 });
 
+const scopedObject = <TObject>(
+  factory: BackofficeObjectFactory,
+  objectBinding: BackofficeObjectBinding<TObject>,
+  address: BackofficeObjectAddress,
+): TObject => factory.get(objectBinding, address);
+
+const scopedInitializedObject = <TObject>(
+  factory: BackofficeObjectFactory,
+  objectBinding: BackofficeObjectBinding<TObject, RemoteInitializableScopedObject<TObject>>,
+  address: BackofficeObjectAddress,
+): BackofficeRpcObject<TObject> =>
+  factory.get(objectBinding, address).init(objectScopeToContextScope(address.scope));
+
 const scoped = <TObject>(
   factory: BackofficeObjectFactory,
   objectBinding: BackofficeObjectBinding<TObject>,
 ): ScopedObjects<TObject> => ({
   singleton() {
-    return factory.get(objectBinding, objectAddress(objectBinding, singleton()));
+    return scopedObject(factory, objectBinding, objectAddress(objectBinding, singleton()));
   },
   for(scope: BackofficeContextScope) {
     switch (scope.kind) {
       case "system":
-        return factory.get(objectBinding, objectAddress(objectBinding, singleton()));
+        return scopedObject(factory, objectBinding, objectAddress(objectBinding, singleton()));
       case "org":
-        return factory.get(objectBinding, objectAddress(objectBinding, org(scope.orgId)));
+        return scopedObject(factory, objectBinding, objectAddress(objectBinding, org(scope.orgId)));
       case "user":
-        return factory.get(
+        return scopedObject(
+          factory,
           objectBinding,
           objectAddress(objectBinding, user({ userId: scope.userId })),
         );
       case "project":
-        return factory.get(
+        return scopedObject(
+          factory,
           objectBinding,
           objectAddress(objectBinding, project({ orgId: scope.orgId, projectId: scope.projectId })),
         );
     }
   },
   forOrg(orgId: string) {
-    return factory.get(objectBinding, objectAddress(objectBinding, org(orgId)));
+    return scopedObject(factory, objectBinding, objectAddress(objectBinding, org(orgId)));
   },
   forName(name: string) {
-    return factory.get(objectBinding, objectAddress(objectBinding, named(name)));
+    return scopedObject(factory, objectBinding, objectAddress(objectBinding, named(name)));
   },
   forUser(input: { userId: string }) {
-    return factory.get(objectBinding, objectAddress(objectBinding, user(input)));
+    return scopedObject(factory, objectBinding, objectAddress(objectBinding, user(input)));
   },
   forProject(input: { orgId: string; projectId: string }) {
-    return factory.get(objectBinding, objectAddress(objectBinding, project(input)));
+    return scopedObject(factory, objectBinding, objectAddress(objectBinding, project(input)));
+  },
+});
+
+const scopedInitialized = <TObject>(
+  factory: BackofficeObjectFactory,
+  objectBinding: BackofficeObjectBinding<TObject, RemoteInitializableScopedObject<TObject>>,
+): ScopedObjects<BackofficeRpcObject<TObject>> => ({
+  singleton() {
+    return scopedInitializedObject(
+      factory,
+      objectBinding,
+      objectAddress(objectBinding, singleton()),
+    );
+  },
+  for(scope: BackofficeContextScope) {
+    switch (scope.kind) {
+      case "system":
+        return scopedInitializedObject(
+          factory,
+          objectBinding,
+          objectAddress(objectBinding, singleton()),
+        );
+      case "org":
+        return scopedInitializedObject(
+          factory,
+          objectBinding,
+          objectAddress(objectBinding, org(scope.orgId)),
+        );
+      case "user":
+        return scopedInitializedObject(
+          factory,
+          objectBinding,
+          objectAddress(objectBinding, user({ userId: scope.userId })),
+        );
+      case "project":
+        return scopedInitializedObject(
+          factory,
+          objectBinding,
+          objectAddress(objectBinding, project({ orgId: scope.orgId, projectId: scope.projectId })),
+        );
+    }
+  },
+  forOrg(orgId: string) {
+    return scopedInitializedObject(
+      factory,
+      objectBinding,
+      objectAddress(objectBinding, org(orgId)),
+    );
+  },
+  forName(name: string) {
+    return scopedInitializedObject(
+      factory,
+      objectBinding,
+      objectAddress(objectBinding, named(name)),
+    );
+  },
+  forUser(input: { userId: string }) {
+    return scopedInitializedObject(
+      factory,
+      objectBinding,
+      objectAddress(objectBinding, user(input)),
+    );
+  },
+  forProject(input: { orgId: string; projectId: string }) {
+    return scopedInitializedObject(
+      factory,
+      objectBinding,
+      objectAddress(objectBinding, project(input)),
+    );
   },
 });
 
@@ -390,8 +513,8 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   api: scoped(factory, binding<ApiObject>("API")),
   auth: scoped(factory, binding<AuthObject>("AUTH")),
 
-  automations: scoped(factory, binding<AutomationsObject>("AUTOMATIONS")),
-  telegram: scoped(factory, binding<TelegramObject>("TELEGRAM")),
+  automations: scopedInitialized(factory, initializedBinding<AutomationsObject>("AUTOMATIONS")),
+  telegram: scopedInitialized(factory, initializedBinding<TelegramObject>("TELEGRAM")),
   otp: scoped(factory, binding<OtpObject>("OTP")),
   pi: scoped(factory, binding<PiObject>("PI")),
   resend: scoped(factory, binding<ResendObject>("RESEND")),

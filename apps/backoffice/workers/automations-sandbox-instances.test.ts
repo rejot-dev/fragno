@@ -42,7 +42,6 @@ describe("Automations sandbox instance object methods", () => {
     const created = await automations.requestSandboxInstance({
       id: "org_123::dev",
       provider: CLOUDFLARE_SANDBOX_PROVIDER,
-      ownerScope: { kind: "org", orgId: "org_123" },
     });
     const listed = await automations.listSandboxInstances({
       provider: CLOUDFLARE_SANDBOX_PROVIDER,
@@ -80,7 +79,6 @@ describe("Automations sandbox instance object methods", () => {
     const created = await automations.requestSandboxInstance({
       id: "org_123::dev",
       provider: CLOUDFLARE_SANDBOX_PROVIDER,
-      ownerScope: { kind: "org", orgId: "org_123" },
       keepAlive: true,
     });
     await runtime.drain();
@@ -107,13 +105,11 @@ describe("Automations sandbox instance object methods", () => {
     const first = await automations.requestSandboxInstance({
       id: "org_123::dev",
       provider: CLOUDFLARE_SANDBOX_PROVIDER,
-      ownerScope: { kind: "org", orgId: "org_123" },
       startupCommand: "echo first",
     });
     const second = await automations.requestSandboxInstance({
       id: "org_123::dev",
       provider: CLOUDFLARE_SANDBOX_PROVIDER,
-      ownerScope: { kind: "org", orgId: "org_123" },
       startupCommand: "echo ignored",
     });
 

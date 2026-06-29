@@ -3,17 +3,19 @@ import { describe, expect, it, vi } from "vitest";
 import { createCloudflareBackofficeObjectRegistry } from "./cloudflare-durable-object-factory";
 import { CloudflareDurableObjectFactory } from "./cloudflare-durable-object-factory";
 
-const createNamespace = () => {
+const createNamespace = (options: { initialized?: boolean } = {}) => {
   const namespace = {
     idFromName: vi.fn((name: string) => `id:${name}`),
-    get: vi.fn((id: string) => ({ id })),
+    get: vi.fn((id: string) =>
+      options.initialized ? { id, init: vi.fn(() => ({ id })) } : { id },
+    ),
   };
   return namespace;
 };
 
 describe("createCloudflareBackofficeObjectRegistry", () => {
-  it("routes org-scoped objects through Cloudflare namespaces", () => {
-    const automations = createNamespace();
+  it("routes org-scoped objects through Cloudflare namespaces", async () => {
+    const automations = createNamespace({ initialized: true });
     const env = {
       AUTH: createNamespace(),
       AUTOMATIONS: automations,
@@ -31,7 +33,7 @@ describe("createCloudflareBackofficeObjectRegistry", () => {
     } as unknown as CloudflareEnv;
 
     const objects = createCloudflareBackofficeObjectRegistry(env);
-    objects.automations.forOrg("org-1");
+    void objects.automations.forOrg("org-1");
 
     expect(automations.idFromName).toHaveBeenCalledWith("v1:org:org-1");
     expect(automations.get).toHaveBeenCalledWith("id:v1:org:org-1");

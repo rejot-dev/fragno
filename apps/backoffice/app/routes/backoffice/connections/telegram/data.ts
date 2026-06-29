@@ -21,7 +21,7 @@ const createTelegramRouteCaller = (
     baseUrl: request.url,
     mountRoute: "/api/telegram",
     baseHeaders: request.headers,
-    fetch: telegramDo.fetch.bind(telegramDo),
+    fetch: (outboundRequest) => telegramDo.fetch(outboundRequest),
   });
 };
 

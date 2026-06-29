@@ -93,7 +93,7 @@ describe("backoffice object scope policy", () => {
       API: ["org", "user", "project"],
       AUTH: ["singleton"],
       AUTOMATIONS: ["singleton", "org", "user", "project"],
-      TELEGRAM: ["org"],
+      TELEGRAM: ["singleton", "org", "user"],
       OTP: ["org"],
       RESEND: ["org"],
       RESON8: ["org"],
@@ -113,6 +113,8 @@ describe("backoffice object scope policy", () => {
     assertBackofficeObjectAddressAllowed(address("UPLOAD", "project"));
     assertBackofficeObjectAddressAllowed(address("MCP", "user"));
     assertBackofficeObjectAddressAllowed(address("MCP", "project"));
+    assertBackofficeObjectAddressAllowed(address("TELEGRAM", "singleton"));
+    assertBackofficeObjectAddressAllowed(address("TELEGRAM", "user"));
     assertBackofficeObjectAddressAllowed(address("PI", "org"));
   });
 

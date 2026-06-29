@@ -173,7 +173,7 @@ const handleForwardEventRouteAction = async ({
 
   const targetAutomations = runtime.objects.automations.for(scope);
   if (scope.kind === "system") {
-    await targetAutomations.seedStarterAutomationRoutes({ scope });
+    await targetAutomations.seedStarterAutomationRoutes();
   }
   await targetAutomations.ingestEvent(forwardedEvent);
 };

@@ -37,15 +37,16 @@ const createAutomation = async (
         sendEvent: async () => ({}),
       } as unknown as AutomationWorkflowsService),
   };
+  const ownerScope = options.ownerScope ?? { kind: "org", orgId: "org_123" };
 
   return createAutomationFragment(
     {
-      ownerScope: options.ownerScope ?? { kind: "org", orgId: "org_123" },
+      ownerScope,
       automationFileSystem: await createMasterFileSystem(
         createSystemFilesContext({
           execution: {
             actor: { type: "system", id: "system" },
-            scope: { kind: "org", orgId: "org_123" },
+            scope: ownerScope,
           },
         }),
       ),

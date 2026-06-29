@@ -28,10 +28,10 @@ const getNamespace = (
 export class CloudflareDurableObjectFactory implements BackofficeObjectFactory {
   constructor(readonly env: CloudflareEnv) {}
 
-  get<TObject>(
-    binding: BackofficeObjectBinding<TObject>,
+  get<TObject, TRawObject = TObject>(
+    binding: BackofficeObjectBinding<TObject, TRawObject>,
     address: BackofficeObjectAddress,
-  ): TObject {
+  ): TRawObject {
     if (address.binding !== binding.name) {
       throw new Error(
         `Backoffice object address binding ${address.binding} does not match requested binding ${binding.name}.`,
@@ -40,7 +40,7 @@ export class CloudflareDurableObjectFactory implements BackofficeObjectFactory {
     assertBackofficeObjectAddressAllowed(address);
     const namespace = getNamespace(this.env, binding);
     const encodedName = encodeBackofficeObjectAddress(address);
-    return namespace.get(namespace.idFromName(encodedName)) as TObject;
+    return namespace.get(namespace.idFromName(encodedName)) as TRawObject;
   }
 }
 

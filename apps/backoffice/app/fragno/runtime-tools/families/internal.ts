@@ -198,9 +198,7 @@ export const createInternalRuntime = ({
     seedWorkspaceStarterFiles: async (input) =>
       await seedWorkspaceStarterFiles({ objects, orgId, force: input?.force }),
     seedStarterAutomationRoutes: async () =>
-      await objects.automations
-        .forOrg(orgId)
-        .seedStarterAutomationRoutes({ scope: { kind: "org", orgId } }),
+      await objects.automations.forOrg(orgId).seedStarterAutomationRoutes(),
     configureProjectDatabaseFileSystem: async ({ projectId }) => {
       const uploadObject = objects.upload.forProject({ orgId, projectId });
       const config = await uploadObject.setAdminConfig(

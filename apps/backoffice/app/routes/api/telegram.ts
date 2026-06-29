@@ -1,37 +1,49 @@
-import { getTelegramDurableObject } from "@/worker-runtime/durable-objects";
+import {
+  backofficeContextScopeFromSinglePathSegment,
+  backofficeContextScopeSinglePathSegment,
+} from "@/backoffice-runtime/scope-codec";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/telegram";
+
+const TELEGRAM_MOUNT = "/api/telegram";
 
 const forwardToTelegram = async (
   request: Request,
   context: Route.LoaderArgs["context"],
-  orgId: string | undefined,
+  scopeSegment: string | undefined,
 ) => {
-  if (!orgId) {
-    return new Response("Missing organisation id", { status: 400 });
+  if (!scopeSegment) {
+    return new Response("Missing scope", { status: 400 });
   }
 
-  const telegramDo = getTelegramDurableObject(context, orgId);
+  let scope;
+  try {
+    scope = backofficeContextScopeFromSinglePathSegment(scopeSegment);
+  } catch {
+    return new Response("Invalid scope", { status: 400 });
+  }
+
+  const telegramDo = context.get(BackofficeWorkerContext).runtime.objects.telegram.for(scope);
   const url = new URL(request.url);
-  const prefix = `/api/telegram/${orgId}`;
+  const encodedScopeSegment = backofficeContextScopeSinglePathSegment(scope);
+  const prefix = `${TELEGRAM_MOUNT}/${encodedScopeSegment}`;
   if (url.pathname.startsWith(prefix)) {
     const suffix = url.pathname.slice(prefix.length);
-    url.pathname = `/api/telegram${suffix}`;
+    url.pathname = `${TELEGRAM_MOUNT}${suffix}`;
   }
-  url.searchParams.set("orgId", orgId);
 
-  const proxyRequest = new Request(url.toString(), request);
-  return telegramDo.fetch(proxyRequest);
+  return telegramDo.fetch(new Request(url.toString(), request));
 };
 
 /**
- * Catch-all route that forwards all /api/telegram/:orgId/* requests to the Telegram Durable Object.
- * The org-specific prefix is stripped before the request reaches the fragment.
+ * Catch-all route that forwards all /api/telegram/:scopeSegment/* requests to the Telegram Durable Object.
+ * The scope-specific prefix is stripped before the request reaches the fragment.
  */
 export async function loader({ request, context, params }: Route.LoaderArgs) {
-  return forwardToTelegram(request, context, params.orgId);
+  return forwardToTelegram(request, context, params.scopeSegment);
 }
 
 export async function action({ request, context, params }: Route.ActionArgs) {
-  return forwardToTelegram(request, context, params.orgId);
+  return forwardToTelegram(request, context, params.scopeSegment);
 }

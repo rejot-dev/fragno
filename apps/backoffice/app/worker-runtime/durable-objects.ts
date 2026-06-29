@@ -14,6 +14,7 @@ import type {
   Reson8Object,
   TelegramObject,
   UploadObject,
+  BackofficeRpcObject,
 } from "@/backoffice-runtime/object-registry";
 
 import { BackofficeWorkerContext } from "./router-context";
@@ -34,12 +35,13 @@ export const getAuthDurableObject = (context: Readonly<RouterContextProvider>): 
 export const getAutomationsDurableObject = (
   context: Readonly<RouterContextProvider>,
   orgId: string,
-): AutomationsObject => getBackofficeObjects(context).automations.forOrg(orgId);
+): BackofficeRpcObject<AutomationsObject> =>
+  getBackofficeObjects(context).automations.forOrg(orgId);
 
 export const getTelegramDurableObject = (
   context: Readonly<RouterContextProvider>,
   orgId: string,
-): TelegramObject => getBackofficeObjects(context).telegram.forOrg(orgId);
+): BackofficeRpcObject<TelegramObject> => getBackofficeObjects(context).telegram.forOrg(orgId);
 
 export const getMcpDurableObject = (
   context: Readonly<RouterContextProvider>,
