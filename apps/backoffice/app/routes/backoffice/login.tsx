@@ -152,7 +152,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 export function meta() {
   return [
     { title: "Fragno Backoffice Login" },
-    { name: "description", content: "Access the Fragno backoffice dashboard." },
+    { name: "description", content: "Access the Fragno backoffice." },
   ];
 }
 
@@ -243,7 +243,7 @@ export default function BackofficeLogin() {
         <div className="w-full max-w-md">
           <FormContainer
             title="Sign in"
-            description="Use GitHub or your backoffice credentials to access the dashboard."
+            description="Use GitHub or your backoffice credentials to access the backoffice."
             eyebrow="Access"
           >
             <div className="space-y-3">
@@ -330,6 +330,11 @@ export default function BackofficeLogin() {
   );
 }
 
+const bootstrapMessageForReturnTo = (returnTo: string) => {
+  const pathname = new URL(returnTo, "http://localhost").pathname;
+  return pathname.endsWith("/terminal") ? "Opening the terminal…" : "Opening backoffice…";
+};
+
 function BackofficeLoginBootstrap({
   returnTo,
   bootstrapError,
@@ -347,14 +352,16 @@ function BackofficeLoginBootstrap({
         <div className="w-full max-w-md">
           <FormContainer
             title="Preparing backoffice"
-            description="Checking your backoffice session before opening the dashboard."
+            description="Checking your backoffice session before continuing."
             eyebrow="Bootstrap"
           >
             <div className="space-y-3">
               {bootstrapError ? (
                 <p className="text-sm text-red-400">{bootstrapError}</p>
               ) : (
-                <p className="text-sm text-[var(--bo-muted)]">Opening the dashboard…</p>
+                <p className="text-sm text-[var(--bo-muted)]">
+                  {bootstrapMessageForReturnTo(returnTo)}
+                </p>
               )}
               <Link
                 to={returnTo}

@@ -77,7 +77,7 @@ export function ErrorBoundary() {
               to="/backoffice"
               className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
             >
-              Back to dashboard
+              Back to terminal
             </Link>
           }
         />

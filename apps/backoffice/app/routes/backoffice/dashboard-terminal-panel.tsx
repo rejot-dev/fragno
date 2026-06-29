@@ -12,8 +12,9 @@ import {
 } from "./dashboard-terminal";
 
 type DashboardTerminalPanelProps = {
-  organizationId?: string | null;
-  organizationName?: string | null;
+  scopeId?: string | null;
+  scopeName?: string | null;
+  description?: string;
   commandSpecs?: readonly DashboardCommandSpec[];
 };
 
@@ -25,8 +26,9 @@ const suggestionKindLabel = (suggestion: DashboardAutocompleteSuggestion) => {
 };
 
 export function DashboardTerminalPanel({
-  organizationId,
-  organizationName,
+  scopeId,
+  scopeName,
+  description = "Command output is executed against the backoffice Pi-backed filesystem (/system, /workspace).",
   commandSpecs = [],
 }: DashboardTerminalPanelProps) {
   const commandFetcher = useFetcher<DashboardTerminalActionResult>();
@@ -47,8 +49,8 @@ export function DashboardTerminalPanel({
     void pathAutocompleteFetcher.submit(formData, { method: "post" });
   };
   const terminal = useDashboardTerminal({
-    organizationId,
-    organizationName,
+    scopeId,
+    scopeName,
     result: commandResult,
     pathAutocompleteResult,
     requestPathAutocomplete,
@@ -91,10 +93,7 @@ export function DashboardTerminalPanel({
           <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
             Pi terminal
           </p>
-          <p className="text-sm text-[var(--bo-muted)]">
-            Command output is executed against the backoffice Pi-backed filesystem (/system,
-            /workspace).
-          </p>
+          <p className="text-sm text-[var(--bo-muted)]">{description}</p>
         </div>
         <p className="text-right text-[10px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
           ^J run · ^L clear · ^R history · Tab complete

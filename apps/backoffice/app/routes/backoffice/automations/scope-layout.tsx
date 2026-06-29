@@ -78,6 +78,9 @@ const normalizeStoreEntries = (
 
 const currentTabFromPath = (pathname: string): AutomationTab => {
   const segments = pathname.replace(/\/+$/, "").split("/");
+  if (segments.includes("terminal")) {
+    return "terminal";
+  }
   if (segments.includes("sandboxes")) {
     return "sandboxes";
   }
@@ -99,7 +102,10 @@ const currentTabFromPath = (pathname: string): AutomationTab => {
   if (segments.includes("store")) {
     return "store";
   }
-  return "scripts";
+  if (segments.includes("scripts")) {
+    return "scripts";
+  }
+  return "terminal";
 };
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {

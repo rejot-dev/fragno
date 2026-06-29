@@ -59,6 +59,7 @@ export type AutomationLayoutContext = {
 };
 
 export type AutomationTab =
+  | "terminal"
   | "scripts"
   | "router"
   | "store"
@@ -104,7 +105,7 @@ export function AutomationHeader({ selectedScope }: { selectedScope: AutomationU
       ]}
       eyebrow="Automations"
       title={`Automations for ${scopeLabel}`}
-      description="Inspect automation scripts, API connections, events, MCP servers, sandboxes, and store bindings for the selected scope."
+      description="Inspect the scoped terminal, automation scripts, API connections, events, MCP servers, sandboxes, and store bindings for the selected scope."
       actions={
         orgId ? (
           <Link
@@ -189,8 +190,13 @@ export function AutomationTabs({
 }) {
   const tabs = [
     {
+      id: "terminal" as const,
+      label: "Terminal",
+      to: automationScopeTabPath(selectedScope, "terminal"),
+    },
+    {
       id: "scripts" as const,
-      label: "Automations",
+      label: "Scripts",
       to: automationScopeTabPath(selectedScope, "scripts"),
     },
     {
@@ -246,7 +252,10 @@ export function AutomationTabs({
 
         return (
           <Fragment key={tab.id}>
-            {tab.id === "store" || tab.id === "api" || tab.id === "sandboxes" ? (
+            {tab.id === "scripts" ||
+            tab.id === "store" ||
+            tab.id === "api" ||
+            tab.id === "sandboxes" ? (
               <span className="h-6 w-px bg-[var(--bo-border)]" aria-hidden="true" />
             ) : null}
             <Link to={tab.to} role="tab" aria-selected={isActive} className={className}>

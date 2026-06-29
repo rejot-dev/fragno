@@ -18,10 +18,40 @@ type NavItem = {
   children?: NavItem[];
 };
 
-const isAutomationTabPath = (tab: string) => (pathname: string) =>
-  new RegExp(`^/backoffice/automations/(?:system|org|project|user)/[^/]+/${tab}(?:/|$)`).test(
-    pathname.replace(/\/+$/u, ""),
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+
+const projectAutomationBasePathPattern = (automationBasePath: string) => {
+  const match = /^\/backoffice\/automations\/org\/([^/]+)$/u.exec(automationBasePath);
+  const orgId = match?.[1];
+  return orgId
+    ? `/backoffice/automations/project/${escapeRegExp(encodeURIComponent(orgId))}:[^/]+`
+    : null;
+};
+
+const isAutomationTabPath = (
+  tab: string,
+  options: { automationBasePath?: string; includeProjectScope?: boolean } = {},
+) => {
+  const escapedTab = escapeRegExp(tab);
+  const scopeTabPattern = new RegExp(
+    `^/backoffice/automations/(?:system|org|user)/[^/]+/${escapedTab}(?:/|$)`,
   );
+  const projectBasePattern = options.automationBasePath
+    ? projectAutomationBasePathPattern(options.automationBasePath)
+    : null;
+  const projectTabPattern =
+    options.includeProjectScope && projectBasePattern
+      ? new RegExp(`^${projectBasePattern}/${escapedTab}(?:/|$)`)
+      : null;
+
+  return (pathname: string) => {
+    const normalizedPathname = pathname.replace(/\/+$/u, "");
+    return (
+      scopeTabPattern.test(normalizedPathname) ||
+      Boolean(projectTabPattern?.test(normalizedPathname))
+    );
+  };
+};
 
 function createNavItems(activeOrganizationId?: string | null): NavItem[] {
   const githubPath = activeOrganizationId
@@ -33,9 +63,34 @@ function createNavItems(activeOrganizationId?: string | null): NavItem[] {
   const automationChildren = activeOrganizationId
     ? [
         {
-          label: "Automations",
+          label: "Terminal",
+          to: `${automationBasePath}/terminal`,
+          isActive: isAutomationTabPath("terminal", {
+            automationBasePath,
+            includeProjectScope: true,
+          }),
+        },
+        {
+          label: "Scripts",
           to: `${automationBasePath}/scripts`,
-          isActive: isAutomationTabPath("scripts"),
+          isActive: isAutomationTabPath("scripts", {
+            automationBasePath,
+            includeProjectScope: true,
+          }),
+        },
+        {
+          label: "Router",
+          to: `${automationBasePath}/router`,
+          isActive: isAutomationTabPath("router", {
+            automationBasePath,
+            includeProjectScope: true,
+          }),
+        },
+        {
+          label: "Projects",
+          to: activeOrganizationId
+            ? `/backoffice/projects/${activeOrganizationId}`
+            : "/backoffice/projects",
         },
         {
           label: "Store",
@@ -61,14 +116,15 @@ function createNavItems(activeOrganizationId?: string | null): NavItem[] {
         },
       ]
     : undefined;
-  const projectsPath = activeOrganizationId
-    ? `/backoffice/projects/${activeOrganizationId}`
-    : "/backoffice/projects";
-
   return [
-    { label: "Dashboard", to: "/backoffice", end: true },
-    { label: "Projects", to: projectsPath },
-    { label: "Automations", to: "/backoffice/automations", children: automationChildren },
+    {
+      label: "Automations",
+      to: "/backoffice/automations",
+      isActive: (pathname) =>
+        pathname.startsWith("/backoffice/automations") ||
+        pathname.startsWith("/backoffice/projects"),
+      children: automationChildren,
+    },
     { label: "Sessions", to: "/backoffice/sessions" },
     { label: "Files", to: "/backoffice/files" },
     {

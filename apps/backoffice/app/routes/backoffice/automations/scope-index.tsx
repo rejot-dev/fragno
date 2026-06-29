@@ -4,7 +4,7 @@ import type { Route } from "./+types/scope-index";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
-  return redirect(`${url.pathname.replace(/\/+$/, "")}/scripts`);
+  return redirect(`${url.pathname.replace(/\/+$/, "")}/terminal`);
 }
 
 export default function BackofficeAutomationScopeIndex() {

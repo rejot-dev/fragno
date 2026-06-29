@@ -5,7 +5,7 @@ export default [
   route("backoffice/sign-up", "routes/backoffice/sign-up.tsx"),
   layout("layouts/backoffice-layout.tsx", [
     ...prefix("backoffice", [
-      index("routes/backoffice/dashboard.tsx"),
+      index("routes/backoffice/index.tsx"),
       route("organisations", "routes/backoffice/organisations.tsx"),
       route("invitations/:invitationId", "routes/backoffice/invitation-accept.tsx"),
       route("organisations/:orgId", "routes/backoffice/organisation-layout.tsx", [
@@ -37,6 +37,7 @@ export default [
       ),
       route("automations/:scopeKind/:scopeId", "routes/backoffice/automations/scope-layout.tsx", [
         index("routes/backoffice/automations/scope-index.tsx"),
+        route("terminal", "routes/backoffice/automations/terminal.tsx"),
         route("scripts", "routes/backoffice/automations/scripts.tsx"),
         route("router", "routes/backoffice/automations/router.tsx"),
         route("store", "routes/backoffice/automations/store.tsx"),

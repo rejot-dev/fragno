@@ -106,8 +106,7 @@ export default function BackofficeSignUp() {
             Create a backoffice account for local development access.
           </h1>
           <p className="text-sm text-[var(--bo-muted)]">
-            Set up an email and password to enter the backoffice dashboard and configure fragments
-            locally.
+            Set up an email and password to enter the backoffice and configure fragments locally.
           </p>
           <div className="flex flex-wrap gap-2">
             <Link
