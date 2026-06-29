@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Form, useActionData, useNavigation, useOutletContext } from "react-router";
 
+import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { FormContainer, FormField, WizardStepper } from "@/components/backoffice";
 import { telegramCapability } from "@/fragno/backoffice-capabilities/capabilities/telegram";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -198,7 +199,8 @@ export default function BackofficeOrganisationTelegramConfiguration() {
   });
 
   const webhookBaseUrl = formState.webhookBaseUrl.trim();
-  const webhookUrl = `${webhookBaseUrl.replace(/\/+$/, "")}/api/telegram/${orgId}/telegram/webhook`;
+  const telegramScopeSegment = backofficeContextScopeSinglePathSegment({ kind: "org", orgId });
+  const webhookUrl = `${webhookBaseUrl.replace(/\/+$/, "")}/api/telegram/${telegramScopeSegment}/telegram/webhook`;
   const apiBaseUrlError = validateOptionalUrl(formState.apiBaseUrl.trim(), "API base URL");
   const webhookBaseUrlError = validateRequiredUrl(
     formState.webhookBaseUrl.trim(),

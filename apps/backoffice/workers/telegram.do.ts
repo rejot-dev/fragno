@@ -1,15 +1,22 @@
-import { DurableObject } from "cloudflare:workers";
+import { DurableObject, RpcTarget } from "cloudflare:workers";
 import { z } from "zod";
 
 import type { TelegramApi, TelegramFragmentConfig } from "@fragno-dev/telegram-fragment";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import {
+  backofficeContextScopesEqual,
+  type BackofficeContextScope,
+} from "@/backoffice-runtime/context";
 import type { TelegramObject } from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
-import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
+import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
+import {
+  AUTOMATION_SYSTEM_ACTOR,
+  type AutomationEventSubject,
+} from "@/fragno/automation/contracts";
 import { telegramConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/telegram";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
@@ -27,7 +34,7 @@ import {
 } from "./lib/backoffice-fragment-durable-object";
 
 type StoredTelegramConfig = TelegramConfig & {
-  scope: Extract<BackofficeContextScope, { kind: "org" }>;
+  scope: BackofficeContextScope;
   webhookBaseUrl?: string;
   createdAt: string;
   updatedAt: string;
@@ -60,7 +67,7 @@ type TelegramAdminApiSetWebhookInput = {
   apiBaseUrl?: string | null;
   webhookUrl: string;
   secretToken: string;
-  orgId?: string;
+  scope: BackofficeContextScope;
 };
 
 type TelegramAdminApi = {
@@ -79,9 +86,7 @@ const maskSecret = (value: string) => {
   return `${value.slice(0, 4)}…${value.slice(-4)}`;
 };
 
-const setAdminConfigInputSchema = telegramConfigureInputSchema.extend({
-  orgId: z.string().trim().min(1, "Missing organisation id."),
-});
+const setAdminConfigInputSchema = telegramConfigureInputSchema;
 
 const telegramApiResponseSchema = z.object({
   ok: z.boolean().optional(),
@@ -141,11 +146,29 @@ function buildConfigResponse(config: StoredTelegramConfig | null): TelegramAdmin
   };
 }
 
-const resolveWebhookUrl = (origin: string, orgId: string, baseUrl?: string) => {
+const resolveWebhookUrl = (origin: string, scope: BackofficeContextScope, baseUrl?: string) => {
   const resolvedOrigin = baseUrl ?? origin;
   const trimmed = resolvedOrigin.replace(/\/+$/, "");
-  return `${trimmed}/api/telegram/${orgId}/telegram/webhook`;
+  return `${trimmed}/api/telegram/${backofficeContextScopeSinglePathSegment(scope)}/telegram/webhook`;
 };
+
+const assertTelegramObjectScope = (
+  expected: BackofficeContextScope,
+  actual: BackofficeContextScope,
+) => {
+  if (!backofficeContextScopesEqual(expected, actual)) {
+    throw new Error("Backoffice object method scope does not match object address scope.");
+  }
+};
+
+const telegramCapabilityConfiguredSubject = (
+  scope: BackofficeContextScope,
+): AutomationEventSubject => ({
+  ...(scope.kind === "org" || scope.kind === "project" ? { orgId: scope.orgId } : {}),
+  ...(scope.kind === "project" ? { projectId: scope.projectId } : {}),
+  ...(scope.kind === "user" ? { userId: scope.userId } : {}),
+  capabilityId: "telegram",
+});
 
 const normalizeTelegramApiBaseUrl = (apiBaseUrl?: string | null) =>
   (apiBaseUrl ?? DEFAULT_TELEGRAM_API_BASE_URL).replace(/\/+$/, "");
@@ -178,7 +201,7 @@ const normalizeTelegramAutomationFile = (
 };
 
 const createFetchTelegramAdminApi = (): TelegramAdminApi => ({
-  async setWebhook({ botToken, apiBaseUrl, webhookUrl, secretToken, orgId }) {
+  async setWebhook({ botToken, apiBaseUrl, webhookUrl, secretToken, scope }) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
     let response: Response;
@@ -201,14 +224,14 @@ const createFetchTelegramAdminApi = (): TelegramAdminApi => ({
         const name = String((error as { name?: string }).name);
         if (name === "AbortError") {
           console.warn("Telegram webhook request timed out", {
-            orgId,
+            scope,
             webhookUrl,
           });
           return { ok: false, message: "Telegram API request timed out" };
         }
       }
       console.error("Telegram webhook request failed", {
-        orgId,
+        scope,
         webhookUrl,
         error,
       });
@@ -226,7 +249,7 @@ const createFetchTelegramAdminApi = (): TelegramAdminApi => ({
       const message =
         payload?.description ?? `Telegram API rejected the webhook (${response.status}).`;
       console.warn("Telegram webhook rejected", {
-        orgId,
+        scope,
         webhookUrl,
         status: response.status,
         description: payload?.description ?? null,
@@ -241,11 +264,12 @@ const createFetchTelegramAdminApi = (): TelegramAdminApi => ({
   },
 });
 
-export class InMemoryTelegramObject implements TelegramObject {
+export class InMemoryTelegramObject extends RpcTarget implements TelegramObject {
   #state: BackofficeObjectState;
   #runtime: BackofficeRuntimeServices;
   #api?: TelegramApi;
   #adminApi?: TelegramAdminApi;
+  #scope: BackofficeContextScope | null = null;
   #host: BackofficeFragmentDurableObject<
     StoredTelegramConfig,
     TelegramFragmentConfig,
@@ -263,6 +287,7 @@ export class InMemoryTelegramObject implements TelegramObject {
     api?: TelegramApi;
     adminApi?: TelegramAdminApi;
   }) {
+    super();
     this.#state = state;
     this.#runtime = runtime;
     this.#api = api;
@@ -292,7 +317,7 @@ export class InMemoryTelegramObject implements TelegramObject {
                   console.warn(
                     "Ignoring Telegram message because automations routing is unavailable",
                     {
-                      orgId: null,
+                      scope: null,
                       updateId: payload.updateId,
                       messageId: payload.messageId,
                     },
@@ -303,9 +328,7 @@ export class InMemoryTelegramObject implements TelegramObject {
                 const { scope } = runtime.stored;
                 await this.#runtime.objects.automations
                   .for(scope)
-                  .triggerIngestEvent(
-                    buildTelegramAutomationEvent(scope.orgId, payload, context.hookId),
-                  );
+                  .triggerIngestEvent(buildTelegramAutomationEvent(scope, payload, context.hookId));
               },
             },
           },
@@ -329,10 +352,7 @@ export class InMemoryTelegramObject implements TelegramObject {
             },
             actor: AUTOMATION_SYSTEM_ACTOR,
             actors: [AUTOMATION_SYSTEM_ACTOR],
-            subject: {
-              orgId: scope.orgId,
-              capabilityId: "telegram",
-            },
+            subject: telegramCapabilityConfiguredSubject(scope),
           });
         },
       },
@@ -343,7 +363,30 @@ export class InMemoryTelegramObject implements TelegramObject {
     });
   }
 
+  init(scope: BackofficeContextScope): TelegramObject {
+    if (this.#scope) {
+      assertTelegramObjectScope(this.#scope, scope);
+      return this;
+    }
+
+    this.#scope = scope;
+    return this;
+  }
+
+  #requireScope(): BackofficeContextScope {
+    if (!this.#scope) {
+      throw new Error("Telegram object has not been initialized with scope metadata.");
+    }
+
+    return this.#scope;
+  }
+
+  #assertStoredScope(stored: StoredTelegramConfig | null) {
+    this.#host.assertSameScope(stored, this.#requireScope());
+  }
+
   async getAutomationFile(input: { fileId: string }): Promise<TelegramAutomationFileMetadata> {
+    this.#assertStoredScope(this.#host.getConfigured()?.stored ?? null);
     const { source: config } = this.#host.requireConfigured();
     const { fileId } = automationFileInputSchema.parse(input);
 
@@ -424,10 +467,12 @@ export class InMemoryTelegramObject implements TelegramObject {
 
   async getAdminConfig(): Promise<TelegramAdminConfigResponse> {
     const config = await this.#host.loadStored();
+    this.#assertStoredScope(config);
     return buildConfigResponse(config);
   }
 
   async resetAdminConfig(): Promise<TelegramAdminConfigResponse> {
+    this.#assertStoredScope(await this.#host.loadStored());
     await this.#state.blockConcurrencyWhile(async () => {
       await this.#host.clearConfig();
     });
@@ -435,11 +480,10 @@ export class InMemoryTelegramObject implements TelegramObject {
   }
 
   async setAdminConfig(payload: unknown, origin: string): Promise<TelegramAdminConfigResponse> {
-    const parsed = setAdminConfigInputSchema.parse(payload);
-    const { orgId: normalizedOrgId, ...config } = parsed;
+    const config = setAdminConfigInputSchema.parse(payload);
+    const scope = this.#requireScope();
 
     const existing = await this.#host.loadStored();
-    const scope = { kind: "org" as const, orgId: normalizedOrgId };
     this.#host.assertSameScope(existing, scope);
 
     const now = new Date().toISOString();
@@ -466,13 +510,13 @@ export class InMemoryTelegramObject implements TelegramObject {
       throw new Error("Failed to migrate Telegram schema.");
     }
 
-    const webhookUrl = resolveWebhookUrl(origin, normalizedOrgId, stored.webhookBaseUrl);
+    const webhookUrl = resolveWebhookUrl(origin, scope, stored.webhookBaseUrl);
     const webhookResult = await (this.#adminApi ?? createFetchTelegramAdminApi()).setWebhook({
       botToken: stored.botToken,
       apiBaseUrl: stored.apiBaseUrl,
       webhookUrl,
       secretToken: stored.webhookSecretToken,
-      orgId: normalizedOrgId,
+      scope,
     });
 
     return {
@@ -491,15 +535,17 @@ export class InMemoryTelegramObject implements TelegramObject {
   }
 
   getDurableHookRepository() {
+    this.#requireScope();
     return this.#host.getDurableHookRepository<DurableHookQueueOptions>(({ runtime }) => runtime);
   }
 
   async fetch(request: Request): Promise<Response> {
+    this.#requireScope();
     return await this.#host.fetch(request);
   }
 }
 
-export class Telegram extends DurableObject<CloudflareEnv> implements TelegramObject {
+export class Telegram extends DurableObject<CloudflareEnv> {
   #object: InMemoryTelegramObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
@@ -510,32 +556,12 @@ export class Telegram extends DurableObject<CloudflareEnv> implements TelegramOb
     });
   }
 
-  async getAutomationFile(input: { fileId: string }): Promise<TelegramAutomationFileMetadata> {
-    return await this.#object.getAutomationFile(input);
-  }
-
-  async downloadAutomationFile(input: { fileId: string }): Promise<Response> {
-    return await this.#object.downloadAutomationFile(input);
+  init(scope: BackofficeContextScope): TelegramObject {
+    return this.#object.init(scope);
   }
 
   async alarm() {
     await this.#object.alarm();
-  }
-
-  async getAdminConfig(): Promise<TelegramAdminConfigResponse> {
-    return await this.#object.getAdminConfig();
-  }
-
-  async resetAdminConfig(): Promise<TelegramAdminConfigResponse> {
-    return await this.#object.resetAdminConfig();
-  }
-
-  async setAdminConfig(payload: unknown, origin: string): Promise<TelegramAdminConfigResponse> {
-    return await this.#object.setAdminConfig(payload, origin);
-  }
-
-  getDurableHookRepository() {
-    return this.#object.getDurableHookRepository();
   }
 
   async fetch(request: Request): Promise<Response> {

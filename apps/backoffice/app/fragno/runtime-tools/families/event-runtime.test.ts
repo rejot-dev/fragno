@@ -47,7 +47,7 @@ describe("createEventRuntime.emitEvent", () => {
     });
 
     await expect(
-      runtime.emitEvent({ eventType: "custom.event", payload: { ok: true } }),
+      runtime.emitEvent({ eventType: "custom.event", source: "backoffice", payload: { ok: true } }),
     ).resolves.toMatchObject({
       accepted: true,
       scope: { kind: "org", orgId: "org-1" },
@@ -77,6 +77,50 @@ describe("createEventRuntime.emitEvent", () => {
     );
   });
 
+  it("requires source without a parent automation event", async () => {
+    const objects = {
+      automations: {
+        forOrg: vi.fn(() => ({ triggerIngestEvent: vi.fn(async () => undefined) })),
+      },
+    } as unknown as BackofficeObjectRegistry;
+    const runtime = createEventRuntime({
+      objects,
+      kernel: new BackofficeKernel({ objects }),
+      execution: {
+        actor: { type: "user", id: "user-1", userId: "user-1", organizationIds: ["org-1"] },
+        scope: { kind: "org", orgId: "org-1" },
+      },
+    });
+
+    await expect(runtime.emitEvent({ eventType: "custom.event" })).rejects.toThrow(
+      "event.emit source is required without a parent automation event.",
+    );
+  });
+
+  it("requires actorType when overriding the external actor", async () => {
+    const triggerIngestEvent = vi.fn(async () => undefined);
+    const objects = {
+      automations: {
+        forOrg: vi.fn(() => ({ triggerIngestEvent })),
+      },
+    } as unknown as BackofficeObjectRegistry;
+    const event = createEvent();
+    const runtime = createEventRuntime({
+      objects,
+      kernel: new BackofficeKernel({ objects }),
+      execution: {
+        actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
+        scope: event.scope,
+      },
+      parentEvent: event,
+    });
+
+    await expect(
+      runtime.emitEvent({ eventType: "custom.event", externalActorId: "external-1" }),
+    ).rejects.toThrow("event.emit actorType is required when externalActorId is provided.");
+    expect(triggerIngestEvent).not.toHaveBeenCalled();
+  });
+
   it("normalizes array payloads to an empty object", async () => {
     const triggerIngestEvent = vi.fn(async () => undefined);
     const objects = {
@@ -85,9 +129,15 @@ describe("createEventRuntime.emitEvent", () => {
         forOrg: vi.fn(() => ({ triggerIngestEvent })),
       },
     } as unknown as BackofficeObjectRegistry;
+    const event = createEvent();
     const runtime = createEventRuntime({
       objects,
-      event: createEvent(),
+      kernel: new BackofficeKernel({ objects }),
+      execution: {
+        actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
+        scope: event.scope,
+      },
+      parentEvent: event,
     });
 
     await expect(
@@ -135,7 +185,7 @@ describe("createEventRuntime.emitEvent", () => {
         actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
         scope: { kind: "org", orgId: "org-1" },
       },
-      event: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
+      parentEvent: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
     });
 
     await expect(
@@ -176,7 +226,7 @@ describe("createEventRuntime.emitEvent", () => {
         actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
         scope: { kind: "org", orgId: "org-1" },
       },
-      event: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
+      parentEvent: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
     });
 
     await expect(
@@ -213,7 +263,7 @@ describe("createEventRuntime.emitEvent", () => {
         actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
         scope: { kind: "org", orgId: "org-1" },
       },
-      event: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
+      parentEvent: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
     });
 
     await expect(
@@ -240,7 +290,7 @@ describe("createEventRuntime.emitEvent", () => {
         actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
         scope: { kind: "org", orgId: "org-1" },
       },
-      event: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
+      parentEvent: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
     });
 
     await expect(
@@ -270,7 +320,7 @@ describe("createEventRuntime.emitEvent", () => {
         actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
         scope: { kind: "org", orgId: "org-1" },
       },
-      event: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
+      parentEvent: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
     });
 
     await expect(
@@ -291,9 +341,15 @@ describe("createEventRuntime.emitEvent", () => {
         forOrg: vi.fn(() => ({ triggerIngestEvent })),
       },
     } as unknown as BackofficeObjectRegistry;
+    const event = createEvent();
     const runtime = createEventRuntime({
       objects,
-      event: createEvent(),
+      kernel: new BackofficeKernel({ objects }),
+      execution: {
+        actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
+        scope: event.scope,
+      },
+      parentEvent: event,
     });
 
     await runtime.emitEvent({

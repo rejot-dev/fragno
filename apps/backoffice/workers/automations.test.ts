@@ -96,6 +96,18 @@ describe("createDefaultAutomationFileSystem", () => {
 });
 
 describe("Automations object scope binding", () => {
+  test("rejects events whose scope does not match the object address", async () => {
+    const runtime = await createInMemoryBackofficeRuntime();
+
+    try {
+      await expect(
+        runtime.objects.automations.singleton().ingestEvent(scopedEvent("org-1")),
+      ).rejects.toThrow("Backoffice object method scope does not match object address scope.");
+    } finally {
+      await runtime.cleanup();
+    }
+  });
+
   test("rejects events whose scope does not match an already configured object", async () => {
     const runtime = await createInMemoryBackofficeRuntime();
 
@@ -104,7 +116,7 @@ describe("Automations object scope binding", () => {
       await automations.ingestEvent(scopedEvent("org-1"));
 
       await expect(automations.ingestEvent(scopedEvent("org-2"))).rejects.toThrow(
-        "Automations Durable Object is already bound to a different scope.",
+        "Backoffice object method scope does not match object address scope.",
       );
     } finally {
       await runtime.cleanup();

@@ -14,7 +14,6 @@ import { InMemoryResendObject } from "../../workers/resend.do";
 import { InMemoryReson8Object } from "../../workers/reson8.do";
 import { InMemoryTelegramObject } from "../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../workers/upload.do";
-import type { BackofficeContextScope } from "./context";
 import {
   InMemoryDurableObjectNamespace,
   type InMemoryDurableObjectFactory,
@@ -39,7 +38,6 @@ export type InMemoryBackofficeObjectFactory<TObject> = (input: {
   env: InMemoryBackofficeRuntimeEnv;
   runtime: BackofficeRuntimeServices;
   getAutomationFileSystem?: InMemoryObjectFactoryOptions["getAutomationFileSystem"];
-  ownerScope?: BackofficeContextScope;
 }) => TObject;
 
 export type InMemoryObjectFactoryOverrides = Partial<
@@ -58,26 +56,11 @@ export type InMemoryObjectFactoryOptions = {
 
 type NamespaceMap = Record<string, InMemoryDurableObjectNamespace<unknown>>;
 
-const ownerScopeFromAddress = (
-  address: BackofficeObjectAddress,
-): BackofficeContextScope | undefined => {
-  if (address.scope.kind === "org") {
-    return { kind: "org", orgId: address.scope.orgId };
-  }
-  if (address.scope.kind === "project") {
-    return {
-      kind: "project",
-      orgId: address.scope.orgId,
-      projectId: address.scope.projectId,
-    };
-  }
-  if (address.scope.kind === "user") {
-    return { kind: "user", userId: address.scope.userId };
-  }
-  return undefined;
-};
-
 class UnavailableInMemoryDurableObject {
+  init() {
+    return this;
+  }
+
   async fetch() {
     return Response.json({ message: "Not configured", code: "NOT_CONFIGURED" }, { status: 400 });
   }
@@ -227,13 +210,12 @@ const inMemoryObjectFactories = {
       env: env as never,
       runtime,
     }),
-  AUTOMATIONS: ({ state, env, runtime, getAutomationFileSystem, ownerScope }) =>
+  AUTOMATIONS: ({ state, env, runtime, getAutomationFileSystem }) =>
     new InMemoryAutomationsObject({
       state,
       env,
       runtime,
       getAutomationFileSystem,
-      ownerScope,
     }),
 } satisfies Record<BackofficeObjectBindingName, InMemoryBackofficeObjectFactory<unknown>>;
 
@@ -244,7 +226,6 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
   #getRuntimeServices: () => BackofficeRuntimeServices;
   #getAutomationFileSystem?: InMemoryObjectFactoryOptions["getAutomationFileSystem"];
   #objectFactories?: InMemoryObjectFactoryOverrides;
-  #ownerScopes = new Map<string, BackofficeContextScope | undefined>();
   #timeOffsetMs = 0;
 
   constructor(options: InMemoryObjectFactoryOptions) {
@@ -264,10 +245,10 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
     return namespace?.has(namespace.idFromName(encodeBackofficeObjectAddress(address))) ?? false;
   }
 
-  get<TObject>(
-    binding: BackofficeObjectBinding<TObject>,
+  get<TObject, TRawObject = TObject>(
+    binding: BackofficeObjectBinding<TObject, TRawObject>,
     address: BackofficeObjectAddress,
-  ): TObject {
+  ): TRawObject {
     if (address.binding !== binding.name) {
       throw new Error(
         `Backoffice object address binding ${address.binding} does not match requested binding ${binding.name}.`,
@@ -276,8 +257,7 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
     assertBackofficeObjectAddressAllowed(address);
     const namespace = this.#namespace<TObject>(binding);
     const encodedName = encodeBackofficeObjectAddress(address);
-    this.#ownerScopes.set(`${binding.name}:${encodedName}`, ownerScopeFromAddress(address));
-    return namespace.get(namespace.idFromName(encodedName));
+    return namespace.get(namespace.idFromName(encodedName)) as unknown as TRawObject;
   }
 
   instances(): InMemoryDurableObjectInstance<unknown>[] {
@@ -378,7 +358,6 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
           env: this.env,
           runtime: this.#getRuntimeServices(),
           getAutomationFileSystem: this.#getAutomationFileSystem,
-          ownerScope: this.#ownerScopes.get(input.name),
         }),
     }) as InMemoryDurableObjectNamespace<unknown>;
   }

@@ -1,6 +1,8 @@
 import { describe, expect, test, assert } from "vitest";
 
 import {
+  backofficeContextScopeFromSinglePathSegment,
+  backofficeContextScopeSinglePathSegment,
   backofficeScopeFromRouteParams,
   backofficeScopeFromSinglePathSegment,
   backofficeScopeRouteId,
@@ -30,6 +32,14 @@ describe("backoffice scope codec", () => {
     assert(
       backofficeScopeSinglePathSegment({ kind: "project", orgId: "org:1", projectId: "p/2" }) ===
         "project:org%3A1:p%2F2",
+    );
+  });
+
+  test("supports system scopes for object-address metadata and public callbacks", () => {
+    assert(backofficeContextScopeSinglePathSegment({ kind: "system" }) === "system");
+    expect(backofficeContextScopeFromSinglePathSegment("system")).toEqual({ kind: "system" });
+    expect(() => backofficeScopeFromSinglePathSegment("system")).toThrow(
+      "System scope is not routable here.",
     );
   });
 

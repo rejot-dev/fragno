@@ -17,16 +17,13 @@ export type { EventRuntime };
 
 export type CreateEventRuntimeOptions = {
   objects: BackofficeObjectRegistry;
-  event?: AutomationEvent;
-  kernel?: BackofficeKernel;
-  execution?: BackofficeExecutionContext;
-  defaultSource?: string;
+  parentEvent?: AutomationEvent;
+  kernel: BackofficeKernel;
+  execution: BackofficeExecutionContext;
 };
 
-const automationActorFromPrincipal = (
-  actor: BackofficePrincipal | undefined,
-): AutomationEventActor => {
-  if (!actor || actor.type === "system") {
+const automationActorFromPrincipal = (actor: BackofficePrincipal): AutomationEventActor => {
+  if (actor.type === "system") {
     return AUTOMATION_SYSTEM_ACTOR;
   }
 
@@ -62,14 +59,15 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
     payload,
     targetScope,
   }) => {
-    const { event } = options;
-    const currentScope = event?.scope ?? options.execution?.scope ?? { kind: "system" };
+    const { parentEvent } = options;
+    const currentScope = options.execution.scope;
+    if (parentEvent && !backofficeContextScopesEqual(parentEvent.scope, currentScope)) {
+      throw new Error("Parent automation event scope must match the execution scope.");
+    }
+
     const resolvedTargetScope = targetScope ?? currentScope;
 
     if (!backofficeContextScopesEqual(resolvedTargetScope, currentScope)) {
-      if (!options.kernel || !options.execution) {
-        throw new Error("event.emit cross-scope routing requires a Backoffice kernel");
-      }
       options.kernel.assertAutomationForwardTargetAllowed({
         ownerScope: currentScope,
         targetScope: resolvedTargetScope,
@@ -94,20 +92,29 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
       throw new Error(`Project '${resolvedTargetScope.projectId}' is not available.`);
     }
 
-    const nextSource = source ?? event?.source ?? options.defaultSource ?? "backoffice";
-    const baseActor = event?.actor ?? automationActorFromPrincipal(options.execution?.actor);
-    const baseActors = event?.actors ?? [baseActor];
+    const nextSource = source ?? parentEvent?.source;
+    if (!nextSource) {
+      throw new Error("event.emit source is required without a parent automation event.");
+    }
+
+    const baseActor = parentEvent?.actor ?? automationActorFromPrincipal(options.execution.actor);
+    const baseActors = parentEvent?.actors ?? [baseActor];
     const nextActor = externalActorId
-      ? {
-          scope: "external" as const,
-          source: nextSource,
-          type: actorType ?? baseActor.type ?? "actor",
-          id: externalActorId,
-        }
+      ? (() => {
+          if (!actorType) {
+            throw new Error("event.emit actorType is required when externalActorId is provided.");
+          }
+          return {
+            scope: "external" as const,
+            source: nextSource,
+            type: actorType,
+            id: externalActorId,
+          };
+        })()
       : baseActor;
     const nextEvent: AutomationEvent = {
-      id: event
-        ? `${event.id}:${eventType}:${crypto.randomUUID()}`
+      id: parentEvent
+        ? `${parentEvent.id}:${eventType}:${crypto.randomUUID()}`
         : `${nextSource}:${eventType}:${crypto.randomUUID()}`,
       scope: resolvedTargetScope,
       source: nextSource,
@@ -119,19 +126,21 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
       subject:
         resolvedTargetScope.kind === "project"
           ? {
-              ...event?.subject,
+              ...parentEvent?.subject,
               orgId: resolvedTargetScope.orgId,
               projectId: targetProject!.projectId,
               ...(subjectUserId ? { userId: subjectUserId } : {}),
             }
           : subjectUserId
             ? { userId: subjectUserId }
-            : (event?.subject ?? null),
+            : (parentEvent?.subject ?? null),
     };
 
-    const targetObject = options.kernel
-      ? options.kernel.scoped("AUTOMATIONS", resolvedTargetScope, options.objects.automations)
-      : options.objects.automations.for(resolvedTargetScope);
+    const targetObject = options.kernel.scoped(
+      "AUTOMATIONS",
+      resolvedTargetScope,
+      options.objects.automations,
+    );
     await targetObject.triggerIngestEvent(nextEvent);
 
     return {

@@ -80,7 +80,8 @@ const telegramCapabilityConfiguredPayloadSchema = z.object({
 });
 
 const telegramCapabilityConfiguredSubjectSchema = z.object({
-  orgId: z.string().trim().min(1),
+  orgId: z.string().trim().min(1).optional(),
+  userId: z.string().trim().min(1).optional(),
   capabilityId: z.literal("telegram"),
 });
 
@@ -145,7 +146,7 @@ export const telegramCapability: BackofficeConfigurableConnectionCapability = {
     configure: async ({ objects, orgId, origin, payload }) =>
       toTelegramStatus(
         await getTelegramDo(objects, orgId).setAdminConfig(
-          { ...telegramConfigureInputSchema.parse(payload), orgId },
+          telegramConfigureInputSchema.parse(payload),
           origin,
         ),
       ),

@@ -86,7 +86,7 @@ export const createAutomationRuntime = ({
       ...routeBacked.otp.runtime,
       ...createEventRuntime({
         objects: runtime.objects,
-        event,
+        parentEvent: event,
         kernel,
         execution,
       }),

@@ -12,7 +12,7 @@ import {
   backofficeContextScopesEqual,
   type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
-import { backofficeScopeFromSinglePathSegment } from "@/backoffice-runtime/scope-codec";
+import { backofficeContextScopeFromSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import {
   createDurableHookRepository,
   createDurableHookRepositoryRpcTarget,
@@ -282,7 +282,7 @@ const scopeFromRequestGuard = (request: Request) => {
   }
 
   try {
-    return { ok: true as const, scope: backofficeScopeFromSinglePathSegment(encodedScope) };
+    return { ok: true as const, scope: backofficeContextScopeFromSinglePathSegment(encodedScope) };
   } catch {
     return { ok: false as const, response: invalidScopeGuardResponse("Invalid scope guard.") };
   }

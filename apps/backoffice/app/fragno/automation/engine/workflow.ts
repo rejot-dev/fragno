@@ -62,7 +62,7 @@ const createWorkflowAutomationContext = ({
   });
   const eventRuntime = createEventRuntime({
     objects: runtime.objects,
-    event: params.automationEvent,
+    parentEvent: params.automationEvent,
     kernel,
     execution,
   });

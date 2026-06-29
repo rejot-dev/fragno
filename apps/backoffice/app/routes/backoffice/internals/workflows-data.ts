@@ -212,7 +212,7 @@ const createWorkflowsRouteCaller = (
     baseUrl: request.url,
     mountRoute,
     baseHeaders: request.headers,
-    fetch: doInstance.fetch.bind(doInstance),
+    fetch: (outboundRequest) => doInstance.fetch(outboundRequest),
   }) as unknown as WorkflowsRouteCaller;
 };
 

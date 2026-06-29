@@ -141,7 +141,7 @@ describe("project automation event routing", () => {
         actor: { type: "automation", id: "automation:org-event-1", organizationIds: [orgId] },
         scope: event.scope,
       },
-      event,
+      parentEvent: event,
     });
 
     await expect(
@@ -298,7 +298,7 @@ describe("project automation event routing", () => {
         },
         scope: event.scope,
       },
-      event,
+      parentEvent: event,
     });
 
     await expect(

@@ -204,7 +204,7 @@ export default [
     route("reson8/:orgId/*", "routes/api/reson8.ts"),
     route("mcp/:scopeSegment/*", "routes/api/mcp.ts"),
     route("http/:scopeSegment/*", "routes/api/api.ts"),
-    route("telegram/:orgId/*", "routes/api/telegram.ts"),
+    route("telegram/:scopeSegment/*", "routes/api/telegram.ts"),
     route("otp/:orgId/*", "routes/api/otp.ts"),
     route("github/webhooks", "routes/api/github-webhooks.ts"),
     route("github/:orgId/*", "routes/api/github.ts"),
