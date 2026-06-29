@@ -93,8 +93,8 @@ type DashboardTerminalSnapshot = {
 };
 
 type UseDashboardTerminalOptions = {
-  organizationId?: string | null;
-  organizationName?: string | null;
+  scopeId?: string | null;
+  scopeName?: string | null;
   result?: DashboardCommandResult;
   pathAutocompleteResult?: DashboardPathAutocompleteResult;
   requestPathAutocomplete?: (request: DashboardPathAutocompleteRequest) => void;
@@ -112,8 +112,8 @@ const escapeForRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, 
 
 const trimHistory = <T>(items: T[]) => items.slice(-MAX_HISTORY);
 
-const getStorageKey = (organizationId?: string | null) =>
-  `${DASHBOARD_TERMINAL_STORAGE_KEY}:${organizationId ?? "none"}`;
+const getStorageKey = (scopeId?: string | null) =>
+  `${DASHBOARD_TERMINAL_STORAGE_KEY}:${scopeId ?? "none"}`;
 
 const firstLine = (value: string) => value.trim().split("\n")[0]?.trim() ?? "";
 
@@ -315,7 +315,7 @@ export const shortenDashboardCwd = (cwd: string, maxLength = 40) => {
 };
 
 export const createWelcomeEntry = (
-  organizationName?: string | null,
+  scopeName?: string | null,
   timestamp = new Date().toISOString(),
 ): DashboardTerminalEntry => ({
   id: `welcome-${timestamp}`,
@@ -323,46 +323,43 @@ export const createWelcomeEntry = (
   cwd: DEFAULT_CWD,
   ok: true,
   exitCode: 0,
-  output: `Backoffice terminal connected to Pi bash environment.
-Organization: ${organizationName ?? "no active organisation"}
+  output: `Backoffice terminal connected to the selected runtime-tool bash scope.
+Scope: ${scopeName ?? "unscoped"}
 Type a command and press Enter.`,
   durationMs: 0,
   timestamp,
 });
 
 const createSnapshot = (
-  organizationName?: string | null,
+  scopeName?: string | null,
   timestamp?: string,
 ): DashboardTerminalSnapshot => ({
   cwd: DEFAULT_CWD,
-  entries: [createWelcomeEntry(organizationName, timestamp)],
+  entries: [createWelcomeEntry(scopeName, timestamp)],
   commands: [],
 });
 
-const createHydrationSafeSnapshot = (organizationName?: string | null) =>
-  createSnapshot(organizationName, HYDRATION_SAFE_WELCOME_TIMESTAMP);
+const createHydrationSafeSnapshot = (scopeName?: string | null) =>
+  createSnapshot(scopeName, HYDRATION_SAFE_WELCOME_TIMESTAMP);
 
 const readSnapshot = (
-  organizationId?: string | null,
-  organizationName?: string | null,
+  scopeId?: string | null,
+  scopeName?: string | null,
 ): DashboardTerminalSnapshot => {
   if (typeof window === "undefined") {
-    return createHydrationSafeSnapshot(organizationName);
+    return createHydrationSafeSnapshot(scopeName);
   }
 
-  const raw = window.localStorage.getItem(getStorageKey(organizationId));
-  return raw ? (JSON.parse(raw) as DashboardTerminalSnapshot) : createSnapshot(organizationName);
+  const raw = window.localStorage.getItem(getStorageKey(scopeId));
+  return raw ? (JSON.parse(raw) as DashboardTerminalSnapshot) : createSnapshot(scopeName);
 };
 
-const writeSnapshot = (
-  organizationId: string | null | undefined,
-  snapshot: DashboardTerminalSnapshot,
-) => {
+const writeSnapshot = (scopeId: string | null | undefined, snapshot: DashboardTerminalSnapshot) => {
   if (typeof window === "undefined") {
     return;
   }
 
-  window.localStorage.setItem(getStorageKey(organizationId), JSON.stringify(snapshot));
+  window.localStorage.setItem(getStorageKey(scopeId), JSON.stringify(snapshot));
 };
 
 const createEntry = (result: DashboardCommandResult): DashboardTerminalEntry => ({
@@ -558,15 +555,15 @@ printf '\\n%s%s\\n' '${DASHBOARD_CWD_MARKER}' "$PWD" >&2
 exit "$__fragno_dashboard_exit"`;
 
 export const useDashboardTerminal = ({
-  organizationId,
-  organizationName,
+  scopeId,
+  scopeName,
   result,
   pathAutocompleteResult,
   requestPathAutocomplete,
   disabled = false,
   commandSpecs = [],
 }: UseDashboardTerminalOptions) => {
-  const [snapshot, setSnapshot] = useState(() => createHydrationSafeSnapshot(organizationName));
+  const [snapshot, setSnapshot] = useState(() => createHydrationSafeSnapshot(scopeName));
   const [snapshotHydrated, setSnapshotHydrated] = useState(false);
   const [command, setCommand] = useState("");
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -633,17 +630,17 @@ export const useDashboardTerminal = ({
   };
 
   useEffect(() => {
-    setSnapshot(readSnapshot(organizationId, organizationName));
+    setSnapshot(readSnapshot(scopeId, scopeName));
     setSnapshotHydrated(true);
-  }, [organizationId, organizationName]);
+  }, [scopeId, scopeName]);
 
   useEffect(() => {
     if (!snapshotHydrated) {
       return;
     }
 
-    writeSnapshot(organizationId, snapshot);
-  }, [organizationId, snapshot, snapshotHydrated]);
+    writeSnapshot(scopeId, snapshot);
+  }, [scopeId, snapshot, snapshotHydrated]);
 
   useEffect(() => {
     if (disabled || selectionVersion === 0) {
@@ -714,7 +711,7 @@ export const useDashboardTerminal = ({
   }, [autocompleteSuggestions, disabled]);
 
   const clear = () => {
-    setSnapshot(createSnapshot(organizationName));
+    setSnapshot(createSnapshot(scopeName));
     setCommand("");
     setHistoryIndex(-1);
     setHistoryDraft("");

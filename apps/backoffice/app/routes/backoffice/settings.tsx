@@ -65,7 +65,7 @@ export default function BackofficeSettings() {
             />
           </FormField>
         </div>
-        <FormField label="Release focus" hint="Short note shown on the dashboard header.">
+        <FormField label="Release focus" hint="Short note shown in the backoffice header.">
           <textarea
             rows={3}
             defaultValue="Q1 release readiness for auth, workflows, and Stripe fragments."
