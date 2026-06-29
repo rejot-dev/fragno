@@ -1,40 +1,32 @@
-import type { SandboxOptions as CloudflareSdkSandboxOptions } from "@cloudflare/sandbox";
+import type {
+  MountBucketOptions as CloudflareSdkMountBucketOptions,
+  SandboxOptions as CloudflareSdkSandboxOptions,
+} from "@cloudflare/sandbox";
 
 import type {
   ExecuteSandboxCommandOptions,
-  FileExistsResult,
-  MkdirOptions,
   MountBucketOptions,
   SandboxCommandFailure,
-  SandboxInstanceStatus,
   SandboxRuntimeExecOptions,
   SandboxRuntimeExecResult,
   SandboxRuntimeHandle,
   SandboxRuntimeHandleOptions,
   SandboxRuntimeProvider,
-  WriteFileOptions,
 } from "./contracts";
 import { CLOUDFLARE_SANDBOX_PROVIDER } from "./contracts";
 
 type CloudflareSandboxNamespace = CloudflareEnv["SANDBOX"];
 type CloudflareSandboxOptions = Pick<CloudflareSdkSandboxOptions, "keepAlive" | "sleepAfter">;
 
-type CloudflareSandboxRawHandle = {
-  exec(command: string, options?: SandboxRuntimeExecOptions): Promise<SandboxRuntimeExecResult>;
-  destroy(): Promise<void>;
-  mountBucket(bucket: string, mountPoint: string, options: MountBucketOptions): Promise<void>;
-  mkdir(path: string, options?: MkdirOptions): Promise<void>;
-  writeFile(path: string, content: string, options?: WriteFileOptions): Promise<void>;
-  exists(path: string): Promise<FileExistsResult>;
-  getRuntimeStatus(): Promise<{ status: SandboxInstanceStatus }>;
-};
+export type CloudflareSandboxHandle =
+  CloudflareSandboxNamespace extends DurableObjectNamespace<infer TObject> ? TObject : never;
 
 type CloudflareSandboxSdkClient = {
   getSandbox(
     namespace: CloudflareSandboxNamespace,
     id: string,
     options?: CloudflareSandboxOptions,
-  ): CloudflareSandboxRawHandle | Promise<CloudflareSandboxRawHandle>;
+  ): CloudflareSandboxHandle | Promise<CloudflareSandboxHandle>;
 };
 
 export type CloudflareSandboxProviderOptions = {
@@ -84,16 +76,21 @@ export const createCloudflareSandboxProvider = ({
 
 const adaptCloudflareSandboxHandle = (
   id: string,
-  rawHandle: CloudflareSandboxRawHandle,
+  rawHandle: CloudflareSandboxHandle,
 ): SandboxRuntimeHandle => ({
   id,
   exec: async (command, options) => await rawHandle.exec(command, options),
   destroy: async () => await rawHandle.destroy(),
   getRuntimeStatus: async () => await rawHandle.getRuntimeStatus(),
-  mountBucket: async (bucket, mountPoint, options) =>
-    await rawHandle.mountBucket(bucket, mountPoint, options),
-  mkdir: async (path, options) => await rawHandle.mkdir(path, options),
-  writeFile: async (path, content, options) => await rawHandle.writeFile(path, content, options),
+  mountBucket: async (bucket, mountPoint, options) => {
+    await rawHandle.mountBucket(bucket, mountPoint, toCloudflareMountBucketOptions(options));
+  },
+  mkdir: async (path, options) => {
+    await rawHandle.mkdir(path, options);
+  },
+  writeFile: async (path, content, options) => {
+    await rawHandle.writeFile(path, content, options);
+  },
   exists: async (path) => await rawHandle.exists(path),
   async executeCommand(command: string, options?: ExecuteSandboxCommandOptions) {
     try {
@@ -195,6 +192,38 @@ function classifyThrownError(error: unknown): SandboxCommandFailure {
 
 function toRuntimeExecOptions(options?: ExecuteSandboxCommandOptions): SandboxRuntimeExecOptions {
   return stripUndefined({ timeout: options?.timeoutMs });
+}
+
+function toCloudflareMountBucketOptions(
+  options: MountBucketOptions,
+): CloudflareSdkMountBucketOptions {
+  const unsupportedOptions = [
+    ...(options.region !== undefined ? ["region"] : []),
+    ...(options.credentials?.sessionToken !== undefined ? ["credentials.sessionToken"] : []),
+  ];
+
+  if (unsupportedOptions.length > 0) {
+    throw new Error(
+      `Cloudflare sandbox bucket mounts do not support ${unsupportedOptions.join(
+        ", ",
+      )}; these options would be ignored by the Cloudflare SDK.`,
+    );
+  }
+
+  return {
+    endpoint: options.endpoint,
+    ...(options.provider ? { provider: options.provider } : {}),
+    ...(options.credentials
+      ? {
+          credentials: {
+            accessKeyId: options.credentials.accessKeyId,
+            secretAccessKey: options.credentials.secretAccessKey,
+          },
+        }
+      : {}),
+    ...(options.prefix ? { prefix: options.prefix } : {}),
+    ...(options.pathStyle ? { s3fsOptions: ["use_path_request_style"] } : {}),
+  };
 }
 
 function toErrorMessage(error: unknown): string {

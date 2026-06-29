@@ -26,7 +26,7 @@ export function getSandboxRuntime(
       sandboxNamespace: env.SANDBOX,
       sdk: {
         getSandbox(namespace, id, options) {
-          return getSandbox(namespace, id, options) as never;
+          return getSandbox(namespace, id, options);
         },
       },
     }),
