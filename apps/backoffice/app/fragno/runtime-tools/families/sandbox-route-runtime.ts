@@ -1,6 +1,8 @@
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
-import { createCloudflareSandboxProvider } from "@/sandbox/cloudflare-sandbox-provider";
-import type { SandboxRuntimeHandle } from "@/sandbox/contracts";
+import {
+  createCloudflareSandboxProvider,
+  type CloudflareSandboxHandle,
+} from "@/sandbox/cloudflare-sandbox-provider";
 
 import { createSandboxRuntime, type SandboxRuntime } from "./sandbox-runtime";
 
@@ -13,9 +15,7 @@ type SandboxRouteConfiguration = SandboxRouteOptions & {
   sandboxName: { name: string };
 };
 
-type SandboxRouteHandle = SandboxRuntimeHandle;
-
-type ConfigurableSandboxRouteStub = SandboxRouteHandle & {
+type ConfigurableSandboxRouteStub = CloudflareSandboxHandle & {
   configure?(configuration: SandboxRouteConfiguration): Promise<void>;
   setSandboxName?(name: string): Promise<void>;
   setKeepAlive?(keepAlive: boolean): Promise<void>;

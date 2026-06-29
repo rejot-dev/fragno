@@ -164,7 +164,7 @@ export class InMemoryAutomationsObject implements AutomationsObject {
                     sdk: {
                       async getSandbox(namespace, id, options) {
                         const { getSandbox } = await import("@cloudflare/sandbox");
-                        return getSandbox(namespace, id, options) as never;
+                        return getSandbox(namespace, id, options);
                       },
                     },
                   }),

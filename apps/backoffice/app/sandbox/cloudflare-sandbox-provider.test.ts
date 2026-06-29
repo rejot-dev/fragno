@@ -118,4 +118,29 @@ describe("createCloudflareSandboxProvider", () => {
       endpoint: "https://example.r2.cloudflarestorage.com",
     });
   });
+
+  test("rejects Cloudflare bucket mount options that the SDK would ignore", async () => {
+    const sandbox = createCloudflareRuntimeHandleMock();
+    const provider = createCloudflareSandboxProvider({
+      sandboxNamespace: {} as never,
+      sdk: { getSandbox: vi.fn(async () => sandbox) as never },
+    });
+
+    const handle = await provider.getHandle("cf-mount");
+    await expect(
+      handle.mountBucket("uploads", "/uploads", {
+        endpoint: "https://example.r2.cloudflarestorage.com",
+        region: "auto",
+        credentials: {
+          accessKeyId: "key",
+          secretAccessKey: "secret",
+          sessionToken: "token",
+        },
+      }),
+    ).rejects.toThrow(
+      "Cloudflare sandbox bucket mounts do not support region, credentials.sessionToken",
+    );
+
+    expect(sandbox.mountBucket).not.toHaveBeenCalled();
+  });
 });
