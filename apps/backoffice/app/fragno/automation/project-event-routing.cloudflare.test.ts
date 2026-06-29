@@ -168,7 +168,7 @@ describe("project automation event routing", () => {
     expect(workflows.instances).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: expect.stringContaining("project-store-org-event-1-project-event-"),
+          id: expect.stringMatching(/^project-store-[0-9a-f-]{36}$/u),
         }),
       ]),
     );

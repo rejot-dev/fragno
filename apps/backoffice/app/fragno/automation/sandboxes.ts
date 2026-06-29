@@ -84,24 +84,33 @@ export const sandboxInstanceMarkStartingInputSchema = z.object({
   id: sandboxInstanceIdSchema,
 });
 
-export const sandboxInstanceMarkRunningInputSchema = z.object({
-  id: sandboxInstanceIdSchema,
+const sandboxInstanceLifecycleEventContextSchema = z.object({
+  provider: sandboxProviderSchema.optional(),
+  workflowInstanceId: z.string().trim().min(1).nullable().optional(),
   keepAlive: z.boolean().optional(),
   sleepAfter: sandboxSleepAfterSchema.nullable().optional(),
 });
 
-export const sandboxInstanceMarkStoppingInputSchema = z.object({
-  id: sandboxInstanceIdSchema,
-});
+export const sandboxInstanceMarkRunningInputSchema =
+  sandboxInstanceLifecycleEventContextSchema.extend({
+    id: sandboxInstanceIdSchema,
+  });
 
-export const sandboxInstanceMarkStoppedInputSchema = z.object({
-  id: sandboxInstanceIdSchema,
-});
+export const sandboxInstanceMarkStoppingInputSchema =
+  sandboxInstanceLifecycleEventContextSchema.extend({
+    id: sandboxInstanceIdSchema,
+  });
 
-export const sandboxInstanceMarkErrorInputSchema = z.object({
-  id: sandboxInstanceIdSchema,
-  lastError: z.string().trim().min(1),
-});
+export const sandboxInstanceMarkStoppedInputSchema =
+  sandboxInstanceLifecycleEventContextSchema.extend({
+    id: sandboxInstanceIdSchema,
+  });
+
+export const sandboxInstanceMarkErrorInputSchema =
+  sandboxInstanceLifecycleEventContextSchema.extend({
+    id: sandboxInstanceIdSchema,
+    lastError: z.string().trim().min(1),
+  });
 
 export const sandboxInstanceStopRequestInputSchema = z.object({
   id: sandboxInstanceIdSchema,

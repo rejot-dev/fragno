@@ -121,6 +121,7 @@ OAuth restart and troubleshooting notes:
 
 Cataloged automation events:
 
+- \`source\`: \`api\`, \`eventType\`: \`capability.configured\` — fires after API is configured for a scope for the first time.
 - \`source\`: \`api\`, \`eventType\`: \`connection.changed\` — fires when an API connection is created or its configuration changes.
 - \`source\`: \`api\`, \`eventType\`: \`connection.deleted\` — fires when an API connection is deleted.
 - \`source\`: \`api\`, \`eventType\`: \`connection.available\` — fires when auth becomes usable after bearer setup, OAuth callback, or client-credentials token acquisition.

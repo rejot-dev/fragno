@@ -51,6 +51,7 @@ export const createAutomationsRuntime = (
         AUTOMATION_CODEMODE_SCRIPT: defineAutomationCodemodeWorkflow(config),
         PI_CODEMODE_SCRIPT: definePiCodemodeWorkflow(config),
         SANDBOX_LIFECYCLE: defineSandboxLifecycleWorkflow({
+          ownerScope: config.ownerScope,
           sandboxProviders: config.sandboxProviders,
           getAutomationFragment: () => automationFragment,
         }),

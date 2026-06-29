@@ -51,6 +51,7 @@ After the user completes OAuth, refresh the server tools with \`mcp.refreshServe
 
 Cataloged automation events:
 
+- \`source\`: \`mcp\`, \`eventType\`: \`capability.configured\` — fires after MCP is configured for a scope for the first time.
 - \`source\`: \`mcp\`, \`eventType\`: \`server.configuration.changed\` — fires after a server refresh when the advertised tools differ from the previous cache.
 - \`source\`: \`mcp\`, \`eventType\`: \`server.configuration.deleted\` — fires after an MCP server configuration is deleted.
 

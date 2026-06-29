@@ -13,6 +13,12 @@ export const mcpConfigureInputSchema = z.object({});
 const AUTOMATION_SOURCE = "mcp" as const;
 const AUTOMATION_EVENT_SERVER_CONFIGURATION_CHANGED = "server.configuration.changed" as const;
 const AUTOMATION_EVENT_SERVER_CONFIGURATION_DELETED = "server.configuration.deleted" as const;
+const AUTOMATION_EVENT_CAPABILITY_CONFIGURED = "capability.configured" as const;
+
+const mcpCapabilityConfiguredPayloadSchema = z.object({
+  capabilityId: z.literal("mcp"),
+  capabilityLabel: z.literal("MCP"),
+});
 
 const mcpServerConfigurationChangedPayloadSchema = z.object({
   serverId: z.string().min(1),
@@ -25,9 +31,16 @@ const mcpServerConfigurationDeletedPayloadSchema = z.object({
   serverId: z.string().min(1),
 });
 
-const mcpServerConfigurationSubjectSchema = z.object({
+const mcpScopeSubjectSchema = z.object({
   orgId: z.string().min(1).optional(),
   scope: z.unknown().optional(),
+});
+
+const mcpCapabilityConfiguredSubjectSchema = mcpScopeSubjectSchema.extend({
+  capabilityId: z.literal("mcp"),
+});
+
+const mcpServerConfigurationSubjectSchema = mcpScopeSubjectSchema.extend({
   serverId: z.string().min(1),
 });
 
@@ -83,6 +96,18 @@ export const mcpCapability: BackofficeConfigurableConnectionCapability = {
     },
   ],
   automationEvents: [
+    {
+      source: AUTOMATION_SOURCE,
+      eventType: AUTOMATION_EVENT_CAPABILITY_CONFIGURED,
+      label: "MCP configured",
+      description: "Fires after MCP is configured for a scope for the first time.",
+      payloadSchema: mcpCapabilityConfiguredPayloadSchema,
+      subjectSchema: mcpCapabilityConfiguredSubjectSchema,
+      example: {
+        capabilityId: "mcp",
+        capabilityLabel: "MCP",
+      },
+    },
     {
       source: AUTOMATION_SOURCE,
       eventType: AUTOMATION_EVENT_SERVER_CONFIGURATION_CHANGED,

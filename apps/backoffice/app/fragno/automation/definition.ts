@@ -309,6 +309,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
     });
     const sandboxServices = createAutomationSandboxServices(defineService, {
       workflows: serviceDeps.workflows,
+      ownerScope: config.ownerScope,
       sandboxProviders: config.sandboxProviders,
     });
     const routeServices = createAutomationRouteServices(defineService);

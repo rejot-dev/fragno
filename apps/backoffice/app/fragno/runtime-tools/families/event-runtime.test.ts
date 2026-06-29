@@ -57,7 +57,9 @@ describe("createEventRuntime.emitEvent", () => {
 
     expect(triggerIngestEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: expect.stringMatching(/^backoffice:custom\.event:/u),
+        id: expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+        ),
         actor: {
           scope: "internal",
           type: "user",
