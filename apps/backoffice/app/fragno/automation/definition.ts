@@ -5,21 +5,26 @@ import { withDatabase, type TxResult } from "@fragno-dev/db";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { SandboxRuntimeProvider } from "@/sandbox/contracts";
 
 import { createAutomationStoreServices } from "./bindings-storage-runtime";
 import type { AutomationFileSystemConfig } from "./catalog";
-import { STARTER_AUTOMATION_ROUTES } from "./content/starter-routing";
+import {
+  STARTER_AUTOMATION_ROUTES,
+  SYSTEM_STARTER_AUTOMATION_ROUTES,
+} from "./content/starter-routing";
 import type { AutomationEvent } from "./contracts";
 import { type AutomationPiBashContext } from "./engine/runtime";
 import { createAutomationProjectServices } from "./projects-storage-runtime";
 import {
-  automationRouteFromRow,
-  buildStartWorkflowParams,
   buildWorkflowEventPayload,
   evaluateAutomationEventMatcher,
+  renderAutomationRawTemplateValue,
+  renderAutomationScopeTemplate,
   renderAutomationTemplateValue,
+  type AutomationForwardEventAction,
   type AutomationRouteDefinition,
   type AutomationSendWorkflowEventAction,
   type AutomationStartWorkflowAction,
@@ -93,38 +98,6 @@ type RouteExecutionContext = {
 const routeRoutingKey = (event: AutomationEvent, route: AutomationRouteDefinition) =>
   `${event.id}:${route.id}`;
 
-const INITIAL_WORKSPACE_FILE_INITIALIZATION_ROUTE: AutomationRouteDefinition = {
-  id: "system-workspace-file-initialization",
-  name: "Initialize workspace files",
-  enabled: true,
-  source: "auth",
-  eventType: "organization.created",
-  matcher: null,
-  priority: 10,
-  action: {
-    kind: "start_workflow",
-    workflowName: "automation-codemode-script",
-    remoteWorkflowName: "workspace-file-initialization",
-    workflowScriptPath: "/system/automations/workspace-file-initialization.workflow.js",
-    instanceIdTemplate: "workspace-file-initialization-${event.id}",
-  },
-};
-
-const routesWithInitialWorkspaceFileInitializationFallback = (
-  event: AutomationEvent,
-  routes: AutomationRouteDefinition[],
-) => {
-  if (event.source !== "auth" || event.eventType !== "organization.created") {
-    return routes;
-  }
-
-  if (routes.some((route) => route.id === INITIAL_WORKSPACE_FILE_INITIALIZATION_ROUTE.id)) {
-    return routes;
-  }
-
-  return [INITIAL_WORKSPACE_FILE_INITIALIZATION_ROUTE, ...routes];
-};
-
 const handleStartWorkflowRouteAction = async ({
   action,
   event,
@@ -139,7 +112,11 @@ const handleStartWorkflowRouteAction = async ({
     route.id,
     routingKey,
   );
-  const params = buildStartWorkflowParams({ action, event, instanceId });
+  const params = {
+    automationEvent: event,
+    workflowScriptPath: action.workflowScriptPath,
+    workflowInstanceId: instanceId,
+  };
 
   await runWorkflowServiceCall(
     () =>
@@ -151,6 +128,54 @@ const handleStartWorkflowRouteAction = async ({
         }),
       ] as const,
   );
+};
+
+const handleForwardEventRouteAction = async ({
+  action,
+  event,
+  route,
+  routingKey,
+  ownerScope,
+  runtime,
+}: RouteExecutionContext & {
+  action: AutomationForwardEventAction;
+  ownerScope: BackofficeContextScope;
+  runtime: BackofficeRuntimeServices | undefined;
+}) => {
+  if (!runtime) {
+    throw new Error("Forwarding automation events requires Backoffice runtime services.");
+  }
+
+  const scope = renderAutomationScopeTemplate(action.targetScope, event, route.id, routingKey);
+  if (scope.kind === "org" && !scope.orgId) {
+    throw new Error(`Automation route ${route.id} resolved an empty target org id.`);
+  }
+  if (scope.kind === "project" && (!scope.orgId || !scope.projectId)) {
+    throw new Error(`Automation route ${route.id} resolved an empty target project scope.`);
+  }
+  if (scope.kind === "user" && !scope.userId) {
+    throw new Error(`Automation route ${route.id} resolved an empty target user id.`);
+  }
+
+  new BackofficeKernel({ objects: runtime.objects }).assertAutomationForwardTargetAllowed({
+    ownerScope,
+    targetScope: scope,
+    routeId: route.id,
+  });
+
+  const forwardedEvent = {
+    ...event,
+    id: action.idTemplate
+      ? renderAutomationRawTemplateValue(action.idTemplate, event, route.id, routingKey)
+      : event.id,
+    scope,
+  } satisfies AutomationEvent;
+
+  const targetAutomations = runtime.objects.automations.for(scope);
+  if (scope.kind === "system") {
+    await targetAutomations.seedStarterAutomationRoutes({ scope });
+  }
+  await targetAutomations.ingestEvent(forwardedEvent);
 };
 
 const handleSendWorkflowEventRouteAction = async ({
@@ -204,7 +229,7 @@ const handleSendWorkflowEventRouteAction = async ({
 export const automationFragmentDefinition = defineFragment<AutomationFragmentConfig>("automations")
   .extend(withDatabase(automationFragmentSchema))
   .usesService<"workflows", AutomationWorkflowsService>("workflows")
-  .provideHooks(({ defineHook, serviceDeps }) => {
+  .provideHooks(({ defineHook, serviceDeps, config }) => {
     return {
       internalIngestEvent: defineHook(async function (event) {
         const { routes, store } = await this.handlerTx()
@@ -217,7 +242,17 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               .find("kv_store", (b) => b.whereIndex("primary"));
           })
           .transformRetrieve(([routeRows, storeRows]) => ({
-            routes: routeRows.map((route) => automationRouteFromRow(route)),
+            routes: routeRows.map((route) => ({
+              id: route.id.externalId,
+              name: route.name,
+              enabled: route.enabled,
+              source: route.source,
+              eventType: route.eventType,
+              matcher: route.matcher,
+              action: route.action,
+              priority: route.priority,
+              description: route.description,
+            })),
             store: new Map(storeRows.map((entry) => [entry.key, entry.value])),
           }))
           .execute();
@@ -226,7 +261,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
           await this.handlerTx().withServiceCalls(call).execute();
         };
 
-        for (const route of routesWithInitialWorkspaceFileInitializationFallback(event, routes)) {
+        for (const route of routes) {
           if (
             !route.enabled ||
             (route.source !== event.source && route.source !== "*") ||
@@ -252,6 +287,15 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
 
             case "send_workflow_event":
               await handleSendWorkflowEventRouteAction({ ...context, action });
+              break;
+
+            case "forward_event":
+              await handleForwardEventRouteAction({
+                ...context,
+                action,
+                ownerScope: config.ownerScope,
+                runtime: config.runtime,
+              });
               break;
           }
         }
@@ -284,7 +328,9 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               const created: string[] = [];
               const skipped: string[] = [];
 
-              for (const route of STARTER_AUTOMATION_ROUTES) {
+              for (const route of config.ownerScope.kind === "system"
+                ? SYSTEM_STARTER_AUTOMATION_ROUTES
+                : STARTER_AUTOMATION_ROUTES) {
                 if (existingIds.has(route.id)) {
                   skipped.push(route.id);
                   continue;

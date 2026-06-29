@@ -27,6 +27,25 @@ export type AutomationCodemodeWorkflowParams = {
 const automationEventOrganizationIds = (event: AutomationEvent) =>
   event.scope.kind === "org" || event.scope.kind === "project" ? [event.scope.orgId] : undefined;
 
+const createWorkflowExecution = (event: AutomationEvent): BackofficeExecutionContext => {
+  if (event.scope.kind === "system") {
+    return {
+      actor: { type: "system", id: "system" },
+      scope: event.scope,
+    };
+  }
+
+  const organizationIds = automationEventOrganizationIds(event);
+  return {
+    actor: {
+      type: "automation",
+      id: `automation:${event.id}`,
+      ...(organizationIds ? { organizationIds } : {}),
+    },
+    scope: event.scope,
+  };
+};
+
 const createWorkflowAutomationContext = ({
   runtime,
   params,
@@ -35,15 +54,7 @@ const createWorkflowAutomationContext = ({
   params: AutomationCodemodeWorkflowParams;
 }): AutomationRuntimeHostContext => {
   const kernel = new BackofficeKernel({ objects: runtime.objects });
-  const organizationIds = automationEventOrganizationIds(params.automationEvent);
-  const execution: BackofficeExecutionContext = {
-    actor: {
-      type: "automation",
-      id: `automation:${params.automationEvent.id}`,
-      ...(organizationIds ? { organizationIds } : {}),
-    },
-    scope: params.automationEvent.scope,
-  };
+  const execution = createWorkflowExecution(params.automationEvent);
   const runtimeContext = createRouteBackedRuntimeContext({
     runtime,
     kernel,
@@ -61,7 +72,7 @@ const createWorkflowAutomationContext = ({
     ...eventRuntime,
   };
 
-  const eventScope = params.automationEvent.scope;
+  const automationScope = params.automationEvent.scope;
   const scriptPath = params.workflowScriptPath ?? params.binding?.scriptPath ?? "workflow.js";
   const binding = params.binding ?? {
     id: `workflow:${scriptPath}`,
@@ -86,7 +97,7 @@ const createWorkflowAutomationContext = ({
     ...runtimeContext,
     automation: {
       event: params.automationEvent,
-      orgId: eventScope.kind === "org" ? eventScope.orgId : undefined,
+      orgId: automationScope.kind === "org" ? automationScope.orgId : undefined,
       binding: {
         source: binding.source,
         eventType: binding.eventType,
@@ -127,16 +138,8 @@ export const defineAutomationCodemodeWorkflow = (
     }
 
     const params = event.payload as AutomationCodemodeWorkflowParams;
-    const organizationIds = automationEventOrganizationIds(params.automationEvent);
     const resolvedFs = await resolveAutomationFileSystem(config, {
-      execution: {
-        actor: {
-          type: "automation",
-          id: `automation:${params.automationEvent.id}`,
-          ...(organizationIds ? { organizationIds } : {}),
-        },
-        scope: params.automationEvent.scope,
-      },
+      execution: createWorkflowExecution(params.automationEvent),
       purpose: "runtime",
     });
     if (!(resolvedFs instanceof MasterFileSystem)) {

@@ -12,26 +12,39 @@ const buildRouteLink = ({ basePath, routeId }: { basePath: string; routeId: stri
 const routeMatcherLabel = (route: AutomationRouteItem) =>
   route.matcher ? JSON.stringify(route.matcher, null, 2) : "All events matching source/type.";
 
-const routeActionLabel = (route: AutomationRouteItem) =>
-  route.action.kind === "start_workflow" ? "Start workflow" : "Send workflow event";
+const routeActionLabel = (route: AutomationRouteItem) => {
+  switch (route.action.kind) {
+    case "start_workflow":
+      return "Start workflow";
+    case "send_workflow_event":
+      return "Send workflow event";
+    case "forward_event":
+      return "Forward event";
+  }
+};
 
 const routeActionDetail = (route: AutomationRouteItem) => {
   const action = route.action;
-  if (action.kind === "start_workflow") {
-    return [
-      ["script", action.workflowScriptPath],
-      ["instance", action.instanceIdTemplate],
-    ];
-  }
+  switch (action.kind) {
+    case "start_workflow":
+      return [
+        ["script", action.workflowScriptPath],
+        ["instance", action.instanceIdTemplate],
+      ];
 
-  return [
-    ["event", action.eventType],
-    ["target", action.target.kind === "instance_id" ? "instance id" : "stored instance id"],
-    [
-      "template",
-      action.target.kind === "instance_id" ? action.target.template : action.target.keyTemplate,
-    ],
-  ];
+    case "send_workflow_event":
+      return [
+        ["event", action.eventType],
+        ["target", action.target.kind === "instance_id" ? "instance id" : "stored instance id"],
+        [
+          "template",
+          action.target.kind === "instance_id" ? action.target.template : action.target.keyTemplate,
+        ],
+      ];
+
+    case "forward_event":
+      return [["target", JSON.stringify(action.targetScope)]];
+  }
 };
 
 const routeSections = (routes: AutomationRouteItem[]) => [

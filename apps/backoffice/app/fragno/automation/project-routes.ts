@@ -3,8 +3,6 @@ import { z } from "zod";
 import { defineRoutes } from "@fragno-dev/core";
 import { isUniqueConstraintError } from "@fragno-dev/db";
 
-import { SYSTEM_BACKOFFICE_PRINCIPAL } from "@/backoffice-runtime/context";
-
 import { loadAutomationCatalogFromConfig } from "./catalog";
 import { automationFragmentDefinition } from "./definition";
 import {
@@ -16,17 +14,6 @@ import {
 
 export const automationProjectRoutes = defineRoutes(automationFragmentDefinition).create(
   ({ defineRoute, config, services }) => {
-    const loadRouteCatalog = (query: URLSearchParams) => {
-      const orgId = query.get("orgId")?.trim() || undefined;
-      return loadAutomationCatalogFromConfig(config, {
-        execution: {
-          actor: SYSTEM_BACKOFFICE_PRINCIPAL,
-          scope: orgId ? { kind: "org", orgId } : { kind: "system" },
-        },
-        purpose: "route",
-      });
-    };
-
     return [
       defineRoute({
         method: "GET",
@@ -34,7 +21,15 @@ export const automationProjectRoutes = defineRoutes(automationFragmentDefinition
         outputSchema: z.array(z.record(z.string(), z.unknown())),
         handler: async function ({ query }, { json, error }) {
           try {
-            return json((await loadRouteCatalog(query)).scripts);
+            const orgId = query.get("orgId")?.trim() || undefined;
+            const catalog = await loadAutomationCatalogFromConfig(config, {
+              execution: {
+                actor: { type: "system", id: "system" },
+                scope: orgId ? { kind: "org", orgId } : { kind: "system" },
+              },
+              purpose: "route",
+            });
+            return json(catalog.scripts);
           } catch (cause) {
             return error(
               {

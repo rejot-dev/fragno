@@ -173,7 +173,10 @@ describe("resend file contributor", () => {
   test("createFileSystem returns null when resendRuntime is not provided", () => {
     const resolved = resendFileContributor.createFileSystem?.(
       createSystemFilesContext({
-        orgId: "org_123",
+        execution: {
+          actor: { type: "system", id: "system" },
+          scope: { kind: "org", orgId: "org_123" },
+        },
       }),
     );
 
@@ -183,7 +186,10 @@ describe("resend file contributor", () => {
   test("accepts an injected resend runtime", async () => {
     const resolved = await resendFileContributor.createFileSystem?.(
       createSystemFilesContext({
-        orgId: "org_123",
+        execution: {
+          actor: { type: "system", id: "system" },
+          scope: { kind: "org", orgId: "org_123" },
+        },
         objects: createFilesTestObjectRegistry({
           resendRuntime: {
             baseUrl: "https://pi.internal",
@@ -205,7 +211,10 @@ describe("resend file contributor", () => {
   test("loads thread list and renders markdown files", async () => {
     const resolved = await resendFileContributor.createFileSystem?.(
       createSystemFilesContext({
-        orgId: "org_123",
+        execution: {
+          actor: { type: "system", id: "system" },
+          scope: { kind: "org", orgId: "org_123" },
+        },
         objects: createFilesTestObjectRegistry({
           resendRuntime: {
             baseUrl: "https://pi.internal",
@@ -240,7 +249,10 @@ describe("resend file contributor", () => {
   test("reads fresh thread lists and thread content on every access", async () => {
     const resolved = await resendFileContributor.createFileSystem?.(
       createSystemFilesContext({
-        orgId: "org_123",
+        execution: {
+          actor: { type: "system", id: "system" },
+          scope: { kind: "org", orgId: "org_123" },
+        },
         backend: "pi",
         objects: createFilesTestObjectRegistry({
           resendRuntime: {

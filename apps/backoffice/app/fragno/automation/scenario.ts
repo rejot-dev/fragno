@@ -1249,11 +1249,18 @@ const getStore = (ctx: BackofficeScenarioContext, orgId: string) =>
     scope: { kind: "org", orgId },
   });
 
+const SYSTEM_WORKFLOW_TARGET_ID = "__system__";
+
 const getWorkflow = (ctx: BackofficeScenarioContext, orgId: string) =>
-  createRouteBackedAutomationWorkflowRuntime({
-    object: ctx.runtime.objects.automations.forOrg(orgId),
-    scope: { kind: "org", orgId },
-  });
+  orgId === SYSTEM_WORKFLOW_TARGET_ID
+    ? createRouteBackedAutomationWorkflowRuntime({
+        object: ctx.runtime.objects.automations.singleton(),
+        scope: { kind: "system" },
+      })
+    : createRouteBackedAutomationWorkflowRuntime({
+        object: ctx.runtime.objects.automations.forOrg(orgId),
+        scope: { kind: "org", orgId },
+      });
 
 const getRouter = (ctx: BackofficeScenarioContext, orgId: string) =>
   createRouteBackedAutomationRouterRuntime({
@@ -1474,12 +1481,46 @@ const runScenarioCodemode = async (
   return result;
 };
 
+const isSystemRoutedAutomationEvent = (event: AutomationEvent) =>
+  event.source === "automations" && event.eventType === "project.created";
+
+const orgIdForAutomationEvent = (event: AutomationEvent) =>
+  event.scope.kind === "org"
+    ? event.scope.orgId
+    : typeof event.subject?.orgId === "string"
+      ? event.subject.orgId
+      : undefined;
+
+const ingestSystemAutomationEvent = async (
+  ctx: BackofficeScenarioContext,
+  event: AutomationEvent,
+) => {
+  const orgId = orgIdForAutomationEvent(event);
+  if (orgId) {
+    ctx.rememberOrg(orgId);
+  }
+
+  const systemAutomations = ctx.runtime.objects.automations.singleton();
+  await systemAutomations.seedStarterAutomationRoutes({ scope: { kind: "system" } });
+  await systemAutomations.ingestEvent({ ...event, scope: { kind: "system" } });
+};
+
 const ingestAutomationEvent = async (ctx: BackofficeScenarioContext, event: AutomationEvent) => {
+  if (event.scope.kind === "system" || event.source === "auth") {
+    await ingestSystemAutomationEvent(ctx, event);
+    return;
+  }
+
   if (event.scope.kind !== "org") {
     throw new Error("Automation scenario events require an organisation scope.");
   }
 
   ctx.rememberOrg(event.scope.orgId);
+  if (isSystemRoutedAutomationEvent(event)) {
+    const systemAutomations = ctx.runtime.objects.automations.singleton();
+    await systemAutomations.seedStarterAutomationRoutes({ scope: { kind: "system" } });
+    await systemAutomations.ingestEvent({ ...event, id: `system:${event.id}` });
+  }
   await ctx.runtime.objects.automations.forOrg(event.scope.orgId).ingestEvent(event);
 };
 
@@ -1752,7 +1793,7 @@ const findWorkflowInstances = async (
     remoteWorkflowName?: string;
   },
 ): Promise<ScenarioWorkflowInstance[]> => {
-  const orgIds = ctx.files.listOrgIds();
+  const orgIds = [SYSTEM_WORKFLOW_TARGET_ID, ...ctx.files.listOrgIds()];
   const workflowName = input.workflowName ?? "automation-codemode-script";
   const matches: ScenarioWorkflowInstance[] = [];
 
@@ -2710,7 +2751,9 @@ const buildStepBuilders = <
         ),
       noErrored: (input = {}) =>
         createStep("then", "workflow.noErrored", "assert no workflows errored", async (ctx) => {
-          const orgIds = input.orgId ? [input.orgId] : ctx.files.listOrgIds();
+          const orgIds = input.orgId
+            ? [SYSTEM_WORKFLOW_TARGET_ID, input.orgId]
+            : [SYSTEM_WORKFLOW_TARGET_ID, ...ctx.files.listOrgIds()];
           const errored = [];
 
           for (const orgId of orgIds) {

@@ -2,7 +2,6 @@ import { defineCommand } from "just-bash";
 import type { z } from "zod";
 
 import {
-  SYSTEM_BACKOFFICE_PRINCIPAL,
   type BackofficeContextScope,
   type BackofficePrincipal,
 } from "@/backoffice-runtime/context";
@@ -54,7 +53,7 @@ export const createTrustedSystemBackofficeToolContext = <
   ): BackofficeToolContext<TRuntimes, TDefaults> => ({
     runtimes,
     ...(typeof defaults === "undefined" ? {} : { defaults }),
-    actor: SYSTEM_BACKOFFICE_PRINCIPAL,
+    actor: { type: "system", id: "system" },
     scope,
     kernel,
     createScopedContext: createContext,

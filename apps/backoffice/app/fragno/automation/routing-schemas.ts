@@ -3,7 +3,9 @@ import { z } from "zod";
 import type {
   AutomationEventMatcher,
   AutomationRouteDefinition,
+  AutomationForwardEventAction,
   AutomationRouteAction,
+  AutomationRouteScopeTemplate,
   AutomationSendWorkflowEventAction,
   AutomationStartWorkflowAction,
   AutomationWorkflowEventTarget,
@@ -31,6 +33,19 @@ export const automationEventMatcherSchema: z.ZodType<AutomationEventMatcher> = z
     ]),
   )
   .meta({ id: "AutomationEventMatcher" });
+
+const automationRouteScopeTemplateSchema: z.ZodType<AutomationRouteScopeTemplate> = z
+  .union([
+    z.object({ kind: z.literal("system") }),
+    z.object({ kind: z.literal("org"), orgIdTemplate: z.string().trim().min(1) }),
+    z.object({
+      kind: z.literal("project"),
+      orgIdTemplate: z.string().trim().min(1),
+      projectIdTemplate: z.string().trim().min(1),
+    }),
+    z.object({ kind: z.literal("user"), userIdTemplate: z.string().trim().min(1) }),
+  ])
+  .meta({ id: "AutomationRouteScopeTemplate" });
 
 const automationStartWorkflowActionSchema: z.ZodType<AutomationStartWorkflowAction> = z
   .object({
@@ -71,8 +86,23 @@ const automationSendWorkflowEventActionSchema: z.ZodType<AutomationSendWorkflowE
     codemodeInputId: "AutomationSendWorkflowEventActionInput",
   });
 
+const automationForwardEventActionSchema: z.ZodType<AutomationForwardEventAction> = z
+  .object({
+    kind: z.literal("forward_event"),
+    targetScope: automationRouteScopeTemplateSchema,
+    idTemplate: z.string().trim().min(1).optional(),
+  })
+  .meta({
+    id: "AutomationForwardEventAction",
+    codemodeInputId: "AutomationForwardEventActionInput",
+  });
+
 export const automationRouteActionSchema: z.ZodType<AutomationRouteAction> = z
-  .union([automationStartWorkflowActionSchema, automationSendWorkflowEventActionSchema])
+  .union([
+    automationStartWorkflowActionSchema,
+    automationSendWorkflowEventActionSchema,
+    automationForwardEventActionSchema,
+  ])
   .meta({ id: "AutomationRouteAction", codemodeInputId: "AutomationRouteActionInput" });
 
 const automationRouteDefinitionShape = {

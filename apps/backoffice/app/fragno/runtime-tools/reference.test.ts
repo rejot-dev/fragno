@@ -666,10 +666,10 @@ describe("runtime tool reference generation", () => {
     expect(types).toContain('kind: "stored_instance_id";');
     expect(types).toContain("keyTemplate: string;");
     expect(types).toContain(
-      "type AutomationRouteAction = AutomationStartWorkflowAction | AutomationSendWorkflowEventAction;",
+      "type AutomationRouteAction = AutomationStartWorkflowAction | AutomationSendWorkflowEventAction | AutomationForwardEventAction;",
     );
     expect(types).toContain(
-      "type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput;",
+      "type AutomationRouteActionInput = AutomationStartWorkflowActionInput | AutomationSendWorkflowEventActionInput | AutomationForwardEventActionInput;",
     );
     expect(types).toContain("type AutomationStartWorkflowAction = {");
     expect(types).toContain("type AutomationStartWorkflowActionInput = {");

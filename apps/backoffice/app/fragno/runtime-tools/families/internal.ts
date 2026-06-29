@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-import { SYSTEM_BACKOFFICE_PRINCIPAL } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
@@ -250,7 +249,7 @@ export const createInternalRuntime = ({
         objects,
         kernel,
         execution: {
-          actor: SYSTEM_BACKOFFICE_PRINCIPAL,
+          actor: { type: "system", id: "system" },
           scope: { kind: "org", orgId },
         },
       });

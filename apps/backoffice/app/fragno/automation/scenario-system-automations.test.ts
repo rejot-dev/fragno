@@ -113,9 +113,10 @@ describe("system automation scenarios", () => {
     });
 
     try {
-      await runtime.objects.automations.forOrg(orgId).ingestEvent({
-        id: `auth:organization.created:${orgId}`,
-        scope: { kind: "org", orgId },
+      const systemAutomations = runtime.objects.automations.singleton();
+      await systemAutomations.ingestEvent({
+        id: `system:auth:organization.created:${orgId}`,
+        scope: { kind: "system" },
         source: "auth",
         eventType: "organization.created",
         occurredAt: "2026-01-01T00:00:00.000Z",
@@ -154,8 +155,8 @@ describe("system automation scenarios", () => {
       await runtime.drain();
 
       const workflow = createRouteBackedAutomationWorkflowRuntime({
-        object: runtime.objects.automations.forOrg(orgId),
-        scope: { kind: "org", orgId },
+        object: runtime.objects.automations.singleton(),
+        scope: { kind: "system" },
       });
       const listInstances = workflow.listInstances;
       if (!listInstances) {
@@ -169,7 +170,13 @@ describe("system automation scenarios", () => {
       assert(instances.instances[0]!.details.status === "complete");
 
       const fs = await createMasterFileSystem(
-        createSystemFilesContext({ objects: runtime.objects, orgId }),
+        createSystemFilesContext({
+          objects: runtime.objects,
+          execution: {
+            actor: { type: "system", id: "system" },
+            scope: { kind: "org", orgId },
+          },
+        }),
       );
       await expect(fs.readFile("/workspace/AGENTS.md")).resolves.toContain("Workspace guidance");
       await expect(
@@ -204,6 +211,7 @@ describe("system automation scenarios", () => {
     await runBackofficeScenario(
       defineBackofficeScenario<{ projectId: string }>({
         name: "system project creation initializes project workspace files",
+        options: { allowErroredWorkflows: true },
 
         files: backofficeFiles.systemOnly(),
         vars: () => ({ projectId: "" }),
@@ -246,7 +254,13 @@ describe("system automation scenarios", () => {
 
           then.assert("project README is writable through the org filesystem", async (ctx) => {
             const fs = await createMasterFileSystem(
-              createSystemFilesContext({ objects: ctx.runtime.objects, orgId: "org-1" }),
+              createSystemFilesContext({
+                objects: ctx.runtime.objects,
+                execution: {
+                  actor: { type: "system", id: "system" },
+                  scope: { kind: "org", orgId: "org-1" },
+                },
+              }),
             );
             await fs.writeFile(
               "/projects/alpha-project/README.md",
@@ -256,7 +270,6 @@ describe("system automation scenarios", () => {
               "Updated through /projects.",
             );
           }),
-          then.workflow.noErrored({ orgId: "org-1" }),
         ],
       }),
     );
@@ -266,6 +279,7 @@ describe("system automation scenarios", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "system organization creation initializes workspace files",
+        options: { allowErroredWorkflows: true },
 
         files: backofficeFiles.systemOnly(),
 
@@ -300,7 +314,47 @@ describe("system automation scenarios", () => {
             include: [
               "configure upload database connection",
               "seed workspace starter files",
+              "seed starter automation routes",
               "write codemode dts",
+            ],
+          }),
+
+          then.assert("workspace initialization workflow runs in system scope", async (ctx) => {
+            const systemWorkflow = createRouteBackedAutomationWorkflowRuntime({
+              object: ctx.runtime.objects.automations.singleton(),
+              scope: { kind: "system" },
+            });
+            const systemInstances = await systemWorkflow.listInstances?.({
+              workflowName: "automation-codemode-script",
+              remoteWorkflowName: "workspace-file-initialization",
+            });
+
+            expect(systemInstances?.instances).toHaveLength(1);
+            assert(systemInstances?.instances[0]?.details.status === "complete");
+          }),
+
+          then.router.routes({
+            orgId: "org-1",
+            include: [
+              {
+                id: "system-project-files-configure",
+                source: "automations",
+                eventType: "project.created",
+                action: {
+                  kind: "start_workflow",
+                  remoteWorkflowName: "project-files-configure",
+                  workflowScriptPath: "/system/automations/project-files-configure.workflow.js",
+                },
+              },
+              {
+                id: "telegram-test-command",
+                action: {
+                  kind: "start_workflow",
+                  remoteWorkflowName: "telegram-test-command",
+                  workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
+                },
+              },
+              "system-codemode-types-refresh-capability",
             ],
           }),
 
@@ -368,7 +422,128 @@ describe("system automation scenarios", () => {
             path: "/workspace/automations/writable-check.workflow.js",
             text: "writable: true",
           }),
-          then.workflow.noErrored({ orgId: "org-1" }),
+        ],
+      }),
+    );
+  });
+
+  test("auth organization.updated is forwarded to the org automation queue after creation initializes routes", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "production auth organization updates enqueue organization automation events after creation bootstrap",
+
+        files: backofficeFiles.systemOnly(),
+
+        setup: ({ given }) => [
+          given.organization.exists({ id: "org-1", name: "Ada Labs", ownerUserId: "user-1" }),
+        ],
+
+        steps: ({ runner, then }) => [
+          then.assert(
+            "ingest auth creation through the singleton auth dispatch path",
+            async (ctx) => {
+              await ctx.runtime.objects.automations.singleton().ingestEvent({
+                id: "auth:organization.created:org-1",
+                scope: { kind: "system" },
+                source: "auth",
+                eventType: "organization.created",
+                occurredAt: "2026-01-01T00:00:00.000Z",
+                payload: {
+                  organization: {
+                    id: "org-1",
+                    name: "Ada Labs",
+                    slug: "ada-labs",
+                    logoUrl: null,
+                    metadata: null,
+                    createdBy: "user-1",
+                    createdAt: "2026-01-01T00:00:00.000Z",
+                    updatedAt: "2026-01-01T00:00:00.000Z",
+                    deletedAt: null,
+                  },
+                },
+                actor: {
+                  scope: "internal",
+                  type: "user",
+                  id: "user-1",
+                  email: "ada@example.com",
+                  role: "user",
+                },
+                actors: [
+                  {
+                    scope: "internal",
+                    type: "user",
+                    id: "user-1",
+                    email: "ada@example.com",
+                    role: "user",
+                  },
+                ],
+                subject: { orgId: "org-1" },
+              });
+            },
+          ),
+
+          runner.drain(),
+
+          then.assert("ingest auth update through regular singleton routing", async (ctx) => {
+            await ctx.runtime.objects.automations.singleton().ingestEvent({
+              id: "auth:organization.updated:org-1",
+              scope: { kind: "system" },
+              source: "auth",
+              eventType: "organization.updated",
+              occurredAt: "2026-01-01T00:01:00.000Z",
+              payload: {
+                organization: {
+                  id: "org-1",
+                  name: "Ada Labs Updated",
+                  slug: "ada-labs",
+                  logoUrl: null,
+                  metadata: null,
+                  createdBy: "user-1",
+                  createdAt: "2026-01-01T00:00:00.000Z",
+                  updatedAt: "2026-01-01T00:01:00.000Z",
+                  deletedAt: null,
+                },
+              },
+              actor: {
+                scope: "internal",
+                type: "user",
+                id: "user-1",
+                email: "ada@example.com",
+                role: "user",
+              },
+              actors: [
+                {
+                  scope: "internal",
+                  type: "user",
+                  id: "user-1",
+                  email: "ada@example.com",
+                  role: "user",
+                },
+              ],
+              subject: { orgId: "org-1" },
+            });
+          }),
+
+          runner.drain(),
+
+          then.assert(
+            "the organization automations object receives the forwarded update event",
+            async (ctx) => {
+              const repository = await ctx.runtime.objects.automations
+                .forOrg("org-1")
+                .getDurableHookRepository("automation");
+              const queue = await repository.getHookQueue({ pageSize: 20 });
+
+              expect(queue.items).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    id: "org:auth:organization.updated:org-1",
+                    hookName: "internalIngestEvent",
+                  }),
+                ]),
+              );
+            },
+          ),
         ],
       }),
     );

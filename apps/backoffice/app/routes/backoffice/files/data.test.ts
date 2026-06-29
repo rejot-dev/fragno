@@ -49,9 +49,17 @@ beforeEach(() => {
     scope: { kind: "org", orgId: "acme-org" },
   });
   createBackofficeFileSystemMock.mockImplementation(() =>
-    createMasterFileSystem(createSystemFilesContext({ orgId: "acme-org" }), {
-      contributors: [...getBuiltInFileContributors(), ...contributors],
-    }),
+    createMasterFileSystem(
+      createSystemFilesContext({
+        execution: {
+          actor: { type: "system", id: "system" },
+          scope: { kind: "org", orgId: "acme-org" },
+        },
+      }),
+      {
+        contributors: [...getBuiltInFileContributors(), ...contributors],
+      },
+    ),
   );
 });
 

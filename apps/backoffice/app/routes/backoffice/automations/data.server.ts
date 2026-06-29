@@ -331,10 +331,8 @@ export async function loadAutomationScriptSource({
   });
 
   try {
-    const script = await readAutomationWorkspaceScript(
-      fileSystem,
-      fromAutomationScriptId(scriptId),
-    );
+    const scriptPath = fromAutomationScriptId(scriptId);
+    const script = await readAutomationWorkspaceScript(fileSystem, scriptPath);
     return {
       script: script.body,
       scriptError: null,

@@ -45,7 +45,12 @@ describe("automation routes /scripts", () => {
   beforeEach(async () => {
     fragment = createAutomation({
       automationFileSystem: await createMasterFileSystem(
-        createSystemFilesContext({ orgId: "org_123" }),
+        createSystemFilesContext({
+          execution: {
+            actor: { type: "system", id: "system" },
+            scope: { kind: "org", orgId: "org_123" },
+          },
+        }),
       ),
     });
   });
@@ -56,6 +61,17 @@ describe("automation routes /scripts", () => {
     assert(response.type === "json");
     if (response.type === "json") {
       expect(response.data.length).toBeGreaterThan(0);
+      expect(response.data).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: SYSTEM_AUTOMATION_SCRIPT_PATHS.codemodeTypesRefresh.replace(
+              /^automations\//u,
+              "",
+            ),
+            enabled: false,
+          }),
+        ]),
+      );
       expect(response.data).toEqual(
         expect.arrayContaining([
           expect.objectContaining({

@@ -13,7 +13,10 @@ import { createSystemFilesContext } from "./system-context";
 import type { FileContributor, FilesContext } from "./types";
 
 const context = createSystemFilesContext({
-  orgId: "org_123",
+  execution: {
+    actor: { type: "system", id: "system" },
+    scope: { kind: "org", orgId: "org_123" },
+  },
   backend: "backoffice",
 }) satisfies FilesContext;
 

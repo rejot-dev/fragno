@@ -287,15 +287,13 @@ describe("Pi bash tool", () => {
     } as never);
 
     const result = await tool.execute("tool-call-automations-1", {
-      script: "cat /system/automations/workspace-file-initialization.workflow.js",
+      script: "cat /system/automations/codemode-types-refresh.workflow.js",
     } as never);
     expect(result.details).toMatchObject({
       stderr: "",
       exitCode: 0,
     });
-    expect((result.details as { stdout: string }).stdout).toContain(
-      "workspace-file-initialization",
-    );
+    expect((result.details as { stdout: string }).stdout).toContain("codemode-types-refresh");
   });
 
   test("mounts resend thread snapshots when a resend runtime is available", async () => {
