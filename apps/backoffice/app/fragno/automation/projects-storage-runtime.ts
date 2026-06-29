@@ -7,6 +7,7 @@ import {
   automationProjectArchiveInputSchema,
   automationProjectCreateInputSchema,
   automationProjectListInputSchema,
+  automationProjectSchema,
   automationProjectLookupInputSchema,
   automationProjectUpdateInputSchema,
   projectSlugSchema,
@@ -19,6 +20,11 @@ import {
   type AutomationProjectUpdateInput,
 } from "./projects";
 import { automationFragmentSchema } from "./schema";
+import {
+  automationTimestampToDate,
+  automationTimestampToIsoString,
+  type AutomationTimestampInput,
+} from "./timestamps";
 
 type AutomationProjectServiceContext = DatabaseServiceContext<{
   internalIngestEvent: (payload: AutomationEvent) => Promise<void> | void;
@@ -26,6 +32,96 @@ type AutomationProjectServiceContext = DatabaseServiceContext<{
 
 type AutomationProjectServicesOptions = {
   ownerScope: BackofficeContextScope;
+};
+
+const projectIdValue = (id: unknown): string => {
+  if (typeof id === "object" && id && "externalId" in id) {
+    return String((id as { externalId: unknown }).externalId);
+  }
+  return String(id);
+};
+
+type ProjectTimestampFields = {
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const materializeProjectDates = <TProject extends object>(
+  project: TProject,
+  timestamps: ProjectTimestampFields,
+) => ({
+  ...project,
+  archivedAt: timestamps.archivedAt ? automationTimestampToDate(timestamps.archivedAt) : null,
+  createdAt: automationTimestampToDate(timestamps.createdAt),
+  updatedAt: automationTimestampToDate(timestamps.updatedAt),
+});
+
+const buildProjectPayload = (
+  project: {
+    id: unknown;
+    slug: string;
+    name: string;
+    description: string | null;
+    archivedAt: AutomationTimestampInput | null;
+    createdByUserId: string;
+    createdAt: AutomationTimestampInput;
+    updatedAt: AutomationTimestampInput;
+  },
+  timestamps: ProjectTimestampFields,
+) => ({
+  project: {
+    id: projectIdValue(project.id),
+    slug: project.slug,
+    name: project.name,
+    description: project.description,
+    archivedAt: timestamps.archivedAt,
+    createdByUserId: project.createdByUserId,
+    createdAt: timestamps.createdAt,
+    updatedAt: timestamps.updatedAt,
+  },
+});
+
+type ProjectEventUnitOfWork = {
+  triggerHook(
+    hookName: "internalIngestEvent",
+    payload: AutomationEvent,
+    options: { id: string },
+  ): void;
+};
+
+const triggerProjectEvent = ({
+  uow,
+  ownerScope,
+  eventType,
+  project,
+  occurredAt,
+  timestamps,
+}: {
+  uow: ProjectEventUnitOfWork;
+  ownerScope: Extract<BackofficeContextScope, { kind: "org" }>;
+  eventType: "project.created" | "project.updated" | "project.archived";
+  project: Parameters<typeof buildProjectPayload>[0];
+  occurredAt: string;
+  timestamps: ProjectTimestampFields;
+}) => {
+  const projectId = projectIdValue(project.id);
+  const event: AutomationEvent = {
+    id: crypto.randomUUID(),
+    scope: ownerScope,
+    source: "automations",
+    eventType,
+    occurredAt,
+    payload: buildProjectPayload(project, timestamps),
+    actor: AUTOMATION_SYSTEM_ACTOR,
+    actors: [AUTOMATION_SYSTEM_ACTOR],
+    subject: {
+      orgId: ownerScope.orgId,
+      projectId,
+    },
+  };
+
+  uow.triggerHook("internalIngestEvent", event, { id: event.id });
 };
 
 export const createAutomationProjectServices = (
@@ -104,7 +200,8 @@ export const createAutomationProjectServices = (
       const slug = projectSlugSchema.parse(input.slug ?? slugFromProjectName(input.name));
       return this.serviceTx(automationFragmentSchema)
         .mutate(({ uow }) => {
-          const now = new Date();
+          const now = uow.now();
+          const nowIso = automationTimestampToIsoString(now);
           const project = {
             slug,
             name: input.name,
@@ -116,28 +213,22 @@ export const createAutomationProjectServices = (
           };
           const id = uow.create("project", project);
           const created = { id, ...project };
-
-          const projectId = id.toString();
-          const event: AutomationEvent = {
-            id: `project.created:${ownerScope.orgId}:${projectId}`,
-            scope: ownerScope,
-            source: "automations",
-            eventType: "project.created",
-            occurredAt: now.toISOString(),
-            payload: { project: { ...created, id: projectId } },
-            actor: AUTOMATION_SYSTEM_ACTOR,
-            actors: [AUTOMATION_SYSTEM_ACTOR],
-            subject: {
-              orgId: ownerScope.orgId,
-              projectId,
-            },
+          const timestamps = {
+            archivedAt: null,
+            createdAt: nowIso,
+            updatedAt: nowIso,
           };
 
-          uow.triggerHook("internalIngestEvent", event, {
-            id: event.id,
+          triggerProjectEvent({
+            uow,
+            ownerScope,
+            eventType: "project.created",
+            project: created,
+            occurredAt: nowIso,
+            timestamps,
           });
 
-          return created;
+          return automationProjectSchema.parse(materializeProjectDates(created, timestamps));
         })
         .build();
     },
@@ -155,13 +246,21 @@ export const createAutomationProjectServices = (
             return null;
           }
 
-          const now = new Date();
+          const now = uow.now();
+          const nowIso = automationTimestampToIsoString(now);
           const next = {
             ...existing,
             ...(input.slug ? { slug: input.slug } : {}),
             ...(input.name ? { name: input.name } : {}),
             ...("description" in input ? { description: input.description ?? null } : {}),
             updatedAt: now,
+          };
+          const timestamps = {
+            archivedAt: existing.archivedAt
+              ? automationTimestampToIsoString(existing.archivedAt)
+              : null,
+            createdAt: automationTimestampToIsoString(existing.createdAt),
+            updatedAt: nowIso,
           };
 
           uow.update("project", existing.id, (b) =>
@@ -175,7 +274,20 @@ export const createAutomationProjectServices = (
               .check(),
           );
 
-          return next;
+          if (options.ownerScope.kind !== "org") {
+            throw new Error("Projects can only be updated in org-scoped Automations.");
+          }
+
+          triggerProjectEvent({
+            uow,
+            ownerScope: options.ownerScope,
+            eventType: "project.updated",
+            project: next,
+            occurredAt: nowIso,
+            timestamps,
+          });
+
+          return automationProjectSchema.parse(materializeProjectDates(next, timestamps));
         })
         .build();
     },
@@ -193,8 +305,12 @@ export const createAutomationProjectServices = (
             return null;
           }
 
-          const now = new Date();
+          const now = uow.now();
+          const nowIso = automationTimestampToIsoString(now);
           const archivedAt = existing.archivedAt ?? now;
+          const archivedAtIso = existing.archivedAt
+            ? automationTimestampToIsoString(existing.archivedAt)
+            : nowIso;
           uow.update("project", existing.id, (b) =>
             b
               .set({
@@ -204,11 +320,31 @@ export const createAutomationProjectServices = (
               .check(),
           );
 
-          return {
+          const next = {
             ...existing,
             archivedAt,
             updatedAt: now,
           };
+          const timestamps = {
+            archivedAt: archivedAtIso,
+            createdAt: automationTimestampToIsoString(existing.createdAt),
+            updatedAt: nowIso,
+          };
+
+          if (options.ownerScope.kind !== "org") {
+            throw new Error("Projects can only be archived in org-scoped Automations.");
+          }
+
+          triggerProjectEvent({
+            uow,
+            ownerScope: options.ownerScope,
+            eventType: "project.archived",
+            project: next,
+            occurredAt: nowIso,
+            timestamps,
+          });
+
+          return automationProjectSchema.parse(materializeProjectDates(next, timestamps));
         })
         .build();
     },

@@ -113,9 +113,7 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
         })()
       : baseActor;
     const nextEvent: AutomationEvent = {
-      id: parentEvent
-        ? `${parentEvent.id}:${eventType}:${crypto.randomUUID()}`
-        : `${nextSource}:${eventType}:${crypto.randomUUID()}`,
+      id: crypto.randomUUID(),
       scope: resolvedTargetScope,
       source: nextSource,
       eventType,

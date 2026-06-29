@@ -18,6 +18,12 @@ const AUTOMATION_EVENT_CONNECTION_CHANGED = "connection.changed" as const;
 const AUTOMATION_EVENT_CONNECTION_DELETED = "connection.deleted" as const;
 const AUTOMATION_EVENT_CONNECTION_AVAILABLE = "connection.available" as const;
 const AUTOMATION_EVENT_WEBHOOK_RECEIVED = "webhook.received" as const;
+const AUTOMATION_EVENT_CAPABILITY_CONFIGURED = "capability.configured" as const;
+
+const apiCapabilityConfiguredPayloadSchema = z.object({
+  capabilityId: z.literal("api"),
+  capabilityLabel: z.literal("API"),
+});
 
 const apiConnectionSnapshotSchema = z.object({
   slug: z.string().min(1),
@@ -46,6 +52,10 @@ const apiConnectionAvailablePayloadSchema = z.object({
 const apiScopeSubjectSchema = z.object({
   scope: z.object({ kind: z.string().min(1) }).passthrough(),
   orgId: z.string().min(1).optional(),
+});
+
+const apiCapabilityConfiguredSubjectSchema = apiScopeSubjectSchema.extend({
+  capabilityId: z.literal("api"),
 });
 
 const apiConnectionSubjectSchema = apiScopeSubjectSchema.extend({
@@ -130,6 +140,18 @@ export const apiCapability: BackofficeConfigurableConnectionCapability = {
     },
   ],
   automationEvents: [
+    {
+      source: AUTOMATION_SOURCE,
+      eventType: AUTOMATION_EVENT_CAPABILITY_CONFIGURED,
+      label: "API configured",
+      description: "Fires after the API capability is configured for a scope for the first time.",
+      payloadSchema: apiCapabilityConfiguredPayloadSchema,
+      subjectSchema: apiCapabilityConfiguredSubjectSchema,
+      example: {
+        capabilityId: "api",
+        capabilityLabel: "API",
+      },
+    },
     {
       source: AUTOMATION_SOURCE,
       eventType: AUTOMATION_EVENT_CONNECTION_CHANGED,

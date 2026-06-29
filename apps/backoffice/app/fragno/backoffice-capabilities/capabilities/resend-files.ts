@@ -24,7 +24,9 @@ Setup notes:
 `,
     events: `# Resend events
 
-No cataloged automation events.
+Cataloged automation events:
+
+- \`source\`: \`resend\`, \`eventType\`: \`capability.configured\` — fires after Resend is configured for an organisation for the first time.
 
 Resend maintains email thread state and hook work behind the \`resend\` hook scope.
 

@@ -17,6 +17,16 @@ export const reson8ConfigureInputSchema = z.object({
   apiKey: apiKeyValueSchema,
 });
 
+const reson8CapabilityConfiguredPayloadSchema = z.object({
+  capabilityId: z.literal("reson8"),
+  capabilityLabel: z.literal("Reson8"),
+});
+
+const reson8CapabilityConfiguredSubjectSchema = z.object({
+  orgId: z.string().trim().min(1),
+  capabilityId: z.literal("reson8"),
+});
+
 const capability = { id: "reson8", label: "Reson8", kind: "connection" } as const;
 const getReson8Do = (objects: BackofficeObjectRegistry, orgId: string) =>
   objects.reson8.forOrg(orgId);
@@ -68,4 +78,18 @@ export const reson8Capability: BackofficeCapability = {
         ),
       ),
   },
+  automationEvents: [
+    {
+      source: "reson8",
+      eventType: "capability.configured",
+      label: "Reson8 configured",
+      description: "Fires after Reson8 is configured for an organisation for the first time.",
+      payloadSchema: reson8CapabilityConfiguredPayloadSchema,
+      subjectSchema: reson8CapabilityConfiguredSubjectSchema,
+      example: {
+        capabilityId: "reson8",
+        capabilityLabel: "Reson8",
+      },
+    },
+  ],
 };

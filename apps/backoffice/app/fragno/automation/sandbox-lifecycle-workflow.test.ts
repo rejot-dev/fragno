@@ -104,6 +104,7 @@ const createLifecycleWorkflows = ({
   sandboxProviders?: Record<string, SandboxRuntimeProvider>;
 }) => ({
   SANDBOX_LIFECYCLE: defineSandboxLifecycleWorkflow({
+    ownerScope: { kind: "org", orgId: "org_123" },
     sandboxProviders:
       sandboxProviders ?? (provider ? { [CLOUDFLARE_SANDBOX_PROVIDER]: provider } : {}),
     getAutomationFragment,

@@ -16,6 +16,16 @@ export const uploadConfigureInputSchema = z
   })
   .passthrough();
 
+const uploadCapabilityConfiguredPayloadSchema = z.object({
+  capabilityId: z.literal("upload"),
+  capabilityLabel: z.literal("Upload"),
+});
+
+const uploadCapabilityConfiguredSubjectSchema = z.object({
+  orgId: z.string().trim().min(1),
+  capabilityId: z.literal("upload"),
+});
+
 const capability = { id: "upload", label: "Upload", kind: "connection" } as const;
 const getUploadDo = (objects: BackofficeObjectRegistry, orgId: string) =>
   objects.upload.forOrg(orgId);
@@ -81,6 +91,20 @@ export const uploadCapability: BackofficeCapability = {
       id: "upload",
       label: "Upload",
       getRepository: ({ objects, orgId }) => getUploadDo(objects, orgId).getDurableHookRepository(),
+    },
+  ],
+  automationEvents: [
+    {
+      source: "upload",
+      eventType: "capability.configured",
+      label: "Upload configured",
+      description: "Fires after Upload is configured for an organisation for the first time.",
+      payloadSchema: uploadCapabilityConfiguredPayloadSchema,
+      subjectSchema: uploadCapabilityConfiguredSubjectSchema,
+      example: {
+        capabilityId: "upload",
+        capabilityLabel: "Upload",
+      },
     },
   ],
 };

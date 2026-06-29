@@ -119,6 +119,30 @@ describe("automation runtime tools", () => {
     ]);
   });
 
+  test("project, sandbox, and configured capability events are represented in the catalog", () => {
+    const events = listAutomationEventDescriptors().map((event) => ({
+      capabilityId: event.capabilityId,
+      source: event.source,
+      eventType: event.eventType,
+    }));
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        { capabilityId: "automations", source: "automations", eventType: "project.created" },
+        { capabilityId: "automations", source: "automations", eventType: "project.updated" },
+        { capabilityId: "automations", source: "automations", eventType: "project.archived" },
+        { capabilityId: "sandbox", source: "sandbox", eventType: "instance.ready" },
+        { capabilityId: "sandbox", source: "sandbox", eventType: "instance.stopped" },
+        { capabilityId: "sandbox", source: "sandbox", eventType: "instance.failed" },
+        { capabilityId: "api", source: "api", eventType: "capability.configured" },
+        { capabilityId: "mcp", source: "mcp", eventType: "capability.configured" },
+        { capabilityId: "resend", source: "resend", eventType: "capability.configured" },
+        { capabilityId: "reson8", source: "reson8", eventType: "capability.configured" },
+        { capabilityId: "upload", source: "upload", eventType: "capability.configured" },
+      ]),
+    );
+  });
+
   test("automation event catalog tools list events and get one event with JSON schemas", async () => {
     const catalogListTool = backofficeCapabilitiesRuntimeTools.find(
       (tool) => tool.id === "events.catalog.list",

@@ -36,6 +36,16 @@ export const resendConfigureInputSchema = z.object({
   webhookBaseUrl: requiredHttpUrl,
 });
 
+const resendCapabilityConfiguredPayloadSchema = z.object({
+  capabilityId: z.literal("resend"),
+  capabilityLabel: z.literal("Resend"),
+});
+
+const resendCapabilityConfiguredSubjectSchema = z.object({
+  orgId: z.string().trim().min(1),
+  capabilityId: z.literal("resend"),
+});
+
 const capability = { id: "resend", label: "Resend", kind: "connection" } as const;
 const getResendDo = (objects: BackofficeObjectRegistry, orgId: string) =>
   objects.resend.forOrg(orgId);
@@ -100,6 +110,20 @@ export const resendCapability: BackofficeCapability = {
       id: "resend",
       label: "Resend",
       getRepository: ({ objects, orgId }) => getResendDo(objects, orgId).getDurableHookRepository(),
+    },
+  ],
+  automationEvents: [
+    {
+      source: "resend",
+      eventType: "capability.configured",
+      label: "Resend configured",
+      description: "Fires after Resend is configured for an organisation for the first time.",
+      payloadSchema: resendCapabilityConfiguredPayloadSchema,
+      subjectSchema: resendCapabilityConfiguredSubjectSchema,
+      example: {
+        capabilityId: "resend",
+        capabilityLabel: "Resend",
+      },
     },
   ],
 };

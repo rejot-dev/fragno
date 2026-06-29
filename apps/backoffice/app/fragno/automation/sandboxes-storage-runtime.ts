@@ -1,7 +1,9 @@
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { SandboxRuntimeProvider } from "@/sandbox/contracts";
 
+import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "./contracts";
 import type { AutomationWorkflowsService } from "./definition";
 import { reconcileSandboxStopped } from "./sandbox-lifecycle-workflow";
 import {
@@ -16,8 +18,10 @@ import {
   sandboxInstanceSchema,
   sandboxInstanceStopRequestInputSchema,
   sandboxInstanceWorkflowLookupInputSchema,
+  CLOUDFLARE_SANDBOX_PROVIDER,
   type SandboxInstanceListInput,
   type SandboxInstanceLookupInput,
+  type SandboxInstanceRecord,
   type SandboxInstanceWorkflowLookupInput,
   type SandboxInstanceMarkErrorInput,
   type SandboxInstanceMarkRunningInput,
@@ -28,15 +32,19 @@ import {
   type SandboxInstanceStopRequestInput,
 } from "./sandboxes";
 import { automationFragmentSchema } from "./schema";
+import { automationTimestampToIsoString } from "./timestamps";
 
 export const SANDBOX_LIFECYCLE_WORKFLOW_NAME = "sandbox-lifecycle" as const;
 
 export type SandboxLifecycleWorkflowParams = SandboxInstanceRequestInput;
 
-type AutomationSandboxServiceContext = DatabaseServiceContext<Record<string, never>>;
+type AutomationSandboxServiceContext = DatabaseServiceContext<{
+  internalIngestEvent: (payload: AutomationEvent) => Promise<void> | void;
+}>;
 
 type AutomationSandboxServicesOptions = {
   workflows: AutomationWorkflowsService;
+  ownerScope: BackofficeContextScope;
   sandboxProviders?: Record<string, SandboxRuntimeProvider>;
 };
 
@@ -65,6 +73,23 @@ const sleepAfterMs = (sleepAfter: string | number) => {
       throw new Error("Invalid sandbox sleepAfter value.");
   }
 };
+
+const sandboxScopeSubject = (scope: BackofficeContextScope, sandboxId: string) => ({
+  ...(scope.kind === "org" || scope.kind === "project" ? { orgId: scope.orgId } : {}),
+  ...(scope.kind === "project" ? { projectId: scope.projectId } : {}),
+  sandboxId,
+});
+
+const sandboxPayload = (
+  sandbox: Pick<SandboxInstanceRecord, "id" | "provider" | "status">,
+  details: { reason?: string; errorMessage?: string } = {},
+) => ({
+  sandboxId: sandbox.id,
+  provider: sandbox.provider,
+  status: sandbox.status,
+  ...(details.reason ? { reason: details.reason } : {}),
+  ...(details.errorMessage ? { error: { message: details.errorMessage } } : {}),
+});
 
 export const createAutomationSandboxServices = (
   defineService: <TService>(
@@ -147,6 +172,23 @@ export const createAutomationSandboxServices = (
           uow.update("sandbox_instance", instance.id, (b) =>
             b.set({ status: next.status, stoppedAt: next.stoppedAt, updatedAt: now }).check(),
           );
+          const sandbox = {
+            id: String(instance.id),
+            provider: CLOUDFLARE_SANDBOX_PROVIDER,
+            status: "stopped",
+          } as const;
+          const event: AutomationEvent = {
+            id: crypto.randomUUID(),
+            scope: options.ownerScope,
+            source: "sandbox",
+            eventType: "instance.stopped",
+            occurredAt: automationTimestampToIsoString(now),
+            payload: sandboxPayload(sandbox, { reason: "workflow_terminal" }),
+            actor: AUTOMATION_SYSTEM_ACTOR,
+            actors: [AUTOMATION_SYSTEM_ACTOR],
+            subject: sandboxScopeSubject(options.ownerScope, sandbox.id),
+          };
+          uow.triggerHook("internalIngestEvent", event, { id: event.id });
           return next;
         })
         .transform(({ mutateResult }) =>
@@ -278,6 +320,25 @@ export const createAutomationSandboxServices = (
           uow.update("sandbox_instance", existing.id, (b) =>
             b.set({ status: next.status, stoppedAt: next.stoppedAt, updatedAt: now }).check(),
           );
+          if (isTerminalWorkflow) {
+            const sandbox = {
+              id: String(existing.id),
+              provider: CLOUDFLARE_SANDBOX_PROVIDER,
+              status: next.status,
+            } as const;
+            const event: AutomationEvent = {
+              id: crypto.randomUUID(),
+              scope: options.ownerScope,
+              source: "sandbox",
+              eventType: "instance.stopped",
+              occurredAt: automationTimestampToIsoString(now),
+              payload: sandboxPayload(sandbox, { reason: "stop_requested" }),
+              actor: AUTOMATION_SYSTEM_ACTOR,
+              actors: [AUTOMATION_SYSTEM_ACTOR],
+              subject: sandboxScopeSubject(options.ownerScope, sandbox.id),
+            };
+            uow.triggerHook("internalIngestEvent", event, { id: event.id });
+          }
           return next;
         })
         .transform(({ mutateResult }) =>
@@ -314,6 +375,23 @@ export const createAutomationSandboxServices = (
               updatedAt: now,
             }),
           );
+          const sandbox = {
+            id: input.id,
+            provider: input.provider ?? CLOUDFLARE_SANDBOX_PROVIDER,
+            status: "running",
+          } as const;
+          const event: AutomationEvent = {
+            id: crypto.randomUUID(),
+            scope: options.ownerScope,
+            source: "sandbox",
+            eventType: "instance.ready",
+            occurredAt: automationTimestampToIsoString(now),
+            payload: sandboxPayload(sandbox),
+            actor: AUTOMATION_SYSTEM_ACTOR,
+            actors: [AUTOMATION_SYSTEM_ACTOR],
+            subject: sandboxScopeSubject(options.ownerScope, sandbox.id),
+          };
+          uow.triggerHook("internalIngestEvent", event, { id: event.id });
         })
         .build();
     },
@@ -322,8 +400,9 @@ export const createAutomationSandboxServices = (
       const input = sandboxInstanceMarkStoppingInputSchema.parse(args);
       return this.serviceTx(automationFragmentSchema)
         .mutate(({ uow }) => {
+          const now = uow.now();
           uow.update("sandbox_instance", input.id, (b) =>
-            b.set({ status: "stopping", updatedAt: uow.now() }),
+            b.set({ status: "stopping", updatedAt: now }),
           );
         })
         .build();
@@ -341,6 +420,23 @@ export const createAutomationSandboxServices = (
               updatedAt: now,
             }),
           );
+          const sandbox = {
+            id: input.id,
+            provider: input.provider ?? CLOUDFLARE_SANDBOX_PROVIDER,
+            status: "stopped",
+          } as const;
+          const event: AutomationEvent = {
+            id: crypto.randomUUID(),
+            scope: options.ownerScope,
+            source: "sandbox",
+            eventType: "instance.stopped",
+            occurredAt: automationTimestampToIsoString(now),
+            payload: sandboxPayload(sandbox),
+            actor: AUTOMATION_SYSTEM_ACTOR,
+            actors: [AUTOMATION_SYSTEM_ACTOR],
+            subject: sandboxScopeSubject(options.ownerScope, sandbox.id),
+          };
+          uow.triggerHook("internalIngestEvent", event, { id: event.id });
         })
         .build();
     },
@@ -349,13 +445,31 @@ export const createAutomationSandboxServices = (
       const input = sandboxInstanceMarkErrorInputSchema.parse(args);
       return this.serviceTx(automationFragmentSchema)
         .mutate(({ uow }) => {
+          const now = uow.now();
           uow.update("sandbox_instance", input.id, (b) =>
             b.set({
               status: "error",
               lastError: input.lastError,
-              updatedAt: uow.now(),
+              updatedAt: now,
             }),
           );
+          const sandbox = {
+            id: input.id,
+            provider: input.provider ?? CLOUDFLARE_SANDBOX_PROVIDER,
+            status: "error",
+          } as const;
+          const event: AutomationEvent = {
+            id: crypto.randomUUID(),
+            scope: options.ownerScope,
+            source: "sandbox",
+            eventType: "instance.failed",
+            occurredAt: automationTimestampToIsoString(now),
+            payload: sandboxPayload(sandbox, { reason: "error", errorMessage: input.lastError }),
+            actor: AUTOMATION_SYSTEM_ACTOR,
+            actors: [AUTOMATION_SYSTEM_ACTOR],
+            subject: sandboxScopeSubject(options.ownerScope, sandbox.id),
+          };
+          uow.triggerHook("internalIngestEvent", event, { id: event.id });
         })
         .build();
     },
