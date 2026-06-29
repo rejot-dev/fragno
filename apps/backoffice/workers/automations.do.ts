@@ -13,6 +13,7 @@ import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
+import { backofficeScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import {
   createBackofficeFileSystem,
   createMasterFileSystem,
@@ -41,6 +42,7 @@ import {
   createBackofficeFragmentDurableObject,
   type BackofficeFragmentDurableObject,
   type BackofficeObjectState,
+  type BackofficeOutboxItem,
 } from "./lib/backoffice-fragment-durable-object";
 
 export type AutomationsFileSystemResolver = (input: {
@@ -52,37 +54,8 @@ type AutomationDurableObjectConfig = {
   scope: BackofficeContextScope;
 };
 
-const automationConfigForScope = (
-  scope: BackofficeContextScope | undefined,
-): AutomationDurableObjectConfig | null => (scope ? { scope } : null);
-
-const automationConfigForOrgId = (orgId: string): AutomationDurableObjectConfig => ({
-  scope: { kind: "org", orgId },
-});
-
-const ACTIVE_SANDBOX_INSTANCE_STATUSES = new Set<SandboxInstanceRecord["status"]>([
-  "requested",
-  "starting",
-  "running",
-  "stopping",
-]);
-
-const isActiveSandboxInstance = (
-  instance: SandboxInstanceRecord | null | undefined,
-): instance is SandboxInstanceRecord =>
-  Boolean(instance && ACTIVE_SANDBOX_INSTANCE_STATUSES.has(instance.status));
-
-const automationCatalogOrgIdForScope = (scope: BackofficeContextScope): string => {
-  switch (scope.kind) {
-    case "system":
-      return "automation-catalog-system";
-    case "org":
-      return scope.orgId;
-    case "user":
-      return `automation-catalog-user-${scope.userId}`;
-    case "project":
-      return `automation-catalog-project-${scope.projectId}`;
-  }
+type AutomationsOutboxItem = BackofficeOutboxItem & {
+  type: "automations.initialized";
 };
 
 export const createDefaultAutomationFileSystem = async ({
@@ -107,8 +80,8 @@ export const createDefaultAutomationFileSystem = async ({
 
   return createMasterFileSystem(
     createSystemFilesContext({
-      orgId: automationCatalogOrgIdForScope(execution.scope),
       objects,
+      execution,
     }),
     { contributors: [staticFileContributor, tmpFileContributor] },
   );
@@ -121,7 +94,8 @@ export class InMemoryAutomationsObject implements AutomationsObject {
   #host: BackofficeFragmentDurableObject<
     AutomationDurableObjectConfig,
     AutomationDurableObjectConfig,
-    AutomationsRuntime
+    AutomationsRuntime,
+    AutomationsOutboxItem
   >;
   #getAutomationFileSystem?: AutomationsFileSystemResolver;
   private readonly automationRoutePrefix = "/api/automations";
@@ -196,17 +170,40 @@ export class InMemoryAutomationsObject implements AutomationsObject {
         },
         { id: "workflows", target: (runtime) => runtime.workflowsFragment },
       ],
+      outbox: {
+        dispatch: async (item) => {
+          if (item.type !== "automations.initialized") {
+            return;
+          }
+
+          const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+          await runtime.automationFragment.callServices(() =>
+            runtime.automationFragment.services.seedStarterAutomationRoutes(),
+          );
+        },
+      },
     });
 
     void state.blockConcurrencyWhile(async () => {
       const stored = await this.#host.loadStored();
-      const initialConfig = stored ?? automationConfigForScope(ownerScope);
+      const initialConfig = stored ?? (ownerScope ? { scope: ownerScope } : null);
       if (initialConfig) {
         await this.#host.storeAndInitialize(initialConfig);
+        await this.#dispatchInitialized(initialConfig.scope);
         return;
       }
 
       await this.#host.initializeFromStored(null);
+    });
+  }
+
+  async #dispatchInitialized(scope: BackofficeContextScope) {
+    await this.#host.dispatch({
+      id: `automations.initialized:${
+        scope.kind === "system" ? "system" : backofficeScopeSinglePathSegment(scope)
+      }`,
+      type: "automations.initialized",
+      createdAt: new Date().toISOString(),
     });
   }
 
@@ -232,6 +229,7 @@ export class InMemoryAutomationsObject implements AutomationsObject {
         }
       }
       await this.#host.storeAndInitialize(config);
+      await this.#dispatchInitialized(config.scope);
     });
   }
 
@@ -265,15 +263,25 @@ export class InMemoryAutomationsObject implements AutomationsObject {
       return;
     }
 
-    await this.#ensureConfigured(automationConfigForOrgId(orgId));
+    await this.#ensureConfigured({ scope: { kind: "org", orgId } });
   }
 
   async #createAutomationFileSystem(execution: BackofficeExecutionContext) {
+    const kernel = new BackofficeKernel({ objects: this.#runtimeServices.objects });
+    const automationHookObject = kernel.scoped(
+      "AUTOMATIONS",
+      execution.scope,
+      this.#runtimeServices.objects.automations,
+    );
+
     return createDefaultAutomationFileSystem({
       objects: this.#runtimeServices.objects,
-      kernel: new BackofficeKernel({ objects: this.#runtimeServices.objects }),
+      kernel,
       execution,
-      automationHookQueue: (opts) => this.getDurableHookRepository("automation").getHookQueue(opts),
+      automationHookQueue: async (opts) =>
+        await (
+          await automationHookObject.getDurableHookRepository("automation")
+        ).getHookQueue(opts),
     });
   }
 
@@ -308,7 +316,7 @@ export class InMemoryAutomationsObject implements AutomationsObject {
   async seedStarterAutomationRoutes(input?: {
     scope?: BackofficeContextScope;
   }): Promise<StarterAutomationRoutesSeedResult> {
-    await this.#ensureConfigured(automationConfigForScope(input?.scope));
+    await this.#ensureConfigured(input?.scope ? { scope: input.scope } : null);
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
 
     return await runtime.automationFragment.callServices(() =>
@@ -317,7 +325,7 @@ export class InMemoryAutomationsObject implements AutomationsObject {
   }
 
   async triggerIngestEvent(event: AutomationEvent): Promise<AutomationIngestResult> {
-    await this.#ensureConfigured(automationConfigForScope(event.scope));
+    await this.#ensureConfigured({ scope: event.scope });
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
 
     return await runtime.automationFragment.callServices(() =>
@@ -365,13 +373,19 @@ export class InMemoryAutomationsObject implements AutomationsObject {
   async requestSandboxInstance(
     input: SandboxInstanceRequestInput & { ownerScope?: BackofficeContextScope },
   ): Promise<SandboxInstanceRecord> {
-    await this.#ensureConfigured(automationConfigForScope(input.ownerScope));
+    await this.#ensureConfigured(input.ownerScope ? { scope: input.ownerScope } : null);
     await this.#ensureConfiguredFromStored();
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
     const existing = await runtime.automationFragment.callServices(() =>
       runtime.automationFragment.services.getSandboxInstance({ id: input.id }),
     );
-    if (isActiveSandboxInstance(existing)) {
+    if (
+      existing &&
+      (existing.status === "requested" ||
+        existing.status === "starting" ||
+        existing.status === "running" ||
+        existing.status === "stopping")
+    ) {
       return existing;
     }
 
@@ -384,7 +398,7 @@ export class InMemoryAutomationsObject implements AutomationsObject {
     id: string;
     ownerScope?: BackofficeContextScope;
   }): Promise<SandboxInstanceRecord | null> {
-    await this.#ensureConfigured(automationConfigForScope(input.ownerScope));
+    await this.#ensureConfigured(input.ownerScope ? { scope: input.ownerScope } : null);
     await this.#ensureConfiguredFromStored();
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
     const instance = await runtime.automationFragment.callServices(() =>

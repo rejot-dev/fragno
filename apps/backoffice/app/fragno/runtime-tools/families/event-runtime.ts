@@ -70,6 +70,11 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
       if (!options.kernel || !options.execution) {
         throw new Error("event.emit cross-scope routing requires a Backoffice kernel");
       }
+      options.kernel.assertAutomationForwardTargetAllowed({
+        ownerScope: currentScope,
+        targetScope: resolvedTargetScope,
+        routeId: "event.emit",
+      });
       options.kernel.assertAllowed({
         actor: options.execution.actor,
         scope: resolvedTargetScope,

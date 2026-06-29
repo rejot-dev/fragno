@@ -1,11 +1,17 @@
 import { beforeEach, describe, expect, test, assert } from "vitest";
 
+import { getDurableHooksService } from "@fragno-dev/db/durable-hooks";
+
 import { InMemoryAdapter } from "@fragno-dev/db";
 import { drainDurableHooks } from "@fragno-dev/test";
 
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createMasterFileSystem, createSystemFilesContext } from "@/files";
 
-import { STARTER_AUTOMATION_ROUTES } from "./content/starter-routing";
+import {
+  STARTER_AUTOMATION_ROUTES,
+  SYSTEM_STARTER_AUTOMATION_ROUTES,
+} from "./content/starter-routing";
 import type { AutomationEvent } from "./contracts";
 import type { AutomationWorkflowsService } from "./definition";
 import { createAutomationFragment } from "./index";
@@ -13,9 +19,11 @@ import { createAutomationFragment } from "./index";
 const createAutomation = async (
   options: {
     ownerScope?:
+      | { kind: "system" }
       | { kind: "org"; orgId: string }
       | { kind: "project"; orgId: string; projectId: string };
     workflows?: AutomationWorkflowsService;
+    runtime?: BackofficeRuntimeServices;
   } = {},
 ) => {
   const services = {
@@ -34,8 +42,14 @@ const createAutomation = async (
     {
       ownerScope: options.ownerScope ?? { kind: "org", orgId: "org_123" },
       automationFileSystem: await createMasterFileSystem(
-        createSystemFilesContext({ orgId: "org_123" }),
+        createSystemFilesContext({
+          execution: {
+            actor: { type: "system", id: "system" },
+            scope: { kind: "org", orgId: "org_123" },
+          },
+        }),
       ),
+      runtime: options.runtime,
     },
     {
       databaseAdapter: new InMemoryAdapter({ idSeed: "automation-routes-store-test" }),
@@ -89,13 +103,33 @@ describe("automation routes /routes", () => {
             action: expect.objectContaining({ kind: "send_workflow_event" }),
           }),
           expect.objectContaining({
-            id: "system-project-files-configure",
+            id: "telegram-test-command",
             action: expect.objectContaining({
               kind: "start_workflow",
-              remoteWorkflowName: "project-files-configure",
+              remoteWorkflowName: "telegram-test-command",
             }),
           }),
         ]),
+      );
+    }
+  });
+
+  test("seeds hidden system automation routes in system scope", async () => {
+    const systemFragment = await createAutomation({ ownerScope: { kind: "system" } });
+    await systemFragment.inContext(async function () {
+      await this.handlerTx()
+        .withServiceCalls(() => [systemFragment.services.seedStarterAutomationRoutes()] as const)
+        .execute();
+    });
+
+    const response = await systemFragment.callRoute("GET", "/routes");
+
+    assert(response.type === "json");
+    if (response.type === "json") {
+      expect(response.data.map((route) => route.id)).toEqual(
+        [...SYSTEM_STARTER_AUTOMATION_ROUTES]
+          .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
+          .map((route) => route.id),
       );
     }
   });
@@ -150,6 +184,204 @@ describe("automation routes /routes", () => {
         matcher: { path: "$.payload.text", op: "startsWith", value: "/hello" },
       });
     }
+  });
+
+  test("system routes can forward events to an organization scope", async () => {
+    const forwardedEvents: AutomationEvent[] = [];
+    const runtime = {
+      objects: {
+        automations: {
+          for: (scope: AutomationEvent["scope"]) => ({
+            ingestEvent: async (event: AutomationEvent) => {
+              forwardedEvents.push(event);
+              expect(scope).toEqual({ kind: "org", orgId: "org_123" });
+              return {
+                accepted: true,
+                eventId: event.id,
+                scope: event.scope,
+                source: event.source,
+                eventType: event.eventType,
+              };
+            },
+          }),
+        },
+      },
+    } as unknown as BackofficeRuntimeServices;
+    const systemFragment = await createAutomation({ ownerScope: { kind: "system" }, runtime });
+
+    await systemFragment.callRoute("POST", "/routes", {
+      body: {
+        id: "custom-forwarder",
+        name: "Custom forwarder",
+        enabled: true,
+        source: "custom",
+        eventType: "ready",
+        matcher: { path: "$.subject.orgId", op: "exists" },
+        priority: 20,
+        action: {
+          kind: "forward_event",
+          targetScope: { kind: "org", orgIdTemplate: "${event.subject.orgId}" },
+          idTemplate: "${event.id}",
+        },
+      },
+    });
+
+    const event: AutomationEvent = {
+      id: "custom:ready:org_123",
+      scope: { kind: "system" },
+      source: "custom",
+      eventType: "ready",
+      occurredAt: "2026-01-01T00:00:00.000Z",
+      payload: { organization: { id: "org_123" } },
+      actor,
+      actors: [actor],
+      subject: { orgId: "org_123" },
+    };
+
+    await systemFragment.callServices(() => systemFragment.services.ingestEvent(event));
+    await drainDurableHooks(systemFragment);
+
+    expect(forwardedEvents).toEqual([
+      expect.objectContaining({
+        id: "custom:ready:org_123",
+        scope: { kind: "org", orgId: "org_123" },
+        source: "custom",
+        eventType: "ready",
+      }),
+    ]);
+  });
+
+  test("org-owned forward event routes cannot target another organization", async () => {
+    const ingestEvent = async () => ({
+      accepted: true,
+      eventId: "unexpected",
+      scope: { kind: "org", orgId: "org_999" } as const,
+      source: "custom",
+      eventType: "ready",
+    });
+    const runtime = {
+      objects: {
+        automations: {
+          for: () => ({ ingestEvent }),
+        },
+      },
+    } as unknown as BackofficeRuntimeServices;
+    fragment = await createAutomation({ runtime });
+
+    await fragment.callRoute("POST", "/routes", {
+      body: {
+        id: "custom-cross-org-forwarder",
+        name: "Custom cross-org forwarder",
+        enabled: true,
+        source: "custom",
+        eventType: "ready",
+        matcher: null,
+        priority: 20,
+        action: {
+          kind: "forward_event",
+          targetScope: { kind: "org", orgIdTemplate: "org_999" },
+        },
+      },
+    });
+
+    await fragment.callServices(() =>
+      fragment.services.ingestEvent({
+        id: "custom:ready:org_123",
+        scope: { kind: "org", orgId: "org_123" },
+        source: "custom",
+        eventType: "ready",
+        occurredAt: "2026-01-01T00:00:00.000Z",
+        payload: {},
+        actor,
+        actors: [actor],
+        subject: { orgId: "org_123" },
+      }),
+    );
+    await drainDurableHooks(fragment);
+
+    const { hookService, namespace } = getDurableHooksService(fragment);
+    const hooks = await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(() => [hookService.getHooksByNamespacePage(namespace)] as const)
+        .transform(({ serviceResult: [result] }) => result.items)
+        .execute();
+    });
+    expect(hooks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          hookName: "internalIngestEvent",
+          error:
+            "Automation route custom-cross-org-forwarder cannot forward events from org:org_123 to org:org_999.",
+        }),
+      ]),
+    );
+  });
+
+  test("forward event routes fail when the target scope template is empty", async () => {
+    const runtime = {
+      objects: {
+        automations: {
+          for: () => ({
+            ingestEvent: async () => ({
+              accepted: true,
+              eventId: "unexpected",
+              scope: { kind: "org", orgId: "unexpected" },
+              source: "custom",
+              eventType: "ready",
+            }),
+          }),
+        },
+      },
+    } as unknown as BackofficeRuntimeServices;
+    const systemFragment = await createAutomation({ ownerScope: { kind: "system" }, runtime });
+
+    await systemFragment.callRoute("POST", "/routes", {
+      body: {
+        id: "custom-forwarder-empty-target",
+        name: "Custom forwarder with empty target",
+        enabled: true,
+        source: "custom",
+        eventType: "ready",
+        matcher: null,
+        priority: 20,
+        action: {
+          kind: "forward_event",
+          targetScope: { kind: "org", orgIdTemplate: "${event.subject.orgId}" },
+        },
+      },
+    });
+
+    await systemFragment.callServices(() =>
+      systemFragment.services.ingestEvent({
+        id: "custom:ready:missing-org",
+        scope: { kind: "system" },
+        source: "custom",
+        eventType: "ready",
+        occurredAt: "2026-01-01T00:00:00.000Z",
+        payload: {},
+        actor,
+        actors: [actor],
+        subject: null,
+      }),
+    );
+
+    await drainDurableHooks(systemFragment);
+
+    const { hookService, namespace } = getDurableHooksService(systemFragment);
+    const hooks = await systemFragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(() => [hookService.getHooksByNamespacePage(namespace)] as const)
+        .transform(({ serviceResult: [result] }) => result.items)
+        .execute();
+    });
+    expect(hooks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          hookName: "internalIngestEvent",
+          error: "Automation route custom-forwarder-empty-target resolved an empty target org id.",
+        }),
+      ]),
+    );
   });
 
   test("send workflow event routes use deterministic event ids", async () => {

@@ -11,7 +11,10 @@ import {
 } from "@/files";
 
 const context: FilesContext = createSystemFilesContext({
-  orgId: "org_123",
+  execution: {
+    actor: { type: "system", id: "system" },
+    scope: { kind: "org", orgId: "org_123" },
+  },
   backend: "backoffice",
 });
 

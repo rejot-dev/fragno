@@ -76,9 +76,9 @@ const dispatchOrganizationEvent = async (
       : organization.updatedAt,
   );
 
-  await runtime.objects.automations.forOrg(organization.id).ingestEvent({
+  const event = {
     id: hookId,
-    scope: { kind: "org", orgId: organization.id },
+    scope: { kind: "system" } as const,
     source: AUTH_AUTOMATION_SOURCE,
     eventType,
     occurredAt,
@@ -86,7 +86,9 @@ const dispatchOrganizationEvent = async (
     actor: buildAuthActor(payload.actor),
     actors: [buildAuthActor(payload.actor)],
     subject: { orgId: organization.id },
-  });
+  };
+
+  await runtime.objects.automations.singleton().ingestEvent(event);
 };
 
 const createDevRejotAdminHook = (): BeforeCreateUserHook | undefined => {

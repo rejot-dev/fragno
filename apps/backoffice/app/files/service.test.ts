@@ -48,7 +48,10 @@ describe("files service", () => {
     const runtime = createUploadRuntime();
     const master = await createMasterFileSystem(
       createSystemFilesContext({
-        orgId: "org_123",
+        execution: {
+          actor: { type: "system", id: "system" },
+          scope: { kind: "org", orgId: "org_123" },
+        },
         backend: "backoffice",
         objects: createFilesTestObjectRegistry({
           uploadConfig: runtime.uploadConfig,
@@ -73,7 +76,10 @@ describe("files service", () => {
     });
     const master = await createMasterFileSystem(
       createSystemFilesContext({
-        orgId: "org_123",
+        execution: {
+          actor: { type: "system", id: "system" },
+          scope: { kind: "org", orgId: "org_123" },
+        },
         backend: "backoffice",
         objects: createFilesTestObjectRegistry({
           uploadConfig: runtime.uploadConfig,
@@ -123,7 +129,10 @@ describe("files service", () => {
     });
     const master = await createMasterFileSystem(
       createSystemFilesContext({
-        orgId: "org_123",
+        execution: {
+          actor: { type: "system", id: "system" },
+          scope: { kind: "org", orgId: "org_123" },
+        },
         backend: "backoffice",
         objects: createFilesTestObjectRegistry({
           uploadConfig: runtime.uploadConfig,
@@ -177,7 +186,10 @@ describe("files service", () => {
   test("does not mount workspace when Upload is unavailable", async () => {
     const master = await createMasterFileSystem(
       createSystemFilesContext({
-        orgId: "org_123",
+        execution: {
+          actor: { type: "system", id: "system" },
+          scope: { kind: "org", orgId: "org_123" },
+        },
         backend: "backoffice",
       }),
     );
@@ -197,7 +209,10 @@ describe("files service", () => {
   test("returns empty results for unknown built-in paths", async () => {
     const master = await createMasterFileSystem(
       createSystemFilesContext({
-        orgId: "org_123",
+        execution: {
+          actor: { type: "system", id: "system" },
+          scope: { kind: "org", orgId: "org_123" },
+        },
         backend: "backoffice",
       }),
     );

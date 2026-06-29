@@ -58,9 +58,17 @@ describe("backoffice files download route", () => {
       scope: { kind: "org", orgId: "org_123" },
     });
     createBackofficeFileSystemMock.mockImplementation(() =>
-      createMasterFileSystem(createSystemFilesContext({ orgId: "org_123" }), {
-        contributors: [...getBuiltInFileContributors(), ...contributors],
-      }),
+      createMasterFileSystem(
+        createSystemFilesContext({
+          execution: {
+            actor: { type: "system", id: "system" },
+            scope: { kind: "org", orgId: "org_123" },
+          },
+        }),
+        {
+          contributors: [...getBuiltInFileContributors(), ...contributors],
+        },
+      ),
     );
   });
 

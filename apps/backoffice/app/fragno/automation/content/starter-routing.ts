@@ -1,4 +1,5 @@
 import type {
+  AutomationForwardEventAction,
   AutomationRouteDefinition,
   AutomationStartWorkflowAction,
   AutomationSendWorkflowEventAction,
@@ -36,14 +37,25 @@ const sendWorkflowEventAction = ({
   payload: payload ?? "$event",
 });
 
-export const STARTER_AUTOMATION_ROUTES: readonly AutomationRouteDefinition[] = [
+const forwardToSubjectOrgAction = (): AutomationForwardEventAction => ({
+  kind: "forward_event",
+  targetScope: { kind: "org", orgIdTemplate: "${event.subject.orgId}" },
+  idTemplate: "org:${event.id}",
+});
+
+export const SYSTEM_STARTER_AUTOMATION_ROUTES: readonly AutomationRouteDefinition[] = [
   {
     id: "system-workspace-file-initialization",
     name: "Initialize workspace files",
     enabled: true,
     source: "auth",
     eventType: "organization.created",
-    matcher: null,
+    matcher: {
+      all: [
+        { path: "$.scope.kind", op: "eq", value: "system" },
+        { path: "$.subject.orgId", op: "exists" },
+      ],
+    },
     priority: 10,
     action: startWorkflowAction({
       remoteWorkflowName: "workspace-file-initialization",
@@ -51,6 +63,39 @@ export const STARTER_AUTOMATION_ROUTES: readonly AutomationRouteDefinition[] = [
       instanceIdTemplate: "workspace-file-initialization-${event.id}",
     }),
   },
+  {
+    id: "system-auth-organization-created-forward-to-org",
+    name: "Forward organization-created auth events to the organization",
+    enabled: true,
+    source: "auth",
+    eventType: "organization.created",
+    matcher: {
+      all: [
+        { path: "$.scope.kind", op: "eq", value: "system" },
+        { path: "$.subject.orgId", op: "exists" },
+      ],
+    },
+    priority: 20,
+    action: forwardToSubjectOrgAction(),
+  },
+  {
+    id: "system-auth-organization-updated-forward-to-org",
+    name: "Forward organization-updated auth events to the organization",
+    enabled: true,
+    source: "auth",
+    eventType: "organization.updated",
+    matcher: {
+      all: [
+        { path: "$.scope.kind", op: "eq", value: "system" },
+        { path: "$.subject.orgId", op: "exists" },
+      ],
+    },
+    priority: 20,
+    action: forwardToSubjectOrgAction(),
+  },
+];
+
+export const STARTER_AUTOMATION_ROUTES: readonly AutomationRouteDefinition[] = [
   {
     id: "system-project-files-configure",
     name: "Configure project files",

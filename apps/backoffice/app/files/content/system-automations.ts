@@ -7,40 +7,12 @@ export const SYSTEM_AUTOMATION_SCRIPT_PATHS = {
 } as const;
 
 export const SYSTEM_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
-  "automations/workspace-file-initialization.workflow.js": `defineWorkflow(
-  { name: "workspace-file-initialization" },
-  async (event, step) => {
-    const automationEvent = event.payload.automationEvent;
-
-    if (
-      automationEvent.source !== "auth" ||
-      automationEvent.eventType !== "organization.created"
-    ) {
-      return { skipped: true, reason: "not-organization-created" };
-    }
-
-    const configured = await step.do("configure upload database connection", async () => {
-      await connections.configure({
-        id: "upload",
-        payload: { provider: "database" },
-      });
-
-      return { configured: true, id: "upload", provider: "database" };
-    });
-
-    const seeded = await step.do("seed workspace starter files", async () => {
-      return await internal.filesSeedExecute({});
-    });
-
-    const automationRoutes = await step.do("seed starter automation routes", async () => {
-      return await internal.automationsRoutesSeedStarter({});
-    });
-
-    const codemodeTypes = await step.do("write codemode dts", async () => {
+  "automations/codemode-types-refresh.workflow.js": `defineWorkflow(
+  { name: "codemode-types-refresh" },
+  async (_event, step) => {
+    return await step.do("sync codemode dts", async () => {
       return await internal.codemodeTypesSync({});
     });
-
-    return { ...configured, seeded, automationRoutes, codemodeTypes };
   },
 );
 `,
@@ -67,12 +39,46 @@ export const SYSTEM_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
   },
 );
 `,
-  "automations/codemode-types-refresh.workflow.js": `defineWorkflow(
-  { name: "codemode-types-refresh" },
-  async (_event, step) => {
-    return await step.do("sync codemode dts", async () => {
-      return await internal.codemodeTypesSync({});
+  "automations/workspace-file-initialization.workflow.js": `defineWorkflow(
+  { name: "workspace-file-initialization" },
+  async (event, step) => {
+    const automationEvent = event.payload.automationEvent;
+
+    if (
+      automationEvent.source !== "auth" ||
+      automationEvent.eventType !== "organization.created"
+    ) {
+      return { skipped: true, reason: "not-organization-created" };
+    }
+
+    const orgId = automationEvent.subject?.orgId;
+    if (!orgId) {
+      throw new Error("organization.created event is missing subject.orgId.");
+    }
+    const org = context.org(orgId);
+
+    const configured = await step.do("configure upload database connection", async () => {
+      await org.connections.configure({
+        id: "upload",
+        payload: { provider: "database" },
+      });
+
+      return { configured: true, id: "upload", provider: "database" };
     });
+
+    const seeded = await step.do("seed workspace starter files", async () => {
+      return await org.internal.filesSeedExecute({});
+    });
+
+    const automationRoutes = await step.do("seed starter automation routes", async () => {
+      return await org.internal.automationsRoutesSeedStarter({});
+    });
+
+    const codemodeTypes = await step.do("write codemode dts", async () => {
+      return await org.internal.codemodeTypesSync({});
+    });
+
+    return { ...configured, seeded, automationRoutes, codemodeTypes };
   },
 );
 `,

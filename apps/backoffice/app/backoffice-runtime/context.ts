@@ -40,8 +40,3 @@ export const backofficeContextScopesEqual = (
       );
   }
 };
-
-export const SYSTEM_BACKOFFICE_PRINCIPAL: BackofficePrincipal = {
-  type: "system",
-  id: "system",
-};

@@ -1,12 +1,14 @@
 import { resolveActorFilePrincipal, type FilePrincipal } from "@/files/permissions";
 
-import type {
-  BackofficeContextScope,
-  BackofficeExecutionContext,
-  BackofficePrincipal,
+import {
+  backofficeContextScopesEqual,
+  type BackofficeContextScope,
+  type BackofficeExecutionContext,
+  type BackofficePrincipal,
 } from "./context";
 import type { BackofficeObjectBindingName, BackofficeObjectRegistry } from "./object-registry";
 import { backofficeObjectScopePolicy } from "./object-registry";
+import { backofficeScopeSinglePathSegment } from "./scope-codec";
 
 export type BackofficePermissionRequirement = {
   namespace: string;
@@ -106,6 +108,58 @@ export class BackofficeKernel {
     const decision = this.#authorizationPolicy?.(request) ?? { allowed: true };
     if (!decision.allowed) {
       throw new BackofficeForbiddenError(decision.message ?? "Forbidden");
+    }
+  }
+
+  assertAutomationForwardTargetAllowed({
+    ownerScope,
+    targetScope,
+    routeId,
+  }: {
+    ownerScope: BackofficeContextScope;
+    targetScope: BackofficeContextScope;
+    routeId?: string;
+  }) {
+    const routePrefix = routeId ? `Automation route ${routeId}` : "Automation route";
+    const deny = () => {
+      const ownerLabel =
+        ownerScope.kind === "system" ? "system" : backofficeScopeSinglePathSegment(ownerScope);
+      const targetLabel =
+        targetScope.kind === "system" ? "system" : backofficeScopeSinglePathSegment(targetScope);
+      throw new BackofficeForbiddenError(
+        `${routePrefix} cannot forward events from ${ownerLabel} to ${targetLabel}.`,
+      );
+    };
+
+    switch (ownerScope.kind) {
+      case "system":
+        return;
+      case "org":
+        if (
+          (targetScope.kind === "org" || targetScope.kind === "project") &&
+          targetScope.orgId === ownerScope.orgId
+        ) {
+          return;
+        }
+        // TODO: Check the Auth membership table before allowing org-scoped automations to
+        // forward events to user scopes.
+        if (targetScope.kind === "user") {
+          return;
+        }
+        deny();
+        return;
+      case "project":
+        if (backofficeContextScopesEqual(ownerScope, targetScope)) {
+          return;
+        }
+        deny();
+        return;
+      case "user":
+        if (backofficeContextScopesEqual(ownerScope, targetScope)) {
+          return;
+        }
+        deny();
+        return;
     }
   }
 

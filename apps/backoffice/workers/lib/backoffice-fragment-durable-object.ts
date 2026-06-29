@@ -216,7 +216,7 @@ export type BackofficeFragmentDurableObject<
   assertSameScope: (stored: TStored | null, scope: BackofficeContextScope) => void;
   /** Persist an outbox item and schedule alarm processing. */
   dispatch: (item: TOutbox) => Promise<void>;
-  /** Forward the Durable Object alarm to the current durable-hooks dispatcher, if any, then process outbox. */
+  /** Process outbox first, then forward the Durable Object alarm to the current durable-hooks dispatcher. */
   alarm: () => Promise<void>;
   /** Fetch through the configured runtime/mounts, including not-configured and scope-bound checks. */
   fetch: (request: Request, context?: FragmentDurableObjectFetchContext) => Promise<Response>;
@@ -580,10 +580,20 @@ export function createBackofficeFragmentDurableObject<
       if (!options.outbox) {
         throw new Error(`${options.name} outbox is not configured.`);
       }
-      await options.state.storage.put(getOutboxItemKey(item.id), item);
+      const key = getOutboxItemKey(item.id);
+      const existing = await options.state.storage.get<TOutbox>(key);
+      if (existing) {
+        if (!existing.dispatchedAt) {
+          await scheduleOutboxAlarm(0);
+        }
+        return;
+      }
+      await options.state.storage.put(key, item);
       await scheduleOutboxAlarm(0);
     },
     alarm: async () => {
+      await processOutbox();
+
       let fragmentAlarmError: unknown;
 
       if (current.configured) {
@@ -593,8 +603,6 @@ export function createBackofficeFragmentDurableObject<
           fragmentAlarmError = error;
         }
       }
-
-      await processOutbox();
 
       if (fragmentAlarmError) {
         throw fragmentAlarmError;

@@ -273,7 +273,10 @@ describe("upload file contributor", () => {
       uploadConfig,
     );
     const context = createSystemFilesContext({
-      orgId: "acme-org",
+      execution: {
+        actor: { type: "system", id: "system" },
+        scope: { kind: "org", orgId: "acme-org" },
+      },
       origin: runtime.baseUrl,
       backend: "pi",
       objects: createFilesTestObjectRegistry({ uploadConfig, uploadRuntime: runtime }),
@@ -293,7 +296,10 @@ describe("upload file contributor", () => {
       "reports/q1.txt": { provider: UPLOAD_PROVIDER_R2, content: "ready" },
     });
     const context = createSystemFilesContext({
-      orgId: "acme-org",
+      execution: {
+        actor: { type: "system", id: "system" },
+        scope: { kind: "org", orgId: "acme-org" },
+      },
       origin: runtime.baseUrl,
       backend: "pi",
       objects: createFilesTestObjectRegistry({
@@ -318,7 +324,10 @@ describe("upload file contributor", () => {
   test("routes a directly-created upload filesystem to the explicitly bound provider", async () => {
     const runtime = createUploadRuntime({});
     const context = createSystemFilesContext({
-      orgId: "acme-org",
+      execution: {
+        actor: { type: "system", id: "system" },
+        scope: { kind: "org", orgId: "acme-org" },
+      },
       origin: runtime.baseUrl,
       backend: "pi",
       objects: createFilesTestObjectRegistry({
@@ -762,7 +771,10 @@ describe("upload file contributor", () => {
     await expect(
       createUploadFileSystem(
         createSystemFilesContext({
-          orgId: "acme-org",
+          execution: {
+            actor: { type: "system", id: "system" },
+            scope: { kind: "org", orgId: "acme-org" },
+          },
           origin: runtime.baseUrl,
           objects,
         }),
@@ -777,7 +789,10 @@ describe("upload file contributor", () => {
   test("contributor createFileSystem returns null when uploads are unavailable", async () => {
     const fs = await uploadFileContributor.createFileSystem?.(
       createSystemFilesContext({
-        orgId: "acme-org",
+        execution: {
+          actor: { type: "system", id: "system" },
+          scope: { kind: "org", orgId: "acme-org" },
+        },
         backend: "backoffice",
       }),
     );
@@ -828,7 +843,10 @@ const createUploadFs = (
 ) => {
   const runtime = createUploadRuntime(seed);
   const context = createSystemFilesContext({
-    orgId: "acme-org",
+    execution: {
+      actor: { type: "system", id: "system" },
+      scope: { kind: "org", orgId: "acme-org" },
+    },
     origin: runtime.baseUrl,
     backend: "pi",
     objects: createFilesTestObjectRegistry({

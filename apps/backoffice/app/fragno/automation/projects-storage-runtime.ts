@@ -119,7 +119,7 @@ export const createAutomationProjectServices = (
 
           const projectId = id.toString();
           const event: AutomationEvent = {
-            id: `project.created:${projectId}`,
+            id: `project.created:${ownerScope.orgId}:${projectId}`,
             scope: ownerScope,
             source: "automations",
             eventType: "project.created",

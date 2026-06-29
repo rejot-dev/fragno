@@ -80,7 +80,13 @@ export const seedWorkspaceStarterFiles = async ({
   const uploadDo = objects.upload.forOrg(orgId);
   const uploadConfig = await uploadDo.getAdminConfig();
   const provider = uploadConfig.defaultProvider ?? "database";
-  const fileContext = createSystemFilesContext({ orgId, objects });
+  const fileContext = createSystemFilesContext({
+    objects,
+    execution: {
+      actor: { type: "system", id: "system" },
+      scope: { kind: "org", orgId },
+    },
+  });
   const fs = createUploadFileSystem(fileContext, {
     mountPoint: WORKSPACE_ROOT,
     provider,

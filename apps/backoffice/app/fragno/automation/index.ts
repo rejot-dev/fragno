@@ -43,7 +43,10 @@ export {
   readAutomationWorkspaceScript,
 } from "./catalog";
 export type { AutomationScriptLayer, AutomationWorkspaceScriptEntry } from "./catalog";
-export { STARTER_AUTOMATION_ROUTES } from "./content/starter-routing";
+export {
+  STARTER_AUTOMATION_ROUTES,
+  SYSTEM_STARTER_AUTOMATION_ROUTES,
+} from "./content/starter-routing";
 export type { AutomationRouteDefinition, StarterAutomationRoutesSeedResult } from "./routing";
 
 export { CLOUDFLARE_SANDBOX_PROVIDER } from "./sandboxes";

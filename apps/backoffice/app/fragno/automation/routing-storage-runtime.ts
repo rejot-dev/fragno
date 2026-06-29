@@ -1,6 +1,6 @@
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
-import { automationRouteFromRow, type AutomationRouteDefinition } from "./routing";
+import type { AutomationRouteDefinition } from "./routing";
 import {
   automationRouteCreateInputSchema,
   automationRouteUpdateInputSchema,
@@ -10,9 +10,6 @@ import {
 import { automationFragmentSchema } from "./schema";
 
 type AutomationRouteServiceContext = DatabaseServiceContext<Record<string, never>>;
-
-const mapRouteRows = (routes: Parameters<typeof automationRouteFromRow>[0][]) =>
-  routes.map((route) => automationRouteFromRow(route));
 
 const mergeRouteUpdate = ({
   existing,
@@ -46,7 +43,19 @@ export const createAutomationRouteServices = (
             b.whereIndex("primary").orderByIndex("idx_automation_route_priority_id", "asc"),
           ),
         )
-        .transformRetrieve(([routes]) => mapRouteRows(routes))
+        .transformRetrieve(([routes]) =>
+          routes.map((route) => ({
+            id: route.id.externalId,
+            name: route.name,
+            enabled: route.enabled,
+            source: route.source,
+            eventType: route.eventType,
+            matcher: route.matcher,
+            action: route.action,
+            priority: route.priority,
+            description: route.description,
+          })),
+        )
         .build();
     },
 
@@ -57,7 +66,21 @@ export const createAutomationRouteServices = (
             b.whereIndex("primary", (eb) => eb("id", "=", id)),
           ),
         )
-        .transformRetrieve(([route]) => (route ? automationRouteFromRow(route) : null))
+        .transformRetrieve(([route]) =>
+          route
+            ? {
+                id: route.id.externalId,
+                name: route.name,
+                enabled: route.enabled,
+                source: route.source,
+                eventType: route.eventType,
+                matcher: route.matcher,
+                action: route.action,
+                priority: route.priority,
+                description: route.description,
+              }
+            : null,
+        )
         .build();
     },
 
@@ -101,7 +124,20 @@ export const createAutomationRouteServices = (
             return null;
           }
 
-          const route = mergeRouteUpdate({ existing: automationRouteFromRow(rawExisting), patch });
+          const route = mergeRouteUpdate({
+            existing: {
+              id: rawExisting.id.externalId,
+              name: rawExisting.name,
+              enabled: rawExisting.enabled,
+              source: rawExisting.source,
+              eventType: rawExisting.eventType,
+              matcher: rawExisting.matcher,
+              action: rawExisting.action,
+              priority: rawExisting.priority,
+              description: rawExisting.description,
+            },
+            patch,
+          });
           uow.update("automation_route", rawExisting.id, (b) =>
             b
               .set({

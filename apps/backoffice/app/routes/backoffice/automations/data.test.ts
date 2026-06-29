@@ -37,10 +37,10 @@ beforeEach(() => {
 });
 
 describe("automation backoffice workspace data", () => {
-  test("shows filesystem scripts from both roots", async () => {
+  test("shows org filesystem scripts from the workspace root", async () => {
     const fileSystem = createStubAutomationFileSystem({
-      "/system/automations/workspace-file-initialization.workflow.js":
-        "defineWorkflow({ name: 'workspace-file-initialization' }, async () => {})",
+      "/system/automations/codemode-types-refresh.workflow.js":
+        "defineWorkflow({ name: 'codemode-types-refresh' }, async () => {})",
       "/workspace/automations/custom.cm.js": "async () => true",
       "/workspace/automations/unbound.sh": 'echo "unbound"',
       "/workspace/automations/workflow.workflow.js":
@@ -57,14 +57,6 @@ describe("automation backoffice workspace data", () => {
     expect(result.scriptsError).toBeNull();
     expect(result.scripts).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          id: "automation-script:system:workspace-file-initialization.workflow.js",
-          key: "workspace-file-initialization.workflow",
-          layer: "system",
-          readOnly: true,
-          path: "workspace-file-initialization.workflow.js",
-          enabled: false,
-        }),
         expect.objectContaining({
           id: "automation-script:workspace:custom.cm.js",
           key: "custom.cm",
@@ -86,7 +78,76 @@ describe("automation backoffice workspace data", () => {
         }),
       ]),
     );
+    expect(result.scripts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "automation-script:system:codemode-types-refresh.workflow.js",
+          key: "codemode-types-refresh.workflow",
+          layer: "system",
+          readOnly: true,
+          path: "codemode-types-refresh.workflow.js",
+          enabled: false,
+        }),
+      ]),
+    );
+    expect(result.scripts).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "automation-script:system:workspace-file-initialization.workflow.js",
+        }),
+      ]),
+    );
     expect(fileSystem.readFileCalls).toEqual([]);
+  });
+
+  test("shows system scripts in system scope", async () => {
+    const fileSystem = createStubAutomationFileSystem({
+      "/system/automations/workspace-file-initialization.workflow.js":
+        "defineWorkflow({ name: 'workspace-file-initialization' }, async () => {})",
+      "/workspace/automations/custom.cm.js": "async () => true",
+    });
+    createBackofficeFileSystemMock.mockResolvedValue(fileSystem.fs);
+
+    const result = await loadAutomationWorkspaceData({
+      request,
+      context: mockContext,
+      scope: { kind: "system" },
+    });
+
+    expect(result.scripts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "automation-script:system:workspace-file-initialization.workflow.js",
+          key: "workspace-file-initialization.workflow",
+          layer: "system",
+          readOnly: true,
+          path: "workspace-file-initialization.workflow.js",
+          enabled: false,
+        }),
+      ]),
+    );
+  });
+
+  test("reads visible system script source from org scope", async () => {
+    const fileSystem = createStubAutomationFileSystem({
+      "/system/automations/codemode-types-refresh.workflow.js": "refresh",
+    });
+    createBackofficeFileSystemMock.mockResolvedValue(fileSystem.fs);
+
+    const result = await loadAutomationScriptSource({
+      request,
+      context: mockContext,
+      orgId: "acme-org",
+      scriptId: "automation-script:system:codemode-types-refresh.workflow.js",
+    });
+
+    expect(result).toEqual({
+      script: "refresh",
+      scriptError: null,
+    });
+    expect(fileSystem.readFileCalls).toEqual([
+      "/system/automations/codemode-types-refresh.workflow.js",
+    ]);
   });
 
   test("reads the selected script source only when the user opens it", async () => {

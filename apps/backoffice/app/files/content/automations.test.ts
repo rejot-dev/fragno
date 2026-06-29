@@ -1,13 +1,16 @@
 import { describe, expect, test } from "vitest";
 
-import { STARTER_AUTOMATION_ROUTES } from "@/fragno/automation/content/starter-routing";
+import {
+  STARTER_AUTOMATION_ROUTES,
+  SYSTEM_STARTER_AUTOMATION_ROUTES,
+} from "@/fragno/automation/content/starter-routing";
 import { AUTOMATION_SOURCE_EVENT_TYPES } from "@/fragno/automation/contracts";
 
 import {
   STARTER_AUTOMATION_SCRIPT_PATHS,
   WORKSPACE_STARTER_AUTOMATION_CONTENT,
 } from "./starter-automations";
-import { SYSTEM_AUTOMATION_SCRIPT_PATHS, SYSTEM_AUTOMATION_CONTENT } from "./system-automations";
+import { SYSTEM_AUTOMATION_CONTENT, SYSTEM_AUTOMATION_SCRIPT_PATHS } from "./system-automations";
 
 type WorkspaceAutomationPath = keyof typeof WORKSPACE_STARTER_AUTOMATION_CONTENT;
 
@@ -95,22 +98,6 @@ describe("automation content", () => {
           }),
         }),
         expect.objectContaining({
-          source: "auth",
-          eventType: "organization.created",
-          action: expect.objectContaining({
-            remoteWorkflowName: "workspace-file-initialization",
-            workflowScriptPath: "/system/automations/workspace-file-initialization.workflow.js",
-          }),
-        }),
-        expect.objectContaining({
-          source: "automations",
-          eventType: "project.created",
-          action: expect.objectContaining({
-            remoteWorkflowName: "project-files-configure",
-            workflowScriptPath: "/system/automations/project-files-configure.workflow.js",
-          }),
-        }),
-        expect.objectContaining({
           source: "otp",
           eventType: "identity.claim.completed",
           action: expect.objectContaining({
@@ -128,6 +115,45 @@ describe("automation content", () => {
           action: expect.objectContaining({
             remoteWorkflowName: "pi-default-agent-configure",
             workflowScriptPath: "/workspace/automations/pi-default-agent-configure.workflow.js",
+          }),
+        }),
+      ]),
+    );
+  });
+
+  test("system automation content includes built-in system workflows", () => {
+    expect(Object.keys(SYSTEM_AUTOMATION_CONTENT).sort()).toEqual(
+      [
+        SYSTEM_AUTOMATION_SCRIPT_PATHS.codemodeTypesRefresh,
+        SYSTEM_AUTOMATION_SCRIPT_PATHS.projectFilesConfigure,
+        SYSTEM_AUTOMATION_SCRIPT_PATHS.workspaceFileInitialization,
+      ].sort(),
+    );
+  });
+
+  test("starter routes start system workflows in their owning automation scope", () => {
+    expect(SYSTEM_STARTER_AUTOMATION_ROUTES).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "system-workspace-file-initialization",
+          source: "auth",
+          eventType: "organization.created",
+          action: expect.objectContaining({
+            remoteWorkflowName: "workspace-file-initialization",
+            workflowScriptPath: "/system/automations/workspace-file-initialization.workflow.js",
+          }),
+        }),
+      ]),
+    );
+    expect(STARTER_AUTOMATION_ROUTES).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "system-project-files-configure",
+          source: "automations",
+          eventType: "project.created",
+          action: expect.objectContaining({
+            remoteWorkflowName: "project-files-configure",
+            workflowScriptPath: "/system/automations/project-files-configure.workflow.js",
           }),
         }),
       ]),
