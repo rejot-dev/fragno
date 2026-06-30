@@ -45,11 +45,11 @@
     },
   ],
   "dispatch_namespaces": [
-    // {
-    //   "binding": "DISPATCHER",
-    //   "namespace": "staging",
-    //   "remote": true,
-    // },
+    {
+      "binding": "DISPATCHER",
+      "namespace": "staging",
+      "remote": true,
+    },
   ],
   "worker_loaders": [
     {
