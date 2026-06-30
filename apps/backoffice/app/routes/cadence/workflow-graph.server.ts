@@ -29,10 +29,7 @@ import type { AutomationCodemodeWorkflowParams } from "@/fragno/automation/engin
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import type { JsonSchemaObject } from "@/lib/zod/zod-formatter";
-import {
-  loadAutomationCatalogWithSources,
-  writeAutomationScriptSource,
-} from "@/routes/backoffice/automations/data.server";
+import { loadAutomationCatalogWithSources } from "@/routes/backoffice/automations/data.server";
 import { getAutomationsDurableObject } from "@/worker-runtime/durable-objects";
 
 /**
@@ -481,27 +478,4 @@ export async function runWorkflow({
       error: error instanceof Error ? error.message : String(error),
     };
   }
-}
-
-/** Persist an edited workflow body back to its script file. */
-export async function saveWorkflowSource({
-  request,
-  context,
-  orgId,
-  absolutePath,
-  body,
-}: {
-  request: Request;
-  context: Readonly<RouterContextProvider>;
-  orgId: string;
-  absolutePath: string;
-  body: string;
-}): Promise<{ ok: boolean; error: string | null }> {
-  return writeAutomationScriptSource({
-    request,
-    context,
-    orgId,
-    absolutePath,
-    body,
-  });
 }
