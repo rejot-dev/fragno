@@ -190,6 +190,52 @@ describe("internal fragment describe routes", () => {
     await closeNoOutbox();
   });
 
+  it("does not expose internal hook mutations through the public outbox", async () => {
+    const { adapter, close } = await setupAdapter();
+
+    const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
+    const alphaFragment = instantiate(alphaDef)
+      .withOptions({
+        databaseAdapter: adapter,
+        mountRoute: "/alpha",
+        outbox: { enabled: true },
+      })
+      .build();
+
+    const internalFragment = getInternalFragment(adapter);
+    await internalFragment.inContext(async function () {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => {
+          forSchema(internalSchema).create("fragno_hooks", {
+            namespace: alphaSchema.name,
+            hookName: "testHook",
+            payload: { eventId: "event-1" },
+            status: "pending",
+            nonce: "event-1:testHook",
+          });
+        })
+        .execute();
+    });
+
+    const hookRecord = await internalFragment.inContext(async function () {
+      return await this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(internalSchema).findFirst("fragno_hooks", (b) =>
+            b.whereIndex("idx_nonce", (eb) => eb("nonce", "=", "event-1:testHook")),
+          ),
+        )
+        .transformRetrieve(([result]) => result)
+        .execute();
+    });
+    assert(hookRecord?.hookName === "testHook");
+
+    const outboxResponse = await alphaFragment.callRouteRaw("GET", "/_internal/outbox" as never);
+    assert(outboxResponse.status === 200);
+    await expect(outboxResponse.json()).resolves.toEqual([]);
+
+    await close();
+  });
+
   it("streams outbox entries after the requested versionstamp", async () => {
     const { adapter, close } = await setupAdapter();
 
