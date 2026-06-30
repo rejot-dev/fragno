@@ -4,7 +4,6 @@ import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.ser
 
 import type { Route } from "./+types/store";
 import { deleteAutomationStoreEntry } from "./data.server";
-import { useLofiAutomationStoreEntries } from "./lofi-store";
 import { automationScopeFromRouteParams } from "./scope";
 import type { AutomationLayoutContext } from "./shared";
 import { formatTimestamp } from "./shared";
@@ -64,13 +63,8 @@ const formatActor = (actor: AutomationLayoutContext["storeEntries"][number]["act
 };
 
 export default function BackofficeOrganisationAutomationStore() {
-  const { selectedScope, storeEntries, storeEntriesError, storePrefix } =
-    useOutletContext<AutomationLayoutContext>();
-  const lofiStore = useLofiAutomationStoreEntries({
-    scope: selectedScope,
-    initialEntries: storeEntries,
-    prefix: storePrefix,
-  });
+  const { storeData, storePrefix } = useOutletContext<AutomationLayoutContext>();
+  const lofiStore = { entries: storeData.data };
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const pendingKey =
@@ -113,13 +107,15 @@ export default function BackofficeOrganisationAutomationStore() {
         </button>
       </Form>
 
-      {storeEntriesError || lofiStore.error ? (
+      {storeData.serverError || storeData.syncError ? (
         <div className="border border-red-400/40 bg-red-500/8 p-4 text-sm text-red-700 dark:text-red-200">
-          {storeEntriesError
-            ? `Could not load store entries from the automations service: ${storeEntriesError}`
-            : `Could not sync local automation store updates: ${lofiStore.error}`}
+          {storeData.serverError
+            ? `Could not load store entries from the automations service: ${storeData.serverError}`
+            : `Could not sync local automation store updates: ${storeData.syncError}`}
         </div>
-      ) : (
+      ) : null}
+
+      {storeData.blockingError ? null : (
         <div className="backoffice-scroll overflow-x-auto border border-[color:var(--bo-border)]">
           <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
             <thead className="bg-[var(--bo-panel-2)] text-left">

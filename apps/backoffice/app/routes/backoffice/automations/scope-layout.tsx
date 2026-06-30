@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Outlet } from "react-router";
 
 import { getAuthMe } from "@/fragno/auth/auth-server";
@@ -11,6 +12,7 @@ import {
   loadAutomationWorkspaceData,
   toExternalId,
 } from "./data.server";
+import { useLofiAutomationScopeData } from "./lofi-store";
 import {
   automationScopeFromRouteParams,
   createAutomationScopeOptions,
@@ -23,6 +25,7 @@ import {
   AutomationHeader,
   AutomationScopePicker,
   AutomationTabs,
+  resolveAutomationServerLofiData,
   type AutomationTab,
 } from "./shared";
 
@@ -204,6 +207,41 @@ export default function BackofficeAutomationScopeLayout({
 }: Route.ComponentProps) {
   const currentPath = (matches[matches.length - 1]?.pathname || "").replace(/\/+$/, "");
   const activeTab = currentTabFromPath(currentPath);
+  const lofi = useLofiAutomationScopeData({
+    scope: loaderData.selectedScope,
+    initialEntries: loaderData.storeEntries,
+    initialRoutes: loaderData.routes,
+    prefix: loaderData.storePrefix,
+  });
+  const outletContext = useMemo(() => {
+    const storeData = resolveAutomationServerLofiData({
+      serverData: loaderData.storeEntries,
+      serverError: loaderData.storeEntriesError,
+      lofiData: lofi.store.entries,
+      lofiSynced: lofi.store.synced,
+      lofiError: lofi.store.error,
+      isEmpty: (entries) => entries.length === 0,
+    });
+    const routesData = resolveAutomationServerLofiData({
+      serverData: loaderData.routes,
+      serverError: loaderData.routesError,
+      lofiData: lofi.routes.routes,
+      lofiSynced: lofi.routes.synced,
+      lofiError: lofi.routes.error,
+      isEmpty: (routes) => routes.length === 0,
+    });
+
+    return {
+      ...loaderData,
+      routes: routesData.data,
+      storeEntries: storeData.data,
+      storeData,
+      routesData,
+      lofiStore: { ...lofi.store, entries: storeData.data, error: storeData.syncError },
+      lofiRoutes: { ...lofi.routes, routes: routesData.data, error: routesData.syncError },
+      lofiSandboxes: lofi.sandboxes,
+    };
+  }, [loaderData, lofi]);
 
   return (
     <div className="space-y-4">
@@ -214,7 +252,7 @@ export default function BackofficeAutomationScopeLayout({
         projectsError={loaderData.projectsError}
       />
       <AutomationTabs selectedScope={loaderData.selectedScope} activeTab={activeTab} />
-      <Outlet context={loaderData} />
+      <Outlet context={outletContext} />
     </div>
   );
 }

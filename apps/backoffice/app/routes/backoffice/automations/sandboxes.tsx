@@ -6,6 +6,7 @@ import {
   useLoaderData,
   useNavigation,
   useOutletContext,
+  useSearchParams,
 } from "react-router";
 
 import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
@@ -22,7 +23,7 @@ import { getScopedSandboxRuntime } from "@/worker-runtime/sandbox-manager";
 import type { Route } from "./+types/sandboxes";
 import { fetchAutomationProjects, toExternalId } from "./data.server";
 import { automationScopeFromRouteParams, automationScopeTabPath } from "./scope";
-import type { AutomationLayoutContext } from "./shared";
+import { resolveAutomationServerLofiData, type AutomationLayoutContext } from "./shared";
 
 type SandboxView = "new" | "detail";
 
@@ -300,9 +301,15 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function BackofficeAutomationSandboxes() {
-  const { selectedScope } = useOutletContext<AutomationLayoutContext>();
-  const { sandboxes, selectedSandbox, selectedSandboxId, view, loadError } =
-    useLoaderData<typeof loader>();
+  const { selectedScope, lofiSandboxes } = useOutletContext<AutomationLayoutContext>();
+  const {
+    sandboxes: initialSandboxes,
+    selectedSandbox: initialSelectedSandbox,
+    selectedSandboxId: initialSelectedSandboxId,
+    view: initialView,
+    loadError,
+  } = useLoaderData<typeof loader>();
+  const [searchParams] = useSearchParams();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const activeIntent = navigation.formData?.get("intent");
@@ -310,6 +317,31 @@ export default function BackofficeAutomationSandboxes() {
   const isExecuting = navigation.state === "submitting" && activeIntent === "exec";
   const isKilling = navigation.state === "submitting" && activeIntent === "kill";
   const basePath = automationScopeTabPath(selectedScope, "sandboxes");
+  const sandboxData = resolveAutomationServerLofiData({
+    serverData: initialSandboxes,
+    serverError: loadError,
+    lofiData: lofiSandboxes.sandboxes,
+    lofiSynced: lofiSandboxes.synced,
+    lofiError: lofiSandboxes.error,
+    isEmpty: (instances) => instances.length === 0,
+  });
+  const sandboxes = sandboxData.data;
+  const requestedView = searchParams.get("view") === "new" ? "new" : "detail";
+  const requestedSandboxId = readText(searchParams.get("sandbox"));
+  const fallbackSandbox =
+    sandboxes.find((instance) => instance.status !== "stopped") ?? sandboxes[0] ?? null;
+  const view = requestedView === "new" ? "new" : fallbackSandbox ? "detail" : initialView;
+  const selectedSandboxId =
+    view === "detail"
+      ? requestedSandboxId || fallbackSandbox?.id || initialSelectedSandboxId
+      : null;
+  const selectedSandbox = selectedSandboxId
+    ? (sandboxes.find((instance) => instance.id === selectedSandboxId) ??
+      (lofiSandboxes.synced ? null : initialSelectedSandbox))
+    : null;
+  const serverWarning = sandboxData.serverError;
+  const syncError = sandboxData.syncError;
+  const effectiveLoadError = sandboxData.blockingError;
 
   const startError =
     actionData?.intent === "start" && actionData.ok === false ? actionData.message : null;
@@ -362,7 +394,7 @@ export default function BackofficeAutomationSandboxes() {
             </div>
           </Link>
 
-          {!loadError && sandboxes.length === 0 ? (
+          {!effectiveLoadError && sandboxes.length === 0 ? (
             <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3 text-xs text-[var(--bo-muted)]">
               No sandbox instances yet.
             </div>
@@ -400,36 +432,50 @@ export default function BackofficeAutomationSandboxes() {
       </aside>
 
       <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)]">
-        {loadError ? (
+        {effectiveLoadError ? (
           <div className="border border-red-300 bg-red-100 p-3 text-sm text-red-700">
-            {loadError}
+            {effectiveLoadError}
           </div>
-        ) : view === "new" ? (
-          <NewSandboxView values={startValues} error={startError} isStarting={isStarting} />
-        ) : selectedSandbox ? (
-          <SandboxDetailView
-            sandbox={selectedSandbox}
-            commandRun={commandRun}
-            commandDisabled={commandDisabled}
-            killError={killError}
-            isExecuting={isExecuting}
-            isKilling={isKilling}
-          />
         ) : (
-          <div className="space-y-4">
-            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-              Sandbox not found
-            </p>
-            <p className="text-sm text-[var(--bo-muted)]">
-              The selected sandbox instance is no longer available for this automation scope.
-            </p>
-            <Link
-              to={toSandboxPath(basePath, { view: "new" })}
-              className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
-            >
-              Create new sandbox
-            </Link>
-          </div>
+          <>
+            {serverWarning ? (
+              <div className="mb-4 border border-red-300 bg-red-100 p-3 text-sm text-red-700">
+                Could not load sandbox instances from the automations service: {serverWarning}
+              </div>
+            ) : null}
+            {syncError ? (
+              <div className="mb-4 border border-red-300 bg-red-100 p-3 text-sm text-red-700">
+                Could not sync local sandbox updates: {syncError}
+              </div>
+            ) : null}
+            {view === "new" ? (
+              <NewSandboxView values={startValues} error={startError} isStarting={isStarting} />
+            ) : selectedSandbox ? (
+              <SandboxDetailView
+                sandbox={selectedSandbox}
+                commandRun={commandRun}
+                commandDisabled={commandDisabled}
+                killError={killError}
+                isExecuting={isExecuting}
+                isKilling={isKilling}
+              />
+            ) : (
+              <div className="space-y-4">
+                <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+                  Sandbox not found
+                </p>
+                <p className="text-sm text-[var(--bo-muted)]">
+                  The selected sandbox instance is no longer available for this automation scope.
+                </p>
+                <Link
+                  to={toSandboxPath(basePath, { view: "new" })}
+                  className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
+                >
+                  Create new sandbox
+                </Link>
+              </div>
+            )}
+          </>
         )}
       </section>
     </section>

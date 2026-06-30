@@ -12,15 +12,43 @@ import {
   type LofiRuntimeStatus,
 } from "@fragno-dev/lofi";
 
-import { backofficeScopeRouteId } from "@/backoffice-runtime/scope-codec";
+import {
+  backofficeScopeRouteId,
+  backofficeScopeSinglePathSegment,
+} from "@/backoffice-runtime/scope-codec";
+import type { AutomationEventMatcher, AutomationRouteAction } from "@/fragno/automation/routing";
 import { automationFragmentSchema } from "@/fragno/automation/schema";
+import {
+  CLOUDFLARE_SANDBOX_PROVIDER,
+  type SandboxInstanceStatus,
+  type SandboxInstanceSummary,
+} from "@/sandbox/contracts";
 
 import type { AutomationUiScope } from "./scope";
-import type { AutomationStoreItem } from "./shared";
+import type {
+  AutomationLocalScopeState,
+  AutomationLocalStoreState,
+  AutomationRouteItem,
+  AutomationStoreItem,
+} from "./shared";
 
 const AUTOMATIONS_BINDINGS_ENDPOINT = "automations-bindings";
 
-const EMPTY_QUERY_STATE: LofiQueryState<AutomationStoreItem[]> = {
+const EMPTY_STORE_QUERY_STATE: LofiQueryState<AutomationStoreItem[]> = {
+  data: [],
+  loading: false,
+  error: null,
+  synced: false,
+};
+
+const EMPTY_ROUTES_QUERY_STATE: LofiQueryState<AutomationRouteItem[]> = {
+  data: [],
+  loading: false,
+  error: null,
+  synced: false,
+};
+
+const EMPTY_SANDBOXES_QUERY_STATE: LofiQueryState<SandboxInstanceSummary[]> = {
   data: [],
   loading: false,
   error: null,
@@ -32,12 +60,15 @@ const IDLE_RUNTIME_STATUS: LofiRuntimeStatus = {
   sources: {},
 };
 
-type AutomationEntriesRuntime = {
+type AutomationScopeRuntime = {
   runtime: LofiRuntime;
   $entries: LofiQueryStore<AutomationStoreItem[]>;
+  $routes: LofiQueryStore<AutomationRouteItem[]>;
+  $sandboxes: LofiQueryStore<SandboxInstanceSummary[]>;
 };
 
 type AutomationStoreScopeRuntimeConfig = {
+  scope: AutomationUiScope;
   scopeKey: string;
   dbName: string;
   sourceId: string;
@@ -66,6 +97,42 @@ const scopeRouteId = (scope: AutomationUiScope): string => {
   }
 };
 
+const sandboxIdScope = (scope: AutomationUiScope): string => {
+  switch (scope.kind) {
+    case "system":
+      return "system";
+    case "org":
+      return scope.orgId;
+    case "project":
+      return backofficeScopeSinglePathSegment({
+        kind: "project",
+        orgId: scope.orgId,
+        projectId: scope.projectId,
+      });
+    case "user":
+      return backofficeScopeSinglePathSegment({ kind: "user", userId: scope.userId });
+  }
+};
+
+const toPublicSandboxId = ({
+  scope,
+  sandboxId,
+}: {
+  scope: AutomationUiScope;
+  sandboxId: string;
+}): string | null => {
+  const prefix = `${sandboxIdScope(scope)}::`;
+  return sandboxId.startsWith(prefix) ? sandboxId.slice(prefix.length) : null;
+};
+
+const isSandboxStatus = (value: string): value is SandboxInstanceStatus =>
+  value === "requested" ||
+  value === "starting" ||
+  value === "running" ||
+  value === "stopping" ||
+  value === "stopped" ||
+  value === "error";
+
 const sanitizeScopeKeyForDatabaseName = (scopeKey: string) =>
   scopeKey.replace(/[^a-zA-Z0-9_-]+/g, "_");
 
@@ -76,6 +143,7 @@ const automationStoreScopeRuntimeConfig = (
   const scopeKey = `${scope.kind}:${routeId}`;
 
   return {
+    scope,
     scopeKey,
     dbName: `fragno_lofi_backoffice_automations_${sanitizeScopeKeyForDatabaseName(scopeKey)}`,
     sourceId: scopeKey,
@@ -104,12 +172,12 @@ const automationsLofiRuntimes = createLofiRuntimeRegistry({
     }),
 });
 
-const automationEntriesByScope = new Map<string, AutomationEntriesRuntime>();
+const automationScopeRuntimeByScope = new Map<string, AutomationScopeRuntime>();
 
-const getAutomationEntriesRuntime = (
+const getAutomationScopeRuntime = (
   config: AutomationStoreScopeRuntimeConfig,
-): AutomationEntriesRuntime => {
-  const existing = automationEntriesByScope.get(config.scopeKey);
+): AutomationScopeRuntime => {
+  const existing = automationScopeRuntimeByScope.get(config.scopeKey);
   if (existing) {
     return existing;
   }
@@ -140,8 +208,49 @@ const getAutomationEntriesRuntime = (
         })),
     },
   );
-  const created = { runtime, $entries };
-  automationEntriesByScope.set(config.scopeKey, created);
+  const $routes = createLofiQueryStore(
+    runtime,
+    automationFragmentSchema,
+    "automation_route",
+    (b) => b.whereIndex("primary").orderByIndex("idx_automation_route_priority_id", "asc"),
+    {
+      initialData: [],
+      map: (rows) =>
+        rows.map((route) => ({
+          id: route.id.externalId,
+          name: route.name,
+          enabled: route.enabled,
+          source: route.source,
+          eventType: route.eventType,
+          matcher: route.matcher as AutomationEventMatcher | null,
+          action: route.action as AutomationRouteAction,
+          priority: route.priority,
+          description: route.description,
+        })),
+    },
+  );
+  const $sandboxes = createLofiQueryStore(
+    runtime,
+    automationFragmentSchema,
+    "sandbox_instance",
+    (b) => b.whereIndex("primary"),
+    {
+      initialData: [],
+      map: (rows) =>
+        rows
+          .filter((instance) => instance.provider === CLOUDFLARE_SANDBOX_PROVIDER)
+          .flatMap((instance) => {
+            const id = toPublicSandboxId({
+              scope: config.scope,
+              sandboxId: instance.id.externalId,
+            });
+            return id && isSandboxStatus(instance.status) ? [{ id, status: instance.status }] : [];
+          })
+          .sort((left, right) => left.id.localeCompare(right.id)),
+    },
+  );
+  const created = { runtime, $entries, $routes, $sandboxes };
+  automationScopeRuntimeByScope.set(config.scopeKey, created);
   return created;
 };
 
@@ -161,6 +270,68 @@ const errorMessage = (error: unknown): string | null => {
   return error instanceof Error ? error.message : "Lofi sync failed.";
 };
 
+const hasLocalQueryResult = <TData,>(queryState: LofiQueryState<TData>): boolean =>
+  queryState.synced;
+
+export const useLofiAutomationScopeData = ({
+  scope,
+  initialEntries,
+  initialRoutes,
+  prefix,
+}: {
+  scope: AutomationUiScope;
+  initialEntries: AutomationStoreItem[];
+  initialRoutes: AutomationRouteItem[];
+  prefix: string;
+}): AutomationLocalScopeState => {
+  const scopeConfig = useMemo(() => automationStoreScopeRuntimeConfig(scope), [scope]);
+  const lofi = useMemo(
+    () => (typeof window === "undefined" ? null : getAutomationScopeRuntime(scopeConfig)),
+    [scopeConfig],
+  );
+  const entriesQueryState = useNanostore(lofi?.$entries ?? null, EMPTY_STORE_QUERY_STATE);
+  const routesQueryState = useNanostore(lofi?.$routes ?? null, EMPTY_ROUTES_QUERY_STATE);
+  const sandboxesQueryState = useNanostore(lofi?.$sandboxes ?? null, EMPTY_SANDBOXES_QUERY_STATE);
+  const runtimeStatus = useNanostore(lofi?.runtime.$status ?? null, IDLE_RUNTIME_STATUS);
+  const normalizedPrefix = prefix.trim();
+
+  return useMemo(() => {
+    const entries = entriesQueryState.data.filter(
+      (entry) => !normalizedPrefix || entry.key.startsWith(normalizedPrefix),
+    );
+    const storeHasLocalData = hasLocalQueryResult(entriesQueryState);
+    const routesHaveLocalData = hasLocalQueryResult(routesQueryState);
+    const sandboxesHaveLocalData = hasLocalQueryResult(sandboxesQueryState);
+    const runtimeError = errorMessage(runtimeStatus.lastError);
+
+    return {
+      store: {
+        entries: storeHasLocalData ? entries : initialEntries,
+        synced: storeHasLocalData,
+        error: errorMessage(entriesQueryState.error) ?? runtimeError,
+      },
+      routes: {
+        routes: routesHaveLocalData ? routesQueryState.data : initialRoutes,
+        synced: routesHaveLocalData,
+        error: errorMessage(routesQueryState.error) ?? runtimeError,
+      },
+      sandboxes: {
+        sandboxes: sandboxesHaveLocalData ? sandboxesQueryState.data : [],
+        synced: sandboxesHaveLocalData,
+        error: errorMessage(sandboxesQueryState.error) ?? runtimeError,
+      },
+    };
+  }, [
+    entriesQueryState,
+    initialEntries,
+    initialRoutes,
+    normalizedPrefix,
+    routesQueryState,
+    runtimeStatus,
+    sandboxesQueryState,
+  ]);
+};
+
 export const useLofiAutomationStoreEntries = ({
   scope,
   initialEntries,
@@ -169,26 +340,10 @@ export const useLofiAutomationStoreEntries = ({
   scope: AutomationUiScope;
   initialEntries: AutomationStoreItem[];
   prefix: string;
-}) => {
-  const scopeConfig = useMemo(() => automationStoreScopeRuntimeConfig(scope), [scope]);
-  const lofi = useMemo(
-    () => (typeof window === "undefined" ? null : getAutomationEntriesRuntime(scopeConfig)),
-    [scopeConfig],
-  );
-  const queryState = useNanostore(lofi?.$entries ?? null, EMPTY_QUERY_STATE);
-  const runtimeStatus = useNanostore(lofi?.runtime.$status ?? null, IDLE_RUNTIME_STATUS);
-  const normalizedPrefix = prefix.trim();
-
-  return useMemo(() => {
-    const entries = queryState.data.filter(
-      (entry) => !normalizedPrefix || entry.key.startsWith(normalizedPrefix),
-    );
-    const hasLocalData = entries.length > 0 || Boolean(runtimeStatus.lastSyncAt);
-
-    return {
-      entries: hasLocalData ? entries : initialEntries,
-      synced: hasLocalData,
-      error: errorMessage(queryState.error) ?? errorMessage(runtimeStatus.lastError),
-    };
-  }, [initialEntries, normalizedPrefix, queryState, runtimeStatus]);
-};
+}): AutomationLocalStoreState =>
+  useLofiAutomationScopeData({
+    scope,
+    initialEntries,
+    initialRoutes: [],
+    prefix,
+  }).store;
