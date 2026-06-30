@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Validator, type Schema } from "@cfworker/json-schema";
 
 import type { AutomationEventActor } from "./contracts";
+import { automationTimestampToIsoString } from "./timestamps";
 
 const idSchema = z.preprocess((value) => {
   if (typeof value === "string") {
@@ -18,11 +19,12 @@ const idSchema = z.preprocess((value) => {
 }, z.string());
 
 const isoTimestampSchema = z.preprocess((value) => {
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-  if (value && typeof value === "object" && (value as { tag?: unknown }).tag === "db-now") {
-    return new Date().toISOString();
+  if (
+    value instanceof Date ||
+    typeof value === "number" ||
+    (value && typeof value === "object" && (value as { tag?: unknown }).tag === "db-now")
+  ) {
+    return automationTimestampToIsoString(value);
   }
   return value;
 }, z.iso.datetime());

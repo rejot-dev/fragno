@@ -12,6 +12,9 @@ export type GitHubConfig = Pick<
   GitHubAppFragmentConfig,
   | "appId"
   | "appSlug"
+  | "clientId"
+  | "clientSecret"
+  | "callbackUrl"
   | "privateKeyPem"
   | "webhookSecret"
   | "webhookDebug"

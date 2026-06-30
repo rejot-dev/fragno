@@ -40,6 +40,10 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
 
   const { repos, reposError } = await fetchGitHubLinkedRepositories(request, context, params.orgId);
+  if (!reposError && repos.length === 0) {
+    return redirect(`/backoffice/connections/github/${params.orgId}/configuration`);
+  }
+
   return {
     configError: null,
     reposError,
