@@ -11,6 +11,8 @@ export function createGitHubAppFragmentClients(fragnoConfig: FragnoPublicClientC
   ]);
 
   return {
+    useStartOAuth: b.createMutator("POST", "/oauth/start"),
+    useCompleteOAuth: b.createMutator("POST", "/oauth/complete"),
     useSyncInstallation: b.createMutator("POST", "/installations/:installationId/sync"),
   };
 }

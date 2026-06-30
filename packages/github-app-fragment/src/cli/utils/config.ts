@@ -86,6 +86,21 @@ export const resolveGitHubAppConfig = (ctx: CommandContext): GitHubAppFragmentCo
     env: "GITHUB_APP_SLUG",
     label: "GitHub App slug",
   });
+  const clientId = resolveRequiredString(ctx, {
+    key: "client-id",
+    env: "GITHUB_APP_CLIENT_ID",
+    label: "GitHub App client ID",
+  });
+  const clientSecret = resolveRequiredString(ctx, {
+    key: "client-secret",
+    env: "GITHUB_APP_CLIENT_SECRET",
+    label: "GitHub App client secret",
+  });
+  const callbackUrl = resolveRequiredString(ctx, {
+    key: "callback-url",
+    env: "GITHUB_APP_CALLBACK_URL",
+    label: "GitHub App callback URL",
+  });
 
   const privateKey = resolveString(ctx, { key: "private-key", env: "GITHUB_APP_PRIVATE_KEY" });
   const privateKeyFile = resolveString(ctx, {
@@ -132,6 +147,9 @@ export const resolveGitHubAppConfig = (ctx: CommandContext): GitHubAppFragmentCo
   return {
     appId,
     appSlug,
+    clientId,
+    clientSecret,
+    callbackUrl,
     privateKeyPem: normalizePem(privateKeyPem),
     webhookSecret,
     webhookDebug,

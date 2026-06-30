@@ -60,5 +60,23 @@ export const githubAppSchema = schema("github-app-fragment", (s) => {
     })
     .noOp("removed obsolete installation_repo -> installation addReference history")
     .noOp("removed obsolete installation_repo -> repo_link join-only relation history")
-    .noOp("removed obsolete repo_link -> installation_repo addReference history");
+    .noOp("removed obsolete repo_link -> installation_repo addReference history")
+    .addTable("oauth_state", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("subjectId", column("string"))
+        .addColumn("returnTo", column("string").nullable())
+        .addColumn("installations", column("json").nullable())
+        .addColumn("githubUserId", column("string").nullable())
+        .addColumn("githubLogin", column("string").nullable())
+        .addColumn(
+          "createdAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .addColumn("expiresAt", column("timestamp"))
+        .addColumn("completedAt", column("timestamp").nullable())
+        .createIndex("idx_oauth_state_subject", ["subjectId"])
+        .createIndex("idx_oauth_state_expires", ["expiresAt"])
+        .createIndex("uniq_oauth_state", ["id"], { unique: true });
+    });
 });

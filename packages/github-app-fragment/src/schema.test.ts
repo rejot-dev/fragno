@@ -9,14 +9,15 @@ describe("githubAppSchema", () => {
 
   it("defines the expected tables", () => {
     expect(Object.keys(githubAppSchema.tables).sort()).toEqual(
-      ["installation", "installation_repo", "repo_link"].sort(),
+      ["installation", "installation_repo", "oauth_state", "repo_link"].sort(),
     );
   });
 
   it("assigns external ids and indexes", () => {
-    const { installation, installation_repo, repo_link } = githubAppSchema.tables;
+    const { installation, installation_repo, oauth_state, repo_link } = githubAppSchema.tables;
 
     assert(installation.getIdColumn().name === "id");
+    assert(oauth_state.getIdColumn().name === "id");
     assert(installation_repo.getIdColumn().name === "id");
     assert(repo_link.getIdColumn().name === "id");
 
@@ -25,6 +26,14 @@ describe("githubAppSchema", () => {
         "idx_installation_account_login",
         "idx_installation_status",
         "uniq_installation_id",
+      ]),
+    );
+
+    expect(Object.keys(oauth_state.indexes)).toEqual(
+      expect.arrayContaining([
+        "idx_oauth_state_subject",
+        "idx_oauth_state_expires",
+        "uniq_oauth_state",
       ]),
     );
 

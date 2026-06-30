@@ -40,6 +40,9 @@ CLI to run a local server and call all fragment routes for integration testing.
 ```bash
 GITHUB_APP_ID=123456
 GITHUB_APP_SLUG=my-github-app
+GITHUB_APP_CLIENT_ID=Iv23yourgithubappclientid
+GITHUB_APP_CLIENT_SECRET=your-github-app-client-secret
+GITHUB_APP_CALLBACK_URL=https://your-app.example.com/github/oauth/callback
 GITHUB_APP_PRIVATE_KEY_FILE=./my-github-app.private-key.pem
 GITHUB_APP_WEBHOOK_SECRET=super-secret
 # Optional
@@ -110,6 +113,9 @@ import { InMemoryAdapter } from "@fragno-dev/db/adapters/in-memory";
 const config: GitHubAppFragmentConfig = {
   appId: process.env.GITHUB_APP_ID ?? "",
   appSlug: process.env.GITHUB_APP_SLUG ?? "",
+  clientId: process.env.GITHUB_APP_CLIENT_ID ?? "",
+  clientSecret: process.env.GITHUB_APP_CLIENT_SECRET ?? "",
+  callbackUrl: process.env.GITHUB_APP_CALLBACK_URL ?? "",
   privateKeyPem: process.env.GITHUB_APP_PRIVATE_KEY ?? "",
   webhookSecret: process.env.GITHUB_APP_WEBHOOK_SECRET ?? "",
   webhook: (register) => {

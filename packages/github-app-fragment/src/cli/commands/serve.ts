@@ -125,6 +125,18 @@ export const serveCommand = define({
       type: "string",
       description: "GitHub App slug (env: GITHUB_APP_SLUG)",
     },
+    "client-id": {
+      type: "string",
+      description: "GitHub App client ID (env: GITHUB_APP_CLIENT_ID)",
+    },
+    "client-secret": {
+      type: "string",
+      description: "GitHub App client secret (env: GITHUB_APP_CLIENT_SECRET)",
+    },
+    "callback-url": {
+      type: "string",
+      description: "GitHub App user authorization callback URL (env: GITHUB_APP_CALLBACK_URL)",
+    },
     "private-key": {
       type: "string",
       description: "GitHub App private key PEM (env: GITHUB_APP_PRIVATE_KEY)",

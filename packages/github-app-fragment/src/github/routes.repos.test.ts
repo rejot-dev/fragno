@@ -7,6 +7,9 @@ import { normalizeJoinedInstallation, normalizeJoinedLinks } from "./utils";
 const createConfig = () => ({
   appId: "42",
   appSlug: "test-app",
+  clientId: "test-client-id",
+  clientSecret: "test-client-secret",
+  callbackUrl: "https://example.com/github/callback",
   privateKeyPem: "test-key",
   webhookSecret: "secret",
   defaultLinkKey: "default",
@@ -16,7 +19,7 @@ type LinkResponse =
   | {
       type: "json";
       data: {
-        link: { id: string; repoId: string; linkKey: string; linkedAt: Date };
+        link: { repoId: string; linkKey: string; linkedAt: Date };
         repo: { id: string; fullName: string; installationId: string };
       };
     }
@@ -102,6 +105,64 @@ describe("github-app repo linking routes", () => {
 
       assert(linkedAfter.type === "json");
       expect(linkedAfter.data).toHaveLength(0);
+    } finally {
+      await test.cleanup();
+    }
+  });
+
+  it("treats duplicate link attempts as idempotent", async () => {
+    const { fragments, test } = await buildHarness(createConfig());
+
+    try {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
+        id: "1",
+        accountId: "1",
+        accountLogin: "octo",
+        accountType: "User",
+        status: "active",
+        permissions: {},
+        events: [],
+      });
+
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
+        id: "10",
+        installationId: "1",
+        ownerLogin: "octo",
+        name: "repo",
+        fullName: "octo/repo",
+        isPrivate: false,
+        isFork: false,
+        defaultBranch: "main",
+        removedAt: null,
+      });
+
+      const responses = (await Promise.all([
+        fragments.githubApp.callRoute("POST", "/repositories/link", {
+          body: { installationId: "1", repoId: "10" },
+        }),
+        fragments.githubApp.callRoute("POST", "/repositories/link", {
+          body: { installationId: "1", repoId: "10" },
+        }),
+      ])) as LinkResponse[];
+
+      for (const response of responses) {
+        assert(response.type === "json");
+        assert(response.data.link.linkKey === "default");
+      }
+      assert(responses[0]?.type === "json" && responses[1]?.type === "json");
+      expect(responses[1].data.link.repoId).toBe(responses[0].data.link.repoId);
+
+      const [links] = await fragments.githubApp.db
+        .createUnitOfWork("read-repo-links")
+        .forSchema(githubAppSchema)
+        .find("repo_link", (b) =>
+          b.whereIndex("uniq_repo_link_repo_id_link_key", (eb) =>
+            eb.and(eb("repoId", "=", "10"), eb("linkKey", "=", "default")),
+          ),
+        )
+        .executeRetrieve();
+
+      expect(links).toHaveLength(1);
     } finally {
       await test.cleanup();
     }

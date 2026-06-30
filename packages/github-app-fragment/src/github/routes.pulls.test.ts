@@ -101,6 +101,9 @@ describe("github-app pull request routes", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -124,6 +127,9 @@ describe("github-app pull request routes", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -147,6 +153,9 @@ describe("github-app pull request routes", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -178,6 +187,9 @@ describe("github-app pull request routes", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -234,6 +246,91 @@ describe("github-app pull request routes", () => {
     }
   });
 
+  it("lists pull requests from an active replacement when an old repo row is removed", async () => {
+    const installationId = "58";
+    const fetchMock = createFetchMock({
+      installationId,
+      pulls: [{ id: 3, title: "Replacement PR" }],
+      review: { id: 299 },
+    });
+    globalThis.fetch = fetchMock;
+
+    const { fragments, test } = await buildHarness({
+      appId: "42",
+      appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
+      privateKeyPem: createPrivateKey(),
+      webhookSecret: "secret",
+    });
+
+    try {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
+        id: "57",
+        accountId: "1",
+        accountLogin: "octo",
+        accountType: "User",
+        status: "active",
+        permissions: {},
+        events: [],
+      });
+
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
+        id: "102",
+        installationId: "57",
+        ownerLogin: "octo",
+        name: "repo",
+        fullName: "octo/repo",
+        isPrivate: false,
+        isFork: false,
+        defaultBranch: "main",
+        removedAt: new Date(),
+      });
+
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
+        id: installationId,
+        accountId: "1",
+        accountLogin: "octo",
+        accountType: "User",
+        status: "active",
+        permissions: {},
+        events: [],
+      });
+
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
+        id: "103",
+        installationId,
+        ownerLogin: "octo",
+        name: "repo",
+        fullName: "octo/repo",
+        isPrivate: false,
+        isFork: false,
+        defaultBranch: "main",
+        removedAt: null,
+      });
+
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "repo_link", {
+        repoId: "103",
+        linkKey: "default",
+      });
+
+      const response = (await fragments.githubApp.callRoute(
+        "GET",
+        "/repositories/:owner/:repo/pulls",
+        { pathParams: { owner: "octo", repo: "repo" } },
+      )) as PullsResponse;
+
+      assert(response.type === "json");
+      expect(response.data.pulls[0]).toMatchObject({ id: 3, title: "Replacement PR" });
+      assert(
+        fetchMock.calls.some((call) => call.url.pathname === "/app/installations/58/access_tokens"),
+      );
+    } finally {
+      await test.cleanup();
+    }
+  });
+
   it("lists pull requests when linked under a non-default link key", async () => {
     const installationId = "56";
     const fetchMock = createFetchMock({
@@ -246,6 +343,9 @@ describe("github-app pull request routes", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -297,6 +397,9 @@ describe("github-app pull request routes", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -320,6 +423,9 @@ describe("github-app pull request routes", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -365,6 +471,9 @@ describe("github-app pull request routes", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -410,6 +519,9 @@ describe("github-app pull request routes", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -460,6 +572,9 @@ describe("github-app pull request routes", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -504,6 +619,9 @@ describe("github-app pull request routes", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -554,6 +672,9 @@ describe("github-app pull request routes", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -577,6 +698,9 @@ describe("github-app pull request routes", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -600,6 +724,9 @@ describe("github-app pull request routes", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -645,6 +772,9 @@ describe("github-app pull request routes", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -690,6 +820,9 @@ describe("github-app pull request routes", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -740,6 +873,9 @@ describe("github-app pull request routes", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -784,6 +920,9 @@ describe("github-app pull request routes", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -842,6 +981,9 @@ describe("github-app pull request routes", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -900,6 +1042,94 @@ describe("github-app pull request routes", () => {
     }
   });
 
+  it("creates pull request reviews from an active replacement when an old repo row is removed", async () => {
+    const installationId = "79";
+    const fetchMock = createFetchMock({
+      installationId,
+      pulls: [],
+      review: { id: 125, state: "approved" },
+    });
+    globalThis.fetch = fetchMock;
+
+    const { fragments, test } = await buildHarness({
+      appId: "42",
+      appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
+      privateKeyPem: createPrivateKey(),
+      webhookSecret: "secret",
+    });
+
+    try {
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
+        id: "76",
+        accountId: "1",
+        accountLogin: "octo",
+        accountType: "User",
+        status: "active",
+        permissions: {},
+        events: [],
+      });
+
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
+        id: "202",
+        installationId: "76",
+        ownerLogin: "octo",
+        name: "repo",
+        fullName: "octo/repo",
+        isPrivate: false,
+        isFork: false,
+        defaultBranch: "main",
+        removedAt: new Date(),
+      });
+
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
+        id: installationId,
+        accountId: "1",
+        accountLogin: "octo",
+        accountType: "User",
+        status: "active",
+        permissions: {},
+        events: [],
+      });
+
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
+        id: "203",
+        installationId,
+        ownerLogin: "octo",
+        name: "repo",
+        fullName: "octo/repo",
+        isPrivate: false,
+        isFork: false,
+        defaultBranch: "main",
+        removedAt: null,
+      });
+
+      await runGithubUowCreate(fragments.githubApp.db, "seed", "repo_link", {
+        repoId: "203",
+        linkKey: "default",
+      });
+
+      const response = (await fragments.githubApp.callRoute(
+        "POST",
+        "/repositories/:owner/:repo/pulls/:number/reviews",
+        {
+          pathParams: { owner: "octo", repo: "repo", number: "12" },
+          body: { event: "APPROVE" },
+        },
+      )) as ReviewResponse;
+
+      assert(response.type === "json");
+      expect(response.data.review).toMatchObject({ id: 125, state: "approved" });
+      assert(
+        fetchMock.calls.some((call) => call.url.pathname === "/app/installations/79/access_tokens"),
+      );
+    } finally {
+      await test.cleanup();
+    }
+  });
+
   it("creates pull request reviews when linked under a non-default link key", async () => {
     const installationId = "78";
     const fetchMock = createFetchMock({
@@ -912,6 +1142,9 @@ describe("github-app pull request routes", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });

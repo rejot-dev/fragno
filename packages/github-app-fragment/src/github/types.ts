@@ -29,6 +29,11 @@ export type GitHubAppWebhookConfig = (register: GitHubAppWebhookOn) => void;
 export type GitHubAppFragmentConfig = {
   appId: string;
   appSlug: string;
+  /** OAuth client id for this GitHub App. This is different from the numeric app id. */
+  clientId: string;
+  clientSecret: string;
+  /** Exact callback URL registered on the GitHub App for user authorization. */
+  callbackUrl: string;
   privateKeyPem: string;
   webhookSecret: string;
   webhookDebug?: boolean;
@@ -37,6 +42,7 @@ export type GitHubAppFragmentConfig = {
   webBaseUrl?: string;
   defaultLinkKey?: string;
   tokenCacheTtlSeconds?: number;
+  userAuthorizationStateTtlMs?: number;
   webhook?: GitHubAppWebhookConfig;
 };
 
