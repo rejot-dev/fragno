@@ -15,12 +15,9 @@ import { getAuthMe } from "@/fragno/auth/auth-server";
 import { cn } from "@/lib/utils";
 
 import type { Route } from "./+types/workflows";
-import {
-  buildWorkflowGraphView,
-  previewWorkflowGraph,
-  runWorkflow,
-  saveWorkflowSource,
-} from "./workflow-graph.server";
+import { writeAutomationScriptSource } from "@/routes/backoffice/automations/data.server";
+
+import { buildWorkflowGraphView, previewWorkflowGraph, runWorkflow } from "./workflow-graph.server";
 
 /** Fill the whole main area — see {@link CadenceShell}. */
 export const handle = { fullBleed: true };
@@ -76,7 +73,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const body = String(form.get("body") ?? "");
 
   if (intent === "save") {
-    const result = await saveWorkflowSource({ request, context, orgId, absolutePath, body });
+    const result = await writeAutomationScriptSource({ request, context, orgId, absolutePath, body });
     return { ok: result.ok, error: result.error };
   }
 
