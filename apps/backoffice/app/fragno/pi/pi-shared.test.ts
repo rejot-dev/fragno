@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, assert } from "vitest";
 
 import {
   createPiAgentName,
@@ -46,5 +46,6 @@ describe("pi-shared helpers", () => {
     expect(harnesses[0]?.id).toBe(DEFAULT_PI_HARNESS.id);
     expect(harnesses).toEqual(DEFAULT_PI_HARNESSES);
     expect(harnesses[0]?.tools).toEqual(["execCodeMode", "read", "bash"]);
+    assert(harnesses[0]?.thinkingLevel === "low");
   });
 });

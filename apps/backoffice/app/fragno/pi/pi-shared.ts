@@ -95,6 +95,7 @@ export const DEFAULT_PI_HARNESSES: PiHarnessConfig[] = [
       "Built-in harness with codemode, read, and bash access to the combined session filesystem.",
     systemPrompt: SYSTEM_FILE_CONTENT["SYSTEM.md"],
     tools: ["execCodeMode", "read", "bash"],
+    thinkingLevel: "low",
   },
 ];
 
