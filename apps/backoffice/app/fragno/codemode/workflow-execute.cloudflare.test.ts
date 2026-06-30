@@ -136,6 +136,44 @@ describe("codemode workflow execution", () => {
     );
   });
 
+  test("globalOutbound: null seals the sandbox so step fetch() is rejected", async () => {
+    // The override threads through to the dynamic worker's `globalOutbound`.
+    // `null` keeps the sandbox sealed, so a bare fetch() throws the egress error.
+    // (The default — omitted globalOutbound — instead inherits the host worker's
+    // internet access; that path can't be asserted here because the Workers test
+    // pool host has no outbound network at all.)
+    const Workflow = defineRemoteWorkflow(
+      { name: "codemode-e2e-fetch-sealed" },
+      defineCodemodeWorkflowRun(
+        `async (_event, step) => {
+          return await step.do("fetch", async () => {
+            const res = await fetch("https://example.com/dolphins");
+            return await res.text();
+          });
+        }`,
+        env,
+        { ...createSystemWorkflowOptions(), globalOutbound: null },
+      ),
+    );
+    const harness = await createHarness({ WORKFLOW: Workflow });
+
+    const instanceId = await harness.createInstance("WORKFLOW", {
+      id: "codemode-e2e-fetch-sealed-1",
+      remoteWorkflowName: "codemode-e2e-fetch-sealed-body",
+    });
+    await harness.runUntilIdle({
+      workflowName: "codemode-e2e-fetch-sealed",
+      instanceId,
+      reason: "create",
+    });
+
+    const status = await harness.getStatus("WORKFLOW", instanceId);
+    assert(status.status === "errored");
+    expect((status as { error?: { message?: string } }).error?.message).toContain(
+      "not permitted to access the internet",
+    );
+  });
+
   test("runBackofficeCodemodeWorkflow preserves step suspension for wrapper callers", async () => {
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-wrapper-sleep" },
