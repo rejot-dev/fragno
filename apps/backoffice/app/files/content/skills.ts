@@ -218,10 +218,12 @@ const status = await connections.verify({ id: "telegram" });
     name: "workflows",
     title: "Workflows",
     description:
-      "Build and operate durable Backoffice workflows in codemode. Use when creating *.workflow.js files, using defineWorkflow, step.do, step.sleep, step.waitForEvent, retries, or workflow.* runtime tools.",
-    body: `Use this skill for durable, replayable automation work that should survive waits, sleeps, retries, or external events.
+      "Build and operate durable workflows. Use when creating _complex_ multi-step workflows using defineWorkflow.",
+    body: `
+Workflows are either emphemeral (one-off) or durable. 
 
-Backoffice workflow scripts live in \`/workspace/automations/*.workflow.js\`. They are not run directly; router scripts start them through \`workflow.createInstance\`.
+- The former can be defined directly in codemode using the \`defineWorkflow({ name: "my-workflow" }, async (event, step) => {\` pattern. These run directly. 
+- The latter should first be written to the filesystem, e.g. \`/workspace/automations/*.workflow.js\`. They are not run directly; router scripts start them through \`workflow.createInstance\`.
 
 ## Coding workflow scripts
 

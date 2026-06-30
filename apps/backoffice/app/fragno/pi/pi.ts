@@ -22,7 +22,7 @@ import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/data
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { createBackofficeFileSystem, type MasterFileSystem } from "@/files";
-import { renderCodemodeSystemPrompt } from "@/fragno/codemode/codemode-system-prompt";
+import { renderCodemodeSystemPrompt } from "@/fragno/codemode/codemode-dts";
 
 import type {
   BackofficeCodemodeEnv,
@@ -273,8 +273,7 @@ const createExecCodeModeTool = (
   defineTool({
     name: "execCodeMode",
     label: "Exec Code Mode",
-    description:
-      "Execute a standalone async arrow function in an isolated dynamic Worker with state.* filesystem tools.",
+    description: "Execute JavaScript code in the context of the system.",
     parameters: execCodeModeParametersSchema,
     execute: async (_toolCallId, params, signal) => {
       const { code } = params;
@@ -463,34 +462,6 @@ const createBackofficePiBuilder = (tools: Record<PiToolId, PiTool>) =>
 
 type BackofficePiBuilder = PiBuilder<Record<string, never>, Record<PiToolId, PiTool>>;
 
-const createBackofficePiSkillResolver =
-  (options: {
-    sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
-    sessionFileSystemContext: PiSessionFileSystemContext;
-  }): PiSkillRegistryResolver =>
-  async ({ sessionId }) => {
-    const fileSystem = await getSessionFs(
-      options.sessionFileSystems,
-      sessionId,
-      options.sessionFileSystemContext,
-    );
-    return loadBackofficePiSkills(fileSystem);
-  };
-
-const createBackofficePiSystemPromptResolver =
-  (options: {
-    sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
-    sessionFileSystemContext: PiSessionFileSystemContext;
-  }): PiSystemPromptResolver =>
-  async ({ sessionId, baseSystemPrompt }) => {
-    const fileSystem = await getSessionFs(
-      options.sessionFileSystems,
-      sessionId,
-      options.sessionFileSystemContext,
-    );
-    return await renderCodemodeSystemPrompt({ fileSystem, guidance: baseSystemPrompt });
-  };
-
 const buildPiRuntime = (
   config: StoredPiConfig,
   tools: Record<PiToolId, PiTool>,
@@ -585,14 +556,22 @@ export const createPiRuntime = (options: {
     codemode,
     bashCommandContext: options.bashCommandContext,
   });
-  const skills = createBackofficePiSkillResolver({
-    sessionFileSystems: options.sessionFileSystems,
-    sessionFileSystemContext: options.sessionFileSystemContext,
-  });
-  const resolveSystemPrompt = createBackofficePiSystemPromptResolver({
-    sessionFileSystems: options.sessionFileSystems,
-    sessionFileSystemContext: options.sessionFileSystemContext,
-  });
+  const skills: PiSkillRegistryResolver = async ({ sessionId }) => {
+    const fileSystem = await getSessionFs(
+      options.sessionFileSystems,
+      sessionId,
+      options.sessionFileSystemContext,
+    );
+    return loadBackofficePiSkills(fileSystem);
+  };
+  const resolveSystemPrompt: PiSystemPromptResolver = async ({ sessionId, baseSystemPrompt }) => {
+    const fileSystem = await getSessionFs(
+      options.sessionFileSystems,
+      sessionId,
+      options.sessionFileSystemContext,
+    );
+    return `${baseSystemPrompt}\n\n${await renderCodemodeSystemPrompt({ fileSystem })}`;
+  };
   const pi = buildPiRuntime(options.config, tools, skills, resolveSystemPrompt);
 
   const workflowsFragment = createWorkflowsFragment(

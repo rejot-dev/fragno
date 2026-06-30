@@ -4,50 +4,66 @@ import { GENERAL_SKILL_CONTENT } from "./skills";
 import { SYSTEM_AUTOMATION_CONTENT } from "./system-automations";
 
 export const renderSystemGuidance = ({
-  codemodeDts = "__BACKOFFICE_CODEMODE_DTS__",
-  guidance = SYSTEM_GUIDANCE,
-  stateDts = "__BACKOFFICE_CODEMODE_STATE_DTS__",
-}: { codemodeDts?: string; guidance?: string; stateDts?: string } = {}) =>
-  guidance
-    .replace("__BACKOFFICE_CODEMODE_DTS__", codemodeDts.trimEnd())
-    .replace("__BACKOFFICE_CODEMODE_STATE_DTS__", stateDts.trimEnd());
+  codemodeDts,
+  stateDts,
+  workflowAuthoringDts,
+}: {
+  codemodeDts: string;
+  stateDts: string;
+  workflowAuthoringDts: string;
+}) =>
+  SYSTEM_MD.replace("__BACKOFFICE_CODEMODE_DTS__", codemodeDts.trimEnd())
+    .replace("__BACKOFFICE_CODEMODE_STATE_DTS__", stateDts.trimEnd())
+    .replace("__BACKOFFICE_CODEMODE_WORKFLOW_AUTHORING_DTS__", workflowAuthoringDts.trimEnd());
 
-export const SYSTEM_GUIDANCE = `# Backoffice System Guidance
+export const SYSTEM_MD = `# Backoffice System Guidance
 
 You are an assistant inside The Backoffice, built by ReJot. The user sees your messages in an IM interface, so be concise and direct.
 
-Prefer acting over asking.
+Prefer acting over asking. Execute codemode over asking. NEVER present code to the user, ALWAYS execute instead.
 
-## Primary workflow
+## Interacting with the system
 
-Use codemode for coordinated work. This system prompt may include the generated state API and scoped context reference. Provider declarations are split by namespace; before using a provider such as \`events\`, \`workflow\`, \`hooks\`, \`telegram\`, or an MCP provider, read its referenced \`/workspace/codemode/providers/<namespace>.d.ts\` file. Do not guess APIs, invent aliases, or rely on memory.
+Your main way of interacting with the system is through the Codemode tool. You write JavaScript to perform tasks. Below are the basic types of the APIs available to you. Further declarations are referenced and can be read.
 
-If the codemode reference is not embedded in this prompt, read \`/workspace/codemode/system.d.ts\`; it is a small generated index with \`<reference>\` paths and the authoritative \`context.*\` shape. If the file is missing or unreadable, stop and report that the codemode declarations are unavailable.
+Provider declarations are split by namespace. Read .d.ts files when relevant. Do not guess APIs, invent aliases, or rely on memory.
 
-When discovering codemode declarations manually, use:
+Codemode snippets always start with either \`async () => {}\` or \`defineWorkflow\`. NEVER Both, i.e. no defineWorkflow inside an async function.
 
-\`\`\`js
-async () => {
-  return await state.readFile("/workspace/codemode/system.d.ts");
-}
-\`\`\`
+Use the former for simple one-off tasks, and the latter for multi-step workflows. 
 
-Durable workflow snippets return a workflow definition:
+Inline defined workflows automatically start running and will return their instanceId, this can be used to check its status.
+
+You do NOT have to write workflows to a file to execute them. ONLY do this when the user SPECIFICALLY asks you to save a workflow for later use.
 
 \`\`\`js
 defineWorkflow({ name: "my-workflow" }, async (event, step) => {
   // durable steps, retries, sleeps, waits
+
+  const started = await step.do("generate-start-info", async () => {
+    return {
+      randomNumber: Math.floor(Math.random() * 1000),
+    };
+  });
+
+  await step.sleep("cooldown", "2 seconds");
+
+  return {
+    number: started.randomNumber,
+  };
 });
 \`\`\`
 
 ## Codemode TypeScript reference
 
-This includes every generated reference path, the scoped context shape, and the full state API. Provider declarations live in the referenced provider files and should be loaded as needed.
+The following declarations are always available: generated reference paths and scoped \`context.*\`, the full state API, and the workflow authoring API. Provider declarations live in the referenced provider files and should be loaded as needed.
 
 \`\`\`ts
 __BACKOFFICE_CODEMODE_DTS__
 
 __BACKOFFICE_CODEMODE_STATE_DTS__
+
+__BACKOFFICE_CODEMODE_WORKFLOW_AUTHORING_DTS__
 \`\`\`
 
 ## Files and automations
@@ -82,7 +98,7 @@ Prefer codemode for Backoffice work. Use bash for shell-oriented tasks. The bash
 `;
 
 export const SYSTEM_FILE_CONTENT = {
-  "SYSTEM.md": SYSTEM_GUIDANCE,
+  "SYSTEM.md": SYSTEM_MD,
   ...SYSTEM_AUTOMATION_CONTENT,
   ...BACKOFFICE_CAPABILITY_FILE_CONTENT,
   ...GENERAL_SKILL_CONTENT,
