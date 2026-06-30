@@ -116,7 +116,7 @@ export function WorkflowWorkbench({
       return;
     }
     const id = setTimeout(() => {
-      previewFetcher.submit(
+      void previewFetcher.submit(
         { intent: "preview", workflow, path: source.absolutePath, body: code },
         { method: "post", action: WORKFLOWS_ACTION },
       );
@@ -144,7 +144,7 @@ export function WorkflowWorkbench({
     if (readOnly || !dirty) {
       return;
     }
-    saveFetcher.submit(
+    void saveFetcher.submit(
       { intent: "save", workflow, path: source.absolutePath, body: code },
       { method: "post", action: WORKFLOWS_ACTION },
     );
@@ -183,7 +183,7 @@ export function WorkflowWorkbench({
   }, [trackInstanceId, run]);
 
   const onRun = (input: { source: string; eventType: string; payload: string }) => {
-    runFetcher.submit(
+    void runFetcher.submit(
       {
         intent: "run",
         workflow,

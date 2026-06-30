@@ -185,7 +185,7 @@ export default function WorkflowsPage() {
         workflows={workflows}
         selected={selected}
         onSelect={(name) => setParam("workflow", name)}
-        onRefresh={() => revalidator.revalidate()}
+        onRefresh={() => void revalidator.revalidate()}
         refreshing={revalidator.state !== "idle"}
       />
 
@@ -329,7 +329,7 @@ function useLiveRevalidate(enabled: boolean) {
     }
     const id = setInterval(() => {
       if (revalidator.state === "idle") {
-        revalidator.revalidate();
+        void revalidator.revalidate();
       }
     }, LIVE_INTERVAL_MS);
     return () => clearInterval(id);

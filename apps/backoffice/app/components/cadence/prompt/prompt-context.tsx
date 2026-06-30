@@ -230,8 +230,8 @@ export function PromptProvider({
   );
 
   const terminal = useDashboardTerminal({
-    organizationId,
-    organizationName,
+    scopeId: organizationId,
+    scopeName: organizationName,
     result: commandResult,
     pathAutocompleteResult,
     requestPathAutocomplete,

@@ -30,8 +30,10 @@ const dispatchToCloudflareWorker = async (
   const forwardedRequest = buildCloudflareWorkerDispatchRequest(request, orgId, appId, scriptName);
 
   try {
-    // linter-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-    const worker = (env as any).DISPATCHER.get(scriptName);
+    const dispatcher = (
+      env as { DISPATCHER: { get(name: string): { fetch(req: Request): Promise<Response> } } }
+    ).DISPATCHER;
+    const worker = dispatcher.get(scriptName);
     return await worker.fetch(forwardedRequest);
   } catch (error) {
     const message =
