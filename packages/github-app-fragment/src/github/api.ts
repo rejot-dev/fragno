@@ -8,6 +8,12 @@ type GitHubApiClientOptions = {
 
 type OctokitAppInstance = InstanceType<typeof App>;
 type GitHubOctokit = OctokitAppInstance["octokit"];
+type InstallationResponse = Awaited<
+  ReturnType<GitHubOctokit["rest"]["apps"]["getInstallation"]>
+>["data"];
+type UserInstallationResponse = Awaited<
+  ReturnType<GitHubOctokit["rest"]["apps"]["listInstallationsForAuthenticatedUser"]>
+>["data"]["installations"][number];
 
 export type GitHubAppInstance = {
   octokit: GitHubOctokit;
@@ -39,10 +45,44 @@ type GitHubInstallationRepositoriesResponse = {
   repositories: GitHubInstallationRepository[];
 };
 
+export type GitHubUserInstallation = {
+  id: string;
+  accountId: string;
+  accountLogin: string;
+  accountType: string;
+  appId: string;
+  appSlug: string;
+  repositorySelection: string;
+  permissions: Record<string, unknown>;
+  events: unknown[];
+  htmlUrl: string | null;
+  status: "active" | "suspended";
+};
+
+export type GitHubUserAuthorizationToken = {
+  accessToken: string;
+  tokenType: string | null;
+  scopes: string | null;
+};
+
+export type GitHubUserProfile = {
+  id: string;
+  login: string;
+};
+
 export type GitHubApiClient = {
   app: GitHubAppInstance;
   apiVersion: string;
   resolveInstallationId: (installationId: string) => number;
+  createUserAuthorizationUrl: (options?: { state?: string }) => string;
+  exchangeUserAuthorizationCode: (options: {
+    code: string;
+    state?: string;
+  }) => Promise<GitHubUserAuthorizationToken>;
+  getUserProfile: (accessToken: string) => Promise<GitHubUserProfile>;
+  listUserInstallations: (
+    accessToken: string,
+  ) => Promise<{ installations: GitHubUserInstallation[] }>;
   getInstallation: (installationId: string) => Promise<GitHubInstallationDetails>;
   listInstallationRepos: (
     installationId: string,
@@ -55,6 +95,77 @@ export type GitHubApiClient = {
 
 const DEFAULT_API_BASE_URL = "https://api.github.com";
 const DEFAULT_API_VERSION = "2022-11-28";
+
+const getAccountLogin = (account: InstallationResponse["account"]) => {
+  if (!account) {
+    return "";
+  }
+  if ("login" in account && typeof account.login === "string" && account.login.length > 0) {
+    return account.login;
+  }
+  if ("slug" in account && typeof account.slug === "string" && account.slug.length > 0) {
+    return account.slug;
+  }
+  return String(account.id);
+};
+
+const getAccountType = (account: InstallationResponse["account"]) => {
+  if (!account) {
+    return "Unknown";
+  }
+  if ("type" in account && typeof account.type === "string" && account.type.length > 0) {
+    return account.type;
+  }
+  return "login" in account ? "User" : "Enterprise";
+};
+
+const getInstallationStatus = (suspendedAt: string | null | undefined) =>
+  suspendedAt ? "suspended" : "active";
+
+const toUserInstallation = (installation: UserInstallationResponse): GitHubUserInstallation => ({
+  id: String(installation.id),
+  accountId: String(installation.account?.id ?? ""),
+  accountLogin: getAccountLogin(installation.account),
+  accountType: getAccountType(installation.account),
+  appId: String(installation.app_id),
+  appSlug: installation.app_slug,
+  repositorySelection: installation.repository_selection,
+  permissions: installation.permissions ?? {},
+  events: installation.events ?? [],
+  htmlUrl: installation.html_url ?? null,
+  status: getInstallationStatus(installation.suspended_at),
+});
+
+const toInstallationDetails = (
+  installation: InstallationResponse,
+  fallbackId: string,
+): GitHubInstallationDetails => {
+  const account = installation.account;
+  if (!account || typeof account.id !== "number") {
+    throw new Error("GitHub installation response is missing account information.");
+  }
+
+  return {
+    id: typeof installation.id === "number" ? String(installation.id) : fallbackId,
+    accountId: String(account.id),
+    accountLogin: getAccountLogin(account),
+    accountType: getAccountType(account),
+    status: getInstallationStatus(installation.suspended_at),
+    permissions: installation.permissions ?? {},
+    events: installation.events ?? [],
+  };
+};
+
+const rewriteUrlOrigin = (url: string, origin: string | undefined) => {
+  if (!origin) {
+    return url;
+  }
+  const rewritten = new URL(url);
+  const base = new URL(origin);
+  rewritten.protocol = base.protocol;
+  rewritten.host = base.host;
+  return rewritten.toString();
+};
 
 export const createGitHubApiClient = (
   config: GitHubAppFragmentConfig,
@@ -79,13 +190,18 @@ export const createGitHubApiClient = (
     appId: config.appId,
     privateKey: config.privateKeyPem,
     webhooks: { secret: config.webhookSecret },
+    oauth: {
+      clientId: config.clientId,
+      clientSecret: config.clientSecret,
+    },
     Octokit: OctokitForApp,
   });
   const app: GitHubAppInstance = {
     octokit: octokitApp.octokit,
     webhooks: octokitApp.webhooks,
-    getInstallationOctokit: async (installationId) =>
-      await octokitApp.getInstallationOctokit(installationId),
+    getInstallationOctokit: async (installationId) => {
+      return await octokitApp.getInstallationOctokit(installationId);
+    },
   };
 
   const resolveInstallationId = (installationId: string) => {
@@ -100,78 +216,103 @@ export const createGitHubApiClient = (
     return await octokitApp.getInstallationOctokit(resolveInstallationId(installationId));
   };
 
-  const listInstallationRepos = async (installationId: string) => {
-    const installationOctokit = await getInstallationOctokit(installationId);
+  const getUserOctokit = async (accessToken: string) => {
+    return await octokitApp.oauth.getUserOctokit({ token: accessToken });
+  };
 
-    const repositories: GitHubInstallationRepository[] = [];
+  const createUserAuthorizationUrl = (options: { state?: string } = {}) => {
+    const { url } = octokitApp.oauth.getWebFlowAuthorizationUrl({
+      redirectUrl: config.callbackUrl,
+      ...(options.state ? { state: options.state } : {}),
+    });
+    return rewriteUrlOrigin(url, config.webBaseUrl);
+  };
+
+  const exchangeUserAuthorizationCode = async (options: { code: string; state?: string }) => {
+    const { authentication } = await octokitApp.oauth.createToken({
+      code: options.code,
+      redirectUrl: config.callbackUrl,
+      ...(options.state ? { state: options.state } : {}),
+    });
+
+    return {
+      accessToken: authentication.token,
+      tokenType: authentication.tokenType ?? null,
+      scopes: null,
+    } satisfies GitHubUserAuthorizationToken;
+  };
+
+  const getUserProfile = async (accessToken: string) => {
+    const userOctokit = await getUserOctokit(accessToken);
+    const { data } = await userOctokit.rest.users.getAuthenticated();
+
+    return {
+      id: String(data.id),
+      login: data.login,
+    } satisfies GitHubUserProfile;
+  };
+
+  const listUserInstallations = async (accessToken: string) => {
+    const userOctokit = await getUserOctokit(accessToken);
+    const installations: GitHubUserInstallation[] = [];
     const perPage = 100;
     let page = 1;
 
     while (true) {
-      const response = await installationOctokit.request("GET /installation/repositories", {
+      const { data } = await userOctokit.rest.apps.listInstallationsForAuthenticatedUser({
         page,
         per_page: perPage,
       });
-      const pageRepositories = response.data.repositories;
-      repositories.push(...pageRepositories);
+      installations.push(...data.installations.map(toUserInstallation));
 
-      const totalCount = response.data.total_count;
-      if (pageRepositories.length === 0) {
+      if (data.installations.length === 0) {
         break;
       }
-      if (typeof totalCount === "number" && repositories.length >= totalCount) {
+      if (installations.length >= data.total_count) {
         break;
       }
-      if (pageRepositories.length < perPage) {
+      if (data.installations.length < perPage) {
         break;
       }
       page += 1;
     }
 
-    return {
-      repositories,
-    } satisfies GitHubInstallationRepositoriesResponse;
+    return { installations };
+  };
+
+  const listInstallationRepos = async (installationId: string) => {
+    const installationOctokit = await getInstallationOctokit(installationId);
+    const repositories: GitHubInstallationRepository[] = [];
+    const perPage = 100;
+    let page = 1;
+
+    while (true) {
+      const { data } = await installationOctokit.rest.apps.listReposAccessibleToInstallation({
+        page,
+        per_page: perPage,
+      });
+      repositories.push(...data.repositories);
+
+      if (data.repositories.length === 0) {
+        break;
+      }
+      if (repositories.length >= data.total_count) {
+        break;
+      }
+      if (data.repositories.length < perPage) {
+        break;
+      }
+      page += 1;
+    }
+
+    return { repositories } satisfies GitHubInstallationRepositoriesResponse;
   };
 
   const getInstallation = async (installationId: string): Promise<GitHubInstallationDetails> => {
-    const response = await octokitApp.octokit.request("GET /app/installations/{installation_id}", {
+    const { data } = await octokitApp.octokit.rest.apps.getInstallation({
       installation_id: resolveInstallationId(installationId),
     });
-
-    const data = response.data;
-    const account = data.account;
-    if (!account || typeof account.id !== "number") {
-      throw new Error("GitHub installation response is missing account information.");
-    }
-
-    const accountLogin =
-      "login" in account && typeof account.login === "string" && account.login.length > 0
-        ? account.login
-        : "slug" in account && typeof account.slug === "string" && account.slug.length > 0
-          ? account.slug
-          : String(account.id);
-
-    const accountType =
-      "type" in account && typeof account.type === "string" && account.type.length > 0
-        ? account.type
-        : "login" in account
-          ? "User"
-          : "Enterprise";
-
-    const status: GitHubInstallationDetails["status"] =
-      typeof data.suspended_at === "string" && data.suspended_at.length > 0
-        ? "suspended"
-        : "active";
-
-    return {
-      id: typeof data.id === "number" ? String(data.id) : installationId,
-      accountId: String(account.id),
-      accountLogin,
-      accountType,
-      status,
-      permissions: data.permissions ?? {},
-      events: data.events ?? [],
-    };
+    return toInstallationDetails(data, installationId);
   };
 
   const verifyWebhookSignature = async (options: {
@@ -192,6 +333,10 @@ export const createGitHubApiClient = (
     app,
     apiVersion,
     resolveInstallationId,
+    createUserAuthorizationUrl,
+    exchangeUserAuthorizationCode,
+    getUserProfile,
+    listUserInstallations,
     getInstallation,
     listInstallationRepos,
     verifyWebhookSignature,

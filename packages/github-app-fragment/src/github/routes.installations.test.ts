@@ -143,6 +143,9 @@ describe("github-app installation sync", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -273,6 +276,9 @@ describe("github-app installation sync", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -315,6 +321,9 @@ describe("github-app installation listing", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });
@@ -358,6 +367,9 @@ describe("github-app installation listing", () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
     });

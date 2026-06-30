@@ -15,6 +15,9 @@ const createPrivateKey = () => {
 };
 
 const createFetchMock = (handlers: {
+  userToken?: Record<string, unknown>;
+  user?: Record<string, unknown>;
+  userInstallations?: Array<Record<string, unknown>>;
   repositories?: Array<Record<string, unknown>>;
   repositoriesByPage?: Array<Array<Record<string, unknown>>>;
   pulls?: Array<Record<string, unknown>>;
@@ -40,6 +43,36 @@ const createFetchMock = (handlers: {
         }),
         { status: 201, headers: { "content-type": "application/json" } },
       );
+    }
+
+    if (url.pathname.endsWith("/login/oauth/access_token")) {
+      return new Response(
+        JSON.stringify(
+          handlers.userToken ?? {
+            access_token: "user-token",
+            token_type: "bearer",
+            scope: "",
+          },
+        ),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+
+    if (url.pathname.endsWith("/user/installations")) {
+      return new Response(
+        JSON.stringify({
+          installations: handlers.userInstallations ?? [],
+          total_count: handlers.userInstallations?.length ?? 0,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+
+    if (url.pathname.endsWith("/user")) {
+      return new Response(JSON.stringify(handlers.user ?? { id: 1, login: "octo" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
     }
 
     if (url.pathname.endsWith("/installation/repositories")) {
@@ -97,6 +130,76 @@ const createFetchMock = (handlers: {
 };
 
 describe("createGitHubApiClient", () => {
+  it("creates and completes GitHub App user authorization requests", async () => {
+    const { fetchMock, calls } = createFetchMock({
+      user: { id: 123, login: "octo" },
+      userInstallations: [
+        {
+          id: 456,
+          app_id: 42,
+          app_slug: "test-app",
+          account: { id: 789, login: "octo-org", type: "Organization" },
+          repository_selection: "selected",
+          permissions: { contents: "read" },
+          events: ["pull_request"],
+          html_url: "https://github.com/organizations/octo-org/settings/installations/456",
+        },
+      ],
+    });
+
+    const client = createGitHubApiClient(
+      {
+        appId: "42",
+        appSlug: "test-app",
+        clientId: "test-client-id",
+        clientSecret: "test-client-secret",
+        callbackUrl: "https://example.com/github/callback",
+        privateKeyPem: createPrivateKey(),
+        webhookSecret: "secret",
+      },
+      { fetch: fetchMock },
+    );
+
+    const authorizationUrl = new URL(client.createUserAuthorizationUrl({ state: "oauth-state" }));
+    assert(authorizationUrl.pathname === "/login/oauth/authorize");
+    assert(authorizationUrl.searchParams.get("client_id") === "test-client-id");
+    assert(
+      authorizationUrl.searchParams.get("redirect_uri") === "https://example.com/github/callback",
+    );
+    assert(authorizationUrl.searchParams.get("state") === "oauth-state");
+
+    const token = await client.exchangeUserAuthorizationCode({
+      code: "oauth-code",
+      state: "oauth-state",
+    });
+    assert(token.accessToken === "user-token");
+
+    const user = await client.getUserProfile(token.accessToken);
+    expect(user).toEqual({ id: "123", login: "octo" });
+
+    const installations = await client.listUserInstallations(token.accessToken);
+    expect(installations.installations[0]).toMatchObject({
+      id: "456",
+      accountLogin: "octo-org",
+      appId: "42",
+      appSlug: "test-app",
+      repositorySelection: "selected",
+      status: "active",
+    });
+
+    const tokenCall = calls.find((call) => call.url.pathname.endsWith("/login/oauth/access_token"));
+    expect(tokenCall).toBeDefined();
+    expect(JSON.parse(String(tokenCall?.init?.body))).toMatchObject({
+      client_secret: "test-client-secret",
+      code: "oauth-code",
+    });
+
+    const installationsCall = calls.find((call) =>
+      call.url.pathname.endsWith("/user/installations"),
+    );
+    expect(installationsCall?.init?.headers).toMatchObject({ authorization: "token user-token" });
+  });
+
   it("uses octokit app auth to list installation repositories", async () => {
     const { fetchMock, calls } = createFetchMock({
       repositories: [{ id: 1, name: "repo", full_name: "octo/repo", owner: { login: "octo" } }],
@@ -106,6 +209,9 @@ describe("createGitHubApiClient", () => {
       {
         appId: "42",
         appSlug: "test-app",
+        clientId: "test-client-id",
+        clientSecret: "test-client-secret",
+        callbackUrl: "https://example.com/github/callback",
         privateKeyPem: createPrivateKey(),
         webhookSecret: "secret",
         apiBaseUrl: "https://github.company.com/api/v3",
@@ -136,6 +242,9 @@ describe("createGitHubApiClient", () => {
       {
         appId: "42",
         appSlug: "test-app",
+        clientId: "test-client-id",
+        clientSecret: "test-client-secret",
+        callbackUrl: "https://example.com/github/callback",
         privateKeyPem: createPrivateKey(),
         webhookSecret: "secret",
       },
@@ -220,6 +329,9 @@ describe("createGitHubApiClient", () => {
       {
         appId: "42",
         appSlug: "test-app",
+        clientId: "test-client-id",
+        clientSecret: "test-client-secret",
+        callbackUrl: "https://example.com/github/callback",
         privateKeyPem: createPrivateKey(),
         webhookSecret: "secret",
       },
@@ -247,6 +359,9 @@ describe("createGitHubApiClient", () => {
     const client = createGitHubApiClient({
       appId: "42",
       appSlug: "test-app",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: secret,
     });

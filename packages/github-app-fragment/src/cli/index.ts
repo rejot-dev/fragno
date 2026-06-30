@@ -45,6 +45,9 @@ const printMainHelp = () => {
   console.log("SERVER ENV:");
   console.log("  GITHUB_APP_ID");
   console.log("  GITHUB_APP_SLUG");
+  console.log("  GITHUB_APP_CLIENT_ID");
+  console.log("  GITHUB_APP_CLIENT_SECRET");
+  console.log("  GITHUB_APP_CALLBACK_URL");
   console.log("  GITHUB_APP_PRIVATE_KEY (or GITHUB_APP_PRIVATE_KEY_FILE)");
   console.log("  GITHUB_APP_WEBHOOK_SECRET");
   console.log("");
@@ -76,6 +79,9 @@ const printServeHelp = () => {
   console.log("");
   console.log("  --app-id               GitHub App ID (env: GITHUB_APP_ID)");
   console.log("  --app-slug             GitHub App slug (env: GITHUB_APP_SLUG)");
+  console.log("  --client-id            GitHub App client ID (env: GITHUB_APP_CLIENT_ID)");
+  console.log("  --client-secret        GitHub App client secret (env: GITHUB_APP_CLIENT_SECRET)");
+  console.log("  --callback-url         GitHub App callback URL (env: GITHUB_APP_CALLBACK_URL)");
   console.log("  --private-key          GitHub App private key PEM (env: GITHUB_APP_PRIVATE_KEY)");
   console.log("  --private-key-file     GitHub App private key PEM file");
   console.log("  --webhook-secret       Webhook secret (env: GITHUB_APP_WEBHOOK_SECRET)");

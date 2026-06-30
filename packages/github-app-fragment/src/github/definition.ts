@@ -3,16 +3,11 @@ import { withDatabase } from "@fragno-dev/db";
 
 import { githubAppSchema } from "../schema";
 import { createGitHubApiClient } from "./api";
+import { createGitHubServices } from "./services";
 import type { GitHubAppFragmentConfig } from "./types";
 import { createWebhookProcessor } from "./webhook-processing";
 
-export type GitHubAppFragmentDependencies = {
-  githubApiClient: ReturnType<typeof createGitHubApiClient>;
-};
-export type GitHubAppFragmentServices = {
-  app: ReturnType<typeof createGitHubApiClient>["app"];
-  githubApiClient: ReturnType<typeof createGitHubApiClient>;
-};
+export type { GitHubAppFragmentDependencies, GitHubAppFragmentServices } from "./services";
 
 export const githubAppFragmentDefinition = defineFragment<GitHubAppFragmentConfig>(
   "github-app-fragment",
@@ -21,12 +16,7 @@ export const githubAppFragmentDefinition = defineFragment<GitHubAppFragmentConfi
   .withDependencies(({ config }) => ({
     githubApiClient: createGitHubApiClient(config),
   }))
-  .providesBaseService(({ deps, defineService }) =>
-    defineService({
-      app: deps.githubApiClient.app,
-      githubApiClient: deps.githubApiClient,
-    }),
-  )
+  .providesBaseService(({ deps, defineService }) => createGitHubServices(deps, defineService))
   .provideHooks(({ defineHook, config }) => ({
     processWebhook: defineHook(
       createWebhookProcessor({
