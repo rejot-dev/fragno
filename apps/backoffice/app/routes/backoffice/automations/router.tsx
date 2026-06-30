@@ -61,7 +61,8 @@ const routeSections = (routes: AutomationRouteItem[]) => [
 ];
 
 export default function BackofficeAutomationRouter() {
-  const { selectedScope, routes, routesError } = useOutletContext<AutomationLayoutContext>();
+  const { selectedScope, routesData } = useOutletContext<AutomationLayoutContext>();
+  const routes = routesData.data;
   const [searchParams] = useSearchParams();
   const selectedRouteId = searchParams.get("route")?.trim() ?? "";
   const selectedRoute = routes.find((route) => route.id === selectedRouteId) ?? null;
@@ -70,29 +71,43 @@ export default function BackofficeAutomationRouter() {
   const enabledRoutes = routes.filter((route) => route.enabled).length;
   const sections = routeSections(routes).filter((section) => section.routes.length > 0);
 
-  if (routesError && routes.length === 0) {
+  if (routesData.blockingError) {
     return (
       <AutomationNotice tone="error">
         <p className="text-[10px] tracking-[0.22em] uppercase">Could not load automation routes</p>
-        <p className="mt-2 text-sm">{routesError}</p>
+        <p className="mt-2 text-sm">{routesData.blockingError}</p>
       </AutomationNotice>
     );
   }
 
   if (routes.length === 0) {
     return (
-      <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-        No automation routes are defined for this scope.
-      </div>
+      <section className="space-y-4">
+        {routesData.syncError ? (
+          <AutomationNotice tone="error">
+            <p className="text-[10px] tracking-[0.22em] uppercase">
+              Could not sync local route updates
+            </p>
+            <p className="mt-2 text-sm">{routesData.syncError}</p>
+          </AutomationNotice>
+        ) : null}
+        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
+          No automation routes are defined for this scope.
+        </div>
+      </section>
     );
   }
 
   return (
     <section className="space-y-4">
-      {routesError ? (
+      {routesData.serverError || routesData.syncError ? (
         <AutomationNotice tone="error">
-          <p className="text-[10px] tracking-[0.22em] uppercase">Could not load all routes</p>
-          <p className="mt-2 text-sm">{routesError}</p>
+          <p className="text-[10px] tracking-[0.22em] uppercase">
+            {routesData.serverError
+              ? "Could not load all routes"
+              : "Could not sync local route updates"}
+          </p>
+          <p className="mt-2 text-sm">{routesData.serverError ?? routesData.syncError}</p>
         </AutomationNotice>
       ) : null}
 

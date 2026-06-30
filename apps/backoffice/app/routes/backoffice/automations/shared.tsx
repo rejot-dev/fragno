@@ -5,6 +5,7 @@ import { BackofficePageHeader } from "@/components/backoffice";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 import type { AutomationRouteDefinition } from "@/fragno/automation";
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
+import type { SandboxInstanceSummary } from "@/sandbox/contracts";
 
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "../route-errors";
 import {
@@ -43,6 +44,67 @@ export type AutomationStoreItem = {
   updatedAt?: string | Date | null;
 };
 
+export type AutomationLocalStoreState = {
+  entries: AutomationStoreItem[];
+  synced: boolean;
+  error: string | null;
+};
+
+export type AutomationLocalRoutesState = {
+  routes: AutomationRouteItem[];
+  synced: boolean;
+  error: string | null;
+};
+
+export type AutomationLocalSandboxesState = {
+  sandboxes: SandboxInstanceSummary[];
+  synced: boolean;
+  error: string | null;
+};
+
+export type AutomationLocalScopeState = {
+  store: AutomationLocalStoreState;
+  routes: AutomationLocalRoutesState;
+  sandboxes: AutomationLocalSandboxesState;
+};
+
+export type AutomationServerLofiDataState<TData> = {
+  data: TData;
+  source: "server" | "lofi";
+  synced: boolean;
+  serverError: string | null;
+  syncError: string | null;
+  blockingError: string | null;
+};
+
+export const resolveAutomationServerLofiData = <TData,>({
+  serverData,
+  serverError,
+  lofiData,
+  lofiSynced,
+  lofiError,
+  isEmpty,
+}: {
+  serverData: TData;
+  serverError: string | null;
+  lofiData: TData;
+  lofiSynced: boolean;
+  lofiError: string | null;
+  isEmpty?: (data: TData) => boolean;
+}): AutomationServerLofiDataState<TData> => {
+  const data = lofiSynced ? lofiData : serverData;
+  const normalizedServerError = serverError?.trim() || null;
+
+  return {
+    data,
+    source: lofiSynced ? "lofi" : "server",
+    synced: lofiSynced,
+    serverError: normalizedServerError,
+    syncError: lofiError?.trim() || null,
+    blockingError: normalizedServerError && isEmpty?.(data) ? normalizedServerError : null,
+  };
+};
+
 export type AutomationLayoutContext = {
   orgId: string;
   organisation: BackofficeOrganisation;
@@ -52,6 +114,11 @@ export type AutomationLayoutContext = {
   scripts: AutomationScriptItem[];
   routes: AutomationRouteItem[];
   storeEntries: AutomationStoreItem[];
+  storeData: AutomationServerLofiDataState<AutomationStoreItem[]>;
+  routesData: AutomationServerLofiDataState<AutomationRouteItem[]>;
+  lofiStore: AutomationLocalStoreState;
+  lofiRoutes: AutomationLocalRoutesState;
+  lofiSandboxes: AutomationLocalSandboxesState;
   storePrefix: string;
   scriptsError: string | null;
   routesError: string | null;
