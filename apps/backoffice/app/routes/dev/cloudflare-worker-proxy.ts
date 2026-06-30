@@ -8,9 +8,7 @@ import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 import type { Route } from "./+types/cloudflare-worker-proxy";
 
 const getDispatchErrorStatus = (message: string) => {
-  return /does not exist|not found|unknown worker|unknown script/i.test(message)
-    ? 404
-    : 502;
+  return /does not exist|not found|unknown worker|unknown script/i.test(message) ? 404 : 502;
 };
 
 const dispatchToCloudflareWorker = async (
@@ -29,12 +27,7 @@ const dispatchToCloudflareWorker = async (
 
   const { env } = context.get(BackofficeWorkerContext);
   const scriptName = resolveCloudflareWorkerScriptName(orgId, appId);
-  const forwardedRequest = buildCloudflareWorkerDispatchRequest(
-    request,
-    orgId,
-    appId,
-    scriptName,
-  );
+  const forwardedRequest = buildCloudflareWorkerDispatchRequest(request, orgId, appId, scriptName);
 
   try {
     // linter-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
@@ -42,9 +35,7 @@ const dispatchToCloudflareWorker = async (
     return await worker.fetch(forwardedRequest);
   } catch (error) {
     const message =
-      error instanceof Error
-        ? error.message
-        : `Failed to dispatch request to worker '${appId}'.`;
+      error instanceof Error ? error.message : `Failed to dispatch request to worker '${appId}'.`;
 
     return new Response(message, {
       status: getDispatchErrorStatus(message),
@@ -53,19 +44,9 @@ const dispatchToCloudflareWorker = async (
 };
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {
-  return dispatchToCloudflareWorker(
-    request,
-    context,
-    params.orgId,
-    params.appId,
-  );
+  return dispatchToCloudflareWorker(request, context, params.orgId, params.appId);
 }
 
 export async function action({ request, context, params }: Route.ActionArgs) {
-  return dispatchToCloudflareWorker(
-    request,
-    context,
-    params.orgId,
-    params.appId,
-  );
+  return dispatchToCloudflareWorker(request, context, params.orgId, params.appId);
 }

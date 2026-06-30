@@ -2,13 +2,7 @@ import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { SYSTEM_FILE_CONTENT } from "@/files";
 
 export type PiSteeringMode = "all" | "one-at-a-time";
-export type PiThinkingLevel =
-  | "off"
-  | "minimal"
-  | "low"
-  | "medium"
-  | "high"
-  | "xhigh";
+export type PiThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export type PiModelProvider = "openai" | "anthropic" | "gemini";
 
@@ -104,12 +98,9 @@ export const DEFAULT_PI_HARNESSES: PiHarnessConfig[] = [
   },
 ];
 
-export const DEFAULT_PI_HARNESS: PiHarnessConfig =
-  DEFAULT_PI_HARNESSES[0] as PiHarnessConfig;
+export const DEFAULT_PI_HARNESS: PiHarnessConfig = DEFAULT_PI_HARNESSES[0] as PiHarnessConfig;
 
-export const resolvePiHarnesses = (
-  harnesses?: PiHarnessConfig[] | null,
-): PiHarnessConfig[] => {
+export const resolvePiHarnesses = (harnesses?: PiHarnessConfig[] | null): PiHarnessConfig[] => {
   if (Array.isArray(harnesses) && harnesses.length > 0) {
     return harnesses;
   }
@@ -140,7 +131,5 @@ export const parsePiAgentName = (agent: string) => {
 };
 
 export const findPiModelOption = (provider: PiModelProvider, name: string) => {
-  return PI_MODEL_CATALOG.find(
-    (option) => option.provider === provider && option.name === name,
-  );
+  return PI_MODEL_CATALOG.find((option) => option.provider === provider && option.name === name);
 };

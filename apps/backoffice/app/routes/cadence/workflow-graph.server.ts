@@ -107,18 +107,13 @@ export type WorkflowSource = {
   inputFields: WorkflowInputField[];
 };
 
-function isWorkflowNode(
-  node: GraphNode,
-): node is Extract<GraphNode, { kind: "workflow" }> {
+function isWorkflowNode(node: GraphNode): node is Extract<GraphNode, { kind: "workflow" }> {
   return node.kind === "workflow";
 }
 
 /** True for system-layer automation paths (built-in platform plumbing). */
 function isSystemLayerPath(path: string): boolean {
-  return (
-    path === AUTOMATION_SYSTEM_ROOT ||
-    path.startsWith(`${AUTOMATION_SYSTEM_ROOT}/`)
-  );
+  return path === AUTOMATION_SYSTEM_ROOT || path.startsWith(`${AUTOMATION_SYSTEM_ROOT}/`);
 }
 
 /** A workspace automation file holding a workflow definition (by convention). */
@@ -157,9 +152,7 @@ function resolveWorkflowSource(
   const script = workflowNode
     ? catalog.scripts.find((s) => s.absolutePath === workflowNode.path)
     : catalog.scripts.find(
-        (s) =>
-          isWorkflowScriptPath(s.path) &&
-          workflowNameFromScriptPath(s.path) === workflowName,
+        (s) => isWorkflowScriptPath(s.path) && workflowNameFromScriptPath(s.path) === workflowName,
       );
   if (!script) {
     return null;
@@ -224,16 +217,13 @@ function jsonSchemaPropToField(
   const enumValues = Array.isArray(prop.enum)
     ? prop.enum.filter((v): v is string => typeof v === "string")
     : undefined;
-  const isEnum =
-    enumValues !== undefined && enumValues.length === (prop.enum?.length ?? 0);
+  const isEnum = enumValues !== undefined && enumValues.length === (prop.enum?.length ?? 0);
 
   let type: WorkflowInputFieldType = "unknown";
   if (isEnum && enumValues && enumValues.length > 0) {
     type = "enum";
   } else {
-    const single = Array.isArray(prop.type)
-      ? prop.type.find((t) => t !== "null")
-      : prop.type;
+    const single = Array.isArray(prop.type) ? prop.type.find((t) => t !== "null") : prop.type;
     type = (single && JSON_TYPE_MAP[single]) || "unknown";
   }
 
@@ -247,9 +237,7 @@ function jsonSchemaPropToField(
 }
 
 /** Flatten a JSON-schema object's top-level properties into form fields. */
-function jsonSchemaToFields(
-  schema: JsonSchemaObject | undefined,
-): WorkflowInputField[] {
+function jsonSchemaToFields(schema: JsonSchemaObject | undefined): WorkflowInputField[] {
   const properties = schema?.properties;
   if (!properties) {
     return [];
@@ -268,18 +256,11 @@ function jsonSchemaToFields(
  */
 function buildRunnableEvents(graph: WorkflowGraph): RunnableEvent[] {
   const descriptors = listAutomationEventDescriptors();
-  const byKey = new Map(
-    descriptors.map((d) => [`${d.source}/${d.eventType}`, d]),
-  );
+  const byKey = new Map(descriptors.map((d) => [`${d.source}/${d.eventType}`, d]));
 
   const events: RunnableEvent[] = [];
   const seen = new Set<string>();
-  const push = (
-    source: string,
-    eventType: string,
-    label: string,
-    schema: unknown,
-  ) => {
+  const push = (source: string, eventType: string, label: string, schema: unknown) => {
     const key = `${source}/${eventType}`;
     if (seen.has(key)) {
       return;
@@ -303,12 +284,7 @@ function buildRunnableEvents(graph: WorkflowGraph): RunnableEvent[] {
 
   if (events.length === 0) {
     for (const descriptor of descriptors) {
-      push(
-        descriptor.source,
-        descriptor.eventType,
-        descriptor.label,
-        descriptor.payloadSchema,
-      );
+      push(descriptor.source, descriptor.eventType, descriptor.label, descriptor.payloadSchema);
     }
   }
 
@@ -364,9 +340,7 @@ export async function buildWorkflowGraphView({
   // rather than silently falling back to a sibling. Detection is path-based (a
   // file with no workflow node), so it never mistakes a parsed workflow whose
   // name differs from its filename for a broken one.
-  const parsedPaths = new Set(
-    full.nodes.filter(isWorkflowNode).map((node) => node.path),
-  );
+  const parsedPaths = new Set(full.nodes.filter(isWorkflowNode).map((node) => node.path));
   const broken: WorkflowListEntry[] = catalog.scripts
     .filter(
       (script) =>
@@ -379,9 +353,7 @@ export async function buildWorkflowGraphView({
       return { name, label: name, remote: false, stepCount: 0, broken: true };
     });
 
-  const workflows = [...parsed, ...broken].sort((a, b) =>
-    a.label.localeCompare(b.label),
-  );
+  const workflows = [...parsed, ...broken].sort((a, b) => a.label.localeCompare(b.label));
 
   const selected =
     workflowName && workflows.some((w) => w.name === workflowName)
@@ -391,9 +363,7 @@ export async function buildWorkflowGraphView({
   // For a broken (no-node) selection this yields an empty graph that still
   // carries the parse error and dangling-spawn warning (see selectWorkflow).
   const graph = selected ? selectWorkflow(full, selected) : EMPTY_GRAPH;
-  const source = selected
-    ? resolveWorkflowSource(catalog, full, selected, overrides)
-    : null;
+  const source = selected ? resolveWorkflowSource(catalog, full, selected, overrides) : null;
   const events = selected ? buildRunnableEvents(graph) : [];
 
   return { workflows, selected, graph, source, events };
@@ -455,8 +425,7 @@ export async function runWorkflow({
   eventType: string;
   payload: AutomationEventPayload;
 }): Promise<
-  | { ok: true; instanceId: string; runWorkflowName: string }
-  | { ok: false; error: string }
+  { ok: true; instanceId: string; runWorkflowName: string } | { ok: false; error: string }
 > {
   const view = await buildWorkflowGraphView({
     request,
@@ -471,10 +440,7 @@ export async function runWorkflow({
     };
   }
 
-  const instanceId = `run-${orgId}-${crypto.randomUUID()}`.replaceAll(
-    /[^A-Za-z0-9_-]/g,
-    "-",
-  );
+  const instanceId = `run-${orgId}-${crypto.randomUUID()}`.replaceAll(/[^A-Za-z0-9_-]/g, "-");
   const automationEvent: AutomationEvent = {
     id: instanceId,
     scope: { kind: "org", orgId },
