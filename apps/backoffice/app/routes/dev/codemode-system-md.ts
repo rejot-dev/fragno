@@ -2,7 +2,7 @@ import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createBackofficeFileSystem } from "@/files/create-file-system";
 import { authorizeAccessTokenForOrganization } from "@/fragno/auth/access-token.server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
-import { renderCodemodeSystemPrompt } from "@/fragno/codemode/codemode-system-prompt";
+import { renderCodemodeSystemPrompt } from "@/fragno/codemode/codemode-dts";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/codemode-system-md";
@@ -30,9 +30,8 @@ const readOrgSystemGuidance = async ({
   const { runtime } = context.get(BackofficeWorkerContext);
   const kernel = new BackofficeKernel({ objects: runtime.objects });
   const fs = await createBackofficeFileSystem({ objects: runtime.objects, kernel, execution });
-  const systemGuidance = await fs.readFile("/system/SYSTEM.md");
 
-  return await renderCodemodeSystemPrompt({ fileSystem: fs, guidance: systemGuidance });
+  return await renderCodemodeSystemPrompt({ fileSystem: fs });
 };
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {

@@ -1,3 +1,5 @@
+import { renderSystemGuidance } from "@/files";
+import type { IFileSystem } from "@/files/interface";
 import {
   backofficeCapabilities,
   type BackofficeCapabilityId,
@@ -20,6 +22,13 @@ export const CODEMODE_SYSTEM_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/system.d.ts`
 export const CODEMODE_STATE_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/state.d.ts`;
 export const CODEMODE_WORKFLOW_AUTHORING_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/workflow-authoring.d.ts`;
 export const CODEMODE_PROVIDER_TYPES_DIR_PATH = `${CODEMODE_TYPES_DIR_PATH}/providers`;
+
+export const renderCodemodeSystemPrompt = async ({ fileSystem }: { fileSystem: IFileSystem }) =>
+  renderSystemGuidance({
+    codemodeDts: await fileSystem.readFile(CODEMODE_SYSTEM_DTS_PATH),
+    stateDts: await fileSystem.readFile(CODEMODE_STATE_DTS_PATH),
+    workflowAuthoringDts: await fileSystem.readFile(CODEMODE_WORKFLOW_AUTHORING_DTS_PATH),
+  });
 
 const ALWAYS_AVAILABLE_CODEMODE_NAMESPACES = new Set([
   "capabilities",
