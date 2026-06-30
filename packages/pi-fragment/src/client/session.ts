@@ -314,18 +314,11 @@ export const reducePiSessionStreamFrame = (
   meta: { now: number },
 ): PiSessionStoreState => {
   if ("type" in frame && frame.type === "snapshot") {
-    // A snapshot is a complete, committed baseline. Each (re)connect begins with
-    // one, and the server re-sends any still-uncommitted in-flight events *after*
-    // it — so we drop the accumulated event buffer here. Keeping it would replay a
-    // previous connection's now-committed frames on top of a snapshot that already
-    // contains them, duplicating messages on every reconnect.
     return {
       ...state,
       connectionStatus: "open",
       agent: frame.state,
       snapshotAgent: frame.state,
-      events: [],
-      lastEvent: null,
       lastFrameAt: meta.now,
       streamError: undefined,
     };
@@ -413,107 +406,6 @@ export const createStorePiSessionTransport = ({
 }: StoreTransportOptions): PiSessionTransport => ({
   openEvents: async ({ workflowName, sessionId, signal }) =>
     eventsStoreToAsyncIterable(openEventsStore({ workflowName, sessionId }), signal),
-  sendCommand,
-});
-
-export type DirectFetchPiSessionTransportOptions = {
-  /** Build the absolute URL of a session's live `/events` stream. */
-  buildEventsUrl: (args: { workflowName: string; sessionId: string }) => string;
-  /** The configured fetcher and its default request options (credentials, headers). */
-  getFetcher: () => { fetcher: typeof fetch; defaultOptions?: RequestInit | undefined };
-  sendCommand: PiSessionTransport["sendCommand"];
-};
-
-/**
- * Stream a session's `/events` ndjson response straight from `fetch`, yielding one
- * frame per line and ending the iterable when the server closes the stream.
- *
- * The session store's {@link createPiSessionStore} `run` loop reconnects whenever
- * this iterable ends, so the transport must surface a clean EOF — which the live
- * `/events` route reaches on its idle timeout (and again at the end of every turn).
- * A store-backed transport can't do this: the streaming query store has no
- * "completed" state to observe and is deduped forever, so it neither ends the
- * iterable nor re-issues the request. Going straight to `fetch` gives both: a fresh
- * request per connect, and an iterable that returns on the reader's `done`.
- */
-async function* streamPiSessionEventsViaFetch(
-  url: string,
-  getFetcher: DirectFetchPiSessionTransportOptions["getFetcher"],
-  signal: AbortSignal,
-): AsyncIterable<PiSessionEventStreamItem> {
-  const { fetcher, defaultOptions } = getFetcher();
-
-  let response: Response;
-  try {
-    response = await fetcher(url, {
-      ...defaultOptions,
-      method: "GET",
-      signal,
-      headers: { accept: "application/x-ndjson", ...defaultOptions?.headers },
-    });
-  } catch (error) {
-    throw signal.aborted ? abortError() : error;
-  }
-
-  if (!response.ok) {
-    // Surface 404/SESSION_NOT_FOUND as a FragnoClientApiError so the run loop treats
-    // it as fatal (no retry) rather than a transient drop.
-    throw await FragnoClientApiError.fromResponse(response);
-  }
-  if (!response.body) {
-    throw new Error("Pi session events stream has no body.");
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  const drainCompleteLines = function* (flush: boolean) {
-    let newlineIndex = buffer.indexOf("\n");
-    while (newlineIndex >= 0) {
-      const line = buffer.slice(0, newlineIndex).trim();
-      buffer = buffer.slice(newlineIndex + 1);
-      if (line) {
-        yield JSON.parse(line) as PiSessionEventStreamItem;
-      }
-      newlineIndex = buffer.indexOf("\n");
-    }
-    if (flush) {
-      const tail = buffer.trim();
-      buffer = "";
-      if (tail) {
-        yield JSON.parse(tail) as PiSessionEventStreamItem;
-      }
-    }
-  };
-
-  try {
-    while (true) {
-      let result: ReadableStreamReadResult<Uint8Array>;
-      try {
-        result = await reader.read();
-      } catch (error) {
-        throw signal.aborted ? abortError() : error;
-      }
-      if (result.done) {
-        break;
-      }
-      buffer += decoder.decode(result.value, { stream: true });
-      yield* drainCompleteLines(false);
-    }
-    yield* drainCompleteLines(true);
-  } finally {
-    reader.releaseLock();
-  }
-}
-
-export const createDirectFetchPiSessionTransport = ({
-  buildEventsUrl,
-  getFetcher,
-  sendCommand,
-}: DirectFetchPiSessionTransportOptions): PiSessionTransport => ({
-  openEvents: async ({ workflowName, sessionId, signal }) =>
-    streamPiSessionEventsViaFetch(buildEventsUrl({ workflowName, sessionId }), getFetcher, signal),
   sendCommand,
 });
 
@@ -942,14 +834,6 @@ export const createPiSessionStore = (args: PiSessionStoreArgs, deps: PiSessionSt
         if (isFatalStreamError(streamError)) {
           setState((current) => ({ ...current, connectionStatus: "error", streamError }));
           break;
-        }
-
-        // A stream that delivered its snapshot was healthy. The live `/events`
-        // route ends every ~60s on its idle timeout, so a clean EOF after a good
-        // connection is normal and should reconnect promptly — reset the backoff
-        // so it doesn't inherit the delay from earlier genuine failures.
-        if (sawSnapshot) {
-          attempt = 0;
         }
 
         attempt += 1;
