@@ -11,6 +11,7 @@ import {
   type PiSystemPromptResolver,
   type PiTool,
 } from "@fragno-dev/pi-fragment";
+import { buildCodemodeWorkflowGraph } from "@fragno-dev/workflow-visualizer";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
 import type { AgentTool } from "@earendil-works/pi-agent-core";
@@ -33,7 +34,10 @@ import type {
   InteractiveBashCommandContext,
   RegisteredAutomationsRuntime,
 } from "../runtime-tools/bash-host";
-import type { AutomationWorkflowRuntime } from "../runtime-tools/families/automations-workflow";
+import type {
+  AutomationWorkflowRuntime,
+  WorkflowCreateInstanceResult,
+} from "../runtime-tools/families/automations-workflow";
 import type { OtpRuntime } from "../runtime-tools/families/otp-runtime";
 import type { PiRuntime } from "../runtime-tools/families/pi";
 import type { ResendRuntime } from "../runtime-tools/families/resend";
@@ -299,32 +303,76 @@ const createExecCodeModeTool = (
         toolContext: context,
       });
 
+      // When the code defines a workflow, derive its graph here (server-side,
+      // where the visualizer's parser is available) — *before* scheduling, since a
+      // static parse must survive even when the durable run can't be created. A
+      // plain script run carries no `workflowDefinition`; the client flags it and
+      // shows the code + output instead of the graph (see `codemodeEntryFromResult`).
+      const workflowGraph = buildCodemodeWorkflowGraph(code, {
+        name: result.workflowDefinition?.name,
+      });
+      const parsedWorkflow = workflowGraph.nodes.some((node) => node.kind === "workflow");
+
+      // Try to schedule the durable run, but treat a scheduling/validation failure
+      // as non-fatal: the viewer should still show the workflow the agent wrote.
+      let scheduleError: string | undefined;
+      // The scheduled run's handle, surfaced to the client so the workflow viewer
+      // can subscribe to its live progress (history/status + step emissions).
+      let runHandle: WorkflowCreateInstanceResult | undefined;
       if (result.workflowDefinition) {
         if (!codemode.workflow) {
-          throw new Error("execCodeMode workflow definition cannot be scheduled in this runtime.");
+          scheduleError = "execCodeMode workflow definition cannot be scheduled in this runtime.";
+        } else {
+          try {
+            // The workflows backend requires instance ids to match
+            // /^[a-zA-Z0-9_][a-zA-Z0-9-_]*$/ (≤128 chars). Tool-call ids contain a
+            // `|` (`call_…|fc_…`), so sanitize and cap, or scheduling 400s.
+            const instanceId = `${sessionId}--${_toolCallId}`
+              .replaceAll(/[^A-Za-z0-9_-]/g, "-")
+              .slice(0, 128);
+            runHandle = await codemode.workflow.createInstance({
+              workflowName: "pi-codemode-script",
+              remoteWorkflowName: result.workflowDefinition.name,
+              instanceId,
+              params: {
+                orgId,
+                code,
+                sessionId,
+                toolCallId: _toolCallId,
+              } satisfies PiCodemodeWorkflowParams,
+            });
+            result.result = runHandle;
+          } catch (error) {
+            scheduleError = error instanceof Error ? error.message : String(error);
+          }
         }
-        result.result = await codemode.workflow.createInstance({
-          workflowName: "pi-codemode-script",
-          remoteWorkflowName: result.workflowDefinition.name,
-          instanceId: `${sessionId}--${_toolCallId}`,
-          params: {
-            orgId,
-            code,
-            sessionId,
-            toolCallId: _toolCallId,
-          } satisfies PiCodemodeWorkflowParams,
-        });
       }
 
-      const text = formatExecCodeModeText(result);
+      const text = scheduleError
+        ? `${formatExecCodeModeText(result)}\n\nWorkflow could not be scheduled: ${scheduleError}`
+        : formatExecCodeModeText(result);
 
-      if (result.error) {
+      // Only a genuine failure with no recognizable workflow is a hard tool error
+      // (a thrown error loses `details`, which would hide the workflow from the
+      // viewer). When the code parsed into a workflow, keep the result successful
+      // and carry the graph, surfacing any run/scheduling error in the text so the
+      // model can still react and retry.
+      if ((result.error || scheduleError) && !parsedWorkflow) {
         throw new Error(text);
       }
 
       return {
         content: [{ type: "text", text }],
-        details: result,
+        details: {
+          ...result,
+          code,
+          workflowGraph,
+          outputText: text,
+          // The live run handle (workflow name + instance id) so the client can
+          // subscribe to realtime progress. Absent when scheduling failed.
+          ...(runHandle ? { run: runHandle } : {}),
+          ...(scheduleError ? { scheduleError } : {}),
+        },
       };
     },
   });

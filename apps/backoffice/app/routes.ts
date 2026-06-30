@@ -1,6 +1,14 @@
 import { type RouteConfig, index, layout, prefix, route } from "@react-router/dev/routes";
 
 export default [
+  // Cadence — the automations studio, mounted at the root.
+  layout("layouts/cadence-layout.tsx", [
+    index("routes/cadence/exec.tsx"),
+    route("workflows", "routes/cadence/workflows.tsx"),
+    route("ops", "routes/cadence/ops.tsx"),
+    route("settings", "routes/cadence/settings.tsx"),
+  ]),
+
   route("backoffice/login", "routes/backoffice/login.tsx"),
   route("backoffice/sign-up", "routes/backoffice/sign-up.tsx"),
   layout("layouts/backoffice-layout.tsx", [

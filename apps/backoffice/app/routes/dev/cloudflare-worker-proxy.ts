@@ -30,7 +30,10 @@ const dispatchToCloudflareWorker = async (
   const forwardedRequest = buildCloudflareWorkerDispatchRequest(request, orgId, appId, scriptName);
 
   try {
-    const worker = env.DISPATCHER.get(scriptName);
+    const dispatcher = (
+      env as { DISPATCHER: { get(name: string): { fetch(req: Request): Promise<Response> } } }
+    ).DISPATCHER;
+    const worker = dispatcher.get(scriptName);
     return await worker.fetch(forwardedRequest);
   } catch (error) {
     const message =

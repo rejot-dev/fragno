@@ -101,6 +101,25 @@ describe("dashboard terminal autocomplete", () => {
     );
   });
 
+  test("lists every command for an empty prompt without capping", () => {
+    const manyCommands: DashboardCommandSpec[] = Array.from({ length: 20 }, (_, index) => ({
+      command: `cmd${index}`,
+      summary: `Command ${index}.`,
+      options: [],
+    }));
+
+    const suggestions = buildDashboardAutocomplete({
+      commandLine: "",
+      commandSpecs: manyCommands,
+      history: [],
+      mode: "completion",
+    });
+
+    expect(suggestions.map((suggestion) => suggestion.label)).toEqual(
+      manyCommands.map((spec) => spec.command),
+    );
+  });
+
   test("suggests unused command arguments with descriptions", () => {
     const suggestions = buildDashboardAutocomplete({
       commandLine: "pi.session.get --",

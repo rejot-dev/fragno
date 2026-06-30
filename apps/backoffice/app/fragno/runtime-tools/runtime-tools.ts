@@ -25,6 +25,8 @@ import {
   type ParsedCliTokens,
 } from "@/fragno/runtime-tools/bash-cli";
 
+import { automationsCommand } from "./automations-command";
+
 export type BackofficeToolContext<
   TRuntimes extends Record<string, unknown> = Record<string, unknown>,
   TDefaults extends Record<string, unknown> = Record<string, unknown>,
@@ -333,8 +335,8 @@ export const createBackofficeBashCommands = ({
   tools: readonly AnyBackofficeRuntimeTool[];
   context: BackofficeToolContext;
   commandCallsResult: BashAutomationCommandResult[];
-}) =>
-  tools.flatMap((tool) => {
+}) => [
+  ...tools.flatMap((tool) => {
     const bash = tool.adapters?.bash;
     if (!bash) {
       return [];
@@ -413,4 +415,6 @@ export const createBackofficeBashCommands = ({
         };
       }
     });
-  });
+  }),
+  automationsCommand,
+];

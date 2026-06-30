@@ -19,10 +19,23 @@ import {
   type ResolvedProvider,
 } from "./codemode-executor";
 import { BackofficeStateFileSystem } from "./master-file-system-state";
+import {
+  collectBareSpecifiers,
+  resolveNpmModules,
+  rewriteCodeImports,
+} from "./resolve-npm-modules";
 import { BackofficeFileSystemStateBackend, stateToolsFromBackend } from "./state-backend";
 
 export type BackofficeCodemodeEnv = {
   LOADER: WorkerLoader;
+  /**
+   * Outbound egress capability for workflow sandboxes (the `OutboundProxy`
+   * service binding; see workers/app.ts). When present it is handed to the
+   * dynamic worker as its `globalOutbound`, letting `fetch()` inside a workflow
+   * step reach the internet. Absent (e.g. the Workers test pool) keeps the
+   * sandbox sealed.
+   */
+  OUTBOUND?: Fetcher;
 };
 
 export type RunBackofficeCodemodeInput = {
@@ -32,6 +45,14 @@ export type RunBackofficeCodemodeInput = {
   timeout?: number;
   families: readonly BackofficeRuntimeToolFamily[];
   toolContext: CoreBackofficeToolContext;
+  /**
+   * Outbound network policy for the codemode sandbox.
+   * - `undefined` (default): grant egress via the host's `env.OUTBOUND`
+   *   capability when bound, so `fetch()` reaches the internet; else sealed.
+   * - a `Fetcher`: route every `fetch()` through a custom/allowlisting outbound.
+   * - `null`: seal the sandbox (any `fetch()` throws the egress error).
+   */
+  globalOutbound?: Fetcher | null;
 };
 
 export type BackofficeCodemodeProvidersInput = {
@@ -205,14 +226,44 @@ export const runBackofficeCodemode = async ({
   timeout,
   families,
   toolContext,
+  globalOutbound,
 }: RunBackofficeCodemodeInput): Promise<BackofficeCodemodeExecuteResult> => {
+  const toolCalls: BackofficeRuntimeToolCall[] = [];
+
+  // A dynamically-loaded Worker cannot fetch modules at runtime, so any npm package
+  // the snippet imports must be resolved on the host and supplied in the Worker
+  // Loader `modules` map. We bundle each imported package from esm.sh and rewrite the
+  // snippet's specifiers to the resulting module keys. Versions are taken from the
+  // specifier when present (`lodash@4.17.21`), else esm.sh resolves the latest.
+  const normalizedCode = normalizeBackofficeCodemodeCode(code);
+  let codeToRun = normalizedCode;
+  let npmModules: Record<string, string> = {};
+  const specifiers = collectBareSpecifiers(normalizedCode);
+  if (specifiers.length > 0) {
+    try {
+      const resolved = await resolveNpmModules(specifiers);
+      npmModules = resolved.modules;
+      codeToRun = rewriteCodeImports(normalizedCode, resolved.imports);
+    } catch (err) {
+      return {
+        result: undefined,
+        error: `Failed to resolve npm imports (${specifiers.join(", ")}): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+        toolCalls,
+      };
+    }
+  }
+
   const executor = new DynamicWorkerExecutor({
     loader: env.LOADER,
     timeout,
-    globalOutbound: null,
+    // Default (caller passed nothing): grant egress via the host's OUTBOUND
+    // capability when bound, else stay sealed. An explicit Fetcher or `null` wins.
+    globalOutbound: globalOutbound === undefined ? (env.OUTBOUND ?? null) : globalOutbound,
+    modules: npmModules,
   });
 
-  const toolCalls: BackofficeRuntimeToolCall[] = [];
   const providers = await createBackofficeCodemodeResolvedProviders({
     fs,
     families,
@@ -220,9 +271,6 @@ export const runBackofficeCodemode = async ({
     toolCalls,
   });
 
-  const result = (await executor.execute(
-    normalizeBackofficeCodemodeCode(code),
-    providers,
-  )) as BackofficeCodemodeExecuteResult;
+  const result = (await executor.execute(codeToRun, providers)) as BackofficeCodemodeExecuteResult;
   return { ...result, toolCalls };
 };

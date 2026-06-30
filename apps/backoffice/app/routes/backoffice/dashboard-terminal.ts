@@ -417,9 +417,11 @@ export const buildDashboardAutocomplete = ({
 
   if (isCompletingCommand) {
     const query = currentToken.value.toLowerCase();
+    // Unlike the other suggestion kinds, command-name completion is not capped:
+    // an initial Tab on an empty prompt should surface every command, mirroring
+    // what `help` lists. The popup scrolls (`max-h-64 overflow-auto`) for overflow.
     const commandSuggestions: DashboardAutocompleteSuggestion[] = commandSpecs
       .filter((spec) => spec.command.toLowerCase().startsWith(query))
-      .slice(0, MAX_AUTOCOMPLETE_SUGGESTIONS)
       .map((spec) => ({
         id: `command:${spec.command}`,
         kind: "command",
@@ -857,6 +859,7 @@ export const useDashboardTerminal = ({
     onAutocompleteSuggestionMouseDown: applyAutocompleteSuggestion,
     onCommandChange,
     onCommandKeyDown,
+    closeAutocomplete,
     clear,
     terminalHistory: snapshot.entries,
     terminalRef,
