@@ -164,9 +164,7 @@ describe("system automation scenarios", () => {
       });
       const listInstances = workflow.listInstances;
       if (!listInstances) {
-        throw new Error(
-          "Workflow listInstances runtime helper is unavailable.",
-        );
+        throw new Error("Workflow listInstances runtime helper is unavailable.");
       }
       const instances = await listInstances({
         workflowName: "automation-codemode-script",
@@ -209,14 +207,11 @@ describe("system automation scenarios", () => {
           },
         }),
       );
-      const telegramPath =
-        "/workspace/automations/telegram-test-command.workflow.js";
+      const telegramPath = "/workspace/automations/telegram-test-command.workflow.js";
       await expect(
         memberFs.writeFile(telegramPath, "// edited by org member\n"),
       ).resolves.toBeUndefined();
-      await expect(memberFs.readFile(telegramPath)).resolves.toContain(
-        "edited by org member",
-      );
+      await expect(memberFs.readFile(telegramPath)).resolves.toContain("edited by org member");
     } finally {
       await runtime.cleanup();
     }
@@ -254,15 +249,12 @@ describe("system automation scenarios", () => {
 
           runner.drain(),
 
-          then.assert(
-            "project upload database provider is configured",
-            async (ctx) => {
-              const config = await ctx.runtime.objects.upload
-                .forProject({ orgId: "org-1", projectId: ctx.vars.projectId })
-                .getAdminConfig();
-              assert(config.providers.database?.configured);
-            },
-          ),
+          then.assert("project upload database provider is configured", async (ctx) => {
+            const config = await ctx.runtime.objects.upload
+              .forProject({ orgId: "org-1", projectId: ctx.vars.projectId })
+              .getAdminConfig();
+            assert(config.providers.database?.configured);
+          }),
 
           then.files.contains({
             orgId: "org-1",
@@ -577,9 +569,7 @@ describe("system automation scenarios", () => {
 
         files: backofficeFiles.systemOnly(),
 
-        setup: ({ given }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
-        ],
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
 
         steps: ({ when, then }) => [
           when.automation.ingestEvent(systemUnrelatedEvent),
@@ -603,9 +593,7 @@ describe("system automation scenarios", () => {
 
         files: backofficeFiles.systemOnly(),
 
-        setup: ({ given }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
-        ],
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
 
         steps: ({ when, then }) => [
           when.workflow.createInstance({
@@ -614,8 +602,7 @@ describe("system automation scenarios", () => {
             instanceId: "workspace-file-initialization-skip",
             params: {
               automationEvent: systemUnrelatedEvent,
-              workflowScriptPath:
-                "/system/automations/workspace-file-initialization.workflow.js",
+              workflowScriptPath: "/system/automations/workspace-file-initialization.workflow.js",
             },
           }),
 

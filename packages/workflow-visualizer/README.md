@@ -1,8 +1,11 @@
 # @fragno-dev/workflow-visualizer
 
-Static graph builder for Backoffice automations. It reads automation source files and produces a serializable graph that UI surfaces can render as a pipeline: events → router rules → workflows → durable steps.
+Static graph builder for Backoffice automations. It reads automation source files and produces a
+serializable graph that UI surfaces can render as a pipeline: events → router rules → workflows →
+durable steps.
 
-The package does **not** execute user code. It parses JavaScript/TypeScript with Babel, extracts the shapes it can prove statically, and returns diagnostics for syntax and wiring problems.
+The package does **not** execute user code. It parses JavaScript/TypeScript with Babel, extracts the
+shapes it can prove statically, and returns diagnostics for syntax and wiring problems.
 
 ## What it understands
 
@@ -10,7 +13,8 @@ The package does **not** execute user code. It parses JavaScript/TypeScript with
 - Router files such as `router.cm.js`:
   - `workflow.createInstance({ remoteWorkflowName: "..." })`
   - `workflow.sendEvent({ type: "..." })`
-  - simple branch matches like `event.source === "telegram"` and `event.eventType === "message.received"`
+  - simple branch matches like `event.source === "telegram"` and
+    `event.eventType === "message.received"`
 - Workflow files such as `*.workflow.js`:
   - `defineWorkflow({ name: "..." }, async (event, step) => { ... })`
   - `defineRemoteWorkflow(...)`
@@ -49,7 +53,8 @@ The visualizer has three layers:
    - Emits graph patches (`node.upsert`, `edge.remove`, `diagnostics.set`, etc.) for live UIs.
    - Returns full snapshots for initial load or reconnects.
 
-`src/select.ts` provides view helpers on top of the full graph: list workflows for a selector, or focus the graph on one workflow while keeping relevant inputs and diagnostics.
+`src/select.ts` provides view helpers on top of the full graph: list workflows for a selector, or
+focus the graph on one workflow while keeping relevant inputs and diagnostics.
 
 ## Basic usage
 
@@ -114,7 +119,8 @@ const graph = build({
 });
 ```
 
-For transient `execCodeMode` snippets, use `buildCodemodeWorkflowGraph(code, { name })`. It wraps the snippet as a single virtual workflow file and runs the normal build pipeline.
+For transient `execCodeMode` snippets, use `buildCodemodeWorkflowGraph(code, { name })`. It wraps
+the snippet as a single virtual workflow file and runs the normal build pipeline.
 
 ## Live UI usage
 
@@ -128,7 +134,8 @@ const unsubscribe = interpreter.onPatch((patch) => {
 interpreter.updateFile(path, newSource, { engine: "codemode" });
 ```
 
-A new subscriber immediately receives a `reset` patch with the current graph, then incremental patches after each file change.
+A new subscriber immediately receives a `reset` patch with the current graph, then incremental
+patches after each file change.
 
 ## Graph shape
 
@@ -139,19 +146,24 @@ The public model is defined in `src/model.ts` and is plain JSON:
 - Edge kinds: `matches`, `spawns`, `contains`, `sequence`, `sends`, `waits`, `emits`
 - Diagnostics include a stable `code` when possible and optional source refs.
 
-Because the model is serializable, server routes can build graphs and send them directly to browser components.
+Because the model is serializable, server routes can build graphs and send them directly to browser
+components.
 
 ## Static-analysis limits
 
 The visualizer intentionally stays conservative and obvious:
 
-- It only resolves static string names for workflow targets, event types, step labels, and workflow names.
-- Dynamic `remoteWorkflowName`, dynamic event predicates, and referenced schemas may show as missing or unknown.
+- It only resolves static string names for workflow targets, event types, step labels, and workflow
+  names.
+- Dynamic `remoteWorkflowName`, dynamic event predicates, and referenced schemas may show as missing
+  or unknown.
 - It does not execute or typecheck automation code.
 - Loops are structural groups, not expanded runtime iterations.
-- Code inside `step.do(...)` callbacks is treated as step implementation details, not workflow structure.
+- Code inside `step.do(...)` callbacks is treated as step implementation details, not workflow
+  structure.
 
-These limits are useful guardrails: when the graph cannot prove a relationship, it emits a diagnostic rather than guessing.
+These limits are useful guardrails: when the graph cannot prove a relationship, it emits a
+diagnostic rather than guessing.
 
 ## Development
 
