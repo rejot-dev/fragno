@@ -36,7 +36,7 @@ export function WorkflowPanel({
   // `refreshToken` bumps (i.e. the agent wrote the file). The keyed workbench
   // below adopts the fresh source only if the user hasn't diverged locally.
   useEffect(() => {
-    fetcher.load(`/workflows?workflow=${encodeURIComponent(name)}`);
+    void fetcher.load(`/workflows?workflow=${encodeURIComponent(name)}`);
     // fetcher identity is stable across renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [name, refreshToken]);
