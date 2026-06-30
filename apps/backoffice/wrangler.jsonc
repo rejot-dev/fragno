@@ -57,6 +57,19 @@
     },
   ],
   /**
+   * Outbound egress for codemode/workflow sandboxes. A self service binding to
+   * the `OutboundProxy` entrypoint (see workers/app.ts) handed to dynamically
+   * loaded Workers as their `globalOutbound`, so `fetch()` inside a workflow
+   * step can reach the internet through the host worker.
+   */
+  "services": [
+    {
+      "binding": "OUTBOUND",
+      "service": "fragno-back-office",
+      "entrypoint": "OutboundProxy",
+    },
+  ],
+  /**
    * Note: Use secrets to store sensitive data.
    * https://developers.cloudflare.com/workers/configuration/secrets/
    */

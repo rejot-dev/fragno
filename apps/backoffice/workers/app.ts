@@ -1,3 +1,4 @@
+import { WorkerEntrypoint } from "cloudflare:workers";
 import { createRequestHandler, RouterContextProvider } from "react-router";
 import System from "typebox/system";
 
@@ -33,6 +34,21 @@ export { Mcp };
 export { Pi };
 export { Otp };
 export { Reson8 };
+
+/**
+ * Outbound egress capability for codemode sandboxes. Dynamically-loaded Workers
+ * (the codemode/workflow sandbox spawned via `env.LOADER`) start with no network
+ * access — a bare `fetch()` throws "this worker is not permitted to access the
+ * internet". Passing this entrypoint as the sandbox's `globalOutbound` routes its
+ * `fetch()` calls back through the host worker, which can reach the public
+ * internet. Forwarding here (rather than handing the sandbox raw internet) keeps
+ * egress a host-controlled capability — add allowlisting/logging in one place.
+ */
+export class OutboundProxy extends WorkerEntrypoint {
+  override fetch(request: Request): Promise<Response> {
+    return fetch(request);
+  }
+}
 
 const requestHandler = createRequestHandler(
   () => import("virtual:react-router/server-build"),

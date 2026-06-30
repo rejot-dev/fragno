@@ -57,6 +57,18 @@ export type BackofficeCodemodeWorkflowOptions = {
   fs: IFileSystem;
   families: readonly BackofficeRuntimeToolFamily[];
   toolContext: BackofficeToolContext;
+  /**
+   * Outbound network policy for the workflow sandbox. The dynamic worker the
+   * codemode runs in is created with this as its `globalOutbound`, which decides
+   * whether a bare `fetch()` inside a `step.do(...)` body reaches the internet.
+   *
+   * - `undefined` (default): use the host's `env.OUTBOUND` egress capability
+   *   when available, so `fetch()` reaches the internet; otherwise sealed.
+   * - a `Fetcher`: route every `fetch()` through a custom/allowlisting outbound.
+   * - `null`: seal the sandbox — any `fetch()` throws "this worker is not
+   *   permitted to access the internet".
+   */
+  globalOutbound?: Fetcher | null;
 };
 
 const createRemoteWorkflowWorkerCode = ({
@@ -256,6 +268,7 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
   fs,
   families,
   toolContext,
+  globalOutbound,
 }: {
   code: string;
   event: WorkflowEvent<TParams>;
@@ -265,7 +278,10 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
   const stepTarget = new WorkflowStepTarget(remote);
   const executor = new DynamicWorkerExecutor({
     loader: env.LOADER,
-    globalOutbound: null,
+    // Default (caller passed nothing): grant egress via the host's OUTBOUND
+    // capability when bound, else stay sealed. An explicit value — a custom
+    // Fetcher or `null` to seal — always wins. See BackofficeCodemodeWorkflowOptions.
+    globalOutbound: globalOutbound === undefined ? (env.OUTBOUND ?? null) : globalOutbound,
   });
 
   const providers = await createBackofficeCodemodeResolvedProviders({
