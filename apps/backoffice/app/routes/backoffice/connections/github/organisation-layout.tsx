@@ -6,7 +6,11 @@ import { getAuthMe } from "@/fragno/auth/auth-server";
 import { buildBackofficeLoginPath } from "../../auth-navigation";
 import { throwOrganisationNotFound } from "../../route-errors";
 import type { Route } from "./+types/organisation-layout";
-import { fetchGitHubAdminConfig } from "./data";
+import {
+  fetchGitHubAdminConfig,
+  fetchGitHubLinkedRepositories,
+  gitHubRepositoriesRouteAvailable,
+} from "./data";
 import {
   GitHubErrorBoundary,
   GitHubHeader,
@@ -37,6 +41,12 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
   const origin = new URL(request.url).origin;
   const { configState, configError } = await fetchGitHubAdminConfig(context, params.orgId, origin);
+  const linkedRepositories = configState?.configured
+    ? await fetchGitHubLinkedRepositories(request, context, params.orgId)
+    : null;
+  const repositoriesEnabled = linkedRepositories
+    ? gitHubRepositoriesRouteAvailable(linkedRepositories)
+    : false;
 
   return {
     orgId: params.orgId,
@@ -44,6 +54,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     organisation,
     configState,
     configError,
+    repositoriesEnabled,
   };
 }
 
@@ -66,6 +77,7 @@ export default function BackofficeOrganisationGitHubLayout({
     organisation,
     configState: initialConfigState,
     configError: initialConfigError,
+    repositoriesEnabled,
   } = loaderData;
   const [configState, setConfigState] = useState<GitHubAdminConfigState | null>(initialConfigState);
   const [configError, setConfigError] = useState<string | null>(initialConfigError);
@@ -88,11 +100,7 @@ export default function BackofficeOrganisationGitHubLayout({
   return (
     <div className="space-y-4">
       <GitHubHeader orgId={orgId} organisationName={organisation?.name ?? orgId} />
-      <GitHubTabs
-        orgId={orgId}
-        activeTab={activeTab}
-        isConfigured={Boolean(configState?.configured)}
-      />
+      <GitHubTabs orgId={orgId} activeTab={activeTab} repositoriesEnabled={repositoriesEnabled} />
       <Outlet
         context={{
           orgId,

@@ -1,7 +1,11 @@
 import { redirect } from "react-router";
 
 import type { Route } from "./+types/organisation-index";
-import { fetchGitHubAdminConfig } from "./data";
+import {
+  fetchGitHubAdminConfig,
+  fetchGitHubLinkedRepositories,
+  gitHubRepositoriesRouteAvailable,
+} from "./data";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.orgId) {
@@ -10,7 +14,13 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
   const origin = new URL(request.url).origin;
   const { configState } = await fetchGitHubAdminConfig(context, params.orgId, origin);
-  const target = configState?.configured ? "repositories" : "configuration";
+  const linkedRepositories = configState?.configured
+    ? await fetchGitHubLinkedRepositories(request, context, params.orgId)
+    : null;
+  const target =
+    linkedRepositories && gitHubRepositoriesRouteAvailable(linkedRepositories)
+      ? "repositories"
+      : "configuration";
   return redirect(`/backoffice/connections/github/${params.orgId}/${target}`);
 }
 

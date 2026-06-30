@@ -23,6 +23,7 @@ import {
   fetchGitHubInstallationRepos,
   fetchGitHubInstallations,
   linkGitHubRepository,
+  startGitHubOAuth,
   syncGitHubInstallation,
   unlinkGitHubRepository,
   type GitHubInstallationSummary,
@@ -107,6 +108,9 @@ const isValidInstallationId = (value: string) => /^\d+$/.test(value);
 
 const toStatePreview = (value: string) => (value ? `${value.slice(0, 8)}…` : "");
 
+const actionErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback;
+
 const buildGitHubInstallationUrl = (installation: GitHubInstallationSummary | null | undefined) => {
   if (!installation) {
     return null;
@@ -149,7 +153,9 @@ const readInstallNotice = (requestUrl: URL): InstallFlowNotice => {
   if (!Object.prototype.hasOwnProperty.call(INSTALL_FLOW_MESSAGES, code)) {
     return null;
   }
-  return INSTALL_FLOW_MESSAGES[code as InstallFlowCode];
+  const notice = INSTALL_FLOW_MESSAGES[code as InstallFlowCode];
+  const detail = requestUrl.searchParams.get(`${INSTALL_FLOW_QUERY}Detail`)?.trim();
+  return detail ? { ...notice, message: `${notice.message} ${detail}` } : notice;
 };
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
@@ -394,15 +400,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     return redirect(install.installUrl);
   }
 
-  if (intent === "restore-installation") {
-    const installationId = getStringValue(formData, "installationId");
-    if (!isValidInstallationId(installationId)) {
-      return {
-        ok: false,
-        message: "Enter a numeric GitHub installation id.",
-      } satisfies GitHubConfigurationActionData;
-    }
-
+  if (intent === "connect-existing-installation") {
     const me = await getAuthMe(request, context);
     if (!me?.user) {
       return {
@@ -415,44 +413,42 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       throw new Response("Not Found", { status: 404 });
     }
 
+    const requestUrl = new URL(request.url);
+    const returnTo = `${requestUrl.pathname}${requestUrl.search}`;
+    const claim = await startGitHubOAuth(request, context, params.orgId, {
+      subjectId: me.user.id,
+      returnTo,
+    });
+    if (claim.error || !claim.result) {
+      return {
+        ok: false,
+        message: claim.error ?? "Failed to start installation restore.",
+      } satisfies GitHubConfigurationActionData;
+    }
+
     const githubWebhookRouterDo = getGitHubWebhookRouterDurableObject(context);
-    const existingOrgId = await githubWebhookRouterDo.getInstallationOrg(installationId);
-    if (existingOrgId && existingOrgId !== params.orgId) {
+    try {
+      await githubWebhookRouterDo.storeInstallationClaimState({
+        state: claim.result.state,
+        userId: me.user.id,
+        orgId: params.orgId,
+        returnTo,
+        expiresAt: new Date(claim.result.expiresAt).getTime(),
+      });
+    } catch (error) {
+      console.warn("Failed to store GitHub installation claim state", {
+        orgId: params.orgId,
+        userId: me.user.id,
+        state: toStatePreview(claim.result.state),
+        error,
+      });
       return {
         ok: false,
-        message: "That GitHub installation is already linked to a different organisation.",
+        message: actionErrorMessage(error, "Failed to prepare GitHub installation restore."),
       } satisfies GitHubConfigurationActionData;
     }
 
-    const mappingResult = await githubWebhookRouterDo.setInstallationOrg(
-      installationId,
-      params.orgId,
-    );
-    if (!mappingResult.ok) {
-      return {
-        ok: false,
-        message:
-          mappingResult.code === "INSTALLATION_ORG_CONFLICT"
-            ? "That GitHub installation is already linked to a different organisation."
-            : mappingResult.message,
-      } satisfies GitHubConfigurationActionData;
-    }
-
-    const syncResult = await syncGitHubInstallation(request, context, params.orgId, installationId);
-    if (syncResult.error || !syncResult.result) {
-      return {
-        ok: false,
-        message: syncResult.error ?? "Failed to sync installation.",
-      } satisfies GitHubConfigurationActionData;
-    }
-
-    const githubDo = getGitHubDurableObject(context, params.orgId);
-    await githubDo.redeliverFailedInstallationWebhooks(installationId);
-
-    return {
-      ok: true,
-      message: `Restored installation ${installationId}. Synced ${syncResult.result.added} added, ${syncResult.result.updated} updated, ${syncResult.result.removed} removed repositories.`,
-    } satisfies GitHubConfigurationActionData;
+    return redirect(claim.result.authorizationUrl);
   }
 
   if (intent === "link-repo") {
@@ -586,67 +582,106 @@ export default function BackofficeOrganisationGitHubConfiguration() {
       ) : (
         <>
           <FormContainer
-            title="Install GitHub App"
+            title={hasActiveInstallation ? "GitHub App connected" : "Connect the GitHub App"}
             eyebrow="Installation"
-            description="Start the install flow from this page so the callback can be linked to this organisation."
+            description={
+              hasActiveInstallation
+                ? "Manage the GitHub App installation linked to this organisation."
+                : "Install the app for the first time, or reconnect an installation that already exists in GitHub."
+            }
           >
             {hasActiveInstallation && githubInstallationUrl ? (
               <>
                 <p className="text-sm text-[var(--bo-muted)]">
                   Installation is configured for this organisation. Open GitHub to manage
-                  installation settings.
+                  installation settings or review app authorizations for your GitHub account.
                 </p>
-                <a
-                  href={githubInstallationUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-3 inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
-                >
-                  View installation on GitHub
-                </a>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <a
+                    href={githubInstallationUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex min-h-10 items-center border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
+                  >
+                    View installation on GitHub
+                  </a>
+                  <a
+                    href="https://github.com/settings/apps/authorizations"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex min-h-10 items-center border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                  >
+                    View GitHub authorizations
+                  </a>
+                </div>
               </>
             ) : (
               <>
-                <p className="text-sm text-[var(--bo-muted)]">
-                  Start installation, complete it in GitHub, then return here to link repositories
-                  once webhook processing has completed.
-                </p>
-                <Form method="post">
-                  <input type="hidden" name="intent" value="start-installation" />
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="mt-3 inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
-                  >
-                    Start installation
-                  </button>
-                </Form>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <section className="flex flex-col justify-between border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] p-4 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset]">
+                    <div>
+                      <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase">
+                        New install
+                      </p>
+                      <h2 className="mt-2 text-lg font-semibold text-[var(--bo-fg)]">
+                        Install the app into GitHub
+                      </h2>
+                      <p className="mt-2 text-sm text-[var(--bo-muted)]">
+                        Choose repositories in GitHub and return here automatically. This is the
+                        fastest path when the app is not installed yet.
+                      </p>
+                    </div>
+                    <Form method="post" className="mt-4">
+                      <input type="hidden" name="intent" value="start-installation" />
+                      <button
+                        type="submit"
+                        disabled={saving}
+                        className="inline-flex min-h-10 items-center border border-[color:var(--bo-accent)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+                      >
+                        Start GitHub install
+                      </button>
+                    </Form>
+                  </section>
 
-                <div className="mt-4 border-t border-[color:var(--bo-border)] pt-4">
+                  <section className="flex flex-col justify-between border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset]">
+                    <div>
+                      <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                        Existing install
+                      </p>
+                      <h2 className="mt-2 text-lg font-semibold text-[var(--bo-fg)]">
+                        Connect an existing installation
+                      </h2>
+                      <p className="mt-2 text-sm text-[var(--bo-muted)]">
+                        Already installed? Sign in with GitHub and pick from installations your
+                        GitHub user can access. No pasted installation ids.
+                      </p>
+                    </div>
+                    <Form method="post" className="mt-4">
+                      <input type="hidden" name="intent" value="connect-existing-installation" />
+                      <button
+                        type="submit"
+                        disabled={saving}
+                        className="inline-flex min-h-10 items-center border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+                      >
+                        Find existing install
+                      </button>
+                    </Form>
+                  </section>
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2">
                   <p className="text-xs text-[var(--bo-muted-2)]">
-                    Already installed in GitHub? Paste the numeric installation id from the GitHub
-                    installation settings URL to restore the local link and sync repositories.
+                    Not sure whether it is already installed? Check GitHub first, switch to the
+                    right GitHub organisation if needed, then return here.
                   </p>
-                  <Form method="post" className="mt-3 flex flex-wrap items-end gap-2">
-                    <input type="hidden" name="intent" value="restore-installation" />
-                    <label className="flex min-w-56 flex-col gap-1 text-[10px] tracking-[0.18em] text-[var(--bo-muted)] uppercase">
-                      Installation id
-                      <input
-                        name="installationId"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        placeholder="12345678"
-                        className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm tracking-normal text-[var(--bo-fg)] normal-case outline-none focus:border-[color:var(--bo-accent)]"
-                      />
-                    </label>
-                    <button
-                      type="submit"
-                      disabled={saving}
-                      className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
-                    >
-                      Restore link
-                    </button>
-                  </Form>
+                  <a
+                    href="https://github.com/settings/apps/authorizations"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex min-h-10 items-center text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase underline underline-offset-4 transition-colors hover:text-[var(--bo-fg)]"
+                  >
+                    View existing installations
+                  </a>
                 </div>
               </>
             )}

@@ -80,11 +80,11 @@ export function GitHubHeader({
 export function GitHubTabs({
   orgId,
   activeTab,
-  isConfigured,
+  repositoriesEnabled,
 }: {
   orgId: string;
   activeTab: GitHubTab;
-  isConfigured: boolean;
+  repositoriesEnabled: boolean;
 }) {
   const basePath = `/backoffice/connections/github/${orgId}`;
   const tabs = [
@@ -92,7 +92,7 @@ export function GitHubTabs({
       id: "repositories" as const,
       label: "Repositories",
       to: `${basePath}/repositories`,
-      disabled: !isConfigured,
+      disabled: !repositoriesEnabled,
     },
     {
       id: "configuration" as const,

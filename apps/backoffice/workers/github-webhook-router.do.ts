@@ -24,6 +24,11 @@ type StoredInstallState = {
   expiresAt: number;
 };
 
+type StoredInstallationClaimState = StoredInstallState & {
+  returnTo: string;
+  completion?: unknown;
+};
+
 type CreateInstallUrlResult =
   | {
       ok: true;
@@ -48,10 +53,37 @@ type ResolveInstallStateInput = {
   userId: string;
 };
 
+type StoreInstallationClaimStateInput = {
+  state: string;
+  userId: string;
+  orgId: string;
+  returnTo: string;
+  expiresAt: number;
+};
+
+type StoreInstallationClaimCompletionInput = {
+  state: string;
+  userId: string;
+  completion: unknown;
+};
+
 type InstallStateResolutionResult =
   | {
       ok: true;
       orgId: string;
+    }
+  | {
+      ok: false;
+      code: "INVALID_STATE" | "EXPIRED_STATE" | "USER_MISMATCH";
+      message: string;
+    };
+
+type InstallationClaimStateResolutionResult =
+  | {
+      ok: true;
+      orgId: string;
+      returnTo: string;
+      completion: unknown;
     }
   | {
       ok: false;
@@ -72,6 +104,7 @@ type ConsumeInstallStateResult =
     };
 
 const INSTALL_STATE_KEY_PREFIX = "github-install-state:";
+const INSTALLATION_CLAIM_STATE_KEY_PREFIX = "github-installation-claim-state:";
 const INSTALL_STATE_TTL_MS = 10 * 60 * 1000;
 const INSTALLATION_ORG_KEY_PREFIX = "github-installation-org:";
 
@@ -319,6 +352,90 @@ export class InMemoryGitHubWebhookRouterObject {
     };
   }
 
+  async storeInstallationClaimState(
+    input: StoreInstallationClaimStateInput,
+  ): Promise<{ ok: true }> {
+    const state = input.state.trim();
+    const userId = input.userId.trim();
+    const orgId = input.orgId.trim();
+    if (!state || !userId || !orgId) {
+      throw new Error("Missing installation claim state, user id, or organisation id.");
+    }
+
+    await this.#state.storage.put(`${INSTALLATION_CLAIM_STATE_KEY_PREFIX}${state}`, {
+      userId,
+      orgId,
+      returnTo: input.returnTo.trim(),
+      createdAt: Date.now(),
+      expiresAt: input.expiresAt,
+    } satisfies StoredInstallationClaimState);
+    return { ok: true };
+  }
+
+  async resolveInstallationClaimState(
+    input: ResolveInstallStateInput,
+  ): Promise<InstallationClaimStateResolutionResult> {
+    const state = input.state.trim();
+    const userId = input.userId.trim();
+
+    if (!state || !userId) {
+      return { ok: false, code: "INVALID_STATE", message: "Missing claim state or user id." };
+    }
+
+    const storageKey = `${INSTALLATION_CLAIM_STATE_KEY_PREFIX}${state}`;
+    const record = await this.#state.storage.get<StoredInstallationClaimState>(storageKey);
+    if (!record) {
+      return { ok: false, code: "INVALID_STATE", message: "Claim state was not found." };
+    }
+    if (record.expiresAt <= Date.now()) {
+      await this.#state.storage.delete(storageKey);
+      return { ok: false, code: "EXPIRED_STATE", message: "Claim state expired." };
+    }
+    if (record.userId !== userId) {
+      return {
+        ok: false,
+        code: "USER_MISMATCH",
+        message: "Claim state belongs to a different user.",
+      };
+    }
+
+    return {
+      ok: true,
+      orgId: record.orgId,
+      returnTo: record.returnTo,
+      completion: record.completion ?? null,
+    };
+  }
+
+  async storeInstallationClaimCompletion(
+    input: StoreInstallationClaimCompletionInput,
+  ): Promise<{ ok: true }> {
+    const resolved = await this.resolveInstallationClaimState({
+      state: input.state,
+      userId: input.userId,
+    });
+    if (!resolved.ok) {
+      throw new Error(resolved.message);
+    }
+
+    const storageKey = `${INSTALLATION_CLAIM_STATE_KEY_PREFIX}${input.state.trim()}`;
+    const record = await this.#state.storage.get<StoredInstallationClaimState>(storageKey);
+    if (!record) {
+      throw new Error("Claim state was not found.");
+    }
+
+    await this.#state.storage.put(storageKey, {
+      ...record,
+      completion: input.completion,
+    } satisfies StoredInstallationClaimState);
+    return { ok: true };
+  }
+
+  async consumeInstallationClaimState(input: ResolveInstallStateInput): Promise<{ ok: true }> {
+    await this.#state.storage.delete(`${INSTALLATION_CLAIM_STATE_KEY_PREFIX}${input.state.trim()}`);
+    return { ok: true };
+  }
+
   async setInstallationOrg(
     installationId: string,
     orgId: string,
@@ -469,6 +586,28 @@ export class GitHubWebhookRouter extends DurableObject<CloudflareEnv> {
 
   async consumeInstallState(input: ConsumeInstallStateInput): Promise<ConsumeInstallStateResult> {
     return await this.#object.consumeInstallState(input);
+  }
+
+  async storeInstallationClaimState(
+    input: StoreInstallationClaimStateInput,
+  ): Promise<{ ok: true }> {
+    return await this.#object.storeInstallationClaimState(input);
+  }
+
+  async resolveInstallationClaimState(
+    input: ResolveInstallStateInput,
+  ): Promise<InstallationClaimStateResolutionResult> {
+    return await this.#object.resolveInstallationClaimState(input);
+  }
+
+  async storeInstallationClaimCompletion(
+    input: StoreInstallationClaimCompletionInput,
+  ): Promise<{ ok: true }> {
+    return await this.#object.storeInstallationClaimCompletion(input);
+  }
+
+  async consumeInstallationClaimState(input: ResolveInstallStateInput): Promise<{ ok: true }> {
+    return await this.#object.consumeInstallationClaimState(input);
   }
 
   async setInstallationOrg(

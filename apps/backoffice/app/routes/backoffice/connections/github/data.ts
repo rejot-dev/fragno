@@ -54,7 +54,6 @@ type GitHubPullsResponse = {
 
 type GitHubLinkResponse = {
   link: {
-    id: string;
     repoId: string;
     linkKey: string;
     linkedAt: string | Date;
@@ -98,6 +97,39 @@ type GitHubSyncResult = {
   error: string | null;
 };
 
+export type GitHubOAuthInstallation = {
+  id: string;
+  accountId: string;
+  accountLogin: string;
+  accountType: string;
+  appId: string;
+  appSlug: string;
+  repositorySelection: string;
+  permissions: unknown;
+  events: unknown;
+  htmlUrl: string | null;
+  status: string;
+};
+
+export type GitHubOAuthComplete = {
+  state: string;
+  subjectId: string;
+  githubUser: { id: string; login: string };
+  installations: GitHubOAuthInstallation[];
+  returnTo: string | null;
+  expiresAt: string | Date;
+};
+
+type GitHubOAuthStartResult = {
+  result: { authorizationUrl: string; state: string; expiresAt: string | Date } | null;
+  error: string | null;
+};
+
+type GitHubOAuthCompleteResult = {
+  result: GitHubOAuthComplete | null;
+  error: string | null;
+};
+
 const createGitHubRouteCaller = (
   request: Request,
   context: Readonly<RouterContextProvider>,
@@ -132,6 +164,14 @@ const gitHubReposResultFromCaughtError = (error: unknown, fallback: string): Git
   repos: [],
   reposError: error instanceof Error ? error.message : fallback,
 });
+
+export const gitHubRepositoriesRouteAvailable = ({
+  repos,
+  reposError,
+}: {
+  repos: readonly unknown[];
+  reposError: string | null;
+}) => Boolean(reposError || repos.length > 0);
 
 export async function fetchGitHubAdminConfig(
   context: Readonly<RouterContextProvider>,
@@ -329,6 +369,42 @@ export async function syncGitHubInstallation(
     });
   } catch (error) {
     return nullableDataActionResultFromCaughtError(error, "Failed to sync installation.");
+  }
+}
+
+export async function startGitHubOAuth(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+  payload: { subjectId: string; returnTo?: string },
+): Promise<GitHubOAuthStartResult> {
+  try {
+    const callRoute = createGitHubRouteCaller(request, context, orgId);
+    const response = await callRoute("POST", "/oauth/start", { body: payload });
+    return nullableDataActionResultFromRouteResponse({
+      response,
+      failureMessage: "Failed to start GitHub OAuth",
+    });
+  } catch (error) {
+    return nullableDataActionResultFromCaughtError(error, "Failed to start GitHub OAuth.");
+  }
+}
+
+export async function completeGitHubOAuth(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  orgId: string,
+  payload: { subjectId: string; state: string; code: string },
+): Promise<GitHubOAuthCompleteResult> {
+  try {
+    const callRoute = createGitHubRouteCaller(request, context, orgId);
+    const response = await callRoute("POST", "/oauth/complete", { body: payload });
+    return nullableDataActionResultFromRouteResponse<GitHubOAuthComplete>({
+      response,
+      failureMessage: "Failed to verify GitHub access",
+    });
+  } catch (error) {
+    return nullableDataActionResultFromCaughtError(error, "Failed to verify GitHub access.");
   }
 }
 

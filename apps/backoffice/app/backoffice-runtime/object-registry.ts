@@ -176,6 +176,18 @@ export type GitHubWebhookRouterObject = {
   consumeInstallState(
     input: unknown,
   ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "consumeInstallState">>;
+  storeInstallationClaimState(
+    input: unknown,
+  ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "storeInstallationClaimState">>;
+  resolveInstallationClaimState(
+    input: unknown,
+  ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "resolveInstallationClaimState">>;
+  storeInstallationClaimCompletion(
+    input: unknown,
+  ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "storeInstallationClaimCompletion">>;
+  consumeInstallationClaimState(
+    input: unknown,
+  ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "consumeInstallationClaimState">>;
   setInstallationOrg(
     installationId: string,
     orgId: string,

@@ -59,9 +59,24 @@ export const resolveWebhookUrl = (origin: string) => {
   return `${trimmed}/api/github/webhooks`;
 };
 
+const resolveUserAuthorizationCallbackUrl = (publicBaseUrl: string) =>
+  new URL("/backoffice/connections/github/oauth-callback", publicBaseUrl).toString();
+
 export const resolveGitHubConfig = (env: CloudflareEnv): RuntimeConfigResolution => {
   const appId = env.GITHUB_APP_ID?.trim() ?? "";
   const appSlug = env.GITHUB_APP_SLUG?.trim() ?? "";
+  const clientId = env.GITHUB_APP_CLIENT_ID?.trim() ?? "";
+  const clientSecret = env.GITHUB_APP_CLIENT_SECRET?.trim() ?? "";
+  const docsPublicBaseUrl = env.DOCS_PUBLIC_BASE_URL?.trim() ?? "";
+  let callbackUrl = "";
+  let callbackUrlError: string | null = null;
+  if (docsPublicBaseUrl) {
+    try {
+      callbackUrl = resolveUserAuthorizationCallbackUrl(docsPublicBaseUrl);
+    } catch {
+      callbackUrlError = `DOCS_PUBLIC_BASE_URL must be an absolute URL. Received: ${docsPublicBaseUrl}`;
+    }
+  }
   const webhookSecret = env.GITHUB_APP_WEBHOOK_SECRET?.trim() ?? "";
   const apiBaseUrl = env.GITHUB_APP_API_BASE_URL?.trim() || undefined;
   const apiVersion = env.GITHUB_APP_API_VERSION?.trim() || undefined;
@@ -76,6 +91,15 @@ export const resolveGitHubConfig = (env: CloudflareEnv): RuntimeConfigResolution
   }
   if (!appSlug) {
     missing.push("GITHUB_APP_SLUG");
+  }
+  if (!clientId) {
+    missing.push("GITHUB_APP_CLIENT_ID");
+  }
+  if (!clientSecret) {
+    missing.push("GITHUB_APP_CLIENT_SECRET");
+  }
+  if (!docsPublicBaseUrl) {
+    missing.push("DOCS_PUBLIC_BASE_URL");
   }
   if (!webhookSecret) {
     missing.push("GITHUB_APP_WEBHOOK_SECRET");
@@ -101,11 +125,11 @@ export const resolveGitHubConfig = (env: CloudflareEnv): RuntimeConfigResolution
     missing.push("GITHUB_APP_PRIVATE_KEY");
   }
 
-  if (missing.length > 0) {
+  if (missing.length > 0 || callbackUrlError) {
     return {
       ok: false,
       missing,
-      error: null,
+      error: callbackUrlError,
     };
   }
 
@@ -122,6 +146,9 @@ export const resolveGitHubConfig = (env: CloudflareEnv): RuntimeConfigResolution
     config: {
       appId,
       appSlug,
+      clientId,
+      clientSecret,
+      callbackUrl,
       privateKeyPem,
       privateKeySource,
       webhookSecret,
@@ -138,6 +165,9 @@ export const resolveGitHubConfig = (env: CloudflareEnv): RuntimeConfigResolution
 export const extractFragmentConfig = (config: RuntimeGitHubConfig): GitHubAppFragmentConfig => ({
   appId: config.appId,
   appSlug: config.appSlug,
+  clientId: config.clientId,
+  clientSecret: config.clientSecret,
+  callbackUrl: config.callbackUrl,
   privateKeyPem: config.privateKeyPem,
   webhookSecret: config.webhookSecret,
   webhookDebug: config.webhookDebug,
@@ -151,6 +181,9 @@ export const extractFragmentConfig = (config: RuntimeGitHubConfig): GitHubAppFra
 export const configsEqual = (a: GitHubAppFragmentConfig, b: GitHubAppFragmentConfig) =>
   a.appId === b.appId &&
   a.appSlug === b.appSlug &&
+  a.clientId === b.clientId &&
+  a.clientSecret === b.clientSecret &&
+  a.callbackUrl === b.callbackUrl &&
   a.privateKeyPem === b.privateKeyPem &&
   a.webhookSecret === b.webhookSecret &&
   a.webhookDebug === b.webhookDebug &&
