@@ -11,20 +11,10 @@ const buildScriptLink = ({ basePath, scriptId }: { basePath: string; scriptId: s
   return `${basePath}?${params.toString()}`;
 };
 
-const isRouterScript = (script: { path: string; key: string; name: string }) =>
-  script.path === "router.cm.js" || script.key === "router.cm";
-
-const compareScriptsWithRouterFirst = <TScript extends { path: string; key: string; name: string }>(
+const compareScriptsByName = <TScript extends { path: string; name: string }>(
   left: TScript,
   right: TScript,
-) => {
-  const routerOrder = Number(isRouterScript(right)) - Number(isRouterScript(left));
-  if (routerOrder !== 0) {
-    return routerOrder;
-  }
-
-  return left.name.localeCompare(right.name) || left.path.localeCompare(right.path);
-};
+) => left.name.localeCompare(right.name) || left.path.localeCompare(right.path);
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   const url = new URL(request.url);
@@ -82,16 +72,12 @@ export default function BackofficeOrganisationAutomationScripts() {
     {
       id: "system" as const,
       label: "System",
-      scripts: scripts
-        .filter((script) => script.layer === "system")
-        .sort(compareScriptsWithRouterFirst),
+      scripts: scripts.filter((script) => script.layer === "system").sort(compareScriptsByName),
     },
     {
       id: "workspace" as const,
       label: "Workspace",
-      scripts: scripts
-        .filter((script) => script.layer === "workspace")
-        .sort(compareScriptsWithRouterFirst),
+      scripts: scripts.filter((script) => script.layer === "workspace").sort(compareScriptsByName),
     },
   ].filter((section) => section.scripts.length > 0);
 
