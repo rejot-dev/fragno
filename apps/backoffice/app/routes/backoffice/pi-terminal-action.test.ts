@@ -29,7 +29,7 @@ describe("handlePiTerminalAction help interception", () => {
 
     expect(result).toMatchObject({ intent: "run-command", ok: true, exitCode: 0 });
     expect("output" in result && result.output).toContain("Available commands:");
-    expect("output" in result && result.output).toContain("automations");
+    expect("output" in result && result.output).toContain("ls");
   });
 
   test("renders help for a single known command", async () => {
