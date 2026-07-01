@@ -1,5 +1,17 @@
+import type { AnySchema } from "@fragno-dev/db/schema";
+import { workflowsSchema } from "@fragno-dev/workflows/schema";
+
+import {
+  createLofiRuntime,
+  InMemoryLofiAdapter,
+  type LofiQueryEngineOptions,
+  type LofiQueryInterface,
+  type LofiRuntime,
+  type LofiRuntimeSyncResult,
+} from "@fragno-dev/lofi";
 import type { TelegramApi, TelegramMessage } from "@fragno-dev/telegram-fragment";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { InMemoryObjectFactoryOverrides } from "@/backoffice-runtime/in-memory-object-factory";
 import {
   createInMemoryBackofficeRuntime,
@@ -10,6 +22,7 @@ import type {
   BackofficeObjectAddress,
   BackofficeObjectBindingName,
 } from "@/backoffice-runtime/object-registry";
+import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import {
   createBackofficeFileSystem,
   SYSTEM_FILE_CONTENT,
@@ -35,6 +48,7 @@ import { createTestMasterFileSystem } from "./engine/test-master-file-system.tes
 import type { AutomationRouteDefinition } from "./routing";
 import { createRouteBackedAutomationRouterRuntime } from "./routing-route-runtime";
 import type { AutomationRouteCreateInput, AutomationRouteUpdateInput } from "./routing-schemas";
+import { automationFragmentSchema } from "./schema";
 import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
 
 type ScenarioVars = Record<string, unknown>;
@@ -244,12 +258,29 @@ export type BackofficeScenarioFileSystems = {
   diff(orgId?: string): Promise<FileDiffEntry[]>;
 };
 
+export type BackofficeScenarioLofiScope = {
+  runtime: LofiRuntime;
+  adapter: InMemoryLofiAdapter;
+  query<const TSchema extends AnySchema>(
+    schema: TSchema,
+    options?: LofiQueryEngineOptions,
+  ): LofiQueryInterface<TSchema>;
+  drain(): Promise<LofiRuntimeSyncResult>;
+};
+
+export type BackofficeScenarioLofi = {
+  forScope(scope: BackofficeContextScope): BackofficeScenarioLofiScope;
+  forOrg(orgId: string): BackofficeScenarioLofiScope;
+  drainAll(): Promise<void>;
+};
+
 export type BackofficeScenarioContext<TVars extends ScenarioVars = ScenarioVars> = {
   name: string;
   runtime: InMemoryBackofficeRuntime;
   files: BackofficeScenarioFileSystems;
   vars: TVars;
   fakes: ScenarioFakes;
+  lofi: BackofficeScenarioLofi;
   codemodeRuns: ScenarioCodemodeRun[];
   journal: ScenarioJournal;
   drain(): Promise<void>;
@@ -1274,6 +1305,116 @@ const getHooks = (ctx: BackofficeScenarioContext, orgId: string) =>
     config: ctx.runtime.config,
     orgId,
   });
+
+const AUTOMATIONS_LOFI_ENDPOINT = "automations-bindings";
+
+const applyAutomationScopeQuery = (url: URL, scope: BackofficeContextScope) => {
+  url.searchParams.set("scopeKind", scope.kind);
+
+  if (scope.kind === "org" || scope.kind === "project") {
+    url.searchParams.set("orgId", scope.orgId);
+  }
+  if (scope.kind === "project") {
+    url.searchParams.set("projectId", scope.projectId);
+  }
+  if (scope.kind === "user") {
+    url.searchParams.set("userId", scope.userId);
+  }
+};
+
+const automationScopedOutboxUrl = (scope: BackofficeContextScope) => {
+  const scopeId = encodeURIComponent(backofficeContextScopeSinglePathSegment(scope));
+  return `http://scenario.local/api/automations-scoped/${scope.kind}/${scopeId}/_internal/outbox`;
+};
+
+const automationLofiScopeKey = (scope: BackofficeContextScope) =>
+  scope.kind === "system" ? "system:system" : backofficeContextScopeSinglePathSegment(scope);
+
+const createScenarioLofiFetch = (
+  runtime: InMemoryBackofficeRuntime,
+  scope: BackofficeContextScope,
+): typeof fetch => {
+  return async (input, init) => {
+    const request = new Request(input, init);
+    const requestUrl = new URL(request.url);
+    const internalPathIndex = requestUrl.pathname.indexOf("/_internal/");
+    const suffix =
+      internalPathIndex >= 0 ? requestUrl.pathname.slice(internalPathIndex) : requestUrl.pathname;
+    const forwardedUrl = new URL(`http://scenario.local/api/automations${suffix}`);
+    forwardedUrl.search = requestUrl.search;
+    applyAutomationScopeQuery(forwardedUrl, scope);
+
+    const kernel = new BackofficeKernel({ objects: runtime.objects });
+    const automations = kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
+    return await automations.fetch(new Request(forwardedUrl.toString(), request));
+  };
+};
+
+const createScenarioLofi = (runtime: InMemoryBackofficeRuntime): BackofficeScenarioLofi => {
+  const scopes = new Map<string, BackofficeScenarioLofiScope>();
+
+  const drainScope = async (scopeRuntime: BackofficeScenarioLofiScope) => {
+    await scopeRuntime.runtime.bootstrap();
+
+    let latest: LofiRuntimeSyncResult = { appliedEntries: 0, sources: {} };
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await runtime.drain();
+      latest = await scopeRuntime.runtime.syncOnce();
+      if (latest.appliedEntries === 0) {
+        return latest;
+      }
+    }
+
+    throw new Error("Timed out waiting for scenario Lofi runtime to drain.");
+  };
+
+  const forScope = (scope: BackofficeContextScope): BackofficeScenarioLofiScope => {
+    const scopeKey = automationLofiScopeKey(scope);
+    const existing = scopes.get(scopeKey);
+    if (existing) {
+      return existing;
+    }
+
+    const adapter = new InMemoryLofiAdapter({
+      endpointName: AUTOMATIONS_LOFI_ENDPOINT,
+      schemas: [automationFragmentSchema, workflowsSchema],
+    });
+    const lofiRuntime = createLofiRuntime({
+      endpointName: AUTOMATIONS_LOFI_ENDPOINT,
+      adapter,
+      sources: [
+        {
+          id: scopeKey,
+          outboxUrl: automationScopedOutboxUrl(scope),
+          outboxTransport: "poll",
+        },
+      ],
+      fetch: createScenarioLofiFetch(runtime, scope),
+      outboxTransport: "poll",
+      autoStart: false,
+      keepAlive: false,
+    });
+    const scopeRuntime: BackofficeScenarioLofiScope = {
+      runtime: lofiRuntime,
+      adapter,
+      query: (schema, options) => adapter.createQueryEngine(schema, options),
+      drain: () => drainScope(scopeRuntime),
+    };
+
+    scopes.set(scopeKey, scopeRuntime);
+    return scopeRuntime;
+  };
+
+  return {
+    forScope,
+    forOrg: (orgId) => forScope({ kind: "org", orgId }),
+    drainAll: async () => {
+      for (const scopeRuntime of scopes.values()) {
+        await drainScope(scopeRuntime);
+      }
+    },
+  };
+};
 
 const hookFragmentBindings: Record<string, BackofficeObjectBindingName> = {
   auth: "AUTH",
@@ -3305,6 +3446,7 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
   });
   const journal: ScenarioJournal = { entries: [] };
   const vars = scenario.vars?.() ?? ({} as TVars);
+  const lofi = createScenarioLofi(runtime);
 
   let ctx: BackofficeScenarioContext<TVars>;
   ctx = {
@@ -3313,9 +3455,13 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
     files,
     vars,
     fakes,
+    lofi,
     codemodeRuns: [],
     journal,
-    drain: () => runtime.drain(),
+    drain: async () => {
+      await runtime.drain();
+      await lofi.drainAll();
+    },
     runCodemode: (input) => runScenarioCodemode(ctx, input),
     cleanup: () => runtime.cleanup(),
     rememberOrg: (orgId) => {
