@@ -20,24 +20,18 @@ import {
 
 import { AUTOMATION_SYSTEM_ROOT } from "@/fragno/automation";
 import type { AutomationCatalog } from "@/fragno/automation/catalog";
+import type { AutomationEventPayload } from "@/fragno/automation/contracts";
 import {
-  AUTOMATION_SYSTEM_ACTOR,
-  type AutomationEvent,
-  type AutomationEventPayload,
-} from "@/fragno/automation/contracts";
-import type { AutomationCodemodeWorkflowParams } from "@/fragno/automation/engine/workflow";
+  AUTOMATION_CODEMODE_WORKFLOW,
+  createAutomationCodemodeWorkflowInstanceInput,
+  createManualAutomationEvent,
+  sanitizeWorkflowInstanceId,
+} from "@/fragno/automation/engine/workflow-start";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import type { JsonSchemaObject } from "@/lib/zod/zod-formatter";
 import { loadAutomationCatalogWithSources } from "@/routes/backoffice/automations/data.server";
 import { getAutomationsDurableObject } from "@/worker-runtime/durable-objects";
-
-/**
- * The registered remote workflow that runs any codemode automation script (see
- * `defineAutomationCodemodeWorkflow`). Manual runs invoke this with the selected
- * workflow's script path; it is the route's `:workflowName` for status/emissions.
- */
-export const AUTOMATION_CODEMODE_WORKFLOW = "automation-codemode-script";
 
 /**
  * Edited script bodies keyed by absolute path. Used to preview the graph for
@@ -437,36 +431,27 @@ export async function runWorkflow({
     };
   }
 
-  const instanceId = `run-${orgId}-${crypto.randomUUID()}`.replaceAll(/[^A-Za-z0-9_-]/g, "-");
-  const automationEvent: AutomationEvent = {
-    id: instanceId,
-    scope: { kind: "org", orgId },
+  const instanceId = sanitizeWorkflowInstanceId(`run-${orgId}-${crypto.randomUUID()}`);
+  const automationEvent = createManualAutomationEvent({
+    orgId,
     source,
     eventType,
-    occurredAt: new Date().toISOString(),
     payload,
-    actor: AUTOMATION_SYSTEM_ACTOR,
-    actors: [AUTOMATION_SYSTEM_ACTOR],
-    subject: { orgId },
-  };
-
-  const params: AutomationCodemodeWorkflowParams = {
-    automationEvent,
+    id: instanceId,
+  });
+  const workflowInput = createAutomationCodemodeWorkflowInstanceInput({
+    event: automationEvent,
     workflowScriptPath: view.source.absolutePath,
-    idempotencyKey: instanceId,
-  };
+    instanceId,
+    remoteWorkflowName: AUTOMATION_CODEMODE_WORKFLOW,
+  });
 
   try {
     const runtime = createRouteBackedAutomationWorkflowRuntime({
       object: getAutomationsDurableObject(context, orgId),
       scope: { kind: "org", orgId },
     });
-    const created = await runtime.createInstance({
-      workflowName: AUTOMATION_CODEMODE_WORKFLOW,
-      remoteWorkflowName: AUTOMATION_CODEMODE_WORKFLOW,
-      instanceId,
-      params,
-    });
+    const created = await runtime.createInstance(workflowInput);
     return {
       ok: true,
       instanceId: created.instanceId,

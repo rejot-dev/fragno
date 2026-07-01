@@ -22,6 +22,7 @@ import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/data
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { createBackofficeFileSystem, type MasterFileSystem } from "@/files";
+import { PI_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/workflow-start";
 import { renderCodemodeSystemPrompt } from "@/fragno/codemode/codemode-dts";
 
 import type {
@@ -243,6 +244,17 @@ const createBashTool = (
     },
   });
 
+const hashToolCallId = (toolCallId: string) => {
+  let first = 0x811c9dc5;
+  let second = 0x9e3779b9;
+  for (let index = 0; index < toolCallId.length; index += 1) {
+    const char = toolCallId.charCodeAt(index);
+    first = Math.imul(first ^ char, 0x01000193);
+    second = Math.imul(second ^ char, 0x85ebca6b);
+  }
+  return `${(first >>> 0).toString(36)}${(second >>> 0).toString(36)}`;
+};
+
 const formatExecCodeModeText = (result: BackofficeCodemodeExecuteResult) => {
   const lines: string[] = [];
   const logs = result.logs ?? [];
@@ -275,7 +287,7 @@ const createExecCodeModeTool = (
     label: "Exec Code Mode",
     description: "Execute JavaScript code in the context of the system.",
     parameters: execCodeModeParametersSchema,
-    execute: async (_toolCallId, params, signal) => {
+    execute: async (toolCallId, params, signal) => {
       const { code } = params;
       if (signal?.aborted) {
         throw new Error("Codemode execution aborted.");
@@ -323,21 +335,16 @@ const createExecCodeModeTool = (
           scheduleError = "execCodeMode workflow definition cannot be scheduled in this runtime.";
         } else {
           try {
-            // The workflows backend requires instance ids to match
-            // /^[a-zA-Z0-9_][a-zA-Z0-9-_]*$/ (≤128 chars). Tool-call ids contain a
-            // `|` (`call_…|fc_…`), so sanitize and cap, or scheduling 400s.
-            const instanceId = `${sessionId}--${_toolCallId}`
-              .replaceAll(/[^A-Za-z0-9_-]/g, "-")
-              .slice(0, 128);
+            const instanceId = hashToolCallId(`${sessionId}--${toolCallId}`);
             runHandle = await codemode.workflow.createInstance({
-              workflowName: "pi-codemode-script",
+              workflowName: PI_CODEMODE_WORKFLOW,
               remoteWorkflowName: result.workflowDefinition.name,
               instanceId,
               params: {
                 orgId,
                 code,
                 sessionId,
-                toolCallId: _toolCallId,
+                toolCallId: toolCallId,
               } satisfies PiCodemodeWorkflowParams,
             });
             result.result = runHandle;
