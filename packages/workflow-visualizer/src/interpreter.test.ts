@@ -2,84 +2,10 @@ import { describe, expect, it, assert } from "vitest";
 
 import { buildCodemodeWorkflowGraph } from "./build.ts";
 import { createInterpreter } from "./interpreter.ts";
-import type { GraphPatch, LoopNode, RouterNode, StepNode, WorkflowNode } from "./model.ts";
+import type { GraphPatch, LoopNode, StepNode, WorkflowNode } from "./model.ts";
 import { workflowNodeId } from "./model.ts";
 
-// Verbatim from apps/backoffice/app/files/content/system-automations.ts
-const ROUTER = `async () => {
-  const event = await state.readFile("/context/event.json").then(JSON.parse);
-  if (event.source === "auth" && event.eventType === "organization.created") {
-    await workflow.createInstance({
-      workflowName: "automation-codemode-script",
-      remoteWorkflowName: "workspace-file-initialization",
-      instanceId: "x",
-      params: {},
-    });
-  }
-};`;
-
-const WORKFLOW = `defineWorkflow(
-  { name: "workspace-file-initialization" },
-  async (event, step) => {
-    if (event.payload.automationEvent.source !== "auth") {
-      return { skipped: true };
-    }
-    const configured = await step.do("configure upload database connection", async () => {});
-    const seeded = await step.do("seed workspace starter files", async () => {});
-    return { configured, seeded };
-  },
-);`;
-
 describe("createInterpreter", () => {
-  it("builds the event -> router -> workflow -> step graph from real source", () => {
-    const interp = createInterpreter();
-    interp.setEventCatalog([
-      { source: "auth", eventType: "organization.created", label: "Organization created" },
-    ]);
-    interp.updateFile("automations/router.cm.js", ROUTER);
-    interp.updateFile("automations/workspace-file-initialization.workflow.js", WORKFLOW);
-
-    const graph = interp.snapshot();
-
-    const event = graph.nodes.find((n) => n.kind === "event");
-    assert(event?.id === "event:auth/organization.created");
-
-    const workflow = graph.nodes.find((n): n is WorkflowNode => n.kind === "workflow");
-    assert(workflow?.name === "workspace-file-initialization");
-    assert(!workflow?.remote);
-
-    const steps = graph.nodes.filter((n): n is StepNode => n.kind === "step");
-    // The leading `if (...) return { skipped }` surfaces as a guard step, followed
-    // by the two `step.do` calls in source order.
-    expect(steps.map((s) => s.label)).toEqual([
-      "guard",
-      "configure upload database connection",
-      "seed workspace starter files",
-    ]);
-    assert(steps[0]?.stepType === "guard");
-    assert(steps[0]?.meta.condition === 'event.payload.automationEvent.source !== "auth"');
-    assert(steps[0]?.meta.returns === "{ skipped: true }");
-    // step.do calls live under the early-return guard's sibling scope -> no branch
-    expect(steps[1]?.branch).toEqual([]);
-
-    const router = graph.nodes.find((n): n is RouterNode => n.kind === "router");
-    assert(router?.action === "spawn");
-    assert(router?.match.source === "auth");
-    assert(router?.match.eventType === "organization.created");
-
-    // event --matches--> router --spawns--> workflow --contains--> step --sequence--> step
-    assert(
-      graph.edges.some((e) => e.type === "matches" && e.from === "event:auth/organization.created"),
-    );
-    assert(
-      graph.edges.some(
-        (e) => e.type === "spawns" && e.to === "workflow:workspace-file-initialization",
-      ),
-    );
-    expect(graph.edges.filter((e) => e.type === "contains")).toHaveLength(3);
-    expect(graph.edges.filter((e) => e.type === "sequence")).toHaveLength(2);
-  });
-
   it("parses an early-return guard with a reason as a guard step", () => {
     const interp = createInterpreter();
     interp.updateFile(
@@ -186,29 +112,6 @@ describe("createInterpreter", () => {
     expect(done?.parentId).toBe(workflowNodeId("el"));
   });
 
-  it("wires router.sendEvent to the workflow that waits for that event type", () => {
-    const interp = createInterpreter();
-    interp.updateFile(
-      "automations/router.cm.js",
-      `async () => {
-        await workflow.sendEvent({ instanceId: "x", type: "identity-claim-completed", payload: {} });
-      };`,
-    );
-    interp.updateFile(
-      "automations/link.workflow.js",
-      `defineWorkflow({ name: "link" }, async (event, step) => {
-        await step.waitForEvent("wait", { type: "identity-claim-completed", timeout: "15 minutes" });
-      });`,
-    );
-    const graph = interp.snapshot();
-    const sends = graph.edges.find((e) => e.type === "sends");
-    assert(sends?.to === "workflow:link");
-
-    const waitStep = graph.nodes.find((n): n is StepNode => n.kind === "step");
-    assert(waitStep?.meta.eventType === "identity-claim-completed");
-    assert(waitStep?.meta.timeout === "15 minutes");
-  });
-
   it("streams patches as files change, and resets new subscribers", () => {
     const interp = createInterpreter();
     interp.updateFile(
@@ -234,16 +137,6 @@ describe("createInterpreter", () => {
     const before = patches.length;
     interp.removeFile("automations/a.workflow.js");
     expect(patches.length).toBe(before); // no more delivery after unsubscribe
-  });
-
-  it("reports a diagnostic when a router targets an undefined workflow", () => {
-    const interp = createInterpreter();
-    interp.updateFile(
-      "automations/router.cm.js",
-      `async () => { await workflow.createInstance({ remoteWorkflowName: "ghost" }); };`,
-    );
-    const diag = interp.snapshot().diagnostics.find((d) => d.code === "unknown-workflow");
-    expect(diag?.message).toContain("ghost");
   });
 
   it("parses a defineWorkflow input schema into form field descriptors", () => {

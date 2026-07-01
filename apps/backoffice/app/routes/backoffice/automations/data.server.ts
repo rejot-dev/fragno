@@ -15,7 +15,6 @@ import {
   type createAutomationFragment,
 } from "@/fragno/automation";
 import { writeAutomationScript } from "@/fragno/automation/authoring";
-import { loadAutomationCatalog, type AutomationCatalog } from "@/fragno/automation/catalog";
 import type { DurableHookQueueEntry } from "@/fragno/durable-hooks";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -214,14 +213,6 @@ const buildAutomationScriptName = (path: string) => {
   return segments.join(" ") || path;
 };
 
-const buildLayeredAutomationScriptName = (script: AutomationWorkspaceScriptEntry) => {
-  if (script.path === "router.cm.js") {
-    return script.layer === "system" ? "System Router" : "Workspace Router";
-  }
-
-  return buildAutomationScriptName(script.path);
-};
-
 const buildWorkspaceScriptRecord = (
   script: AutomationWorkspaceScriptEntry,
 ): AutomationScriptRecord => ({
@@ -229,7 +220,7 @@ const buildWorkspaceScriptRecord = (
   layer: script.layer,
   readOnly: script.layer === "system",
   key: buildAutomationScriptKey(script.path),
-  name: buildLayeredAutomationScriptName(script),
+  name: buildAutomationScriptName(script.path),
   engine: script.engine,
   path: script.path,
   absolutePath: script.absolutePath,
@@ -307,34 +298,6 @@ export async function loadAutomationWorkspaceData({
       ),
     scriptsError: workspaceScriptsError,
   };
-}
-
-/**
- * Load the full automation catalog (system + workspace scripts, with bodies) for
- * the given scope. Used by the workflow-graph loader to build the pipeline graph.
- */
-export async function loadAutomationCatalogWithSources({
-  request,
-  context,
-  scope,
-  orgId,
-}: {
-  request: Request;
-  context: Readonly<RouterContextProvider>;
-  scope?: BackofficeContextScope;
-  orgId?: string;
-}): Promise<AutomationCatalog> {
-  const resolvedScope = scope ?? (orgId ? { kind: "org" as const, orgId } : null);
-  if (!resolvedScope) {
-    throw new Error("Automation scope is required.");
-  }
-  const fileSystem = await createBackofficeAutomationFileSystem({
-    request,
-    context,
-    scope: resolvedScope,
-  });
-
-  return loadAutomationCatalog(fileSystem);
 }
 
 /**

@@ -7,45 +7,6 @@
  * these fixtures to match — the tests then guard that the defaults still parse cleanly.
  */
 
-export const SYSTEM_ROUTER = `async () => {
-  const event = await state.readFile("/context/event.json").then(JSON.parse);
-
-  const instanceIdForEvent = (prefix) => {
-    return prefix + "-" + event.id.replace(/[^a-zA-Z0-9-_]/g, "-");
-  };
-
-  if (event.source === "auth" && event.eventType === "organization.created") {
-    await workflow.createInstance({
-      workflowName: "automation-codemode-script",
-      remoteWorkflowName: "workspace-file-initialization",
-      instanceId: instanceIdForEvent("workspace-file-initialization"),
-      params: {
-        automationEvent: event,
-        workflowScriptPath: "/system/automations/workspace-file-initialization.workflow.js",
-      },
-    });
-  }
-
-  const shouldRefreshCodemodeTypes =
-    event.eventType === "capability.configured" ||
-    (event.source === "mcp" &&
-      (event.eventType === "server.configuration.changed" ||
-        event.eventType === "server.configuration.deleted"));
-
-  if (shouldRefreshCodemodeTypes) {
-    await workflow.createInstance({
-      workflowName: "automation-codemode-script",
-      remoteWorkflowName: "codemode-types-refresh",
-      instanceId: instanceIdForEvent("codemode-types-refresh"),
-      params: {
-        automationEvent: event,
-        workflowScriptPath: "/system/automations/codemode-types-refresh.workflow.js",
-      },
-    });
-  }
-};
-`;
-
 export const WORKSPACE_FILE_INITIALIZATION = `defineWorkflow(
   { name: "workspace-file-initialization" },
   async (event, step) => {
@@ -88,96 +49,6 @@ export const CODEMODE_TYPES_REFRESH = `defineWorkflow(
     });
   },
 );
-`;
-
-export const WORKSPACE_ROUTER = `async () => {
-  const event = await state.readFile("/context/event.json").then(JSON.parse);
-
-  const instanceIdForEvent = (prefix) => {
-    return prefix + "-" + event.id.replace(/[^a-zA-Z0-9-_]/g, "-");
-  };
-
-  if (event.source === "pi" && event.eventType === "capability.configured") {
-    const harness = event.payload.harnesses[0];
-    const model = event.payload.modelCatalog[0];
-
-    if (harness && model) {
-      await store.set({
-        key: "pi/pi-default-agent",
-        value: harness.id + "::" + model.provider + "::" + model.name,
-        actor: event.actor,
-        description: "Default Pi agent for automation-created sessions.",
-        category: ["pi"],
-      });
-    }
-  }
-
-  if (
-    event.source === "telegram" &&
-    event.eventType === "message.received" &&
-    typeof event.payload.text === "string"
-  ) {
-    const text = event.payload.text;
-
-    if (text === "/start") {
-      const instanceId = instanceIdForEvent("telegram-link");
-      await workflow.createInstance({
-        workflowName: "automation-codemode-script",
-        remoteWorkflowName: "telegram-user-linking",
-        instanceId,
-        params: {
-          automationEvent: event,
-          workflowInstanceId: instanceId,
-          workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
-        },
-      });
-    }
-
-    if (text === "/test") {
-      await workflow.createInstance({
-        workflowName: "automation-codemode-script",
-        remoteWorkflowName: "telegram-test-command",
-        instanceId: instanceIdForEvent("telegram-test"),
-        params: {
-          automationEvent: event,
-          workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
-        },
-      });
-    }
-
-    if (text === "/pi" || !text.startsWith("/")) {
-      await workflow.createInstance({
-        workflowName: "automation-codemode-script",
-        remoteWorkflowName: "telegram-user-pi-linking",
-        instanceId: instanceIdForEvent("telegram-pi"),
-        params: {
-          automationEvent: event,
-          workflowScriptPath: "/workspace/automations/telegram-user-pi-linking.workflow.js",
-        },
-      });
-    }
-  }
-
-  if (event.source === "otp" && event.eventType === "identity.claim.completed") {
-    const otpId = event.payload.otpId;
-
-    if (event.actor.source === "telegram") {
-      const workflowBinding = await store.get({
-        key: "telegram/claim-workflow/" + otpId,
-      });
-      const instanceId = workflowBinding?.value ?? "";
-
-      if (instanceId) {
-        await workflow.sendEvent({
-          workflowName: "automation-codemode-script",
-          instanceId,
-          type: "identity-claim-completed",
-          payload: event,
-        });
-      }
-    }
-  }
-};
 `;
 
 export const TELEGRAM_USER_LINKING = `defineWorkflow(
@@ -420,7 +291,7 @@ export const TELEGRAM_USER_PI_LINKING = `defineWorkflow(
 );
 `;
 
-/** Event catalog covering every source/eventType the default routers match on. */
+/** Event catalog covering the default automation events. */
 export const DEFAULT_EVENT_CATALOG = [
   { source: "auth", eventType: "organization.created", label: "Organization created" },
   { source: "telegram", eventType: "message.received", label: "Telegram message" },

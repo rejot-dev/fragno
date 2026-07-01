@@ -5,9 +5,9 @@
  *
  * Scripts live under `/workspace/automations/*` on the same Backoffice
  * filesystem the Pi session already mounts. Validation reuses the
- * `@fragno-dev/workflow-visualizer` interpreter: it parses the whole catalog
- * (so cross-file references resolve), with the script under authoring overridden
- * in place, and returns the same diagnostics the workbench surfaces.
+ * `@fragno-dev/workflow-visualizer` interpreter: it parses the catalog with the
+ * script under authoring overridden in place, and returns the same diagnostics
+ * the workbench surfaces.
  */
 
 import {
@@ -45,14 +45,14 @@ type AuthoredWorkflowSummary = {
 };
 
 type AutomationScriptSummary = {
-  /** Workspace-relative path (e.g. `router.cm.js`). */
+  /** Workspace-relative path. */
   path: string;
   absolutePath: string;
   engine: AutomationScriptEngine;
-  kind: "router" | "workflow" | "script";
+  kind: "workflow" | "script";
   /** True for system-layer scripts, which cannot be written. */
   readOnly: boolean;
-  /** Workflows defined in this file (empty for routers / plain scripts). */
+  /** Workflows defined in this file (empty for plain scripts). */
   workflows: AuthoredWorkflowSummary[];
 };
 
@@ -141,12 +141,7 @@ const summarizeScript = (
     return { name: workflow.name, stepCount: steps.length, steps };
   });
 
-  const kind: AutomationScriptSummary["kind"] =
-    workflowNodes.length > 0
-      ? "workflow"
-      : args.path.endsWith("router.cm.js")
-        ? "router"
-        : "script";
+  const kind: AutomationScriptSummary["kind"] = workflowNodes.length > 0 ? "workflow" : "script";
 
   return {
     path: args.path,
@@ -164,7 +159,6 @@ const resolveWorkspacePath = (path: string) => {
     relativePath,
     absolutePath: toAbsoluteAutomationPath(relativePath),
     engine: inferWorkspaceScriptEngine(relativePath),
-    // Workflows are invoked by the router, not enabled directly (matches the catalog).
     enabled: !relativePath.endsWith(".workflow.js"),
   };
 };
