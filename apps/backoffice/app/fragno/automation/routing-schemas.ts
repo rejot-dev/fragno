@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { AUTOMATION_CODEMODE_WORKFLOW } from "./engine/workflow-start";
 import type {
   AutomationEventMatcher,
   AutomationRouteDefinition,
@@ -10,8 +11,6 @@ import type {
   AutomationStartWorkflowAction,
   AutomationWorkflowEventTarget,
 } from "./routing";
-
-const DEFAULT_AUTOMATION_WORKFLOW_NAME = "automation-codemode-script";
 
 export const automationEventMatcherSchema: z.ZodType<AutomationEventMatcher> = z
   .lazy(() =>
@@ -50,7 +49,7 @@ const automationRouteScopeTemplateSchema: z.ZodType<AutomationRouteScopeTemplate
 const automationStartWorkflowActionSchema: z.ZodType<AutomationStartWorkflowAction> = z
   .object({
     kind: z.literal("start_workflow"),
-    workflowName: z.string().trim().min(1).default(DEFAULT_AUTOMATION_WORKFLOW_NAME),
+    workflowName: z.string().trim().min(1).default(AUTOMATION_CODEMODE_WORKFLOW),
     remoteWorkflowName: z.string().trim().min(1).optional(),
     workflowScriptPath: z.string().trim().min(1),
     instanceIdTemplate: z.string().trim().min(1),
@@ -76,7 +75,7 @@ const automationWorkflowEventTargetSchema: z.ZodType<AutomationWorkflowEventTarg
 const automationSendWorkflowEventActionSchema: z.ZodType<AutomationSendWorkflowEventAction> = z
   .object({
     kind: z.literal("send_workflow_event"),
-    workflowName: z.string().trim().min(1).default(DEFAULT_AUTOMATION_WORKFLOW_NAME),
+    workflowName: z.string().trim().min(1).default(AUTOMATION_CODEMODE_WORKFLOW),
     target: automationWorkflowEventTargetSchema,
     eventType: z.string().trim().min(1),
     payload: z.unknown().optional(),

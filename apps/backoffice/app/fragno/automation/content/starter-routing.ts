@@ -1,3 +1,4 @@
+import { AUTOMATION_CODEMODE_WORKFLOW } from "../engine/workflow-start";
 import type {
   AutomationForwardEventAction,
   AutomationRouteDefinition,
@@ -15,7 +16,7 @@ const startWorkflowAction = ({
   instanceIdTemplate: string;
 }): AutomationStartWorkflowAction => ({
   kind: "start_workflow",
-  workflowName: "automation-codemode-script",
+  workflowName: AUTOMATION_CODEMODE_WORKFLOW,
   remoteWorkflowName,
   workflowScriptPath,
   instanceIdTemplate,
@@ -31,7 +32,7 @@ const sendWorkflowEventAction = ({
   payload?: unknown;
 }): AutomationSendWorkflowEventAction => ({
   kind: "send_workflow_event",
-  workflowName: "automation-codemode-script",
+  workflowName: AUTOMATION_CODEMODE_WORKFLOW,
   target: { kind: "stored_instance_id", keyTemplate: storedInstanceIdKeyTemplate },
   eventType,
   payload: payload ?? "$event",

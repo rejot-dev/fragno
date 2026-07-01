@@ -29,7 +29,6 @@ import { WorkflowView } from "./workflow-view";
 export const WORKFLOWS_ACTION = "/workflows";
 
 const PREVIEW_DEBOUNCE_MS = 400;
-const RUN_WORKFLOW_NAME = "automation-codemode-script";
 
 /**
  * The shape of the workflows route action's responses, as the workbench reads
@@ -57,7 +56,7 @@ export function WorkflowWorkbench({
   canRun = true,
   footer,
   trackInstanceId,
-  runWorkflowName = RUN_WORKFLOW_NAME,
+  runWorkflowName = "automation-codemode-script",
 }: {
   workflow: string;
   source: WorkflowSource;
