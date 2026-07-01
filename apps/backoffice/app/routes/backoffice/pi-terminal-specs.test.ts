@@ -13,18 +13,6 @@ import {
 const specs: DashboardCommandSpec[] = [
   { command: "help", summary: "List the commands available in this terminal.", options: [] },
   { command: "ls", summary: "List files and directories.", options: [] },
-  {
-    command: "automations",
-    summary: "List this organisation's automations.",
-    options: [
-      {
-        name: "format",
-        description: "Output format: text (default) or json",
-        valueRequired: true,
-        valueName: "format",
-      },
-    ],
-  },
   { command: "store.get", summary: "Get an automation store entry by key.", options: [] },
   { command: "store.list", summary: "List automation store entries.", options: [] },
 ];
@@ -36,7 +24,6 @@ describe("formatPiTerminalHelp", () => {
     expect(output).toContain("Available commands:");
     expect(output).toContain("general:");
     expect(output).toContain("store.*:");
-    expect(output).toContain("automations  List this organisation's automations.");
     expect(output).toContain("store.get");
     expect(output).toContain("Type '<command> --help' for details on a command.");
   });
@@ -53,7 +40,6 @@ describe("formatPiTerminalHelp", () => {
 
   test("defaults to the real terminal command specs", () => {
     const output = formatPiTerminalHelp();
-    expect(output).toContain("automations");
     expect(output).toContain("ls");
   });
 
@@ -85,7 +71,7 @@ describe("getAvailablePiTerminalCommandSpecs", () => {
   test("always includes the shell helper commands", () => {
     const commands = commandsFor({});
 
-    expect(commands).toEqual(expect.arrayContaining(["ls", "help", "automations"]));
+    expect(commands).toEqual(expect.arrayContaining(["ls", "help", "find"]));
   });
 
   test("excludes hidden families even when their runtime is wired", () => {
@@ -105,12 +91,11 @@ describe("getAvailablePiTerminalCommandSpecs", () => {
 });
 
 describe("formatPiTerminalCommandHelp", () => {
-  test("renders a known command with its options", () => {
-    const output = formatPiTerminalCommandHelp("automations", specs);
+  test("renders a known command", () => {
+    const output = formatPiTerminalCommandHelp("ls", specs);
 
-    expect(output).toContain("automations [--format <format>]");
-    expect(output).toContain("List this organisation's automations.");
-    expect(output).toContain("--format: Output format: text (default) or json");
+    expect(output).toContain("ls");
+    expect(output).toContain("List files and directories.");
   });
 
   test("returns null for an unknown command", () => {
