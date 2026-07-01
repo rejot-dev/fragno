@@ -83,14 +83,7 @@ export function createInterpreter(): Interpreter {
 }
 
 function inferKind(path: string): FileKind {
-  const base = path.split("/").pop() ?? path;
-  if (base === "router.cm.js" || base === "router.js" || base.startsWith("router.")) {
-    return "router";
-  }
-  if (path.endsWith(".workflow.js")) {
-    return "workflow";
-  }
-  return "script";
+  return path.endsWith(".workflow.js") ? "workflow" : "script";
 }
 
 function inferEngine(path: string): "bash" | "codemode" {

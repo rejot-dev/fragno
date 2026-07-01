@@ -6,17 +6,6 @@ import { buildFlowElements } from "./flow";
 
 function focusedGraph() {
   const interp = createInterpreter();
-  interp.setEventCatalog([
-    { source: "auth", eventType: "organization.created", label: "Org created" },
-  ]);
-  interp.updateFile(
-    "/system/automations/router.cm.js",
-    `async () => {
-      if (event.source === "auth" && event.eventType === "organization.created") {
-        await workflow.createInstance({ remoteWorkflowName: "init" });
-      }
-    };`,
-  );
   interp.updateFile(
     "/system/automations/init.workflow.js",
     `defineWorkflow({ name: "init" }, async (event, step) => {
@@ -69,7 +58,5 @@ describe("buildFlowElements (sub-flow)", () => {
   test("does not draw `contains` edges (containment is visual)", () => {
     const { edges } = buildFlowElements(focusedGraph());
     assert(!edges.some((e) => e.id.startsWith("contains:")));
-    // but the trigger edges into the container remain
-    assert(edges.some((e) => e.target === "workflow:init"));
   });
 });

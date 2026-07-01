@@ -1,11 +1,9 @@
 /**
  * The JSON model emitted by the workflow visualizer.
  *
- * The graph describes the full Fragno automation pipeline derived statically from source:
+ * The graph describes Fragno workflow source:
  *
- *   event (capability descriptor)
- *     --matches--> router (a `workflow.createInstance` / `workflow.sendEvent` rule)
- *     --spawns-->  workflow (`defineWorkflow` / `defineRemoteWorkflow`)
+ *   workflow (`defineWorkflow` / `defineRemoteWorkflow`)
  *     --contains--> step (`step.do` / `sleep` / `sleepUntil` / `waitForEvent`)
  *     --sequence--> step ...
  *
@@ -17,7 +15,7 @@ export type NodeKind = "event" | "router" | "script" | "workflow" | "loop" | "st
 
 /** A pointer back into the source file a node was derived from. */
 export interface SourceRef {
-  /** File path as passed to the interpreter (e.g. `automations/router.cm.js`). */
+  /** File path as passed to the interpreter. */
   path: string;
   /** 1-based line, when known. */
   line?: number;
@@ -62,7 +60,7 @@ export interface RouterNode {
   eventType?: string;
 }
 
-/** An automation script that is neither the router nor a workflow definition. */
+/** An automation script that is not a workflow definition. */
 export interface ScriptNode {
   id: string;
   kind: "script";
