@@ -3,7 +3,7 @@ import { Link, isRouteErrorResponse } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
-import type { AutomationRouteDefinition } from "@/fragno/automation";
+import type { AutomationEventRecord, AutomationRouteDefinition } from "@/fragno/automation";
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
 import type { SandboxInstanceSummary } from "@/sandbox/contracts";
 
@@ -33,6 +33,8 @@ export type AutomationScriptItem = {
 
 export type AutomationRouteItem = AutomationRouteDefinition;
 
+export type AutomationEventItem = AutomationEventRecord;
+
 export type AutomationStoreItem = {
   id: string;
   key: string;
@@ -56,6 +58,12 @@ export type AutomationLocalRoutesState = {
   error: string | null;
 };
 
+export type AutomationLocalEventsState = {
+  events: AutomationEventItem[];
+  synced: boolean;
+  error: string | null;
+};
+
 export type AutomationLocalSandboxesState = {
   sandboxes: SandboxInstanceSummary[];
   synced: boolean;
@@ -65,6 +73,7 @@ export type AutomationLocalSandboxesState = {
 export type AutomationLocalScopeState = {
   store: AutomationLocalStoreState;
   routes: AutomationLocalRoutesState;
+  events: AutomationLocalEventsState;
   sandboxes: AutomationLocalSandboxesState;
 };
 
@@ -114,15 +123,23 @@ export type AutomationLayoutContext = {
   scripts: AutomationScriptItem[];
   routes: AutomationRouteItem[];
   storeEntries: AutomationStoreItem[];
+  events: AutomationEventItem[];
+  eventsCursor?: string;
+  eventsHasNextPage: boolean;
+  eventsCurrentCursor: string | null;
+  eventsPageSize: number;
   storeData: AutomationServerLofiDataState<AutomationStoreItem[]>;
   routesData: AutomationServerLofiDataState<AutomationRouteItem[]>;
+  eventsData: AutomationServerLofiDataState<AutomationEventItem[]>;
   lofiStore: AutomationLocalStoreState;
   lofiRoutes: AutomationLocalRoutesState;
+  lofiEvents: AutomationLocalEventsState;
   lofiSandboxes: AutomationLocalSandboxesState;
   storePrefix: string;
   scriptsError: string | null;
   routesError: string | null;
   storeEntriesError: string | null;
+  eventsError: string | null;
 };
 
 export type AutomationTab =

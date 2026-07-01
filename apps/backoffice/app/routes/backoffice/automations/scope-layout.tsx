@@ -15,6 +15,7 @@ import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/scope-layout";
 import {
   createAutomationProject,
+  fetchAutomationEvents,
   fetchAutomationProjects,
   fetchAutomationRoutes,
   fetchAutomationStoreEntries,
@@ -30,7 +31,12 @@ import {
   resolveAutomationUiScope,
   toBackofficeScope,
 } from "./scope";
-import type { AutomationRouteItem, AutomationScriptItem, AutomationStoreItem } from "./shared";
+import type {
+  AutomationEventItem,
+  AutomationRouteItem,
+  AutomationScriptItem,
+  AutomationStoreItem,
+} from "./shared";
 import {
   AutomationErrorBoundary,
   AutomationHeader,
@@ -39,6 +45,22 @@ import {
   resolveAutomationServerLofiData,
   type AutomationTab,
 } from "./shared";
+
+const DEFAULT_EVENTS_PAGE_SIZE = 10;
+const MAX_EVENTS_PAGE_SIZE = 10;
+
+const parseEventsPageSize = (value: string | null) => {
+  if (!value) {
+    return DEFAULT_EVENTS_PAGE_SIZE;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_EVENTS_PAGE_SIZE;
+  }
+
+  return Math.min(MAX_EVENTS_PAGE_SIZE, Math.max(1, parsed));
+};
 
 const normalizeScripts = (
   scripts: Awaited<ReturnType<typeof loadAutomationWorkspaceData>>["scripts"],
@@ -72,6 +94,27 @@ const normalizeRoutes = (
   [...routes].sort(
     (left, right) => left.priority - right.priority || left.id.localeCompare(right.id),
   );
+
+const normalizeEvents = (
+  events: Awaited<ReturnType<typeof fetchAutomationEvents>>["events"],
+): AutomationEventItem[] =>
+  events
+    .map((event) => ({
+      id: toExternalId(event.id),
+      scope: event.scope,
+      source: event.source,
+      eventType: event.eventType,
+      occurredAt: event.occurredAt,
+      payload: event.payload,
+      actor: event.actor,
+      actors: Array.isArray(event.actors) ? event.actors : [],
+      subject: event.subject ?? null,
+      createdAt: event.createdAt,
+    }))
+    .sort((left, right) => {
+      const occurred = String(right.occurredAt ?? "").localeCompare(String(left.occurredAt ?? ""));
+      return occurred || right.id.localeCompare(left.id);
+    });
 
 const normalizeStoreEntries = (
   storedEntries: Awaited<ReturnType<typeof fetchAutomationStoreEntries>>["storeEntries"],
@@ -181,11 +224,17 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const backofficeScope = toBackofficeScope(selectedScope);
   const requestUrl = new URL(request.url);
   const currentTab = currentTabFromPath(requestUrl.pathname);
+  const eventsCursor = requestUrl.searchParams.get("cursor")?.trim() || undefined;
+  const eventsPageSize = parseEventsPageSize(requestUrl.searchParams.get("pageSize"));
 
-  const [workspaceResult, routesResult, storeResult] = await Promise.all([
+  const [workspaceResult, routesResult, storeResult, eventsResult] = await Promise.all([
     loadAutomationWorkspaceData({ request, context, scope: backofficeScope }),
     fetchAutomationRoutes(request, context, backofficeScope),
     fetchAutomationStoreEntries(request, context, backofficeScope),
+    fetchAutomationEvents(request, context, backofficeScope, {
+      cursor: eventsCursor,
+      limit: eventsPageSize,
+    }),
   ]);
 
   return {
@@ -207,9 +256,15 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     scripts: normalizeScripts(workspaceResult.scripts),
     routes: normalizeRoutes(routesResult.routes),
     storeEntries: normalizeStoreEntries(storeResult.storeEntries),
+    events: normalizeEvents(eventsResult.events),
+    eventsCursor: eventsResult.cursor,
+    eventsHasNextPage: eventsResult.hasNextPage,
+    eventsCurrentCursor: eventsCursor ?? null,
+    eventsPageSize,
     scriptsError: workspaceResult.scriptsError,
     routesError: routesResult.routesError,
     storeEntriesError: storeResult.storeEntriesError,
+    eventsError: eventsResult.eventsError,
     projectsError: projectsResult.projectsError,
     storePrefix: requestUrl.searchParams.get("prefix") ?? "",
   };
@@ -372,6 +427,7 @@ export default function BackofficeAutomationScopeLayout({
     scope: loaderData.selectedScope,
     initialEntries: loaderData.storeEntries,
     initialRoutes: loaderData.routes,
+    initialEvents: loaderData.events,
     prefix: loaderData.storePrefix,
   });
   const outletContext = useMemo(() => {
@@ -391,15 +447,26 @@ export default function BackofficeAutomationScopeLayout({
       lofiError: lofi.routes.error,
       isEmpty: (routes) => routes.length === 0,
     });
+    const eventsData = resolveAutomationServerLofiData({
+      serverData: loaderData.events,
+      serverError: loaderData.eventsError,
+      lofiData: lofi.events.events.slice(0, loaderData.eventsPageSize),
+      lofiSynced: !loaderData.eventsCurrentCursor && lofi.events.synced,
+      lofiError: lofi.events.error,
+      isEmpty: (events) => events.length === 0,
+    });
 
     return {
       ...loaderData,
       routes: routesData.data,
       storeEntries: storeData.data,
+      events: eventsData.data,
       storeData,
       routesData,
+      eventsData,
       lofiStore: { ...lofi.store, entries: storeData.data, error: storeData.syncError },
       lofiRoutes: { ...lofi.routes, routes: routesData.data, error: routesData.syncError },
+      lofiEvents: { ...lofi.events, events: eventsData.data, error: eventsData.syncError },
       lofiSandboxes: lofi.sandboxes,
     };
   }, [loaderData, lofi]);

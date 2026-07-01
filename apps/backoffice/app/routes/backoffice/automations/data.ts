@@ -1,4 +1,8 @@
-import type { AutomationRouteDefinition, AutomationScriptLayer } from "@/fragno/automation";
+import type {
+  AutomationEventRecord as FragmentAutomationEventRecord,
+  AutomationRouteDefinition,
+  AutomationScriptLayer,
+} from "@/fragno/automation";
 import type { AutomationScriptEngine } from "@/fragno/automation/catalog";
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
 
@@ -48,6 +52,8 @@ export type AutomationProjectRecord = {
 };
 
 export type AutomationRouteRecord = AutomationRouteDefinition;
+
+export type AutomationEventRecord = FragmentAutomationEventRecord;
 
 export type AutomationScriptSourceRecord = {
   script: string | null;
