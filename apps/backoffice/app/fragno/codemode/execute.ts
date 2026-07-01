@@ -70,10 +70,35 @@ export type BackofficeCodemodeWorkflowDefinition = {
 export type BackofficeCodemodeExecuteResult = ExecuteResult & {
   toolCalls: BackofficeRuntimeToolCall[];
   workflowDefinition?: BackofficeCodemodeWorkflowDefinition;
+  preparedCode?: string;
+  preparedModules?: Record<string, string>;
 };
 
 export const normalizeBackofficeCodemodeCode = (code: string): string =>
   normalizeCode(code.trim().replace(/;*$/, "")).trim().replace(/;*$/, "");
+
+export type PreparedBackofficeCodemodeCode = {
+  code: string;
+  modules: Record<string, string>;
+  specifiers: string[];
+};
+
+export const prepareBackofficeCodemodeCode = async (
+  code: string,
+): Promise<PreparedBackofficeCodemodeCode> => {
+  const normalizedCode = normalizeBackofficeCodemodeCode(code);
+  const specifiers = collectBareSpecifiers(normalizedCode);
+  if (specifiers.length === 0) {
+    return { code: normalizedCode, modules: {}, specifiers };
+  }
+
+  const resolved = await resolveNpmModules(specifiers);
+  return {
+    code: rewriteCodeImports(normalizedCode, resolved.imports),
+    modules: resolved.modules,
+    specifiers,
+  };
+};
 
 type ScopedCodemodeCallInput = {
   scope:
@@ -235,24 +260,19 @@ export const runBackofficeCodemode = async ({
   // Loader `modules` map. We bundle each imported package from esm.sh and rewrite the
   // snippet's specifiers to the resulting module keys. Versions are taken from the
   // specifier when present (`lodash@4.17.21`), else esm.sh resolves the latest.
-  const normalizedCode = normalizeBackofficeCodemodeCode(code);
-  let codeToRun = normalizedCode;
-  let npmModules: Record<string, string> = {};
-  const specifiers = collectBareSpecifiers(normalizedCode);
-  if (specifiers.length > 0) {
-    try {
-      const resolved = await resolveNpmModules(specifiers);
-      npmModules = resolved.modules;
-      codeToRun = rewriteCodeImports(normalizedCode, resolved.imports);
-    } catch (err) {
-      return {
-        result: undefined,
-        error: `Failed to resolve npm imports (${specifiers.join(", ")}): ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-        toolCalls,
-      };
-    }
+  let prepared: PreparedBackofficeCodemodeCode;
+  try {
+    prepared = await prepareBackofficeCodemodeCode(code);
+  } catch (err) {
+    const normalizedCode = normalizeBackofficeCodemodeCode(code);
+    const specifiers = collectBareSpecifiers(normalizedCode);
+    return {
+      result: undefined,
+      error: `Failed to resolve npm imports (${specifiers.join(", ")}): ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+      toolCalls,
+    };
   }
 
   const executor = new DynamicWorkerExecutor({
@@ -261,7 +281,7 @@ export const runBackofficeCodemode = async ({
     // Default (caller passed nothing): grant egress via the host's OUTBOUND
     // capability when bound, else stay sealed. An explicit Fetcher or `null` wins.
     globalOutbound: globalOutbound === undefined ? (env.OUTBOUND ?? null) : globalOutbound,
-    modules: npmModules,
+    modules: prepared.modules,
   });
 
   const providers = await createBackofficeCodemodeResolvedProviders({
@@ -271,6 +291,14 @@ export const runBackofficeCodemode = async ({
     toolCalls,
   });
 
-  const result = (await executor.execute(codeToRun, providers)) as BackofficeCodemodeExecuteResult;
-  return { ...result, toolCalls };
+  const result = (await executor.execute(
+    prepared.code,
+    providers,
+  )) as BackofficeCodemodeExecuteResult;
+  return {
+    ...result,
+    toolCalls,
+    preparedCode: prepared.code,
+    preparedModules: prepared.modules,
+  };
 };

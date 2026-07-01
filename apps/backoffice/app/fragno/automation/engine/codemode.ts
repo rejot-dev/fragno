@@ -149,6 +149,7 @@ export const executePiCodemodeWorkflow = async ({
   const context = createBackofficeToolContext(runtimeContext);
   const result = await runBackofficeCodemodeWorkflow({
     code: params.code,
+    modules: params.modules,
     event: workflowEvent,
     remote,
     fs: masterFs,
