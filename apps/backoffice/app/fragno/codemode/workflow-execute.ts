@@ -69,6 +69,8 @@ export type BackofficeCodemodeWorkflowOptions = {
    *   permitted to access the internet".
    */
   globalOutbound?: Fetcher | null;
+  /** Pre-resolved Worker Loader modules required by `code` (for rewritten npm imports). */
+  modules?: Record<string, string>;
 };
 
 const createRemoteWorkflowWorkerCode = ({
@@ -269,6 +271,7 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
   families,
   toolContext,
   globalOutbound,
+  modules,
 }: {
   code: string;
   event: WorkflowEvent<TParams>;
@@ -282,6 +285,7 @@ const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = un
     // capability when bound, else stay sealed. An explicit value — a custom
     // Fetcher or `null` to seal — always wins. See BackofficeCodemodeWorkflowOptions.
     globalOutbound: globalOutbound === undefined ? (env.OUTBOUND ?? null) : globalOutbound,
+    modules,
   });
 
   const providers = await createBackofficeCodemodeResolvedProviders({

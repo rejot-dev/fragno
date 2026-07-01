@@ -342,7 +342,8 @@ const createExecCodeModeTool = (
               instanceId,
               params: {
                 orgId,
-                code,
+                code: result.preparedCode ?? code,
+                ...(result.preparedModules ? { modules: result.preparedModules } : {}),
                 sessionId,
                 toolCallId: toolCallId,
               } satisfies PiCodemodeWorkflowParams,
@@ -367,10 +368,16 @@ const createExecCodeModeTool = (
         throw new Error(text);
       }
 
+      const {
+        preparedCode: _preparedCode,
+        preparedModules: _preparedModules,
+        ...publicResult
+      } = result;
+
       return {
         content: [{ type: "text", text }],
         details: {
-          ...result,
+          ...publicResult,
           code,
           workflowGraph,
           outputText: text,
