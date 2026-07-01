@@ -1,5 +1,20 @@
 # @fragno-dev/reson8-fragment
 
+## 0.0.4
+
+### Patch Changes
+
+- 35ceba1: feat: export Reson8 prerecorded transcription schemas.
+- f856070: Ensure all non-private packages include repository metadata in their `package.json` entries.
+- Updated dependencies [0186a7a]
+- Updated dependencies [03d5a5c]
+- Updated dependencies [6cc8f36]
+- Updated dependencies [4944ecf]
+- Updated dependencies [ff3673f]
+- Updated dependencies [3328fe3]
+- Updated dependencies [5e0cfe8]
+  - @fragno-dev/core@0.2.3
+
 ## 0.0.3
 
 ### Patch Changes

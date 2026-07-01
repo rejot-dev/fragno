@@ -1,5 +1,41 @@
 # @fragno-dev/db
 
+## 0.4.2
+
+### Patch Changes
+
+- 0d4cbe8: feat: support additional isolated fragment runtimes in database tests
+- fcecfed: fix: await async transformRetrieve callbacks before mutation
+- 27b7db5: fix: support no-op migrations for the in-memory adapter.
+- 9419f78: feat: add a reusable buffered pump registry for async stream delivery.
+- 3f9d1bb: fix: normalize database constraint errors for duplicate handling.
+- 20324e7: fix: preserve earlier durable hook alarms when scheduling new work.
+- 8a60280: feat: add handler transaction early returns after retrieve.
+- aff91d1: fix: harden cursor pagination metadata, in-memory unique create rollback, and SQL reference
+  filtering.
+- a28094e: feat: add query-tree find APIs with nested joins and count support.
+- f42c8c6: fix materialize db-now values before serializing outbox payloads.
+- 0e63275: fix: align MySQL string defaults, serialization, and affected-row handling
+- 4e5d611: fix: preserve outer handlerTx mutations when executing nested transactions
+- f297b5d: feat: add streaming outbox transport for Lofi clients.
+- 1e1088b: fix: reduce default durable hooks logging noise during tests
+- 9e2ee05: fix: serialize referenced ids in generic SQL where clauses.
+- 3734573: fix: treat same-process buffered pump scope collisions as workflow runner contention
+- fa21507: fix: restore interrupted Pi agent turns from live step emissions and publish commit markers.
+- 79055dd: feat: add a reusable Cloudflare Durable Object fragment host.
+- e7b36e1: fix: normalize SQLite result-code constraint errors.
+- a64dc64: feat: add text columns and map string columns to index-safe varchar storage.
+- ea8ea88: feat: allow scoping the database roundtrip guard to selected routes.
+- 9919fdd: feat: add schema-bound FragnoDatabase APIs and explicit unit-of-work query flows.
+- Updated dependencies [0186a7a]
+- Updated dependencies [03d5a5c]
+- Updated dependencies [6cc8f36]
+- Updated dependencies [4944ecf]
+- Updated dependencies [ff3673f]
+- Updated dependencies [3328fe3]
+- Updated dependencies [5e0cfe8]
+  - @fragno-dev/core@0.2.3
+
 ## 0.4.1
 
 ### Patch Changes
