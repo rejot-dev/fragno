@@ -1,46 +1,26 @@
-import { Link, useLoaderData, useLocation, useOutletContext } from "react-router";
-
-import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
+import { Fragment, useState } from "react";
+import { Link, useLocation, useOutletContext } from "react-router";
 
 import type { Route } from "./+types/events";
-import { fetchAutomationEvents, type AutomationEventHookRecord } from "./data.server";
-import { automationScopeFromRouteParams, automationScopeTabPath } from "./scope";
-import type { AutomationLayoutContext } from "./shared";
+import { automationScopeTabPath } from "./scope";
+import type { AutomationEventItem, AutomationLayoutContext } from "./shared";
 import { formatTimestamp } from "./shared";
 
-const DEFAULT_PAGE_SIZE = 25;
-const MAX_PAGE_SIZE = 100;
+const actorIdentity = (actor: AutomationEventItem["actor"]) =>
+  `${actor.scope}:${actor.source ?? ""}:${actor.type}:${actor.id}`;
 
-const parsePageSize = (value: string | null) => {
-  if (!value) {
-    return DEFAULT_PAGE_SIZE;
+const collectActors = (event: AutomationEventItem) => {
+  const actorsByIdentity = new Map<string, AutomationEventItem["actor"]>();
+
+  actorsByIdentity.set(actorIdentity(event.actor), event.actor);
+  for (const actor of event.actors) {
+    actorsByIdentity.set(actorIdentity(actor), actor);
   }
 
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) {
-    return DEFAULT_PAGE_SIZE;
-  }
-
-  return Math.min(MAX_PAGE_SIZE, Math.max(1, parsed));
+  return [...actorsByIdentity.values()];
 };
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
-  const scope = automationScopeFromRouteParams(params);
-  await requireBackofficeContext(request, context, scope);
-
-  const url = new URL(request.url);
-  const cursor = url.searchParams.get("cursor")?.trim() || undefined;
-  const pageSize = parsePageSize(url.searchParams.get("pageSize"));
-  const eventsResult = await fetchAutomationEvents(request, context, scope, { cursor, pageSize });
-
-  return {
-    ...eventsResult,
-    currentCursor: cursor ?? null,
-    pageSize,
-  };
-}
-
-const formatActor = (actor: AutomationEventHookRecord["actor"]) => {
+const formatActor = (actor: AutomationEventItem["actor"] | null) => {
   if (!actor) {
     return "—";
   }
@@ -49,7 +29,7 @@ const formatActor = (actor: AutomationEventHookRecord["actor"]) => {
   return `${actor.scope}:${source}${actor.type}:${actor.id}`;
 };
 
-const formatScope = (scope: AutomationEventHookRecord["scope"]) => {
+const formatScope = (scope: AutomationEventItem["scope"] | null) => {
   if (!scope) {
     return "—";
   }
@@ -78,80 +58,77 @@ const jsonPreview = (value: unknown) => {
   }
 };
 
-const statusBadgeClass = (status: string) => {
-  if (status === "completed") {
-    return "border-emerald-400/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200";
-  }
-  if (status === "failed") {
-    return "border-red-400/40 bg-red-500/8 text-red-700 dark:text-red-200";
-  }
-  if (status === "pending" || status === "queued") {
-    return "border-amber-400/40 bg-amber-500/10 text-amber-700 dark:text-amber-200";
-  }
-  return "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]";
-};
-
 export default function BackofficeAutomationEvents() {
   const {
-    configured,
-    hooksEnabled,
     events,
-    cursor,
-    hasNextPage,
-    eventsError,
-    currentCursor,
-    pageSize,
-  } = useLoaderData<typeof loader>();
-  const { selectedScope } = useOutletContext<AutomationLayoutContext>();
+    eventsCursor,
+    eventsHasNextPage,
+    eventsCurrentCursor,
+    eventsPageSize,
+    eventsData,
+    selectedScope,
+  } = useOutletContext<AutomationLayoutContext>();
   const location = useLocation();
-  const basePath = automationScopeTabPath(selectedScope, "events");
-  const currentParams = new URLSearchParams(location.search);
+  const [expandedEventIds, setExpandedEventIds] = useState(() => new Set<string>());
 
   const pageHref = (nextCursor: string | null) => {
-    const params = new URLSearchParams(currentParams);
+    const params = new URLSearchParams(location.search);
     if (nextCursor) {
       params.set("cursor", nextCursor);
     } else {
       params.delete("cursor");
     }
-    if (pageSize !== DEFAULT_PAGE_SIZE) {
-      params.set("pageSize", String(pageSize));
-    } else {
-      params.delete("pageSize");
-    }
+    params.set("pageSize", String(eventsPageSize));
     const search = params.toString();
+    const basePath = automationScopeTabPath(selectedScope, "events");
     return search ? `${basePath}?${search}` : basePath;
+  };
+
+  const togglePayload = (eventId: string) => {
+    setExpandedEventIds((current) => {
+      const next = new Set(current);
+      if (next.has(eventId)) {
+        next.delete(eventId);
+      } else {
+        next.add(eventId);
+      }
+      return next;
+    });
   };
 
   return (
     <section className="space-y-4">
-      {eventsError ? (
+      {eventsData.blockingError ? (
         <div className="border border-red-400/40 bg-red-500/8 p-4 text-sm text-red-700 dark:text-red-200">
-          Could not load automation events: {eventsError}
-        </div>
-      ) : !configured ? (
-        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-          Automations are not configured for this scope yet.
-        </div>
-      ) : !hooksEnabled ? (
-        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-          Durable hooks are disabled for automation events in this scope.
+          Could not load automation events: {eventsData.blockingError}
         </div>
       ) : events.length === 0 ? (
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-          No recent automation events are queued right now.
+          No automation events have been recorded for this scope yet.
         </div>
       ) : (
-        <div className="space-y-3">
-          <div className="backoffice-scroll overflow-x-auto border border-[color:var(--bo-border)]">
-            <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
+        <div className="w-full max-w-7xl space-y-3">
+          {eventsData.syncError ? (
+            <div className="border border-amber-400/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-200">
+              Showing {eventsData.source} events. Local sync warning: {eventsData.syncError}
+            </div>
+          ) : null}
+          <div className="backoffice-scroll w-full [scrollbar-gutter:stable] overflow-x-auto border border-[color:var(--bo-border)]">
+            <table className="w-full table-fixed divide-y divide-[color:var(--bo-border)] text-sm">
+              <colgroup>
+                <col className="w-12" />
+                <col className="w-[34%]" />
+                <col className="w-[30%]" />
+                <col className="w-[18%]" />
+                <col className="w-[18%]" />
+              </colgroup>
               <thead className="bg-[var(--bo-panel-2)] text-left">
                 <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                  <th scope="col" className="px-3 py-2">
-                    Event
+                  <th scope="col" className="px-2 py-2">
+                    <span className="sr-only">Payload</span>
                   </th>
                   <th scope="col" className="px-3 py-2">
-                    Status
+                    Event
                   </th>
                   <th scope="col" className="px-3 py-2">
                     Actor
@@ -160,81 +137,109 @@ export default function BackofficeAutomationEvents() {
                     Scope
                   </th>
                   <th scope="col" className="px-3 py-2">
-                    Occurred
-                  </th>
-                  <th scope="col" className="px-3 py-2">
-                    Queued
-                  </th>
-                  <th scope="col" className="px-3 py-2">
-                    Attempts
-                  </th>
-                  <th scope="col" className="px-3 py-2">
-                    Payload
+                    Logged at
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-                {events.map((event) => (
-                  <tr key={event.hookId} className="text-[var(--bo-muted)]">
-                    <td className="px-3 py-3 align-top">
-                      <div className="min-w-56">
-                        <p className="font-mono text-xs text-[var(--bo-fg)]">
-                          {event.source}.{event.eventType}
-                        </p>
-                        <p className="mt-1 font-mono text-[11px] break-all text-[var(--bo-muted-2)]">
-                          {event.id ?? event.hookId}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 align-top">
-                      <span
-                        className={`border px-2 py-1 text-[10px] tracking-[0.22em] uppercase ${statusBadgeClass(event.hookStatus)}`}
+                {events.map((event) => {
+                  const isExpanded = expandedEventIds.has(event.id);
+                  const actors = collectActors(event);
+
+                  return (
+                    <Fragment key={event.id}>
+                      <tr
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={isExpanded}
+                        aria-controls={`automation-event-payload-${event.id}`}
+                        onClick={() => togglePayload(event.id)}
+                        onKeyDown={(keyboardEvent) => {
+                          if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
+                            keyboardEvent.preventDefault();
+                            togglePayload(event.id);
+                          }
+                        }}
+                        className="cursor-pointer text-[var(--bo-muted)] transition-colors hover:bg-[var(--bo-panel-2)] focus:bg-[var(--bo-panel-2)] focus:outline-none"
                       >
-                        {event.hookStatus}
-                      </span>
-                      {event.error ? (
-                        <p className="mt-2 max-w-64 text-xs whitespace-pre-wrap text-red-700 dark:text-red-200">
-                          {event.error}
-                        </p>
+                        <td className="px-2 py-2 align-top">
+                          <button
+                            type="button"
+                            aria-expanded={isExpanded}
+                            aria-controls={`automation-event-payload-${event.id}`}
+                            onClick={(mouseEvent) => {
+                              mouseEvent.stopPropagation();
+                              togglePayload(event.id);
+                            }}
+                            className="flex h-10 w-10 items-center justify-center text-[var(--bo-muted)] transition-transform hover:text-[var(--bo-fg)] active:scale-[0.96]"
+                          >
+                            <span className="sr-only">
+                              {isExpanded ? "Hide payload" : "Show payload"}
+                            </span>
+                            <svg
+                              aria-hidden="true"
+                              viewBox="0 0 16 16"
+                              className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                            >
+                              <path fill="currentColor" d="M6 3.5 10.5 8 6 12.5z" />
+                            </svg>
+                          </button>
+                        </td>
+                        <td className="px-3 py-3 align-top">
+                          <div className="min-w-56">
+                            <p className="truncate font-mono text-xs text-[var(--bo-fg)]">
+                              {event.source}.{event.eventType}
+                            </p>
+                            <p className="mt-1 font-mono text-[11px] break-all text-[var(--bo-muted-2)]">
+                              {event.id}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 align-top">
+                          <div className="space-y-1">
+                            {actors.map((actor) => (
+                              <p
+                                key={actorIdentity(actor)}
+                                className="truncate font-mono text-xs text-[var(--bo-fg)]"
+                              >
+                                {formatActor(actor)}
+                              </p>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 align-top">
+                          <span className="block truncate font-mono text-xs text-[var(--bo-fg)]">
+                            {formatScope(event.scope)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 align-top tabular-nums">
+                          {formatTimestamp(event.createdAt)}
+                        </td>
+                      </tr>
+                      {isExpanded ? (
+                        <tr id={`automation-event-payload-${event.id}`}>
+                          <td colSpan={5} className="bg-[var(--bo-panel)] px-3 pb-4 pl-14">
+                            <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3">
+                              <p className="mb-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                                Payload
+                              </p>
+                              <pre className="backoffice-scroll max-h-96 overflow-auto font-mono text-[11px] whitespace-pre-wrap text-[var(--bo-fg)]">
+                                <code>{jsonPreview(event.payload)}</code>
+                              </pre>
+                            </div>
+                          </td>
+                        </tr>
                       ) : null}
-                    </td>
-                    <td className="px-3 py-3 align-top">
-                      <span className="font-mono text-xs text-[var(--bo-fg)]">
-                        {formatActor(event.actor)}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 align-top">
-                      <span className="font-mono text-xs text-[var(--bo-fg)]">
-                        {formatScope(event.scope)}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 align-top">{formatTimestamp(event.occurredAt)}</td>
-                    <td className="px-3 py-3 align-top">{formatTimestamp(event.createdAt)}</td>
-                    <td className="px-3 py-3 align-top">
-                      {event.attempts} / {event.maxAttempts}
-                    </td>
-                    <td className="px-3 py-3 align-top">
-                      <details className="max-w-md">
-                        <summary className="cursor-pointer text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase hover:text-[var(--bo-fg)]">
-                          View
-                        </summary>
-                        <pre className="backoffice-scroll mt-2 max-h-80 overflow-auto bg-[var(--bo-panel-2)] p-3 font-mono text-[11px] whitespace-pre-wrap text-[var(--bo-fg)]">
-                          <code>{jsonPreview(event.payload)}</code>
-                        </pre>
-                      </details>
-                    </td>
-                  </tr>
-                ))}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--bo-muted-2)]">
-            <span>
-              {events.length} event{events.length === 1 ? "" : "s"} shown · Page size {pageSize}
-            </span>
+          <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--bo-muted-2)]">
             <div className="flex items-center gap-2">
-              {currentCursor ? (
+              {eventsCurrentCursor ? (
                 <Link
                   to={pageHref(null)}
                   className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
@@ -242,15 +247,19 @@ export default function BackofficeAutomationEvents() {
                   Newest
                 </Link>
               ) : null}
-              {hasNextPage && cursor ? (
+              {eventsHasNextPage && eventsCursor ? (
                 <Link
-                  to={pageHref(cursor)}
+                  to={pageHref(eventsCursor)}
                   className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                 >
                   Next page
                 </Link>
               ) : null}
             </div>
+            <span>
+              {events.length} event{events.length === 1 ? "" : "s"} shown · Page size{" "}
+              {eventsPageSize} · Source: {eventsData.source}
+            </span>
           </div>
         </div>
       )}

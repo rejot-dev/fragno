@@ -18,6 +18,7 @@ import {
 import type { AutomationEvent } from "./contracts";
 import { type AutomationPiBashContext } from "./engine/runtime";
 import { createAutomationCodemodeWorkflowInstanceInput } from "./engine/workflow-start";
+import { createAutomationEventServices } from "./events-storage-runtime";
 import { createAutomationProjectServices } from "./projects-storage-runtime";
 import {
   buildWorkflowEventPayload,
@@ -315,12 +316,14 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       sandboxProviders: config.sandboxProviders,
     });
     const routeServices = createAutomationRouteServices(defineService);
+    const eventServices = createAutomationEventServices(defineService);
 
     return defineService({
       ...storeServices,
       ...projectServices,
       ...sandboxServices,
       ...routeServices,
+      ...eventServices,
       seedStarterAutomationRoutes: function () {
         return this.serviceTx(automationFragmentSchema)
           .retrieve((uow) => uow.find("automation_route", (b) => b.whereIndex("primary")))
@@ -363,6 +366,25 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       ingestEvent: function (event: AutomationEvent) {
         return this.serviceTx(automationFragmentSchema)
           .mutate(({ uow }) => {
+            const now = uow.now();
+            const occurredAt = new Date(event.occurredAt);
+            if (Number.isNaN(occurredAt.getTime())) {
+              throw new Error(`Automation event ${event.id} has an invalid occurredAt timestamp.`);
+            }
+
+            uow.create("automation_event", {
+              id: event.id,
+              scope: event.scope,
+              source: event.source,
+              eventType: event.eventType,
+              occurredAt,
+              payload: event.payload,
+              actor: event.actor,
+              actors: event.actors,
+              subject: event.subject ?? null,
+              createdAt: now,
+            });
+
             uow.triggerHook("internalIngestEvent", event, {
               id: event.id,
             });

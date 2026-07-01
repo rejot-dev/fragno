@@ -450,6 +450,108 @@ describe("automation routes /routes", () => {
   });
 });
 
+describe("automation routes /events", () => {
+  test("lists ingested automation events from the fragment database", async () => {
+    await fragment.callServices(() =>
+      fragment.services.ingestEvent({
+        id: "event-list-1",
+        scope: { kind: "org", orgId: "org_123" },
+        source: "custom",
+        eventType: "ready",
+        occurredAt: "2026-01-01T00:00:00.000Z",
+        payload: { ok: true },
+        actor,
+        actors: [actor],
+        subject: { orgId: "org_123" },
+      }),
+    );
+
+    const response = await fragment.callRoute("GET", "/events");
+
+    assert(response.type === "json");
+    if (response.type === "json") {
+      expect(response.data).toEqual({
+        events: [
+          expect.objectContaining({
+            id: "event-list-1",
+            source: "custom",
+            eventType: "ready",
+            occurredAt: "2026-01-01T00:00:00.000Z",
+            payload: { ok: true },
+            actor,
+            actors: [actor],
+            scope: { kind: "org", orgId: "org_123" },
+            subject: { orgId: "org_123" },
+          }),
+        ],
+        hasNextPage: false,
+      });
+    }
+  });
+
+  test("paginates ingested automation events with a cursor", async () => {
+    for (const id of ["event-page-1", "event-page-2", "event-page-3"]) {
+      await fragment.callServices(() =>
+        fragment.services.ingestEvent({
+          id,
+          scope: { kind: "org", orgId: "org_123" },
+          source: "custom",
+          eventType: "ready",
+          occurredAt: `2026-01-01T00:00:0${id.slice(-1)}.000Z`,
+          payload: { id },
+          actor,
+          actors: [actor],
+          subject: { orgId: "org_123" },
+        }),
+      );
+    }
+
+    const firstPage = await fragment.callRoute("GET", "/events", { query: { limit: "2" } });
+    assert(firstPage.type === "json");
+    expect(firstPage.data.events.map((event) => event.id)).toEqual([
+      "event-page-3",
+      "event-page-2",
+    ]);
+    assert(firstPage.data.hasNextPage);
+    expect(firstPage.data.nextCursor).toEqual(expect.any(String));
+    assert(typeof firstPage.data.nextCursor === "string");
+
+    const secondPage = await fragment.callRoute("GET", "/events", {
+      query: { cursor: firstPage.data.nextCursor },
+    });
+    assert(secondPage.type === "json");
+    expect(secondPage.data.events.map((event) => event.id)).toEqual(["event-page-1"]);
+    assert(!secondPage.data.hasNextPage);
+  });
+
+  test("rejects invalid events cursors", async () => {
+    const response = await fragment.callRoute("GET", "/events", {
+      query: { cursor: "not-a-cursor" },
+    });
+
+    assert(response.type === "error");
+    assert(response.error.code === "EVENTS_LIST_CURSOR_INVALID");
+  });
+
+  test("rejects automation events with invalid occurredAt timestamps", async () => {
+    await expect(
+      fragment.callServices(() =>
+        fragment.services.ingestEvent({
+          id: "event-invalid-timestamp",
+          scope: { kind: "org", orgId: "org_123" },
+          source: "custom",
+          eventType: "ready",
+          occurredAt: "not-a-timestamp",
+          payload: {},
+          actor,
+          actors: [actor],
+          subject: { orgId: "org_123" },
+        }),
+      ),
+    ).rejects.toThrow(/invalid occurredAt timestamp/);
+  });
+});
+
 describe("automation routes /projects", () => {
   test("creates, lists, looks up, updates, and archives projects", async () => {
     const createResponse = await fragment.callRoute("POST", "/projects", {

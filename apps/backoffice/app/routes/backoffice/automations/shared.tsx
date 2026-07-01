@@ -3,7 +3,7 @@ import { Link, isRouteErrorResponse } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
-import type { AutomationRouteDefinition } from "@/fragno/automation";
+import type { AutomationEventRecord, AutomationRouteDefinition } from "@/fragno/automation";
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
 import type { SandboxInstanceSummary } from "@/sandbox/contracts";
 
@@ -33,6 +33,8 @@ export type AutomationScriptItem = {
 
 export type AutomationRouteItem = AutomationRouteDefinition;
 
+export type AutomationEventItem = AutomationEventRecord;
+
 export type AutomationStoreItem = {
   id: string;
   key: string;
@@ -56,6 +58,12 @@ export type AutomationLocalRoutesState = {
   error: string | null;
 };
 
+export type AutomationLocalEventsState = {
+  events: AutomationEventItem[];
+  synced: boolean;
+  error: string | null;
+};
+
 export type AutomationLocalSandboxesState = {
   sandboxes: SandboxInstanceSummary[];
   synced: boolean;
@@ -65,6 +73,7 @@ export type AutomationLocalSandboxesState = {
 export type AutomationLocalScopeState = {
   store: AutomationLocalStoreState;
   routes: AutomationLocalRoutesState;
+  events: AutomationLocalEventsState;
   sandboxes: AutomationLocalSandboxesState;
 };
 
@@ -114,15 +123,23 @@ export type AutomationLayoutContext = {
   scripts: AutomationScriptItem[];
   routes: AutomationRouteItem[];
   storeEntries: AutomationStoreItem[];
+  events: AutomationEventItem[];
+  eventsCursor?: string;
+  eventsHasNextPage: boolean;
+  eventsCurrentCursor: string | null;
+  eventsPageSize: number;
   storeData: AutomationServerLofiDataState<AutomationStoreItem[]>;
   routesData: AutomationServerLofiDataState<AutomationRouteItem[]>;
+  eventsData: AutomationServerLofiDataState<AutomationEventItem[]>;
   lofiStore: AutomationLocalStoreState;
   lofiRoutes: AutomationLocalRoutesState;
+  lofiEvents: AutomationLocalEventsState;
   lofiSandboxes: AutomationLocalSandboxesState;
   storePrefix: string;
   scriptsError: string | null;
   routesError: string | null;
   storeEntriesError: string | null;
+  eventsError: string | null;
 };
 
 export type AutomationTab =
@@ -191,10 +208,14 @@ export function AutomationScopePicker({
   selectedScope,
   scopeOptions,
   projectsError,
+  createProjectPath,
+  isCreatingProject = false,
 }: {
   selectedScope: AutomationUiScope;
   scopeOptions: AutomationScopeOption[];
   projectsError: string | null;
+  createProjectPath?: string;
+  isCreatingProject?: boolean;
 }) {
   const selectedId =
     selectedScope.kind === "system"
@@ -220,7 +241,7 @@ export function AutomationScopePicker({
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         {scopeOptions.map((option) => {
-          const isActive = option.id === selectedId;
+          const isActive = !isCreatingProject && option.id === selectedId;
           return (
             <Link
               key={option.id}
@@ -243,6 +264,26 @@ export function AutomationScopePicker({
             </Link>
           );
         })}
+        {createProjectPath ? (
+          <Link
+            to={createProjectPath}
+            preventScrollReset
+            aria-current={isCreatingProject ? "page" : undefined}
+            className={
+              isCreatingProject
+                ? "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-left text-[var(--bo-accent-fg)]"
+                : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-left text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+            }
+          >
+            <span className="block text-[10px] font-semibold tracking-[0.22em] uppercase">
+              Project
+            </span>
+            <span className="mt-1 block text-sm font-medium text-[var(--bo-fg)]">+ New</span>
+            <span className="mt-1 block text-xs text-[var(--bo-muted-2)]">
+              Create project scope
+            </span>
+          </Link>
+        ) : null}
       </div>
     </section>
   );
@@ -251,9 +292,11 @@ export function AutomationScopePicker({
 export function AutomationTabs({
   selectedScope,
   activeTab,
+  disabled = false,
 }: {
   selectedScope: AutomationUiScope;
   activeTab: AutomationTab;
+  disabled?: boolean;
 }) {
   const tabs = [
     {
@@ -301,9 +344,11 @@ export function AutomationTabs({
       label: "Sandboxes",
       to: automationScopeTabPath(selectedScope, "sandboxes"),
     },
-  ].filter(
-    (tab) => selectedScope.kind !== "system" || !["api", "mcp", "sandboxes"].includes(tab.id),
-  );
+  ].map((tab) => ({
+    ...tab,
+    disabled:
+      disabled || (selectedScope.kind === "system" && ["api", "mcp", "sandboxes"].includes(tab.id)),
+  }));
 
   return (
     <div
@@ -312,10 +357,12 @@ export function AutomationTabs({
       className="flex flex-wrap items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2"
     >
       {tabs.map((tab) => {
-        const isActive = activeTab === tab.id;
-        const className = isActive
-          ? "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)]"
-          : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]";
+        const isActive = !tab.disabled && activeTab === tab.id;
+        const className = tab.disabled
+          ? "cursor-not-allowed border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted-2)] opacity-50"
+          : isActive
+            ? "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)]"
+            : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]";
 
         return (
           <Fragment key={tab.id}>
@@ -325,9 +372,15 @@ export function AutomationTabs({
             tab.id === "sandboxes" ? (
               <span className="h-6 w-px bg-[var(--bo-border)]" aria-hidden="true" />
             ) : null}
-            <Link to={tab.to} role="tab" aria-selected={isActive} className={className}>
-              {tab.label}
-            </Link>
+            {tab.disabled ? (
+              <span role="tab" aria-selected="false" aria-disabled="true" className={className}>
+                {tab.label}
+              </span>
+            ) : (
+              <Link to={tab.to} role="tab" aria-selected={isActive} className={className}>
+                {tab.label}
+              </Link>
+            )}
           </Fragment>
         );
       })}

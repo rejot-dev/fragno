@@ -1,4 +1,4 @@
-import { describe, test, vi } from "vitest";
+import { assert, describe, test, vi } from "vitest";
 
 import type { AutomationEvent } from "./contracts";
 
@@ -20,6 +20,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+import { automationFragmentSchema } from "./schema";
 
 const customAutomationEvent = ({
   id,
@@ -76,6 +77,30 @@ const telegramMessageEvent = ({
 };
 
 describe("starter automation router scenarios", () => {
+  test("scenario Lofi helper drains and queries frontend-visible data", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "scenario lofi helper drains and queries frontend-visible data",
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ then, when }) => [
+          when.automation.ingestEvent(
+            customAutomationEvent({ id: "lofi-event-1", payload: { ok: true } }),
+          ),
+          then.assert("assert event is visible through Lofi", async (ctx) => {
+            const lofi = ctx.lofi.forOrg("org-1");
+            await lofi.drain();
+            const query = lofi.query(automationFragmentSchema);
+            const event = await query.findFirst("automation_event", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", "lofi-event-1")),
+            );
+            assert.equal(event?.source, "custom");
+            assert.equal(event?.eventType, "thing.happened");
+          }),
+        ],
+      }),
+    );
+  });
+
   test("scenario router helpers seed and inspect starter routes", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
@@ -121,6 +146,22 @@ describe("starter automation router scenarios", () => {
             id: "telegram-pi-linking",
             enabled: true,
             priority: 120,
+          }),
+          then.assert("assert starter routes are visible through Lofi", async (ctx) => {
+            const lofi = ctx.lofi.forOrg("org-1");
+            await lofi.drain();
+            const routes = await lofi
+              .query(automationFragmentSchema)
+              .find("automation_route", (b) => b.whereIndex("primary"));
+            const expectedIds = [
+              "telegram-test-command",
+              "telegram-identity-claim-completed",
+              "pi-default-agent-configure",
+            ];
+            const missing = expectedIds.filter(
+              (expectedId) => !routes.some((route) => route.id.externalId === expectedId),
+            );
+            assert.equal(missing.length, 0);
           }),
           then.router.missing({ orgId: "org-1", id: "no-such-route" }),
           then.workflow.noErrored({ orgId: "org-1" }),
@@ -259,6 +300,20 @@ describe("starter automation router scenarios", () => {
             customAutomationEvent({ id: "beta-1", payload: { kind: "beta" } }),
           ),
 
+          then.assert("assert automation events are visible through Lofi", async (ctx) => {
+            const lofi = ctx.lofi.forOrg("org-1");
+            await lofi.drain();
+            const query = lofi.query(automationFragmentSchema);
+            const alphaEvent = await query.findFirst("automation_event", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", "alpha-1")),
+            );
+            const betaEvent = await query.findFirst("automation_event", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", "beta-1")),
+            );
+            assert.deepEqual(alphaEvent?.payload, { kind: "alpha" });
+            assert.deepEqual(betaEvent?.payload, { kind: "beta" });
+          }),
+
           then.workflow.instance({
             remoteWorkflowName: "custom-alpha",
             instanceId: "custom-alpha-alpha-1",
@@ -270,6 +325,19 @@ describe("starter automation router scenarios", () => {
             instanceId: "custom-alpha-beta-1",
           }),
           then.store.entry({ orgId: "org-1", key: "custom/alpha-1", value: "alpha" }),
+          then.assert(
+            "assert custom workflow store output is visible through Lofi",
+            async (ctx) => {
+              const lofi = ctx.lofi.forOrg("org-1");
+              await lofi.drain();
+              const [entry] = await lofi
+                .query(automationFragmentSchema)
+                .find("kv_store", (b) =>
+                  b.whereIndex("idx_kv_store_key", (eb) => eb("key", "=", "custom/alpha-1")),
+                );
+              assert.equal(entry?.value, "alpha");
+            },
+          ),
           then.store.missing({ orgId: "org-1", key: "custom/beta-1" }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
@@ -447,6 +515,16 @@ describe("starter automation router scenarios", () => {
             orgId: "org-1",
             key: "pi/pi-default-agent",
             value: "default::openai::gpt-5-mini",
+          }),
+          then.assert("assert default Pi agent is visible through Lofi", async (ctx) => {
+            const lofi = ctx.lofi.forOrg("org-1");
+            await lofi.drain();
+            const [entry] = await lofi
+              .query(automationFragmentSchema)
+              .find("kv_store", (b) =>
+                b.whereIndex("idx_kv_store_key", (eb) => eb("key", "=", "pi/pi-default-agent")),
+              );
+            assert.equal(entry?.value, "default::openai::gpt-5-mini");
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
