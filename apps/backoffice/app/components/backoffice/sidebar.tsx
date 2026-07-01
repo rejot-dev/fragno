@@ -87,12 +87,6 @@ function createNavItems(activeOrganizationId?: string | null): NavItem[] {
           }),
         },
         {
-          label: "Projects",
-          to: activeOrganizationId
-            ? `/backoffice/projects/${activeOrganizationId}`
-            : "/backoffice/projects",
-        },
-        {
           label: "Store",
           to: `${automationBasePath}/store`,
           isActive: isAutomationTabPath("store"),
@@ -120,9 +114,7 @@ function createNavItems(activeOrganizationId?: string | null): NavItem[] {
     {
       label: "Automations",
       to: "/backoffice/automations",
-      isActive: (pathname) =>
-        pathname.startsWith("/backoffice/automations") ||
-        pathname.startsWith("/backoffice/projects"),
+      isActive: (pathname) => pathname.startsWith("/backoffice/automations"),
       children: automationChildren,
     },
     { label: "Sessions", to: "/backoffice/sessions" },
