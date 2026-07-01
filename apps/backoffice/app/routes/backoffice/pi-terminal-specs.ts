@@ -32,18 +32,6 @@ const VISIBLE_COMMAND_REFERENCES = createRuntimeToolReferences({
 export const PI_TERMINAL_COMMAND_GROUPS = renderDashboardCommandGroups(VISIBLE_COMMAND_REFERENCES);
 
 const SHELL_COMMAND_SPECS = [
-  {
-    command: "automations",
-    summary: "List this organisation's automations (ls over the automation roots).",
-    options: [
-      {
-        name: "format",
-        description: "Output format: text (default) or json",
-        valueRequired: true,
-        valueName: "format",
-      },
-    ],
-  },
   { command: "cat", summary: "Print file contents.", options: [] },
   { command: "cd", summary: "Change the terminal working directory.", options: [] },
   { command: "find", summary: "Search for files under a directory.", options: [] },
