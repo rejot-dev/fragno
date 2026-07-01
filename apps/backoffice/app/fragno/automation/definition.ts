@@ -17,6 +17,7 @@ import {
 } from "./content/starter-routing";
 import type { AutomationEvent } from "./contracts";
 import { type AutomationPiBashContext } from "./engine/runtime";
+import { createAutomationCodemodeWorkflowInstanceInput } from "./engine/workflow-start";
 import { createAutomationProjectServices } from "./projects-storage-runtime";
 import {
   buildWorkflowEventPayload,
@@ -112,19 +113,20 @@ const handleStartWorkflowRouteAction = async ({
     route.id,
     routingKey,
   );
-  const params = {
-    automationEvent: event,
+  const workflowInput = createAutomationCodemodeWorkflowInstanceInput({
+    event,
     workflowScriptPath: action.workflowScriptPath,
-    workflowInstanceId: instanceId,
-  };
+    instanceId,
+    remoteWorkflowName: action.remoteWorkflowName,
+  });
 
   await runWorkflowServiceCall(
     () =>
       [
         workflows.createInstance(action.workflowName, {
-          id: instanceId,
-          params,
-          remoteWorkflowName: action.remoteWorkflowName,
+          id: workflowInput.instanceId,
+          params: workflowInput.params,
+          remoteWorkflowName: workflowInput.remoteWorkflowName,
         }),
       ] as const,
   );

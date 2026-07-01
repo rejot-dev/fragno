@@ -15,13 +15,14 @@ import { AUTOMATION_WORKSPACE_ROOT, type AutomationFileSystemConfig } from "../c
 import { resolveAutomationFileSystem } from "../catalog";
 import type { AutomationEvent } from "../contracts";
 import { type AutomationRuntimeHostContext } from "./runtime";
+import { AUTOMATION_CODEMODE_WORKFLOW, PI_CODEMODE_WORKFLOW } from "./workflow-start";
 
 export type AutomationCodemodeWorkflowParams = {
   automationEvent: AutomationEvent;
+  workflowScriptPath: string;
+  workflowInstanceId: string;
   binding?: AutomationTriggerBinding;
   idempotencyKey?: string;
-  script?: string;
-  workflowScriptPath?: string;
 };
 
 const automationEventOrganizationIds = (event: AutomationEvent) =>
@@ -132,7 +133,7 @@ const isMissingWorkflowScriptError = (error: unknown) => {
 export const defineAutomationCodemodeWorkflow = (
   config: AutomationFileSystemConfig & { env?: CloudflareEnv; runtime?: BackofficeRuntimeServices },
 ) =>
-  defineRemoteWorkflow({ name: "automation-codemode-script" }, async (event, remote) => {
+  defineRemoteWorkflow({ name: AUTOMATION_CODEMODE_WORKFLOW }, async (event, remote) => {
     if (!config.env?.LOADER) {
       throw new Error("Workflow-backed codemode automation requires the Cloudflare Worker Loader.");
     }
@@ -146,24 +147,19 @@ export const defineAutomationCodemodeWorkflow = (
       throw new Error("Automation filesystem must be a MasterFileSystem.");
     }
 
-    let script = params.script ?? null;
-    if (!script && params.workflowScriptPath) {
-      try {
-        script = await resolvedFs.readFile(params.workflowScriptPath, "utf-8");
-      } catch (error) {
-        if (!isMissingWorkflowScriptError(error)) {
-          throw error;
-        }
-
-        return {
-          skipped: true,
-          reason: "workflow-script-not-found",
-          workflowScriptPath: params.workflowScriptPath,
-        };
+    let script: string;
+    try {
+      script = await resolvedFs.readFile(params.workflowScriptPath, "utf-8");
+    } catch (error) {
+      if (!isMissingWorkflowScriptError(error)) {
+        throw error;
       }
-    }
-    if (!script) {
-      throw new Error("Automation codemode workflow requires either script or workflowScriptPath.");
+
+      return {
+        skipped: true,
+        reason: "workflow-script-not-found",
+        workflowScriptPath: params.workflowScriptPath,
+      };
     }
 
     const { executeWorkflowCodemodeAutomation } = await import("./codemode");
@@ -195,7 +191,7 @@ export const definePiCodemodeWorkflow = (config: {
   env?: BackofficeCodemodeEnv & CloudflareEnv;
   runtime?: BackofficeRuntimeServices;
 }) =>
-  defineRemoteWorkflow({ name: "pi-codemode-script" }, async (event, remote) => {
+  defineRemoteWorkflow({ name: PI_CODEMODE_WORKFLOW }, async (event, remote) => {
     if (!config.env?.LOADER) {
       throw new Error("Pi codemode workflow requires the Cloudflare Worker Loader.");
     }

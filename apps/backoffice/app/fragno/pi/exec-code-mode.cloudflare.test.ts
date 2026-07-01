@@ -115,14 +115,14 @@ describe("Pi execCodeMode tool", () => {
 
     expect(result.details).toMatchObject({
       workflowDefinition: { name: "pi-session-workflow", options: { name: "pi-session-workflow" } },
-      result: { workflowName: "pi-codemode-script", instanceId: "session-1--tool-call-1" },
+      result: { workflowName: "pi-codemode-script", instanceId: "18tfv3i1e4o7fe" },
     });
     const content = result.content[0];
     assert(content?.type === "text");
     if (content?.type !== "text") {
       throw new Error("Expected text content from execCodeMode.");
     }
-    expect(content.text).toContain("session-1--tool-call-1");
+    expect(content.text).toContain("18tfv3i1e4o7fe");
   });
 
   test("schedules and runs a workflow defined from execCodeMode", async () => {
@@ -202,16 +202,14 @@ describe("Pi execCodeMode tool", () => {
 
     expect(result.details).toMatchObject({
       workflowDefinition: { name: "pi-session-workflow", options: { name: "pi-session-workflow" } },
-      result: { workflowName: "pi-codemode-script", instanceId: "session-1--tool-call-1" },
+      result: { workflowName: "pi-codemode-script", instanceId: "18tfv3i1e4o7fe" },
     });
     await harness.runUntilIdle({
       workflowName: "pi-codemode-script",
-      instanceId: "session-1--tool-call-1",
+      instanceId: "18tfv3i1e4o7fe",
       reason: "create",
     });
-    await expect(
-      harness.getStatus("PI_CODEMODE_SCRIPT", "session-1--tool-call-1"),
-    ).resolves.toMatchObject({
+    await expect(harness.getStatus("PI_CODEMODE_SCRIPT", "18tfv3i1e4o7fe")).resolves.toMatchObject({
       status: "complete",
       output: "ran from execCodeMode workflow",
     });
