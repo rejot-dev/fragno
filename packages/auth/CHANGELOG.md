@@ -1,5 +1,78 @@
 # @fragno-dev/auth
 
+## 0.0.17
+
+### Patch Changes
+
+- cdc8797: feat: allow beforeCreateUser hooks to set the initial user role.
+- aa83061: Expose durable hook context to auth and organization hook callbacks.
+- cbfb72d: fix: Validate auth route inputs that are stored in indexed string columns.
+- e63dc7d: fix: tighten organization permissions and cursor validation.
+- f13515c: feat: add optional session-backed access tokens for auth fragments.
+- 36796f7: refactor: adopt the principal-first auth contract.
+
+  This release finalizes the auth principal + credential strategy refactor:
+  - authenticated routes now rely on the ambient `fragno_auth` cookie or
+    `Authorization: Bearer <token>`
+  - `sessionId` request transport has been removed from the public auth route/client contract
+  - sign-up, sign-in, and OAuth callback JSON responses now return `auth.token` (plus auth metadata)
+    instead of `sessionId`
+  - auth lifecycle hooks are now `onCredentialIssued` and `onCredentialInvalidated`
+  - `SessionHookPayload` and `SessionSummary` alias exports have been removed
+  - the browser-facing auth cookie is now consistently named `fragno_auth`
+  - `fragment.services.buildSessionCookie(...)` has been renamed to
+    `fragment.services.buildAuthCookie(...)`
+  - `fragment.services.getSession(headers)` has been removed in favor of the shared request-auth
+    helpers
+  - session-centric organization/member/invitation/user service entrypoints have been removed in favor
+    of credential-, actor-, and principal-oriented variants
+
+  Migration notes:
+  - replace `response.sessionId` with `response.auth.token`
+  - stop forwarding `sessionId` in route query params or request bodies
+  - update hooks from `onSessionCreated` / `onSessionInvalidated` to `onCredentialIssued` /
+    `onCredentialInvalidated`
+  - remove any `SessionHookPayload` / `SessionSummary` imports in favor of the credential-named types
+  - update any cookie handling from `sessionid` to `fragno_auth`
+  - replace `fragment.services.buildSessionCookie(...)` with `fragment.services.buildAuthCookie(...)`
+  - replace `fragment.services.getSession(headers)` with the shared request-auth helpers at the auth
+    boundary
+  - update direct service calls from `*WithSession` / `*ForSession` to the new `*ForCredential`,
+    actor, or principal variants
+
+- f856070: Ensure all non-private packages include repository metadata in their `package.json` entries.
+- Updated dependencies [0d4cbe8]
+- Updated dependencies [fcecfed]
+- Updated dependencies [27b7db5]
+- Updated dependencies [9419f78]
+- Updated dependencies [0186a7a]
+- Updated dependencies [3f9d1bb]
+- Updated dependencies [20324e7]
+- Updated dependencies [8a60280]
+- Updated dependencies [aff91d1]
+- Updated dependencies [03d5a5c]
+- Updated dependencies [a28094e]
+- Updated dependencies [6cc8f36]
+- Updated dependencies [f42c8c6]
+- Updated dependencies [0e63275]
+- Updated dependencies [4944ecf]
+- Updated dependencies [4e5d611]
+- Updated dependencies [f297b5d]
+- Updated dependencies [ff3673f]
+- Updated dependencies [1e1088b]
+- Updated dependencies [9e2ee05]
+- Updated dependencies [3734573]
+- Updated dependencies [fa21507]
+- Updated dependencies [79055dd]
+- Updated dependencies [e7b36e1]
+- Updated dependencies [3328fe3]
+- Updated dependencies [a64dc64]
+- Updated dependencies [ea8ea88]
+- Updated dependencies [5e0cfe8]
+- Updated dependencies [9919fdd]
+  - @fragno-dev/db@0.4.2
+  - @fragno-dev/core@0.2.3
+
 ## 0.0.16
 
 ### Patch Changes
