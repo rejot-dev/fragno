@@ -40,8 +40,6 @@ export default [
         "routes/backoffice/connections/github/oauth-callback.tsx",
       ),
       route("connections/upload", "routes/backoffice/connections/upload/index.tsx"),
-      route("projects", "routes/backoffice/projects/index.tsx"),
-      route("projects/:orgId", "routes/backoffice/projects/organisation.tsx"),
       route("automations", "routes/backoffice/automations/index.tsx"),
       route(
         "automations/:orgId/claims/complete",
