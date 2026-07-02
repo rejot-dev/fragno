@@ -131,4 +131,46 @@ describe("automation sandbox instance services", () => {
       status: "starting",
     });
   });
+
+  test("records sandbox lifecycle events in the automation event list", async () => {
+    const { automation: fragment } = createAutomation("automation-sandbox-events-test");
+
+    await fragment.callServices(() =>
+      fragment.services.requestSandboxInstance({
+        id: "org_123::dev",
+        provider: CLOUDFLARE_SANDBOX_PROVIDER,
+        sleepAfter: "15m",
+      }),
+    );
+
+    await fragment.callServices(() =>
+      fragment.services.markSandboxInstanceRunning({
+        id: "org_123::dev",
+        provider: CLOUDFLARE_SANDBOX_PROVIDER,
+        keepAlive: false,
+        sleepAfter: "15m",
+      }),
+    );
+
+    const eventPage = await fragment.callServices(() =>
+      fragment.services.listEvents({ limit: 10 }),
+    );
+
+    expect(eventPage.events).toEqual([
+      expect.objectContaining({
+        scope: { kind: "org", orgId: "org_123" },
+        source: "sandbox",
+        eventType: "instance.ready",
+        payload: expect.objectContaining({
+          sandboxId: "org_123::dev",
+          provider: CLOUDFLARE_SANDBOX_PROVIDER,
+          status: "running",
+        }),
+        subject: expect.objectContaining({
+          orgId: "org_123",
+          sandboxId: "org_123::dev",
+        }),
+      }),
+    ]);
+  });
 });
