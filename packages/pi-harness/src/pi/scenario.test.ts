@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { instantiate } from "@fragno-dev/core";
 
-import type { AgentEvent, StreamFn } from "@earendil-works/pi-agent-core";
+import type { AgentEvent, AgentTool, StreamFn } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
   type Api,
@@ -397,12 +397,14 @@ describe("Pi harness workflow scenarios", () => {
             }),
             assert: ({ status, steps, detail }) => {
               assert(status.status === "waiting");
-              expect(resolveHarness).toHaveBeenCalled();
+              expect(resolveHarness).toHaveBeenCalledWith(
+                { harnessName: "default" },
+                { workflowName: interactiveChatWorkflow.name, sessionId: expect.any(String) },
+              );
               expect(observedSystemPrompts).toEqual(["You are resolved for this session."]);
-              expect(steps).toContainEqual(
+              expect(steps).not.toContainEqual(
                 expect.objectContaining({
                   name: "resolve-harnesses",
-                  status: "completed",
                   type: "do",
                 }),
               );
@@ -426,6 +428,103 @@ describe("Pi harness workflow scenarios", () => {
                 role: "assistant",
                 content: [{ type: "text", text: "hello from harness" }],
               });
+            },
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("marks an interactive chat workflow errored when resolving the harness throws", async () => {
+    const resolveHarness = vi.fn(() => {
+      throw new Error("RESOLVE_HARNESS_FAILED");
+    });
+    const interactiveChatWorkflow = createInteractiveChatWorkflow({
+      harnesses: {
+        default: {
+          env: createEnv(),
+          systemPrompt: "You are helpful.",
+          model: mockModel,
+          streamFn: createTextStreamFn("should not run"),
+        },
+      },
+      resolveHarness,
+      name: "interactive-chat-resolve-throws-workflow",
+    });
+    const config: PiFragmentConfig = { workflows: [interactiveChatWorkflow] };
+
+    await runScenario(
+      defineScenario({
+        name: "pi-harness-interactive-chat-resolve-throws",
+        workflows: createPiWorkflows({ workflows: config.workflows }),
+        vars: () => ({ sessionId: undefined as string | undefined }),
+        harness: {
+          configureFragments: (harness) => ({
+            pi: instantiate(piHarnessDefinition)
+              .withConfig(config)
+              .withRoutes([piRoutesFactory])
+              .withServices({ workflows: harness.fragment.services }),
+          }),
+        },
+        clients: ({ clientConfig }) => ({
+          user: createPiFragmentClients(clientConfig("pi", { runner: "user" })),
+        }),
+        runners: ["agent", "user"],
+        steps: ({ workflow, runners, clients }) => [
+          workflow.read({
+            read: async () => {
+              const session = await clients.user.useCreateSession.mutateQuery({
+                path: { workflowName: interactiveChatWorkflow.name },
+                body: { name: "Resolve Throws Session", input: { harnessName: "default" } },
+              });
+              assert(session && !Array.isArray(session), "expected session response");
+              return session.id;
+            },
+            storeAs: "sessionId",
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "create",
+          }),
+          workflow.read({
+            read: async (ctx) => ({
+              status: await ctx.state.getStatus(
+                interactiveChatWorkflow.name,
+                ctx.vars.sessionId ?? "",
+              ),
+              steps: await ctx.state.getSteps(
+                interactiveChatWorkflow.name,
+                ctx.vars.sessionId ?? "",
+              ),
+              detail: await clients.user.useSessionDetail.query({
+                path: {
+                  workflowName: interactiveChatWorkflow.name,
+                  sessionId: ctx.vars.sessionId!,
+                },
+              }),
+            }),
+            assert: ({ status, steps, detail }) => {
+              expect(resolveHarness).toHaveBeenCalledWith(
+                { harnessName: "default" },
+                { workflowName: interactiveChatWorkflow.name, sessionId: expect.any(String) },
+              );
+              expect(status).toMatchObject({
+                status: "errored",
+                error: { name: "Error", message: "RESOLVE_HARNESS_FAILED" },
+              });
+              expect(steps).not.toContainEqual(
+                expect.objectContaining({
+                  name: "resolve-harnesses",
+                  type: "do",
+                }),
+              );
+              assert(detail && !Array.isArray(detail), "expected session detail response");
+              expect(detail.workflow).toMatchObject({
+                status: "errored",
+                error: { name: "Error", message: "RESOLVE_HARNESS_FAILED" },
+              });
+              expect(detail.agent.state.messages).toEqual([]);
             },
           }),
         ],
@@ -985,9 +1084,11 @@ describe("Pi harness workflow scenarios", () => {
         }),
       },
     };
-    const tools = [classifyTool] as const;
+    const tools: readonly AgentTool[] = [classifyTool];
+    const resolveHarness = vi.fn(() => ({ tools }));
     const interactiveChatWorkflow = createInteractiveChatWorkflow({
-      harnesses: { default: { ...harnesses["default"]!, tools } },
+      harnesses,
+      resolveHarness,
       name: "interactive-chat-tool-workflow",
     });
     const config: PiFragmentConfig = { workflows: [interactiveChatWorkflow] };
@@ -1062,6 +1163,10 @@ describe("Pi harness workflow scenarios", () => {
                 content: [{ type: "text", text: "classified:broken" }],
                 details: { kind: "bug", confidence: 0.91 },
               });
+              expect(resolveHarness).toHaveBeenCalledWith(
+                { harnessName: "default" },
+                { workflowName: interactiveChatWorkflow.name, sessionId: expect.any(String) },
+              );
             },
           }),
         ],
