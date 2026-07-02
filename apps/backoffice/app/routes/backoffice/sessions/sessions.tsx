@@ -1,4 +1,6 @@
 import { ScrollArea } from "@base-ui/react/scroll-area";
+import type { PiSession, PiWorkflowStatus } from "@fragno-dev/pi-harness/types";
+import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Form,
@@ -12,12 +14,6 @@ import {
   useParams,
   useSearchParams,
 } from "react-router";
-
-import {
-  interactiveChatWorkflow,
-  type PiSession,
-  type PiSessionStatus,
-} from "@fragno-dev/pi-fragment";
 
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import {
@@ -44,6 +40,7 @@ type PiSessionsLoaderData = {
   sessionsError: string | null;
   sessions: PiSession[];
   turnSummaries: Record<string, string | null>;
+  workflowStatuses: Record<string, PiWorkflowStatus | null>;
 };
 
 type PiCreateSessionActionData = {
@@ -56,7 +53,7 @@ type PiSendMessageActionData = {
   intent: "send-message";
   ok: boolean;
   message?: string;
-  status?: PiSessionStatus | null;
+  status?: PiWorkflowStatus | null;
 };
 
 type PiSessionsActionData = PiCreateSessionActionData | PiSendMessageActionData;
@@ -64,28 +61,11 @@ type PiSessionsActionData = PiCreateSessionActionData | PiSendMessageActionData;
 export type PiSessionsOutletContext = {
   sessions: PiSession[];
   turnSummaries: Record<string, string | null>;
+  workflowStatuses: Record<string, PiWorkflowStatus | null>;
   harnesses: PiHarnessConfig[];
   selectedSessionId: string | null;
   basePath: string;
   createSessionPanel?: ReactNode;
-};
-
-const parseOptionalBoolean = (value: FormDataEntryValue | null) => {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const normalized = value.trim().toLowerCase();
-  if (!normalized) {
-    return undefined;
-  }
-  if (normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on") {
-    return true;
-  }
-  if (normalized === "0" || normalized === "false" || normalized === "no" || normalized === "off") {
-    return false;
-  }
-  return undefined;
 };
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
@@ -94,6 +74,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
 
   const emptyTurnSummaries: Record<string, string | null> = {};
+  const emptyWorkflowStatuses: Record<string, PiWorkflowStatus | null> = {};
 
   const { configState, configError } = await fetchPiConfig(context, params.orgId);
   if (configError) {
@@ -102,6 +83,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
       sessionsError: null,
       sessions: [],
       turnSummaries: emptyTurnSummaries,
+      workflowStatuses: emptyWorkflowStatuses,
     } satisfies PiSessionsLoaderData;
   }
 
@@ -116,23 +98,34 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
       sessionsError,
       sessions: [],
       turnSummaries: emptyTurnSummaries,
+      workflowStatuses: emptyWorkflowStatuses,
     } satisfies PiSessionsLoaderData;
   }
 
   const turnSummaries: Record<string, string | null> = {};
+  const workflowStatuses: Record<string, PiWorkflowStatus | null> = {};
   const detailResults = await Promise.all(
     sessions.map((session) =>
-      fetchPiSessionDetail(request, context, params.orgId!, session.workflowName, session.id).catch(
-        () => null,
-      ),
+      fetchPiSessionDetail(request, context, params.orgId!, session.workflowName, session.id),
     ),
   );
+  const failedDetail = detailResults.find((result) => result.sessionError);
+  if (failedDetail?.sessionError) {
+    return {
+      configError: null,
+      sessionsError: failedDetail.sessionError.message,
+      sessions: [],
+      turnSummaries: emptyTurnSummaries,
+      workflowStatuses: emptyWorkflowStatuses,
+    } satisfies PiSessionsLoaderData;
+  }
 
   detailResults.forEach((result, index) => {
     const session = sessions[index];
     if (!session) {
       return;
     }
+    workflowStatuses[session.id] = result?.session?.workflow.status ?? null;
     const messages = result?.session?.agent.state.messages ?? [];
     const assistantMessage = [...messages]
       .reverse()
@@ -145,6 +138,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     sessionsError: null,
     sessions,
     turnSummaries,
+    workflowStatuses,
   } satisfies PiSessionsLoaderData;
 }
 
@@ -175,8 +169,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     const sessionId = getValue("sessionId");
     const text = getValue("text");
     const commandKind = getValue("commandKind");
-    const done = parseOptionalBoolean(formData.get("done"));
-
     if (!sessionId) {
       return {
         intent: "send-message",
@@ -218,7 +210,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       sessionId,
       {
         text,
-        done,
         commandKind:
           commandKind === "followUp" || commandKind === "steer" ? commandKind : undefined,
       },
@@ -311,8 +302,10 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   });
 
   const result = await createPiSession(request, context, params.orgId, {
-    workflowName: interactiveChatWorkflow.name,
-    input: { agentName: agent },
+    workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME,
+    input: {
+      harnessName: agent,
+    },
     name: name || undefined,
   });
 
@@ -330,7 +323,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function BackofficeOrganisationPiSessionsLayout() {
-  const { sessions, configError, sessionsError, turnSummaries } = useLoaderData<typeof loader>();
+  const { sessions, configError, sessionsError, turnSummaries, workflowStatuses } =
+    useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>() as PiSessionsActionData | undefined;
   const navigation = useNavigation();
   const { orgId, configState } = useOutletContext<PiLayoutContext>();
@@ -540,6 +534,7 @@ export default function BackofficeOrganisationPiSessionsLayout() {
               ) : (
                 sessions.map((session) => {
                   const summary = turnSummaries[session.id];
+                  const workflowStatus = workflowStatuses[session.id] ?? "unknown";
                   const isSelected =
                     session.workflowName === selectedWorkflowName &&
                     session.id === selectedSessionId;
@@ -575,7 +570,7 @@ export default function BackofficeOrganisationPiSessionsLayout() {
                           </p>
                         </div>
                         <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[9px] tracking-[0.22em] uppercase">
-                          {session.status}
+                          {workflowStatus}
                         </span>
                       </div>
                       <p className="mt-2 text-xs text-[var(--bo-muted-2)]">
@@ -608,6 +603,7 @@ export default function BackofficeOrganisationPiSessionsLayout() {
           context={{
             sessions,
             turnSummaries,
+            workflowStatuses,
             harnesses,
             selectedSessionId,
             basePath,

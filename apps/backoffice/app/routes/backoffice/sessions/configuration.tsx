@@ -132,7 +132,7 @@ export default function BackofficeOrganisationPiConfiguration() {
               </p>
               <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Pi runtime</h2>
               <p className="mt-2 text-sm text-[var(--bo-muted)]">
-                Each organisation gets a dedicated Pi fragment and workflow engine hosted in a
+                Each organisation gets a dedicated Pi harness and workflow engine hosted in a
                 Durable Object.
               </p>
             </div>

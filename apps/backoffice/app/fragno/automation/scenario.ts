@@ -892,10 +892,11 @@ const createFakePiApi = (
       if (request.method === "POST" && pathname === `/api/pi/workflows/${workflowName}/sessions`) {
         const body = (await request.json()) as {
           name?: string | null;
-          input?: { agentName?: string; systemPrompt?: string };
+          input?: { agentName?: string; harnessName?: string; systemPrompt?: string };
         };
         const id = `pi-session-${sessions.size + 1}`;
-        const agent = body.input?.agentName ?? "default::openai::gpt-5-mini";
+        const agent =
+          body.input?.harnessName ?? body.input?.agentName ?? "default::openai::gpt-5-mini";
         const session: FakePiSession = {
           id,
           name: body.name ?? null,

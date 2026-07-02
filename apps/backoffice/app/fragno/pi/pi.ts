@@ -1,21 +1,24 @@
-import type { PiSkillRegistryResolver } from "@fragno-dev/pi-fragment/skills";
+import { createPiHarness, createPiWorkflows } from "@fragno-dev/pi-harness/factory";
+import { NoOpExecutionEnv } from "@fragno-dev/pi-harness/harness/execution-env";
+import type { PiSkillDefinition, PiSkillRegistryResolver } from "@fragno-dev/pi-harness/skills";
+import type { PiFragmentConfig } from "@fragno-dev/pi-harness/types";
+import {
+  createInteractiveChatWorkflow,
+  type InteractiveChatWorkflowParams,
+} from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
+import type { WorkflowRegistryEntry } from "@fragno-dev/workflows/workflow";
 import { Type, type TSchema } from "typebox";
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
-import {
-  createPi,
-  createPiFragment,
-  createPiWorkflows,
-  interactiveChatWorkflow,
-  type PiBuilder,
-  type PiSystemPromptResolver,
-  type PiTool,
-} from "@fragno-dev/pi-fragment";
 import { buildCodemodeWorkflowGraph } from "@fragno-dev/workflow-visualizer";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
-import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { getModel } from "@earendil-works/pi-ai";
+import {
+  formatSkillsForSystemPrompt,
+  type AgentTool,
+  type Skill,
+} from "@earendil-works/pi-agent-core";
+import { getModels } from "@earendil-works/pi-ai";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
@@ -51,10 +54,9 @@ import {
 } from "../runtime-tools/tool-families";
 import type { PiCodemodeWorkflowParams } from "./pi-codemode-workflow";
 import {
-  PI_MODEL_CATALOG,
+  parsePiAgentName,
   PI_PROVIDER_TO_MODEL_PROVIDER,
   PI_TOOL_IDS,
-  createPiAgentName,
   resolvePiHarnesses,
   type PiHarnessConfig,
   type PiToolId,
@@ -64,7 +66,7 @@ import { loadBackofficePiSkills } from "./pi-skills";
 import { withSinclairSchema } from "./typebox-compat";
 
 export type PiRuntimeFragments = {
-  piFragment: ReturnType<typeof createPiFragment>;
+  piFragment: ReturnType<typeof createPiHarness>;
   workflowsFragment: ReturnType<typeof createWorkflowsFragment>;
 };
 
@@ -193,7 +195,6 @@ const createBashTool = (
       if (signal?.aborted) {
         throw new Error("Bash execution aborted.");
       }
-
       const scriptPreview = script.length > 120 ? `${script.slice(0, 117)}...` : script;
       console.info("Pi bash tool start", {
         sessionId,
@@ -418,42 +419,70 @@ const getSessionFs = async (
   }
 };
 
-export const createPiToolRegistry = ({
-  sessionFileSystems,
-  sessionFileSystemContext,
-  env,
-  codemode,
-  bashCommandContext,
-}: {
+type BackofficePiToolFactory = (sessionId: string) => Promise<Partial<Record<PiToolId, AgentTool>>>;
+
+type CreatePiToolFactoryOptions = {
   sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
   sessionFileSystemContext: PiSessionFileSystemContext;
   env?: CloudflareEnv;
   codemode?: PiCodemodeRuntime;
   bashCommandContext?: PiBashCommandContext;
-}): Record<PiToolId, PiTool> => ({
-  read: async ({ session }) => {
-    const fileSystem = await getSessionFs(sessionFileSystems, session.id, sessionFileSystemContext);
-    return createReadTool(fileSystem);
-  },
-  bash: async ({ session }) => {
-    if (!bashCommandContext || !env) {
-      throw new Error("bash is not configured for this Pi runtime.");
-    }
+};
 
-    const fileSystem = await getSessionFs(sessionFileSystems, session.id, sessionFileSystemContext);
-    return createBashTool(fileSystem, session.id, bashCommandContext);
-  },
-  execCodeMode: async ({ session }) => {
-    const fileSystem = await getSessionFs(sessionFileSystems, session.id, sessionFileSystemContext);
-    return createExecCodeModeTool(
-      fileSystem,
-      session.id,
-      codemode,
-      bashCommandContext,
-      sessionFileSystemContext.orgId,
-    );
-  },
-});
+export const createPiToolFactory =
+  ({
+    sessionFileSystems,
+    sessionFileSystemContext,
+    env,
+    codemode,
+    bashCommandContext,
+  }: CreatePiToolFactoryOptions): BackofficePiToolFactory =>
+  async (sessionId) => {
+    const fileSystem = await getSessionFs(sessionFileSystems, sessionId, sessionFileSystemContext);
+
+    return {
+      read: createReadTool(fileSystem),
+      ...(bashCommandContext && env
+        ? { bash: createBashTool(fileSystem, sessionId, bashCommandContext) }
+        : {}),
+      execCodeMode: createExecCodeModeTool(
+        fileSystem,
+        sessionId,
+        codemode,
+        bashCommandContext,
+        sessionFileSystemContext.orgId,
+      ),
+    };
+  };
+
+export const createPiToolRegistry = (options: CreatePiToolFactoryOptions) => {
+  const createTools = createPiToolFactory(options);
+  const createSessionTool =
+    (toolId: PiToolId) =>
+    async (context: { session: { id: string } }): Promise<AgentTool> => {
+      const tool = (await createTools(context.session.id))[toolId];
+      if (!tool) {
+        throw new Error(`${toolId} is not configured for this Pi runtime.`);
+      }
+      return tool;
+    };
+
+  return {
+    read: createSessionTool("read"),
+    bash: createSessionTool("bash"),
+    execCodeMode: createSessionTool("execCodeMode"),
+  };
+};
+
+const resolveBackofficeModel = (
+  provider: keyof typeof PI_PROVIDER_TO_MODEL_PROVIDER,
+  modelName: string,
+) => {
+  const modelProvider = PI_PROVIDER_TO_MODEL_PROVIDER[provider];
+  return getModels(modelProvider).find(
+    (model) => model.name === modelName || model.id === modelName,
+  );
+};
 
 const resolveApiKey = (config: StoredPiConfig, provider: string): string | undefined => {
   switch (provider) {
@@ -468,76 +497,60 @@ const resolveApiKey = (config: StoredPiConfig, provider: string): string | undef
   }
 };
 
-const createBackofficePiBuilder = (tools: Record<PiToolId, PiTool>) =>
-  createPi()
-    .withTool("bash", tools.bash)
-    .withTool("execCodeMode", tools.execCodeMode)
-    .withTool("read", tools.read)
-    .withWorkflow(interactiveChatWorkflow)
-    .logging({ enabled: true, level: "debug" });
-
-type BackofficePiBuilder = PiBuilder<Record<string, never>, Record<PiToolId, PiTool>>;
-
-const buildPiRuntime = (
-  config: StoredPiConfig,
-  tools: Record<PiToolId, PiTool>,
-  skills: PiSkillRegistryResolver,
-  resolveSystemPrompt: PiSystemPromptResolver,
-) => {
-  const builder = createBackofficePiBuilder(tools);
-
-  const harnesses = resolvePiHarnesses(config.harnesses);
-  for (const harness of harnesses) {
-    registerHarnessAgents(builder, harness, config);
-  }
-
-  const runtime = builder.build();
-
-  return {
-    config: runtime.config,
-    workflows: createPiWorkflows({
-      agents: runtime.config.agents,
-      tools,
-      skills,
-      resolveSystemPrompt,
-      workflows: runtime.config.workflows,
-      logging: runtime.config.logging,
-    }),
+const createBackofficePiSkillResolver =
+  (options: {
+    sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
+    sessionFileSystemContext: PiSessionFileSystemContext;
+  }): PiSkillRegistryResolver =>
+  async ({ sessionId }) => {
+    const fileSystem = await getSessionFs(
+      options.sessionFileSystems,
+      sessionId,
+      options.sessionFileSystemContext,
+    );
+    return loadBackofficePiSkills(fileSystem);
   };
-};
 
-const registerHarnessAgents = (
-  builder: BackofficePiBuilder,
+type BackofficeSystemPromptResolver = (options: {
+  sessionId: string;
+  baseSystemPrompt: string;
+}) => Promise<string>;
+
+const createBackofficeSystemPromptResolver =
+  (options: {
+    sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
+    sessionFileSystemContext: PiSessionFileSystemContext;
+  }): BackofficeSystemPromptResolver =>
+  async ({ sessionId, baseSystemPrompt }) => {
+    const fileSystem = await getSessionFs(
+      options.sessionFileSystems,
+      sessionId,
+      options.sessionFileSystemContext,
+    );
+    return `${baseSystemPrompt}\n\n${await renderCodemodeSystemPrompt({ fileSystem })}`;
+  };
+
+const toAgentSkill = (skill: PiSkillDefinition): Skill => ({
+  name: skill.name,
+  description: skill.description,
+  content: skill.body ?? "",
+  filePath: skill.location ?? `${skill.directory ?? "/skills"}/${skill.name}/SKILL.md`,
+});
+
+const buildSystemPrompt = async (
   harness: PiHarnessConfig,
-  config: StoredPiConfig,
+  params: Pick<InteractiveChatWorkflowParams, "systemPrompt">,
+  skills: Skill[],
+  resolveSystemPrompt: BackofficeSystemPromptResolver,
+  sessionId: string,
 ) => {
-  for (const option of PI_MODEL_CATALOG) {
-    const modelProvider = PI_PROVIDER_TO_MODEL_PROVIDER[option.provider];
-    const model = getModel(modelProvider, option.name as never);
-    if (!model) {
-      console.warn("Pi model missing from registry", {
-        provider: option.provider,
-        model: option.name,
-      });
-      continue;
-    }
-
-    const agentName = createPiAgentName({
-      harnessId: harness.id,
-      provider: option.provider,
-      model: option.name,
-    });
-
-    builder.withAgent(agentName, {
-      systemPrompt: harness.systemPrompt,
-      model,
-      tools: resolveHarnessAgentTools(harness),
-      skills: "all",
-      toolConfig: harness.toolConfig,
-      thinkingLevel: harness.thinkingLevel,
-      getApiKey: (provider) => resolveApiKey(config, provider),
-    });
-  }
+  const baseSystemPrompt = [
+    params.systemPrompt ?? harness.systemPrompt,
+    formatSkillsForSystemPrompt(skills),
+  ]
+    .filter((part) => part.trim().length > 0)
+    .join("\n\n");
+  return await resolveSystemPrompt({ sessionId, baseSystemPrompt });
 };
 
 const resolveHarnessAgentTools = (harness: PiHarnessConfig): PiToolId[] => {
@@ -550,6 +563,103 @@ const resolveHarnessAgentTools = (harness: PiHarnessConfig): PiToolId[] => {
 
 const isValidPiToolId = (toolId: string): toolId is (typeof PI_TOOL_IDS)[number] =>
   PI_TOOL_IDS.includes(toolId as (typeof PI_TOOL_IDS)[number]);
+
+const createBackofficeInteractiveChatWorkflow = ({
+  config,
+  createTools,
+  skills,
+  resolveSystemPrompt,
+}: {
+  config: StoredPiConfig;
+  createTools: BackofficePiToolFactory;
+  skills: PiSkillRegistryResolver;
+  resolveSystemPrompt: BackofficeSystemPromptResolver;
+}): WorkflowRegistryEntry =>
+  createInteractiveChatWorkflow({
+    commandTimeout: "1 hour",
+    resolveHarness: async (params, context) => {
+      const requestedAgentName = params.harnessName ?? "default";
+      const parsedAgentName = parsePiAgentName(requestedAgentName);
+      const harnessId = parsedAgentName?.harnessId ?? requestedAgentName;
+      const harness = resolvePiHarnesses(config.harnesses).find((entry) => entry.id === harnessId);
+      if (!harness) {
+        throw new Error(`Harness ${harnessId} not found.`);
+      }
+
+      const model = parsedAgentName
+        ? resolveBackofficeModel(parsedAgentName.provider, parsedAgentName.model)
+        : params.model;
+      if (!model) {
+        throw new Error(
+          parsedAgentName
+            ? `Model ${parsedAgentName.provider}/${parsedAgentName.model} not found.`
+            : "INTERACTIVE_CHAT_MODEL_REQUIRED",
+        );
+      }
+
+      const apiKey = resolveApiKey(config, model.provider);
+      if (!apiKey) {
+        throw new Error(`API key for provider ${model.provider} is not configured.`);
+      }
+
+      const sessionTools = await createTools(context.sessionId);
+      const activeTools = resolveHarnessAgentTools(harness).map((toolId) => {
+        const tool = sessionTools[toolId];
+        if (!tool) {
+          throw new Error(`${toolId} is not configured for this Pi runtime.`);
+        }
+        return tool;
+      });
+      const agentSkills = Object.values(
+        await skills({
+          agentName: requestedAgentName,
+          workflowName: context.workflowName,
+          sessionId: context.sessionId,
+          turnId: "initial",
+        }),
+      ).map(toAgentSkill);
+
+      return {
+        harnessName: requestedAgentName,
+        env: new NoOpExecutionEnv(),
+        model,
+        thinkingLevel: params.thinkingLevel ?? harness.thinkingLevel,
+        systemPrompt: await buildSystemPrompt(
+          harness,
+          params,
+          agentSkills,
+          resolveSystemPrompt,
+          context.sessionId,
+        ),
+        resources: { skills: agentSkills },
+        tools: activeTools,
+        getApiKeyAndHeaders: async (requestModel) => {
+          const requestApiKey = resolveApiKey(config, requestModel.provider);
+          return requestApiKey ? { apiKey: requestApiKey } : undefined;
+        },
+      };
+    },
+  });
+
+const buildPiRuntime = (
+  config: StoredPiConfig,
+  createTools: BackofficePiToolFactory,
+  skills: PiSkillRegistryResolver,
+  resolveSystemPrompt: BackofficeSystemPromptResolver,
+) => {
+  const workflows = [
+    createBackofficeInteractiveChatWorkflow({ config, createTools, skills, resolveSystemPrompt }),
+  ];
+  const piConfig = {
+    workflows,
+    logging: { enabled: true, level: "debug" },
+  } satisfies PiFragmentConfig;
+
+  return {
+    config: piConfig,
+    workflows: createPiWorkflows(piConfig),
+  };
+};
 
 export const createPiRuntime = (options: {
   config: StoredPiConfig;
@@ -565,30 +675,22 @@ export const createPiRuntime = (options: {
     kind: "pi",
   });
   const codemode = options.codemode;
-  const tools = createPiToolRegistry({
+  const createTools = createPiToolFactory({
     sessionFileSystems: options.sessionFileSystems,
     sessionFileSystemContext: options.sessionFileSystemContext,
     env: options.env,
     codemode,
     bashCommandContext: options.bashCommandContext,
   });
-  const skills: PiSkillRegistryResolver = async ({ sessionId }) => {
-    const fileSystem = await getSessionFs(
-      options.sessionFileSystems,
-      sessionId,
-      options.sessionFileSystemContext,
-    );
-    return loadBackofficePiSkills(fileSystem);
-  };
-  const resolveSystemPrompt: PiSystemPromptResolver = async ({ sessionId, baseSystemPrompt }) => {
-    const fileSystem = await getSessionFs(
-      options.sessionFileSystems,
-      sessionId,
-      options.sessionFileSystemContext,
-    );
-    return `${baseSystemPrompt}\n\n${await renderCodemodeSystemPrompt({ fileSystem })}`;
-  };
-  const pi = buildPiRuntime(options.config, tools, skills, resolveSystemPrompt);
+  const skills = createBackofficePiSkillResolver({
+    sessionFileSystems: options.sessionFileSystems,
+    sessionFileSystemContext: options.sessionFileSystemContext,
+  });
+  const resolveSystemPrompt = createBackofficeSystemPromptResolver({
+    sessionFileSystems: options.sessionFileSystems,
+    sessionFileSystemContext: options.sessionFileSystemContext,
+  });
+  const pi = buildPiRuntime(options.config, createTools, skills, resolveSystemPrompt);
 
   const workflowsFragment = createWorkflowsFragment(
     {
@@ -601,7 +703,7 @@ export const createPiRuntime = (options: {
     },
   );
 
-  const piFragment = createPiFragment(
+  const piFragment = createPiHarness(
     pi.config,
     {
       databaseAdapter: adapter,

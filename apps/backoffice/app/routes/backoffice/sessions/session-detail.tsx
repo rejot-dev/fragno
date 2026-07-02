@@ -114,7 +114,8 @@ export default function BackofficeOrganisationPiSessionDetail() {
     return true;
   };
 
-  const handleContinue = () => liveSession.sendCommand({ kind: "continue" });
+  const handleContinue = () =>
+    liveSession.sendCommand({ kind: "nextTurn", input: { text: "Continue." } });
 
   const handleStop = () =>
     liveSession.sendCommand({ kind: "abort", reason: "Stopped from backoffice UI" });

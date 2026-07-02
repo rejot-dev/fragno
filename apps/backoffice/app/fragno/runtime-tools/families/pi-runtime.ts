@@ -1,17 +1,18 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
-
+import type { createPiHarness } from "@fragno-dev/pi-harness/factory";
 import type {
   PiSession,
   PiSessionDetail,
   PiSessionEventStreamItem,
-  createPiFragment,
-} from "@fragno-dev/pi-fragment";
+  PiWorkflowStatus,
+} from "@fragno-dev/pi-harness/types";
+import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 
 import type { PiObject } from "@/backoffice-runtime/object-registry";
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../runtime-errors";
 
-type PiFragment = ReturnType<typeof createPiFragment>;
+type PiFragment = ReturnType<typeof createPiHarness>;
 
 export type PiSessionCreateArgs = {
   agent: string;
@@ -21,8 +22,6 @@ export type PiSessionCreateArgs = {
   tags?: string[];
   steeringMode?: "all" | "one-at-a-time";
 };
-
-const INTERACTIVE_CHAT_WORKFLOW_NAME = "interactive-chat-workflow";
 
 export type PiSessionGetArgs = {
   sessionId: string;
@@ -42,9 +41,9 @@ export type PiSessionTurnArgs = {
 
 export type PiSessionTurnResult = PiSessionDetail & {
   assistantText: string;
-  commandStatus?: PiSession["status"];
+  commandStatus?: PiWorkflowStatus;
   /** @deprecated Use commandStatus. */
-  messageStatus: PiSession["status"];
+  messageStatus: PiWorkflowStatus;
   stream: PiSessionEventStreamItem[];
   /** Agent state after the turn (from session detail fetch). */
   terminalState: PiSessionDetail["agent"]["state"];
@@ -57,7 +56,11 @@ const getFramePayload = (frame: PiSessionEventStreamItem): unknown => {
     typeof frame.payload === "object" &&
     frame.payload !== null
   ) {
-    return frame.payload;
+    const payload = frame.payload;
+    if ("kind" in payload && payload.kind === "harness-event" && "event" in payload) {
+      return payload.event;
+    }
+    return payload;
   }
 
   return frame;
@@ -203,13 +206,28 @@ const createPiRouteCaller = ({ object, orgId }: { object: PiObject; orgId: strin
     },
   });
 
+const parsePiRuntimeAgentName = (agent: string) => {
+  const [harnessId, provider, ...modelParts] = agent.split("::");
+  const model = modelParts.join("::");
+  if (
+    !harnessId ||
+    !model ||
+    (provider !== "openai" && provider !== "anthropic" && provider !== "gemini")
+  ) {
+    throw new Error(
+      "pi.session.create agent must use the harnessId::provider::model name shown by the Pi UI.",
+    );
+  }
+  return { harnessId, provider, model };
+};
+
 const closeActiveStream = async (stream: AsyncGenerator<PiSessionEventStreamItem>) => {
   if (typeof stream.return !== "function") {
     return;
   }
 
   try {
-    await stream.return(undefined as never);
+    await stream.return(undefined);
   } catch {
     // Best-effort cleanup only.
   }
@@ -231,12 +249,13 @@ export const createPiRouteRuntime = ({
 
   return {
     createSession: async (args) => {
+      parsePiRuntimeAgentName(args.agent);
       const response = await callRoute("POST", "/workflows/:workflowName/sessions", {
         pathParams: { workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME },
         body: {
           name: args.name,
           input: {
-            agentName: args.agent,
+            harnessName: args.agent,
             systemPrompt: args.systemMessage,
           },
         },
@@ -245,7 +264,7 @@ export const createPiRouteRuntime = ({
         return response.data;
       }
       return throwOnRouteRuntimeError(response, {
-        runtimeLabel: "Pi fragment",
+        runtimeLabel: "Pi harness",
         label: "pi.session.create",
       });
     },
@@ -269,7 +288,7 @@ export const createPiRouteRuntime = ({
         return response.data;
       }
       return throwOnRouteRuntimeError(response, {
-        runtimeLabel: "Pi fragment",
+        runtimeLabel: "Pi harness",
         label: "pi.session.get",
       });
     },
@@ -287,7 +306,7 @@ export const createPiRouteRuntime = ({
         return response.data;
       }
       return throwOnRouteRuntimeError(response, {
-        runtimeLabel: "Pi fragment",
+        runtimeLabel: "Pi harness",
         label: "pi.session.list",
       });
     },
@@ -314,13 +333,13 @@ export const createPiRouteRuntime = ({
       );
       if (!isSuccessStatus(activeRoute.status)) {
         return throwOnRouteRuntimeError(activeRoute, {
-          runtimeLabel: "Pi fragment",
+          runtimeLabel: "Pi harness",
           label: "pi.session.turn active",
         });
       }
       if (activeRoute.type !== "jsonStream") {
         throw new Error(
-          `Pi fragment returned ${activeRoute.status}: session events route did not return a jsonStream response`,
+          `Pi harness returned ${activeRoute.status}: session events route did not return a jsonStream response`,
         );
       }
 
@@ -341,7 +360,7 @@ export const createPiRouteRuntime = ({
         );
         if (promptResponse.type !== "json" || !isSuccessStatus(promptResponse.status)) {
           return throwOnRouteRuntimeError(promptResponse, {
-            runtimeLabel: "Pi fragment",
+            runtimeLabel: "Pi harness",
             label: "pi.session.turn prompt",
           });
         }
@@ -360,7 +379,7 @@ export const createPiRouteRuntime = ({
         );
         if (detailResponse.type !== "json" || !isSuccessStatus(detailResponse.status)) {
           return throwOnRouteRuntimeError(detailResponse, {
-            runtimeLabel: "Pi fragment",
+            runtimeLabel: "Pi harness",
             label: "pi.session.turn detail",
           });
         }

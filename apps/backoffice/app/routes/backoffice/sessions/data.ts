@@ -1,13 +1,8 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
+import type { createPiHarness } from "@fragno-dev/pi-harness/factory";
+import type { PiSession, PiSessionDetail, PiWorkflowStatus } from "@fragno-dev/pi-harness/types";
+import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 import type { RouterContextProvider } from "react-router";
-
-import { interactiveChatWorkflow } from "@fragno-dev/pi-fragment";
-import type {
-  createPiFragment,
-  PiSession,
-  PiSessionDetail,
-  PiSessionStatus,
-} from "@fragno-dev/pi-fragment";
 
 import type { PiConfigState } from "@/fragno/pi/pi-shared";
 import { getPiDurableObject } from "@/worker-runtime/durable-objects";
@@ -15,7 +10,7 @@ import { getPiDurableObject } from "@/worker-runtime/durable-objects";
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;
 
-type PiFragment = ReturnType<typeof createPiFragment>;
+type PiFragment = ReturnType<typeof createPiHarness>;
 
 const createPiRouteCaller = (
   request: Request,
@@ -55,7 +50,7 @@ type PiCreateSessionResult = {
 };
 
 type PiSendMessageResult = {
-  status: PiSessionStatus | null;
+  status: PiWorkflowStatus | null;
   error: string | null;
 };
 
@@ -90,7 +85,7 @@ export async function fetchPiSessions(
     const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, requestedLimit));
 
     const response = await callRoute("GET", "/workflows/:workflowName/sessions", {
-      pathParams: { workflowName: interactiveChatWorkflow.name },
+      pathParams: { workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME },
       query: { limit: String(limit) },
     });
 
@@ -154,7 +149,7 @@ export async function createPiSession(
   payload: {
     workflowName?: string;
     input: {
-      agentName: string;
+      harnessName: string;
       systemPrompt?: string;
     };
     name?: string;
@@ -162,7 +157,7 @@ export async function createPiSession(
 ): Promise<PiCreateSessionResult> {
   try {
     const callRoute = createPiRouteCaller(request, context, orgId);
-    const { workflowName = interactiveChatWorkflow.name, ...body } = payload;
+    const { workflowName = INTERACTIVE_CHAT_WORKFLOW_NAME, ...body } = payload;
     const response = await callRoute("POST", "/workflows/:workflowName/sessions", {
       pathParams: { workflowName },
       body: {
@@ -202,7 +197,6 @@ export async function sendPiSessionMessage(
   sessionId: string,
   payload: {
     text: string;
-    done?: boolean;
     commandKind?: "followUp" | "steer";
   },
 ): Promise<PiSendMessageResult> {
@@ -213,9 +207,7 @@ export async function sendPiSessionMessage(
       "/workflows/:workflowName/sessions/:sessionId/command",
       {
         pathParams: { workflowName, sessionId },
-        body: payload.done
-          ? { kind: "complete", reason: payload.text }
-          : { kind: payload.commandKind ?? "followUp", input: { text: payload.text } },
+        body: { kind: payload.commandKind ?? "followUp", input: { text: payload.text } },
       },
     );
 

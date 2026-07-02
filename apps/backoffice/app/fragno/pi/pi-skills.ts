@@ -1,6 +1,5 @@
+import type { PiSkillDefinition, PiSkillRegistry } from "@fragno-dev/pi-harness/skills";
 import { parse } from "yaml";
-
-import type { PiSkillDefinition, PiSkillRegistry } from "@fragno-dev/pi-fragment";
 
 import type { MasterFileSystem } from "@/files";
 import { FileSystemError } from "@/files/fs-errors";

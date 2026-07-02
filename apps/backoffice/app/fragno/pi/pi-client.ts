@@ -1,4 +1,4 @@
-import { createPiFragmentClient } from "@fragno-dev/pi-fragment/react";
+import { createPiFragmentClient } from "@fragno-dev/pi-harness/react";
 
 export function createPiClient(orgId: string): ReturnType<typeof createPiFragmentClient> {
   return createPiFragmentClient({

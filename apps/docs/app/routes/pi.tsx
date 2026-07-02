@@ -14,7 +14,7 @@ import { FragnoCodeBlock } from "@/components/fragno-code-block";
 
 export function meta() {
   return [
-    { title: "Pi Fragment" },
+    { title: "Pi Harness" },
     {
       name: "description",
       content:
@@ -44,59 +44,59 @@ const features: Feature[] = [
   },
 ];
 
-const routeSurface = `POST /sessions
-GET  /sessions
-GET  /sessions/:sessionId
-GET  /sessions/:sessionId/active
-POST /sessions/:sessionId/command`;
+const routeSurface = `POST /workflows/:workflowName/sessions
+GET  /workflows/:workflowName/sessions
+GET  /workflows/:workflowName/sessions/:sessionId
+GET  /workflows/:workflowName/sessions/:sessionId/events
+POST /workflows/:workflowName/sessions/:sessionId/command`;
 
 const serverSnippet = `import { defaultFragnoRuntime } from "@fragno-dev/core";
-import { createPi, createPiFragment } from "@fragno-dev/pi-fragment";
+import { createPiHarness, createPiWorkflows } from "@fragno-dev/pi-harness/factory";
+import { createInteractiveChatWorkflow } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
-const pi = createPi()
-  .withTool("search", async () => ({
-    name: "search",
-    description: "Lookup references",
-    inputSchema: { type: "object", properties: { query: { type: "string" } } },
-    handler: async ({ query }: { query: string }) => "Result for " + query,
-  }))
-  .withAgent("support-agent", {
-    systemPrompt: "You are a helpful support agent.",
-    model,
-    tools: ["search"],
-  })
-  .build();
+const interactiveChat = createInteractiveChatWorkflow({
+  harnesses: {
+    support: {
+      env,
+      model,
+      systemPrompt: "You are a helpful support agent.",
+      tools: [searchTool],
+    },
+  },
+});
+
+const piConfig = { workflows: [interactiveChat] };
+const workflows = createPiWorkflows(piConfig);
 
 const workflowsFragment = createWorkflowsFragment(
-  {
-    workflows: pi.workflows,
-    runtime: defaultFragnoRuntime,
-  },
+  { workflows, runtime: defaultFragnoRuntime },
   { databaseAdapter, mountRoute: "/api/workflows" },
 );
 
-export const fragment = createPiFragment(
-  pi.config,
+export const fragment = createPiHarness(
+  piConfig,
   { databaseAdapter, mountRoute: "/api/pi" },
   { workflows: workflowsFragment.services },
 );`;
 
-const clientSnippet = `import { createPiFragmentClient } from "@fragno-dev/pi-fragment/react";
+const clientSnippet = `import { createPiFragmentClient } from "@fragno-dev/pi-harness/react";
 
 const pi = createPiFragmentClient({ baseUrl: "/api/pi" });
 
-const { data: sessions } = pi.useSessions();
 const createSession = pi.useCreateSession();
-const sendMessage = pi.useSendMessage();`;
+const session = pi.useSession({
+  path: { workflowName: "interactive-chat-workflow", sessionId },
+});`;
 
-const usageSnippet = `const session = await createSession.mutate({
-  body: { agent: "support-agent", title: "Customer issue" },
+const usageSnippet = `const created = await createSession.mutateQuery({
+  path: { workflowName: "interactive-chat-workflow" },
+  body: { name: "Customer issue", input: { harnessName: "support" } },
 });
 
-await sendMessage.mutate({
-  path: { sessionId: session.id },
-  body: { text: "Summarize the bug report and propose next steps." },
+await session.sendCommand({
+  kind: "prompt",
+  input: { text: "Summarize the bug report and propose next steps." },
 });`;
 
 export default function PiPage() {
@@ -113,9 +113,9 @@ export default function PiPage() {
         title={<>The minimal agent runtime</>}
         description={
           <>
-            The Pi fragment is built on top of the Workflows fragment, and provides a minimal
-            runtime for agent turns. Sessions are automatically durable, and tool calls are included
-            in persisted turn output for client visibility.
+            The Pi harness is built on top of the Workflows fragment and Pi's AgentHarness. It
+            provides durable session routes while keeping workflow and tool construction owned by
+            your application.
           </>
         }
         aside={
@@ -139,7 +139,7 @@ export default function PiPage() {
           </p>
           <FragnoCodeBlock
             lang="bash"
-            code="npm install @fragno-dev/pi-fragment @fragno-dev/workflows @fragno-dev/db"
+            code="npm install @fragno-dev/pi-harness @fragno-dev/workflows @fragno-dev/db"
             allowCopy
             syntaxTheme="editorial-triad"
             className="bg-[var(--editorial-surface-low)]! shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)]"

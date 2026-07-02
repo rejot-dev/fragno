@@ -1,11 +1,10 @@
 import { ScrollArea } from "@base-ui/react/scroll-area";
 import { Switch } from "@base-ui/react/switch";
+import type { PiSessionEventStreamItem } from "@fragno-dev/pi-harness/types";
 import { Maximize2, Minimize2 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Link } from "react-router";
 import { Streamdown } from "streamdown";
-
-import type { PiSessionEventStreamItem } from "@fragno-dev/pi-fragment";
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 
@@ -258,7 +257,6 @@ export function SessionHeader({
   session: {
     id: string;
     name?: string | null;
-    status: string;
     updatedAt: string | Date;
   };
 }) {
