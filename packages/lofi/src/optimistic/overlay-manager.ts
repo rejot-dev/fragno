@@ -6,6 +6,7 @@ import { StackedLofiAdapter } from "../adapters/stacked/adapter";
 import { createLocalHandlerTx } from "../submit/local-handler-tx";
 import { buildCommandKey, defaultQueueKey, loadSubmitQueue } from "../submit/queue";
 import type {
+  AnyLofiLocalProjection,
   LofiAdapter,
   LofiQueryEngineOptions,
   LofiQueryInterface,
@@ -20,6 +21,8 @@ export type OverlayManagerOptions<TContext> = {
   endpointName: string;
   adapter: OverlayManagerAdapter;
   schemas: AnySchema[];
+  localSchemas?: AnySchema[];
+  projections?: AnyLofiLocalProjection[];
   commands: Array<LofiSubmitCommandDefinition<unknown, TContext>>;
   createCommandContext?: (command: LofiSubmitCommandDefinition<unknown, TContext>) => TContext;
   store?: InMemoryLofiStore;
@@ -46,6 +49,8 @@ export class LofiOverlayManager<TContext = unknown> {
     this.overlayAdapter = new InMemoryLofiAdapter({
       endpointName: options.endpointName,
       schemas: options.schemas,
+      localSchemas: options.localSchemas,
+      projections: options.projections,
       ...(options.store ? { store: options.store } : {}),
     });
     this.store = this.overlayAdapter.store;

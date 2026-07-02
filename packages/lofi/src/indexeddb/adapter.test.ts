@@ -14,7 +14,7 @@ import {
 } from "fake-indexeddb";
 import { openDB, type IDBPDatabase } from "idb";
 
-import { IndexedDbAdapter } from "../mod";
+import { defineLocalProjection, IndexedDbAdapter } from "../mod";
 
 const createDbName = () => `lofi-test-${Math.random().toString(16).slice(2)}`;
 
@@ -502,6 +502,326 @@ describe("IndexedDbAdapter", () => {
     expect(await getInboxRow(dbAfter, [customCursorKey, "uow-vs1", "vs1"])).toBeUndefined();
     expect(await adapterV2.getMeta(customCursorKey)).toBeUndefined();
     dbAfter.close();
+  });
+
+  it("materializes local schema rows in the same transaction", async () => {
+    const appSchema = schema("app", (s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+    );
+    const localSchema = schema("local_user_view", (s) =>
+      s.addTable("user_cards", (t) =>
+        t.addColumn("id", idColumn()).addColumn("displayName", column("string")),
+      ),
+    );
+    const projection = defineLocalProjection({
+      retrieve: ({ mutations, match, read }) => {
+        let matched = false;
+        const existingById: Record<string, ReturnType<typeof read.get>> = {};
+        for (const rawMutation of mutations) {
+          const mutation = match.one(rawMutation, appSchema, "users", [
+            "create",
+            "update",
+            "delete",
+          ]);
+          if (!mutation) {
+            continue;
+          }
+          matched = true;
+          if (mutation.op === "delete") {
+            continue;
+          }
+          const name = mutation.op === "create" ? mutation.values.name : mutation.set.name;
+          if (typeof name === "string") {
+            existingById[mutation.externalId] = read.get(
+              localSchema,
+              "user_cards",
+              mutation.externalId,
+            );
+          }
+        }
+        return matched ? { existingById } : undefined;
+      },
+      mutate: ({ mutations, match, retrieved, tx }) => {
+        const userCards = tx.forSchema(localSchema);
+        for (const rawMutation of mutations) {
+          const mutation = match.one(rawMutation, appSchema, "users", ["create", "update"]);
+          if (!mutation) {
+            continue;
+          }
+          const name = mutation.op === "create" ? mutation.values.name : mutation.set.name;
+          if (typeof name !== "string") {
+            continue;
+          }
+          const values = { displayName: name.toUpperCase() };
+          if (retrieved.existingById[mutation.externalId]) {
+            userCards.update("user_cards", mutation.externalId, (b) => b.set(values));
+          } else {
+            userCards.create("user_cards", { id: mutation.externalId, ...values });
+          }
+        }
+      },
+    });
+
+    const dbName = createDbName();
+    const adapter = new IndexedDbAdapter({
+      dbName,
+      endpointName: "app",
+      schemas: [{ schema: appSchema }],
+      localSchemas: [{ schema: localSchema }],
+      projections: [projection],
+    });
+
+    await adapter.applyOutboxEntry({
+      sourceKey: "app::outbox",
+      versionstamp: "vs1",
+      uowId: "uow-vs1",
+      mutations: [
+        {
+          op: "create",
+          schema: "app",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "vs1",
+          values: { name: "Ada" },
+        },
+      ],
+    });
+
+    const query = adapter.createQueryEngine(localSchema);
+    await expect(query.find("user_cards", (b) => b.whereIndex("primary"))).resolves.toMatchObject([
+      { displayName: "ADA" },
+    ]);
+
+    const db = await openDb(dbName);
+    const localRow = await getRow(db, ["app", "local_user_view", "user_cards", "user-1"]);
+    expect(localRow?.data).toMatchObject({ displayName: "ADA" });
+    db.close();
+  });
+
+  it("skips indexeddb mutate when retrieve returns undefined", async () => {
+    const appSchema = schema("app", (s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+    );
+    const localSchema = schema("local_user_view", (s) =>
+      s.addTable("user_cards", (t) =>
+        t.addColumn("id", idColumn()).addColumn("displayName", column("string")),
+      ),
+    );
+    let skippedMutateRuns = 0;
+    const dbName = createDbName();
+    const adapter = new IndexedDbAdapter({
+      dbName,
+      endpointName: "app",
+      schemas: [{ schema: appSchema }],
+      localSchemas: [{ schema: localSchema }],
+      projections: [
+        defineLocalProjection({
+          retrieve: () => undefined,
+          mutate: () => {
+            skippedMutateRuns += 1;
+          },
+        }),
+      ],
+    });
+
+    await adapter.applyOutboxEntry({
+      sourceKey: "app::outbox",
+      versionstamp: "vs1",
+      uowId: "uow-vs1",
+      mutations: [
+        {
+          op: "create",
+          schema: "app",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "vs1",
+          values: { name: "Ada" },
+        },
+      ],
+    });
+
+    expect(skippedMutateRuns).toBe(0);
+    const db = await openDb(dbName);
+    expect(await getRow(db, ["app", "local_user_view", "user_cards", "user-1"])).toBeUndefined();
+    db.close();
+  });
+
+  it("does not rerun projections for duplicate indexeddb outbox entries", async () => {
+    const appSchema = schema("app", (s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+    );
+    const localSchema = schema("local_user_view", (s) =>
+      s.addTable("user_cards", (t) =>
+        t.addColumn("id", idColumn()).addColumn("displayName", column("string")),
+      ),
+    );
+    let projectionRuns = 0;
+    const adapter = new IndexedDbAdapter({
+      dbName: createDbName(),
+      endpointName: "app",
+      schemas: [{ schema: appSchema }],
+      localSchemas: [{ schema: localSchema }],
+      projections: [
+        {
+          mutate: ({ mutations, tx }) => {
+            const userCards = tx.forSchema(localSchema);
+            for (const mutation of mutations) {
+              projectionRuns += 1;
+              userCards.create("user_cards", {
+                id: mutation.externalId,
+                displayName: "ADA",
+              });
+            }
+          },
+        },
+      ],
+    });
+    const entry = {
+      sourceKey: "app::outbox",
+      versionstamp: "vs1",
+      uowId: "uow-vs1",
+      mutations: [
+        {
+          op: "create" as const,
+          schema: "app",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "vs1",
+          values: { name: "Ada" },
+        },
+      ],
+    };
+
+    await adapter.applyOutboxEntry(entry);
+    await adapter.applyOutboxEntry(entry);
+
+    expect(projectionRuns).toBe(1);
+  });
+
+  it("aborts indexeddb server rows and inbox entry when projection fails", async () => {
+    const appSchema = schema("app", (s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+    );
+    const localSchema = schema("local_user_view", (s) =>
+      s.addTable("user_cards", (t) =>
+        t.addColumn("id", idColumn()).addColumn("displayName", column("string")),
+      ),
+    );
+    const dbName = createDbName();
+    const adapter = new IndexedDbAdapter({
+      dbName,
+      endpointName: "app",
+      schemas: [{ schema: appSchema }],
+      localSchemas: [{ schema: localSchema }],
+      projections: [
+        {
+          mutate: () => {
+            throw new Error("projection failed");
+          },
+        },
+      ],
+    });
+
+    await expect(
+      adapter.applyOutboxEntry({
+        sourceKey: "app::outbox",
+        versionstamp: "vs1",
+        uowId: "uow-vs1",
+        mutations: [
+          {
+            op: "create",
+            schema: "app",
+            table: "users",
+            externalId: "user-1",
+            versionstamp: "vs1",
+            values: { name: "Ada" },
+          },
+        ],
+      }),
+    ).rejects.toThrow("projection failed");
+
+    const db = await openDb(dbName);
+    expect(await getRow(db, ["app", "app", "users", "user-1"])).toBeUndefined();
+    expect(await getInboxRow(db, ["app::outbox", "uow-vs1", "vs1"])).toBeUndefined();
+    db.close();
+  });
+
+  it("rejects invalid indexeddb local schema and projection targets", async () => {
+    const appSchema = schema("app", (s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+    );
+
+    expect(
+      () =>
+        new IndexedDbAdapter({
+          dbName: createDbName(),
+          endpointName: "app",
+          schemas: [{ schema: appSchema }],
+          localSchemas: [{ schema: appSchema }],
+        }),
+    ).toThrow("schema name must be unique");
+
+    const localSchema = schema("local_user_view", (s) =>
+      s.addTable("user_cards", (t) =>
+        t.addColumn("id", idColumn()).addColumn("displayName", column("string")),
+      ),
+    );
+    const adapter = new IndexedDbAdapter({
+      dbName: createDbName(),
+      endpointName: "app",
+      schemas: [{ schema: appSchema }],
+      localSchemas: [{ schema: localSchema }],
+      projections: [
+        {
+          mutate: ({ mutations, tx }) => {
+            tx.forSchema(appSchema).update("users", mutations[0]!.externalId, (b) =>
+              b.set({ name: "Bad" }),
+            );
+          },
+        },
+      ],
+    });
+
+    await expect(
+      adapter.applyMutations([
+        {
+          op: "create",
+          schema: "app",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "local-1",
+          values: { name: "Ada" },
+        },
+      ]),
+    ).rejects.toThrow("Projection writes must target a local schema");
+
+    const readAdapter = new IndexedDbAdapter({
+      dbName: createDbName(),
+      endpointName: "app",
+      schemas: [{ schema: appSchema }],
+      localSchemas: [{ schema: localSchema }],
+      projections: [
+        {
+          retrieve: ({ mutations, read }) => ({
+            row: read.get(appSchema, "users", mutations[0]!.externalId),
+          }),
+          mutate: () => {},
+        },
+      ],
+    });
+
+    await expect(
+      readAdapter.applyMutations([
+        {
+          op: "create",
+          schema: "app",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "local-1",
+          values: { name: "Ada" },
+        },
+      ]),
+    ).rejects.toThrow("Projection reads must target a local schema");
   });
 
   it("creates indexes and clears rows on schema fingerprint changes", async () => {

@@ -7,6 +7,7 @@ import {
   idColumn,
   referenceColumn,
   schema,
+  type AnySchema,
 } from "@fragno-dev/db/schema";
 import {
   IDBCursor,
@@ -24,10 +25,16 @@ import superjson from "superjson";
 import { ConcurrencyConflictError, defineSyncCommands } from "@fragno-dev/db";
 
 import { StackedLofiAdapter } from "../adapters/stacked/adapter";
+import { defineLocalProjection } from "../local/projection";
 import type { LofiQueryState } from "../reactive";
-import type { LofiSubmitCommandDefinition, LofiSyncCommandTxFactory } from "../types";
+import type {
+  AnyLofiLocalProjection,
+  LofiMutation,
+  LofiSubmitCommandDefinition,
+  LofiSyncCommandTxFactory,
+} from "../types";
 import { createScenarioSteps, defineScenario, runScenario } from "./scenario";
-import type { ScenarioDefinition } from "./scenario";
+import type { ScenarioClient, ScenarioDefinition } from "./scenario";
 
 const appSchema = schema("app", (s) =>
   s
@@ -45,6 +52,60 @@ const appSchema = schema("app", (s) =>
         .createIndex("idx_author", ["authorId"]),
     ),
 );
+
+const userViewSchema = schema("local_user_view", (s) =>
+  s.addTable("user_cards", (t) =>
+    t
+      .addColumn("id", idColumn())
+      .addColumn("displayName", column("string"))
+      .createIndex("idx_display", ["displayName"]),
+  ),
+);
+
+const userAuditSchema = schema("local_user_audit", (s) =>
+  s.addTable("user_audit", (t) =>
+    t
+      .addColumn("id", idColumn())
+      .addColumn("displayName", column("string"))
+      .addColumn("touchedAt", column("timestamp"))
+      .addColumn("reviewAt", column("timestamp")),
+  ),
+);
+
+const userMutationCountSchema = schema("local_user_mutation_counts", (s) =>
+  s.addTable("user_mutation_counts", (t) =>
+    t.addColumn("id", idColumn()).addColumn("count", column("integer")),
+  ),
+);
+
+const userViewProjection = defineLocalProjection({
+  name: "user-view",
+  retrieve: ({ match, read }) =>
+    read
+      .each(match.all(appSchema, "users", ["create", "update"]))
+      .map((mutation) => {
+        const name = mutation.op === "create" ? mutation.values.name : mutation.set.name;
+        return typeof name === "string" ? { mutation, name } : undefined;
+      })
+      .get(userViewSchema, "user_cards", ({ mutation }) => mutation.externalId),
+  mutate: ({ match, retrieved, tx }) => {
+    const userCards = tx.forSchema(userViewSchema);
+    for (const mutation of match.all(appSchema, "users", "delete")) {
+      userCards.delete("user_cards", mutation.externalId);
+    }
+    for (const {
+      item: { mutation, name },
+      row: existing,
+    } of retrieved) {
+      const values = { displayName: name.toUpperCase() };
+      if (existing) {
+        userCards.update("user_cards", mutation.externalId, (b) => b.set(values));
+      } else {
+        userCards.create("user_cards", { id: mutation.externalId, ...values });
+      }
+    }
+  },
+});
 
 type CommandArgs = { input: unknown; tx: LofiSyncCommandTxFactory; ctx: unknown };
 type AuthContext = { userId: string };
@@ -106,21 +167,25 @@ const createDeferred = <T>() => {
   return { promise, resolve, reject };
 };
 
+const createUserMutation = (options: {
+  versionstamp: string;
+  id: string;
+  name: string;
+}): LofiMutation => ({
+  op: "create",
+  schema: appSchema.name,
+  table: "users",
+  externalId: options.id,
+  values: { name: options.name },
+  versionstamp: options.versionstamp,
+});
+
 const createUserOutboxEntry = (options: { versionstamp: string; id: string; name: string }) => ({
   versionstamp: options.versionstamp,
   uowId: `uow-${options.versionstamp}`,
   payload: superjson.serialize({
     version: 1,
-    mutations: [
-      {
-        op: "create" as const,
-        schema: appSchema.name,
-        table: "users",
-        externalId: options.id,
-        values: { name: options.name },
-        versionstamp: options.versionstamp,
-      },
-    ],
+    mutations: [createUserMutation(options)],
   }),
 });
 
@@ -140,6 +205,61 @@ const runScenarioWithIndexedDb = async <
         createClientContext: () => ({}) as TContext,
       } as ScenarioDefinition<TSchema, TContext, TCommands, TVars>);
   return runScenario(withContext, { indexedDbGlobals: createIndexedDbGlobals() });
+};
+
+type ProjectionAdapterKind = "in-memory" | "indexeddb";
+
+const projectionAdapterConfig = (kind: ProjectionAdapterKind) =>
+  kind === "in-memory" ? ({ type: "in-memory" } as const) : ({ type: "indexeddb" } as const);
+
+const startProjectionScenario = async (options: {
+  name: string;
+  adapter: ProjectionAdapterKind;
+  localSchemas?: AnySchema[];
+  localProjections: AnyLofiLocalProjection[];
+}) =>
+  await runScenarioWithIndexedDb(
+    defineScenario({
+      name: options.name,
+      server: {
+        fragmentName: "lofi-test",
+        schema: appSchema,
+        syncCommands,
+      },
+      clientCommands,
+      localSchemas: options.localSchemas ?? [userViewSchema],
+      localProjections: options.localProjections,
+      clients: {
+        a: { endpointName: "client-a", adapter: projectionAdapterConfig(options.adapter) },
+      },
+      steps: [],
+    }),
+  );
+
+const findUsers = async (client: ScenarioClient<typeof appSchema>) =>
+  await client.createQueryEngine(appSchema).find("users", (b) => b.whereIndex("primary"));
+
+const findUserCards = async (client: ScenarioClient<typeof appSchema>) =>
+  await client.createQueryEngine(userViewSchema).find("user_cards", (b) => b.whereIndex("primary"));
+
+const expectProjectionStoresEmpty = async (client: ScenarioClient<typeof appSchema>) => {
+  expect(await findUsers(client)).toEqual([]);
+  expect(await findUserCards(client)).toEqual([]);
+};
+
+const requireScenarioClient = (
+  client: ScenarioClient<typeof appSchema> | undefined,
+): ScenarioClient<typeof appSchema> => {
+  assert(client);
+  return client;
+};
+
+const applyClientMutations = async (
+  client: ScenarioClient<typeof appSchema>,
+  mutations: LofiMutation[],
+) => {
+  assert(client.adapter.applyMutations);
+  await client.adapter.applyMutations(mutations);
 };
 
 type CreateUserInput = { id: string; name: string };
@@ -1956,6 +2076,776 @@ describe("Lofi scenario DSL", () => {
         steps.assert((ctx) => {
           assert(ctx.vars.userFinal?.name === "Bea");
         }),
+      ],
+    });
+
+    const context = await runScenarioWithIndexedDb(scenario);
+    await context.cleanup();
+  });
+
+  it("materializes local schemas from synced outbox mutations", async () => {
+    const scenario = defineScenario({
+      name: "local-schema-materialized-view",
+      server: {
+        fragmentName: "lofi-test",
+        schema: appSchema,
+        syncCommands,
+      },
+      clientCommands,
+      localSchemas: [userViewSchema],
+      localProjections: [userViewProjection],
+      clients: {
+        a: { endpointName: "client-a", adapter: { type: "in-memory" } },
+      },
+      steps: [
+        steps.command("a", "createUser", { id: "user-1", name: "Ada" }, { submit: true }),
+        steps.sync("a"),
+        steps.assert(async (ctx) => {
+          const query = ctx.clients["a"]?.createQueryEngine(userViewSchema);
+          expect(await query?.find("user_cards", (b) => b.whereIndex("primary"))).toMatchObject([
+            { displayName: "ADA" },
+          ]);
+        }),
+      ],
+    });
+
+    const context = await runScenarioWithIndexedDb(scenario);
+    await context.cleanup();
+  });
+
+  for (const adapter of ["in-memory", "indexeddb"] as const) {
+    it(`skips projection mutate when retrieve returns undefined (${adapter})`, async () => {
+      const context = await startProjectionScenario({
+        name: `local-schema-retrieve-undefined-${adapter}`,
+        adapter,
+        localProjections: [
+          defineLocalProjection({
+            retrieve: () => undefined,
+            mutate: () => {
+              throw new Error("mutate should not run");
+            },
+          }),
+        ],
+      });
+
+      const client = requireScenarioClient(context.clients["a"]);
+
+      try {
+        await applyClientMutations(client, [
+          createUserMutation({ versionstamp: "v1", id: "user-1", name: "Ada" }),
+        ]);
+        expect(await findUsers(client)).toMatchObject([{ name: "Ada" }]);
+        expect(await findUserCards(client)).toEqual([]);
+      } finally {
+        await context.cleanup();
+      }
+    });
+
+    it(`filters read.each mapper misses before local reads (${adapter})`, async () => {
+      const context = await startProjectionScenario({
+        name: `local-schema-read-each-map-filter-${adapter}`,
+        adapter,
+        localProjections: [
+          defineLocalProjection({
+            retrieve: ({ match, read }) =>
+              read
+                .each(match.all(appSchema, "users", "create"))
+                .map((mutation) => {
+                  if (mutation.externalId === "skip-undefined") {
+                    return undefined;
+                  }
+                  if (mutation.externalId === "skip-null") {
+                    return null;
+                  }
+                  if (mutation.externalId === "skip-false") {
+                    return false;
+                  }
+                  return { mutation, displayName: mutation.values.name.toUpperCase() };
+                })
+                .get(userViewSchema, "user_cards", ({ mutation }) => mutation.externalId),
+            mutate: ({ retrieved, tx }) => {
+              const userCards = tx.forSchema(userViewSchema);
+              for (const { item, row } of retrieved) {
+                if (row) {
+                  userCards.update("user_cards", item.mutation.externalId, (b) =>
+                    b.set({ displayName: item.displayName }),
+                  );
+                } else {
+                  userCards.create("user_cards", {
+                    id: item.mutation.externalId,
+                    displayName: item.displayName,
+                  });
+                }
+              }
+            },
+          }),
+        ],
+      });
+
+      const client = requireScenarioClient(context.clients["a"]);
+
+      try {
+        await applyClientMutations(client, [
+          createUserMutation({ versionstamp: "v1", id: "skip-undefined", name: "Ada" }),
+          createUserMutation({ versionstamp: "v1", id: "skip-null", name: "Bea" }),
+          createUserMutation({ versionstamp: "v1", id: "skip-false", name: "Cia" }),
+          createUserMutation({ versionstamp: "v1", id: "keep", name: "Dia" }),
+        ]);
+        expect(await findUserCards(client)).toMatchObject([{ displayName: "DIA" }]);
+      } finally {
+        await context.cleanup();
+      }
+    });
+
+    it(`rolls back source mutations when projection retrieve throws (${adapter})`, async () => {
+      const context = await startProjectionScenario({
+        name: `local-schema-retrieve-throws-${adapter}`,
+        adapter,
+        localProjections: [
+          defineLocalProjection({
+            retrieve: () => {
+              throw new Error("retrieve exploded");
+            },
+            mutate: () => undefined,
+          }),
+        ],
+      });
+
+      const client = requireScenarioClient(context.clients["a"]);
+
+      try {
+        await expect(
+          applyClientMutations(client, [
+            createUserMutation({ versionstamp: "v1", id: "user-1", name: "Ada" }),
+          ]),
+        ).rejects.toThrow("retrieve exploded");
+        await expectProjectionStoresEmpty(client);
+      } finally {
+        await context.cleanup();
+      }
+    });
+
+    it(`rolls back source mutations when projection mutate throws (${adapter})`, async () => {
+      const context = await startProjectionScenario({
+        name: `local-schema-mutate-throws-${adapter}`,
+        adapter,
+        localProjections: [
+          defineLocalProjection({
+            mutate: () => {
+              throw new Error("mutate exploded");
+            },
+          }),
+        ],
+      });
+
+      const client = requireScenarioClient(context.clients["a"]);
+
+      try {
+        await expect(
+          applyClientMutations(client, [
+            createUserMutation({ versionstamp: "v1", id: "user-1", name: "Ada" }),
+          ]),
+        ).rejects.toThrow("mutate exploded");
+        await expectProjectionStoresEmpty(client);
+      } finally {
+        await context.cleanup();
+      }
+    });
+
+    it(`does not commit projection writes queued before mutate throws (${adapter})`, async () => {
+      const context = await startProjectionScenario({
+        name: `local-schema-mutate-throws-after-write-${adapter}`,
+        adapter,
+        localProjections: [
+          defineLocalProjection({
+            mutate: ({ tx }) => {
+              tx.forSchema(userViewSchema).create("user_cards", {
+                id: "user-1",
+                displayName: "ADA",
+              });
+              throw new Error("mutate exploded after write");
+            },
+          }),
+        ],
+      });
+
+      const client = requireScenarioClient(context.clients["a"]);
+
+      try {
+        await expect(
+          applyClientMutations(client, [
+            createUserMutation({ versionstamp: "v1", id: "user-1", name: "Ada" }),
+          ]),
+        ).rejects.toThrow("mutate exploded after write");
+        await expectProjectionStoresEmpty(client);
+      } finally {
+        await context.cleanup();
+      }
+    });
+
+    it(`rolls back earlier projection writes when a later projection throws (${adapter})`, async () => {
+      const context = await startProjectionScenario({
+        name: `local-schema-later-projection-throws-${adapter}`,
+        adapter,
+        localProjections: [
+          defineLocalProjection({
+            mutate: ({ tx }) => {
+              tx.forSchema(userViewSchema).create("user_cards", {
+                id: "user-1",
+                displayName: "ADA",
+              });
+            },
+          }),
+          defineLocalProjection({
+            mutate: () => {
+              throw new Error("second projection exploded");
+            },
+          }),
+        ],
+      });
+
+      const client = requireScenarioClient(context.clients["a"]);
+
+      try {
+        await expect(
+          applyClientMutations(client, [
+            createUserMutation({ versionstamp: "v1", id: "user-1", name: "Ada" }),
+          ]),
+        ).rejects.toThrow("second projection exploded");
+        await expectProjectionStoresEmpty(client);
+      } finally {
+        await context.cleanup();
+      }
+    });
+
+    it(`rejects async projection retrieve and keeps stores unchanged (${adapter})`, async () => {
+      const context = await startProjectionScenario({
+        name: `local-schema-async-retrieve-${adapter}`,
+        adapter,
+        localProjections: [
+          defineLocalProjection({
+            retrieve: (() => Promise.resolve(undefined)) as never,
+            mutate: () => undefined,
+          }),
+        ],
+      });
+
+      const client = requireScenarioClient(context.clients["a"]);
+
+      try {
+        await expect(
+          applyClientMutations(client, [
+            createUserMutation({ versionstamp: "v1", id: "user-1", name: "Ada" }),
+          ]),
+        ).rejects.toThrow("Projection retrieve must be synchronous");
+        await expectProjectionStoresEmpty(client);
+      } finally {
+        await context.cleanup();
+      }
+    });
+
+    it(`rejects async projection mutate and keeps stores unchanged (${adapter})`, async () => {
+      const context = await startProjectionScenario({
+        name: `local-schema-async-mutate-${adapter}`,
+        adapter,
+        localProjections: [
+          defineLocalProjection({
+            mutate: (() => Promise.resolve(undefined)) as never,
+          }),
+        ],
+      });
+
+      const client = requireScenarioClient(context.clients["a"]);
+
+      try {
+        await expect(
+          applyClientMutations(client, [
+            createUserMutation({ versionstamp: "v1", id: "user-1", name: "Ada" }),
+          ]),
+        ).rejects.toThrow("Projection mutate must be synchronous");
+        await expectProjectionStoresEmpty(client);
+      } finally {
+        await context.cleanup();
+      }
+    });
+
+    it(`rejects promises nested inside projection retrieve plans (${adapter})`, async () => {
+      const context = await startProjectionScenario({
+        name: `local-schema-nested-promise-read-plan-${adapter}`,
+        adapter,
+        localProjections: [
+          defineLocalProjection({
+            retrieve: () => ({ nested: Promise.resolve(undefined) }) as never,
+            mutate: () => undefined,
+          }),
+        ],
+      });
+
+      const client = requireScenarioClient(context.clients["a"]);
+
+      try {
+        await expect(
+          applyClientMutations(client, [
+            createUserMutation({ versionstamp: "v1", id: "user-1", name: "Ada" }),
+          ]),
+        ).rejects.toThrow("Projection retrieve must return read descriptors, not promises");
+        await expectProjectionStoresEmpty(client);
+      } finally {
+        await context.cleanup();
+      }
+    });
+
+    it(`rejects projection reads from source schemas (${adapter})`, async () => {
+      const context = await startProjectionScenario({
+        name: `local-schema-source-read-rejected-${adapter}`,
+        adapter,
+        localProjections: [
+          defineLocalProjection({
+            retrieve: ({ read }) => read.get(appSchema, "users", "user-1"),
+            mutate: () => undefined,
+          }),
+        ],
+      });
+
+      const client = requireScenarioClient(context.clients["a"]);
+
+      try {
+        await expect(
+          applyClientMutations(client, [
+            createUserMutation({ versionstamp: "v1", id: "user-1", name: "Ada" }),
+          ]),
+        ).rejects.toThrow("Projection reads must target a local schema: app");
+        await expectProjectionStoresEmpty(client);
+      } finally {
+        await context.cleanup();
+      }
+    });
+
+    it(`rejects projection writes to source schemas (${adapter})`, async () => {
+      const context = await startProjectionScenario({
+        name: `local-schema-source-write-rejected-${adapter}`,
+        adapter,
+        localProjections: [
+          defineLocalProjection({
+            mutate: ({ tx }) => {
+              tx.forSchema(appSchema).create("users", { id: "user-1", name: "Ada" });
+            },
+          }),
+        ],
+      });
+
+      const client = requireScenarioClient(context.clients["a"]);
+
+      try {
+        await expect(
+          applyClientMutations(client, [
+            createUserMutation({ versionstamp: "v1", id: "user-1", name: "Ada" }),
+          ]),
+        ).rejects.toThrow("Projection writes must target a local schema: app");
+        await expectProjectionStoresEmpty(client);
+      } finally {
+        await context.cleanup();
+      }
+    });
+
+    it(`does not mark a failed outbox entry as applied (${adapter})`, async () => {
+      let shouldThrow = true;
+      const context = await startProjectionScenario({
+        name: `local-schema-failed-outbox-retry-${adapter}`,
+        adapter,
+        localProjections: [
+          defineLocalProjection({
+            mutate: ({ match, tx }) => {
+              if (shouldThrow) {
+                throw new Error("retryable projection failure");
+              }
+              const userCards = tx.forSchema(userViewSchema);
+              for (const mutation of match.all(appSchema, "users", "create")) {
+                userCards.create("user_cards", {
+                  id: mutation.externalId,
+                  displayName: mutation.values.name.toUpperCase(),
+                });
+              }
+            },
+          }),
+        ],
+      });
+
+      const client = requireScenarioClient(context.clients["a"]);
+
+      try {
+        const entry = {
+          sourceKey: "source",
+          uowId: "uow-v1",
+          versionstamp: "v1",
+          mutations: [createUserMutation({ versionstamp: "v1", id: "user-1", name: "Ada" })],
+        };
+
+        await expect(client.adapter.applyOutboxEntry(entry)).rejects.toThrow(
+          "retryable projection failure",
+        );
+        await expectProjectionStoresEmpty(client);
+
+        shouldThrow = false;
+        await expect(client.adapter.applyOutboxEntry(entry)).resolves.toEqual({
+          applied: true,
+        });
+        expect(await findUsers(client)).toMatchObject([{ name: "Ada" }]);
+        expect(await findUserCards(client)).toMatchObject([{ displayName: "ADA" }]);
+        await expect(client.adapter.applyOutboxEntry(entry)).resolves.toEqual({
+          applied: false,
+        });
+      } finally {
+        await context.cleanup();
+      }
+    });
+  }
+
+  for (const adapter of ["in-memory", "indexeddb"] as const) {
+    it(`allows later projections to read local rows written by earlier projections (${adapter})`, async () => {
+      const context = await startProjectionScenario({
+        name: `local-schema-staged-projection-reads-${adapter}`,
+        adapter,
+        localSchemas: [userViewSchema, userAuditSchema],
+        localProjections: [
+          defineLocalProjection({
+            mutate: ({ match, tx }) => {
+              const userCards = tx.forSchema(userViewSchema);
+              for (const mutation of match.all(appSchema, "users", "create")) {
+                userCards.create("user_cards", {
+                  id: mutation.externalId,
+                  displayName: mutation.values.name.toUpperCase(),
+                });
+              }
+            },
+          }),
+          defineLocalProjection({
+            retrieve: ({ match, read }) =>
+              read
+                .each(match.all(appSchema, "users", "create"))
+                .get(userViewSchema, "user_cards", (mutation) => mutation.externalId),
+            mutate: ({ retrieved, tx }) => {
+              const userAudit = tx.forSchema(userAuditSchema);
+              for (const { item: mutation, row: card } of retrieved) {
+                if (!card) {
+                  throw new Error("staged card was not visible");
+                }
+                userAudit.create("user_audit", {
+                  id: mutation.externalId,
+                  displayName: card.displayName,
+                  touchedAt: new Date(0),
+                  reviewAt: new Date(0),
+                });
+              }
+            },
+          }),
+        ],
+      });
+
+      const client = requireScenarioClient(context.clients["a"]);
+
+      try {
+        await applyClientMutations(client, [
+          createUserMutation({ versionstamp: "v1", id: "user-1", name: "Ada" }),
+        ]);
+        const auditRows = await client
+          .createQueryEngine(userAuditSchema)
+          .find("user_audit", (b) => b.whereIndex("primary"));
+        expect(auditRows).toMatchObject([{ displayName: "ADA" }]);
+      } finally {
+        await context.cleanup();
+      }
+    });
+  }
+
+  it("can implement a local counter using only local projection reads", async () => {
+    const scenario = defineScenario({
+      name: "local-schema-projection-counter",
+      server: {
+        fragmentName: "lofi-test",
+        schema: appSchema,
+        syncCommands,
+      },
+      clientCommands,
+      localSchemas: [userMutationCountSchema],
+      localProjections: [
+        defineLocalProjection({
+          name: "user-mutation-counter",
+          retrieve: ({ match, read }) =>
+            read
+              .each(match.all(appSchema, "users", ["create", "update"]))
+              .get(
+                userMutationCountSchema,
+                "user_mutation_counts",
+                (mutation) => mutation.externalId,
+              ),
+          mutate: ({ retrieved, tx }) => {
+            const countsById = new Map<string, number>();
+            const existingById = new Map<string, (typeof retrieved)[number]["row"]>();
+            for (const { item: mutation, row: existing } of retrieved) {
+              const currentCount = countsById.get(mutation.externalId) ?? existing?.count ?? 0;
+              countsById.set(mutation.externalId, currentCount + 1);
+              if (existing) {
+                existingById.set(mutation.externalId, existing);
+              }
+            }
+
+            const userCounts = tx.forSchema(userMutationCountSchema);
+            for (const [externalId, count] of countsById) {
+              if (existingById.has(externalId)) {
+                userCounts.update("user_mutation_counts", externalId, (b) => b.set({ count }));
+              } else {
+                userCounts.create("user_mutation_counts", { id: externalId, count });
+              }
+            }
+          },
+        }),
+      ],
+      clients: {
+        a: { endpointName: "client-a", adapter: { type: "in-memory" } },
+      },
+      steps: [
+        steps.command("a", "createUser", { id: "user-1", name: "Ada" }, { optimistic: false }),
+        steps.command("a", "renameUser", { id: "user-1", name: "Bea" }, { optimistic: false }),
+        steps.command("a", "renameUser", { id: "user-1", name: "Cia" }, { optimistic: false }),
+        steps.command("a", "renameUser", { id: "user-1", name: "Dia" }, { optimistic: false }),
+        steps.command("a", "renameUser", { id: "user-1", name: "Eve" }, { optimistic: false }),
+        steps.submit("a"),
+        steps.assert(async (ctx) => {
+          const query = ctx.clients["a"]?.createQueryEngine(userMutationCountSchema);
+          expect(
+            await query?.find("user_mutation_counts", (b) => b.whereIndex("primary")),
+          ).toMatchObject([{ count: 5 }]);
+        }),
+      ],
+    });
+
+    const context = await runScenarioWithIndexedDb(scenario);
+    await context.cleanup();
+  });
+
+  it("supports projection update builder now, interval, and check helpers", async () => {
+    const scenario = defineScenario({
+      name: "local-schema-projection-update-builder",
+      server: {
+        fragmentName: "lofi-test",
+        schema: appSchema,
+        syncCommands,
+      },
+      clientCommands,
+      localSchemas: [userAuditSchema],
+      localProjections: [
+        defineLocalProjection({
+          name: "user-audit",
+          retrieve: ({ match, read }) =>
+            read
+              .each(match.all(appSchema, "users", ["create", "update"]))
+              .map((mutation) => {
+                const name = mutation.op === "create" ? mutation.values.name : mutation.set.name;
+                return typeof name === "string" ? { mutation, name } : undefined;
+              })
+              .get(userAuditSchema, "user_audit", ({ mutation }) => mutation.externalId),
+          mutate: ({ retrieved, tx }) => {
+            const userAudit = tx.forSchema(userAuditSchema);
+            for (const {
+              item: { mutation, name },
+              row: existing,
+            } of retrieved) {
+              if (!existing) {
+                userAudit.create("user_audit", {
+                  id: mutation.externalId,
+                  displayName: name,
+                  touchedAt: new Date(0),
+                  reviewAt: new Date(0),
+                });
+                continue;
+              }
+
+              userAudit.update("user_audit", existing.id, (b) => {
+                const now = b.now();
+                return b
+                  .set({
+                    displayName: name,
+                    touchedAt: now,
+                    reviewAt: now.plus(b.interval({ minutes: 5 })),
+                  })
+                  .check();
+              });
+            }
+          },
+        }),
+      ],
+      clients: {
+        a: { endpointName: "client-a", adapter: { type: "indexeddb" } },
+      },
+      steps: [
+        steps.command("a", "createUser", { id: "user-1", name: "Ada" }, { submit: true }),
+        steps.sync("a"),
+        steps.command("a", "renameUser", { id: "user-1", name: "Bea" }, { submit: true }),
+        steps.sync("a"),
+        steps.assert(async (ctx) => {
+          const query = ctx.clients["a"]?.createQueryEngine(userAuditSchema);
+          const rows = await query?.find("user_audit", (b) => b.whereIndex("primary"));
+          expect(rows).toHaveLength(1);
+
+          const row = rows?.[0];
+          assert(row?.displayName === "Bea");
+          expect(row?.touchedAt).toBeInstanceOf(Date);
+          expect(row?.reviewAt).toBeInstanceOf(Date);
+          if (row?.touchedAt instanceof Date && row.reviewAt instanceof Date) {
+            assert(row.reviewAt.getTime() - row.touchedAt.getTime() === 300_000);
+          }
+        }),
+      ],
+    });
+
+    const context = await runScenarioWithIndexedDb(scenario);
+    await context.cleanup();
+  });
+
+  it("fails projection update checks when the local row version is stale", async () => {
+    const scenario = defineScenario({
+      name: "local-schema-projection-stale-check",
+      server: {
+        fragmentName: "lofi-test",
+        schema: appSchema,
+        syncCommands,
+      },
+      clientCommands,
+      localSchemas: [userAuditSchema],
+      localProjections: [
+        defineLocalProjection({
+          retrieve: ({ match, read }) =>
+            read
+              .each(match.all(appSchema, "users", ["create", "update"]))
+              .map((mutation) => {
+                const name = mutation.op === "create" ? mutation.values.name : mutation.set.name;
+                return typeof name === "string" ? { mutation, name } : undefined;
+              })
+              .get(userAuditSchema, "user_audit", ({ mutation }) => mutation.externalId),
+          mutate: ({ retrieved, tx }) => {
+            const userAudit = tx.forSchema(userAuditSchema);
+            for (const {
+              item: { mutation, name },
+              row: existing,
+            } of retrieved) {
+              if (!existing) {
+                userAudit.create("user_audit", {
+                  id: mutation.externalId,
+                  displayName: name,
+                  touchedAt: new Date(0),
+                  reviewAt: new Date(0),
+                });
+                continue;
+              }
+
+              userAudit.update(
+                "user_audit",
+                FragnoId.fromExternal(mutation.externalId, existing.id.version + 1),
+                (b) => b.set({ displayName: name }).check(),
+              );
+            }
+          },
+        }),
+      ],
+      clients: {
+        a: { endpointName: "client-a", adapter: { type: "in-memory" } },
+      },
+      steps: [
+        steps.command("a", "createUser", { id: "user-1", name: "Ada" }, { submit: true }),
+        steps.sync("a"),
+        steps.command("a", "renameUser", { id: "user-1", name: "Bea" }, { submit: true }),
+        steps.sync("a"),
+      ],
+    });
+
+    await expect(runScenarioWithIndexedDb(scenario)).rejects.toThrow(
+      "Projection update check failed",
+    );
+  });
+
+  it("updates and deletes local schema rows for each client", async () => {
+    const scenario = defineScenario({
+      name: "local-schema-update-delete",
+      server: {
+        fragmentName: "lofi-test",
+        schema: appSchema,
+        syncCommands,
+      },
+      clientCommands,
+      localSchemas: [userViewSchema],
+      localProjections: [userViewProjection],
+      clients: {
+        a: { endpointName: "client-a", adapter: { type: "in-memory" } },
+        b: { endpointName: "client-b", adapter: { type: "in-memory" } },
+      },
+      steps: [
+        steps.command("a", "createUser", { id: "user-1", name: "Ada" }, { submit: true }),
+        steps.sync("a"),
+        steps.sync("b"),
+        steps.command("a", "renameUser", { id: "user-1", name: "Bea" }, { submit: true }),
+        steps.sync("a"),
+        steps.sync("b"),
+        steps.assert(async (ctx) => {
+          for (const name of ["a", "b"] as const) {
+            const query = ctx.clients[name]?.createQueryEngine(userViewSchema);
+            expect(await query?.find("user_cards", (b) => b.whereIndex("primary"))).toMatchObject([
+              { displayName: "BEA" },
+            ]);
+          }
+        }),
+        steps.command("a", "deleteUser", { id: "user-1", expectedVersion: 1 }, { submit: true }),
+        steps.sync("a"),
+        steps.sync("b"),
+        steps.assert(async (ctx) => {
+          for (const name of ["a", "b"] as const) {
+            const query = ctx.clients[name]?.createQueryEngine(userViewSchema);
+            expect(await query?.find("user_cards", (b) => b.whereIndex("primary"))).toEqual([]);
+          }
+        }),
+      ],
+    });
+
+    const context = await runScenarioWithIndexedDb(scenario);
+    await context.cleanup();
+  });
+
+  it("exposes local schemas to reactive scenario stores and stacked overlays", async () => {
+    const scenario = defineScenario({
+      name: "local-schema-reactive-stacked",
+      server: {
+        fragmentName: "lofi-test",
+        schema: appSchema,
+        syncCommands,
+      },
+      clientCommands,
+      localSchemas: [userViewSchema],
+      localProjections: [userViewProjection],
+      clients: {
+        a: { endpointName: "client-a", adapter: { type: "stacked", base: "in-memory" } },
+      },
+      steps: [
+        steps.createStore("a", "cards", "user_cards" as never, (b) => b.whereIndex("primary"), {
+          schema: userViewSchema,
+          initialData: [],
+        }),
+        steps.command("a", "createUser", { id: "user-1", name: "Ada" }, { optimistic: true }),
+        steps.waitForStore(
+          "a",
+          "cards",
+          (state) =>
+            Array.isArray(state.data) &&
+            state.data.some((row) => (row as { displayName?: string }).displayName === "ADA"),
+        ),
+        steps.submit("a"),
+        steps.sync("a"),
+        steps.waitForStore(
+          "a",
+          "cards",
+          (state) =>
+            Array.isArray(state.data) &&
+            state.data.some((row) => (row as { displayName?: string }).displayName === "ADA"),
+        ),
       ],
     });
 

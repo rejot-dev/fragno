@@ -1,7 +1,8 @@
 NODE_OPTIONS=--conditions=development node --import tsx src/mod.ts serve# react-spa-local-first
 
 Vite + React SPA demo that uses `@fragno-dev/lofi` to keep a local IndexedDB mirror of Fragno DB
-outboxes. The UI lets you configure endpoints, pick tables, and inspect local rows.
+outboxes. The UI lets you configure endpoints, pick tables, inspect local rows, and browse the local
+`local_project_usage.project_usage` materialized view built from comment/rating mutations.
 
 ## Run
 
@@ -30,3 +31,10 @@ Open the URL printed by Vite (usually `http://localhost:5173`).
 
 Use the Endpoints panel to add or edit base URLs. For each endpoint, pick a schema pack and table,
 then the Rows panel will show local entries pulled from the outbox.
+
+The Tables panel also includes a local schema:
+
+- `local_project_usage.project_usage` combines comment mutations and rating total mutations into a
+  read-only project/post summary view. This demonstrates Lofi local schemas and projections: the
+  view is written transactionally while outbox entries are applied, but it is never submitted back
+  to the server.

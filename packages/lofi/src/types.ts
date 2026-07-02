@@ -1,6 +1,17 @@
-import type { AnySchema } from "@fragno-dev/db/schema";
+import type {
+  TableToColumnValues,
+  TableToInsertValues,
+  TableToUpdateValues,
+} from "@fragno-dev/db/query";
+import type { AnySchema, AnyTable, FragnoId } from "@fragno-dev/db/schema";
 
-import type { createHandlerTxBuilder, HandlerTxBuilder } from "@fragno-dev/db";
+import type {
+  createHandlerTxBuilder,
+  DbInterval,
+  DbIntervalInput,
+  DbNow,
+  HandlerTxBuilder,
+} from "@fragno-dev/db";
 import type { OutboxEntry } from "@fragno-dev/db";
 
 import type { InMemoryLofiStore } from "./adapters/in-memory/store";
@@ -47,6 +58,254 @@ export type LofiSyncResult = {
 
 export type LofiSchemaRegistration = { schema: AnySchema };
 
+type Prettify<T> = T extends (...args: never[]) => unknown
+  ? T
+  : T extends object
+    ? { [K in keyof T]: T[K] }
+    : T;
+
+export type LofiMutationOp = LofiMutation["op"];
+
+export type LofiTypedMutation<
+  TSchema extends AnySchema,
+  TTableName extends keyof TSchema["tables"] & string,
+  TOp extends LofiMutationOp,
+> = TOp extends "create"
+  ? Prettify<
+      Omit<Extract<LofiMutation, { op: "create" }>, "schema" | "table" | "values"> & {
+        schema: TSchema["name"];
+        table: TTableName;
+        values: Prettify<TableToInsertValues<TSchema["tables"][TTableName]>>;
+      }
+    >
+  : TOp extends "update"
+    ? Prettify<
+        Omit<Extract<LofiMutation, { op: "update" }>, "schema" | "table" | "set"> & {
+          schema: TSchema["name"];
+          table: TTableName;
+          set: Prettify<TableToUpdateValues<TSchema["tables"][TTableName]>>;
+        }
+      >
+    : Prettify<
+        Omit<Extract<LofiMutation, { op: "delete" }>, "schema" | "table"> & {
+          schema: TSchema["name"];
+          table: TTableName;
+        }
+      >;
+
+type LofiMutationMatchResult<
+  TSchema extends AnySchema,
+  TTableName extends keyof TSchema["tables"] & string,
+  TOp extends LofiMutationOp | readonly LofiMutationOp[],
+> = LofiTypedMutation<
+  TSchema,
+  TTableName,
+  TOp extends readonly LofiMutationOp[] ? TOp[number] : Extract<TOp, LofiMutationOp>
+>;
+
+type LofiMutationMatchOne = <
+  const TSchema extends AnySchema,
+  const TTableName extends keyof TSchema["tables"] & string,
+  const TOp extends LofiMutationOp | readonly LofiMutationOp[],
+>(
+  mutation: LofiMutation,
+  schema: TSchema,
+  table: TTableName,
+  op: TOp,
+) => LofiMutationMatchResult<TSchema, TTableName, TOp> | undefined;
+
+export type LofiMutationMatcher = {
+  one: LofiMutationMatchOne;
+  all: <
+    const TSchema extends AnySchema,
+    const TTableName extends keyof TSchema["tables"] & string,
+    const TOp extends LofiMutationOp | readonly LofiMutationOp[],
+  >(
+    schema: TSchema,
+    table: TTableName,
+    op: TOp,
+  ) => LofiMutationMatchResult<TSchema, TTableName, TOp>[];
+};
+
+export type LofiProjectionRowSnapshot = {
+  key: [string, string, string, string];
+  endpoint: string;
+  schema: string;
+  table: string;
+  id: string;
+  data: Record<string, unknown>;
+  _lofi: {
+    versionstamp: string;
+    norm: Record<string, unknown>;
+    internalId: number;
+    version: number;
+  };
+};
+
+export type LofiProjectionRowLookup = {
+  getProjectionRow(options: {
+    schemaName: string;
+    tableName: string;
+    externalId: string;
+  }): LofiProjectionRowSnapshot | undefined | Promise<LofiProjectionRowSnapshot | undefined>;
+};
+
+export type LofiProjectionReadRequest<TValue> = {
+  readonly type: "lofi.projection.read.get";
+  readonly schema: AnySchema;
+  readonly tableName: string;
+  readonly externalId: string;
+  readonly value?: TValue;
+};
+
+type LofiProjectionReadEachGetExternalId<TItem> = {
+  bivarianceHack(item: TItem): string;
+}["bivarianceHack"];
+
+export type LofiProjectionReadEachRequest<TItem, TValue> = {
+  readonly type: "lofi.projection.read.each";
+  readonly items: readonly TItem[];
+  readonly schema: AnySchema;
+  readonly tableName: string;
+  readonly getExternalId: LofiProjectionReadEachGetExternalId<TItem>;
+  readonly value?: readonly Prettify<{ item: Prettify<TItem>; row: Prettify<TValue> }>[];
+};
+
+export type LofiProjectionReadEachBuilder<TItem> = {
+  map<TMapped>(
+    mapper: (item: TItem) => TMapped | undefined | null | false,
+  ): LofiProjectionReadEachBuilder<Exclude<TMapped, undefined | null | false>>;
+  get<const TSchema extends AnySchema, TTableName extends keyof TSchema["tables"] & string>(
+    schema: TSchema,
+    table: TTableName,
+    getExternalId: (item: TItem) => string,
+  ): LofiProjectionReadEachRequest<
+    TItem,
+    TableToColumnValues<TSchema["tables"][TTableName]> | undefined
+  >;
+};
+
+export type LofiLocalProjectionRead = {
+  /** Declares a read from projection-owned local schemas only; app/source schemas are rejected. */
+  get<const TSchema extends AnySchema, TTableName extends keyof TSchema["tables"] & string>(
+    schema: TSchema,
+    table: TTableName,
+    externalId: string,
+  ): LofiProjectionReadRequest<TableToColumnValues<TSchema["tables"][TTableName]> | undefined>;
+
+  /** Starts a composable read plan for a collection of projection items. */
+  each<const TItem>(items: readonly TItem[]): LofiProjectionReadEachBuilder<TItem>;
+
+  /** Pairs each item with a projection-owned local row keyed by that item. */
+  getEach<
+    const TItem,
+    const TSchema extends AnySchema,
+    TTableName extends keyof TSchema["tables"] & string,
+  >(
+    items: readonly TItem[],
+    schema: TSchema,
+    table: TTableName,
+    getExternalId: (item: TItem) => string,
+  ): LofiProjectionReadEachRequest<
+    TItem,
+    TableToColumnValues<TSchema["tables"][TTableName]> | undefined
+  >;
+};
+
+export type LofiProjectionReadPlan =
+  | LofiProjectionReadRequest<unknown>
+  | LofiProjectionReadEachRequest<unknown, unknown>
+  | { readonly [key: string]: LofiProjectionReadPlan }
+  | readonly LofiProjectionReadPlan[]
+  | undefined
+  | null;
+
+export type LofiProjectionResolved<T> =
+  T extends LofiProjectionReadRequest<infer TValue>
+    ? Prettify<TValue>
+    : T extends LofiProjectionReadEachRequest<infer TItem, infer TValue>
+      ? readonly Prettify<{ item: Prettify<TItem>; row: Prettify<TValue> }>[]
+      : T extends readonly [infer THead, ...infer TTail]
+        ? readonly [LofiProjectionResolved<THead>, ...LofiProjectionResolved<TTail>]
+        : T extends readonly (infer TItem)[]
+          ? readonly LofiProjectionResolved<TItem>[]
+          : T extends object
+            ? Prettify<{ [K in keyof T]: LofiProjectionResolved<T[K]> }>
+            : T;
+
+export type LofiProjectionUpdateBuilder<TTable extends AnyTable> = {
+  set(values: TableToUpdateValues<TTable>): LofiProjectionUpdateBuilder<TTable>;
+  check(): LofiProjectionUpdateBuilder<TTable>;
+  now(): DbNow;
+  interval(input: DbIntervalInput): DbInterval;
+};
+
+export type LofiProjectionSchemaTx<TSchema extends AnySchema> = {
+  create<const TTableName extends keyof TSchema["tables"] & string>(
+    table: TTableName,
+    values: TableToInsertValues<TSchema["tables"][TTableName]>,
+  ): FragnoId;
+  update<const TTableName extends keyof TSchema["tables"] & string>(
+    table: TTableName,
+    externalId: string | FragnoId,
+    builder: (
+      b: LofiProjectionUpdateBuilder<TSchema["tables"][TTableName]>,
+    ) => LofiProjectionUpdateBuilder<TSchema["tables"][TTableName]> | void,
+  ): void;
+  delete<const TTableName extends keyof TSchema["tables"] & string>(
+    table: TTableName,
+    externalId: string | FragnoId,
+  ): void;
+};
+
+export type LofiProjectionTx = {
+  forSchema<const TSchema extends AnySchema>(schema: TSchema): LofiProjectionSchemaTx<TSchema>;
+};
+
+export type LofiLocalProjectionRetrieveContext = {
+  mutations: readonly LofiMutation[];
+  source: {
+    sourceKey?: string;
+    uowId?: string;
+    versionstamp: string;
+  };
+  match: LofiMutationMatcher;
+  read: LofiLocalProjectionRead;
+};
+
+export type LofiLocalProjectionMutateContext<TRetrieved = unknown> = {
+  mutations: readonly LofiMutation[];
+  source: {
+    sourceKey?: string;
+    uowId?: string;
+    versionstamp: string;
+  };
+  match: LofiMutationMatcher;
+  retrieved: TRetrieved;
+  tx: LofiProjectionTx;
+};
+
+export type LofiLocalProjectionContext<TRetrieved = unknown> =
+  LofiLocalProjectionMutateContext<TRetrieved>;
+
+export type LofiProjectionRetrieved<TRetrieve extends LofiProjectionReadPlan | void> = [
+  TRetrieve,
+] extends [undefined | void]
+  ? undefined
+  : LofiProjectionResolved<Exclude<TRetrieve, undefined | void>>;
+
+type LofiLocalProjectionMutateHandler<TRetrieved> = {
+  bivarianceHack(ctx: LofiLocalProjectionMutateContext<TRetrieved>): void;
+}["bivarianceHack"];
+
+export type LofiLocalProjection<TRetrieve extends LofiProjectionReadPlan | void = undefined> = {
+  name?: string;
+  retrieve?: (ctx: LofiLocalProjectionRetrieveContext) => TRetrieve;
+  mutate: LofiLocalProjectionMutateHandler<LofiProjectionRetrieved<TRetrieve>>;
+};
+
+export type AnyLofiLocalProjection = LofiLocalProjection<LofiProjectionReadPlan | void>;
+
 export type LofiAdapter = {
   applyOutboxEntry(options: {
     sourceKey: string;
@@ -63,12 +322,16 @@ export type IndexedDbAdapterOptions = {
   dbName?: string;
   endpointName: string;
   schemas: LofiSchemaRegistration[];
+  localSchemas?: LofiSchemaRegistration[];
+  projections?: AnyLofiLocalProjection[];
   ignoreUnknownSchemas?: boolean;
 };
 
 export type InMemoryLofiAdapterOptions = {
   endpointName: string;
   schemas: AnySchema[];
+  localSchemas?: AnySchema[];
+  projections?: AnyLofiLocalProjection[];
   ignoreUnknownSchemas?: boolean;
   store?: InMemoryLofiStore;
 };
