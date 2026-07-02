@@ -1,0 +1,52 @@
+import unpluginFragno from "@fragno-dev/unplugin-fragno/rollup";
+import { defineConfig } from "tsdown";
+
+export default defineConfig([
+  {
+    ignoreWatch: ["./dist"],
+    entry: [
+      "./src/client/clients.ts",
+      "./src/client/session.ts",
+      "./src/client/react.ts",
+      "./src/client/svelte.ts",
+      "./src/client/solid.ts",
+      "./src/client/vanilla.ts",
+      "./src/client/vue.ts",
+      "./src/pi/route-schemas.ts",
+    ],
+    dts: true,
+    failOnWarn: true,
+    platform: "browser",
+    outDir: "./dist/browser",
+    plugins: [unpluginFragno({ platform: "browser" })],
+    noExternal: [/^@fragno-dev\/core\//],
+    inlineOnly: [/^@fragno-dev\/core/, /^nanostores$/, /^@nanostores\//, /^nanoevents$/],
+  },
+  {
+    ignoreWatch: ["./dist"],
+    entry: [
+      "./src/pi/definition.ts",
+      "./src/pi/factory.ts",
+      "./src/pi/harness/commands.ts",
+      "./src/pi/harness/execution-env.ts",
+      "./src/pi/harness/run-pi-harness-step.ts",
+      "./src/pi/harness/session-storage.ts",
+      "./src/pi/pi-jsonl-export.ts",
+      "./src/pi/route-schemas.ts",
+      "./src/pi/skills.ts",
+      "./src/pi/tools.ts",
+      "./src/pi/types.ts",
+      "./src/pi/workflows/interactive-chat-workflow.ts",
+      "./src/routes.ts",
+      "./src/schema.ts",
+    ],
+    dts: true,
+    failOnWarn: true,
+    platform: "node",
+    outDir: "./dist/node",
+    fixedExtension: false,
+    plugins: [unpluginFragno({ platform: "node" })],
+    unbundle: true,
+    inlineOnly: [/^nanostores$/, /^@nanostores\//, /^nanoevents$/],
+  },
+]);

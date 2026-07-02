@@ -1,0 +1,198 @@
+{
+  "name": "@fragno-dev/pi-harness",
+  "version": "0.0.3",
+  "description": "A Fragno fragment for Pi workflow session harnessing",
+  "keywords": [
+    "fragno",
+    "react",
+    "solidjs",
+    "svelte",
+    "typescript",
+    "vue"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/pi-harness"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    "./client": {
+      "development": {
+        "browser": "./dist/browser/client/clients.js",
+        "default": "./src/client/clients.ts"
+      },
+      "types": "./dist/browser/client/clients.d.ts",
+      "default": "./dist/browser/client/clients.js"
+    },
+    "./client/session": {
+      "development": {
+        "browser": "./dist/browser/client/session.js",
+        "default": "./src/client/session.ts"
+      },
+      "types": "./dist/browser/client/session.d.ts",
+      "default": "./dist/browser/client/session.js"
+    },
+    "./definition": {
+      "development": "./src/pi/definition.ts",
+      "types": "./dist/node/pi/definition.d.ts",
+      "default": "./dist/node/pi/definition.js"
+    },
+    "./factory": {
+      "development": "./src/pi/factory.ts",
+      "types": "./dist/node/pi/factory.d.ts",
+      "default": "./dist/node/pi/factory.js"
+    },
+    "./harness/commands": {
+      "development": "./src/pi/harness/commands.ts",
+      "types": "./dist/node/pi/harness/commands.d.ts",
+      "default": "./dist/node/pi/harness/commands.js"
+    },
+    "./harness/execution-env": {
+      "development": "./src/pi/harness/execution-env.ts",
+      "types": "./dist/node/pi/harness/execution-env.d.ts",
+      "default": "./dist/node/pi/harness/execution-env.js"
+    },
+    "./harness/run-pi-harness-step": {
+      "development": "./src/pi/harness/run-pi-harness-step.ts",
+      "types": "./dist/node/pi/harness/run-pi-harness-step.d.ts",
+      "default": "./dist/node/pi/harness/run-pi-harness-step.js"
+    },
+    "./harness/session-storage": {
+      "development": "./src/pi/harness/session-storage.ts",
+      "types": "./dist/node/pi/harness/session-storage.d.ts",
+      "default": "./dist/node/pi/harness/session-storage.js"
+    },
+    "./react": {
+      "development": {
+        "browser": "./dist/browser/client/react.js",
+        "default": "./src/client/react.ts"
+      },
+      "types": "./dist/browser/client/react.d.ts",
+      "default": "./dist/browser/client/react.js"
+    },
+    "./pi-jsonl-export": {
+      "development": "./src/pi/pi-jsonl-export.ts",
+      "types": "./dist/node/pi/pi-jsonl-export.d.ts",
+      "default": "./dist/node/pi/pi-jsonl-export.js"
+    },
+    "./route-schemas": {
+      "development": "./src/pi/route-schemas.ts",
+      "types": "./dist/node/pi/route-schemas.d.ts",
+      "browser": "./dist/browser/pi/route-schemas.js",
+      "default": "./dist/node/pi/route-schemas.js"
+    },
+    "./routes": {
+      "development": "./src/routes.ts",
+      "types": "./dist/node/routes.d.ts",
+      "default": "./dist/node/routes.js"
+    },
+    "./schema": {
+      "development": "./src/schema.ts",
+      "types": "./dist/node/schema.d.ts",
+      "default": "./dist/node/schema.js"
+    },
+    "./skills": {
+      "development": "./src/pi/skills.ts",
+      "types": "./dist/node/pi/skills.d.ts",
+      "default": "./dist/node/pi/skills.js"
+    },
+    "./solid": {
+      "development": {
+        "browser": "./dist/browser/client/solid.js",
+        "default": "./src/client/solid.ts"
+      },
+      "types": "./dist/browser/client/solid.d.ts",
+      "default": "./dist/browser/client/solid.js"
+    },
+    "./svelte": {
+      "development": {
+        "browser": "./dist/browser/client/svelte.js",
+        "default": "./src/client/svelte.ts"
+      },
+      "types": "./dist/browser/client/svelte.d.ts",
+      "default": "./dist/browser/client/svelte.js"
+    },
+    "./tools": {
+      "development": "./src/pi/tools.ts",
+      "types": "./dist/node/pi/tools.d.ts",
+      "default": "./dist/node/pi/tools.js"
+    },
+    "./types": {
+      "development": "./src/pi/types.ts",
+      "types": "./dist/node/pi/types.d.ts",
+      "default": "./dist/node/pi/types.js"
+    },
+    "./vanilla": {
+      "development": {
+        "browser": "./dist/browser/client/vanilla.js",
+        "default": "./src/client/vanilla.ts"
+      },
+      "types": "./dist/browser/client/vanilla.d.ts",
+      "default": "./dist/browser/client/vanilla.js"
+    },
+    "./vue": {
+      "development": {
+        "browser": "./dist/browser/client/vue.js",
+        "default": "./src/client/vue.ts"
+      },
+      "types": "./dist/browser/client/vue.d.ts",
+      "default": "./dist/browser/client/vue.js"
+    },
+    "./workflows/interactive-chat-workflow": {
+      "development": "./src/pi/workflows/interactive-chat-workflow.ts",
+      "types": "./dist/node/pi/workflows/interactive-chat-workflow.d.ts",
+      "default": "./dist/node/pi/workflows/interactive-chat-workflow.js"
+    }
+  },
+  "scripts": {
+    "types:check": "tsgo --noEmit",
+    "build": "tsdown",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "^0.75.4",
+    "@earendil-works/pi-ai": "^0.75.4",
+    "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
+    "@fragno-dev/workflows": "workspace:*",
+    "@standard-schema/spec": "^1.1.0",
+    "nanostores": "^1.2.0",
+    "typebox": "^1.1.38",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@fragno-dev/test": "workspace:*",
+    "@fragno-dev/unplugin-fragno": "workspace:*",
+    "@types/node": "^25.2.2",
+    "@types/react": "catalog:",
+    "drizzle-kit": "^0.31.7",
+    "drizzle-orm": "^0.44.7",
+    "tsdown": "^0.20.3",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@typescript/native-preview": "catalog:",
+    "react": ">=18.0.0",
+    "solid-js": ">=1.0.0",
+    "svelte": ">=4.0.0",
+    "vue": ">=3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "svelte": {
+      "optional": true
+    },
+    "vue": {
+      "optional": true
+    },
+    "solid-js": {
+      "optional": true
+    }
+  }
+}
