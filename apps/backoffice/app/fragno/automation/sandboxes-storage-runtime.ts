@@ -1,4 +1,4 @@
-import type { DatabaseServiceContext } from "@fragno-dev/db";
+import type { DatabaseServiceContext, TypedUnitOfWork } from "@fragno-dev/db";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { SandboxRuntimeProvider } from "@/sandbox/contracts";
@@ -38,14 +38,24 @@ export const SANDBOX_LIFECYCLE_WORKFLOW_NAME = "sandbox-lifecycle" as const;
 
 export type SandboxLifecycleWorkflowParams = SandboxInstanceRequestInput;
 
-type AutomationSandboxServiceContext = DatabaseServiceContext<{
+type AutomationSandboxHooks = {
   internalIngestEvent: (payload: AutomationEvent) => Promise<void> | void;
-}>;
+};
+
+type AutomationSandboxServiceContext = DatabaseServiceContext<AutomationSandboxHooks>;
+
+type AutomationEventIngestUnitOfWork = TypedUnitOfWork<
+  typeof automationFragmentSchema,
+  [],
+  unknown,
+  AutomationSandboxHooks
+>;
 
 type AutomationSandboxServicesOptions = {
   workflows: AutomationWorkflowsService;
   ownerScope: BackofficeContextScope;
   sandboxProviders?: Record<string, SandboxRuntimeProvider>;
+  ingestEvent: (uow: AutomationEventIngestUnitOfWork, event: AutomationEvent) => void;
 };
 
 const ACTIVE_SANDBOX_INSTANCE_STATUSES = new Set(["requested", "starting", "running", "stopping"]);
@@ -188,7 +198,7 @@ export const createAutomationSandboxServices = (
             actors: [AUTOMATION_SYSTEM_ACTOR],
             subject: sandboxScopeSubject(options.ownerScope, sandbox.id),
           };
-          uow.triggerHook("internalIngestEvent", event, { id: event.id });
+          options.ingestEvent(uow, event);
           return next;
         })
         .transform(({ mutateResult }) =>
@@ -337,7 +347,7 @@ export const createAutomationSandboxServices = (
               actors: [AUTOMATION_SYSTEM_ACTOR],
               subject: sandboxScopeSubject(options.ownerScope, sandbox.id),
             };
-            uow.triggerHook("internalIngestEvent", event, { id: event.id });
+            options.ingestEvent(uow, event);
           }
           return next;
         })
@@ -391,7 +401,7 @@ export const createAutomationSandboxServices = (
             actors: [AUTOMATION_SYSTEM_ACTOR],
             subject: sandboxScopeSubject(options.ownerScope, sandbox.id),
           };
-          uow.triggerHook("internalIngestEvent", event, { id: event.id });
+          options.ingestEvent(uow, event);
         })
         .build();
     },
@@ -436,7 +446,7 @@ export const createAutomationSandboxServices = (
             actors: [AUTOMATION_SYSTEM_ACTOR],
             subject: sandboxScopeSubject(options.ownerScope, sandbox.id),
           };
-          uow.triggerHook("internalIngestEvent", event, { id: event.id });
+          options.ingestEvent(uow, event);
         })
         .build();
     },
@@ -469,7 +479,7 @@ export const createAutomationSandboxServices = (
             actors: [AUTOMATION_SYSTEM_ACTOR],
             subject: sandboxScopeSubject(options.ownerScope, sandbox.id),
           };
-          uow.triggerHook("internalIngestEvent", event, { id: event.id });
+          options.ingestEvent(uow, event);
         })
         .build();
     },

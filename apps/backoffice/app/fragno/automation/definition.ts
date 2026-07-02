@@ -1,7 +1,7 @@
 import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 
 import { defineFragment } from "@fragno-dev/core";
-import { withDatabase, type TxResult } from "@fragno-dev/db";
+import { withDatabase, type TxResult, type TypedUnitOfWork } from "@fragno-dev/db";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
@@ -76,6 +76,40 @@ const buildIngestResult = (event: AutomationEvent): AutomationIngestResult => ({
   source: event.source,
   eventType: event.eventType,
 });
+
+type AutomationIngestHooks = {
+  internalIngestEvent: (payload: AutomationEvent) => Promise<void> | void;
+};
+
+type AutomationEventRecorderUnitOfWork = TypedUnitOfWork<
+  typeof automationFragmentSchema,
+  [],
+  unknown,
+  AutomationIngestHooks
+>;
+
+const ingestAutomationEvent = (uow: AutomationEventRecorderUnitOfWork, event: AutomationEvent) => {
+  const now = uow.now();
+  const occurredAt = new Date(event.occurredAt);
+  if (Number.isNaN(occurredAt.getTime())) {
+    throw new Error(`Automation event ${event.id} has an invalid occurredAt timestamp.`);
+  }
+
+  uow.create("automation_event", {
+    id: event.id,
+    scope: event.scope,
+    source: event.source,
+    eventType: event.eventType,
+    occurredAt,
+    payload: event.payload,
+    actor: event.actor,
+    actors: event.actors,
+    subject: event.subject ?? null,
+    createdAt: now,
+  });
+
+  uow.triggerHook("internalIngestEvent", event, { id: event.id });
+};
 
 const toWorkflowIdentifier = (value: string) => value.replaceAll(":", "--");
 
@@ -314,6 +348,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       workflows: serviceDeps.workflows,
       ownerScope: config.ownerScope,
       sandboxProviders: config.sandboxProviders,
+      ingestEvent: ingestAutomationEvent,
     });
     const routeServices = createAutomationRouteServices(defineService);
     const eventServices = createAutomationEventServices(defineService);
@@ -366,28 +401,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       ingestEvent: function (event: AutomationEvent) {
         return this.serviceTx(automationFragmentSchema)
           .mutate(({ uow }) => {
-            const now = uow.now();
-            const occurredAt = new Date(event.occurredAt);
-            if (Number.isNaN(occurredAt.getTime())) {
-              throw new Error(`Automation event ${event.id} has an invalid occurredAt timestamp.`);
-            }
-
-            uow.create("automation_event", {
-              id: event.id,
-              scope: event.scope,
-              source: event.source,
-              eventType: event.eventType,
-              occurredAt,
-              payload: event.payload,
-              actor: event.actor,
-              actors: event.actors,
-              subject: event.subject ?? null,
-              createdAt: now,
-            });
-
-            uow.triggerHook("internalIngestEvent", event, {
-              id: event.id,
-            });
+            ingestAutomationEvent(uow, event);
           })
           .transform(() => buildIngestResult(event))
           .build();
