@@ -218,6 +218,68 @@ const optimisticUsers = await optimisticQuery.find("users");
 Use `overlay.stackedAdapter` for optimistic reads/writes (for example, in `LofiSubmitClient`). Use
 the base adapter directly for `LofiClient` so outbox sync only touches persisted state.
 
+## Local schemas / materialized views
+
+Adapters can register read-only local schemas and projection functions. Projections run after server
+mutations are applied and before the adapter transaction commits, so canonical rows and local view
+rows stay in sync. Each projection runs once per applied mutation batch. It has a synchronous
+`retrieve` phase that declares local rows to read, followed by a synchronous `mutate` phase that
+receives the retrieved snapshot and queues local writes.
+
+```ts
+const userCardsSchema = schema("local_user_cards", (s) =>
+  s.addTable("cards", (t) =>
+    t.addColumn("id", idColumn()).addColumn("displayName", column("string")),
+  ),
+);
+
+const adapter = new IndexedDbAdapter({
+  endpointName: "app",
+  schemas: [{ schema: appSchema }],
+  localSchemas: [{ schema: userCardsSchema }],
+  projections: [
+    {
+      retrieve: ({ match, read }) =>
+        read
+          .each(match.all(appSchema, "users", ["create", "update"]))
+          .map((mutation) => {
+            const name = mutation.op === "create" ? mutation.values.name : mutation.set.name;
+            return typeof name === "string" ? { mutation, name } : undefined;
+          })
+          .get(userCardsSchema, "cards", ({ mutation }) => mutation.externalId),
+      mutate: ({ match, retrieved, tx }) => {
+        const cards = tx.forSchema(userCardsSchema);
+        for (const mutation of match.all(appSchema, "users", "delete")) {
+          cards.delete("cards", mutation.externalId);
+        }
+        for (const {
+          item: { mutation, name },
+          row: existing,
+        } of retrieved) {
+          const values = { displayName: name };
+          if (existing) {
+            cards.update("cards", mutation.externalId, (b) => b.set(values));
+          } else {
+            cards.create("cards", { id: mutation.externalId, ...values });
+          }
+        }
+      },
+    },
+  ],
+});
+
+const cards = await adapter
+  .createQueryEngine(userCardsSchema)
+  .find("cards", (b) => b.whereIndex("primary"));
+```
+
+Local schemas are client-only and read-only from the server's perspective: they are not valid sync
+command targets and are only written by projection code. Projection reads are intentionally limited
+to local schemas, so projections behave like reducers over applied mutations plus projection-owned
+state. Projection `retrieve`/`mutate` functions must not return promises; adapters own all async
+IndexedDB work to keep transactions active. If local schema or projection code changes, delete the
+whole IndexedDB database and sync again.
+
 ## Notes
 
 - `endpointName` must match between `LofiClient` and `IndexedDbAdapter`.

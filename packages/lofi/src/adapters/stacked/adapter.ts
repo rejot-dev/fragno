@@ -1,8 +1,11 @@
 import type { AnySchema, AnyTable } from "@fragno-dev/db/schema";
 
+import { cloneProjectionRowSnapshot } from "../../local/projection";
 import type {
   LofiAdapter,
   LofiMutation,
+  LofiProjectionRowLookup,
+  LofiProjectionRowSnapshot,
   LofiQueryEngineOptions,
   LofiQueryInterface,
   LofiQueryableAdapter,
@@ -29,7 +32,9 @@ const extractRowValues = (
   return values;
 };
 
-export class StackedLofiAdapter implements LofiAdapter, LofiQueryableAdapter {
+export class StackedLofiAdapter
+  implements LofiAdapter, LofiQueryableAdapter, LofiProjectionRowLookup
+{
   private readonly base: LofiAdapter & LofiQueryableAdapter;
   private readonly overlay: InMemoryLofiAdapter;
   private readonly schemaMap: Map<string, AnySchema>;
@@ -121,7 +126,17 @@ export class StackedLofiAdapter implements LofiAdapter, LofiQueryableAdapter {
     }
 
     if (materialized.length > 0) {
-      await this.overlay.applyMutations(materialized);
+      const getProjectionRow = (this.base as Partial<LofiProjectionRowLookup>).getProjectionRow;
+      await this.overlay.applyMutations(materialized, {
+        projectionMutations: mutations,
+        ...(getProjectionRow
+          ? {
+              projectionReadFallback: {
+                getRow: getProjectionRow.bind(this.base),
+              },
+            }
+          : {}),
+      });
     }
   }
 
@@ -131,6 +146,32 @@ export class StackedLofiAdapter implements LofiAdapter, LofiQueryableAdapter {
 
   async setMeta(key: string, value: string): Promise<void> {
     await this.base.setMeta(key, value);
+  }
+
+  async getProjectionRow(options: {
+    schemaName: string;
+    tableName: string;
+    externalId: string;
+  }): Promise<LofiProjectionRowSnapshot | undefined> {
+    if (
+      this.overlay.store.hasTombstone(options.schemaName, options.tableName, options.externalId)
+    ) {
+      return undefined;
+    }
+
+    const overlayRow = this.overlay.store.getRow(
+      options.schemaName,
+      options.tableName,
+      options.externalId,
+    );
+    if (overlayRow) {
+      return cloneProjectionRowSnapshot(overlayRow);
+    }
+
+    return await (this.base as Partial<LofiProjectionRowLookup>).getProjectionRow?.call(
+      this.base,
+      options,
+    );
   }
 
   createQueryEngine<const T extends AnySchema>(

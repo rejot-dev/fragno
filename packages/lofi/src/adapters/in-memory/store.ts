@@ -2,6 +2,7 @@ import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
 import { FragnoId, FragnoReference, getTableRelations } from "@fragno-dev/db/schema";
 
 import type { ReferenceTarget } from "../../indexeddb/types";
+import { resolveMutationValues } from "../../query/mutation-values";
 import { normalizeValue } from "../../query/normalize";
 import type { LofiMutation } from "../../types";
 import { SortedArrayIndex, type IndexKey } from "./sorted-array-index";
@@ -394,20 +395,16 @@ export class InMemoryLofiStore {
 
   applyMutations(mutations: LofiMutation[]): void {
     for (const mutation of mutations) {
+      this.getMutationTarget(mutation);
+    }
+
+    for (const mutation of mutations) {
       this.applyMutation(mutation);
     }
   }
 
   applyMutation(mutation: LofiMutation): void {
-    const schema = this.schemaMap.get(mutation.schema);
-    if (!schema) {
-      throw new Error(`Unknown mutation schema: ${mutation.schema}`);
-    }
-    const table = this.tableMap.get(mutation.schema)?.get(mutation.table);
-    if (!table) {
-      throw new Error(`Unknown mutation table: ${mutation.schema}.${mutation.table}`);
-    }
-
+    const { schema, table } = this.getMutationTarget(mutation);
     const tableStore = this.getTableStore(schema.name, table.name);
     const existing = tableStore.rowsByExternalId.get(mutation.externalId);
 
@@ -421,7 +418,7 @@ export class InMemoryLofiStore {
       return;
     }
 
-    const values = mutation.op === "create" ? mutation.values : mutation.set;
+    const values = resolveMutationValues(mutation.op === "create" ? mutation.values : mutation.set);
     if (!existing && mutation.op === "update") {
       return;
     }
@@ -527,6 +524,18 @@ export class InMemoryLofiStore {
       }
     }
     return rows;
+  }
+
+  private getMutationTarget(mutation: LofiMutation): { schema: AnySchema; table: AnyTable } {
+    const schema = this.schemaMap.get(mutation.schema);
+    if (!schema) {
+      throw new Error(`Unknown mutation schema: ${mutation.schema}`);
+    }
+    const table = this.tableMap.get(mutation.schema)?.get(mutation.table);
+    if (!table) {
+      throw new Error(`Unknown mutation table: ${mutation.schema}.${mutation.table}`);
+    }
+    return { schema, table };
   }
 
   private getTableStore(schemaName: string, tableName: string): InMemoryTableStore {

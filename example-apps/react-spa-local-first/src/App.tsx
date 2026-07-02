@@ -1,4 +1,4 @@
-import type { AnySchema } from "@fragno-dev/db/schema";
+import { column, idColumn, schema, type AnySchema } from "@fragno-dev/db/schema";
 import { commentSchema, upvoteSchema } from "@fragno-dev/fragno-db-library/schema";
 import { ratingSyncCommands } from "@fragno-dev/fragno-db-library/upvote";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -7,9 +7,11 @@ import type { OutboxEntry, SyncCommandDefinition, SyncCommandRegistry } from "@f
 import { commentSyncCommands } from "@fragno-dev/fragno-db-library";
 import {
   decodeOutboxPayload,
+  defineLocalProjection,
   IndexedDbAdapter,
   LofiClient,
   LofiSubmitClient,
+  type AnyLofiLocalProjection,
 } from "@fragno-dev/lofi";
 
 type SchemaDescriptor = {
@@ -115,6 +117,8 @@ type AdapterGroup = {
   submitUrl: string;
   endpointName: string;
   schemas: AnySchema[];
+  localSchemas: AnySchema[];
+  localProjections: AnyLofiLocalProjection[];
   missingSchemas: string[];
   commands: CommandDefinition[];
   enabled: boolean;
@@ -131,6 +135,8 @@ type AdapterRuntime = {
   client: LofiClient;
   submit?: LofiSubmitClient;
   schemas: AnySchema[];
+  localSchemas: AnySchema[];
+  allSchemas: AnySchema[];
   outboxUrl: string;
   pollIntervalMs: number;
   timer?: ReturnType<typeof setInterval>;
@@ -139,6 +145,152 @@ type AdapterRuntime = {
   stop: () => void;
   dispose: () => void;
 };
+
+const projectUsageSchema = schema("local_project_usage", (s) =>
+  s
+    .addTable("project_usage", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("reference", column("string"))
+        .addColumn("latestCommentTitle", column("string").nullable())
+        .addColumn("latestCommentContent", column("string").nullable())
+        .addColumn("ratingTotal", column("integer").nullable())
+        .createIndex("idx_project_reference", ["reference"], { unique: true }),
+    )
+    .addTable("comment_projection_state", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("reference", column("string"))
+        .addColumn("title", column("string").nullable())
+        .addColumn("content", column("string").nullable()),
+    )
+    .addTable("upvote_total_projection_state", (t) =>
+      t.addColumn("id", idColumn()).addColumn("reference", column("string")),
+    ),
+);
+
+const projectUsageProjection = defineLocalProjection({
+  name: "project-usage",
+  retrieve: ({ match, read }) => {
+    const commentMutations = match.all(commentSchema, "comment", ["create", "update"]);
+    const totalMutations = match.all(upvoteSchema, "upvote_total", ["create", "update"]);
+
+    return {
+      comments: read
+        .each(commentMutations)
+        .map((mutation) => {
+          const values = mutation.op === "create" ? mutation.values : mutation.set;
+          const reference = values["postReference"];
+          const title = values["title"];
+          const content = values["content"];
+          return {
+            mutation,
+            reference: typeof reference === "string" ? reference : undefined,
+            title: typeof title === "string" ? title : undefined,
+            content: typeof content === "string" ? content : undefined,
+          };
+        })
+        .get(projectUsageSchema, "comment_projection_state", ({ mutation }) => mutation.externalId),
+      commentProjectUsage: read
+        .each(commentMutations)
+        .map((mutation) => {
+          const values = mutation.op === "create" ? mutation.values : mutation.set;
+          const reference = values["postReference"];
+          return typeof reference === "string" ? { mutation, reference } : undefined;
+        })
+        .get(projectUsageSchema, "project_usage", ({ reference }) => reference),
+      totals: read
+        .each(totalMutations)
+        .map((mutation) => {
+          const values = mutation.op === "create" ? mutation.values : mutation.set;
+          const reference = values["reference"];
+          const total = values["total"];
+          return {
+            mutation,
+            reference: typeof reference === "string" ? reference : undefined,
+            total: typeof total === "number" ? total : undefined,
+          };
+        })
+        .get(
+          projectUsageSchema,
+          "upvote_total_projection_state",
+          ({ mutation }) => mutation.externalId,
+        ),
+      totalProjectUsage: read
+        .each(totalMutations)
+        .map((mutation) => {
+          const values = mutation.op === "create" ? mutation.values : mutation.set;
+          const reference = values["reference"];
+          return typeof reference === "string" ? { mutation, reference } : undefined;
+        })
+        .get(projectUsageSchema, "project_usage", ({ reference }) => reference),
+    };
+  },
+  mutate: ({ retrieved, tx }) => {
+    const projectUsage = tx.forSchema(projectUsageSchema);
+    const commentProjectUsageByMutationId = new Map(
+      retrieved.commentProjectUsage.map(({ item, row }) => [item.mutation.externalId, row]),
+    );
+    const totalProjectUsageByMutationId = new Map(
+      retrieved.totalProjectUsage.map(({ item, row }) => [item.mutation.externalId, row]),
+    );
+
+    for (const { item, row: previous } of retrieved.comments) {
+      const reference = item.reference ?? previous?.reference;
+      if (!reference) {
+        continue;
+      }
+
+      const title = item.title ?? previous?.title ?? null;
+      const content = item.content ?? previous?.content ?? null;
+      if (previous) {
+        projectUsage.update("comment_projection_state", item.mutation.externalId, (b) =>
+          b.set({ reference, title, content }),
+        );
+      } else {
+        projectUsage.create("comment_projection_state", {
+          id: item.mutation.externalId,
+          reference,
+          title,
+          content,
+        });
+      }
+
+      const existing = commentProjectUsageByMutationId.get(item.mutation.externalId);
+      const values = { latestCommentTitle: title, latestCommentContent: content };
+      if (existing || !commentProjectUsageByMutationId.has(item.mutation.externalId)) {
+        projectUsage.update("project_usage", reference, (b) => b.set(values));
+      } else {
+        projectUsage.create("project_usage", { id: reference, reference, ...values });
+      }
+    }
+
+    for (const { item, row: previous } of retrieved.totals) {
+      const reference = item.reference ?? previous?.reference;
+      if (!reference || item.total === undefined) {
+        continue;
+      }
+
+      if (!previous) {
+        projectUsage.create("upvote_total_projection_state", {
+          id: item.mutation.externalId,
+          reference,
+        });
+      }
+
+      const existing = totalProjectUsageByMutationId.get(item.mutation.externalId);
+      const values = { ratingTotal: item.total };
+      if (existing || !totalProjectUsageByMutationId.has(item.mutation.externalId)) {
+        projectUsage.update("project_usage", reference, (b) => b.set(values));
+      } else {
+        projectUsage.create("project_usage", { id: reference, reference, ...values });
+      }
+    }
+  },
+});
+
+const LOCAL_SCHEMAS = [projectUsageSchema];
+const LOCAL_PROJECTIONS = [projectUsageProjection];
 
 const SCHEMA_REGISTRY = new Map<string, AnySchema>([
   [commentSchema.name, commentSchema],
@@ -419,7 +571,7 @@ export default function App() {
     if (!selectedGroup) {
       return [] as TableSelection[];
     }
-    return selectedGroup.schemas.flatMap((schema) =>
+    return [...selectedGroup.schemas, ...selectedGroup.localSchemas].flatMap((schema) =>
       Object.keys(schema.tables).map((tableName) => ({
         endpointId: selectedEndpointId,
         schemaName: schema.name,
@@ -640,7 +792,7 @@ export default function App() {
     const activeIds = new Set(adapterGroups.map((group) => group.id));
 
     for (const group of adapterGroups) {
-      const schemaSignature = group.schemas
+      const schemaSignature = [...group.schemas, ...group.localSchemas]
         .map((schema) => schema.name)
         .sort()
         .join(",");
@@ -712,7 +864,7 @@ export default function App() {
     const refreshCounts = async () => {
       try {
         const nextCounts: Record<string, number> = {};
-        for (const schema of selectedGroup.schemas) {
+        for (const schema of [...selectedGroup.schemas, ...selectedGroup.localSchemas]) {
           const query = runtime.adapter.createQueryEngine(schema);
           for (const tableName of Object.keys(schema.tables)) {
             const data = await query.find(tableName as never, (b) => b);
@@ -780,7 +932,7 @@ export default function App() {
         return;
       }
 
-      const schema = runtime.schemas.find((s) => s.name === selectedTable.schemaName);
+      const schema = runtime.allSchemas.find((s) => s.name === selectedTable.schemaName);
       if (!schema) {
         setRows([]);
         setTableError("Schema not available for this endpoint.");
@@ -1718,6 +1870,8 @@ function createRuntime(
   const adapter = new IndexedDbAdapter({
     endpointName: group.endpointName,
     schemas: group.schemas.map((schema) => ({ schema })),
+    localSchemas: group.localSchemas.map((schema) => ({ schema })),
+    projections: group.localProjections,
     ignoreUnknownSchemas: true,
   });
 
@@ -1809,6 +1963,8 @@ function createRuntime(
     client,
     submit,
     schemas: group.schemas,
+    localSchemas: group.localSchemas,
+    allSchemas: [...group.schemas, ...group.localSchemas],
     outboxUrl: group.outboxUrl,
     pollIntervalMs: group.pollIntervalMs,
     timer,
@@ -1887,6 +2043,8 @@ function buildAdapterGroups(
     const pollIntervalMs = Math.min(...intervalSource.map((endpoint) => endpoint.pollIntervalMs));
     const enabled = enabledEndpoints.length > 0;
     const schemas = Array.from(group.schemaNames).map((name) => SCHEMA_REGISTRY.get(name)!);
+    const localSchemas = schemas.length > 0 ? LOCAL_SCHEMAS : [];
+    const localProjections = schemas.length > 0 ? LOCAL_PROJECTIONS : [];
     const commands = schemas.flatMap((schema) => COMMANDS_BY_SCHEMA.get(schema.name) ?? []);
     const baseUrl = endpointsInGroup[0]?.baseUrl ?? "/";
     const endpointName = normalizeEndpointName(`adapter-${group.id}`);
@@ -1904,6 +2062,8 @@ function buildAdapterGroups(
       submitUrl,
       endpointName,
       schemas,
+      localSchemas,
+      localProjections,
       missingSchemas: Array.from(group.missingSchemas),
       commands,
       enabled,

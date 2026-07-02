@@ -1,12 +1,30 @@
 export type { AsyncQueryFindFamily, LofiQueryFindResult } from "./query-types";
 export type { LofiFindBuilder } from "./query/read-plan";
 export type {
+  AnyLofiLocalProjection,
   IndexedDbAdapterOptions,
   InMemoryLofiAdapterOptions,
   LofiAdapter,
   LofiClientBaseOptions,
   LofiClientOptions,
+  LofiLocalProjection,
+  LofiLocalProjectionContext,
+  LofiLocalProjectionMutateContext,
+  LofiLocalProjectionRead,
+  LofiLocalProjectionRetrieveContext,
+  LofiProjectionReadPlan,
+  LofiProjectionReadRequest,
+  LofiProjectionResolved,
+  LofiProjectionRetrieved,
+  LofiProjectionRowLookup,
+  LofiProjectionRowSnapshot,
   LofiMutation,
+  LofiMutationMatcher,
+  LofiMutationOp,
+  LofiProjectionSchemaTx,
+  LofiProjectionTx,
+  LofiProjectionUpdateBuilder,
+  LofiTypedMutation,
   LofiOutboxTransport,
   LofiOutboxTransportOptions,
   LofiPollOutboxOptions,
@@ -18,6 +36,7 @@ export type {
   LofiSyncResult,
 } from "./types";
 
+export { defineLocalProjection, matchMutation } from "./local/projection";
 export { decodeOutboxPayload, outboxMutationsToUowOperations, resolveOutboxRefs } from "./outbox";
 export { LofiClient } from "./client";
 export { IndexedDbAdapter } from "./indexeddb/adapter";

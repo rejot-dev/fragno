@@ -3,12 +3,33 @@ import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
 import { FragnoId, FragnoReference, getTableRelations } from "@fragno-dev/db/schema";
 import { openDB, type IDBPDatabase, type IDBPObjectStore, type IDBPTransaction } from "idb";
 
+import {
+  assertSynchronousProjectionResult,
+  createMutationMatcher,
+  createProjectionReadApi,
+  createProjectionTx,
+  createSchemaMaps,
+  getKnownMutation,
+  getLocalMutationTarget,
+  getLocalReadTarget,
+  isThenable,
+  mergeSchemaLists,
+  projectionRowToRecord,
+  resolveProjectionReadPlan,
+  type ProjectionQueuedMutation,
+} from "../local/projection";
 import { createIndexedDbQueryEngine, type IndexedDbQueryContext } from "../query/engine";
+import { resolveMutation, resolveMutationValues } from "../query/mutation-values";
 import { normalizeValue } from "../query/normalize";
 import type {
+  AnyLofiLocalProjection,
   IndexedDbAdapterOptions,
   LofiAdapter,
+  LofiLocalProjectionRead,
   LofiMutation,
+  LofiProjectionReadRequest,
+  LofiProjectionRowLookup,
+  LofiProjectionRowSnapshot,
   LofiQueryEngineOptions,
   LofiQueryInterface,
   LofiQueryableAdapter,
@@ -75,15 +96,39 @@ const INDEX_SCHEMA_TABLE = "idx_schema_table";
 const INDEX_INBOX_SOURCE_UOW = "idx_inbox_source_uow";
 const LEGACY_INBOX_INDEX = "idx_inbox_source_version";
 
-export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
+const createReferenceTargets = (schemas: AnySchema[]): Map<string, ReferenceTarget> => {
+  const referenceTargets = new Map<string, ReferenceTarget>();
+  for (const schema of schemas) {
+    for (const table of Object.values(schema.tables)) {
+      for (const relation of Object.values(getTableRelations(table))) {
+        for (const [fromColumn] of relation.on) {
+          referenceTargets.set(`${schema.name}::${table.name}::${fromColumn}`, {
+            schema: schema.name,
+            table: relation.table.name,
+          });
+        }
+      }
+    }
+  }
+  return referenceTargets;
+};
+
+export class IndexedDbAdapter
+  implements LofiAdapter, LofiQueryableAdapter, LofiProjectionRowLookup
+{
   private readonly dbName: string;
   private readonly endpointName: string;
   private readonly schemas: AnySchema[];
+  private readonly localSchemas: AnySchema[];
+  private readonly allSchemas: AnySchema[];
   private readonly schemaMap: Map<string, AnySchema>;
   private readonly tableMap: Map<string, Map<string, AnyTable>>;
+  private readonly localSchemaMap: Map<string, AnySchema>;
+  private readonly localTableMap: Map<string, Map<string, AnyTable>>;
   private readonly referenceTargets: Map<string, ReferenceTarget>;
   private readonly schemaFingerprint: string;
   private readonly indexDefinitions: IndexDefinition[];
+  private readonly projections: AnyLofiLocalProjection[];
   private readonly ignoreUnknownSchemas: boolean;
 
   private dbPromise?: Promise<LofiDb>;
@@ -93,43 +138,29 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
       throw new Error("IndexedDbAdapter requires a non-empty endpointName.");
     }
 
-    const schemaMap = new Map<string, AnySchema>();
-    const tableMap = new Map<string, Map<string, AnyTable>>();
-    const referenceTargets = new Map<string, ReferenceTarget>();
-
-    for (const registration of options.schemas) {
-      const schema = registration.schema;
-      if (!schema.name || schema.name.trim().length === 0) {
-        throw new Error("IndexedDbAdapter schemas must have a non-empty name.");
-      }
-      if (schemaMap.has(schema.name)) {
-        throw new Error(`IndexedDbAdapter schema name must be unique: ${schema.name}`);
-      }
-
-      schemaMap.set(schema.name, schema);
-      const tables = new Map<string, AnyTable>();
-      for (const [tableName, table] of Object.entries(schema.tables)) {
-        tables.set(tableName, table);
-        for (const relation of Object.values(getTableRelations(table))) {
-          for (const [fromColumn] of relation.on) {
-            referenceTargets.set(`${schema.name}::${table.name}::${fromColumn}`, {
-              schema: schema.name,
-              table: relation.table.name,
-            });
-          }
-        }
-      }
-      tableMap.set(schema.name, tables);
-    }
+    const sourceSchemas = options.schemas.map((registration) => registration.schema);
+    const localSchemas = (options.localSchemas ?? []).map((registration) => registration.schema);
+    const allSchemas = mergeSchemaLists(sourceSchemas, localSchemas, "IndexedDbAdapter");
+    const { schemaMap, tableMap } = createSchemaMaps(sourceSchemas, "IndexedDbAdapter");
+    const { schemaMap: localSchemaMap, tableMap: localTableMap } = createSchemaMaps(
+      localSchemas,
+      "IndexedDbAdapter local",
+    );
+    const referenceTargets = createReferenceTargets(allSchemas);
 
     this.dbName = options.dbName ?? `fragno_lofi_${options.endpointName}`;
     this.endpointName = options.endpointName;
     this.schemas = [...schemaMap.values()];
+    this.localSchemas = [...localSchemaMap.values()];
+    this.allSchemas = allSchemas;
     this.schemaMap = schemaMap;
     this.tableMap = tableMap;
+    this.localSchemaMap = localSchemaMap;
+    this.localTableMap = localTableMap;
     this.referenceTargets = referenceTargets;
-    this.indexDefinitions = buildIndexDefinitions(this.schemas);
-    this.schemaFingerprint = buildSchemaFingerprint(this.schemas, this.indexDefinitions);
+    this.indexDefinitions = buildIndexDefinitions(this.allSchemas);
+    this.schemaFingerprint = buildSchemaFingerprint(this.allSchemas, this.indexDefinitions);
+    this.projections = options.projections ?? [];
     this.ignoreUnknownSchemas = options.ignoreUnknownSchemas ?? false;
   }
 
@@ -144,21 +175,17 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
     const knownMutations: Array<{ mutation: LofiMutation; schema: AnySchema; table: AnyTable }> =
       [];
     for (const mutation of options.mutations) {
-      const schema = this.schemaMap.get(mutation.schema);
-      if (!schema) {
-        if (this.ignoreUnknownSchemas) {
-          continue;
-        }
-        throw new Error(`Unknown outbox schema: ${mutation.schema}`);
+      const known = getKnownMutation({
+        mutation,
+        schemaMap: this.schemaMap,
+        tableMap: this.tableMap,
+        ignoreUnknownSchemas: this.ignoreUnknownSchemas,
+        schemaErrorPrefix: "Unknown outbox schema",
+        tableErrorPrefix: "Unknown outbox table",
+      });
+      if (known) {
+        knownMutations.push(known);
       }
-      const table = this.tableMap.get(mutation.schema)?.get(mutation.table);
-      if (!table) {
-        if (this.ignoreUnknownSchemas) {
-          continue;
-        }
-        throw new Error(`Unknown outbox table: ${mutation.schema}.${mutation.table}`);
-      }
-      knownMutations.push({ mutation, schema, table });
     }
 
     const tx = db.transaction([ROWS_STORE, INBOX_STORE, META_STORE], "readwrite");
@@ -176,8 +203,15 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
       return { applied: false };
     }
 
+    const baseNow = Date.now();
+    const materializedKnownMutations = knownMutations.map(({ mutation, schema, table }) => ({
+      mutation: resolveMutation(mutation, baseNow),
+      schema,
+      table,
+    }));
+
     try {
-      for (const { mutation, schema, table } of knownMutations) {
+      for (const { mutation, schema, table } of materializedKnownMutations) {
         await applyMutation({
           mutation,
           schema,
@@ -188,6 +222,18 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
           referenceTargets: this.referenceTargets,
         });
       }
+
+      await this.applyProjections({
+        mutations: materializedKnownMutations.map(({ mutation }) => mutation),
+        source: {
+          sourceKey: options.sourceKey,
+          uowId: options.uowId,
+          versionstamp: options.versionstamp,
+        },
+        baseNow,
+        rowsStore,
+        metaStore,
+      });
 
       const inboxRow: InboxRow = {
         key: [options.sourceKey, options.uowId, options.versionstamp],
@@ -226,29 +272,32 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
     const knownMutations: Array<{ mutation: LofiMutation; schema: AnySchema; table: AnyTable }> =
       [];
     for (const mutation of mutations) {
-      const schema = this.schemaMap.get(mutation.schema);
-      if (!schema) {
-        if (this.ignoreUnknownSchemas) {
-          continue;
-        }
-        throw new Error(`Unknown mutation schema: ${mutation.schema}`);
+      const known = getKnownMutation({
+        mutation,
+        schemaMap: this.schemaMap,
+        tableMap: this.tableMap,
+        ignoreUnknownSchemas: this.ignoreUnknownSchemas,
+        schemaErrorPrefix: "Unknown mutation schema",
+        tableErrorPrefix: "Unknown mutation table",
+      });
+      if (known) {
+        knownMutations.push(known);
       }
-      const table = this.tableMap.get(mutation.schema)?.get(mutation.table);
-      if (!table) {
-        if (this.ignoreUnknownSchemas) {
-          continue;
-        }
-        throw new Error(`Unknown mutation table: ${mutation.schema}.${mutation.table}`);
-      }
-      knownMutations.push({ mutation, schema, table });
     }
 
     const tx = db.transaction([ROWS_STORE, META_STORE], "readwrite");
     const rowsStore = tx.objectStore(ROWS_STORE);
     const metaStore = tx.objectStore(META_STORE);
 
+    const baseNow = Date.now();
+    const materializedKnownMutations = knownMutations.map(({ mutation, schema, table }) => ({
+      mutation: resolveMutation(mutation, baseNow),
+      schema,
+      table,
+    }));
+
     try {
-      for (const { mutation, schema, table } of knownMutations) {
+      for (const { mutation, schema, table } of materializedKnownMutations) {
         await applyMutation({
           mutation,
           schema,
@@ -259,6 +308,19 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
           referenceTargets: this.referenceTargets,
         });
       }
+
+      await this.applyProjections({
+        mutations: materializedKnownMutations.map(({ mutation }) => mutation),
+        source: {
+          versionstamp:
+            materializedKnownMutations.at(-1)?.mutation.versionstamp ??
+            knownMutations.at(-1)?.mutation.versionstamp ??
+            "local",
+        },
+        baseNow,
+        rowsStore,
+        metaStore,
+      });
 
       await tx.done;
     } catch (error) {
@@ -306,6 +368,24 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
     });
   }
 
+  async getProjectionRow(options: {
+    schemaName: string;
+    tableName: string;
+    externalId: string;
+  }): Promise<LofiProjectionRowSnapshot | undefined> {
+    const db = await this.openDatabase();
+    const tx = db.transaction(ROWS_STORE, "readonly");
+    const store = tx.objectStore(ROWS_STORE);
+    const row = (await store.get([
+      this.endpointName,
+      options.schemaName,
+      options.tableName,
+      options.externalId,
+    ])) as LofiProjectionRowSnapshot | undefined;
+    await tx.done;
+    return row;
+  }
+
   createQueryContext(schemaName: string): IndexedDbQueryContext {
     return {
       endpointName: this.endpointName,
@@ -313,6 +393,117 @@ export class IndexedDbAdapter implements LofiAdapter, LofiQueryableAdapter {
       getDb: () => this.openDatabase(),
       referenceTargets: this.referenceTargets,
     };
+  }
+
+  private async applyProjections<TxStores extends ArrayLike<string>>(options: {
+    mutations: LofiMutation[];
+    source: { sourceKey?: string; uowId?: string; versionstamp: string };
+    baseNow: number;
+    rowsStore: WriteStore<TxStores, typeof ROWS_STORE>;
+    metaStore: WriteStore<TxStores, typeof META_STORE>;
+  }): Promise<void> {
+    const { mutations, source, baseNow, rowsStore, metaStore } = options;
+    if (this.projections.length === 0 || mutations.length === 0) {
+      return;
+    }
+
+    const read: LofiLocalProjectionRead = createProjectionReadApi();
+    const projectionSource = {
+      sourceKey: source.sourceKey,
+      uowId: source.uowId,
+      versionstamp: source.versionstamp,
+    };
+
+    const resolveRead = async ({
+      schema,
+      tableName,
+      externalId,
+    }: LofiProjectionReadRequest<unknown>): Promise<unknown> => {
+      const target = getLocalReadTarget({
+        schema,
+        tableName,
+        localSchemaMap: this.localSchemaMap,
+        localTableMap: this.localTableMap,
+      });
+      const row = (await rowsStore.get([
+        this.endpointName,
+        target.schema.name,
+        tableName,
+        externalId,
+      ])) as LofiRow | undefined;
+      return row ? projectionRowToRecord(row, target.table) : undefined;
+    };
+
+    const writeMutation = async (mutation: ProjectionQueuedMutation): Promise<void> => {
+      const targetSchema = this.localSchemaMap.get(mutation.schema);
+      if (!targetSchema) {
+        throw new Error(`Projection writes must target a local schema: ${mutation.schema}`);
+      }
+      const target = getLocalMutationTarget({
+        schema: targetSchema,
+        tableName: mutation.table,
+        localSchemaMap: this.localSchemaMap,
+        localTableMap: this.localTableMap,
+      });
+      if (mutation.op === "update" && mutation.checkVersion) {
+        const existing = (await rowsStore.get([
+          this.endpointName,
+          target.schema.name,
+          mutation.table,
+          mutation.externalId,
+        ])) as LofiRow | undefined;
+        if (!existing || existing._lofi.version !== mutation.expectedVersion) {
+          throw new Error(
+            `Projection update check failed: ${target.schema.name}.${mutation.table}.${mutation.externalId}`,
+          );
+        }
+      }
+      await applyMutation({
+        mutation: resolveMutation(mutation, baseNow),
+        schema: target.schema,
+        table: target.table,
+        endpointName: this.endpointName,
+        rowsStore,
+        metaStore,
+        referenceTargets: this.referenceTargets,
+      });
+    };
+
+    const match = createMutationMatcher(mutations);
+    for (const projection of this.projections) {
+      let retrieved: unknown;
+      if (projection.retrieve) {
+        const readPlan = projection.retrieve({
+          mutations,
+          source: projectionSource,
+          match,
+          read,
+        });
+        assertSynchronousProjectionResult(readPlan, "retrieve");
+        if (readPlan === undefined) {
+          continue;
+        }
+        const resolved = resolveProjectionReadPlan(readPlan, resolveRead);
+        retrieved = isThenable(resolved) ? await resolved : resolved;
+      }
+
+      const tx = createProjectionTx({
+        versionstamp: source.versionstamp,
+        localSchemaMap: this.localSchemaMap,
+        localTableMap: this.localTableMap,
+      });
+      const mutateResult = projection.mutate({
+        mutations,
+        source: projectionSource,
+        match,
+        retrieved,
+        tx,
+      });
+      assertSynchronousProjectionResult(mutateResult, "mutate");
+      for (const projectionMutation of tx.drainMutations()) {
+        await writeMutation(projectionMutation);
+      }
+    }
   }
 
   private openDatabase(): Promise<LofiDb> {
@@ -660,7 +851,7 @@ const applyMutation = async <
     return;
   }
 
-  const values = mutation.op === "create" ? mutation.values : mutation.set;
+  const values = resolveMutationValues(mutation.op === "create" ? mutation.values : mutation.set);
   if (existing && existing._lofi.versionstamp.startsWith("local-")) {
     const isMatch = Object.entries(values).every(([column, value]) =>
       Object.is(existing.data[column], value),

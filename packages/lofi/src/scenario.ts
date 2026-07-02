@@ -19,6 +19,7 @@ import { createLofiQueryStore, createLofiRuntime, isLofiRuntimeBootstrapped } fr
 import type { LofiQueryState, LofiRuntime, LofiRuntimeSyncResult } from "./reactive";
 import { LofiSubmitClient } from "./submit/client";
 import type {
+  AnyLofiLocalProjection,
   LofiAdapter,
   LofiQueryInterface,
   LofiQueryableAdapter,
@@ -145,6 +146,8 @@ export type ScenarioDefinition<
   server: ScenarioServerConfig<TSchema>;
   clientCommands: TCommands;
   clients: Record<string, ScenarioClientConfig>;
+  localSchemas?: AnySchema[];
+  localProjections?: AnyLofiLocalProjection[];
   steps: ScenarioStep<NoInfer<TSchema>, NoInfer<TCommandContext>, NoInfer<TVars>>[];
   createClientContext?: (clientName: string) => TCommandContext;
 };
@@ -180,6 +183,7 @@ export type ScenarioContext<
 };
 
 type ScenarioPendingReactiveStore<TSchema extends AnySchema = AnySchema> = {
+  schema: AnySchema;
   table: keyof TSchema["tables"] & string;
   query: (builder: unknown) => unknown;
   storeOptions:
@@ -197,6 +201,7 @@ export type ScenarioClient<TSchema extends AnySchema = AnySchema, TCommandContex
   query: LofiQueryInterface<TSchema>;
   baseQuery: LofiQueryInterface<TSchema>;
   overlayQuery?: LofiQueryInterface<TSchema>;
+  createQueryEngine: <const T extends AnySchema>(schema: T) => LofiQueryInterface<T>;
   adapters: {
     base: LofiAdapter & LofiQueryableAdapter;
     overlay?: InMemoryLofiAdapter;
@@ -299,6 +304,7 @@ export type ScenarioCreateStoreStep<
   type: "createStore";
   client: string;
   name: string;
+  schema?: AnySchema;
   table: keyof TSchema["tables"] & string;
   query: (builder: unknown) => unknown;
   initialData?: ScenarioInitialData<TSchema, TCommandContext, TVars>;
@@ -572,6 +578,7 @@ const createStore = <
   table: TTableName,
   query: (builder: LofiFindBuilder<TSchema, TTableName>) => unknown,
   options?: {
+    schema?: AnySchema;
     initialData?: ScenarioInitialData<TSchema, TCommandContext, TVars>;
     map?: (rows: unknown, ctx: ScenarioContext<TSchema, TCommandContext, TVars>) => unknown;
     mount?: boolean;
@@ -580,6 +587,7 @@ const createStore = <
   type: "createStore",
   client,
   name,
+  schema: options?.schema,
   table,
   query: query as (builder: unknown) => unknown,
   initialData: options?.initialData,
@@ -705,6 +713,7 @@ export const createScenarioSteps = <
     table: TTableName,
     query: (builder: LofiFindBuilder<TSchema, TTableName>) => unknown,
     options?: {
+      schema?: AnySchema;
       initialData?: ScenarioInitialData<TSchema, TCommandContext, TVars>;
       map?: (rows: unknown, ctx: ScenarioContext<TSchema, TCommandContext, TVars>) => unknown;
       mount?: boolean;
@@ -871,7 +880,7 @@ const getScenarioReactiveStore = <TSchema extends AnySchema, TCommandContext>(
 
 const mountScenarioReactiveStore = <TSchema extends AnySchema, TCommandContext>(
   client: ScenarioClient<TSchema, TCommandContext>,
-  schema: TSchema,
+  defaultSchema: TSchema,
   name: string,
   cleanupCallbacks: Array<() => void>,
 ): void => {
@@ -881,10 +890,11 @@ const mountScenarioReactiveStore = <TSchema extends AnySchema, TCommandContext>(
 
   const pending = client.stores.pendingReactive?.[name];
   if (pending && !client.stores.reactive?.[name]) {
+    const storeSchema = pending.schema ?? defaultSchema;
     client.stores.reactive ??= {};
     client.stores.reactive[name] = createLofiQueryStore(
       client.runtime,
-      schema,
+      storeSchema as TSchema,
       pending.table,
       pending.query as (
         builder: LofiFindBuilder<TSchema, keyof TSchema["tables"] & string>,
@@ -1027,6 +1037,9 @@ export const runScenario = async <
       LofiSubmitCommandDefinition<unknown, TCommandContext>
     >;
     const schema = scenario.server.schema;
+    const localSchemas = scenario.localSchemas ?? [];
+    const localSchemaRegistrations = localSchemas.map((localSchema) => ({ schema: localSchema }));
+    const projections = scenario.localProjections ?? [];
 
     for (const [name, clientConfig] of Object.entries(scenario.clients)) {
       const dbName = `lofi-scenario-${scenario.name}-${name}-${Math.random().toString(16).slice(2)}`;
@@ -1049,6 +1062,8 @@ export const runScenario = async <
             dbName: adapterConfig?.dbName ?? dbName,
             endpointName: clientConfig.endpointName,
             schemas: [{ schema }],
+            localSchemas: localSchemaRegistrations,
+            projections,
           });
           return {
             adapter: baseAdapter,
@@ -1060,6 +1075,8 @@ export const runScenario = async <
           const baseAdapter = new InMemoryLofiAdapter({
             endpointName: clientConfig.endpointName,
             schemas: [schema],
+            localSchemas,
+            projections,
             ...(adapterConfig.store ? { store: adapterConfig.store } : {}),
           });
           return {
@@ -1076,18 +1093,24 @@ export const runScenario = async <
               ? new InMemoryLofiAdapter({
                   endpointName: clientConfig.endpointName,
                   schemas: [schema],
+                  localSchemas,
+                  projections,
                   ...(adapterConfig.baseStore ? { store: adapterConfig.baseStore } : {}),
                 })
               : new IndexedDbAdapter({
                   dbName: adapterConfig.baseDbName ?? dbName,
                   endpointName: clientConfig.endpointName,
                   schemas: [{ schema }],
+                  localSchemas: localSchemaRegistrations,
+                  projections,
                 });
 
           const overlayManager = new LofiOverlayManager({
             endpointName: clientConfig.endpointName,
             adapter: baseAdapter,
             schemas: [schema],
+            localSchemas,
+            projections,
             commands: clientCommands,
             ...(createCommandContext ? { createCommandContext } : {}),
             ...(adapterConfig.overlayStore ? { store: adapterConfig.overlayStore } : {}),
@@ -1141,6 +1164,8 @@ export const runScenario = async <
       });
 
       const queryAdapter = adapters.stackedAdapter ?? adapters.baseAdapter;
+      const createQueryEngine = <const T extends AnySchema>(querySchema: T) =>
+        queryAdapter.createQueryEngine(querySchema);
 
       context.clients[name] = {
         name,
@@ -1149,11 +1174,12 @@ export const runScenario = async <
         submit,
         sync,
         runtime,
-        query: queryAdapter.createQueryEngine(schema),
+        query: createQueryEngine(schema),
         baseQuery: adapters.baseAdapter.createQueryEngine(schema),
         overlayQuery: adapters.overlayAdapter
           ? adapters.overlayAdapter.createQueryEngine(schema)
           : undefined,
+        createQueryEngine,
         adapters: {
           base: adapters.baseAdapter,
           overlay: adapters.overlayAdapter,
@@ -1253,6 +1279,7 @@ export const runScenario = async <
         };
         client.stores.pendingReactive ??= {};
         client.stores.pendingReactive[step.name] = {
+          schema: step.schema ?? schema,
           table: step.table as keyof TSchema["tables"] & string,
           query: step.query,
           storeOptions: storeOptions as ScenarioPendingReactiveStore<TSchema>["storeOptions"],
