@@ -33,7 +33,7 @@
     "@fragno-dev/lofi": "workspace:*",
     "@fragno-dev/mcp-fragment": "workspace:*",
     "@fragno-dev/otp-fragment": "workspace:*",
-    "@fragno-dev/pi-fragment": "workspace:*",
+    "@fragno-dev/pi-harness": "workspace:*",
     "@fragno-dev/resend-fragment": "workspace:*",
     "@fragno-dev/reson8-fragment": "workspace:*",
     "@fragno-dev/telegram-fragment": "workspace:*",

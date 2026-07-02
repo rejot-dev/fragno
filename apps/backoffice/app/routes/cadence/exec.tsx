@@ -9,7 +9,7 @@ import { getAuthMe } from "@/fragno/auth/auth-server";
 import type { CadenceLayoutContext } from "@/layouts/cadence-layout";
 import { cn } from "@/lib/utils";
 import { handlePiTerminalAction } from "@/routes/backoffice/pi-terminal-action";
-import { fetchPiSessions } from "@/routes/backoffice/sessions/data";
+import { fetchPiSessionDetail, fetchPiSessions } from "@/routes/backoffice/sessions/data";
 
 import type { Route } from "./+types/exec";
 import { handleComposeAction } from "./compose-action";
@@ -36,17 +36,28 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     limit: HISTORY_LIMIT,
   });
 
+  const detailResults = await Promise.all(
+    sessions.map((session) =>
+      fetchPiSessionDetail(request, context, activeOrg.id, session.workflowName, session.id),
+    ),
+  );
+  const failedDetail = detailResults.find((result) => result.sessionError);
+  if (failedDetail?.sessionError) {
+    throw Response.json(failedDetail.sessionError, { status: failedDetail.status ?? 500 });
+  }
+
   return {
-    history: sessions.map(
-      (session): ComposeHistorySession => ({
+    history: sessions.map((session, index): ComposeHistorySession => {
+      const status = detailResults[index]?.session?.workflow.status ?? "unknown";
+      return {
         id: session.id,
         name: session.name,
-        status: session.status,
+        status,
         workflowName: session.workflowName,
         agentName: session.agent,
         updatedAt: session.updatedAt,
-      }),
-    ),
+      };
+    }),
   };
 }
 

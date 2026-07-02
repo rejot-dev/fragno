@@ -1,14 +1,15 @@
 ---
-title: Pi
-description: Run Pi agents in Fragno with workflow-backed sessions.
+title: Pi Harness
+description: Run Pi AgentHarness sessions in Fragno with workflow-backed durability.
 icon: Workflow
 ---
 
-`@fragno-dev/pi-fragment` runs Pi agents through durable workflow-backed sessions. It provides a
-session API, agent/tool registration, event streaming, JSONL export, and custom workflow support for
-multi-step agent orchestration.
+`@fragno-dev/pi-harness` exposes durable session routes for Pi's `AgentHarness`. Applications own
+normal `@fragno-dev/workflows` definitions, tool construction, environment setup, and model
+selection; the harness fragment provides session indexing, command delivery, event streaming, typed
+clients, and JSONL export.
 
 ## Start here
 
-- [Custom workflows](./custom-workflows): define durable agent workflows with `definePiWorkflow`,
-  `ctx.agent(...)`, tool-result branching, and parallel reviewer patterns.
+- [Custom workflows](./custom-workflows): define normal workflows that call `createAgentLoop(...)`
+  or `runPiHarnessStep(...)` for multi-step agent orchestration.

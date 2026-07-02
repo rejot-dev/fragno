@@ -1,172 +1,87 @@
 ---
 title: Custom workflows
-description: Define durable multi-step Pi agent workflows.
+description: Define durable multi-step Pi harness workflows.
 icon: Workflow
 ---
 
 import { Callout } from "fumadocs-ui/components/callout";
 
-Pi workflows are durable TypeScript workflows built on the Workflows fragment. Use them when a Pi
-session needs more than the interactive chat loop: multiple agent steps, tool-result branching,
-parallel reviewers, races against user input, or explicit approvals.
+Pi harness workflows are normal `@fragno-dev/workflows` workflows. Use them when a Pi session needs
+more than the stock interactive chat loop: multiple agent steps, tool-result branching, parallel
+reviewers, races against user input, or explicit approvals.
 
-Register custom workflows with the same `createPi()` builder that registers agents and tools.
+Register workflow entries directly with `createPiWorkflows(...)` and with the Workflows fragment.
+There is intentionally no `createPi()` or `definePiWorkflow(...)` builder in
+`@fragno-dev/pi-harness`.
 
 ```ts
-import { createPi, definePiWorkflow } from "@fragno-dev/pi-fragment";
+import { createPiHarness, createPiWorkflows } from "@fragno-dev/pi-harness/factory";
+import { createAgentLoop } from "@fragno-dev/pi-harness/harness/commands";
+import { createWorkflowsFragment } from "@fragno-dev/workflows";
+import { defineWorkflow } from "@fragno-dev/workflows/workflow";
+import { z } from "zod";
 
-const pi = createPi()
-  .withAgent("researcher", researcher)
-  .withAgent("writer", writer)
-  .withWorkflow(researchWriteApprove)
-  .build();
+const supportWorkflow = defineWorkflow(
+  { name: "support", schema: z.object({ topic: z.string() }) },
+  async (event, step) => {
+    const loop = createAgentLoop(step, {
+      env,
+      workflowName: "support",
+      sessionId: event.instanceId,
+      agentName: "support",
+      model,
+      systemPrompt: "You are a helpful support agent.",
+      tools: [searchTool],
+    });
+
+    await loop.runStep("initial", { kind: "prompt", args: [`Help with ${event.payload.topic}`] });
+    while (true) {
+      await loop.waitForCommandAndRunStep();
+    }
+  },
+);
+
+const piConfig = { workflows: [supportWorkflow] };
+const workflows = createPiWorkflows(piConfig);
 ```
 
 Create sessions by selecting the workflow and passing schema-validated input.
 
 ```json
 {
-  "workflow": "research-write-approve",
+  "name": "Customer issue",
   "input": { "topic": "durable LLM workflows" }
 }
 ```
 
-## Sequential research → write → approve
+## Lower-level harness steps
 
-Use explicit message passing between agent steps. Each agent call returns a new result; later steps
-choose which previous messages to continue from.
-
-```ts
-import { z } from "zod";
-import { definePiWorkflow } from "@fragno-dev/pi-fragment";
-
-export const researchWriteApprove = definePiWorkflow(
-  {
-    name: "research-write-approve",
-    schema: z.object({ topic: z.string() }),
-  },
-  async (ctx) => {
-    const research = await ctx.agent("researcher").prompt("research", {
-      input: { text: `Research ${ctx.params.topic}.` },
-    });
-
-    const draft = await ctx.agent("writer").prompt("draft", {
-      input: { text: "Write a concise answer using the research." },
-      messages: research.messages,
-    });
-
-    const approval = await ctx.waitForEvent("approval", {
-      allowed: ["prompt", "complete"],
-    });
-
-    if (approval.kind === "prompt") {
-      const revision = await ctx.agent("writer").prompt("revise", {
-        input: approval.input,
-        messages: draft.messages,
-      });
-      return { messages: revision.messages };
-    }
-
-    return { messages: draft.messages };
-  },
-);
-```
-
-## Decision tool → branch to an agent
-
-Use `definePiTool(...)` when workflow code needs typed structured tool details. Passing a handoff
-tool to `stopOnTools` stops the agent run after that tool result, so the workflow can branch.
+Use `runPiHarnessStep(...)` directly when the workflow wants full control over operation names,
+committed entries, active tools, or non-prompt operations such as compaction and tree navigation.
 
 ```ts
-import { Type } from "typebox";
-import { z } from "zod";
-import { definePiTool, definePiWorkflow } from "@fragno-dev/pi-fragment";
+import {
+  runPiHarnessStep,
+  createPiHarnessSessionState,
+} from "@fragno-dev/pi-harness/harness/run-pi-harness-step";
 
-const classifyRequest = definePiTool({
-  name: "classify_request",
-  description: "Classify an incoming support request",
-  parameters: Type.Object({ request: Type.String() }),
-  handoff: true,
-  resultSchema: z.object({
-    kind: z.enum(["bug", "feature", "question"]),
-    confidence: z.number(),
-  }),
-  async execute(_toolCallId, params) {
-    return {
-      content: [{ type: "text", text: "Request classified." }],
-      details: { kind: "question", confidence: 0.9 },
-      terminate: true,
-    };
+const state = createPiHarnessSessionState();
+const result = await runPiHarnessStep(step, "classify", {
+  env,
+  workflowName: "triage",
+  sessionId: event.instanceId,
+  agentName: "triage",
+  model,
+  tools: [classifyRequest],
+  activeToolNames: ["classify_request"],
+  committedEntries: state.entries,
+  operation: {
+    kind: "prompt",
+    args: [event.payload.request],
+    stopOnTools: ["classify_request"],
   },
 });
-
-export const triageWorkflow = definePiWorkflow(
-  { name: "triage-request", schema: z.object({ request: z.string() }) },
-  async (ctx) => {
-    const triage = await ctx.agent("triage").prompt("triage", {
-      input: { text: ctx.params.request },
-      stopOnTools: [classifyRequest],
-    });
-
-    const classification = triage.toolCalls(classifyRequest).latest();
-
-    switch (classification.details.kind) {
-      case "bug":
-        return ctx.agent("debugger").prompt("debug", {
-          input: { text: ctx.params.request },
-          messages: triage.messages,
-        });
-      case "feature":
-        return ctx.agent("planner").prompt("plan", {
-          input: { text: ctx.params.request },
-          messages: triage.messages,
-        });
-      case "question":
-        return ctx.agent("support").prompt("answer", {
-          input: { text: ctx.params.request },
-          messages: triage.messages,
-        });
-    }
-  },
-);
 ```
-
-## Parallel reviewers → merge
-
-Wrap concurrent work in a named parent `ctx.step.do(...)` step. The parent gives replay a stable
-outer boundary, and each branch still has a stable child step name.
-
-```ts
-import { z } from "zod";
-import { definePiWorkflow } from "@fragno-dev/pi-fragment";
-
-export const parallelReviewWorkflow = definePiWorkflow(
-  { name: "parallel-review", schema: z.object({ draft: z.string() }) },
-  async (ctx) => {
-    const [security, clarity, correctness] = await ctx.step.do("parallel-reviews", async () =>
-      Promise.all([
-        ctx.agent("security-reviewer").prompt("security-review", {
-          input: { text: ctx.params.draft },
-        }),
-        ctx.agent("clarity-reviewer").prompt("clarity-review", {
-          input: { text: ctx.params.draft },
-        }),
-        ctx.agent("correctness-reviewer").prompt("correctness-review", {
-          input: { text: ctx.params.draft },
-        }),
-      ]),
-    );
-
-    return ctx.agent("editor").prompt("merge-reviews", {
-      input: { text: "Merge reviewer feedback into a final answer." },
-      messages: [...security.messages, ...clarity.messages, ...correctness.messages],
-    });
-  },
-);
-```
-
-`Promise.race(...)` and `Promise.any(...)` follow the same rule: put the combinator inside a named
-parent step and put all durable branch work inside that callback.
 
 ## Replay rules
 
@@ -176,9 +91,7 @@ parent step and put all durable branch work inside that callback.
 </Callout>
 
 - Step names should be string literals or derived from already completed durable data.
-- Agent steps do not mutate shared workflow-level message state. Pass `messages` explicitly and use
-  returned `messages` when composing later steps.
-- Concurrent `Promise.all`, `Promise.race`, and `Promise.any` calls must be nested under a named
-  parent `ctx.step.do("stable-name", ...)` step.
-- Handoff tools should set `handoff: true` and usually return `terminate: true`; pass them through
-  `stopOnTools` when workflow code needs the first structured decision result.
+- Keep runtime-only capabilities (`env`, `streamFn`, tool `execute` functions) in workflow closures.
+- Persist only serializable params and step results.
+- Use `activeToolNames` as a per-step policy when a turn should expose only a subset of registered
+  tools.

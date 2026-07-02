@@ -75,7 +75,7 @@ const createTurnResult = (sessionId: string, assistantText = "assistant:hello") 
 const createPiRuntime = (overrides: Partial<PiRuntime> = {}): PiRuntime => ({
   createSession: async ({ agent, name, metadata, tags, steeringMode }) => {
     if (agent === "missing") {
-      throw new Error("Pi fragment returned 404: Agent not found");
+      throw new Error("Pi harness returned 404: Agent not found");
     }
 
     return {
@@ -93,7 +93,7 @@ const createPiRuntime = (overrides: Partial<PiRuntime> = {}): PiRuntime => ({
   },
   getSession: async ({ sessionId }) => {
     if (sessionId === "missing") {
-      throw new Error("Pi fragment returned 404: Session not found");
+      throw new Error("Pi harness returned 404: Session not found");
     }
 
     return {
@@ -146,7 +146,7 @@ const createPiRuntime = (overrides: Partial<PiRuntime> = {}): PiRuntime => ({
   },
   runTurn: async ({ sessionId, text }) => {
     if (sessionId === "missing") {
-      throw new Error("Pi fragment returned 404: Session not found");
+      throw new Error("Pi harness returned 404: Session not found");
     }
 
     return createTurnResult(sessionId, `assistant:${text}`);
@@ -659,7 +659,7 @@ describe("pi bash command registration", () => {
     const { bash, commandCallsResult } = createPiHost(
       createPiRuntime({
         listSessions: async () => {
-          throw new Error("Pi fragment returned 404: No sessions found");
+          throw new Error("Pi harness returned 404: No sessions found");
         },
       }),
     );
@@ -670,13 +670,13 @@ describe("pi bash command registration", () => {
     const turnResult = await bash.exec("pi.session.turn --session-id missing --text hello");
 
     assert(createResult.exitCode === 1);
-    expect(createResult.stderr).toContain("Pi fragment returned 404: Agent not found");
+    expect(createResult.stderr).toContain("Pi harness returned 404: Agent not found");
     assert(getResult.exitCode === 1);
-    expect(getResult.stderr).toContain("Pi fragment returned 404: Session not found");
+    expect(getResult.stderr).toContain("Pi harness returned 404: Session not found");
     assert(listResult.exitCode === 1);
-    expect(listResult.stderr).toContain("Pi fragment returned 404: No sessions found");
+    expect(listResult.stderr).toContain("Pi harness returned 404: No sessions found");
     assert(turnResult.exitCode === 1);
-    expect(turnResult.stderr).toContain("Pi fragment returned 404: Session not found");
+    expect(turnResult.stderr).toContain("Pi harness returned 404: Session not found");
     expect(commandCallsResult).toEqual([
       {
         command: "pi.session.create",
@@ -904,7 +904,7 @@ describe("createPiRouteRuntime", () => {
     });
 
     const created = await runtime.createSession({
-      agent: "assistant",
+      agent: "default::openai::gpt-5-mini",
       name: "route-session",
       metadata: { team: "beta" },
       tags: ["priority"],
@@ -978,7 +978,9 @@ describe("createPiRouteRuntime", () => {
         method: "POST",
         body: {
           name: "route-session",
-          input: { agentName: "assistant" },
+          input: {
+            harnessName: "default::openai::gpt-5-mini",
+          },
         },
       },
       {
@@ -1476,17 +1478,17 @@ describe("createPiRouteRuntime", () => {
       orgId: "acme",
     });
 
-    await expect(runtime.createSession({ agent: "missing" })).rejects.toThrow(
-      "Pi fragment returned 404: Agent not found",
+    await expect(runtime.createSession({ agent: "missing::openai::gpt-5-mini" })).rejects.toThrow(
+      "Pi harness returned 404: Agent not found",
     );
     await expect(runtime.getSession({ sessionId: "missing" })).rejects.toThrow(
-      "Pi fragment returned 404: Session not found",
+      "Pi harness returned 404: Session not found",
     );
     await expect(runtime.listSessions({ limit: 5 })).rejects.toThrow(
-      "Pi fragment returned 404: Session not found",
+      "Pi harness returned 404: Session not found",
     );
     await expect(runtime.runTurn({ sessionId: "missing", text: "hello" })).rejects.toThrow(
-      "Pi fragment returned 404: Session not found",
+      "Pi harness returned 404: Session not found",
     );
   });
 
@@ -1581,7 +1583,7 @@ describe("createPiRouteRuntime", () => {
     });
 
     await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(
-      "Pi fragment returned 409: Session not ready",
+      "Pi harness returned 409: Session not ready",
     );
   });
 
@@ -1648,7 +1650,7 @@ describe("createPiRouteRuntime", () => {
     });
 
     await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(
-      "Pi fragment returned 500: Detail unavailable",
+      "Pi harness returned 500: Detail unavailable",
     );
   });
 });

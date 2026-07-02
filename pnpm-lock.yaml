@@ -142,9 +142,9 @@ importers:
       '@fragno-dev/otp-fragment':
         specifier: workspace:*
         version: link:../../example-fragments/otp-fragment
-      '@fragno-dev/pi-fragment':
+      '@fragno-dev/pi-harness':
         specifier: workspace:*
-        version: link:../../packages/pi-fragment
+        version: link:../../packages/pi-harness
       '@fragno-dev/resend-fragment':
         specifier: workspace:*
         version: link:../../packages/resend-fragment

@@ -62,29 +62,29 @@ export const showcaseTabs: ShowcaseTab[] = [
       {
         label: "Define the agent runtime",
         lang: "ts",
-        code: `import { createPi, createPiFragment } from "@fragno-dev/pi-fragment";
+        code: `import { createPiHarness, createPiWorkflows } from "@fragno-dev/pi-harness/factory";
+import { createInteractiveChatWorkflow } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
-const pi = createPi()
-  .withTool("bash", async ({ session }) => {
-    const fs = await getSessionFs(session.id);
-    return createBashTool(fs, session.id);
-  })
-  .withAgent("support-agent", {
-    systemPrompt: "You are a helpful support agent.",
-    model,
-    tools: ["bash"],
-  })
-  .build();
+const interactiveChat = createInteractiveChatWorkflow({
+  harnesses: {
+    support: {
+      env,
+      model,
+      systemPrompt: "You are a helpful support agent.",
+      tools: [bashTool],
+    },
+  },
+});
 
-// Fragment = server routes + DB schema + client hooks in one object
+const piConfig = { workflows: [interactiveChat] };
 const workflowsFragment = createWorkflowsFragment(
-  { workflows: pi.workflows, runtime: defaultFragnoRuntime },
+  { workflows: createPiWorkflows(piConfig), runtime: defaultFragnoRuntime },
   { databaseAdapter: adapter, mountRoute: "/api/workflows" },
 );
 
-export const piFragment = createPiFragment(
-  pi.config,
+export const piFragment = createPiHarness(
+  piConfig,
   { databaseAdapter: adapter, mountRoute: "/api/pi" },
   { workflows: workflowsFragment.services },
 );`,
@@ -92,28 +92,28 @@ export const piFragment = createPiFragment(
       {
         label: "Use it from React",
         lang: "ts",
-        code: `import { createPiFragmentClient } from "@fragno-dev/pi-fragment/react";
+        code: `import { createPiFragmentClient } from "@fragno-dev/pi-harness/react";
 
 const pi = createPiFragmentClient({ mountRoute: "/api/pi" });
-
-// Typed hooks — derived from the fragment definition
-const { data: sessions } = pi.useSessions();
 const createSession = pi.useCreateSession();
-const sendMessage = pi.useSendMessage();
 
-// Create a session, send a message — the fragment handles the rest
-const session = await createSession.mutate({
-  body: { agent: "support-agent", title: "Customer issue" },
+const created = await createSession.mutateQuery({
+  path: { workflowName: "interactive-chat-workflow" },
+  body: { name: "Customer issue", input: { harnessName: "support" } },
 });
 
-await sendMessage.mutate({
-  path: { sessionId: session.id },
-  body: { text: "Summarize the bug report and propose next steps." },
+const session = pi.useSession({
+  path: { workflowName: created.workflowName, sessionId: created.id },
+});
+
+await session.sendCommand({
+  kind: "prompt",
+  input: { text: "Summarize the bug report and propose next steps." },
 });`,
       },
     ],
     figCaption:
-      "Fig 02. The Pi agent fragment from the backoffice. Agent definition, tool registry, durable sessions, and typed React hooks — all from one fragment declaration.",
+      "Fig 02. The Pi harness from the backoffice. Normal workflows own agent construction while the fragment supplies durable session routes and typed React hooks.",
   },
   {
     id: "forms",

@@ -128,7 +128,7 @@ const fragments: FragmentCard[] = [
       "Workflow-backed AI agents with durable sessions, tool execution, and typed clients.",
     status: "available",
     href: "/fragments/pi",
-    install: "npm install @fragno-dev/pi-fragment @fragno-dev/workflows @fragno-dev/db",
+    install: "npm install @fragno-dev/pi-harness @fragno-dev/workflows @fragno-dev/db",
     highlights: [
       "Durable agent sessions",
       "Tool execution traceability",

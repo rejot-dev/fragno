@@ -179,7 +179,8 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArti
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           const isMissingSession =
-            message.includes("Pi fragment returned 404:") &&
+            (message.includes("Pi fragment returned 404:") ||
+              message.includes("Pi harness returned 404:")) &&
             message.includes("Session ") &&
             message.includes(" not found.");
           if (!isMissingSession) {
