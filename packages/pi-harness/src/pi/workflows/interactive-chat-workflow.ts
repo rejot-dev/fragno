@@ -2,19 +2,13 @@ import type { WorkflowDuration } from "@fragno-dev/workflows/workflow";
 import { defineWorkflow } from "@fragno-dev/workflows/workflow";
 import { z } from "zod";
 
-import type {
-  AgentHarnessResources,
-  AgentHarnessStreamOptions,
-  AgentMessage,
-  AgentTool,
-  ThinkingLevel,
-} from "@earendil-works/pi-agent-core";
+import type { AgentMessage, AgentTool, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
 
 import { createAgentLoop, type AgentLoopOptions } from "../harness/commands";
 
 const WAIT_FOR_COMMAND_TIMEOUT = "1 hour" as const;
-const DEFAULT_INTERACTIVE_CHAT_WORKFLOW_NAME = "interactive-chat-workflow";
+export const INTERACTIVE_CHAT_WORKFLOW_NAME = "interactive-chat-workflow";
 const DEFAULT_HARNESS_NAME = "default";
 
 export type InteractiveChatWorkflowParams = {
@@ -33,13 +27,15 @@ type InteractiveChatHarnessOptions<TTools extends readonly AgentTool[]> = Omit<
 export type InteractiveChatHarnesses<TTools extends readonly AgentTool[] = readonly AgentTool[]> =
   Record<string, InteractiveChatHarnessOptions<TTools>>;
 
-export type InteractiveChatResolvedHarness = {
+export type InteractiveChatResolvedHarness<
+  TTools extends readonly AgentTool[] = readonly AgentTool[],
+> = Partial<InteractiveChatHarnessOptions<TTools>> & {
   harnessName?: string;
-  model?: Model<Api>;
-  systemPrompt?: string;
-  thinkingLevel?: ThinkingLevel;
-  resources?: AgentHarnessResources;
-  streamOptions?: AgentHarnessStreamOptions;
+};
+
+export type InteractiveChatResolveHarnessContext = {
+  workflowName: string;
+  sessionId: string;
 };
 
 type MaybePromise<T> = T | Promise<T>;
@@ -52,7 +48,8 @@ export type CreateInteractiveChatWorkflowOptions<
   harnesses?: InteractiveChatHarnesses<TTools>;
   resolveHarness?: (
     params: InteractiveChatWorkflowParams,
-  ) => MaybePromise<InteractiveChatResolvedHarness | undefined>;
+    context: InteractiveChatResolveHarnessContext,
+  ) => MaybePromise<InteractiveChatResolvedHarness<TTools> | undefined>;
 };
 
 const textContentSchema = z.looseObject({
@@ -164,7 +161,7 @@ export const createInteractiveChatWorkflow = <
 >(
   options: CreateInteractiveChatWorkflowOptions<TTools> = {},
 ) => {
-  const workflowName = options.name ?? DEFAULT_INTERACTIVE_CHAT_WORKFLOW_NAME;
+  const workflowName = options.name ?? INTERACTIVE_CHAT_WORKFLOW_NAME;
   const commandTimeout = options.commandTimeout ?? WAIT_FOR_COMMAND_TIMEOUT;
 
   return defineWorkflow(
@@ -176,52 +173,42 @@ export const createInteractiveChatWorkflow = <
       const params = interactiveChatWorkflowParamsSchema.parse(event.payload ?? {});
       const requestedHarnessName = params.harnessName ?? DEFAULT_HARNESS_NAME;
       const harnesses = options.harnesses ?? {};
-      const resolved = await step.do("resolve-harnesses", async () => {
-        const resolvedHarness = await options.resolveHarness?.(params);
-        const harnessName = resolvedHarness?.harnessName ?? requestedHarnessName;
-
-        if (!harnesses[harnessName]) {
-          throw new Error(`Harness ${harnessName} not found.`);
-        }
-
-        return {
-          requestedHarnessName,
-          harnessName,
-          harnessNames: Object.keys(harnesses),
-          model: params.model ?? resolvedHarness?.model,
-          systemPrompt: params.systemPrompt ?? resolvedHarness?.systemPrompt,
-          thinkingLevel: params.thinkingLevel ?? resolvedHarness?.thinkingLevel,
-          resources: resolvedHarness?.resources,
-          streamOptions: resolvedHarness?.streamOptions,
-        } satisfies InteractiveChatResolvedHarness & {
-          requestedHarnessName: string;
-          harnessName: string;
-          harnessNames: string[];
-        };
+      const resolvedHarness = await options.resolveHarness?.(params, {
+        workflowName,
+        sessionId: event.instanceId,
       });
+      const harnessName = resolvedHarness?.harnessName ?? requestedHarnessName;
+      const harnessOptions = harnesses[harnessName];
 
-      const harnessName = resolved.harnessName;
-      const harnessOptions = harnesses[harnessName]!;
+      if (!harnessOptions && !resolvedHarness) {
+        throw new Error(`Harness ${harnessName} not found.`);
+      }
 
-      const model = resolved.model ?? harnessOptions.model;
+      const model = resolvedHarness?.model ?? params.model ?? harnessOptions?.model;
       if (!model) {
         throw new Error("INTERACTIVE_CHAT_MODEL_REQUIRED");
       }
 
+      const resources = resolvedHarness?.resources
+        ? { ...harnessOptions?.resources, ...resolvedHarness.resources }
+        : harnessOptions?.resources;
+      const streamOptions = resolvedHarness?.streamOptions
+        ? { ...harnessOptions?.streamOptions, ...resolvedHarness.streamOptions }
+        : harnessOptions?.streamOptions;
+
       const commandLoop = createAgentLoop(step, {
         ...harnessOptions,
+        ...resolvedHarness,
         workflowName,
         sessionId: event.instanceId,
         agentName: harnessName,
         model,
-        systemPrompt: resolved.systemPrompt ?? harnessOptions.systemPrompt,
-        thinkingLevel: resolved.thinkingLevel ?? harnessOptions.thinkingLevel,
-        resources: resolved.resources
-          ? { ...harnessOptions.resources, ...resolved.resources }
-          : harnessOptions.resources,
-        streamOptions: resolved.streamOptions
-          ? { ...harnessOptions.streamOptions, ...resolved.streamOptions }
-          : harnessOptions.streamOptions,
+        systemPrompt:
+          resolvedHarness?.systemPrompt ?? params.systemPrompt ?? harnessOptions?.systemPrompt,
+        thinkingLevel:
+          resolvedHarness?.thinkingLevel ?? params.thinkingLevel ?? harnessOptions?.thinkingLevel,
+        resources,
+        streamOptions,
         initialMessages: params.initialMessages,
         commandTimeout,
       });

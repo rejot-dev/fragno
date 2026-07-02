@@ -29,17 +29,18 @@ createInteractiveChatWorkflow({
       streamFn,
     },
   },
-  resolveHarness: async (params) => ({
+  resolveHarness: async (params, { sessionId }) => ({
     harnessName: params.harnessName ?? "default",
     systemPrompt: await loadSystemPrompt(params),
     resources: await loadResources(params),
+    tools: await loadSessionTools(sessionId),
   }),
 });
 ```
 
-`resolveHarness` runs in the first workflow step and should only return serializable per-session
-overrides. Keep runtime capabilities like `env`, `streamFn`, and tool `execute` functions in
-`harnesses`.
+`resolveHarness` runs outside durable workflow steps and receives `{ workflowName, sessionId }`, so
+it may return non-serializable runtime overrides such as session-scoped tool `execute` functions.
+Keep static defaults like `env`, `model`, and `streamFn` in `harnesses` when possible.
 
 Tools are registered up front on the agent loop. Use `activeToolNames` as a per-step policy when a
 turn should expose only a subset of the registered tools:
