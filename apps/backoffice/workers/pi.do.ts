@@ -286,6 +286,7 @@ export class InMemoryPiObject implements PiObject {
       objects: this.#runtimeServices.objects,
       kernel,
       execution,
+      runtimeConfig: this.#runtimeServices.config,
     };
 
     return createPiRuntime({

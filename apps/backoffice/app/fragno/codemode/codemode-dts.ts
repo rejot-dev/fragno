@@ -1,4 +1,4 @@
-import { renderSystemGuidance } from "@/files";
+import { renderStaticGuidance } from "@/files";
 import type { IFileSystem } from "@/files/interface";
 import {
   backofficeCapabilities,
@@ -17,14 +17,14 @@ import {
 } from "@/fragno/runtime-tools/reference";
 import type { BackofficeRuntimeToolFamily } from "@/fragno/runtime-tools/runtime-tools";
 
-export const CODEMODE_TYPES_DIR_PATH = "/workspace/codemode";
+export const CODEMODE_TYPES_DIR_PATH = "/static/codemode";
 export const CODEMODE_SYSTEM_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/system.d.ts`;
 export const CODEMODE_STATE_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/state.d.ts`;
 export const CODEMODE_WORKFLOW_AUTHORING_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/workflow-authoring.d.ts`;
 export const CODEMODE_PROVIDER_TYPES_DIR_PATH = `${CODEMODE_TYPES_DIR_PATH}/providers`;
 
 export const renderCodemodeSystemPrompt = async ({ fileSystem }: { fileSystem: IFileSystem }) =>
-  renderSystemGuidance({
+  renderStaticGuidance({
     codemodeDts: await fileSystem.readFile(CODEMODE_SYSTEM_DTS_PATH),
     stateDts: await fileSystem.readFile(CODEMODE_STATE_DTS_PATH),
     workflowAuthoringDts: await fileSystem.readFile(CODEMODE_WORKFLOW_AUTHORING_DTS_PATH),
@@ -48,6 +48,16 @@ export type CodemodeTypeFile = {
   path: string;
   content: string;
 };
+
+export const codemodeTypeFilesToStaticArtifacts = (files: readonly CodemodeTypeFile[]) =>
+  Object.fromEntries(
+    files.map((file) => {
+      if (!file.path.startsWith("/static/")) {
+        throw new Error(`Codemode type file must live under /static: ${file.path}`);
+      }
+      return [file.path.slice("/static/".length), file.content];
+    }),
+  );
 
 const getCapabilityRuntimeNamespaces = (
   capabilityId: BackofficeCapabilityId,

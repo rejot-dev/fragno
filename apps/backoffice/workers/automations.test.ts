@@ -4,6 +4,7 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import { loadAutomationCatalog } from "@/fragno/automation/catalog";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
 
@@ -27,12 +28,31 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 import { createDefaultAutomationFileSystem } from "./automations.do";
 
 const objects = {} as BackofficeObjectRegistry;
+const config: BackofficeRuntimeConfig = {
+  bindings: {
+    api: false,
+    auth: false,
+    automations: false,
+    telegram: false,
+    otp: false,
+    pi: false,
+    resend: false,
+    reson8: false,
+    mcp: false,
+    upload: false,
+    github: false,
+    cloudflareWorkers: false,
+    githubWebhookRouter: false,
+    sandbox: false,
+  },
+};
 
 const createFileSystem = (execution: BackofficeExecutionContext) =>
   createDefaultAutomationFileSystem({
     objects,
     kernel: new BackofficeKernel({ objects }),
     execution,
+    config,
   });
 
 const scopedEvent = (orgId: string): AutomationEvent => ({
@@ -60,7 +80,7 @@ const scopedEvent = (orgId: string): AutomationEvent => ({
 });
 
 describe("createDefaultAutomationFileSystem", () => {
-  test("loads the full catalog filesystem for system automation scope", async () => {
+  test("loads static and system automation files for system automation scope", async () => {
     const fs = await createFileSystem({
       actor: { type: "system", id: "system" },
       scope: { kind: "system" },
@@ -70,14 +90,13 @@ describe("createDefaultAutomationFileSystem", () => {
 
     expect(catalog.scripts.map((script) => script.absolutePath)).toEqual(
       expect.arrayContaining([
-        "/system/automations/codemode-types-refresh.workflow.js",
-        "/system/automations/project-files-configure.workflow.js",
+        "/static/automations/project-files-configure.workflow.js",
         "/system/automations/workspace-file-initialization.workflow.js",
       ]),
     );
   });
 
-  test("loads the same system automations for user automation scope", async () => {
+  test("loads static automations for user automation scope", async () => {
     const fs = await createFileSystem({
       actor: { type: "automation", id: "automation:event-1" },
       scope: { kind: "user", userId: "user-1" },
@@ -86,11 +105,10 @@ describe("createDefaultAutomationFileSystem", () => {
     const catalog = await loadAutomationCatalog(fs);
 
     expect(catalog.scripts.map((script) => script.absolutePath)).toEqual(
-      expect.arrayContaining([
-        "/system/automations/codemode-types-refresh.workflow.js",
-        "/system/automations/project-files-configure.workflow.js",
-        "/system/automations/workspace-file-initialization.workflow.js",
-      ]),
+      expect.arrayContaining(["/static/automations/project-files-configure.workflow.js"]),
+    );
+    expect(catalog.scripts.map((script) => script.absolutePath)).not.toContain(
+      "/system/automations/workspace-file-initialization.workflow.js",
     );
   });
 });

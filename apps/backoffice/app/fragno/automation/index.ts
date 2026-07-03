@@ -43,8 +43,10 @@ export function createAutomationFragment(
 
 export type { AutomationFragmentConfig };
 export {
+  AUTOMATION_STATIC_ROOT,
   AUTOMATION_SYSTEM_ROOT,
   AUTOMATION_WORKSPACE_ROOT,
+  getAutomationLayerForPath,
   listAutomationWorkspaceScripts,
   readAutomationWorkspaceScript,
 } from "./catalog";

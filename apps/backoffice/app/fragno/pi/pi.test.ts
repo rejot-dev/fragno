@@ -1,6 +1,7 @@
 import { describe, expect, test, vi, assert } from "vitest";
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import * as files from "@/files";
 import { EMPTY_BASH_HOST_CONTEXT } from "@/fragno/runtime-tools/bash-host.test-utils";
 import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
@@ -14,6 +15,25 @@ import {
   type PiSessionFileSystemContext,
 } from "./pi";
 import { loadBackofficePiSkills } from "./pi-skills";
+
+const testRuntimeConfig: BackofficeRuntimeConfig = {
+  bindings: {
+    api: false,
+    auth: false,
+    automations: false,
+    telegram: false,
+    otp: false,
+    pi: false,
+    resend: false,
+    reson8: false,
+    mcp: false,
+    upload: false,
+    github: false,
+    cloudflareWorkers: false,
+    githubWebhookRouter: false,
+    sandbox: false,
+  },
+};
 
 const createMockEnv = () =>
   ({
@@ -115,13 +135,17 @@ const createMockBashContext = (): PiBashCommandContext => ({
 
 describe("Backoffice Pi skills", () => {
   test("loads starter skills from the Pi filesystem", async () => {
-    const fs = await files.createBackofficeFileSystem(createContext());
+    const context = createContext();
+    const fs = await files.createBackofficeFileSystem({
+      ...context,
+      config: context.runtimeConfig,
+    });
     const skills = await loadBackofficePiSkills(fs);
 
     expect(Object.keys(skills)).toContain("building-automations");
     expect(skills["building-automations"]).toMatchObject({
-      location: "/system/skills/building-automations/SKILL.md",
-      directory: "/system/skills/building-automations",
+      location: "/static/skills/building-automations/SKILL.md",
+      directory: "/static/skills/building-automations",
     });
     expect(skills["building-automations"]?.body).toContain("events.eventsCatalogList");
   });
@@ -169,13 +193,13 @@ Filesystem-defined instructions.
 
     assert(readTool.name === "read");
     const result = await readTool.execute("tool-call-skill-1", {
-      path: "/system/skills/building-automations/SKILL.md",
+      path: "/static/skills/building-automations/SKILL.md",
       offset: 1,
       limit: 8,
     } as never);
 
     expect(result.details).toMatchObject({
-      path: "/system/skills/building-automations/SKILL.md",
+      path: "/static/skills/building-automations/SKILL.md",
       offset: 1,
       limit: 8,
     });
@@ -226,7 +250,7 @@ describe("Pi bash tool", () => {
       "dev",
       "projects",
       "resend",
-      "system",
+      "static",
       "tmp",
     ]);
   });
@@ -253,7 +277,7 @@ describe("Pi bash tool", () => {
 
     const result = await tool.execute("tool-call-3", {
       script: "ls",
-      cwd: "/system",
+      cwd: "/static",
     } as never);
     expect(result.details).toMatchObject({
       stderr: "",
@@ -262,6 +286,7 @@ describe("Pi bash tool", () => {
     expect((result.details as { stdout: string }).stdout.split("\n")).toEqual([
       "SYSTEM.md",
       "automations",
+      "codemode",
       "skills",
     ]);
   });
@@ -287,13 +312,13 @@ describe("Pi bash tool", () => {
     } as never);
 
     const result = await tool.execute("tool-call-automations-1", {
-      script: "cat /system/automations/codemode-types-refresh.workflow.js",
+      script: "cat /static/automations/project-files-configure.workflow.js",
     } as never);
     expect(result.details).toMatchObject({
       stderr: "",
       exitCode: 0,
     });
-    expect((result.details as { stdout: string }).stdout).toContain("codemode-types-refresh");
+    expect((result.details as { stdout: string }).stdout).toContain("project-files-configure");
   });
 
   test("mounts resend thread snapshots when a resend runtime is available", async () => {
@@ -452,7 +477,7 @@ describe("Pi bash tool", () => {
     } as never);
 
     const touchResult = await tool.execute("tool-call-readonly-1", {
-      script: "touch /system/SYSTEM.md",
+      script: "touch /static/SYSTEM.md",
     } as never);
     expect(touchResult.details).toMatchObject({
       stdout: "",
@@ -558,6 +583,7 @@ const createContext = (
     orgId: "acme-org",
     objects,
     kernel: new BackofficeKernel({ objects }),
+    runtimeConfig: testRuntimeConfig,
     execution: {
       actor: {
         type: "user",

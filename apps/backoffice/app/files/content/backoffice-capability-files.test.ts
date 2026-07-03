@@ -3,14 +3,14 @@ import { describe, expect, test } from "vitest";
 import { backofficeCapabilities } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 
 import type { FileSystemArtifact } from "../types";
-import { SYSTEM_FILE_CONTENT } from "./system";
+import { STATIC_FILE_CONTENT } from "./static";
 
-const SYSTEM_CONTENT = SYSTEM_FILE_CONTENT as Record<string, FileSystemArtifact>;
+const STATIC_CONTENT = STATIC_FILE_CONTENT as Record<string, FileSystemArtifact>;
 
 const skillNamePattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 
-const readSystemText = (path: string) => {
-  const content = SYSTEM_CONTENT[path];
+const readStaticText = (path: string) => {
+  const content = STATIC_CONTENT[path];
   if (typeof content !== "string") {
     throw new Error(`Expected '${path}' to be string content.`);
   }
@@ -22,7 +22,7 @@ const readSkillName = (skill: string) => {
   return match?.groups?.name ?? "";
 };
 
-describe("Backoffice capability system skills", () => {
+describe("Backoffice capability static skills", () => {
   test("capability skills are spec-shaped static skills", () => {
     for (const capability of backofficeCapabilities) {
       const skillPaths = Object.keys(capability.files ?? {}).filter(
@@ -32,7 +32,7 @@ describe("Backoffice capability system skills", () => {
       expect(skillPaths).toHaveLength(Object.keys(capability.files ?? {}).length);
 
       for (const skillPath of skillPaths) {
-        const skill = readSystemText(skillPath);
+        const skill = readStaticText(skillPath);
         const skillName = readSkillName(skill);
 
         expect(skillName).toMatch(skillNamePattern);
@@ -40,9 +40,9 @@ describe("Backoffice capability system skills", () => {
         expect(capability.files?.[skillPath]).toBe(skill);
         expect(skill).toContain("description:");
         expect(skill).toContain("#");
-        expect(SYSTEM_CONTENT[`skills/${skillName}/references/configuration.md`]).toBeUndefined();
-        expect(SYSTEM_CONTENT[`skills/${skillName}/references/events.md`]).toBeUndefined();
-        expect(SYSTEM_CONTENT[`skills/${skillName}/references/tools.md`]).toBeUndefined();
+        expect(STATIC_CONTENT[`skills/${skillName}/references/configuration.md`]).toBeUndefined();
+        expect(STATIC_CONTENT[`skills/${skillName}/references/events.md`]).toBeUndefined();
+        expect(STATIC_CONTENT[`skills/${skillName}/references/tools.md`]).toBeUndefined();
       }
     }
   });
@@ -60,7 +60,7 @@ describe("Backoffice capability system skills", () => {
   });
 
   test("Telegram skill documents its primary event and tools", () => {
-    const skill = readSystemText("skills/telegram-connection/SKILL.md");
+    const skill = readStaticText("skills/telegram-connection/SKILL.md");
 
     expect(skill).toContain("source`: `telegram`");
     expect(skill).toContain("eventType`: `message.received`");
@@ -69,7 +69,7 @@ describe("Backoffice capability system skills", () => {
   });
 
   test("MCP skill documents OAuth setup and tools", () => {
-    const skill = readSystemText("skills/mcp-connection/SKILL.md");
+    const skill = readStaticText("skills/mcp-connection/SKILL.md");
 
     expect(skill).toContain("public OAuth callback route");
     expect(skill).toContain('auth: { type: "oauth" }');
@@ -78,14 +78,14 @@ describe("Backoffice capability system skills", () => {
   });
 
   test("general starter skills cover automations, connections, workflows, and sandbox", () => {
-    expect(readSystemText("skills/building-automations/SKILL.md")).toContain(
+    expect(readStaticText("skills/building-automations/SKILL.md")).toContain(
       "events.eventsCatalogList",
     );
-    expect(readSystemText("skills/building-automations/SKILL.md")).toContain("router.create");
-    expect(readSystemText("skills/configuring-connections/SKILL.md")).toContain(
+    expect(readStaticText("skills/building-automations/SKILL.md")).toContain("router.create");
+    expect(readStaticText("skills/configuring-connections/SKILL.md")).toContain(
       "connections.configure",
     );
-    expect(readSystemText("skills/workflows/SKILL.md")).toContain("defineWorkflow");
-    expect(readSystemText("skills/sandbox/SKILL.md")).toContain("sandbox.startSandbox");
+    expect(readStaticText("skills/workflows/SKILL.md")).toContain("defineWorkflow");
+    expect(readStaticText("skills/sandbox/SKILL.md")).toContain("sandbox.startSandbox");
   });
 });

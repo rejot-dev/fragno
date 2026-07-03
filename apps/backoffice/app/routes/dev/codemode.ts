@@ -48,7 +48,12 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const { env, runtime } = context.get(BackofficeWorkerContext);
   const kernel = new BackofficeKernel({ objects: runtime.objects });
 
-  const fs = await createBackofficeFileSystem({ objects: runtime.objects, kernel, execution });
+  const fs = await createBackofficeFileSystem({
+    objects: runtime.objects,
+    kernel,
+    execution,
+    config: runtime.config,
+  });
   const routeRuntimeContext = createRouteBackedRuntimeContext({
     runtime,
     kernel,

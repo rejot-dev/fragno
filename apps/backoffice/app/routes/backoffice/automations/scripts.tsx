@@ -16,6 +16,21 @@ const compareScriptsByName = <TScript extends { path: string; name: string }>(
   right: TScript,
 ) => left.name.localeCompare(right.name) || left.path.localeCompare(right.path);
 
+const visibleScriptSectionDefinitions = (
+  scopeKind: AutomationLayoutContext["selectedScope"]["kind"],
+) => {
+  if (scopeKind === "system") {
+    return [{ id: "system" as const, label: "System", emptyLabel: "No system scripts." }];
+  }
+  if (scopeKind === "org") {
+    return [
+      { id: "static" as const, label: "Static", emptyLabel: "No static scripts." },
+      { id: "workspace" as const, label: "Workspace", emptyLabel: "No workspace scripts." },
+    ];
+  }
+  return [{ id: "workspace" as const, label: "Workspace", emptyLabel: "No workspace scripts." }];
+};
+
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const selectedScriptId = url.searchParams.get("script")?.trim() ?? "";
@@ -68,18 +83,10 @@ export default function BackofficeOrganisationAutomationScripts() {
   const isDetailVisible = Boolean(selectedScript);
   const basePath = automationScopeTabPath(selectedScope, "scripts");
   const hasScriptLoadError = Boolean(scriptsError);
-  const scriptSections = [
-    {
-      id: "system" as const,
-      label: "System",
-      scripts: scripts.filter((script) => script.layer === "system").sort(compareScriptsByName),
-    },
-    {
-      id: "workspace" as const,
-      label: "Workspace",
-      scripts: scripts.filter((script) => script.layer === "workspace").sort(compareScriptsByName),
-    },
-  ].filter((section) => section.scripts.length > 0);
+  const scriptSections = visibleScriptSectionDefinitions(selectedScope.kind).map((section) => ({
+    ...section,
+    scripts: scripts.filter((script) => script.layer === section.id).sort(compareScriptsByName),
+  }));
 
   if (hasScriptLoadError && scripts.length === 0) {
     return (
@@ -134,30 +141,36 @@ export default function BackofficeOrganisationAutomationScripts() {
                 </div>
 
                 <div className="space-y-1">
-                  {section.scripts.map((script) => {
-                    const isSelected = script.id === selectedScriptId;
+                  {section.scripts.length > 0 ? (
+                    section.scripts.map((script) => {
+                      const isSelected = script.id === selectedScriptId;
 
-                    return (
-                      <Link
-                        key={script.id}
-                        to={buildScriptLink({ basePath, scriptId: script.id })}
-                        preventScrollReset
-                        aria-current={isSelected ? "page" : undefined}
-                        className={
-                          isSelected
-                            ? "block border-l-2 border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2.5 text-left"
-                            : "block border-l-2 border-transparent px-3 py-2.5 text-left transition-colors hover:border-[color:var(--bo-border-strong)] hover:bg-[var(--bo-panel-2)]"
-                        }
-                      >
-                        <p className="truncate text-sm font-medium text-[var(--bo-fg)]">
-                          {script.name}
-                        </p>
-                        <p className="mt-1 truncate font-mono text-[11px] text-[var(--bo-muted-2)]">
-                          {script.path}
-                        </p>
-                      </Link>
-                    );
-                  })}
+                      return (
+                        <Link
+                          key={script.id}
+                          to={buildScriptLink({ basePath, scriptId: script.id })}
+                          preventScrollReset
+                          aria-current={isSelected ? "page" : undefined}
+                          className={
+                            isSelected
+                              ? "block border-l-2 border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2.5 text-left"
+                              : "block border-l-2 border-transparent px-3 py-2.5 text-left transition-colors hover:border-[color:var(--bo-border-strong)] hover:bg-[var(--bo-panel-2)]"
+                          }
+                        >
+                          <p className="truncate text-sm font-medium text-[var(--bo-fg)]">
+                            {script.name}
+                          </p>
+                          <p className="mt-1 truncate font-mono text-[11px] text-[var(--bo-muted-2)]">
+                            {script.path}
+                          </p>
+                        </Link>
+                      );
+                    })
+                  ) : (
+                    <p className="border border-dashed border-[color:var(--bo-border)] px-3 py-2.5 text-xs text-[var(--bo-muted-2)]">
+                      {section.emptyLabel}
+                    </p>
+                  )}
                 </div>
               </div>
             ))}

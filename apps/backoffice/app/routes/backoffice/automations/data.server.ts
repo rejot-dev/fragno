@@ -6,8 +6,10 @@ import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createBackofficeFileSystem } from "@/files";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import {
+  AUTOMATION_STATIC_ROOT,
   AUTOMATION_SYSTEM_ROOT,
   AUTOMATION_WORKSPACE_ROOT,
+  getAutomationLayerForPath,
   listAutomationWorkspaceScripts,
   readAutomationWorkspaceScript,
   type AutomationWorkspaceScriptEntry,
@@ -105,7 +107,12 @@ const createBackofficeAutomationFileSystem = async ({
   const { runtime } = context.get(BackofficeWorkerContext);
   const kernel = new BackofficeKernel({ objects: runtime.objects });
   const execution = await requireBackofficeContext(request, context, scope);
-  return createBackofficeFileSystem({ objects: runtime.objects, kernel, execution });
+  return createBackofficeFileSystem({
+    objects: runtime.objects,
+    kernel,
+    execution,
+    config: runtime.config,
+  });
 };
 
 const normalizeAutomationScriptPath = (value: string) => {
@@ -114,7 +121,7 @@ const normalizeAutomationScriptPath = (value: string) => {
     return "";
   }
 
-  for (const root of [AUTOMATION_SYSTEM_ROOT, AUTOMATION_WORKSPACE_ROOT]) {
+  for (const root of [AUTOMATION_STATIC_ROOT, AUTOMATION_SYSTEM_ROOT, AUTOMATION_WORKSPACE_ROOT]) {
     const prefix = `${root}/`;
     if (trimmed.startsWith(prefix)) {
       return trimmed.slice(prefix.length);
@@ -141,12 +148,25 @@ const buildAutomationScriptName = (path: string) => {
   return segments.join(" ") || path;
 };
 
+const isAutomationScriptLayerVisibleInScope = (
+  layer: AutomationWorkspaceScriptEntry["layer"],
+  scope: BackofficeContextScope,
+) => {
+  if (scope.kind === "system") {
+    return layer === "system";
+  }
+  if (layer === "static") {
+    return scope.kind === "org";
+  }
+  return layer === "workspace";
+};
+
 const buildWorkspaceScriptRecord = (
   script: AutomationWorkspaceScriptEntry,
 ): AutomationScriptRecord => ({
   id: toAutomationScriptId(script),
   layer: script.layer,
-  readOnly: script.layer === "system",
+  readOnly: script.layer === "static" || script.layer === "system",
   key: buildAutomationScriptKey(script.path),
   name: buildAutomationScriptName(script.path),
   engine: script.engine,
@@ -171,6 +191,9 @@ const fromAutomationScriptId = (value: string): string => {
     pathParts.length > 0 ? pathParts.join(":") : normalized,
   );
 
+  if (layer === "static") {
+    return `${AUTOMATION_STATIC_ROOT}/${path}`;
+  }
   if (layer === "system") {
     return `${AUTOMATION_SYSTEM_ROOT}/${path}`;
   }
@@ -217,6 +240,7 @@ export async function loadAutomationWorkspaceData({
 
   return {
     scripts: workspaceScripts
+      .filter((script) => isAutomationScriptLayerVisibleInScope(script.layer, resolvedScope))
       .map(buildWorkspaceScriptRecord)
       .sort(
         (left, right) =>
@@ -286,6 +310,14 @@ export async function loadAutomationScriptSource({
 
   try {
     const scriptPath = fromAutomationScriptId(scriptId);
+    const layer = getAutomationLayerForPath(scriptPath);
+    if (!isAutomationScriptLayerVisibleInScope(layer, resolvedScope)) {
+      return {
+        script: null,
+        scriptError: `Automation script '${scriptPath}' is not visible in ${resolvedScope.kind} scope.`,
+      };
+    }
+
     const script = await readAutomationWorkspaceScript(fileSystem, scriptPath);
     return {
       script: script.body,

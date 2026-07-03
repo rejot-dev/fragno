@@ -5,6 +5,7 @@ import { InMemoryAdapter } from "@fragno-dev/db";
 import {
   createMasterFileSystem,
   createSystemFilesContext,
+  STATIC_AUTOMATION_SCRIPT_PATHS,
   SYSTEM_AUTOMATION_SCRIPT_PATHS,
 } from "@/files";
 
@@ -50,6 +51,8 @@ describe("automation routes /scripts", () => {
             actor: { type: "system", id: "system" },
             scope: { kind: "org", orgId: "org_123" },
           },
+
+          staticFileArtifacts: () => ({}),
         }),
       ),
     });
@@ -64,7 +67,7 @@ describe("automation routes /scripts", () => {
       expect(response.data).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            path: SYSTEM_AUTOMATION_SCRIPT_PATHS.codemodeTypesRefresh.replace(
+            path: STATIC_AUTOMATION_SCRIPT_PATHS.projectFilesConfigure.replace(
               /^automations\//u,
               "",
             ),

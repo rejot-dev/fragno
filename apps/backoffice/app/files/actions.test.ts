@@ -16,6 +16,8 @@ const context: FilesContext = createSystemFilesContext({
     scope: { kind: "org", orgId: "org_123" },
   },
   backend: "backoffice",
+
+  staticFileArtifacts: () => ({}),
 });
 
 const contributors: FileContributor[] = [];

@@ -149,6 +149,7 @@ export const runBackofficeTerminalAction = async ({
         objects: runtime.objects,
         kernel,
         execution,
+        config: runtime.config,
       });
       return {
         ...autocompleteRequest,
@@ -184,6 +185,7 @@ export const runBackofficeTerminalAction = async ({
       objects: runtime.objects,
       kernel,
       execution,
+      config: runtime.config,
     });
     const { bash } = createInteractiveBashHost({
       fs: fileSystem,

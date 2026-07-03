@@ -1,5 +1,4 @@
 import type { FileSystemArtifact } from "../types";
-import { GENERAL_SKILL_CONTENT } from "./skills";
 import { WORKSPACE_STARTER_AUTOMATION_CONTENT } from "./starter-automations";
 
 export const WORKSPACE_STARTER_CONTENT: Record<string, FileSystemArtifact> = {
@@ -7,7 +6,7 @@ export const WORKSPACE_STARTER_CONTENT: Record<string, FileSystemArtifact> = {
 
 This is the editable organisation workspace. User-owned automations live in \`/workspace/automations/\` and may be changed freely.
 
-System-owned guidance and automations live in \`/system\` and are read-only.
+Product-owned guidance and static automations live in \`/static\` and are read-only.
 `,
   "README.md": `# Workspace starter content
 
@@ -28,5 +27,4 @@ Describe the task you want to work on here.
 `,
   "output/.gitkeep": "",
   ...WORKSPACE_STARTER_AUTOMATION_CONTENT,
-  ...GENERAL_SKILL_CONTENT,
 };

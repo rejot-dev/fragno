@@ -48,6 +48,8 @@ const createAutomation = async (
             actor: { type: "system", id: "system" },
             scope: ownerScope,
           },
+
+          staticFileArtifacts: () => ({}),
         }),
       ),
       runtime: options.runtime,

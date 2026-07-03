@@ -13,6 +13,7 @@ export type CreateSystemFilesContextOptions = {
   execution: BackofficeExecutionContext;
   filePrincipal?: FilePrincipal;
   automationHookQueue?: FilesContext["automationHookQueue"];
+  staticFileArtifacts: FilesContext["staticFileArtifacts"];
 };
 
 /**
@@ -35,5 +36,6 @@ export const createSystemFilesContext = ({
     execution,
     kernel,
     filePrincipal: filePrincipal ?? kernel.resolveFilePrincipal(execution),
+    staticFileArtifacts: filesContext.staticFileArtifacts,
   };
 };

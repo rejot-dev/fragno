@@ -107,22 +107,8 @@ export const STARTER_AUTOMATION_ROUTES: readonly AutomationRouteDefinition[] = [
     priority: 15,
     action: startWorkflowAction({
       remoteWorkflowName: "project-files-configure",
-      workflowScriptPath: "/system/automations/project-files-configure.workflow.js",
+      workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
       instanceIdTemplate: "project-files-configure-${event.id}",
-    }),
-  },
-  {
-    id: "system-codemode-types-refresh-capability",
-    name: "Refresh codemode types after capability configuration",
-    enabled: true,
-    source: "*",
-    eventType: "capability.configured",
-    matcher: null,
-    priority: 20,
-    action: startWorkflowAction({
-      remoteWorkflowName: "codemode-types-refresh",
-      workflowScriptPath: "/system/automations/codemode-types-refresh.workflow.js",
-      instanceIdTemplate: "codemode-types-refresh-${event.id}",
     }),
   },
   {
@@ -143,34 +129,6 @@ export const STARTER_AUTOMATION_ROUTES: readonly AutomationRouteDefinition[] = [
       remoteWorkflowName: "pi-default-agent-configure",
       workflowScriptPath: "/workspace/automations/pi-default-agent-configure.workflow.js",
       instanceIdTemplate: "pi-default-agent-configure-${event.id}",
-    }),
-  },
-  {
-    id: "system-codemode-types-refresh-mcp-changed",
-    name: "Refresh codemode types after MCP server changes",
-    enabled: true,
-    source: "mcp",
-    eventType: "server.configuration.changed",
-    matcher: null,
-    priority: 20,
-    action: startWorkflowAction({
-      remoteWorkflowName: "codemode-types-refresh",
-      workflowScriptPath: "/system/automations/codemode-types-refresh.workflow.js",
-      instanceIdTemplate: "codemode-types-refresh-${event.id}",
-    }),
-  },
-  {
-    id: "system-codemode-types-refresh-mcp-deleted",
-    name: "Refresh codemode types after MCP server deletion",
-    enabled: true,
-    source: "mcp",
-    eventType: "server.configuration.deleted",
-    matcher: null,
-    priority: 20,
-    action: startWorkflowAction({
-      remoteWorkflowName: "codemode-types-refresh",
-      workflowScriptPath: "/system/automations/codemode-types-refresh.workflow.js",
-      instanceIdTemplate: "codemode-types-refresh-${event.id}",
     }),
   },
   {

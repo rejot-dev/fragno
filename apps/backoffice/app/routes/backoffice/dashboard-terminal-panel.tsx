@@ -28,7 +28,7 @@ const suggestionKindLabel = (suggestion: DashboardAutocompleteSuggestion) => {
 export function DashboardTerminalPanel({
   scopeId,
   scopeName,
-  description = "Command output is executed against the backoffice Pi-backed filesystem (/system, /workspace).",
+  description = "Command output is executed against the backoffice Pi-backed filesystem (/static, /workspace).",
   commandSpecs = [],
 }: DashboardTerminalPanelProps) {
   const commandFetcher = useFetcher<DashboardTerminalActionResult>();
@@ -188,7 +188,7 @@ export function DashboardTerminalPanel({
               value={terminal.command}
               onChange={(event) => terminal.onCommandChange(event.target.value)}
               onKeyDown={terminal.onCommandKeyDown}
-              placeholder="Run a bash command (e.g. ls /workspace, pwd, find /system)"
+              placeholder="Run a bash command (e.g. ls /workspace, pwd, find /static)"
               className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-[var(--bo-fg)] outline-none"
               autoCapitalize="off"
               autoComplete="off"

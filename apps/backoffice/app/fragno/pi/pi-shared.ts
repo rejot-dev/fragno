@@ -1,5 +1,5 @@
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import { SYSTEM_FILE_CONTENT } from "@/files";
+import { STATIC_FILE_CONTENT } from "@/files";
 
 export type PiSteeringMode = "all" | "one-at-a-time";
 export type PiThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -93,7 +93,7 @@ export const DEFAULT_PI_HARNESSES: PiHarnessConfig[] = [
     label: "Default",
     description:
       "Built-in harness with codemode, read, and bash access to the combined session filesystem.",
-    systemPrompt: SYSTEM_FILE_CONTENT["SYSTEM.md"],
+    systemPrompt: STATIC_FILE_CONTENT["SYSTEM.md"],
     tools: ["execCodeMode", "read", "bash"],
     thinkingLevel: "low",
   },

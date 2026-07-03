@@ -86,6 +86,7 @@ export const seedWorkspaceStarterFiles = async ({
       actor: { type: "system", id: "system" },
       scope: { kind: "org", orgId },
     },
+    staticFileArtifacts: () => ({}),
   });
   const fs = createUploadFileSystem(fileContext, {
     mountPoint: WORKSPACE_ROOT,

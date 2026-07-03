@@ -64,6 +64,8 @@ describe("backoffice files download route", () => {
             actor: { type: "system", id: "system" },
             scope: { kind: "org", orgId: "org_123" },
           },
+
+          staticFileArtifacts: () => ({}),
         }),
         {
           contributors: [...getBuiltInFileContributors(), ...contributors],
@@ -82,14 +84,14 @@ describe("backoffice files download route", () => {
     const response = toResponse(
       await loader(
         createLoaderArgs(
-          "https://example.com/backoffice/files/org_123/download?path=%2Fsystem%2FSYSTEM.md",
+          "https://example.com/backoffice/files/org_123/download?path=%2Fstatic%2FSYSTEM.md",
         ),
       ),
     );
 
     assert(response.status === 302);
     expect(response.headers.get("Location")).toBe(
-      `https://example.com${buildBackofficeLoginPath("/backoffice/files/org_123/download?path=%2Fsystem%2FSYSTEM.md")}`,
+      `https://example.com${buildBackofficeLoginPath("/backoffice/files/org_123/download?path=%2Fstatic%2FSYSTEM.md")}`,
     );
   });
 
@@ -99,7 +101,7 @@ describe("backoffice files download route", () => {
     const response = toResponse(
       await loader(
         createLoaderArgs(
-          "https://example.com/backoffice/files/org_123/download?path=%2Fsystem%2FSYSTEM.md",
+          "https://example.com/backoffice/files/org_123/download?path=%2Fstatic%2FSYSTEM.md",
         ),
       ),
     );
@@ -225,7 +227,7 @@ describe("backoffice files download route", () => {
     await expect(
       loader(
         createLoaderArgs(
-          "https://example.com/backoffice/files/org_123/download?path=%2Fsystem%2Fskills",
+          "https://example.com/backoffice/files/org_123/download?path=%2Fstatic%2Fskills",
         ),
       ),
     ).rejects.toMatchObject({

@@ -19,7 +19,9 @@ import {
   createBackofficeFileSystem,
   createMasterFileSystem,
   createSystemFilesContext,
+  emptyStaticFileArtifacts,
   staticFileContributor,
+  systemFileContributor,
   type MasterFileSystem,
 } from "@/files";
 import { tmpFileContributor } from "@/files/contributors/tmp";
@@ -73,11 +75,13 @@ export const createDefaultAutomationFileSystem = async ({
   kernel,
   execution,
   automationHookQueue,
+  config,
 }: {
   objects: BackofficeObjectRegistry;
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
   automationHookQueue?: (opts?: DurableHookQueueOptions) => Promise<DurableHookQueueResponse>;
+  config: BackofficeRuntimeServices["config"];
 }): Promise<MasterFileSystem> => {
   if (execution.scope.kind === "org" || execution.scope.kind === "project") {
     return createBackofficeFileSystem({
@@ -85,6 +89,7 @@ export const createDefaultAutomationFileSystem = async ({
       kernel,
       execution,
       ...(automationHookQueue ? { automationHookQueue } : {}),
+      config,
     });
   }
 
@@ -92,8 +97,9 @@ export const createDefaultAutomationFileSystem = async ({
     createSystemFilesContext({
       objects,
       execution,
+      staticFileArtifacts: emptyStaticFileArtifacts,
     }),
-    { contributors: [staticFileContributor, tmpFileContributor] },
+    { contributors: [staticFileContributor, systemFileContributor, tmpFileContributor] },
   );
 };
 
@@ -302,6 +308,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       objects: this.#runtimeServices.objects,
       kernel,
       execution,
+      config: this.#runtimeServices.config,
       automationHookQueue: async (opts) =>
         await (
           await automationHookObject.getDurableHookRepository("automation")

@@ -45,7 +45,12 @@ export async function createBackofficeFilesFileSystem({
   const { runtime } = context.get(BackofficeWorkerContext);
   const kernel = new BackofficeKernel({ objects: runtime.objects });
   const execution = await requireBackofficeContext(request, context, { kind: "org", orgId });
-  return createBackofficeFileSystem({ objects: runtime.objects, kernel, execution });
+  return createBackofficeFileSystem({
+    objects: runtime.objects,
+    kernel,
+    execution,
+    config: runtime.config,
+  });
 }
 
 export async function loadFilesExplorerData({

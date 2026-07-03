@@ -19,19 +19,41 @@ const TEXT_DECODER = new TextDecoder();
 const ENTRY_SORTER = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 const UNKNOWN_MTIME = new Date(0);
 
+type LazyContentArtifacts = {
+  pathPrefix: string;
+  load(): Promise<Record<string, FileSystemArtifact>> | Record<string, FileSystemArtifact>;
+};
+
+export type ReadOnlyContentFileSystemOptions = {
+  lazyArtifacts?: readonly LazyContentArtifacts[];
+};
+
 export const createReadOnlyContentFileSystem = (
   mountPoint: string,
   artifacts: Record<string, FileSystemArtifact>,
+  options: ReadOnlyContentFileSystemOptions = {},
 ): IFileSystem => ({
   async readFile(path) {
-    const artifact = readContentText(mountPoint, artifacts, path);
+    const resolvedArtifacts = await resolveContentArtifactsForPath(
+      mountPoint,
+      artifacts,
+      options.lazyArtifacts ?? [],
+      path,
+    );
+    const artifact = readContentText(mountPoint, resolvedArtifacts, path);
     if (artifact === null) {
       throw createPathNotFoundFileSystemError("read", path);
     }
     return artifact;
   },
   async readFileBuffer(path) {
-    const artifact = readContentBuffer(mountPoint, artifacts, path);
+    const resolvedArtifacts = await resolveContentArtifactsForPath(
+      mountPoint,
+      artifacts,
+      options.lazyArtifacts ?? [],
+      path,
+    );
+    const artifact = readContentBuffer(mountPoint, resolvedArtifacts, path);
     if (artifact === null) {
       throw createPathNotFoundFileSystemError("read", path);
     }
@@ -44,10 +66,32 @@ export const createReadOnlyContentFileSystem = (
     throw createReadOnlyFileSystemError("append", path);
   },
   async exists(path) {
-    return statContentEntry(mountPoint, artifacts, path, true) !== null;
+    return (
+      statContentEntry(
+        mountPoint,
+        await resolveContentArtifactsForPath(
+          mountPoint,
+          artifacts,
+          options.lazyArtifacts ?? [],
+          path,
+        ),
+        path,
+        true,
+      ) !== null
+    );
   },
   async stat(path) {
-    const stat = statContentEntry(mountPoint, artifacts, path, true);
+    const stat = statContentEntry(
+      mountPoint,
+      await resolveContentArtifactsForPath(
+        mountPoint,
+        artifacts,
+        options.lazyArtifacts ?? [],
+        path,
+      ),
+      path,
+      true,
+    );
     if (!stat) {
       throw createPathNotFoundFileSystemError("stat", path);
     }
@@ -57,10 +101,28 @@ export const createReadOnlyContentFileSystem = (
     throw createReadOnlyFileSystemError("mkdir", path);
   },
   async readdir(path) {
-    return listContentChildNames(mountPoint, artifacts, path);
+    return listContentChildNames(
+      mountPoint,
+      await resolveContentArtifactsForDirectory(
+        mountPoint,
+        artifacts,
+        options.lazyArtifacts ?? [],
+        path,
+      ),
+      path,
+    );
   },
   async readdirWithFileTypes(path) {
-    return listContentDirents(mountPoint, artifacts, path);
+    return listContentDirents(
+      mountPoint,
+      await resolveContentArtifactsForDirectory(
+        mountPoint,
+        artifacts,
+        options.lazyArtifacts ?? [],
+        path,
+      ),
+      path,
+    );
   },
   async rm(path) {
     throw createReadOnlyFileSystemError("rm", path);
@@ -77,7 +139,13 @@ export const createReadOnlyContentFileSystem = (
   },
   resolvePath,
   getAllPaths() {
-    return [mountPoint, ...Object.keys(artifacts).map((path) => `${mountPoint}/${path}`)];
+    return [
+      mountPoint,
+      ...Object.keys(artifacts).map((path) => `${mountPoint}/${path}`),
+      ...(options.lazyArtifacts ?? []).map(
+        (lazyArtifacts) => `${normalizeMountPoint(mountPoint)}/${lazyArtifacts.pathPrefix}`,
+      ),
+    ];
   },
   async chmod(path) {
     throw createReadOnlyFileSystemError("chmod", path);
@@ -106,6 +174,108 @@ export const createReadOnlyContentFileSystem = (
 });
 
 type MutableFolderEntry = FileEntryDescriptor & { kind: "folder"; children: FileEntryDescriptor[] };
+
+type NormalizedLazyContentArtifacts = LazyContentArtifacts & { pathPrefix: string };
+
+const normalizeLazyContentArtifacts = (
+  lazyArtifacts: readonly LazyContentArtifacts[],
+): NormalizedLazyContentArtifacts[] =>
+  lazyArtifacts.map((entry) => ({ ...entry, pathPrefix: normalizeRelativePath(entry.pathPrefix) }));
+
+const relativeLookupPath = (mountPoint: string, path: string): string | null => {
+  const normalizedMountPoint = normalizeMountPoint(mountPoint);
+  const normalizedPath = normalizeDirectoryLookupPath(path);
+  if (
+    normalizedPath === normalizedMountPoint ||
+    normalizedPath === ensureFolderPath(normalizedMountPoint)
+  ) {
+    return "";
+  }
+  if (!normalizedPath.startsWith(`${normalizedMountPoint}/`)) {
+    return null;
+  }
+  return normalizeRelativePath(normalizedPath.slice(normalizedMountPoint.length + 1));
+};
+
+const lazyArtifactsAffectPath = (lazyArtifacts: NormalizedLazyContentArtifacts, path: string) =>
+  path === lazyArtifacts.pathPrefix || path.startsWith(`${lazyArtifacts.pathPrefix}/`);
+
+const lazyArtifactsAffectDirectory = (
+  lazyArtifacts: NormalizedLazyContentArtifacts,
+  directory: string,
+) => {
+  if (!directory) {
+    return false;
+  }
+  return (
+    lazyArtifactsAffectPath(lazyArtifacts, directory) ||
+    lazyArtifacts.pathPrefix.startsWith(`${directory}/`)
+  );
+};
+
+const loadMatchingLazyArtifacts = async (
+  lazyArtifacts: readonly NormalizedLazyContentArtifacts[],
+  matches: (entry: NormalizedLazyContentArtifacts) => boolean,
+): Promise<Record<string, FileSystemArtifact>> => {
+  const entries = await Promise.all(
+    lazyArtifacts.filter(matches).map(async (entry) => Object.entries(await entry.load())),
+  );
+  return Object.fromEntries(entries.flat());
+};
+
+const withLazyRootPlaceholders = (
+  artifacts: Record<string, FileSystemArtifact>,
+  lazyArtifacts: readonly NormalizedLazyContentArtifacts[],
+): Record<string, FileSystemArtifact> => {
+  const placeholders = Object.fromEntries(
+    lazyArtifacts.map((entry) => [`${entry.pathPrefix}/.lazy-artifacts-placeholder`, ""]),
+  );
+  return { ...artifacts, ...placeholders };
+};
+
+const resolveContentArtifactsForPath = async (
+  mountPoint: string,
+  artifacts: Record<string, FileSystemArtifact>,
+  rawLazyArtifacts: readonly LazyContentArtifacts[],
+  path: string,
+): Promise<Record<string, FileSystemArtifact>> => {
+  const lazyArtifacts = normalizeLazyContentArtifacts(rawLazyArtifacts);
+  const relativePath = relativeLookupPath(mountPoint, path);
+  if (relativePath === null) {
+    return artifacts;
+  }
+
+  if (!relativePath || lazyArtifacts.some((entry) => entry.pathPrefix === relativePath)) {
+    return withLazyRootPlaceholders(artifacts, lazyArtifacts);
+  }
+
+  const loaded = await loadMatchingLazyArtifacts(lazyArtifacts, (entry) =>
+    lazyArtifactsAffectPath(entry, relativePath),
+  );
+  return { ...artifacts, ...loaded };
+};
+
+const resolveContentArtifactsForDirectory = async (
+  mountPoint: string,
+  artifacts: Record<string, FileSystemArtifact>,
+  rawLazyArtifacts: readonly LazyContentArtifacts[],
+  path: string,
+): Promise<Record<string, FileSystemArtifact>> => {
+  const lazyArtifacts = normalizeLazyContentArtifacts(rawLazyArtifacts);
+  const relativePath = relativeLookupPath(mountPoint, path);
+  if (relativePath === null) {
+    return artifacts;
+  }
+
+  if (!relativePath) {
+    return withLazyRootPlaceholders(artifacts, lazyArtifacts);
+  }
+
+  const loaded = await loadMatchingLazyArtifacts(lazyArtifacts, (entry) =>
+    lazyArtifactsAffectDirectory(entry, relativePath),
+  );
+  return { ...artifacts, ...loaded };
+};
 
 const buildContentTree = (
   mountPoint: string,

@@ -8,10 +8,15 @@ import {
 } from "@/files";
 import { FileSystemError } from "@/files/fs-errors";
 
+export const AUTOMATION_STATIC_ROOT = "/static/automations";
 export const AUTOMATION_SYSTEM_ROOT = "/system/automations";
 export const AUTOMATION_WORKSPACE_ROOT = "/workspace/automations";
 export const AUTOMATION_SCRIPTS_ROOT = AUTOMATION_WORKSPACE_ROOT;
-const AUTOMATION_ROOTS = [AUTOMATION_SYSTEM_ROOT, AUTOMATION_WORKSPACE_ROOT] as const;
+const AUTOMATION_ROOTS = [
+  AUTOMATION_STATIC_ROOT,
+  AUTOMATION_SYSTEM_ROOT,
+  AUTOMATION_WORKSPACE_ROOT,
+] as const;
 
 export type AutomationFileSystemResolvePurpose = "route" | "runtime";
 
@@ -62,7 +67,7 @@ export type AutomationCatalog = {
   scripts: AutomationScriptCatalogEntry[];
 };
 
-export type AutomationScriptLayer = "system" | "workspace";
+export type AutomationScriptLayer = "static" | "system" | "workspace";
 
 export type AutomationWorkspaceScriptEntry = {
   layer: AutomationScriptLayer;
@@ -273,8 +278,15 @@ const readAutomationWorkspaceTextFile = async (
   }
 };
 
-const getAutomationLayerForPath = (absolutePath: string): AutomationScriptLayer =>
-  absolutePath.startsWith(`${AUTOMATION_SYSTEM_ROOT}/`) ? "system" : "workspace";
+export const getAutomationLayerForPath = (absolutePath: string): AutomationScriptLayer => {
+  if (absolutePath.startsWith(`${AUTOMATION_STATIC_ROOT}/`)) {
+    return "static";
+  }
+  if (absolutePath.startsWith(`${AUTOMATION_SYSTEM_ROOT}/`)) {
+    return "system";
+  }
+  return "workspace";
+};
 
 const toScriptKey = (path: string) => path.replace(/^scripts\//, "").replace(/\.[^.]+$/, "");
 
@@ -376,7 +388,9 @@ export const resolveAutomationFileSystem = async (
     return config.automationFileSystem;
   }
 
-  return createMasterFileSystem(createSystemFilesContext({ execution: input.execution }));
+  return createMasterFileSystem(
+    createSystemFilesContext({ execution: input.execution, staticFileArtifacts: () => ({}) }),
+  );
 };
 
 export const loadAutomationCatalog = async (

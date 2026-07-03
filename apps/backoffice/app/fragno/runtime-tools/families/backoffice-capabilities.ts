@@ -926,14 +926,14 @@ export const createBackofficeCapabilitiesRuntime = ({
         id: capability.id,
         label: capability.label,
         overview: hasSkill
-          ? `Use /system/${skillPath} for setup, event, and tool guidance.`
+          ? `Use /static/${skillPath} for setup, event, and tool guidance.`
           : `${capability.label} does not provide a setup guide yet.`,
         manualSteps: hasSkill
           ? [
               {
                 id: "read-agent-skill",
                 title: "Read agent skill",
-                instructions: `Open /system/${skillPath} and follow its guidance.`,
+                instructions: `Open /static/${skillPath} and follow its guidance.`,
               },
             ]
           : [],

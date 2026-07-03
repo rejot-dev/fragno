@@ -9,6 +9,7 @@ import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import { MasterFileSystem } from "@/files/master-file-system";
 import type { ResolvedFileMount } from "@/files/types";
 
@@ -24,6 +25,24 @@ import { createPiCodemodeRuntime } from "./pi-codemode";
 import type { PiCodemodeWorkflowParams } from "./pi-codemode-workflow";
 
 const unusedObjects = {} as BackofficeObjectRegistry;
+const testRuntimeConfig: BackofficeRuntimeConfig = {
+  bindings: {
+    api: false,
+    auth: false,
+    automations: false,
+    telegram: false,
+    otp: false,
+    pi: false,
+    resend: false,
+    reson8: false,
+    mcp: false,
+    upload: false,
+    github: false,
+    cloudflareWorkers: false,
+    githubWebhookRouter: false,
+    sandbox: false,
+  },
+};
 
 function makeFakeEsmSh(files: Record<string, string>): typeof fetch {
   return (async (input: RequestInfo | URL) => {
@@ -50,6 +69,7 @@ const createPiSessionFileSystemContext = () => ({
   orgId: "org-1",
   objects: unusedObjects,
   kernel: new BackofficeKernel({ objects: unusedObjects }),
+  runtimeConfig: testRuntimeConfig,
   execution: {
     actor: {
       type: "user" as const,

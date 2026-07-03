@@ -10,16 +10,26 @@ import {
   STARTER_AUTOMATION_SCRIPT_PATHS,
   WORKSPACE_STARTER_AUTOMATION_CONTENT,
 } from "./starter-automations";
+import { STATIC_AUTOMATION_CONTENT, STATIC_AUTOMATION_SCRIPT_PATHS } from "./static-automations";
 import { SYSTEM_AUTOMATION_CONTENT, SYSTEM_AUTOMATION_SCRIPT_PATHS } from "./system-automations";
 
 type WorkspaceAutomationPath = keyof typeof WORKSPACE_STARTER_AUTOMATION_CONTENT;
 
+type StaticAutomationPath = keyof typeof STATIC_AUTOMATION_CONTENT;
 type SystemAutomationPath = keyof typeof SYSTEM_AUTOMATION_CONTENT;
 
 const readWorkspaceAutomation = (path: WorkspaceAutomationPath) => {
   const content = WORKSPACE_STARTER_AUTOMATION_CONTENT[path];
   if (typeof content !== "string") {
     throw new Error(`Expected workspace automation '${path}'.`);
+  }
+  return content;
+};
+
+const readStaticAutomation = (path: StaticAutomationPath) => {
+  const content = STATIC_AUTOMATION_CONTENT[path];
+  if (typeof content !== "string") {
+    throw new Error(`Expected static automation '${path}'.`);
   }
   return content;
 };
@@ -121,13 +131,12 @@ describe("automation content", () => {
     );
   });
 
-  test("system automation content includes built-in system workflows", () => {
+  test("automation content separates static and system workflows", () => {
+    expect(Object.keys(STATIC_AUTOMATION_CONTENT).sort()).toEqual(
+      [STATIC_AUTOMATION_SCRIPT_PATHS.projectFilesConfigure].sort(),
+    );
     expect(Object.keys(SYSTEM_AUTOMATION_CONTENT).sort()).toEqual(
-      [
-        SYSTEM_AUTOMATION_SCRIPT_PATHS.codemodeTypesRefresh,
-        SYSTEM_AUTOMATION_SCRIPT_PATHS.projectFilesConfigure,
-        SYSTEM_AUTOMATION_SCRIPT_PATHS.workspaceFileInitialization,
-      ].sort(),
+      [SYSTEM_AUTOMATION_SCRIPT_PATHS.workspaceFileInitialization].sort(),
     );
   });
 
@@ -153,7 +162,7 @@ describe("automation content", () => {
           eventType: "project.created",
           action: expect.objectContaining({
             remoteWorkflowName: "project-files-configure",
-            workflowScriptPath: "/system/automations/project-files-configure.workflow.js",
+            workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
           }),
         }),
       ]),
@@ -173,7 +182,7 @@ describe("automation content", () => {
   });
 
   test("project creation workflow configures project files", () => {
-    const workflow = readSystemAutomation(SYSTEM_AUTOMATION_SCRIPT_PATHS.projectFilesConfigure);
+    const workflow = readStaticAutomation(STATIC_AUTOMATION_SCRIPT_PATHS.projectFilesConfigure);
 
     expect(workflow).toContain('{ name: "project-files-configure" }');
     expect(workflow).toContain('automationEvent.eventType !== "project.created"');

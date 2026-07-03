@@ -57,12 +57,15 @@ describe("files service", () => {
           uploadConfig: runtime.uploadConfig,
           uploadRuntime: runtime,
         }),
+
+        staticFileArtifacts: () => ({}),
       }),
     );
 
     expect(
       master.mounts.map((mount) => [mount.mountPoint, mount.id, mount.uploadProvider ?? null]),
     ).toEqual([
+      ["/static", "static", null],
       ["/system", "system", null],
       ["/workspace", "workspace", UPLOAD_PROVIDER_DATABASE],
       ["/r2-remote", "r2-remote", UPLOAD_PROVIDER_R2],
@@ -85,11 +88,19 @@ describe("files service", () => {
           uploadConfig: runtime.uploadConfig,
           uploadRuntime: runtime,
         }),
+
+        staticFileArtifacts: () => ({}),
       }),
     );
 
     const tree = await listFilesTree(master);
-    expect(tree.map((node) => node.path)).toEqual(["/system", "/workspace", "/r2-remote", "/tmp"]);
+    expect(tree.map((node) => node.path)).toEqual([
+      "/static",
+      "/system",
+      "/workspace",
+      "/r2-remote",
+      "/tmp",
+    ]);
 
     const workspaceChildren = await listFilesChildren(master, "/workspace");
     expect(workspaceChildren.map((node) => [node.kind, node.path, node.title])).toEqual([
@@ -111,10 +122,10 @@ describe("files service", () => {
       ]),
     );
 
-    const systemDetail = await getFilesNodeDetail(master, "/system/SYSTEM.md");
+    const systemDetail = await getFilesNodeDetail(master, "/static/SYSTEM.md");
     expect(systemDetail?.node).toMatchObject({
       kind: "file",
-      path: "/system/SYSTEM.md",
+      path: "/static/SYSTEM.md",
       title: "SYSTEM.md",
     });
     expect(systemDetail?.textContent).toContain("Backoffice");
@@ -141,6 +152,8 @@ describe("files service", () => {
         request: new Request(
           "https://docs.example.test/backoffice/files/org_123?path=%2Fworkspace",
         ),
+
+        staticFileArtifacts: () => ({}),
       }),
     );
 
@@ -191,13 +204,15 @@ describe("files service", () => {
           scope: { kind: "org", orgId: "org_123" },
         },
         backend: "backoffice",
+
+        staticFileArtifacts: () => ({}),
       }),
     );
 
     const tree = await listFilesTree(master);
-    expect(tree.map((node) => node.path)).toEqual(["/system", "/tmp"]);
+    expect(tree.map((node) => node.path)).toEqual(["/static", "/system", "/tmp"]);
 
-    const detail = await getFilesNodeDetail(master, "/system/SYSTEM.md");
+    const detail = await getFilesNodeDetail(master, "/static/SYSTEM.md");
     expect(detail?.textContent).toContain("Backoffice");
     expect(detail?.capabilities).toMatchObject({
       canCreateFolder: false,
@@ -214,6 +229,8 @@ describe("files service", () => {
           scope: { kind: "org", orgId: "org_123" },
         },
         backend: "backoffice",
+
+        staticFileArtifacts: () => ({}),
       }),
     );
 
