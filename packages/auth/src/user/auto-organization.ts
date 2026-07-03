@@ -9,7 +9,6 @@ import type {
 import {
   DEFAULT_CREATOR_ROLES,
   buildAutoOrganizationInput,
-  normalizeOrganizationSlug,
   normalizeRoleNames,
   toExternalId,
 } from "../organization/utils";
@@ -25,30 +24,27 @@ export type AutoCreateOrganizationResult = {
   member: OrganizationMember<string>;
 };
 
-type AuthUow = TypedUnitOfWork<typeof authSchema, unknown[], unknown, AuthHooksMap>;
-
-const resolveAutoOrganizationSlug = (name: string, userId: string): string => {
-  const normalized = normalizeOrganizationSlug(name);
-  if (normalized) {
-    return normalized;
-  }
-
-  const fallback = normalizeOrganizationSlug(`org-${userId.slice(0, 8)}`);
-  if (!fallback) {
-    throw new Error("Invalid auto organization slug");
-  }
-  return fallback;
+export type ResolvedAutoOrganizationInput = {
+  name: string;
+  slug: string;
+  logoUrl: string | null | undefined;
+  metadata: Record<string, unknown> | null | undefined;
 };
 
-export const createAutoOrganization = (
-  uow: AuthUow,
-  input: {
-    userId: string;
-    email: string;
-    now: Date;
-    options?: AutoCreateOrganizationOptions;
-  },
-): AutoCreateOrganizationResult | null => {
+type AuthUow = TypedUnitOfWork<typeof authSchema, unknown[], unknown, AuthHooksMap>;
+
+const resolveAutoOrganizationSlug = (slug: string | null): string => {
+  if (!slug) {
+    throw new Error("Invalid auto organization slug");
+  }
+  return slug;
+};
+
+export const resolveAutoOrganizationInput = (input: {
+  userId: string;
+  email: string;
+  options?: AutoCreateOrganizationOptions;
+}): ResolvedAutoOrganizationInput | null => {
   if (!input.options?.autoCreateOrganization) {
     return null;
   }
@@ -61,8 +57,34 @@ export const createAutoOrganization = (
     },
   );
 
-  const normalizedSlug = slug ?? resolveAutoOrganizationSlug(name, input.userId);
-  const creatorRoles = normalizeRoleNames(input.options.creatorRoles, DEFAULT_CREATOR_ROLES);
+  return {
+    name,
+    slug: resolveAutoOrganizationSlug(slug),
+    logoUrl,
+    metadata,
+  };
+};
+
+export const createAutoOrganization = (
+  uow: AuthUow,
+  input: {
+    userId: string;
+    email: string;
+    now: Date;
+    options?: AutoCreateOrganizationOptions;
+    autoOrganizationInput?: ResolvedAutoOrganizationInput | null;
+  },
+): AutoCreateOrganizationResult | null => {
+  const autoOrganizationInput =
+    "autoOrganizationInput" in input
+      ? input.autoOrganizationInput
+      : resolveAutoOrganizationInput(input);
+  if (!autoOrganizationInput) {
+    return null;
+  }
+
+  const { name, slug: normalizedSlug, logoUrl, metadata } = autoOrganizationInput;
+  const creatorRoles = normalizeRoleNames(input.options?.creatorRoles, DEFAULT_CREATOR_ROLES);
 
   const organizationId = uow.create("organization", {
     name,
