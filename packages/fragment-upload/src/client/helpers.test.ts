@@ -691,6 +691,86 @@ describe("upload client helpers", () => {
     ).rejects.toThrow(/Download provider is required/);
   });
 
+  it("searchFiles posts glob, query, provider, and options", async () => {
+    const calls: { url: string; body: unknown }[] = [];
+    const helpers = createUploadHelpers({
+      buildUrl: (path) => `https://local${path}`,
+      fetcher: (async (input, init) => {
+        const url = typeof input === "string" ? input : input.toString();
+        calls.push({ url, body: JSON.parse(init?.body as string) });
+
+        if (url.endsWith("/files/search/hydrate")) {
+          return jsonResponse({
+            matches: [
+              {
+                path: "workspace/src/workflows.ts",
+                line: 1,
+                column: 14,
+                startOffset: 13,
+                endOffset: 27,
+                text: "createWorkflow",
+                contextBefore: [],
+                contextAfter: [],
+              },
+            ],
+            scannedFiles: 1,
+          });
+        }
+
+        return jsonResponse({
+          provider: TEST_PROVIDER,
+          candidates: [{ key: "workspace/src/workflows.ts", positions: [13], count: 1 }],
+          candidateFiles: 1,
+          hasMoreCandidates: false,
+        });
+      }) as typeof fetch,
+    });
+
+    const result = await helpers.searchFiles("/workspace/**/*.ts", "createWorkflow", {
+      provider: TEST_PROVIDER,
+      caseSensitive: false,
+      contextBefore: 2,
+      contextAfter: 2,
+      maxMatches: 50,
+      maxCandidateFiles: 100,
+    });
+
+    expect(calls).toEqual([
+      {
+        url: "https://local/files/search",
+        body: {
+          provider: TEST_PROVIDER,
+          glob: "/workspace/**/*.ts",
+          query: "createWorkflow",
+          maxCandidateFiles: 100,
+          options: {
+            caseSensitive: false,
+            contextBefore: 2,
+            contextAfter: 2,
+            maxMatches: 50,
+          },
+        },
+      },
+      {
+        url: "https://local/files/search/hydrate",
+        body: {
+          provider: TEST_PROVIDER,
+          glob: "/workspace/**/*.ts",
+          query: "createWorkflow",
+          maxCandidateFiles: 100,
+          options: {
+            caseSensitive: false,
+            contextBefore: 2,
+            contextAfter: 2,
+            maxMatches: 50,
+          },
+        },
+      },
+    ]);
+    assert(result.candidates[0]?.key === "workspace/src/workflows.ts");
+    assert(result.matches[0]?.path === "workspace/src/workflows.ts");
+  });
+
   it("requires callers to specify provider and file key when creating uploads", async () => {
     const helpers = createUploadHelpers({
       buildUrl: (path) => `https://local${path}`,

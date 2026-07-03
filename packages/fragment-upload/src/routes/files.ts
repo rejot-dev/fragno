@@ -5,8 +5,15 @@ import type { FragnoRouteConfig } from "@fragno-dev/core";
 
 import { resolveUploadFragmentConfig } from "../config";
 import { uploadFragmentDefinition } from "../definition";
+import { uploadSchema } from "../schema";
 import { resolveFileKeyInput } from "../services/helpers";
 import { buildStorageObjectVersionSegment } from "../storage/object-key";
+import {
+  extractTextIndexTerms,
+  getStaticGlobPrefix,
+  globToRegExp,
+  searchTextContent,
+} from "../text-index";
 import {
   checksumSchema,
   fileMetadataSchema,
@@ -47,6 +54,43 @@ const updateFileSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
+const stateSearchOptionsSchema = z.object({
+  caseSensitive: z.boolean().optional(),
+  regex: z.boolean().optional(),
+  wholeWord: z.boolean().optional(),
+  contextBefore: z.number().int().min(0).max(20).optional(),
+  contextAfter: z.number().int().min(0).max(20).optional(),
+  maxMatches: z.number().int().min(1).max(500).optional(),
+});
+
+const searchFilesSchema = z.object({
+  provider: providerNamespaceSchema,
+  glob: z.string().min(1).max(512),
+  query: z.string().min(1).max(512),
+  options: stateSearchOptionsSchema.optional(),
+  maxCandidateFiles: z.number().int().min(1).max(500).optional(),
+  cursor: z.string().optional(),
+});
+
+const searchFileCandidateSchema = z.object({
+  key: z.string(),
+  positions: z.array(z.number()),
+  count: z.number(),
+});
+
+const hydrateSearchMatchesSchema = searchFilesSchema;
+
+const stateTextMatchSchema = z.object({
+  path: z.string(),
+  line: z.number(),
+  column: z.number(),
+  startOffset: z.number(),
+  endOffset: z.number(),
+  text: z.string(),
+  contextBefore: z.array(z.string()),
+  contextAfter: z.array(z.string()),
+});
+
 const errorCodes = [
   "UPLOAD_NOT_FOUND",
   "UPLOAD_ALREADY_ACTIVE",
@@ -60,6 +104,9 @@ const errorCodes = [
   "INVALID_FILE_KEY",
   "INVALID_CHECKSUM",
   "INVALID_REQUEST",
+  "TEXT_INDEX_DISABLED",
+  "TEXT_SEARCH_REGEX_UNSUPPORTED",
+  "TEXT_SEARCH_INVALID_QUERY",
 ] as const;
 
 type FileErrorCode = (typeof errorCodes)[number];
@@ -111,6 +158,21 @@ const handleServiceError = <Code extends FileErrorCode>(
       return error({ message: "Invalid request", code: "INVALID_REQUEST" as Code }, 400);
     case "STORAGE_ERROR":
       return error({ message: "Storage error", code: "STORAGE_ERROR" as Code }, 502);
+    case "TEXT_INDEX_DISABLED":
+      return error({ message: "Text index is disabled", code: "TEXT_INDEX_DISABLED" as Code }, 400);
+    case "TEXT_SEARCH_REGEX_UNSUPPORTED":
+      return error(
+        {
+          message: "Regex search is not supported by the text index",
+          code: "TEXT_SEARCH_REGEX_UNSUPPORTED" as Code,
+        },
+        400,
+      );
+    case "TEXT_SEARCH_INVALID_QUERY":
+      return error(
+        { message: "Invalid text search query", code: "TEXT_SEARCH_INVALID_QUERY" as Code },
+        400,
+      );
     default:
       throw err;
   }
@@ -157,6 +219,13 @@ const assertFileAvailable = <T extends { status: string }>(file: T) => {
     throw new Error("FILE_DELETED");
   }
   return file;
+};
+
+const toSearchPositions = (value: unknown): number[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((position): position is number => Number.isSafeInteger(position));
 };
 
 type DirectoryMetadata = z.infer<typeof directoryMetadataSchema>;
@@ -509,6 +578,185 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             cursor: result.cursor?.encode(),
             hasNextPage: result.hasNextPage,
           });
+        },
+      }),
+
+      // Complex read endpoints use POST so callers can send structured search options
+      // without query-string encoding or URL length limits.
+      defineRoute({
+        method: "POST",
+        path: "/files/search",
+        inputSchema: searchFilesSchema,
+        outputSchema: z.object({
+          provider: providerNamespaceSchema,
+          candidates: z.array(searchFileCandidateSchema),
+          candidateFiles: z.number(),
+          cursor: z.string().optional(),
+          hasMoreCandidates: z.boolean(),
+        }),
+        errorCodes,
+        handler: async function ({ input }, { json, error }) {
+          const resolvedConfig = getResolvedConfig();
+          const payload = await input.valid();
+          const options = payload.options ?? {};
+
+          if (!resolvedConfig.textIndex?.enabled) {
+            return handleServiceError(new Error("TEXT_INDEX_DISABLED"), error);
+          }
+
+          if (options.regex) {
+            return handleServiceError(new Error("TEXT_SEARCH_REGEX_UNSUPPORTED"), error);
+          }
+
+          const searchTerms = extractTextIndexTerms(payload.query, resolvedConfig.textIndex);
+          const searchTerm = searchTerms[0];
+          if (!searchTerm) {
+            return handleServiceError(new Error("TEXT_SEARCH_INVALID_QUERY"), error);
+          }
+
+          const globPrefix = getStaticGlobPrefix(payload.glob);
+          const globPattern = globToRegExp(payload.glob);
+          const maxCandidateFiles = payload.maxCandidateFiles ?? 200;
+
+          const [candidatePage] = await this.handlerTx()
+            .retrieve(({ forSchema }) =>
+              forSchema(uploadSchema).findWithCursor("file_text_term", (b) => {
+                const query = b
+                  .whereIndex("idx_file_text_term_provider_term_key", (eb) =>
+                    eb.and(
+                      eb("provider", "=", payload.provider),
+                      eb("term", "=", searchTerm),
+                      eb("key", "starts with", globPrefix),
+                    ),
+                  )
+                  .orderByIndex("idx_file_text_term_provider_term_key", "asc")
+                  .pageSize(maxCandidateFiles)
+                  .joinOne("document", "file_text_document", (document) =>
+                    document.onIndex("primary", (eb) => eb("id", "=", eb.parent("documentId"))),
+                  );
+
+                return payload.cursor ? query.after(payload.cursor) : query;
+              }),
+            )
+            .execute();
+
+          const candidates = candidatePage.items.flatMap((candidate) => {
+            const document = candidate.document;
+            if (!document || !globPattern.test(document.key)) {
+              return [];
+            }
+
+            return [
+              {
+                key: document.key,
+                positions: toSearchPositions(candidate.positions),
+                count: candidate.count,
+              },
+            ];
+          });
+
+          return json({
+            provider: payload.provider,
+            candidates,
+            candidateFiles: candidates.length,
+            cursor: candidatePage.cursor?.encode(),
+            hasMoreCandidates: candidatePage.hasNextPage,
+          });
+        },
+      }),
+
+      // Hydration is also read-only, but POST keeps the API compatible with richer
+      // payloads such as explicit candidate pages.
+      defineRoute({
+        method: "POST",
+        path: "/files/search/hydrate",
+        inputSchema: hydrateSearchMatchesSchema,
+        outputSchema: z.object({
+          matches: z.array(stateTextMatchSchema),
+          scannedFiles: z.number(),
+        }),
+        errorCodes,
+        handler: async function ({ input }, { json, error }) {
+          const resolvedConfig = getResolvedConfig();
+          const payload = await input.valid();
+          const options = payload.options ?? {};
+          const maxMatches = options.maxMatches ?? 50;
+
+          if (!resolvedConfig.textIndex?.enabled) {
+            return handleServiceError(new Error("TEXT_INDEX_DISABLED"), error);
+          }
+
+          if (options.regex) {
+            return handleServiceError(new Error("TEXT_SEARCH_REGEX_UNSUPPORTED"), error);
+          }
+
+          if (!resolvedConfig.storage.getDownloadStream) {
+            return handleServiceError(new Error("STORAGE_ERROR"), error);
+          }
+
+          const searchTerms = extractTextIndexTerms(payload.query, resolvedConfig.textIndex);
+          const searchTerm = searchTerms[0];
+          if (!searchTerm) {
+            return handleServiceError(new Error("TEXT_SEARCH_INVALID_QUERY"), error);
+          }
+
+          const globPrefix = getStaticGlobPrefix(payload.glob);
+          const globPattern = globToRegExp(payload.glob);
+          const maxCandidateFiles = payload.maxCandidateFiles ?? 200;
+
+          const [candidatePage] = await this.handlerTx()
+            .retrieve(({ forSchema }) =>
+              forSchema(uploadSchema).findWithCursor("file_text_term", (b) => {
+                const query = b
+                  .whereIndex("idx_file_text_term_provider_term_key", (eb) =>
+                    eb.and(
+                      eb("provider", "=", payload.provider),
+                      eb("term", "=", searchTerm),
+                      eb("key", "starts with", globPrefix),
+                    ),
+                  )
+                  .orderByIndex("idx_file_text_term_provider_term_key", "asc")
+                  .pageSize(maxCandidateFiles)
+                  .joinOne("document", "file_text_document", (document) =>
+                    document.onIndex("primary", (eb) => eb("id", "=", eb.parent("documentId"))),
+                  );
+
+                return payload.cursor ? query.after(payload.cursor) : query;
+              }),
+            )
+            .execute();
+
+          const matches = [];
+          let scannedFiles = 0;
+
+          for (const candidate of candidatePage.items) {
+            if (matches.length >= maxMatches) {
+              break;
+            }
+
+            const document = candidate.document;
+            if (!document || !globPattern.test(document.key)) {
+              continue;
+            }
+
+            const response = await resolvedConfig.storage.getDownloadStream({
+              storageKey: document.objectKey,
+            });
+            if (!response.ok) {
+              return handleServiceError(new Error("STORAGE_ERROR"), error);
+            }
+
+            scannedFiles += 1;
+            const text = await response.text();
+            matches.push(
+              ...searchTextContent(document.key, text, payload.query, {
+                ...options,
+                maxMatches: maxMatches - matches.length,
+              }),
+            );
+          }
+
+          return json({ matches, scannedFiles });
         },
       }),
 

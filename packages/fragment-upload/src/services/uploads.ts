@@ -68,6 +68,7 @@ const DEFAULT_VISIBILITY: FileVisibility = "private";
 
 type UploadHooks = {
   onFileReady: (payload: FileHookPayload) => void | Promise<void>;
+  onFileTextIndexRequested: (payload: FileHookPayload) => void | Promise<void>;
   onUploadFailed: (payload: FileHookPayload) => void | Promise<void>;
   onFileDeleted: (payload: FileHookPayload) => void | Promise<void>;
   cleanupStorageObject: (payload: FileHookPayload) => void | Promise<void>;
@@ -595,7 +596,9 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
             errorMessage: null,
           } as UploadRow;
 
-          uow.triggerHook("onFileReady", buildUploadHookPayload(uploadRow, finalSizeBytes));
+          const fileReadyPayload = buildUploadHookPayload(uploadRow, finalSizeBytes);
+          uow.triggerHook("onFileReady", fileReadyPayload);
+          uow.triggerHook("onFileTextIndexRequested", fileReadyPayload);
 
           return {
             upload: uploadRow,
@@ -934,7 +937,9 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
                 };
               })();
 
-          uow.triggerHook("onFileReady", buildUploadHookPayload(upload, finalSizeBytes));
+          const fileReadyPayload = buildUploadHookPayload(upload, finalSizeBytes);
+          uow.triggerHook("onFileReady", fileReadyPayload);
+          uow.triggerHook("onFileTextIndexRequested", fileReadyPayload);
 
           return {
             upload: updatedUpload,

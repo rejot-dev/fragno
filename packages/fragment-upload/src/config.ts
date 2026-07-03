@@ -4,6 +4,7 @@ import type {
   StorageAdapterLimits,
   StorageAdapterRecommendations,
 } from "./storage/types";
+import type { TextIndexOptions } from "./text-index";
 
 export type FileHookPayload = {
   provider: string;
@@ -31,6 +32,7 @@ export interface UploadFragmentConfig {
   signedUrlExpiresInSeconds?: number;
   maxSingleUploadBytes?: number;
   maxMultipartUploadBytes?: number;
+  textIndex?: TextIndexOptions;
 
   onFileReady?: (payload: FileHookPayload, idempotencyKey: string) => Promise<void>;
   onUploadFailed?: (payload: FileHookPayload, idempotencyKey: string) => Promise<void>;

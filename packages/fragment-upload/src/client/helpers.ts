@@ -1,4 +1,5 @@
 import type { UploadChecksum } from "../storage/types";
+import type { StateSearchOptions, StateTextMatch } from "../text-index";
 import type { FileMetadata, FileVisibility, UploadStrategy } from "../types";
 
 export type UploadProgress = {
@@ -27,6 +28,33 @@ export type DownloadFileOptions = {
   provider: string;
   method: DownloadMethod;
 };
+
+export type SearchFilesOptions = StateSearchOptions & {
+  provider: string;
+  maxCandidateFiles?: number;
+  cursor?: string;
+};
+
+export type SearchFileCandidate = {
+  key: string;
+  positions: number[];
+  count: number;
+};
+
+export type SearchFileCandidatesResult = {
+  provider: string;
+  candidates: SearchFileCandidate[];
+  candidateFiles: number;
+  cursor?: string;
+  hasMoreCandidates: boolean;
+};
+
+export type HydrateSearchMatchesResult = {
+  matches: StateTextMatch[];
+  scannedFiles: number;
+};
+
+export type SearchFilesResult = SearchFileCandidatesResult & HydrateSearchMatchesResult;
 
 export type UploadCreateResponse = {
   uploadId: string;
@@ -58,6 +86,21 @@ export type UploadHelpers = {
     options: CreateUploadAndTransferOptions,
   ) => Promise<{ upload: UploadCreateResponse; file: FileMetadata }>;
   downloadFile: (fileKey: string, options: DownloadFileOptions) => Promise<Response>;
+  searchFileCandidates: (
+    glob: string,
+    query: string,
+    options: SearchFilesOptions,
+  ) => Promise<SearchFileCandidatesResult>;
+  hydrateSearchMatches: (
+    glob: string,
+    query: string,
+    options: SearchFilesOptions,
+  ) => Promise<HydrateSearchMatchesResult>;
+  searchFiles: (
+    glob: string,
+    query: string,
+    options: SearchFilesOptions,
+  ) => Promise<SearchFilesResult>;
 };
 
 const DEFAULT_CONTENT_TYPE = "application/octet-stream";
@@ -584,6 +627,66 @@ export const createUploadHelpers = (input: {
     return { upload, file: proxyMetadata };
   };
 
+  const buildSearchPayload = (glob: string, query: string, options: SearchFilesOptions) => {
+    if (!hasText(glob)) {
+      throw new Error("Glob is required");
+    }
+
+    if (!hasText(query)) {
+      throw new Error("Search query is required");
+    }
+
+    if (!options || !hasText(options.provider)) {
+      throw new Error("Search provider is required");
+    }
+
+    const { provider, maxCandidateFiles, cursor, ...searchOptions } = options;
+    return {
+      provider,
+      glob,
+      query,
+      maxCandidateFiles,
+      cursor,
+      options: searchOptions,
+    };
+  };
+
+  const searchFileCandidates: UploadHelpers["searchFileCandidates"] = async (
+    glob,
+    query,
+    options,
+  ) => {
+    return await fetchJson<SearchFileCandidatesResult>("/files/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildSearchPayload(glob, query, options)),
+    });
+  };
+
+  const hydrateSearchMatches: UploadHelpers["hydrateSearchMatches"] = async (
+    glob,
+    query,
+    options,
+  ) => {
+    return await fetchJson<HydrateSearchMatchesResult>("/files/search/hydrate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildSearchPayload(glob, query, options)),
+    });
+  };
+
+  const searchFiles: UploadHelpers["searchFiles"] = async (glob, query, options) => {
+    const [candidates, hydrated] = await Promise.all([
+      searchFileCandidates(glob, query, options),
+      hydrateSearchMatches(glob, query, options),
+    ]);
+
+    return {
+      ...candidates,
+      ...hydrated,
+    };
+  };
+
   const downloadFile: UploadHelpers["downloadFile"] = async (fileKey, options) => {
     if (!hasText(fileKey)) {
       throw new Error("File key is required");
@@ -708,5 +811,8 @@ export const createUploadHelpers = (input: {
   return {
     createUploadAndTransfer,
     downloadFile,
+    hydrateSearchMatches,
+    searchFileCandidates,
+    searchFiles,
   };
 };

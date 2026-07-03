@@ -115,5 +115,40 @@ export const uploadSchema = schema("upload", (s) => {
           column("timestamp").defaultTo((b) => b.now()),
         )
         .createIndex("idx_storage_object_key", ["storageKey"], { unique: true });
+    })
+    .addTable("file_text_document", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("fileId", referenceColumn({ table: "file" }))
+        .addColumn("provider", column("string"))
+        .addColumn("key", column("string"))
+        .addColumn("objectKey", column("string"))
+        .addColumn("contentHash", column("string"))
+        .addColumn("byteLength", column("bigint"))
+        .addColumn(
+          "indexedAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .addColumn(
+          "updatedAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .createIndex("idx_file_text_document_provider_key", ["provider", "key"], {
+          unique: true,
+        })
+        .createIndex("idx_file_text_document_file", ["fileId"]);
+    })
+    .addTable("file_text_term", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("documentId", referenceColumn({ table: "file_text_document" }))
+        .addColumn("provider", column("string"))
+        .addColumn("key", column("string"))
+        .addColumn("term", column("string"))
+        .addColumn("positions", column("json"))
+        .addColumn("count", column("integer"))
+        .createIndex("idx_file_text_term_provider_term", ["provider", "term"])
+        .createIndex("idx_file_text_term_provider_term_key", ["provider", "term", "key"])
+        .createIndex("idx_file_text_term_document", ["documentId"]);
     });
 });

@@ -14,6 +14,13 @@ export type {
 } from "./config";
 export { resolveUploadFragmentConfig } from "./config";
 export { uploadSchema } from "./schema";
+export type {
+  BuiltTextIndex,
+  StateSearchOptions,
+  StateTextMatch,
+  TextIndexOptions,
+  TextIndexTerm,
+} from "./text-index";
 export type { FileKey, FileKeyValidationResult, ValidateFileKeyOptions } from "./file-key";
 export { assertFileKey, splitFileKey, validateFileKey } from "./file-key";
 export type {
@@ -43,6 +50,11 @@ export type {
   CreateUploadAndTransferOptions,
   DownloadFileOptions,
   DownloadMethod,
+  HydrateSearchMatchesResult,
+  SearchFileCandidate,
+  SearchFileCandidatesResult,
+  SearchFilesOptions,
+  SearchFilesResult,
   UploadHelpers,
   UploadProgress,
 } from "./client/helpers";
