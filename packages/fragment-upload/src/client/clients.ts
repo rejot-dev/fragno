@@ -19,6 +19,8 @@ export function createUploadFragmentClients(config: FragnoPublicClientConfig = {
     useFile: builder.createHook("/files/by-key"),
     useCreateUpload: builder.createMutator("POST", "/uploads"),
     useUploadStatus: builder.createHook("/uploads/:uploadId"),
+    useSearchFiles: builder.createMutator("POST", "/files/search"),
+    useHydrateSearchMatches: builder.createMutator("POST", "/files/search/hydrate"),
     useCompleteUpload: builder.createMutator(
       "POST",
       "/uploads/:uploadId/complete",
