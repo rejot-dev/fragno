@@ -2,6 +2,9 @@ import type { AutoCreateOrganizationConfig, OrganizationRoleName } from "./types
 
 export const ORGANIZATION_SLUG_REGEX = /^[a-z0-9][a-z0-9-]{2,62}$/;
 
+const ORGANIZATION_SLUG_MAX_LENGTH = 63;
+const AUTO_ORGANIZATION_USER_ID_SUFFIX_LENGTH = 8;
+
 export const DEFAULT_CREATOR_ROLES = ["owner"] as const;
 export const DEFAULT_MEMBER_ROLES = ["member"] as const;
 
@@ -41,6 +44,20 @@ export function buildDefaultOrganizationName(email: string): string {
   return `${safeLocalPart}'s Organization`;
 }
 
+function buildUserScopedOrganizationSlug(value: string, userId: string): string | null {
+  const suffix = slugifyOrganizationName(userId).slice(0, AUTO_ORGANIZATION_USER_ID_SUFFIX_LENGTH);
+  if (!suffix) {
+    return null;
+  }
+
+  const normalizedBase = slugifyOrganizationName(value) || "org";
+  const maxBaseLength = ORGANIZATION_SLUG_MAX_LENGTH - suffix.length - 1;
+  const base = normalizedBase.slice(0, maxBaseLength).replace(/-+$/g, "") || "org";
+  const slug = `${base}-${suffix}`;
+
+  return ORGANIZATION_SLUG_REGEX.test(slug) ? slug : normalizeOrganizationSlug(`org-${suffix}`);
+}
+
 export function buildAutoOrganizationInput(
   config: AutoCreateOrganizationConfig | undefined,
   ctx: { userId: string; email: string },
@@ -51,10 +68,12 @@ export function buildAutoOrganizationInput(
   metadata: Record<string, unknown> | null | undefined;
 } {
   const name = config?.name?.(ctx) ?? buildDefaultOrganizationName(ctx.email);
-  const rawSlug = config?.slug?.(ctx) ?? name;
+  const rawSlug = config?.slug?.(ctx);
   return {
     name,
-    slug: normalizeOrganizationSlug(rawSlug),
+    slug: rawSlug
+      ? (normalizeOrganizationSlug(rawSlug) ?? buildUserScopedOrganizationSlug(name, ctx.userId))
+      : buildUserScopedOrganizationSlug(name, ctx.userId),
     logoUrl: config?.logoUrl?.(ctx),
     metadata: config?.metadata?.(ctx),
   };

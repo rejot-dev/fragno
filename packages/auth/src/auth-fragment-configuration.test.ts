@@ -205,6 +205,95 @@ describe("auth-fragment auto-create organizations", async () => {
   });
 });
 
+describe("auth-fragment default auto-create organization slugs", async () => {
+  const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "kysely-sqlite" })
+    .withFragment(
+      "auth",
+      instantiate(authFragmentDefinition)
+        .withConfig({
+          organizations: {
+            autoCreateOrganization: {},
+          },
+        })
+        .withRoutes([userActionsRoutesFactory, sessionRoutesFactory]),
+    )
+    .build();
+
+  const fragment = fragments.auth;
+
+  afterAll(async () => {
+    await test.cleanup();
+  });
+
+  it("scopes generated slugs by user so matching email local parts can sign up", async () => {
+    const firstSignUpResponse = await fragment.callRoute("POST", "/sign-up", {
+      body: { email: "wilco@rejot.dev", password: "password" },
+    });
+    const secondSignUpResponse = await fragment.callRoute("POST", "/sign-up", {
+      body: { email: "wilco@is3a.nl", password: "password" },
+    });
+
+    assert(firstSignUpResponse.type === "json");
+    assert(secondSignUpResponse.type === "json");
+
+    const firstMeResponse = await fragment.callRoute("GET", "/me", {
+      headers: authHeaders(firstSignUpResponse.data.auth.token as string),
+    });
+    const secondMeResponse = await fragment.callRoute("GET", "/me", {
+      headers: authHeaders(secondSignUpResponse.data.auth.token as string),
+    });
+
+    assert(firstMeResponse.type === "json");
+    assert(secondMeResponse.type === "json");
+
+    const firstSlug = firstMeResponse.data.organizations[0]?.organization.slug;
+    const secondSlug = secondMeResponse.data.organizations[0]?.organization.slug;
+
+    expect(firstSlug).toMatch(/^wilcos-organization-[a-z0-9]{8}$/);
+    expect(secondSlug).toMatch(/^wilcos-organization-[a-z0-9]{8}$/);
+    expect(secondSlug).not.toBe(firstSlug);
+  });
+});
+
+describe("auth-fragment auto-create organization slug collisions", async () => {
+  const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "kysely-sqlite" })
+    .withFragment(
+      "auth",
+      instantiate(authFragmentDefinition)
+        .withConfig({
+          organizations: {
+            autoCreateOrganization: {
+              slug: () => "shared-workspace",
+            },
+          },
+        })
+        .withRoutes([userActionsRoutesFactory, sessionRoutesFactory]),
+    )
+    .build();
+
+  const fragment = fragments.auth;
+
+  afterAll(async () => {
+    await test.cleanup();
+  });
+
+  it("returns a typed error instead of surfacing a database constraint error", async () => {
+    const firstSignUpResponse = await fragment.callRoute("POST", "/sign-up", {
+      body: { email: "shared-one@test.com", password: "password" },
+    });
+    const secondSignUpResponse = await fragment.callRoute("POST", "/sign-up", {
+      body: { email: "shared-two@test.com", password: "password" },
+    });
+
+    assert(firstSignUpResponse.type === "json");
+    assert(secondSignUpResponse.type === "error");
+    assert(secondSignUpResponse.status === 400);
+    assert(secondSignUpResponse.error.code === "organization_slug_taken");
+  });
+});
+
 describe("auth-fragment beforeCreateUser hook", async () => {
   const blockedDomain = "blocked.test";
   const hookCalls: string[] = [];

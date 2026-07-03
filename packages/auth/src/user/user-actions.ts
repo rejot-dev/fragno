@@ -1,7 +1,8 @@
+import { generateId } from "@fragno-dev/db/schema";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
-import type { DatabaseServiceContext } from "@fragno-dev/db";
+import { isUniqueConstraintError, type DatabaseServiceContext } from "@fragno-dev/db";
 
 import type { authFragmentDefinition } from "..";
 import { buildIssuedAuthResponse, issuedAuthSchema } from "../auth/response-auth";
@@ -14,7 +15,11 @@ import type { AuthActor } from "../auth/types";
 import type { AuthHooksMap, BeforeCreateUserHook } from "../hooks";
 import { authSchema } from "../schema";
 import { resolveCredentialSeedFromMembers, credentialSeedSchema } from "../session/session-seed";
-import { createAutoOrganization, type AutoCreateOrganizationOptions } from "./auto-organization";
+import {
+  createAutoOrganization,
+  resolveAutoOrganizationInput,
+  type AutoCreateOrganizationOptions,
+} from "./auto-organization";
 import { hashPassword, verifyPassword } from "./password";
 import { mapUserSummary } from "./summary";
 
@@ -218,21 +223,39 @@ export function createUserServices(
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 30); // 30 days from now
 
+      const userId = generateId(authSchema, "user");
+      const effectiveAutoCreateOptions = autoCreateOptions ?? options;
+      const autoOrganizationInput = resolveAutoOrganizationInput({
+        userId: userId.valueOf(),
+        email,
+        options: effectiveAutoCreateOptions,
+      });
+      const autoOrganizationSlug = autoOrganizationInput?.slug ?? "";
+
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
-          uow.findFirst("user", (b) =>
-            b.whereIndex("idx_user_email", (eb) => eb("email", "=", email)),
-          ),
+          uow
+            .findFirst("user", (b) =>
+              b.whereIndex("idx_user_email", (eb) => eb("email", "=", email)),
+            )
+            .findFirst("organization", (b) =>
+              b.whereIndex("idx_organization_slug", (eb) => eb("slug", "=", autoOrganizationSlug)),
+            ),
         )
-        .mutate(({ uow, retrieveResult: [existingUser] }) => {
+        .mutate(({ uow, retrieveResult: [existingUser, existingAutoOrganization] }) => {
           if (existingUser) {
             return { ok: false as const, code: "email_already_exists" as const };
+          }
+
+          if (autoOrganizationInput && existingAutoOrganization) {
+            return { ok: false as const, code: "organization_slug_taken" as const };
           }
 
           const now = new Date();
           const role = resolveCreateUserRole(email, "user");
 
-          const userId = uow.create("user", {
+          uow.create("user", {
+            id: userId,
             email,
             passwordHash,
             role,
@@ -242,7 +265,8 @@ export function createUserServices(
             userId: userId.valueOf(),
             email,
             now,
-            options: autoCreateOptions ?? options,
+            options: effectiveAutoCreateOptions,
+            autoOrganizationInput,
           });
 
           const credentialId = uow.create("session", {
@@ -556,7 +580,12 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
           email: z.string(),
           role: z.enum(["user", "admin"]),
         }),
-        errorCodes: ["email_already_exists", "invalid_input", "email_password_disabled"],
+        errorCodes: [
+          "email_already_exists",
+          "invalid_input",
+          "email_password_disabled",
+          "organization_slug_taken",
+        ],
         handler: async function ({ input }, { error }) {
           if (!emailAndPasswordEnabled) {
             return error(
@@ -569,11 +598,33 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
 
           const passwordHash = await hashPassword(password);
 
-          const [result] = await this.handlerTx()
-            .withServiceCalls(() => [services.signUp(email, passwordHash)])
-            .execute();
+          const signUpTx = this.handlerTx().withServiceCalls(() => [
+            services.signUp(email, passwordHash),
+          ]);
+
+          let serviceResults: Awaited<ReturnType<typeof signUpTx.execute>>;
+          try {
+            serviceResults = await signUpTx.execute();
+          } catch (cause) {
+            if (isUniqueConstraintError(cause) && cause.constraint === "idx_organization_slug") {
+              return error(
+                { message: "Organization slug taken", code: "organization_slug_taken" },
+                400,
+              );
+            }
+            throw cause;
+          }
+
+          const [result] = serviceResults;
 
           if (!result.ok) {
+            if (result.code === "organization_slug_taken") {
+              return error(
+                { message: "Organization slug taken", code: "organization_slug_taken" },
+                400,
+              );
+            }
+
             return error({ message: "Email already exists", code: "email_already_exists" }, 400);
           }
 
