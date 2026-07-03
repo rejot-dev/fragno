@@ -55,6 +55,8 @@ beforeEach(() => {
           actor: { type: "system", id: "system" },
           scope: { kind: "org", orgId: "acme-org" },
         },
+
+        staticFileArtifacts: () => ({}),
       }),
       {
         contributors: [...getBuiltInFileContributors(), ...contributors],
@@ -71,9 +73,9 @@ describe("files explorer route data", () => {
       orgId: "acme-org",
     });
 
-    expect(result.tree.map((root) => root.path)).toEqual(["/system", "/tmp"]);
-    assert(result.selectedPath === "/system");
-    assert(result.selectedDetail?.node.path === "/system");
+    expect(result.tree.map((root) => root.path)).toEqual(["/static", "/system", "/tmp"]);
+    assert(result.selectedPath === "/static");
+    assert(result.selectedDetail?.node.path === "/static");
     assert(result.loadError === "Path '/missing' could not be found.");
   });
 

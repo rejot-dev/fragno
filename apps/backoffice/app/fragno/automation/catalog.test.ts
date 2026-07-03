@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { STARTER_AUTOMATION_SCRIPT_PATHS } from "@/files";
 import { WORKSPACE_STARTER_AUTOMATION_CONTENT } from "@/files/content/starter-automations";
+import { STATIC_AUTOMATION_CONTENT } from "@/files/content/static-automations";
 import { SYSTEM_AUTOMATION_CONTENT } from "@/files/content/system-automations";
 
 import {
@@ -26,8 +27,14 @@ const createAutomationFileSystem = async (files: Record<string, string> = {}) =>
   );
 
 describe("automation filesystem catalog", () => {
-  test("loads system and workspace workflow files", async () => {
+  test("loads static, system, and workspace workflow files", async () => {
     const fileSystem = createTestMasterFileSystem({
+      ...Object.fromEntries(
+        Object.entries(STATIC_AUTOMATION_CONTENT).map(([path, content]) => [
+          `/static/${path}`,
+          content,
+        ]),
+      ),
       ...Object.fromEntries(
         Object.entries(SYSTEM_AUTOMATION_CONTENT).map(([path, content]) => [
           `/system/${path}`,

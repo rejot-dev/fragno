@@ -25,6 +25,7 @@ import type {
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import {
   createBackofficeFileSystem,
+  STATIC_FILE_CONTENT,
   SYSTEM_FILE_CONTENT,
   WORKSPACE_STARTER_CONTENT,
 } from "@/files";
@@ -695,7 +696,7 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
 };
 
 const mapContentToMountedFiles = (
-  mountPoint: "/system" | "/workspace",
+  mountPoint: "/static" | "/system" | "/workspace",
   files: Record<string, string | Uint8Array>,
 ) =>
   Object.fromEntries(
@@ -718,11 +719,16 @@ const createPreset = (
 });
 
 export const backofficeFiles = {
-  systemOnly: () => createPreset(mapContentToMountedFiles("/system", SYSTEM_FILE_CONTENT)),
+  systemOnly: () =>
+    createPreset({
+      ...mapContentToMountedFiles("/static", STATIC_FILE_CONTENT),
+      ...mapContentToMountedFiles("/system", SYSTEM_FILE_CONTENT),
+    }),
   workspaceStarter: () =>
     createPreset(mapContentToMountedFiles("/workspace", WORKSPACE_STARTER_CONTENT)),
   fullStarter: () =>
     createPreset({
+      ...mapContentToMountedFiles("/static", STATIC_FILE_CONTENT),
       ...mapContentToMountedFiles("/system", SYSTEM_FILE_CONTENT),
       ...mapContentToMountedFiles("/workspace", WORKSPACE_STARTER_CONTENT),
     }),
@@ -1474,10 +1480,12 @@ const getReadableScenarioFileSystem = async (
     return scenarioFs;
   }
 
+  const execution = { actor: createScenarioActor(orgId), scope: { kind: "org" as const, orgId } };
   const orgFs = await createBackofficeFileSystem({
     objects: ctx.runtime.objects,
     kernel: new BackofficeKernel({ objects: ctx.runtime.objects }),
-    execution: { actor: createScenarioActor(orgId), scope: { kind: "org", orgId } },
+    execution,
+    config: ctx.runtime.config,
   });
   if (await fileExists(orgFs, path)) {
     return orgFs;
@@ -3339,10 +3347,15 @@ const collectDiagnostics = async (ctx: BackofficeScenarioContext): Promise<unkno
 
     try {
       const scenarioFs = ctx.files.forOrg(orgId);
+      const execution = {
+        actor: createScenarioActor(orgId),
+        scope: { kind: "org" as const, orgId },
+      };
       const orgFs = await createBackofficeFileSystem({
         objects: ctx.runtime.objects,
         kernel: new BackofficeKernel({ objects: ctx.runtime.objects }),
-        execution: { actor: createScenarioActor(orgId), scope: { kind: "org", orgId } },
+        execution,
+        config: ctx.runtime.config,
       });
       filesByOrg[orgId] = {
         scenarioPaths: scenarioFs.getAllPaths(),

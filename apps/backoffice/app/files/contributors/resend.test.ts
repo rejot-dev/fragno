@@ -177,6 +177,8 @@ describe("resend file contributor", () => {
           actor: { type: "system", id: "system" },
           scope: { kind: "org", orgId: "org_123" },
         },
+
+        staticFileArtifacts: () => ({}),
       }),
     );
 
@@ -196,6 +198,8 @@ describe("resend file contributor", () => {
             fetch: async (request: Request) => await resendRequestHandler(request),
           },
         }),
+
+        staticFileArtifacts: () => ({}),
       }),
     );
 
@@ -221,6 +225,8 @@ describe("resend file contributor", () => {
             fetch: async (request: Request) => await resendRequestHandler(request),
           },
         }),
+
+        staticFileArtifacts: () => ({}),
       }),
     );
 
@@ -260,6 +266,8 @@ describe("resend file contributor", () => {
             fetch: async (request: Request) => await resendRequestHandler(request),
           },
         }),
+
+        staticFileArtifacts: () => ({}),
       }),
     );
 

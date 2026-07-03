@@ -174,6 +174,7 @@ const handlePathAutocomplete = async ({
       objects: runtime.objects,
       kernel,
       execution,
+      config: runtime.config,
     });
     return {
       ...autocompleteRequest,
@@ -344,6 +345,7 @@ const handleRunCommand = async ({
       objects: runtime.objects,
       kernel,
       execution,
+      config: runtime.config,
     });
     const { bash } = createInteractiveBashHost({
       fs: fileSystem,

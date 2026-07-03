@@ -35,7 +35,13 @@ import type {
   ResolvedFileMount,
 } from "./types";
 
-const STANDARD_MOUNT_POINT_ORDER = ["/system", "/workspace", "/r2", "/r2-remote"] as const;
+const STANDARD_MOUNT_POINT_ORDER = [
+  "/static",
+  "/system",
+  "/workspace",
+  "/r2",
+  "/r2-remote",
+] as const;
 const ROOT_DIR_MODE = 0o755;
 const FILE_SYSTEM_SORTER = new Intl.Collator("en", {
   numeric: true,

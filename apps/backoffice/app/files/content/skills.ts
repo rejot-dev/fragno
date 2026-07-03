@@ -182,7 +182,7 @@ const telegram = await connections.get({ id: "telegram" });
 const schema = await connections.schema({ id: "telegram" });
 \`\`\`
 
-2. Read the relevant connection skill in \`/system/skills/<connection-or-system>/SKILL.md or /workspace/skills/<connection-or-system>/SKILL.md\` for capability-specific fields and gotchas.
+2. Read the relevant connection skill in \`/static/skills/<connection-or-system>/SKILL.md or /workspace/skills/<connection-or-system>/SKILL.md\` for capability-specific fields and gotchas.
 
 3. Work with the user to obtain required information. Do not invent secrets, API keys, sender addresses, webhook origins, public tunnel URLs, bucket configuration, or model provider keys.
 

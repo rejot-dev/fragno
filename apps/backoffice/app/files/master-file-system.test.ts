@@ -10,7 +10,7 @@ import { createUnsupportedFileSystem, type FileContent, type FsStat } from "./in
 import { createMasterFileSystem, MasterFileSystem } from "./master-file-system";
 import { isMountPointParentOf, normalizeMountPoint, normalizeRelativePath } from "./normalize-path";
 import { createSystemFilesContext } from "./system-context";
-import type { FileContributor, FilesContext } from "./types";
+import { emptyStaticFileArtifacts, type FileContributor, type FilesContext } from "./types";
 
 const context = createSystemFilesContext({
   execution: {
@@ -18,6 +18,8 @@ const context = createSystemFilesContext({
     scope: { kind: "org", orgId: "org_123" },
   },
   backend: "backoffice",
+
+  staticFileArtifacts: () => ({}),
 }) satisfies FilesContext;
 
 const DIRECTORY_STAT: FsStat = {
@@ -60,6 +62,7 @@ describe("createMasterFileSystem", () => {
     const resolved = await createTestMasterFileSystem();
 
     expect(resolved.mounts.map((mount) => mount.mountPoint)).toEqual([
+      "/static",
       "/system",
       "/docs",
       "/examples",
@@ -73,7 +76,11 @@ describe("createMasterFileSystem", () => {
       execution: { actor: { type: "system", id: "system" }, scope: { kind: "system" } },
     });
 
-    expect(resolved.mounts.map((mount) => mount.mountPoint)).toEqual(["/system", "/tmp"]);
+    expect(resolved.mounts.map((mount) => mount.mountPoint)).toEqual([
+      "/static",
+      "/system",
+      "/tmp",
+    ]);
   });
 
   test("rejects duplicate mount points", async () => {
@@ -260,10 +267,10 @@ describe("createMasterFileSystem", () => {
 
     const master = await createTestMasterFileSystem();
 
-    await expect(master.cp("/system/SYSTEM.md", "/project/README.md")).rejects.toThrow(
+    await expect(master.cp("/static/SYSTEM.md", "/project/README.md")).rejects.toThrow(
       /Cross-mount copy/,
     );
-    await expect(master.mv("/system/SYSTEM.md", "/project/README.md")).rejects.toThrow(
+    await expect(master.mv("/static/SYSTEM.md", "/project/README.md")).rejects.toThrow(
       /Cross-mount move/,
     );
   });
@@ -348,6 +355,7 @@ describe("createMasterFileSystem", () => {
       objects: context.objects,
       kernel,
       filePrincipal: kernel.resolveFilePrincipal(execution),
+      staticFileArtifacts: emptyStaticFileArtifacts,
     });
 
     await master.writeFile("/workspace/automations/router.cm.js", "ok");

@@ -3,7 +3,11 @@ import { Link, isRouteErrorResponse } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
-import type { AutomationEventRecord, AutomationRouteDefinition } from "@/fragno/automation";
+import type {
+  AutomationEventRecord,
+  AutomationRouteDefinition,
+  AutomationScriptLayer,
+} from "@/fragno/automation";
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
 import type { SandboxInstanceSummary } from "@/sandbox/contracts";
 
@@ -21,7 +25,7 @@ export type AutomationScriptItem = {
   key: string;
   name: string;
   engine: string;
-  layer: "system" | "workspace";
+  layer: AutomationScriptLayer;
   readOnly: boolean;
   script: string | null;
   path: string;

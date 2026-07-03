@@ -69,7 +69,7 @@ export const loadBackofficePiSkills = async (
   options: { root?: string; roots?: readonly string[] } = {},
 ): Promise<PiSkillRegistry> => {
   const roots =
-    options.roots ?? (options.root ? [options.root] : ["/system/skills", "/workspace/skills"]);
+    options.roots ?? (options.root ? [options.root] : ["/static/skills", "/workspace/skills"]);
   const skills: PiSkillRegistry = {};
 
   for (const root of roots) {

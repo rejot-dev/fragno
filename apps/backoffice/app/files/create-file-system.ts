@@ -1,6 +1,8 @@
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
+import { createCodemodeStaticArtifactsResolver } from "@/fragno/codemode/static-codemode-artifacts";
 import type { DurableHookQueueOptions, DurableHookQueueResponse } from "@/fragno/durable-hooks";
 
 import { createMasterFileSystem, type MasterFileSystem } from "./master-file-system";
@@ -14,6 +16,7 @@ export type CreateBackofficeFileSystemOptions = {
    * instead of going through an external stub (avoids deadlock during init).
    */
   automationHookQueue?: (opts?: DurableHookQueueOptions) => Promise<DurableHookQueueResponse>;
+  config: BackofficeRuntimeConfig;
   execution: BackofficeExecutionContext;
   kernel: BackofficeKernel;
 };
@@ -30,5 +33,10 @@ export const createBackofficeFileSystem = async (
     kernel: options.kernel,
     filePrincipal,
     ...(options.automationHookQueue ? { automationHookQueue: options.automationHookQueue } : {}),
+    staticFileArtifacts: createCodemodeStaticArtifactsResolver({
+      objects: options.objects,
+      config: options.config,
+      execution: options.execution,
+    }),
   });
 };

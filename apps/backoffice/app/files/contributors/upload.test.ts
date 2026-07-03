@@ -111,6 +111,7 @@ describe("upload file contributor", () => {
 
   test("exposes built-in contributors in deterministic order", () => {
     expect(getBuiltInFileContributors().map((contributor) => contributor.id)).toEqual([
+      "static",
       "system",
       "workspace",
       "r2",
@@ -281,6 +282,8 @@ describe("upload file contributor", () => {
       backend: "pi",
       objects: createFilesTestObjectRegistry({ uploadConfig, uploadRuntime: runtime }),
       request: new Request("https://docs.example.test/backoffice/files"),
+
+      staticFileArtifacts: () => ({}),
     });
     const fs = createUploadFileSystem(context, {
       provider: UPLOAD_PROVIDER_R2_BINDING,
@@ -307,6 +310,8 @@ describe("upload file contributor", () => {
         uploadRuntime: runtime,
       }),
       request: new Request("https://docs.example.test/backoffice/files"),
+
+      staticFileArtifacts: () => ({}),
     });
     const fs = createUploadFileSystem(context, {
       provider: UPLOAD_PROVIDER_R2,
@@ -334,6 +339,8 @@ describe("upload file contributor", () => {
         uploadConfig: runtime.uploadConfig,
         uploadRuntime: runtime,
       }),
+
+      staticFileArtifacts: () => ({}),
     });
 
     const fs = createUploadFileSystem(context, {
@@ -777,6 +784,8 @@ describe("upload file contributor", () => {
           },
           origin: runtime.baseUrl,
           objects,
+
+          staticFileArtifacts: () => ({}),
         }),
         { provider: UPLOAD_PROVIDER_DATABASE },
       ).readFile("/workspace/automations/telegram-user-linking.workflow.js"),
@@ -794,6 +803,8 @@ describe("upload file contributor", () => {
           scope: { kind: "org", orgId: "acme-org" },
         },
         backend: "backoffice",
+
+        staticFileArtifacts: () => ({}),
       }),
     );
 
@@ -855,6 +866,8 @@ const createUploadFs = (
     }),
     request: new Request("https://docs.example.test/backoffice/files"),
     ...(options.filePrincipal ? { filePrincipal: options.filePrincipal } : {}),
+
+    staticFileArtifacts: () => ({}),
   });
 
   return {

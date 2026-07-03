@@ -94,6 +94,7 @@ export type PiSessionFileSystemContext = {
   objects: BackofficeObjectRegistry;
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
+  runtimeConfig: import("@/backoffice-runtime/runtime-services").BackofficeRuntimeConfig;
 };
 
 export type PiCodemodeRuntime = {
@@ -156,7 +157,7 @@ const createReadTool = (fs: MasterFileSystem): AgentTool =>
     name: "read",
     label: "Read",
     description:
-      "Read a file from the combined Pi session filesystem. Use this to load matching skills from /system/skills/<skill-name>/SKILL.md or /workspace/skills/<skill-name>/SKILL.md before applying them.",
+      "Read a file from the combined Pi session filesystem. Use this to load matching skills from /static/skills/<skill-name>/SKILL.md or /workspace/skills/<skill-name>/SKILL.md before applying them.",
     parameters: readParametersSchema,
     execute: async (_toolCallId, params, signal) => {
       if (signal?.aborted) {
@@ -404,6 +405,7 @@ const getSessionFs = async (
     objects: context.objects,
     kernel: context.kernel,
     execution: context.execution,
+    config: context.runtimeConfig,
   });
 
   cache.set(sessionId, pendingFileSystem);

@@ -1,11 +1,8 @@
 import { z } from "zod";
 
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
-import { createBackofficeFileSystem } from "@/files/create-file-system";
 import { FileSystemError } from "@/files/fs-errors";
-import type { IFileSystem } from "@/files/interface";
 import { createMasterFileSystem } from "@/files/master-file-system";
 import {
   seedWorkspaceStarterFiles,
@@ -13,21 +10,7 @@ import {
 } from "@/files/seed-workspace-starter-files";
 import { createSystemFilesContext } from "@/files/system-context";
 import type { StarterAutomationRoutesSeedResult } from "@/fragno/automation";
-import {
-  backofficeCapabilities,
-  type BackofficeCapabilityId,
-} from "@/fragno/backoffice-capabilities/backoffice-capabilities";
-import {
-  CODEMODE_PROVIDER_TYPES_DIR_PATH,
-  CODEMODE_SYSTEM_DTS_PATH,
-  CODEMODE_TYPES_DIR_PATH,
-  createCodemodeTypeFiles,
-  type CodemodeTypeFile,
-} from "@/fragno/codemode/codemode-dts";
-import { createMcpCodemodeServers } from "@/fragno/codemode/mcp-codemode-tools";
-import { STATE_TYPES } from "@/fragno/codemode/state-prompt";
 import { defineCliArgsParser, readOutputOptions } from "@/fragno/runtime-tools/bash-cli";
-import { createMcpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
 
 import {
   defineBackofficeRuntimeTool,
@@ -35,12 +18,6 @@ import {
   type BackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../runtime-tools";
-
-export type CodemodeTypesSyncOutput = {
-  path: typeof CODEMODE_SYSTEM_DTS_PATH;
-  changed: boolean;
-  configuredCapabilities: BackofficeCapabilityId[];
-};
 
 export type ProjectDatabaseFileSystemConfigureOutput = {
   projectId: string;
@@ -52,7 +29,6 @@ export type ProjectDatabaseFileSystemConfigureOutput = {
 
 export type InternalRuntime = {
   seedWorkspaceStarterFiles(input?: { force?: boolean }): Promise<WorkspaceStarterFilesSeedOutput>;
-  syncCodemodeTypes(): Promise<CodemodeTypesSyncOutput>;
   configureProjectDatabaseFileSystem(input: {
     projectId: string;
   }): Promise<ProjectDatabaseFileSystemConfigureOutput>;
@@ -67,12 +43,6 @@ const workspaceStarterFilesSeedOutputSchema = z.object({
   created: z.array(z.string()),
   overwritten: z.array(z.string()),
   skipped: z.array(z.string()),
-});
-
-const codemodeTypesSyncOutputSchema = z.object({
-  path: z.literal(CODEMODE_SYSTEM_DTS_PATH),
-  changed: z.boolean(),
-  configuredCapabilities: z.array(z.string()),
 });
 
 const projectDatabaseFileSystemConfigureOutputSchema = z.object({
@@ -95,55 +65,12 @@ const getRuntime = (context: InternalToolContext) => {
   return context.runtimes.internal;
 };
 
-const ensureDirectory = async (fs: IFileSystem, path: string) => {
-  if (await fs.exists(path)) {
-    const stat = await fs.stat(path);
-    if (!stat.isDirectory) {
-      throw new Error(`Codemode types path exists but is not a directory: ${path}`);
-    }
-    return;
-  }
-
-  await fs.mkdir(path, { recursive: true });
-};
-
-const syncCodemodeTypeFiles = async (
-  fs: IFileSystem,
-  files: readonly CodemodeTypeFile[],
-): Promise<boolean> => {
-  await ensureDirectory(fs, CODEMODE_TYPES_DIR_PATH);
-  await ensureDirectory(fs, CODEMODE_PROVIDER_TYPES_DIR_PATH);
-
-  const expectedPaths = new Set(files.map((file) => file.path));
-  let changed = false;
-
-  for (const name of await fs.readdir(CODEMODE_PROVIDER_TYPES_DIR_PATH)) {
-    const path = `${CODEMODE_PROVIDER_TYPES_DIR_PATH}/${name}`;
-    if (!name.endsWith(".d.ts") || expectedPaths.has(path)) {
-      continue;
-    }
-    await fs.rm(path, { force: true });
-    changed = true;
-  }
-
-  for (const file of files) {
-    const existing = (await fs.exists(file.path)) ? await fs.readFile(file.path) : null;
-    if (existing === file.content) {
-      continue;
-    }
-    await fs.writeFile(file.path, file.content);
-    changed = true;
-  }
-
-  return changed;
-};
-
 export const createInternalRuntime = ({
   objects,
-  config,
+  config: _config,
   orgId,
   origin = "https://backoffice.local",
-  families,
+  families: _families,
 }: {
   objects: BackofficeObjectRegistry;
   config: BackofficeRuntimeConfig;
@@ -151,49 +78,6 @@ export const createInternalRuntime = ({
   origin?: string;
   families: readonly BackofficeRuntimeToolFamily[];
 }): InternalRuntime => {
-  const renderCodemodeTypes = async (): Promise<{
-    path: typeof CODEMODE_SYSTEM_DTS_PATH;
-    files: CodemodeTypeFile[];
-    configuredCapabilities: BackofficeCapabilityId[];
-  }> => {
-    const configuredCapabilities: BackofficeCapabilityId[] = [];
-
-    for (const capability of backofficeCapabilities) {
-      if (capability.kind === "system") {
-        configuredCapabilities.push(capability.id);
-        continue;
-      }
-
-      const status = await capability.connection.getStatus({
-        objects,
-        config,
-        scope: { kind: "org", orgId },
-        orgId,
-        origin,
-      });
-      if (status.configured) {
-        configuredCapabilities.push(capability.id);
-      }
-    }
-
-    const mcpServers = configuredCapabilities.includes("mcp")
-      ? await createMcpRuntime(objects.mcp.forOrg(orgId))
-          .listServers()
-          .then(({ servers }) => createMcpCodemodeServers(servers))
-      : [];
-
-    return {
-      path: CODEMODE_SYSTEM_DTS_PATH,
-      files: createCodemodeTypeFiles({
-        configuredCapabilityIds: configuredCapabilities,
-        families,
-        mcpServers,
-        stateTypes: STATE_TYPES,
-      }),
-      configuredCapabilities,
-    };
-  };
-
   return {
     seedWorkspaceStarterFiles: async (input) =>
       await seedWorkspaceStarterFiles({ objects, orgId, force: input?.force }),
@@ -213,6 +97,7 @@ export const createInternalRuntime = ({
             actor: { type: "system", id: "backoffice-project-files" },
             scope: { kind: "project", orgId, projectId },
           },
+          staticFileArtifacts: () => ({}),
         }),
       );
       const created: string[] = [];
@@ -238,25 +123,6 @@ export const createInternalRuntime = ({
         configured: config.providers.database?.configured === true,
         created,
         skipped,
-      };
-    },
-    syncCodemodeTypes: async () => {
-      const rendered = await renderCodemodeTypes();
-      const kernel = new BackofficeKernel({ objects });
-      const fs = await createBackofficeFileSystem({
-        objects,
-        kernel,
-        execution: {
-          actor: { type: "system", id: "system" },
-          scope: { kind: "org", orgId },
-        },
-      });
-      const changed = await syncCodemodeTypeFiles(fs, rendered.files);
-
-      return {
-        path: rendered.path,
-        changed,
-        configuredCapabilities: rendered.configuredCapabilities,
       };
     },
   };
@@ -368,41 +234,10 @@ const automationRoutesSeedStarterTool = defineBackofficeRuntimeTool({
   },
 });
 
-const codemodeTypesSyncTool = defineBackofficeRuntimeTool({
-  id: "internal.codemode.types.sync",
-  namespace: "internal",
-  name: "codemodeTypesSync",
-  description: "Render and write the org-scoped codemode TypeScript declarations if changed.",
-  requiredPermissions: ["manage"],
-  inputSchema: z.object({}).optional().default({}),
-  outputSchema: codemodeTypesSyncOutputSchema,
-  execute: async (_input, context: InternalToolContext) =>
-    await getRuntime(context).syncCodemodeTypes(),
-  adapters: {
-    bash: {
-      command: "internal.codemode.types.sync",
-      help: {
-        summary: "internal.codemode.types.sync writes /workspace/codemode/system.d.ts if changed.",
-        options: [],
-        examples: ["internal.codemode.types.sync --format json"],
-      },
-      parse: () => ({}),
-      outputOptions: (_args, parsed) => readOutputOptions(parsed),
-      format: (output, options) =>
-        options.format === "json" || options.print
-          ? { data: output }
-          : {
-              stdout: `path=${output.path}\nchanged=${output.changed ? "yes" : "no"}\nconfiguredCapabilities=${output.configuredCapabilities.join(",")}\n`,
-            },
-    },
-  },
-});
-
 const internalRuntimeTools = [
   filesSeedExecuteTool,
   projectFilesConfigureTool,
   automationRoutesSeedStarterTool,
-  codemodeTypesSyncTool,
 ] as const;
 
 export const internalToolFamily = defineBackofficeRuntimeToolFamily({

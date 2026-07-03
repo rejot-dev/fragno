@@ -95,7 +95,7 @@ export function DevInput() {
               value={terminal.command}
               onChange={(event) => terminal.onCommandChange(event.target.value)}
               onKeyDown={terminal.onCommandKeyDown}
-              placeholder="Run a bash command (e.g. ls /workspace, pwd, find /system)"
+              placeholder="Run a bash command (e.g. ls /workspace, pwd, find /static)"
               className="min-w-0 flex-1 bg-transparent py-2.5 pl-3 font-mono text-sm text-[var(--cad-fg)] placeholder:text-[var(--cad-muted-2)] focus:outline-none sm:pl-0"
               autoCapitalize="off"
               autoComplete="off"

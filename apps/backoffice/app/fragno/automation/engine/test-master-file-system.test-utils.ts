@@ -9,6 +9,7 @@ export const createTestMasterFileSystem = (
 ): MasterFileSystem =>
   new MasterFileSystem({
     mounts: [
+      ...(hasMountedFiles(files, "/static") ? [createTestMount("static", "/static", files)] : []),
       ...(hasMountedFiles(files, "/system") ? [createTestMount("system", "/system", files)] : []),
       createTestMount("workspace", "/workspace", files),
     ],

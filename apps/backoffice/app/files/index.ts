@@ -3,7 +3,9 @@ export type {
   FileEntryDescriptor,
   FileMountMetadata,
   FilesContext,
+  StaticFileArtifactsResolver,
 } from "./types";
+export { emptyStaticFileArtifacts } from "./types";
 export type { DirentEntry, IFileSystem } from "./interface";
 export { createUnsupportedFileSystem } from "./interface";
 
@@ -29,8 +31,11 @@ export { getBuiltInFileContributors } from "./contributors";
 
 export {
   STATIC_FILE_MOUNT_POINT,
+  SYSTEM_FILE_MOUNT_POINT,
   staticFileContributor,
   staticFileMount,
+  systemFileContributor,
+  systemFileMount,
 } from "./contributors/static";
 
 export {
@@ -39,13 +44,15 @@ export {
   uploadFileContributor,
 } from "./contributors/upload";
 export { WORKSPACE_STARTER_CONTENT } from "./content/starter";
+export { STATIC_AUTOMATION_SCRIPT_PATHS } from "./content/static-automations";
 export { SYSTEM_AUTOMATION_SCRIPT_PATHS } from "./content/system-automations";
 export { STARTER_AUTOMATION_SCRIPT_PATHS } from "./content/starter-automations";
 export {
-  SYSTEM_FILE_CONTENT,
-  SYSTEM_MD as SYSTEM_GUIDANCE,
-  renderSystemGuidance,
-} from "./content/system";
+  STATIC_FILE_CONTENT,
+  STATIC_GUIDANCE_MD as STATIC_GUIDANCE,
+  renderStaticGuidance,
+} from "./content/static";
+export { SYSTEM_FILE_CONTENT, SYSTEM_README } from "./content/system";
 export { MasterFileSystem, createMasterFileSystem } from "./master-file-system";
 export type { CreateMasterFileSystemOptions } from "./master-file-system";
 export { createBackofficeFileSystem } from "./create-file-system";

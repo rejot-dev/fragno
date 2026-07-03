@@ -29,7 +29,12 @@ const readOrgSystemGuidance = async ({
 }) => {
   const { runtime } = context.get(BackofficeWorkerContext);
   const kernel = new BackofficeKernel({ objects: runtime.objects });
-  const fs = await createBackofficeFileSystem({ objects: runtime.objects, kernel, execution });
+  const fs = await createBackofficeFileSystem({
+    objects: runtime.objects,
+    kernel,
+    execution,
+    config: runtime.config,
+  });
 
   return await renderCodemodeSystemPrompt({ fileSystem: fs });
 };

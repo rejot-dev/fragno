@@ -21,6 +21,12 @@ export type FileEntryKind = (typeof FILE_ENTRY_KINDS)[number];
 
 export type FileSystemArtifact = FileContent;
 
+export type StaticFileArtifactsResolver = () =>
+  | Promise<Record<string, FileSystemArtifact>>
+  | Record<string, FileSystemArtifact>;
+
+export const emptyStaticFileArtifacts: StaticFileArtifactsResolver = () => ({});
+
 /**
  * Static metadata for a mounted filesystem.
  *
@@ -63,6 +69,7 @@ export type FilesContext = {
   kernel: BackofficeKernel;
   filePrincipal: FilePrincipal;
   automationHookQueue?: (options?: DurableHookQueueOptions) => Promise<DurableHookQueueResponse>;
+  staticFileArtifacts: StaticFileArtifactsResolver;
 };
 
 export type FileSystemResolution =

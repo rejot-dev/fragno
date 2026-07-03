@@ -126,6 +126,7 @@ const resolveProjectPath = async (
       objects: ctx.objects,
       execution,
       filePrincipal: ctx.kernel.resolveFilePrincipal(execution),
+      staticFileArtifacts: ctx.staticFileArtifacts,
     }),
     {
       mountPoint: `${PROJECTS_MOUNT_POINT}/${project.slug}`,

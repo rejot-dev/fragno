@@ -424,6 +424,12 @@ describe("runtime tool reference generation", () => {
         "// ── Backoffice domain tool providers ───────────────────────────────────
 
         // reson8 tools
+        type Reson8CodemodeProvider = {
+          /** Transcribe a prerecorded audio file via Reson8. */
+          transcribePrerecorded(input: Reson8TranscribePrerecordedInput): Promise<Reson8TranscribePrerecordedOutput>;
+        };
+        declare const reson8: Reson8CodemodeProvider;
+
         type Reson8TranscribePrerecordedInput = {
           audio?: unknown;
           encoding?: "auto" | "pcm_s16le";
@@ -445,12 +451,6 @@ describe("runtime tool reference generation", () => {
               confidence?: number;
             }[];
         };
-
-        type Reson8CodemodeProvider = {
-          /** Transcribe a prerecorded audio file via Reson8. */
-          transcribePrerecorded(input: Reson8TranscribePrerecordedInput): Promise<Reson8TranscribePrerecordedOutput>;
-        };
-        declare const reson8: Reson8CodemodeProvider;
 
         // Scoped context handles target a selected Backoffice context.
         type BackofficeCodemodeScopedProviders = {
@@ -475,6 +475,20 @@ describe("runtime tool reference generation", () => {
         "// ── Backoffice domain tool providers ───────────────────────────────────
 
         // telegram tools
+        type TelegramCodemodeProvider = {
+          /** Resolve Telegram attachment metadata. */
+          getFile(input: TelegramGetFileInput): Promise<TelegramGetFileOutput>;
+          /** Download a Telegram file and return its bytes. */
+          downloadFile(input: TelegramDownloadFileInput): Promise<TelegramDownloadFileOutput>;
+          /** Queue a message to be sent to a Telegram chat. */
+          sendMessage(input: TelegramSendMessageInput): Promise<TelegramSendMessageOutput>;
+          /** Send a Telegram chat action. */
+          sendChatAction(input: TelegramSendChatActionInput): Promise<TelegramSendChatActionOutput>;
+          /** Queue an edit of an existing Telegram message. */
+          editMessage(input: TelegramEditMessageInput): Promise<TelegramEditMessageOutput>;
+        };
+        declare const telegram: TelegramCodemodeProvider;
+
         type TelegramGetFileInput = {
           fileId: string;
         };
@@ -520,20 +534,6 @@ describe("runtime tool reference generation", () => {
           ok: boolean;
           queued: boolean;
         };
-
-        type TelegramCodemodeProvider = {
-          /** Resolve Telegram attachment metadata. */
-          getFile(input: TelegramGetFileInput): Promise<TelegramGetFileOutput>;
-          /** Download a Telegram file and return its bytes. */
-          downloadFile(input: TelegramDownloadFileInput): Promise<TelegramDownloadFileOutput>;
-          /** Queue a message to be sent to a Telegram chat. */
-          sendMessage(input: TelegramSendMessageInput): Promise<TelegramSendMessageOutput>;
-          /** Send a Telegram chat action. */
-          sendChatAction(input: TelegramSendChatActionInput): Promise<TelegramSendChatActionOutput>;
-          /** Queue an edit of an existing Telegram message. */
-          editMessage(input: TelegramEditMessageInput): Promise<TelegramEditMessageOutput>;
-        };
-        declare const telegram: TelegramCodemodeProvider;
 
         // Scoped context handles target a selected Backoffice context.
         type BackofficeCodemodeScopedProviders = {
@@ -600,10 +600,10 @@ describe("runtime tool reference generation", () => {
     });
     const index = files.find((file) => file.path === CODEMODE_SYSTEM_DTS_PATH)?.content;
 
-    expect(index).toContain('/// <reference path="/workspace/codemode/workflow-authoring.d.ts" />');
+    expect(index).toContain('/// <reference path="/static/codemode/workflow-authoring.d.ts" />');
     expect(index).toContain("type BackofficeCodemodeScopedProviders = {");
     expect(index).toContain("declare const context");
-    expect(index).not.toContain('/// <reference path="/workspace/codemode/state.d.ts" />');
+    expect(index).not.toContain('/// <reference path="/static/codemode/state.d.ts" />');
     assert(files.some((file) => file.path === CODEMODE_STATE_DTS_PATH));
   });
 
@@ -625,7 +625,7 @@ describe("runtime tool reference generation", () => {
       families: runtimeToolFamilies,
       stateTypes: "declare const state: unknown;",
     });
-    const types = readGeneratedFile(files, "/workspace/codemode/providers/router.d.ts");
+    const types = readGeneratedFile(files, "/static/codemode/providers/router.d.ts");
 
     expect(types).toContain("declare const router");
     expect(types).toContain("type AutomationEventMatcher =");
@@ -688,21 +688,21 @@ describe("runtime tool reference generation", () => {
     });
     const capabilitiesTypes = readGeneratedFile(
       files,
-      "/workspace/codemode/providers/capabilities.d.ts",
+      "/static/codemode/providers/capabilities.d.ts",
     );
     const connectionsTypes = readGeneratedFile(
       files,
-      "/workspace/codemode/providers/connections.d.ts",
+      "/static/codemode/providers/connections.d.ts",
     );
-    const workflowTypes = readGeneratedFile(files, "/workspace/codemode/providers/workflow.d.ts");
-    const eventTypes = readGeneratedFile(files, "/workspace/codemode/providers/event.d.ts");
-    const otpTypes = readGeneratedFile(files, "/workspace/codemode/providers/otp.d.ts");
+    const workflowTypes = readGeneratedFile(files, "/static/codemode/providers/workflow.d.ts");
+    const eventTypes = readGeneratedFile(files, "/static/codemode/providers/event.d.ts");
+    const otpTypes = readGeneratedFile(files, "/static/codemode/providers/otp.d.ts");
 
     expect(capabilitiesTypes).toContain("declare const capabilities");
     expect(connectionsTypes).toContain("declare const connections");
     expect(connectionsTypes).toContain("list(input: ConnectionsListInput)");
     expect(connectionsTypes).toContain("configure(input: ConnectionsConfigureInput)");
-    expect(readGeneratedFile(files, "/workspace/codemode/providers/store.d.ts")).toContain(
+    expect(readGeneratedFile(files, "/static/codemode/providers/store.d.ts")).toContain(
       "declare const store",
     );
     expect(workflowTypes).toContain("declare const workflow");
@@ -712,8 +712,8 @@ describe("runtime tool reference generation", () => {
     expect(eventTypes).toContain("declare const event");
     expect(eventTypes).toContain("emit(input: EventEmitInput)");
     expect(otpTypes).toContain("declare const otp");
-    assert(!files.some((file) => file.path === "/workspace/codemode/providers/pi.d.ts"));
-    assert(!files.some((file) => file.path === "/workspace/codemode/providers/telegram.d.ts"));
+    assert(!files.some((file) => file.path === "/static/codemode/providers/pi.d.ts"));
+    assert(!files.some((file) => file.path === "/static/codemode/providers/telegram.d.ts"));
   });
 
   test("renders scoped context handles", () => {
@@ -744,11 +744,11 @@ describe("runtime tool reference generation", () => {
       stateTypes: "declare const state: unknown;",
     });
 
-    expect(readGeneratedFile(piFiles, "/workspace/codemode/providers/pi.d.ts")).toContain(
+    expect(readGeneratedFile(piFiles, "/static/codemode/providers/pi.d.ts")).toContain(
       "declare const pi",
     );
-    assert(!piFiles.some((file) => file.path === "/workspace/codemode/providers/sandbox.d.ts"));
-    expect(readGeneratedFile(sandboxFiles, "/workspace/codemode/providers/sandbox.d.ts")).toContain(
+    assert(!piFiles.some((file) => file.path === "/static/codemode/providers/sandbox.d.ts"));
+    expect(readGeneratedFile(sandboxFiles, "/static/codemode/providers/sandbox.d.ts")).toContain(
       "declare const sandbox",
     );
   });
@@ -777,7 +777,7 @@ describe("runtime tool reference generation", () => {
         },
       ],
     });
-    const types = readGeneratedFile(files, "/workspace/codemode/providers/mcp_cloudflare_mcp.d.ts");
+    const types = readGeneratedFile(files, "/static/codemode/providers/mcp_cloudflare_mcp.d.ts");
 
     expect(types).toContain("declare const mcp_cloudflare_mcp");
     expect(types).toContain("search_docs(input: McpCloudflareMcpSearchDocsInput)");

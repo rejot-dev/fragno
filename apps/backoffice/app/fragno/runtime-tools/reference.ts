@@ -358,14 +358,16 @@ const renderCodemodeProviderSection = ({
       .join("\n");
   });
 
+  const providerTypeName = `${pascalCase(namespace)}CodemodeProvider`;
+
   return [
     `// ${namespace} tools`,
-    ...typeDeclarations,
-    "",
-    `type ${pascalCase(namespace)}CodemodeProvider = {`,
+    `type ${providerTypeName} = {`,
     ...methods,
     `};`,
-    `declare const ${namespace}: ${pascalCase(namespace)}CodemodeProvider;`,
+    `declare const ${namespace}: ${providerTypeName};`,
+    "",
+    ...typeDeclarations,
   ].join("\n");
 };
 

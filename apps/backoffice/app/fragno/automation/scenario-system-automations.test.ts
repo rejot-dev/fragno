@@ -10,6 +10,7 @@ import {
   createMasterFileSystem,
   createSystemFilesContext,
 } from "@/files";
+import { createCodemodeStaticArtifactsResolver } from "@/fragno/codemode/static-codemode-artifacts";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
@@ -37,47 +38,7 @@ vi.mock("cloudflare:workers", () => ({
   WorkerEntrypoint,
 }));
 
-import {
-  backofficeFiles,
-  defineBackofficeScenario,
-  runBackofficeScenario,
-  type BackofficeScenarioContext,
-} from "./scenario";
-
-const createScenarioFileActor = (orgId: string) => ({
-  type: "user" as const,
-  id: "scenario-user",
-  userId: "scenario-user",
-  organizationIds: [orgId],
-});
-
-const createScenarioOrgFileSystem = async (ctx: BackofficeScenarioContext, orgId: string) =>
-  await createBackofficeFileSystem({
-    objects: ctx.runtime.objects,
-    kernel: new BackofficeKernel({ objects: ctx.runtime.objects }),
-    execution: { actor: createScenarioFileActor(orgId), scope: { kind: "org", orgId } },
-  });
-
-const clearGeneratedCodemodeTypes = async (ctx: BackofficeScenarioContext, orgId: string) => {
-  const fs = await createScenarioOrgFileSystem(ctx, orgId);
-  const removeIfExists = async (path: string) => {
-    if (await fs.exists(path)) {
-      await fs.rm(path, { force: true });
-    }
-  };
-
-  await removeIfExists("/workspace/codemode/system.d.ts");
-  await removeIfExists("/workspace/codemode/workflow-authoring.d.ts");
-  await removeIfExists("/workspace/codemode/state.d.ts");
-
-  if (await fs.exists("/workspace/codemode/providers")) {
-    for (const name of await fs.readdir("/workspace/codemode/providers")) {
-      if (name.endsWith(".d.ts")) {
-        await removeIfExists(`/workspace/codemode/providers/${name}`);
-      }
-    }
-  }
-};
+import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
 
 const systemUnrelatedEvent = {
   id: "github:issue.opened:1",
@@ -112,7 +73,15 @@ describe("system automation scenarios", () => {
     runtime = await createInMemoryBackofficeRuntime({
       getAutomationFileSystem: async ({ execution }) =>
         await createMasterFileSystem(
-          createSystemFilesContext({ objects: runtime.objects, execution }),
+          createSystemFilesContext({
+            objects: runtime.objects,
+            execution,
+            staticFileArtifacts: createCodemodeStaticArtifactsResolver({
+              objects: runtime.objects,
+              config: runtime.config,
+              execution,
+            }),
+          }),
         ),
     });
 
@@ -173,19 +142,20 @@ describe("system automation scenarios", () => {
       expect(instances.instances).toHaveLength(1);
       assert(instances.instances[0]!.details.status === "complete");
 
-      const fs = await createMasterFileSystem(
-        createSystemFilesContext({
-          objects: runtime.objects,
-          execution: {
-            actor: { type: "system", id: "system" },
-            scope: { kind: "org", orgId },
-          },
-        }),
-      );
+      const systemExecution = {
+        actor: { type: "system" as const, id: "system" },
+        scope: { kind: "org" as const, orgId },
+      };
+      const fs = await createBackofficeFileSystem({
+        objects: runtime.objects,
+        kernel: new BackofficeKernel({ objects: runtime.objects }),
+        execution: systemExecution,
+        config: runtime.config,
+      });
       await expect(fs.readFile("/workspace/AGENTS.md")).resolves.toContain("Workspace guidance");
-      await expect(
-        fs.readFile("/workspace/codemode/providers/capabilities.d.ts"),
-      ).resolves.toContain("declare const capabilities");
+      await expect(fs.readFile("/static/codemode/providers/capabilities.d.ts")).resolves.toContain(
+        "declare const capabilities",
+      );
 
       // Regression: an org member (not root) must be able to edit a seeded
       // workspace automation. Seeded files are group-owned by the org, so the
@@ -205,6 +175,7 @@ describe("system automation scenarios", () => {
             },
             scope: { kind: "org", orgId },
           },
+          staticFileArtifacts: () => ({}),
         }),
       );
       const telegramPath = "/workspace/automations/telegram-test-command.workflow.js";
@@ -270,6 +241,7 @@ describe("system automation scenarios", () => {
                   actor: { type: "system", id: "system" },
                   scope: { kind: "org", orgId: "org-1" },
                 },
+                staticFileArtifacts: () => ({}),
               }),
             );
             await fs.writeFile(
@@ -326,7 +298,6 @@ describe("system automation scenarios", () => {
               "configure upload database connection",
               "seed workspace starter files",
               "seed starter automation routes",
-              "write codemode dts",
             ],
           }),
 
@@ -354,7 +325,7 @@ describe("system automation scenarios", () => {
                 action: {
                   kind: "start_workflow",
                   remoteWorkflowName: "project-files-configure",
-                  workflowScriptPath: "/system/automations/project-files-configure.workflow.js",
+                  workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
                 },
               },
               {
@@ -365,7 +336,6 @@ describe("system automation scenarios", () => {
                   workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
                 },
               },
-              "system-codemode-types-refresh-capability",
             ],
           }),
 
@@ -388,7 +358,7 @@ describe("system automation scenarios", () => {
           }),
           then.files.contains({
             orgId: "org-1",
-            path: "/workspace/codemode/system.d.ts",
+            path: "/static/codemode/system.d.ts",
             text: "declare",
           }),
           then.assert(
@@ -412,6 +382,7 @@ describe("system automation scenarios", () => {
                 objects: ctx.runtime.objects,
                 kernel,
                 execution,
+                config: ctx.runtime.config,
               });
               const { bash } = createInteractiveBashHost({
                 fs,
@@ -577,9 +548,6 @@ describe("system automation scenarios", () => {
           then.workflow.missing({
             remoteWorkflowName: "workspace-file-initialization",
           }),
-          then.workflow.missing({
-            remoteWorkflowName: "codemode-types-refresh",
-          }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
       }),
@@ -620,10 +588,10 @@ describe("system automation scenarios", () => {
     );
   });
 
-  test("capability.configured writes missing codemode types", async () => {
+  test("configured capabilities expose codemode types from /static on demand", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
-        name: "system capability configuration writes missing codemode types",
+        name: "configured capabilities expose generated static codemode types",
 
         files: backofficeFiles.systemOnly(),
 
@@ -631,7 +599,7 @@ describe("system automation scenarios", () => {
           telegram: fake.telegram(),
         }),
 
-        setup: ({ given, runner, then }) => [
+        setup: ({ given, runner }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs" }),
           given.connection.configured({
             orgId: "org-1",
@@ -644,50 +612,27 @@ describe("system automation scenarios", () => {
             botUsername: "fragno_bot",
           }),
           runner.drain(),
-          then.assert("clear generated codemode types", (ctx) =>
-            clearGeneratedCodemodeTypes(ctx, "org-1"),
-          ),
         ],
 
-        steps: ({ when, then }) => [
-          when.capability.configured({
-            orgId: "org-1",
-            source: "telegram",
-            capabilityId: "telegram",
-            capabilityLabel: "Telegram",
-            eventId: "telegram-capability-1",
-          }),
-
-          then.workflow.instance({
-            instanceId: "codemode-types-refresh-telegram-capability-1",
-            status: "complete",
-            output: {
-              changed: true,
-              path: "/workspace/codemode/system.d.ts",
-            },
-          }),
-          then.workflow.steps({
-            instanceId: "codemode-types-refresh-telegram-capability-1",
-            include: ["sync codemode dts"],
-          }),
+        steps: ({ then }) => [
           then.files.contains({
             orgId: "org-1",
-            path: "/workspace/codemode/providers/capabilities.d.ts",
+            path: "/static/codemode/providers/capabilities.d.ts",
             text: "declare const capabilities",
           }),
           then.files.contains({
             orgId: "org-1",
-            path: "/workspace/codemode/providers/connections.d.ts",
+            path: "/static/codemode/providers/connections.d.ts",
             text: "declare const connections",
           }),
           then.files.contains({
             orgId: "org-1",
-            path: "/workspace/codemode/providers/connections.d.ts",
+            path: "/static/codemode/providers/connections.d.ts",
             text: "configure(input: ConnectionsConfigureInput)",
           }),
           then.files.contains({
             orgId: "org-1",
-            path: "/workspace/codemode/providers/telegram.d.ts",
+            path: "/static/codemode/providers/telegram.d.ts",
             text: "declare const telegram",
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
@@ -696,10 +641,10 @@ describe("system automation scenarios", () => {
     );
   });
 
-  test("mcp server configuration changes write installed MCP codemode provider types", async () => {
+  test("installed MCP servers expose codemode provider types from /static on demand", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
-        name: "system MCP server configuration writes codemode provider types",
+        name: "installed MCP servers expose generated static codemode provider types",
 
         files: backofficeFiles.systemOnly(),
 
@@ -727,7 +672,7 @@ describe("system automation scenarios", () => {
           }),
         }),
 
-        setup: ({ given, runner, then }) => [
+        setup: ({ given, runner }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs" }),
           given.connection.configured({
             orgId: "org-1",
@@ -736,197 +681,28 @@ describe("system automation scenarios", () => {
           }),
           given.connection.configured({ orgId: "org-1", id: "mcp" }),
           runner.drain(),
-          then.assert("clear generated codemode types", (ctx) =>
-            clearGeneratedCodemodeTypes(ctx, "org-1"),
-          ),
         ],
 
-        steps: ({ when, then }) => [
-          when.automation.ingestEvent({
-            id: "mcp-server-changed-1",
-            scope: { kind: "org", orgId: "org-1" },
-            source: "mcp",
-            eventType: "server.configuration.changed",
-            occurredAt: "2026-01-01T00:00:00.000Z",
-            payload: {
-              serverId: "cloudflare-mcp",
-              current: { tools: [{ name: "search-docs" }] },
-            },
-            actor: { scope: "internal", type: "system", id: "mcp" },
-            actors: [{ scope: "internal", type: "system", id: "mcp" }],
-            subject: { orgId: "org-1", serverId: "cloudflare-mcp" },
-          }),
-
-          then.workflow.instance({
-            instanceId: "codemode-types-refresh-mcp-server-changed-1",
-            status: "complete",
-            output: {
-              changed: true,
-              path: "/workspace/codemode/system.d.ts",
-            },
+        steps: ({ then }) => [
+          then.files.contains({
+            orgId: "org-1",
+            path: "/static/codemode/system.d.ts",
+            text: "/static/codemode/providers/mcp_cloudflare_mcp.d.ts",
           }),
           then.files.contains({
             orgId: "org-1",
-            path: "/workspace/codemode/system.d.ts",
-            text: "/workspace/codemode/providers/mcp_cloudflare_mcp.d.ts",
-          }),
-          then.files.contains({
-            orgId: "org-1",
-            path: "/workspace/codemode/providers/mcp_cloudflare_mcp.d.ts",
+            path: "/static/codemode/providers/mcp_cloudflare_mcp.d.ts",
             text: "declare const mcp_cloudflare_mcp",
           }),
           then.files.contains({
             orgId: "org-1",
-            path: "/workspace/codemode/providers/mcp_cloudflare_mcp.d.ts",
+            path: "/static/codemode/providers/mcp_cloudflare_mcp.d.ts",
             text: "search_docs(input: McpCloudflareMcpSearchDocsInput)",
           }),
           then.files.contains({
             orgId: "org-1",
-            path: "/workspace/codemode/providers/mcp_cloudflare_mcp.d.ts",
+            path: "/static/codemode/providers/mcp_cloudflare_mcp.d.ts",
             text: "query: string",
-          }),
-          then.workflow.noErrored({ orgId: "org-1" }),
-        ],
-      }),
-    );
-  });
-
-  test("capability.configured overwrites stale codemode types", async () => {
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        name: "system capability configuration overwrites stale codemode types",
-
-        files: backofficeFiles.systemOnly(),
-
-        fakes: ({ fake }) => ({
-          telegram: fake.telegram(),
-        }),
-
-        setup: ({ given, runner, then }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
-          given.connection.configured({
-            orgId: "org-1",
-            id: "upload",
-            payload: { provider: "database" },
-          }),
-          runner.drain(),
-          given.telegram.configured({
-            orgId: "org-1",
-            botUsername: "fragno_bot",
-          }),
-          runner.drain(),
-          then.assert("write stale canonical codemode types", async (ctx) => {
-            await clearGeneratedCodemodeTypes(ctx, "org-1");
-            const fs = await createScenarioOrgFileSystem(ctx, "org-1");
-            await fs.mkdir("/workspace/codemode", { recursive: true });
-            await fs.writeFile("/workspace/codemode/system.d.ts", "stale codemode types");
-          }),
-        ],
-
-        steps: ({ when, then }) => [
-          when.capability.configured({
-            orgId: "org-1",
-            source: "telegram",
-            capabilityId: "telegram",
-            capabilityLabel: "Telegram",
-            eventId: "telegram-capability-stale",
-          }),
-
-          then.workflow.instance({
-            instanceId: "codemode-types-refresh-telegram-capability-stale",
-            status: "complete",
-            output: {
-              changed: true,
-              path: "/workspace/codemode/system.d.ts",
-            },
-          }),
-          then.files.contains({
-            orgId: "org-1",
-            path: "/workspace/codemode/system.d.ts",
-            text: '/// <reference path="/workspace/codemode/workflow-authoring.d.ts" />',
-          }),
-          then.files.contains({
-            orgId: "org-1",
-            path: "/workspace/codemode/providers/telegram.d.ts",
-            text: "declare const telegram",
-          }),
-          then.workflow.noErrored({ orgId: "org-1" }),
-        ],
-      }),
-    );
-  });
-
-  test("capability.configured leaves identical codemode types unchanged", async () => {
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        name: "system capability configuration keeps identical codemode types",
-
-        files: backofficeFiles.systemOnly(),
-
-        fakes: ({ fake }) => ({
-          telegram: fake.telegram(),
-        }),
-
-        setup: ({ given, runner, then }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
-          given.connection.configured({
-            orgId: "org-1",
-            id: "upload",
-            payload: { provider: "database" },
-          }),
-          runner.drain(),
-          given.telegram.configured({
-            orgId: "org-1",
-            botUsername: "fragno_bot",
-          }),
-          runner.drain(),
-          then.assert("clear generated codemode types", (ctx) =>
-            clearGeneratedCodemodeTypes(ctx, "org-1"),
-          ),
-        ],
-
-        steps: ({ when, then }) => [
-          when.capability.configured({
-            orgId: "org-1",
-            source: "telegram",
-            capabilityId: "telegram",
-            capabilityLabel: "Telegram",
-            eventId: "telegram-capability-first",
-          }),
-
-          then.workflow.instance({
-            instanceId: "codemode-types-refresh-telegram-capability-first",
-            status: "complete",
-            output: {
-              changed: true,
-              path: "/workspace/codemode/system.d.ts",
-            },
-          }),
-
-          when.capability.configured({
-            orgId: "org-1",
-            source: "telegram",
-            capabilityId: "telegram",
-            capabilityLabel: "Telegram",
-            eventId: "telegram-capability-second",
-          }),
-
-          then.workflow.instance({
-            instanceId: "codemode-types-refresh-telegram-capability-second",
-            status: "complete",
-            output: {
-              changed: false,
-              path: "/workspace/codemode/system.d.ts",
-            },
-          }),
-          then.workflow.steps({
-            instanceId: "codemode-types-refresh-telegram-capability-second",
-            include: ["sync codemode dts"],
-          }),
-          then.files.contains({
-            orgId: "org-1",
-            path: "/workspace/codemode/providers/telegram.d.ts",
-            text: "declare const telegram",
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],

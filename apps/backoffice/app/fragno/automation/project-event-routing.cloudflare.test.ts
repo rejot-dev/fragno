@@ -77,7 +77,7 @@ describe("project automation event routing", () => {
           kind: "start_workflow",
           workflowName: "automation-codemode-script",
           remoteWorkflowName: "project-files-configure",
-          workflowScriptPath: "/system/automations/project-files-configure.workflow.js",
+          workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
           instanceIdTemplate: "project-files-configure-${event.id}",
         },
       },
@@ -235,6 +235,8 @@ describe("project automation event routing", () => {
           actor: { type: "user", id: "user-1", userId: "user-1", organizationIds: [orgId] },
           scope: { kind: "org", orgId },
         },
+
+        staticFileArtifacts: () => ({}),
       }),
     );
     await expect(fs.readdir("/projects")).resolves.toEqual(["mounted-plan"]);
@@ -248,6 +250,8 @@ describe("project automation event routing", () => {
           actor: { type: "user", id: "user-1", userId: "user-1", organizationIds: [orgId] },
           scope: { kind: "project", orgId, projectId },
         },
+
+        staticFileArtifacts: () => ({}),
       }),
     );
     await expect(projectFs.readFile("/workspace/notes.txt")).resolves.toBe("project notes");
