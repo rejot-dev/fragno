@@ -1,9 +1,19 @@
+import { BufferedPumpRegistry } from "@fragno-dev/db/buffered-pump";
+import type { AnySchema } from "@fragno-dev/db/schema";
+import type { MutationOperation } from "@fragno-dev/db/unit-of-work";
+
 import {
   instantiate,
   type FragnoRequestLifecycleContext,
   type FragnoRuntime,
 } from "@fragno-dev/core";
-import type { DatabaseHandlerTx, FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+import {
+  createHandlerTxBuilder,
+  InMemoryAdapter,
+  type DatabaseHandlerTx,
+  type FragnoPublicConfigWithDatabase,
+  type IUnitOfWork,
+} from "@fragno-dev/db";
 import { drainDurableHooks } from "@fragno-dev/test";
 import type {
   AdditionalFragmentRuntime,
@@ -27,6 +37,11 @@ import type { WorkflowsFragment, WorkflowsFragmentServices } from "./index";
 import { buildScopedInstanceRowId } from "./instance-ref";
 import { runWorkflowsTick } from "./new-runner";
 import { workflowsRoutesFactory } from "./routes";
+import { applyOutcome, applyRunnerMutations, type RunnerTaskOutcome } from "./runner/plan-writes";
+import { createRunnerState } from "./runner/state";
+import { isRunnerStepSuspended, RunnerStep } from "./runner/step";
+import type { WorkflowStepLivePump } from "./runner/step-live-pump";
+import { workflowsSchema } from "./schema";
 import { parseDurationMs } from "./utils";
 import type {
   InstanceStatus,
@@ -259,6 +274,183 @@ export type WorkflowsTestHarness<
 export type RunUntilIdleOptions = {
   maxTicks?: number;
 };
+
+export type RecordedWorkflowStepRun = {
+  mutations: MutationOperation<AnySchema>[];
+  rows: {
+    instance: Awaited<ReturnType<typeof readRecordedWorkflowRows>>["instance"];
+    steps: Awaited<ReturnType<typeof readRecordedWorkflowRows>>["steps"];
+    events: Awaited<ReturnType<typeof readRecordedWorkflowRows>>["events"];
+    stepEmissions: Awaited<ReturnType<typeof readRecordedWorkflowRows>>["stepEmissions"];
+  };
+};
+
+export type RecordWorkflowStepRunForTestOptions<TOutput = unknown> = {
+  workflowName: string;
+  instanceId: string;
+  params?: unknown;
+  remoteWorkflowName?: string | null;
+  run: (step: RunnerStep) => Promise<TOutput> | TOutput;
+  onMutations?: (args: {
+    mutations: MutationOperation<AnySchema>[];
+    allMutations: MutationOperation<AnySchema>[];
+  }) => Promise<void> | void;
+  stepEmissions?: BufferedPumpRegistry<WorkflowStepLivePump>;
+  workflowsByName?: ReadonlyMap<string, WorkflowRegistryEntry>;
+  createEpoch?: () => string;
+};
+
+const readRecordedWorkflowRows = async (
+  handlerTx: DatabaseHandlerTx,
+  workflowName: string,
+  instanceId: string,
+) =>
+  await handlerTx()
+    .retrieve(({ forSchema }) => {
+      const uow = forSchema(workflowsSchema);
+      const instanceRef = buildScopedInstanceRowId(workflowName, instanceId);
+      return uow
+        .findFirst("workflow_instance", (b) =>
+          b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
+            eb.and(eb("workflowName", "=", workflowName), eb("instanceId", "=", instanceId)),
+          ),
+        )
+        .find("workflow_step", (b) =>
+          b
+            .whereIndex("idx_workflow_step_instanceRef_createdAt", (eb) =>
+              eb("instanceRef", "=", instanceRef),
+            )
+            .orderByIndex("idx_workflow_step_instanceRef_createdAt", "asc"),
+        )
+        .find("workflow_event", (b) =>
+          b
+            .whereIndex("idx_workflow_event_instanceRef_createdAt", (eb) =>
+              eb("instanceRef", "=", instanceRef),
+            )
+            .orderByIndex("idx_workflow_event_instanceRef_createdAt", "asc"),
+        )
+        .find("workflow_step_emission", (b) =>
+          b
+            .whereIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", (eb) =>
+              eb("instanceRef", "=", instanceRef),
+            )
+            .orderByIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", "asc"),
+        );
+    })
+    .transform(({ retrieveResult: [instance, steps, events, stepEmissions] }) => ({
+      instance,
+      steps,
+      events,
+      stepEmissions,
+    }))
+    .execute();
+
+/**
+ * Run one workflow step through the production runner transaction machinery and
+ * return the UOW mutation operations it produced. This is intentionally a test
+ * helper: durable hooks are no-oped, but step keys, step rows, outcome updates,
+ * and live step emissions are created through the same runner code used in
+ * production.
+ */
+export async function recordWorkflowStepRunForTest<TOutput = unknown>(
+  options: RecordWorkflowStepRunForTestOptions<TOutput>,
+): Promise<RecordedWorkflowStepRun> {
+  const adapter = new InMemoryAdapter();
+  adapter.registerSchema(workflowsSchema, null);
+  const mutations: MutationOperation<AnySchema>[] = [];
+  const handlerTx: DatabaseHandlerTx = (txOptions) => {
+    const onAfterMutate = txOptions?.onAfterMutate;
+    return createHandlerTxBuilder({
+      ...txOptions,
+      createUnitOfWork: () => adapter.createBaseUnitOfWork(),
+      onAfterMutate: async (uow) => {
+        const newMutations = [...uow.getMutationOperations()];
+        mutations.push(...newMutations);
+        await options.onMutations?.({ mutations: newMutations, allMutations: mutations });
+        await onAfterMutate?.(uow);
+      },
+    });
+  };
+  const instanceRef = buildScopedInstanceRowId(options.workflowName, options.instanceId);
+
+  await handlerTx()
+    .mutate(({ forSchema }) => {
+      forSchema(workflowsSchema).create("workflow_instance", {
+        id: instanceRef,
+        workflowName: options.workflowName,
+        remoteWorkflowName: options.remoteWorkflowName ?? null,
+        instanceId: options.instanceId,
+        status: "active",
+        params: options.params ?? {},
+        startedAt: null,
+        completedAt: null,
+        output: null,
+        errorName: null,
+        errorMessage: null,
+      });
+    })
+    .execute();
+
+  const initialRows = await readRecordedWorkflowRows(
+    handlerTx,
+    options.workflowName,
+    options.instanceId,
+  );
+  if (!initialRows.instance) {
+    throw new Error("RECORDED_WORKFLOW_INSTANCE_NOT_FOUND");
+  }
+  const instance = initialRows.instance;
+
+  const state = createRunnerState(
+    instance,
+    initialRows.steps,
+    initialRows.events,
+    initialRows.stepEmissions,
+  );
+  let epoch = 0;
+  const stepEmissions = options.stepEmissions ?? new BufferedPumpRegistry<WorkflowStepLivePump>();
+  const step = new RunnerStep({
+    state,
+    taskKind: "run",
+    workflowName: options.workflowName,
+    instanceId: options.instanceId,
+    handlerTx,
+    createEpoch: options.createEpoch ?? (() => `test-epoch-${(epoch += 1)}`),
+    stepEmissions,
+    workflowsByName: new Map(options.workflowsByName ?? []),
+  });
+
+  let outcome: RunnerTaskOutcome;
+  try {
+    outcome = { type: "completed", output: await options.run(step) };
+  } catch (error) {
+    if (isRunnerStepSuspended(error)) {
+      outcome = { type: "suspended", reason: error.reason };
+    } else {
+      outcome = {
+        type: "errored",
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
+    }
+  }
+
+  await handlerTx()
+    .mutate((ctx) => {
+      const uow = {
+        forSchema: ctx.forSchema,
+        idempotencyKey: ctx.idempotencyKey,
+        triggerHook: () => undefined,
+      } as unknown as IUnitOfWork;
+      applyRunnerMutations(uow, state, new Map(options.workflowsByName ?? []));
+      applyOutcome(uow, instance, outcome);
+    })
+    .execute();
+
+  return {
+    mutations: [...mutations],
+    rows: await readRecordedWorkflowRows(handlerTx, options.workflowName, options.instanceId),
+  };
+}
 
 const createTestClock = (startAt?: Date | number): WorkflowsTestClock => {
   let currentMs =

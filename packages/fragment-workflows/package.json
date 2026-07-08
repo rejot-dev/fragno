@@ -77,6 +77,7 @@
       "default": "./dist/browser/client/vanilla.js"
     },
     "./test": {
+      "development": "./src/test.ts",
       "types": "./dist/node/test.d.ts",
       "default": "./dist/node/test.js"
     },
@@ -94,6 +95,7 @@
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
+    "@fragno-dev/lofi": "workspace:*",
     "nanostores": "^1.2.0",
     "zod": "^4.3.5"
   },
