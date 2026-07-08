@@ -50,7 +50,7 @@ const apiConnectionAvailablePayloadSchema = z.object({
 });
 
 const apiScopeSubjectSchema = z.object({
-  scope: z.object({ kind: z.string().min(1) }).passthrough(),
+  scope: z.looseObject({ kind: z.string().min(1) }),
   orgId: z.string().min(1).optional(),
 });
 

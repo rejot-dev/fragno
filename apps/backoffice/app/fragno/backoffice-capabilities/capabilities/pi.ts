@@ -22,12 +22,10 @@ const piApiKeysSchema = z.object({
   gemini: apiKeyValueSchema,
 });
 
-export const piConfigureInputSchema = z
-  .object({
-    apiKeys: piApiKeysSchema.optional(),
-    harnesses: z.unknown().optional(),
-  })
-  .passthrough();
+export const piConfigureInputSchema = z.looseObject({
+  apiKeys: piApiKeysSchema.optional(),
+  harnesses: z.unknown().optional(),
+});
 
 const piCapabilityConfiguredPayloadSchema = z.object({
   capabilityId: z.literal("pi"),

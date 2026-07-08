@@ -9,12 +9,10 @@ import { createUploadCapabilityFiles } from "@/fragno/backoffice-capabilities/ca
 
 const uploadProviderSchema = z.enum(["database", "r2", "r2-binding"]);
 
-export const uploadConfigureInputSchema = z
-  .object({
-    provider: uploadProviderSchema.optional(),
-    defaultProvider: uploadProviderSchema.optional(),
-  })
-  .passthrough();
+export const uploadConfigureInputSchema = z.looseObject({
+  provider: uploadProviderSchema.optional(),
+  defaultProvider: uploadProviderSchema.optional(),
+});
 
 const uploadCapabilityConfiguredPayloadSchema = z.object({
   capabilityId: z.literal("upload"),

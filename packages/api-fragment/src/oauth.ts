@@ -23,16 +23,14 @@ export const oauthTokensSchema = z.object({
   raw: z.record(z.string(), z.unknown()).optional(),
 });
 
-const oauthTokenResponseSchema = z
-  .object({
-    access_token: z.string().optional(),
-    refresh_token: z.string().optional(),
-    token_type: z.string().optional(),
-    expires_in: z.coerce.number().finite().optional(),
-    scope: z.string().optional(),
-    id_token: z.string().optional(),
-  })
-  .passthrough();
+const oauthTokenResponseSchema = z.looseObject({
+  access_token: z.string().optional(),
+  refresh_token: z.string().optional(),
+  token_type: z.string().optional(),
+  expires_in: z.coerce.number().finite().optional(),
+  scope: z.string().optional(),
+  id_token: z.string().optional(),
+});
 
 export { bytesToBase64Url, randomBase64Url } from "./crypto";
 

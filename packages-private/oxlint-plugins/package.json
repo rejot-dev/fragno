@@ -13,7 +13,8 @@
     "./fragment-dev-browser-exports": "./fragment-dev-browser-exports.js",
     "./docs-icons-sync": "./docs-icons-sync.js",
     "./vitest-assert-json-response": "./vitest-assert-json-response.js",
-    "./zod-inline-schema-definitions": "./zod-inline-schema-definitions.js"
+    "./zod-inline-schema-definitions": "./zod-inline-schema-definitions.js",
+    "./zod-v4-object-factories": "./zod-v4-object-factories.js"
   },
   "scripts": {
     "types:check": "tsgo --noEmit"
