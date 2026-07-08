@@ -1,11 +1,11 @@
 import { BufferedPumpRegistry } from "@fragno-dev/db/buffered-pump";
+import { workflowsSchema } from "@fragno-dev/workflows/schema";
 import type { WorkflowStepLivePump } from "@fragno-dev/workflows/step-live-pump";
 import { createWorkflowsTestHarness, type WorkflowsTestHarness } from "@fragno-dev/workflows/test";
 
 import { instantiate } from "@fragno-dev/core";
 import { migrate } from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest, type SupportedAdapter } from "@fragno-dev/test";
-import { workflowsSchema } from "@fragno-dev/workflows";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
 import type { StreamFn } from "@earendil-works/pi-agent-core";
@@ -297,9 +297,10 @@ export const getWorkflowInstanceRef = async (
   workflowName: string,
   instanceId: string,
 ): Promise<string> => {
+  const uow = workflows.db.createUnitOfWork("read-workflow-instance-ref");
+  uow.registerSchema(workflowsSchema, workflowsSchema.name);
   const [instance] = (
-    await workflows.db
-      .createUnitOfWork("read-workflow-instance-ref")
+    await uow
       .forSchema(workflowsSchema)
       .find("workflow_instance", (b) =>
         b.whereIndex("idx_workflow_instance_workflowName_instanceId", (eb) =>
