@@ -4,6 +4,7 @@ import type { PiSkillDefinition, PiSkillRegistryResolver } from "@fragno-dev/pi-
 import type { PiFragmentConfig } from "@fragno-dev/pi-harness/types";
 import {
   createInteractiveChatWorkflow,
+  INTERACTIVE_CHAT_WORKFLOW_NAME,
   type InteractiveChatWorkflowParams,
 } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 import type { WorkflowRegistryEntry } from "@fragno-dev/workflows/workflow";
@@ -564,6 +565,30 @@ const resolveHarnessAgentTools = (harness: PiHarnessConfig): PiToolId[] => {
 const isValidPiToolId = (toolId: string): toolId is (typeof PI_TOOL_IDS)[number] =>
   PI_TOOL_IDS.includes(toolId as (typeof PI_TOOL_IDS)[number]);
 
+const validateBackofficePiAgentName = (
+  config: StoredPiConfig,
+  agentName: string,
+): string | null => {
+  const parsedAgentName = parsePiAgentName(agentName);
+  if (!parsedAgentName) {
+    return null;
+  }
+
+  const harness = resolvePiHarnesses(config.harnesses).find(
+    (entry) => entry.id === parsedAgentName.harnessId,
+  );
+  if (!harness) {
+    return `Harness ${parsedAgentName.harnessId} not found.`;
+  }
+
+  const model = resolveBackofficeModel(parsedAgentName.provider, parsedAgentName.model);
+  if (!model) {
+    return `Model ${parsedAgentName.provider}/${parsedAgentName.model} not found.`;
+  }
+
+  return null;
+};
+
 const createBackofficeInteractiveChatWorkflow = ({
   config,
   createTools,
@@ -700,6 +725,7 @@ export const createPiRuntime = (options: {
     {
       databaseAdapter: adapter,
       mountRoute: "/api/pi-workflows",
+      outbox: { enabled: true },
     },
   );
 
@@ -708,11 +734,42 @@ export const createPiRuntime = (options: {
     {
       databaseAdapter: adapter,
       mountRoute: "/api/pi",
+      outbox: { enabled: true },
     },
     {
       workflows: workflowsFragment.services,
     },
-  );
+  ).withMiddleware(async ({ ifMatchesRoute }) => {
+    return await ifMatchesRoute(
+      "POST",
+      "/workflows/:workflowName/sessions",
+      async ({ input, pathParams }, { error }) => {
+        if (pathParams.workflowName !== INTERACTIVE_CHAT_WORKFLOW_NAME) {
+          return undefined;
+        }
+
+        const values = await input.valid();
+        const inputValues = values.input;
+        const agentName =
+          inputValues && typeof inputValues === "object" && "harnessName" in inputValues
+            ? inputValues.harnessName
+            : inputValues && typeof inputValues === "object" && "agentName" in inputValues
+              ? inputValues.agentName
+              : null;
+
+        if (typeof agentName !== "string") {
+          return undefined;
+        }
+
+        const message = validateBackofficePiAgentName(options.config, agentName);
+        if (!message) {
+          return undefined;
+        }
+
+        return error({ message, code: "AGENT_NOT_FOUND" }, 400);
+      },
+    );
+  });
 
   return {
     piFragment,

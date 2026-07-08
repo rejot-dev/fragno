@@ -41,13 +41,12 @@ const createRuntime = (): PiRuntime =>
 const createSessionDetail = (sessionId: string) => ({
   id: sessionId,
   name: null,
-  status: "waiting",
   workflowName: "interactive-chat-workflow",
   createdAt: new Date("2026-06-03T00:00:00.000Z"),
   updatedAt: new Date("2026-06-03T00:00:00.000Z"),
   agentName: "assistant",
   workflow: { status: "waiting" },
-  agent: { state: { messages: [] }, events: [] },
+  agent: { state: { messages: [] }, completedStepKeys: [] },
 });
 
 describe("pi runtime tools", () => {
@@ -138,6 +137,50 @@ describe("pi runtime tools", () => {
     ).toEqual({ sessionId: "session-1", events: true, trace: false, turns: true });
   });
 
+  test("accepts session create responses without a legacy top-level status", async () => {
+    const createSession = piRuntimeTools[0];
+    const runtime = {
+      createSession: vi.fn(async ({ agent, name }) => ({
+        id: "session-1",
+        name: name ?? null,
+        agent,
+        workflowName: "interactive-chat-workflow",
+        createdAt: new Date("2026-06-03T00:00:00.000Z"),
+        updatedAt: new Date("2026-06-03T00:00:00.000Z"),
+      })),
+    } as unknown as PiRuntime;
+    const context: BackofficeToolContext<{ pi: PiRuntime }> =
+      createTrustedSystemBackofficeToolContext({
+        runtimes: { pi: runtime },
+      });
+
+    await expect(
+      createSession.execute({ agent: "assistant", name: "Support" }, context),
+    ).resolves.toMatchObject({
+      id: "session-1",
+      agent: "assistant",
+      name: "Support",
+    });
+    expect(runtime.createSession).toHaveBeenCalledWith({ agent: "assistant", name: "Support" });
+  });
+
+  test("accepts current Pi session detail contract", async () => {
+    const getSession = piRuntimeTools[1];
+    const runtime = createRuntime();
+    const context: BackofficeToolContext<{ pi: PiRuntime }> =
+      createTrustedSystemBackofficeToolContext({
+        runtimes: { pi: runtime },
+      });
+
+    await expect(getSession.execute({ sessionId: "session-1" }, context)).resolves.toMatchObject({
+      agent: {
+        completedStepKeys: [],
+        state: { messages: [] },
+      },
+    });
+    expect(runtime.getSession).toHaveBeenCalledWith({ sessionId: "session-1" });
+  });
+
   test("invokes semantic runtime for codemode", async () => {
     const runtime = createRuntime();
     const context: BackofficeToolContext<{ pi: PiRuntime }> =
@@ -148,6 +191,7 @@ describe("pi runtime tools", () => {
     await expect(
       piRuntimeTools[3].execute({ sessionId: "session-1", text: "Hello" }, context),
     ).resolves.toMatchObject({
+      agent: { completedStepKeys: [] },
       assistantText: "echo: Hello",
     });
     expect(runtime.runTurn).toHaveBeenCalledWith({ sessionId: "session-1", text: "Hello" });

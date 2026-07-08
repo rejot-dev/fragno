@@ -41,7 +41,6 @@ export default function BackofficeOrganisationPiDebugSessionDetail() {
   const pi = useMemo(() => createPiClient(resolvedOrgId), [resolvedOrgId]);
   const sessionPath = { workflowName: resolvedWorkflowName, sessionId: resolvedSessionId };
   const sessionDetail = pi.useSessionDetail({ path: sessionPath });
-  const sessionEvents = pi.useSessionEvents({ path: sessionPath });
 
   if (!orgId || !workflowName || !sessionId) {
     throw new Response("Not Found", { status: 404 });
@@ -58,7 +57,6 @@ export default function BackofficeOrganisationPiDebugSessionDetail() {
 
       <div className="grid min-h-0 gap-4 xl:grid-cols-2">
         <JsonPanel title="useSessionDetail" value={sessionDetail} />
-        <JsonPanel title="useSessionEvents" value={sessionEvents} />
       </div>
     </div>
   );

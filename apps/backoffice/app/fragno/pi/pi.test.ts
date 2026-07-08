@@ -1,5 +1,9 @@
 import { describe, expect, test, vi, assert } from "vitest";
 
+import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
+
+import { InMemoryAdapter } from "@fragno-dev/db";
+
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import * as files from "@/files";
@@ -10,6 +14,7 @@ import type { UploadFileRecord } from "@/routes/backoffice/connections/upload/da
 
 import { createTestMasterFileSystem } from "../automation/engine/test-master-file-system.test-utils";
 import {
+  createPiRuntime,
   createPiToolRegistry,
   type PiBashCommandContext,
   type PiSessionFileSystemContext,
@@ -131,6 +136,66 @@ const createMockBashContext = (): PiBashCommandContext => ({
       },
     },
   },
+});
+
+describe("Backoffice Pi fragment", () => {
+  test("rejects unknown model names before creating the session", async () => {
+    const context = createContext();
+    const runtime = createPiRuntime({
+      config: {
+        scope: { kind: "org", orgId: "acme-org" },
+        apiKeys: { openai: "test-key" },
+        harnesses: [
+          {
+            id: "default",
+            label: "Default",
+            systemPrompt: "Test system prompt",
+            tools: ["read"],
+          },
+        ],
+        createdAt: "2026-07-08T00:00:00.000Z",
+        updatedAt: "2026-07-08T00:00:00.000Z",
+      },
+      adapters: {
+        createAdapter: () => new InMemoryAdapter({ idSeed: "pi-invalid-model-test" }),
+      } as never,
+      orgId: "acme-org",
+      env: createMockEnv(),
+      sessionFileSystems: new Map(),
+      sessionFileSystemContext: context,
+      bashCommandContext: createMockBashContext(),
+      codemode: {
+        env: {} as never,
+        execute: async () => {
+          throw new Error("codemode not available in test");
+        },
+      },
+    });
+
+    const response = await runtime.piFragment.handler(
+      new Request(`http://test.local/api/pi/workflows/${INTERACTIVE_CHAT_WORKFLOW_NAME}/sessions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ input: { harnessName: "default::openai::bla" } }),
+      }),
+    );
+
+    assert(response.status === 400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "AGENT_NOT_FOUND",
+      message: "Model openai/bla not found.",
+    });
+
+    const listResponse = await runtime.piFragment.callRoute(
+      "GET",
+      "/workflows/:workflowName/sessions",
+      {
+        pathParams: { workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME },
+      },
+    );
+    assert(listResponse.type === "json");
+    expect(listResponse.data).toEqual([]);
+  });
 });
 
 describe("Backoffice Pi skills", () => {

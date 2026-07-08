@@ -1,29 +1,15 @@
 import { ScrollArea } from "@base-ui/react/scroll-area";
 import { Switch } from "@base-ui/react/switch";
-import type { PiSessionEventStreamItem } from "@fragno-dev/pi-harness/types";
+import type {
+  DraftAgentMessage,
+  DraftTool,
+} from "@fragno-dev/pi-harness/client/workflow-lofi-session-projection";
 import { Maximize2, Minimize2 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Link } from "react-router";
 import { Streamdown } from "streamdown";
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-
-export type LiveToolExecution = {
-  toolCallId: string;
-  toolName: string;
-  args: unknown;
-  partialResult: unknown | null;
-};
-
-export type LiveToolCallDraft = {
-  key: string;
-  contentIndex: number;
-  toolCallId: string | null;
-  toolName: string | null;
-  argumentsText: string;
-  argumentsValue: unknown | null;
-  status: "streaming" | "complete";
-};
 
 type ToolResultMessage = Extract<AgentMessage, { role: "toolResult" }>;
 
@@ -292,22 +278,18 @@ export function SessionDisplayOptions({
   exportHref,
   showThinking,
   showToolCalls,
-  showTrace,
   showUsage,
   onShowThinkingChange,
   onShowToolCallsChange,
-  onShowTraceChange,
   onShowUsageChange,
 }: {
   exportFilename: string;
   exportHref: string;
   showThinking: boolean;
   showToolCalls: boolean;
-  showTrace: boolean;
   showUsage: boolean;
   onShowThinkingChange: (value: boolean) => void;
   onShowToolCallsChange: (value: boolean) => void;
-  onShowTraceChange: (value: boolean) => void;
   onShowUsageChange: (value: boolean) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -337,7 +319,6 @@ export function SessionDisplayOptions({
               checked={showThinking}
               onCheckedChange={onShowThinkingChange}
             />
-            <ToggleSwitch label="Trace" checked={showTrace} onCheckedChange={onShowTraceChange} />
             <ToggleSwitch label="Usage" checked={showUsage} onCheckedChange={onShowUsageChange} />
           </div>
           <a
@@ -354,12 +335,11 @@ export function SessionDisplayOptions({
 }
 
 export function SessionConversationPanel({
-  draftToolCalls,
+  draftAgentMessage,
   messages,
   onJumpToLatest,
   onScroll,
   readyForInput,
-  runningTools,
   scrollContentRef,
   scrollViewportRef,
   showJumpToLatest,
@@ -368,12 +348,11 @@ export function SessionConversationPanel({
   showUsage,
   statusText,
 }: {
-  draftToolCalls: LiveToolCallDraft[];
+  draftAgentMessage: DraftAgentMessage | null;
   messages: AgentMessage[];
   onJumpToLatest: () => void;
   onScroll: () => void;
   readyForInput: boolean;
-  runningTools: LiveToolExecution[];
   scrollContentRef: RefObject<HTMLDivElement | null>;
   scrollViewportRef: RefObject<HTMLDivElement | null>;
   showJumpToLatest: boolean;
@@ -407,9 +386,8 @@ export function SessionConversationPanel({
               messages.map((message, index) => (
                 <MessageCard
                   key={`${message.role}-${index}`}
-                  draftToolCalls={message === lastMessage ? draftToolCalls : []}
+                  draftAgentMessage={message === lastMessage ? draftAgentMessage : null}
                   message={message}
-                  runningTools={runningTools}
                   showToolCalls={showToolCalls}
                   showThinking={showThinking}
                   showUsage={showUsage}
@@ -420,8 +398,8 @@ export function SessionConversationPanel({
 
             {showPendingAssistant ? (
               <PendingAssistantCard
-                draftToolCalls={draftToolCalls}
-                runningTools={runningTools}
+                draftAgentMessage={draftAgentMessage}
+                showThinking={showThinking}
                 showToolCalls={showToolCalls}
                 statusText={statusText}
               />
@@ -581,16 +559,28 @@ export function SessionComposer({
 }
 
 function PendingAssistantCard({
-  draftToolCalls,
-  runningTools,
+  draftAgentMessage,
+  showThinking,
   showToolCalls,
   statusText,
 }: {
-  draftToolCalls: LiveToolCallDraft[];
-  runningTools: LiveToolExecution[];
+  draftAgentMessage: DraftAgentMessage | null;
+  showThinking: boolean;
   showToolCalls: boolean;
   statusText: string | null;
 }) {
+  const draftTools = Object.values(draftAgentMessage?.tools ?? {});
+  const contentBlocks = normalizeContent(draftAgentMessage?.assistant?.content);
+  const visibleBlocks = contentBlocks.filter((block) => {
+    if (block.type === "toolCall") {
+      return false;
+    }
+    if (block.type === "thinking") {
+      return showThinking;
+    }
+    return true;
+  });
+
   return (
     <div className="flex justify-start">
       <div className="w-full max-w-prose border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
@@ -602,58 +592,34 @@ function PendingAssistantCard({
           </span>
         </div>
 
-        {showToolCalls && (draftToolCalls.length > 0 || runningTools.length > 0) ? (
-          <div className="mt-3 space-y-2">
-            {draftToolCalls.map((tool) => (
-              <ToolCallBlock
-                key={tool.key}
-                argumentsRawText={tool.argumentsText}
-                argumentsValue={tool.argumentsValue ?? tool.argumentsText}
-                completedToolResult={null}
-                draftTool={tool}
-                liveTool={null}
-                name={tool.toolName ?? "Tool call"}
-              />
+        {visibleBlocks.length > 0 ? (
+          <div className="mt-2 space-y-2 text-sm text-[var(--bo-muted)]">
+            {visibleBlocks.map((block, index) => (
+              <ContentBlock key={`${block.type}-${index}`} block={block} />
             ))}
-            {runningTools.map((tool) => (
+          </div>
+        ) : null}
+
+        {showToolCalls && draftTools.length > 0 ? (
+          <div className="mt-3 space-y-2">
+            {draftTools.map((tool) => (
               <ToolCallBlock
-                key={tool.toolCallId}
+                key={tool.id}
                 argumentsValue={tool.args}
-                completedToolResult={null}
-                liveTool={tool}
-                name={tool.toolName}
+                completedToolResult={tool.resultMessage ?? null}
+                draftTool={tool}
+                name={tool.name}
               />
             ))}
           </div>
         ) : null}
 
-        {!showToolCalls && (draftToolCalls.length > 0 || runningTools.length > 0) ? (
+        {!showToolCalls && draftTools.length > 0 ? (
           <p className="mt-2 text-xs text-[var(--bo-muted-2)]">
-            {draftToolCalls.length + runningTools.length} tool call(s) hidden.
+            {draftTools.length} tool call(s) hidden.
           </p>
         ) : null}
       </div>
-    </div>
-  );
-}
-
-export function SessionTracePanel({
-  traceEvents,
-}: {
-  traceEvents: Array<Exclude<PiSessionEventStreamItem, { type: "snapshot" }>>;
-}) {
-  return (
-    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-xs text-[var(--bo-muted)]">
-      <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-        Trace events
-      </p>
-      {traceEvents.length === 0 ? (
-        <p className="mt-2">No trace events captured.</p>
-      ) : (
-        <pre className="mt-2 max-h-64 overflow-auto text-[11px] whitespace-pre-wrap text-[var(--bo-fg)]">
-          {formatJson(traceEvents)}
-        </pre>
-      )}
     </div>
   );
 }
@@ -682,17 +648,15 @@ function ToggleSwitch({
 }
 
 function MessageCard({
-  draftToolCalls,
+  draftAgentMessage,
   message,
-  runningTools,
   showToolCalls,
   showThinking,
   showUsage,
   toolResultsByCallId,
 }: {
-  draftToolCalls: LiveToolCallDraft[];
+  draftAgentMessage: DraftAgentMessage | null;
   message: AgentMessage;
-  runningTools: LiveToolExecution[];
   showToolCalls: boolean;
   showThinking: boolean;
   showUsage: boolean;
@@ -737,14 +701,11 @@ function MessageCard({
         }
         return true;
       });
-    const unmatchedDraftToolCalls = showToolCalls
-      ? draftToolCalls.filter(
+    const draftTools = Object.values(draftAgentMessage?.tools ?? {});
+    const unmatchedDraftTools = showToolCalls
+      ? draftTools.filter(
           (draftTool) =>
-            !contentBlocks.some(
-              (block, contentIndex) =>
-                block.type === "toolCall" &&
-                (draftTool.contentIndex === contentIndex || draftTool.toolCallId === block.id),
-            ),
+            !contentBlocks.some((block) => block.type === "toolCall" && draftTool.id === block.id),
         )
       : [];
 
@@ -763,7 +724,7 @@ function MessageCard({
           </div>
 
           <div className="mt-2 space-y-2 text-sm text-[var(--bo-muted)]">
-            {visibleBlocks.length === 0 && unmatchedDraftToolCalls.length === 0 ? (
+            {visibleBlocks.length === 0 && unmatchedDraftTools.length === 0 ? (
               contentBlocks.length === 0 ? (
                 <span className="inline-flex items-center gap-2 text-xs text-[var(--bo-muted-2)]">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--bo-accent)]" />
@@ -774,14 +735,10 @@ function MessageCard({
               )
             ) : (
               <>
-                {visibleBlocks.map(({ block, contentIndex }, index) => {
+                {visibleBlocks.map(({ block }, index) => {
                   const draftTool =
                     block.type === "toolCall"
-                      ? (draftToolCalls.find(
-                          (tool) =>
-                            tool.contentIndex === contentIndex ||
-                            (tool.toolCallId !== null && tool.toolCallId === block.id),
-                        ) ?? null)
+                      ? (draftTools.find((tool) => tool.id === block.id) ?? null)
                       : null;
                   return (
                     <ContentBlock
@@ -793,23 +750,16 @@ function MessageCard({
                           : null
                       }
                       draftTool={draftTool}
-                      liveTool={
-                        block.type === "toolCall"
-                          ? (runningTools.find((tool) => tool.toolCallId === block.id) ?? null)
-                          : null
-                      }
                     />
                   );
                 })}
-                {unmatchedDraftToolCalls.map((tool) => (
+                {unmatchedDraftTools.map((tool) => (
                   <ToolCallBlock
-                    key={tool.key}
-                    argumentsRawText={tool.argumentsText}
-                    argumentsValue={tool.argumentsValue ?? tool.argumentsText}
-                    completedToolResult={null}
+                    key={tool.id}
+                    argumentsValue={tool.args}
+                    completedToolResult={tool.resultMessage ?? null}
                     draftTool={tool}
-                    liveTool={null}
-                    name={tool.toolName ?? "Tool call"}
+                    name={tool.name}
                   />
                 ))}
               </>
@@ -874,13 +824,11 @@ function ContentBlock({
   block,
   completedToolResult = null,
   draftTool = null,
-  liveTool = null,
   scrollableText = false,
 }: {
   block: ContentBlock;
   completedToolResult?: ToolResultMessage | null;
-  draftTool?: LiveToolCallDraft | null;
-  liveTool?: LiveToolExecution | null;
+  draftTool?: DraftTool | null;
   scrollableText?: boolean;
 }) {
   switch (block.type) {
@@ -910,12 +858,10 @@ function ContentBlock({
     case "toolCall":
       return (
         <ToolCallBlock
-          argumentsRawText={draftTool?.argumentsText}
-          argumentsValue={draftTool?.argumentsValue ?? block.arguments}
-          completedToolResult={completedToolResult}
+          argumentsValue={draftTool?.args ?? block.arguments}
+          completedToolResult={draftTool?.resultMessage ?? completedToolResult}
           draftTool={draftTool}
-          liveTool={liveTool}
-          name={draftTool?.toolName ?? block.name}
+          name={draftTool?.name ?? block.name}
         />
       );
     default:
@@ -923,11 +869,11 @@ function ContentBlock({
   }
 }
 
-function ToolArgumentsBlock({ rawText, value }: { rawText?: string; value: unknown }) {
+function ToolArgumentsBlock({ value }: { value: unknown }) {
   const codeArgument = getCodeArgument(value);
 
   if (!codeArgument) {
-    return <ScrollablePre>{formatToolArgumentsDisplayText({ rawText, value })}</ScrollablePre>;
+    return <ScrollablePre>{formatToolArgumentsDisplayText({ value })}</ScrollablePre>;
   }
 
   const restKeys = Object.keys(codeArgument.rest);
@@ -938,24 +884,20 @@ function ToolArgumentsBlock({ rawText, value }: { rawText?: string; value: unkno
       {restKeys.length > 0 ? (
         <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">Code</p>
       ) : null}
-      <ScrollablePre>{formatToolArgumentsDisplayText({ rawText, value })}</ScrollablePre>
+      <ScrollablePre>{formatToolArgumentsDisplayText({ value })}</ScrollablePre>
     </div>
   );
 }
 
 function ToolCallBlock({
-  argumentsRawText,
   argumentsValue,
   completedToolResult,
   draftTool = null,
-  liveTool,
   name,
 }: {
-  argumentsRawText?: string;
   argumentsValue: unknown;
   completedToolResult: ToolResultMessage | null;
-  draftTool?: LiveToolCallDraft | null;
-  liveTool: LiveToolExecution | null;
+  draftTool?: DraftTool | null;
   name: string;
 }) {
   const [resultExpanded, setResultExpanded] = useState(false);
@@ -972,29 +914,27 @@ function ToolCallBlock({
         <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           Tool call · {name}
         </p>
-        {draftTool && !liveTool ? (
+        {draftTool ? (
           <span className="inline-flex items-center gap-2 text-[10px] tracking-[0.22em] text-[var(--bo-accent)] uppercase">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--bo-accent)]" />
-            {draftTool.status === "complete" ? "Ready" : "Writing input"}
-          </span>
-        ) : null}
-        {liveTool ? (
-          <span className="inline-flex items-center gap-2 text-[10px] tracking-[0.22em] text-[var(--bo-accent)] uppercase">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--bo-accent)]" />
-            Running
+            {draftTool.status === "running"
+              ? "Running"
+              : draftTool.status === "done"
+                ? "Done"
+                : "Writing input"}
           </span>
         ) : null}
       </div>
       <div className="mt-1">
-        <ToolArgumentsBlock rawText={argumentsRawText} value={argumentsValue} />
+        <ToolArgumentsBlock value={argumentsValue} />
       </div>
-      {liveTool && liveTool.partialResult !== null ? (
+      {draftTool?.partialResult !== undefined ? (
         <div className="mt-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2">
           <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             Live result
           </p>
           <div className="mt-1">
-            <ScrollablePre>{formatJson(liveTool.partialResult)}</ScrollablePre>
+            <ScrollablePre>{formatJson(draftTool.partialResult)}</ScrollablePre>
           </div>
         </div>
       ) : null}

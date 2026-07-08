@@ -814,11 +814,6 @@ const createFakeTelegramApi = (input: { files?: FakeTelegramFile[] } = {}): Fake
   };
 };
 
-const createNdjsonResponse = (items: unknown[]) =>
-  new Response(items.map((item) => JSON.stringify(item)).join("\n") + "\n", {
-    headers: { "content-type": "application/x-ndjson" },
-  });
-
 const createFakePiApi = (
   options: {
     assistantText?: (input: { sessionId: string; text: string }) => string;
@@ -850,7 +845,7 @@ const createFakePiApi = (
             ]
           : [],
       },
-      events: [],
+      completedStepKeys: [],
     },
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
@@ -934,11 +929,9 @@ const createFakePiApi = (
         return session;
       }
 
-      if (request.method === "GET" && suffix === "events") {
-        return createNdjsonResponse([
-          { type: "snapshot", state: { messages: [] } },
-          { type: "turn_end" },
-        ]);
+      if (request.method === "GET" && suffix === "wait-for-agent-end") {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        return Response.json(toSessionDetail(session));
       }
 
       if (request.method === "POST" && suffix === "command") {
