@@ -1,8 +1,8 @@
 import { z } from "zod";
 
-import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 
-import type { PiSessionEventStreamItem, PiWorkflowStatus } from "./types";
+import type { PiWorkflowStatus } from "./types";
 
 const workflowStatusValueSchema = z.enum([
   "active",
@@ -29,8 +29,6 @@ const ImageContentSchema = z.object({
 });
 
 const agentMessageSchema = z.unknown() as z.ZodType<AgentMessage>;
-const agentEventSchema = z.unknown() as z.ZodType<AgentEvent>;
-
 const workflowStatusSchema = z.object({
   status: workflowStatusValueSchema,
   error: z
@@ -52,7 +50,7 @@ const sessionDetailSchema = sessionBaseSchema.omit({ agent: true }).extend({
   workflow: workflowStatusSchema,
   agent: z.object({
     state: piAgentStateSnapshotSchema,
-    events: z.array(agentEventSchema),
+    completedStepKeys: z.array(z.string()),
   }),
 });
 
@@ -75,10 +73,7 @@ const commandAckSchema = z.object({
   status: workflowStatusValueSchema,
 });
 
-const sessionEventStreamItemSchema = z.unknown() as z.ZodType<PiSessionEventStreamItem>;
-
 export {
-  agentEventSchema,
   agentMessageSchema,
   commandAckSchema,
   commandInputSchema,
@@ -86,6 +81,5 @@ export {
   promptInputSchema,
   sessionBaseSchema,
   sessionDetailSchema,
-  sessionEventStreamItemSchema,
   workflowStatusSchema,
 };

@@ -3,18 +3,18 @@ import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 
 import { defineFragment } from "@fragno-dev/core";
 import { serviceCalls, withDatabase } from "@fragno-dev/db";
-import type { WorkflowsFragmentServices, WorkflowsHistoryStep } from "@fragno-dev/workflows";
+import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
-import {
-  buildSessionContext,
-  type AgentEvent,
-  type AgentMessage,
-  type SessionTreeEntry,
-} from "@earendil-works/pi-agent-core";
+import type { AgentMessage, SessionTreeEntry } from "@earendil-works/pi-agent-core";
 
 import { piSchema } from "../schema";
 import type { PiHarnessStepResult } from "./harness/run-pi-harness-step";
 import type { PiFragmentConfig, PiSession } from "./types";
+import {
+  latestCompletedPiHarnessEntries,
+  projectPiWorkflowSession,
+  type PiWorkflowSessionProjectionStep,
+} from "./workflow-session-projection";
 
 export type PiAgentLoopCursorState = {
   turn: number;
@@ -38,7 +38,6 @@ export type PiAgentLoopCursorState = {
 
 export type PiAgentLoopSerializableState = PiAgentLoopCursorState & {
   messages: AgentMessage[];
-  events: AgentEvent[];
 };
 
 const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
@@ -46,74 +45,6 @@ const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
 
 const isPiHarnessStepResult = (value: unknown): value is PiHarnessStepResult =>
   isObjectRecord(value) && value["type"] === "harness-run" && Array.isArray(value["entries"]);
-
-const leafIdAfterEntry = (entry: SessionTreeEntry): string | null =>
-  entry.type === "leaf" ? entry.targetId : entry.id;
-
-const getLeafIdFromEntries = (entries: readonly SessionTreeEntry[]): string | null => {
-  let leafId: string | null = null;
-  for (const entry of entries) {
-    leafId = leafIdAfterEntry(entry);
-  }
-  return leafId;
-};
-
-const getPathToRoot = (
-  entries: readonly SessionTreeEntry[],
-  leafId: string | null,
-): SessionTreeEntry[] => {
-  if (leafId === null) {
-    return [];
-  }
-
-  const byId = new Map(entries.map((entry) => [entry.id, entry]));
-  const path: SessionTreeEntry[] = [];
-  let current = byId.get(leafId);
-  if (!current) {
-    return [];
-  }
-
-  while (current) {
-    path.unshift(current);
-    if (!current.parentId) {
-      break;
-    }
-    current = byId.get(current.parentId);
-    if (!current) {
-      return [];
-    }
-  }
-
-  return path;
-};
-
-const projectSessionDetailFromSessionEntries = ({
-  cursorState,
-  entries,
-}: {
-  cursorState: PiAgentLoopCursorState;
-  entries: readonly SessionTreeEntry[];
-}): PiAgentLoopSerializableState => {
-  const leafId = getLeafIdFromEntries(entries);
-  const path = getPathToRoot(entries, leafId);
-  const context = buildSessionContext(path);
-
-  return {
-    ...cursorState,
-    messages: context.messages as AgentMessage[],
-    events: [],
-  };
-};
-
-const latestCompletedHarnessEntries = (
-  steps: readonly WorkflowsHistoryStep[],
-): readonly SessionTreeEntry[] => {
-  const latestHarnessStep = [...steps]
-    .filter((step) => step.status === "completed" && isPiHarnessStepResult(step.result))
-    .at(-1);
-
-  return isPiHarnessStepResult(latestHarnessStep?.result) ? latestHarnessStep.result.entries : [];
-};
 
 const WAIT_FOR_COMMAND_TIMEOUT_MS = 60 * 60 * 1000;
 
@@ -136,8 +67,7 @@ export type PiSessionDetailSnapshot = {
   sessionEntries: readonly SessionTreeEntry[];
   /**
    * Step keys whose emissions are already represented in `detailState` because
-   * the step has a persisted `workflow_step.result` row. Used by `/events` to
-   * dedup against the emission bus's persisted-emission cache.
+   * the step has a persisted `workflow_step.result` row.
    */
   completedStepKeys: ReadonlySet<string>;
 };
@@ -177,22 +107,38 @@ export const piHarnessDefinition = defineFragment<PiFragmentConfig>("pi-harness"
             };
             const [workflowStatus, history] = serviceResult;
             const cursorState = createInitialPiAgentLoopCursorState();
-            const sessionEntries = latestCompletedHarnessEntries(history.steps);
-            const detailState = projectSessionDetailFromSessionEntries({
-              cursorState,
-              entries: sessionEntries,
+            const workflowSteps: PiWorkflowSessionProjectionStep[] = history.steps.map((step) => ({
+              stepKey: step.stepKey,
+              type: step.type,
+              status: step.status,
+              waitEventType: step.waitEventType,
+              result: isPiHarnessStepResult(step.result) ? step.result : null,
+            }));
+            const projection = projectPiWorkflowSession({
+              workflowName,
+              sessionId,
+              instance: workflowStatus,
+              workflowSteps,
+              workflowStepEmissions: history.emissions.map((emission) => ({
+                stepKey: emission.stepKey,
+                payload:
+                  typeof emission.payload === "object" && emission.payload !== null
+                    ? (emission.payload as never)
+                    : null,
+                createdAt: emission.createdAt,
+              })),
             });
-            const completedStepKeys = new Set(
-              history.steps
-                .filter((step) => step.status === "completed" && step.result !== null)
-                .map((step) => step.stepKey),
-            );
+            const detailState: PiAgentLoopSerializableState = {
+              ...cursorState,
+              messages: projection.state.messages,
+            };
+            const completedStepKeys = new Set(projection.completedStepKeys);
 
             return {
               session,
               workflowStatus,
               detailState,
-              sessionEntries,
+              sessionEntries: latestCompletedPiHarnessEntries(workflowSteps),
               completedStepKeys,
             };
           })

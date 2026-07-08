@@ -2,12 +2,7 @@ import type { StandardSchemaV1 } from "@fragno-dev/core/api";
 import type { InstanceStatus, WorkflowRegistryEntry } from "@fragno-dev/workflows/workflow";
 import type { Static, TSchema as TypeBoxSchema } from "typebox";
 
-import type {
-  AgentEvent,
-  AgentMessage,
-  AgentTool,
-  AgentToolResult,
-} from "@earendil-works/pi-agent-core";
+import type { AgentMessage, AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 
 export type PiLoggerConfig = {
   enabled?: boolean;
@@ -51,23 +46,9 @@ export type PiSessionDetail = Omit<PiSession, "agent"> & {
   };
   agent: {
     state: PiAgentStateSnapshot;
-    events: AgentEvent[];
+    completedStepKeys: string[];
   };
 };
-
-export type PiSessionStepEmissionFrame = {
-  kind: "step-emission";
-  actor: string;
-  stepKey: string;
-  epoch: string;
-  payload: unknown;
-};
-
-export type PiSessionEventStreamItem =
-  | { type: "snapshot"; state: PiAgentStateSnapshot }
-  | PiSessionStepEmissionFrame
-  | { kind: "abort"; commandId: string; reason?: string }
-  | { kind: "steer"; commandId: string; input: PiPromptInput };
 
 export type PiToolResultSchema<TDetails> = StandardSchemaV1<unknown, TDetails> | TypeBoxSchema;
 

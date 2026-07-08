@@ -2563,6 +2563,9 @@ importers:
       '@fragno-dev/db':
         specifier: workspace:*
         version: link:../fragno-db
+      '@fragno-dev/lofi':
+        specifier: workspace:*
+        version: link:../lofi
       '@fragno-dev/workflows':
         specifier: workspace:*
         version: link:../fragment-workflows
@@ -2612,6 +2615,9 @@ importers:
       drizzle-orm:
         specifier: ^0.44.7
         version: 0.44.7(@cloudflare/workers-types@4.20260610.1)(@electric-sql/pglite@0.3.16)(@libsql/client@0.15.15)(@prisma/client@6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(better-sqlite3@12.10.0)(kysely@0.28.17)(mysql2@3.22.5(@types/node@25.9.3))(pg@8.21.0)(prisma@6.19.3(typescript@5.9.3))(sql.js@1.14.1)
+      fake-indexeddb:
+        specifier: ^6.2.5
+        version: 6.2.5
       tsdown:
         specifier: ^0.20.3
         version: 0.20.3(@emnapi/core@1.11.0)(@emnapi/runtime@1.11.0)(@typescript/native-preview@7.0.0-dev.20260615.1)(typescript@5.9.3)
