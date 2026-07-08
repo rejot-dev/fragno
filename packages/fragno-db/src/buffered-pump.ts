@@ -36,6 +36,19 @@ export class BufferedPumpScopeAlreadyOpenError extends Error {
   }
 }
 
+export class BufferedPumpObserveTimeoutError extends Error {
+  readonly timeoutMs: number;
+
+  constructor(
+    timeoutMs: number,
+    message = `Timed out waiting for observed pump item after ${timeoutMs}ms.`,
+  ) {
+    super(message);
+    this.name = "BufferedPumpObserveTimeoutError";
+    this.timeoutMs = timeoutMs;
+  }
+}
+
 const DEFAULT_BUFFERED_PUMP_INTERVAL_MS = 100;
 
 type QueuedBufferedItem<TItem, TOutgoing, TScopeMeta> =
@@ -80,6 +93,15 @@ export type BufferedFlushResult<TObserved = unknown, TScopeDelivery = unknown> =
 };
 
 export type BufferedPumpCursorFor<TItem> = (item: TItem) => string | undefined;
+
+export type BufferedPumpObserveOptions<TItem> = {
+  after?: readonly TItem[];
+};
+
+export type BufferedPumpWaitForObservedOptions<TItem> = BufferedPumpObserveOptions<TItem> & {
+  timeoutMs?: number;
+  timeoutMessage?: string;
+};
 
 export type BufferedPumpSnapshot<TItem> = {
   readonly items: TItem[];
@@ -430,7 +452,7 @@ export class BufferedDatabasePump<
 
   observe(
     handler: (message: TObserved) => void | Promise<void>,
-    options?: { after?: readonly TObserved[] },
+    options?: BufferedPumpObserveOptions<TObserved>,
   ): () => void {
     const observer = {
       handler,
@@ -442,6 +464,51 @@ export class BufferedDatabasePump<
       this.#observers.delete(observer);
       this.#stopIfIdle();
     };
+  }
+
+  waitForObserved(
+    predicate: (message: TObserved) => boolean | Promise<boolean>,
+    options: BufferedPumpWaitForObservedOptions<TObserved> = {},
+  ): Promise<TObserved> {
+    return new Promise<TObserved>((resolve, reject) => {
+      let isSettled = false;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const unsubscribe = this.observe(
+        (message) => {
+          void (async () => {
+            try {
+              if (!(await predicate(message))) {
+                return;
+              }
+              settle(() => resolve(message));
+            } catch (error) {
+              settle(() => reject(error));
+            }
+          })();
+        },
+        { after: options.after },
+      );
+
+      const settle = (complete: () => void) => {
+        if (isSettled) {
+          return;
+        }
+        isSettled = true;
+        if (timeout) {
+          clearTimeout(timeout);
+        }
+        unsubscribe();
+        complete();
+      };
+
+      if (options.timeoutMs !== undefined) {
+        timeout = setTimeout(() => {
+          settle(() =>
+            reject(new BufferedPumpObserveTimeoutError(options.timeoutMs!, options.timeoutMessage)),
+          );
+        }, options.timeoutMs);
+      }
+    });
   }
 
   async publishObserved(messages: readonly TObserved[]): Promise<void> {

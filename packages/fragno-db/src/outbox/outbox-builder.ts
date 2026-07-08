@@ -56,6 +56,8 @@ export function buildOutboxPlan(operations: MutationOperation<AnySchema>[]): Out
     }
 
     if (op.type === "update") {
+      const checkVersion = op.checkVersion && op.id instanceof FragnoId ? op.id.version : undefined;
+
       drafts.push({
         op: "update",
         schema: schemaName,
@@ -69,19 +71,21 @@ export function buildOutboxPlan(operations: MutationOperation<AnySchema>[]): Out
           namespace,
           lookups,
         }),
-        checkVersion: op.checkVersion && op.id instanceof FragnoId ? op.id.version : undefined,
+        ...(checkVersion === undefined ? {} : { checkVersion }),
       });
       continue;
     }
 
     if (op.type === "delete") {
+      const checkVersion = op.checkVersion && op.id instanceof FragnoId ? op.id.version : undefined;
+
       drafts.push({
         op: "delete",
         schema: schemaName,
         namespace,
         table: op.table,
         externalId: getExternalId(op.id),
-        checkVersion: op.checkVersion && op.id instanceof FragnoId ? op.id.version : undefined,
+        ...(checkVersion === undefined ? {} : { checkVersion }),
       });
     }
   }
