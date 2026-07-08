@@ -8,6 +8,7 @@ import { SQLocalDriverConfig } from "./adapters/generic-sql/driver-config";
 import { SqlAdapter } from "./adapters/generic-sql/generic-sql-adapter";
 import {
   BufferedDatabasePump,
+  BufferedPumpObserveTimeoutError,
   BufferedPumpRegistry,
   type BufferedFlushContext,
   type BufferedFlushResult,
@@ -423,6 +424,64 @@ describe("BufferedDatabasePump", () => {
     unsubscribe();
 
     expect(observed).toEqual([{ id: "row-3", payload: "third" }]);
+  });
+
+  test("waitForObserved resolves with the first matching observed item", async () => {
+    const pump = new BufferedDatabasePump<string, unknown, string>({
+      handlerTx,
+      flush: async () => ({ observedItems: [] }),
+      intervalMs: 1,
+    });
+
+    const wait = pump.waitForObserved((item) => item === "match", { timeoutMs: 100 });
+    await pump.publishObserved(["skip", "match", "later"]);
+
+    await expect(wait).resolves.toBe("match");
+    await nextMicrotask();
+    assert(!pump.isRunning());
+  });
+
+  test("waitForObserved respects after-cursors", async () => {
+    type Item = { id: string; payload: string };
+    const pump = new BufferedDatabasePump<Item, unknown, Item>({
+      handlerTx,
+      flush: async () => ({ observedItems: [] }),
+      cursorForObservedItem: (item) => item.id,
+      intervalMs: 1,
+    });
+    const snapshot = [{ id: "row-1", payload: "old" }];
+
+    const wait = pump.waitForObserved((item) => item.payload === "new", {
+      after: snapshot,
+      timeoutMs: 100,
+    });
+    await pump.publishObserved([
+      { id: "row-1", payload: "old replay" },
+      { id: "row-2", payload: "new" },
+    ]);
+
+    await expect(wait).resolves.toEqual({ id: "row-2", payload: "new" });
+  });
+
+  test("waitForObserved rejects on timeout and unsubscribes", async () => {
+    const pump = new BufferedDatabasePump<string, unknown, string>({
+      handlerTx,
+      flush: async () => ({ observedItems: [] }),
+      intervalMs: 1,
+    });
+
+    await expect(
+      pump.waitForObserved((item) => item === "never", {
+        timeoutMs: 5,
+        timeoutMessage: "no matching item",
+      }),
+    ).rejects.toMatchObject({
+      name: "BufferedPumpObserveTimeoutError",
+      message: "no matching item",
+      timeoutMs: 5,
+    } satisfies Partial<BufferedPumpObserveTimeoutError>);
+    await nextMicrotask();
+    assert(!pump.isRunning());
   });
 
   test("publishObserved appends only newly observed items to snapshots", async () => {
