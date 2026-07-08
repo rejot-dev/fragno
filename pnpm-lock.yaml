@@ -1959,6 +1959,9 @@ importers:
       '@fragno-dev/db':
         specifier: workspace:*
         version: link:../fragno-db
+      '@fragno-dev/lofi':
+        specifier: workspace:*
+        version: link:../lofi
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260615.1

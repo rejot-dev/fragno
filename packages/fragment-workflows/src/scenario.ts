@@ -6,6 +6,7 @@ import type {
   FragnoInstantiatedFragment,
 } from "@fragno-dev/core";
 import { getInternalFragment } from "@fragno-dev/db";
+import { InMemoryLofiAdapter, createLofiRuntime, type LofiRuntime } from "@fragno-dev/lofi";
 import {
   buildDatabaseFragmentsTest,
   createFragmentTestClientConfig,
@@ -194,6 +195,7 @@ export type WorkflowScenarioStoresFactoryContext<
 > = {
   fragments: WorkflowScenarioRuntimeFragments<TRegistry, TFragments>;
   clients: TClients;
+  lofi: LofiRuntime;
   store: <TStore extends SubscribableStore<unknown>>(
     factory: WorkflowScenarioStoreFactory<TRegistry, TVars, TFragments, TClients, TStore>,
   ) => WorkflowScenarioStoreFactory<TRegistry, TVars, TFragments, TClients, TStore>;
@@ -347,6 +349,7 @@ type WorkflowScenarioDefaultStepsContext<
   runner: WorkflowScenarioRunnerStepBuilder<"scenario", TRegistry, TVars, TFragments, TClients>;
   clients: TClients;
   stores: WorkflowScenarioStoreHandles<TRegistry, TVars, TFragments, TClients, TStores>;
+  lofi: LofiRuntime;
 };
 
 type WorkflowScenarioNamedStepsContext<
@@ -360,6 +363,7 @@ type WorkflowScenarioNamedStepsContext<
   workflow: WorkflowScenarioWorkflowStepBuilder<TRegistry, TVars, TFragments, TClients>;
   clients: TClients;
   stores: WorkflowScenarioStoreHandles<TRegistry, TVars, TFragments, TClients, TStores>;
+  lofi: LofiRuntime;
   runners: {
     [K in TRunnerName]: WorkflowScenarioRunnerStepBuilder<
       K,
@@ -452,6 +456,7 @@ export type WorkflowScenarioContext<
   vars: Partial<TVars>;
   state: WorkflowScenarioState<TRegistry>;
   clients: TClients;
+  lofi: LofiRuntime;
   createClientRuntime: () => Promise<
     WorkflowScenarioClientRuntime<TRegistry, TFragments, TClients>
   >;
@@ -1176,6 +1181,7 @@ const createScenarioStepsContext = <
   runners: TRunners,
   clients: TClients,
   stores: WorkflowScenarioStoreHandles<TRegistry, TVars, TFragments, TClients, TStores>,
+  lofi: LofiRuntime,
 ): TRunners extends readonly string[]
   ? WorkflowScenarioNamedStepsContext<
       TRunners[number],
@@ -1200,6 +1206,7 @@ const createScenarioStepsContext = <
       workflow,
       clients,
       stores,
+      lofi,
       runners: namedRunners,
       concurrent: (branches) => ({ type: "concurrent", branches }),
     } as TRunners extends readonly string[]
@@ -1221,6 +1228,7 @@ const createScenarioStepsContext = <
     ),
     clients,
     stores,
+    lofi,
   } as TRunners extends readonly string[]
     ? WorkflowScenarioNamedStepsContext<
         TRunners[number],
@@ -2019,7 +2027,7 @@ const resolveScenarioRunnerNames = (runners: readonly string[] | undefined): str
   if (runners.length === 0) {
     throw new Error("SCENARIO_RUNNERS_EMPTY");
   }
-  const reservedNames = new Set(["workflow", "concurrent", "runner", "runners"]);
+  const reservedNames = new Set(["workflow", "concurrent", "runner", "runners", "lofi"]);
   const seen = new Set<string>();
   for (const runnerName of runners) {
     if (typeof runnerName !== "string" || runnerName.trim() === "") {
@@ -2224,11 +2232,55 @@ export async function runScenario<
       recreateFragments: runtime.recreateFragments,
     };
   };
+  const createLofiFetch = (): typeof fetch =>
+    (async (input) => {
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const url = new URL(requestUrl);
+      const query: Record<string, string> = {};
+      const afterVersionstamp = url.searchParams.get("afterVersionstamp");
+      const limit = url.searchParams.get("limit");
+      if (afterVersionstamp) {
+        query["afterVersionstamp"] = afterVersionstamp;
+      }
+      if (limit) {
+        query["limit"] = limit;
+      }
+
+      const response = await typedHarness.fragments.workflows.fragment.callRoute(
+        "GET",
+        "/_internal/outbox" as never,
+        { query } as never,
+      );
+      if (
+        typeof response !== "object" ||
+        response === null ||
+        !("type" in response) ||
+        response.type !== "json" ||
+        !("data" in response)
+      ) {
+        throw new Error("SCENARIO_LOFI_OUTBOX_RESPONSE_INVALID");
+      }
+      return new Response(JSON.stringify(response.data));
+    }) as typeof fetch;
+  const lofi = createLofiRuntime({
+    endpointName: `workflow-scenario:${scenario.name}`,
+    adapter: new InMemoryLofiAdapter({
+      endpointName: `workflow-scenario:${scenario.name}`,
+      schemas: [workflowsSchema],
+      ignoreUnknownSchemas: true,
+    }),
+    outboxUrl: "https://scenario.test/_internal/outbox",
+    fetch: createLofiFetch(),
+    autoStart: false,
+  });
+  const shouldDrainLofi = harnessOptions.fragmentOptions?.outbox?.enabled === true;
   const clients = createClients(typedHarness.fragments);
   const storeDefinitions =
     scenario.stores?.({
       fragments: typedHarness.fragments,
       clients,
+      lofi,
       store: (factory) => factory,
     }) ?? ({} as TStores);
   const stores = createScenarioStoreHandles<TRegistry, TVars, TFragments, TClients, TStores>(
@@ -2239,6 +2291,7 @@ export async function runScenario<
       scenario.runners as TRunners,
       clients,
       stores,
+      lofi,
     ),
   );
   const context: WorkflowScenarioContext<TRegistry, TVars, TFragments, TClients> = {
@@ -2249,6 +2302,7 @@ export async function runScenario<
     vars: scenario.vars?.() ?? {},
     state: createScenarioState(harness, resolver),
     clients,
+    lofi,
     createClientRuntime,
     mountStore: (store) => {
       mountedStoreCleanups.push(store.subscribe(() => {}));
@@ -2260,6 +2314,7 @@ export async function runScenario<
         mountedStoreCleanups.pop()?.();
       }
       mountedScenarioStores.clear();
+      lofi.stop();
       await harness.test.cleanup();
     },
   };
@@ -2302,6 +2357,12 @@ export async function runScenario<
       instanceRef: String(instance.id),
       reason: options.reason,
     };
+  };
+
+  const drainLofi = async () => {
+    if (shouldDrainLofi) {
+      await lofi.syncOnce();
+    }
   };
 
   const executeSteps = async (
@@ -2976,6 +3037,7 @@ export async function runScenario<
           throw new Error(`Unsupported scenario step: ${String(exhaustive)}`);
         }
       }
+      await drainLofi();
     }
   };
 
