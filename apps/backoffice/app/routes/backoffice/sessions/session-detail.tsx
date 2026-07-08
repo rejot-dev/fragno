@@ -1,7 +1,8 @@
+import { useStore } from "@fragno-dev/core/react";
 import { useMemo, useState } from "react";
 import { useLoaderData, useOutletContext, useParams } from "react-router";
 
-import { createPiClient } from "@/fragno/pi/pi-client";
+import { createPiClient, createPiLofiSessionProjectionStore } from "@/fragno/pi/pi-client";
 import { findPiModelOption, parsePiAgentName } from "@/fragno/pi/pi-shared";
 
 import type { Route } from "./+types/session-detail";
@@ -12,7 +13,6 @@ import {
   SessionConversationPanel,
   SessionDisplayOptions,
   SessionHeader,
-  SessionTracePanel,
 } from "./session-detail/components";
 import type { PiSessionsOutletContext } from "./sessions";
 
@@ -44,7 +44,6 @@ export default function BackofficeOrganisationPiSessionDetail() {
   const [displayOptions, setDisplayOptions] = useState({
     showToolCalls: true,
     showThinking: true,
-    showTrace: false,
     showUsage: false,
   });
   if (!orgId) {
@@ -52,11 +51,34 @@ export default function BackofficeOrganisationPiSessionDetail() {
   }
 
   const pi = useMemo(() => createPiClient(orgId), [orgId]);
-  const liveSession = pi.useSession({
-    path: { workflowName: session.workflowName, sessionId: session.id },
-    initialData: session,
-  });
-  const displaySession = liveSession.session ?? session;
+  const commandSession = pi.useCommandSession();
+  const projectionStore = useMemo(
+    () =>
+      createPiLofiSessionProjectionStore(orgId, session.workflowName, session.id, {
+        initialState: session.agent.state,
+        initialCompletedStepKeys: session.agent.completedStepKeys,
+      }),
+    [orgId, session.workflowName, session.id, session.agent.state, session.agent.completedStepKeys],
+  );
+  const projectionQuery = useStore(projectionStore);
+  const projection = projectionQuery.data;
+  const messages = projection.state.messages;
+  const displaySession = {
+    ...session,
+    agent: { ...session.agent, state: { ...session.agent.state, messages } },
+  };
+  const sending = commandSession.loading ?? false;
+  const projectionError =
+    projection.error?.message ??
+    (projectionQuery.error instanceof Error
+      ? projectionQuery.error.message
+      : projectionQuery.error
+        ? "Pi session projection source failed."
+        : null);
+  const sendError = commandSession.error?.message ?? null;
+  const readyForInput = !sending && projection.readyForInput;
+  const statusText = sending ? "Sending…" : projection.statusText;
+  const needsNudge = !sending && !readyForInput && statusText === "Working…";
 
   const agentName = displaySession.agentName;
   const parsedAgent = parsePiAgentName(agentName);
@@ -71,30 +93,21 @@ export default function BackofficeOrganisationPiSessionDetail() {
   const contentVersion = useMemo(
     () =>
       JSON.stringify({
-        readyForInput: liveSession.readyForInput,
-        sending: liveSession.sending,
-        statusText: liveSession.statusText,
-        messageCount: liveSession.messages.length,
-        eventCount: liveSession.events.length,
-        draftToolCallKeys: liveSession.draftToolCalls.map((tool) => tool.key),
-        runningToolIds: liveSession.runningTools.map((tool) => tool.toolCallId),
+        readyForInput,
+        sending,
+        statusText,
+        messageCount: messages.length,
+        draftAgentMessageUpdatedAt: projection.draftAgentMessage?.updatedAt ?? null,
+        draftAgentToolIds: Object.keys(projection.draftAgentMessage?.tools ?? {}),
       }),
-    [
-      liveSession.draftToolCalls,
-      liveSession.messages.length,
-      liveSession.readyForInput,
-      liveSession.runningTools,
-      liveSession.sending,
-      liveSession.statusText,
-      liveSession.events.length,
-    ],
+    [messages.length, projection.draftAgentMessage, readyForInput, sending, statusText],
   );
   const chatScroll = useChatScroll({
     sessionId: session.id,
     contentVersion,
   });
 
-  const disabledReason = liveSession.readyForInput
+  const disabledReason = readyForInput
     ? null
     : "The model is working. You can still send a follow-up, steer it, or stop the session.";
 
@@ -106,19 +119,25 @@ export default function BackofficeOrganisationPiSessionDetail() {
   };
 
   const handleSend = async (command: { kind: "followUp" | "steer"; text: string }) => {
-    await liveSession.sendCommand({
-      kind: command.kind,
-      input: { text: command.text },
+    await commandSession.mutate({
+      path: { workflowName: session.workflowName, sessionId: session.id },
+      body: { kind: command.kind, input: { text: command.text } },
     });
     chatScroll.jumpToLatest("auto");
     return true;
   };
 
   const handleContinue = () =>
-    liveSession.sendCommand({ kind: "nextTurn", input: { text: "Continue." } });
+    commandSession.mutate({
+      path: { workflowName: session.workflowName, sessionId: session.id },
+      body: { kind: "nextTurn", input: { text: "Continue." } },
+    });
 
   const handleStop = () =>
-    liveSession.sendCommand({ kind: "abort", reason: "Stopped from backoffice UI" });
+    commandSession.mutate({
+      path: { workflowName: session.workflowName, sessionId: session.id },
+      body: { kind: "abort", reason: "Stopped from backoffice UI" },
+    });
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden">
@@ -133,51 +152,46 @@ export default function BackofficeOrganisationPiSessionDetail() {
             exportFilename={`pi-session-${displaySession.id}.jsonl`}
             showToolCalls={displayOptions.showToolCalls}
             showThinking={displayOptions.showThinking}
-            showTrace={displayOptions.showTrace}
             showUsage={displayOptions.showUsage}
             onShowToolCallsChange={updateDisplayOption("showToolCalls")}
             onShowThinkingChange={updateDisplayOption("showThinking")}
-            onShowTraceChange={updateDisplayOption("showTrace")}
             onShowUsageChange={updateDisplayOption("showUsage")}
           />
         }
       />
 
-      {liveSession.error ? (
+      {projectionError ? (
         <div className="border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
-          {liveSession.error}
+          {projectionError}
         </div>
       ) : null}
 
       <SessionConversationPanel
-        draftToolCalls={liveSession.draftToolCalls}
-        messages={liveSession.messages}
+        draftAgentMessage={projection.draftAgentMessage}
+        messages={messages}
         onJumpToLatest={() => chatScroll.jumpToLatest("smooth")}
         onScroll={chatScroll.onScroll}
-        readyForInput={liveSession.readyForInput}
-        runningTools={liveSession.runningTools}
+        readyForInput={readyForInput}
         scrollContentRef={chatScroll.contentRef}
         scrollViewportRef={chatScroll.viewportRef}
         showJumpToLatest={chatScroll.showJumpToLatest}
         showThinking={displayOptions.showThinking}
         showToolCalls={displayOptions.showToolCalls}
         showUsage={displayOptions.showUsage}
-        statusText={liveSession.statusText}
+        statusText={statusText}
       />
 
       <SessionComposer
         key={session.id}
-        busy={liveSession.sending}
-        readyForInput={liveSession.readyForInput}
+        busy={sending}
+        readyForInput={readyForInput}
         disabledReason={disabledReason}
-        error={liveSession.sendError}
-        needsNudge={liveSession.needsNudge}
+        error={sendError}
+        needsNudge={needsNudge}
         onContinue={handleContinue}
         onSend={handleSend}
         onStop={handleStop}
       />
-
-      {displayOptions.showTrace ? <SessionTracePanel traceEvents={liveSession.events} /> : null}
     </div>
   );
 }

@@ -50,7 +50,7 @@ const workflowStatusOutputSchema = z.object({
 const sessionBaseOutputSchema = z.object({
   id: z.string(),
   name: z.string().nullable(),
-  status: z.enum(PI_SESSION_STATUSES),
+  status: z.enum(PI_SESSION_STATUSES).optional(),
   agent: z.string(),
   workflowName: z.string(),
   createdAt: isoDateTimeOutputSchema,
@@ -62,7 +62,7 @@ const sessionDetailBaseOutputSchema = sessionBaseOutputSchema.omit({ agent: true
   workflow: workflowStatusOutputSchema,
   agent: z.object({
     state: piAgentStateSnapshotOutputSchema,
-    events: z.array(z.unknown()),
+    completedStepKeys: z.array(z.string()),
   }),
 });
 

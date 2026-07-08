@@ -8,13 +8,14 @@
  * agent's reply), plus a compact note for tool activity and a working indicator.
  */
 
+import { useStore } from "@fragno-dev/core/react";
 import { AlertTriangle, ChevronRight, Sparkles, Terminal, Workflow, Wrench } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 
 import type { WorkflowGraph as CodemodeWorkflowGraph } from "@fragno-dev/workflow-visualizer";
 
-import { createPiClient } from "@/fragno/pi/pi-client";
+import { createPiLofiSessionProjectionStore } from "@/fragno/pi/pi-client";
 import type { ComposeSessionRef } from "@/routes/cadence/compose-action";
 
 /** The live durable run an `execCodeMode` result scheduled, for realtime progress. */
@@ -221,12 +222,14 @@ export function ComposeTranscript({
   /** Called when a `writeAutomation` tool result lands, so the panel reloads. */
   onWorkflowWritten?: () => void;
 }) {
-  const pi = useMemo(() => createPiClient(orgId), [orgId]);
-  const live = pi.useSession({
-    path: { workflowName: session.workflowName, sessionId: session.id },
-  });
-
-  const rows = useMemo(() => toRows(live.messages), [live.messages]);
+  const projectionStore = useMemo(
+    () => createPiLofiSessionProjectionStore(orgId, session.workflowName, session.id),
+    [orgId, session.workflowName, session.id],
+  );
+  const projectionQuery = useStore(projectionStore);
+  const projection = projectionQuery.data;
+  const messages = projection.state.messages;
+  const rows = useMemo(() => toRows(messages), [messages]);
 
   // Drive the working indicator off genuine agent activity, not connection state.
   // The event stream closes and reopens on the route's ~60s idle timeout, which
@@ -234,14 +237,15 @@ export function ComposeTranscript({
   // indicator on `readyForInput` (which needs an *open* connection) made it flash
   // on every reconnect. The send and any in-flight tool calls survive a reconnect
   // (snapshot replay restores them), so this stays steady across the churn.
-  const working = live.sending || live.draftToolCalls.length > 0 || live.runningTools.length > 0;
-  // Likewise, suppress the transient reconnect text so it never flashes in.
-  const reconnecting =
-    live.state.connectionStatus === "retrying" || live.state.connectionStatus === "connecting";
-  const workingStatusText = reconnecting ? "Working…" : live.statusText || "Working…";
-  // Only surface a hard, terminal connection failure — a transient retry blip
-  // would otherwise flash an error message in and out.
-  const fatalError = live.state.connectionStatus === "error" ? live.error : null;
+  const working = !projection.readyForInput;
+  const workingStatusText = projection.statusText || "Working…";
+  const fatalError =
+    projection.error?.message ??
+    (projectionQuery.error instanceof Error
+      ? projectionQuery.error.message
+      : projectionQuery.error
+        ? "Pi session projection source failed."
+        : null);
 
   // React to the agent's workflow tool *results* (not calls — calls stream in
   // before the tool runs, with raw/partial args):
@@ -251,7 +255,7 @@ export function ComposeTranscript({
   // Processed tool-call ids are tracked so re-renders don't re-fire a handled one.
   const handledToolResults = useRef<Set<string>>(new Set());
   useEffect(() => {
-    live.messages.forEach((message, index) => {
+    messages.forEach((message, index) => {
       const result = message as {
         role?: string;
         toolName?: unknown;
@@ -296,7 +300,7 @@ export function ComposeTranscript({
         onWorkflowWritten?.();
       }
     });
-  }, [live.messages, onShowWorkflow, onShowCodemode, onWorkflowWritten]);
+  }, [messages, onShowWorkflow, onShowCodemode, onWorkflowWritten]);
   // Until the first message round-trips, fall back to echoing the prompt so the
   // surface never looks empty while the session spins up.
   const hasUserRow = rows.some((row) => row.kind === "user");

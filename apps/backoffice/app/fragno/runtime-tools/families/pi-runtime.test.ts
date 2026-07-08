@@ -55,7 +55,7 @@ const createTurnResult = (sessionId: string, assistantText = "assistant:hello") 
     workflowName: "interactive-chat-workflow",
     agent: {
       state,
-      events: [],
+      completedStepKeys: [],
     },
     steeringMode: "one-at-a-time" as const,
     metadata: null,
@@ -104,7 +104,7 @@ const createPiRuntime = (overrides: Partial<PiRuntime> = {}): PiRuntime => ({
       workflowName: "interactive-chat-workflow",
       agent: {
         state: { messages: [] },
-        events: [],
+        completedStepKeys: [],
       },
       steeringMode: "one-at-a-time",
       metadata: null,
@@ -206,43 +206,6 @@ const createPiHost = (piRuntime: PiRuntime = createPiRuntime()) => {
       telegram: null,
     },
   });
-};
-
-const createNdjsonResponse = (frames: unknown[]) => {
-  const encoder = new TextEncoder();
-
-  return new Response(
-    new ReadableStream({
-      start(controller) {
-        for (const frame of frames) {
-          controller.enqueue(encoder.encode(`${JSON.stringify(frame)}\n`));
-        }
-        controller.close();
-      },
-    }),
-    {
-      status: 200,
-      headers: { "content-type": "application/x-ndjson; charset=utf-8" },
-    },
-  );
-};
-
-const createLongLivedNdjsonResponse = (frames: unknown[]) => {
-  const encoder = new TextEncoder();
-
-  return new Response(
-    new ReadableStream({
-      start(controller) {
-        for (const frame of frames) {
-          controller.enqueue(encoder.encode(`${JSON.stringify(frame)}\n`));
-        }
-      },
-    }),
-    {
-      status: 200,
-      headers: { "content-type": "application/x-ndjson; charset=utf-8" },
-    },
-  );
 };
 
 const withTimeout = async <T>(promise: Promise<T>, message: string, ms = 1_000): Promise<T> =>
@@ -402,7 +365,7 @@ describe("pi bash command registration", () => {
             workflowName: "interactive-chat-workflow",
             agent: {
               state: { messages: [] },
-              events: [],
+              completedStepKeys: [],
             },
             steeringMode: "one-at-a-time",
             metadata: null,
@@ -714,6 +677,40 @@ describe("pi bash command registration", () => {
 
 describe("createPiRouteRuntime", () => {
   it("calls Pi routes with the expected payloads and query params", async () => {
+    const assistantMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "assistant:route-turn" }],
+      api: "openai-responses",
+      provider: "openai",
+      model: "test-model",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: now.getTime(),
+    };
+    const turnDetail = {
+      id: "session-2",
+      agentName: "assistant",
+      workflowName: "interactive-chat-workflow",
+      agent: {
+        state: { messages: [assistantMessage] },
+        completedStepKeys: [],
+      },
+      status: "waiting",
+      name: "route-session",
+      steeringMode: "all",
+      metadata: { team: "beta" },
+      tags: ["priority"],
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      workflow: { status: "waiting" },
+    };
     const requests: Array<{
       url: string;
       method: string;
@@ -751,10 +748,7 @@ describe("createPiRouteRuntime", () => {
                   createdAt: now.toISOString(),
                   updatedAt: now.toISOString(),
                 }),
-                {
-                  status: 200,
-                  headers: { "content-type": "application/json" },
-                },
+                { status: 200, headers: { "content-type": "application/json" } },
               );
             }
 
@@ -770,7 +764,7 @@ describe("createPiRouteRuntime", () => {
                   workflowName: "interactive-chat-workflow",
                   agent: {
                     state: { messages: [] },
-                    events: [{ id: "event-1" }],
+                    completedStepKeys: [],
                   },
                   status: "waiting",
                   name: "route-session",
@@ -781,85 +775,7 @@ describe("createPiRouteRuntime", () => {
                   updatedAt: now.toISOString(),
                   workflow: { status: "waiting" },
                 }),
-                {
-                  status: 200,
-                  headers: { "content-type": "application/json" },
-                },
-              );
-            }
-
-            if (
-              path ===
-                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme" &&
-              request.method === "GET"
-            ) {
-              return createNdjsonResponse([
-                {
-                  type: "snapshot",
-                  state: { messages: [] },
-                },
-                { type: "messageStart", timestamp: now.getTime() },
-              ]);
-            }
-
-            if (
-              path ===
-                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme" &&
-              request.method === "POST"
-            ) {
-              return new Response(JSON.stringify({ status: "active" }), {
-                status: 200,
-                headers: { "content-type": "application/json" },
-              });
-            }
-
-            if (
-              path ===
-                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2?orgId=acme" &&
-              request.method === "GET"
-            ) {
-              return new Response(
-                JSON.stringify({
-                  id: "session-2",
-                  agentName: "assistant",
-                  workflowName: "interactive-chat-workflow",
-                  agent: {
-                    state: {
-                      messages: [
-                        {
-                          role: "assistant",
-                          content: [{ type: "text", text: "assistant:route-turn" }],
-                          api: "openai-responses",
-                          provider: "openai",
-                          model: "test-model",
-                          usage: {
-                            input: 0,
-                            output: 0,
-                            cacheRead: 0,
-                            cacheWrite: 0,
-                            totalTokens: 0,
-                            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-                          },
-                          stopReason: "stop",
-                          timestamp: now.getTime(),
-                        },
-                      ],
-                    },
-                    events: [],
-                  },
-                  status: "waiting",
-                  name: "route-session",
-                  steeringMode: "all",
-                  metadata: { team: "beta" },
-                  tags: ["priority"],
-                  createdAt: now.toISOString(),
-                  updatedAt: now.toISOString(),
-                  workflow: { status: "waiting" },
-                }),
-                {
-                  status: 200,
-                  headers: { "content-type": "application/json" },
-                },
+                { status: 200, headers: { "content-type": "application/json" } },
               );
             }
 
@@ -882,11 +798,30 @@ describe("createPiRouteRuntime", () => {
                     updatedAt: now.toISOString(),
                   },
                 ]),
-                {
-                  status: 200,
-                  headers: { "content-type": "application/json" },
-                },
+                { status: 200, headers: { "content-type": "application/json" } },
               );
+            }
+
+            if (
+              path ===
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&orgId=acme" &&
+              request.method === "GET"
+            ) {
+              return new Response(JSON.stringify(turnDetail), {
+                status: 200,
+                headers: { "content-type": "application/json" },
+              });
+            }
+
+            if (
+              path ===
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme" &&
+              request.method === "POST"
+            ) {
+              return new Response(JSON.stringify({ status: "active" }), {
+                status: 200,
+                headers: { "content-type": "application/json" },
+              });
             }
 
             return new Response(JSON.stringify({ message: "unexpected request" }), {
@@ -916,13 +851,8 @@ describe("createPiRouteRuntime", () => {
       trace: false,
       turns: true,
     });
-    const sessions = await runtime.listSessions({
-      limit: 10,
-    });
-    const turned = await runtime.runTurn({
-      sessionId: "session-2",
-      text: "route turn",
-    });
+    const sessions = await runtime.listSessions({ limit: 10 });
+    const turned = await runtime.runTurn({ sessionId: "session-2", text: "route turn" });
 
     expect(created).toMatchObject({
       id: "session-2",
@@ -938,7 +868,6 @@ describe("createPiRouteRuntime", () => {
       workflow: { status: "waiting" },
       agentName: "assistant",
       workflowName: "interactive-chat-workflow",
-      agent: { events: [{ id: "event-1" }] },
     });
     expect(sessions).toEqual([
       {
@@ -968,10 +897,7 @@ describe("createPiRouteRuntime", () => {
         ]),
       },
     });
-    expect(turned.stream).toEqual([
-      expect.objectContaining({ type: "snapshot" }),
-      expect.objectContaining({ type: "messageStart" }),
-    ]);
+    expect(turned.stream).toEqual([]);
     expect(requests).toEqual([
       {
         url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions?orgId=acme",
@@ -994,7 +920,7 @@ describe("createPiRouteRuntime", () => {
         body: undefined,
       },
       {
-        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme",
+        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&orgId=acme",
         method: "GET",
         body: undefined,
       },
@@ -1006,15 +932,10 @@ describe("createPiRouteRuntime", () => {
           input: { text: "route turn" },
         },
       },
-      {
-        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2?orgId=acme",
-        method: "GET",
-        body: undefined,
-      },
     ]);
   });
 
-  it("stops pi.session.turn stream consumption at raw agent_end", async () => {
+  it("starts waiting for agent end before sending the prompt command", async () => {
     const requests: Array<{ url: string; method: string }> = [];
     const assistantMessage = {
       role: "assistant",
@@ -1033,6 +954,25 @@ describe("createPiRouteRuntime", () => {
       stopReason: "stop",
       timestamp: now.getTime(),
     };
+    const detail = {
+      id: "session-2",
+      agentName: "assistant",
+      workflowName: "interactive-chat-workflow",
+      agent: {
+        state: { messages: [assistantMessage] },
+        completedStepKeys: [],
+      },
+      status: "waiting",
+      name: "route-session",
+      steeringMode: "all",
+      metadata: null,
+      tags: [],
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      workflow: { status: "waiting" },
+    };
+    let waitResolver: ((response: Response) => void) | null = null;
+    let commandHandled = false;
 
     const env = {
       PI: {
@@ -1045,52 +985,26 @@ describe("createPiRouteRuntime", () => {
 
             if (
               path ===
-              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme"
+              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&orgId=acme"
             ) {
-              return createLongLivedNdjsonResponse([
-                { type: "snapshot", state: { messages: [] } },
-                { type: "message_end", message: assistantMessage },
-                { type: "turn_end" },
-                { type: "agent_end" },
-              ]);
+              if (commandHandled) {
+                return Response.json(detail);
+              }
+              return await new Promise<Response>((resolve) => {
+                waitResolver = resolve;
+              });
             }
 
             if (
               path ===
               "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme"
             ) {
-              return new Response(JSON.stringify({ status: "active" }), {
-                status: 200,
-                headers: { "content-type": "application/json" },
-              });
+              commandHandled = true;
+              waitResolver?.(Response.json(detail));
+              return Response.json({ status: "active" });
             }
 
-            if (
-              path === "/api/pi/workflows/interactive-chat-workflow/sessions/session-2?orgId=acme"
-            ) {
-              return new Response(
-                JSON.stringify({
-                  id: "session-2",
-                  agentName: "assistant",
-                  workflowName: "interactive-chat-workflow",
-                  agent: { state: { messages: [assistantMessage] }, events: [] },
-                  status: "waiting",
-                  name: "route-session",
-                  steeringMode: "all",
-                  metadata: null,
-                  tags: [],
-                  createdAt: now.toISOString(),
-                  updatedAt: now.toISOString(),
-                  workflow: { status: "waiting" },
-                }),
-                { status: 200, headers: { "content-type": "application/json" } },
-              );
-            }
-
-            return new Response(JSON.stringify({ message: "unexpected request" }), {
-              status: 500,
-              headers: { "content-type": "application/json" },
-            });
+            return Response.json({ message: "unexpected request" }, { status: 500 });
           },
         }),
       },
@@ -1102,147 +1016,18 @@ describe("createPiRouteRuntime", () => {
     });
     const turned = await withTimeout(
       runtime.runTurn({ sessionId: "session-2", text: "hello" }),
-      "runTurn should stop after agent_end without waiting for the live events stream to close",
+      "runTurn should resolve after wait-for-agent-end returns detail",
     );
 
     assert(turned.assistantText === "assistant:done");
-    expect(turned.stream).toEqual([
-      expect.objectContaining({ type: "snapshot" }),
-      expect.objectContaining({ type: "message_end" }),
-      expect.objectContaining({ type: "turn_end" }),
-      expect.objectContaining({ type: "agent_end" }),
-    ]);
+    expect(turned.stream).toEqual([]);
     expect(requests.map((request) => request.url)).toEqual([
-      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme",
+      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&orgId=acme",
       "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme",
-      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2?orgId=acme",
     ]);
   });
 
-  it("stops pi.session.turn stream consumption at wrapped agent_end", async () => {
-    const requests: Array<{ url: string; method: string }> = [];
-    const assistantMessage = {
-      role: "assistant",
-      content: [{ type: "text", text: "assistant:wrapped" }],
-      api: "openai-responses",
-      provider: "openai",
-      model: "test-model",
-      usage: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      },
-      stopReason: "stop",
-      timestamp: now.getTime(),
-    };
-
-    const env = {
-      PI: {
-        idFromName: (orgId: string) => `pi:${orgId}`,
-        get: () => ({
-          fetch: async (request: Request) => {
-            requests.push({ url: request.url, method: request.method });
-            const url = new URL(request.url);
-            const path = `${url.pathname}${url.search}`;
-
-            if (
-              path ===
-              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme"
-            ) {
-              return createLongLivedNdjsonResponse([
-                { type: "snapshot", state: { messages: [] } },
-                {
-                  kind: "step-emission",
-                  stepKey: "do:agent turn",
-                  epoch: 1,
-                  payload: { type: "message_end", message: assistantMessage },
-                },
-                {
-                  kind: "step-emission",
-                  stepKey: "do:agent turn",
-                  epoch: 1,
-                  payload: { type: "turn_end" },
-                },
-                {
-                  kind: "step-emission",
-                  stepKey: "do:agent turn",
-                  epoch: 1,
-                  payload: { type: "agent_end" },
-                },
-              ]);
-            }
-
-            if (
-              path ===
-              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme"
-            ) {
-              return new Response(JSON.stringify({ status: "active" }), {
-                status: 200,
-                headers: { "content-type": "application/json" },
-              });
-            }
-
-            if (
-              path === "/api/pi/workflows/interactive-chat-workflow/sessions/session-2?orgId=acme"
-            ) {
-              return new Response(
-                JSON.stringify({
-                  id: "session-2",
-                  agentName: "assistant",
-                  workflowName: "interactive-chat-workflow",
-                  agent: { state: { messages: [assistantMessage] }, events: [] },
-                  status: "waiting",
-                  name: "route-session",
-                  steeringMode: "all",
-                  metadata: null,
-                  tags: [],
-                  createdAt: now.toISOString(),
-                  updatedAt: now.toISOString(),
-                  workflow: { status: "waiting" },
-                }),
-                { status: 200, headers: { "content-type": "application/json" } },
-              );
-            }
-
-            return new Response(JSON.stringify({ message: "unexpected request" }), {
-              status: 500,
-              headers: { "content-type": "application/json" },
-            });
-          },
-        }),
-      },
-    } as unknown as CloudflareEnv;
-
-    const runtime = createPiRouteRuntime({
-      object: createPiObjects(env).pi.forOrg("acme"),
-      orgId: "acme",
-    });
-    const turned = await withTimeout(
-      runtime.runTurn({ sessionId: "session-2", text: "hello" }),
-      "runTurn should stop after wrapped agent_end without waiting for the live events stream to close",
-    );
-
-    assert(turned.assistantText === "assistant:wrapped");
-    expect(turned.stream).toEqual([
-      expect.objectContaining({ type: "snapshot" }),
-      expect.objectContaining({
-        kind: "step-emission",
-        payload: { type: "message_end", message: assistantMessage },
-      }),
-      expect.objectContaining({ kind: "step-emission", payload: { type: "turn_end" } }),
-      expect.objectContaining({ kind: "step-emission", payload: { type: "agent_end" } }),
-    ]);
-    expect(requests.map((request) => request.url)).toEqual([
-      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme",
-      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme",
-      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2?orgId=acme",
-    ]);
-  });
-
-  it("waits for the next assistant text message after tool calls", async () => {
+  it("uses the latest assistant text from wait-for-agent-end detail after tool calls", async () => {
     const requests: Array<{ url: string; method: string }> = [];
     const previousAssistantMessage = {
       role: "assistant",
@@ -1259,35 +1044,6 @@ describe("createPiRouteRuntime", () => {
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
       },
       stopReason: "stop",
-      timestamp: now.getTime(),
-    };
-    const toolCallMessage = {
-      role: "assistant",
-      content: [
-        {
-          type: "text",
-          text: "I’ll check the tool first.",
-          textSignature: JSON.stringify({ v: 1, id: "msg-1", phase: "commentary" }),
-        },
-        {
-          type: "toolCall",
-          id: "call-1",
-          name: "lookup",
-          arguments: { query: "poem" },
-        },
-      ],
-      api: "openai-responses",
-      provider: "openai",
-      model: "test-model",
-      usage: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      },
-      stopReason: "toolUse",
       timestamp: now.getTime(),
     };
     const toolResultMessage = {
@@ -1325,104 +1081,37 @@ describe("createPiRouteRuntime", () => {
 
             if (
               path ===
-              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme"
+              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&orgId=acme"
             ) {
-              return createLongLivedNdjsonResponse([
-                { type: "snapshot", state: { messages: [previousAssistantMessage] } },
-                {
-                  kind: "step-emission",
-                  stepKey: "do:agent turn",
-                  epoch: 1,
-                  payload: { type: "message_end", message: toolCallMessage },
-                },
-                {
-                  kind: "step-emission",
-                  stepKey: "do:agent turn",
-                  epoch: 1,
-                  payload: {
-                    type: "turn_end",
-                    message: toolCallMessage,
-                    toolResults: [toolResultMessage],
+              return Response.json({
+                id: "session-2",
+                agentName: "assistant",
+                workflowName: "interactive-chat-workflow",
+                agent: {
+                  state: {
+                    messages: [previousAssistantMessage, toolResultMessage, finalAssistantMessage],
                   },
+                  completedStepKeys: [],
                 },
-                {
-                  kind: "step-emission",
-                  stepKey: "do:agent turn",
-                  epoch: 2,
-                  payload: { type: "message_end", message: finalAssistantMessage },
-                },
-                {
-                  kind: "step-emission",
-                  stepKey: "do:agent turn",
-                  epoch: 2,
-                  payload: {
-                    type: "turn_end",
-                    message: finalAssistantMessage,
-                    toolResults: [],
-                  },
-                },
-                {
-                  kind: "step-emission",
-                  stepKey: "do:agent turn",
-                  epoch: 2,
-                  payload: {
-                    type: "agent_end",
-                    messages: [
-                      previousAssistantMessage,
-                      toolCallMessage,
-                      toolResultMessage,
-                      finalAssistantMessage,
-                    ],
-                  },
-                },
-              ]);
+                status: "waiting",
+                name: "route-session",
+                steeringMode: "all",
+                metadata: null,
+                tags: [],
+                createdAt: now.toISOString(),
+                updatedAt: now.toISOString(),
+                workflow: { status: "waiting" },
+              });
             }
 
             if (
               path ===
               "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme"
             ) {
-              return new Response(JSON.stringify({ status: "active" }), {
-                status: 200,
-                headers: { "content-type": "application/json" },
-              });
+              return Response.json({ status: "active" });
             }
 
-            if (
-              path === "/api/pi/workflows/interactive-chat-workflow/sessions/session-2?orgId=acme"
-            ) {
-              return new Response(
-                JSON.stringify({
-                  id: "session-2",
-                  agentName: "assistant",
-                  workflowName: "interactive-chat-workflow",
-                  agent: {
-                    state: {
-                      messages: [
-                        previousAssistantMessage,
-                        toolResultMessage,
-                        finalAssistantMessage,
-                      ],
-                    },
-                    events: [],
-                  },
-                  status: "waiting",
-                  name: "route-session",
-                  steeringMode: "all",
-                  metadata: null,
-                  tags: [],
-                  createdAt: now.toISOString(),
-                  updatedAt: now.toISOString(),
-                  workflow: { status: "waiting" },
-                }),
-                { status: 200, headers: { "content-type": "application/json" } },
-              );
-            }
-
-            return new Response(JSON.stringify({ message: "unexpected request" }), {
-              status: 500,
-              headers: { "content-type": "application/json" },
-            });
+            return Response.json({ message: "unexpected request" }, { status: 500 });
           },
         }),
       },
@@ -1432,16 +1121,12 @@ describe("createPiRouteRuntime", () => {
       object: createPiObjects(env).pi.forOrg("acme"),
       orgId: "acme",
     });
-    const turned = await withTimeout(
-      runtime.runTurn({ sessionId: "session-2", text: "poem" }),
-      "runTurn should stop after agent_end without waiting for the live events stream to close",
-    );
+    const turned = await runtime.runTurn({ sessionId: "session-2", text: "poem" });
 
     assert(turned.assistantText === "new answer after tool");
     expect(requests.map((request) => request.url)).toEqual([
-      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme",
+      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&orgId=acme",
       "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme",
-      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2?orgId=acme",
     ]);
   });
 
@@ -1492,45 +1177,6 @@ describe("createPiRouteRuntime", () => {
     );
   });
 
-  it("rejects pi.session.turn when the active route does not return a stream", async () => {
-    const env = {
-      PI: {
-        idFromName: (orgId: string) => `pi:${orgId}`,
-        get: () => ({
-          fetch: async (request: Request) => {
-            const url = new URL(request.url);
-            const path = `${url.pathname}${url.search}`;
-
-            if (
-              path ===
-                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme" &&
-              request.method === "GET"
-            ) {
-              return new Response(JSON.stringify({ status: "waiting" }), {
-                status: 200,
-                headers: { "content-type": "application/json" },
-              });
-            }
-
-            return new Response(JSON.stringify({ message: "unexpected request" }), {
-              status: 500,
-              headers: { "content-type": "application/json" },
-            });
-          },
-        }),
-      },
-    } as unknown as CloudflareEnv;
-
-    const runtime = createPiRouteRuntime({
-      object: createPiObjects(env).pi.forOrg("acme"),
-      orgId: "acme",
-    });
-
-    await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(
-      "session events route did not return a jsonStream response",
-    );
-  });
-
   it("surfaces pi.session.turn prompt route failures", async () => {
     const env = {
       PI: {
@@ -1542,19 +1188,23 @@ describe("createPiRouteRuntime", () => {
 
             if (
               path ===
-                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme" &&
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&orgId=acme" &&
               request.method === "GET"
             ) {
-              return createNdjsonResponse([
-                {
-                  layer: "system",
-                  type: "snapshot",
-                  turn: 0,
-                  phase: "waiting-for-command",
-                  waitingFor: null,
-                  replayCount: 0,
-                },
-              ]);
+              return Response.json({
+                id: "session-2",
+                agentName: "assistant",
+                workflowName: "interactive-chat-workflow",
+                agent: { state: { messages: [] }, completedStepKeys: [] },
+                status: "waiting",
+                name: "route-session",
+                steeringMode: "all",
+                metadata: null,
+                tags: [],
+                createdAt: now.toISOString(),
+                updatedAt: now.toISOString(),
+                workflow: { status: "waiting" },
+              });
             }
 
             if (
@@ -1587,7 +1237,7 @@ describe("createPiRouteRuntime", () => {
     );
   });
 
-  it("surfaces pi.session.turn detail fetch failures after the stream settles", async () => {
+  it("surfaces pi.session.turn wait-for-agent-end failures", async () => {
     const env = {
       PI: {
         idFromName: (orgId: string) => `pi:${orgId}`,
@@ -1598,19 +1248,13 @@ describe("createPiRouteRuntime", () => {
 
             if (
               path ===
-                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/events?orgId=acme" &&
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&orgId=acme" &&
               request.method === "GET"
             ) {
-              return createNdjsonResponse([
-                {
-                  layer: "system",
-                  type: "snapshot",
-                  turn: 0,
-                  phase: "running-agent",
-                  waitingFor: null,
-                  replayCount: 0,
-                },
-              ]);
+              return new Response(JSON.stringify({ message: "Agent end unavailable" }), {
+                status: 500,
+                headers: { "content-type": "application/json" },
+              });
             }
 
             if (
@@ -1620,17 +1264,6 @@ describe("createPiRouteRuntime", () => {
             ) {
               return new Response(JSON.stringify({ status: "active" }), {
                 status: 200,
-                headers: { "content-type": "application/json" },
-              });
-            }
-
-            if (
-              path ===
-                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2?orgId=acme" &&
-              request.method === "GET"
-            ) {
-              return new Response(JSON.stringify({ message: "Detail unavailable" }), {
-                status: 500,
                 headers: { "content-type": "application/json" },
               });
             }
@@ -1650,7 +1283,7 @@ describe("createPiRouteRuntime", () => {
     });
 
     await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(
-      "Pi harness returned 500: Detail unavailable",
+      "Pi harness returned 500: Agent end unavailable",
     );
   });
 });

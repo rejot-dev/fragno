@@ -21,7 +21,7 @@ describe("SessionConversationPanel", () => {
   test("renders assistant text content as Streamdown markdown", () => {
     const markup = renderToStaticMarkup(
       createElement(SessionConversationPanel, {
-        draftToolCalls: [],
+        draftAgentMessage: null,
         messages: [
           {
             role: "assistant",
@@ -30,14 +30,20 @@ describe("SessionConversationPanel", () => {
             api: "test",
             provider: "test",
             model: "test",
-            usage: { input: 0, output: 0, totalTokens: 0, cost: { total: 0 } },
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
             stopReason: "stop",
           } as never,
         ],
         onJumpToLatest: () => {},
         onScroll: () => {},
         readyForInput: true,
-        runningTools: [],
         scrollContentRef: createRef<HTMLDivElement>(),
         scrollViewportRef: createRef<HTMLDivElement>(),
         showJumpToLatest: false,
@@ -56,7 +62,7 @@ describe("SessionConversationPanel", () => {
   test("renders an expand control for execCodeMode results", () => {
     const markup = renderToStaticMarkup(
       createElement(SessionConversationPanel, {
-        draftToolCalls: [],
+        draftAgentMessage: null,
         messages: [
           {
             role: "assistant",
@@ -72,7 +78,14 @@ describe("SessionConversationPanel", () => {
             api: "test",
             provider: "test",
             model: "test",
-            usage: { input: 0, output: 0, totalTokens: 0, cost: { total: 0 } },
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
             stopReason: "toolUse",
           } as never,
           {
@@ -88,7 +101,6 @@ describe("SessionConversationPanel", () => {
         onJumpToLatest: () => {},
         onScroll: () => {},
         readyForInput: true,
-        runningTools: [],
         scrollContentRef: createRef<HTMLDivElement>(),
         scrollViewportRef: createRef<HTMLDivElement>(),
         showJumpToLatest: false,
@@ -106,7 +118,7 @@ describe("SessionConversationPanel", () => {
   test("renders SKILL.md read tool results as loaded skills without file contents", () => {
     const markup = renderToStaticMarkup(
       createElement(SessionConversationPanel, {
-        draftToolCalls: [],
+        draftAgentMessage: null,
         messages: [
           {
             role: "assistant",
@@ -122,7 +134,14 @@ describe("SessionConversationPanel", () => {
             api: "test",
             provider: "test",
             model: "test",
-            usage: { input: 0, output: 0, totalTokens: 0, cost: { total: 0 } },
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
             stopReason: "toolUse",
           } as never,
           {
@@ -138,7 +157,6 @@ describe("SessionConversationPanel", () => {
         onJumpToLatest: () => {},
         onScroll: () => {},
         readyForInput: true,
-        runningTools: [],
         scrollContentRef: createRef<HTMLDivElement>(),
         scrollViewportRef: createRef<HTMLDivElement>(),
         showJumpToLatest: false,
@@ -156,20 +174,112 @@ describe("SessionConversationPanel", () => {
     expect(markup).not.toContain("Tool call · read");
   });
 
+  test("renders live draft assistant text while the assistant message is still streaming", () => {
+    const markup = renderToStaticMarkup(
+      createElement(SessionConversationPanel, {
+        draftAgentMessage: {
+          activity: "writing",
+          assistant: {
+            role: "assistant",
+            content: [{ type: "text", text: "This is still streaming" }],
+            timestamp: 1,
+            api: "test",
+            provider: "test",
+            model: "test",
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
+            stopReason: "stop",
+          },
+          startedAt: 1,
+          updatedAt: 2,
+          tools: {},
+        },
+        messages: [{ role: "user", content: "Question", timestamp: 1 } as never],
+        onJumpToLatest: () => {},
+        onScroll: () => {},
+        readyForInput: false,
+        scrollContentRef: createRef<HTMLDivElement>(),
+        scrollViewportRef: createRef<HTMLDivElement>(),
+        showJumpToLatest: false,
+        showThinking: true,
+        showToolCalls: true,
+        showUsage: false,
+        statusText: "Writing…",
+      }),
+    );
+
+    expect(markup).toContain("Writing…");
+    expect(markup).toContain("This is still streaming");
+  });
+
+  test("hides draft thinking content when thinking is disabled", () => {
+    const render = (showThinking: boolean) =>
+      renderToStaticMarkup(
+        createElement(SessionConversationPanel, {
+          draftAgentMessage: {
+            activity: "thinking",
+            assistant: {
+              role: "assistant",
+              content: [{ type: "thinking", thinking: "private plan" }],
+              timestamp: 1,
+              api: "test",
+              provider: "test",
+              model: "test",
+              usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 0,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+              },
+              stopReason: "stop",
+            },
+            startedAt: 1,
+            updatedAt: 2,
+            tools: {},
+          },
+          messages: [{ role: "user", content: "Question", timestamp: 1 } as never],
+          onJumpToLatest: () => {},
+          onScroll: () => {},
+          readyForInput: false,
+          scrollContentRef: createRef<HTMLDivElement>(),
+          scrollViewportRef: createRef<HTMLDivElement>(),
+          showJumpToLatest: false,
+          showThinking,
+          showToolCalls: true,
+          showUsage: false,
+          statusText: "Thinking…",
+        }),
+      );
+
+    expect(render(true)).toContain("private plan");
+    expect(render(false)).not.toContain("private plan");
+  });
+
   test("renders a draft tool call even before the assistant message contains a tool block", () => {
     const markup = renderToStaticMarkup(
       createElement(SessionConversationPanel, {
-        draftToolCalls: [
-          {
-            key: "assistant:1:tool:0",
-            contentIndex: 0,
-            toolCallId: null,
-            toolName: "execCodeMode",
-            argumentsText: '{"code":"await state.writeFile(\\"/tmp/file.txt\\", \\"hello',
-            argumentsValue: { code: 'await state.writeFile("/tmp/file.txt", "hello' },
-            status: "streaming",
+        draftAgentMessage: {
+          activity: "tool_calling",
+          assistant: undefined,
+          startedAt: 1,
+          updatedAt: 1,
+          tools: {
+            "tool-draft": {
+              id: "tool-draft",
+              name: "execCodeMode",
+              args: { code: 'await state.writeFile("/tmp/file.txt", "hello' },
+              status: "starting",
+            },
           },
-        ],
+        },
         messages: [
           {
             role: "assistant",
@@ -178,14 +288,20 @@ describe("SessionConversationPanel", () => {
             api: "test",
             provider: "test",
             model: "test",
-            usage: { input: 0, output: 0, totalTokens: 0, cost: { total: 0 } },
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
             stopReason: "toolUse",
           } as never,
         ],
         onJumpToLatest: () => {},
         onScroll: () => {},
         readyForInput: false,
-        runningTools: [],
         scrollContentRef: createRef<HTMLDivElement>(),
         scrollViewportRef: createRef<HTMLDivElement>(),
         showJumpToLatest: false,

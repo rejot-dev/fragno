@@ -1,11 +1,6 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { createPiHarness } from "@fragno-dev/pi-harness/factory";
-import type {
-  PiSession,
-  PiSessionDetail,
-  PiSessionEventStreamItem,
-  PiWorkflowStatus,
-} from "@fragno-dev/pi-harness/types";
+import type { PiSession, PiSessionDetail, PiWorkflowStatus } from "@fragno-dev/pi-harness/types";
 import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 
 import type { PiObject } from "@/backoffice-runtime/object-registry";
@@ -44,40 +39,10 @@ export type PiSessionTurnResult = PiSessionDetail & {
   commandStatus?: PiWorkflowStatus;
   /** @deprecated Use commandStatus. */
   messageStatus: PiWorkflowStatus;
-  stream: PiSessionEventStreamItem[];
+  stream: unknown[];
   /** Agent state after the turn (from session detail fetch). */
   terminalState: PiSessionDetail["agent"]["state"];
 };
-
-const getFramePayload = (frame: PiSessionEventStreamItem): unknown => {
-  if (
-    "kind" in frame &&
-    frame.kind === "step-emission" &&
-    typeof frame.payload === "object" &&
-    frame.payload !== null
-  ) {
-    const payload = frame.payload;
-    if ("kind" in payload && payload.kind === "harness-event" && "event" in payload) {
-      return payload.event;
-    }
-    return payload;
-  }
-
-  return frame;
-};
-
-const isEventFrame = (frame: PiSessionEventStreamItem, type: string): boolean => {
-  const payload = getFramePayload(frame);
-  return (
-    typeof payload === "object" && payload !== null && "type" in payload && payload.type === type
-  );
-};
-
-const isTurnEndFrame = (frame: PiSessionEventStreamItem): boolean =>
-  isEventFrame(frame, "turn_end");
-
-const isAgentEndFrame = (frame: PiSessionEventStreamItem): boolean =>
-  isEventFrame(frame, "agent_end");
 
 const extractMessageText = (
   message: PiSessionDetail["agent"]["state"]["messages"][number] | undefined,
@@ -96,76 +61,6 @@ const extractMessageText = (
 const extractAssistantText = (messages: PiSessionDetail["agent"]["state"]["messages"]): string => {
   const assistantMessage = [...messages].reverse().find((message) => message.role === "assistant");
   return extractMessageText(assistantMessage);
-};
-
-const extractTurnEndAssistantText = (
-  frames: PiSessionEventStreamItem[],
-): { found: boolean; text: string } => {
-  for (const frame of [...frames].reverse()) {
-    if (!isTurnEndFrame(frame)) {
-      continue;
-    }
-
-    const payload = getFramePayload(frame);
-    if (typeof payload !== "object" || payload === null || !("message" in payload)) {
-      continue;
-    }
-
-    return {
-      found: true,
-      text: extractMessageText(
-        payload.message as PiSessionDetail["agent"]["state"]["messages"][number] | undefined,
-      ),
-    };
-  }
-
-  return { found: false, text: "" };
-};
-
-const extractAgentEndAssistantText = (
-  frames: PiSessionEventStreamItem[],
-): { found: boolean; text: string } => {
-  for (const frame of [...frames].reverse()) {
-    if (!isAgentEndFrame(frame)) {
-      continue;
-    }
-
-    const payload = getFramePayload(frame);
-    if (typeof payload !== "object" || payload === null || !("messages" in payload)) {
-      continue;
-    }
-
-    const messages = payload.messages;
-    if (!Array.isArray(messages)) {
-      continue;
-    }
-
-    return {
-      found: true,
-      text: extractAssistantText(messages as PiSessionDetail["agent"]["state"]["messages"]),
-    };
-  }
-
-  return { found: false, text: "" };
-};
-
-const consumeActiveStream = async (
-  stream: AsyncGenerator<PiSessionEventStreamItem>,
-): Promise<{ frames: PiSessionEventStreamItem[] }> => {
-  const frames: PiSessionEventStreamItem[] = [];
-
-  try {
-    for await (const frame of stream) {
-      frames.push(frame);
-      if (isAgentEndFrame(frame)) {
-        break;
-      }
-    }
-    return { frames };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Pi active session stream failed: ${message}`);
-  }
 };
 
 export type PiRuntime = {
@@ -219,18 +114,6 @@ const parsePiRuntimeAgentName = (agent: string) => {
     );
   }
   return { harnessId, provider, model };
-};
-
-const closeActiveStream = async (stream: AsyncGenerator<PiSessionEventStreamItem>) => {
-  if (typeof stream.return !== "function") {
-    return;
-  }
-
-  try {
-    await stream.return(undefined);
-  } catch {
-    // Best-effort cleanup only.
-  }
 };
 
 export const createPiRouteRuntime = ({
@@ -321,88 +204,54 @@ export const createPiRouteRuntime = ({
         throw new Error("pi.session.turn requires non-empty text");
       }
 
-      const activeRoute = await callRoute(
+      const pathParams = {
+        workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME,
+        sessionId: normalizedSessionId,
+      };
+      const waitResponse = callRoute(
         "GET",
-        "/workflows/:workflowName/sessions/:sessionId/events",
+        "/workflows/:workflowName/sessions/:sessionId/wait-for-agent-end",
         {
-          pathParams: {
-            workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME,
-            sessionId: normalizedSessionId,
+          pathParams,
+          query: { timeoutMs: "60000" },
+        },
+      );
+      const promptResponse = await callRoute(
+        "POST",
+        "/workflows/:workflowName/sessions/:sessionId/command",
+        {
+          pathParams,
+          body: {
+            kind: "prompt",
+            input: { text: normalizedText },
           },
         },
       );
-      if (!isSuccessStatus(activeRoute.status)) {
-        return throwOnRouteRuntimeError(activeRoute, {
+      if (promptResponse.type !== "json" || !isSuccessStatus(promptResponse.status)) {
+        return throwOnRouteRuntimeError(promptResponse, {
           runtimeLabel: "Pi harness",
-          label: "pi.session.turn active",
+          label: "pi.session.turn prompt",
         });
       }
-      if (activeRoute.type !== "jsonStream") {
-        throw new Error(
-          `Pi harness returned ${activeRoute.status}: session events route did not return a jsonStream response`,
-        );
+
+      const detailResponse = await waitResponse;
+      if (detailResponse.type !== "json" || !isSuccessStatus(detailResponse.status)) {
+        return throwOnRouteRuntimeError(detailResponse, {
+          runtimeLabel: "Pi harness",
+          label: "pi.session.turn wait-for-agent-end",
+        });
       }
 
-      try {
-        const promptResponse = await callRoute(
-          "POST",
-          "/workflows/:workflowName/sessions/:sessionId/command",
-          {
-            pathParams: {
-              workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME,
-              sessionId: normalizedSessionId,
-            },
-            body: {
-              kind: "prompt",
-              input: { text: normalizedText },
-            },
-          },
-        );
-        if (promptResponse.type !== "json" || !isSuccessStatus(promptResponse.status)) {
-          return throwOnRouteRuntimeError(promptResponse, {
-            runtimeLabel: "Pi harness",
-            label: "pi.session.turn prompt",
-          });
-        }
+      const detail = detailResponse.data;
 
-        const { frames } = await consumeActiveStream(activeRoute.stream);
-
-        const detailResponse = await callRoute(
-          "GET",
-          "/workflows/:workflowName/sessions/:sessionId",
-          {
-            pathParams: {
-              workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME,
-              sessionId: normalizedSessionId,
-            },
-          },
-        );
-        if (detailResponse.type !== "json" || !isSuccessStatus(detailResponse.status)) {
-          return throwOnRouteRuntimeError(detailResponse, {
-            runtimeLabel: "Pi harness",
-            label: "pi.session.turn detail",
-          });
-        }
-
-        const detail = detailResponse.data;
-        const agentEndAssistantText = extractAgentEndAssistantText(frames);
-        const turnEndAssistantText = extractTurnEndAssistantText(frames);
-        return {
-          ...detail,
-          assistantText: agentEndAssistantText.found
-            ? agentEndAssistantText.text
-            : turnEndAssistantText.found
-              ? turnEndAssistantText.text
-              : extractAssistantText(detail.agent.state.messages),
-          commandStatus: promptResponse.data.status,
-          messageStatus: promptResponse.data.status,
-          stream: frames,
-          terminalState: detail.agent.state,
-        };
-      } catch (error) {
-        await closeActiveStream(activeRoute.stream);
-        throw error;
-      }
+      return {
+        ...detail,
+        assistantText: extractAssistantText(detail.agent.state.messages),
+        commandStatus: promptResponse.data.status,
+        messageStatus: promptResponse.data.status,
+        stream: [],
+        terminalState: detail.agent.state,
+      };
     },
   };
 };

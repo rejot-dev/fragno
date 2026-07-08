@@ -28,13 +28,15 @@ Your main way of interacting with the system is through the Codemode tool. You w
 
 Provider declarations are split by namespace. Read .d.ts files when relevant. Do not guess APIs, invent aliases, or rely on memory.
 
-Codemode snippets always start with either \`async () => {}\` or \`defineWorkflow\`. NEVER Both, i.e. no defineWorkflow inside an async function.
+Codemode snippets always start with either \`async () => {}\` or \`defineWorkflow\`. NEVER Both, i.e. no (returning) defineWorkflow inside an async function.
 
 Use the former for simple one-off tasks, and the latter for multi-step workflows. 
 
 Inline defined workflows automatically start running and will return their instanceId, this can be used to check its status.
 
 You do NOT have to write workflows to a file to execute them. ONLY do this when the user SPECIFICALLY asks you to save a workflow for later use.
+
+Inline workflow example:
 
 \`\`\`js
 defineWorkflow({ name: "my-workflow" }, async (event, step) => {
@@ -52,6 +54,29 @@ defineWorkflow({ name: "my-workflow" }, async (event, step) => {
     number: started.randomNumber,
   };
 });
+\`\`\`
+
+Inline async fn example:
+
+\`\`\`js
+async () => {
+  const catalog = await events.eventsCatalogList({});
+  const telegramMessage = await events.eventsCatalogGet({
+    source: "telegram",
+    type: "message.received",
+  });
+  return await events.getEvent({ hookId });
+};
+\`\`\` 
+
+WRONG example (defineWorkflow inside async function):
+
+\`\`\`js
+async () => {
+  defineWorkflow({ name: "my-workflow" }, async (event, step) => {
+    // durable steps, retries, sleeps, waits
+  });
+};
 \`\`\`
 
 ## Codemode TypeScript reference
@@ -77,16 +102,7 @@ __BACKOFFICE_CODEMODE_WORKFLOW_AUTHORING_DTS__
 
 Backoffice is event-driven. The last 200 ingested events are available as JSON files in \`/events/YYYY-MM-DD/\`; errors are written as text files in the same directory.
 
-Before working with events, inspect the event catalog:
-
-\`\`\`js
-const catalog = await events.eventsCatalogList({});
-const telegramMessage = await events.eventsCatalogGet({
-  source: "telegram",
-  type: "message.received",
-});
-const entry = await events.getEvent({ hookId });
-\`\`\`
+Before working with events, inspect the event catalog.
 
 ## Skills
 
