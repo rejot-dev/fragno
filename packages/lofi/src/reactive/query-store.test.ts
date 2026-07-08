@@ -1,4 +1,4 @@
-import { describe, expect, it, assert } from "vitest";
+import { describe, expect, expectTypeOf, it, assert } from "vitest";
 
 import { InMemoryLofiAdapter } from "../adapters/in-memory/adapter";
 import { createLofiQueryStore } from "./query-store";
@@ -101,6 +101,63 @@ describe("createLofiQueryStore", () => {
     await waitFor(() => $users.get().synced);
     expect($users.get().data).toEqual(["Cached", "Synced"]);
     assert((await adapter.getMeta("app:default:outbox::bootstrap")) === "complete");
+
+    unlisten();
+  });
+
+  it("runs multiple local queries from a retrieve-style callback", async () => {
+    const adapter = new InMemoryLofiAdapter({
+      endpointName: "app",
+      schemas: [reactiveTestSchema],
+    });
+    await adapter.applyMutations([
+      createUserMutation("user-a", "Alice"),
+      createUserMutation("user-b", "Bob"),
+    ]);
+    const runtime = createLofiRuntime({
+      endpointName: "app",
+      adapter,
+      outboxUrl: "https://example.com/outbox",
+      fetch: (async () => new Response(JSON.stringify([]))) as typeof fetch,
+    });
+
+    let findReturnedData = false;
+    const $summary = createLofiQueryStore(
+      runtime,
+      ({ forSchema }) => {
+        const usersQuery = forSchema(reactiveTestSchema).find("users", (b) =>
+          b.whereIndex("primary"),
+        );
+        findReturnedData = Array.isArray(usersQuery);
+        return usersQuery
+          .findFirst("users", (b) => b.whereIndex("primary"))
+          .find("users", (b) => b.whereIndex("primary").selectCount());
+      },
+      {
+        initialData: { names: [] as string[], firstName: null as string | null, total: 0 },
+        map: ([users, firstUser, total]) => ({
+          names: users.map((user) => user.name),
+          firstName: firstUser?.name ?? null,
+          total,
+        }),
+      },
+    );
+
+    expectTypeOf($summary.get().data).toEqualTypeOf<{
+      names: string[];
+      firstName: string | null;
+      total: number;
+    }>();
+
+    const unlisten = $summary.subscribe(() => undefined);
+
+    await waitFor(() => $summary.get().synced);
+    assert(!findReturnedData);
+    expect($summary.get().data).toEqual({
+      names: ["Alice", "Bob"],
+      firstName: "Alice",
+      total: 2,
+    });
 
     unlisten();
   });

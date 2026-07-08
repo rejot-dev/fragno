@@ -1,6 +1,6 @@
 import { describe, expect, it, assert } from "vitest";
 
-import { column, idColumn, schema } from "@fragno-dev/db/schema";
+import { column, FragnoId, idColumn, schema } from "@fragno-dev/db/schema";
 import superjson from "superjson";
 
 import type { OutboxPayload } from "@fragno-dev/db";
@@ -9,6 +9,7 @@ import {
   decodeOutboxPayload,
   outboxMutationsToUowOperations,
   resolveOutboxRefs,
+  uowOperationsToLofiMutations,
   type LofiMutation,
 } from "./mod";
 
@@ -109,6 +110,69 @@ describe("outbox utilities", () => {
         "0.other": "missing",
       }),
     ).toThrow("Outbox ref 0.accountId not found");
+  });
+
+  it("converts uow operations into lofi mutations", () => {
+    const appSchema = schema("app", (s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+    );
+
+    const mutations = uowOperationsToLofiMutations([
+      {
+        type: "create",
+        schema: appSchema,
+        table: "users",
+        generatedExternalId: "user-1",
+        values: { name: "Ada" },
+      },
+      {
+        type: "update",
+        schema: appSchema,
+        table: "users",
+        id: "user-1",
+        checkVersion: false,
+        set: { name: "Grace" },
+      },
+      {
+        type: "delete",
+        schema: appSchema,
+        table: "users",
+        id: "user-2",
+        checkVersion: false,
+      },
+      {
+        type: "check",
+        schema: appSchema,
+        table: "users",
+        id: FragnoId.fromExternal("user-3", 1),
+      },
+    ]);
+
+    expect(mutations).toEqual([
+      {
+        op: "create",
+        schema: "app",
+        table: "users",
+        externalId: "user-1",
+        versionstamp: "uow-001",
+        values: { name: "Ada" },
+      },
+      {
+        op: "update",
+        schema: "app",
+        table: "users",
+        externalId: "user-1",
+        versionstamp: "uow-002",
+        set: { name: "Grace" },
+      },
+      {
+        op: "delete",
+        schema: "app",
+        table: "users",
+        externalId: "user-2",
+        versionstamp: "uow-003",
+      },
+    ]);
   });
 
   it("converts outbox mutations into uow operations", () => {

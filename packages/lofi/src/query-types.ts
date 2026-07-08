@@ -45,10 +45,18 @@ export type LofiQueryFindResult<TTable extends AnyTable, TBuilderResult> =
     ? number
     : QueryRow<TTable, TBuilderResult>[];
 
-type QueryFindFirstResult<TTable extends AnyTable, TBuilderResult> =
+export type LofiQueryFindFirstResult<TTable extends AnyTable, TBuilderResult> =
   ExtractQueryTreeBuilderCount<TBuilderResult> extends true
     ? number
     : QueryRow<TTable, TBuilderResult> | null;
+
+export type LofiQueryFindWithCursorResult<TTable extends AnyTable, TBuilderResult> = CursorResult<
+  SelectResult<
+    TTable,
+    ExtractQueryTreeBuilderOut<TBuilderResult>,
+    Extract<ExtractQueryTreeBuilderSelect<TBuilderResult>, SelectClause<TTable>>
+  >
+>;
 
 /**
  * Async read helpers used by Lofi query engines.
@@ -63,21 +71,10 @@ export interface AsyncQueryFindFamily<TSchema extends AnySchema> {
   findWithCursor: <TableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
     table: TableName,
     builderFn: (builder: LofiFindBuilder<TSchema, TableName>) => TBuilderResult,
-  ) => Promise<
-    CursorResult<
-      SelectResult<
-        TSchema["tables"][TableName],
-        ExtractQueryTreeBuilderOut<TBuilderResult>,
-        Extract<
-          ExtractQueryTreeBuilderSelect<TBuilderResult>,
-          SelectClause<TSchema["tables"][TableName]>
-        >
-      >
-    >
-  >;
+  ) => Promise<LofiQueryFindWithCursorResult<TSchema["tables"][TableName], TBuilderResult>>;
 
   findFirst: <TableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
     table: TableName,
     builderFn: (builder: LofiFindBuilder<TSchema, TableName>) => TBuilderResult,
-  ) => Promise<QueryFindFirstResult<TSchema["tables"][TableName], TBuilderResult>>;
+  ) => Promise<LofiQueryFindFirstResult<TSchema["tables"][TableName], TBuilderResult>>;
 }
