@@ -1,22 +1,27 @@
 import { createClientBuilder, type FragnoPublicClientConfig } from "@fragno-dev/core/client";
+import type { z } from "zod";
 
 import { piHarnessDefinition } from "../pi/definition";
+import type { commandAckSchema, commandInputSchema } from "../pi/route-schemas";
 import { piRoutesFactory } from "../routes";
-import {
-  createPiSessionStore,
-  createStorePiSessionTransport,
-  type PiSessionStoreArgs,
-  type PiSessionStoreDeps,
-} from "./session";
+
+export {
+  createSessionProjectionDataStore,
+  latestCompletedPiHarnessEntries,
+  piAgentMessagesFromSessionEntries,
+  projectPiWorkflowSession,
+  readPiWorkflowLofiSessionProjection,
+} from "./workflow-lofi-session-projection";
 
 export type {
-  PiLiveToolCallDraft,
-  PiLiveToolExecution,
-  PiSessionCommandInput,
-  PiSessionConnectionStatus,
-  PiSessionStoreArgs,
-  PiSessionStoreDeps,
-} from "./session";
+  DraftAgentActivity,
+  DraftAgentMessage,
+  DraftTool,
+  PiWorkflowSessionProjectionState,
+} from "./workflow-lofi-session-projection";
+
+export type PiSessionCommandInput = z.infer<typeof commandInputSchema>;
+export type PiSessionCommandAck = z.infer<typeof commandAckSchema>;
 
 export type PiFragmentClientConfig = FragnoPublicClientConfig & {
   debugActiveSession?: boolean;
@@ -24,13 +29,6 @@ export type PiFragmentClientConfig = FragnoPublicClientConfig & {
 
 export function createPiFragmentClients(fragnoConfig: PiFragmentClientConfig = {}) {
   const builder = createClientBuilder(piHarnessDefinition, fragnoConfig, [piRoutesFactory]);
-  const useSessionDetail = builder.createHook("/workflows/:workflowName/sessions/:sessionId");
-  const useSessionEvents = builder.createHook(
-    "/workflows/:workflowName/sessions/:sessionId/events",
-    {
-      onErrorRetry: ({ retryCount }) => Math.min(10_000, 500 * 2 ** Math.min(retryCount, 8)),
-    },
-  );
 
   const useCommandSession = builder.createMutator(
     "POST",
@@ -51,34 +49,10 @@ export function createPiFragmentClients(fragnoConfig: PiFragmentClientConfig = {
     },
   );
 
-  const defaultSessionTransport = createStorePiSessionTransport({
-    openEventsStore: ({ workflowName, sessionId }) =>
-      useSessionEvents.store({ path: { workflowName, sessionId } }),
-    sendCommand: async ({ workflowName, sessionId, command }) => {
-      const ack = await useCommandSession.mutateQuery({
-        path: { workflowName, sessionId },
-        body: command,
-      });
-      if (!ack) {
-        throw new Error("Expected command route to return an acknowledgement.");
-      }
-      return ack;
-    },
-  });
-
   return {
     useSessions: builder.createHook("/workflows/:workflowName/sessions"),
-    useSessionDetail,
+    useSessionDetail: builder.createHook("/workflows/:workflowName/sessions/:sessionId"),
     useCreateSession: builder.createMutator("POST", "/workflows/:workflowName/sessions"),
-    useSessionEvents,
     useCommandSession,
-    useSession: builder.createStore(
-      (args: PiSessionStoreArgs, deps?: Partial<PiSessionStoreDeps>) =>
-        createPiSessionStore(args, {
-          transport: deps?.transport ?? defaultSessionTransport,
-          now: deps?.now,
-          retryDelay: deps?.retryDelay,
-        }),
-    ),
   };
 }

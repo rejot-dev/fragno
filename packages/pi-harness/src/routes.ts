@@ -1,13 +1,13 @@
 import { createId } from "@fragno-dev/db/id";
 import { WorkflowsLogger } from "@fragno-dev/workflows/debug-log";
-import { streamWorkflowStepEmissions } from "@fragno-dev/workflows/stream-step-emissions";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 import { serviceCalls } from "@fragno-dev/db";
 import { validateWorkflowParams } from "@fragno-dev/workflows";
 
-import { piHarnessDefinition } from "./pi/definition";
+import { piHarnessDefinition, type PiSessionDetailSnapshot } from "./pi/definition";
+import type { PiHarnessEmission } from "./pi/harness/run-pi-harness-step";
 import {
   createWorkflowBackedSessionEntryIdAllocator,
   WorkflowBackedSessionStorage,
@@ -18,13 +18,14 @@ import {
   commandInputSchema,
   sessionBaseSchema,
   sessionDetailSchema,
-  sessionEventStreamItemSchema,
 } from "./pi/route-schemas";
-import type { PiSessionCommandPayload, PiSessionEventStreamItem } from "./pi/types";
+import type { PiSessionCommandPayload, PiSessionDetail } from "./pi/types";
 import { piSchema } from "./schema";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;
+const DEFAULT_AGENT_END_WAIT_TIMEOUT_MS = 60_000;
+const MAX_AGENT_END_WAIT_TIMEOUT_MS = 120_000;
 
 class RouteError extends Error {
   constructor(
@@ -58,12 +59,30 @@ const createCommandPayload = (
   }
 };
 
-const LIVE_EVENT_STREAM_TIMEOUT_MS = 60_000;
+const normalizeAgentEndWaitTimeout = (timeoutMs: number | undefined): number =>
+  Math.min(timeoutMs ?? DEFAULT_AGENT_END_WAIT_TIMEOUT_MS, MAX_AGENT_END_WAIT_TIMEOUT_MS);
 
-const parseBooleanQueryValue = (value: string | null): boolean => {
-  const normalized = value?.trim().toLowerCase();
-  return normalized === "1" || normalized === "true" || normalized === "yes";
+const parsePositiveIntegerQueryValue = (value: string | null): number | undefined => {
+  if (value === null) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 };
+
+const toSessionDetail = (snapshot: PiSessionDetailSnapshot): PiSessionDetail => ({
+  ...snapshot.session,
+  agentName: snapshot.session.agent,
+  workflow: {
+    status: snapshot.workflowStatus.status,
+    error: snapshot.workflowStatus.error,
+    output: snapshot.workflowStatus.output,
+  },
+  agent: {
+    state: { messages: snapshot.detailState.messages },
+    completedStepKeys: [...snapshot.completedStepKeys],
+  },
+});
 
 export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
   ({ config, defineRoute, serviceDeps, services }) => {
@@ -228,21 +247,7 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
               )
               .transform(({ serviceResult: [snapshot] }) => snapshot)
               .execute();
-            const agentEvents = result.detailState.events;
-
-            return json({
-              ...result.session,
-              agentName: result.session.agent,
-              workflow: {
-                status: result.workflowStatus.status,
-                error: result.workflowStatus.error,
-                output: result.workflowStatus.output,
-              },
-              agent: {
-                state: { messages: result.detailState.messages },
-                events: agentEvents,
-              },
-            });
+            return json(toSessionDetail(result));
           } catch (err) {
             const loadError = toSessionDetailLoadError(err, workflowName, sessionId);
             return error(loadError.body, loadError.init);
@@ -289,88 +294,52 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
       }),
       defineRoute({
         method: "GET",
-        path: "/workflows/:workflowName/sessions/:sessionId/events",
-        queryParameters: ["once"],
-        outputSchema: z.array(sessionEventStreamItemSchema),
-        errorCodes: ["SESSION_NOT_FOUND", "WORKFLOW_INSTANCE_MISSING"],
-        handler: async function ({ pathParams, query }, { error, jsonStream }) {
+        path: "/workflows/:workflowName/sessions/:sessionId/wait-for-agent-end",
+        queryParameters: ["timeoutMs"],
+        outputSchema: sessionDetailSchema,
+        errorCodes: ["SESSION_NOT_FOUND", "WORKFLOW_INSTANCE_MISSING", "AGENT_END_TIMEOUT"],
+        handler: async function ({ pathParams, query }, { json, error }) {
+          const timeoutMs = parsePositiveIntegerQueryValue(query.get("timeoutMs"));
           const workflowName = pathParams.workflowName;
           const sessionId = pathParams.sessionId;
-          const once = parseBooleanQueryValue(query.get("once"));
           const workflowsService = serviceDeps.workflows;
+          const waitTimeoutMs = normalizeAgentEndWaitTimeout(timeoutMs);
 
           try {
-            const initialDetail = await this.handlerTx()
-              .withServiceCalls(
-                () => [services.getSessionDetailSnapshot(workflowName, sessionId)] as const,
-              )
-              .transform(({ serviceResult: [snapshot] }) => snapshot)
-              .execute();
-
-            return jsonStream(async (stream) => {
-              const emissionBusHandle =
-                workflowsService.observeStepEmissions<PiSessionEventStreamItem>({
-                  workflowName,
-                  instanceId: sessionId,
-                  handlerTx: this.handlerTx,
-                });
-              const emissionBus = emissionBusHandle.pump;
-
-              const snapshot = await emissionBus.snapshot();
-
-              const inFlightEvents: PiSessionEventStreamItem[] = snapshot
-                .filter((emission) => !initialDetail.completedStepKeys.has(emission.stepKey))
-                .map((emission) => ({
-                  kind: "step-emission" as const,
-                  actor: emission.actor,
-                  stepKey: emission.stepKey,
-                  epoch: emission.epoch,
-                  payload: emission.payload,
-                }));
-
-              const initialEmissions: PiSessionEventStreamItem[] = [
-                {
-                  type: "snapshot",
-                  state: { messages: initialDetail.detailState.messages },
-                },
-                ...inFlightEvents,
-              ];
-
-              try {
-                if (once) {
-                  for (const emission of initialEmissions) {
-                    await stream.write(emission);
-                  }
-                  return;
-                }
-
-                await streamWorkflowStepEmissions({
-                  stream,
-                  emissionBus: {
-                    observe: (handler) =>
-                      emissionBus.observe(
-                        (message) =>
-                          handler({
-                            ...message,
-                            payload: {
-                              kind: "step-emission" as const,
-                              actor: message.actor,
-                              stepKey: message.stepKey,
-                              epoch: message.epoch,
-                              payload: message.payload,
-                            },
-                          }),
-                        { after: snapshot },
-                      ),
-                  },
-                  initialEmissions,
-                  timeoutMs: LIVE_EVENT_STREAM_TIMEOUT_MS,
-                });
-              } finally {
-                await emissionBusHandle.close();
-              }
+            const emissionBusHandle = workflowsService.observeStepEmissions<PiHarnessEmission>({
+              workflowName,
+              instanceId: sessionId,
+              handlerTx: this.handlerTx,
             });
+
+            try {
+              const emissionSnapshot = await emissionBusHandle.pump.snapshot();
+              await emissionBusHandle.pump.waitForObserved(
+                (emission) =>
+                  emission.payload.kind === "harness-event" &&
+                  emission.payload.event.type === "agent_end",
+                {
+                  after: emissionSnapshot,
+                  timeoutMs: waitTimeoutMs,
+                  timeoutMessage: `Timed out waiting for agent_end for ${workflowName}/${sessionId}.`,
+                },
+              );
+
+              const result = await this.handlerTx()
+                .withServiceCalls(
+                  () => [services.getSessionDetailSnapshot(workflowName, sessionId)] as const,
+                )
+                .transform(({ serviceResult: [snapshot] }) => snapshot)
+                .execute();
+
+              return json(toSessionDetail(result));
+            } finally {
+              await emissionBusHandle.close();
+            }
           } catch (err) {
+            if (err instanceof Error && err.name === "BufferedPumpObserveTimeoutError") {
+              return error({ message: err.message, code: "AGENT_END_TIMEOUT" }, { status: 408 });
+            }
             if (isRouteError(err)) {
               const code =
                 err.code === "SESSION_NOT_FOUND"
@@ -391,8 +360,7 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
                 { status: 404 },
               );
             }
-            const message =
-              err instanceof Error ? err.message : "Failed to stream the active session.";
+            const message = err instanceof Error ? err.message : "Failed to wait for agent_end.";
             return error({ message, code: "WORKFLOW_INSTANCE_MISSING" }, { status: 500 });
           }
         },

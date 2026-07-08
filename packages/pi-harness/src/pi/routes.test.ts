@@ -54,13 +54,6 @@ const assertError = <T extends { type: string }>(response: T): Extract<T, { type
   return response as Extract<T, { type: "error" }>;
 };
 
-const assertJsonStream = <T extends { type: string }>(
-  response: T,
-): Extract<T, { type: "jsonStream" }> => {
-  assert(response.type === "jsonStream");
-  return response as Extract<T, { type: "jsonStream" }>;
-};
-
 describe("pi-harness routes", () => {
   let harness: TestHarness;
   let interactiveChatWorkflow: ReturnType<typeof createInteractiveChatWorkflow>;
@@ -260,7 +253,7 @@ describe("pi-harness routes", () => {
     );
   });
 
-  it("loads custom workflow status, events, and commands through the session workflow name", async () => {
+  it("loads custom workflow status and commands through the session workflow name", async () => {
     await harness.test.cleanup();
     const workflow = defineWorkflow({ name: "approval" }, async (_event, step) => {
       const command = await waitForPiCommand(step, "approval");
@@ -283,20 +276,6 @@ describe("pi-harness routes", () => {
       instanceId: response.data.id,
       reason: "create",
     });
-
-    const events = assertJsonStream(
-      await harness.fragments.pi.callRoute(
-        "GET",
-        "/workflows/:workflowName/sessions/:sessionId/events",
-        {
-          pathParams: { workflowName: response.data.workflowName, sessionId: response.data.id },
-          query: { once: "true" },
-        },
-      ),
-    );
-    expect(await Array.fromAsync(events.stream)).toEqual([
-      expect.objectContaining({ type: "snapshot" }),
-    ]);
 
     const command = assertJson(
       await harness.fragments.pi.callRoute(
@@ -337,7 +316,6 @@ describe("pi-harness routes", () => {
     );
 
     expect(detail.data.agent.state.messages).toEqual([]);
-    expect(detail.data.agent.events).toEqual([]);
     expect(detail.data).not.toHaveProperty("trace");
     expect(detail.data).not.toHaveProperty("turns");
     expect(detail.data).not.toHaveProperty("commandHistory");
@@ -373,53 +351,5 @@ describe("pi-harness routes", () => {
 
     expect(textMessages(detail.data.agent.state.messages, "user")).toEqual(["hello"]);
     expect(textMessages(detail.data.agent.state.messages, "assistant")).toEqual(["assistant:init"]);
-    expect(detail.data.agent.events).toEqual([]);
-  });
-
-  it("returns 404 from /events when the Pi session row is missing", async () => {
-    const sessionId = await harness.workflows.createInstance(interactiveChatWorkflow.name, {
-      params: { harnessName: "default" },
-    });
-
-    const response = assertError(
-      await harness.fragments.pi.callRoute(
-        "GET",
-        "/workflows/:workflowName/sessions/:sessionId/events",
-        {
-          pathParams: { workflowName: interactiveChatWorkflow.name, sessionId },
-        },
-      ),
-    );
-
-    assert(response.status === 404);
-    assert(response.error.code === "SESSION_NOT_FOUND");
-  });
-
-  it("streams an initial snapshot from /events", async () => {
-    const sessionId = await createSession();
-
-    const stream = assertJsonStream(
-      await harness.fragments.pi.callRoute(
-        "GET",
-        "/workflows/:workflowName/sessions/:sessionId/events",
-        {
-          pathParams: { workflowName: interactiveChatWorkflow.name, sessionId },
-        },
-      ),
-    );
-
-    const frames: unknown[] = [];
-    for await (const frame of stream.stream) {
-      frames.push(frame);
-      break;
-    }
-    await stream.stream.return(undefined);
-
-    expect(frames).toContainEqual(
-      expect.objectContaining({
-        type: "snapshot",
-        state: expect.objectContaining({ messages: [] }),
-      }),
-    );
   });
 });

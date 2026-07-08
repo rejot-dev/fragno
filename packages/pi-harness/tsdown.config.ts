@@ -6,7 +6,7 @@ export default defineConfig([
     ignoreWatch: ["./dist"],
     entry: [
       "./src/client/clients.ts",
-      "./src/client/session.ts",
+      "./src/client/workflow-lofi-session-projection.ts",
       "./src/client/react.ts",
       "./src/client/svelte.ts",
       "./src/client/solid.ts",
@@ -36,6 +36,7 @@ export default defineConfig([
       "./src/pi/skills.ts",
       "./src/pi/tools.ts",
       "./src/pi/types.ts",
+      "./src/pi/workflow-session-projection.ts",
       "./src/pi/workflows/interactive-chat-workflow.ts",
       "./src/routes.ts",
       "./src/schema.ts",
