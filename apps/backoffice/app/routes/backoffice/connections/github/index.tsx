@@ -21,13 +21,15 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
   const activeOrganizationId = me.activeOrganization?.organization.id;
   const fallbackOrganizationId = me.organizations[0]?.organization.id;
-  const orgId = activeOrganizationId ?? fallbackOrganizationId;
+  const organizationId = activeOrganizationId ?? fallbackOrganizationId;
 
-  if (!orgId) {
+  if (!organizationId) {
     return redirect("/backoffice/connections");
   }
 
-  return redirect(`/backoffice/connections/github/${encodeURIComponent(orgId)}`);
+  return redirect(
+    `/backoffice/automations/org/${encodeURIComponent(organizationId)}/integrations/github`,
+  );
 }
 
 export default function BackofficeConnectionsGitHub() {

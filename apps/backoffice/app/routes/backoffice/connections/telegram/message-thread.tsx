@@ -12,11 +12,15 @@ import {
 
 import type { TelegramAttachment, TelegramMessageSummary } from "@fragno-dev/telegram-fragment";
 
+import {
+  resolveAuthenticatedIntegrationContext,
+  resolveScopeFromRouteParams,
+} from "../../integrations/scope";
 import type { Route } from "./+types/message-thread";
 import {
   buildTelegramAttachmentDownloadPath,
   buildTelegramAttachmentInlinePath,
-  buildTelegramAttachmentPath,
+  buildTelegramAttachmentPathForBase,
 } from "./attachment-paths";
 import { fetchTelegramChatMessages, sendTelegramChatMessage } from "./data";
 import type { TelegramMessagesOutletContext } from "./messages";
@@ -33,17 +37,15 @@ type TelegramSendMessageActionData = {
 };
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId || !params.chatId) {
+  if (!params.chatId) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const messageResult = await fetchTelegramChatMessages(
-    request,
-    context,
-    params.orgId,
-    params.chatId,
-    { order: "desc", pageSize: 50 },
-  );
+  const scope = resolveScopeFromRouteParams(params);
+  const messageResult = await fetchTelegramChatMessages(request, context, scope, params.chatId, {
+    order: "desc",
+    pageSize: 50,
+  });
 
   return {
     messages: [...messageResult.messages].reverse(),
@@ -52,10 +54,17 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
-  if (!params.orgId || !params.chatId) {
+  if (!params.chatId) {
     throw new Response("Not Found", { status: 404 });
   }
 
+  const integration = await resolveAuthenticatedIntegrationContext({
+    request,
+    context,
+    params,
+    integration: "telegram",
+  });
+  const scope = integration.scope;
   const formData = await request.formData();
   const text = formData.get("text");
 
@@ -66,7 +75,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     } satisfies TelegramSendMessageActionData;
   }
 
-  const result = await sendTelegramChatMessage(request, context, params.orgId, params.chatId, {
+  const result = await sendTelegramChatMessage(request, context, scope, params.chatId, {
     text: text.trim(),
   });
 
@@ -87,7 +96,7 @@ export default function BackofficeOrganisationTelegramMessageThread() {
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const { chats, basePath } = useOutletContext<TelegramMessagesOutletContext>();
-  const { chatId, orgId } = useParams();
+  const { chatId } = useParams();
   const isSending = navigation.state === "submitting";
   const selectedChat = chats.find((chat) => chat.id === chatId) ?? null;
   const chatTitle =
@@ -95,7 +104,7 @@ export default function BackofficeOrganisationTelegramMessageThread() {
 
   return (
     <ChatMessages
-      orgId={orgId ?? ""}
+      attachmentBasePath={basePath.replace(/\/messages$/u, "")}
       chatId={chatId ?? ""}
       chatTitle={chatTitle}
       messages={messages}
@@ -108,11 +117,11 @@ export default function BackofficeOrganisationTelegramMessageThread() {
 }
 
 const buildTelegramInlineFilePath = (
-  orgId: string,
+  attachmentBasePath: string,
   fileId: string,
   kind: TelegramAttachment["kind"],
 ): string =>
-  buildTelegramAttachmentPath(orgId, {
+  buildTelegramAttachmentPathForBase(attachmentBasePath, {
     fileId,
     kind,
     disposition: "inline",
@@ -286,22 +295,22 @@ const getAttachmentThumbnail = (attachment: TelegramAttachment) => {
 };
 
 function TelegramAttachmentCard({
-  orgId,
+  attachmentBasePath,
   messageId,
   attachment,
 }: {
-  orgId: string;
+  attachmentBasePath: string;
   messageId: string;
   attachment: TelegramAttachment;
 }) {
   const details = describeAttachment(attachment);
   const thumbnail = getAttachmentThumbnail(attachment);
   const thumbnailUrl = thumbnail
-    ? buildTelegramInlineFilePath(orgId, thumbnail.fileId, "photo")
+    ? buildTelegramInlineFilePath(attachmentBasePath, thumbnail.fileId, "photo")
     : null;
   const audioUrl =
     attachment.kind === "audio" || attachment.kind === "voice"
-      ? buildTelegramAttachmentInlinePath(orgId, attachment)
+      ? buildTelegramAttachmentInlinePath(attachmentBasePath, attachment)
       : null;
 
   return (
@@ -320,7 +329,7 @@ function TelegramAttachmentCard({
           <p className="text-[11px] break-all text-[var(--bo-muted-2)]">{attachment.fileId}</p>
         </div>
         <a
-          href={buildTelegramAttachmentDownloadPath(orgId, attachment)}
+          href={buildTelegramAttachmentDownloadPath(attachmentBasePath, attachment)}
           download
           className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
         >
@@ -349,7 +358,7 @@ function TelegramAttachmentCard({
 }
 
 function ChatMessages({
-  orgId,
+  attachmentBasePath,
   chatId,
   chatTitle,
   messages,
@@ -358,7 +367,7 @@ function ChatMessages({
   actionData,
   isSending,
 }: {
-  orgId: string;
+  attachmentBasePath: string;
   chatId: string;
   chatTitle: string;
   messages: TelegramMessageSummary[];
@@ -462,7 +471,7 @@ function ChatMessages({
                           {message.attachments.map((attachment) => (
                             <TelegramAttachmentCard
                               key={`${message.id}:${attachment.fileId}`}
-                              orgId={orgId}
+                              attachmentBasePath={attachmentBasePath}
                               messageId={message.id}
                               attachment={attachment}
                             />

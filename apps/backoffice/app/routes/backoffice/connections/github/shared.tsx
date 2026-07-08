@@ -4,6 +4,8 @@ import { Link, isRouteErrorResponse } from "react-router";
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 
+import type { IntegrationScopeSwitchOption } from "../../integrations/scope";
+import { IntegrationScopeBreadcrumbSelector } from "../../integrations/scope-selector";
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "../../route-errors";
 
 type BackofficeOrganisation = AuthMeData["organizations"][number]["organization"];
@@ -24,12 +26,14 @@ export type GitHubAdminConfigState = {
 };
 
 export type GitHubLayoutContext = {
-  orgId: string;
   origin: string;
-  organisation: BackofficeOrganisation;
+  organisation: BackofficeOrganisation | null;
+  basePath: string;
+  integrationsPath: string;
   configState: GitHubAdminConfigState | null;
   configLoading: boolean;
   configError: string | null;
+  scopeOptions: IntegrationScopeSwitchOption[];
   setConfigState: Dispatch<SetStateAction<GitHubAdminConfigState | null>>;
   setConfigError: Dispatch<SetStateAction<string | null>>;
 };
@@ -48,29 +52,36 @@ export const formatTimestamp = (value?: string | Date | null) => {
 };
 
 export function GitHubHeader({
-  orgId,
   organisationName,
+  integrationsPath,
+  scopeOptions,
 }: {
-  orgId: string;
   organisationName?: string | null;
+  integrationsPath: string;
+  scopeOptions: IntegrationScopeSwitchOption[];
 }) {
+  const scopeLabel = organisationName ?? "Organisation";
+
   return (
     <BackofficePageHeader
       breadcrumbs={[
         { label: "Backoffice", to: "/backoffice" },
-        { label: "Connections", to: "/backoffice/connections" },
+        { label: "Automations", to: "/backoffice/automations" },
+        {
+          label: <IntegrationScopeBreadcrumbSelector label={scopeLabel} options={scopeOptions} />,
+        },
+        { label: "Integrations", to: integrationsPath },
         { label: "GitHub" },
-        { label: organisationName ?? orgId },
       ]}
       eyebrow="Integrations"
-      title={`GitHub for ${organisationName ?? orgId}`}
+      title={`GitHub for ${scopeLabel}`}
       description="Connect your GitHub App installation, link repositories, and inspect pull requests."
       actions={
         <Link
-          to="/backoffice/connections"
+          to={integrationsPath}
           className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
         >
-          Back to connections
+          Back to integrations
         </Link>
       }
     />
@@ -78,15 +89,14 @@ export function GitHubHeader({
 }
 
 export function GitHubTabs({
-  orgId,
+  basePath,
   activeTab,
   repositoriesEnabled,
 }: {
-  orgId: string;
+  basePath: string;
   activeTab: GitHubTab;
   repositoriesEnabled: boolean;
 }) {
-  const basePath = `/backoffice/connections/github/${orgId}`;
   const tabs = [
     {
       id: "repositories" as const,
@@ -142,10 +152,9 @@ export function GitHubTabs({
 
 export function GitHubErrorBoundary({
   error,
-  params,
 }: {
   error: unknown;
-  params: { orgId?: string };
+  params: { scopeKind?: string; scopeId?: string };
 }) {
   let statusCode = 500;
   let message = "An unexpected error occurred.";
@@ -158,13 +167,17 @@ export function GitHubErrorBoundary({
 
   message = getRouteErrorMessage(error, message);
 
-  if (statusCode === 404 && params.orgId && isOrganisationNotFoundError(error)) {
-    message = `Organisation '${params.orgId}' could not be found.`;
+  if (statusCode === 404 && isOrganisationNotFoundError(error)) {
+    message = "Organisation for this scope could not be found.";
   }
 
   return (
     <div className="space-y-4">
-      <GitHubHeader orgId={params.orgId ?? "organisation"} organisationName="Error" />
+      <GitHubHeader
+        integrationsPath="/backoffice/automations"
+        organisationName="Error"
+        scopeOptions={[]}
+      />
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
         <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           {statusCode} · {statusText}

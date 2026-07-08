@@ -2,6 +2,7 @@ import { Link, useLoaderData, useOutletContext, useParams } from "react-router";
 
 import type { ResendEmailInput } from "@fragno-dev/resend-fragment";
 
+import { resolveScopeFromRouteParams } from "../../integrations/scope";
 import type { Route } from "./+types/outbox-detail";
 import { fetchResendEmailDetail } from "./data";
 import type { ResendOutgoingOutletContext } from "./outbox";
@@ -20,11 +21,12 @@ const normalizeAddressList = (value?: string | string[] | null) => {
 };
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId || !params.emailId) {
+  if (!params.emailId) {
     throw new Response("Not Found", { status: 404 });
   }
+  const scope = resolveScopeFromRouteParams(params);
 
-  const result = await fetchResendEmailDetail(request, context, params.orgId, params.emailId);
+  const result = await fetchResendEmailDetail(request, context, scope, params.emailId);
   return {
     email: result.email,
     error: result.error,

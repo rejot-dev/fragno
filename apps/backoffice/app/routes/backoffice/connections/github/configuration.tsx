@@ -17,6 +17,10 @@ import {
 } from "@/worker-runtime/durable-objects";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
+import {
+  resolveAuthenticatedIntegrationContext,
+  resolveOrganizationScopeFromRouteParams,
+} from "../../integrations/scope";
 import type { Route } from "./+types/configuration";
 import {
   fetchGitHubAdminConfig,
@@ -159,9 +163,8 @@ const readInstallNotice = (requestUrl: URL): InstallFlowNotice => {
 };
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const organizationScope = resolveOrganizationScopeFromRouteParams(params);
+  const organizationId = organizationScope.organizationId;
 
   const requestUrl = new URL(request.url);
   const origin = requestUrl.origin;
@@ -176,7 +179,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (callbackState || callbackInstallationId || setupAction) {
     if (!callbackState || !callbackInstallationId) {
       console.warn("GitHub install callback missing required parameters", {
-        orgId: params.orgId,
+        organizationId: organizationId,
         setupAction,
         hasState: Boolean(callbackState),
         hasInstallationId: Boolean(callbackInstallationId),
@@ -186,7 +189,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
     if (!isValidInstallationId(callbackInstallationId)) {
       console.warn("GitHub install callback provided invalid installation id", {
-        orgId: params.orgId,
+        organizationId: organizationId,
         installationId: callbackInstallationId,
         state: toStatePreview(callbackState),
       });
@@ -198,7 +201,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
       const url = new URL(request.url);
       return redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
     }
-    const memberEntry = me.organizations.find((entry) => entry.organization.id === params.orgId);
+    const memberEntry = me.organizations.find((entry) => entry.organization.id === organizationId);
     if (!memberEntry) {
       throw new Response("Not Found", { status: 404 });
     }
@@ -213,7 +216,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
       if (!consumed.ok) {
         console.warn("GitHub install callback state validation failed", {
-          orgId: params.orgId,
+          organizationId: organizationId,
           code: consumed.code,
           message: consumed.message,
           installationId: callbackInstallationId,
@@ -229,9 +232,9 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
         return redirect(buildConfigurationRedirect(request.url, "invalid_state"));
       }
 
-      if (consumed.orgId !== params.orgId) {
+      if (consumed.orgId !== organizationId) {
         console.warn("GitHub install callback resolved to a different organisation", {
-          requestedOrgId: params.orgId,
+          requestedOrgId: organizationId,
           resolvedOrgId: consumed.orgId,
           installationId: callbackInstallationId,
           state: toStatePreview(callbackState),
@@ -242,11 +245,11 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
       const mappingResult = await githubWebhookRouterDo.setInstallationOrg(
         callbackInstallationId,
-        params.orgId,
+        organizationId,
       );
       if (!mappingResult.ok) {
         console.error("GitHub install callback failed to map installation to organisation", {
-          orgId: params.orgId,
+          organizationId: organizationId,
           installationId: callbackInstallationId,
           state: toStatePreview(callbackState),
           userId: me.user.id,
@@ -260,17 +263,17 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
       const syncResult = await syncGitHubInstallation(
         request,
         context,
-        params.orgId,
+        organizationId,
         callbackInstallationId,
       );
       if (syncResult.error || !syncResult.result) {
         console.warn("GitHub install callback mapped installation but sync failed", {
-          orgId: params.orgId,
+          organizationId: organizationId,
           installationId: callbackInstallationId,
           error: syncResult.error,
         });
 
-        const githubDo = getGitHubDurableObject(context, params.orgId);
+        const githubDo = getGitHubDurableObject(context, organizationId);
         await githubDo.redeliverFailedInstallationWebhooks(callbackInstallationId);
 
         return redirect(buildConfigurationRedirect(request.url, "installed_pending_webhook"));
@@ -279,7 +282,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
       return redirect(buildConfigurationRedirect(request.url, "installed_synced"));
     } catch (error) {
       console.error("GitHub install callback processing threw", {
-        orgId: params.orgId,
+        organizationId: organizationId,
         installationId: callbackInstallationId,
         state: toStatePreview(callbackState),
         error,
@@ -289,7 +292,11 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
 
   const installNotice = readInstallNotice(requestUrl);
-  const { configState, configError } = await fetchGitHubAdminConfig(context, params.orgId, origin);
+  const { configState, configError } = await fetchGitHubAdminConfig(
+    context,
+    organizationId,
+    origin,
+  );
   if (configError) {
     return {
       configState,
@@ -313,7 +320,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const { installations, installationsError } = await fetchGitHubInstallations(
     request,
     context,
-    params.orgId,
+    organizationId,
     "active",
   );
   if (installationsError) {
@@ -331,7 +338,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
       const reposResult = await fetchGitHubInstallationRepos(
         request,
         context,
-        params.orgId!,
+        organizationId,
         installation.id,
       );
 
@@ -359,31 +366,31 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
-  if (!params.orgId) {
+  const integration = await resolveAuthenticatedIntegrationContext({
+    request,
+    context,
+    params,
+    integration: "github",
+    allowedScopes: ["org"],
+  });
+  if (integration.scope.kind !== "org") {
     throw new Response("Not Found", { status: 404 });
   }
+  const organizationId = integration.scope.orgId;
+  const { me } = integration;
 
   const formData = await request.formData();
   const intent = getStringValue(formData, "intent");
 
   if (intent === "start-installation") {
-    const me = await getAuthMe(request, context);
-    if (!me?.user) {
-      return {
-        ok: false,
-        message: "You must be signed in before starting installation.",
-      } satisfies GitHubConfigurationActionData;
-    }
-    const memberEntry = me.organizations.find((entry) => entry.organization.id === params.orgId);
-    if (!memberEntry) {
-      throw new Response("Not Found", { status: 404 });
-    }
-
     const githubWebhookRouterDo = getGitHubWebhookRouterDurableObject(context);
-    const install = await githubWebhookRouterDo.createInstallStatefulUrl(me.user.id, params.orgId);
+    const install = await githubWebhookRouterDo.createInstallStatefulUrl(
+      me.user.id,
+      organizationId,
+    );
     if (!install.ok) {
       console.error("Failed to create GitHub install stateful URL", {
-        orgId: params.orgId,
+        organizationId: organizationId,
         userId: me.user.id,
         message: install.message,
         missing: install.missing,
@@ -401,21 +408,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   }
 
   if (intent === "connect-existing-installation") {
-    const me = await getAuthMe(request, context);
-    if (!me?.user) {
-      return {
-        ok: false,
-        message: "You must be signed in before restoring an installation.",
-      } satisfies GitHubConfigurationActionData;
-    }
-    const memberEntry = me.organizations.find((entry) => entry.organization.id === params.orgId);
-    if (!memberEntry) {
-      throw new Response("Not Found", { status: 404 });
-    }
-
     const requestUrl = new URL(request.url);
     const returnTo = `${requestUrl.pathname}${requestUrl.search}`;
-    const claim = await startGitHubOAuth(request, context, params.orgId, {
+    const claim = await startGitHubOAuth(request, context, organizationId, {
       subjectId: me.user.id,
       returnTo,
     });
@@ -431,13 +426,13 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       await githubWebhookRouterDo.storeInstallationClaimState({
         state: claim.result.state,
         userId: me.user.id,
-        orgId: params.orgId,
+        orgId: integration.scope.orgId,
         returnTo,
         expiresAt: new Date(claim.result.expiresAt).getTime(),
       });
     } catch (error) {
       console.warn("Failed to store GitHub installation claim state", {
-        orgId: params.orgId,
+        organizationId: organizationId,
         userId: me.user.id,
         state: toStatePreview(claim.result.state),
         error,
@@ -461,13 +456,13 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       } satisfies GitHubConfigurationActionData;
     }
 
-    const result = await linkGitHubRepository(request, context, params.orgId, {
+    const result = await linkGitHubRepository(request, context, organizationId, {
       installationId,
       repoId,
     });
     if (result.error || !result.result) {
       console.warn("Failed to link GitHub repository", {
-        orgId: params.orgId,
+        organizationId: organizationId,
         installationId,
         repoId,
         error: result.error ?? "Failed to link repository.",
@@ -493,12 +488,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       } satisfies GitHubConfigurationActionData;
     }
 
-    const result = await unlinkGitHubRepository(request, context, params.orgId, {
+    const result = await unlinkGitHubRepository(request, context, organizationId, {
       repoId,
     });
     if (result.error || !result.ok) {
       console.warn("Failed to unlink GitHub repository", {
-        orgId: params.orgId,
+        organizationId: organizationId,
         repoId,
         error: result.error ?? "Failed to unlink repository.",
       });

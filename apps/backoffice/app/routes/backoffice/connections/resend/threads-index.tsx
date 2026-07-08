@@ -1,13 +1,12 @@
 import { redirect } from "react-router";
 
+import { resolveScopeFromRouteParams } from "../../integrations/scope";
 import type { Route } from "./+types/threads-index";
 
-export async function loader({ params }: Route.LoaderArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+export async function loader({ request, params }: Route.LoaderArgs) {
+  resolveScopeFromRouteParams(params);
 
-  return redirect(`/backoffice/connections/resend/${params.orgId}/threads/start`);
+  return redirect(`${new URL(request.url).pathname.replace(/\/+$/u, "")}/start`);
 }
 
 export default function BackofficeOrganisationResendThreadsIndex() {

@@ -4,7 +4,11 @@ import { Outlet, redirect } from "react-router";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
-import { throwOrganisationNotFound } from "../../route-errors";
+import {
+  createIntegrationScopeSwitchOptions,
+  organizationIdFromScope,
+  resolveIntegrationContext,
+} from "../../integrations/scope";
 import type { Route } from "./+types/organisation-layout";
 import { fetchResendConfig } from "./data";
 import {
@@ -16,10 +20,6 @@ import {
 } from "./shared";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
   const me = await getAuthMe(request, context);
   if (!me?.user) {
     const url = new URL(request.url);
@@ -29,33 +29,52 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     );
   }
 
-  const organisation =
-    me.organizations.find((entry) => entry.organization.id === params.orgId)?.organization ?? null;
-  if (!organisation) {
-    throwOrganisationNotFound(params.orgId);
-  }
+  const integration = resolveIntegrationContext({
+    params,
+    me,
+    integration: "resend",
+    allowedScopes: ["org", "system"],
+  });
+  const organizationForScope = organizationIdFromScope(integration.scope);
+  const organisation = organizationForScope
+    ? (me.organizations.find((entry) => entry.organization.id === organizationForScope)
+        ?.organization ?? null)
+    : null;
 
-  const { configState, configError } = await fetchResendConfig(context, params.orgId);
+  const projectOrgId =
+    organizationForScope ??
+    me.activeOrganization?.organization.id ??
+    me.organizations[0]?.organization.id;
+  const scopeOptions = createIntegrationScopeSwitchOptions({
+    me,
+    projects: [],
+    projectOrgId: projectOrgId ?? "",
+    integration: "resend",
+    allowedScopes: ["org", "system"],
+  });
+
+  const { configState, configError } = await fetchResendConfig(context, integration.scope);
   const url = new URL(request.url);
   const currentPath = url.pathname.replace(/\/+$/, "");
-  const basePath = `/backoffice/connections/resend/${params.orgId}`;
+  const basePath = integration.basePath;
   if (currentPath === basePath) {
     const target = configState?.configured ? "threads" : "configuration";
     return redirect(`${basePath}/${target}`);
   }
 
   return {
-    orgId: params.orgId,
+    ...integration,
     origin: new URL(request.url).origin,
     organisation,
+    scopeOptions,
     configState,
     configError,
   };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
-  const orgId = loaderData?.orgId ?? "organisation";
-  return [{ title: `Resend Setup · ${orgId}` }];
+  const label = loaderData?.label ?? "scope";
+  return [{ title: `Resend Setup · ${label}` }];
 }
 
 export function ErrorBoundary({ error, params }: Route.ErrorBoundaryProps) {
@@ -67,9 +86,14 @@ export default function BackofficeOrganisationResendLayout({
   matches,
 }: Route.ComponentProps) {
   const {
-    orgId,
     origin,
     organisation,
+    scope,
+    label,
+    basePath,
+    integrationsPath,
+    scopeSegment,
+    scopeOptions,
     configState: initialConfigState,
     configError: initialConfigError,
   } = loaderData;
@@ -80,49 +104,48 @@ export default function BackofficeOrganisationResendLayout({
   useEffect(() => {
     setConfigState(initialConfigState);
     setConfigError(initialConfigError);
-  }, [initialConfigError, initialConfigState, orgId]);
+  }, [initialConfigError, initialConfigState, scopeSegment]);
 
   const currentPath = (matches[matches.length - 1]?.pathname || "").replace(/\/+$/, "");
   const pathSegments = currentPath.split("/").filter(Boolean);
-  const resendIndex = pathSegments.lastIndexOf("resend");
-  const activeSegment = resendIndex >= 0 ? pathSegments[resendIndex + 2] : undefined;
 
   let activeTab: ResendTab = "configuration";
-  switch (activeSegment) {
-    case "threads":
-      activeTab = "threads";
-      break;
-    case "incoming":
-      activeTab = "incoming";
-      break;
-    case "outgoing":
-    case "outgoings":
-    case "outbox":
-      activeTab = "outgoing";
-      break;
-    case "domains":
-      activeTab = "domains";
-      break;
-    case "configuration":
-      activeTab = "configuration";
-      break;
-    default:
-      break;
+  if (pathSegments.includes("threads")) {
+    activeTab = "threads";
+  } else if (pathSegments.includes("incoming")) {
+    activeTab = "incoming";
+  } else if (
+    pathSegments.includes("outgoing") ||
+    pathSegments.includes("outgoings") ||
+    pathSegments.includes("outbox")
+  ) {
+    activeTab = "outgoing";
+  } else if (pathSegments.includes("domains")) {
+    activeTab = "domains";
   }
 
   return (
     <div className="space-y-4">
-      <ResendHeader orgId={orgId} organisationName={organisation?.name ?? orgId} />
+      <ResendHeader
+        organisationName={organisation?.name ?? label}
+        integrationsPath={integrationsPath}
+        scopeOptions={scopeOptions}
+      />
       <ResendTabs
-        orgId={orgId}
+        basePath={basePath}
         activeTab={activeTab}
         isConfigured={Boolean(configState?.configured)}
       />
       <Outlet
         context={{
-          orgId,
           origin,
           organisation,
+          scope,
+          scopeSegment,
+          label,
+          basePath,
+          integrationsPath,
+          scopeOptions,
           configState,
           configLoading,
           configError,

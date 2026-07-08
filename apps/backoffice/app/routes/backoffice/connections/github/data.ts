@@ -133,17 +133,17 @@ type GitHubOAuthCompleteResult = {
 const createGitHubRouteCaller = (
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  organizationId: string,
 ) => {
-  const githubDo = getGitHubDurableObject(context, orgId);
+  const githubDo = getGitHubDurableObject(context, organizationId);
   return createRouteCaller<GitHubFragment>({
     baseUrl: request.url,
     mountRoute: "/api/github",
     baseHeaders: request.headers,
     fetch: async (outboundRequest) => {
-      await githubDo.ensureAdminConfig(orgId);
+      await githubDo.ensureAdminConfig(organizationId);
       const url = new URL(outboundRequest.url);
-      url.searchParams.set("orgId", orgId);
+      url.searchParams.set("orgId", organizationId);
       return await githubDo.fetch(new Request(url.toString(), outboundRequest));
     },
   });
@@ -193,11 +193,11 @@ export async function fetchGitHubAdminConfig(
 export async function fetchGitHubInstallations(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  organizationId: string,
   status?: "active" | "suspended" | "deleted",
 ): Promise<GitHubInstallationsResult> {
   try {
-    const callRoute = createGitHubRouteCaller(request, context, orgId);
+    const callRoute = createGitHubRouteCaller(request, context, organizationId);
     const query = status ? { status } : undefined;
     const response = await callRoute("GET", "/installations", { query });
 
@@ -230,12 +230,12 @@ export async function fetchGitHubInstallations(
 export async function fetchGitHubInstallationRepos(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  organizationId: string,
   installationId: string,
   options: { linkedOnly?: boolean } = {},
 ): Promise<GitHubReposResult> {
   try {
-    const callRoute = createGitHubRouteCaller(request, context, orgId);
+    const callRoute = createGitHubRouteCaller(request, context, organizationId);
     const query: Record<string, string> = {};
     if (options.linkedOnly) {
       query.linkedOnly = "true";
@@ -255,10 +255,10 @@ export async function fetchGitHubInstallationRepos(
 export async function fetchGitHubLinkedRepositories(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  organizationId: string,
 ): Promise<GitHubReposResult> {
   try {
-    const callRoute = createGitHubRouteCaller(request, context, orgId);
+    const callRoute = createGitHubRouteCaller(request, context, organizationId);
     const response = await callRoute("GET", "/repositories/linked");
 
     return gitHubReposResultFromRouteResponse(response, "Failed to fetch linked repositories");
@@ -270,7 +270,7 @@ export async function fetchGitHubLinkedRepositories(
 export async function fetchGitHubPulls(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  organizationId: string,
   options: {
     owner: string;
     repo: string;
@@ -280,7 +280,7 @@ export async function fetchGitHubPulls(
   },
 ): Promise<GitHubPullsResult> {
   try {
-    const callRoute = createGitHubRouteCaller(request, context, orgId);
+    const callRoute = createGitHubRouteCaller(request, context, organizationId);
     const query: Record<string, string> = {};
     if (options.state) {
       query.state = options.state;
@@ -331,11 +331,11 @@ export async function fetchGitHubPulls(
 export async function linkGitHubRepository(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  organizationId: string,
   payload: { installationId: string; repoId: string; linkKey?: string },
 ): Promise<GitHubLinkResult> {
   try {
-    const callRoute = createGitHubRouteCaller(request, context, orgId);
+    const callRoute = createGitHubRouteCaller(request, context, organizationId);
     const response = await callRoute("POST", "/repositories/link", { body: payload });
 
     return nullableDataActionResultFromRouteResponse<GitHubLinkResponse>({
@@ -350,11 +350,11 @@ export async function linkGitHubRepository(
 export async function syncGitHubInstallation(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  organizationId: string,
   installationId: string,
 ): Promise<GitHubSyncResult> {
   try {
-    const callRoute = createGitHubRouteCaller(request, context, orgId);
+    const callRoute = createGitHubRouteCaller(request, context, organizationId);
     const response = await callRoute("POST", "/installations/:installationId/sync", {
       pathParams: { installationId },
     });
@@ -375,11 +375,11 @@ export async function syncGitHubInstallation(
 export async function startGitHubOAuth(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  organizationId: string,
   payload: { subjectId: string; returnTo?: string },
 ): Promise<GitHubOAuthStartResult> {
   try {
-    const callRoute = createGitHubRouteCaller(request, context, orgId);
+    const callRoute = createGitHubRouteCaller(request, context, organizationId);
     const response = await callRoute("POST", "/oauth/start", { body: payload });
     return nullableDataActionResultFromRouteResponse({
       response,
@@ -393,11 +393,11 @@ export async function startGitHubOAuth(
 export async function completeGitHubOAuth(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  organizationId: string,
   payload: { subjectId: string; state: string; code: string },
 ): Promise<GitHubOAuthCompleteResult> {
   try {
-    const callRoute = createGitHubRouteCaller(request, context, orgId);
+    const callRoute = createGitHubRouteCaller(request, context, organizationId);
     const response = await callRoute("POST", "/oauth/complete", { body: payload });
     return nullableDataActionResultFromRouteResponse<GitHubOAuthComplete>({
       response,
@@ -411,11 +411,11 @@ export async function completeGitHubOAuth(
 export async function unlinkGitHubRepository(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  organizationId: string,
   payload: { repoId: string; linkKey?: string },
 ): Promise<GitHubUnlinkResult> {
   try {
-    const callRoute = createGitHubRouteCaller(request, context, orgId);
+    const callRoute = createGitHubRouteCaller(request, context, organizationId);
     const response = await callRoute("POST", "/repositories/unlink", { body: payload });
 
     return booleanActionResultFromRouteResponse({

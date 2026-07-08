@@ -1,5 +1,6 @@
 import { Link, useLoaderData, useOutletContext, useParams } from "react-router";
 
+import { resolveScopeFromRouteParams } from "../../integrations/scope";
 import type { Route } from "./+types/incoming-detail";
 import { fetchResendReceivedEmailDetail } from "./data";
 import type { ResendIncomingOutletContext } from "./incoming";
@@ -18,16 +19,12 @@ const formatAddressList = (value?: string[] | null) => {
 };
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId || !params.emailId) {
+  if (!params.emailId) {
     throw new Response("Not Found", { status: 404 });
   }
+  const scope = resolveScopeFromRouteParams(params);
 
-  const result = await fetchResendReceivedEmailDetail(
-    request,
-    context,
-    params.orgId,
-    params.emailId,
-  );
+  const result = await fetchResendReceivedEmailDetail(request, context, scope, params.emailId);
   return {
     email: result.email,
     error: result.error,

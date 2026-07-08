@@ -17,7 +17,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
   const activeOrganizationId = me.activeOrganization?.organization.id ?? null;
   if (activeOrganizationId) {
-    return redirect(`/backoffice/connections/resend/${activeOrganizationId}`);
+    return redirect(`/backoffice/automations/org/${activeOrganizationId}/integrations/resend`);
   }
 
   return null;
@@ -100,7 +100,7 @@ export default function BackofficeConnectionsResend() {
 
               <div className="mt-4">
                 <Link
-                  to={`/backoffice/connections/resend/${organization.id}`}
+                  to={`/backoffice/automations/org/${organization.id}/integrations/resend`}
                   className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
                 >
                   Manage Resend

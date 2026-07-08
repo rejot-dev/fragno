@@ -10,6 +10,7 @@ import {
 
 import type { ResendThreadSummary } from "@fragno-dev/resend-fragment";
 
+import { resolveScopeFromRouteParams } from "../../integrations/scope";
 import type { Route } from "./+types/threads";
 import { fetchResendConfig, fetchResendThreads } from "./data";
 import { formatTimestamp, type ResendConfigState, type ResendLayoutContext } from "./shared";
@@ -27,16 +28,13 @@ export type ResendThreadsOutletContext = {
   selectedThreadId: string | null;
   isStartRoute: boolean;
   basePath: string;
-  orgId: string;
   configState: ResendConfigState | null;
 };
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const scope = resolveScopeFromRouteParams(params);
 
-  const { configState, configError } = await fetchResendConfig(context, params.orgId);
+  const { configState, configError } = await fetchResendConfig(context, scope);
   if (configError) {
     return {
       configError,
@@ -48,13 +46,15 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
 
   if (!configState?.configured) {
-    return redirect(`/backoffice/connections/resend/${params.orgId}/configuration`);
+    return redirect(
+      `${new URL(request.url).pathname.replace(/\/(?:domains|threads|incoming|outgoing)(?:\/.*)?$/u, "")}/configuration`,
+    );
   }
 
   const { threads, cursor, hasNextPage, threadsError } = await fetchResendThreads(
     request,
     context,
-    params.orgId,
+    scope,
     { order: "desc", pageSize: 50 },
   );
 
@@ -69,11 +69,11 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
 export default function BackofficeOrganisationResendThreads() {
   const { threads, configError, threadsError, hasNextPage } = useLoaderData<typeof loader>();
-  const { orgId, configState } = useOutletContext<ResendLayoutContext>();
+  const { basePath: integrationBasePath, configState } = useOutletContext<ResendLayoutContext>();
   const { threadId } = useParams();
   const location = useLocation();
   const selectedThreadId = threadId ?? null;
-  const basePath = `/backoffice/connections/resend/${orgId}/threads`;
+  const basePath = `${integrationBasePath}/threads`;
   const isStartRoute = location.pathname.replace(/\/+$/, "").endsWith("/start");
   const isDetailRoute = Boolean(selectedThreadId || isStartRoute);
 
@@ -194,7 +194,6 @@ export default function BackofficeOrganisationResendThreads() {
             selectedThreadId,
             isStartRoute,
             basePath,
-            orgId,
             configState,
           }}
         />

@@ -1,19 +1,20 @@
 import { redirect } from "react-router";
 
+import { resolveScopeFromRouteParams } from "../../integrations/scope";
 import type { Route } from "./+types/outbox-index";
 import { fetchResendConfig } from "./data";
 
-export async function loader({ params, context }: Route.LoaderArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+export async function loader({ request, params, context }: Route.LoaderArgs) {
+  const scope = resolveScopeFromRouteParams(params);
 
-  const { configState } = await fetchResendConfig(context, params.orgId);
+  const { configState } = await fetchResendConfig(context, scope);
   if (!configState?.configured) {
-    return redirect(`/backoffice/connections/resend/${params.orgId}/configuration`);
+    return redirect(
+      `${new URL(request.url).pathname.replace(/\/(?:domains|threads|incoming|outgoing)(?:\/.*)?$/u, "")}/configuration`,
+    );
   }
 
-  return redirect(`/backoffice/connections/resend/${params.orgId}/outgoing/send`);
+  return redirect(`${new URL(request.url).pathname.replace(/\/+$/u, "")}/send`);
 }
 
 export default function BackofficeOrganisationResendOutboxIndex() {

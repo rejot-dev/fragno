@@ -2,6 +2,7 @@ import { Link, Outlet, redirect, useLoaderData, useOutletContext, useParams } fr
 
 import type { TelegramChatSummary } from "@fragno-dev/telegram-fragment";
 
+import { resolveScopeFromRouteParams } from "../../integrations/scope";
 import type { Route } from "./+types/messages";
 import { fetchTelegramChats, fetchTelegramConfig } from "./data";
 import type { TelegramLayoutContext } from "./shared";
@@ -19,11 +20,10 @@ export type TelegramMessagesOutletContext = {
 };
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const scope = resolveScopeFromRouteParams(params);
+  const basePath = new URL(request.url).pathname.replace(/\/messages(?:\/.*)?$/u, "");
 
-  const { configState, configError } = await fetchTelegramConfig(context, params.orgId);
+  const { configState, configError } = await fetchTelegramConfig(context, scope);
   if (configError) {
     return {
       configError,
@@ -33,10 +33,10 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
 
   if (!configState?.configured) {
-    return redirect(`/backoffice/connections/telegram/${params.orgId}/configuration`);
+    return redirect(`${basePath}/configuration`);
   }
 
-  const { chats, chatsError } = await fetchTelegramChats(request, context, params.orgId);
+  const { chats, chatsError } = await fetchTelegramChats(request, context, scope);
   if (chatsError) {
     return {
       configError: null,
@@ -54,10 +54,10 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
 export default function BackofficeOrganisationTelegramMessagesLayout() {
   const { chats, configError, chatsError } = useLoaderData<typeof loader>();
-  const { orgId } = useOutletContext<TelegramLayoutContext>();
+  const { basePath: integrationBasePath } = useOutletContext<TelegramLayoutContext>();
   const { chatId } = useParams();
   const selectedChatId = chatId ?? null;
-  const basePath = `/backoffice/connections/telegram/${orgId}/messages`;
+  const basePath = `${integrationBasePath}/messages`;
   const isDetailRoute = Boolean(selectedChatId);
 
   if (configError) {

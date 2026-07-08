@@ -1,5 +1,6 @@
 import { Link, Outlet, redirect, useLoaderData, useOutletContext, useParams } from "react-router";
 
+import { resolveOrganizationScopeFromRouteParams } from "../../integrations/scope";
 import type { Route } from "./+types/repositories";
 import {
   fetchGitHubAdminConfig,
@@ -21,12 +22,15 @@ export type GitHubRepositoriesOutletContext = {
 };
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const organizationScope = resolveOrganizationScopeFromRouteParams(params);
+  const organizationId = organizationScope.organizationId;
 
   const origin = new URL(request.url).origin;
-  const { configState, configError } = await fetchGitHubAdminConfig(context, params.orgId, origin);
+  const { configState, configError } = await fetchGitHubAdminConfig(
+    context,
+    organizationId,
+    origin,
+  );
   if (configError) {
     return {
       configError,
@@ -36,12 +40,20 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
 
   if (!configState?.configured) {
-    return redirect(`/backoffice/connections/github/${params.orgId}/configuration`);
+    return redirect(
+      `${new URL(request.url).pathname.replace(/\/(?:repositories)(?:\/.*)?$/u, "")}/configuration`,
+    );
   }
 
-  const { repos, reposError } = await fetchGitHubLinkedRepositories(request, context, params.orgId);
+  const { repos, reposError } = await fetchGitHubLinkedRepositories(
+    request,
+    context,
+    organizationId,
+  );
   if (!reposError && repos.length === 0) {
-    return redirect(`/backoffice/connections/github/${params.orgId}/configuration`);
+    return redirect(
+      `${new URL(request.url).pathname.replace(/\/(?:repositories)(?:\/.*)?$/u, "")}/configuration`,
+    );
   }
 
   return {
@@ -53,10 +65,10 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
 export default function BackofficeOrganisationGitHubRepositories() {
   const { repos, configError, reposError } = useLoaderData<typeof loader>();
-  const { orgId } = useOutletContext<GitHubLayoutContext>();
+  const { basePath: integrationBasePath } = useOutletContext<GitHubLayoutContext>();
   const { repoId } = useParams();
   const selectedRepoId = repoId ?? null;
-  const basePath = `/backoffice/connections/github/${orgId}/repositories`;
+  const basePath = `${integrationBasePath}/repositories`;
   const isDetailRoute = Boolean(selectedRepoId);
 
   if (configError) {

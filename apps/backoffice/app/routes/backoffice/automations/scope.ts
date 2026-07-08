@@ -69,6 +69,7 @@ export type AutomationScopeTab =
   | "api"
   | "events"
   | "events-catalog"
+  | "integrations"
   | "mcp"
   | "sandboxes";
 

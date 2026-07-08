@@ -1,5 +1,6 @@
 import { redirect } from "react-router";
 
+import { resolveOrganizationScopeFromRouteParams } from "../../integrations/scope";
 import type { Route } from "./+types/organisation-index";
 import {
   fetchGitHubAdminConfig,
@@ -8,20 +9,19 @@ import {
 } from "./data";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const organizationScope = resolveOrganizationScopeFromRouteParams(params);
+  const organizationId = organizationScope.organizationId;
 
   const origin = new URL(request.url).origin;
-  const { configState } = await fetchGitHubAdminConfig(context, params.orgId, origin);
+  const { configState } = await fetchGitHubAdminConfig(context, organizationId, origin);
   const linkedRepositories = configState?.configured
-    ? await fetchGitHubLinkedRepositories(request, context, params.orgId)
+    ? await fetchGitHubLinkedRepositories(request, context, organizationId)
     : null;
   const target =
     linkedRepositories && gitHubRepositoriesRouteAvailable(linkedRepositories)
       ? "repositories"
       : "configuration";
-  return redirect(`/backoffice/connections/github/${params.orgId}/${target}`);
+  return redirect(`${new URL(request.url).pathname.replace(/\/+$/u, "")}/${target}`);
 }
 
 export default function BackofficeOrganisationGitHubIndex() {

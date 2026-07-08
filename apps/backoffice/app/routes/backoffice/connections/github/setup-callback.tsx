@@ -4,6 +4,7 @@ import { getAuthMe } from "@/fragno/auth/auth-server";
 import { getGitHubWebhookRouterDurableObject } from "@/worker-runtime/durable-objects";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
+import { integrationBasePath, scopeToAutomationUiScope } from "../../integrations/scope";
 import type { Route } from "./+types/setup-callback";
 
 const CONNECTIONS_INDEX_PATH = "/backoffice/connections/github";
@@ -40,7 +41,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     return redirect(CONNECTIONS_INDEX_PATH);
   }
 
-  const targetPath = `/backoffice/connections/github/${encodeURIComponent(resolved.orgId)}/configuration`;
+  const scope = { kind: "org" as const, orgId: resolved.orgId };
+  const targetPath = `${integrationBasePath(scopeToAutomationUiScope(scope, me), "github")}/configuration`;
   const search = url.searchParams.toString();
   return redirect(search ? `${targetPath}?${search}` : targetPath);
 }

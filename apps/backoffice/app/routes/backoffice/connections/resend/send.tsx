@@ -5,6 +5,7 @@ import type { ResendEmailRecord, ResendSendEmailInput } from "@fragno-dev/resend
 
 import { FormContainer, FormField } from "@/components/backoffice";
 
+import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope";
 import type { Route } from "./+types/send";
 import { sendResendEmail } from "./data";
 import type { ResendOutgoingOutletContext } from "./outbox";
@@ -32,9 +33,14 @@ const parseOptionalValue = (value: string) => {
 };
 
 export async function action({ request, params, context }: Route.ActionArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const integration = await resolveAuthenticatedIntegrationContext({
+    request,
+    context,
+    params,
+    integration: "resend",
+    allowedScopes: ["org", "system"],
+  });
+  const scope = integration.scope;
 
   const formData = await request.formData();
   const getValue = (key: string) => {
@@ -98,7 +104,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     scheduledIn,
   };
 
-  const result = await sendResendEmail(request, context, params.orgId, payload);
+  const result = await sendResendEmail(request, context, scope, payload);
   if (result.error || !result.record) {
     return {
       ok: false,

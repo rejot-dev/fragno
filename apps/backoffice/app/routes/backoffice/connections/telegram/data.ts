@@ -3,20 +3,30 @@ import type { RouterContextProvider } from "react-router";
 
 import type { TelegramChatSummary, TelegramMessageSummary } from "@fragno-dev/telegram-fragment";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { TelegramFragment } from "@/fragno/telegram";
-import { getTelegramDurableObject } from "@/worker-runtime/durable-objects";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { TelegramConfigState } from "./shared";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;
 
+type TelegramTarget = string | BackofficeContextScope;
+
+const getTelegramObject = (context: Readonly<RouterContextProvider>, target: TelegramTarget) => {
+  const objects = context.get(BackofficeWorkerContext).runtime.objects;
+  return typeof target === "string"
+    ? objects.telegram.forOrg(target)
+    : objects.telegram.for(target);
+};
+
 const createTelegramRouteCaller = (
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  target: TelegramTarget,
 ) => {
-  const telegramDo = getTelegramDurableObject(context, orgId);
+  const telegramDo = getTelegramObject(context, target);
   return createRouteCaller<TelegramFragment>({
     baseUrl: request.url,
     mountRoute: "/api/telegram",
@@ -54,10 +64,10 @@ type TelegramSendMessageResult = {
 
 export async function fetchTelegramConfig(
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  target: TelegramTarget,
 ): Promise<TelegramConfigResult> {
   try {
-    const telegramDo = getTelegramDurableObject(context, orgId);
+    const telegramDo = getTelegramObject(context, target);
     const configState = await telegramDo.getAdminConfig();
     return { configState, configError: null };
   } catch (error) {
@@ -71,10 +81,10 @@ export async function fetchTelegramConfig(
 export async function fetchTelegramChats(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  target: TelegramTarget,
 ): Promise<TelegramChatsResult> {
   try {
-    const callRoute = createTelegramRouteCaller(request, context, orgId);
+    const callRoute = createTelegramRouteCaller(request, context, target);
     const response = await callRoute("GET", "/chats");
 
     if (response.type === "json") {
@@ -103,12 +113,12 @@ export async function fetchTelegramChats(
 export async function fetchTelegramChatMessages(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  target: TelegramTarget,
   chatId: string,
   options: { order?: "asc" | "desc"; pageSize?: number; cursor?: string } = {},
 ): Promise<TelegramChatMessagesResult> {
   try {
-    const callRoute = createTelegramRouteCaller(request, context, orgId);
+    const callRoute = createTelegramRouteCaller(request, context, target);
     const requestedPageSize =
       typeof options.pageSize === "number" && Number.isFinite(options.pageSize)
         ? options.pageSize
@@ -164,7 +174,7 @@ export async function fetchTelegramChatMessages(
 export async function sendTelegramChatMessage(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  target: TelegramTarget,
   chatId: string,
   payload: {
     text: string;
@@ -174,7 +184,7 @@ export async function sendTelegramChatMessage(
   },
 ): Promise<TelegramSendMessageResult> {
   try {
-    const callRoute = createTelegramRouteCaller(request, context, orgId);
+    const callRoute = createTelegramRouteCaller(request, context, target);
     const response = await callRoute("POST", "/chats/:chatId/send", {
       pathParams: { chatId },
       body: payload,

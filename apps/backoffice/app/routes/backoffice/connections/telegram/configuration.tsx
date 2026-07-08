@@ -3,9 +3,9 @@ import { Form, useActionData, useNavigation, useOutletContext } from "react-rout
 
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { FormContainer, FormField, WizardStepper } from "@/components/backoffice";
-import { telegramCapability } from "@/fragno/backoffice-capabilities/capabilities/telegram";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
+import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope";
 import type { Route } from "./+types/configuration";
 import {
   formatTimestamp,
@@ -119,9 +119,13 @@ const normalizeTelegramConfigInput = (
 };
 
 export async function action({ request, context, params }: Route.ActionArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const integration = await resolveAuthenticatedIntegrationContext({
+    request,
+    context,
+    params,
+    integration: "telegram",
+  });
+  const scope = integration.scope;
 
   const formData = await request.formData();
   const getValue = (key: string) => {
@@ -151,27 +155,21 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const { runtime } = context.get(BackofficeWorkerContext);
 
   try {
-    const status = await telegramCapability.connection.configure({
-      objects: runtime.objects,
-      config: runtime.config,
-      scope: { kind: "org", orgId: params.orgId },
-      orgId: params.orgId,
-      origin,
-      payload: validation.payload,
-    });
+    const telegramDo = runtime.objects.telegram.for(scope);
+    const status = await telegramDo.setAdminConfig(validation.payload, origin);
 
-    if (status.verification && !status.verification.ok) {
+    if (status.webhook && !status.webhook.ok) {
       return {
         ok: false,
         intent,
-        message: status.verification.message,
+        message: status.webhook.message,
       } satisfies TelegramConfigActionData;
     }
 
     return {
       ok: true,
       intent,
-      message: status.verification?.message ?? "Telegram credentials saved.",
+      message: status.webhook?.message ?? "Telegram credentials saved.",
     } satisfies TelegramConfigActionData;
   } catch (error) {
     return {
@@ -183,7 +181,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
 }
 
 export default function BackofficeOrganisationTelegramConfiguration() {
-  const { orgId, origin, configState, configLoading, configError, setConfigError } =
+  const { origin, scope, configState, configLoading, configError, setConfigError } =
     useOutletContext<TelegramLayoutContext>();
   const [currentStep, setCurrentStep] = useState(0);
   const actionData = useActionData<typeof action>();
@@ -199,7 +197,7 @@ export default function BackofficeOrganisationTelegramConfiguration() {
   });
 
   const webhookBaseUrl = formState.webhookBaseUrl.trim();
-  const telegramScopeSegment = backofficeContextScopeSinglePathSegment({ kind: "org", orgId });
+  const telegramScopeSegment = backofficeContextScopeSinglePathSegment(scope);
   const webhookUrl = `${webhookBaseUrl.replace(/\/+$/, "")}/api/telegram/${telegramScopeSegment}/telegram/webhook`;
   const apiBaseUrlError = validateOptionalUrl(formState.apiBaseUrl.trim(), "API base URL");
   const webhookBaseUrlError = validateRequiredUrl(

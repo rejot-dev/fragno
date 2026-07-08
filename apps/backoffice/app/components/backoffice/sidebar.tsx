@@ -22,9 +22,9 @@ const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/gu, "\
 
 const projectAutomationBasePathPattern = (automationBasePath: string) => {
   const match = /^\/backoffice\/automations\/org\/([^/]+)$/u.exec(automationBasePath);
-  const orgId = match?.[1];
-  return orgId
-    ? `/backoffice/automations/project/${escapeRegExp(encodeURIComponent(orgId))}:[^/]+`
+  const organizationId = match?.[1];
+  return organizationId
+    ? `/backoffice/automations/project/${escapeRegExp(encodeURIComponent(organizationId))}:[^/]+`
     : null;
 };
 
@@ -54,9 +54,6 @@ const isAutomationTabPath = (
 };
 
 function createNavItems(activeOrganizationId?: string | null): NavItem[] {
-  const githubPath = activeOrganizationId
-    ? `/backoffice/connections/github/${activeOrganizationId}`
-    : "/backoffice/connections/github";
   const automationBasePath = activeOrganizationId
     ? `/backoffice/automations/org/${activeOrganizationId}`
     : "/backoffice/automations";
@@ -102,6 +99,14 @@ function createNavItems(activeOrganizationId?: string | null): NavItem[] {
           isActive: isAutomationTabPath("events-catalog"),
         },
         { label: "API", to: `${automationBasePath}/api`, isActive: isAutomationTabPath("api") },
+        {
+          label: "Integrations",
+          to: `${automationBasePath}/integrations`,
+          isActive: isAutomationTabPath("integrations", {
+            automationBasePath,
+            includeProjectScope: true,
+          }),
+        },
         { label: "MCP", to: `${automationBasePath}/mcp`, isActive: isAutomationTabPath("mcp") },
         {
           label: "Sandboxes",
@@ -120,17 +125,6 @@ function createNavItems(activeOrganizationId?: string | null): NavItem[] {
     { label: "Sessions", to: "/backoffice/sessions" },
     { label: "Files", to: "/backoffice/files" },
     {
-      label: "Connections",
-      to: "/backoffice/connections",
-      children: [
-        { label: "Telegram", to: "/backoffice/connections/telegram" },
-        { label: "Resend", to: "/backoffice/connections/resend" },
-        { label: "Reson8", to: "/backoffice/connections/reson8" },
-        { label: "GitHub", to: githubPath },
-        { label: "Upload", to: "/backoffice/connections/upload" },
-      ],
-    },
-    {
       label: "Environments",
       to: "/backoffice/environments",
       children: [{ label: "Workers", to: toWorkersPath({}) }],
@@ -140,6 +134,20 @@ function createNavItems(activeOrganizationId?: string | null): NavItem[] {
       to: "/backoffice/internals",
       children: [
         { label: "GitHub", to: "/backoffice/internals/github" },
+        {
+          label: "Upload",
+          to: activeOrganizationId
+            ? `/backoffice/connections/upload/${activeOrganizationId}`
+            : "/backoffice/connections/upload",
+          isActive: (pathname) => pathname.startsWith("/backoffice/connections/upload"),
+        },
+        {
+          label: "Reson8",
+          to: activeOrganizationId
+            ? `/backoffice/connections/reson8/${activeOrganizationId}`
+            : "/backoffice/connections/reson8",
+          isActive: (pathname) => pathname.startsWith("/backoffice/connections/reson8"),
+        },
         { label: "Durable hooks", to: "/backoffice/internals/durable-hooks" },
         { label: "Workflows", to: "/backoffice/internals/workflows" },
       ],

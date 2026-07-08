@@ -4,7 +4,12 @@ import { Outlet } from "react-router";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
-import { throwOrganisationNotFound } from "../../route-errors";
+import { fetchAutomationProjects } from "../../automations/data.server";
+import {
+  createIntegrationScopeSwitchOptions,
+  organizationIdFromScope,
+  resolveIntegrationContext,
+} from "../../integrations/scope";
 import type { Route } from "./+types/organisation-layout";
 import { fetchTelegramConfig } from "./data";
 import {
@@ -16,10 +21,6 @@ import {
 } from "./shared";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
   const me = await getAuthMe(request, context);
   if (!me?.user) {
     const url = new URL(request.url);
@@ -29,26 +30,42 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     );
   }
 
-  const organisation =
-    me.organizations.find((entry) => entry.organization.id === params.orgId)?.organization ?? null;
-  if (!organisation) {
-    throwOrganisationNotFound(params.orgId);
-  }
+  const integration = resolveIntegrationContext({ params, me, integration: "telegram" });
+  const organizationForScope = organizationIdFromScope(integration.scope);
+  const organisation = organizationForScope
+    ? (me.organizations.find((entry) => entry.organization.id === organizationForScope)
+        ?.organization ?? null)
+    : null;
 
-  const { configState, configError } = await fetchTelegramConfig(context, params.orgId);
+  const projectOrgId =
+    organizationForScope ??
+    me.activeOrganization?.organization.id ??
+    me.organizations[0]?.organization.id;
+  const projectsResult = projectOrgId
+    ? await fetchAutomationProjects(request, context, projectOrgId)
+    : { projects: [] };
+  const scopeOptions = createIntegrationScopeSwitchOptions({
+    me,
+    projects: projectsResult.projects,
+    projectOrgId: projectOrgId ?? "",
+    integration: "telegram",
+  });
+
+  const { configState, configError } = await fetchTelegramConfig(context, integration.scope);
 
   return {
-    orgId: params.orgId,
+    ...integration,
     origin: new URL(request.url).origin,
     organisation,
+    scopeOptions,
     configState,
     configError,
   };
 }
 
 export function meta({ data }: Route.MetaArgs) {
-  const orgId = data?.orgId ?? "organisation";
-  return [{ title: `Telegram Setup · ${orgId}` }];
+  const label = data?.label ?? "scope";
+  return [{ title: `Telegram Setup · ${label}` }];
 }
 
 export function ErrorBoundary({ error, params }: Route.ErrorBoundaryProps) {
@@ -60,9 +77,14 @@ export default function BackofficeOrganisationTelegramLayout({
   matches,
 }: Route.ComponentProps) {
   const {
-    orgId,
     origin,
     organisation,
+    scope,
+    label,
+    basePath,
+    integrationsPath,
+    scopeSegment,
+    scopeOptions,
     configState: initialConfigState,
     configError: initialConfigError,
   } = loaderData;
@@ -73,7 +95,7 @@ export default function BackofficeOrganisationTelegramLayout({
   useEffect(() => {
     setConfigState(initialConfigState);
     setConfigError(initialConfigError);
-  }, [initialConfigError, initialConfigState, orgId]);
+  }, [initialConfigError, initialConfigState, scopeSegment]);
 
   let activeTab: TelegramTab = "configuration";
   const currentPath = (matches[matches.length - 1]?.pathname || "").replace(/\/+$/, "");
@@ -86,17 +108,26 @@ export default function BackofficeOrganisationTelegramLayout({
 
   return (
     <div className="space-y-4">
-      <TelegramHeader orgId={orgId} organisationName={organisation?.name ?? orgId} />
+      <TelegramHeader
+        organisationName={organisation?.name ?? label}
+        integrationsPath={integrationsPath}
+        scopeOptions={scopeOptions}
+      />
       <TelegramTabs
-        orgId={orgId}
+        basePath={basePath}
         activeTab={activeTab}
         isConfigured={Boolean(configState?.configured)}
       />
       <Outlet
         context={{
-          orgId,
           origin,
           organisation,
+          scope,
+          scopeSegment,
+          label,
+          basePath,
+          integrationsPath,
+          scopeOptions,
           configState,
           configLoading,
           configError,
