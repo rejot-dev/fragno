@@ -1,5 +1,6 @@
 import { Link, useLoaderData, useOutletContext, useParams } from "react-router";
 
+import { resolveOrganizationScopeFromRouteParams } from "../../integrations/scope";
 import type { Route } from "./+types/repository-detail";
 import {
   fetchGitHubLinkedRepositories,
@@ -29,11 +30,13 @@ const asNumber = (value: unknown) =>
 const asBoolean = (value: unknown) => (typeof value === "boolean" ? value : null);
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId || !params.repoId) {
+  if (!params.repoId) {
     throw new Response("Not Found", { status: 404 });
   }
+  const organizationScope = resolveOrganizationScopeFromRouteParams(params);
+  const organizationId = organizationScope.organizationId;
 
-  const linkedResult = await fetchGitHubLinkedRepositories(request, context, params.orgId);
+  const linkedResult = await fetchGitHubLinkedRepositories(request, context, organizationId);
   if (linkedResult.reposError) {
     return {
       repo: null,
@@ -55,7 +58,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     } satisfies GitHubRepositoryDetailLoaderData;
   }
 
-  const pullsResult = await fetchGitHubPulls(request, context, params.orgId, {
+  const pullsResult = await fetchGitHubPulls(request, context, organizationId, {
     owner: repo.ownerLogin,
     repo: repo.name,
     state: "open",

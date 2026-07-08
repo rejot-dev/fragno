@@ -2,6 +2,7 @@ import { Link, Outlet, redirect, useLoaderData, useOutletContext, useParams } fr
 
 import type { ResendDomain } from "@fragno-dev/resend-fragment";
 
+import { resolveScopeFromRouteParams } from "../../integrations/scope";
 import type { Route } from "./+types/domains";
 import { fetchResendConfig, fetchResendDomains } from "./data";
 import {
@@ -26,11 +27,9 @@ export type ResendDomainsOutletContext = {
 };
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const scope = resolveScopeFromRouteParams(params);
 
-  const { configState, configError } = await fetchResendConfig(context, params.orgId);
+  const { configState, configError } = await fetchResendConfig(context, scope);
   if (configError) {
     return {
       configError,
@@ -41,14 +40,12 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
 
   if (!configState?.configured) {
-    return redirect(`/backoffice/connections/resend/${params.orgId}/configuration`);
+    return redirect(
+      `${new URL(request.url).pathname.replace(/\/(?:domains|threads|incoming|outgoing)(?:\/.*)?$/u, "")}/configuration`,
+    );
   }
 
-  const { domains, hasMore, domainsError } = await fetchResendDomains(
-    request,
-    context,
-    params.orgId,
-  );
+  const { domains, hasMore, domainsError } = await fetchResendDomains(request, context, scope);
   return {
     configError: null,
     domainsError,
@@ -59,10 +56,10 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
 export default function BackofficeOrganisationResendDomains() {
   const { domains, hasMore, configError, domainsError } = useLoaderData<typeof loader>();
-  const { orgId } = useOutletContext<ResendLayoutContext>();
+  const { basePath: integrationBasePath } = useOutletContext<ResendLayoutContext>();
   const { domainId } = useParams();
   const selectedDomainId = domainId ?? null;
-  const basePath = `/backoffice/connections/resend/${orgId}/domains`;
+  const basePath = `${integrationBasePath}/domains`;
   const isDetailRoute = Boolean(selectedDomainId);
 
   if (configError) {

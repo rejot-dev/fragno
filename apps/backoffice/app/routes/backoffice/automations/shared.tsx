@@ -154,6 +154,7 @@ export type AutomationTab =
   | "api"
   | "events"
   | "events-catalog"
+  | "integrations"
   | "mcp"
   | "sandboxes";
 
@@ -337,6 +338,11 @@ export function AutomationTabs({
       id: "api" as const,
       label: "API",
       to: automationScopeTabPath(selectedScope, "api"),
+    },
+    {
+      id: "integrations" as const,
+      label: "Integrations",
+      to: automationScopeTabPath(selectedScope, "integrations"),
     },
     {
       id: "mcp" as const,

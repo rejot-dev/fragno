@@ -1,9 +1,12 @@
 import type { Dispatch, SetStateAction } from "react";
 import { Link, isRouteErrorResponse } from "react-router";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 
+import type { IntegrationScopeSwitchOption } from "../../integrations/scope";
+import { IntegrationScopeBreadcrumbSelector } from "../../integrations/scope-selector";
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "../../route-errors";
 
 type BackofficeOrganisation = AuthMeData["organizations"][number]["organization"];
@@ -26,12 +29,17 @@ export type TelegramConfigState = {
 };
 
 export type TelegramLayoutContext = {
-  orgId: string;
   origin: string;
-  organisation: BackofficeOrganisation;
+  organisation: BackofficeOrganisation | null;
+  scope: BackofficeContextScope;
+  scopeSegment: string;
+  label: string;
+  basePath: string;
+  integrationsPath: string;
   configState: TelegramConfigState | null;
   configLoading: boolean;
   configError: string | null;
+  scopeOptions: IntegrationScopeSwitchOption[];
   setConfigState: Dispatch<SetStateAction<TelegramConfigState | null>>;
   setConfigError: Dispatch<SetStateAction<string | null>>;
 };
@@ -64,29 +72,36 @@ export const generateSecretToken = () => {
 };
 
 export function TelegramHeader({
-  orgId,
   organisationName,
+  integrationsPath,
+  scopeOptions,
 }: {
-  orgId: string;
   organisationName?: string | null;
+  integrationsPath: string;
+  scopeOptions: IntegrationScopeSwitchOption[];
 }) {
+  const scopeLabel = organisationName ?? "Scope";
+
   return (
     <BackofficePageHeader
       breadcrumbs={[
         { label: "Backoffice", to: "/backoffice" },
-        { label: "Connections", to: "/backoffice/connections" },
-        { label: "Telegram", to: "/backoffice/connections/telegram" },
-        { label: organisationName ?? orgId },
+        { label: "Automations", to: "/backoffice/automations" },
+        {
+          label: <IntegrationScopeBreadcrumbSelector label={scopeLabel} options={scopeOptions} />,
+        },
+        { label: "Integrations", to: integrationsPath },
+        { label: "Telegram" },
       ]}
       eyebrow="Integrations"
-      title={`Telegram for ${organisationName ?? orgId}`}
+      title={`Telegram for ${scopeLabel}`}
       description="Connect a Telegram bot, capture chat activity, and review messages per organisation."
       actions={
         <Link
-          to="/backoffice/connections/telegram"
+          to={integrationsPath}
           className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
         >
-          Back to Telegram
+          Back to integrations
         </Link>
       }
     />
@@ -94,15 +109,14 @@ export function TelegramHeader({
 }
 
 export function TelegramTabs({
-  orgId,
+  basePath,
   activeTab,
   isConfigured,
 }: {
-  orgId: string;
+  basePath: string;
   activeTab: TelegramTab;
   isConfigured: boolean;
 }) {
-  const basePath = `/backoffice/connections/telegram/${orgId}`;
   const tabs = [
     {
       id: "messages" as const,
@@ -158,10 +172,9 @@ export function TelegramTabs({
 
 export function TelegramErrorBoundary({
   error,
-  params,
 }: {
   error: unknown;
-  params: { orgId?: string };
+  params: { scopeKind?: string; scopeId?: string };
 }) {
   let statusCode = 500;
   let message = "An unexpected error occurred.";
@@ -174,13 +187,17 @@ export function TelegramErrorBoundary({
 
   message = getRouteErrorMessage(error, message);
 
-  if (statusCode === 404 && params.orgId && isOrganisationNotFoundError(error)) {
-    message = `Organisation '${params.orgId}' could not be found.`;
+  if (statusCode === 404 && isOrganisationNotFoundError(error)) {
+    message = "Organisation for this scope could not be found.";
   }
 
   return (
     <div className="space-y-4">
-      <TelegramHeader orgId={params.orgId ?? "organisation"} organisationName="Error" />
+      <TelegramHeader
+        integrationsPath="/backoffice/automations"
+        organisationName="Error"
+        scopeOptions={[]}
+      />
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
         <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           {statusCode} · {statusText}

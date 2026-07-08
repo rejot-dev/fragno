@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Form, useActionData, useNavigation, useOutletContext } from "react-router";
 
+import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { FormContainer, FormField, WizardStepper } from "@/components/backoffice";
-import { getResendDurableObject } from "@/worker-runtime/durable-objects";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
+import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope";
 import type { Route } from "./+types/configuration";
 import { formatTimestamp, type ResendConfigState, type ResendLayoutContext } from "./shared";
 
@@ -91,9 +93,14 @@ const normalizeResendConfigInput = (input: ResendConfigForm): ResendConfigValida
 };
 
 export async function action({ request, context, params }: Route.ActionArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const integration = await resolveAuthenticatedIntegrationContext({
+    request,
+    context,
+    params,
+    integration: "resend",
+    allowedScopes: ["org", "system"],
+  });
+  const scope = integration.scope;
 
   const formData = await request.formData();
   const getValue = (key: string) => {
@@ -117,10 +124,21 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   }
 
   const origin = new URL(request.url).origin;
-  const resendDo = getResendDurableObject(context, params.orgId);
+  if (scope.kind !== "system" && scope.kind !== "org") {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  const resendObjects = context.get(BackofficeWorkerContext).runtime.objects.resend;
+  const resendStorageScope = scope.kind === "system" ? "admin" : scope.orgId;
+  const resendDo =
+    scope.kind === "system" ? resendObjects.singleton() : resendObjects.forOrg(resendStorageScope);
 
   try {
-    const configState = await resendDo.setAdminConfig(validation.payload, params.orgId, origin);
+    const configState = await resendDo.setAdminConfig(
+      validation.payload,
+      resendStorageScope,
+      origin,
+    );
     const webhook = configState.webhook;
     if (webhook && !webhook.ok) {
       return {
@@ -144,7 +162,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
 }
 
 export default function BackofficeOrganisationResendConfiguration() {
-  const { orgId, origin, configState, configLoading, configError, setConfigState, setConfigError } =
+  const { origin, scope, configState, configLoading, configError, setConfigState, setConfigError } =
     useOutletContext<ResendLayoutContext>();
   const [currentStep, setCurrentStep] = useState(0);
   const actionData = useActionData<typeof action>();
@@ -159,7 +177,9 @@ export default function BackofficeOrganisationResendConfiguration() {
 
   const isConfigured = Boolean(configState?.configured);
   const webhookBaseUrl = formState.webhookBaseUrl.trim();
-  const webhookUrl = `${webhookBaseUrl.replace(/\/+$/, "")}/api/resend/${orgId}/webhook`;
+  const resendScopeSegment =
+    scope.kind === "system" ? "admin" : backofficeContextScopeSinglePathSegment(scope);
+  const webhookUrl = `${webhookBaseUrl.replace(/\/+$/, "")}/api/resend/${resendScopeSegment}/webhook`;
   const webhookBaseUrlError = validateRequiredUrl(
     formState.webhookBaseUrl.trim(),
     "Webhook base URL",

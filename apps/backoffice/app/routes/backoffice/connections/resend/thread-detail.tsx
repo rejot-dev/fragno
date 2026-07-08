@@ -6,6 +6,10 @@ import type { ResendThreadMessage, ResendThreadReplyInput } from "@fragno-dev/re
 
 import { FormField } from "@/components/backoffice";
 
+import {
+  resolveAuthenticatedIntegrationContext,
+  resolveScopeFromRouteParams,
+} from "../../integrations/scope";
 import type { Route } from "./+types/thread-detail";
 import { fetchResendThreadDetail, replyToResendThread } from "./data";
 import { formatTimestamp } from "./shared";
@@ -49,11 +53,12 @@ const formatAddressList = (value?: string[] | null) => {
 const getMessageBody = (message: ResendThreadMessage) => message.text ?? message.html ?? "—";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId || !params.threadId) {
+  if (!params.threadId) {
     throw new Response("Not Found", { status: 404 });
   }
+  const scope = resolveScopeFromRouteParams(params);
 
-  const result = await fetchResendThreadDetail(request, context, params.orgId, params.threadId, {
+  const result = await fetchResendThreadDetail(request, context, scope, params.threadId, {
     order: "desc",
     pageSize: 100,
   });
@@ -67,9 +72,17 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
-  if (!params.orgId || !params.threadId) {
+  if (!params.threadId) {
     throw new Response("Not Found", { status: 404 });
   }
+  const integration = await resolveAuthenticatedIntegrationContext({
+    request,
+    context,
+    params,
+    integration: "resend",
+    allowedScopes: ["org", "system"],
+  });
+  const scope = integration.scope;
 
   const formData = await request.formData();
   const getValue = (key: string) => {
@@ -104,13 +117,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     html: html || undefined,
   };
 
-  const result = await replyToResendThread(
-    request,
-    context,
-    params.orgId,
-    params.threadId,
-    payload,
-  );
+  const result = await replyToResendThread(request, context, scope, params.threadId, payload);
   if (result.error) {
     return {
       ok: false,

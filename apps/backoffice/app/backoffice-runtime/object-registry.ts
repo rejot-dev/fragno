@@ -241,9 +241,9 @@ export const backofficeObjectScopePolicy = {
 
   AUTOMATIONS: ["singleton", "org", "user", "project"],
 
-  TELEGRAM: ["singleton", "org", "user"],
+  TELEGRAM: ["singleton", "org", "user", "project"],
   OTP: ["org"],
-  RESEND: ["org"],
+  RESEND: ["singleton", "org"],
   RESON8: ["org"],
   MCP: ["org", "user", "project"],
   UPLOAD: ["org", "user", "project"],

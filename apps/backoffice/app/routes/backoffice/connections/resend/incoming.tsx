@@ -2,6 +2,7 @@ import { Link, Outlet, redirect, useLoaderData, useOutletContext, useParams } fr
 
 import type { ResendReceivedEmailSummary } from "@fragno-dev/resend-fragment";
 
+import { resolveScopeFromRouteParams } from "../../integrations/scope";
 import type { Route } from "./+types/incoming";
 import { fetchResendConfig, fetchResendReceivedEmails } from "./data";
 import { formatTimestamp, type ResendLayoutContext } from "./shared";
@@ -21,11 +22,9 @@ export type ResendIncomingOutletContext = {
 };
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const scope = resolveScopeFromRouteParams(params);
 
-  const { configState, configError } = await fetchResendConfig(context, params.orgId);
+  const { configState, configError } = await fetchResendConfig(context, scope);
   if (configError) {
     return {
       configError,
@@ -37,13 +36,15 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
 
   if (!configState?.configured) {
-    return redirect(`/backoffice/connections/resend/${params.orgId}/configuration`);
+    return redirect(
+      `${new URL(request.url).pathname.replace(/\/(?:domains|threads|incoming|outgoing)(?:\/.*)?$/u, "")}/configuration`,
+    );
   }
 
   const { emails, cursor, hasNextPage, incomingError } = await fetchResendReceivedEmails(
     request,
     context,
-    params.orgId,
+    scope,
     { order: "desc", pageSize: 50 },
   );
 
@@ -58,10 +59,10 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
 export default function BackofficeOrganisationResendIncoming() {
   const { emails, configError, incomingError, hasNextPage } = useLoaderData<typeof loader>();
-  const { orgId } = useOutletContext<ResendLayoutContext>();
+  const { basePath: integrationBasePath } = useOutletContext<ResendLayoutContext>();
   const { emailId } = useParams();
   const selectedEmailId = emailId ?? null;
-  const basePath = `/backoffice/connections/resend/${orgId}/incoming`;
+  const basePath = `${integrationBasePath}/incoming`;
   const isDetailRoute = Boolean(selectedEmailId);
 
   if (configError) {

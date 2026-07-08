@@ -32,14 +32,14 @@ describe("telegram attachment download route", () => {
 
     const response = await loader(
       createLoaderArgs(
-        "https://example.com/backoffice/connections/telegram/org_123/attachment-download?fileId=file-1&kind=voice",
+        "https://example.com/backoffice/automations/org/org_123/integrations/telegram/attachment-download?fileId=file-1&kind=voice",
       ),
     );
 
     expect(response).toBeInstanceOf(Response);
     assert(response.status === 302);
     expect(response.headers.get("Location")).toBe(
-      `https://example.com${buildBackofficeLoginPath("/backoffice/connections/telegram/org_123/attachment-download?fileId=file-1&kind=voice")}`,
+      `https://example.com${buildBackofficeLoginPath("/backoffice/automations/org/org_123/integrations/telegram/attachment-download?fileId=file-1&kind=voice")}`,
     );
   });
 
@@ -57,7 +57,7 @@ describe("telegram attachment download route", () => {
 
     const response = await loader(
       createLoaderArgs(
-        "https://example.com/backoffice/connections/telegram/org_123/attachment-download?fileId=file-1&kind=voice",
+        "https://example.com/backoffice/automations/org/org_123/integrations/telegram/attachment-download?fileId=file-1&kind=voice",
       ),
     );
 
@@ -84,7 +84,7 @@ describe("telegram attachment download route", () => {
 
     const response = await loader(
       createLoaderArgs(
-        "https://example.com/backoffice/connections/telegram/org_123/attachment-download?fileId=file-1&kind=document&filename=Quarterly%20Report.pdf",
+        "https://example.com/backoffice/automations/org/org_123/integrations/telegram/attachment-download?fileId=file-1&kind=document&filename=Quarterly%20Report.pdf",
       ),
     );
 
@@ -109,7 +109,7 @@ describe("telegram attachment download route", () => {
 
     const response = await loader(
       createLoaderArgs(
-        "https://example.com/backoffice/connections/telegram/org_123/attachment-download?fileId=file%2Fwith%20spaces&kind=voice",
+        "https://example.com/backoffice/automations/org/org_123/integrations/telegram/attachment-download?fileId=file%2Fwith%20spaces&kind=voice",
       ),
     );
 
@@ -134,7 +134,7 @@ describe("telegram attachment download route", () => {
 
     const response = await loader(
       createLoaderArgs(
-        "https://example.com/backoffice/connections/telegram/org_123/attachment-download?fileId=file-1&kind=photo&disposition=inline",
+        "https://example.com/backoffice/automations/org/org_123/integrations/telegram/attachment-download?fileId=file-1&kind=photo&disposition=inline",
       ),
     );
 
@@ -152,7 +152,7 @@ describe("telegram attachment download route", () => {
     await expect(
       loader(
         createLoaderArgs(
-          "https://example.com/backoffice/connections/telegram/org_123/attachment-download?fileId=file-1&kind=voice",
+          "https://example.com/backoffice/automations/org/org_123/integrations/telegram/attachment-download?fileId=file-1&kind=voice",
         ),
       ),
     ).rejects.toMatchObject({
@@ -180,8 +180,18 @@ describe("telegram attachment download route", () => {
 const createLoaderArgs = (url: string) =>
   ({
     request: new Request(url),
-    context: {} as never,
-    params: { orgId: "org_123" },
+    context: {
+      get: () => ({
+        runtime: {
+          objects: {
+            telegram: {
+              for: () => getTelegramDurableObjectMock(),
+            },
+          },
+        },
+      }),
+    } as never,
+    params: { scopeKind: "org", scopeId: "org_123" },
   }) as Parameters<typeof loader>[0];
 
 const createAuthMe = () => ({

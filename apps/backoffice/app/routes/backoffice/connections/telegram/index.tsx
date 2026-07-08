@@ -82,7 +82,7 @@ export default function BackofficeConnectionsTelegram() {
 
               <div className="mt-4">
                 <Link
-                  to={`/backoffice/connections/telegram/${organization.id}`}
+                  to={`/backoffice/automations/org/${organization.id}/integrations/telegram`}
                   className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
                 >
                   Manage Telegram

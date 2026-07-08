@@ -5,6 +5,7 @@ import type { ResendSendEmailInput, ResendThreadMutationOutput } from "@fragno-d
 
 import { FormContainer, FormField } from "@/components/backoffice";
 
+import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope";
 import type { Route } from "./+types/thread-start";
 import { createResendThread } from "./data";
 import type { ResendThreadsOutletContext } from "./threads";
@@ -38,9 +39,14 @@ const parseOptionalValue = (value: string) => {
 };
 
 export async function action({ request, params, context }: Route.ActionArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const integration = await resolveAuthenticatedIntegrationContext({
+    request,
+    context,
+    params,
+    integration: "resend",
+    allowedScopes: ["org", "system"],
+  });
+  const scope = integration.scope;
 
   const formData = await request.formData();
   const getValue = (key: string) => {
@@ -116,7 +122,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     scheduledIn,
   };
 
-  const result = await createResendThread(request, context, params.orgId, payload);
+  const result = await createResendThread(request, context, scope, payload);
   if (result.error || !result.result || !result.result.thread.id) {
     return {
       ok: false,

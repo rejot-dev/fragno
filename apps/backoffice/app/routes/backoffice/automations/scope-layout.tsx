@@ -156,6 +156,9 @@ const currentTabFromPath = (pathname: string): AutomationTab => {
   if (segments.includes("mcp")) {
     return "mcp";
   }
+  if (segments.includes("integrations")) {
+    return "integrations";
+  }
   if (segments.includes("router")) {
     return "router";
   }

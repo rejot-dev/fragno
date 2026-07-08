@@ -36,14 +36,16 @@ export const getTelegramAttachmentOriginalFilename = (
   }
 };
 
-export const buildTelegramAttachmentPath = (
-  orgId: string,
-  input: {
-    fileId: string;
-    kind: TelegramAttachment["kind"];
-    filename?: string;
-    disposition?: "inline" | "attachment";
-  },
+type TelegramAttachmentPathInput = {
+  fileId: string;
+  kind: TelegramAttachment["kind"];
+  filename?: string;
+  disposition?: "inline" | "attachment";
+};
+
+export const buildTelegramAttachmentPathForBase = (
+  basePath: string,
+  input: TelegramAttachmentPathInput,
 ): string => {
   const params = new URLSearchParams({
     fileId: input.fileId,
@@ -56,24 +58,26 @@ export const buildTelegramAttachmentPath = (
     params.set("filename", filename);
   }
 
-  return `/backoffice/connections/telegram/${orgId}/attachment-download?${params.toString()}`;
+  return `${basePath.replace(/\/+$/u, "")}/attachment-download?${params.toString()}`;
 };
 
+export const buildTelegramAttachmentPath = buildTelegramAttachmentPathForBase;
+
 export const buildTelegramAttachmentDownloadPath = (
-  orgId: string,
+  basePath: string,
   attachment: TelegramAttachment,
 ): string =>
-  buildTelegramAttachmentPath(orgId, {
+  buildTelegramAttachmentPathForBase(basePath, {
     fileId: getTelegramAttachmentDownloadFileId(attachment),
     kind: attachment.kind,
     filename: getTelegramAttachmentOriginalFilename(attachment),
   });
 
 export const buildTelegramAttachmentInlinePath = (
-  orgId: string,
+  basePath: string,
   attachment: TelegramAttachment,
 ): string =>
-  buildTelegramAttachmentPath(orgId, {
+  buildTelegramAttachmentPathForBase(basePath, {
     fileId: attachment.fileId,
     kind: attachment.kind,
     filename: getTelegramAttachmentOriginalFilename(attachment),

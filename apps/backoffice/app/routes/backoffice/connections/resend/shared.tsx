@@ -3,9 +3,12 @@ import { Link, isRouteErrorResponse } from "react-router";
 
 import type { ResendDomain } from "@fragno-dev/resend-fragment";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 
+import type { IntegrationScopeSwitchOption } from "../../integrations/scope";
+import { IntegrationScopeBreadcrumbSelector } from "../../integrations/scope-selector";
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "../../route-errors";
 
 type BackofficeOrganisation = AuthMeData["organizations"][number]["organization"];
@@ -29,12 +32,17 @@ export type ResendConfigState = {
 };
 
 export type ResendLayoutContext = {
-  orgId: string;
   origin: string;
-  organisation: BackofficeOrganisation;
+  organisation: BackofficeOrganisation | null;
+  scope: BackofficeContextScope;
+  scopeSegment: string;
+  label: string;
+  basePath: string;
+  integrationsPath: string;
   configState: ResendConfigState | null;
   configLoading: boolean;
   configError: string | null;
+  scopeOptions: IntegrationScopeSwitchOption[];
   setConfigState: Dispatch<SetStateAction<ResendConfigState | null>>;
   setConfigError: Dispatch<SetStateAction<string | null>>;
 };
@@ -71,29 +79,36 @@ export const formatResendCapability = (value: ResendDomain["capabilities"]["send
   value === "enabled" ? "Enabled" : "Disabled";
 
 export function ResendHeader({
-  orgId,
   organisationName,
+  integrationsPath,
+  scopeOptions,
 }: {
-  orgId: string;
   organisationName?: string | null;
+  integrationsPath: string;
+  scopeOptions: IntegrationScopeSwitchOption[];
 }) {
+  const scopeLabel = organisationName ?? "Scope";
+
   return (
     <BackofficePageHeader
       breadcrumbs={[
         { label: "Backoffice", to: "/backoffice" },
-        { label: "Connections", to: "/backoffice/connections" },
-        { label: "Resend", to: "/backoffice/connections/resend" },
-        { label: organisationName ?? orgId },
+        { label: "Automations", to: "/backoffice/automations" },
+        {
+          label: <IntegrationScopeBreadcrumbSelector label={scopeLabel} options={scopeOptions} />,
+        },
+        { label: "Integrations", to: integrationsPath },
+        { label: "Resend" },
       ]}
       eyebrow="Integrations"
-      title={`Resend for ${organisationName ?? orgId}`}
+      title={`Resend for ${scopeLabel}`}
       description="Connect Resend to send and receive email, inspect domains, manage threads, and monitor delivery state."
       actions={
         <Link
-          to="/backoffice/connections/resend"
+          to={integrationsPath}
           className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
         >
-          Back to Resend
+          Back to integrations
         </Link>
       }
     />
@@ -101,15 +116,14 @@ export function ResendHeader({
 }
 
 export function ResendTabs({
-  orgId,
+  basePath,
   activeTab,
   isConfigured,
 }: {
-  orgId: string;
+  basePath: string;
   activeTab: ResendTab;
   isConfigured: boolean;
 }) {
-  const basePath = `/backoffice/connections/resend/${orgId}`;
   const tabs = [
     {
       id: "threads" as const,
@@ -177,10 +191,9 @@ export function ResendTabs({
 
 export function ResendErrorBoundary({
   error,
-  params,
 }: {
   error: unknown;
-  params: { orgId?: string };
+  params: { scopeKind?: string; scopeId?: string };
 }) {
   let statusCode = 500;
   let message = "An unexpected error occurred.";
@@ -195,13 +208,17 @@ export function ResendErrorBoundary({
 
   message = getRouteErrorMessage(error, message);
 
-  if (statusCode === 404 && params.orgId && isOrganisationNotFoundError(error)) {
-    message = `Organisation '${params.orgId}' could not be found.`;
+  if (statusCode === 404 && isOrganisationNotFoundError(error)) {
+    message = "Organisation for this scope could not be found.";
   }
 
   return (
     <div className="space-y-4">
-      <ResendHeader orgId={params.orgId ?? "organisation"} organisationName="Error" />
+      <ResendHeader
+        integrationsPath="/backoffice/automations"
+        organisationName="Error"
+        scopeOptions={[]}
+      />
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
         <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           {statusCode} · {statusText}

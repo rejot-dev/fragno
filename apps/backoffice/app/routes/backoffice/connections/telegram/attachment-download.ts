@@ -1,9 +1,10 @@
 import type { RouterContextProvider } from "react-router";
 
 import { getAuthMe } from "@/fragno/auth/auth-server";
-import { getTelegramDurableObject } from "@/worker-runtime/durable-objects";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
+import { resolveIntegrationContext } from "../../integrations/scope";
 
 const DEFAULT_DOWNLOAD_NAME = "telegram-attachment";
 
@@ -13,13 +14,9 @@ export async function loader({
   context,
 }: {
   request: Request;
-  params: { orgId?: string };
+  params: { scopeKind?: string; scopeId?: string };
   context: Readonly<RouterContextProvider>;
 }) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
   const requestUrl = new URL(request.url);
   const fileId = requestUrl.searchParams.get("fileId")?.trim() ?? "";
   const attachmentKind = requestUrl.searchParams.get("kind")?.trim() ?? "";
@@ -36,13 +33,10 @@ export async function loader({
     return Response.redirect(new URL(buildBackofficeLoginPath(returnTo), request.url), 302);
   }
 
-  const organisation =
-    me.organizations.find((entry) => entry.organization.id === params.orgId)?.organization ?? null;
-  if (!organisation) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const telegramDo = getTelegramDurableObject(context, params.orgId);
+  const integration = resolveIntegrationContext({ params, me, integration: "telegram" });
+  const telegramDo = context
+    .get(BackofficeWorkerContext)
+    .runtime.objects.telegram.for(integration.scope);
   const metadata = await telegramDo.getAutomationFile({ fileId });
   const downloadResponse = await telegramDo.downloadAutomationFile({ fileId });
   const filename = buildDownloadFilename(

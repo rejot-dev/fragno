@@ -1,9 +1,10 @@
 import { Drawer } from "@base-ui/react/drawer";
 import { Separator } from "@base-ui/react/separator";
+import type { ReactNode } from "react";
 import { Link } from "react-router";
 
 export type BreadcrumbItem = {
-  label: string;
+  label: ReactNode;
   to?: string;
 };
 
@@ -32,7 +33,7 @@ export function BackofficeBreadcrumbs({
         {items.map((item, index) => {
           const isLast = index === items.length - 1;
           return (
-            <li key={`${item.label}-${index}`} className="flex items-center gap-2">
+            <li key={`${String(item.label)}-${index}`} className="flex items-center gap-2">
               {item.to && !isLast ? (
                 <Link to={item.to} className="transition-colors hover:text-[var(--bo-fg)]">
                   {item.label}

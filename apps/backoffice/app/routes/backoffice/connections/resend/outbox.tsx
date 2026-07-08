@@ -10,6 +10,7 @@ import {
 
 import type { ResendEmailSummary } from "@fragno-dev/resend-fragment";
 
+import { resolveScopeFromRouteParams } from "../../integrations/scope";
 import type { Route } from "./+types/outbox";
 import { fetchResendConfig, fetchResendOutbox } from "./data";
 import { formatTimestamp, type ResendConfigState, type ResendLayoutContext } from "./shared";
@@ -27,16 +28,13 @@ export type ResendOutgoingOutletContext = {
   selectedEmailId: string | null;
   isSendRoute: boolean;
   basePath: string;
-  orgId: string;
   configState: ResendConfigState | null;
 };
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const scope = resolveScopeFromRouteParams(params);
 
-  const { configState, configError } = await fetchResendConfig(context, params.orgId);
+  const { configState, configError } = await fetchResendConfig(context, scope);
   if (configError) {
     return {
       configError,
@@ -48,13 +46,15 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
 
   if (!configState?.configured) {
-    return redirect(`/backoffice/connections/resend/${params.orgId}/configuration`);
+    return redirect(
+      `${new URL(request.url).pathname.replace(/\/(?:domains|threads|incoming|outgoing)(?:\/.*)?$/u, "")}/configuration`,
+    );
   }
 
   const { emails, cursor, hasNextPage, outboxError } = await fetchResendOutbox(
     request,
     context,
-    params.orgId,
+    scope,
     { order: "desc", pageSize: 50 },
   );
 
@@ -69,11 +69,11 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
 export default function BackofficeOrganisationResendOutbox() {
   const { emails, configError, outboxError, hasNextPage } = useLoaderData<typeof loader>();
-  const { orgId, configState } = useOutletContext<ResendLayoutContext>();
+  const { basePath: integrationBasePath, configState } = useOutletContext<ResendLayoutContext>();
   const { emailId } = useParams();
   const location = useLocation();
   const selectedEmailId = emailId ?? null;
-  const basePath = `/backoffice/connections/resend/${orgId}/outgoing`;
+  const basePath = `${integrationBasePath}/outgoing`;
   const isSendRoute = location.pathname.replace(/\/+$/, "").endsWith("/send");
   const isDetailRoute = Boolean(selectedEmailId || isSendRoute);
 
@@ -213,7 +213,6 @@ export default function BackofficeOrganisationResendOutbox() {
             selectedEmailId,
             isSendRoute,
             basePath,
-            orgId,
             configState,
           }}
         />

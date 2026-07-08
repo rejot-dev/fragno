@@ -36,7 +36,9 @@ export default function BackofficeConnections() {
         {CONNECTIONS.map((connection) => {
           const connectionLink =
             activeOrganizationId && connection.routeSegment
-              ? `/backoffice/connections/${connection.routeSegment}/${activeOrganizationId}`
+              ? ["telegram", "resend", "github"].includes(connection.routeSegment)
+                ? `/backoffice/automations/org/${activeOrganizationId}/integrations/${connection.routeSegment}`
+                : `/backoffice/connections/${connection.routeSegment}/${activeOrganizationId}`
               : null;
           const isAvailable = Boolean(connectionLink);
           return (

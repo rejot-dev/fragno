@@ -22,8 +22,9 @@ import type {
   ResendThreadSummary,
 } from "@fragno-dev/resend-fragment";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { ResendFragment } from "@/fragno/resend";
-import { getResendDurableObject } from "@/worker-runtime/durable-objects";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { ResendConfigState } from "./shared";
 
@@ -124,12 +125,28 @@ interface ResendRouteCaller {
   ): Promise<FragnoResponse<ResendThreadMutationOutput>>;
 }
 
+type ResendTarget = string | BackofficeContextScope;
+
+const getResendObject = (context: Readonly<RouterContextProvider>, target: ResendTarget) => {
+  const objects = context.get(BackofficeWorkerContext).runtime.objects;
+  if (typeof target === "string") {
+    return objects.resend.forOrg(target);
+  }
+  if (target.kind === "system") {
+    return objects.resend.singleton();
+  }
+  if (target.kind === "org" || target.kind === "project") {
+    return objects.resend.forOrg(target.orgId);
+  }
+  return objects.resend.forOrg(target.userId);
+};
+
 const createResendRouteCaller = (
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  target: ResendTarget,
 ): ResendRouteCaller => {
-  const resendDo = getResendDurableObject(context, orgId);
+  const resendDo = getResendObject(context, target);
   return createRouteCaller<ResendFragment>({
     baseUrl: request.url,
     mountRoute: "/api/resend",
@@ -210,10 +227,10 @@ type ResendReplyToThreadResult = {
 
 export async function fetchResendConfig(
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  target: ResendTarget,
 ): Promise<ResendConfigResult> {
   try {
-    const resendDo = getResendDurableObject(context, orgId);
+    const resendDo = getResendObject(context, target);
     const configState = await resendDo.getAdminConfig();
     return { configState, configError: null };
   } catch (error) {
@@ -227,10 +244,10 @@ export async function fetchResendConfig(
 export async function fetchResendDomains(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  target: ResendTarget,
 ): Promise<ResendDomainsResult> {
   try {
-    const callRoute = createResendRouteCaller(request, context, orgId);
+    const callRoute = createResendRouteCaller(request, context, target);
     const response = await callRoute("GET", "/domains");
 
     if (response.type === "json") {
@@ -274,11 +291,11 @@ export async function fetchResendDomains(
 export async function fetchResendDomainDetail(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  target: ResendTarget,
   domainId: string,
 ): Promise<ResendDomainDetailResult> {
   try {
-    const callRoute = createResendRouteCaller(request, context, orgId);
+    const callRoute = createResendRouteCaller(request, context, target);
     const response = await callRoute("GET", "/domains/:domainId", {
       pathParams: { domainId },
     });
@@ -306,11 +323,11 @@ export async function fetchResendDomainDetail(
 export async function sendResendEmail(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  target: ResendTarget,
   payload: ResendSendEmailInput,
 ): Promise<ResendSendEmailResult> {
   try {
-    const callRoute = createResendRouteCaller(request, context, orgId);
+    const callRoute = createResendRouteCaller(request, context, target);
     const response = await callRoute("POST", "/emails", { body: payload });
 
     if (response.type === "json") {
@@ -336,11 +353,11 @@ export async function sendResendEmail(
 export async function fetchResendEmailDetail(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  target: ResendTarget,
   emailId: string,
 ): Promise<ResendEmailDetailResult> {
   try {
-    const callRoute = createResendRouteCaller(request, context, orgId);
+    const callRoute = createResendRouteCaller(request, context, target);
     const response = await callRoute("GET", "/emails/:emailId", {
       pathParams: { emailId },
     });
@@ -368,7 +385,7 @@ export async function fetchResendEmailDetail(
 export async function fetchResendOutbox(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  target: ResendTarget,
   options: {
     order?: "asc" | "desc";
     pageSize?: number;
@@ -377,7 +394,7 @@ export async function fetchResendOutbox(
   } = {},
 ): Promise<ResendOutboxResult> {
   try {
-    const callRoute = createResendRouteCaller(request, context, orgId);
+    const callRoute = createResendRouteCaller(request, context, target);
     const requestedPageSize =
       typeof options.pageSize === "number" && Number.isFinite(options.pageSize)
         ? options.pageSize
@@ -433,7 +450,7 @@ export async function fetchResendOutbox(
 export async function fetchResendReceivedEmails(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  target: ResendTarget,
   options: {
     order?: "asc" | "desc";
     pageSize?: number;
@@ -441,7 +458,7 @@ export async function fetchResendReceivedEmails(
   } = {},
 ): Promise<ResendReceivedEmailsResult> {
   try {
-    const callRoute = createResendRouteCaller(request, context, orgId);
+    const callRoute = createResendRouteCaller(request, context, target);
     const requestedPageSize =
       typeof options.pageSize === "number" && Number.isFinite(options.pageSize)
         ? options.pageSize
@@ -495,11 +512,11 @@ export async function fetchResendReceivedEmails(
 export async function fetchResendReceivedEmailDetail(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  target: ResendTarget,
   emailId: string,
 ): Promise<ResendReceivedEmailDetailResult> {
   try {
-    const callRoute = createResendRouteCaller(request, context, orgId);
+    const callRoute = createResendRouteCaller(request, context, target);
     const response = await callRoute("GET", "/received-emails/:emailId", {
       pathParams: { emailId },
     });
@@ -527,7 +544,7 @@ export async function fetchResendReceivedEmailDetail(
 export async function fetchResendThreads(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  target: ResendTarget,
   options: {
     order?: "asc" | "desc";
     pageSize?: number;
@@ -535,7 +552,7 @@ export async function fetchResendThreads(
   } = {},
 ): Promise<ResendThreadsResult> {
   try {
-    const callRoute = createResendRouteCaller(request, context, orgId);
+    const callRoute = createResendRouteCaller(request, context, target);
     const requestedPageSize =
       typeof options.pageSize === "number" && Number.isFinite(options.pageSize)
         ? options.pageSize
@@ -589,7 +606,7 @@ export async function fetchResendThreads(
 export async function fetchResendThreadDetail(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  target: ResendTarget,
   threadId: string,
   options: {
     order?: "asc" | "desc";
@@ -598,7 +615,7 @@ export async function fetchResendThreadDetail(
   } = {},
 ): Promise<ResendThreadDetailResult> {
   try {
-    const callRoute = createResendRouteCaller(request, context, orgId);
+    const callRoute = createResendRouteCaller(request, context, target);
     const requestedPageSize =
       typeof options.pageSize === "number" && Number.isFinite(options.pageSize)
         ? options.pageSize
@@ -688,11 +705,11 @@ export async function fetchResendThreadDetail(
 export async function createResendThread(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  target: ResendTarget,
   payload: ResendSendEmailInput,
 ): Promise<ResendCreateThreadResult> {
   try {
-    const callRoute = createResendRouteCaller(request, context, orgId);
+    const callRoute = createResendRouteCaller(request, context, target);
     const response = await callRoute("POST", "/threads", { body: payload });
 
     if (response.type === "json") {
@@ -724,12 +741,12 @@ export async function createResendThread(
 export async function replyToResendThread(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  target: ResendTarget,
   threadId: string,
   payload: ResendThreadReplyInput,
 ): Promise<ResendReplyToThreadResult> {
   try {
-    const callRoute = createResendRouteCaller(request, context, orgId);
+    const callRoute = createResendRouteCaller(request, context, target);
     const response = await callRoute("POST", "/threads/:threadId/reply", {
       pathParams: { threadId },
       body: payload,
