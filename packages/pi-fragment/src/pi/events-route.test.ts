@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, assert } from "vitest";
 
-import { workflowsSchema } from "@fragno-dev/workflows";
+import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
 import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
 
@@ -344,9 +344,9 @@ describe("pi-fragment /events route", () => {
       message: assistantMessage("partial while waiting"),
     } as AgentEvent;
 
-    const uow = harness.workflows.db
-      .createUnitOfWork("seed-waiting-step-emission")
-      .forSchema(workflowsSchema);
+    const baseUow = harness.workflows.db.createUnitOfWork("seed-waiting-step-emission");
+    baseUow.registerSchema(workflowsSchema, workflowsSchema.name);
+    const uow = baseUow.forSchema(workflowsSchema);
     uow.create("workflow_step", {
       instanceRef,
       stepKey,
@@ -373,7 +373,7 @@ describe("pi-fragment /events route", () => {
       actor: "user",
       payload: inFlightEvent,
     });
-    const { success } = await uow.executeMutations();
+    const { success } = await baseUow.executeMutations();
     if (!success) {
       throw new Error("Failed to seed waiting step emission.");
     }
