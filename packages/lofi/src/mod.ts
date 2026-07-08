@@ -37,7 +37,12 @@ export type {
 } from "./types";
 
 export { defineLocalProjection, matchMutation } from "./local/projection";
-export { decodeOutboxPayload, outboxMutationsToUowOperations, resolveOutboxRefs } from "./outbox";
+export {
+  decodeOutboxPayload,
+  outboxMutationsToUowOperations,
+  resolveOutboxRefs,
+  uowOperationsToLofiMutations,
+} from "./outbox";
 export { LofiClient } from "./client";
 export { IndexedDbAdapter } from "./indexeddb/adapter";
 export { InMemoryLofiAdapter } from "./adapters/in-memory/adapter";
@@ -56,6 +61,9 @@ export type {
   LofiQueryState,
   LofiQueryStore,
   LofiQueryStoreOptions,
+  LofiQueryStoreResolvedRetrieve,
+  LofiQueryStoreRetrieveContext,
+  LofiQueryStoreRetrieveUnit,
   LofiRuntime,
   LofiRuntimeOptions,
   LofiRuntimeRegistry,

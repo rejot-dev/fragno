@@ -1,3 +1,3 @@
 export { decodeOutboxPayload } from "./decode";
 export { resolveOutboxRefs } from "./refs";
-export { outboxMutationsToUowOperations } from "./uow";
+export { outboxMutationsToUowOperations, uowOperationsToLofiMutations } from "./uow";
