@@ -2,6 +2,50 @@ import { z } from "zod";
 
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 
+const githubUserSchema = z.looseObject({
+  id: z.union([z.number(), z.string()]),
+  login: z.string().min(1),
+  type: z.string().optional(),
+  html_url: z.string().optional(),
+});
+
+const githubRepositorySchema = z.looseObject({
+  id: z.union([z.number(), z.string()]),
+  name: z.string().min(1),
+  full_name: z.string().min(1),
+  private: z.boolean(),
+  html_url: z.string().optional(),
+  default_branch: z.string().nullable().optional(),
+  owner: githubUserSchema.nullable().optional(),
+});
+
+const githubIssueSchema = z.looseObject({
+  id: z.union([z.number(), z.string()]),
+  number: z.number(),
+  title: z.string(),
+  state: z.string().min(1),
+  html_url: z.string().optional(),
+  user: githubUserSchema.nullable().optional(),
+});
+
+const githubPullRequestRefSchema = z.looseObject({
+  ref: z.string().min(1),
+  sha: z.string().min(1),
+});
+
+const githubPullRequestSchema = z.looseObject({
+  id: z.union([z.number(), z.string()]),
+  number: z.number(),
+  title: z.string(),
+  state: z.string().min(1),
+  draft: z.boolean().optional(),
+  merged: z.boolean().optional(),
+  html_url: z.string().optional(),
+  user: githubUserSchema.nullable().optional(),
+  head: githubPullRequestRefSchema.optional(),
+  base: githubPullRequestRefSchema.optional(),
+});
+
 const githubActorSchema = z.object({
   scope: z.literal("external"),
   source: z.literal("github"),
@@ -27,10 +71,10 @@ const githubPayloadSchema = z.object({
   githubEvent: z.string().min(1),
   action: z.string().nullable(),
   installationId: z.string().min(1),
-  sender: z.unknown().nullable().optional(),
-  repository: z.unknown().nullable().optional(),
-  issue: z.unknown().nullable().optional(),
-  pullRequest: z.unknown().nullable().optional(),
+  sender: githubUserSchema.nullable().optional(),
+  repository: githubRepositorySchema.nullable().optional(),
+  issue: githubIssueSchema.nullable().optional(),
+  pullRequest: githubPullRequestSchema.nullable().optional(),
   raw: z.record(z.string(), z.unknown()),
 });
 
@@ -75,7 +119,8 @@ export const githubCapability: BackofficeCapability = {
         githubEvent: "pull_request",
         action: "opened",
         installationId: "123456",
-        repository: { id: 1, full_name: "acme/project" },
+        repository: { id: 1, name: "project", full_name: "acme/project", private: false },
+        pullRequest: { id: 10, number: 7, title: "Add webhook support", state: "open" },
         sender: { id: 42, login: "octocat" },
         raw: {},
       },
