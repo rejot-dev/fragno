@@ -2,11 +2,9 @@ import { z } from "zod";
 
 import { toExternalId } from "../organization/utils";
 
-export const credentialSeedSchema = z
-  .object({
-    activeOrganizationId: z.string().trim().min(1).optional(),
-  })
-  .strict();
+export const credentialSeedSchema = z.strictObject({
+  activeOrganizationId: z.string().trim().min(1).optional(),
+});
 
 export type CredentialSeedInput = z.input<typeof credentialSeedSchema>;
 export type CredentialSeed = z.output<typeof credentialSeedSchema>;

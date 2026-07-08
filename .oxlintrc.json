@@ -6,7 +6,8 @@
     "./packages-private/oxlint-plugins/fragment-dev-browser-exports.js",
     "./packages-private/oxlint-plugins/docs-icons-sync.js",
     "./packages-private/oxlint-plugins/vitest-assert-json-response.js",
-    "./packages-private/oxlint-plugins/zod-inline-schema-definitions.js"
+    "./packages-private/oxlint-plugins/zod-inline-schema-definitions.js",
+    "./packages-private/oxlint-plugins/zod-v4-object-factories.js"
   ],
   "env": {
     "builtin": true
@@ -92,6 +93,7 @@
     "docs-icons-sync/used-icons": "error",
     "vitest-assert-json-response/assert-json-response": "error",
     "zod-inline-schema-definitions/inline-one-line": "error",
+    "zod-v4-object-factories/prefer-object-factories": "error",
     "for-direction": "error",
     "no-async-promise-executor": "error",
     "no-case-declarations": "error",

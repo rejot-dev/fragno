@@ -18,93 +18,77 @@ type InteractiveChatWorkflowParams = {
   initialMessages?: AgentMessage[];
 };
 
-const textContentSchema = z
-  .object({
-    type: z.literal("text"),
-    text: z.string(),
-    textSignature: z.string().optional(),
-  })
-  .passthrough();
+const textContentSchema = z.looseObject({
+  type: z.literal("text"),
+  text: z.string(),
+  textSignature: z.string().optional(),
+});
 
-const imageContentSchema = z
-  .object({
-    type: z.literal("image"),
-    data: z.string(),
-    mimeType: z.string(),
-  })
-  .passthrough();
+const imageContentSchema = z.looseObject({
+  type: z.literal("image"),
+  data: z.string(),
+  mimeType: z.string(),
+});
 
-const thinkingContentSchema = z
-  .object({
-    type: z.literal("thinking"),
-    thinking: z.string(),
-    thinkingSignature: z.string().optional(),
-    redacted: z.boolean().optional(),
-  })
-  .passthrough();
+const thinkingContentSchema = z.looseObject({
+  type: z.literal("thinking"),
+  thinking: z.string(),
+  thinkingSignature: z.string().optional(),
+  redacted: z.boolean().optional(),
+});
 
-const toolCallSchema = z
-  .object({
-    type: z.literal("toolCall"),
-    id: z.string(),
-    name: z.string(),
-    arguments: z.record(z.string(), z.unknown()),
-    thoughtSignature: z.string().optional(),
-  })
-  .passthrough();
+const toolCallSchema = z.looseObject({
+  type: z.literal("toolCall"),
+  id: z.string(),
+  name: z.string(),
+  arguments: z.record(z.string(), z.unknown()),
+  thoughtSignature: z.string().optional(),
+});
 
-const usageSchema = z
-  .object({
+const usageSchema = z.looseObject({
+  input: z.number(),
+  output: z.number(),
+  cacheRead: z.number(),
+  cacheWrite: z.number(),
+  totalTokens: z.number(),
+  cost: z.object({
     input: z.number(),
     output: z.number(),
     cacheRead: z.number(),
     cacheWrite: z.number(),
-    totalTokens: z.number(),
-    cost: z.object({
-      input: z.number(),
-      output: z.number(),
-      cacheRead: z.number(),
-      cacheWrite: z.number(),
-      total: z.number(),
-    }),
-  })
-  .passthrough();
+    total: z.number(),
+  }),
+});
 
 const agentMessageShapeSchema = z.discriminatedUnion("role", [
-  z
-    .object({
-      role: z.literal("user"),
-      content: z.union([z.string(), z.array(z.union([textContentSchema, imageContentSchema]))]),
-      timestamp: z.number(),
-    })
-    .passthrough(),
-  z
-    .object({
-      role: z.literal("assistant"),
-      content: z.array(z.union([textContentSchema, thinkingContentSchema, toolCallSchema])),
-      api: z.string(),
-      provider: z.string(),
-      model: z.string(),
-      responseModel: z.string().optional(),
-      responseId: z.string().optional(),
-      diagnostics: z.array(z.unknown()).optional(),
-      usage: usageSchema,
-      stopReason: z.enum(["stop", "length", "toolUse", "error", "aborted"]),
-      errorMessage: z.string().optional(),
-      timestamp: z.number(),
-    })
-    .passthrough(),
-  z
-    .object({
-      role: z.literal("toolResult"),
-      toolCallId: z.string(),
-      toolName: z.string(),
-      content: z.array(z.union([textContentSchema, imageContentSchema])),
-      details: z.unknown().optional(),
-      isError: z.boolean(),
-      timestamp: z.number(),
-    })
-    .passthrough(),
+  z.looseObject({
+    role: z.literal("user"),
+    content: z.union([z.string(), z.array(z.union([textContentSchema, imageContentSchema]))]),
+    timestamp: z.number(),
+  }),
+  z.looseObject({
+    role: z.literal("assistant"),
+    content: z.array(z.union([textContentSchema, thinkingContentSchema, toolCallSchema])),
+    api: z.string(),
+    provider: z.string(),
+    model: z.string(),
+    responseModel: z.string().optional(),
+    responseId: z.string().optional(),
+    diagnostics: z.array(z.unknown()).optional(),
+    usage: usageSchema,
+    stopReason: z.enum(["stop", "length", "toolUse", "error", "aborted"]),
+    errorMessage: z.string().optional(),
+    timestamp: z.number(),
+  }),
+  z.looseObject({
+    role: z.literal("toolResult"),
+    toolCallId: z.string(),
+    toolName: z.string(),
+    content: z.array(z.union([textContentSchema, imageContentSchema])),
+    details: z.unknown().optional(),
+    isError: z.boolean(),
+    timestamp: z.number(),
+  }),
 ]);
 
 const agentMessageSchema = z.custom<AgentMessage>(
