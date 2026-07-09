@@ -1,4 +1,6 @@
-import { describe, expect, it, vi, assert } from "vitest";
+import { describe, expect, expectTypeOf, it, vi, assert } from "vitest";
+
+import { column, idColumn, schema } from "@fragno-dev/db/schema";
 
 import { InMemoryLofiAdapter } from "../adapters/in-memory/adapter";
 import { isLofiRuntimeBootstrapped, createLofiRuntime } from "./runtime";
@@ -47,6 +49,68 @@ describe("createLofiRuntime", () => {
     const users = await query.find("users", (b) => b.whereIndex("primary"));
     expect(users).toEqual([expect.objectContaining({ name: "Alice" })]);
 
+    unlisten();
+  });
+
+  it("runs typed local tx retrieves across schemas", async () => {
+    const projectSchema = schema("projects", (s) =>
+      s.addTable("projects", (t) =>
+        t.addColumn("id", idColumn()).addColumn("title", column("string")),
+      ),
+    );
+    const adapter = new InMemoryLofiAdapter({
+      endpointName: "app",
+      schemas: [reactiveTestSchema, projectSchema],
+    });
+    await adapter.applyMutations([
+      createUserMutation("user-a", "Alice"),
+      {
+        op: "create",
+        schema: projectSchema.name,
+        table: "projects",
+        externalId: "project-a",
+        values: { title: "Launch" },
+        versionstamp: "v-project-a",
+      },
+    ]);
+    const runtime = createLofiRuntime({
+      endpointName: "app",
+      adapter,
+      outboxUrl: "https://example.com/outbox",
+      fetch: (async () => new Response(JSON.stringify([]))) as typeof fetch,
+    });
+
+    const result = await runtime
+      .tx()
+      .retrieve(({ forSchema }) => ({
+        users: forSchema(reactiveTestSchema).find("users", (b) => b.whereIndex("primary")),
+        project: forSchema(projectSchema).findFirst("projects", (b) => b.whereIndex("primary")),
+      }))
+      .execute();
+
+    expectTypeOf(result.users[0]!.name).toEqualTypeOf<string>();
+    expectTypeOf(result.project?.title).toEqualTypeOf<string | undefined>();
+    expect(result.users.map((user) => user.name)).toEqual(["Alice"]);
+    assert(result.project?.title === "Launch");
+
+    const $summary = runtime
+      .store()
+      .retrieve(({ forSchema }) => ({
+        users: forSchema(reactiveTestSchema).find("users", (b) => b.whereIndex("primary")),
+        project: forSchema(projectSchema).findFirst("projects", (b) => b.whereIndex("primary")),
+      }))
+      .transformRetrieve(({ users, project }) => ({
+        names: users.map((user) => user.name),
+        projectTitle: project?.title ?? null,
+      }))
+      .withInitialData({ names: [] as string[], projectTitle: null as string | null });
+    expectTypeOf($summary.get().data).toEqualTypeOf<{
+      names: string[];
+      projectTitle: string | null;
+    }>();
+    const unlisten = $summary.subscribe(() => undefined);
+    await waitFor(() => $summary.get().synced);
+    expect($summary.get().data).toEqual({ names: ["Alice"], projectTitle: "Launch" });
     unlisten();
   });
 

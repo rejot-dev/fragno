@@ -55,7 +55,9 @@ export {
   createLofiQueryStore,
   createLofiRuntime,
   createLofiRuntimeRegistry,
+  createLofiRuntimeTx,
   isLofiRuntimeBootstrapped,
+  isLofiRuntimeTxBuilder,
 } from "./reactive";
 export type {
   LofiQueryState,
@@ -64,6 +66,9 @@ export type {
   LofiQueryStoreResolvedRetrieve,
   LofiQueryStoreRetrieveContext,
   LofiQueryStoreRetrieveUnit,
+  LofiRuntimeStoreBuilder,
+  LofiRuntimeStoreFactory,
+  LofiRuntimeStoreRetrieveBuilder,
   LofiRuntime,
   LofiRuntimeOptions,
   LofiRuntimeRegistry,
@@ -72,4 +77,11 @@ export type {
   LofiRuntimeStatus,
   LofiRuntimeStatusValue,
   LofiRuntimeSyncResult,
+  LofiRuntimeTxBuilder,
+  LofiRuntimeTxFactory,
+  LofiRuntimeTxResolved,
+  LofiRuntimeTxResult,
+  LofiRuntimeTxRetrieveContext,
+  LofiRuntimeTxSchemaRead,
+  LofiRuntimeTxTransformContext,
 } from "./reactive";

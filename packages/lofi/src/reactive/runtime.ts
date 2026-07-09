@@ -7,6 +7,8 @@ import type {
   LofiQueryableAdapter,
   LofiSyncResult,
 } from "../types";
+import { createLofiRuntimeStore, type LofiRuntimeStoreFactory } from "./query-store";
+import { createLofiRuntimeTx, type LofiRuntimeTxFactory } from "./tx";
 
 export type LofiRuntimeSource = {
   id: string;
@@ -81,6 +83,8 @@ export type LofiRuntime = {
   whenBootstrapped: () => Promise<void>;
   syncOnce: (sourceId?: string) => Promise<LofiRuntimeSyncResult>;
   refresh: () => void;
+  tx: LofiRuntimeTxFactory;
+  store: LofiRuntimeStoreFactory;
   addSource: (source: LofiRuntimeSource) => void;
   removeSource: (sourceId: string) => void;
 };
@@ -610,11 +614,15 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
     addSource(source);
   }
 
-  if (options.autoStart) {
-    start();
-  }
+  const tx: LofiRuntimeTxFactory = () =>
+    createLofiRuntimeTx({
+      adapter: options.adapter,
+      whenBootstrapped,
+    });
+  let runtime: LofiRuntime;
+  const store: LofiRuntimeStoreFactory = () => createLofiRuntimeStore(runtime);
 
-  return {
+  runtime = {
     endpointName: options.endpointName,
     adapter: options.adapter,
     $status,
@@ -626,9 +634,17 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
     whenBootstrapped,
     syncOnce,
     refresh,
+    tx,
+    store,
     addSource,
     removeSource,
   };
+
+  if (options.autoStart) {
+    start();
+  }
+
+  return runtime;
 };
 
 const createAbortError = (): Error => {
