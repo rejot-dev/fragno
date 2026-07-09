@@ -33,42 +33,22 @@
       "default": "./dist/node/fragment/index.js"
     },
     "./react": {
-      "development": {
-        "browser": "./dist/browser/fragment/client/react.js",
-        "default": "./src/fragment/client/react.ts"
-      },
       "types": "./dist/browser/fragment/client/react.d.ts",
       "default": "./dist/browser/fragment/client/react.js"
     },
     "./vue": {
-      "development": {
-        "browser": "./dist/browser/fragment/client/vue.js",
-        "default": "./src/fragment/client/vue.ts"
-      },
       "types": "./dist/browser/fragment/client/vue.d.ts",
       "default": "./dist/browser/fragment/client/vue.js"
     },
     "./svelte": {
-      "development": {
-        "browser": "./dist/browser/fragment/client/svelte.js",
-        "default": "./src/fragment/client/svelte.ts"
-      },
       "types": "./dist/browser/fragment/client/svelte.d.ts",
       "default": "./dist/browser/fragment/client/svelte.js"
     },
     "./solid": {
-      "development": {
-        "browser": "./dist/browser/fragment/client/solid.js",
-        "default": "./src/fragment/client/solid.ts"
-      },
       "types": "./dist/browser/fragment/client/solid.d.ts",
       "default": "./dist/browser/fragment/client/solid.js"
     },
     "./vanilla": {
-      "development": {
-        "browser": "./dist/browser/fragment/client/vanilla.js",
-        "default": "./src/fragment/client/vanilla.ts"
-      },
       "types": "./dist/browser/fragment/client/vanilla.d.ts",
       "default": "./dist/browser/fragment/client/vanilla.js"
     },
