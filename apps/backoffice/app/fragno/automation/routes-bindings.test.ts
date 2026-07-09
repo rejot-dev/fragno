@@ -554,6 +554,98 @@ describe("automation routes /events", () => {
   });
 });
 
+describe("automation routes /event-definitions", () => {
+  test("rejects event definition validation failures as a client error", async () => {
+    const response = await fragment.callRoute("POST", "/event-definitions", {
+      body: {
+        source: "custom",
+        eventType: "invalid.example",
+        label: "Invalid example",
+        enabled: true,
+        payloadSchema: {
+          type: "object",
+          required: ["thingId"],
+          properties: { thingId: { type: "string" } },
+        },
+        example: { thingId: 123 },
+      },
+    });
+
+    assert(response.type === "error");
+    assert(response.status === 400);
+    assert(response.error.code === "EVENT_DEFINITION_INVALID");
+  });
+
+  test("rejects dynamic definitions that shadow built-in catalog events", async () => {
+    const response = await fragment.callRoute("POST", "/event-definitions", {
+      body: {
+        source: "auth",
+        eventType: "organization.created",
+        label: "Shadowed event",
+        enabled: true,
+      },
+    });
+
+    assert(response.type === "error");
+    assert(response.status === 400);
+    assert(response.error.code === "EVENT_DEFINITION_INVALID");
+  });
+
+  test("rejects patch validation failures as a client error", async () => {
+    await fragment.callRoute("POST", "/event-definitions", {
+      body: {
+        source: "custom",
+        eventType: "invalid.patch",
+        label: "Invalid patch",
+        enabled: true,
+      },
+    });
+
+    const response = await fragment.callRoute("PATCH", "/event-definitions/:source/:eventType", {
+      pathParams: { source: "custom", eventType: "invalid.patch" },
+      body: {
+        payloadSchema: {
+          type: "object",
+          required: ["thingId"],
+          properties: { thingId: { type: "string" } },
+        },
+        example: { thingId: 123 },
+      },
+    });
+
+    assert(response.type === "error");
+    assert(response.status === 400);
+    assert(response.error.code === "EVENT_DEFINITION_INVALID");
+  });
+
+  test("returns the new updatedAt timestamp after patching a definition", async () => {
+    await fragment.callRoute("POST", "/event-definitions", {
+      body: {
+        source: "custom",
+        eventType: "patched.definition",
+        label: "Patched definition",
+        enabled: true,
+      },
+    });
+
+    const before = await fragment.callRoute("GET", "/event-definitions/:source/:eventType", {
+      pathParams: { source: "custom", eventType: "patched.definition" },
+    });
+    assert(before.type === "json");
+    assert(typeof before.data.updatedAt === "string");
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    const patched = await fragment.callRoute("PATCH", "/event-definitions/:source/:eventType", {
+      pathParams: { source: "custom", eventType: "patched.definition" },
+      body: { label: "Patched definition v2" },
+    });
+
+    assert(patched.type === "json");
+    expect(patched.data.updatedAt).not.toBe(before.data.updatedAt);
+  });
+});
+
 describe("automation routes /projects", () => {
   test("creates, lists, looks up, updates, and archives projects", async () => {
     const createResponse = await fragment.callRoute("POST", "/projects", {

@@ -27,6 +27,9 @@ import {
 import { tmpFileContributor } from "@/files/contributors/tmp";
 import type {
   AutomationEvent,
+  AutomationEventDefinition,
+  AutomationEventDefinitionCreateInput,
+  AutomationEventDefinitionUpdateInput,
   AutomationFragmentConfig,
   AutomationIngestResult,
   AutomationProjectExecutionTarget,
@@ -353,6 +356,49 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
 
   async ingestEvent(event: AutomationEvent): Promise<AutomationIngestResult> {
     return await this.triggerIngestEvent(event);
+  }
+
+  async listEventDefinitions(): Promise<AutomationEventDefinition[]> {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.listEventDefinitions(),
+    );
+  }
+
+  async getEventDefinition(input: {
+    source: string;
+    eventType: string;
+  }): Promise<AutomationEventDefinition | null> {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.getEventDefinition(input),
+    );
+  }
+
+  async createEventDefinition(
+    input: AutomationEventDefinitionCreateInput,
+  ): Promise<AutomationEventDefinition> {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.createEventDefinition(input),
+    );
+  }
+
+  async updateEventDefinition(
+    input: AutomationEventDefinitionUpdateInput,
+  ): Promise<AutomationEventDefinition | null> {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.updateEventDefinition(input),
+    );
   }
 
   async resolveProjectForExecution(input: {

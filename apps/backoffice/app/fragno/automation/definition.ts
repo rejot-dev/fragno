@@ -18,6 +18,11 @@ import {
 import type { AutomationEvent } from "./contracts";
 import { type AutomationPiBashContext } from "./engine/runtime";
 import { createAutomationCodemodeWorkflowInstanceInput } from "./engine/workflow-start";
+import {
+  buildAutomationEventDefinitionId,
+  validateAutomationEventPayload,
+} from "./event-definitions";
+import { createAutomationEventDefinitionServices } from "./event-definitions-storage-runtime";
 import { createAutomationEventServices } from "./events-storage-runtime";
 import { createAutomationProjectServices } from "./projects-storage-runtime";
 import {
@@ -352,6 +357,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
     });
     const routeServices = createAutomationRouteServices(defineService);
     const eventServices = createAutomationEventServices(defineService);
+    const eventDefinitionServices = createAutomationEventDefinitionServices(defineService);
 
     return defineService({
       ...storeServices,
@@ -359,6 +365,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       ...sandboxServices,
       ...routeServices,
       ...eventServices,
+      ...eventDefinitionServices,
       seedStarterAutomationRoutes: function () {
         return this.serviceTx(automationFragmentSchema)
           .retrieve((uow) => uow.find("automation_route", (b) => b.whereIndex("primary")))
@@ -400,7 +407,15 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       },
       ingestEvent: function (event: AutomationEvent) {
         return this.serviceTx(automationFragmentSchema)
-          .mutate(({ uow }) => {
+          .retrieve((uow) =>
+            uow.findFirst("automation_event_definition", (b) =>
+              b.whereIndex("primary", (eb) =>
+                eb("id", "=", buildAutomationEventDefinitionId(event.source, event.eventType)),
+              ),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [definition] }) => {
+            validateAutomationEventPayload({ event, definition });
             ingestAutomationEvent(uow, event);
           })
           .transform(() => buildIngestResult(event))

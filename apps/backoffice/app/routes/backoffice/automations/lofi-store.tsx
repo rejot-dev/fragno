@@ -57,6 +57,15 @@ const EMPTY_EVENTS_QUERY_STATE: LofiQueryState<AutomationEventItem[]> = {
   synced: false,
 };
 
+const EMPTY_EVENT_DEFINITIONS_QUERY_STATE: LofiQueryState<
+  AutomationLocalScopeState["eventDefinitions"]["eventDefinitions"]
+> = {
+  data: [],
+  loading: false,
+  error: null,
+  synced: false,
+};
+
 const EMPTY_SANDBOXES_QUERY_STATE: LofiQueryState<SandboxInstanceSummary[]> = {
   data: [],
   loading: false,
@@ -74,6 +83,9 @@ type AutomationScopeRuntime = {
   $entries: LofiQueryStore<AutomationStoreItem[]>;
   $routes: LofiQueryStore<AutomationRouteItem[]>;
   $events: LofiQueryStore<AutomationEventItem[]>;
+  $eventDefinitions: LofiQueryStore<
+    AutomationLocalScopeState["eventDefinitions"]["eventDefinitions"]
+  >;
   $sandboxes: LofiQueryStore<SandboxInstanceSummary[]>;
 };
 
@@ -270,6 +282,32 @@ const getAutomationScopeRuntime = (
         })),
     },
   );
+  const $eventDefinitions = createLofiQueryStore(
+    runtime,
+    automationFragmentSchema,
+    "automation_event_definition",
+    (b) =>
+      b.whereIndex("primary").orderByIndex("idx_automation_event_definition_source_type", "asc"),
+    {
+      initialData: [],
+      map: (rows) =>
+        rows.map((definition) => ({
+          id: definition.id.externalId,
+          source: definition.source,
+          eventType: definition.eventType,
+          label: definition.label,
+          description: definition.description,
+          payloadSchema: definition.payloadSchema ?? null,
+          actorSchema: definition.actorSchema ?? null,
+          subjectSchema: definition.subjectSchema ?? null,
+          example: definition.example ?? null,
+          enabled: definition.enabled,
+          capabilityId: "dynamic",
+          createdAt: toIsoString(definition.createdAt),
+          updatedAt: toIsoString(definition.updatedAt),
+        })),
+    },
+  );
   const $sandboxes = createLofiQueryStore(
     runtime,
     automationFragmentSchema,
@@ -290,7 +328,7 @@ const getAutomationScopeRuntime = (
           .sort((left, right) => left.id.localeCompare(right.id)),
     },
   );
-  const created = { runtime, $entries, $routes, $events, $sandboxes };
+  const created = { runtime, $entries, $routes, $events, $eventDefinitions, $sandboxes };
   automationScopeRuntimeByScope.set(config.scopeKey, created);
   return created;
 };
@@ -319,12 +357,14 @@ export const useLofiAutomationScopeData = ({
   initialEntries,
   initialRoutes,
   initialEvents,
+  initialEventDefinitions,
   prefix,
 }: {
   scope: AutomationUiScope;
   initialEntries: AutomationStoreItem[];
   initialRoutes: AutomationRouteItem[];
   initialEvents: AutomationEventItem[];
+  initialEventDefinitions: AutomationLocalScopeState["eventDefinitions"]["eventDefinitions"];
   prefix: string;
 }): AutomationLocalScopeState => {
   const scopeConfig = useMemo(() => automationStoreScopeRuntimeConfig(scope), [scope]);
@@ -344,6 +384,10 @@ export const useLofiAutomationScopeData = ({
   const entriesQueryState = useNanostore(lofi?.$entries ?? null, EMPTY_STORE_QUERY_STATE);
   const routesQueryState = useNanostore(lofi?.$routes ?? null, EMPTY_ROUTES_QUERY_STATE);
   const eventsQueryState = useNanostore(lofi?.$events ?? null, EMPTY_EVENTS_QUERY_STATE);
+  const eventDefinitionsQueryState = useNanostore(
+    lofi?.$eventDefinitions ?? null,
+    EMPTY_EVENT_DEFINITIONS_QUERY_STATE,
+  );
   const sandboxesQueryState = useNanostore(lofi?.$sandboxes ?? null, EMPTY_SANDBOXES_QUERY_STATE);
   const runtimeStatus = useNanostore(lofi?.runtime.$status ?? null, IDLE_RUNTIME_STATUS);
   const normalizedPrefix = prefix.trim();
@@ -355,6 +399,7 @@ export const useLofiAutomationScopeData = ({
     const storeHasLocalData = hasLocalQueryResult(entriesQueryState);
     const routesHaveLocalData = hasLocalQueryResult(routesQueryState);
     const eventsHaveLocalData = hasLocalQueryResult(eventsQueryState);
+    const eventDefinitionsHaveLocalData = hasLocalQueryResult(eventDefinitionsQueryState);
     const sandboxesHaveLocalData = hasLocalQueryResult(sandboxesQueryState);
     const runtimeError = errorMessage(runtimeStatus.lastError);
 
@@ -374,6 +419,13 @@ export const useLofiAutomationScopeData = ({
         synced: eventsHaveLocalData,
         error: errorMessage(eventsQueryState.error) ?? runtimeError,
       },
+      eventDefinitions: {
+        eventDefinitions: eventDefinitionsHaveLocalData
+          ? eventDefinitionsQueryState.data
+          : initialEventDefinitions,
+        synced: eventDefinitionsHaveLocalData,
+        error: errorMessage(eventDefinitionsQueryState.error) ?? runtimeError,
+      },
       sandboxes: {
         sandboxes: sandboxesHaveLocalData ? sandboxesQueryState.data : [],
         synced: sandboxesHaveLocalData,
@@ -382,8 +434,10 @@ export const useLofiAutomationScopeData = ({
     };
   }, [
     entriesQueryState,
+    eventDefinitionsQueryState,
     eventsQueryState,
     initialEntries,
+    initialEventDefinitions,
     initialEvents,
     initialRoutes,
     normalizedPrefix,
@@ -407,5 +461,6 @@ export const useLofiAutomationStoreEntries = ({
     initialEntries,
     initialRoutes: [],
     initialEvents: [],
+    initialEventDefinitions: [],
     prefix,
   }).store;

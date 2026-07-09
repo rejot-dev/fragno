@@ -85,7 +85,7 @@ describe("automation runtime tools", () => {
       backofficeCapabilitiesRuntimeTools
         .map((tool) => tool.adapters?.bash?.command)
         .filter((command) => command?.startsWith("events.catalog")),
-    ).toEqual(["events.catalog.list", "events.catalog.get"]);
+    ).toEqual(["events.catalog.list", "events.catalog.get", "events.catalog.create"]);
   });
 
   test("auth organization hooks are represented in the automation event catalog", () => {
@@ -195,6 +195,9 @@ describe("automation runtime tools", () => {
         throw new Error("unused");
       },
       configureConnection: async () => {
+        throw new Error("unused");
+      },
+      createAutomationEvent: async () => {
         throw new Error("unused");
       },
       listAutomationEvents: async () => {

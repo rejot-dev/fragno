@@ -7,6 +7,7 @@ import {
   type AutomationIngestResult,
   type AutomationWorkflowsService,
 } from "./definition";
+import { automationEventDefinitionRoutes } from "./event-definition-routes";
 import { automationEventRoutes } from "./event-routes";
 import { automationProjectRoutes } from "./project-routes";
 import type { AutomationProjectExecutionTarget } from "./projects";
@@ -32,6 +33,7 @@ export function createAutomationFragment(
     .withConfig(config)
     .withRoutes([
       automationProjectRoutes,
+      automationEventDefinitionRoutes,
       automationRouteRoutes,
       automationStoreRoutes,
       automationEventRoutes,
@@ -41,7 +43,7 @@ export function createAutomationFragment(
     .build();
 }
 
-export type { AutomationFragmentConfig };
+export type { AutomationFragmentConfig, AutomationWorkflowsService };
 export {
   AUTOMATION_STATIC_ROOT,
   AUTOMATION_SYSTEM_ROOT,
@@ -52,6 +54,11 @@ export {
 } from "./catalog";
 export type { AutomationScriptLayer, AutomationWorkspaceScriptEntry } from "./catalog";
 export type { AutomationEventRecord } from "./events";
+export type {
+  AutomationEventDefinition,
+  AutomationEventDefinitionCreateInput,
+  AutomationEventDefinitionUpdateInput,
+} from "./event-definitions";
 export {
   STARTER_AUTOMATION_ROUTES,
   SYSTEM_STARTER_AUTOMATION_ROUTES,

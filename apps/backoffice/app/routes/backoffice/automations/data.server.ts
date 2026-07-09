@@ -12,6 +12,7 @@ import {
   getAutomationLayerForPath,
   listAutomationWorkspaceScripts,
   readAutomationWorkspaceScript,
+  type AutomationEventDefinition,
   type AutomationWorkspaceScriptEntry,
   type createAutomationFragment,
 } from "@/fragno/automation";
@@ -39,6 +40,11 @@ export type AutomationEventsResult = {
   cursor?: string;
   hasNextPage: boolean;
   eventsError: string | null;
+};
+
+export type AutomationEventDefinitionsResult = {
+  eventDefinitions: AutomationEventDefinition[];
+  eventDefinitionsError: string | null;
 };
 
 const formatErrorMessage = (error: unknown, fallback: string) =>
@@ -407,6 +413,44 @@ export async function fetchAutomationStoreEntries(
     return {
       storeEntries: [],
       storeEntriesError: formatErrorMessage(error, "Failed to load automation store entries."),
+    };
+  }
+}
+
+export async function fetchAutomationEventDefinitions(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+): Promise<AutomationEventDefinitionsResult> {
+  try {
+    const callRoute = createAutomationsRouteCaller(request, context, scope);
+    const response = await callRoute("GET", "/event-definitions");
+
+    if (response.type === "json" && isSuccessStatus(response.status)) {
+      return {
+        eventDefinitions: toRecordArray<AutomationEventDefinition>(response.data),
+        eventDefinitionsError: null,
+      };
+    }
+
+    if (response.type === "error") {
+      return {
+        eventDefinitions: [],
+        eventDefinitionsError: response.error.message,
+      };
+    }
+
+    return {
+      eventDefinitions: [],
+      eventDefinitionsError: `Failed to fetch automation event definitions (${response.status}).`,
+    };
+  } catch (error) {
+    return {
+      eventDefinitions: [],
+      eventDefinitionsError: formatErrorMessage(
+        error,
+        "Failed to load automation event definitions.",
+      ),
     };
   }
 }
