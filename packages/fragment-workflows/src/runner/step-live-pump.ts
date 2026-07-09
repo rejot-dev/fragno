@@ -198,7 +198,7 @@ const writeWorkflowStepEmissionFlush = async <TOutEmission, TInEvent>(options: {
         actor: typeof WORKFLOW_EVENT_ACTOR_SYSTEM | typeof WORKFLOW_EVENT_ACTOR_USER;
         payload: unknown;
       }) => {
-        const createdAt = new Date();
+        const localObservedAt = new Date();
         const id = uow.create("workflow_step_emission", {
           instanceRef: instance.id,
           stepKey: row.stepKey,
@@ -206,9 +206,9 @@ const writeWorkflowStepEmissionFlush = async <TOutEmission, TInEvent>(options: {
           sequence: row.sequence,
           actor: row.actor,
           payload: row.payload,
-          createdAt,
+          createdAt: uow.now(),
         });
-        createdRows.push({ ...row, createdAt, id: id.toString() });
+        createdRows.push({ ...row, createdAt: localObservedAt, id: id.toString() });
       };
 
       for (const [stepKey, scope] of options.scopes) {
