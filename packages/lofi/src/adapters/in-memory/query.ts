@@ -10,6 +10,7 @@ import {
 } from "@fragno-dev/db/unit-of-work";
 
 import type { ReferenceTarget } from "../../indexeddb/types";
+import { normalizeLofiSchemaName } from "../../local/projection";
 import { buildCondition, type Condition, type ConditionBuilder } from "../../query/conditions";
 import { normalizeValue } from "../../query/normalize";
 import {
@@ -1555,7 +1556,7 @@ export const createInMemoryQueryEngine = <T extends AnySchema>(options: {
   store: InMemoryLofiStore;
   schemaName?: string;
 }): LofiQueryInterface<T> => {
-  const schemaName = options.schemaName ?? options.schema.name;
+  const schemaName = options.schemaName ?? normalizeLofiSchemaName(options.schema.name);
   const context: QueryContext = {
     endpointName: options.store.endpointName,
     schemaName,

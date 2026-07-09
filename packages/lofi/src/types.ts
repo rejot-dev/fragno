@@ -56,7 +56,7 @@ export type LofiSyncResult = {
   aborted?: boolean;
 };
 
-export type LofiSchemaRegistration = { schema: AnySchema };
+export type LofiSchemaRegistration = { schema: AnySchema; schemaName?: string };
 
 type Prettify<T> = T extends (...args: never[]) => unknown
   ? T

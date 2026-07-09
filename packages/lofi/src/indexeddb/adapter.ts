@@ -14,8 +14,12 @@ import {
   getLocalReadTarget,
   isThenable,
   mergeSchemaLists,
+  normalizeLofiSchemaName,
+  resolveLofiSchemaName,
   projectionRowToRecord,
   resolveProjectionReadPlan,
+  withLofiSchemaName,
+  type LofiSchemaNameAliases,
   type ProjectionQueuedMutation,
 } from "../local/projection";
 import { createIndexedDbQueryEngine, type IndexedDbQueryContext } from "../query/engine";
@@ -33,6 +37,7 @@ import type {
   LofiQueryEngineOptions,
   LofiQueryInterface,
   LofiQueryableAdapter,
+  LofiSchemaRegistration,
 } from "../types";
 import type { ReferenceTarget } from "./types";
 
@@ -96,6 +101,26 @@ const INDEX_SCHEMA_TABLE = "idx_schema_table";
 const INDEX_INBOX_SOURCE_UOW = "idx_inbox_source_uow";
 const LEGACY_INBOX_INDEX = "idx_inbox_source_version";
 
+const resolveRegisteredSchemaName = (registration: LofiSchemaRegistration): string =>
+  registration.schemaName ?? normalizeLofiSchemaName(registration.schema.name);
+
+const createRegisteredSchemaAliasMap = (
+  registrations: readonly LofiSchemaRegistration[],
+): Map<string, string> => {
+  const aliases = new Map<string, string>();
+  for (const registration of registrations) {
+    const schemaName = resolveRegisteredSchemaName(registration);
+    aliases.set(registration.schema.name, schemaName);
+    aliases.set(schemaName, schemaName);
+  }
+  return aliases;
+};
+
+const toRegisteredSchemas = (registrations: readonly LofiSchemaRegistration[]): AnySchema[] =>
+  registrations.map((registration) =>
+    withLofiSchemaName(registration.schema, registration.schemaName),
+  );
+
 const createReferenceTargets = (schemas: AnySchema[]): Map<string, ReferenceTarget> => {
   const referenceTargets = new Map<string, ReferenceTarget>();
   for (const schema of schemas) {
@@ -126,6 +151,7 @@ export class IndexedDbAdapter
   private readonly localSchemaMap: Map<string, AnySchema>;
   private readonly localTableMap: Map<string, Map<string, AnyTable>>;
   private readonly referenceTargets: Map<string, ReferenceTarget>;
+  private readonly schemaNameAliases: LofiSchemaNameAliases;
   private readonly schemaFingerprint: string;
   private readonly indexDefinitions: IndexDefinition[];
   private readonly projections: AnyLofiLocalProjection[];
@@ -138,8 +164,9 @@ export class IndexedDbAdapter
       throw new Error("IndexedDbAdapter requires a non-empty endpointName.");
     }
 
-    const sourceSchemas = options.schemas.map((registration) => registration.schema);
-    const localSchemas = (options.localSchemas ?? []).map((registration) => registration.schema);
+    const sourceSchemas = toRegisteredSchemas(options.schemas);
+    const localSchemaRegistrations = options.localSchemas ?? [];
+    const localSchemas = toRegisteredSchemas(localSchemaRegistrations);
     const allSchemas = mergeSchemaLists(sourceSchemas, localSchemas, "IndexedDbAdapter");
     const { schemaMap, tableMap } = createSchemaMaps(sourceSchemas, "IndexedDbAdapter");
     const { schemaMap: localSchemaMap, tableMap: localTableMap } = createSchemaMaps(
@@ -147,6 +174,10 @@ export class IndexedDbAdapter
       "IndexedDbAdapter local",
     );
     const referenceTargets = createReferenceTargets(allSchemas);
+    const schemaNameAliases = new Map([
+      ...createRegisteredSchemaAliasMap(options.schemas),
+      ...createRegisteredSchemaAliasMap(localSchemaRegistrations),
+    ]);
 
     this.dbName = options.dbName ?? `fragno_lofi_${options.endpointName}`;
     this.endpointName = options.endpointName;
@@ -158,6 +189,7 @@ export class IndexedDbAdapter
     this.localSchemaMap = localSchemaMap;
     this.localTableMap = localTableMap;
     this.referenceTargets = referenceTargets;
+    this.schemaNameAliases = schemaNameAliases;
     this.indexDefinitions = buildIndexDefinitions(this.allSchemas);
     this.schemaFingerprint = buildSchemaFingerprint(this.allSchemas, this.indexDefinitions);
     this.projections = options.projections ?? [];
@@ -182,6 +214,7 @@ export class IndexedDbAdapter
         ignoreUnknownSchemas: this.ignoreUnknownSchemas,
         schemaErrorPrefix: "Unknown outbox schema",
         tableErrorPrefix: "Unknown outbox table",
+        schemaNameAliases: this.schemaNameAliases,
       });
       if (known) {
         knownMutations.push(known);
@@ -279,6 +312,7 @@ export class IndexedDbAdapter
         ignoreUnknownSchemas: this.ignoreUnknownSchemas,
         schemaErrorPrefix: "Unknown mutation schema",
         tableErrorPrefix: "Unknown mutation table",
+        schemaNameAliases: this.schemaNameAliases,
       });
       if (known) {
         knownMutations.push(known);
@@ -364,7 +398,7 @@ export class IndexedDbAdapter
       endpointName: this.endpointName,
       getDb: () => this.openDatabase(),
       referenceTargets: this.referenceTargets,
-      schemaName: options?.schemaName,
+      schemaName: options?.schemaName ?? this.schemaNameAliases.get(schema.name),
     });
   }
 
@@ -424,6 +458,7 @@ export class IndexedDbAdapter
         tableName,
         localSchemaMap: this.localSchemaMap,
         localTableMap: this.localTableMap,
+        schemaNameAliases: this.schemaNameAliases,
       });
       const row = (await rowsStore.get([
         this.endpointName,
@@ -435,7 +470,9 @@ export class IndexedDbAdapter
     };
 
     const writeMutation = async (mutation: ProjectionQueuedMutation): Promise<void> => {
-      const targetSchema = this.localSchemaMap.get(mutation.schema);
+      const targetSchema = this.localSchemaMap.get(
+        resolveLofiSchemaName(mutation.schema, this.schemaNameAliases),
+      );
       if (!targetSchema) {
         throw new Error(`Projection writes must target a local schema: ${mutation.schema}`);
       }
@@ -444,6 +481,7 @@ export class IndexedDbAdapter
         tableName: mutation.table,
         localSchemaMap: this.localSchemaMap,
         localTableMap: this.localTableMap,
+        schemaNameAliases: this.schemaNameAliases,
       });
       if (mutation.op === "update" && mutation.checkVersion) {
         const existing = (await rowsStore.get([
@@ -469,7 +507,7 @@ export class IndexedDbAdapter
       });
     };
 
-    const match = createMutationMatcher(mutations);
+    const match = createMutationMatcher(mutations, this.schemaNameAliases);
     for (const projection of this.projections) {
       let retrieved: unknown;
       if (projection.retrieve) {
@@ -491,6 +529,7 @@ export class IndexedDbAdapter
         versionstamp: source.versionstamp,
         localSchemaMap: this.localSchemaMap,
         localTableMap: this.localTableMap,
+        schemaNameAliases: this.schemaNameAliases,
       });
       const mutateResult = projection.mutate({
         mutations,

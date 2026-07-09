@@ -12,8 +12,12 @@ import {
   getLocalReadTarget,
   isThenable,
   mergeSchemaLists,
+  normalizeLofiSchemaName,
+  resolveLofiSchemaName,
   projectionRowToRecord,
   resolveProjectionReadPlan,
+  withLofiSchemaName,
+  type LofiSchemaNameAliases,
   type ProjectionQueuedMutation,
 } from "../../local/projection";
 import { resolveMutationValues, resolveMutations } from "../../query/mutation-values";
@@ -51,6 +55,16 @@ type InMemoryProjectionReadFallback = {
 type InMemoryApplyMutationsOptions = {
   projectionMutations?: LofiMutation[];
   projectionReadFallback?: InMemoryProjectionReadFallback;
+};
+
+const createSchemaNameAliases = (schemas: readonly AnySchema[]): Map<string, string> => {
+  const aliases = new Map<string, string>();
+  for (const schema of schemas) {
+    const schemaName = normalizeLofiSchemaName(schema.name);
+    aliases.set(schema.name, schemaName);
+    aliases.set(schemaName, schemaName);
+  }
+  return aliases;
 };
 
 const materializeProjectionMutation = (
@@ -108,6 +122,7 @@ export class InMemoryLofiAdapter
   private readonly localTableMap: Map<string, Map<string, AnyTable>>;
   private readonly projections: AnyLofiLocalProjection[];
   private readonly ignoreUnknownSchemas: boolean;
+  private readonly schemaNameAliases: LofiSchemaNameAliases;
   private readonly meta = new Map<string, string>();
   private readonly inbox = new Map<string, InboxRow>();
 
@@ -116,14 +131,20 @@ export class InMemoryLofiAdapter
       throw new Error("InMemoryLofiAdapter requires a non-empty endpointName.");
     }
 
-    const sourceSchemas = options.schemas;
-    const localSchemas = options.localSchemas ?? [];
+    const sourceSchemaInputs = options.schemas;
+    const localSchemaInputs = options.localSchemas ?? [];
+    const sourceSchemas = sourceSchemaInputs.map((schema) => withLofiSchemaName(schema));
+    const localSchemas = localSchemaInputs.map((schema) => withLofiSchemaName(schema));
     const allSchemas = mergeSchemaLists(sourceSchemas, localSchemas, "InMemoryLofiAdapter");
     const { schemaMap, tableMap } = createSchemaMaps(sourceSchemas, "InMemoryLofiAdapter");
     const { schemaMap: localSchemaMap, tableMap: localTableMap } = createSchemaMaps(
       localSchemas,
       "InMemoryLofiAdapter local",
     );
+    const schemaNameAliases = new Map([
+      ...createSchemaNameAliases(sourceSchemaInputs),
+      ...createSchemaNameAliases(localSchemaInputs),
+    ]);
 
     this.endpointName = options.endpointName;
     this.schemas = [...schemaMap.values()];
@@ -134,6 +155,7 @@ export class InMemoryLofiAdapter
     this.localTableMap = localTableMap;
     this.projections = options.projections ?? [];
     this.ignoreUnknownSchemas = options.ignoreUnknownSchemas ?? false;
+    this.schemaNameAliases = schemaNameAliases;
     this.store =
       options.store ??
       new InMemoryLofiStore({
@@ -162,6 +184,7 @@ export class InMemoryLofiAdapter
         ignoreUnknownSchemas: this.ignoreUnknownSchemas,
         schemaErrorPrefix: "Unknown outbox schema",
         tableErrorPrefix: "Unknown outbox table",
+        schemaNameAliases: this.schemaNameAliases,
       });
       if (known) {
         knownMutations.push(known.mutation);
@@ -243,7 +266,7 @@ export class InMemoryLofiAdapter
     return createInMemoryQueryEngine({
       schema,
       store: this.store,
-      schemaName: options?.schemaName,
+      schemaName: options?.schemaName ?? normalizeLofiSchemaName(schema.name),
     });
   }
 
@@ -270,6 +293,7 @@ export class InMemoryLofiAdapter
         ignoreUnknownSchemas: this.ignoreUnknownSchemas,
         schemaErrorPrefix,
         tableErrorPrefix,
+        schemaNameAliases: this.schemaNameAliases,
       });
       if (known) {
         knownMutations.push(known.mutation);
@@ -318,7 +342,7 @@ export class InMemoryLofiAdapter
       versionstamp: source.versionstamp,
     };
     const read: LofiLocalProjectionRead = createProjectionReadApi();
-    const match = createMutationMatcher(mutations);
+    const match = createMutationMatcher(mutations, this.schemaNameAliases);
 
     const ensureStageRow = async (options: {
       schemaName: string;
@@ -378,6 +402,7 @@ export class InMemoryLofiAdapter
         tableName,
         localSchemaMap: this.localSchemaMap,
         localTableMap: this.localTableMap,
+        schemaNameAliases: this.schemaNameAliases,
       });
       const row = await ensureStageRow({
         schemaName: target.schema.name,
@@ -388,7 +413,9 @@ export class InMemoryLofiAdapter
     };
 
     const writeMutation = async (mutation: ProjectionQueuedMutation): Promise<void> => {
-      const targetSchema = this.localSchemaMap.get(mutation.schema);
+      const targetSchema = this.localSchemaMap.get(
+        resolveLofiSchemaName(mutation.schema, this.schemaNameAliases),
+      );
       if (!targetSchema) {
         throw new Error(`Projection writes must target a local schema: ${mutation.schema}`);
       }
@@ -397,6 +424,7 @@ export class InMemoryLofiAdapter
         tableName: mutation.table,
         localSchemaMap: this.localSchemaMap,
         localTableMap: this.localTableMap,
+        schemaNameAliases: this.schemaNameAliases,
       });
       const key = rowKey(target.schema.name, mutation.table, mutation.externalId);
       const existing =
@@ -465,6 +493,7 @@ export class InMemoryLofiAdapter
         versionstamp: source.versionstamp,
         localSchemaMap: this.localSchemaMap,
         localTableMap: this.localTableMap,
+        schemaNameAliases: this.schemaNameAliases,
       });
       const mutateResult = projection.mutate({
         mutations,
