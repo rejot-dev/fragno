@@ -360,6 +360,52 @@ describe("createBackofficeBashCommands", () => {
     });
   });
 
+  test("passes events.catalog.create --json as the event definition", async () => {
+    const calls: unknown[] = [];
+    const backofficeRuntime = createBackofficeRuntime({
+      createAutomationEvent: async (input) => {
+        calls.push(["createAutomationEvent", input]);
+        return {
+          id: `${input.source}:${input.eventType}`,
+          source: input.source,
+          eventType: input.eventType,
+          label: input.label,
+          description: input.description ?? null,
+          payloadSchema: input.payloadSchema ?? null,
+          actorSchema: input.actorSchema ?? null,
+          subjectSchema: input.subjectSchema ?? null,
+          example: input.example ?? null,
+          enabled: input.enabled ?? true,
+          capabilityId: "dynamic",
+        };
+      },
+    });
+
+    const bash = new Bash({
+      fs: new InMemoryFs(),
+      customCommands: createBackofficeBashCommands({
+        tools: backofficeCapabilitiesRuntimeTools,
+        context: createTrustedSystemBackofficeToolContext({
+          runtimes: { backoffice: backofficeRuntime },
+        }),
+        commandCallsResult: [],
+      }),
+    });
+
+    await expect(
+      bash.exec(
+        `events.catalog.create --json '{"source":"custom","eventType":"thing.created","label":"Thing created"}'`,
+      ),
+    ).resolves.toMatchObject({ exitCode: 0 });
+
+    expect(calls).toEqual([
+      [
+        "createAutomationEvent",
+        { source: "custom", eventType: "thing.created", label: "Thing created", enabled: true },
+      ],
+    ]);
+  });
+
   test("requires a connections.configure --json payload", async () => {
     const backofficeRuntime = createBackofficeRuntime();
     const bash = new Bash({
@@ -496,6 +542,19 @@ const createBackofficeRuntime = (
   }),
   listAutomationEvents: async () => [],
   getAutomationEvent: async () => null,
+  createAutomationEvent: async (input) => ({
+    id: `${input.source}:${input.eventType}`,
+    source: input.source,
+    eventType: input.eventType,
+    label: input.label,
+    description: input.description ?? null,
+    payloadSchema: input.payloadSchema ?? null,
+    actorSchema: input.actorSchema ?? null,
+    subjectSchema: input.subjectSchema ?? null,
+    example: input.example ?? null,
+    enabled: input.enabled ?? true,
+    capabilityId: "dynamic",
+  }),
   ...overrides,
 });
 

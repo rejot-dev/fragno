@@ -4,6 +4,7 @@ import { Link, isRouteErrorResponse } from "react-router";
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 import type {
+  AutomationEventDefinition,
   AutomationEventRecord,
   AutomationRouteDefinition,
   AutomationScriptLayer,
@@ -68,6 +69,12 @@ export type AutomationLocalEventsState = {
   error: string | null;
 };
 
+export type AutomationLocalEventDefinitionsState = {
+  eventDefinitions: AutomationEventDefinition[];
+  synced: boolean;
+  error: string | null;
+};
+
 export type AutomationLocalSandboxesState = {
   sandboxes: SandboxInstanceSummary[];
   synced: boolean;
@@ -78,6 +85,7 @@ export type AutomationLocalScopeState = {
   store: AutomationLocalStoreState;
   routes: AutomationLocalRoutesState;
   events: AutomationLocalEventsState;
+  eventDefinitions: AutomationLocalEventDefinitionsState;
   sandboxes: AutomationLocalSandboxesState;
 };
 
@@ -128,6 +136,7 @@ export type AutomationLayoutContext = {
   routes: AutomationRouteItem[];
   storeEntries: AutomationStoreItem[];
   events: AutomationEventItem[];
+  eventDefinitions: AutomationEventDefinition[];
   eventsCursor?: string;
   eventsHasNextPage: boolean;
   eventsCurrentCursor: string | null;
@@ -135,15 +144,18 @@ export type AutomationLayoutContext = {
   storeData: AutomationServerLofiDataState<AutomationStoreItem[]>;
   routesData: AutomationServerLofiDataState<AutomationRouteItem[]>;
   eventsData: AutomationServerLofiDataState<AutomationEventItem[]>;
+  eventDefinitionsData: AutomationServerLofiDataState<AutomationEventDefinition[]>;
   lofiStore: AutomationLocalStoreState;
   lofiRoutes: AutomationLocalRoutesState;
   lofiEvents: AutomationLocalEventsState;
+  lofiEventDefinitions: AutomationLocalEventDefinitionsState;
   lofiSandboxes: AutomationLocalSandboxesState;
   storePrefix: string;
   scriptsError: string | null;
   routesError: string | null;
   storeEntriesError: string | null;
   eventsError: string | null;
+  eventDefinitionsError: string | null;
 };
 
 export type AutomationTab =

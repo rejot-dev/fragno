@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { InMemoryAdapter } from "@fragno-dev/db";
+
 import { BackofficeForbiddenError, BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import { createAutomationFragment, type AutomationWorkflowsService } from "@/fragno/automation";
 
 import type { AutomationEvent } from "../../automation/contracts";
 import { createEventRuntime } from "./event-runtime";
@@ -23,6 +26,26 @@ const createEvent = (overrides: Partial<AutomationEvent> = {}): AutomationEvent 
   subject: null,
   ...overrides,
 });
+
+const createAutomationFragmentForEventRuntimeTest = (idSeed: string) =>
+  createAutomationFragment(
+    {
+      ownerScope: { kind: "org", orgId: "org-1" },
+    },
+    {
+      databaseAdapter: new InMemoryAdapter({ idSeed }),
+      dbRoundtripGuard: true,
+      mountRoute: "/api/automations",
+      outbox: { enabled: true },
+    },
+    {
+      workflows: {
+        createInstance: async () => ({}),
+        getInstanceStatus: async () => [],
+        sendEvent: async () => ({}),
+      } as unknown as AutomationWorkflowsService,
+    },
+  );
 
 describe("createEventRuntime.emitEvent", () => {
   it("emits from an interactive Backoffice context without a base automation event", async () => {
@@ -333,6 +356,68 @@ describe("createEventRuntime.emitEvent", () => {
     ).rejects.toBeInstanceOf(BackofficeForbiddenError);
 
     expect(triggerUserIngestEvent).not.toHaveBeenCalled();
+  });
+
+  it("validates emitted payloads against dynamic automation event definitions", async () => {
+    const fragment = createAutomationFragmentForEventRuntimeTest(
+      "event-runtime-dynamic-definition-test",
+    );
+    await fragment.callServices(() =>
+      fragment.services.createEventDefinition({
+        source: "custom",
+        eventType: "thing.created",
+        label: "Thing created",
+        payloadSchema: {
+          type: "object",
+          required: ["thingId"],
+          properties: {
+            thingId: { type: "string" },
+          },
+          additionalProperties: false,
+        },
+      }),
+    );
+
+    const triggerIngestEvent = vi.fn(async (event: AutomationEvent) =>
+      fragment.callServices(() => fragment.services.ingestEvent(event)),
+    );
+    const objects = {
+      automations: {
+        forOrg: vi.fn(() => ({ triggerIngestEvent })),
+      },
+    } as unknown as BackofficeObjectRegistry;
+    const runtime = createEventRuntime({
+      objects,
+      kernel: new BackofficeKernel({ objects }),
+      execution: {
+        actor: { type: "user", id: "user-1", userId: "user-1", organizationIds: ["org-1"] },
+        scope: { kind: "org", orgId: "org-1" },
+      },
+    });
+
+    await expect(
+      runtime.emitEvent({
+        source: "custom",
+        eventType: "thing.created",
+        payload: { thingId: "thing-1" },
+      }),
+    ).resolves.toMatchObject({ accepted: true, source: "custom", eventType: "thing.created" });
+
+    await expect(
+      runtime.emitEvent({
+        source: "custom",
+        eventType: "thing.created",
+        payload: { thingId: 123 },
+      }),
+    ).rejects.toThrow("payload failed schema validation");
+
+    const events = await fragment.callServices(() => fragment.services.listEvents({ limit: 10 }));
+    expect(events.events).toHaveLength(1);
+    expect(events.events[0]).toMatchObject({
+      source: "custom",
+      eventType: "thing.created",
+      payload: { thingId: "thing-1" },
+    });
   });
 
   it("preserves object payloads", async () => {

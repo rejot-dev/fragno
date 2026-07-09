@@ -14,6 +14,9 @@ import type { Organization } from "@fragno-dev/auth";
 import type {
   AutomationEvent,
   AutomationEventActor,
+  AutomationEventDefinition,
+  AutomationEventDefinitionCreateInput,
+  AutomationEventDefinitionUpdateInput,
   AutomationIngestResult,
   AutomationProjectExecutionTarget,
   SandboxInstanceRecord,
@@ -87,6 +90,17 @@ export type AutomationsObject = FetchObject &
     triggerIngestEvent(event: AutomationEvent): Promise<AutomationIngestResult>;
     ingestEvent(event: AutomationEvent): Promise<AutomationIngestResult>;
     seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult>;
+    listEventDefinitions(): Promise<AutomationEventDefinition[]>;
+    getEventDefinition(input: {
+      source: string;
+      eventType: string;
+    }): Promise<AutomationEventDefinition | null>;
+    createEventDefinition(
+      input: AutomationEventDefinitionCreateInput,
+    ): Promise<AutomationEventDefinition>;
+    updateEventDefinition(
+      input: AutomationEventDefinitionUpdateInput,
+    ): Promise<AutomationEventDefinition | null>;
     resolveProjectForExecution(input: {
       projectId?: string;
       slug?: string;
