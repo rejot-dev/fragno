@@ -1,5 +1,5 @@
 import { internalSchema } from "../fragments/internal-fragment.schema";
-import { getDbNowOffsetMs, isDbNow } from "../query/db-now";
+import { dbNow, getDbNowOffsetMs, isDbNow } from "../query/db-now";
 import type { MutationOperation } from "../query/unit-of-work/unit-of-work";
 import type { AnySchema, AnyTable } from "../schema/create";
 import { FragnoId, FragnoReference, getTableForeignKey } from "../schema/create";
@@ -44,7 +44,7 @@ export function buildOutboxPlan(operations: MutationOperation<AnySchema>[]): Out
         namespace,
         table: op.table,
         externalId: op.generatedExternalId,
-        values: encodeOutboxValues({
+        values: encodeOutboxCreateValues({
           table,
           values: op.values,
           mutationIndex,
@@ -140,6 +140,28 @@ function materializeOutboxDbNowValue(value: unknown, now: Date): unknown {
   }
 
   return value;
+}
+
+function encodeOutboxCreateValues(options: {
+  table: AnyTable;
+  values: Record<string, unknown>;
+  mutationIndex: number;
+  namespace?: string;
+  lookups: OutboxRefLookup[];
+}): Record<string, unknown> {
+  const output = encodeOutboxValues(options);
+
+  for (const [key, column] of Object.entries(options.table.columns)) {
+    if (column.role === "internal-id" || Object.prototype.hasOwnProperty.call(output, key)) {
+      continue;
+    }
+
+    if (column.default && "dbSpecial" in column.default && column.default.dbSpecial === "now") {
+      output[key] = dbNow();
+    }
+  }
+
+  return output;
 }
 
 function encodeOutboxValues(options: {
