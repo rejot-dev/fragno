@@ -25,7 +25,7 @@ while [[ $# -gt 0 ]]; do
       fi
       BACKOFFICE_URL="$(
         printf '%s' "$BACKOFFICE_URL" |
-          sed -E "s#^(https?://[^/ :]+)(:[0-9]+)?(.*)$#\1:${PORT}\3#"
+          sed -E "s#^(https?://[^/ :]+)(:[0-9]+)?(.*)\$#\1:${PORT}\3#"
       )"
       shift 2
       ;;
