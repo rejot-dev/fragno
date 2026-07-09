@@ -555,9 +555,12 @@ const createCheckpointStreamFn = (options: {
       const resumed = new Promise<void>((resolve) => {
         resume = resolve;
       });
+      const checkpointMutations = [...options.getMutations()];
       checkpoint.deferred.resolve({
         name: checkpoint.name,
-        mutations: [...options.getMutations()],
+        mutations: checkpointMutations,
+        mutationsWithDeletedStepEmissions: () =>
+          mutationsWithDeletedStepEmissions(checkpointMutations),
         resume,
       });
       await resumed;
@@ -704,13 +707,39 @@ const harnessEventFromMutation = (
 export type FauxPiHarnessCheckpointResult = {
   name: string;
   mutations: MutationOperation<AnySchema>[];
+  mutationsWithDeletedStepEmissions: () => MutationOperation<AnySchema>[];
   resume: () => void;
 };
 
 export type StartedFauxPiHarnessOperation = {
   waitForCheckpoint: (name: string) => Promise<FauxPiHarnessCheckpointResult>;
   done: Promise<RecordedWorkflowStepRun>;
+  mutationsWithDeletedStepEmissions: (
+    mutations?: readonly MutationOperation<AnySchema>[],
+  ) => MutationOperation<AnySchema>[];
 };
+
+const mutationsWithDeletedStepEmissions = (
+  mutations: readonly MutationOperation<AnySchema>[],
+): MutationOperation<AnySchema>[] => [
+  ...mutations,
+  ...mutations.flatMap((mutation): MutationOperation<AnySchema>[] => {
+    if (mutation.type !== "create" || mutation.table !== "workflow_step_emission") {
+      return [];
+    }
+
+    return [
+      {
+        type: "delete",
+        schema: mutation.schema,
+        namespace: mutation.namespace,
+        table: mutation.table,
+        id: mutation.generatedExternalId,
+        checkVersion: false,
+      },
+    ];
+  }),
+];
 
 const registerDeterministicFauxProvider = (options?: RegisterFauxProviderOptions) =>
   registerFauxProvider({
@@ -790,9 +819,12 @@ export const startFauxPiHarnessOperation = (
           const resumed = new Promise<void>((resolve) => {
             resume = resolve;
           });
+          const checkpointMutations = allMutations.slice(0, previousMutationCount + index + 1);
           checkpoint.deferred.resolve({
             name: checkpoint.name,
-            mutations: allMutations.slice(0, previousMutationCount + index + 1),
+            mutations: checkpointMutations,
+            mutationsWithDeletedStepEmissions: () =>
+              mutationsWithDeletedStepEmissions(checkpointMutations),
             resume,
           });
           await resumed;
@@ -828,6 +860,8 @@ export const startFauxPiHarnessOperation = (
       return checkpoint.deferred.promise;
     },
     done,
+    mutationsWithDeletedStepEmissions: (snapshot = mutations) =>
+      mutationsWithDeletedStepEmissions(snapshot),
   };
 };
 
