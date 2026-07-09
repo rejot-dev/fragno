@@ -324,7 +324,7 @@ function addStepCommittedEmissions(
     if (!mutatedStepKeys.has(request.stepKey)) {
       continue;
     }
-    const createdAt = new Date();
+    const localObservedAt = new Date();
     const payload = { control: "step-committed" as const, epoch: request.epoch };
     const id = schemaUow.create("workflow_step_emission", {
       instanceRef: request.instanceRef,
@@ -333,7 +333,7 @@ function addStepCommittedEmissions(
       sequence: 0,
       actor: "system",
       payload,
-      createdAt,
+      createdAt: schemaUow.now(),
     });
     publishedStepEmissions.push({
       id: id.toString(),
@@ -342,7 +342,7 @@ function addStepCommittedEmissions(
       epoch: request.epoch,
       sequence: 0,
       payload,
-      createdAt,
+      createdAt: localObservedAt,
     });
   }
 }
