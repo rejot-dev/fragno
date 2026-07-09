@@ -8,7 +8,14 @@ import type {
 } from "../query-types";
 import type { LofiFindBuilder } from "../query/read-plan";
 import type { LofiQueryEngineOptions } from "../types";
-import { isLofiRuntimeBootstrapped, type LofiRuntime } from "./runtime";
+import type { LofiRuntime, LofiRuntimeStatus } from "./runtime";
+import {
+  isLofiRuntimeTxBuilder,
+  type LofiRuntimeTxBuilder,
+  type LofiRuntimeTxResolved,
+  type LofiRuntimeTxResult,
+  type LofiRuntimeTxRetrieveContext,
+} from "./tx";
 
 export type LofiQueryState<TData> = {
   data: TData;
@@ -21,6 +28,9 @@ export type LofiQueryState<TData> = {
 export type LofiQueryStore<TData> = ReadableAtom<LofiQueryState<TData>> & {
   refresh: () => Promise<void>;
 };
+
+const isLofiRuntimeBootstrappedStatus = (status: LofiRuntimeStatus): boolean =>
+  Object.values(status.sources).every((source) => source.status === "bootstrapped");
 
 type LofiNoInfer<T> = [T][T extends T ? 0 : never];
 
@@ -90,8 +100,24 @@ type RawLofiQueryStoreOptions<TRaw> = {
 
 type MappedLofiQueryStoreOptions<TRaw, TData> = {
   initialData: LofiNoInfer<TData>;
-  map: (rows: TRaw) => TData;
+  map: (rows: TRaw) => TData | Promise<TData>;
 };
+
+export interface LofiRuntimeStoreRetrieveBuilder<TRetrieveResult, TData = TRetrieveResult> {
+  transformRetrieve<TNewData>(
+    fn: (retrieveResult: TRetrieveResult) => TNewData | Promise<TNewData>,
+  ): LofiRuntimeStoreRetrieveBuilder<TRetrieveResult, Awaited<TNewData>>;
+
+  withInitialData(initialData: LofiNoInfer<TData>): LofiQueryStore<TData>;
+}
+
+export interface LofiRuntimeStoreBuilder {
+  retrieve<TSelection>(
+    fn: (context: LofiRuntimeTxRetrieveContext) => TSelection,
+  ): LofiRuntimeStoreRetrieveBuilder<Awaited<LofiRuntimeTxResolved<TSelection>>>;
+}
+
+export type LofiRuntimeStoreFactory = () => LofiRuntimeStoreBuilder;
 
 type LofiQueryOperation = {
   schema: AnySchema;
@@ -130,14 +156,64 @@ const createRetrieveUnit = <const TSchema extends AnySchema>(
   return unit as unknown as LofiQueryStoreRetrieveUnit<TSchema>;
 };
 
+class RuntimeStoreRetrieveBuilder<
+  TRetrieveResult,
+  TData = TRetrieveResult,
+> implements LofiRuntimeStoreRetrieveBuilder<TRetrieveResult, TData> {
+  private readonly runtime: LofiRuntime;
+  private readonly retrieveFn: (context: LofiRuntimeTxRetrieveContext) => unknown;
+  private readonly transformRetrieveFn?: (
+    retrieveResult: TRetrieveResult,
+  ) => TData | Promise<TData>;
+
+  constructor(
+    runtime: LofiRuntime,
+    retrieveFn: (context: LofiRuntimeTxRetrieveContext) => unknown,
+    transformRetrieveFn?: (retrieveResult: TRetrieveResult) => TData | Promise<TData>,
+  ) {
+    this.runtime = runtime;
+    this.retrieveFn = retrieveFn;
+    this.transformRetrieveFn = transformRetrieveFn;
+  }
+
+  transformRetrieve<TNewData>(
+    fn: (retrieveResult: TRetrieveResult) => TNewData | Promise<TNewData>,
+  ): LofiRuntimeStoreRetrieveBuilder<TRetrieveResult, Awaited<TNewData>> {
+    return new RuntimeStoreRetrieveBuilder(this.runtime, this.retrieveFn, fn as never);
+  }
+
+  withInitialData(initialData: LofiNoInfer<TData>): LofiQueryStore<TData> {
+    if (this.transformRetrieveFn) {
+      return createLofiQueryStore(this.runtime, () => this.runtime.tx().retrieve(this.retrieveFn), {
+        initialData,
+        map: this.transformRetrieveFn,
+      } as never) as LofiQueryStore<TData>;
+    }
+
+    return createLofiQueryStore(this.runtime, () => this.runtime.tx().retrieve(this.retrieveFn), {
+      initialData,
+    } as never) as LofiQueryStore<TData>;
+  }
+}
+
+export const createLofiRuntimeStore = (runtime: LofiRuntime): LofiRuntimeStoreBuilder => ({
+  retrieve<TSelection>(fn: (context: LofiRuntimeTxRetrieveContext) => TSelection) {
+    return new RuntimeStoreRetrieveBuilder<Awaited<LofiRuntimeTxResolved<TSelection>>>(runtime, fn);
+  },
+});
+
 const executeRetrieve = async (
   runtime: LofiRuntime,
   retrieveFn: (context: LofiQueryStoreRetrieveContext) => unknown,
-): Promise<unknown[]> => {
+): Promise<unknown> => {
   const operations: LofiQueryOperation[] = [];
-  retrieveFn({
+  const result = retrieveFn({
     forSchema: (schema, options) => createRetrieveUnit(operations, schema, options),
   });
+
+  if (isLofiRuntimeTxBuilder(result)) {
+    return await result.execute();
+  }
 
   return await Promise.all(
     operations.map((operation) => {
@@ -193,6 +269,34 @@ export function createLofiQueryStore<
     TData
   >,
 ): LofiQueryStore<TData>;
+export function createLofiQueryStore<
+  TRetrieveResult,
+  TTransformResult,
+  HasTransform extends boolean,
+>(
+  runtime: LofiRuntime,
+  retrieveFn: (
+    context: LofiQueryStoreRetrieveContext,
+  ) => LofiRuntimeTxBuilder<TRetrieveResult, TTransformResult, HasTransform>,
+  options: RawLofiQueryStoreOptions<
+    LofiRuntimeTxResult<TRetrieveResult, TTransformResult, HasTransform>
+  >,
+): LofiQueryStore<LofiRuntimeTxResult<TRetrieveResult, TTransformResult, HasTransform>>;
+export function createLofiQueryStore<
+  TRetrieveResult,
+  TTransformResult,
+  HasTransform extends boolean,
+  TData,
+>(
+  runtime: LofiRuntime,
+  retrieveFn: (
+    context: LofiQueryStoreRetrieveContext,
+  ) => LofiRuntimeTxBuilder<TRetrieveResult, TTransformResult, HasTransform>,
+  options: MappedLofiQueryStoreOptions<
+    LofiRuntimeTxResult<TRetrieveResult, TTransformResult, HasTransform>,
+    TData
+  >,
+): LofiQueryStore<TData>;
 export function createLofiQueryStore<TRaw, TData = TRaw>(
   runtime: LofiRuntime,
   retrieveFn: ((context: LofiQueryStoreRetrieveContext) => unknown) | AnySchema,
@@ -235,7 +339,7 @@ export function createLofiQueryStore<TRaw, TData = TRaw>(
               .createQueryEngine(retrieveFn)
               .find(optionsOrTable as keyof AnySchema["tables"] & string, builderFn as never)
       ) as TRaw;
-      const data = options.map ? options.map(rows) : (rows as unknown as TData);
+      const data = options.map ? await options.map(rows) : (rows as unknown as TData);
 
       if (requestId !== currentRequestId) {
         return;
@@ -268,7 +372,7 @@ export function createLofiQueryStore<TRaw, TData = TRaw>(
     let mounted = true;
     const releaseRuntime = runtime.retain();
     const unsubscribeRevision = runtime.$revision.listen(() => {
-      if (isLofiRuntimeBootstrapped(runtime.$status.get())) {
+      if (isLofiRuntimeBootstrappedStatus(runtime.$status.get())) {
         void runQuery();
       }
     });
