@@ -32,58 +32,35 @@
       "default": "./dist/node/index.js"
     },
     "./cli": {
-      "development": "./src/cli/mod.ts",
       "types": "./dist/cli/mod.d.ts",
       "default": "./dist/cli/mod.js"
     },
     "./route-schemas": {
-      "development": "./src/pi/route-schemas.ts",
       "types": "./dist/node/pi/route-schemas.d.ts",
       "browser": "./dist/browser/pi/route-schemas.js",
       "default": "./dist/node/pi/route-schemas.js"
     },
     "./skills": {
-      "development": "./src/pi/skills.ts",
       "types": "./dist/node/pi/skills.d.ts",
       "default": "./dist/node/pi/skills.js"
     },
     "./react": {
-      "development": {
-        "browser": "./dist/browser/client/react.js",
-        "default": "./src/client/react.ts"
-      },
       "types": "./dist/browser/client/react.d.ts",
       "default": "./dist/browser/client/react.js"
     },
     "./vue": {
-      "development": {
-        "browser": "./dist/browser/client/vue.js",
-        "default": "./src/client/vue.ts"
-      },
       "types": "./dist/browser/client/vue.d.ts",
       "default": "./dist/browser/client/vue.js"
     },
     "./svelte": {
-      "development": {
-        "browser": "./dist/browser/client/svelte.js",
-        "default": "./src/client/svelte.ts"
-      },
       "types": "./dist/browser/client/svelte.d.ts",
       "default": "./dist/browser/client/svelte.js"
     },
     "./solid": {
-      "development": {
-        "browser": "./dist/browser/client/solid.js",
-        "default": "./src/client/solid.ts"
-      },
       "types": "./dist/browser/client/solid.d.ts",
       "default": "./dist/browser/client/solid.js"
     },
     "./vanilla": {
-      "development": {
-        "browser": "./dist/browser/client/vanilla.js",
-        "default": "./src/client/vanilla.ts"
-      },
       "types": "./dist/browser/client/vanilla.d.ts",
       "default": "./dist/browser/client/vanilla.js"
     }
