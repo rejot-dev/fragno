@@ -175,6 +175,36 @@ describe("outbox utilities", () => {
     ]);
   });
 
+  it("adds db-now defaults when converting create uow operations", () => {
+    const appSchema = schema("app", (s) =>
+      s.addTable("users", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          ),
+      ),
+    );
+
+    const [mutation] = uowOperationsToLofiMutations([
+      {
+        type: "create",
+        schema: appSchema,
+        table: "users",
+        generatedExternalId: "user-1",
+        values: { name: "Ada" },
+      },
+    ]);
+
+    assert(mutation?.op === "create");
+    expect(mutation.values).toMatchObject({
+      name: "Ada",
+      createdAt: { tag: "db-now" },
+    });
+  });
+
   it("converts outbox mutations into uow operations", () => {
     const appSchema = schema("app", (s) =>
       s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),

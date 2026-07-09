@@ -19,6 +19,25 @@ const resolveVersionstamp = (
     ? options.versionstamp(operation, index)
     : (options?.versionstamp ?? `uow-${(index + 1).toString().padStart(3, "0")}`);
 
+const fillCreateDbNowDefaults = (
+  operation: Extract<MutationOperation<AnySchema>, { type: "create" }>,
+): Record<string, unknown> => {
+  const values = { ...(operation.values as Record<string, unknown>) };
+  const table = operation.schema.tables[operation.table];
+
+  for (const [key, column] of Object.entries(table?.columns ?? {})) {
+    if (column.role === "internal-id" || Object.prototype.hasOwnProperty.call(values, key)) {
+      continue;
+    }
+
+    if (column.default && "dbSpecial" in column.default && column.default.dbSpecial === "now") {
+      values[key] = { tag: "db-now" };
+    }
+  }
+
+  return values;
+};
+
 export function uowOperationsToLofiMutations(
   operations: readonly MutationOperation<AnySchema>[],
   options?: UowOperationsToLofiMutationsOptions,
@@ -37,7 +56,7 @@ export function uowOperationsToLofiMutations(
           schema: operation.schema.name,
           table: operation.table,
           externalId: operation.generatedExternalId,
-          values: operation.values as Record<string, unknown>,
+          values: fillCreateDbNowDefaults(operation),
           versionstamp,
         },
       ];
