@@ -1,4 +1,5 @@
 import { ScrollArea } from "@base-ui/react/scroll-area";
+import { useStore } from "@fragno-dev/core/react";
 import type { PiSession, PiWorkflowStatus } from "@fragno-dev/pi-harness/types";
 import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -16,6 +17,7 @@ import {
 } from "react-router";
 
 import { getAuthMe } from "@/fragno/auth/auth-server";
+import { createPiLofiSessionListingStore } from "@/fragno/pi/pi-client";
 import {
   createPiAgentName,
   findPiModelOption,
@@ -323,8 +325,13 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function BackofficeOrganisationPiSessionsLayout() {
-  const { sessions, configError, sessionsError, turnSummaries, workflowStatuses } =
-    useLoaderData<typeof loader>();
+  const {
+    sessions: serverSessions,
+    configError,
+    sessionsError,
+    turnSummaries: serverTurnSummaries,
+    workflowStatuses: serverWorkflowStatuses,
+  } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>() as PiSessionsActionData | undefined;
   const navigation = useNavigation();
   const { orgId, configState } = useOutletContext<PiLayoutContext>();
@@ -335,6 +342,25 @@ export default function BackofficeOrganisationPiSessionsLayout() {
   const isNewSession = searchParams.get("new") === "1";
   const basePath = `/backoffice/sessions/${orgId}/sessions`;
   const isDetailRoute = Boolean(selectedSessionId);
+  const lofiSessionListingStore = useMemo(
+    () =>
+      createPiLofiSessionListingStore(orgId, INTERACTIVE_CHAT_WORKFLOW_NAME, {
+        initialData: {
+          sessions: serverSessions,
+          workflowStatuses: serverWorkflowStatuses,
+        },
+      }),
+    [orgId, serverSessions, serverWorkflowStatuses],
+  );
+  const lofiSessionListing = useStore(lofiSessionListingStore);
+  const { sessions, workflowStatuses } = lofiSessionListing.data;
+  const turnSummaries = serverTurnSummaries;
+  const lofiSessionListingError =
+    lofiSessionListing.error instanceof Error
+      ? lofiSessionListing.error.message
+      : lofiSessionListing.error
+        ? "Pi session listing sync failed."
+        : null;
   const activeIntent = navigation.formData?.get("intent");
   const creating = navigation.state === "submitting" && activeIntent === "create-session";
   const harnesses = resolvePiHarnesses(configState?.config?.harnesses);
@@ -384,13 +410,9 @@ export default function BackofficeOrganisationPiSessionsLayout() {
     );
   }
 
-  if (sessionsError) {
-    return (
-      <div className="border border-red-200 bg-red-50 p-4 text-sm text-red-600">
-        {sessionsError}
-      </div>
-    );
-  }
+  const sessionListingServerError = sessionsError?.trim() || null;
+  const sessionListingBlockingError =
+    sessionListingServerError && sessions.length === 0 ? sessionListingServerError : null;
 
   const isDetailView = isDetailRoute || isNewSession;
   // Use flex for both; max-lg:hidden only applies below lg so lg layout stays stable
@@ -523,6 +545,18 @@ export default function BackofficeOrganisationPiSessionsLayout() {
             </span>
           </div>
         </Link>
+
+        {sessionListingServerError ? (
+          <div className="border border-amber-300/60 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-200">
+            {sessionListingBlockingError ?? "Server refresh failed; showing local session data."}
+          </div>
+        ) : null}
+
+        {lofiSessionListingError ? (
+          <div className="border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+            {lofiSessionListingError}
+          </div>
+        ) : null}
 
         <ScrollArea.Root className="relative mt-3 flex min-h-0 flex-1 overflow-hidden">
           <ScrollArea.Viewport className="min-h-0 flex-1 pr-1">
