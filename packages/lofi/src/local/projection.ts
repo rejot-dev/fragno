@@ -24,6 +24,21 @@ export type SchemaMaps = {
   tableMap: Map<string, Map<string, AnyTable>>;
 };
 
+export type LofiSchemaNameAliases = ReadonlyMap<string, string>;
+
+export const normalizeLofiSchemaName = (schemaName: string): string =>
+  schemaName.replace(/-/g, "_");
+
+export const resolveLofiSchemaName = (
+  schemaName: string,
+  aliases?: LofiSchemaNameAliases,
+): string => aliases?.get(schemaName) ?? normalizeLofiSchemaName(schemaName);
+
+export const withLofiSchemaName = (schema: AnySchema, schemaName?: string): AnySchema => ({
+  ...schema,
+  name: schemaName ?? normalizeLofiSchemaName(schema.name),
+});
+
 export const createSchemaMaps = (schemas: readonly AnySchema[], owner: string): SchemaMaps => {
   const schemaMap = new Map<string, AnySchema>();
   const tableMap = new Map<string, Map<string, AnyTable>>();
@@ -76,6 +91,7 @@ export const getKnownMutation = (options: {
   ignoreUnknownSchemas: boolean;
   schemaErrorPrefix: string;
   tableErrorPrefix: string;
+  schemaNameAliases?: LofiSchemaNameAliases;
 }): { mutation: LofiMutation; schema: AnySchema; table: AnyTable } | undefined => {
   const {
     mutation,
@@ -84,22 +100,24 @@ export const getKnownMutation = (options: {
     ignoreUnknownSchemas,
     schemaErrorPrefix,
     tableErrorPrefix,
+    schemaNameAliases,
   } = options;
-  const schema = schemaMap.get(mutation.schema);
+  const schemaName = resolveLofiSchemaName(mutation.schema, schemaNameAliases);
+  const schema = schemaMap.get(schemaName) ?? schemaMap.get(mutation.schema);
   if (!schema) {
     if (ignoreUnknownSchemas) {
       return undefined;
     }
     throw new Error(`${schemaErrorPrefix}: ${mutation.schema}`);
   }
-  const table = tableMap.get(mutation.schema)?.get(mutation.table);
+  const table = tableMap.get(schema.name)?.get(mutation.table);
   if (!table) {
     if (ignoreUnknownSchemas) {
       return undefined;
     }
     throw new Error(`${tableErrorPrefix}: ${mutation.schema}.${mutation.table}`);
   }
-  return { mutation, schema, table };
+  return { mutation: { ...mutation, schema: schema.name }, schema, table };
 };
 
 export const matchMutation = <
@@ -111,6 +129,7 @@ export const matchMutation = <
   schema: TSchema,
   table: TTableName,
   op: TOp,
+  schemaNameAliases?: LofiSchemaNameAliases,
 ):
   | LofiTypedMutation<
       TSchema,
@@ -119,7 +138,11 @@ export const matchMutation = <
     >
   | undefined => {
   const matchesOp = Array.isArray(op) ? op.includes(mutation.op) : mutation.op === op;
-  if (mutation.schema !== schema.name || mutation.table !== table || !matchesOp) {
+  if (
+    mutation.schema !== resolveLofiSchemaName(schema.name, schemaNameAliases) ||
+    mutation.table !== table ||
+    !matchesOp
+  ) {
     return undefined;
   }
   return mutation as LofiTypedMutation<
@@ -129,11 +152,15 @@ export const matchMutation = <
   >;
 };
 
-export const createMutationMatcher = (mutations: readonly LofiMutation[]): LofiMutationMatcher => ({
-  one: matchMutation,
+export const createMutationMatcher = (
+  mutations: readonly LofiMutation[],
+  schemaNameAliases?: LofiSchemaNameAliases,
+): LofiMutationMatcher => ({
+  one: (mutation, schema, table, op) =>
+    matchMutation(mutation, schema, table, op, schemaNameAliases),
   all: (schema, table, op) =>
     mutations.flatMap((mutation) => {
-      const matched = matchMutation(mutation, schema, table, op);
+      const matched = matchMutation(mutation, schema, table, op, schemaNameAliases);
       return matched ? [matched] : [];
     }),
 });
@@ -319,15 +346,18 @@ const getLocalProjectionTarget = (options: {
   localSchemaMap: Map<string, AnySchema>;
   localTableMap: Map<string, Map<string, AnyTable>>;
   errorPrefix: string;
+  schemaNameAliases?: LofiSchemaNameAliases;
 }): { schema: AnySchema; table: AnyTable } => {
-  const { schema, tableName, localSchemaMap, localTableMap, errorPrefix } = options;
-  const localSchema = localSchemaMap.get(schema.name);
+  const { schema, tableName, localSchemaMap, localTableMap, errorPrefix, schemaNameAliases } =
+    options;
+  const schemaName = resolveLofiSchemaName(schema.name, schemaNameAliases);
+  const localSchema = localSchemaMap.get(schemaName);
   if (!localSchema) {
-    throw new Error(`${errorPrefix}: ${schema.name}`);
+    throw new Error(`${errorPrefix}: ${schemaName}`);
   }
-  const table = localTableMap.get(schema.name)?.get(tableName);
+  const table = localTableMap.get(schemaName)?.get(tableName);
   if (!table) {
-    throw new Error(`Unknown local projection table: ${schema.name}.${tableName}`);
+    throw new Error(`Unknown local projection table: ${schemaName}.${tableName}`);
   }
   return { schema: localSchema, table };
 };
@@ -337,6 +367,7 @@ export const getLocalMutationTarget = (options: {
   tableName: string;
   localSchemaMap: Map<string, AnySchema>;
   localTableMap: Map<string, Map<string, AnyTable>>;
+  schemaNameAliases?: LofiSchemaNameAliases;
 }): { schema: AnySchema; table: AnyTable } =>
   getLocalProjectionTarget({
     ...options,
@@ -348,6 +379,7 @@ export const getLocalReadTarget = (options: {
   tableName: string;
   localSchemaMap: Map<string, AnySchema>;
   localTableMap: Map<string, Map<string, AnyTable>>;
+  schemaNameAliases?: LofiSchemaNameAliases;
 }): { schema: AnySchema; table: AnyTable } =>
   getLocalProjectionTarget({
     ...options,
@@ -468,15 +500,17 @@ export const createProjectionTx = (options: {
   versionstamp: string;
   localSchemaMap: Map<string, AnySchema>;
   localTableMap: Map<string, Map<string, AnyTable>>;
+  schemaNameAliases?: LofiSchemaNameAliases;
 }): LofiProjectionTx & { drainMutations(): ProjectionQueuedMutation[] } => {
-  const { versionstamp, localSchemaMap, localTableMap } = options;
+  const { versionstamp, localSchemaMap, localTableMap, schemaNameAliases } = options;
   const mutations: ProjectionQueuedMutation[] = [];
 
   return {
     forSchema(schema) {
-      const localSchema = localSchemaMap.get(schema.name);
+      const schemaName = resolveLofiSchemaName(schema.name, schemaNameAliases);
+      const localSchema = localSchemaMap.get(schemaName);
       if (!localSchema) {
-        throw new Error(`Projection writes must target a local schema: ${schema.name}`);
+        throw new Error(`Projection writes must target a local schema: ${schemaName}`);
       }
 
       return {

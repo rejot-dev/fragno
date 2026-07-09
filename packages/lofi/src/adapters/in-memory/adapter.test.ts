@@ -74,6 +74,157 @@ const userViewProjection = defineLocalProjection({
 });
 
 describe("InMemoryLofiAdapter", () => {
+  it("normalizes default schema names for outbox application and queries", async () => {
+    const fragmentSchema = schema("app-fragment", (s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+    );
+    const adapter = new InMemoryLofiAdapter({
+      endpointName: "app",
+      schemas: [fragmentSchema],
+    });
+
+    await adapter.applyOutboxEntry({
+      sourceKey: "app::outbox",
+      versionstamp: "vs1",
+      uowId: "uow-vs1",
+      mutations: [
+        {
+          op: "create",
+          schema: "app-fragment",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "vs1",
+          values: { name: "Ada" },
+        },
+      ],
+    });
+
+    const users = await adapter
+      .createQueryEngine(fragmentSchema)
+      .find("users", (b) => b.whereIndex("primary"));
+    expect(users).toEqual([expect.objectContaining({ name: "Ada" })]);
+  });
+
+  it("matches raw source schema names and writes through raw local schema names in projections", async () => {
+    const fragmentSchema = schema("app-fragment", (s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+    );
+    const localSchema = schema("local-user-view", (s) =>
+      s.addTable("user_cards", (t) =>
+        t.addColumn("id", idColumn()).addColumn("displayName", column("string")),
+      ),
+    );
+    const adapter = new InMemoryLofiAdapter({
+      endpointName: "app",
+      schemas: [fragmentSchema],
+      localSchemas: [localSchema],
+      projections: [
+        defineLocalProjection({
+          mutate: ({ mutations, match, tx }) => {
+            const userCards = tx.forSchema(localSchema);
+            for (const rawMutation of mutations) {
+              const mutation = match.one(rawMutation, fragmentSchema, "users", "create");
+              if (!mutation) {
+                continue;
+              }
+              userCards.create("user_cards", {
+                id: mutation.externalId,
+                displayName: String(mutation.values.name),
+              });
+            }
+          },
+        }),
+      ],
+    });
+
+    await adapter.applyOutboxEntry({
+      sourceKey: "app::outbox",
+      versionstamp: "vs1",
+      uowId: "uow-vs1",
+      mutations: [
+        {
+          op: "create",
+          schema: "app-fragment",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "vs1",
+          values: { name: "Ada" },
+        },
+      ],
+    });
+
+    const cards = await adapter
+      .createQueryEngine(localSchema)
+      .find("user_cards", (b) => b.whereIndex("primary"));
+    expect(cards).toEqual([expect.objectContaining({ displayName: "Ada" })]);
+  });
+
+  it("lets projections from multiple outbox sources write into the same local database", async () => {
+    const adapter = new InMemoryLofiAdapter({
+      endpointName: "app",
+      schemas: [appSchema],
+      localSchemas: [userViewSchema],
+      projections: [
+        defineLocalProjection({
+          mutate: ({ mutations, match, source, tx }) => {
+            const userCards = tx.forSchema(userViewSchema);
+            for (const rawMutation of mutations) {
+              const mutation = match.one(rawMutation, appSchema, "users", "create");
+              if (!mutation) {
+                continue;
+              }
+
+              userCards.create("user_cards", {
+                id: `${source.sourceKey}:${mutation.externalId}`,
+                displayName: `${source.sourceKey}:${mutation.values.name}`,
+              });
+            }
+          },
+        }),
+      ],
+    });
+
+    await adapter.applyOutboxEntry({
+      sourceKey: "org-a::outbox",
+      versionstamp: "vs-a1",
+      uowId: "uow-a1",
+      mutations: [
+        {
+          op: "create",
+          schema: "app",
+          table: "users",
+          externalId: "user-a",
+          versionstamp: "vs-a1",
+          values: { name: "Ada" },
+        },
+      ],
+    });
+    await adapter.applyOutboxEntry({
+      sourceKey: "org-b::outbox",
+      versionstamp: "vs-b1",
+      uowId: "uow-b1",
+      mutations: [
+        {
+          op: "create",
+          schema: "app",
+          table: "users",
+          externalId: "user-b",
+          versionstamp: "vs-b1",
+          values: { name: "Bob" },
+        },
+      ],
+    });
+
+    const cards = await adapter
+      .createQueryEngine(userViewSchema)
+      .find("user_cards", (b) => b.whereIndex("primary"));
+
+    expect(cards).toMatchObject([
+      { displayName: "org-a::outbox:Ada" },
+      { displayName: "org-b::outbox:Bob" },
+    ]);
+  });
+
   it("applies outbox entries once and records inbox", async () => {
     const adapter = new InMemoryLofiAdapter({ endpointName: "app", schemas: [appSchema] });
 

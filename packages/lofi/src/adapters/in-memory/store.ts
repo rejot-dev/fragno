@@ -2,6 +2,7 @@ import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
 import { FragnoId, FragnoReference, getTableRelations } from "@fragno-dev/db/schema";
 
 import type { ReferenceTarget } from "../../indexeddb/types";
+import { withLofiSchemaName } from "../../local/projection";
 import { resolveMutationValues } from "../../query/mutation-values";
 import { normalizeValue } from "../../query/normalize";
 import type { LofiMutation } from "../../types";
@@ -345,7 +346,7 @@ export class InMemoryLofiStore {
     const schemaMap = new Map<string, AnySchema>();
     const tableMap = new Map<string, Map<string, AnyTable>>();
 
-    for (const schema of options.schemas) {
+    for (const schema of options.schemas.map((sourceSchema) => withLofiSchemaName(sourceSchema))) {
       if (!schema.name || schema.name.trim().length === 0) {
         throw new Error("InMemoryLofiStore schemas must have a non-empty name.");
       }

@@ -74,6 +74,110 @@ describe("IndexedDbAdapter", () => {
     globalThis.IDBTransaction = IDBTransaction;
   });
 
+  it("normalizes default schema names for outbox application and queries", async () => {
+    const appSchema = schema("app-fragment", (s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+    );
+
+    const dbName = createDbName();
+    const adapter = new IndexedDbAdapter({
+      dbName,
+      endpointName: "app",
+      schemas: [{ schema: appSchema }],
+    });
+
+    await adapter.applyOutboxEntry({
+      sourceKey: "app::outbox",
+      versionstamp: "vs1",
+      uowId: "uow-vs1",
+      mutations: [
+        {
+          op: "create",
+          schema: "app-fragment",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "vs1",
+          values: { name: "Ada" },
+        },
+      ],
+    });
+
+    const users = await adapter
+      .createQueryEngine(appSchema)
+      .find("users", (b) => b.whereIndex("primary"));
+    expect(users).toEqual([expect.objectContaining({ name: "Ada" })]);
+
+    const db = await openDb(dbName);
+    const row = await getRow(db, ["app", "app_fragment", "users", "user-1"]);
+    expect(row?.data).toMatchObject({ name: "Ada" });
+    db.close();
+  });
+
+  it("uses explicit schema aliases for source matching, projection writes, and queries", async () => {
+    const appSchema = schema("app-fragment", (s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+    );
+    const localSchema = schema("local-user-view", (s) =>
+      s.addTable("user_cards", (t) =>
+        t.addColumn("id", idColumn()).addColumn("displayName", column("string")),
+      ),
+    );
+    const dbName = createDbName();
+    const adapter = new IndexedDbAdapter({
+      dbName,
+      endpointName: "app",
+      schemas: [{ schema: appSchema, schemaName: "custom_app" }],
+      localSchemas: [{ schema: localSchema, schemaName: "custom_local" }],
+      projections: [
+        defineLocalProjection({
+          mutate: ({ mutations, match, tx }) => {
+            const userCards = tx.forSchema(localSchema);
+            for (const rawMutation of mutations) {
+              const mutation = match.one(rawMutation, appSchema, "users", "create");
+              if (!mutation) {
+                continue;
+              }
+              userCards.create("user_cards", {
+                id: mutation.externalId,
+                displayName: String(mutation.values.name),
+              });
+            }
+          },
+        }),
+      ],
+    });
+
+    await adapter.applyOutboxEntry({
+      sourceKey: "app::outbox",
+      versionstamp: "vs1",
+      uowId: "uow-vs1",
+      mutations: [
+        {
+          op: "create",
+          schema: "app-fragment",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "vs1",
+          values: { name: "Ada" },
+        },
+      ],
+    });
+
+    const users = await adapter
+      .createQueryEngine(appSchema)
+      .find("users", (b) => b.whereIndex("primary"));
+    const cards = await adapter
+      .createQueryEngine(localSchema)
+      .find("user_cards", (b) => b.whereIndex("primary"));
+    expect(users).toEqual([expect.objectContaining({ name: "Ada" })]);
+    expect(cards).toEqual([expect.objectContaining({ displayName: "Ada" })]);
+
+    const db = await openDb(dbName);
+    expect(await getRow(db, ["app", "custom_app", "users", "user-1"])).toBeDefined();
+    expect(await getRow(db, ["app", "custom_local", "user_cards", "user-1"])).toBeDefined();
+    db.close();
+  });
+
   it("applies create/update/delete with idempotency and versioning", async () => {
     const appSchema = schema("app", (s) =>
       s.addTable("users", (t) =>
@@ -502,6 +606,90 @@ describe("IndexedDbAdapter", () => {
     expect(await getInboxRow(dbAfter, [customCursorKey, "uow-vs1", "vs1"])).toBeUndefined();
     expect(await adapterV2.getMeta(customCursorKey)).toBeUndefined();
     dbAfter.close();
+  });
+
+  it("lets projections from multiple indexeddb outbox sources write into the same local database", async () => {
+    const appSchema = schema("app", (s) =>
+      s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
+    );
+    const localSchema = schema("local_user_view", (s) =>
+      s.addTable("user_cards", (t) =>
+        t.addColumn("id", idColumn()).addColumn("displayName", column("string")),
+      ),
+    );
+    const dbName = createDbName();
+    const adapter = new IndexedDbAdapter({
+      dbName,
+      endpointName: "app",
+      schemas: [{ schema: appSchema }],
+      localSchemas: [{ schema: localSchema }],
+      projections: [
+        defineLocalProjection({
+          mutate: ({ mutations, match, source, tx }) => {
+            const userCards = tx.forSchema(localSchema);
+            for (const rawMutation of mutations) {
+              const mutation = match.one(rawMutation, appSchema, "users", "create");
+              if (!mutation) {
+                continue;
+              }
+
+              userCards.create("user_cards", {
+                id: `${source.sourceKey}:${mutation.externalId}`,
+                displayName: `${source.sourceKey}:${mutation.values.name}`,
+              });
+            }
+          },
+        }),
+      ],
+    });
+
+    await adapter.applyOutboxEntry({
+      sourceKey: "org-a::outbox",
+      versionstamp: "vs-a1",
+      uowId: "uow-a1",
+      mutations: [
+        {
+          op: "create",
+          schema: "app",
+          table: "users",
+          externalId: "user-a",
+          versionstamp: "vs-a1",
+          values: { name: "Ada" },
+        },
+      ],
+    });
+    await adapter.applyOutboxEntry({
+      sourceKey: "org-b::outbox",
+      versionstamp: "vs-b1",
+      uowId: "uow-b1",
+      mutations: [
+        {
+          op: "create",
+          schema: "app",
+          table: "users",
+          externalId: "user-b",
+          versionstamp: "vs-b1",
+          values: { name: "Bob" },
+        },
+      ],
+    });
+
+    const cards = await adapter
+      .createQueryEngine(localSchema)
+      .find("user_cards", (b) => b.whereIndex("primary"));
+    expect(cards).toMatchObject([
+      { displayName: "org-a::outbox:Ada" },
+      { displayName: "org-b::outbox:Bob" },
+    ]);
+
+    const db = await openDb(dbName);
+    expect(
+      await getRow(db, ["app", "local_user_view", "user_cards", "org-a::outbox:user-a"]),
+    ).toBeDefined();
+    expect(
+      await getRow(db, ["app", "local_user_view", "user_cards", "org-b::outbox:user-b"]),
+    ).toBeDefined();
+    db.close();
   });
 
   it("materializes local schema rows in the same transaction", async () => {
