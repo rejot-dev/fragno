@@ -2,10 +2,21 @@ import { describe, expect, it, assert } from "vitest";
 
 import { buildScopedInstanceRowId } from "@fragno-dev/workflows/instance-ref";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
+import {
+  IDBCursor,
+  IDBDatabase,
+  IDBFactory,
+  IDBIndex,
+  IDBKeyRange,
+  IDBObjectStore,
+  IDBOpenDBRequest,
+  IDBRequest,
+  IDBTransaction,
+} from "fake-indexeddb";
 import { Type } from "typebox";
 
 import {
-  InMemoryLofiAdapter,
+  IndexedDbAdapter,
   createLofiRuntime,
   uowOperationsToLofiMutations,
   type LofiMutation,
@@ -36,10 +47,24 @@ import {
 
 const workflowName = "interactive-chat";
 
+const installFakeIndexedDb = () => {
+  globalThis.indexedDB = new IDBFactory();
+  globalThis.IDBCursor = IDBCursor;
+  globalThis.IDBDatabase = IDBDatabase;
+  globalThis.IDBIndex = IDBIndex;
+  globalThis.IDBKeyRange = IDBKeyRange;
+  globalThis.IDBObjectStore = IDBObjectStore;
+  globalThis.IDBOpenDBRequest = IDBOpenDBRequest;
+  globalThis.IDBRequest = IDBRequest;
+  globalThis.IDBTransaction = IDBTransaction;
+};
+
 const createRuntime = async (mutations: readonly LofiMutation[] = []) => {
-  const adapter = new InMemoryLofiAdapter({
+  installFakeIndexedDb();
+  const adapter = new IndexedDbAdapter({
+    dbName: `pi-harness-projection-test-${Math.random().toString(16).slice(2)}`,
     endpointName: "pi-harness-projection-test",
-    schemas: [workflowsSchema],
+    schemas: [{ schema: workflowsSchema }],
   });
   await adapter.applyMutations([...mutations]);
   const runtime = createLofiRuntime({
@@ -58,9 +83,11 @@ const projectWorkflowMutations = async (
 ): Promise<PiWorkflowLofiSessionProjectionState> => {
   const { runtime } = await createRuntime(uowOperationsToLofiMutations(mutations));
   const store = createSessionProjectionDataStore(runtime, workflowName, sessionId, options);
+  const unlisten = store.listen(() => undefined);
 
   await runtime.whenBootstrapped();
   await store.refresh();
+  unlisten();
 
   return store.get().data;
 };
@@ -158,9 +185,11 @@ const projectManualWorkflow = async (
   ];
   const { runtime } = await createRuntime(mutations);
   const store = createSessionProjectionDataStore(runtime, workflowName, sessionId, storeOptions);
+  const unlisten = store.listen(() => undefined);
 
   await runtime.whenBootstrapped();
   await store.refresh();
+  unlisten();
 
   return store.get().data;
 };
@@ -182,19 +211,35 @@ const projectFauxPrompt = async (options: {
   return await projectWorkflowMutations(options.sessionId, recording.mutations);
 };
 
+type CheckpointProjectionOptions = {
+  mutations?: "live" | "deleted-step-emissions";
+  resume?: boolean;
+  waitForDone?: boolean;
+};
+
 const withFauxCheckpointProjection = async (
   run: ReturnType<typeof startFauxPiHarnessOperation>,
   sessionId: string,
   checkpointName: string,
   assertProjection: (projection: PiWorkflowLofiSessionProjectionState) => void | Promise<void>,
+  options: CheckpointProjectionOptions = {},
 ) => {
   const checkpoint = await run.waitForCheckpoint(checkpointName);
+  const mutations =
+    options.mutations === "deleted-step-emissions"
+      ? checkpoint.mutationsWithDeletedStepEmissions()
+      : checkpoint.mutations;
 
   try {
-    await assertProjection(await projectWorkflowMutations(sessionId, checkpoint.mutations));
+    await assertProjection(await projectWorkflowMutations(sessionId, mutations));
   } finally {
-    checkpoint.resume();
-    await run.done;
+    const shouldResume = options.resume ?? true;
+    if (shouldResume) {
+      checkpoint.resume();
+    }
+    if (options.waitForDone ?? shouldResume) {
+      await run.done;
+    }
   }
 };
 
@@ -1182,6 +1227,119 @@ describe("Pi harness workflow projection", () => {
       expect(projection.draftAgentMessage).toBeNull();
       expect(projection.statusText).toBeNull();
       assert(projection.readyForInput);
+    });
+
+    it("projects one run across live and emission-deleted checkpoint snapshots", async () => {
+      const sessionId = "multi-checkpoint-completed-step";
+      const run = startFauxPiHarnessOperation({
+        workflowName,
+        sessionId,
+        operation: { kind: "prompt", args: ["stay visible"] },
+        responses: [
+          fauxAssistantMessageWithCheckpoints(
+            [
+              fauxEventCheckpoint("assistant-text", "text_delta", { contentIndex: 0 }),
+              fauxEventCheckpoint("assistant-end", "message_end", { messageRole: "assistant" }),
+              fauxText("Still visible."),
+            ],
+            { timestamp: 1 },
+          ),
+        ],
+      });
+
+      await withFauxCheckpointProjection(
+        run,
+        sessionId,
+        "assistant-text",
+        (projection) => {
+          expect(projection.state.messages.map(messageTextContent)).toEqual(["stay visible"]);
+          expect(projection.draftAgentMessage).toMatchObject({ activity: "writing" });
+          assert(!projection.readyForInput);
+        },
+        {
+          waitForDone: false,
+        },
+      );
+
+      await withFauxCheckpointProjection(
+        run,
+        sessionId,
+        "assistant-end",
+        (projection) => {
+          expect(projection.state.messages.map(messageTextContent)).toEqual([
+            "stay visible",
+            "Still visible.",
+          ]);
+          expect(projection.draftAgentMessage).toBeNull();
+        },
+        {
+          waitForDone: false,
+        },
+      );
+
+      await withFauxCheckpointProjection(
+        run,
+        sessionId,
+        "assistant-end",
+        (projection) => {
+          expect(projection.state.messages.map(messageTextContent)).toEqual([
+            "stay visible",
+            "Still visible.",
+          ]);
+          expect(projection.draftAgentMessage).toBeNull();
+        },
+        {
+          mutations: "deleted-step-emissions",
+          resume: false,
+          waitForDone: false,
+        },
+      );
+
+      const recording = await run.done;
+      const completedProjection = await projectWorkflowMutations(sessionId, recording.mutations);
+      expect(completedProjection.state.messages.map(messageTextContent)).toEqual([
+        "stay visible",
+        "Still visible.",
+      ]);
+      expect(completedProjection.draftAgentMessage).toBeNull();
+      expect(completedProjection.statusText).toBeNull();
+      assert(completedProjection.readyForInput);
+    });
+
+    it("keeps messages visible in indexeddb after completed step emissions are deleted", async () => {
+      const sessionId = "indexeddb-deleted-emissions-after-completion";
+      const run = startFauxPiHarnessOperation({
+        workflowName,
+        sessionId,
+        operation: { kind: "prompt", args: ["stay visible"] },
+        responses: [
+          fauxAssistantMessageWithCheckpoints(
+            [
+              fauxEventCheckpoint("assistant-text", "text_delta", { contentIndex: 0 }),
+              fauxText("Still visible."),
+            ],
+            { timestamp: 1 },
+          ),
+        ],
+      });
+
+      const liveCheckpoint = await run.waitForCheckpoint("assistant-text");
+      liveCheckpoint.resume();
+      const recording = await run.done;
+      const completedProjection = await projectWorkflowMutations(sessionId, recording.mutations);
+      expect(completedProjection.state.messages.map(messageTextContent)).toEqual([
+        "stay visible",
+        "Still visible.",
+      ]);
+
+      const afterEmissionDeletionProjection = await projectWorkflowMutations(
+        sessionId,
+        run.mutationsWithDeletedStepEmissions(recording.mutations),
+      );
+      expect(afterEmissionDeletionProjection.state.messages.map(messageTextContent)).toEqual([
+        "stay visible",
+        "Still visible.",
+      ]);
     });
 
     it("keeps messages visible when live emissions settle into an outbox-shaped completed step", async () => {
