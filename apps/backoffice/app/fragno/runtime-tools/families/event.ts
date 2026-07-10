@@ -8,6 +8,11 @@ import {
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../runtime-tools";
+import {
+  automationEventsCatalogCreateTool,
+  automationEventsCatalogGetTool,
+  automationEventsCatalogListTool,
+} from "./backoffice-capabilities";
 
 const contextScopeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("system") }),
@@ -33,6 +38,7 @@ export type EventRuntime = {
 };
 
 type EventToolContext = BackofficeToolContext<{ event?: EventRuntime }>;
+type EventCatalogToolContext = BackofficeToolContext<{ backoffice?: unknown }>;
 
 const eventEmitInputSchema = z.object({
   eventType: z.string().trim().min(1),
@@ -54,12 +60,12 @@ const eventEmitOutputSchema = z.object({
 
 const getEventRuntime = (runtime: EventToolContext["runtimes"]["event"]): EventRuntime => {
   if (!runtime) {
-    throw new Error("Event runtime is not available in this execution context");
+    throw new Error("Events runtime is not available in this execution context");
   }
   return runtime;
 };
 
-const parseEventEmitArgs = defineCliArgsParser<EventEmitArgs>("event.emit", {
+const parseEventFireArgs = defineCliArgsParser<EventEmitArgs>("events.fire", {
   eventType: { required: true },
   source: {},
   externalActorId: {},
@@ -69,11 +75,11 @@ const parseEventEmitArgs = defineCliArgsParser<EventEmitArgs>("event.emit", {
   targetScope: { kind: "json", option: "target-scope-json" },
 });
 
-const emitEventTool = defineBackofficeRuntimeTool({
-  id: "event.emit",
-  namespace: "event",
-  name: "emit",
-  description: "Emit another automation event for the current organisation.",
+const fireEventTool = defineBackofficeRuntimeTool({
+  id: "events.fire",
+  namespace: "events",
+  name: "fire",
+  description: "Fire an automation event for the current context or a selected target scope.",
   requiredPermissions: ["emit"],
   inputSchema: eventEmitInputSchema,
   outputSchema: eventEmitOutputSchema,
@@ -81,9 +87,9 @@ const emitEventTool = defineBackofficeRuntimeTool({
     await getEventRuntime(context.runtimes.event).emitEvent(input),
   adapters: {
     bash: {
-      command: "event.emit",
+      command: "events.fire",
       help: {
-        summary: "event.emit triggers another Fragno automation event.",
+        summary: "events.fire triggers another Fragno automation event.",
         options: [
           {
             name: "event-type",
@@ -130,24 +136,43 @@ const emitEventTool = defineBackofficeRuntimeTool({
           },
         ],
         examples: [
-          "event.emit --event-type identity.binding.completed --source otp --format json",
-          'event.emit --event-type identity.bound --payload-json \'{"plan":"basic"}\'',
+          "events.fire --event-type identity.binding.completed --source otp --format json",
+          'events.fire --event-type identity.bound --payload-json \'{"plan":"basic"}\'',
         ],
       },
-      parse: parseEventEmitArgs,
+      parse: parseEventFireArgs,
       format: (result) => ({ data: result }),
     },
   },
 });
 
-export const eventRuntimeTools = [emitEventTool] as const;
+export const eventRuntimeTools = [
+  fireEventTool,
+  automationEventsCatalogListTool,
+  automationEventsCatalogGetTool,
+  automationEventsCatalogCreateTool,
+] as const;
 
-export const eventToolFamily = defineBackofficeRuntimeToolFamily({
-  namespace: "event",
+export const eventFireToolFamily = defineBackofficeRuntimeToolFamily({
+  namespace: "events",
   permissions: {
-    emit: "Emit automation events within the current scope.",
+    emit: "Fire automation events within the current scope.",
     route: "Route automation events to another selected scope.",
   },
-  tools: eventRuntimeTools,
+  tools: [fireEventTool],
   isAvailable: (context: EventToolContext) => !!context.runtimes.event,
+});
+
+export const eventCatalogToolFamily = defineBackofficeRuntimeToolFamily({
+  namespace: "events",
+  permissions: {
+    read: "Read automation event catalog entries.",
+    manage: "Manage dynamic automation event catalog entries.",
+  },
+  tools: [
+    automationEventsCatalogListTool,
+    automationEventsCatalogGetTool,
+    automationEventsCatalogCreateTool,
+  ],
+  isAvailable: (context: EventCatalogToolContext) => !!context.runtimes.backoffice,
 });

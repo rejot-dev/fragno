@@ -38,7 +38,7 @@ Catalog identity:
 Before parsing payloads, inspect the catalog schema with codemode:
 
 \`\`\`js
-const descriptor = await events.eventsCatalogGet({ source: "telegram", type: "message.received" });
+const descriptor = await events.catalogGet({ source: "telegram", eventType: "message.received" });
 \`\`\`
 
 Payload fields:
@@ -49,10 +49,10 @@ Payload fields:
 - \`text\`: message text when available, otherwise \`null\`.
 - \`attachments\`: optional attachment metadata. Voice notes and files are represented here, not as raw Telegram \`message.voice\` fields.
 
-When reading a queued ingest event through \`events.getEvent({ hookId })\`, the normalized Telegram payload is inside the event envelope:
+When reading a queued ingest hook through \`internal.hooksGet({ fragment: "automations", hookId })\`, the normalized Telegram payload is inside the event envelope:
 
 \`\`\`js
-const entry = await events.getEvent({ hookId });
+const entry = await internal.hooksGet({ fragment: "automations", hookId });
 const payload = entry?.payload?.payload;
 const attachments = payload?.attachments ?? [];
 \`\`\`

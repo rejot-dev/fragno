@@ -4,51 +4,18 @@ import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities
 
 import { createTrustedSystemBackofficeToolContext } from "../runtime-tools";
 import { automationStoreRuntimeTools } from "./automations-bindings";
-import {
-  automationEventsRuntimeTools,
-  hooksRuntimeTools,
-  type DurableHooksRuntime,
-} from "./automations-durable-hooks";
+import { hooksRuntimeTools } from "./automations-durable-hooks";
 import { automationRouterRuntimeTools } from "./automations-routing";
 import {
   automationWorkflowRuntimeTools,
   type AutomationWorkflowRuntime,
 } from "./automations-workflow";
 import {
-  backofficeCapabilitiesRuntimeTools,
+  automationEventsCatalogCreateTool,
+  automationEventsCatalogGetTool,
+  automationEventsCatalogListTool,
   type BackofficeCapabilitiesRuntime,
 } from "./backoffice-capabilities";
-
-type DurableHookRecord = NonNullable<Awaited<ReturnType<DurableHooksRuntime["getHook"]>>>;
-
-const createHook = ({
-  id,
-  hookName,
-  payload = {
-    id: `${id}-event`,
-    orgId: "org-1",
-    source: "telegram",
-    eventType: "message.received",
-    occurredAt: "2026-01-01T00:00:00.000Z",
-    payload: { text: "hello" },
-    actor: { scope: "external", source: "telegram", type: "chat", id: "chat-1" },
-  },
-}: {
-  id: string;
-  hookName: string;
-  payload?: DurableHookRecord["payload"];
-}): DurableHookRecord => ({
-  id,
-  hookName,
-  status: "pending",
-  attempts: 0,
-  maxAttempts: 3,
-  lastAttemptAt: null,
-  nextRetryAt: null,
-  createdAt: "2026-01-01T00:00:00.000Z",
-  error: null,
-  payload,
-});
 
 describe("automation runtime tools", () => {
   test("derive automation bash commands from runtime tools", () => {
@@ -77,14 +44,13 @@ describe("automation runtime tools", () => {
       "hooks.list",
       "hooks.get",
     ]);
-    expect(automationEventsRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
-      "events.list",
-      "events.get",
-    ]);
+
     expect(
-      backofficeCapabilitiesRuntimeTools
-        .map((tool) => tool.adapters?.bash?.command)
-        .filter((command) => command?.startsWith("events.catalog")),
+      [
+        automationEventsCatalogListTool,
+        automationEventsCatalogGetTool,
+        automationEventsCatalogCreateTool,
+      ].map((tool) => tool.adapters?.bash?.command),
     ).toEqual(["events.catalog.list", "events.catalog.get", "events.catalog.create"]);
   });
 
@@ -144,12 +110,8 @@ describe("automation runtime tools", () => {
   });
 
   test("automation event catalog tools list events and get one event with JSON schemas", async () => {
-    const catalogListTool = backofficeCapabilitiesRuntimeTools.find(
-      (tool) => tool.id === "events.catalog.list",
-    )! as (typeof backofficeCapabilitiesRuntimeTools)[9];
-    const catalogGetTool = backofficeCapabilitiesRuntimeTools.find(
-      (tool) => tool.id === "events.catalog.get",
-    )! as (typeof backofficeCapabilitiesRuntimeTools)[10];
+    const catalogListTool = automationEventsCatalogListTool;
+    const catalogGetTool = automationEventsCatalogGetTool;
     const event = {
       source: "telegram",
       eventType: "message.received",
@@ -208,7 +170,7 @@ describe("automation runtime tools", () => {
       },
       getAutomationEvent: async (input) => {
         calls.push(["getAutomationEvent", input]);
-        return input.source === event.source && input.type === event.eventType ? event : null;
+        return input.source === event.source && input.eventType === event.eventType ? event : null;
       },
     };
 
@@ -229,7 +191,12 @@ describe("automation runtime tools", () => {
     ]);
 
     const getInput = catalogGetTool.inputSchema.parse(
-      catalogGetTool.adapters!.bash!.parse(["--source", "telegram", "--type", "message.received"]),
+      catalogGetTool.adapters!.bash!.parse([
+        "--source",
+        "telegram",
+        "--event-type",
+        "message.received",
+      ]),
     );
     await expect(
       catalogGetTool.execute(
@@ -244,7 +211,7 @@ describe("automation runtime tools", () => {
     });
     await expect(
       catalogGetTool.execute(
-        { source: "telegram", type: "unknown.event" },
+        { source: "telegram", eventType: "unknown.event" },
         createTrustedSystemBackofficeToolContext({ runtimes: { backoffice: runtime } }),
       ),
     ).resolves.toBeNull();
@@ -256,97 +223,9 @@ describe("automation runtime tools", () => {
 
     expect(calls).toEqual([
       ["listAutomationEvents"],
-      ["getAutomationEvent", { source: "telegram", type: "message.received" }],
-      ["getAutomationEvent", { source: "telegram", type: "unknown.event" }],
+      ["getAutomationEvent", { source: "telegram", eventType: "message.received" }],
+      ["getAutomationEvent", { source: "telegram", eventType: "unknown.event" }],
     ]);
-  });
-
-  test("automation event tools only read automations internalIngestEvent hooks", async () => {
-    const [listEvents, getEvent] = automationEventsRuntimeTools;
-    const calls: unknown[] = [];
-    const runtime: DurableHooksRuntime = {
-      listHooks: async (input) => {
-        calls.push(["listHooks", input]);
-        return {
-          configured: true,
-          hooksEnabled: true,
-          namespace: "events",
-          items: [
-            createHook({ id: "event-hook", hookName: "internalIngestEvent" }),
-            createHook({ id: "other-hook", hookName: "sendTelegramMessage" }),
-          ],
-          hasNextPage: false,
-        };
-      },
-      getHook: async (input) => {
-        calls.push(["getHook", input]);
-        return createHook({
-          id: input.hookId,
-          hookName: input.hookId === "event-hook" ? "internalIngestEvent" : "sendTelegramMessage",
-        });
-      },
-    };
-
-    await expect(
-      listEvents.execute(
-        { pageSize: 20 },
-        createTrustedSystemBackofficeToolContext({ runtimes: { durableHooks: runtime } }),
-      ),
-    ).resolves.toMatchObject({
-      items: [
-        {
-          source: "telegram",
-          eventType: "message.received",
-          hookId: "event-hook",
-          actor: { scope: "external", source: "telegram", type: "chat", id: "chat-1" },
-        },
-      ],
-    });
-    await expect(
-      getEvent.execute(
-        { hookId: "event-hook" },
-        createTrustedSystemBackofficeToolContext({ runtimes: { durableHooks: runtime } }),
-      ),
-    ).resolves.toMatchObject({ id: "event-hook", hookName: "internalIngestEvent" });
-    await expect(
-      getEvent.execute(
-        { hookId: "other-hook" },
-        createTrustedSystemBackofficeToolContext({ runtimes: { durableHooks: runtime } }),
-      ),
-    ).resolves.toBeNull();
-
-    expect(calls).toEqual([
-      ["listHooks", { fragment: "automations", pageSize: 20 }],
-      ["getHook", { fragment: "automations", hookId: "event-hook" }],
-      ["getHook", { fragment: "automations", hookId: "other-hook" }],
-    ]);
-  });
-
-  test("automation event list fails when an internal ingest hook payload is malformed", async () => {
-    const [listEvents] = automationEventsRuntimeTools;
-    const runtime: DurableHooksRuntime = {
-      listHooks: async () => ({
-        configured: true,
-        hooksEnabled: true,
-        namespace: "events",
-        items: [
-          createHook({
-            id: "bad-event-hook",
-            hookName: "internalIngestEvent",
-            payload: { source: "telegram" },
-          }),
-        ],
-        hasNextPage: false,
-      }),
-      getHook: async () => null,
-    };
-
-    await expect(
-      listEvents.execute(
-        {},
-        createTrustedSystemBackofficeToolContext({ runtimes: { durableHooks: runtime } }),
-      ),
-    ).rejects.toThrow();
   });
 
   test("parse and validate get input", () => {

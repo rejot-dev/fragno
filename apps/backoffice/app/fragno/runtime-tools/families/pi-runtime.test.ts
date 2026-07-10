@@ -667,10 +667,10 @@ describe("pi bash command registration", () => {
   it("omits automation event commands from the pi bash host", async () => {
     const { bash, commandCallsResult } = createPiHost();
 
-    const result = await bash.exec("event.emit --event-type test.event");
+    const result = await bash.exec("events.fire --event-type test.event");
 
     assert(result.exitCode === 127);
-    expect(result.stderr).toContain("bash: event.emit: command not found");
+    expect(result.stderr).toContain("bash: events.fire: command not found");
     expect(commandCallsResult).toEqual([]);
   });
 });

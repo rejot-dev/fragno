@@ -118,7 +118,7 @@ describe("createEventRuntime.emitEvent", () => {
     });
 
     await expect(runtime.emitEvent({ eventType: "custom.event" })).rejects.toThrow(
-      "event.emit source is required without a parent automation event.",
+      "events.fire source is required without a parent automation event.",
     );
   });
 
@@ -142,7 +142,7 @@ describe("createEventRuntime.emitEvent", () => {
 
     await expect(
       runtime.emitEvent({ eventType: "custom.event", externalActorId: "external-1" }),
-    ).rejects.toThrow("event.emit actorType is required when externalActorId is provided.");
+    ).rejects.toThrow("events.fire actorType is required when externalActorId is provided.");
     expect(triggerIngestEvent).not.toHaveBeenCalled();
   });
 
@@ -195,7 +195,7 @@ describe("createEventRuntime.emitEvent", () => {
       objects,
       authorizationPolicy: (request) => {
         expect(request.scope).toEqual({ kind: "user", userId: "user-1" });
-        expect(request.requiredPermissions).toEqual([{ namespace: "event", permission: "route" }]);
+        expect(request.requiredPermissions).toEqual([{ namespace: "events", permission: "route" }]);
         expect(request.resource).toEqual({
           sourceScope: { kind: "org", orgId: "org-1" },
           targetScope: { kind: "user", userId: "user-1" },

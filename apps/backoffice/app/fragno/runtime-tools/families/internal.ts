@@ -10,6 +10,7 @@ import {
 } from "@/files/seed-workspace-starter-files";
 import { createSystemFilesContext } from "@/files/system-context";
 import type { StarterAutomationRoutesSeedResult } from "@/fragno/automation";
+import type { DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import { defineCliArgsParser, readOutputOptions } from "@/fragno/runtime-tools/bash-cli";
 
 import {
@@ -18,6 +19,7 @@ import {
   type BackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../runtime-tools";
+import type { DurableHooksRuntime } from "./automations-durable-hooks";
 
 export type ProjectDatabaseFileSystemConfigureOutput = {
   projectId: string;
@@ -35,7 +37,10 @@ export type InternalRuntime = {
   seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult>;
 };
 
-type InternalToolContext = BackofficeToolContext<{ internal?: InternalRuntime }>;
+type InternalToolContext = BackofficeToolContext<{
+  internal?: InternalRuntime;
+  durableHooks?: DurableHooksRuntime;
+}>;
 
 const workspaceStarterFilesSeedOutputSchema = z.object({
   provider: z.string(),
@@ -58,11 +63,50 @@ const starterAutomationRoutesSeedOutputSchema = z.object({
   skipped: z.array(z.string()),
 });
 
+const durableHookRecordSchema = z.object({
+  id: z.string(),
+  hookName: z.string(),
+  status: z.string(),
+  attempts: z.number(),
+  maxAttempts: z.number(),
+  lastAttemptAt: z.string().nullable(),
+  nextRetryAt: z.string().nullable(),
+  createdAt: z.string().nullable(),
+  error: z.string().nullable(),
+  payload: z.unknown(),
+});
+const durableHookQueueResponseSchema = z.object({
+  configured: z.boolean(),
+  hooksEnabled: z.boolean(),
+  namespace: z.string().nullable(),
+  items: z.array(durableHookRecordSchema),
+  cursor: z.string().optional(),
+  hasNextPage: z.boolean(),
+});
+
+type InternalHooksListArgs = {
+  fragment: string;
+  cursor?: string;
+  pageSize?: number;
+};
+
+type InternalHooksGetArgs = {
+  fragment: string;
+  hookId: string;
+};
+
 const getRuntime = (context: InternalToolContext) => {
   if (!context.runtimes.internal) {
     throw new Error("Internal runtime is not available in this execution context");
   }
   return context.runtimes.internal;
+};
+
+const getDurableHooksRuntime = (context: InternalToolContext) => {
+  if (!context.runtimes.durableHooks) {
+    throw new Error("Internal hooks runtime is not available in this execution context");
+  }
+  return context.runtimes.durableHooks;
 };
 
 export const createInternalRuntime = ({
@@ -234,10 +278,137 @@ const automationRoutesSeedStarterTool = defineBackofficeRuntimeTool({
   },
 });
 
+const formatDurableHookQueue = (result: DurableHookQueueResponse, options: { format?: string }) => {
+  if (options.format === "json") {
+    return { data: result };
+  }
+  const lines = [
+    `configured=${result.configured} hooksEnabled=${result.hooksEnabled} namespace=${result.namespace ?? "unavailable"}`,
+    ...result.items.map(
+      (item) =>
+        `${item.id}\t${item.status}\t${item.hookName}\tattempts=${item.attempts}/${item.maxAttempts}`,
+    ),
+    ...(result.hasNextPage && result.cursor ? [`next cursor: ${result.cursor}`] : []),
+  ];
+  return { stdout: `${lines.join("\n")}\n` };
+};
+
+const formatDurableHookRecord = (
+  result: DurableHookQueueResponse["items"][number] | null,
+  options: { format?: string },
+) => {
+  if (options.format === "json") {
+    return result ? { data: result } : { exitCode: 1 };
+  }
+  return result
+    ? {
+        stdout: `${result.id}\t${result.status}\t${result.hookName}\tattempts=${result.attempts}/${result.maxAttempts}\n`,
+      }
+    : { stderr: "Hook not found", exitCode: 1 };
+};
+
+const hooksListTool = defineBackofficeRuntimeTool({
+  id: "internal.hooks.list",
+  namespace: "internal",
+  name: "hooksList",
+  description: "List durable hook queue entries for a runtime fragment.",
+  requiredPermissions: ["read"],
+  inputSchema: z.object({
+    fragment: z.string().trim().min(1),
+    cursor: z.string().trim().min(1).optional(),
+    pageSize: z.number().int().positive().optional(),
+  }),
+  outputSchema: durableHookQueueResponseSchema,
+  execute: async (input, context: InternalToolContext) =>
+    await getDurableHooksRuntime(context).listHooks(input),
+  adapters: {
+    bash: {
+      command: "internal.hooks.list",
+      help: {
+        summary: "internal.hooks.list lists durable hook queue entries.",
+        options: [
+          {
+            name: "fragment",
+            required: true,
+            valueRequired: true,
+            valueName: "fragment",
+            description: "Fragment scope, e.g. automations.",
+          },
+          {
+            name: "cursor",
+            valueRequired: true,
+            valueName: "cursor",
+            description: "Optional pagination cursor.",
+          },
+          {
+            name: "page-size",
+            valueRequired: true,
+            valueName: "number",
+            description: "Optional page size.",
+          },
+        ],
+        examples: ["internal.hooks.list --fragment automations --page-size 50 --format json"],
+      },
+      parse: defineCliArgsParser<InternalHooksListArgs>("internal.hooks.list", {
+        fragment: { required: true },
+        cursor: {},
+        pageSize: { kind: "positiveInteger" },
+      }),
+      outputOptions: (_args, parsed) => readOutputOptions(parsed),
+      format: formatDurableHookQueue,
+    },
+  },
+});
+
+const hooksGetTool = defineBackofficeRuntimeTool({
+  id: "internal.hooks.get",
+  namespace: "internal",
+  name: "hooksGet",
+  description: "Get a durable hook queue entry by id.",
+  requiredPermissions: ["read"],
+  inputSchema: z.object({ fragment: z.string().trim().min(1), hookId: z.string().trim().min(1) }),
+  outputSchema: durableHookRecordSchema.nullable(),
+  execute: async (input, context: InternalToolContext) =>
+    await getDurableHooksRuntime(context).getHook(input),
+  adapters: {
+    bash: {
+      command: "internal.hooks.get",
+      help: {
+        summary: "internal.hooks.get returns one durable hook entry by id.",
+        options: [
+          {
+            name: "fragment",
+            required: true,
+            valueRequired: true,
+            valueName: "fragment",
+            description: "Fragment scope.",
+          },
+          {
+            name: "hook-id",
+            required: true,
+            valueRequired: true,
+            valueName: "id",
+            description: "Durable hook id.",
+          },
+        ],
+        examples: ["internal.hooks.get --fragment automations --hook-id hook_123 --format json"],
+      },
+      parse: defineCliArgsParser<InternalHooksGetArgs>("internal.hooks.get", {
+        fragment: { required: true },
+        hookId: { required: true },
+      }),
+      outputOptions: (_args, parsed) => readOutputOptions(parsed),
+      format: formatDurableHookRecord,
+    },
+  },
+});
+
 const internalRuntimeTools = [
   filesSeedExecuteTool,
   projectFilesConfigureTool,
   automationRoutesSeedStarterTool,
+  hooksListTool,
+  hooksGetTool,
 ] as const;
 
 export const internalToolFamily = defineBackofficeRuntimeToolFamily({

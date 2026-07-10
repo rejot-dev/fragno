@@ -178,7 +178,7 @@ describe("runBackofficeCodemode", () => {
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({ runtimes: { event: eventRuntime } }),
       code: `async () => {
-        return await event.emit({
+        return await events.fire({
           eventType: "identity.bound",
           source: "otp",
           payload: { plan: "basic" },
@@ -199,9 +199,9 @@ describe("runBackofficeCodemode", () => {
     ]);
     expect(result.toolCalls).toMatchObject([
       {
-        providerName: "event",
-        toolName: "emit",
-        toolId: "event.emit",
+        providerName: "events",
+        toolName: "fire",
+        toolId: "events.fire",
         status: "success",
       },
     ]);
@@ -658,7 +658,7 @@ describe("runBackofficeCodemode", () => {
         families: runtimeToolFamilies,
         toolContext: createBackofficeToolContext(routeContext),
         code: `async () => {
-          return await event.emit({
+          return await events.fire({
             eventType: "dashboard.test",
             source: "codemode",
             payload: { ok: true },
@@ -675,9 +675,9 @@ describe("runBackofficeCodemode", () => {
       });
       expect(result.toolCalls).toMatchObject([
         {
-          providerName: "event",
-          toolName: "emit",
-          toolId: "event.emit",
+          providerName: "events",
+          toolName: "fire",
+          toolId: "events.fire",
           status: "success",
         },
       ]);

@@ -1,16 +1,42 @@
 import { describe, expect, test, assert } from "vitest";
 
-import { eventRuntimeTools } from "./event";
+import {
+  createTrustedSystemBackofficeToolContext,
+  getAvailableRuntimeTools,
+} from "../runtime-tools";
+import { eventCatalogToolFamily, eventFireToolFamily, eventRuntimeTools } from "./event";
 
 describe("event runtime tools", () => {
   test("derive event bash commands from runtime tools", () => {
-    expect(eventRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual(["event.emit"]);
+    expect(eventRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
+      "events.fire",
+      "events.catalog.list",
+      "events.catalog.get",
+      "events.catalog.create",
+    ]);
+  });
+
+  test("only exposes tools backed by an available runtime", () => {
+    const families = [eventFireToolFamily, eventCatalogToolFamily];
+    const availableToolIds = (runtimes: Record<string, unknown>) =>
+      getAvailableRuntimeTools({
+        families,
+        context: createTrustedSystemBackofficeToolContext({ runtimes }),
+      }).map((tool) => tool.id);
+
+    expect(availableToolIds({ event: {} })).toEqual(["events.fire"]);
+    expect(availableToolIds({ backoffice: {} })).toEqual([
+      "events.catalog.list",
+      "events.catalog.get",
+      "events.catalog.create",
+    ]);
+    expect(availableToolIds({})).toEqual([]);
   });
 
   test("parse and validate emit input", () => {
     const [emit] = eventRuntimeTools;
 
-    assert(emit.name === "emit");
+    assert(emit.name === "fire");
     expect(
       emit.inputSchema.parse(
         emit.adapters!.bash!.parse([

@@ -212,7 +212,7 @@ describe("Backoffice Pi skills", () => {
       location: "/static/skills/building-automations/SKILL.md",
       directory: "/static/skills/building-automations",
     });
-    expect(skills["building-automations"]?.body).toContain("events.eventsCatalogList");
+    expect(skills["building-automations"]?.body).toContain("events.catalogList");
   });
 
   test("reflects skills from the mounted virtual filesystem", async () => {

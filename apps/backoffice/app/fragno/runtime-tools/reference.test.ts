@@ -16,9 +16,10 @@ import {
   toRuntimeToolReference,
   type RuntimeToolFamilyReferenceTarget,
 } from "./reference";
+import type { BackofficeRuntimeToolFamily } from "./runtime-tools";
 import { runtimeToolFamilies } from "./tool-families";
 
-const summarizeFamilyReference = (family: (typeof runtimeToolFamilies)[number]) => {
+const summarizeFamilyReference = (family: BackofficeRuntimeToolFamily) => {
   const reference = createRuntimeToolFamilyReference({ family });
   return {
     namespace: reference.namespace,
@@ -35,12 +36,16 @@ const summarizeFamilyReference = (family: (typeof runtimeToolFamilies)[number]) 
   };
 };
 
-const findBashFamily = (namespace: string) => {
-  const family = runtimeToolFamilies.find((candidate) => candidate.namespace === namespace);
-  if (!family) {
+const findBashFamily = (namespace: string): BackofficeRuntimeToolFamily => {
+  const families = runtimeToolFamilies.filter((candidate) => candidate.namespace === namespace);
+  if (!families.length) {
     throw new Error(`Missing bash family '${namespace}'`);
   }
-  return family;
+  return {
+    namespace,
+    permissions: Object.assign({}, ...families.map((family) => family.permissions)),
+    tools: families.flatMap((family) => family.tools),
+  };
 };
 
 const stringifyFamilyByNamespace = ({
@@ -112,38 +117,13 @@ describe("runtime tool reference generation", () => {
       namespace: "events",
       tools: [
         {
-          id: "events.list",
+          id: "events.fire",
           namespace: "events",
           codemodeProvider: "events",
-          codemodeTool: "listEvents",
-          inputType: "EventsListEventsInput",
-          outputType: "EventsListEventsOutput",
-          bashCommand: "events.list",
-          bashOptions: ["cursor", "page-size"],
-        },
-        {
-          id: "events.get",
-          namespace: "events",
-          codemodeProvider: "events",
-          codemodeTool: "getEvent",
-          inputType: "EventsGetEventInput",
-          outputType: "EventsGetEventOutput",
-          bashCommand: "events.get",
-          bashOptions: ["hook-id"],
-        },
-      ],
-    },
-    {
-      namespace: "event",
-      tools: [
-        {
-          id: "event.emit",
-          namespace: "event",
-          codemodeProvider: "event",
-          codemodeTool: "emit",
-          inputType: "EventEmitInput",
-          outputType: "EventEmitOutput",
-          bashCommand: "event.emit",
+          codemodeTool: "fire",
+          inputType: "EventsFireInput",
+          outputType: "EventsFireOutput",
+          bashCommand: "events.fire",
           bashOptions: [
             "event-type",
             "source",
@@ -153,6 +133,36 @@ describe("runtime tool reference generation", () => {
             "payload-json",
             "target-scope-json",
           ],
+        },
+        {
+          id: "events.catalog.list",
+          namespace: "events",
+          codemodeProvider: "events",
+          codemodeTool: "catalogList",
+          inputType: "EventsCatalogListInput",
+          outputType: "EventsCatalogListOutput",
+          bashCommand: "events.catalog.list",
+          bashOptions: [],
+        },
+        {
+          id: "events.catalog.get",
+          namespace: "events",
+          codemodeProvider: "events",
+          codemodeTool: "catalogGet",
+          inputType: "EventsCatalogGetInput",
+          outputType: "EventsCatalogGetOutput",
+          bashCommand: "events.catalog.get",
+          bashOptions: ["source", "event-type"],
+        },
+        {
+          id: "events.catalog.create",
+          namespace: "events",
+          codemodeProvider: "events",
+          codemodeTool: "catalogCreate",
+          inputType: "EventsCatalogCreateInput",
+          outputType: "EventsCatalogCreateOutput",
+          bashCommand: "events.catalog.create",
+          bashOptions: ["json"],
         },
       ],
     },
@@ -695,7 +705,7 @@ describe("runtime tool reference generation", () => {
       "/static/codemode/providers/connections.d.ts",
     );
     const workflowTypes = readGeneratedFile(files, "/static/codemode/providers/workflow.d.ts");
-    const eventTypes = readGeneratedFile(files, "/static/codemode/providers/event.d.ts");
+    const eventTypes = readGeneratedFile(files, "/static/codemode/providers/events.d.ts");
     const otpTypes = readGeneratedFile(files, "/static/codemode/providers/otp.d.ts");
 
     expect(capabilitiesTypes).toContain("declare const capabilities");
@@ -709,8 +719,9 @@ describe("runtime tool reference generation", () => {
     expect(workflowTypes).toContain("createInstance(input: WorkflowCreateInstanceInput)");
     expect(workflowTypes).toContain("getInstance(input: WorkflowGetInstanceInput)");
     expect(workflowTypes).toContain("retryInstance(input: WorkflowRetryInstanceInput)");
-    expect(eventTypes).toContain("declare const event");
-    expect(eventTypes).toContain("emit(input: EventEmitInput)");
+    expect(eventTypes).toContain("declare const events");
+    expect(eventTypes).toContain("fire(input: EventsFireInput)");
+    expect(eventTypes).toContain("catalogList(input: EventsCatalogListInput)");
     expect(otpTypes).toContain("declare const otp");
     assert(!files.some((file) => file.path === "/static/codemode/providers/pi.d.ts"));
     assert(!files.some((file) => file.path === "/static/codemode/providers/telegram.d.ts"));

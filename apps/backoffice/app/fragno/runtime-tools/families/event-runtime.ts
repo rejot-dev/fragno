@@ -71,12 +71,12 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
       options.kernel.assertAutomationForwardTargetAllowed({
         ownerScope: currentScope,
         targetScope: resolvedTargetScope,
-        routeId: "event.emit",
+        routeId: "events.fire",
       });
       options.kernel.assertAllowed({
         actor: options.execution.actor,
         scope: resolvedTargetScope,
-        requiredPermissions: [{ namespace: "event", permission: "route" }],
+        requiredPermissions: [{ namespace: "events", permission: "route" }],
         resource: { sourceScope: currentScope, targetScope: resolvedTargetScope },
       });
     }
@@ -94,7 +94,7 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
 
     const nextSource = source ?? parentEvent?.source;
     if (!nextSource) {
-      throw new Error("event.emit source is required without a parent automation event.");
+      throw new Error("events.fire source is required without a parent automation event.");
     }
 
     const baseActor = parentEvent?.actor ?? automationActorFromPrincipal(options.execution.actor);
@@ -102,7 +102,7 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
     const nextActor = externalActorId
       ? (() => {
           if (!actorType) {
-            throw new Error("event.emit actorType is required when externalActorId is provided.");
+            throw new Error("events.fire actorType is required when externalActorId is provided.");
           }
           return {
             scope: "external" as const,
@@ -152,7 +152,7 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
 });
 
 export const createUnavailableEventRuntime = (
-  message = "event.emit is not configured",
+  message = "events.fire is not configured",
 ): EventRuntime => ({
   emitEvent: async () => {
     throw new Error(message);
