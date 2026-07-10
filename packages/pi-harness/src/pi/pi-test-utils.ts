@@ -43,6 +43,7 @@ import { NoOpExecutionEnv } from "./harness/execution-env";
 import {
   runPiHarnessStep,
   type PiHarnessAgentOptions,
+  type PiHarnessInternalOptions,
   type PiHarnessOperation,
 } from "./harness/run-pi-harness-step";
 import type { PiFragmentConfig } from "./types";
@@ -349,6 +350,7 @@ export type FauxPiHarnessPromptOptions = {
   agentName?: string;
   systemPrompt?: string;
   fauxProviderOptions?: RegisterFauxProviderOptions;
+  internal?: PiHarnessInternalOptions;
 };
 
 type FauxCheckpointMatcher = {
@@ -696,11 +698,15 @@ const harnessEventFromMutation = (
   if (!payload || typeof payload !== "object") {
     return null;
   }
-  const event = (payload as Record<string, unknown>)["event"];
-  return (payload as Record<string, unknown>)["kind"] === "harness-event" &&
-    event &&
-    typeof event === "object"
-    ? (event as Record<string, unknown>)
+  const payloadRecord = payload as Record<string, unknown>;
+  const event = payloadRecord["event"];
+  if (payloadRecord["kind"] === "harness-event" && event && typeof event === "object") {
+    return event as Record<string, unknown>;
+  }
+
+  const update = payloadRecord["update"];
+  return payloadRecord["kind"] === "harness-message-update" && update && typeof update === "object"
+    ? (update as Record<string, unknown>)
     : null;
 };
 
@@ -765,6 +771,7 @@ const runFauxPiHarnessStep = async (
     streamFn,
     tools: [...(options.tools ?? [])],
     operation: options.operation,
+    internal: options.internal,
   });
 
 export const startFauxPiHarnessOperation = (

@@ -5,6 +5,7 @@ import {
 } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, ToolResultMessage } from "@earendil-works/pi-ai";
 
+import type { PiHarnessAssistantMessageEvent } from "./harness/message-update-protocol";
 import type { PiHarnessEmission, PiHarnessStepResult } from "./harness/run-pi-harness-step";
 import type { PiAgentStateSnapshot } from "./types";
 
@@ -194,6 +195,7 @@ export const projectPiWorkflowSession = ({
   const inFlightMessagesByStepKey = new Map<string, AgentMessage[]>();
   const inFlightStepKeys: string[] = [];
   let draftAgentMessage: DraftAgentMessage | null = null;
+  let currentAssistantMessage: AssistantMessage | undefined;
   let hasOpenMessageDraft = false;
   let activeLiveWork = workflowSteps.some(
     (step) =>
@@ -217,11 +219,10 @@ export const projectPiWorkflowSession = ({
 
     activeLiveWork = true;
 
-    if (payload.kind !== "harness-event") {
+    if (payload.kind !== "harness-event" && payload.kind !== "harness-message-update") {
       continue;
     }
 
-    const event = payload.event;
     const eventTime = new Date(emission.createdAt).getTime();
 
     if (!draftAgentMessage) {
@@ -235,34 +236,124 @@ export const projectPiWorkflowSession = ({
       draftAgentMessage.updatedAt = eventTime;
     }
 
+    if (payload.kind === "harness-message-update") {
+      hasOpenMessageDraft = true;
+      const assistantEvent: PiHarnessAssistantMessageEvent = payload.update.assistantMessageEvent;
+      switch (assistantEvent.type) {
+        case "start":
+          break;
+        case "text_start":
+          if (currentAssistantMessage) {
+            currentAssistantMessage.content[assistantEvent.contentIndex] = {
+              type: "text",
+              text: "",
+            };
+          }
+          break;
+        case "text_delta":
+          if (currentAssistantMessage) {
+            const content = currentAssistantMessage.content[assistantEvent.contentIndex];
+            if (content.type === "text") {
+              content.text += assistantEvent.delta;
+            }
+          }
+          break;
+        case "text_end":
+          if (currentAssistantMessage) {
+            const content = currentAssistantMessage.content[assistantEvent.contentIndex];
+            if (content.type === "text") {
+              content.text = assistantEvent.content;
+            }
+          }
+          break;
+        case "thinking_start":
+          if (currentAssistantMessage) {
+            currentAssistantMessage.content[assistantEvent.contentIndex] = {
+              type: "thinking",
+              thinking: "",
+            };
+          }
+          break;
+        case "thinking_delta":
+          if (currentAssistantMessage) {
+            const content = currentAssistantMessage.content[assistantEvent.contentIndex];
+            if (content.type === "thinking") {
+              content.thinking += assistantEvent.delta;
+            }
+          }
+          break;
+        case "thinking_end":
+          if (currentAssistantMessage) {
+            const content = currentAssistantMessage.content[assistantEvent.contentIndex];
+            if (content.type === "thinking") {
+              content.thinking = assistantEvent.content;
+            }
+          }
+          break;
+        case "toolcall_start":
+        case "toolcall_delta":
+        case "toolcall_end":
+          if (assistantEvent.toolCall) {
+            if (currentAssistantMessage) {
+              currentAssistantMessage.content[assistantEvent.contentIndex] =
+                assistantEvent.toolCall;
+            }
+            draftAgentMessage.tools[assistantEvent.toolCall.id] = {
+              ...draftAgentMessage.tools[assistantEvent.toolCall.id],
+              id: assistantEvent.toolCall.id,
+              name: assistantEvent.toolCall.name,
+              args: assistantEvent.toolCall.arguments,
+              status: draftAgentMessage.tools[assistantEvent.toolCall.id]?.status ?? "starting",
+            };
+          }
+          break;
+        case "done":
+        case "error":
+          break;
+      }
+      if (currentAssistantMessage) {
+        draftAgentMessage.assistant = currentAssistantMessage;
+      }
+
+      draftAgentMessage.activity = assistantEvent.type.startsWith("thinking_")
+        ? "thinking"
+        : assistantEvent.type.startsWith("toolcall_")
+          ? "tool_calling"
+          : "writing";
+      continue;
+    }
+
+    const event = payload.event;
+
     if (event.type === "message_start") {
       draftAgentMessage.activity = "starting";
+      if (event.message.role === "assistant") {
+        currentAssistantMessage = event.message;
+      }
       hasOpenMessageDraft = true;
     }
 
     if (event.type === "message_update") {
       hasOpenMessageDraft = true;
+      const assistantEvent = event.assistantMessageEvent;
       if (event.message.role === "assistant") {
-        draftAgentMessage.assistant = event.message;
+        currentAssistantMessage = event.message;
+        draftAgentMessage.assistant = currentAssistantMessage;
       }
 
-      const assistantEvent = event.assistantMessageEvent;
-      draftAgentMessage.activity = assistantEvent?.type.startsWith("thinking_")
+      draftAgentMessage.activity = assistantEvent.type.startsWith("thinking_")
         ? "thinking"
-        : assistantEvent?.type.startsWith("toolcall_")
+        : assistantEvent.type.startsWith("toolcall_")
           ? "tool_calling"
           : "writing";
 
       if (
-        assistantEvent?.type === "toolcall_start" ||
-        assistantEvent?.type === "toolcall_delta" ||
-        assistantEvent?.type === "toolcall_end"
+        assistantEvent.type === "toolcall_start" ||
+        assistantEvent.type === "toolcall_delta" ||
+        assistantEvent.type === "toolcall_end"
       ) {
-        const toolCall =
-          assistantEvent.type === "toolcall_end"
-            ? assistantEvent.toolCall
-            : assistantEvent.partial.content[assistantEvent.contentIndex];
-        if (toolCall.type === "toolCall") {
+        const toolCall = currentAssistantMessage?.content[assistantEvent.contentIndex];
+        if (toolCall?.type === "toolCall") {
           draftAgentMessage.tools[toolCall.id] = {
             ...draftAgentMessage.tools[toolCall.id],
             id: toolCall.id,
@@ -283,7 +374,8 @@ export const projectPiWorkflowSession = ({
       }
       inFlightMessages.push(event.message);
       if (event.message.role === "assistant") {
-        draftAgentMessage.assistant = event.message;
+        currentAssistantMessage = event.message;
+        draftAgentMessage.assistant = currentAssistantMessage;
       }
       if (event.message.role === "toolResult") {
         draftAgentMessage.tools[event.message.toolCallId] = {

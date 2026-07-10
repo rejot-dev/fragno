@@ -1130,10 +1130,10 @@ describe("Pi harness workflow projection", () => {
           {
             stepKey: "do:agent-turn-2",
             payload: {
-              kind: "harness-event",
-              event: {
+              kind: "harness-message-update",
+              update: {
                 type: "message_update",
-                message: fauxAssistantMessage(fauxText("streaming"), { timestamp: 1 }),
+                assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "streaming" },
               },
             },
           },
