@@ -6,8 +6,22 @@ import type { DatabaseAdapter } from "@fragno-dev/db";
 import { createCommentFragment } from "@fragno-dev/fragno-db-library";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
+export type AuthFragment = ReturnType<typeof createAuthFragment>;
+export type CommentFragment = ReturnType<typeof createCommentFragment>;
+export type RatingFragment = ReturnType<typeof createRatingFragment>;
+export type WorkflowsFragment = ReturnType<typeof createWorkflowsFragment>;
+
+export type SchemaFragments = {
+  authFragment: AuthFragment;
+  commentFragment: CommentFragment;
+  ratingFragment: RatingFragment;
+  workflowsFragment: WorkflowsFragment;
+};
+
 // Shared fragment setup for schema generation entrypoints.
-export function createSchemaFragments<TUOWConfig>(adapter: DatabaseAdapter<TUOWConfig>) {
+export function createSchemaFragments<TUOWConfig>(
+  adapter: DatabaseAdapter<TUOWConfig>,
+): SchemaFragments {
   const authFragment = createAuthFragment(
     {},
     { databaseAdapter: adapter, databaseNamespace: "auth" },

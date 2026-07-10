@@ -1,9 +1,10 @@
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
+  fixedExtension: false,
   entry: "./src/index.ts",
   dts: true,
   outDir: "./dist",
   platform: "browser",
-  external: [/^@\/components\//, /^@\/lib\//],
+  deps: { neverBundle: [/^@\/components\//, /^@\/lib\//] },
 });

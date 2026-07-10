@@ -3,6 +3,7 @@ import { defineConfig } from "tsdown";
 
 export default defineConfig([
   {
+    fixedExtension: false,
     ignoreWatch: ["./dist"],
     entry: [
       "./src/index.ts",
@@ -18,9 +19,10 @@ export default defineConfig([
     platform: "browser",
     outDir: "./dist/browser",
     plugins: [unpluginFragno({ platform: "browser" })],
-    noExternal: [/^@fragno-dev\/core\//],
+    deps: { alwaysBundle: [/^@fragno-dev\/core\//] },
   },
   {
+    fixedExtension: false,
     ignoreWatch: ["./dist"],
     entry: "./src/index.ts",
     dts: {

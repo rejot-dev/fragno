@@ -3,6 +3,7 @@ import { defineConfig } from "tsdown";
 
 export default defineConfig([
   {
+    fixedExtension: false,
     entry: [
       "./src/index.ts",
       "./src/client/react.ts",
@@ -15,10 +16,13 @@ export default defineConfig([
     platform: "browser",
     outDir: "./dist/browser",
     plugins: [unpluginFragno({ platform: "browser" })],
-    noExternal: [/^@fragno-dev\/core\//],
-    external: ["react", "svelte", "vue"],
+    deps: {
+      alwaysBundle: [/^@fragno-dev\/core\//],
+      neverBundle: ["react", "svelte", "vue"],
+    },
   },
   {
+    fixedExtension: false,
     entry: "./src/index.ts",
     dts: true,
     platform: "node",

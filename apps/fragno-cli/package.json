@@ -24,7 +24,7 @@
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
-    "types:check": "tsgo --noEmit",
+    "types:check": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {

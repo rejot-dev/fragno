@@ -18,8 +18,16 @@ export default defineConfig([
     platform: "browser",
     outDir: "./dist/browser",
     plugins: [unpluginFragno({ platform: "browser" })],
-    noExternal: [/^@fragno-dev\/core\//],
-    inlineOnly: [/^@fragno-dev\/core/, /^nanostores$/, /^@nanostores\//, /^nanoevents$/],
+    deps: {
+      alwaysBundle: [/^@fragno-dev\/core\//],
+      onlyBundle: [
+        /^@fragno-dev\/core/,
+        /^nanostores$/,
+        /^@nanostores\//,
+        /^nanoevents$/,
+        /^@standard-schema\/spec$/,
+      ],
+    },
   },
   {
     ignoreWatch: ["./dist"],

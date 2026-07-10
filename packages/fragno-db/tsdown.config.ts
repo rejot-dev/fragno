@@ -2,6 +2,7 @@ import { defineConfig } from "tsdown";
 
 export default defineConfig([
   {
+    fixedExtension: false,
     entry: [
       "./src/mod.ts",
       "./src/durable-hooks.ts",
@@ -21,7 +22,6 @@ export default defineConfig([
       "./src/sql-driver/dialects/durable-object-dialect.ts",
       "./src/query/unit-of-work/unit-of-work.ts",
       "./src/query/cursor.ts",
-      "./src/fragment.ts",
       "./src/db-fragment-definition-builder.ts",
       "./src/buffered-pump.ts",
       "./src/dispatchers/node/index.ts",
@@ -33,6 +33,7 @@ export default defineConfig([
     unbundle: true,
   },
   {
+    fixedExtension: false,
     entry: ["./src/browser/mod.ts"],
     platform: "browser",
     outDir: "./dist/browser",

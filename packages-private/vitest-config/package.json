@@ -27,9 +27,9 @@
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
     "@types/node": "^22.19.7",
-    "@typescript/native-preview": "catalog:",
     "@vitest/ui": "^4.1.0",
     "glob": "^11.1.0",
-    "nyc": "^17.1.0"
+    "nyc": "^17.1.0",
+    "typescript": "catalog:"
   }
 }

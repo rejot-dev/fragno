@@ -19,7 +19,7 @@
   "scripts": {
     "build": "tsdown && pnpm run db:fragno:generate:all",
     "build:watch": "tsdown --watch",
-    "types:check": "tsgo --noEmit",
+    "types:check": "tsc --noEmit",
     "test": "vitest run",
     "db:fragno:generate": "fragno-cli db generate ./src/fragno/schema-entry.postgres.ts --format drizzle -o ./src/schema/fragno-schema.ts",
     "db:fragno:generate:sqlite": "fragno-cli db generate ./src/fragno/schema-entry.sqlite.ts --format drizzle -o ./src/schema/fragno-schema.sqlite.ts",

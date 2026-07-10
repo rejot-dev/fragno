@@ -1,3 +1,3 @@
 import { createFormsClient } from "@fragno-dev/forms/react";
 
-export const formsClient = createFormsClient();
+export const formsClient: ReturnType<typeof createFormsClient> = createFormsClient();

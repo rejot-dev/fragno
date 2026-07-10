@@ -38,7 +38,7 @@
     "build": "tsdown",
     "build:watch": "tsdown --watch",
     "lint": "oxlint .",
-    "types:check": "tsgo --noEmit",
+    "types:check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest --watch"
   },
@@ -57,7 +57,7 @@
     "@fragno-private/vitest-config": "workspace:*",
     "@types/node": "^22.19.7",
     "@vitest/coverage-istanbul": "^4.1.0",
-    "tsdown": "^0.15.12",
+    "tsdown": "^0.22.4",
     "vitest": "catalog:"
   }
 }

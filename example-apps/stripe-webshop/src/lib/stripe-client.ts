@@ -1,3 +1,4 @@
 import { createStripeFragmentClient } from "@fragno-dev/stripe/react";
 
-export const stripeClient = createStripeFragmentClient();
+export const stripeClient: ReturnType<typeof createStripeFragmentClient> =
+  createStripeFragmentClient();

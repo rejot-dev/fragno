@@ -66,7 +66,7 @@
     }
   },
   "scripts": {
-    "types:check": "tsgo --noEmit",
+    "types:check": "tsc --noEmit",
     "build": "tsdown",
     "test": "vitest run",
     "cli": "tsx src/cli/cli.ts"
@@ -90,15 +90,15 @@
     "@types/react": "catalog:",
     "drizzle-kit": "^0.31.7",
     "drizzle-orm": "^0.44.7",
-    "tsdown": "^0.20.3",
+    "tsdown": "^0.22.4",
     "tsx": "^4.21.0",
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@typescript/native-preview": "catalog:",
     "react": ">=18.0.0",
     "solid-js": ">=1.0.0",
     "svelte": ">=4.0.0",
+    "typescript": "catalog:",
     "vue": ">=3.0.0"
   },
   "peerDependenciesMeta": {

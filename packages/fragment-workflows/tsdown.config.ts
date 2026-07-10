@@ -3,6 +3,7 @@ import { defineConfig } from "tsdown";
 
 export default defineConfig([
   {
+    fixedExtension: false,
     ignoreWatch: ["./dist"],
     entry: [
       "./src/index.ts",
@@ -26,10 +27,11 @@ export default defineConfig([
     platform: "node",
     outDir: "./dist/node",
     unbundle: true,
-    external: [/^@fragno-dev\/test/, /^@fragno-dev\/db/],
+    deps: { neverBundle: [/^@fragno-dev\/test/, /^@fragno-dev\/db/] },
     plugins: [unpluginFragno({ platform: "node" })],
   },
   {
+    fixedExtension: false,
     ignoreWatch: ["./dist"],
     entry: [
       "./src/schema.ts",
@@ -45,6 +47,6 @@ export default defineConfig([
     outDir: "./dist/browser",
     unbundle: true,
     plugins: [unpluginFragno({ platform: "browser" })],
-    noExternal: [/^@fragno-dev\/core\//],
+    deps: { alwaysBundle: [/^@fragno-dev\/core\//] },
   },
 ]);

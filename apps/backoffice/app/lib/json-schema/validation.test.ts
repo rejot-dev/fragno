@@ -31,6 +31,16 @@ describe("jsonSchema202012ValidationSchema", () => {
     expect(() => jsonSchema202012ValidationSchema.parse(schema)).toThrow();
   });
 
+  test("accepts type arrays and structured JSON values", () => {
+    const schema = {
+      type: ["string", "null"],
+      enum: [null, ["one", 2], { nested: true }],
+      const: { values: [1, false, null] },
+    };
+
+    expect(jsonSchema202012ValidationSchema.parse(schema)).toEqual(schema);
+  });
+
   test("rejects unsupported drafts", () => {
     expect(() =>
       jsonSchema202012ValidationSchema.parse({

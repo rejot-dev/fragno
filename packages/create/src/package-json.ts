@@ -15,6 +15,8 @@ export const basePkg: Record<string, unknown> = {
     "@types/node": "^25.2.2",
     "@fragno-dev/cli": fragnoCliVersion,
     "@fragno-dev/unplugin-fragno": unpluginFragnoVersion,
+    typescript: "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@^7.0.2",
   },
   peerDependencies: {
     typescript: ">=5",
@@ -38,7 +40,7 @@ export const buildToolPkg: Record<BuildTools, Record<string, unknown>> = {
   none: {},
   tsdown: {
     devDependencies: {
-      tsdown: "^0.20.3",
+      tsdown: "^0.22.4",
     },
     scripts: {
       build: "tsdown",
