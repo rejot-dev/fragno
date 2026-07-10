@@ -78,9 +78,7 @@ describe("Backoffice capability static skills", () => {
   });
 
   test("general starter skills cover automations, connections, workflows, and sandbox", () => {
-    expect(readStaticText("skills/building-automations/SKILL.md")).toContain(
-      "events.eventsCatalogList",
-    );
+    expect(readStaticText("skills/building-automations/SKILL.md")).toContain("events.catalogList");
     expect(readStaticText("skills/building-automations/SKILL.md")).toContain("router.create");
     expect(readStaticText("skills/configuring-connections/SKILL.md")).toContain(
       "connections.configure",

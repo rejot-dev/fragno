@@ -60,12 +60,12 @@ Inline async fn example:
 
 \`\`\`js
 async () => {
-  const catalog = await events.eventsCatalogList({});
-  const telegramMessage = await events.eventsCatalogGet({
+  const catalog = await events.catalogList({});
+  const telegramMessage = await events.catalogGet({
     source: "telegram",
-    type: "message.received",
+    eventType: "message.received",
   });
-  return await events.getEvent({ hookId });
+  return await internal.hooksGet({ fragment: "automations", hookId });
 };
 \`\`\` 
 

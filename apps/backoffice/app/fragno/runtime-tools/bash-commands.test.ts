@@ -247,7 +247,7 @@ describe("createBackofficeBashCommands", () => {
 
     await expect(
       bash.exec(
-        'event.emit --event-type identity.bound --source otp --payload-json \'{"plan":"basic"}\' --target-scope-json \'{"kind":"org","orgId":"org-2"}\' --print eventId',
+        'events.fire --event-type identity.bound --source otp --payload-json \'{"plan":"basic"}\' --target-scope-json \'{"kind":"org","orgId":"org-2"}\' --print eventId',
       ),
     ).resolves.toMatchObject({ stdout: "event-2\n", exitCode: 0 });
 
@@ -262,7 +262,9 @@ describe("createBackofficeBashCommands", () => {
         },
       ],
     ]);
-    expect(commandCallsResult).toEqual([{ command: "event.emit", output: "event-2", exitCode: 0 }]);
+    expect(commandCallsResult).toEqual([
+      { command: "events.fire", output: "event-2", exitCode: 0 },
+    ]);
   });
 
   test("rejects invalid event target scopes before executing the event runtime", async () => {
@@ -291,7 +293,7 @@ describe("createBackofficeBashCommands", () => {
 
     await expect(
       bash.exec(
-        'event.emit --event-type identity.bound --target-scope-json \'{"kind":"org","orgId":""}\'',
+        'events.fire --event-type identity.bound --target-scope-json \'{"kind":"org","orgId":""}\'',
       ),
     ).resolves.toMatchObject({ exitCode: 1, stdout: "" });
     expect(calls).toEqual([]);
@@ -384,7 +386,7 @@ describe("createBackofficeBashCommands", () => {
     const bash = new Bash({
       fs: new InMemoryFs(),
       customCommands: createBackofficeBashCommands({
-        tools: backofficeCapabilitiesRuntimeTools,
+        tools: eventRuntimeTools,
         context: createTrustedSystemBackofficeToolContext({
           runtimes: { backoffice: backofficeRuntime },
         }),

@@ -35,10 +35,10 @@ export const GENERAL_SKILL_CONTENT: Record<string, FileSystemArtifact> = {
 1. Inspect available event shapes with the codemode events provider:
 
 \`\`\`js
-const catalog = await events.eventsCatalogList({});
-const telegramMessage = await events.eventsCatalogGet({
+const catalog = await events.catalogList({});
+const telegramMessage = await events.catalogGet({
   source: "telegram",
-  type: "message.received",
+  eventType: "message.received",
 });
 \`\`\`
 

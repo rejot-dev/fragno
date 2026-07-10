@@ -5,11 +5,7 @@ import {
   automationStoreToolFamily,
   type AutomationStoreRuntime,
 } from "./families/automations-bindings";
-import {
-  automationEventsToolFamily,
-  hooksToolFamily,
-  type DurableHooksRuntime,
-} from "./families/automations-durable-hooks";
+import { hooksToolFamily, type DurableHooksRuntime } from "./families/automations-durable-hooks";
 import {
   automationRouterToolFamily,
   type AutomationRouterRuntime,
@@ -22,7 +18,7 @@ import {
   backofficeCapabilitiesToolFamily,
   type BackofficeCapabilitiesRuntime,
 } from "./families/backoffice-capabilities";
-import { eventToolFamily, type EventRuntime } from "./families/event";
+import { eventCatalogToolFamily, eventFireToolFamily, type EventRuntime } from "./families/event";
 import { internalToolFamily, type InternalRuntime } from "./families/internal";
 import { mcpToolFamily, type McpRuntime } from "./families/mcp";
 import { otpToolFamily, type OtpRuntime } from "./families/otp";
@@ -65,8 +61,8 @@ export const runtimeToolFamilies = [
   automationRouterToolFamily,
   automationWorkflowToolFamily,
   hooksToolFamily,
-  automationEventsToolFamily,
-  eventToolFamily,
+  eventFireToolFamily,
+  eventCatalogToolFamily,
   apiToolFamily,
   mcpToolFamily,
   otpToolFamily,
@@ -87,7 +83,6 @@ const namespaceCapabilityIds = {
   workflow: "automations",
   hooks: "automations",
   events: "automations",
-  event: "automations",
   api: "api",
   mcp: "mcp",
   otp: "otp",

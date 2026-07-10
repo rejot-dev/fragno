@@ -231,7 +231,7 @@ describe("bash command runner", () => {
 
     const firstRun = executeBashAutomation({
       script:
-        'event.emit --event-type overlap.wait --source test >/dev/null\nprintf "run-a=%s\\n" "$(cat /context/event.json)"',
+        'events.fire --event-type overlap.wait --source test >/dev/null\nprintf "run-a=%s\\n" "$(cat /context/event.json)"',
       masterFs,
       context: createTestAutomationExecutionContext({
         event: firstEvent,
@@ -256,7 +256,7 @@ describe("bash command runner", () => {
     const secondRun = await executeBashAutomation({
       script:
         'printf "before=%s\\n" "$(cat /context/event.json)"\n' +
-        "event.emit --event-type overlap.read --source test >/dev/null\n" +
+        "events.fire --event-type overlap.read --source test >/dev/null\n" +
         'printf "after=%s\\n" "$(cat /context/event.json)"',
       masterFs,
       context: createTestAutomationExecutionContext({
@@ -303,7 +303,7 @@ describe("bash command runner", () => {
 
     const firstRun = executeBashAutomation({
       script:
-        "event.emit --event-type cleanup.wait-a --source test >/dev/null\necho first-run-complete",
+        "events.fire --event-type cleanup.wait-a --source test >/dev/null\necho first-run-complete",
       masterFs,
       context: createTestAutomationExecutionContext({
         event: firstEvent,
@@ -328,7 +328,7 @@ describe("bash command runner", () => {
     const secondRunPromise = executeBashAutomation({
       script:
         'printf "before=%s\\n" "$(cat /context/event.json)"\n' +
-        "event.emit --event-type cleanup.wait-b --source test >/dev/null\n" +
+        "events.fire --event-type cleanup.wait-b --source test >/dev/null\n" +
         "cat /context/event.json >/dev/null\n" +
         "echo kept >/dev/null\n" +
         'printf "after=%s\\n" "$(cat /context/event.json)"',

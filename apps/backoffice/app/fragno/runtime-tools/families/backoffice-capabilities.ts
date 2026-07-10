@@ -166,7 +166,7 @@ const automationEventsCatalogListOutputSchema = z.array(
 );
 const automationEventCatalogGetInputSchema = z.object({
   source: z.string().trim().min(1),
-  type: z.string().trim().min(1),
+  eventType: z.string().trim().min(1),
 });
 const automationEventCatalogGetOutputSchema = automationEventDescriptorSchema.nullable();
 const automationEventCatalogCreateOutputSchema = automationEventDefinitionSchema;
@@ -723,10 +723,10 @@ const connectionsConfigureTool = defineBackofficeRuntimeTool({
   },
 });
 
-const automationEventsCatalogListTool = defineBackofficeRuntimeTool({
+export const automationEventsCatalogListTool = defineBackofficeRuntimeTool({
   id: "events.catalog.list",
   namespace: "events",
-  name: "eventsCatalogList",
+  name: "catalogList",
   description:
     "List known automation event source/type pairs from the Backoffice capability registry.",
   requiredPermissions: ["read"],
@@ -749,10 +749,10 @@ const automationEventsCatalogListTool = defineBackofficeRuntimeTool({
   },
 });
 
-const automationEventsCatalogGetTool = defineBackofficeRuntimeTool({
+export const automationEventsCatalogGetTool = defineBackofficeRuntimeTool({
   id: "events.catalog.get",
   namespace: "events",
-  name: "eventsCatalogGet",
+  name: "catalogGet",
   description: "Get one automation event descriptor and its JSON schemas.",
   requiredPermissions: ["read"],
   inputSchema: automationEventCatalogGetInputSchema,
@@ -773,21 +773,21 @@ const automationEventsCatalogGetTool = defineBackofficeRuntimeTool({
             description: "Automation event source.",
           },
           {
-            name: "type",
+            name: "event-type",
             required: true,
             valueRequired: true,
-            valueName: "type",
+            valueName: "event-type",
             description: "Automation event type.",
           },
         ],
         examples: [
-          "events.catalog.get --source telegram --type message.received",
-          "events.catalog.get --source telegram --type message.received --format json",
+          "events.catalog.get --source telegram --event-type message.received",
+          "events.catalog.get --source telegram --event-type message.received --format json",
         ],
       },
       parse: defineCliArgsParser<AutomationEventCatalogGetInput>("events.catalog.get", {
         source: { required: true },
-        type: { required: true },
+        eventType: { required: true },
       }),
       outputOptions: readOutput,
       format: formatAutomationEventCatalogEntry,
@@ -795,10 +795,10 @@ const automationEventsCatalogGetTool = defineBackofficeRuntimeTool({
   },
 });
 
-const automationEventsCatalogCreateTool = defineBackofficeRuntimeTool({
+export const automationEventsCatalogCreateTool = defineBackofficeRuntimeTool({
   id: "events.catalog.create",
   namespace: "events",
-  name: "eventsCatalogCreate",
+  name: "catalogCreate",
   description: "Create a scoped dynamic automation event definition with optional JSON schemas.",
   requiredPermissions: ["manage"],
   inputSchema: automationEventDefinitionCreateInputSchema,
@@ -1078,9 +1078,9 @@ export const createBackofficeCapabilitiesRuntime = ({
         ),
       ];
     },
-    getAutomationEvent: async ({ source, type }) => {
+    getAutomationEvent: async ({ source, eventType }) => {
       const staticEvent = listAutomationEventDescriptors().find(
-        (event) => event.source === source && event.eventType === type,
+        (event) => event.source === source && event.eventType === eventType,
       );
       if (staticEvent) {
         return staticEvent;
@@ -1088,7 +1088,7 @@ export const createBackofficeCapabilitiesRuntime = ({
 
       const dynamicEvent = await objects.automations
         .for(scope)
-        .getEventDefinition({ source, eventType: type });
+        .getEventDefinition({ source, eventType });
       if (!dynamicEvent) {
         return null;
       }
@@ -1117,9 +1117,6 @@ export const backofficeCapabilitiesRuntimeTools = [
   connectionsVerifyTool,
   connectionsResetTool,
   connectionsConfigureTool,
-  automationEventsCatalogListTool,
-  automationEventsCatalogGetTool,
-  automationEventsCatalogCreateTool,
 ] as const;
 
 export const backofficeCapabilitiesToolFamily = defineBackofficeRuntimeToolFamily({

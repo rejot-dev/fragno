@@ -368,7 +368,7 @@ describe("bash host command assembly", () => {
     const resendGetHelp = await bash.exec("resend.threads.get --help");
     const resendListHelp = await bash.exec("resend.threads.list --help");
     const resendReplyHelp = await bash.exec("resend.threads.reply --help");
-    const missingEvent = await bash.exec("event.emit --event-type test");
+    const missingEvent = await bash.exec("events.fire --event-type test");
 
     assert(piHelp.exitCode === 0);
     expect(piHelp.stdout).toContain("pi.session.get");
@@ -383,7 +383,7 @@ describe("bash host command assembly", () => {
     assert(resendReplyHelp.exitCode === 0);
     expect(resendReplyHelp.stdout).toContain("resend.threads.reply");
     assert(missingEvent.exitCode === 127);
-    expect(missingEvent.stderr).toContain("bash: event.emit: command not found");
+    expect(missingEvent.stderr).toContain("bash: events.fire: command not found");
     expect(commandCallsResult).toEqual([
       {
         command: "pi.session.get",
@@ -433,17 +433,17 @@ describe("bash host command assembly", () => {
       },
     });
 
-    const eventHelp = await bash.exec("event.emit --help");
+    const eventHelp = await bash.exec("events.fire --help");
     const missingPi = await bash.exec("pi.session.create --agent assistant");
 
     assert(eventHelp.exitCode === 0);
-    expect(eventHelp.stdout).toContain("event.emit");
+    expect(eventHelp.stdout).toContain("events.fire");
     assert(missingPi.exitCode === 127);
     expect(missingPi.stderr).toContain("bash: pi.session.create: command not found");
     expect(commandCallsResult).toEqual([
       {
-        command: "event.emit",
-        output: expect.stringContaining("event.emit"),
+        command: "events.fire",
+        output: expect.stringContaining("events.fire"),
         exitCode: 0,
       },
     ]);

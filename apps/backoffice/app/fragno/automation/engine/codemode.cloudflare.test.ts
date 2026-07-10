@@ -265,7 +265,7 @@ describe("executeCodemodeAutomation", () => {
       context: createAutomationContext(eventFixture, runtime),
       script: `async () => {
         const eventFixture = JSON.parse(await state.readFile("/context/event.json"));
-        return await event.emit({
+        return await events.fire({
           eventType: "identity.bound",
           source: eventFixture.source,
           payload: eventFixture.payload,
@@ -286,9 +286,9 @@ describe("executeCodemodeAutomation", () => {
       },
       toolCalls: [
         {
-          providerName: "event",
-          toolName: "emit",
-          toolId: "event.emit",
+          providerName: "events",
+          toolName: "fire",
+          toolId: "events.fire",
           status: "success",
         },
       ],
