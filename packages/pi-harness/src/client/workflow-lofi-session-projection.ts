@@ -1,24 +1,29 @@
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
 import {
-  createLofiQueryStore,
   type LofiFindBuilder,
   type LofiQueryFindResult,
+  type LofiQueryStore,
   type LofiRuntime,
 } from "@fragno-dev/lofi";
 
-import type { PiHarnessEmission, PiHarnessStepResult } from "../pi/harness/run-pi-harness-step";
+import type { PiHarnessStepResult } from "../pi/harness/run-pi-harness-step";
 import type { PiAgentStateSnapshot } from "../pi/types";
 import {
+  createPiWorkflowSessionLiveState,
   emptyPiWorkflowSessionProjectionState,
   latestCompletedPiHarnessEntries,
+  overlayPiWorkflowSessionLiveState,
   piAgentMessagesFromSessionEntries,
   projectPiWorkflowSession,
+  reducePiWorkflowSessionEmission,
+  settleCompletedPiWorkflowSessionLiveSteps,
   type DraftAgentActivity,
   type DraftAgentMessage,
   type DraftTool,
   type PiSessionProjectionError,
   type PiSessionProjectionStatus,
+  type PiWorkflowSessionProjectionEmission,
   type PiWorkflowSessionProjectionState,
 } from "../pi/workflow-session-projection";
 
@@ -50,13 +55,6 @@ const workflowInstanceProjectionQuery =
             eb("instanceRef", "=", eb.parent("id")),
           )
           .orderByIndex("idx_workflow_step_instanceRef_createdAt", "asc"),
-      )
-      .joinMany("workflowStepEmissions", "workflow_step_emission", (emission) =>
-        emission
-          .onIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", (eb) =>
-            eb("instanceRef", "=", eb.parent("id")),
-          )
-          .orderByIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", "asc"),
       );
 
 type WorkflowInstanceProjectionRow =
@@ -68,16 +66,11 @@ type WorkflowInstanceProjectionRow =
 
 type PiHarnessWorkflowInstanceProjectionRow = Omit<
   NonNullable<WorkflowInstanceProjectionRow>,
-  "workflowSteps" | "workflowStepEmissions"
+  "workflowSteps"
 > & {
   workflowSteps: Array<
     Omit<NonNullable<WorkflowInstanceProjectionRow>["workflowSteps"][number], "result"> & {
       result: PiHarnessStepResult | null;
-    }
-  >;
-  workflowStepEmissions: Array<
-    Omit<NonNullable<WorkflowInstanceProjectionRow>["workflowStepEmissions"][number], "payload"> & {
-      payload: PiHarnessEmission | { kind: undefined; control: string } | null;
     }
   >;
 };
@@ -89,17 +82,17 @@ type SessionProjectionOptions = {
 
 const projectWorkflowInstanceRow = (
   rawInstance: WorkflowInstanceProjectionRow,
-  args: { workflowName: string; sessionId: string } & SessionProjectionOptions,
+  workflowName: string,
+  sessionId: string,
+  options: SessionProjectionOptions = {},
 ): PiWorkflowSessionProjectionState => {
   const instance = rawInstance as PiHarnessWorkflowInstanceProjectionRow | null;
   return projectPiWorkflowSession({
-    workflowName: args.workflowName,
-    sessionId: args.sessionId,
+    workflowName,
+    sessionId,
     instance,
     workflowSteps: instance?.workflowSteps ?? [],
-    workflowStepEmissions: instance?.workflowStepEmissions ?? [],
-    initialState: args.initialState,
-    initialCompletedStepKeys: args.initialCompletedStepKeys,
+    ...options,
   });
 };
 
@@ -107,26 +100,75 @@ export const createSessionProjectionDataStore = (
   runtime: LofiRuntime,
   workflowName: string,
   sessionId: string,
-  options: SessionProjectionOptions | undefined = undefined,
-) =>
-  createLofiQueryStore(
-    runtime,
-    ({ forSchema }) =>
-      forSchema(workflowsSchema).findFirst(
+  options: SessionProjectionOptions = {},
+): LofiQueryStore<PiWorkflowSessionProjectionState> =>
+  runtime
+    .store()
+    .retrieve(({ forSchema }) => ({
+      instance: forSchema(workflowsSchema).findFirst(
         "workflow_instance",
         workflowInstanceProjectionQuery({ workflowName, sessionId }),
       ),
-    {
-      initialData: emptyPiWorkflowSessionProjectionState(options?.initialState),
-      map: ([instance]): PiWorkflowSessionProjectionState =>
-        projectWorkflowInstanceRow(instance, {
-          workflowName,
-          sessionId,
-          initialState: options?.initialState,
-          initialCompletedStepKeys: options?.initialCompletedStepKeys,
-        }),
-    },
-  );
+    }))
+    .transformRetrieve(({ instance }) =>
+      projectWorkflowInstanceRow(instance, workflowName, sessionId, options),
+    )
+    .withEphemeral(workflowsSchema, "workflow_step_emission", {
+      initialState: createPiWorkflowSessionLiveState,
+
+      // Only reduce emissions belonging to this session and not yet represented by durable steps.
+      reduce: (liveState, item, { retrieved: { instance }, durableData }) => {
+        if (
+          !instance ||
+          String(item.instanceRef) !== String(instance.id) ||
+          durableData.completedStepKeys.includes(item.stepKey)
+        ) {
+          return undefined;
+        }
+
+        reducePiWorkflowSessionEmission(liveState, {
+          stepKey: item.stepKey,
+          payload: item.payload as PiWorkflowSessionProjectionEmission["payload"],
+          createdAt: item.createdAt,
+        });
+        return liveState;
+      },
+
+      // Completed durable steps supersede their transient drafts after each query refresh.
+      reconcile: (liveState, { retrieved: { instance }, durableData }) => {
+        settleCompletedPiWorkflowSessionLiveSteps(
+          liveState,
+          new Set(durableData.completedStepKeys),
+        );
+        if (instance) {
+          const projectedInstance = instance as PiHarnessWorkflowInstanceProjectionRow;
+          liveState.activeLiveWork ||= projectedInstance.workflowSteps.some(
+            (step) =>
+              step.status !== "completed" &&
+              !(
+                step.status === "waiting" &&
+                step.type === "waitForEvent" &&
+                step.waitEventType === "command"
+              ),
+          );
+        }
+      },
+
+      // Keep durable messages authoritative while layering the current in-flight Pi state on top.
+      overlay: (durableData, liveState, { retrieved: { instance } }) => {
+        if (!instance) {
+          return durableData;
+        }
+        const projectedInstance = instance as PiHarnessWorkflowInstanceProjectionRow;
+        return overlayPiWorkflowSessionLiveState(
+          durableData,
+          projectedInstance,
+          projectedInstance.workflowSteps,
+          liveState,
+        );
+      },
+    })
+    .withInitialData(emptyPiWorkflowSessionProjectionState(options.initialState));
 
 export const readPiWorkflowLofiSessionProjection = async (
   runtime: LofiRuntime,
@@ -138,6 +180,6 @@ export const readPiWorkflowLofiSessionProjection = async (
     workflowInstanceProjectionQuery(args),
   );
 
-  const data = projectWorkflowInstanceRow(instance, args);
+  const data = projectWorkflowInstanceRow(instance, args.workflowName, args.sessionId);
   return { state: data.state, status: data.status, error: data.error };
 };

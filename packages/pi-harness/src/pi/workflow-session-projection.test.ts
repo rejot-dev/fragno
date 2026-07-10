@@ -184,6 +184,35 @@ describe("projectPiWorkflowSession", () => {
     assert(!projection.readyForInput);
   });
 
+  it("does not mutate message_start emissions while applying compact deltas", () => {
+    const stepKey = "do:immutable-input";
+    const startMessage = assistantMessage("");
+
+    const projection = projectPiWorkflowSession({
+      workflowName,
+      sessionId,
+      instance,
+      workflowSteps: [
+        { stepKey, type: "do", status: "running", waitEventType: null, result: null },
+      ],
+      workflowStepEmissions: [
+        harnessEmission(stepKey, { type: "message_start", message: startMessage }, 1),
+        harnessEmission(
+          stepKey,
+          {
+            type: "message_update",
+            assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "hello" },
+          },
+          2,
+        ),
+      ],
+    });
+
+    assert(projection.draftAgentMessage?.assistant);
+    assert(textContent(projection.draftAgentMessage.assistant) === "hello");
+    assert(textContent(startMessage) === "");
+  });
+
   it("projects draft thinking, tool calls, running tools, failed tool results, and status text", () => {
     const stepKey = "do:tool";
     const thinking = fauxAssistantMessage({ type: "thinking", thinking: "plan" }, { timestamp: 1 });

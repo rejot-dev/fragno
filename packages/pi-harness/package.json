@@ -24,6 +24,10 @@
       "types": "./dist/browser/client/clients.d.ts",
       "default": "./dist/browser/client/clients.js"
     },
+    "./client/pi-workflow-emission-stream": {
+      "types": "./dist/browser/client/pi-workflow-emission-stream.d.ts",
+      "default": "./dist/browser/client/pi-workflow-emission-stream.js"
+    },
     "./client/workflow-lofi-session-projection": {
       "types": "./dist/browser/client/workflow-lofi-session-projection.d.ts",
       "default": "./dist/browser/client/workflow-lofi-session-projection.js"

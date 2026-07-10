@@ -6,6 +6,7 @@ export default defineConfig([
     ignoreWatch: ["./dist"],
     entry: [
       "./src/client/clients.ts",
+      "./src/client/pi-workflow-emission-stream.ts",
       "./src/client/workflow-lofi-session-projection.ts",
       "./src/client/react.ts",
       "./src/client/svelte.ts",
