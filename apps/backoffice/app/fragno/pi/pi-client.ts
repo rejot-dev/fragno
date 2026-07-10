@@ -1,3 +1,4 @@
+import { piWorkflowStepEmissionEphemeralTable } from "@fragno-dev/pi-harness/client/pi-workflow-emission-stream";
 import { createSessionProjectionDataStore } from "@fragno-dev/pi-harness/client/workflow-lofi-session-projection";
 import { createPiFragmentClient } from "@fragno-dev/pi-harness/react";
 import { piSchema } from "@fragno-dev/pi-harness/schema";
@@ -45,6 +46,7 @@ const piLofiRuntimes = createLofiRuntimeRegistry({
           outboxUrl: `/api/pi/${encodeURIComponent(orgId)}/_internal/outbox`,
         },
       ],
+      ephemeralTables: [piWorkflowStepEmissionEphemeralTable],
       outboxTransport: "stream",
       streamReconnectIntervalMs: 300,
     }),
