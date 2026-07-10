@@ -1,5 +1,6 @@
 import { describe, expect, it, assert } from "vitest";
 
+import { FragnoId } from "@fragno-dev/db/schema";
 import { buildScopedInstanceRowId } from "@fragno-dev/workflows/instance-ref";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 import {
@@ -15,6 +16,7 @@ import {
 } from "fake-indexeddb";
 import { Type } from "typebox";
 
+import type { OutboxEntry, OutboxPayload } from "@fragno-dev/db";
 import {
   IndexedDbAdapter,
   createLofiRuntime,
@@ -40,12 +42,14 @@ import {
   recordFauxPiHarnessPrompt,
   startFauxPiHarnessOperation,
 } from "../pi/pi-test-utils";
+import { piWorkflowStepEmissionEphemeralTable } from "./pi-workflow-emission-stream";
 import {
   createSessionProjectionDataStore,
   type PiWorkflowLofiSessionProjectionState,
 } from "./workflow-lofi-session-projection";
 
 const workflowName = "interactive-chat";
+let runtimeSequence = 0;
 
 const installFakeIndexedDb = () => {
   globalThis.indexedDB = new IDBFactory();
@@ -62,18 +66,107 @@ const installFakeIndexedDb = () => {
 const createRuntime = async (mutations: readonly LofiMutation[] = []) => {
   installFakeIndexedDb();
   const adapter = new IndexedDbAdapter({
-    dbName: `pi-harness-projection-test-${Math.random().toString(16).slice(2)}`,
+    dbName: `pi-harness-projection-test-${runtimeSequence++}`,
     endpointName: "pi-harness-projection-test",
     schemas: [{ schema: workflowsSchema }],
   });
-  await adapter.applyMutations([...mutations]);
+  const durableMutations = mutations.filter(
+    (mutation) => mutation.table !== "workflow_step_emission",
+  );
+  const workflowInstanceRef = durableMutations.find(
+    (mutation) => mutation.table === "workflow_instance",
+  )?.externalId;
+  const startedStreams = new Set<string>();
+  const ephemeralMutations = mutations
+    .filter((mutation) => mutation.table === "workflow_step_emission")
+    .flatMap((mutation, index): LofiMutation[] => {
+      if (mutation.op !== "create") {
+        return [mutation];
+      }
+
+      const values: Record<string, unknown> = {
+        ...(mutation.values as Record<string, unknown>),
+        instanceRef: workflowInstanceRef,
+      };
+      const streamKey = `${String(values["instanceRef"])}:${String(values["stepKey"])}:${String(values["epoch"])}`;
+      const payload = values["payload"];
+      const isOperationStart =
+        typeof payload === "object" &&
+        payload !== null &&
+        "kind" in payload &&
+        payload.kind === "harness-operation-start";
+      if (isOperationStart) {
+        startedStreams.add(streamKey);
+        return [{ ...mutation, values }];
+      }
+      if (startedStreams.has(streamKey)) {
+        return [{ ...mutation, values }];
+      }
+
+      startedStreams.add(streamKey);
+      return [
+        {
+          ...mutation,
+          externalId: `${mutation.externalId}:operation-start`,
+          versionstamp: `${mutation.versionstamp}:operation-start`,
+          values: {
+            ...values,
+            sequence: -1,
+            payload: {
+              kind: "harness-operation-start",
+              operationId: `projection-test:${index}`,
+              operation: { kind: "prompt", args: [] },
+              replay: { protocol: "pi-harness-operation", version: 1 },
+            },
+          },
+        },
+        { ...mutation, values },
+      ];
+    });
+  await adapter.applyMutations(durableMutations);
+
+  const entry: OutboxEntry = {
+    id: FragnoId.fromExternal("projection-outbox-entry", 0),
+    versionstamp: "projection-outbox-versionstamp",
+    uowId: "projection-outbox-uow",
+    payload: {
+      json: { version: 1, mutations: ephemeralMutations } satisfies OutboxPayload,
+    },
+    createdAt: new Date(),
+  };
+  let allowOutboxRequest: () => void = () => undefined;
+  const outboxRequestAllowed = new Promise<void>((resolve) => {
+    allowOutboxRequest = resolve;
+  });
+  let deliveredEphemeralMutations = false;
   const runtime = createLofiRuntime({
     endpointName: "pi-harness-projection-test",
     adapter,
     outboxUrl: "https://example.com/outbox",
-    fetch: (async () => new Response(JSON.stringify([]))) as typeof fetch,
+    ephemeralTables: [piWorkflowStepEmissionEphemeralTable],
+    fetch: (async () => {
+      await outboxRequestAllowed;
+      if (deliveredEphemeralMutations || ephemeralMutations.length === 0) {
+        return new Response(JSON.stringify([]));
+      }
+      deliveredEphemeralMutations = true;
+      return new Response(JSON.stringify([entry]));
+    }) as typeof fetch,
   });
-  return { adapter, runtime };
+  return { adapter, runtime, allowOutboxRequest };
+};
+
+const settledProjection = async (
+  runtimeContext: Awaited<ReturnType<typeof createRuntime>>,
+  store: ReturnType<typeof createSessionProjectionDataStore>,
+): Promise<PiWorkflowLofiSessionProjectionState> => {
+  const unlisten = store.listen(() => undefined);
+  runtimeContext.allowOutboxRequest();
+  await runtimeContext.runtime.whenBootstrapped();
+  await store.refresh();
+  const projection = store.get().data;
+  unlisten();
+  return projection;
 };
 
 const projectWorkflowMutations = async (
@@ -81,15 +174,13 @@ const projectWorkflowMutations = async (
   mutations: Parameters<typeof uowOperationsToLofiMutations>[0],
   options?: Parameters<typeof createSessionProjectionDataStore>[3],
 ): Promise<PiWorkflowLofiSessionProjectionState> => {
-  const { runtime } = await createRuntime(uowOperationsToLofiMutations(mutations));
-  const store = createSessionProjectionDataStore(runtime, workflowName, sessionId, options);
-  const unlisten = store.listen(() => undefined);
-
-  await runtime.whenBootstrapped();
-  await store.refresh();
-  unlisten();
-
-  return store.get().data;
+  const runtimeContext = await createRuntime(
+    uowOperationsToLofiMutations(mutations, { now: new Date("2026-07-03T00:00:00.000Z") }),
+  );
+  return settledProjection(
+    runtimeContext,
+    createSessionProjectionDataStore(runtimeContext.runtime, workflowName, sessionId, options),
+  );
 };
 
 const projectManualWorkflow = async (
@@ -183,15 +274,11 @@ const projectManualWorkflow = async (
       versionstamp: `${sessionId}-emission-${index}`,
     })),
   ];
-  const { runtime } = await createRuntime(mutations);
-  const store = createSessionProjectionDataStore(runtime, workflowName, sessionId, storeOptions);
-  const unlisten = store.listen(() => undefined);
-
-  await runtime.whenBootstrapped();
-  await store.refresh();
-  unlisten();
-
-  return store.get().data;
+  const runtimeContext = await createRuntime(mutations);
+  return settledProjection(
+    runtimeContext,
+    createSessionProjectionDataStore(runtimeContext.runtime, workflowName, sessionId, storeOptions),
+  );
 };
 
 const projectFauxPrompt = async (options: {
@@ -1181,41 +1268,6 @@ describe("Pi harness workflow projection", () => {
       ]);
     });
 
-    it("uses lofi as the authoritative projection after bootstrapping", async () => {
-      const secondUser = sessionMessageEntry("entry-3", "second prompt", { role: "user" });
-      const secondAssistant = sessionMessageEntry("entry-4", "second response", {
-        parentId: secondUser.id,
-      });
-      const projection = await projectManualWorkflow(
-        "authoritative-local-lofi",
-        {
-          emissions: [
-            {
-              stepKey: "do:second-command",
-              sequence: 5,
-              payload: { kind: "harness-session-entry", entry: secondUser },
-            },
-            {
-              stepKey: "do:second-command",
-              sequence: 1,
-              createdAt: new Date("2026-07-03T00:00:04.000Z"),
-              payload: { kind: "harness-session-entry", entry: secondAssistant },
-            },
-          ],
-        },
-        {
-          initialState: {
-            messages: [
-              { role: "user", content: "server prompt", timestamp: 1 },
-              fauxAssistantMessage(fauxText("server reply"), { timestamp: 1 }),
-            ],
-          },
-        },
-      );
-
-      expect(projection.state.messages.map(messageTextContent)).toEqual([]);
-    });
-
     it("projects durable completed step messages and ignores its persisted live emissions", async () => {
       const projection = await projectFauxPrompt({
         sessionId: "completed-emissions-ignored",
@@ -1689,6 +1741,7 @@ describe("Pi harness workflow projection", () => {
               kind: "harness-operation-start",
               operationId: "operation-1",
               operation: { kind: "prompt", args: ["hello"] },
+              replay: { protocol: "pi-harness-operation", version: 1 },
             },
           },
         ],

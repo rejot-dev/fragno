@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, assert } from "vitest";
 
+import { FragnoId } from "@fragno-dev/db/schema";
 import { buildScopedInstanceRowId } from "@fragno-dev/workflows/instance-ref";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 import {
@@ -14,6 +15,7 @@ import {
   IDBTransaction,
 } from "fake-indexeddb";
 
+import type { OutboxEntry, OutboxPayload } from "@fragno-dev/db";
 import {
   IndexedDbAdapter,
   InMemoryLofiAdapter,
@@ -24,6 +26,7 @@ import {
 import type { AgentMessage, SessionTreeEntry } from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage, fauxText, type UserMessage } from "@earendil-works/pi-ai";
 
+import { piWorkflowStepEmissionEphemeralTable } from "./pi-workflow-emission-stream";
 import {
   createSessionProjectionDataStore,
   readPiWorkflowLofiSessionProjection,
@@ -84,6 +87,35 @@ const workflowInstanceMutation = (): LofiMutation => ({
   },
 });
 
+const workflowEmissionMutation = (
+  externalId: string,
+  sequence: number,
+  payload: unknown,
+): LofiMutation => ({
+  op: "create",
+  schema: schemaName,
+  table: "workflow_step_emission",
+  externalId,
+  versionstamp: `emission-${sequence}`,
+  values: {
+    instanceRef,
+    stepKey: "do:agent-turn-1",
+    epoch: "epoch-1",
+    sequence,
+    actor: "user",
+    payload,
+    createdAt: new Date(sequence),
+  },
+});
+
+const outboxEntry = (mutations: OutboxPayload["mutations"]): OutboxEntry => ({
+  id: FragnoId.fromExternal("projection-outbox-entry", 0),
+  versionstamp: "outbox-001",
+  uowId: "projection-uow",
+  payload: { json: { version: 1, mutations } satisfies OutboxPayload },
+  createdAt: new Date(),
+});
+
 const workflowStepMutation = (
   text: string,
   versionstamp: string,
@@ -134,19 +166,33 @@ const createRuntime = async (mutations: readonly LofiMutation[] = []) => {
     endpointName: "pi-harness-test",
     adapter,
     outboxUrl: "https://example.com/outbox",
+    ephemeralTables: [piWorkflowStepEmissionEphemeralTable],
     fetch: (async () => new Response(JSON.stringify([]))) as typeof fetch,
   });
   return { runtime };
 };
 
-const waitFor = async (predicate: () => boolean, timeoutMs = 1000): Promise<void> => {
-  const startedAt = Date.now();
-  while (!predicate()) {
-    if (Date.now() - startedAt > timeoutMs) {
-      throw new Error("Timed out waiting for predicate.");
-    }
-    await new Promise((resolve) => setTimeout(resolve, 0));
+type SessionProjectionStore = ReturnType<typeof createSessionProjectionDataStore>;
+type SessionProjectionStoreState = ReturnType<SessionProjectionStore["get"]>;
+
+const storeStateMatching = (
+  store: SessionProjectionStore,
+  predicate: (state: SessionProjectionStoreState) => boolean,
+): Promise<SessionProjectionStoreState> => {
+  const current = store.get();
+  if (predicate(current)) {
+    return Promise.resolve(current);
   }
+
+  return new Promise((resolve) => {
+    let unlisten: () => void = () => undefined;
+    unlisten = store.listen((state) => {
+      if (predicate(state)) {
+        unlisten();
+        resolve(state);
+      }
+    });
+  });
 };
 
 const installFakeIndexedDb = () => {
@@ -180,14 +226,196 @@ describe("createSessionProjectionDataStore", () => {
       endpointName: "pi-harness-test",
       adapter,
       outboxUrl: "https://example.com/outbox",
+      ephemeralTables: [piWorkflowStepEmissionEphemeralTable],
       fetch: (async () => new Response(JSON.stringify([]))) as typeof fetch,
     });
     const store = createSessionProjectionDataStore(runtime, workflowName, sessionId);
     const unsubscribe = store.subscribe(() => undefined);
 
-    await waitFor(() => store.get().data.status === "ready");
+    await storeStateMatching(store, (state) => state.data.status === "ready");
 
     expect(store.get().data.state.messages.map(messageText)).toEqual(["indexed committed"]);
+    unsubscribe();
+  });
+
+  it("reduces ephemeral workflow emissions without storing or querying emission rows", async () => {
+    const entry = outboxEntry([
+      workflowInstanceMutation(),
+      workflowEmissionMutation("operation-start", 0, {
+        kind: "harness-operation-start",
+        operationId: "interactive-chat:session-1:agent-turn-1",
+        operation: { kind: "prompt", args: ["hello"] },
+        replay: { protocol: "pi-harness-operation", version: 1 },
+      }),
+      workflowEmissionMutation("emission-start", 1, {
+        kind: "harness-event",
+        event: { type: "message_start", message: assistantMessage("") },
+      }),
+      workflowEmissionMutation("emission-delta", 2, {
+        kind: "harness-message-update",
+        update: {
+          type: "message_update",
+          assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "hel" },
+        },
+      }),
+      workflowEmissionMutation("emission-delta-2", 3, {
+        kind: "harness-message-update",
+        update: {
+          type: "message_update",
+          assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "lo" },
+        },
+      }),
+    ]);
+    const adapter = new IndexedDbAdapter({
+      dbName: "pi-harness-ephemeral-projection-test",
+      endpointName: "pi-harness-test",
+      schemas: [{ schema: workflowsSchema }],
+    });
+    const runtime = createLofiRuntime({
+      endpointName: "pi-harness-test",
+      adapter,
+      outboxUrl: "https://example.com/outbox",
+      ephemeralTables: [piWorkflowStepEmissionEphemeralTable],
+      fetch: (async (input) => {
+        const url = new URL(typeof input === "string" ? input : input.toString());
+        return new Response(
+          JSON.stringify(url.searchParams.has("afterVersionstamp") ? [] : [entry]),
+        );
+      }) as typeof fetch,
+    });
+    const store = createSessionProjectionDataStore(runtime, workflowName, sessionId);
+    const unsubscribe = store.subscribe(() => undefined);
+
+    await storeStateMatching(store, (state) => {
+      const assistant = state.data.draftAgentMessage?.assistant;
+      return assistant?.content[0]?.type === "text" && assistant.content[0].text === "hello";
+    });
+
+    expect(
+      await adapter
+        .createQueryEngine(workflowsSchema)
+        .find("workflow_step_emission", (builder) =>
+          builder.whereIndex("idx_workflow_step_emission_instance_createdAt_sequence_id"),
+        ),
+    ).toEqual([]);
+    assert(runtime.$revision.get() === 1);
+    unsubscribe();
+  });
+
+  it("does not share mutable assistant drafts between stores", async () => {
+    const entry = outboxEntry([
+      workflowInstanceMutation(),
+      workflowEmissionMutation("operation-start", 0, {
+        kind: "harness-operation-start",
+        operationId: "interactive-chat:session-1:agent-turn-1",
+        operation: { kind: "prompt", args: ["hello"] },
+        replay: { protocol: "pi-harness-operation", version: 1 },
+      }),
+      workflowEmissionMutation("message-start", 1, {
+        kind: "harness-event",
+        event: { type: "message_start", message: assistantMessage("") },
+      }),
+      workflowEmissionMutation("message-delta", 2, {
+        kind: "harness-message-update",
+        update: {
+          type: "message_update",
+          assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "hello" },
+        },
+      }),
+    ]);
+    const adapter = new IndexedDbAdapter({
+      dbName: "pi-harness-ephemeral-store-isolation-test",
+      endpointName: "pi-harness-test",
+      schemas: [{ schema: workflowsSchema }],
+    });
+    const runtime = createLofiRuntime({
+      endpointName: "pi-harness-test",
+      adapter,
+      outboxUrl: "https://example.com/outbox",
+      ephemeralTables: [piWorkflowStepEmissionEphemeralTable],
+      fetch: (async (input) => {
+        const url = new URL(typeof input === "string" ? input : input.toString());
+        return new Response(
+          JSON.stringify(url.searchParams.has("afterVersionstamp") ? [] : [entry]),
+        );
+      }) as typeof fetch,
+    });
+    const firstStore = createSessionProjectionDataStore(runtime, workflowName, sessionId);
+    const secondStore = createSessionProjectionDataStore(runtime, workflowName, sessionId);
+    const unsubscribeFirst = firstStore.subscribe(() => undefined);
+    const unsubscribeSecond = secondStore.subscribe(() => undefined);
+
+    await Promise.all([
+      storeStateMatching(firstStore, (state) => state.synced),
+      storeStateMatching(secondStore, (state) => state.synced),
+    ]);
+
+    const assistantText = (store: SessionProjectionStore) => {
+      const content = store.get().data.draftAgentMessage?.assistant?.content[0];
+      return content?.type === "text" ? content.text : undefined;
+    };
+    assert(assistantText(firstStore) === "hello");
+    assert(assistantText(secondStore) === "hello");
+
+    unsubscribeFirst();
+    unsubscribeSecond();
+  });
+
+  it("rebuilds an active Pi draft after the runtime reloads before the store mounts", async () => {
+    const entry = outboxEntry([
+      workflowInstanceMutation(),
+      workflowEmissionMutation("operation-start", 0, {
+        kind: "harness-operation-start",
+        operationId: "interactive-chat:session-1:agent-turn-1",
+        operation: { kind: "prompt", args: ["hello"] },
+        replay: { protocol: "pi-harness-operation", version: 1 },
+      }),
+      workflowEmissionMutation("message-start", 1, {
+        kind: "harness-event",
+        event: { type: "message_start", message: assistantMessage("") },
+      }),
+      workflowEmissionMutation("message-delta", 2, {
+        kind: "harness-message-update",
+        update: {
+          type: "message_update",
+          assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "hello" },
+        },
+      }),
+    ]);
+    const adapter = new IndexedDbAdapter({
+      dbName: "pi-harness-ephemeral-reload-test",
+      endpointName: "pi-harness-test",
+      schemas: [{ schema: workflowsSchema }],
+    });
+    const createRuntimeForReload = () =>
+      createLofiRuntime({
+        endpointName: "pi-harness-test",
+        adapter,
+        outboxUrl: "https://example.com/outbox",
+        ephemeralTables: [piWorkflowStepEmissionEphemeralTable],
+        fetch: (async (input) => {
+          const url = new URL(typeof input === "string" ? input : input.toString());
+          return new Response(
+            JSON.stringify(url.searchParams.has("afterVersionstamp") ? [] : [entry]),
+          );
+        }) as typeof fetch,
+      });
+
+    await createRuntimeForReload().syncOnce();
+
+    const reloadedRuntime = createRuntimeForReload();
+    await reloadedRuntime.syncOnce();
+    const store = createSessionProjectionDataStore(reloadedRuntime, workflowName, sessionId);
+    const unsubscribe = store.subscribe(() => undefined);
+
+    const state = await storeStateMatching(store, (current) => {
+      const assistant = current.data.draftAgentMessage?.assistant;
+      return assistant?.content[0]?.type === "text" && assistant.content[0].text === "hello";
+    });
+
+    expect(state.data.draftAgentMessage?.assistant?.content).toEqual([
+      expect.objectContaining({ type: "text", text: "hello" }),
+    ]);
     unsubscribe();
   });
 
@@ -232,7 +460,7 @@ describe("createSessionProjectionDataStore", () => {
     assert(store.get().data.status === "loading");
     expect(store.get().data.state.messages.map(messageText)).toEqual(["server prompt"]);
 
-    await waitFor(() => store.get().data.status === "ready");
+    await storeStateMatching(store, (state) => state.data.status === "ready");
     unsubscribe();
   });
 });

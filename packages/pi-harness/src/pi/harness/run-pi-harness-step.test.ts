@@ -248,6 +248,12 @@ describe("runPiHarnessStep", () => {
       role: "assistant",
       content: [{ type: "text", text: "stateful assistant" }],
     });
+    expect(fakeStep.emitted).toContainEqual(
+      expect.objectContaining({
+        kind: "harness-operation-start",
+        replay: { protocol: "pi-harness-operation", version: 1 },
+      }),
+    );
     assert(nextState.entries.length === 3);
     expect(nextState.entries[0]).toMatchObject({ id: "initial-0", message: initialMessage });
     assert(nextState.leafId === nextState.entries.at(-1)?.id);

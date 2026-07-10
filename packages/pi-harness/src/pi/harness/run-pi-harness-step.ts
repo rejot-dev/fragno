@@ -47,6 +47,10 @@ export type PiHarnessOperationStartEmission = {
   kind: "harness-operation-start";
   operationId: string;
   operation: PiHarnessOperation;
+  replay: {
+    protocol: "pi-harness-operation";
+    version: 1;
+  };
 };
 
 export type PiHarnessOperationCompleteEmission = {
@@ -422,6 +426,10 @@ export const runPiHarnessStep = async <TTool extends AgentTool = AgentTool>(
         kind: "harness-operation-start",
         operationId,
         operation: options.operation,
+        replay: {
+          protocol: "pi-harness-operation",
+          version: 1,
+        },
       } satisfies PiHarnessEmission);
       if (leafIdBeforeOperation !== undefined) {
         await session.moveTo(leafIdBeforeOperation);
