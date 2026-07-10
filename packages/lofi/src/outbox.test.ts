@@ -203,6 +203,21 @@ describe("outbox utilities", () => {
       name: "Ada",
       createdAt: { tag: "db-now" },
     });
+
+    const [materializedMutation] = uowOperationsToLofiMutations(
+      [
+        {
+          type: "create",
+          schema: appSchema,
+          table: "users",
+          generatedExternalId: "user-1",
+          values: { name: "Ada" },
+        },
+      ],
+      { now: new Date("2026-07-03T00:00:00.000Z") },
+    );
+    assert(materializedMutation?.op === "create");
+    expect(materializedMutation.values["createdAt"]).toEqual(new Date("2026-07-03T00:00:00.000Z"));
   });
 
   it("converts outbox mutations into uow operations", () => {

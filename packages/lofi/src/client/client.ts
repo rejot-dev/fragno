@@ -1,14 +1,21 @@
 import type { OutboxEntry, OutboxPayload } from "@fragno-dev/db";
 
 import { decodeOutboxPayload, resolveOutboxRefs } from "../outbox";
+import { assertNoUnresolvedDbNowMutations } from "../query/mutation-values";
 import type {
   LofiClientOptions,
+  LofiEphemeralMutationBatch,
+  LofiEphemeralStreamPolicy,
   LofiMutation,
   LofiOutboxTransport,
   LofiSyncResult,
 } from "../types";
 
-type LofiSyncOptions = { signal?: AbortSignal };
+type LofiSyncOptions = {
+  signal?: AbortSignal;
+  /** Builds replay buffers without delivering historical ephemeral mutations to live listeners. */
+  deliverEphemeral?: boolean;
+};
 
 type OutboxPageResult = {
   entries: OutboxEntry[];
@@ -24,6 +31,21 @@ type OutboxFetchOptions = {
 const DEFAULT_POLL_INTERVAL_MS = 1000;
 const DEFAULT_LIMIT = 500;
 
+const ephemeralTableKey = (schema: string, table: string): string => `${schema}.${table}`;
+
+type BufferedEphemeralMutation = {
+  order: number;
+  batch: LofiEphemeralMutationBatch;
+};
+
+type ActiveEphemeralStream = {
+  key: string;
+  startedAfterVersionstamp: string | undefined;
+  startOrder: number;
+  mutations: BufferedEphemeralMutation[];
+  mutationVersionstamps: Set<string>;
+};
+
 export class LofiClient {
   private readonly adapter: LofiClientOptions["adapter"];
   private readonly outboxUrl: string;
@@ -35,6 +57,10 @@ export class LofiClient {
   private readonly streamReconnectIntervalMs: number;
   private readonly limit: number;
   private readonly cursorKey?: string;
+  private readonly ephemeralTableKeys: ReadonlySet<string>;
+  private readonly ephemeralStreamPolicies: ReadonlyMap<string, LofiEphemeralStreamPolicy>;
+  private readonly ephemeralListeners = new Set<(batch: LofiEphemeralMutationBatch) => void>();
+  private readonly activeEphemeralStreams = new Map<string, ActiveEphemeralStream>();
   private readonly onSyncApplied?: (result: LofiSyncResult) => void | Promise<void>;
   private readonly onSyncComplete?: (result: LofiSyncResult) => void | Promise<void>;
   private readonly onError?: (error: unknown) => void;
@@ -48,6 +74,10 @@ export class LofiClient {
   private loopSignal?: AbortSignal;
   private loopSignalListener?: () => void;
   private running = false;
+  private readCursor: string | undefined;
+  private readCursorInitialized = false;
+  private nextEphemeralMutationOrder = 0;
+  private readonly pendingDurableMutationCountsByVersionstamp = new Map<string, number>();
 
   constructor(options: LofiClientOptions) {
     this.adapter = options.adapter;
@@ -61,10 +91,35 @@ export class LofiClient {
     this.streamReconnectIntervalMs = options.streamReconnectIntervalMs ?? this.pollIntervalMs;
     this.limit = options.limit ?? DEFAULT_LIMIT;
     this.cursorKey = options.cursorKey;
+    this.ephemeralTableKeys = new Set(
+      options.ephemeralTables?.map(({ schema, table }) => ephemeralTableKey(schema, table)) ?? [],
+    );
+    this.ephemeralStreamPolicies = new Map(
+      options.ephemeralTables?.flatMap(({ schema, table, stream }) =>
+        stream ? [[ephemeralTableKey(schema, table), stream] as const] : [],
+      ) ?? [],
+    );
     this.onSyncApplied = options.onSyncApplied;
     this.onSyncComplete = options.onSyncComplete;
     this.onError = options.onError;
     this.defaultSignal = options.signal;
+  }
+
+  subscribeEphemeral(listener: (batch: LofiEphemeralMutationBatch) => void): () => void {
+    this.ephemeralListeners.add(listener);
+    return () => {
+      this.ephemeralListeners.delete(listener);
+    };
+  }
+
+  /** Replays every currently active ephemeral stream in original mutation order. */
+  replayEphemeral(listener: (batch: LofiEphemeralMutationBatch) => void): void {
+    const buffered = [...this.activeEphemeralStreams.values()]
+      .flatMap((stream) => stream.mutations)
+      .sort((left, right) => left.order - right.order);
+    for (const item of buffered) {
+      listener(item.batch);
+    }
   }
 
   start(options?: { signal?: AbortSignal }): void {
@@ -155,31 +210,44 @@ export class LofiClient {
     this.inFlightController = controller;
     const cleanup = attachAbortSignal(controller, signal);
 
-    const promise = this.runSyncOnce(controller.signal).finally(() => {
-      cleanup();
-      if (this.inFlight === promise) {
-        this.inFlight = undefined;
-      }
-      if (this.inFlightController === controller) {
-        this.inFlightController = undefined;
-      }
-    });
+    const promise = this.runSyncOnce(controller.signal, options?.deliverEphemeral ?? true).finally(
+      () => {
+        cleanup();
+        if (this.inFlight === promise) {
+          this.inFlight = undefined;
+        }
+        if (this.inFlightController === controller) {
+          this.inFlightController = undefined;
+        }
+      },
+    );
 
     this.inFlight = promise;
     return promise;
   }
 
-  private async runSyncOnce(signal: AbortSignal): Promise<LofiSyncResult> {
+  private async runSyncOnce(
+    signal: AbortSignal,
+    deliverEphemeral: boolean,
+  ): Promise<LofiSyncResult> {
     if (signal.aborted) {
       return { appliedEntries: 0, aborted: true };
     }
 
     const cursorKey = this.cursorKey ?? `${this.endpointName}::outbox`;
     const sourceKey = cursorKey;
-    let cursor = await this.adapter.getMeta(cursorKey);
+    let cursor = await this.getReadCursor(cursorKey);
 
     let appliedEntries = 0;
+    let appliedDurableMutations = 0;
     let lastVersionstamp: string | undefined;
+
+    const currentResult = (aborted?: true): LofiSyncResult => ({
+      appliedEntries,
+      lastVersionstamp,
+      ...(this.ephemeralTableKeys.size > 0 ? { appliedDurableMutations } : {}),
+      ...(aborted ? { aborted } : {}),
+    });
 
     try {
       for await (const page of this.fetchPages({ cursor, limit: this.limit, signal })) {
@@ -189,20 +257,27 @@ export class LofiClient {
 
         for (const entry of page.entries) {
           if (signal.aborted) {
-            return { appliedEntries, lastVersionstamp, aborted: true };
+            return currentResult(true);
           }
 
-          const result = await this.applyEntry({ entry, cursorKey, sourceKey });
+          const result = await this.applyEntry({
+            entry,
+            cursorKey,
+            sourceKey,
+            previousReadCursor: cursor,
+            deliverEphemeral,
+          });
 
           lastVersionstamp = result.lastVersionstamp;
           cursor = result.lastVersionstamp;
 
           if (result.applied) {
             appliedEntries += 1;
+            appliedDurableMutations += result.appliedDurableMutations;
           }
 
           if (signal.aborted) {
-            return { appliedEntries, lastVersionstamp, aborted: true };
+            return currentResult(true);
           }
         }
 
@@ -212,16 +287,16 @@ export class LofiClient {
       }
     } catch (error) {
       if (isAbortError(error)) {
-        return { appliedEntries, lastVersionstamp, aborted: true };
+        return currentResult(true);
       }
       throw error;
     }
 
     if (signal.aborted) {
-      return { appliedEntries, lastVersionstamp, aborted: true };
+      return currentResult(true);
     }
 
-    const result = { appliedEntries, lastVersionstamp };
+    const result = currentResult();
 
     if (appliedEntries > 0) {
       await this.onSyncApplied?.(result);
@@ -270,7 +345,7 @@ export class LofiClient {
     const sourceKey = cursorKey;
 
     while (!signal.aborted) {
-      const cursor = await this.adapter.getMeta(cursorKey);
+      let cursor = await this.getReadCursor(cursorKey);
 
       try {
         const response = await this.fetcher(
@@ -289,10 +364,20 @@ export class LofiClient {
             return;
           }
 
-          const result = await this.applyEntry({ entry, cursorKey, sourceKey });
-          const syncResult = {
+          const result = await this.applyEntry({
+            entry,
+            cursorKey,
+            sourceKey,
+            previousReadCursor: cursor,
+            deliverEphemeral: true,
+          });
+          cursor = result.lastVersionstamp;
+          const syncResult: LofiSyncResult = {
             appliedEntries: result.applied ? 1 : 0,
             lastVersionstamp: result.lastVersionstamp,
+            ...(this.ephemeralTableKeys.size > 0
+              ? { appliedDurableMutations: result.appliedDurableMutations }
+              : {}),
           };
 
           if (result.applied) {
@@ -320,26 +405,146 @@ export class LofiClient {
     entry,
     cursorKey,
     sourceKey,
+    previousReadCursor,
+    deliverEphemeral,
   }: {
     entry: OutboxEntry;
     cursorKey: string;
     sourceKey: string;
-  }): Promise<{ applied: boolean; lastVersionstamp: string }> {
+    previousReadCursor: string | undefined;
+    deliverEphemeral: boolean;
+  }): Promise<{
+    applied: boolean;
+    appliedDurableMutations: number;
+    lastVersionstamp: string;
+  }> {
     const mutations = decodeOutboxEntry(entry);
-    const resolvedMutations = entry.refMap
+    const refResolvedMutations = entry.refMap
       ? mutations.map((mutation) => resolveOutboxRefs(mutation, entry.refMap ?? {}))
       : mutations;
+    assertNoUnresolvedDbNowMutations(refResolvedMutations);
+    const resolvedMutations = refResolvedMutations;
+    const durableMutations: LofiMutation[] = [];
+    const ephemeralMutations: LofiMutation[] = [];
+    for (const mutation of resolvedMutations) {
+      const target = this.ephemeralTableKeys.has(ephemeralTableKey(mutation.schema, mutation.table))
+        ? ephemeralMutations
+        : durableMutations;
+      target.push(mutation);
+    }
 
-    const result = await this.adapter.applyOutboxEntry({
-      sourceKey,
-      versionstamp: entry.versionstamp,
-      uowId: entry.uowId,
-      mutations: resolvedMutations,
-    });
+    const durableResult =
+      durableMutations.length > 0
+        ? await this.adapter.applyOutboxEntry({
+            sourceKey,
+            versionstamp: entry.versionstamp,
+            uowId: entry.uowId,
+            mutations: durableMutations,
+          })
+        : { applied: true };
+    if (durableResult.applied && durableMutations.length > 0) {
+      this.pendingDurableMutationCountsByVersionstamp.set(
+        entry.versionstamp,
+        durableMutations.length,
+      );
+    }
 
-    await this.adapter.setMeta(cursorKey, entry.versionstamp);
+    if (ephemeralMutations.length > 0) {
+      const batch = {
+        sourceKey,
+        uowId: entry.uowId,
+        versionstamp: entry.versionstamp,
+        mutations: ephemeralMutations,
+      } satisfies LofiEphemeralMutationBatch;
 
-    return { applied: result.applied, lastVersionstamp: entry.versionstamp };
+      const streamActions = ephemeralMutations.flatMap((mutation) => {
+        const tableKey = ephemeralTableKey(mutation.schema, mutation.table);
+        const policy = this.ephemeralStreamPolicies.get(tableKey);
+        if (!policy || mutation.op !== "create") {
+          return [];
+        }
+        return [
+          {
+            mutation,
+            streamKey: `${tableKey}:${policy.key(mutation.values)}`,
+            boundary: policy.boundary(mutation.values),
+          },
+        ];
+      });
+
+      if (deliverEphemeral) {
+        for (const listener of this.ephemeralListeners) {
+          listener(batch);
+        }
+      }
+
+      for (const action of streamActions) {
+        if (action.boundary === "start") {
+          const order = this.nextEphemeralMutationOrder++;
+          this.activeEphemeralStreams.set(action.streamKey, {
+            key: action.streamKey,
+            startedAfterVersionstamp: previousReadCursor,
+            startOrder: order,
+            mutations: [
+              {
+                order,
+                batch: { ...batch, mutations: [action.mutation] },
+              },
+            ],
+            mutationVersionstamps: new Set([action.mutation.versionstamp]),
+          });
+        } else if (action.boundary === "item") {
+          const stream = this.activeEphemeralStreams.get(action.streamKey);
+          if (stream && !stream.mutationVersionstamps.has(action.mutation.versionstamp)) {
+            stream.mutationVersionstamps.add(action.mutation.versionstamp);
+            stream.mutations.push({
+              order: this.nextEphemeralMutationOrder++,
+              batch: { ...batch, mutations: [action.mutation] },
+            });
+          }
+        } else {
+          this.activeEphemeralStreams.delete(action.streamKey);
+        }
+      }
+    }
+
+    const safeCheckpoint = this.getSafeCheckpoint(entry.versionstamp);
+    if (safeCheckpoint !== undefined) {
+      await this.adapter.setMeta(cursorKey, safeCheckpoint);
+    }
+    this.readCursor = entry.versionstamp;
+    this.readCursorInitialized = true;
+
+    const appliedDurableMutations =
+      this.pendingDurableMutationCountsByVersionstamp.get(entry.versionstamp) ?? 0;
+    this.pendingDurableMutationCountsByVersionstamp.delete(entry.versionstamp);
+
+    return {
+      applied: durableResult.applied || ephemeralMutations.length > 0,
+      appliedDurableMutations,
+      lastVersionstamp: entry.versionstamp,
+    };
+  }
+
+  private async getReadCursor(cursorKey: string): Promise<string | undefined> {
+    if (!this.readCursorInitialized) {
+      this.readCursor = await this.adapter.getMeta(cursorKey);
+      this.readCursorInitialized = true;
+    }
+    return this.readCursor;
+  }
+
+  private getSafeCheckpoint(currentVersionstamp: string): string | undefined {
+    let earliest: ActiveEphemeralStream | undefined;
+    for (const stream of this.activeEphemeralStreams.values()) {
+      if (!earliest || stream.startOrder < earliest.startOrder) {
+        earliest = stream;
+      }
+    }
+    return (
+      earliest?.startedAfterVersionstamp ??
+      (this.activeEphemeralStreams.size === 0 ? currentVersionstamp : undefined)
+    );
   }
 
   private async *fetchPages(options: OutboxFetchOptions): AsyncGenerator<OutboxPageResult> {
