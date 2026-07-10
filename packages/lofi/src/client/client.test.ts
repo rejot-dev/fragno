@@ -33,15 +33,554 @@ const makePayload = (externalId: string): OutboxPayload => ({
   ],
 });
 
-const makeEntry = (versionstamp: string, externalId: string): OutboxEntry => ({
+const makeEntryFromPayload = (
+  versionstamp: string,
+  externalId: string,
+  payload: OutboxPayload,
+): OutboxEntry => ({
   id: FragnoId.fromExternal(`outbox-${externalId}`, 0),
   versionstamp,
   uowId: `uow-${versionstamp}`,
-  payload: superjson.serialize(makePayload(externalId)),
+  payload: superjson.serialize(payload),
   createdAt: new Date(),
 });
 
+const makeEntry = (versionstamp: string, externalId: string): OutboxEntry =>
+  makeEntryFromPayload(versionstamp, externalId, makePayload(externalId));
+
+const makeEphemeralStreamEntry = (
+  versionstamp: string,
+  streamId: string,
+  boundary: "start" | "item" | "end",
+): OutboxEntry =>
+  makeEntryFromPayload(versionstamp, `${streamId}-${boundary}`, {
+    version: 1,
+    mutations: [
+      {
+        op: "create",
+        schema: "app",
+        table: "events",
+        externalId: `${streamId}-${versionstamp}`,
+        versionstamp: `mutation-${versionstamp}`,
+        values: { streamId, boundary },
+      },
+    ],
+  });
+
+const ephemeralStreamTable = {
+  schema: "app",
+  table: "events",
+  stream: {
+    key: (values: Record<string, unknown>) => String(values["streamId"]),
+    boundary: (values: Record<string, unknown>) => values["boundary"] as "start" | "item" | "end",
+  },
+} as const;
+
 describe("LofiClient", () => {
+  it("delivers ephemeral table mutations without storing them", async () => {
+    const entry = makeEntryFromPayload("vs-1", "mixed", {
+      version: 1,
+      mutations: [
+        {
+          op: "create",
+          schema: "app",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "mutation-user-1",
+          values: { name: "Alice" },
+        },
+        {
+          op: "create",
+          schema: "app",
+          table: "events",
+          externalId: "event-1",
+          versionstamp: "mutation-event-1",
+          values: { type: "typing" },
+        },
+      ],
+    });
+    const appliedMutations: unknown[] = [];
+    const ephemeralMutations: unknown[] = [];
+    const meta = new Map<string, string>();
+    const client = new LofiClient({
+      outboxUrl: baseOutboxUrl,
+      endpointName: "app-outbox",
+      adapter: {
+        applyOutboxEntry: async ({ mutations }) => {
+          appliedMutations.push(...mutations);
+          return { applied: true };
+        },
+        getMeta: async (key) => meta.get(key),
+        setMeta: async (key, value) => {
+          meta.set(key, value);
+        },
+      },
+      ephemeralTables: [{ schema: "app", table: "events" }],
+      fetch: (async () => new Response(JSON.stringify([entry]))) as typeof fetch,
+    });
+    client.subscribeEphemeral(({ mutations }) => {
+      ephemeralMutations.push(...mutations);
+    });
+
+    const result = await client.syncOnce();
+
+    expect(appliedMutations).toEqual([
+      expect.objectContaining({ schema: "app", table: "users", externalId: "user-1" }),
+    ]);
+    expect(ephemeralMutations).toEqual([
+      expect.objectContaining({ schema: "app", table: "events", externalId: "event-1" }),
+    ]);
+    expect(result).toEqual({
+      appliedEntries: 1,
+      appliedDurableMutations: 1,
+      lastVersionstamp: "vs-1",
+    });
+  });
+
+  it("replays an active ephemeral stream to a late subscriber", async () => {
+    const responses = [
+      [
+        makeEphemeralStreamEntry("vs-1", "operation-a", "start"),
+        makeEphemeralStreamEntry("vs-2", "operation-a", "item"),
+      ],
+      [makeEphemeralStreamEntry("vs-3", "operation-a", "end")],
+    ];
+    const meta = new Map<string, string>();
+    const client = new LofiClient({
+      outboxUrl: baseOutboxUrl,
+      endpointName: "app-outbox",
+      adapter: {
+        applyOutboxEntry: async () => ({ applied: true }),
+        getMeta: async (key) => meta.get(key),
+        setMeta: async (key, value) => {
+          meta.set(key, value);
+        },
+      },
+      ephemeralTables: [ephemeralStreamTable],
+      fetch: (async () => new Response(JSON.stringify(responses.shift() ?? []))) as typeof fetch,
+    });
+
+    await client.syncOnce();
+
+    const replayedBoundaries: unknown[] = [];
+    client.replayEphemeral(({ mutations }) => {
+      replayedBoundaries.push(
+        ...mutations.map((mutation) => mutation.op === "create" && mutation.values["boundary"]),
+      );
+    });
+
+    expect(replayedBoundaries).toEqual(["start", "item"]);
+    expect(meta.get("app-outbox::outbox")).toBeUndefined();
+
+    await client.syncOnce();
+
+    const replayedAfterCommit: unknown[] = [];
+    client.replayEphemeral(({ mutations }) => replayedAfterCommit.push(...mutations));
+    expect(replayedAfterCommit).toEqual([]);
+    assert(meta.get("app-outbox::outbox") === "vs-3");
+  });
+
+  it("suppresses historical stream delivery while rebuilding active replay buffers", async () => {
+    const entries = [
+      makeEphemeralStreamEntry("vs-1", "operation-a", "start"),
+      makeEphemeralStreamEntry("vs-2", "operation-a", "item"),
+      makeEphemeralStreamEntry("vs-3", "operation-a", "end"),
+      makeEphemeralStreamEntry("vs-4", "operation-b", "start"),
+      makeEphemeralStreamEntry("vs-5", "operation-b", "item"),
+    ];
+    const delivered: unknown[] = [];
+    const client = new LofiClient({
+      outboxUrl: baseOutboxUrl,
+      endpointName: "app-outbox",
+      adapter: {
+        applyOutboxEntry: async () => ({ applied: true }),
+        getMeta: async () => undefined,
+        setMeta: async () => undefined,
+      },
+      ephemeralTables: [ephemeralStreamTable],
+      fetch: (async () => new Response(JSON.stringify(entries))) as typeof fetch,
+    });
+    client.subscribeEphemeral(({ mutations }) => delivered.push(...mutations));
+
+    await client.syncOnce({ deliverEphemeral: false });
+
+    expect(delivered).toEqual([]);
+    const replayed: string[] = [];
+    client.replayEphemeral(({ mutations }) => {
+      for (const mutation of mutations) {
+        if (mutation.op === "create") {
+          replayed.push(`${mutation.values["streamId"]}:${mutation.values["boundary"]}`);
+        }
+      }
+    });
+    expect(replayed).toEqual(["operation-b:start", "operation-b:item"]);
+  });
+
+  it("moves the replay checkpoint between concurrent ephemeral streams", async () => {
+    const responses = [
+      [
+        makeEphemeralStreamEntry("vs-100", "operation-a", "start"),
+        makeEphemeralStreamEntry("vs-120", "operation-b", "start"),
+      ],
+      [makeEphemeralStreamEntry("vs-200", "operation-a", "end")],
+      [makeEphemeralStreamEntry("vs-300", "operation-b", "end")],
+    ];
+    const meta = new Map<string, string>([["app-outbox::outbox", "vs-090"]]);
+    const client = new LofiClient({
+      outboxUrl: baseOutboxUrl,
+      endpointName: "app-outbox",
+      adapter: {
+        applyOutboxEntry: async () => ({ applied: true }),
+        getMeta: async (key) => meta.get(key),
+        setMeta: async (key, value) => {
+          meta.set(key, value);
+        },
+      },
+      ephemeralTables: [ephemeralStreamTable],
+      fetch: (async () => new Response(JSON.stringify(responses.shift() ?? []))) as typeof fetch,
+    });
+
+    await client.syncOnce();
+    assert(meta.get("app-outbox::outbox") === "vs-090");
+
+    await client.syncOnce();
+    assert(meta.get("app-outbox::outbox") === "vs-100");
+
+    await client.syncOnce();
+    assert(meta.get("app-outbox::outbox") === "vs-300");
+  });
+
+  it("delivers replayed ephemeral mutations when durable mutations were already applied", async () => {
+    const entry = makeEntryFromPayload("vs-2", "mixed-replay", {
+      version: 1,
+      mutations: [
+        {
+          op: "create",
+          schema: "app",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "mutation-user-1",
+          values: { name: "Alice" },
+        },
+        {
+          op: "create",
+          schema: "app",
+          table: "events",
+          externalId: "event-1",
+          versionstamp: "mutation-event-1",
+          values: { streamId: "operation-a", boundary: "item" },
+        },
+      ],
+    });
+    const ephemeralMutations: unknown[] = [];
+    const client = new LofiClient({
+      outboxUrl: baseOutboxUrl,
+      endpointName: "app-outbox",
+      adapter: {
+        applyOutboxEntry: async () => ({ applied: false }),
+        getMeta: async () => "vs-1",
+        setMeta: async () => undefined,
+      },
+      ephemeralTables: [ephemeralStreamTable],
+      fetch: (async () => new Response(JSON.stringify([entry]))) as typeof fetch,
+    });
+    client.subscribeEphemeral(({ mutations }) => ephemeralMutations.push(...mutations));
+
+    const result = await client.syncOnce();
+
+    expect(ephemeralMutations).toEqual([
+      expect.objectContaining({ schema: "app", table: "events", externalId: "event-1" }),
+    ]);
+    expect(result).toEqual({
+      appliedEntries: 1,
+      appliedDurableMutations: 0,
+      lastVersionstamp: "vs-2",
+    });
+  });
+
+  it("retries ephemeral delivery without checkpointing or reapplying durable mutations", async () => {
+    const entry = makeEntryFromPayload("vs-1", "mixed-retry", {
+      version: 1,
+      mutations: [
+        {
+          op: "create",
+          schema: "app",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "mutation-user-1",
+          values: { name: "Alice" },
+        },
+        {
+          op: "create",
+          schema: "app",
+          table: "events",
+          externalId: "event-1",
+          versionstamp: "mutation-event-1",
+          values: { type: "typing" },
+        },
+      ],
+    });
+    const meta = new Map<string, string>();
+    let durableApplyAttempts = 0;
+    let durableWrites = 0;
+    let deliveryAttempts = 0;
+    let shouldThrow = true;
+    const client = new LofiClient({
+      outboxUrl: baseOutboxUrl,
+      endpointName: "app-outbox",
+      adapter: {
+        applyOutboxEntry: async () => {
+          durableApplyAttempts += 1;
+          if (durableApplyAttempts === 1) {
+            durableWrites += 1;
+            return { applied: true };
+          }
+          return { applied: false };
+        },
+        getMeta: async (key) => meta.get(key),
+        setMeta: async (key, value) => {
+          meta.set(key, value);
+        },
+      },
+      ephemeralTables: [{ schema: "app", table: "events" }],
+      fetch: (async () => new Response(JSON.stringify([entry]))) as typeof fetch,
+    });
+    client.subscribeEphemeral(() => {
+      deliveryAttempts += 1;
+      if (shouldThrow) {
+        throw new Error("projection failed");
+      }
+    });
+
+    await expect(client.syncOnce()).rejects.toThrow("projection failed");
+    expect(meta.get("app-outbox::outbox")).toBeUndefined();
+    expect(durableWrites).toBe(1);
+
+    shouldThrow = false;
+    await client.syncOnce();
+
+    expect(deliveryAttempts).toBe(2);
+    expect(durableApplyAttempts).toBe(2);
+    expect(durableWrites).toBe(1);
+    assert(meta.get("app-outbox::outbox") === "vs-1");
+  });
+
+  // A mixed entry can commit durable rows before an ephemeral listener throws. The retry is
+  // inbox-deduplicated, but must still report the earlier durable write so reactive stores refresh.
+  it("reports durable mutations after an ephemeral delivery retry", async () => {
+    const entry = makeEntryFromPayload("vs-1", "mixed-retry-refresh", {
+      version: 1,
+      mutations: [
+        {
+          op: "create",
+          schema: "app",
+          table: "users",
+          externalId: "user-1",
+          versionstamp: "mutation-user-1",
+          values: { name: "Alice" },
+        },
+        {
+          op: "create",
+          schema: "app",
+          table: "events",
+          externalId: "event-1",
+          versionstamp: "mutation-event-1",
+          values: { type: "typing" },
+        },
+      ],
+    });
+    let applyAttempt = 0;
+    let shouldThrow = true;
+    const completedDurableMutationCounts: Array<number | undefined> = [];
+    const client = new LofiClient({
+      outboxUrl: baseOutboxUrl,
+      endpointName: "app-outbox",
+      adapter: {
+        applyOutboxEntry: async () => ({ applied: applyAttempt++ === 0 }),
+        getMeta: async () => undefined,
+        setMeta: async () => undefined,
+      },
+      ephemeralTables: [{ schema: "app", table: "events" }],
+      fetch: (async () => new Response(JSON.stringify([entry]))) as typeof fetch,
+      onSyncComplete: (result) => {
+        completedDurableMutationCounts.push(result.appliedDurableMutations);
+      },
+    });
+    client.subscribeEphemeral(() => {
+      if (shouldThrow) {
+        throw new Error("projection failed");
+      }
+    });
+
+    await expect(client.syncOnce()).rejects.toThrow("projection failed");
+    shouldThrow = false;
+    await client.syncOnce();
+
+    expect(completedDurableMutationCounts).toEqual([1]);
+  });
+
+  it("does not duplicate active stream buffers after a failed delivery retry", async () => {
+    const entries = {
+      start: makeEphemeralStreamEntry("vs-1", "operation-a", "start"),
+      item: makeEphemeralStreamEntry("vs-2", "operation-a", "item"),
+    };
+    let shouldThrow = true;
+    const meta = new Map<string, string>();
+    const client = new LofiClient({
+      outboxUrl: baseOutboxUrl,
+      endpointName: "app-outbox",
+      adapter: {
+        applyOutboxEntry: async () => ({ applied: true }),
+        getMeta: async (key) => meta.get(key),
+        setMeta: async (key, value) => {
+          meta.set(key, value);
+        },
+      },
+      ephemeralTables: [ephemeralStreamTable],
+      fetch: (async (input) => {
+        const url = new URL(typeof input === "string" ? input : input.toString());
+        return new Response(
+          JSON.stringify(
+            url.searchParams.get("afterVersionstamp") === "vs-1" ? [entries.item] : [entries.start],
+          ),
+        );
+      }) as typeof fetch,
+    });
+    client.subscribeEphemeral(({ mutations }) => {
+      const boundary = mutations[0]?.op === "create" && mutations[0].values["boundary"];
+      if (boundary === "item" && shouldThrow) {
+        throw new Error("projection failed");
+      }
+    });
+
+    await client.syncOnce();
+    await expect(client.syncOnce()).rejects.toThrow("projection failed");
+    shouldThrow = false;
+    await client.syncOnce();
+
+    const replayed: string[] = [];
+    client.replayEphemeral(({ mutations }) => {
+      for (const mutation of mutations) {
+        if (mutation.op === "create") {
+          replayed.push(String(mutation.values["boundary"]));
+        }
+      }
+    });
+    expect(replayed).toEqual(["start", "item"]);
+  });
+
+  // Stream bookkeeping currently happens before the replay checkpoint is persisted. If that I/O
+  // fails, retrying the same entry must not append the buffered mutation a second time.
+  it("does not duplicate active stream buffers after checkpoint persistence fails", async () => {
+    const start = makeEphemeralStreamEntry("vs-1", "operation-a", "start");
+    const item = makeEphemeralStreamEntry("vs-2", "operation-a", "item");
+    let checkpointAttempts = 0;
+    let failItemCheckpoint = true;
+    const client = new LofiClient({
+      outboxUrl: baseOutboxUrl,
+      endpointName: "app-outbox",
+      adapter: {
+        applyOutboxEntry: async () => ({ applied: true }),
+        getMeta: async () => "vs-0",
+        setMeta: async () => {
+          checkpointAttempts += 1;
+          if (checkpointAttempts > 1 && failItemCheckpoint) {
+            failItemCheckpoint = false;
+            throw new Error("checkpoint failed");
+          }
+        },
+      },
+      ephemeralTables: [ephemeralStreamTable],
+      fetch: (async (input) => {
+        const url = new URL(typeof input === "string" ? input : input.toString());
+        return new Response(
+          JSON.stringify(url.searchParams.get("afterVersionstamp") === "vs-0" ? [start] : [item]),
+        );
+      }) as typeof fetch,
+    });
+
+    await client.syncOnce();
+    await expect(client.syncOnce()).rejects.toThrow("checkpoint failed");
+    await client.syncOnce();
+
+    const replayed: string[] = [];
+    client.replayEphemeral(({ mutations }) => {
+      for (const mutation of mutations) {
+        if (mutation.op === "create") {
+          replayed.push(String(mutation.values["boundary"]));
+        }
+      }
+    });
+    expect(replayed).toEqual(["start", "item"]);
+  });
+
+  it("rejects outbox mutations containing unresolved DbNow values", async () => {
+    const entry = makeEntryFromPayload("vs-1", "event-1", {
+      version: 1,
+      mutations: [
+        {
+          op: "create",
+          schema: "app",
+          table: "events",
+          externalId: "event-1",
+          versionstamp: "mutation-event-1",
+          values: { createdAt: { tag: "db-now" } },
+        },
+      ],
+    });
+    const applyOutboxEntry = vi.fn(async () => ({ applied: true }));
+    const setMeta = vi.fn(async () => undefined);
+    const client = new LofiClient({
+      outboxUrl: baseOutboxUrl,
+      endpointName: "app-outbox",
+      adapter: {
+        applyOutboxEntry,
+        getMeta: async () => undefined,
+        setMeta,
+      },
+      ephemeralTables: [{ schema: "app", table: "events" }],
+      fetch: (async () => new Response(JSON.stringify([entry]))) as typeof fetch,
+    });
+
+    await expect(client.syncOnce()).rejects.toThrow(
+      "Outbox mutation app.events.createdAt contains unresolved DbNow.",
+    );
+    expect(applyOutboxEntry).not.toHaveBeenCalled();
+    expect(setMeta).not.toHaveBeenCalled();
+  });
+
+  it("does not open an adapter mutation transaction for ephemeral-only entries", async () => {
+    const entry = makeEntryFromPayload("vs-1", "event-1", {
+      version: 1,
+      mutations: [
+        {
+          op: "create",
+          schema: "app",
+          table: "events",
+          externalId: "event-1",
+          versionstamp: "mutation-event-1",
+          values: { type: "typing" },
+        },
+      ],
+    });
+    const applyOutboxEntry = vi.fn(async () => ({ applied: true }));
+    const client = new LofiClient({
+      outboxUrl: baseOutboxUrl,
+      endpointName: "app-outbox",
+      adapter: {
+        applyOutboxEntry,
+        getMeta: async () => undefined,
+        setMeta: async () => undefined,
+      },
+      ephemeralTables: [{ schema: "app", table: "events" }],
+      fetch: (async () => new Response(JSON.stringify([entry]))) as typeof fetch,
+    });
+
+    await client.syncOnce();
+
+    expect(applyOutboxEntry).not.toHaveBeenCalled();
+  });
+
   it("drains pages and advances the cursor", async () => {
     const entries = [
       makeEntry("vs-1", "user-1"),

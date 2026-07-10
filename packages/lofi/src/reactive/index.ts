@@ -26,6 +26,9 @@ export type {
   LofiQueryStoreRetrieveContext,
   LofiQueryStoreRetrieveUnit,
   LofiRuntimeStoreBuilder,
+  LofiRuntimeStoreEphemeralBuilder,
+  LofiRuntimeStoreEphemeralContext,
+  LofiRuntimeStoreEphemeralOptions,
   LofiRuntimeStoreFactory,
   LofiRuntimeStoreRetrieveBuilder,
 } from "./query-store";

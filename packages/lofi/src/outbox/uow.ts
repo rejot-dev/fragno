@@ -1,10 +1,13 @@
 import type { AnySchema } from "@fragno-dev/db/schema";
 import type { MutationOperation } from "@fragno-dev/db/unit-of-work";
 
+import { resolveMutations } from "../query/mutation-values";
 import type { LofiMutation } from "../types";
 
 type UowOperationsToLofiMutationsOptions = {
   versionstamp?: string | ((operation: MutationOperation<AnySchema>, index: number) => string);
+  /** Materializes DbNow values using this authoritative timestamp. */
+  now?: Date;
 };
 
 const mutationIdToExternalId = (id: string | { externalId: string }): string =>
@@ -42,7 +45,7 @@ export function uowOperationsToLofiMutations(
   operations: readonly MutationOperation<AnySchema>[],
   options?: UowOperationsToLofiMutationsOptions,
 ): LofiMutation[] {
-  return operations.flatMap((operation, index): LofiMutation[] => {
+  const mutations = operations.flatMap((operation, index): LofiMutation[] => {
     if (operation.type === "check") {
       return [];
     }
@@ -85,6 +88,8 @@ export function uowOperationsToLofiMutations(
       },
     ];
   });
+
+  return options?.now ? resolveMutations(mutations, options.now.getTime()) : mutations;
 }
 
 export function outboxMutationsToUowOperations(

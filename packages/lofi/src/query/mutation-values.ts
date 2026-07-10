@@ -15,6 +15,23 @@ const resolveMutationValue = (value: unknown, baseNow: number): unknown => {
   return value;
 };
 
+export const assertNoUnresolvedDbNowMutations = (mutations: readonly LofiMutation[]): void => {
+  for (const mutation of mutations) {
+    if (mutation.op === "delete") {
+      continue;
+    }
+
+    const values = mutation.op === "create" ? mutation.values : mutation.set;
+    for (const [field, value] of Object.entries(values)) {
+      if (isDbNowLike(value)) {
+        throw new Error(
+          `Outbox mutation ${mutation.schema}.${mutation.table}.${field} contains unresolved DbNow.`,
+        );
+      }
+    }
+  }
+};
+
 export const resolveMutationValues = (
   values: Record<string, unknown>,
   baseNow = Date.now(),

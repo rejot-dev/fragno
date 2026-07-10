@@ -1,10 +1,15 @@
+import type { AnySchema } from "@fragno-dev/db/schema";
 import { atom, type ReadableAtom } from "nanostores";
 
 import { LofiClient } from "../client";
 import type {
   LofiAdapter,
   LofiClientOptions,
+  LofiEphemeralTable,
+  LofiMutation,
+  LofiMutationOp,
   LofiQueryableAdapter,
+  LofiResolvedTypedMutation,
   LofiSyncResult,
 } from "../types";
 import { createLofiRuntimeStore, type LofiRuntimeStoreFactory } from "./query-store";
@@ -58,6 +63,7 @@ export type LofiRuntimeSyncResult = {
 export type LofiRuntimeOptions = {
   endpointName: string;
   adapter: LofiAdapter & LofiQueryableAdapter;
+  ephemeralTables?: readonly LofiEphemeralTable[];
   sources?: LofiRuntimeSource[];
   outboxUrl?: string;
   fetch?: typeof fetch;
@@ -74,6 +80,16 @@ export type LofiRuntimeOptions = {
 export type LofiRuntime = {
   endpointName: string;
   adapter: LofiAdapter & LofiQueryableAdapter;
+  isEphemeralTable: (schema: string, table: string) => boolean;
+  /** Subscribes after references are resolved and unresolved DbNow values are rejected. */
+  subscribeEphemeral: <
+    const TSchema extends AnySchema,
+    const TTableName extends keyof TSchema["tables"] & string,
+  >(
+    schema: TSchema,
+    table: TTableName,
+    listener: (mutation: LofiResolvedTypedMutation<TSchema, TTableName, LofiMutationOp>) => void,
+  ) => () => void;
   $status: ReadableAtom<LofiRuntimeStatus>;
   $revision: ReadableAtom<number>;
   start: () => void;
@@ -119,6 +135,12 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
   );
   const $revision = atom(0);
   const sourceRuntimes = new Map<string, SourceRuntime>();
+  const ephemeralTableKeys = new Set(
+    options.ephemeralTables?.map(({ schema, table }) => `${schema}.${table}`) ?? [],
+  );
+  const hasRecoverableEphemeralStreams =
+    options.ephemeralTables?.some(({ stream }) => stream !== undefined) ?? false;
+  const ephemeralListeners = new Map<string, Set<(mutation: LofiMutation) => void>>();
   let retainCount = 0;
   let bootstrapPromise: Promise<LofiRuntimeSyncResult> | undefined;
 
@@ -306,6 +328,55 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
     $revision.set($revision.get() + 1);
   };
 
+  const isEphemeralTable = (schema: string, table: string): boolean =>
+    ephemeralTableKeys.has(`${schema}.${table}`);
+
+  const subscribeEphemeral: LofiRuntime["subscribeEphemeral"] = (schema, table, listener) => {
+    const key = `${schema.name}.${table}`;
+    if (!ephemeralTableKeys.has(key)) {
+      throw new Error(`Lofi table is not configured as ephemeral: ${key}`);
+    }
+
+    let listeners = ephemeralListeners.get(key);
+    if (!listeners) {
+      listeners = new Set();
+      ephemeralListeners.set(key, listeners);
+    }
+    const untypedListener = listener as (mutation: LofiMutation) => void;
+    listeners.add(untypedListener);
+    const releaseRuntime = retain();
+
+    for (const source of sourceRuntimes.values()) {
+      source.client.replayEphemeral(({ mutations }) => {
+        for (const mutation of mutations) {
+          if (`${mutation.schema}.${mutation.table}` === key) {
+            untypedListener(mutation);
+          }
+        }
+      });
+    }
+
+    return () => {
+      listeners.delete(untypedListener);
+      if (listeners.size === 0) {
+        ephemeralListeners.delete(key);
+      }
+      releaseRuntime();
+    };
+  };
+
+  const emitEphemeralMutations = (mutations: readonly LofiMutation[]): void => {
+    for (const mutation of mutations) {
+      const listeners = ephemeralListeners.get(`${mutation.schema}.${mutation.table}`);
+      if (!listeners) {
+        continue;
+      }
+      for (const listener of listeners) {
+        listener(mutation);
+      }
+    }
+  };
+
   const createSourceRuntime = (source: LofiRuntimeSource): SourceRuntime => {
     if (!source.id || source.id.trim().length === 0) {
       throw new Error("Lofi runtime sources require a non-empty id.");
@@ -318,11 +389,12 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
       adapter: options.adapter,
       cursorKey,
       limit: source.limit ?? options.limit,
+      ephemeralTables: options.ephemeralTables,
       fetch: options.fetch,
       signal: options.signal,
       onSyncComplete: (result: LofiSyncResult) => {
         markSourceResult(source.id, result);
-        if (result.appliedEntries > 0) {
+        if ((result.appliedDurableMutations ?? result.appliedEntries) > 0) {
           refresh();
         }
       },
@@ -346,11 +418,11 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
             pollIntervalMs: source.pollIntervalMs ?? options.pollIntervalMs,
           };
 
-    return {
-      source,
-      cursorKey,
-      client: new LofiClient(clientOptions),
-    };
+    const client = new LofiClient(clientOptions);
+    client.subscribeEphemeral(({ mutations }) => {
+      emitEphemeralMutations(mutations);
+    });
+    return { source, cursorKey, client };
   };
 
   const addSource = (source: LofiRuntimeSource): void => {
@@ -375,7 +447,10 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
 
     if (running) {
       if (bootstrapEnabled) {
-        void bootstrap().then(() => {
+        const addedSourceBootstrap = bootstrapPromise
+          ? bootstrapPromise.then(() => bootstrap(source.id))
+          : bootstrap(source.id);
+        void addedSourceBootstrap.then(() => {
           if (running && sourceRuntimes.has(source.id)) {
             runtime.client.start({ signal: options.signal });
           }
@@ -480,7 +555,10 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
     };
   };
 
-  const syncSourceOnce = async (sourceId: string): Promise<LofiSyncResult> => {
+  const syncSourceOnce = async (
+    sourceId: string,
+    syncOptions?: { deliverEphemeral?: boolean },
+  ): Promise<LofiSyncResult> => {
     const runtime = sourceRuntimes.get(sourceId);
     if (!runtime) {
       throw new Error(`Unknown Lofi runtime source: ${sourceId}`);
@@ -488,7 +566,10 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
 
     markSourceSyncing(sourceId, true);
     try {
-      const result = await runtime.client.syncOnce({ signal: options.signal });
+      const result = await runtime.client.syncOnce({
+        signal: options.signal,
+        deliverEphemeral: syncOptions?.deliverEphemeral,
+      });
       if (result.aborted) {
         markSourceBootstrapIdle(sourceId);
         return result;
@@ -534,7 +615,7 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
     const bootstrapMetaKey = getBootstrapMetaKey(runtime.cursorKey);
     const bootstrapStatus = await options.adapter.getMeta(bootstrapMetaKey);
 
-    if (bootstrapStatus === "complete") {
+    if (bootstrapStatus === "complete" && !hasRecoverableEphemeralStreams) {
       markSourceBootstrapped(sourceId);
       return {
         appliedEntries: 0,
@@ -543,12 +624,16 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
     }
 
     try {
-      const result = await syncSourceOnce(sourceId);
+      // Catch-up rebuilds active stream buffers without sending historical rows to mounted stores.
+      const result = await syncSourceOnce(sourceId, { deliverEphemeral: false });
       if (result.aborted) {
         throw createAbortError();
       }
 
-      await options.adapter.setMeta(bootstrapMetaKey, "complete");
+      runtime.client.replayEphemeral(({ mutations }) => emitEphemeralMutations(mutations));
+      if (bootstrapStatus !== "complete") {
+        await options.adapter.setMeta(bootstrapMetaKey, "complete");
+      }
       markSourceBootstrapped(sourceId);
       return result;
     } catch (error) {
@@ -625,6 +710,8 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
   runtime = {
     endpointName: options.endpointName,
     adapter: options.adapter,
+    isEphemeralTable,
+    subscribeEphemeral,
     $status,
     $revision,
     start,

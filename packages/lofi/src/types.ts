@@ -35,10 +35,37 @@ export type LofiStreamOutboxOptions = {
 
 export type LofiOutboxTransportOptions = LofiPollOutboxOptions | LofiStreamOutboxOptions;
 
+export type LofiEphemeralStreamBoundary = "start" | "item" | "end";
+
+export type LofiEphemeralStreamPolicy = {
+  /** Returns the identity shared by every row in one recoverable ephemeral stream. */
+  key: (values: Record<string, unknown>) => string;
+  /** Classifies rows that open, extend, or durably close the stream. */
+  boundary: (values: Record<string, unknown>) => LofiEphemeralStreamBoundary;
+};
+
+export type LofiEphemeralTable = {
+  schema: string;
+  table: string;
+  /**
+   * Keeps active rows replayable while allowing the volatile network cursor to continue advancing.
+   * The persisted cursor remains before the earliest open stream until its end row is processed.
+   */
+  stream?: LofiEphemeralStreamPolicy;
+};
+
+export type LofiEphemeralMutationBatch = {
+  sourceKey: string;
+  uowId: string;
+  versionstamp: string;
+  mutations: readonly LofiMutation[];
+};
+
 export type LofiClientBaseOptions = {
   outboxUrl: string;
   endpointName: string;
   adapter: LofiAdapter;
+  ephemeralTables?: readonly LofiEphemeralTable[];
   fetch?: typeof fetch;
   limit?: number;
   cursorKey?: string;
@@ -51,9 +78,24 @@ export type LofiClientBaseOptions = {
 export type LofiClientOptions = LofiClientBaseOptions & LofiOutboxTransportOptions;
 
 export type LofiSyncResult = {
+  /**
+   * Number of outbox entries accepted during this sync.
+   *
+   * This includes entries containing ephemeral mutations. It counts outbox entries, not the
+   * number of mutations inside them.
+   */
   appliedEntries: number;
+  /** Versionstamp of the last outbox entry processed, including ephemeral-only entries. */
   lastVersionstamp?: string;
+  /** True when the sync stopped because its abort signal was triggered. */
   aborted?: boolean;
+  /**
+   * Number of non-ephemeral mutations written to the adapter.
+   *
+   * Present when ephemeral tables are configured, allowing the runtime to avoid refreshing
+   * durable queries after an ephemeral-only sync.
+   */
+  appliedDurableMutations?: number;
 };
 
 export type LofiSchemaRegistration = { schema: AnySchema; schemaName?: string };
@@ -92,6 +134,43 @@ export type LofiTypedMutation<
           table: TTableName;
         }
       >;
+
+type LofiDbNowValueKeys<TValues> = {
+  [TKey in keyof TValues]-?: [Extract<TValues[TKey], DbNow>] extends [never] ? never : TKey;
+}[keyof TValues];
+
+type ResolveLofiMutationValues<TValues, TTable extends AnyTable> = Prettify<
+  Omit<TValues, LofiDbNowValueKeys<TValues>> & {
+    [TKey in LofiDbNowValueKeys<TValues>]-?: TKey extends keyof TTable["columns"]
+      ? TTable["columns"][TKey]["$out"]
+      : Exclude<TValues[TKey], DbNow | undefined> | Date;
+  }
+>;
+
+/** A typed outbox mutation after dates are deserialized and unresolved DbNow is rejected. */
+export type LofiResolvedTypedMutation<
+  TSchema extends AnySchema,
+  TTableName extends keyof TSchema["tables"] & string,
+  TOp extends LofiMutationOp,
+> = TOp extends "create"
+  ? Prettify<
+      Omit<LofiTypedMutation<TSchema, TTableName, "create">, "values"> & {
+        values: ResolveLofiMutationValues<
+          LofiTypedMutation<TSchema, TTableName, "create">["values"],
+          TSchema["tables"][TTableName]
+        >;
+      }
+    >
+  : TOp extends "update"
+    ? Prettify<
+        Omit<LofiTypedMutation<TSchema, TTableName, "update">, "set"> & {
+          set: ResolveLofiMutationValues<
+            LofiTypedMutation<TSchema, TTableName, "update">["set"],
+            TSchema["tables"][TTableName]
+          >;
+        }
+      >
+    : LofiTypedMutation<TSchema, TTableName, "delete">;
 
 type LofiMutationMatchResult<
   TSchema extends AnySchema,
