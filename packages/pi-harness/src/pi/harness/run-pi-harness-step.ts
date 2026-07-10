@@ -18,6 +18,10 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { PiPromptInput, PiSessionCommandPayload } from "../types";
 import { registerAgentStreamFn } from "./agent-stream-provider";
 import {
+  piHarnessMessageUpdateEmissionFromPiEvent,
+  type PiHarnessMessageUpdateEmission,
+} from "./message-update-protocol";
+import {
   createWorkflowBackedSessionEntryIdAllocator,
   WorkflowBackedSessionStorage,
 } from "./session-storage";
@@ -54,6 +58,7 @@ export type PiHarnessOperationCompleteEmission = {
 export type PiHarnessEmission =
   | PiHarnessSessionEntryEmission
   | PiHarnessEventEmission
+  | PiHarnessMessageUpdateEmission
   | PiHarnessOperationStartEmission
   | PiHarnessOperationCompleteEmission;
 
@@ -75,6 +80,10 @@ export type PiHarnessAgentOptions<TTool extends AgentTool = AgentTool> = Omit<
   streamFn?: StreamFn;
 };
 
+export type PiHarnessInternalOptions = {
+  compactMessageUpdateEmissions?: boolean;
+};
+
 export type RunPiHarnessStepOptions<TTool extends AgentTool = AgentTool> =
   PiHarnessAgentOptions<TTool> & {
     workflowName: string;
@@ -82,6 +91,7 @@ export type RunPiHarnessStepOptions<TTool extends AgentTool = AgentTool> =
     agentName: string;
     operation: PiHarnessOperation;
     committedEntries?: readonly SessionTreeEntry[];
+    internal?: PiHarnessInternalOptions;
   };
 
 export type PiHarnessSessionStepState = {
@@ -378,6 +388,14 @@ export const runPiHarnessStep = async <TTool extends AgentTool = AgentTool>(
     });
 
     harness.subscribe((event) => {
+      if (
+        event.type === "message_update" &&
+        options.internal?.compactMessageUpdateEmissions !== false
+      ) {
+        tx.emit(piHarnessMessageUpdateEmissionFromPiEvent(event));
+        return;
+      }
+
       tx.emit({ kind: "harness-event", event } satisfies PiHarnessEmission);
     });
 

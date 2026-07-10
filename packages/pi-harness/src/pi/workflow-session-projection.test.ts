@@ -65,11 +65,26 @@ const harnessEmission = (
   stepKey: string,
   event: unknown,
   index: number,
-): PiWorkflowSessionProjectionEmission => ({
-  stepKey,
-  createdAt: new Date(index),
-  payload: { kind: "harness-event", event } as never,
-});
+): PiWorkflowSessionProjectionEmission => {
+  const eventRecord =
+    event && typeof event === "object" ? (event as Record<string, unknown>) : null;
+  const payload =
+    eventRecord?.["type"] === "message_update"
+      ? {
+          kind: "harness-message-update",
+          update: {
+            type: "message_update",
+            assistantMessageEvent: eventRecord["assistantMessageEvent"],
+          },
+        }
+      : { kind: "harness-event", event };
+
+  return {
+    stepKey,
+    createdAt: new Date(index),
+    payload: payload as never,
+  };
+};
 
 describe("projectPiWorkflowSession", () => {
   it("projects completed durable messages and command readiness", () => {
@@ -130,6 +145,43 @@ describe("projectPiWorkflowSession", () => {
     expect(projection.draftAgentMessage).toBeNull();
     assert(!projection.readyForInput);
     assert(projection.statusText === "Working…");
+  });
+
+  it("reconstructs live assistant text from delta-only message updates", () => {
+    const stepKey = "do:delta-only";
+
+    const projection = projectPiWorkflowSession({
+      workflowName,
+      sessionId,
+      instance,
+      workflowSteps: [
+        { stepKey, type: "do", status: "running", waitEventType: null, result: null },
+      ],
+      workflowStepEmissions: [
+        harnessEmission(stepKey, { type: "message_start", message: assistantMessage("") }, 1),
+        harnessEmission(
+          stepKey,
+          {
+            type: "message_update",
+            assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "hel" },
+          },
+          2,
+        ),
+        harnessEmission(
+          stepKey,
+          {
+            type: "message_update",
+            assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "lo" },
+          },
+          3,
+        ),
+      ],
+    });
+
+    assert(projection.draftAgentMessage?.assistant);
+    expect(textContent(projection.draftAgentMessage.assistant)).toEqual("hello");
+    assert(projection.statusText === "Writing…");
+    assert(!projection.readyForInput);
   });
 
   it("projects draft thinking, tool calls, running tools, failed tool results, and status text", () => {

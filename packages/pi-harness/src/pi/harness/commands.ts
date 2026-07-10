@@ -9,6 +9,7 @@ import {
   createPiHarnessSessionState,
   runPiHarnessStep,
   type PiHarnessAgentOptions,
+  type PiHarnessInternalOptions,
   type PiHarnessOperation,
   type PiHarnessSessionStepState,
 } from "./run-pi-harness-step";
@@ -60,6 +61,8 @@ export type AgentLoopCommandResult<TTools extends AgentLoopToolsInput = AgentLoo
       message: AgentLoopMessage<TTools> | undefined;
     }
   | { kind: "ignored"; command: PiSessionCommandPayload };
+
+export type AgentLoopInternalOptions = PiHarnessInternalOptions;
 
 export type AgentLoop<TTools extends AgentLoopToolsInput = AgentLoopToolsInput> = {
   runStep: (
@@ -152,6 +155,7 @@ const operationFromCommand = (command: PiSessionCommandPayload): PiHarnessOperat
 export const createAgentLoop = <TTools extends AgentLoopToolsInput = AgentLoopToolsInput>(
   step: WorkflowStep,
   options: AgentLoopOptions<TTools>,
+  internalOptions: AgentLoopInternalOptions = {},
 ): AgentLoop<TTools> => {
   let commandIndex = 0;
   let state = createPiHarnessSessionState(options.initialMessages);
@@ -179,6 +183,7 @@ export const createAgentLoop = <TTools extends AgentLoopToolsInput = AgentLoopTo
       committedEntries: state.entries,
       tools: tools ? [...tools] : undefined,
       activeToolNames: runOptions.activeToolNames ? [...runOptions.activeToolNames] : undefined,
+      internal: internalOptions,
     });
     state = { entries: result.entries, leafId: result.leafId };
 
