@@ -42,7 +42,7 @@
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
-    "types:check": "tsgo --noEmit"
+    "types:check": "tsc --noEmit"
   },
   "dependencies": {
     "@fragno-dev/core": "workspace:*",
@@ -54,10 +54,10 @@
     "@types/node": "^22.19.7"
   },
   "peerDependencies": {
-    "@typescript/native-preview": "catalog:",
     "react": ">=18.0.0",
     "solid-js": ">=1.0.0",
     "svelte": ">=4.0.0",
+    "typescript": "catalog:",
     "vue": ">=3.0.0"
   }
 }

@@ -8,7 +8,11 @@ import {
 
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
 import { type DatabaseAdapter } from "@fragno-dev/db";
-import { workflowsFragmentDefinition, workflowsRoutesFactory } from "@fragno-dev/workflows";
+import {
+  createWorkflowsFragment,
+  workflowsFragmentDefinition,
+  workflowsRoutesFactory,
+} from "@fragno-dev/workflows";
 
 import { adapter } from "../fragno-adapter";
 
@@ -55,20 +59,28 @@ const workflows = {
   approval: ApprovalWorkflow,
 } as const;
 
-// oxlint-disable-next-line no-explicit-any
-export function createWorkflowsFragmentServer(a: DatabaseAdapter<any>) {
-  const runtime = defaultFragnoRuntime;
-
+function buildWorkflowsFragment(
+  // oxlint-disable-next-line no-explicit-any
+  a: DatabaseAdapter<any>,
+): ReturnType<typeof createWorkflowsFragment> {
   const config: WorkflowsFragmentConfig = {
     workflows,
-    runtime,
+    runtime: defaultFragnoRuntime,
   };
-  const fragment = instantiate(workflowsFragmentDefinition)
+
+  return instantiate(workflowsFragmentDefinition)
     .withConfig(config)
     .withRoutes([workflowsRoutesFactory])
     .withOptions({ databaseAdapter: a })
     .build();
+}
 
+// oxlint-disable-next-line no-explicit-any
+export function createWorkflowsFragmentServer(a: DatabaseAdapter<any>): {
+  fragment: ReturnType<typeof buildWorkflowsFragment>;
+  dispatcher: ReturnType<typeof createDurableHooksProcessor>;
+} {
+  const fragment = buildWorkflowsFragment(a);
   const dispatcher = createDurableHooksProcessor([fragment], {
     pollIntervalMs: 2000,
     onError: (error) => {
@@ -79,4 +91,7 @@ export function createWorkflowsFragmentServer(a: DatabaseAdapter<any>) {
   return { fragment, dispatcher };
 }
 
-export const { fragment: workflowsFragment, dispatcher } = createWorkflowsFragmentServer(adapter);
+export const {
+  fragment: workflowsFragment,
+  dispatcher,
+}: ReturnType<typeof createWorkflowsFragmentServer> = createWorkflowsFragmentServer(adapter);

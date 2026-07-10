@@ -7,12 +7,12 @@ packages:
   - scripts
 
 catalog:
-  "@typescript/native-preview": 7.0.0-dev.20260615.1
   "@types/react": ^19.2.14
   "@types/react-dom": ^19.2.3
   react: ^19.2.5
   react-dom: ^19.2.5
-  typescript: ^5.9.3
+  typescript: npm:@typescript/typescript6@^6.0.2
+  typescript-7: npm:typescript@^7.0.2
   vite: ^8.0.0
   vitest: ^4.1.4
 
@@ -40,15 +40,3 @@ allowBuilds:
   protobufjs: false
   sharp: false
   workerd: false
-
-minimumReleaseAgeExclude:
-  - "@earendil-works/pi-agent-core@0.75.4"
-  - "@earendil-works/pi-ai@0.75.4"
-  - "@typescript/native-preview-darwin-arm64@7.0.0-dev.20260615.1"
-  - "@typescript/native-preview-darwin-x64@7.0.0-dev.20260615.1"
-  - "@typescript/native-preview-linux-arm64@7.0.0-dev.20260615.1"
-  - "@typescript/native-preview-linux-arm@7.0.0-dev.20260615.1"
-  - "@typescript/native-preview-linux-x64@7.0.0-dev.20260615.1"
-  - "@typescript/native-preview-win32-arm64@7.0.0-dev.20260615.1"
-  - "@typescript/native-preview-win32-x64@7.0.0-dev.20260615.1"
-  - "@typescript/native-preview@7.0.0-dev.20260615.1"

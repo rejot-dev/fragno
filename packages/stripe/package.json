@@ -53,7 +53,7 @@
   },
   "scripts": {
     "test": "vitest run",
-    "types:check": "tsgo --noEmit",
+    "types:check": "tsc --noEmit",
     "build": "tsdown"
   },
   "dependencies": {
@@ -68,14 +68,14 @@
     "@fragno-private/vitest-config": "workspace:*",
     "@types/node": "^20.19.30",
     "@vitest/coverage-istanbul": "^4.1.0",
-    "tsdown": "^0.11.13",
+    "tsdown": "^0.22.4",
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@typescript/native-preview": "catalog:",
     "react": ">=18.0.0",
     "solid-js": ">=1.0.0",
     "svelte": ">=4.0.0",
+    "typescript": "catalog:",
     "vue": ">=3.0.0"
   }
 }

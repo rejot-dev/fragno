@@ -61,7 +61,7 @@
     }
   },
   "scripts": {
-    "types:check": "tsgo --noEmit",
+    "types:check": "tsc --noEmit",
     "build": "tsdown",
     "test": "vitest run",
     "test:watch": "vitest --watch"
@@ -81,14 +81,14 @@
     "@fragno-private/vitest-config": "workspace:*",
     "@types/node": "^24",
     "@vitest/coverage-istanbul": "^4.1.0",
-    "tsdown": "^0.12.0",
+    "tsdown": "^0.22.4",
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@typescript/native-preview": "catalog:",
     "react": ">=18.0.0",
     "solid-js": ">=1.0.0",
     "svelte": ">=4.0.0",
+    "typescript": "catalog:",
     "vue": ">=3.0.0"
   }
 }

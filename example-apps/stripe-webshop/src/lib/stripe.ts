@@ -11,7 +11,7 @@ import { auth } from "./auth/auth";
 
 const { dialect } = new KyselyPGlite(db.$client);
 
-export const stripeFragment = createStripeFragment(
+export const stripeFragment: ReturnType<typeof createStripeFragment> = createStripeFragment(
   {
     get stripeSecretKey() {
       if (!process.env["STRIPE_SECRET_KEY"]) {

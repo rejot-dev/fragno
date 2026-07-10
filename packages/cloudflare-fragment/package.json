@@ -54,7 +54,7 @@
   },
   "scripts": {
     "types:check": "tsc --noEmit",
-    "build": "tsdown --config-loader unrun",
+    "build": "tsdown",
     "test": "vitest run",
     "test:watch": "vitest --watch"
   },
@@ -70,7 +70,7 @@
     "@fragno-dev/test": "workspace:*",
     "@fragno-dev/unplugin-fragno": "workspace:*",
     "@types/node": "^25.2.2",
-    "tsdown": "^0.20.3",
+    "tsdown": "^0.22.4",
     "vitest": "catalog:"
   },
   "peerDependencies": {

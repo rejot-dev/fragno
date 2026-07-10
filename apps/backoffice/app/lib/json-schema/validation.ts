@@ -1,5 +1,16 @@
 import { z } from "zod";
 
+const jsonValueSchema: z.ZodType = z.lazy(() =>
+  z.union([
+    z.null(),
+    z.boolean(),
+    z.number(),
+    z.string(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+
 const jsonSchemaValueSchema: z.ZodType = z.lazy(() =>
   z.union([z.boolean(), jsonSchema202012ValidationSchema]),
 );
@@ -22,7 +33,10 @@ export const jsonSchema202012ValidationSchema: z.ZodType = z.lazy(() =>
         )
         .optional(),
       type: z
-        .enum(["object", "array", "string", "number", "boolean", "null", "integer"])
+        .union([
+          z.enum(["object", "array", "string", "number", "boolean", "null", "integer"]),
+          z.array(z.enum(["object", "array", "string", "number", "boolean", "null", "integer"])),
+        ])
         .optional(),
       additionalItems: jsonSchemaValueSchema.optional(),
       unevaluatedItems: jsonSchemaValueSchema.optional(),
@@ -60,8 +74,8 @@ export const jsonSchema202012ValidationSchema: z.ZodType = z.lazy(() =>
       minProperties: z.number().optional(),
       required: z.array(z.string()).optional(),
       dependentRequired: z.record(z.string(), z.array(z.string())).optional(),
-      enum: z.array(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
-      const: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
+      enum: z.array(jsonValueSchema).optional(),
+      const: jsonValueSchema.optional(),
       id: z.string().optional(),
       title: z.string().optional(),
       description: z.string().optional(),

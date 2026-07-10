@@ -124,7 +124,7 @@ Review:
 ## Validation already run
 
 ```bash
-pnpm exec tsgo --noEmit --pretty false --project apps/backoffice/tsconfig.json
+pnpm exec tsc --noEmit --pretty false --project apps/backoffice/tsconfig.json
 ```
 
 Relevant Vitest suites passed: 17 files, 175 tests.

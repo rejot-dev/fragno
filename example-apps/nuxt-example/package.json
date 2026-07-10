@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
-    "vue-tsc": "^3.2.2"
+    "typescript": "npm:typescript@^6.0.3",
+    "vue-tsc": "^3.3.7"
   }
 }

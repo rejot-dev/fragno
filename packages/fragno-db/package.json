@@ -82,10 +82,6 @@
       "types": "./dist/query/cursor.d.ts",
       "default": "./dist/query/cursor.js"
     },
-    "./fragment": {
-      "types": "./dist/fragment.d.ts",
-      "default": "./dist/fragment.js"
-    },
     "./fragment-definition-builder": {
       "types": "./dist/db-fragment-definition-builder.d.ts",
       "default": "./dist/db-fragment-definition-builder.js"
@@ -118,7 +114,7 @@
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
-    "types:check": "tsgo --noEmit",
+    "types:check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest --watch"
   },

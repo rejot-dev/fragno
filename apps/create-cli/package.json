@@ -26,7 +26,7 @@
     "build": "tsdown",
     "build:watch": "tsdown --watch",
     "test": "vitest run",
-    "types:check": "tsgo --noEmit"
+    "types:check": "tsc --noEmit"
   },
   "dependencies": {
     "@clack/prompts": "^0.11.0",

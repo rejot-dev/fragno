@@ -1,6 +1,7 @@
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
+  fixedExtension: false,
   entry: [
     "./src/mod.ts",
     "./src/mod-client.ts",
@@ -18,10 +19,7 @@ export default defineConfig({
     "./src/client/react.ts",
     "./src/client/vue.ts",
     "./src/client/solid.ts",
-    "./src/integrations/astro.ts",
-    "./src/integrations/next-js.ts",
     "./src/integrations/react-ssr.ts",
-    "./src/integrations/svelte-kit.ts",
     "./src/test/test.ts",
     "./src/internal/symbols.ts",
   ],
