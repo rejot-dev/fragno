@@ -1,6 +1,5 @@
 export type DurableHooksOrgFragment =
   | "api"
-  | "cloudflare"
   | "telegram"
   | "mcp"
   | "otp"
@@ -13,7 +12,6 @@ export type DurableHooksOrgFragment =
 
 export const DURABLE_HOOK_ORG_FRAGMENTS = [
   "api",
-  "cloudflare",
   "telegram",
   "mcp",
   "otp",
@@ -27,7 +25,6 @@ export const DURABLE_HOOK_ORG_FRAGMENTS = [
 
 export const FRAGMENT_LABELS: Record<DurableHooksOrgFragment, string> = {
   api: "API",
-  cloudflare: "Cloudflare Workers",
   telegram: "Telegram",
   mcp: "MCP",
   otp: "OTP",
@@ -49,10 +46,6 @@ export const FRAGMENT_CONFIGURE_META: Record<
   api: {
     path: () => "/backoffice/connections",
     label: "Configure API",
-  },
-  cloudflare: {
-    path: () => "/backoffice/environments/workers",
-    label: "Open Workers control plane",
   },
   telegram: {
     path: (orgId) => `/backoffice/connections/telegram/${orgId}/configuration`,

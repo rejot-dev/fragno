@@ -55,7 +55,7 @@ describe("Backoffice capability static skills", () => {
     );
 
     expect(capabilityIdsWithoutSkills).toEqual(
-      new Set(["sandbox", "automations", "github", "cloudflare", "auth"]),
+      new Set(["sandbox", "automations", "github", "auth"]),
     );
   });
 

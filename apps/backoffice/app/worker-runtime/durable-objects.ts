@@ -4,7 +4,6 @@ import type {
   ApiObject,
   AuthObject,
   AutomationsObject,
-  CloudflareWorkersObject,
   GitHubObject,
   GitHubWebhookRouterObject,
   McpObject,
@@ -67,11 +66,6 @@ export const getUploadDurableObject = (
   context: Readonly<RouterContextProvider>,
   orgId: string,
 ): UploadObject => getBackofficeObjects(context).upload.forOrg(orgId);
-
-export const getCloudflareWorkersDurableObject = (
-  context: Readonly<RouterContextProvider>,
-  orgId: string,
-): CloudflareWorkersObject => getBackofficeObjects(context).cloudflareWorkers.forOrg(orgId);
 
 export const getPiDurableObject = (
   context: Readonly<RouterContextProvider>,

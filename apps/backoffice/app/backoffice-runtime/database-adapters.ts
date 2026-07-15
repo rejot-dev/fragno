@@ -9,7 +9,6 @@ export type BackofficeDatabaseAdapterKind =
   | "api"
   | "auth"
   | "automations"
-  | "cloudflareWorkers"
   | "github"
   | "mcp"
   | "otp"

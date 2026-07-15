@@ -8,7 +8,6 @@ import { Link, NavLink, useLocation, useNavigate } from "react-router";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 import { authClient } from "@/fragno/auth/auth-client";
 import { cn } from "@/lib/utils";
-import { toWorkersPath } from "@/routes/backoffice/environments/workers.route-state";
 
 type NavItem = {
   label: string;
@@ -124,11 +123,6 @@ function createNavItems(activeOrganizationId?: string | null): NavItem[] {
     },
     { label: "Sessions", to: "/backoffice/sessions" },
     { label: "Files", to: "/backoffice/files" },
-    {
-      label: "Environments",
-      to: "/backoffice/environments",
-      children: [{ label: "Workers", to: toWorkersPath({}) }],
-    },
     {
       label: "Internals",
       to: "/backoffice/internals",

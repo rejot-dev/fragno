@@ -184,8 +184,6 @@ export default [
         route("sandboxes", "routes/backoffice/automations/sandboxes.tsx"),
       ]),
 
-      route("environments", "routes/backoffice/environments/index.tsx"),
-      route("environments/workers", "routes/backoffice/environments/workers.tsx"),
       route(
         "connections/reson8/:orgId",
         "routes/backoffice/connections/reson8/organisation-layout.tsx",
@@ -276,14 +274,12 @@ export default [
     ]),
   ]),
 
-  route("__dev/workers/:orgId/:appId/*", "routes/dev/cloudflare-worker-proxy.ts"),
   route("__dev/codemode/:orgId/SYSTEM.md", "routes/dev/codemode-system-md.ts"),
   route("__dev/codemode/:orgId/bash", "routes/dev/codemode-bash.ts"),
   route("__dev/codemode/:orgId", "routes/dev/codemode.ts"),
 
   ...prefix("api", [
     route("auth/*", "routes/api/auth.ts"),
-    route("cloudflare/:orgId/*", "routes/api/cloudflare.ts"),
     route("resend/:scopeSegment/*", "routes/api/resend.ts"),
     route("reson8/:orgId/*", "routes/api/reson8.ts"),
     route("mcp/:scopeSegment/*", "routes/api/mcp.ts"),

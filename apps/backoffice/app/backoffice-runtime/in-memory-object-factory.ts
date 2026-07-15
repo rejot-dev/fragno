@@ -4,7 +4,6 @@ import type { MasterFileSystem } from "@/files";
 import { InMemoryApiObject } from "../../workers/api.do";
 import { InMemoryAuthObject } from "../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../workers/automations.do";
-import { InMemoryCloudflareWorkersObject } from "../../workers/cloudflare-wfp.do";
 import { InMemoryGitHubWebhookRouterObject } from "../../workers/github-webhook-router.do";
 import { InMemoryGitHubObject } from "../../workers/github.do";
 import { InMemoryMcpObject } from "../../workers/mcp.do";
@@ -186,12 +185,6 @@ const inMemoryObjectFactories = {
       env: env as never,
       runtime,
     }),
-  CLOUDFLARE_WORKERS: ({ state, env, runtime }) =>
-    new InMemoryCloudflareWorkersObject({
-      state,
-      env,
-      runtime,
-    }),
   SANDBOX: createUnavailableObject,
   GITHUB: ({ state, env, runtime }) =>
     new InMemoryGitHubObject({
@@ -323,7 +316,6 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
         mcp: this.#hasNamespace("MCP"),
         upload: this.#hasNamespace("UPLOAD"),
         github: this.#hasNamespace("GITHUB"),
-        cloudflareWorkers: this.#hasNamespace("CLOUDFLARE_WORKERS"),
         githubWebhookRouter: this.#hasNamespace("GITHUB_WEBHOOK_ROUTER"),
         sandbox: this.#hasNamespace("SANDBOX"),
       },

@@ -38,7 +38,6 @@ const testRuntimeConfig: BackofficeRuntimeConfig = {
     mcp: false,
     upload: false,
     github: false,
-    cloudflareWorkers: false,
     githubWebhookRouter: false,
     sandbox: false,
   },
