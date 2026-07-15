@@ -539,7 +539,7 @@ const createSyntheticFolderNode = (prefix: string): UploadTreeFolderNode => ({
   providers: [],
 });
 
-export async function loader({ request, params, context }: LoaderFunctionArgs) {
+export async function loader({ request, params, context, url }: LoaderFunctionArgs) {
   if (!params.orgId) {
     throw new Response("Not Found", { status: 404 });
   }
@@ -565,7 +565,6 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     return redirect(`/backoffice/connections/upload/${params.orgId}/configuration`);
   }
 
-  const url = new URL(request.url);
   let selectedNodeKind = parseSelectedNodeKind(url.searchParams.get("node"));
   let selectedPrefix = normalizeFolderPrefix(url.searchParams.get("prefix"));
   const requestedFileKey = url.searchParams.get("fileKey")?.trim() || null;

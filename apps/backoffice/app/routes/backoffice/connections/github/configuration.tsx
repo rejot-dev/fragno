@@ -136,7 +136,7 @@ const buildGitHubInstallationUrl = (installation: GitHubInstallationSummary | nu
   return `https://github.com/settings/installations/${encodedInstallationId}`;
 };
 
-const buildConfigurationRedirect = (requestUrl: string, code: InstallFlowCode, detail?: string) => {
+const buildConfigurationRedirect = (requestUrl: URL, code: InstallFlowCode, detail?: string) => {
   const url = new URL(requestUrl);
   url.searchParams.delete("state");
   url.searchParams.delete("installation_id");
@@ -162,18 +162,18 @@ const readInstallNotice = (requestUrl: URL): InstallFlowNotice => {
   return detail ? { ...notice, message: `${notice.message} ${detail}` } : notice;
 };
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const organizationScope = resolveOrganizationScopeFromRouteParams(params);
   const organizationId = organizationScope.organizationId;
 
-  const requestUrl = new URL(request.url);
+  const requestUrl = url;
   const origin = requestUrl.origin;
   const callbackState = requestUrl.searchParams.get("state")?.trim() ?? "";
   const callbackInstallationId = requestUrl.searchParams.get("installation_id")?.trim() ?? "";
   const setupAction = requestUrl.searchParams.get("setup_action")?.trim() ?? "";
 
   if (setupAction === "request") {
-    return redirect(buildConfigurationRedirect(request.url, "install_requested"));
+    return redirect(buildConfigurationRedirect(requestUrl, "install_requested"));
   }
 
   if (callbackState || callbackInstallationId || setupAction) {
@@ -184,7 +184,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
         hasState: Boolean(callbackState),
         hasInstallationId: Boolean(callbackInstallationId),
       });
-      return redirect(buildConfigurationRedirect(request.url, "missing_callback_data"));
+      return redirect(buildConfigurationRedirect(requestUrl, "missing_callback_data"));
     }
 
     if (!isValidInstallationId(callbackInstallationId)) {
@@ -193,12 +193,11 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
         installationId: callbackInstallationId,
         state: toStatePreview(callbackState),
       });
-      return redirect(buildConfigurationRedirect(request.url, "invalid_installation"));
+      return redirect(buildConfigurationRedirect(requestUrl, "invalid_installation"));
     }
 
     const me = await getAuthMe(request, context);
     if (!me?.user) {
-      const url = new URL(request.url);
       return redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
     }
     const memberEntry = me.organizations.find((entry) => entry.organization.id === organizationId);
@@ -224,12 +223,12 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
           userId: me.user.id,
         });
         if (consumed.code === "EXPIRED_STATE") {
-          return redirect(buildConfigurationRedirect(request.url, "expired_state"));
+          return redirect(buildConfigurationRedirect(requestUrl, "expired_state"));
         }
         if (consumed.code === "USER_MISMATCH") {
-          return redirect(buildConfigurationRedirect(request.url, "user_mismatch"));
+          return redirect(buildConfigurationRedirect(requestUrl, "user_mismatch"));
         }
-        return redirect(buildConfigurationRedirect(request.url, "invalid_state"));
+        return redirect(buildConfigurationRedirect(requestUrl, "invalid_state"));
       }
 
       if (consumed.orgId !== organizationId) {
@@ -240,7 +239,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
           state: toStatePreview(callbackState),
           userId: me.user.id,
         });
-        return redirect(buildConfigurationRedirect(request.url, "callback_error"));
+        return redirect(buildConfigurationRedirect(requestUrl, "callback_error"));
       }
 
       const mappingResult = await githubWebhookRouterDo.setInstallationOrg(
@@ -257,7 +256,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
           existingOrgId: mappingResult.existingOrgId,
           error: mappingResult.message,
         });
-        return redirect(buildConfigurationRedirect(request.url, "callback_error"));
+        return redirect(buildConfigurationRedirect(requestUrl, "callback_error"));
       }
 
       const syncResult = await syncGitHubInstallation(
@@ -276,10 +275,10 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
         const githubDo = getGitHubDurableObject(context, organizationId);
         await githubDo.redeliverFailedInstallationWebhooks(callbackInstallationId);
 
-        return redirect(buildConfigurationRedirect(request.url, "installed_pending_webhook"));
+        return redirect(buildConfigurationRedirect(requestUrl, "installed_pending_webhook"));
       }
 
-      return redirect(buildConfigurationRedirect(request.url, "installed_synced"));
+      return redirect(buildConfigurationRedirect(requestUrl, "installed_synced"));
     } catch (error) {
       console.error("GitHub install callback processing threw", {
         organizationId: organizationId,
@@ -287,7 +286,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
         state: toStatePreview(callbackState),
         error,
       });
-      return redirect(buildConfigurationRedirect(request.url, "callback_error"));
+      return redirect(buildConfigurationRedirect(requestUrl, "callback_error"));
     }
   }
 
@@ -365,7 +364,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   };
 }
 
-export async function action({ request, params, context }: Route.ActionArgs) {
+export async function action({ request, params, context, url }: Route.ActionArgs) {
   const integration = await resolveAuthenticatedIntegrationContext({
     request,
     context,
@@ -408,8 +407,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   }
 
   if (intent === "connect-existing-installation") {
-    const requestUrl = new URL(request.url);
-    const returnTo = `${requestUrl.pathname}${requestUrl.search}`;
+    const returnTo = `${url.pathname}${url.search}`;
     const claim = await startGitHubOAuth(request, context, organizationId, {
       subjectId: me.user.id,
       returnTo,

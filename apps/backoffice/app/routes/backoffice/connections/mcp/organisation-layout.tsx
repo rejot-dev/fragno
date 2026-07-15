@@ -9,14 +9,13 @@ import type { Route } from "./+types/organisation-layout";
 import { fetchMcpConfig } from "./data";
 import { McpErrorBoundary, McpHeader, McpTabs, type McpConfigState } from "./shared";
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   if (!params.orgId) {
     throw new Response("Not Found", { status: 404 });
   }
 
   const me = await getAuthMe(request, context);
   if (!me?.user) {
-    const url = new URL(request.url);
     return Response.redirect(
       new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
       302,
@@ -33,15 +32,15 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
   return {
     orgId: params.orgId,
-    origin: new URL(request.url).origin,
+    origin: url.origin,
     organisation,
     configState,
     configError,
   };
 }
 
-export function meta({ data }: Route.MetaArgs) {
-  const orgId = data?.orgId ?? "organisation";
+export function meta({ loaderData }: Route.MetaArgs) {
+  const orgId = loaderData?.orgId ?? "organisation";
   return [{ title: `MCP Setup · ${orgId}` }];
 }
 

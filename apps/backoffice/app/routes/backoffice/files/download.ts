@@ -6,18 +6,17 @@ import { createBackofficeFilesFileSystem } from "./data";
 
 export const MAX_BUFFERED_DOWNLOAD_BYTES = 10 * 1024 * 1024;
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   if (!params.orgId) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const requestUrl = new URL(request.url);
-  const path = requestUrl.searchParams.get("path")?.trim() ?? "";
+  const path = url.searchParams.get("path")?.trim() ?? "";
   if (!path) {
     throw new Response("Missing file path.", { status: 400 });
   }
 
-  const returnTo = `${requestUrl.pathname}${requestUrl.search}`;
+  const returnTo = `${url.pathname}${url.search}`;
   const me = await getAuthMe(request, context);
   if (!me?.user) {
     return Response.redirect(new URL(buildBackofficeLoginPath(returnTo), request.url), 302);

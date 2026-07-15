@@ -36,8 +36,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   };
 }
 
-export function meta({ data }: Route.MetaArgs) {
-  const orgId = data?.orgId ?? "organisation";
+export function meta({ loaderData }: Route.MetaArgs) {
+  const orgId = loaderData?.orgId ?? "organisation";
   return [{ title: `Pi Sessions · ${orgId}` }];
 }
 

@@ -1,23 +1,14 @@
-import type { RouterContextProvider } from "react-router";
-
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
 import { resolveIntegrationContext } from "../../integrations/scope";
+import type { Route } from "./+types/attachment-download";
 
 const DEFAULT_DOWNLOAD_NAME = "telegram-attachment";
 
-export async function loader({
-  request,
-  params,
-  context,
-}: {
-  request: Request;
-  params: { scopeKind?: string; scopeId?: string };
-  context: Readonly<RouterContextProvider>;
-}) {
-  const requestUrl = new URL(request.url);
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
+  const requestUrl = url;
   const fileId = requestUrl.searchParams.get("fileId")?.trim() ?? "";
   const attachmentKind = requestUrl.searchParams.get("kind")?.trim() ?? "";
   const requestedFilename = requestUrl.searchParams.get("filename")?.trim() ?? "";

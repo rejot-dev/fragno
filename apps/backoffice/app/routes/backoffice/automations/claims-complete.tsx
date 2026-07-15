@@ -1,10 +1,11 @@
-import { Link, type RouterContextProvider } from "react-router";
+import { Link } from "react-router";
 
 import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import { getOtpDurableObject } from "@/worker-runtime/durable-objects";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
+import type { Route } from "./+types/claims-complete";
 
 type LoaderData = {
   ok: boolean;
@@ -17,16 +18,12 @@ export async function loader({
   request,
   context,
   params,
-}: {
-  request: Request;
-  context: Readonly<RouterContextProvider>;
-  params: { orgId?: string };
-}): Promise<LoaderData | Response> {
+  url,
+}: Route.LoaderArgs): Promise<LoaderData | Response> {
   if (!params.orgId) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const url = new URL(request.url);
   const me = await getAuthMe(request, context);
   if (!me?.user) {
     return Response.redirect(
@@ -84,8 +81,8 @@ export async function loader({
   };
 }
 
-export function meta({ data }: { data?: LoaderData }) {
-  return [{ title: data?.ok ? "Identity link confirmed" : "Identity link failed" }];
+export function meta({ loaderData }: Route.MetaArgs) {
+  return [{ title: loaderData?.ok ? "Identity link confirmed" : "Identity link failed" }];
 }
 
 export default function BackofficeAutomationClaimComplete({

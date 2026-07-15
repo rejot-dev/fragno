@@ -27,8 +27,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   return handleFilesExplorerAction({ request, context, orgId: params.orgId });
 }
 
-export function meta({ data }: Route.MetaArgs) {
-  const selectedTitle = data?.selectedDetail?.node.title;
+export function meta({ loaderData }: Route.MetaArgs) {
+  const selectedTitle = loaderData?.selectedDetail?.node.title;
   return [{ title: selectedTitle ? `Files · ${selectedTitle}` : "Files Explorer" }];
 }
 

@@ -30,6 +30,7 @@ export async function loader({
   request,
   params,
   context,
+  url,
 }: Route.LoaderArgs): Promise<WorkflowsOrgLoaderData> {
   if (!params.orgId) {
     throw new Response("Not Found", { status: 404 });
@@ -51,7 +52,6 @@ export async function loader({
     throw new Response("Not Found", { status: 404 });
   }
 
-  const url = new URL(request.url);
   const pageSize = parsePageSize(url.searchParams.get("pageSize"));
 
   try {
@@ -93,8 +93,8 @@ export async function loader({
   }
 }
 
-export function meta({ data }: Route.MetaArgs) {
-  const orgLabel = data?.organisationName ?? data?.orgId ?? "organisation";
+export function meta({ loaderData }: Route.MetaArgs) {
+  const orgLabel = loaderData?.organisationName ?? loaderData?.orgId ?? "organisation";
   return [{ title: `Workflows · ${orgLabel}` }];
 }
 

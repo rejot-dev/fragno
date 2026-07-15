@@ -60,14 +60,13 @@ const resolveFragment = (value?: string | null): DurableHooksOrgFragment | null 
   return null;
 };
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   if (!params.orgId) {
     throw new Response("Not Found", { status: 404 });
   }
 
   const me = await getAuthMe(request, context);
   if (!me?.user) {
-    const url = new URL(request.url);
     return Response.redirect(
       new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
       302,
@@ -80,7 +79,6 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const url = new URL(request.url);
   const cursor = url.searchParams.get("cursor") ?? undefined;
   const pageSize = parsePageSize(url.searchParams.get("pageSize"));
   const fragment = resolveFragment(params.fragment);
@@ -204,8 +202,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
 }
 
-export function meta({ data }: Route.MetaArgs) {
-  const orgLabel = data?.organisationName ?? data?.orgId ?? "organisation";
+export function meta({ loaderData }: Route.MetaArgs) {
+  const orgLabel = loaderData?.organisationName ?? loaderData?.orgId ?? "organisation";
   return [{ title: `Durable Hooks · ${orgLabel}` }];
 }
 

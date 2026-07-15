@@ -31,8 +31,7 @@ const visibleScriptSectionDefinitions = (
   return [{ id: "workspace" as const, label: "Workspace", emptyLabel: "No workspace scripts." }];
 };
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
-  const url = new URL(request.url);
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const selectedScriptId = url.searchParams.get("script")?.trim() ?? "";
 
   if (!selectedScriptId) {

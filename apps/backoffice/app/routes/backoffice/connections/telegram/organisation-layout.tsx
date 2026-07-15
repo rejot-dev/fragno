@@ -20,10 +20,9 @@ import {
   type TelegramTab,
 } from "./shared";
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const me = await getAuthMe(request, context);
   if (!me?.user) {
-    const url = new URL(request.url);
     return Response.redirect(
       new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
       302,
@@ -55,7 +54,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
   return {
     ...integration,
-    origin: new URL(request.url).origin,
+    origin: url.origin,
     organisation,
     scopeOptions,
     configState,
@@ -63,8 +62,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   };
 }
 
-export function meta({ data }: Route.MetaArgs) {
-  const label = data?.label ?? "scope";
+export function meta({ loaderData }: Route.MetaArgs) {
+  const label = loaderData?.label ?? "scope";
   return [{ title: `Telegram Setup · ${label}` }];
 }
 

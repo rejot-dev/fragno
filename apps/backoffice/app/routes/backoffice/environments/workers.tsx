@@ -134,7 +134,7 @@ const withEmptyLiveDeployment = (worker: CloudflareAppSummary): CloudflareAppSta
   deployments: [],
 });
 
-export async function loader({ request, context }: Route.LoaderArgs) {
+export async function loader({ request, context, url }: Route.LoaderArgs) {
   const organizationId = await resolveActiveOrganizationId(request, context);
   if (!organizationId) {
     return {
@@ -152,9 +152,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     } satisfies WorkersLoaderData;
   }
 
-  const { view: requestedView, workerId: requestedWorkerId } = readWorkersSearchState(
-    new URL(request.url).search,
-  );
+  const { view: requestedView, workerId: requestedWorkerId } = readWorkersSearchState(url.search);
 
   const workersResult = await fetchCloudflareApps(request, context, organizationId);
   if (workersResult.error) {

@@ -217,11 +217,4 @@
       "deleted_classes": ["SandboxRegistry"],
     },
   ],
-  "rules": [
-    {
-      "type": "Text",
-      "globs": ["**/*.sql"],
-      "fallthrough": true,
-    },
-  ],
 }

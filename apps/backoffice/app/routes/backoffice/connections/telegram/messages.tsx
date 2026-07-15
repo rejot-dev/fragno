@@ -19,9 +19,9 @@ export type TelegramMessagesOutletContext = {
   basePath: string;
 };
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const scope = resolveScopeFromRouteParams(params);
-  const basePath = new URL(request.url).pathname.replace(/\/messages(?:\/.*)?$/u, "");
+  const basePath = url.pathname.replace(/\/messages(?:\/.*)?$/u, "");
 
   const { configState, configError } = await fetchTelegramConfig(context, scope);
   if (configError) {

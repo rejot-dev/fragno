@@ -7,13 +7,12 @@ import type { Route } from "./+types/organisation-layout";
 import { createBackofficeFilesFileSystem } from "./data";
 import { FilesErrorBoundary, FilesHeader } from "./shared";
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   if (!params.orgId) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const requestUrl = new URL(request.url);
-  const returnTo = `${requestUrl.pathname}${requestUrl.search}`;
+  const returnTo = `${url.pathname}${url.search}`;
 
   const me = await getAuthMe(request, context);
   if (!me?.user) {
@@ -34,14 +33,14 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
   return {
     orgId: params.orgId,
-    origin: requestUrl.origin,
+    origin: url.origin,
     organisation,
     mountCount: resolvedFileSystem.mounts.length,
   };
 }
 
-export function meta({ data }: Route.MetaArgs) {
-  const organisationName = data?.organisation?.name ?? data?.orgId ?? "Organisation";
+export function meta({ loaderData }: Route.MetaArgs) {
+  const organisationName = loaderData?.organisation?.name ?? loaderData?.orgId ?? "Organisation";
   return [{ title: `Files · ${organisationName}` }];
 }
 
