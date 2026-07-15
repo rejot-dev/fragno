@@ -125,7 +125,7 @@ export const latestCompletedPiHarnessEntries = (
     if (step.status !== "completed" || step.result?.type !== "harness-run") {
       continue;
     }
-    for (const entry of step.result.entries) {
+    for (const entry of step.result.appendedEntries) {
       const index = indexes.get(entry.id);
       if (index === undefined) {
         indexes.set(entry.id, entries.length);
@@ -503,28 +503,35 @@ export const projectPiWorkflowSession = ({
     (step) => step.status === "completed" && step.result?.type === "harness-run",
   );
   const completedStepKeys = new Set(initialCompletedStepKeys);
-  const durableMessages: AgentMessage[] = [];
-
-  if (
-    initialCompletedStepKeyValues !== undefined ||
-    (localCompletedSteps.length === 0 && workflowStepEmissions.length === 0)
-  ) {
-    durableMessages.push(...(initialState?.messages ?? []));
+  const localCompletedStepKeys = new Set<string>();
+  for (const step of localCompletedSteps) {
+    localCompletedStepKeys.add(step.stepKey);
+    completedStepKeys.add(step.stepKey);
   }
 
-  const localDurableMessages = piAgentMessagesFromSessionEntries(
-    latestCompletedPiHarnessEntries(
-      localCompletedSteps.filter((step) => {
-        completedStepKeys.add(step.stepKey);
-        return !initialCompletedStepKeys.has(step.stepKey);
-      }),
-    ),
+  const durableMessages: AgentMessage[] = [];
+  const hasCompleteLocalBaseline = [...initialCompletedStepKeys].every((stepKey) =>
+    localCompletedStepKeys.has(stepKey),
   );
-  durableMessages.push(
-    ...(durableMessages.length > 0 && localDurableMessages.length > durableMessages.length
-      ? localDurableMessages.slice(durableMessages.length)
-      : localDurableMessages),
-  );
+  const canProjectCompleteLocalTree = localCompletedSteps.length > 0 && hasCompleteLocalBaseline;
+
+  if (canProjectCompleteLocalTree) {
+    durableMessages.push(
+      ...piAgentMessagesFromSessionEntries(latestCompletedPiHarnessEntries(localCompletedSteps)),
+    );
+  } else {
+    if (
+      initialCompletedStepKeyValues !== undefined ||
+      (localCompletedSteps.length === 0 && workflowStepEmissions.length === 0)
+    ) {
+      durableMessages.push(...(initialState?.messages ?? []));
+    }
+
+    const newLocalEntries = latestCompletedPiHarnessEntries(
+      localCompletedSteps.filter((step) => !initialCompletedStepKeys.has(step.stepKey)),
+    );
+    durableMessages.push(...piAgentMessagesFromSessionEntries(newLocalEntries));
+  }
 
   const live = createPiWorkflowSessionLiveState(hasActiveLiveWorkflowStep(workflowSteps));
   for (const emission of workflowStepEmissions) {

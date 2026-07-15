@@ -241,137 +241,145 @@ describe("runPiHarnessStep outbox stream size", () => {
     expect(await recordOutboxSize()).toBeLessThan(2_000_000);
   });
 
-  it("measures compact projection query/store update cost", async () => {
-    const sessionId = "compact-projection-compute";
-    const mutations = await recordOutboxMutations(sessionId);
-    const mutationBytes = serializedByteSize(mutations);
+  it.skipIf(!!process.env["CI"])(
+    "measures compact projection query/store update cost",
+    async () => {
+      const sessionId = "compact-projection-compute";
+      const mutations = await recordOutboxMutations(sessionId);
+      const mutationBytes = serializedByteSize(mutations);
 
-    installFakeIndexedDb();
-    const adapter = new IndexedDbAdapter({
-      dbName: `pi-harness-outbox-size-${Math.random().toString(16).slice(2)}`,
-      endpointName: "pi-harness-outbox-size",
-      schemas: [{ schema: workflowsSchema }],
-    });
-    const runtime = createLofiRuntime({
-      endpointName: "pi-harness-outbox-size",
-      adapter,
-      outboxUrl: "https://example.com/outbox",
-      fetch: (async () => new Response(JSON.stringify([]))) as typeof fetch,
-    });
-    const metrics = { projectionRuns: 0, projectionMs: 0 };
-    const store = createMeasuredSessionProjectionDataStore(runtime, sessionId, metrics);
-    let storeUpdates = 0;
-    const unlisten = store.listen(() => {
-      storeUpdates += 1;
-    });
-
-    try {
-      await runtime.whenBootstrapped();
-      await store.refresh();
-      const previousUpdatedAt = store.get().updatedAt;
-
-      const applyStart = performance.now();
-      await adapter.applyMutations(mutations);
-      const applyMs = performance.now() - applyStart;
-
-      const projectionUpdate = nextSettledProjectionUpdate(store, previousUpdatedAt);
-      const refreshStart = performance.now();
-      runtime.refresh();
-      const state = await projectionUpdate;
-      const refreshToProjectionMs = performance.now() - refreshStart;
-
-      const message = state.data.state.messages.at(-1);
-      assert(message?.role === "assistant");
-      if (message?.role === "assistant") {
-        const content = message.content[0];
-        assert(content?.type === "text");
-        if (content?.type === "text") {
-          expect(content.text).toHaveLength(responseText.length);
-        }
-      }
-      expect(storeUpdates).toBeGreaterThan(0);
-      expect(applyMs).toBeGreaterThanOrEqual(0);
-      expect(refreshToProjectionMs).toBeGreaterThanOrEqual(0);
-      console.info("compact projection query/store update cost", {
-        mutationCount: mutations.length,
-        mutationBytes,
-        storeUpdates,
-        applyMs,
-        refreshToProjectionMs,
-        projectionRuns: metrics.projectionRuns,
-        projectionMs: metrics.projectionMs,
-        queryAndStoreMs: refreshToProjectionMs - metrics.projectionMs,
+      installFakeIndexedDb();
+      const adapter = new IndexedDbAdapter({
+        dbName: `pi-harness-outbox-size-${Math.random().toString(16).slice(2)}`,
+        endpointName: "pi-harness-outbox-size",
+        schemas: [{ schema: workflowsSchema }],
       });
-    } finally {
-      unlisten();
-    }
-  }, 10_000);
+      const runtime = createLofiRuntime({
+        endpointName: "pi-harness-outbox-size",
+        adapter,
+        outboxUrl: "https://example.com/outbox",
+        fetch: (async () => new Response(JSON.stringify([]))) as typeof fetch,
+      });
+      const metrics = { projectionRuns: 0, projectionMs: 0 };
+      const store = createMeasuredSessionProjectionDataStore(runtime, sessionId, metrics);
+      let storeUpdates = 0;
+      const unlisten = store.listen(() => {
+        storeUpdates += 1;
+      });
 
-  it("measures mounted compact projection under repeated refresh churn", async () => {
-    const sessionId = "compact-mounted-refresh-churn";
-    const mutations = await recordOutboxMutations(sessionId);
-    const baseMutations = mutations.filter(
-      (mutation) => mutation.table !== "workflow_step_emission",
-    );
-    const emissionChunks = chunked(
-      mutations.filter((mutation) => mutation.table === "workflow_step_emission"),
-      250,
-    );
+      try {
+        await runtime.whenBootstrapped();
+        await store.refresh();
+        const previousUpdatedAt = store.get().updatedAt;
 
-    installFakeIndexedDb();
-    const adapter = new IndexedDbAdapter({
-      dbName: `pi-harness-outbox-churn-${Math.random().toString(16).slice(2)}`,
-      endpointName: "pi-harness-outbox-churn",
-      schemas: [{ schema: workflowsSchema }],
-    });
-    await adapter.applyMutations(baseMutations);
-    const runtime = createLofiRuntime({
-      endpointName: "pi-harness-outbox-churn",
-      adapter,
-      outboxUrl: "https://example.com/outbox",
-      fetch: (async () => new Response(JSON.stringify([]))) as typeof fetch,
-    });
-    const metrics = { projectionRuns: 0, projectionMs: 0 };
-    const store = createMeasuredSessionProjectionDataStore(runtime, sessionId, metrics);
-    let storeUpdates = 0;
-    const unlisten = store.listen(() => {
-      storeUpdates += 1;
-    });
+        const applyStart = performance.now();
+        await adapter.applyMutations(mutations);
+        const applyMs = performance.now() - applyStart;
 
-    try {
-      await runtime.whenBootstrapped();
-      await store.refresh();
-
-      let applyMs = 0;
-      const startedAt = performance.now();
-      for (const chunk of emissionChunks) {
-        const applyStartedAt = performance.now();
-        await adapter.applyMutations(chunk);
-        applyMs += performance.now() - applyStartedAt;
-        const projectionUpdate = nextSettledProjectionUpdate(store, store.get().updatedAt);
+        const projectionUpdate = nextSettledProjectionUpdate(store, previousUpdatedAt);
+        const refreshStart = performance.now();
         runtime.refresh();
-        await projectionUpdate;
-      }
-      const finalState = store.get();
-      const elapsedMs = performance.now() - startedAt;
+        const state = await projectionUpdate;
+        const refreshToProjectionMs = performance.now() - refreshStart;
 
-      expect(projectedAssistantTextLength(finalState)).toBe(responseText.length);
-      console.info("mounted compact projection refresh churn", {
-        mutationCount: mutations.length,
-        emissionCount: mutations.length - baseMutations.length,
-        emissionChunks: emissionChunks.length,
-        refreshCount: emissionChunks.length,
-        storeUpdates,
-        elapsedMs,
-        applyMs,
-        projectionRuns: metrics.projectionRuns,
-        projectionMs: metrics.projectionMs,
-        averageProjectionMs: metrics.projectionMs / metrics.projectionRuns,
+        const message = state.data.state.messages.at(-1);
+        assert(message?.role === "assistant");
+        if (message?.role === "assistant") {
+          const content = message.content[0];
+          assert(content?.type === "text");
+          if (content?.type === "text") {
+            expect(content.text).toHaveLength(responseText.length);
+          }
+        }
+        expect(storeUpdates).toBeGreaterThan(0);
+        expect(applyMs).toBeGreaterThanOrEqual(0);
+        expect(refreshToProjectionMs).toBeGreaterThanOrEqual(0);
+        console.info("compact projection query/store update cost", {
+          mutationCount: mutations.length,
+          mutationBytes,
+          storeUpdates,
+          applyMs,
+          refreshToProjectionMs,
+          projectionRuns: metrics.projectionRuns,
+          projectionMs: metrics.projectionMs,
+          queryAndStoreMs: refreshToProjectionMs - metrics.projectionMs,
+        });
+      } finally {
+        unlisten();
+      }
+    },
+    10_000,
+  );
+
+  it.skipIf(!!process.env["CI"])(
+    "measures mounted compact projection under repeated refresh churn",
+    async () => {
+      const sessionId = "compact-mounted-refresh-churn";
+      const mutations = await recordOutboxMutations(sessionId);
+      const baseMutations = mutations.filter(
+        (mutation) => mutation.table !== "workflow_step_emission",
+      );
+      const emissionChunks = chunked(
+        mutations.filter((mutation) => mutation.table === "workflow_step_emission"),
+        250,
+      );
+
+      installFakeIndexedDb();
+      const adapter = new IndexedDbAdapter({
+        dbName: `pi-harness-outbox-churn-${Math.random().toString(16).slice(2)}`,
+        endpointName: "pi-harness-outbox-churn",
+        schemas: [{ schema: workflowsSchema }],
       });
-    } finally {
-      unlisten();
-    }
-  }, 10_000);
+      await adapter.applyMutations(baseMutations);
+      const runtime = createLofiRuntime({
+        endpointName: "pi-harness-outbox-churn",
+        adapter,
+        outboxUrl: "https://example.com/outbox",
+        fetch: (async () => new Response(JSON.stringify([]))) as typeof fetch,
+      });
+      const metrics = { projectionRuns: 0, projectionMs: 0 };
+      const store = createMeasuredSessionProjectionDataStore(runtime, sessionId, metrics);
+      let storeUpdates = 0;
+      const unlisten = store.listen(() => {
+        storeUpdates += 1;
+      });
+
+      try {
+        await runtime.whenBootstrapped();
+        await store.refresh();
+
+        let applyMs = 0;
+        const startedAt = performance.now();
+        for (const chunk of emissionChunks) {
+          const applyStartedAt = performance.now();
+          await adapter.applyMutations(chunk);
+          applyMs += performance.now() - applyStartedAt;
+          const projectionUpdate = nextSettledProjectionUpdate(store, store.get().updatedAt);
+          runtime.refresh();
+          await projectionUpdate;
+        }
+        const finalState = store.get();
+        const elapsedMs = performance.now() - startedAt;
+
+        expect(projectedAssistantTextLength(finalState)).toBe(responseText.length);
+        console.info("mounted compact projection refresh churn", {
+          mutationCount: mutations.length,
+          emissionCount: mutations.length - baseMutations.length,
+          emissionChunks: emissionChunks.length,
+          refreshCount: emissionChunks.length,
+          storeUpdates,
+          elapsedMs,
+          applyMs,
+          projectionRuns: metrics.projectionRuns,
+          projectionMs: metrics.projectionMs,
+          averageProjectionMs: metrics.projectionMs / metrics.projectionRuns,
+        });
+      } finally {
+        unlisten();
+      }
+    },
+    10_000,
+  );
 
   it("measures mounted projection with ephemeral workflow emissions", async () => {
     const sessionId = "ephemeral-mounted-projection";

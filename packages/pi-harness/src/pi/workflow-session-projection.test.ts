@@ -1,7 +1,13 @@
 import { describe, expect, it, assert } from "vitest";
 
 import type { AgentMessage, SessionTreeEntry } from "@earendil-works/pi-agent-core";
-import { fauxAssistantMessage, fauxText, type UserMessage } from "@earendil-works/pi-ai";
+import {
+  fauxAssistantMessage,
+  fauxText,
+  fauxToolCall,
+  type ToolResultMessage,
+  type UserMessage,
+} from "@earendil-works/pi-ai";
 
 import {
   projectPiWorkflowSession,
@@ -33,6 +39,18 @@ const messageEntry = (
   message: options.role === "user" ? userMessage(text) : assistantMessage(text),
 });
 
+const agentMessageEntry = (
+  id: string,
+  message: AgentMessage,
+  parentId: string | null,
+): SessionTreeEntry => ({
+  type: "message",
+  id,
+  parentId,
+  timestamp: "2026-07-03T00:00:00.000Z",
+  message,
+});
+
 const textContent = (message: AgentMessage) =>
   (message as AgentMessage & { content: readonly [{ text: string }] }).content[0].text;
 
@@ -47,7 +65,6 @@ const completedStep = (
   result: {
     type: "harness-run",
     operation: "prompt",
-    entries: [...entries],
     appendedEntries: [...entries],
     leafId: entries.at(-1)?.id ?? null,
   },
@@ -107,6 +124,97 @@ describe("projectPiWorkflowSession", () => {
     expect(projection.draftAgentMessage).toBeNull();
     assert(projection.readyForInput);
     expect(projection.statusText).toBeNull();
+  });
+
+  it("keeps every message from a completed multi-message delta after hydration", () => {
+    const initialMessages = [userMessage("previous prompt"), assistantMessage("previous reply")];
+    const toolCallMessage = fauxAssistantMessage(
+      fauxToolCall("lookup", { query: "current" }, { id: "tool-call-1" }),
+      { stopReason: "toolUse", timestamp: 1 },
+    );
+    const toolResultMessage: ToolResultMessage = {
+      role: "toolResult",
+      toolCallId: "tool-call-1",
+      toolName: "lookup",
+      content: [fauxText("tool result")],
+      details: { found: true },
+      isError: false,
+      timestamp: 1,
+    };
+    const deltaEntries = [
+      agentMessageEntry("current-user", userMessage("current prompt"), "previous-assistant"),
+      agentMessageEntry("current-tool-call", toolCallMessage, "current-user"),
+      agentMessageEntry("current-tool-result", toolResultMessage, "current-tool-call"),
+      agentMessageEntry(
+        "current-assistant",
+        assistantMessage("current reply"),
+        "current-tool-result",
+      ),
+    ];
+
+    const projection = projectPiWorkflowSession({
+      workflowName,
+      sessionId,
+      instance,
+      initialState: { messages: initialMessages },
+      initialCompletedStepKeys: ["do:previous"],
+      workflowSteps: [completedStep("do:current", deltaEntries)],
+    });
+
+    expect(projection.state.messages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+      "assistant",
+      "toolResult",
+      "assistant",
+    ]);
+  });
+
+  it("applies a hydrated navigation delta using entries from earlier completed steps", () => {
+    const root = messageEntry("root", "Root", { role: "user" });
+    const branchA = messageEntry("branch-a", "Branch A", { parentId: "root" });
+    const branchB = messageEntry("branch-b", "Branch B", { parentId: "root" });
+    const previousLeaf: SessionTreeEntry = {
+      type: "leaf",
+      id: "leaf-b",
+      parentId: "branch-b",
+      timestamp: "2026-07-03T00:00:00.000Z",
+      targetId: "branch-b",
+    };
+    const navigationLeaf: SessionTreeEntry = {
+      type: "leaf",
+      id: "leaf-a",
+      parentId: "branch-b",
+      timestamp: "2026-07-03T00:00:01.000Z",
+      targetId: "branch-a",
+    };
+
+    const projection = projectPiWorkflowSession({
+      workflowName,
+      sessionId,
+      instance,
+      initialState: { messages: [userMessage("Root"), assistantMessage("Branch B")] },
+      initialCompletedStepKeys: ["do:branches"],
+      workflowSteps: [
+        completedStep("do:branches", [root, branchA, branchB, previousLeaf]),
+        {
+          stepKey: "do:navigate",
+          type: "do",
+          status: "completed",
+          waitEventType: null,
+          result: {
+            type: "harness-run",
+            operation: "navigateTree",
+            appendedEntries: [navigationLeaf],
+            leafId: "branch-a",
+            navigateTreeResult: { cancelled: false },
+          },
+        },
+      ],
+    });
+
+    expect(projection.state.messages.map(textContent)).toEqual(["Root", "Branch A"]);
   });
 
   it("keeps live assistant updates in draft state and settles on message_end", () => {

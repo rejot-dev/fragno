@@ -64,7 +64,7 @@ const harnessResult = (
   entries: readonly SessionTreeEntry[] = [messageEntry(`entry-${text}`, text)],
 ) => ({
   type: "harness-run",
-  entries,
+  appendedEntries: entries,
 });
 
 const workflowInstanceMutation = (): LofiMutation => ({

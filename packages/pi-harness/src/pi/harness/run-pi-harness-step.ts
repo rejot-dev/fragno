@@ -70,7 +70,6 @@ export type PiHarnessStepResult = {
   type: "harness-run";
   operation: PiHarnessOperation["kind"];
   appendedEntries: SessionTreeEntry[];
-  entries: SessionTreeEntry[];
   leafId: string | null;
   assistantMessage?: AssistantMessage;
   compactResult?: Awaited<ReturnType<AgentHarness["compact"]>>;
@@ -95,16 +94,16 @@ export type RunPiHarnessStepOptions<TTool extends AgentTool = AgentTool> =
     agentName: string;
     operation: PiHarnessOperation;
     committedEntries?: readonly SessionTreeEntry[];
+    /** Entry IDs already represented by earlier durable step results. */
+    persistedEntryIds?: readonly string[];
     internal?: PiHarnessInternalOptions;
   };
 
 export type PiHarnessSessionStepState = {
   entries: SessionTreeEntry[];
   leafId: string | null;
+  persistedEntryIds: string[];
 };
-
-const cloneEntry = (entry: SessionTreeEntry): SessionTreeEntry =>
-  structuredClone(entry) as SessionTreeEntry;
 
 const leafIdAfterEntry = (entry: SessionTreeEntry): string | null =>
   entry.type === "leaf" ? entry.targetId : entry.id;
@@ -143,7 +142,7 @@ export const createPiHarnessSessionState = (
   initialMessages?: readonly AgentMessage[],
 ): PiHarnessSessionStepState => {
   const entries = initialEntriesFromMessages(initialMessages);
-  return { entries, leafId: entriesLeafId(entries) };
+  return { entries, leafId: entriesLeafId(entries), persistedEntryIds: [] };
 };
 
 const mergeSessionEntries = (
@@ -158,7 +157,7 @@ const mergeSessionEntries = (
       continue;
     }
     seen.add(entry.id);
-    entries.push(cloneEntry(entry));
+    entries.push(entry);
   }
 
   return entries;
@@ -173,7 +172,7 @@ const previousSessionEntries = (emissions: readonly PiHarnessEmission[]): Sessio
       continue;
     }
     seen.add(emission.entry.id);
-    entries.push(cloneEntry(emission.entry));
+    entries.push(emission.entry);
   }
 
   return entries;
@@ -192,6 +191,11 @@ const previousOperationComplete = (
 
   return undefined;
 };
+
+const sessionEntriesNotPersisted = (
+  entries: readonly SessionTreeEntry[],
+  persistedEntryIds: ReadonlySet<string>,
+): SessionTreeEntry[] => entries.filter((entry) => !persistedEntryIds.has(entry.id));
 
 const messageEntries = (entries: readonly SessionTreeEntry[]) =>
   entries.flatMap((entry) => (entry.type === "message" ? [entry] : []));
@@ -212,11 +216,11 @@ const rollbackPromptLikeOperationToInitialPrompt = (options: {
     (entry) => entry.type === "message" && entry.message.role === "user",
   );
   if (!initialPromptEntry) {
-    return options.entries.map(cloneEntry);
+    return [...options.entries];
   }
 
   const cutoff = options.entries.findIndex((entry) => entry.id === initialPromptEntry.id);
-  return cutoff === -1 ? options.entries.map(cloneEntry) : options.entries.slice(0, cutoff + 1);
+  return cutoff === -1 ? [...options.entries] : options.entries.slice(0, cutoff + 1);
 };
 
 const latestMessage = (entries: readonly SessionTreeEntry[]): AgentMessage | undefined =>
@@ -280,9 +284,7 @@ const handleControlCommand = async (
 const runOperation = async (
   harness: AgentHarness,
   operation: PiHarnessOperation,
-): Promise<
-  Omit<PiHarnessStepResult, "type" | "operation" | "appendedEntries" | "entries" | "leafId">
-> => {
+): Promise<Omit<PiHarnessStepResult, "type" | "operation" | "appendedEntries" | "leafId">> => {
   switch (operation.kind) {
     case "prompt":
       return { assistantMessage: await harness.prompt(...operation.args) };
@@ -309,11 +311,10 @@ export const runPiHarnessStep = async <TTool extends AgentTool = AgentTool>(
     );
     const replayedEntries = previousSessionEntries(previousEmissions);
     const completedResult = previousOperationComplete(previousEmissions, operationId);
-    const committedEntryIds = new Set((options.committedEntries ?? []).map((entry) => entry.id));
+    const persistedEntryIds = new Set(options.persistedEntryIds ?? []);
     const uncommittedReplayedEntries = replayedEntries.filter(
-      (entry) => !committedEntryIds.has(entry.id),
+      (entry) => !persistedEntryIds.has(entry.id),
     );
-    const appendedEntries: SessionTreeEntry[] = [];
     const metadata: SessionMetadata = {
       id: options.sessionId,
       createdAt: new Date().toISOString(),
@@ -333,19 +334,14 @@ export const runPiHarnessStep = async <TTool extends AgentTool = AgentTool>(
         );
       }
 
-      let recoveredEntries = storageEntries.map(cloneEntry);
+      let recoveredEntries = [...storageEntries];
       const lastMessage = latestMessage(recoveredEntries);
 
       if (isSuccessfulTerminalAssistantMessage(lastMessage)) {
-        const recoveredEntryIds = new Set(recoveredEntries.map((entry) => entry.id));
-        const recoveredAppendedEntries = uncommittedReplayedEntries
-          .filter((entry) => recoveredEntryIds.has(entry.id))
-          .map(cloneEntry);
         const result = {
           type: "harness-run",
           operation: options.operation.kind,
-          appendedEntries: recoveredAppendedEntries,
-          entries: recoveredEntries,
+          appendedEntries: sessionEntriesNotPersisted(recoveredEntries, persistedEntryIds),
           leafId: entriesLeafId(recoveredEntries),
           assistantMessage: latestAssistantMessage(recoveredEntries),
         } satisfies PiHarnessStepResult;
@@ -381,7 +377,6 @@ export const runPiHarnessStep = async <TTool extends AgentTool = AgentTool>(
         startIndex: replayedEntries.length,
       }),
       onAppendEntry: (entry) => {
-        appendedEntries.push(entry);
         tx.emit({ kind: "harness-session-entry", entry } satisfies PiHarnessEmission);
       },
     });
@@ -440,8 +435,7 @@ export const runPiHarnessStep = async <TTool extends AgentTool = AgentTool>(
       const result = {
         type: "harness-run",
         operation: options.operation.kind,
-        appendedEntries,
-        entries,
+        appendedEntries: sessionEntriesNotPersisted(entries, persistedEntryIds),
         leafId: await storage.getLeafId(),
         ...operationResult,
       } satisfies PiHarnessStepResult;
