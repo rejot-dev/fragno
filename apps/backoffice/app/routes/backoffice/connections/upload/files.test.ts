@@ -56,6 +56,7 @@ describe("upload files loader", () => {
   const createLoaderArgs = (url: string) =>
     ({
       request: new Request(url),
+      url: new URL(url),
       params: { orgId: "org_123" },
       context: {} as never,
     }) as unknown as Parameters<typeof loader>[0];

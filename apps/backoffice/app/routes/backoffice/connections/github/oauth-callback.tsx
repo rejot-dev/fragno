@@ -61,8 +61,8 @@ const isCompletedOAuth = (value: unknown): value is GitHubOAuthComplete => {
 export async function loader({
   request,
   context,
+  url: requestUrl,
 }: Route.LoaderArgs): Promise<LoaderData | Response> {
-  const requestUrl = new URL(request.url);
   const state = requestUrl.searchParams.get("state")?.trim() ?? "";
   const code = requestUrl.searchParams.get("code")?.trim() ?? "";
   const completed = requestUrl.searchParams.get("completed") === "1";
@@ -144,7 +144,7 @@ export async function loader({
     completion: claim.result,
   });
 
-  const redirectUrl = new URL(request.url);
+  const redirectUrl = new URL(requestUrl);
   redirectUrl.searchParams.delete("code");
   redirectUrl.searchParams.set("completed", "1");
   return redirect(`${redirectUrl.pathname}${redirectUrl.search}`);

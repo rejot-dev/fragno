@@ -107,8 +107,8 @@ export function meta() {
   ];
 }
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
-  const searchParams = new URL(request.url).searchParams;
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
+  const searchParams = url.searchParams;
   const requestedView = searchParams.get("view") === "new" ? "new" : "detail";
   const requestedSandboxId = readText(searchParams.get("sandbox"));
   const scope = await requireSandboxScopeAccess({ request, params, context });
@@ -157,7 +157,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
 }
 
-export async function action({ request, params, context }: Route.ActionArgs) {
+export async function action({ request, params, context, url }: Route.ActionArgs) {
   const formData = await request.formData();
   const intent = readText(formData.get("intent"));
   const scope = await requireSandboxScopeAccess({ request, params, context });
@@ -189,9 +189,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
     try {
       instance = await sandboxRuntime.startSandbox(options);
-      return redirect(
-        toSandboxPathFromRequest(request, { view: "detail", sandboxId: instance.id }),
-      );
+      return redirect(toSandboxPathFromUrl(url, { view: "detail", sandboxId: instance.id }));
     } catch (error) {
       if (instance?.id) {
         try {
@@ -286,7 +284,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
     try {
       await sandboxRuntime.killSandbox({ sandboxId });
-      return redirect(toSandboxPathFromRequest(request, { view: "new" }));
+      return redirect(toSandboxPathFromUrl(url, { view: "new" }));
     } catch (error) {
       return {
         intent: "kill",
@@ -801,8 +799,7 @@ function toSandboxPath(basePath: string, options: SandboxPathOptions = {}) {
   return query ? `${basePath}?${query}` : basePath;
 }
 
-function toSandboxPathFromRequest(request: Request, options: SandboxPathOptions = {}) {
-  const url = new URL(request.url);
+function toSandboxPathFromUrl(url: URL, options: SandboxPathOptions = {}) {
   return toSandboxPath(url.pathname.replace(/\/+$/, ""), options);
 }
 

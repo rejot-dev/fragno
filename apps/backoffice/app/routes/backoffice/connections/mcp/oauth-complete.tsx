@@ -8,16 +8,15 @@ type McpOAuthCompleteLoaderData = {
   status: "success" | "error";
 };
 
-export function loader({ request }: Route.LoaderArgs) {
-  const url = new URL(request.url);
+export function loader({ url }: Route.LoaderArgs) {
   const status = url.searchParams.get("status") === "success" ? "success" : "error";
   const serverSlug = url.searchParams.get("server")?.trim() || null;
 
   return { serverSlug, status } satisfies McpOAuthCompleteLoaderData;
 }
 
-export function meta({ data }: Route.MetaArgs) {
-  return [{ title: data?.status === "error" ? "MCP OAuth failed" : "MCP OAuth connected" }];
+export function meta({ loaderData }: Route.MetaArgs) {
+  return [{ title: loaderData?.status === "error" ? "MCP OAuth failed" : "MCP OAuth connected" }];
 }
 
 export default function BackofficeOrganisationMcpOAuthComplete() {

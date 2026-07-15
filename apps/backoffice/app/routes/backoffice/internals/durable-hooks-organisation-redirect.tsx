@@ -8,12 +8,11 @@ import {
 
 const DEFAULT_FRAGMENT: DurableHooksOrgFragment = "api";
 
-export async function loader({ params, request }: Route.LoaderArgs) {
+export async function loader({ params, url }: Route.LoaderArgs) {
   if (!params.orgId) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const url = new URL(request.url);
   const requestedFragment = url.searchParams.get("fragment");
   const fragment =
     requestedFragment === "workflows"

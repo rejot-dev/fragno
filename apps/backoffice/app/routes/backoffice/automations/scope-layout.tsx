@@ -189,10 +189,9 @@ const currentTabFromPath = (pathname: string): AutomationTab => {
   return "terminal";
 };
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const me = await getAuthMe(request, context);
   if (!me?.user) {
-    const url = new URL(request.url);
     return Response.redirect(
       new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
       302,
@@ -234,10 +233,9 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     user: me.user,
   });
   const backofficeScope = toBackofficeScope(selectedScope);
-  const requestUrl = new URL(request.url);
-  const currentTab = currentTabFromPath(requestUrl.pathname);
-  const eventsCursor = requestUrl.searchParams.get("cursor")?.trim() || undefined;
-  const eventsPageSize = parseEventsPageSize(requestUrl.searchParams.get("pageSize"));
+  const currentTab = currentTabFromPath(url.pathname);
+  const eventsCursor = url.searchParams.get("cursor")?.trim() || undefined;
+  const eventsPageSize = parseEventsPageSize(url.searchParams.get("pageSize"));
 
   const [workspaceResult, routesResult, storeResult, eventsResult, eventDefinitionsResult] =
     await Promise.all([
@@ -282,7 +280,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     eventsError: eventsResult.eventsError,
     eventDefinitionsError: eventDefinitionsResult.eventDefinitionsError,
     projectsError: projectsResult.projectsError,
-    storePrefix: requestUrl.searchParams.get("prefix") ?? "",
+    storePrefix: url.searchParams.get("prefix") ?? "",
   };
 }
 
@@ -291,7 +289,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
   return [{ title: `Automations · ${label}` }];
 }
 
-export async function action({ request, params, context }: Route.ActionArgs) {
+export async function action({ request, params, context, url }: Route.ActionArgs) {
   const formData = await request.formData();
   const intent = String(formData.get("intent") ?? "").trim();
   if (intent !== "create-project") {
@@ -300,7 +298,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
   const me = await getAuthMe(request, context);
   if (!me?.user) {
-    const url = new URL(request.url);
     throw redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
   }
 

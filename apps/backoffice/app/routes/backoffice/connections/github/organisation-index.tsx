@@ -8,11 +8,11 @@ import {
   gitHubRepositoriesRouteAvailable,
 } from "./data";
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const organizationScope = resolveOrganizationScopeFromRouteParams(params);
   const organizationId = organizationScope.organizationId;
 
-  const origin = new URL(request.url).origin;
+  const origin = url.origin;
   const { configState } = await fetchGitHubAdminConfig(context, organizationId, origin);
   const linkedRepositories = configState?.configured
     ? await fetchGitHubLinkedRepositories(request, context, organizationId)
@@ -21,7 +21,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     linkedRepositories && gitHubRepositoriesRouteAvailable(linkedRepositories)
       ? "repositories"
       : "configuration";
-  return redirect(`${new URL(request.url).pathname.replace(/\/+$/u, "")}/${target}`);
+  return redirect(`${url.pathname.replace(/\/+$/u, "")}/${target}`);
 }
 
 export default function BackofficeOrganisationGitHubIndex() {

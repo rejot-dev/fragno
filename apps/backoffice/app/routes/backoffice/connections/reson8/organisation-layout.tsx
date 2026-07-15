@@ -14,7 +14,7 @@ import {
   type Reson8Tab,
 } from "./shared";
 
-export async function loader({ request, params, context }: LoaderFunctionArgs) {
+export async function loader({ request, params, context, url }: LoaderFunctionArgs) {
   const orgId = params.orgId;
   if (!orgId) {
     throw new Response("Not Found", { status: 404 });
@@ -22,7 +22,6 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
 
   const me = await getAuthMe(request, context);
   if (!me?.user) {
-    const url = new URL(request.url);
     return redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
   }
 
@@ -33,7 +32,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   }
 
   const { configState, configError } = await fetchReson8Config(context, orgId);
-  const currentPath = new URL(request.url).pathname.replace(/\/+$/, "");
+  const currentPath = url.pathname.replace(/\/+$/, "");
   const basePath = `/backoffice/connections/reson8/${orgId}`;
   if (currentPath === basePath) {
     return redirect(`${basePath}/${configState?.configured ? "transcribe" : "configuration"}`);
@@ -47,8 +46,8 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   };
 }
 
-export function meta({ data }: { data?: { orgId?: string } }) {
-  const orgId = data?.orgId ?? "organisation";
+export function meta({ loaderData }: { loaderData?: { orgId?: string } }) {
+  const orgId = loaderData?.orgId ?? "organisation";
   return [{ title: `Reson8 Setup · ${orgId}` }];
 }
 

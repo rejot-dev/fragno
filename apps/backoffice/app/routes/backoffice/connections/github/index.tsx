@@ -12,10 +12,9 @@ export function meta() {
   ];
 }
 
-export async function loader({ request, context }: Route.LoaderArgs) {
+export async function loader({ request, context, url }: Route.LoaderArgs) {
   const me = await getAuthMe(request, context);
   if (!me?.user) {
-    const url = new URL(request.url);
     return redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
   }
 

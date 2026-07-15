@@ -23,10 +23,9 @@ import {
   type GitHubTab,
 } from "./shared";
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const me = await getAuthMe(request, context);
   if (!me?.user) {
-    const url = new URL(request.url);
     return Response.redirect(
       new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
       302,
@@ -59,7 +58,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     allowedScopes: ["org"],
   });
 
-  const origin = new URL(request.url).origin;
+  const origin = url.origin;
   const { configState, configError } = await fetchGitHubAdminConfig(
     context,
     organizationId,
@@ -84,8 +83,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   };
 }
 
-export function meta({ data }: Route.MetaArgs) {
-  const label = data?.label ?? "organisation";
+export function meta({ loaderData }: Route.MetaArgs) {
+  const label = loaderData?.label ?? "organisation";
   return [{ title: `GitHub Setup · ${label}` }];
 }
 

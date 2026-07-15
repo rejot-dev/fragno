@@ -8,10 +8,9 @@ import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 import { buildBackofficeLoginPath } from "../../auth-navigation";
 import { formatTimestamp } from "./shared";
 
-export async function loader({ request, context }: LoaderFunctionArgs) {
+export async function loader({ request, context, url }: LoaderFunctionArgs) {
   const me = await getAuthMe(request, context);
   if (!me?.user) {
-    const url = new URL(request.url);
     return redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
   }
 

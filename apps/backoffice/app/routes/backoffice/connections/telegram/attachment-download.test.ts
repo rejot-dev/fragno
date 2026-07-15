@@ -180,6 +180,9 @@ describe("telegram attachment download route", () => {
 const createLoaderArgs = (url: string) =>
   ({
     request: new Request(url),
+    url: new URL(url),
+    pattern:
+      "/backoffice/automations/:scopeKind/:scopeId/integrations/telegram/attachment-download",
     context: {
       get: () => ({
         runtime: {

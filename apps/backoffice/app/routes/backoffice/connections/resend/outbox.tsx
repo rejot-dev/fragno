@@ -31,7 +31,7 @@ export type ResendOutgoingOutletContext = {
   configState: ResendConfigState | null;
 };
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const scope = resolveScopeFromRouteParams(params);
 
   const { configState, configError } = await fetchResendConfig(context, scope);
@@ -47,7 +47,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
   if (!configState?.configured) {
     return redirect(
-      `${new URL(request.url).pathname.replace(/\/(?:domains|threads|incoming|outgoing)(?:\/.*)?$/u, "")}/configuration`,
+      `${url.pathname.replace(/\/(?:domains|threads|incoming|outgoing)(?:\/.*)?$/u, "")}/configuration`,
     );
   }
 

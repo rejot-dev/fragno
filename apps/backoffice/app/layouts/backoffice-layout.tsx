@@ -10,13 +10,12 @@ import { getRouteErrorDebugDetails } from "@/routes/backoffice/route-errors";
 
 import type { Route } from "./+types/backoffice-layout";
 
-export async function loader({ request, context }: Route.LoaderArgs) {
+export async function loader({ request, context, url }: Route.LoaderArgs) {
   if (import.meta.env.MODE !== "development") {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const requestUrl = new URL(request.url);
-  const returnTo = `${requestUrl.pathname}${requestUrl.search}`;
+  const returnTo = `${url.pathname}${url.search}`;
   const me = await getAuthMe(request, context);
   if (!me?.user) {
     throw redirect(buildBackofficeLoginPath(returnTo));

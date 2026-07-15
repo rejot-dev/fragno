@@ -26,13 +26,13 @@ type BackofficeLoginActionData = {
   message: string;
 };
 
-export async function loader({ request, context }: Route.LoaderArgs) {
+export async function loader({ request, context, url }: Route.LoaderArgs) {
   if (import.meta.env.MODE !== "development") {
     throw new Response("Not Found", { status: 404 });
   }
 
   const me = await getAuthMe(request, context);
-  const returnTo = readBackofficeReturnTo(new URL(request.url));
+  const returnTo = readBackofficeReturnTo(url);
 
   if (me?.user) {
     const currentActiveOrganizationId = me.activeOrganization?.organization.id ?? null;
@@ -98,13 +98,13 @@ export async function clientLoader({ serverLoader }: Route.ClientLoaderArgs) {
 }
 clientLoader.hydrate = true;
 
-export async function action({ request, context }: Route.ActionArgs) {
+export async function action({ request, context, url }: Route.ActionArgs) {
   if (import.meta.env.MODE !== "development") {
     throw new Response("Not Found", { status: 404 });
   }
 
   const formData = await request.formData();
-  const returnTo = readBackofficeReturnTo(new URL(request.url));
+  const returnTo = readBackofficeReturnTo(url);
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const activeOrganizationId = String(formData.get("activeOrganizationId") ?? "").trim();

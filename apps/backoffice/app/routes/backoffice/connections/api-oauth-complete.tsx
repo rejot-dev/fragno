@@ -25,8 +25,7 @@ const explanationFor = (message: string | null) => {
   return "The provider redirected back to Backoffice successfully, but the final token exchange failed.";
 };
 
-export function loader({ request }: Route.LoaderArgs) {
-  const url = new URL(request.url);
+export function loader({ url }: Route.LoaderArgs) {
   const status = url.searchParams.get("status") === "success" ? "success" : "error";
   const orgId = url.searchParams.get("orgId")?.trim() || null;
   const connectionSlug = url.searchParams.get("connection")?.trim() || null;
@@ -36,8 +35,8 @@ export function loader({ request }: Route.LoaderArgs) {
   return { orgId, connectionSlug, status, code, message } satisfies ApiOAuthCompleteLoaderData;
 }
 
-export function meta({ data }: Route.MetaArgs) {
-  return [{ title: data?.status === "success" ? "API OAuth connected" : "API OAuth failed" }];
+export function meta({ loaderData }: Route.MetaArgs) {
+  return [{ title: loaderData?.status === "success" ? "API OAuth connected" : "API OAuth failed" }];
 }
 
 export default function BackofficeApiOAuthComplete() {

@@ -21,11 +21,11 @@ export type GitHubRepositoriesOutletContext = {
   basePath: string;
 };
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const organizationScope = resolveOrganizationScopeFromRouteParams(params);
   const organizationId = organizationScope.organizationId;
 
-  const origin = new URL(request.url).origin;
+  const origin = url.origin;
   const { configState, configError } = await fetchGitHubAdminConfig(
     context,
     organizationId,
@@ -40,9 +40,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   }
 
   if (!configState?.configured) {
-    return redirect(
-      `${new URL(request.url).pathname.replace(/\/(?:repositories)(?:\/.*)?$/u, "")}/configuration`,
-    );
+    return redirect(`${url.pathname.replace(/\/(?:repositories)(?:\/.*)?$/u, "")}/configuration`);
   }
 
   const { repos, reposError } = await fetchGitHubLinkedRepositories(
@@ -51,9 +49,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     organizationId,
   );
   if (!reposError && repos.length === 0) {
-    return redirect(
-      `${new URL(request.url).pathname.replace(/\/(?:repositories)(?:\/.*)?$/u, "")}/configuration`,
-    );
+    return redirect(`${url.pathname.replace(/\/(?:repositories)(?:\/.*)?$/u, "")}/configuration`);
   }
 
   return {

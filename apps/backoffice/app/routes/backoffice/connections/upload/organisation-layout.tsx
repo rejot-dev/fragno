@@ -13,7 +13,7 @@ import {
   type UploadConfigState,
 } from "./shared";
 
-export async function loader({ request, params, context }: LoaderFunctionArgs) {
+export async function loader({ request, params, context, url }: LoaderFunctionArgs) {
   const orgId = params.orgId;
   if (!orgId) {
     throw new Response("Not Found", { status: 404 });
@@ -32,7 +32,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
 
   const { configState, configError } = await fetchUploadConfig(context, orgId);
 
-  const currentPath = new URL(request.url).pathname.replace(/\/+$/, "");
+  const currentPath = url.pathname.replace(/\/+$/, "");
   const basePath = `/backoffice/connections/upload/${orgId}`;
   if (currentPath === basePath) {
     const target = configState?.configured ? "files" : "configuration";
@@ -41,15 +41,15 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
 
   return {
     orgId,
-    origin: new URL(request.url).origin,
+    origin: url.origin,
     organisation,
     configState,
     configError,
   };
 }
 
-export function meta({ data }: { data?: { orgId?: string } }) {
-  const orgId = data?.orgId ?? "organisation";
+export function meta({ loaderData }: { loaderData?: { orgId?: string } }) {
+  const orgId = loaderData?.orgId ?? "organisation";
   return [{ title: `Upload Setup · ${orgId}` }];
 }
 

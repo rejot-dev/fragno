@@ -19,10 +19,9 @@ import {
   type ResendTab,
 } from "./shared";
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const me = await getAuthMe(request, context);
   if (!me?.user) {
-    const url = new URL(request.url);
     return Response.redirect(
       new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
       302,
@@ -54,7 +53,6 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   });
 
   const { configState, configError } = await fetchResendConfig(context, integration.scope);
-  const url = new URL(request.url);
   const currentPath = url.pathname.replace(/\/+$/, "");
   const basePath = integration.basePath;
   if (currentPath === basePath) {
@@ -64,7 +62,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
   return {
     ...integration,
-    origin: new URL(request.url).origin,
+    origin: url.origin,
     organisation,
     scopeOptions,
     configState,

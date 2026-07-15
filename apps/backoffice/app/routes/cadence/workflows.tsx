@@ -28,14 +28,14 @@ export const handle = { fullBleed: true };
  * edit its code next to the graph and watch the graph re-derive as you type,
  * and use "Go live" to auto-refresh as the underlying files change.
  */
-export async function loader({ request, context }: Route.LoaderArgs) {
+export async function loader({ request, context, url }: Route.LoaderArgs) {
   const me = await getAuthMe(request, context);
   const orgId = me?.activeOrganization?.organization?.id;
   if (!orgId) {
     return { workflows: [], selected: null, graph: null, source: null, events: [], orgId: null };
   }
 
-  const workflowName = new URL(request.url).searchParams.get("workflow") ?? undefined;
+  const workflowName = url.searchParams.get("workflow") ?? undefined;
   const view = await buildWorkflowGraphView({ request, context, orgId, workflowName });
   return { ...view, orgId };
 }

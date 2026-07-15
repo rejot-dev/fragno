@@ -12,14 +12,13 @@ import {
 } from "./organisation-shared";
 import { throwOrganisationNotFound } from "./route-errors";
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   if (!params.orgId) {
     throw new Response("Not Found", { status: 404 });
   }
 
   const me = await getAuthMe(request, context);
   if (!me?.user) {
-    const url = new URL(request.url);
     return Response.redirect(
       new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
       302,
@@ -39,8 +38,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   };
 }
 
-export function meta({ data }: Route.MetaArgs) {
-  const organisationName = data?.organization?.name ?? data?.orgId ?? "Organisation";
+export function meta({ loaderData }: Route.MetaArgs) {
+  const organisationName = loaderData?.organization?.name ?? loaderData?.orgId ?? "Organisation";
   return [{ title: `Organisation · ${organisationName}` }];
 }
 

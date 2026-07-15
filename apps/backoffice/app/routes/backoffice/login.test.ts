@@ -19,6 +19,7 @@ describe("backoffice login route", () => {
   const createLoaderArgs = (url: string) =>
     ({
       request: new Request(url),
+      url: new URL(url),
       context: {} as never,
       params: {},
     }) as unknown as Parameters<typeof loader>[0];
@@ -32,6 +33,7 @@ describe("backoffice login route", () => {
         },
         body: new URLSearchParams(body),
       }),
+      url: new URL(url),
       context: {} as never,
       params: {},
     }) as unknown as Parameters<typeof action>[0];

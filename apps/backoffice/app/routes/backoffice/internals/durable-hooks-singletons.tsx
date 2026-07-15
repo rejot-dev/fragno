@@ -27,11 +27,10 @@ const parsePageSize = (value: string | null) => {
 };
 
 export async function loader({
-  request,
   context,
+  url,
 }: Route.LoaderArgs): Promise<DurableHooksSingletonLoaderData> {
   try {
-    const url = new URL(request.url);
     const cursor = url.searchParams.get("cursor") ?? undefined;
     const pageSize = parsePageSize(url.searchParams.get("pageSize"));
     const authDo = getAuthDurableObject(context);
