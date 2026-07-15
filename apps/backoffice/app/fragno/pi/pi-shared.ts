@@ -62,9 +62,18 @@ export const PI_PROVIDER_TO_MODEL_PROVIDER = {
   gemini: "google",
 } as const satisfies Record<PiModelProvider, string>;
 
+const PI_PROVIDER_THINKING_LEVELS: Partial<Record<PiModelProvider, PiThinkingLevel>> = {
+  openai: "medium",
+};
+
+export const resolvePiModelThinkingLevel = (
+  provider: PiModelProvider,
+): PiThinkingLevel | undefined => PI_PROVIDER_THINKING_LEVELS[provider];
+
 export const PI_MODEL_CATALOG: PiModelOption[] = [
-  { provider: "openai", name: "gpt-5.4-mini", label: "GPT-5.4 mini" },
-  { provider: "openai", name: "gpt-5.5", label: "GPT-5.5" },
+  { provider: "openai", name: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
+  { provider: "openai", name: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
+  { provider: "openai", name: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
   {
     provider: "anthropic",
     name: "claude-haiku-4-5",

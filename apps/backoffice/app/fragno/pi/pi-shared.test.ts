@@ -8,6 +8,7 @@ import {
   parsePiAgentName,
   PI_MODEL_CATALOG,
   resolvePiHarnesses,
+  resolvePiModelThinkingLevel,
 } from "./pi-shared";
 
 describe("pi-shared helpers", () => {
@@ -31,13 +32,21 @@ describe("pi-shared helpers", () => {
     expect(parsePiAgentName("a::b")).toBeNull();
   });
 
-  it("resolves known model options", () => {
-    const first = PI_MODEL_CATALOG[0];
-    expect(first).toBeDefined();
-    if (first) {
-      const option = findPiModelOption(first.provider, first.name);
-      expect(option?.label).toBe(first.label);
-    }
+  it("offers GPT-5.6 Luna as the default OpenAI model", () => {
+    const openAiModels = PI_MODEL_CATALOG.filter((option) => option.provider === "openai");
+
+    expect(openAiModels).toEqual([
+      { provider: "openai", name: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
+      { provider: "openai", name: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
+      { provider: "openai", name: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
+    ]);
+    expect(findPiModelOption("openai", "gpt-5.6-terra")).toEqual(openAiModels[1]);
+  });
+
+  it("uses medium reasoning for OpenAI models", () => {
+    assert(resolvePiModelThinkingLevel("openai") === "medium");
+    expect(resolvePiModelThinkingLevel("anthropic")).toBeUndefined();
+    expect(resolvePiModelThinkingLevel("gemini")).toBeUndefined();
   });
 
   it("falls back to the single default harness", () => {

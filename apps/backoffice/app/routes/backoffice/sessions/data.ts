@@ -4,7 +4,7 @@ import type { PiSession, PiSessionDetail, PiWorkflowStatus } from "@fragno-dev/p
 import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 import type { RouterContextProvider } from "react-router";
 
-import type { PiConfigState } from "@/fragno/pi/pi-shared";
+import type { PiConfigState, PiThinkingLevel } from "@/fragno/pi/pi-shared";
 import { getPiDurableObject } from "@/worker-runtime/durable-objects";
 
 const DEFAULT_PAGE_SIZE = 50;
@@ -151,6 +151,7 @@ export async function createPiSession(
     input: {
       harnessName: string;
       systemPrompt?: string;
+      thinkingLevel?: PiThinkingLevel;
     };
     name?: string;
   },

@@ -19,7 +19,7 @@ import {
   type AgentTool,
   type Skill,
 } from "@earendil-works/pi-agent-core";
-import { getModels } from "@earendil-works/pi-ai";
+import { getModels, type Model } from "@earendil-works/pi-ai";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
@@ -475,14 +475,58 @@ export const createPiToolRegistry = (options: CreatePiToolFactoryOptions) => {
   };
 };
 
+const BACKOFFICE_OPENAI_MODELS: Model<"openai-responses">[] = [
+  {
+    id: "gpt-5.6-sol",
+    name: "GPT-5.6 Sol",
+    api: "openai-responses",
+    provider: "openai",
+    baseUrl: "https://api.openai.com/v1",
+    reasoning: true,
+    thinkingLevelMap: { off: "none", xhigh: "xhigh" },
+    input: ["text", "image"],
+    cost: { input: 5, output: 30, cacheRead: 5, cacheWrite: 0 },
+    contextWindow: 1_050_000,
+    maxTokens: 128_000,
+  },
+  {
+    id: "gpt-5.6-terra",
+    name: "GPT-5.6 Terra",
+    api: "openai-responses",
+    provider: "openai",
+    baseUrl: "https://api.openai.com/v1",
+    reasoning: true,
+    thinkingLevelMap: { off: "none", xhigh: "xhigh" },
+    input: ["text", "image"],
+    cost: { input: 2.5, output: 15, cacheRead: 2.5, cacheWrite: 0 },
+    contextWindow: 1_050_000,
+    maxTokens: 128_000,
+  },
+  {
+    id: "gpt-5.6-luna",
+    name: "GPT-5.6 Luna",
+    api: "openai-responses",
+    provider: "openai",
+    baseUrl: "https://api.openai.com/v1",
+    reasoning: true,
+    thinkingLevelMap: { off: "none", xhigh: "xhigh" },
+    input: ["text", "image"],
+    cost: { input: 1, output: 6, cacheRead: 1, cacheWrite: 0 },
+    contextWindow: 1_050_000,
+    maxTokens: 128_000,
+  },
+];
+
 const resolveBackofficeModel = (
   provider: keyof typeof PI_PROVIDER_TO_MODEL_PROVIDER,
   modelName: string,
 ) => {
   const modelProvider = PI_PROVIDER_TO_MODEL_PROVIDER[provider];
-  return getModels(modelProvider).find(
-    (model) => model.name === modelName || model.id === modelName,
-  );
+  const models =
+    provider === "openai"
+      ? [...BACKOFFICE_OPENAI_MODELS, ...getModels(modelProvider)]
+      : getModels(modelProvider);
+  return models.find((model) => model.name === modelName || model.id === modelName);
 };
 
 const resolveApiKey = (config: StoredPiConfig, provider: string): string | undefined => {
