@@ -16,6 +16,7 @@ import {
   type ToolCall,
 } from "@earendil-works/pi-ai";
 
+import { projectPiWorkflowSession } from "../workflow-session-projection";
 import { NoOpExecutionEnv } from "./execution-env";
 import {
   createPiHarnessSessionState,
@@ -241,9 +242,15 @@ describe("runPiHarnessStep", () => {
       ...agent,
       operation: { kind: "prompt", args: ["next prompt"] },
       committedEntries: state.entries,
+      persistedEntryIds: state.entries.map((entry) => entry.id),
     });
-    const nextState = { entries: result.entries, leafId: result.leafId };
+    const nextState = {
+      entries: [...state.entries, ...result.appendedEntries],
+      leafId: result.leafId,
+    };
 
+    expect(result).not.toHaveProperty("entries");
+    expect(result.appendedEntries).toHaveLength(2);
     expect(result.assistantMessage).toMatchObject({
       role: "assistant",
       content: [{ type: "text", text: "stateful assistant" }],
@@ -257,6 +264,44 @@ describe("runPiHarnessStep", () => {
     assert(nextState.entries.length === 3);
     expect(nextState.entries[0]).toMatchObject({ id: "initial-0", message: initialMessage });
     assert(nextState.leafId === nextState.entries.at(-1)?.id);
+  });
+
+  it("preserves initial session messages in the completed workflow projection", async () => {
+    const initialMessage: AgentMessage = {
+      role: "user",
+      content: "existing context",
+      timestamp: Date.now(),
+    };
+    const state = createPiHarnessSessionState([initialMessage]);
+    const result = await runPiHarnessStep(createFakeStep({}).step, "turn-1", {
+      workflowName: "session-step-workflow",
+      sessionId: "session-with-initial-context",
+      agentName: "default",
+      env: createEnv(),
+      systemPrompt: "You are helpful.",
+      model: mockModel,
+      streamFn: createTextStreamFn("stateful assistant"),
+      operation: { kind: "prompt", args: ["next prompt"] },
+      committedEntries: state.entries,
+    });
+
+    const projection = projectPiWorkflowSession({
+      workflowName: "session-step-workflow",
+      sessionId: "session-with-initial-context",
+      instance: { status: "active" },
+      workflowSteps: [
+        {
+          stepKey: "do:turn-1",
+          type: "do",
+          status: "completed",
+          waitEventType: null,
+          result,
+        },
+      ],
+    });
+
+    expect(projection.state.messages).toHaveLength(3);
+    expect(projection.state.messages[0]).toEqual(initialMessage);
   });
 });
 
@@ -410,7 +455,7 @@ describe("runPiHarnessStep durable retry hardening", () => {
       content: [{ type: "text", text: "charged complete" }],
     });
     expect(
-      activeMessageEntries(result.entries, result.leafId).flatMap((entry) =>
+      activeMessageEntries(result.appendedEntries, result.leafId).flatMap((entry) =>
         entry.type === "message" ? [entry.message.role] : [],
       ),
     ).toEqual(["user", "assistant", "toolResult", "assistant"]);
@@ -541,7 +586,7 @@ describe("runPiHarnessStep durable retry hardening", () => {
     });
 
     expect(streamFn).toHaveBeenCalledTimes(1);
-    expect(activeMessageEntries(result.entries, result.leafId)).toMatchObject([
+    expect(activeMessageEntries(result.appendedEntries, result.leafId)).toMatchObject([
       { type: "message", message: { role: "user" } },
       { type: "message", message: { role: "assistant" } },
     ]);

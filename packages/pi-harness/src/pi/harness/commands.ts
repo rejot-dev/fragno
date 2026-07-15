@@ -115,6 +115,26 @@ const waitStepName = (commandIndex: number): string => `wait-command-${commandIn
 const commandStepName = (command: PiSessionCommandPayload): string =>
   `command:${command.commandId}`;
 
+const mergeSessionEntries = (
+  committedEntries: readonly SessionTreeEntry[],
+  appendedEntries: readonly SessionTreeEntry[],
+): SessionTreeEntry[] => {
+  const entries = [...committedEntries];
+  const indexesById = new Map(entries.map((entry, index) => [entry.id, index]));
+
+  for (const entry of appendedEntries) {
+    const existingIndex = indexesById.get(entry.id);
+    if (existingIndex === undefined) {
+      indexesById.set(entry.id, entries.length);
+      entries.push(entry);
+    } else {
+      entries[existingIndex] = entry;
+    }
+  }
+
+  return entries;
+};
+
 const messagesFromEntries = <TTools extends AgentLoopToolsInput>(
   entries: readonly SessionTreeEntry[],
 ): AgentLoopMessage<TTools>[] =>
@@ -181,11 +201,20 @@ export const createAgentLoop = <TTools extends AgentLoopToolsInput = AgentLoopTo
       agentName,
       operation,
       committedEntries: state.entries,
+      persistedEntryIds: state.persistedEntryIds,
       tools: tools ? [...tools] : undefined,
       activeToolNames: runOptions.activeToolNames ? [...runOptions.activeToolNames] : undefined,
       internal: internalOptions,
     });
-    state = { entries: result.entries, leafId: result.leafId };
+    const persistedEntryIds = new Set(state.persistedEntryIds);
+    for (const entry of result.appendedEntries) {
+      persistedEntryIds.add(entry.id);
+    }
+    state = {
+      entries: mergeSessionEntries(state.entries, result.appendedEntries),
+      leafId: result.leafId,
+      persistedEntryIds: [...persistedEntryIds],
+    };
 
     return messagesFromEntries<TTools>(result.appendedEntries).at(-1);
   };
@@ -227,6 +256,10 @@ export const createAgentLoop = <TTools extends AgentLoopToolsInput = AgentLoopTo
       return await executeCommandAndRunStep(await waitForCommand(), runOptions);
     },
     summary,
-    getState: () => ({ entries: [...state.entries], leafId: state.leafId }),
+    getState: () => ({
+      entries: [...state.entries],
+      leafId: state.leafId,
+      persistedEntryIds: [...state.persistedEntryIds],
+    }),
   };
 };

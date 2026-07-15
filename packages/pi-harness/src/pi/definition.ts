@@ -40,12 +40,6 @@ export type PiAgentLoopSerializableState = PiAgentLoopCursorState & {
   messages: AgentMessage[];
 };
 
-const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
-const isPiHarnessStepResult = (value: unknown): value is PiHarnessStepResult =>
-  isObjectRecord(value) && value["type"] === "harness-run" && Array.isArray(value["entries"]);
-
 const WAIT_FOR_COMMAND_TIMEOUT_MS = 60 * 60 * 1000;
 
 const createInitialPiAgentLoopCursorState = (): PiAgentLoopCursorState => ({
@@ -112,7 +106,7 @@ export const piHarnessDefinition = defineFragment<PiFragmentConfig>("pi-harness"
               type: step.type,
               status: step.status,
               waitEventType: step.waitEventType,
-              result: isPiHarnessStepResult(step.result) ? step.result : null,
+              result: (step.result ?? null) as PiHarnessStepResult | null,
             }));
             const projection = projectPiWorkflowSession({
               workflowName,

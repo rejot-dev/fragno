@@ -22,7 +22,7 @@ import { piHarnessDefinition } from "./definition";
 import { createPiWorkflows } from "./factory";
 import { createAgentLoop, waitForPiCommand } from "./harness/commands";
 import { NoOpExecutionEnv } from "./harness/execution-env";
-import type { PiHarnessAgentOptions } from "./harness/run-pi-harness-step";
+import type { PiHarnessAgentOptions, PiHarnessStepResult } from "./harness/run-pi-harness-step";
 import { definePiTool } from "./tools";
 import type { PiFragmentConfig } from "./types";
 import { createInteractiveChatWorkflow } from "./workflows/interactive-chat-workflow";
@@ -653,7 +653,7 @@ describe("Pi harness workflow scenarios", () => {
     );
   });
 
-  test("replays a completed harness step after runner restart without calling the provider again", async () => {
+  test("rebuilds persisted session entry state when replaying completed steps after restart", async () => {
     const streamFn = vi.fn(createTextStreamFn("replayed after restart"));
     const harnesses: ScenarioHarnesses = {
       default: {
@@ -677,12 +677,21 @@ describe("Pi harness workflow scenarios", () => {
           sessionId: event.instanceId,
           agentName: params.harnessName,
           ...harness,
+          initialMessages: [{ role: "user", content: "initial context", timestamp: Date.now() }],
         });
 
         await agentLoop.runStep("ask", { kind: "prompt", args: ["hello before restart"] });
         await step.waitForEvent("resume", { type: "resume" });
+        await agentLoop.runStep("after-resume", {
+          kind: "prompt",
+          args: ["hello after restart"],
+        });
 
-        return agentLoop.summary();
+        const state = agentLoop.getState();
+        return {
+          ...agentLoop.summary(),
+          persistedEntryCount: state.persistedEntryIds.length,
+        };
       },
     );
     const config: PiFragmentConfig = { workflows: [replayWorkflow] };
@@ -720,13 +729,11 @@ describe("Pi harness workflow scenarios", () => {
             assert: ({ status, steps }) => {
               assert(status.status === "waiting");
               expect(streamFn).toHaveBeenCalledTimes(1);
-              expect(steps).toContainEqual(
-                expect.objectContaining({
-                  stepKey: "do:ask",
-                  status: "completed",
-                  result: expect.objectContaining({ operation: "prompt" }),
-                }),
-              );
+              const askStep = steps.find((step) => step.stepKey === "do:ask");
+              assert(askStep?.result);
+              const askResult = askStep.result as PiHarnessStepResult;
+              expect(askResult.appendedEntries).toHaveLength(3);
+              expect(askResult.appendedEntries[0]).toMatchObject({ id: "initial-0" });
               expect(steps).toContainEqual(
                 expect.objectContaining({
                   stepKey: "waitForEvent:resume",
@@ -753,14 +760,18 @@ describe("Pi harness workflow scenarios", () => {
             }),
             assert: ({ status, steps }) => {
               assert(status.status === "complete");
-              expect(streamFn).toHaveBeenCalledTimes(1);
-              expect(status.output).toMatchObject({ entryCount: 2 });
-              expect(steps).toContainEqual(
-                expect.objectContaining({
-                  stepKey: "do:ask",
-                  status: "completed",
-                  attempts: 1,
-                }),
+              expect(streamFn).toHaveBeenCalledTimes(2);
+              expect(status.output).toMatchObject({ entryCount: 5, persistedEntryCount: 5 });
+
+              const askStep = steps.find((step) => step.stepKey === "do:ask");
+              const afterResumeStep = steps.find((step) => step.stepKey === "do:after-resume");
+              expect(askStep).toMatchObject({ status: "completed", attempts: 1 });
+              expect(afterResumeStep).toMatchObject({ status: "completed", attempts: 1 });
+              assert(askStep?.result);
+              assert(afterResumeStep?.result);
+              expect((askStep.result as PiHarnessStepResult).appendedEntries).toHaveLength(3);
+              expect((afterResumeStep.result as PiHarnessStepResult).appendedEntries).toHaveLength(
+                2,
               );
             },
           }),

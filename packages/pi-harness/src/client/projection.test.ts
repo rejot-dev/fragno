@@ -349,7 +349,6 @@ const harnessRunResult = (entries: readonly SessionTreeEntry[]) => ({
   type: "harness-run",
   operation: "prompt",
   appendedEntries: entries,
-  entries,
   leafId: entries.at(-1)?.id,
 });
 
@@ -1833,7 +1832,6 @@ describe("Pi harness workflow projection", () => {
               type: "harness-run",
               operation: "prompt",
               appendedEntries: entries,
-              entries,
               leafId: "entry-b",
             },
           },
@@ -1887,7 +1885,6 @@ describe("Pi harness workflow projection", () => {
               type: "harness-run",
               operation: "prompt",
               appendedEntries: entries,
-              entries,
               leafId: "branch-b",
             },
           },
