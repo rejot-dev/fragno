@@ -27,7 +27,6 @@ describe("createCloudflareBackofficeObjectRegistry", () => {
       MCP: createNamespace(),
       UPLOAD: createNamespace(),
       GITHUB: createNamespace(),
-      CLOUDFLARE_WORKERS: createNamespace(),
       GITHUB_WEBHOOK_ROUTER: createNamespace(),
       SANDBOX: createNamespace(),
     } as unknown as CloudflareEnv;
@@ -52,7 +51,6 @@ describe("createCloudflareBackofficeObjectRegistry", () => {
       MCP: createNamespace(),
       UPLOAD: upload,
       GITHUB: createNamespace(),
-      CLOUDFLARE_WORKERS: createNamespace(),
       GITHUB_WEBHOOK_ROUTER: createNamespace(),
       SANDBOX: createNamespace(),
     } as unknown as CloudflareEnv;

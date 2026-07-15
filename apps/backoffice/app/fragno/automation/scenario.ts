@@ -1419,7 +1419,6 @@ const createScenarioLofi = (runtime: InMemoryBackofficeRuntime): BackofficeScena
 const hookFragmentBindings: Record<string, BackofficeObjectBindingName> = {
   auth: "AUTH",
   automations: "AUTOMATIONS",
-  cloudflare: "CLOUDFLARE_WORKERS",
   github: "GITHUB",
   mcp: "MCP",
   otp: "OTP",

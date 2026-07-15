@@ -44,13 +44,6 @@
       "bucket_name": "fragno-dev-docs-upload",
     },
   ],
-  "dispatch_namespaces": [
-    {
-      "binding": "DISPATCHER",
-      "namespace": "staging",
-      "remote": true,
-    },
-  ],
   "worker_loaders": [
     {
       "binding": "LOADER",
@@ -120,10 +113,6 @@
       {
         "name": "UPLOAD",
         "class_name": "Upload",
-      },
-      {
-        "name": "CLOUDFLARE_WORKERS",
-        "class_name": "CloudflareWorkers",
       },
       {
         "name": "SANDBOX",
@@ -215,6 +204,10 @@
     {
       "tag": "v18",
       "deleted_classes": ["SandboxRegistry"],
+    },
+    {
+      "tag": "v19",
+      "deleted_classes": ["CloudflareWorkers"],
     },
   ],
 }

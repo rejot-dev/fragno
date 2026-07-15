@@ -18,7 +18,6 @@ import {
   authCapability,
 } from "./capabilities/auth";
 import { automationsCapability } from "./capabilities/automations";
-import { cloudflareCapability } from "./capabilities/cloudflare";
 import { githubCapability } from "./capabilities/github";
 import { mcpCapability } from "./capabilities/mcp";
 import { otpCapability } from "./capabilities/otp";
@@ -35,7 +34,6 @@ export type BackofficeCapabilityId =
   | "api"
   | "automations"
   | "auth"
-  | "cloudflare"
   | "github"
   | "mcp"
   | "otp"
@@ -209,7 +207,6 @@ export const backofficeCapabilities: readonly BackofficeCapability[] = [
   otpCapability,
   automationsCapability,
   githubCapability,
-  cloudflareCapability,
   authCapability,
 ];
 
@@ -276,13 +273,6 @@ export const backofficeConnectionCatalog: readonly BackofficeConnectionCatalogEn
     configurable: false,
     description: "Track installation webhooks, link repositories, and inspect pull requests.",
     routeSegment: "github",
-  },
-  {
-    id: "cloudflare",
-    label: "Cloudflare Workers",
-    kind: "connection",
-    configurable: false,
-    description: "Track Worker activity and route Cloudflare hook events.",
   },
 ];
 

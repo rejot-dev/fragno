@@ -169,7 +169,6 @@ export type GitHubObject = FetchObject &
     ensureAdminConfig(orgId: string): Promise<AwaitedMethodReturn<GitHub, "ensureAdminConfig">>;
     redeliverFailedInstallationWebhooks(installationId: string): Promise<void>;
   };
-export type CloudflareWorkersObject = FetchObject & AlarmableObject & DurableHookObject;
 
 type SandboxObject = {
   getRuntimeStatus(): Promise<{ status: SandboxInstanceStatus }>;
@@ -227,7 +226,6 @@ export type BackofficeObjectBindingName =
   | "MCP"
   | "UPLOAD"
   | "GITHUB"
-  | "CLOUDFLARE_WORKERS"
   | "GITHUB_WEBHOOK_ROUTER"
   | "SANDBOX";
 
@@ -262,7 +260,6 @@ export const backofficeObjectScopePolicy = {
   MCP: ["org", "user", "project"],
   UPLOAD: ["org", "user", "project"],
   GITHUB: ["org"],
-  CLOUDFLARE_WORKERS: ["org"],
 
   PI: ["org"],
 
@@ -548,7 +545,6 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   mcp: scoped(factory, binding<McpObject>("MCP")),
   upload: scoped(factory, binding<UploadObject>("UPLOAD")),
   github: scoped(factory, binding<GitHubObject>("GITHUB")),
-  cloudflareWorkers: scoped(factory, binding<CloudflareWorkersObject>("CLOUDFLARE_WORKERS")),
 
   githubWebhookRouter: scoped(factory, binding<GitHubWebhookRouterObject>("GITHUB_WEBHOOK_ROUTER")),
 

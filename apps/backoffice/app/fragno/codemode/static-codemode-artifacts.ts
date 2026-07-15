@@ -29,10 +29,6 @@ const isCapabilityBindingAvailable = (
   config: BackofficeRuntimeConfig,
   capabilityId: BackofficeCapabilityId,
 ) => {
-  if (capabilityId === "cloudflare") {
-    return config.bindings.cloudflareWorkers;
-  }
-
   if (capabilityId in config.bindings) {
     return config.bindings[capabilityId as keyof BackofficeRuntimeConfig["bindings"]];
   }

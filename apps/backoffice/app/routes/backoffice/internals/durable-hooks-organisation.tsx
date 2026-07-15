@@ -7,7 +7,6 @@ import { getAuthMe } from "@/fragno/auth/auth-server";
 import type { DurableHookQueueEntry, DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import {
   getApiDurableObject,
-  getCloudflareWorkersDurableObject,
   getAutomationsDurableObject,
   getGitHubDurableObject,
   getMcpDurableObject,
@@ -96,13 +95,6 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
             params.orgId,
           ).getDurableHookRepository();
           return await repository.getHookQueue({ cursor, pageSize });
-        }
-        case "cloudflare": {
-          const repository = await getCloudflareWorkersDurableObject(
-            context,
-            params.orgId,
-          ).getDurableHookRepository();
-          return await repository.getHookQueue({ orgId: params.orgId, cursor, pageSize });
         }
         case "telegram": {
           const repository = await getTelegramDurableObject(

@@ -100,7 +100,6 @@ describe("backoffice object scope policy", () => {
       MCP: ["org", "user", "project"],
       UPLOAD: ["org", "user", "project"],
       GITHUB: ["org"],
-      CLOUDFLARE_WORKERS: ["org"],
       PI: ["org"],
       GITHUB_WEBHOOK_ROUTER: ["singleton"],
       SANDBOX: ["named"],
