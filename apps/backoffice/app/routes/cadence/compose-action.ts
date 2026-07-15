@@ -15,7 +15,12 @@
 import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 import type { RouterContextProvider } from "react-router";
 
-import { createPiAgentName, PI_MODEL_CATALOG, resolvePiHarnesses } from "@/fragno/pi/pi-shared";
+import {
+  createPiAgentName,
+  PI_MODEL_CATALOG,
+  resolvePiHarnesses,
+  resolvePiModelThinkingLevel,
+} from "@/fragno/pi/pi-shared";
 import {
   createPiSession,
   fetchPiConfig,
@@ -116,6 +121,7 @@ export async function handleComposeAction({
     workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME,
     input: {
       harnessName: agentName,
+      thinkingLevel: resolvePiModelThinkingLevel(model.provider),
     },
     name,
   });

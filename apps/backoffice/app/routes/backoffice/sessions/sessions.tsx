@@ -23,6 +23,7 @@ import {
   findPiModelOption,
   PI_MODEL_CATALOG,
   resolvePiHarnesses,
+  resolvePiModelThinkingLevel,
   type PiHarnessConfig,
 } from "@/fragno/pi/pi-shared";
 
@@ -307,6 +308,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME,
     input: {
       harnessName: agent,
+      thinkingLevel: resolvePiModelThinkingLevel(modelSelection.provider),
     },
     name: name || undefined,
   });
