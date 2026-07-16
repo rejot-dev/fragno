@@ -43,6 +43,17 @@ describe("drainDurableHooks", () => {
     expect(drainMock).toHaveBeenCalledTimes(1);
   });
 
+  it("drains all fragments with durable hooks through one processor", async () => {
+    const first = { $internal: { durableHooksToken: {} } } as never;
+    const withoutHooks = { $internal: {} } as never;
+    const second = { $internal: { durableHooksToken: {} } } as never;
+
+    await drainDurableHooks([first, withoutHooks, second]);
+
+    expect(createDurableHooksProcessor).toHaveBeenCalledWith([first, second]);
+    expect(drainMock).toHaveBeenCalledTimes(1);
+  });
+
   it("supports single-pass draining", async () => {
     await drainDurableHooks(
       {

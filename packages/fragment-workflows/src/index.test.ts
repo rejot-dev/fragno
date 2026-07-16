@@ -2,6 +2,7 @@
 import { assert, beforeAll, beforeEach, describe, expect, test } from "vitest";
 
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
+import type { HookFn } from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 import { workflowsFragmentDefinition } from "./definition";
@@ -21,6 +22,21 @@ describe("Workflows Fragment", () => {
     { name: "demo-workflow" },
     (_event: WorkflowEvent<unknown>, _step: WorkflowStep) => {
       return undefined;
+    },
+  );
+
+  type DemoHooks = {
+    onStepCompleted: HookFn<{ stepName: string }>;
+  };
+
+  const TypedHooksWorkflow = defineWorkflow(
+    { name: "typed-hooks-workflow" },
+    async (_event: WorkflowEvent<unknown>, step: WorkflowStep<DemoHooks>) => {
+      await step.do("typed-hook", (tx) => {
+        tx.mutate(({ forSchema }) => {
+          forSchema(workflowsSchema).triggerHook("onStepCompleted", { stepName: "typed-hook" });
+        });
+      });
     },
   );
 
@@ -55,6 +71,10 @@ describe("Workflows Fragment", () => {
 
   beforeEach(async () => {
     await testContext.resetDatabase();
+  });
+
+  test("types workflow step hooks", () => {
+    assert(TypedHooksWorkflow.name === "typed-hooks-workflow");
   });
 
   test("should expose workflows schema", () => {
