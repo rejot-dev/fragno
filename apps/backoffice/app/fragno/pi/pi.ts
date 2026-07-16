@@ -715,6 +715,7 @@ const buildPiRuntime = (
   createTools: BackofficePiToolFactory,
   skills: PiSkillRegistryResolver,
   resolveSystemPrompt: BackofficeSystemPromptResolver,
+  onOperationCompleted: PiFragmentConfig["onOperationCompleted"],
 ) => {
   const workflows = [
     createBackofficeInteractiveChatWorkflow({ config, createTools, skills, resolveSystemPrompt }),
@@ -722,6 +723,7 @@ const buildPiRuntime = (
   const piConfig = {
     workflows,
     logging: { enabled: true, level: "debug" },
+    onOperationCompleted,
   } satisfies PiFragmentConfig;
 
   return {
@@ -739,6 +741,7 @@ export const createPiRuntime = (options: {
   sessionFileSystemContext: PiSessionFileSystemContext;
   bashCommandContext: PiBashCommandContext;
   codemode: PiCodemodeRuntime;
+  onOperationCompleted?: PiFragmentConfig["onOperationCompleted"];
 }): PiRuntimeFragments => {
   const adapter = options.adapters.createAdapter({
     kind: "pi",
@@ -759,7 +762,13 @@ export const createPiRuntime = (options: {
     sessionFileSystems: options.sessionFileSystems,
     sessionFileSystemContext: options.sessionFileSystemContext,
   });
-  const pi = buildPiRuntime(options.config, createTools, skills, resolveSystemPrompt);
+  const pi = buildPiRuntime(
+    options.config,
+    createTools,
+    skills,
+    resolveSystemPrompt,
+    options.onOperationCompleted,
+  );
 
   const workflowsFragment = createWorkflowsFragment(
     {

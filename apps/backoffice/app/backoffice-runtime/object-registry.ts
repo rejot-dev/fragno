@@ -24,6 +24,12 @@ import type {
   SandboxProvider,
   StarterAutomationRoutesSeedResult,
 } from "@/fragno/automation";
+import type {
+  BillingEventInput,
+  BillingRecordEventResult,
+  BillingTrackerPage,
+  BillingTrackerPageInput,
+} from "@/fragno/billing";
 import type { DurableHookQueueOptions, DurableHookRepository } from "@/fragno/durable-hooks";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import type { SandboxInstanceStatus } from "@/sandbox/contracts";
@@ -83,6 +89,12 @@ export type ApiObject = FetchObject &
   AlarmableObject &
   DurableHookObject &
   AdminConfigurableObject<AwaitedMethodReturn<Api, "getAdminConfig">>;
+
+export type BillingObject = FetchObject &
+  AlarmableObject & {
+    recordEvent(input: BillingEventInput): Promise<BillingRecordEventResult>;
+    getTrackers(input: BillingTrackerPageInput): Promise<BillingTrackerPage>;
+  };
 
 export type AutomationsObject = FetchObject &
   AlarmableObject &
@@ -218,6 +230,7 @@ export type BackofficeObjectBindingName =
   | "API"
   | "AUTH"
   | "AUTOMATIONS"
+  | "BILLING"
   | "TELEGRAM"
   | "OTP"
   | "PI"
@@ -252,6 +265,7 @@ export const backofficeObjectScopePolicy = {
   AUTH: ["singleton"],
 
   AUTOMATIONS: ["singleton", "org", "user", "project"],
+  BILLING: ["org"],
 
   TELEGRAM: ["singleton", "org", "user", "project"],
   OTP: ["org"],
@@ -537,6 +551,7 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   auth: scoped(factory, binding<AuthObject>("AUTH")),
 
   automations: scopedInitialized(factory, initializedBinding<AutomationsObject>("AUTOMATIONS")),
+  billing: scopedInitialized(factory, initializedBinding<BillingObject>("BILLING")),
   telegram: scopedInitialized(factory, initializedBinding<TelegramObject>("TELEGRAM")),
   otp: scoped(factory, binding<OtpObject>("OTP")),
   pi: scoped(factory, binding<PiObject>("PI")),

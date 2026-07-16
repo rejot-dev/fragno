@@ -12,6 +12,10 @@ import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import { piConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/pi";
 import {
+  createPiOperationBillingEvent,
+  PiOperationBillingEventValidationError,
+} from "@/fragno/billing/pi";
+import {
   createDurableHookRepositoryRpcTarget,
   type DurableHookQueueOptions,
 } from "@/fragno/durable-hooks";
@@ -308,6 +312,24 @@ export class InMemoryPiObject implements PiObject {
         kernel,
         execution,
       }),
+      onOperationCompleted: async (payload, context) => {
+        let event: ReturnType<typeof createPiOperationBillingEvent>;
+        try {
+          event = createPiOperationBillingEvent({
+            scope: config.scope,
+            payload,
+            hookId: context.hookId,
+            idempotencyKey: context.idempotencyKey,
+          });
+        } catch (error) {
+          if (error instanceof PiOperationBillingEventValidationError) {
+            return;
+          }
+          throw error;
+        }
+
+        await this.#runtimeServices.objects.billing.forOrg(orgId).recordEvent(event);
+      },
     });
   }
 

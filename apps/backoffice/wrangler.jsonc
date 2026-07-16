@@ -134,6 +134,10 @@
         "name": "AUTOMATIONS",
         "class_name": "Automations",
       },
+      {
+        "name": "BILLING",
+        "class_name": "Billing",
+      },
     ],
   },
   /**
@@ -208,6 +212,10 @@
     {
       "tag": "v19",
       "deleted_classes": ["CloudflareWorkers"],
+    },
+    {
+      "tag": "v20",
+      "new_sqlite_classes": ["Billing"],
     },
   ],
 }

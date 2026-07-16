@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "./route-errors";
 
-export type OrganisationTab = "overview" | "members" | "invites";
+export type OrganisationTab = "overview" | "members" | "invites" | "billing";
 
 export const ROLE_OPTIONS = ["member", "admin", "owner"] as const;
 
@@ -87,7 +87,7 @@ export function OrganisationHeader({
       ]}
       eyebrow="Directory"
       title={organisationName ?? orgId}
-      description="Review organisation details, team members, and outstanding invitations."
+      description="Review organisation details, team access, invitations, and metered usage."
       actions={
         <Link
           to="/backoffice/organisations"
@@ -123,6 +123,11 @@ export function OrganisationTabs({
       id: "invites" as const,
       label: "Invites",
       to: `${basePath}/invites`,
+    },
+    {
+      id: "billing" as const,
+      label: "Billing",
+      to: `${basePath}/billing`,
     },
   ];
 

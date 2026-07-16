@@ -4,6 +4,7 @@ import type { MasterFileSystem } from "@/files";
 import { InMemoryApiObject } from "../../workers/api.do";
 import { InMemoryAuthObject } from "../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../workers/automations.do";
+import { InMemoryBillingObject } from "../../workers/billing.do";
 import { InMemoryGitHubWebhookRouterObject } from "../../workers/github-webhook-router.do";
 import { InMemoryGitHubObject } from "../../workers/github.do";
 import { InMemoryMcpObject } from "../../workers/mcp.do";
@@ -210,6 +211,12 @@ const inMemoryObjectFactories = {
       runtime,
       getAutomationFileSystem,
     }),
+  BILLING: ({ state, env, runtime }) =>
+    new InMemoryBillingObject({
+      state,
+      env,
+      runtime,
+    }),
 } satisfies Record<BackofficeObjectBindingName, InMemoryBackofficeObjectFactory<unknown>>;
 
 export class InMemoryObjectFactory implements BackofficeObjectFactory {
@@ -308,6 +315,7 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
         api: this.#hasNamespace("API"),
         auth: this.#hasNamespace("AUTH"),
         automations: this.#hasNamespace("AUTOMATIONS"),
+        billing: this.#hasNamespace("BILLING"),
         telegram: this.#hasNamespace("TELEGRAM"),
         otp: this.#hasNamespace("OTP"),
         pi: this.#hasNamespace("PI"),

@@ -20,6 +20,7 @@ export default [
         index("routes/backoffice/organisation-overview.tsx"),
         route("members", "routes/backoffice/organisation-members.tsx"),
         route("invites", "routes/backoffice/organisation-invites.tsx"),
+        route("billing", "routes/backoffice/organisation-billing.tsx"),
       ]),
       route("connections", "routes/backoffice/connections/index.tsx"),
       route("connections/resend", "routes/backoffice/connections/resend/index.tsx"),

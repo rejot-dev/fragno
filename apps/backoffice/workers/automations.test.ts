@@ -33,6 +33,7 @@ const config: BackofficeRuntimeConfig = {
     api: false,
     auth: false,
     automations: false,
+    billing: false,
     telegram: false,
     otp: false,
     pi: false,
