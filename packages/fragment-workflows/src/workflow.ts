@@ -73,16 +73,16 @@ export type WorkflowStepWorkflowOperation = {
   remoteWorkflowName?: string | null;
 };
 
-export type WorkflowStepConsumeTx = {
+export type WorkflowStepConsumeTx<THooks extends HooksMap = HooksMap> = {
   serviceCalls: (factory: () => readonly AnyTxResult[]) => void;
-  mutate: (fn: (ctx: HandlerTxContext<HooksMap>) => void) => void;
+  mutate: (fn: (ctx: HandlerTxContext<THooks>) => void) => void;
   /** Persist an outbound workflow-authored step emission. */
   emit: (payload: unknown) => void;
   /** Emissions for this step that were already persisted before the current attempt started. */
   previousEmissions: () => Promise<WorkflowStepEmission[]>;
 };
 
-export type WorkflowStepTx = WorkflowStepConsumeTx & {
+export type WorkflowStepTx<THooks extends HooksMap = HooksMap> = WorkflowStepConsumeTx<THooks> & {
   workflowServiceCalls: (factory: () => readonly WorkflowStepWorkflowOperation[]) => void;
   onTerminalError: {
     /**
@@ -90,7 +90,7 @@ export type WorkflowStepTx = WorkflowStepConsumeTx & {
      * (non-retryable failure or retries exhausted). These callbacks are skipped for successful
      * runs and for retryable failures that suspend the step for another attempt.
      */
-    mutate: (fn: (ctx: HandlerTxContext<HooksMap>) => void) => void;
+    mutate: (fn: (ctx: HandlerTxContext<THooks>) => void) => void;
   };
   /**
    * Observe durable workflow events of an exact type while this step is active.
@@ -100,12 +100,12 @@ export type WorkflowStepTx = WorkflowStepConsumeTx & {
 };
 
 /** Execution helpers that provide replay-safe step semantics. */
-export interface WorkflowStep {
-  do<T>(name: string, callback: (tx: WorkflowStepTx) => Promise<T> | T): Promise<T>;
+export interface WorkflowStep<THooks extends HooksMap = HooksMap> {
+  do<T>(name: string, callback: (tx: WorkflowStepTx<THooks>) => Promise<T> | T): Promise<T>;
   do<T>(
     name: string,
     config: WorkflowStepConfig,
-    callback: (tx: WorkflowStepTx) => Promise<T> | T,
+    callback: (tx: WorkflowStepTx<THooks>) => Promise<T> | T,
   ): Promise<T>;
   sleep(name: string, duration: WorkflowDuration): Promise<void>;
   sleepUntil(name: string, timestamp: Date | number): Promise<void>;
@@ -115,7 +115,7 @@ export interface WorkflowStep {
       type: string;
       timeout?: WorkflowDuration;
       onConsume?: (
-        tx: WorkflowStepConsumeTx,
+        tx: WorkflowStepConsumeTx<THooks>,
         event: { type: string; payload: Readonly<T>; timestamp: Date },
       ) => Promise<void> | void;
     },
@@ -208,10 +208,11 @@ export type WorkflowBindings<TRegistry extends WorkflowsRegistry = WorkflowsRegi
 };
 
 /** Function-based workflow run signature. */
-export type WorkflowRunFn<TParams = unknown, TOutput = unknown> = (
-  event: WorkflowEvent<TParams>,
-  step: WorkflowStep,
-) => Promise<TOutput> | TOutput;
+export type WorkflowRunFn<
+  TParams = unknown,
+  TOutput = unknown,
+  THooks extends HooksMap = HooksMap,
+> = (event: WorkflowEvent<TParams>, step: WorkflowStep<THooks>) => Promise<TOutput> | TOutput;
 
 /** Function-based workflow definition. */
 export interface WorkflowDefinition<
@@ -220,13 +221,14 @@ export interface WorkflowDefinition<
   TInputSchema extends StandardSchemaV1 | undefined = StandardSchemaV1 | undefined,
   TOutputSchema extends StandardSchemaV1 | undefined = StandardSchemaV1 | undefined,
   TName extends string = string,
+  THooks extends HooksMap = HooksMap,
 > {
   name: TName;
   schema?: TInputSchema;
   outputSchema?: TOutputSchema;
   remote?: boolean;
   remoteWorkflowName?: string;
-  run: WorkflowRunFn<TParams, TOutput>;
+  run: WorkflowRunFn<TParams, TOutput, THooks>;
 }
 
 export type RemoteWorkflowRunFn<TParams = unknown, TOutput = unknown> = (
@@ -234,40 +236,56 @@ export type RemoteWorkflowRunFn<TParams = unknown, TOutput = unknown> = (
   remote: RemoteWorkflowStepHost,
 ) => Promise<TOutput> | TOutput;
 
-export function defineWorkflow<TName extends string, TParams, TOutput = unknown>(
+export function defineWorkflow<
+  TName extends string,
+  TParams,
+  TOutput = unknown,
+  THooks extends HooksMap = HooksMap,
+>(
   options: { name: TName; schema?: undefined; outputSchema?: undefined },
-  run: WorkflowRunFn<TParams, TOutput>,
-): WorkflowDefinition<TParams, TOutput, undefined, undefined, TName>;
+  run: WorkflowRunFn<TParams, TOutput, THooks>,
+): WorkflowDefinition<TParams, TOutput, undefined, undefined, TName, THooks>;
 export function defineWorkflow<
   TName extends string,
   TSchema extends StandardSchemaV1,
   TOutput = unknown,
+  THooks extends HooksMap = HooksMap,
 >(
   options: { name: TName; schema: TSchema; outputSchema?: undefined },
-  run: WorkflowRunFn<StandardSchemaV1.InferOutput<TSchema>, TOutput>,
-): WorkflowDefinition<StandardSchemaV1.InferOutput<TSchema>, TOutput, TSchema, undefined, TName>;
+  run: WorkflowRunFn<StandardSchemaV1.InferOutput<TSchema>, TOutput, THooks>,
+): WorkflowDefinition<
+  StandardSchemaV1.InferOutput<TSchema>,
+  TOutput,
+  TSchema,
+  undefined,
+  TName,
+  THooks
+>;
 export function defineWorkflow<
   TName extends string,
   TOutputSchema extends StandardSchemaV1,
   TParams = unknown,
+  THooks extends HooksMap = HooksMap,
 >(
   options: {
     name: TName;
     schema?: undefined;
     outputSchema: TOutputSchema;
   },
-  run: WorkflowRunFn<TParams, StandardSchemaV1.InferOutput<TOutputSchema>>,
+  run: WorkflowRunFn<TParams, StandardSchemaV1.InferOutput<TOutputSchema>, THooks>,
 ): WorkflowDefinition<
   TParams,
   StandardSchemaV1.InferOutput<TOutputSchema>,
   undefined,
   TOutputSchema,
-  TName
+  TName,
+  THooks
 >;
 export function defineWorkflow<
   TName extends string,
   TInputSchema extends StandardSchemaV1,
   TOutputSchema extends StandardSchemaV1,
+  THooks extends HooksMap = HooksMap,
 >(
   options: {
     name: TName;
@@ -276,28 +294,31 @@ export function defineWorkflow<
   },
   run: WorkflowRunFn<
     StandardSchemaV1.InferOutput<TInputSchema>,
-    StandardSchemaV1.InferOutput<TOutputSchema>
+    StandardSchemaV1.InferOutput<TOutputSchema>,
+    THooks
   >,
 ): WorkflowDefinition<
   StandardSchemaV1.InferOutput<TInputSchema>,
   StandardSchemaV1.InferOutput<TOutputSchema>,
   TInputSchema,
   TOutputSchema,
-  TName
+  TName,
+  THooks
 >;
-export function defineWorkflow<TName extends string>(
+export function defineWorkflow<TName extends string, THooks extends HooksMap = HooksMap>(
   options: {
     name: TName;
     schema?: StandardSchemaV1;
     outputSchema?: StandardSchemaV1;
   },
-  run: WorkflowRunFn<unknown, unknown>,
+  run: WorkflowRunFn<unknown, unknown, THooks>,
 ): WorkflowDefinition<
   unknown,
   unknown,
   StandardSchemaV1 | undefined,
   StandardSchemaV1 | undefined,
-  TName
+  TName,
+  THooks
 > {
   return { ...options, run };
 }
@@ -329,7 +350,7 @@ export function defineRemoteWorkflow<TName extends string>(
 
 /** Workflow registry entry (function-based). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type WorkflowRegistryEntry = WorkflowDefinition<any, any, any, any, string>;
+export type WorkflowRegistryEntry = WorkflowDefinition<any, any, any, any, string, any>;
 
 export type WorkflowParamsFromEntry<TEntry> =
   TEntry extends WorkflowDefinition<
@@ -337,7 +358,8 @@ export type WorkflowParamsFromEntry<TEntry> =
     unknown,
     StandardSchemaV1 | undefined,
     StandardSchemaV1 | undefined,
-    string
+    string,
+    infer _THooks
   >
     ? TParams
     : unknown;
@@ -348,7 +370,8 @@ export type WorkflowOutputFromEntry<TEntry> =
     infer TOutput,
     StandardSchemaV1 | undefined,
     StandardSchemaV1 | undefined,
-    string
+    string,
+    infer _THooks
   >
     ? TOutput
     : unknown;
@@ -359,7 +382,8 @@ export type WorkflowNameFromEntry<TEntry> =
     unknown,
     StandardSchemaV1 | undefined,
     StandardSchemaV1 | undefined,
-    infer TName
+    infer TName,
+    infer _THooks
   >
     ? TName
     : never;

@@ -298,6 +298,7 @@ export type RecordWorkflowStepRunForTestOptions<TOutput = unknown> = {
   stepEmissions?: BufferedPumpRegistry<WorkflowStepLivePump>;
   workflowsByName?: ReadonlyMap<string, WorkflowRegistryEntry>;
   createEpoch?: () => string;
+  schemas?: readonly { schema: AnySchema; namespace: string | null }[];
 };
 
 const readRecordedWorkflowRows = async (
@@ -357,6 +358,9 @@ export async function recordWorkflowStepRunForTest<TOutput = unknown>(
 ): Promise<RecordedWorkflowStepRun> {
   const adapter = new InMemoryAdapter();
   adapter.registerSchema(workflowsSchema, null);
+  for (const { schema, namespace } of options.schemas ?? []) {
+    adapter.registerSchema(schema, namespace);
+  }
   const mutations: MutationOperation<AnySchema>[] = [];
   const handlerTx: DatabaseHandlerTx = (txOptions) => {
     const onAfterMutate = txOptions?.onAfterMutate;
@@ -798,7 +802,10 @@ export async function createWorkflowsTestHarness<
         return await (await getRunnerRuntime()).inContext(callback as never);
       },
       async drainHooks() {
-        await drainDurableHooks((await getWorkflowResult()).fragment);
+        const runnerRuntime = await getRunnerRuntime();
+        await drainDurableHooks(
+          Object.values(runnerRuntime.fragments).map((result) => result.fragment),
+        );
       },
       async restart() {
         await (await getRunnerRuntime()).recreateFragments();

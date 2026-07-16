@@ -5,12 +5,15 @@ import type {
   FragmentDefinition,
   FragnoInstantiatedFragment,
 } from "@fragno-dev/core";
-import { getInternalFragment } from "@fragno-dev/db";
+import {
+  getDurableHooksService,
+  getInternalFragment,
+  type AnyFragnoInstantiatedDatabaseFragment,
+} from "@fragno-dev/db";
 import { InMemoryLofiAdapter, createLofiRuntime, type LofiRuntime } from "@fragno-dev/lofi";
 import {
   buildDatabaseFragmentsTest,
   createFragmentTestClientConfig,
-  drainDurableHooks,
   waitForStore,
   type AnyFragmentResult,
   type DatabaseFragmentsTestBuilder,
@@ -275,6 +278,13 @@ type WorkflowScenarioRunnerStepBuilder<
   typeof createScenarioRunnerSteps<TRunnerName, TRegistry, TVars, TFragments, TClients>
 >;
 
+type WorkflowScenarioHookStepBuilder<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult>,
+  TClients,
+> = ReturnType<typeof createScenarioHookSteps<TRegistry, TVars, TFragments, TClients>>;
+
 type WorkflowScenarioStoreWaitForOptions<
   TRegistry extends WorkflowsRegistry,
   TVars extends WorkflowScenarioVars,
@@ -346,6 +356,7 @@ type WorkflowScenarioDefaultStepsContext<
   TStores extends WorkflowScenarioStoreDefinitions<TRegistry, TVars, TFragments, TClients>,
 > = {
   workflow: WorkflowScenarioWorkflowStepBuilder<TRegistry, TVars, TFragments, TClients>;
+  hooks: WorkflowScenarioHookStepBuilder<TRegistry, TVars, TFragments, TClients>;
   runner: WorkflowScenarioRunnerStepBuilder<"scenario", TRegistry, TVars, TFragments, TClients>;
   clients: TClients;
   stores: WorkflowScenarioStoreHandles<TRegistry, TVars, TFragments, TClients, TStores>;
@@ -361,6 +372,7 @@ type WorkflowScenarioNamedStepsContext<
   TStores extends WorkflowScenarioStoreDefinitions<TRegistry, TVars, TFragments, TClients>,
 > = {
   workflow: WorkflowScenarioWorkflowStepBuilder<TRegistry, TVars, TFragments, TClients>;
+  hooks: WorkflowScenarioHookStepBuilder<TRegistry, TVars, TFragments, TClients>;
   clients: TClients;
   stores: WorkflowScenarioStoreHandles<TRegistry, TVars, TFragments, TClients, TStores>;
   lofi: LofiRuntime;
@@ -443,6 +455,26 @@ export type WorkflowScenarioDefinitionInput<
   >;
 };
 
+export type WorkflowScenarioGetHooksOptions<
+  TRegistry extends WorkflowsRegistry,
+  TFragments extends Record<string, AnyFragmentResult>,
+  TPayload = unknown,
+> = {
+  fragment: keyof WorkflowScenarioRuntimeFragments<TRegistry, TFragments> & string;
+  hookName?: string;
+  status?: WorkflowScenarioHookRow["status"];
+  where?: (record: Readonly<WorkflowScenarioHookRow<TPayload>>) => boolean;
+};
+
+export type WorkflowScenarioHooks<
+  TRegistry extends WorkflowsRegistry,
+  TFragments extends Record<string, AnyFragmentResult>,
+> = {
+  get: <TPayload = unknown>(
+    options: WorkflowScenarioGetHooksOptions<TRegistry, TFragments, TPayload>,
+  ) => Promise<WorkflowScenarioHookRow<TPayload>[]>;
+};
+
 export type WorkflowScenarioContext<
   TRegistry extends WorkflowsRegistry = WorkflowsRegistry,
   TVars extends WorkflowScenarioVars = WorkflowScenarioVars,
@@ -455,6 +487,7 @@ export type WorkflowScenarioContext<
   clock: WorkflowsTestClock;
   vars: Partial<TVars>;
   state: WorkflowScenarioState<TRegistry>;
+  hooks: WorkflowScenarioHooks<TRegistry, TFragments>;
   clients: TClients;
   lofi: LofiRuntime;
   createClientRuntime: () => Promise<
@@ -603,11 +636,11 @@ export type WorkflowScenarioRouteResponse = {
   error?: { message: string; code: string };
 };
 
-export type WorkflowScenarioHookRow = {
+export type WorkflowScenarioHookRow<TPayload = unknown> = {
   id: bigint;
   namespace: string;
   hookName: string;
-  payload: unknown;
+  payload: TPayload;
   status: "pending" | "processing" | "completed" | "failed";
   attempts: number;
   maxAttempts: number;
@@ -616,6 +649,23 @@ export type WorkflowScenarioHookRow = {
   error: string | null;
   createdAt: Date;
   nonce: string;
+};
+
+export type WorkflowScenarioReadHooksOptions<
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult>,
+  TClients,
+  TPayload = unknown,
+> = WorkflowScenarioGetHooksOptions<TRegistry, TFragments, TPayload> & {
+  storeAs?: (keyof TVars & string) | undefined;
+  assert?: WorkflowScenarioReadAssert<
+    TRegistry,
+    TVars,
+    TFragments,
+    TClients,
+    WorkflowScenarioHookRow<TPayload>[]
+  >;
 };
 
 export type WorkflowScenarioStateInternalUtils = {
@@ -1170,6 +1220,37 @@ const createScenarioRunnerSteps = <
   };
 };
 
+const createScenarioHookSteps = <
+  TRegistry extends WorkflowsRegistry,
+  TVars extends WorkflowScenarioVars,
+  TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
+  TClients = Record<string, never>,
+>() => ({
+  read: <TPayload = unknown>(
+    input: WorkflowScenarioReadHooksOptions<TRegistry, TVars, TFragments, TClients, TPayload>,
+  ): WorkflowScenarioReadStep<
+    TRegistry,
+    TVars,
+    TFragments,
+    TClients,
+    WorkflowScenarioHookRow<TPayload>[]
+  > => {
+    const { fragment, hookName, status, where, storeAs, assert } = input;
+    return {
+      type: "read",
+      read: async (ctx) => await ctx.hooks.get<TPayload>({ fragment, hookName, status, where }),
+      storeAs,
+      assert,
+    } as WorkflowScenarioReadStep<
+      TRegistry,
+      TVars,
+      TFragments,
+      TClients,
+      WorkflowScenarioHookRow<TPayload>[]
+    >;
+  },
+});
+
 const createScenarioStepsContext = <
   TRegistry extends WorkflowsRegistry,
   TVars extends WorkflowScenarioVars,
@@ -1193,6 +1274,7 @@ const createScenarioStepsContext = <
     >
   : WorkflowScenarioDefaultStepsContext<TRegistry, TVars, TFragments, TClients, TStores> => {
   const workflow = createScenarioWorkflowSteps<TRegistry, TVars, TFragments, TClients>();
+  const hooks = createScenarioHookSteps<TRegistry, TVars, TFragments, TClients>();
   if (runners) {
     const namedRunners = Object.fromEntries(
       runners.map((runnerName) => [
@@ -1204,6 +1286,7 @@ const createScenarioStepsContext = <
     );
     return {
       workflow,
+      hooks,
       clients,
       stores,
       lofi,
@@ -1223,6 +1306,7 @@ const createScenarioStepsContext = <
 
   return {
     workflow,
+    hooks,
     runner: createScenarioRunnerSteps<"scenario", TRegistry, TVars, TFragments, TClients>(
       "scenario",
     ),
@@ -2020,6 +2104,45 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
   };
 };
 
+const createScenarioHooks = <
+  TRegistry extends WorkflowsRegistry,
+  TFragments extends Record<string, AnyFragmentResult>,
+>(
+  fragments: WorkflowScenarioRuntimeFragments<TRegistry, TFragments>,
+  state: WorkflowScenarioState<TRegistry>,
+): WorkflowScenarioHooks<TRegistry, TFragments> => ({
+  get: async <TPayload = unknown>(
+    options: WorkflowScenarioGetHooksOptions<TRegistry, TFragments, TPayload>,
+  ) => {
+    const fragmentResult = fragments[options.fragment];
+    if (!fragmentResult) {
+      throw new Error(`SCENARIO_HOOKS_FRAGMENT_NOT_FOUND: ${options.fragment}`);
+    }
+
+    let namespace: string;
+    let hooksEnabled: boolean;
+    try {
+      ({ namespace, hooksEnabled } = getDurableHooksService(
+        fragmentResult.fragment as AnyFragnoInstantiatedDatabaseFragment,
+      ));
+    } catch (cause) {
+      throw new Error(`SCENARIO_HOOKS_FRAGMENT_UNAVAILABLE: ${options.fragment}`, { cause });
+    }
+
+    if (!hooksEnabled) {
+      throw new Error(`SCENARIO_HOOKS_NOT_ENABLED: ${options.fragment}`);
+    }
+
+    const records = (await state.internal.getHooks({
+      namespace,
+      hookName: options.hookName,
+      status: options.status,
+    })) as WorkflowScenarioHookRow<TPayload>[];
+
+    return options.where ? records.filter(options.where) : records;
+  },
+});
+
 const resolveScenarioRunnerNames = (runners: readonly string[] | undefined): string[] => {
   if (!runners) {
     return ["scenario"];
@@ -2294,13 +2417,16 @@ export async function runScenario<
       lofi,
     ),
   );
+  const state = createScenarioState(harness, resolver);
+  const hooks = createScenarioHooks(typedHarness.fragments, state);
   const context: WorkflowScenarioContext<TRegistry, TVars, TFragments, TClients> = {
     name: scenario.name,
     harness: typedHarness,
     runtime: harness.runtime,
     clock: harness.clock,
     vars: scenario.vars?.() ?? {},
-    state: createScenarioState(harness, resolver),
+    state,
+    hooks,
     clients,
     lofi,
     createClientRuntime,
@@ -2952,7 +3078,7 @@ export async function runScenario<
           break;
         }
         case "drainHooks": {
-          await drainDurableHooks(context.harness.fragment);
+          await currentRunner.drainHooks();
           break;
         }
         case "restart": {

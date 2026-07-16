@@ -44,6 +44,31 @@ describe("Workflows Runner (Scenario DSL)", () => {
     ).rejects.toThrow("SCENARIO_READ_STEP_STORE_AS_AND_ASSERT_ARE_MUTUALLY_EXCLUSIVE");
   });
 
+  test("rejects hook reads for fragments without durable hooks", async () => {
+    const noHooksSchema = schema("scenario_no_hooks", (s) =>
+      s.addTable("record", (t) => t.addColumn("id", idColumn())),
+    );
+    const noHooksFragmentDefinition = defineFragment("scenario-no-hooks")
+      .extend(withDatabase(noHooksSchema))
+      .build();
+    const NoopWorkflow = defineWorkflow({ name: "scenario-no-hooks-workflow" }, async () => ({
+      ok: true,
+    }));
+    const workflows = { NOOP: NoopWorkflow };
+
+    const scenario = defineScenario({
+      name: "reject-hook-read-without-hooks",
+      workflows,
+      harness: {
+        configureBuilder: (builder) =>
+          builder.withFragment("noHooks", instantiate(noHooksFragmentDefinition)),
+      },
+      steps: ({ hooks }) => [hooks.read({ fragment: "noHooks" })],
+    });
+
+    await expect(runScenario(scenario)).rejects.toThrow("SCENARIO_HOOKS_NOT_ENABLED: noHooks");
+  });
+
   test("runs a simple workflow to completion", async () => {
     const SimpleWorkflow = defineWorkflow({ name: "simple-workflow" }, async () => {
       return { ok: true };

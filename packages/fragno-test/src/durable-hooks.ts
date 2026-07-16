@@ -10,16 +10,20 @@ export type DrainDurableHooksOptions = {
 };
 
 export async function drainDurableHooks(
-  fragment: AnyFragnoInstantiatedFragment,
+  fragmentOrFragments: AnyFragnoInstantiatedFragment | readonly AnyFragnoInstantiatedFragment[],
   options: DrainDurableHooksOptions = {},
 ): Promise<void> {
-  const internal = fragment.$internal as { durableHooksToken?: object } | undefined;
-  if (!internal?.durableHooksToken) {
+  const fragments = Array.isArray(fragmentOrFragments)
+    ? fragmentOrFragments
+    : [fragmentOrFragments];
+  const fragmentsWithDurableHooks = fragments.filter((fragment) => {
+    const internal = fragment.$internal as { durableHooksToken?: object } | undefined;
+    return Boolean(internal?.durableHooksToken);
+  }) as AnyFragnoInstantiatedDatabaseFragment[];
+  if (fragmentsWithDurableHooks.length === 0) {
     return;
   }
-  const dispatcher = createDurableHooksProcessor([
-    fragment as AnyFragnoInstantiatedDatabaseFragment,
-  ]);
+  const dispatcher = createDurableHooksProcessor(fragmentsWithDurableHooks);
   if (options.mode === "singlePass") {
     await dispatcher.wake();
     return;
