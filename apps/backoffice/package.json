@@ -43,6 +43,7 @@
     "@xyflow/react": "^12.8.6",
     "aws4fetch": "^1.0.20",
     "clsx": "^2.1.1",
+    "croner": "10.0.1",
     "isbot": "^5.1.32",
     "isomorphic-git": "1.38.3",
     "just-bash": "^3.0.1",
@@ -59,7 +60,6 @@
     "zod": "^4.3.5"
   },
   "devDependencies": {
-    "@cloudflare/codemode": "^0.3.8",
     "@cloudflare/shell": "^0.3.8",
     "@cloudflare/vite-plugin": "^1.35.0",
     "@cloudflare/vitest-pool-workers": "^0.15.2",
