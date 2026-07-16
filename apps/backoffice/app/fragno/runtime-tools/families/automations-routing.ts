@@ -29,6 +29,11 @@ export type AutomationRouterRuntime = {
   getRoute(input: { id: string }): Promise<AutomationRouteDefinition | null>;
   createRoute(input: AutomationRouteCreateInput): Promise<AutomationRouteDefinition>;
   updateRoute(input: AutomationRouteUpdateInput): Promise<AutomationRouteDefinition | null>;
+  deleteRoute(input: { id: string }): Promise<true>;
+  triggerScheduledRouteNow(input: { id: string }): Promise<{
+    accepted: true;
+    eventId: string;
+  } | null>;
 };
 
 export const createUnavailableAutomationRouterRuntime = (
@@ -44,6 +49,12 @@ export const createUnavailableAutomationRouterRuntime = (
     throw new Error(message);
   },
   updateRoute: async () => {
+    throw new Error(message);
+  },
+  deleteRoute: async () => {
+    throw new Error(message);
+  },
+  triggerScheduledRouteNow: async () => {
     throw new Error(message);
   },
 });
@@ -98,16 +109,18 @@ const outputOptionsWithoutJsonPayload = (args: string[]) => {
   return readOutputOptions(parsed);
 };
 
+const formatRouteTrigger = (route: AutomationRouteDefinition) =>
+  route.trigger.kind === "event"
+    ? `${route.trigger.source}/${route.trigger.eventType}`
+    : `schedule ${JSON.stringify(route.trigger.cadence)}`;
+
 const formatRoutesTable = (routes: AutomationRouteDefinition[]) =>
   ensureTrailingNewline(
     routes
       .map((route) =>
-        [
-          route.id.padEnd(36, " "),
-          route.enabled ? "on " : "off",
-          String(route.priority).padStart(4, " "),
-          `${route.source}/${route.eventType}`,
-        ].join("  "),
+        [route.id.padEnd(36, " "), route.enabled ? "on " : "off", formatRouteTrigger(route)].join(
+          "  ",
+        ),
       )
       .join("\n"),
   );
@@ -118,11 +131,9 @@ const formatRouteText = (route: AutomationRouteDefinition) =>
       `id: ${route.id}`,
       `name: ${route.name}`,
       `enabled: ${route.enabled ? "yes" : "no"}`,
-      `source: ${route.source}`,
-      `event: ${route.eventType}`,
-      `priority: ${route.priority}`,
+      `trigger: ${JSON.stringify(route.trigger)}`,
       `action: ${route.action.kind}`,
-      `matcher: ${route.matcher ? JSON.stringify(route.matcher) : "all"}`,
+      route.trigger.kind === "schedule" ? `next: ${route.nextOccurrenceAt ?? "none"}` : undefined,
       route.description ? `description: ${route.description}` : undefined,
     ]
       .filter(Boolean)
@@ -220,7 +231,7 @@ const routerCreateTool = defineBackofficeRuntimeTool({
           },
         ],
         examples: [
-          'router.create --json \'{"id":"telegram-hello","name":"Telegram hello","source":"telegram","eventType":"message.received","action":{"kind":"start_workflow","remoteWorkflowName":"telegram-hello","workflowScriptPath":"/workspace/automations/telegram-hello.workflow.js","instanceIdTemplate":"telegram-hello-${event}"}}\' --format json',
+          'router.create --json \'{"id":"telegram-hello","name":"Telegram hello","trigger":{"kind":"event","source":"telegram","eventType":"message.received"},"action":{"kind":"start_workflow","remoteWorkflowName":"telegram-hello","workflowScriptPath":"/workspace/automations/telegram-hello.workflow.js","instanceIdTemplate":"telegram-hello-${event}"}}\' --format json',
         ],
       },
       parse: parseJsonPayload() as (args: string[]) => AutomationRouteCreateInput,
@@ -281,11 +292,65 @@ const routerUpdateTool = defineBackofficeRuntimeTool({
   },
 });
 
+const routerDeleteTool = defineBackofficeRuntimeTool({
+  id: "router.delete",
+  namespace: "router",
+  name: "delete",
+  description: "Idempotently delete a database-backed automation route.",
+  requiredPermissions: ["modify"],
+  inputSchema: z.object({ id: z.string().trim().min(1) }),
+  outputSchema: z.object({ deleted: z.literal(true) }),
+  execute: async (input, context: AutomationRouterToolContext) => {
+    return { deleted: await getRuntime(context).deleteRoute(input) };
+  },
+  adapters: {
+    bash: {
+      command: "router.delete",
+      help: {
+        summary: "router.delete ensures an automation route is absent.",
+        options: [{ name: "id", required: true, valueRequired: true, description: "Route id" }],
+        examples: ["router.delete --id daily-digest"],
+      },
+      parse: defineCliArgsParser<{ id: string }>("router.delete", { id: { required: true } }),
+      format: () => ({ stdout: "Deleted automation route.\n" }),
+    },
+  },
+});
+
+const routerTriggerNowTool = defineBackofficeRuntimeTool({
+  id: "router.trigger-now",
+  namespace: "router",
+  name: "triggerNow",
+  description: "Trigger a scheduled automation route immediately without changing its cadence.",
+  requiredPermissions: ["modify"],
+  inputSchema: z.object({ id: z.string().trim().min(1) }),
+  outputSchema: z.object({ accepted: z.literal(true), eventId: z.string() }).nullable(),
+  execute: async (input, context: AutomationRouterToolContext) =>
+    await getRuntime(context).triggerScheduledRouteNow(input),
+  adapters: {
+    bash: {
+      command: "router.trigger-now",
+      help: {
+        summary: "router.trigger-now triggers a scheduled automation route immediately.",
+        options: [{ name: "id", required: true, valueRequired: true, description: "Route id" }],
+        examples: ["router.trigger-now --id daily-digest --format json"],
+      },
+      parse: defineCliArgsParser<{ id: string }>("router.trigger-now", {
+        id: { required: true },
+      }),
+      format: (result) =>
+        result ? { data: result } : { stderr: "Automation route not found.\n", exitCode: 1 },
+    },
+  },
+});
+
 export const automationRouterRuntimeTools = [
   routerListTool,
   routerGetTool,
   routerCreateTool,
   routerUpdateTool,
+  routerDeleteTool,
+  routerTriggerNowTool,
 ] as const;
 
 export const automationRouterToolFamily = defineBackofficeRuntimeToolFamily({

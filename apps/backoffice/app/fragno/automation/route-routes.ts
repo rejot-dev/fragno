@@ -4,11 +4,21 @@ import { defineRoutes } from "@fragno-dev/core";
 import { isUniqueConstraintError } from "@fragno-dev/db";
 
 import { automationFragmentDefinition } from "./definition";
+import { isAutomationScheduleError } from "./route-triggers";
 import {
   automationRouteCreateInputSchema,
   automationRouteSchema,
   automationRouteUpdatePayloadSchema,
 } from "./routing-schemas";
+
+const routeError = (cause: unknown) =>
+  isAutomationScheduleError(cause)
+    ? {
+        message: cause.message,
+        code: "SCHEDULE_CADENCE_INVALID" as const,
+        status: 400 as const,
+      }
+    : null;
 
 export const automationRouteRoutes = defineRoutes(automationFragmentDefinition).create(
   ({ defineRoute, services }) => [
@@ -66,6 +76,10 @@ export const automationRouteRoutes = defineRoutes(automationFragmentDefinition).
               409,
             );
           }
+          const known = routeError(cause);
+          if (known) {
+            return error({ message: known.message, code: known.code }, known.status);
+          }
           throw cause;
         }
       },
@@ -77,18 +91,64 @@ export const automationRouteRoutes = defineRoutes(automationFragmentDefinition).
       outputSchema: automationRouteSchema,
       handler: async function ({ pathParams, input }, { json, error }) {
         const payload = await input.valid();
-        const route = await this.handlerTx()
+        try {
+          const route = await this.handlerTx()
+            .withServiceCalls(
+              () => [services.updateRoute({ ...payload, id: pathParams.routeId })] as const,
+            )
+            .transform(({ serviceResult: [result] }) => result)
+            .execute();
+
+          if (!route) {
+            return error({ message: "Automation route not found.", code: "ROUTE_NOT_FOUND" }, 404);
+          }
+
+          return json(route);
+        } catch (cause) {
+          const known = routeError(cause);
+          if (known) {
+            return error({ message: known.message, code: known.code }, known.status);
+          }
+          throw cause;
+        }
+      },
+    }),
+    defineRoute({
+      method: "DELETE",
+      path: "/routes/:routeId",
+      outputSchema: z.object({ deleted: z.literal(true) }),
+      handler: async function ({ pathParams }, { json }) {
+        await this.handlerTx()
+          .withServiceCalls(() => [services.deleteRoute({ id: pathParams.routeId })] as const)
+          .execute();
+        return json({ deleted: true });
+      },
+    }),
+    defineRoute({
+      method: "POST",
+      path: "/routes/:routeId/trigger-now",
+      outputSchema: z.object({ accepted: z.literal(true), eventId: z.string() }),
+      handler: async function ({ pathParams }, { json, error }) {
+        const result = await this.handlerTx()
           .withServiceCalls(
-            () => [services.updateRoute({ ...payload, id: pathParams.routeId })] as const,
+            () => [services.triggerScheduledRouteNow({ id: pathParams.routeId })] as const,
           )
           .transform(({ serviceResult: [result] }) => result)
           .execute();
 
-        if (!route) {
+        if (result.kind === "missing") {
           return error({ message: "Automation route not found.", code: "ROUTE_NOT_FOUND" }, 404);
         }
-
-        return json(route);
+        if (result.kind === "not-scheduled") {
+          return error(
+            {
+              message: "Automation route does not have a scheduled trigger.",
+              code: "ROUTE_NOT_SCHEDULED",
+            },
+            409,
+          );
+        }
+        return json({ accepted: true, eventId: result.eventId });
       },
     }),
   ],

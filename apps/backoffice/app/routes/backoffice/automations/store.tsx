@@ -71,7 +71,7 @@ export default function BackofficeOrganisationAutomationStore() {
     navigation.state === "submitting" ? String(navigation.formData?.get("key") ?? "") : "";
 
   return (
-    <div className="space-y-4">
+    <div className="w-full max-w-7xl space-y-4">
       {actionData?.message ? (
         <div
           className={

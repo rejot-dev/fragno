@@ -98,7 +98,7 @@ export default function BackofficeAutomationEventsCatalog() {
   }, [pageCount]);
 
   return (
-    <section className="space-y-3">
+    <section className="w-full max-w-7xl space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <label className="flex min-w-72 flex-1 flex-col gap-1 text-xs text-[var(--bo-muted)]">
           <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">

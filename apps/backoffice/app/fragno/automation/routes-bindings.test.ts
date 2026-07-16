@@ -24,6 +24,7 @@ const createAutomation = async (
       | { kind: "project"; orgId: string; projectId: string };
     workflows?: AutomationWorkflowsService;
     runtime?: BackofficeRuntimeServices;
+    now?: () => Date;
   } = {},
 ) => {
   const services = {
@@ -55,7 +56,10 @@ const createAutomation = async (
       runtime: options.runtime,
     },
     {
-      databaseAdapter: new InMemoryAdapter({ idSeed: "automation-routes-store-test" }),
+      databaseAdapter: new InMemoryAdapter({
+        idSeed: "automation-routes-store-test",
+        clock: options.now ? { now: options.now } : undefined,
+      }),
       dbRoundtripGuard: true,
       mountRoute: "/api/automations",
       outbox: { enabled: true },
@@ -143,9 +147,12 @@ describe("automation routes /routes", () => {
         id: "telegram-hello",
         name: "Telegram hello",
         enabled: true,
-        source: "telegram",
-        eventType: "message.received",
-        matcher: { path: "$.payload.text", op: "startsWith", value: "/hello" },
+        trigger: {
+          kind: "event",
+          source: "telegram",
+          eventType: "message.received",
+          matcher: { path: "$.payload.text", op: "startsWith", value: "/hello" },
+        },
         priority: 1000,
         action: {
           kind: "start_workflow",
@@ -172,6 +179,12 @@ describe("automation routes /routes", () => {
       pathParams: { routeId: "telegram-hello" },
       body: {
         enabled: false,
+        trigger: {
+          kind: "event",
+          source: "telegram",
+          eventType: "message.received",
+          matcher: { path: "$.payload.text", op: "startsWith", value: "/hello" },
+        },
         priority: 900,
         description: "Disabled while testing.",
       },
@@ -183,8 +196,9 @@ describe("automation routes /routes", () => {
         id: "telegram-hello",
         enabled: false,
         priority: 900,
-        description: "Disabled while testing.",
-        matcher: { path: "$.payload.text", op: "startsWith", value: "/hello" },
+        trigger: expect.objectContaining({
+          matcher: { path: "$.payload.text", op: "startsWith", value: "/hello" },
+        }),
       });
     }
   });
@@ -217,9 +231,12 @@ describe("automation routes /routes", () => {
         id: "custom-forwarder",
         name: "Custom forwarder",
         enabled: true,
-        source: "custom",
-        eventType: "ready",
-        matcher: { path: "$.subject.orgId", op: "exists" },
+        trigger: {
+          kind: "event",
+          source: "custom",
+          eventType: "ready",
+          matcher: { path: "$.subject.orgId", op: "exists" },
+        },
         priority: 20,
         action: {
           kind: "forward_event",
@@ -276,9 +293,12 @@ describe("automation routes /routes", () => {
         id: "custom-cross-org-forwarder",
         name: "Custom cross-org forwarder",
         enabled: true,
-        source: "custom",
-        eventType: "ready",
-        matcher: null,
+        trigger: {
+          kind: "event",
+          source: "custom",
+          eventType: "ready",
+          matcher: null,
+        },
         priority: 20,
         action: {
           kind: "forward_event",
@@ -342,9 +362,12 @@ describe("automation routes /routes", () => {
         id: "custom-forwarder-empty-target",
         name: "Custom forwarder with empty target",
         enabled: true,
-        source: "custom",
-        eventType: "ready",
-        matcher: null,
+        trigger: {
+          kind: "event",
+          source: "custom",
+          eventType: "ready",
+          matcher: null,
+        },
         priority: 20,
         action: {
           kind: "forward_event",
@@ -412,9 +435,12 @@ describe("automation routes /routes", () => {
         id: "custom-signal-forwarder",
         name: "Custom signal forwarder",
         enabled: true,
-        source: "custom",
-        eventType: "signal.received",
-        matcher: null,
+        trigger: {
+          kind: "event",
+          source: "custom",
+          eventType: "signal.received",
+          matcher: null,
+        },
         priority: 50,
         action: {
           kind: "send_workflow_event",

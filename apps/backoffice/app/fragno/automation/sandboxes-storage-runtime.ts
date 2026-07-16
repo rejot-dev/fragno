@@ -1,10 +1,9 @@
-import type { DatabaseServiceContext, TypedUnitOfWork } from "@fragno-dev/db";
-
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { SandboxRuntimeProvider } from "@/sandbox/contracts";
 
 import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "./contracts";
 import type { AutomationWorkflowsService } from "./definition";
+import type { AutomationHookServiceContext, AutomationHookUnitOfWork } from "./internal-hooks";
 import { reconcileSandboxStopped } from "./sandbox-lifecycle-workflow";
 import {
   sandboxInstanceListInputSchema,
@@ -38,24 +37,11 @@ export const SANDBOX_LIFECYCLE_WORKFLOW_NAME = "sandbox-lifecycle" as const;
 
 export type SandboxLifecycleWorkflowParams = SandboxInstanceRequestInput;
 
-type AutomationSandboxHooks = {
-  internalIngestEvent: (payload: AutomationEvent) => Promise<void> | void;
-};
-
-type AutomationSandboxServiceContext = DatabaseServiceContext<AutomationSandboxHooks>;
-
-type AutomationEventIngestUnitOfWork = TypedUnitOfWork<
-  typeof automationFragmentSchema,
-  [],
-  unknown,
-  AutomationSandboxHooks
->;
-
 type AutomationSandboxServicesOptions = {
   workflows: AutomationWorkflowsService;
   ownerScope: BackofficeContextScope;
   sandboxProviders?: Record<string, SandboxRuntimeProvider>;
-  ingestEvent: (uow: AutomationEventIngestUnitOfWork, event: AutomationEvent) => void;
+  ingestEvent: (uow: AutomationHookUnitOfWork, event: AutomationEvent) => void;
 };
 
 const ACTIVE_SANDBOX_INSTANCE_STATUSES = new Set(["requested", "starting", "running", "stopping"]);
@@ -102,9 +88,7 @@ const sandboxPayload = (
 });
 
 export const createAutomationSandboxServices = (
-  defineService: <TService>(
-    service: TService & ThisType<AutomationSandboxServiceContext>,
-  ) => TService,
+  defineService: <TService>(service: TService & ThisType<AutomationHookServiceContext>) => TService,
   options: AutomationSandboxServicesOptions,
 ) =>
   defineService({

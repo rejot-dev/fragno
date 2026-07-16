@@ -364,7 +364,7 @@ export default function BackofficeAutomationSandboxes() {
   const commandDisabled = !selectedSandbox || selectedSandbox.status !== "running";
 
   return (
-    <section className="grid gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">
+    <section className="grid w-full max-w-7xl gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">
       <aside className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)]">
         <div>
           <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">

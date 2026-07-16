@@ -15,7 +15,6 @@ import { automationRouteRoutes } from "./route-routes";
 import type {
   SandboxInstanceRecord,
   SandboxInstanceRequestInput,
-  SandboxInstanceStatus,
   SandboxProvider,
 } from "./sandboxes";
 import { automationStoreRoutes } from "./store-routes";
@@ -59,10 +58,6 @@ export type {
   AutomationEventDefinitionCreateInput,
   AutomationEventDefinitionUpdateInput,
 } from "./event-definitions";
-export {
-  STARTER_AUTOMATION_ROUTES,
-  SYSTEM_STARTER_AUTOMATION_ROUTES,
-} from "./content/starter-routing";
 export type { AutomationRouteDefinition, StarterAutomationRoutesSeedResult } from "./routing";
 
 export { CLOUDFLARE_SANDBOX_PROVIDER } from "./sandboxes";
@@ -71,7 +66,6 @@ export type {
   AutomationProjectExecutionTarget,
   SandboxInstanceRecord,
   SandboxInstanceRequestInput,
-  SandboxInstanceStatus,
   SandboxProvider,
 };
 export type { AutomationEvent, AutomationEventActor, AutomationEventSubject } from "./contracts";

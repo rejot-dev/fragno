@@ -1,29 +1,12 @@
-import { describe, expect, test } from "vitest";
+import { describe, test, assert } from "vitest";
 
-import { parseAutomationLoadError, type AutomationLoadErrorDetails } from "./shared";
+import { formatTimestampInTimeZone } from "./shared";
 
-describe("parseAutomationLoadError", () => {
-  test("extracts missing script details from catalog errors", () => {
-    const error =
-      "Automation script for binding 'telegram-file-store' '/workspace/automations/telegram-file-store.sh' was not found in the automation workspace: File not found.";
-
-    const parsed = parseAutomationLoadError(error);
-
-    expect(parsed).toMatchObject({
-      kind: "missing-script",
-      bindingId: "telegram-file-store",
-      scriptPath: "/workspace/automations/telegram-file-store.sh",
-      cause: "File not found.",
-    } satisfies AutomationLoadErrorDetails);
-  });
-
-  test("returns generic details for unknown messages", () => {
-    const error = "Some unrelated backend error";
-    const parsed = parseAutomationLoadError(error);
-
-    expect(parsed).toMatchObject({
-      kind: "generic",
-      message: error,
-    } satisfies AutomationLoadErrorDetails);
+describe("automation timestamp formatting", () => {
+  test("formats schedule occurrences in the configured IANA time zone", () => {
+    assert(
+      formatTimestampInTimeZone("2026-07-16T11:03:00.000Z", "Europe/Amsterdam") ===
+        "Jul 16, 2026, 13:03 Europe/Amsterdam",
+    );
   });
 });

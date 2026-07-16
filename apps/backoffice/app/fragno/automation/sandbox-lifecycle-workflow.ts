@@ -110,7 +110,7 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
               errorMessage,
               occurredAt: now,
             });
-            uow.triggerHook("internalIngestEvent", failedEvent, { id: failedEvent.id });
+            uow.triggerHook("internalIngestEvent", { event: failedEvent }, { id: failedEvent.id });
           });
 
           const handle = await provider.getHandle(sandboxId, {
@@ -228,7 +228,7 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
               errorMessage,
               occurredAt: now,
             });
-            uow.triggerHook("internalIngestEvent", failedEvent, { id: failedEvent.id });
+            uow.triggerHook("internalIngestEvent", { event: failedEvent }, { id: failedEvent.id });
           });
 
           await reconcileSandboxStopped(provider, sandboxId);

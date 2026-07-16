@@ -69,9 +69,12 @@ describe("project automation event routing", () => {
         id: "system-project-files-configure",
         name: "Configure project files",
         enabled: false,
-        source: "automations",
-        eventType: "project.created",
-        matcher: null,
+        trigger: {
+          kind: "event",
+          source: "automations",
+          eventType: "project.created",
+          matcher: null,
+        },
         priority: 15,
         action: {
           kind: "start_workflow",
@@ -106,9 +109,12 @@ describe("project automation event routing", () => {
             id: "project-store-route",
             name: "Project store route",
             enabled: true,
-            source: "test",
-            eventType: "project.event",
-            matcher: null,
+            trigger: {
+              kind: "event",
+              source: "test",
+              eventType: "project.event",
+              matcher: null,
+            },
             priority: 50,
             action: {
               kind: "start_workflow",
@@ -204,10 +210,12 @@ describe("project automation event routing", () => {
         expect.objectContaining({
           hookName: "internalIngestEvent",
           payload: expect.objectContaining({
-            source: "automations",
-            eventType: "project.created",
-            scope: { kind: "org", orgId },
-            subject: { orgId, projectId },
+            event: expect.objectContaining({
+              source: "automations",
+              eventType: "project.created",
+              scope: { kind: "org", orgId },
+              subject: { orgId, projectId },
+            }),
           }),
         }),
       ]),

@@ -89,23 +89,27 @@ export default function BackofficeOrganisationAutomationScripts() {
 
   if (hasScriptLoadError && scripts.length === 0) {
     return (
-      <AutomationNotice tone="error">
-        <p className="text-[10px] tracking-[0.22em] uppercase">Could not load automation scripts</p>
-        <p className="mt-2 text-sm">{scriptsError}</p>
-      </AutomationNotice>
+      <div className="w-full max-w-7xl">
+        <AutomationNotice tone="error">
+          <p className="text-[10px] tracking-[0.22em] uppercase">
+            Could not load automation scripts
+          </p>
+          <p className="mt-2 text-sm">{scriptsError}</p>
+        </AutomationNotice>
+      </div>
     );
   }
 
   if (scripts.length === 0) {
     return (
-      <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
+      <div className="w-full max-w-7xl border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
         No automation scripts are defined for this organisation.
       </div>
     );
   }
 
   return (
-    <section className="space-y-4">
+    <section className="w-full max-w-7xl space-y-4">
       {hasScriptLoadError ? (
         <AutomationNotice tone="error">
           <p className="text-[10px] tracking-[0.22em] uppercase">Could not load all scripts</p>

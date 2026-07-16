@@ -51,31 +51,31 @@ export type AutomationStoreItem = {
   updatedAt?: string | Date | null;
 };
 
-export type AutomationLocalStoreState = {
+type AutomationLocalStoreState = {
   entries: AutomationStoreItem[];
   synced: boolean;
   error: string | null;
 };
 
-export type AutomationLocalRoutesState = {
+type AutomationLocalRoutesState = {
   routes: AutomationRouteItem[];
   synced: boolean;
   error: string | null;
 };
 
-export type AutomationLocalEventsState = {
+type AutomationLocalEventsState = {
   events: AutomationEventItem[];
   synced: boolean;
   error: string | null;
 };
 
-export type AutomationLocalEventDefinitionsState = {
+type AutomationLocalEventDefinitionsState = {
   eventDefinitions: AutomationEventDefinition[];
   synced: boolean;
   error: string | null;
 };
 
-export type AutomationLocalSandboxesState = {
+type AutomationLocalSandboxesState = {
   sandboxes: SandboxInstanceSummary[];
   synced: boolean;
   error: string | null;
@@ -89,7 +89,7 @@ export type AutomationLocalScopeState = {
   sandboxes: AutomationLocalSandboxesState;
 };
 
-export type AutomationServerLofiDataState<TData> = {
+type AutomationServerLofiDataState<TData> = {
   data: TData;
   source: "server" | "lofi";
   synced: boolean;
@@ -170,7 +170,10 @@ export type AutomationTab =
   | "mcp"
   | "sandboxes";
 
-export const formatTimestamp = (value?: string | Date | null) => {
+export const formatTimestampInTimeZone = (
+  value: string | Date | null | undefined,
+  timeZone: string,
+) => {
   if (!value) {
     return "—";
   }
@@ -180,17 +183,20 @@ export const formatTimestamp = (value?: string | Date | null) => {
     return "—";
   }
 
-  const month = new Intl.DateTimeFormat("en-US", {
+  const formatted = new Intl.DateTimeFormat("en-US", {
     month: "short",
-    timeZone: "UTC",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone,
   }).format(date);
-  const day = String(date.getUTCDate()).padStart(2, "0");
-  const year = date.getUTCFullYear();
-  const hours = String(date.getUTCHours()).padStart(2, "0");
-  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
-
-  return `${month} ${day}, ${year}, ${hours}:${minutes} UTC`;
+  return `${formatted} ${timeZone}`;
 };
+
+export const formatTimestamp = (value?: string | Date | null) =>
+  formatTimestampInTimeZone(value, "UTC");
 
 export function AutomationHeader({ selectedScope }: { selectedScope: AutomationUiScope }) {
   const scopeLabel = selectedScope.label;
@@ -470,35 +476,3 @@ export function AutomationNotice({
     </div>
   );
 }
-
-const MISSING_SCRIPT_ERROR_RE =
-  /^Automation script for binding '([^']+)' '([^']+)' was not found in the automation workspace:\s*(.+)$/;
-
-export type AutomationLoadErrorDetails =
-  | {
-      kind: "missing-script";
-      bindingId: string;
-      scriptPath: string;
-      cause: string;
-    }
-  | {
-      kind: "generic";
-      message: string;
-    };
-
-export const parseAutomationLoadError = (error: string): AutomationLoadErrorDetails => {
-  const match = error.match(MISSING_SCRIPT_ERROR_RE);
-  if (match) {
-    return {
-      kind: "missing-script",
-      bindingId: match[1],
-      scriptPath: match[2],
-      cause: match[3]?.trim() || "File not found.",
-    };
-  }
-
-  return {
-    kind: "generic",
-    message: error,
-  };
-};

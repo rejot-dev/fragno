@@ -2,15 +2,55 @@ import { Link, useOutletContext, useSearchParams } from "react-router";
 
 import { automationScopeTabPath } from "./scope";
 import type { AutomationLayoutContext, AutomationRouteItem } from "./shared";
-import { AutomationNotice } from "./shared";
+import { AutomationNotice, formatTimestamp, formatTimestampInTimeZone } from "./shared";
 
 const buildRouteLink = ({ basePath, routeId }: { basePath: string; routeId: string }) => {
   const params = new URLSearchParams({ route: routeId });
   return `${basePath}?${params.toString()}`;
 };
 
-const routeMatcherLabel = (route: AutomationRouteItem) =>
-  route.matcher ? JSON.stringify(route.matcher, null, 2) : "All events matching source/type.";
+const routeMatcherLabel = (route: AutomationRouteItem) => {
+  if (route.trigger.kind !== "event") {
+    return "";
+  }
+  return route.trigger.matcher
+    ? JSON.stringify(route.trigger.matcher, null, 2)
+    : "All events matching source/type.";
+};
+
+const routeListTriggerLabel = (route: AutomationRouteItem) => {
+  if (route.trigger.kind === "event") {
+    return `${route.trigger.source}/${route.trigger.eventType}`;
+  }
+  if (route.trigger.cadence.kind === "once") {
+    return `once · ${formatTimestamp(route.trigger.cadence.at)}`;
+  }
+  return `cron ${route.trigger.cadence.expression} · ${route.trigger.cadence.timeZone}`;
+};
+
+const routeWorkflowName = (route: AutomationRouteItem) => {
+  const action = route.action;
+  if (action.kind === "forward_event") {
+    return null;
+  }
+  if (action.kind === "send_workflow_event") {
+    return action.workflowName;
+  }
+  if (action.remoteWorkflowName) {
+    return action.remoteWorkflowName;
+  }
+
+  const scriptName = action.workflowScriptPath.split("/").pop();
+  return scriptName?.replace(/\.workflow\.js$/u, "") || action.workflowName;
+};
+
+const routeWorkflowLink = (route: AutomationRouteItem) => {
+  const workflowName = routeWorkflowName(route);
+  if (!workflowName) {
+    return null;
+  }
+  return `/workflows?${new URLSearchParams({ workflow: workflowName }).toString()}`;
+};
 
 const routeActionLabel = (route: AutomationRouteItem) => {
   switch (route.action.kind) {
@@ -28,12 +68,14 @@ const routeActionDetail = (route: AutomationRouteItem) => {
   switch (action.kind) {
     case "start_workflow":
       return [
+        ["workflow", routeWorkflowName(route) ?? action.workflowName],
         ["script", action.workflowScriptPath],
         ["instance", action.instanceIdTemplate],
       ];
 
     case "send_workflow_event":
       return [
+        ["workflow", action.workflowName],
         ["event", action.eventType],
         ["target", action.target.kind === "instance_id" ? "instance id" : "stored instance id"],
         [
@@ -66,6 +108,7 @@ export default function BackofficeAutomationRouter() {
   const [searchParams] = useSearchParams();
   const selectedRouteId = searchParams.get("route")?.trim() ?? "";
   const selectedRoute = routes.find((route) => route.id === selectedRouteId) ?? null;
+  const selectedWorkflowLink = selectedRoute ? routeWorkflowLink(selectedRoute) : null;
   const basePath = automationScopeTabPath(selectedScope, "router");
   const isDetailVisible = Boolean(selectedRoute);
   const enabledRoutes = routes.filter((route) => route.enabled).length;
@@ -82,7 +125,7 @@ export default function BackofficeAutomationRouter() {
 
   if (routes.length === 0) {
     return (
-      <section className="space-y-4">
+      <section className="w-full max-w-7xl space-y-4">
         {routesData.syncError ? (
           <AutomationNotice tone="error">
             <p className="text-[10px] tracking-[0.22em] uppercase">
@@ -99,7 +142,7 @@ export default function BackofficeAutomationRouter() {
   }
 
   return (
-    <section className="space-y-4">
+    <section className="w-full max-w-7xl space-y-4">
       {routesData.serverError || routesData.syncError ? (
         <AutomationNotice tone="error">
           <p className="text-[10px] tracking-[0.22em] uppercase">
@@ -172,7 +215,7 @@ export default function BackofficeAutomationRouter() {
                           </span>
                         </div>
                         <p className="mt-1 truncate font-mono text-[11px] text-[var(--bo-muted-2)]">
-                          {route.source}/{route.eventType}
+                          {routeListTriggerLabel(route)}
                         </p>
                       </Link>
                     );
@@ -225,11 +268,14 @@ export default function BackofficeAutomationRouter() {
                   </p>
                 </div>
                 <dl className="divide-y divide-[color:var(--bo-border)]">
-                  {[
-                    ["source", selectedRoute.source],
-                    ["event", selectedRoute.eventType],
-                    ["priority", String(selectedRoute.priority)],
-                  ].map(([label, value]) => (
+                  {(selectedRoute.trigger.kind === "event"
+                    ? [
+                        ["source", selectedRoute.trigger.source],
+                        ["event", selectedRoute.trigger.eventType],
+                        ["priority", String(selectedRoute.priority)],
+                      ]
+                    : [["trigger", "schedule"]]
+                  ).map(([label, value]) => (
                     <div key={label} className="grid gap-2 px-4 py-3 md:grid-cols-[9rem_1fr]">
                       <dt className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                         {label}
@@ -242,12 +288,25 @@ export default function BackofficeAutomationRouter() {
 
               <div className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
                 <div className="border-b border-[color:var(--bo-border)] px-4 py-3">
-                  <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                    Action · {selectedRoute.action.kind}
-                  </p>
-                  <p className="mt-1 text-sm font-medium text-[var(--bo-fg)]">
-                    {routeActionLabel(selectedRoute)}
-                  </p>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                        Action · {selectedRoute.action.kind}
+                      </p>
+                      <p className="mt-1 text-sm font-medium text-[var(--bo-fg)]">
+                        {routeActionLabel(selectedRoute)}
+                      </p>
+                    </div>
+                    {selectedWorkflowLink ? (
+                      <Link
+                        to={selectedWorkflowLink}
+                        className="inline-flex min-h-10 items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase transition-[border-color,color,transform] hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] active:scale-[0.96]"
+                      >
+                        View workflow
+                        <span aria-hidden="true">↗</span>
+                      </Link>
+                    ) : null}
+                  </div>
                 </div>
                 <dl className="divide-y divide-[color:var(--bo-border)]">
                   {routeActionDetail(selectedRoute).map(([label, value]) => (
@@ -261,21 +320,93 @@ export default function BackofficeAutomationRouter() {
                 </dl>
               </div>
 
-              <div className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-                <div className="border-b border-[color:var(--bo-border)] px-4 py-3">
-                  <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                    Matcher
-                  </p>
+              {selectedRoute.trigger.kind === "event" ? (
+                <div className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
+                  <div className="border-b border-[color:var(--bo-border)] px-4 py-3">
+                    <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                      Matcher
+                    </p>
+                  </div>
+                  <pre className="backoffice-scroll max-h-[24rem] overflow-auto px-4 py-4 font-mono text-xs break-words whitespace-pre-wrap text-[var(--bo-fg)]">
+                    <code>{routeMatcherLabel(selectedRoute)}</code>
+                  </pre>
                 </div>
-                <pre className="backoffice-scroll max-h-[24rem] overflow-auto px-4 py-4 font-mono text-xs break-words whitespace-pre-wrap text-[var(--bo-fg)]">
-                  <code>{routeMatcherLabel(selectedRoute)}</code>
-                </pre>
-              </div>
+              ) : (
+                <div className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
+                  <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[color:var(--bo-border)] px-4 py-3">
+                    <div>
+                      <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                        Schedule
+                      </p>
+                      <p className="mt-1 text-sm font-medium text-[var(--bo-fg)]">
+                        {selectedRoute.trigger.cadence.kind === "once"
+                          ? "One-time occurrence"
+                          : "Recurring cron schedule"}
+                      </p>
+                    </div>
+                    <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 font-mono text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted)] uppercase">
+                      {selectedRoute.trigger.cadence.kind}
+                    </span>
+                  </div>
+                  <dl className="divide-y divide-[color:var(--bo-border)]">
+                    {selectedRoute.trigger.cadence.kind === "once" ? (
+                      <div className="grid gap-2 px-4 py-3 md:grid-cols-[9rem_1fr]">
+                        <dt className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                          Runs at
+                        </dt>
+                        <dd className="font-mono text-xs text-[var(--bo-fg)] tabular-nums">
+                          <time dateTime={selectedRoute.trigger.cadence.at}>
+                            {formatTimestamp(selectedRoute.trigger.cadence.at)}
+                          </time>
+                        </dd>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="grid gap-2 px-4 py-3 md:grid-cols-[9rem_1fr]">
+                          <dt className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                            Expression
+                          </dt>
+                          <dd className="font-mono text-xs text-[var(--bo-fg)] tabular-nums">
+                            {selectedRoute.trigger.cadence.expression}
+                          </dd>
+                        </div>
+                        <div className="grid gap-2 px-4 py-3 md:grid-cols-[9rem_1fr]">
+                          <dt className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                            Time zone
+                          </dt>
+                          <dd className="font-mono text-xs text-[var(--bo-fg)]">
+                            {selectedRoute.trigger.cadence.timeZone}
+                          </dd>
+                        </div>
+                      </>
+                    )}
+                    <div className="grid gap-2 bg-[var(--bo-panel-2)] px-4 py-3 md:grid-cols-[9rem_1fr]">
+                      <dt className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                        Next occurrence
+                      </dt>
+                      <dd className="font-mono text-xs text-[var(--bo-fg)] tabular-nums">
+                        {selectedRoute.nextOccurrenceAt ? (
+                          <time dateTime={selectedRoute.nextOccurrenceAt}>
+                            {formatTimestampInTimeZone(
+                              selectedRoute.nextOccurrenceAt,
+                              selectedRoute.trigger.cadence.kind === "cron"
+                                ? selectedRoute.trigger.cadence.timeZone
+                                : "UTC",
+                            )}
+                          </time>
+                        ) : (
+                          <span className="text-[var(--bo-muted)]">None queued</span>
+                        )}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-4">
               <div className="border border-dashed border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-6 text-sm text-[var(--bo-muted)]">
-                Select a route to inspect its matcher and action.
+                Select a route to inspect its trigger and action.
               </div>
             </div>
           )}

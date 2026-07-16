@@ -3,6 +3,7 @@ import type { DatabaseServiceContext } from "@fragno-dev/db";
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 
 import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "./contracts";
+import type { AutomationEventIngestionPayload, AutomationInternalHooks } from "./internal-hooks";
 import {
   automationProjectArchiveInputSchema,
   automationProjectCreateInputSchema,
@@ -26,9 +27,7 @@ import {
   type AutomationTimestampInput,
 } from "./timestamps";
 
-type AutomationProjectServiceContext = DatabaseServiceContext<{
-  internalIngestEvent: (payload: AutomationEvent) => Promise<void> | void;
-}>;
+type AutomationProjectServiceContext = DatabaseServiceContext<AutomationInternalHooks>;
 
 type AutomationProjectServicesOptions = {
   ownerScope: BackofficeContextScope;
@@ -85,7 +84,7 @@ const buildProjectPayload = (
 type ProjectEventUnitOfWork = {
   triggerHook(
     hookName: "internalIngestEvent",
-    payload: AutomationEvent,
+    payload: AutomationEventIngestionPayload,
     options: { id: string },
   ): void;
 };
@@ -121,7 +120,7 @@ const triggerProjectEvent = ({
     },
   };
 
-  uow.triggerHook("internalIngestEvent", event, { id: event.id });
+  uow.triggerHook("internalIngestEvent", { event }, { id: event.id });
 };
 
 export const createAutomationProjectServices = (

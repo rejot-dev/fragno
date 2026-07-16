@@ -75,5 +75,32 @@ export const createRouteBackedAutomationRouterRuntime = ({
       }
       throw new Error(`Automations backend returned ${response.status}`);
     },
+    deleteRoute: async ({ id }) => {
+      const response = await callRoute("DELETE", "/routes/:routeId", {
+        pathParams: { routeId: id },
+      });
+      if (response.type === "json") {
+        return z.object({ deleted: z.literal(true) }).parse(response.data).deleted;
+      }
+      if (response.type === "error") {
+        raiseRouteError(response.status, response.error.message);
+      }
+      throw new Error(`Automations backend returned ${response.status}`);
+    },
+    triggerScheduledRouteNow: async ({ id }) => {
+      const response = await callRoute("POST", "/routes/:routeId/trigger-now", {
+        pathParams: { routeId: id },
+      });
+      if (response.type === "error" && response.status === 404) {
+        return null;
+      }
+      if (response.type === "json") {
+        return z.object({ accepted: z.literal(true), eventId: z.string() }).parse(response.data);
+      }
+      if (response.type === "error") {
+        raiseRouteError(response.status, response.error.message);
+      }
+      throw new Error(`Automations backend returned ${response.status}`);
+    },
   };
 };

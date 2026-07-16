@@ -320,8 +320,11 @@ describe("system automation scenarios", () => {
             include: [
               {
                 id: "system-project-files-configure",
-                source: "automations",
-                eventType: "project.created",
+                trigger: {
+                  kind: "event",
+                  source: "automations",
+                  eventType: "project.created",
+                },
                 action: {
                   kind: "start_workflow",
                   remoteWorkflowName: "project-files-configure",

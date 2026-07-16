@@ -16,7 +16,7 @@ import {
   backofficeScopeRouteId,
   backofficeScopeSinglePathSegment,
 } from "@/backoffice-runtime/scope-codec";
-import type { AutomationEventMatcher, AutomationRouteAction } from "@/fragno/automation/routing";
+import type { AutomationRouteAction } from "@/fragno/automation/routing";
 import { automationFragmentSchema } from "@/fragno/automation/schema";
 import {
   CLOUDFLARE_SANDBOX_PROVIDER,
@@ -28,7 +28,6 @@ import type { AutomationUiScope } from "./scope";
 import type {
   AutomationEventItem,
   AutomationLocalScopeState,
-  AutomationLocalStoreState,
   AutomationRouteItem,
   AutomationStoreItem,
 } from "./shared";
@@ -49,6 +48,19 @@ const EMPTY_ROUTES_QUERY_STATE: LofiQueryState<AutomationRouteItem[]> = {
   error: null,
   synced: false,
 };
+
+type AutomationRouteScheduleStateItem = {
+  id: string;
+  nextOccurrenceAt: string | null;
+};
+
+const EMPTY_ROUTE_SCHEDULE_STATES_QUERY_STATE: LofiQueryState<AutomationRouteScheduleStateItem[]> =
+  {
+    data: [],
+    loading: false,
+    error: null,
+    synced: false,
+  };
 
 const EMPTY_EVENTS_QUERY_STATE: LofiQueryState<AutomationEventItem[]> = {
   data: [],
@@ -82,6 +94,7 @@ type AutomationScopeRuntime = {
   runtime: LofiRuntime;
   $entries: LofiQueryStore<AutomationStoreItem[]>;
   $routes: LofiQueryStore<AutomationRouteItem[]>;
+  $routeScheduleStates: LofiQueryStore<AutomationRouteScheduleStateItem[]>;
   $events: LofiQueryStore<AutomationEventItem[]>;
   $eventDefinitions: LofiQueryStore<
     AutomationLocalScopeState["eventDefinitions"]["eventDefinitions"]
@@ -245,12 +258,25 @@ const getAutomationScopeRuntime = (
           id: route.id.externalId,
           name: route.name,
           enabled: route.enabled,
-          source: route.source,
-          eventType: route.eventType,
-          matcher: route.matcher as AutomationEventMatcher | null,
-          action: route.action as AutomationRouteAction,
           priority: route.priority,
+          trigger: route.trigger,
+          action: route.action as AutomationRouteAction,
           description: route.description,
+          nextOccurrenceAt: null,
+        })),
+    },
+  );
+  const $routeScheduleStates = createLofiQueryStore(
+    runtime,
+    automationFragmentSchema,
+    "automation_route_schedule_state",
+    (b) => b.whereIndex("primary"),
+    {
+      initialData: [],
+      map: (rows) =>
+        rows.map((state) => ({
+          id: state.id.externalId,
+          nextOccurrenceAt: state.nextOccurrenceAt ? toIsoString(state.nextOccurrenceAt) : null,
         })),
     },
   );
@@ -328,7 +354,15 @@ const getAutomationScopeRuntime = (
           .sort((left, right) => left.id.localeCompare(right.id)),
     },
   );
-  const created = { runtime, $entries, $routes, $events, $eventDefinitions, $sandboxes };
+  const created = {
+    runtime,
+    $entries,
+    $routes,
+    $routeScheduleStates,
+    $events,
+    $eventDefinitions,
+    $sandboxes,
+  };
   automationScopeRuntimeByScope.set(config.scopeKey, created);
   return created;
 };
@@ -383,6 +417,10 @@ export const useLofiAutomationScopeData = ({
 
   const entriesQueryState = useNanostore(lofi?.$entries ?? null, EMPTY_STORE_QUERY_STATE);
   const routesQueryState = useNanostore(lofi?.$routes ?? null, EMPTY_ROUTES_QUERY_STATE);
+  const routeScheduleStatesQueryState = useNanostore(
+    lofi?.$routeScheduleStates ?? null,
+    EMPTY_ROUTE_SCHEDULE_STATES_QUERY_STATE,
+  );
   const eventsQueryState = useNanostore(lofi?.$events ?? null, EMPTY_EVENTS_QUERY_STATE);
   const eventDefinitionsQueryState = useNanostore(
     lofi?.$eventDefinitions ?? null,
@@ -397,7 +435,18 @@ export const useLofiAutomationScopeData = ({
       (entry) => !normalizedPrefix || entry.key.startsWith(normalizedPrefix),
     );
     const storeHasLocalData = hasLocalQueryResult(entriesQueryState);
-    const routesHaveLocalData = hasLocalQueryResult(routesQueryState);
+    const routesHaveLocalData =
+      hasLocalQueryResult(routesQueryState) && hasLocalQueryResult(routeScheduleStatesQueryState);
+    const scheduleStateByRouteId = new Map(
+      routeScheduleStatesQueryState.data.map((state) => [state.id, state] as const),
+    );
+    const routes = routesQueryState.data.map((route) => ({
+      ...route,
+      nextOccurrenceAt:
+        route.trigger.kind === "schedule"
+          ? (scheduleStateByRouteId.get(route.id)?.nextOccurrenceAt ?? null)
+          : null,
+    }));
     const eventsHaveLocalData = hasLocalQueryResult(eventsQueryState);
     const eventDefinitionsHaveLocalData = hasLocalQueryResult(eventDefinitionsQueryState);
     const sandboxesHaveLocalData = hasLocalQueryResult(sandboxesQueryState);
@@ -410,9 +459,12 @@ export const useLofiAutomationScopeData = ({
         error: errorMessage(entriesQueryState.error) ?? runtimeError,
       },
       routes: {
-        routes: routesHaveLocalData ? routesQueryState.data : initialRoutes,
+        routes: routesHaveLocalData ? routes : initialRoutes,
         synced: routesHaveLocalData,
-        error: errorMessage(routesQueryState.error) ?? runtimeError,
+        error:
+          errorMessage(routesQueryState.error) ??
+          errorMessage(routeScheduleStatesQueryState.error) ??
+          runtimeError,
       },
       events: {
         events: eventsHaveLocalData ? eventsQueryState.data : initialEvents,
@@ -442,25 +494,8 @@ export const useLofiAutomationScopeData = ({
     initialRoutes,
     normalizedPrefix,
     routesQueryState,
+    routeScheduleStatesQueryState,
     runtimeStatus,
     sandboxesQueryState,
   ]);
 };
-
-export const useLofiAutomationStoreEntries = ({
-  scope,
-  initialEntries,
-  prefix,
-}: {
-  scope: AutomationUiScope;
-  initialEntries: AutomationStoreItem[];
-  prefix: string;
-}): AutomationLocalStoreState =>
-  useLofiAutomationScopeData({
-    scope,
-    initialEntries,
-    initialRoutes: [],
-    initialEvents: [],
-    initialEventDefinitions: [],
-    prefix,
-  }).store;

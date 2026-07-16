@@ -84,32 +84,40 @@ describe("automation content", () => {
     expect(routes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          source: "telegram",
-          eventType: "message.received",
+          trigger: expect.objectContaining({
+            source: "telegram",
+            eventType: "message.received",
+          }),
           action: expect.objectContaining({
             remoteWorkflowName: "telegram-user-linking",
             workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
           }),
         }),
         expect.objectContaining({
-          source: "telegram",
-          eventType: "message.received",
+          trigger: expect.objectContaining({
+            source: "telegram",
+            eventType: "message.received",
+          }),
           action: expect.objectContaining({
             remoteWorkflowName: "telegram-test-command",
             workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
           }),
         }),
         expect.objectContaining({
-          source: "telegram",
-          eventType: "message.received",
+          trigger: expect.objectContaining({
+            source: "telegram",
+            eventType: "message.received",
+          }),
           action: expect.objectContaining({
             remoteWorkflowName: "telegram-user-pi-linking",
             workflowScriptPath: "/workspace/automations/telegram-user-pi-linking.workflow.js",
           }),
         }),
         expect.objectContaining({
-          source: "otp",
-          eventType: "identity.claim.completed",
+          trigger: expect.objectContaining({
+            source: "otp",
+            eventType: "identity.claim.completed",
+          }),
           action: expect.objectContaining({
             kind: "send_workflow_event",
             target: {
@@ -120,8 +128,10 @@ describe("automation content", () => {
           }),
         }),
         expect.objectContaining({
-          source: "pi",
-          eventType: "capability.configured",
+          trigger: expect.objectContaining({
+            source: "pi",
+            eventType: "capability.configured",
+          }),
           action: expect.objectContaining({
             remoteWorkflowName: "pi-default-agent-configure",
             workflowScriptPath: "/workspace/automations/pi-default-agent-configure.workflow.js",
@@ -145,8 +155,10 @@ describe("automation content", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "system-workspace-file-initialization",
-          source: "auth",
-          eventType: "organization.created",
+          trigger: expect.objectContaining({
+            source: "auth",
+            eventType: "organization.created",
+          }),
           action: expect.objectContaining({
             remoteWorkflowName: "workspace-file-initialization",
             workflowScriptPath: "/system/automations/workspace-file-initialization.workflow.js",
@@ -158,8 +170,10 @@ describe("automation content", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "system-project-files-configure",
-          source: "automations",
-          eventType: "project.created",
+          trigger: expect.objectContaining({
+            source: "automations",
+            eventType: "project.created",
+          }),
           action: expect.objectContaining({
             remoteWorkflowName: "project-files-configure",
             workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
