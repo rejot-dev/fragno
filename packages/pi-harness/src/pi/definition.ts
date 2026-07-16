@@ -2,14 +2,14 @@ import { buildScopedInstanceRowId } from "@fragno-dev/workflows/instance-ref";
 import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 
 import { defineFragment } from "@fragno-dev/core";
-import { serviceCalls, withDatabase } from "@fragno-dev/db";
+import { serviceCalls, withDatabase, type HookFn } from "@fragno-dev/db";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
 import type { AgentMessage, SessionTreeEntry } from "@earendil-works/pi-agent-core";
 
 import { piSchema } from "../schema";
 import type { PiHarnessStepResult } from "./harness/run-pi-harness-step";
-import type { PiFragmentConfig, PiSession } from "./types";
+import type { PiFragmentConfig, PiSession, PiOperationCompletedHookPayload } from "./types";
 import {
   latestCompletedPiHarnessEntries,
   projectPiWorkflowSession,
@@ -38,6 +38,10 @@ export type PiAgentLoopCursorState = {
 
 export type PiAgentLoopSerializableState = PiAgentLoopCursorState & {
   messages: AgentMessage[];
+};
+
+export type PiHarnessHooksMap = {
+  onOperationCompleted: HookFn<PiOperationCompletedHookPayload>;
 };
 
 const WAIT_FOR_COMMAND_TIMEOUT_MS = 60 * 60 * 1000;
@@ -69,6 +73,14 @@ export type PiSessionDetailSnapshot = {
 export const piHarnessDefinition = defineFragment<PiFragmentConfig>("pi-harness")
   .extend(withDatabase(piSchema))
   .usesService<"workflows", WorkflowsFragmentServices>("workflows")
+  .provideHooks<PiHarnessHooksMap>(({ defineHook, config }) => ({
+    onOperationCompleted: defineHook<PiOperationCompletedHookPayload>(async function (payload) {
+      await config.onOperationCompleted?.(payload, {
+        idempotencyKey: this.idempotencyKey,
+        hookId: this.hookId.toString(),
+      });
+    }),
+  }))
   .providesBaseService(({ defineService, serviceDeps }) =>
     defineService({
       getSessionDetailSnapshot: function (workflowName: string, sessionId: string) {

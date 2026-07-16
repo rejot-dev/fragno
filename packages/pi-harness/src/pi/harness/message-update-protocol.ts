@@ -44,13 +44,6 @@ export const piHarnessMessageUpdateFromPiEvent = (
   assistantMessageEvent: piHarnessAssistantMessageEventFromPiEvent(event.assistantMessageEvent),
 });
 
-export const piHarnessMessageUpdateEmissionFromPiEvent = (
-  event: Extract<AgentHarnessEvent, { type: "message_update" }>,
-): PiHarnessMessageUpdateEmission => ({
-  kind: "harness-message-update",
-  update: piHarnessMessageUpdateFromPiEvent(event),
-});
-
 const piHarnessAssistantMessageEventFromPiEvent = (
   event: AssistantMessageEvent,
 ): PiHarnessAssistantMessageEvent => {

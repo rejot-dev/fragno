@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, assert } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, assert, vi } from "vitest";
 
 import { createId } from "@fragno-dev/db/id";
 import { defineWorkflow } from "@fragno-dev/workflows/workflow";
@@ -6,8 +6,15 @@ import { z } from "zod";
 
 import { drainDurableHooks } from "@fragno-dev/test";
 
+import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+
 import { waitForPiCommand } from "./harness/commands";
-import { buildHarness, createHarnessOptions } from "./pi-test-utils";
+import {
+  buildHarness,
+  createAssistantMessage,
+  createHarnessOptions,
+  createTextStreamFn,
+} from "./pi-test-utils";
 import type { PiFragmentConfig } from "./types";
 import { createInteractiveChatWorkflow } from "./workflows/interactive-chat-workflow";
 
@@ -322,6 +329,163 @@ describe("pi-harness routes", () => {
     expect(detail.data).not.toHaveProperty("phase");
     expect(detail.data).not.toHaveProperty("turn");
     expect(detail.data).not.toHaveProperty("waitingFor");
+  });
+
+  it("passes the workflow actor to onOperationCompleted after a successful operation", async () => {
+    await harness.test.cleanup();
+    const actor = { type: "account", id: "account-123" };
+    const usage = {
+      input: 120,
+      output: 30,
+      cacheRead: 40,
+      cacheWrite: 10,
+      totalTokens: 200,
+      cost: {
+        input: 0.0012,
+        output: 0.0006,
+        cacheRead: 0.00004,
+        cacheWrite: 0.00002,
+        total: 0.00186,
+      },
+    };
+    const previousAssistantMessage = createAssistantMessage("previous response");
+    previousAssistantMessage.usage = {
+      input: 999,
+      output: 999,
+      cacheRead: 999,
+      cacheWrite: 999,
+      totalTokens: 3996,
+      cost: { input: 9, output: 9, cacheRead: 9, cacheWrite: 9, total: 36 },
+    };
+    const onOperationCompleted = vi.fn();
+    interactiveChatWorkflow = createInteractiveChatWorkflow({
+      harnesses: {
+        default: createHarnessOptions({
+          streamFn: createTextStreamFn("metered response", usage),
+        }),
+      },
+    });
+    harness = await buildHarness({
+      workflows: [interactiveChatWorkflow],
+      onOperationCompleted,
+    });
+
+    const created = assertJson(
+      await harness.fragments.pi.callRoute("POST", "/workflows/:workflowName/sessions", {
+        pathParams: { workflowName: interactiveChatWorkflow.name },
+        body: {
+          name: "Metered session",
+          input: {
+            harnessName: "default",
+            actor,
+            initialMessages: [previousAssistantMessage],
+          },
+        },
+      }),
+    );
+    await runSessionUntilIdle(created.data.id, "create");
+
+    await harness.fragments.pi.callRoute(
+      "POST",
+      "/workflows/:workflowName/sessions/:sessionId/command",
+      {
+        pathParams: { workflowName: interactiveChatWorkflow.name, sessionId: created.data.id },
+        body: { kind: "prompt", input: { text: "measure this" } },
+      },
+    );
+    await runSessionUntilIdle(created.data.id);
+    await drainDurableHooks(harness.fragments.pi.fragment);
+
+    expect(onOperationCompleted).toHaveBeenCalledTimes(1);
+    expect(onOperationCompleted).toHaveBeenCalledWith(
+      {
+        actor,
+        workflowName: interactiveChatWorkflow.name,
+        sessionId: created.data.id,
+        agentName: "default",
+        stepName: expect.stringMatching(/^command:/),
+        operationId: expect.stringContaining(created.data.id),
+        operation: "prompt",
+        modelCalls: [
+          expect.objectContaining({
+            api: "openai-responses",
+            provider: "openai",
+            model: "test-model",
+            stopReason: "stop",
+            usage,
+          }),
+        ],
+        usage,
+      },
+      {
+        idempotencyKey: expect.any(String),
+        hookId: expect.any(String),
+      },
+    );
+
+    await runSessionUntilIdle(created.data.id);
+    await drainDurableHooks(harness.fragments.pi.fragment);
+    expect(onOperationCompleted).toHaveBeenCalledTimes(1);
+  });
+
+  it("records provider usage from a failed operation", async () => {
+    await harness.test.cleanup();
+    const usage = {
+      input: 50,
+      output: 5,
+      cacheRead: 10,
+      cacheWrite: 0,
+      totalTokens: 65,
+      cost: {
+        input: 0.0005,
+        output: 0.0001,
+        cacheRead: 0.00001,
+        cacheWrite: 0,
+        total: 0.00061,
+      },
+    };
+    const onOperationCompleted = vi.fn();
+    interactiveChatWorkflow = createInteractiveChatWorkflow({
+      harnesses: {
+        default: createHarnessOptions({
+          streamFn: () => {
+            const stream = createAssistantMessageEventStream();
+            const message = createAssistantMessage("");
+            message.stopReason = "error";
+            message.errorMessage = "provider failed";
+            message.usage = usage;
+            stream.push({ type: "error", reason: "error", error: message });
+            return stream;
+          },
+        }),
+      },
+    });
+    harness = await buildHarness({
+      workflows: [interactiveChatWorkflow],
+      onOperationCompleted,
+    });
+
+    const sessionId = await createSession();
+    await runSessionUntilIdle(sessionId, "create");
+    await harness.fragments.pi.callRoute(
+      "POST",
+      "/workflows/:workflowName/sessions/:sessionId/command",
+      {
+        pathParams: { workflowName: interactiveChatWorkflow.name, sessionId },
+        body: { kind: "prompt", input: { text: "fail" } },
+      },
+    );
+    await runSessionUntilIdle(sessionId);
+    await drainDurableHooks(harness.fragments.pi.fragment);
+
+    expect(onOperationCompleted).toHaveBeenCalledOnce();
+    expect(onOperationCompleted).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelCalls: [expect.objectContaining({ stopReason: "error", usage })],
+        usage,
+      }),
+      expect.any(Object),
+    );
   });
 
   it("projects completed prompt messages into session detail", async () => {

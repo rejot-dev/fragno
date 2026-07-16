@@ -33,10 +33,12 @@ import {
   type RegisterFauxProviderOptions,
   type SimpleStreamOptions,
   type StopReason,
+  type Usage,
   type ToolCall,
 } from "@earendil-works/pi-ai";
 
 import { piRoutesFactory } from "../routes";
+import { piSchema } from "../schema";
 import { piHarnessDefinition } from "./definition";
 import { createPiWorkflows, type createPiFragment } from "./factory";
 import { NoOpExecutionEnv } from "./harness/execution-env";
@@ -256,10 +258,13 @@ export const createAssistantStreamScript = () => {
 };
 
 export const createTextStreamFn =
-  (text: string): StreamFn =>
+  (text: string, usage?: Usage): StreamFn =>
   () => {
     const stream = createAssistantMessageEventStream();
     const message = createAssistantMessage(text);
+    if (usage) {
+      message.usage = { ...usage, cost: { ...usage.cost } };
+    }
 
     stream.push({ type: "start", partial: message });
     stream.push({ type: "text_start", contentIndex: 0, partial: message });
@@ -807,6 +812,7 @@ export const startFauxPiHarnessOperation = (
   const done = recordWorkflowStepRunForTest({
     workflowName: options.workflowName,
     instanceId: options.sessionId,
+    schemas: [{ schema: piSchema, namespace: "pi-harness" }],
     stepEmissions,
     run: async (step) => await runFauxPiHarnessStep(step, options, model, streamFn),
     onMutations: async ({ mutations: newMutations, allMutations }) => {
@@ -889,6 +895,7 @@ export const recordFauxPiHarnessPrompt = async (options: FauxPiHarnessPromptOpti
     return await recordWorkflowStepRunForTest({
       workflowName: options.workflowName,
       instanceId: options.sessionId,
+      schemas: [{ schema: piSchema, namespace: "pi-harness" }],
       run: async (step) => await runFauxPiHarnessStep(step, options, faux.getModel()),
     });
   } finally {
@@ -926,6 +933,7 @@ export const getWorkflowInstanceRef = async (
 type DatabaseFragmentsTest = {
   fragments: {
     pi: {
+      fragment: PiFragmentInstance;
       callRoute: PiFragmentInstance["callRoute"];
       callRouteRaw: PiFragmentInstance["callRouteRaw"];
       services: PiFragmentInstance["services"];
@@ -986,6 +994,7 @@ export const buildHarness: (
   return {
     fragments: {
       pi: {
+        fragment,
         callRoute: fragment.callRoute.bind(fragment),
         callRouteRaw: fragment.callRouteRaw.bind(fragment),
         services: fragment.services,

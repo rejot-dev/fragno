@@ -1,10 +1,11 @@
-import type { WorkflowDuration } from "@fragno-dev/workflows/workflow";
+import type { WorkflowDuration, WorkflowStep } from "@fragno-dev/workflows/workflow";
 import { defineWorkflow } from "@fragno-dev/workflows/workflow";
 import { z } from "zod";
 
 import type { AgentMessage, AgentTool, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
 
+import type { PiHarnessHooksMap } from "../definition";
 import { createAgentLoop, type AgentLoopOptions } from "../harness/commands";
 
 const WAIT_FOR_COMMAND_TIMEOUT = "1 hour" as const;
@@ -13,6 +14,8 @@ const DEFAULT_HARNESS_NAME = "default";
 
 export type InteractiveChatWorkflowParams = {
   harnessName?: string;
+  /** Opaque workflow-owned value forwarded to operation completion hooks. */
+  actor?: unknown;
   model?: Model<Api>;
   systemPrompt?: string;
   thinkingLevel?: ThinkingLevel;
@@ -150,6 +153,7 @@ const thinkingLevelSchema = z.enum(["minimal", "low", "medium", "high", "xhigh"]
 export const interactiveChatWorkflowParamsSchema: z.ZodType<InteractiveChatWorkflowParams> =
   z.object({
     harnessName: z.string().optional(),
+    actor: z.unknown().optional(),
     model: modelSchema.optional(),
     systemPrompt: z.string().optional(),
     thinkingLevel: thinkingLevelSchema.optional(),
@@ -169,7 +173,7 @@ export const createInteractiveChatWorkflow = <
       name: workflowName,
       schema: interactiveChatWorkflowParamsSchema,
     },
-    async (event, step) => {
+    async (event, step: WorkflowStep<PiHarnessHooksMap>) => {
       const params = interactiveChatWorkflowParamsSchema.parse(event.payload ?? {});
       const requestedHarnessName = params.harnessName ?? DEFAULT_HARNESS_NAME;
       const harnesses = options.harnesses ?? {};
@@ -202,6 +206,7 @@ export const createInteractiveChatWorkflow = <
         workflowName,
         sessionId: event.instanceId,
         agentName: harnessName,
+        actor: params.actor,
         model,
         systemPrompt:
           resolvedHarness?.systemPrompt ?? params.systemPrompt ?? harnessOptions?.systemPrompt,
