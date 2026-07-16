@@ -5,6 +5,7 @@ description:
   debugging or inspecting the running backoffice app, automation/event/workflow/Pi/runtime-tool
   behavior, org-scoped filesystems, or when asked to run codemode scripts in the context of the
   backoffice runtime.
+disable-model-invocation: true
 ---
 
 # Backoffice Codemode
