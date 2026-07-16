@@ -1,4 +1,4 @@
-import type { WorkflowStep } from "@fragno-dev/workflows/workflow";
+import type { WorkflowStep, WorkflowStepEmission } from "@fragno-dev/workflows/workflow";
 
 import {
   AgentHarness,
@@ -15,10 +15,16 @@ import {
 } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 
-import type { PiPromptInput, PiSessionCommandPayload } from "../types";
+import { piSchema } from "../../schema";
+import type { PiHarnessHooksMap } from "../definition";
+import type {
+  PiPromptInput,
+  PiSessionCommandPayload,
+  PiOperationCompletedHookPayload,
+} from "../types";
 import { registerAgentStreamFn } from "./agent-stream-provider";
 import {
-  piHarnessMessageUpdateEmissionFromPiEvent,
+  piHarnessMessageUpdateFromPiEvent,
   type PiHarnessMessageUpdateEmission,
 } from "./message-update-protocol";
 import {
@@ -92,6 +98,7 @@ export type RunPiHarnessStepOptions<TTool extends AgentTool = AgentTool> =
     workflowName: string;
     sessionId: string;
     agentName: string;
+    actor?: unknown;
     operation: PiHarnessOperation;
     committedEntries?: readonly SessionTreeEntry[];
     /** Entry IDs already represented by earlier durable step results. */
@@ -178,18 +185,55 @@ const previousSessionEntries = (emissions: readonly PiHarnessEmission[]): Sessio
   return entries;
 };
 
+type PreviousOperationComplete = {
+  epoch: string;
+  result: PiHarnessStepResult;
+};
+
 const previousOperationComplete = (
-  emissions: readonly PiHarnessEmission[],
+  emissions: readonly WorkflowStepEmission<PiHarnessEmission>[],
   operationId: string,
-): PiHarnessStepResult | undefined => {
+): PreviousOperationComplete | undefined => {
   for (let i = emissions.length - 1; i >= 0; i -= 1) {
     const emission = emissions[i];
-    if (emission?.kind === "harness-operation-complete" && emission.operationId === operationId) {
-      return emission.result;
+    if (
+      emission?.payload.kind === "harness-operation-complete" &&
+      emission.payload.operationId === operationId
+    ) {
+      return { epoch: emission.epoch, result: emission.payload.result };
     }
   }
 
   return undefined;
+};
+
+const previousOperationSessionEntries = (
+  emissions: readonly WorkflowStepEmission<PiHarnessEmission>[],
+  operationId: string,
+  epoch: string,
+): SessionTreeEntry[] => {
+  let entries: SessionTreeEntry[] | undefined;
+
+  for (const emission of emissions) {
+    if (emission.epoch !== epoch) {
+      continue;
+    }
+
+    const payload = emission.payload;
+    if (payload.kind === "harness-operation-start" && payload.operationId === operationId) {
+      entries = [];
+      continue;
+    }
+    if (entries && payload.kind === "harness-session-entry") {
+      entries.push(payload.entry);
+      continue;
+    }
+    if (payload.kind === "harness-operation-complete" && payload.operationId === operationId) {
+      return entries ?? [];
+    }
+  }
+
+  return entries ?? [];
 };
 
 const sessionEntriesNotPersisted = (
@@ -200,13 +244,95 @@ const sessionEntriesNotPersisted = (
 const messageEntries = (entries: readonly SessionTreeEntry[]) =>
   entries.flatMap((entry) => (entry.type === "message" ? [entry] : []));
 
+const completedOperationModelCalls = (
+  entries: readonly SessionTreeEntry[],
+): PiOperationCompletedHookPayload["modelCalls"] =>
+  messageEntries(entries).flatMap(({ message }) => {
+    if (message.role !== "assistant") {
+      return [];
+    }
+
+    return [
+      {
+        api: message.api,
+        provider: message.provider,
+        model: message.model,
+        ...(message.responseModel ? { responseModel: message.responseModel } : {}),
+        ...(message.responseId ? { responseId: message.responseId } : {}),
+        usage: {
+          ...message.usage,
+          cost: { ...message.usage.cost },
+        },
+        stopReason: message.stopReason,
+        timestamp: message.timestamp,
+      },
+    ];
+  });
+
+type OperationCompletedOptions = Pick<
+  RunPiHarnessStepOptions,
+  "actor" | "workflowName" | "sessionId" | "agentName" | "operation"
+>;
+
+const completedOperationPayload = (
+  options: OperationCompletedOptions,
+  name: string,
+  operationId: string,
+  operationEntries: readonly SessionTreeEntry[],
+): PiOperationCompletedHookPayload => {
+  const modelCalls = completedOperationModelCalls(operationEntries);
+  if (modelCalls.length === 0) {
+    throw new Error(`Completed Pi operation ${operationId} did not contain a model call.`);
+  }
+
+  const usage = modelCalls.reduce<AssistantMessage["usage"]>(
+    (total, modelCall) => ({
+      input: total.input + modelCall.usage.input,
+      output: total.output + modelCall.usage.output,
+      cacheRead: total.cacheRead + modelCall.usage.cacheRead,
+      cacheWrite: total.cacheWrite + modelCall.usage.cacheWrite,
+      totalTokens: total.totalTokens + modelCall.usage.totalTokens,
+      cost: {
+        input: total.cost.input + modelCall.usage.cost.input,
+        output: total.cost.output + modelCall.usage.cost.output,
+        cacheRead: total.cost.cacheRead + modelCall.usage.cost.cacheRead,
+        cacheWrite: total.cost.cacheWrite + modelCall.usage.cost.cacheWrite,
+        total: total.cost.total + modelCall.usage.cost.total,
+      },
+    }),
+    {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+  );
+
+  return {
+    actor: options.actor ?? null,
+    workflowName: options.workflowName,
+    sessionId: options.sessionId,
+    agentName: options.agentName,
+    stepName: name,
+    operationId,
+    operation: options.operation.kind,
+    modelCalls,
+    usage,
+  };
+};
+
 const hasToolCalls = (message: AgentMessage): boolean =>
   message.role === "assistant" && message.content.some((content) => content.type === "toolCall");
 
 const isSuccessfulTerminalAssistantMessage = (
   message: AgentMessage | undefined,
 ): message is AssistantMessage =>
-  message?.role === "assistant" && !hasToolCalls(message) && !isFailedAssistantMessage(message);
+  message?.role === "assistant" &&
+  message.stopReason !== "error" &&
+  message.stopReason !== "aborted" &&
+  !hasToolCalls(message);
 
 const rollbackPromptLikeOperationToInitialPrompt = (options: {
   entries: readonly SessionTreeEntry[];
@@ -300,17 +426,19 @@ const runOperation = async (
 };
 
 export const runPiHarnessStep = async <TTool extends AgentTool = AgentTool>(
-  step: WorkflowStep,
+  step: WorkflowStep<PiHarnessHooksMap>,
   name: string,
   options: RunPiHarnessStepOptions<TTool>,
 ): Promise<PiHarnessStepResult> =>
   await step.do(name, async (tx) => {
     const operationId = `${options.workflowName}:${options.sessionId}:${name}`;
-    const previousEmissions = (await tx.previousEmissions()).map(
-      (emission) => emission.payload as PiHarnessEmission,
-    );
+    const previousWorkflowEmissions = (await tx.previousEmissions()).map((emission) => ({
+      ...emission,
+      payload: emission.payload as PiHarnessEmission,
+    }));
+    const previousEmissions = previousWorkflowEmissions.map((emission) => emission.payload);
     const replayedEntries = previousSessionEntries(previousEmissions);
-    const completedResult = previousOperationComplete(previousEmissions, operationId);
+    const completedOperation = previousOperationComplete(previousWorkflowEmissions, operationId);
     const persistedEntryIds = new Set(options.persistedEntryIds ?? []);
     const uncommittedReplayedEntries = replayedEntries.filter(
       (entry) => !persistedEntryIds.has(entry.id),
@@ -320,8 +448,24 @@ export const runPiHarnessStep = async <TTool extends AgentTool = AgentTool>(
       createdAt: new Date().toISOString(),
     };
 
-    if (completedResult) {
-      return completedResult;
+    if (completedOperation) {
+      if (completedOperation.result.assistantMessage) {
+        const operationCompletedPayload = completedOperationPayload(
+          options,
+          name,
+          operationId,
+          previousOperationSessionEntries(
+            previousWorkflowEmissions,
+            operationId,
+            completedOperation.epoch,
+          ),
+        );
+        tx.mutate(({ forSchema }) => {
+          const uow = forSchema(piSchema);
+          uow.triggerHook("onOperationCompleted", operationCompletedPayload);
+        });
+      }
+      return completedOperation.result;
     }
 
     let storageEntries = mergeSessionEntries(options.committedEntries, replayedEntries);
@@ -345,6 +489,16 @@ export const runPiHarnessStep = async <TTool extends AgentTool = AgentTool>(
           leafId: entriesLeafId(recoveredEntries),
           assistantMessage: latestAssistantMessage(recoveredEntries),
         } satisfies PiHarnessStepResult;
+        const operationCompletedPayload = completedOperationPayload(
+          options,
+          name,
+          operationId,
+          uncommittedReplayedEntries,
+        );
+        tx.mutate(({ forSchema }) => {
+          const uow = forSchema(piSchema);
+          uow.triggerHook("onOperationCompleted", operationCompletedPayload);
+        });
         tx.emit({
           kind: "harness-operation-complete",
           operationId,
@@ -369,6 +523,7 @@ export const runPiHarnessStep = async <TTool extends AgentTool = AgentTool>(
       leafIdBeforeOperation = userEntry.parentId;
     }
 
+    const entryIdsBeforeOperation = new Set(storageEntries.map((entry) => entry.id));
     const storage = new WorkflowBackedSessionStorage({
       metadata,
       entries: storageEntries,
@@ -391,7 +546,10 @@ export const runPiHarnessStep = async <TTool extends AgentTool = AgentTool>(
         event.type === "message_update" &&
         options.internal?.compactMessageUpdateEmissions !== false
       ) {
-        tx.emit(piHarnessMessageUpdateEmissionFromPiEvent(event));
+        tx.emit({
+          kind: "harness-message-update",
+          update: piHarnessMessageUpdateFromPiEvent(event),
+        });
         return;
       }
 
@@ -430,8 +588,27 @@ export const runPiHarnessStep = async <TTool extends AgentTool = AgentTool>(
         await session.moveTo(leafIdBeforeOperation);
       }
       const operationResult = await runOperation(harness, options.operation);
-      assertAssistantMessageSucceeded(operationResult.assistantMessage);
       const entries = await storage.getEntries();
+      // Pi currently exposes model calls as assistant messages only for agent-loop operations.
+      // Compact operations and summarized tree navigation are intentionally not reported until Pi
+      // exposes their internal model calls as first-class harness events.
+      if (operationResult.assistantMessage) {
+        const operationCompletedPayload = completedOperationPayload(
+          options,
+          name,
+          operationId,
+          entries.filter((entry) => !entryIdsBeforeOperation.has(entry.id)),
+        );
+        tx.mutate(({ forSchema }) => {
+          const uow = forSchema(piSchema);
+          uow.triggerHook("onOperationCompleted", operationCompletedPayload);
+        });
+        tx.onTerminalError.mutate(({ forSchema }) => {
+          const uow = forSchema(piSchema);
+          uow.triggerHook("onOperationCompleted", operationCompletedPayload);
+        });
+      }
+      assertAssistantMessageSucceeded(operationResult.assistantMessage);
       const result = {
         type: "harness-run",
         operation: options.operation.kind,

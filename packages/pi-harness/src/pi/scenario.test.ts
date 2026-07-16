@@ -24,7 +24,7 @@ import { createAgentLoop, waitForPiCommand } from "./harness/commands";
 import { NoOpExecutionEnv } from "./harness/execution-env";
 import type { PiHarnessAgentOptions, PiHarnessStepResult } from "./harness/run-pi-harness-step";
 import { definePiTool } from "./tools";
-import type { PiFragmentConfig } from "./types";
+import type { PiFragmentConfig, PiOperationCompletedHookPayload } from "./types";
 import { createInteractiveChatWorkflow } from "./workflows/interactive-chat-workflow";
 
 type ScenarioHarnesses = Record<string, PiHarnessAgentOptions>;
@@ -1302,7 +1302,13 @@ describe("Pi harness workflow scenarios", () => {
       },
     };
     const tools = [classifySafetyTool] as const;
-    const workflowSchema = z.object({ harnessName: z.string(), text: z.string() });
+    const actor = { type: "account", id: "safety-operator" };
+    const onOperationCompleted = vi.fn();
+    const workflowSchema = z.object({
+      harnessName: z.string(),
+      text: z.string(),
+      actor: z.unknown(),
+    });
     const autonomousSafetyWorkflow = defineWorkflow(
       { name: "pi-harness-autonomous-safety-agent", schema: workflowSchema },
       async (event, step) => {
@@ -1315,6 +1321,7 @@ describe("Pi harness workflow scenarios", () => {
           workflowName: "pi-harness-autonomous-safety-agent",
           sessionId: event.instanceId,
           agentName: params.harnessName,
+          actor: params.actor,
           ...harness,
           tools,
         });
@@ -1356,6 +1363,7 @@ describe("Pi harness workflow scenarios", () => {
     );
     const config: PiFragmentConfig = {
       workflows: [autonomousSafetyWorkflow],
+      onOperationCompleted,
     };
 
     await runScenario(
@@ -1377,14 +1385,14 @@ describe("Pi harness workflow scenarios", () => {
           user: createPiFragmentClients(clientConfig("pi", { runner: "user" })),
         }),
         runners: ["agent", "user"],
-        steps: ({ workflow, runners, clients }) => [
+        steps: ({ workflow, hooks, runners, clients }) => [
           workflow.read({
             read: async () => {
               const session = await clients.user.useCreateSession.mutateQuery({
                 path: { workflowName: autonomousSafetyWorkflow.name },
                 body: {
                   name: "Autonomous Safety Session",
-                  input: { harnessName: "default", text: "you are an idiot" },
+                  input: { harnessName: "default", text: "you are an idiot", actor },
                 },
               });
               assert(session && !Array.isArray(session), "expected session response");
@@ -1396,6 +1404,78 @@ describe("Pi harness workflow scenarios", () => {
             workflow: autonomousSafetyWorkflow.name,
             instanceId: (ctx) => ctx.vars.sessionId!,
             reason: "create",
+          }),
+          hooks.read<PiOperationCompletedHookPayload>({
+            fragment: "pi",
+            hookName: "onOperationCompleted",
+            status: "pending",
+            assert: (records) => {
+              expect(records).toHaveLength(3);
+              expect(records.map((record) => record.payload.stepName)).toEqual(
+                expect.arrayContaining([
+                  "classify-safety-0",
+                  "classify-safety-1",
+                  "summarize-safety-action",
+                ]),
+              );
+              expect(onOperationCompleted).not.toHaveBeenCalled();
+            },
+          }),
+          runners.agent.drainHooks(),
+          hooks.read<PiOperationCompletedHookPayload>({
+            fragment: "pi",
+            hookName: "onOperationCompleted",
+            status: "completed",
+            assert: (records, ctx) => {
+              assert(ctx.vars.sessionId, "session id should be set");
+              expect(records).toHaveLength(3);
+
+              const recordsByStepName = new Map(
+                records.map((record) => [record.payload.stepName, record]),
+              );
+              const expectedUsage = {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 0,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+              };
+              const expectedStopReasons = new Map([
+                ["classify-safety-0", "stop"],
+                ["classify-safety-1", "toolUse"],
+                ["summarize-safety-action", "stop"],
+              ] as const);
+
+              for (const [stepName, stopReason] of expectedStopReasons) {
+                expect(recordsByStepName.get(stepName)).toEqual(
+                  expect.objectContaining({
+                    hookName: "onOperationCompleted",
+                    status: "completed",
+                    payload: {
+                      actor,
+                      workflowName: autonomousSafetyWorkflow.name,
+                      sessionId: ctx.vars.sessionId,
+                      agentName: "default",
+                      stepName,
+                      operationId: `${autonomousSafetyWorkflow.name}:${ctx.vars.sessionId}:${stepName}`,
+                      operation: "prompt",
+                      modelCalls: [
+                        {
+                          api: "openai-responses",
+                          provider: "openai",
+                          model: "test-model",
+                          usage: expectedUsage,
+                          stopReason,
+                          timestamp: expect.any(Number),
+                        },
+                      ],
+                      usage: expectedUsage,
+                    },
+                  }),
+                );
+              }
+            },
           }),
           workflow.read({
             read: async (ctx) => ({
@@ -1416,6 +1496,26 @@ describe("Pi harness workflow scenarios", () => {
                 offensive: true,
               });
               assert(providerCalls === 3);
+              expect(onOperationCompleted).toHaveBeenCalledTimes(3);
+              expect(onOperationCompleted.mock.calls.map(([payload]) => payload)).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    actor,
+                    operation: "prompt",
+                    stepName: "classify-safety-0",
+                  }),
+                  expect.objectContaining({
+                    actor,
+                    operation: "prompt",
+                    stepName: "classify-safety-1",
+                  }),
+                  expect.objectContaining({
+                    actor,
+                    operation: "prompt",
+                    stepName: "summarize-safety-action",
+                  }),
+                ]),
+              );
               expect(detail.agent.state.messages).toMatchObject([
                 { role: "user" },
                 { role: "assistant", stopReason: "stop" },

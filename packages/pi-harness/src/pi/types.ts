@@ -3,6 +3,9 @@ import type { InstanceStatus, WorkflowRegistryEntry } from "@fragno-dev/workflow
 import type { Static, TSchema as TypeBoxSchema } from "typebox";
 
 import type { AgentMessage, AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
+
+import type { PiHarnessOperation } from "./harness/run-pi-harness-step";
 
 export type PiLoggerConfig = {
   enabled?: boolean;
@@ -18,6 +21,36 @@ export type PiSession = {
   workflowName: string;
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type PiOperationCompletedHookPayload = {
+  actor: unknown | null;
+  workflowName: string;
+  sessionId: string;
+  agentName: string;
+  stepName: string;
+  operationId: string;
+  operation: PiHarnessOperation["kind"];
+  /**
+   * Model calls exposed by Pi as assistant messages during this operation.
+   *
+   * Compact operations and tree navigation with summarization are not included yet because Pi
+   * does not expose their internal model calls as first-class harness events.
+   */
+  modelCalls: Array<
+    Pick<
+      AssistantMessage,
+      | "api"
+      | "provider"
+      | "model"
+      | "responseModel"
+      | "responseId"
+      | "usage"
+      | "stopReason"
+      | "timestamp"
+    >
+  >;
+  usage: AssistantMessage["usage"];
 };
 
 export type PiPromptInput = {
@@ -88,6 +121,15 @@ export type AnyPiToolDefinition = Omit<AgentTool<TypeBoxSchema, unknown>, "execu
 
 export interface PiFragmentConfig {
   workflows?: WorkflowRegistryEntry[];
+  /**
+   * Called through a durable hook after a harness operation commits a terminal outcome.
+   *
+   * Usage reporting currently excludes compact operations and tree navigation with summarization.
+   */
+  onOperationCompleted?: (
+    payload: PiOperationCompletedHookPayload,
+    context: { idempotencyKey: string; hookId: string },
+  ) => Promise<void> | void;
   /**
    * Optional logging config for internal pi-harness diagnostics.
    */

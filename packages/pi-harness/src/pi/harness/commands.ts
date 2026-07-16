@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { AgentHarness, AgentTool, SessionTreeEntry } from "@earendil-works/pi-agent-core";
 import type { Message, ToolResultMessage } from "@earendil-works/pi-ai";
 
+import type { PiHarnessHooksMap } from "../definition";
 import type { PiSessionCommandPayload, PiToolDefinition } from "../types";
 import {
   createPiHarnessSessionState,
@@ -39,6 +40,7 @@ export type AgentLoopOptions<TTools extends AgentLoopToolsInput = AgentLoopTools
   workflowName: string;
   sessionId: string;
   agentName: string;
+  actor?: unknown;
   tools?: TTools;
   initialMessages?: Parameters<typeof createPiHarnessSessionState>[0];
   commandTimeout?: WorkflowDuration;
@@ -173,7 +175,7 @@ const operationFromCommand = (command: PiSessionCommandPayload): PiHarnessOperat
 };
 
 export const createAgentLoop = <TTools extends AgentLoopToolsInput = AgentLoopToolsInput>(
-  step: WorkflowStep,
+  step: WorkflowStep<PiHarnessHooksMap>,
   options: AgentLoopOptions<TTools>,
   internalOptions: AgentLoopInternalOptions = {},
 ): AgentLoop<TTools> => {
@@ -187,6 +189,7 @@ export const createAgentLoop = <TTools extends AgentLoopToolsInput = AgentLoopTo
       workflowName,
       sessionId,
       agentName,
+      actor,
       initialMessages: _initialMessages,
       commandTimeout: _commandTimeout,
       ...defaultHarnessOptions
@@ -199,6 +202,7 @@ export const createAgentLoop = <TTools extends AgentLoopToolsInput = AgentLoopTo
       workflowName,
       sessionId,
       agentName,
+      actor,
       operation,
       committedEntries: state.entries,
       persistedEntryIds: state.persistedEntryIds,
