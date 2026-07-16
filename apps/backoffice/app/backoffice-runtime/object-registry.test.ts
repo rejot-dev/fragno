@@ -93,6 +93,7 @@ describe("backoffice object scope policy", () => {
       API: ["org", "user", "project"],
       AUTH: ["singleton"],
       AUTOMATIONS: ["singleton", "org", "user", "project"],
+      BILLING: ["org"],
       TELEGRAM: ["singleton", "org", "user", "project"],
       OTP: ["org"],
       RESEND: ["singleton", "org"],
@@ -112,6 +113,7 @@ describe("backoffice object scope policy", () => {
     assertBackofficeObjectAddressAllowed(address("UPLOAD", "project"));
     assertBackofficeObjectAddressAllowed(address("MCP", "user"));
     assertBackofficeObjectAddressAllowed(address("MCP", "project"));
+    assertBackofficeObjectAddressAllowed(address("BILLING", "org"));
     assertBackofficeObjectAddressAllowed(address("TELEGRAM", "singleton"));
     assertBackofficeObjectAddressAllowed(address("TELEGRAM", "user"));
     assertBackofficeObjectAddressAllowed(address("TELEGRAM", "project"));
@@ -120,6 +122,9 @@ describe("backoffice object scope policy", () => {
   });
 
   it("rejects disallowed binding and scope pairs", () => {
+    expect(() => assertBackofficeObjectAddressAllowed(address("BILLING", "singleton"))).toThrow(
+      "BILLING cannot be instantiated with singleton scope",
+    );
     expect(() => assertBackofficeObjectAddressAllowed(address("PI", "user"))).toThrow(
       "PI cannot be instantiated with user scope",
     );

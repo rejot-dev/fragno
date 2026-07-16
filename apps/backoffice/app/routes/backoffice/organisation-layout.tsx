@@ -60,6 +60,8 @@ export default function BackofficeOrganisationLayout({
     activeTab = "members";
   } else if (pathSegments.includes("invites")) {
     activeTab = "invites";
+  } else if (pathSegments.includes("billing")) {
+    activeTab = "billing";
   }
 
   return (
