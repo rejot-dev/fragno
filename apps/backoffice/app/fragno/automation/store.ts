@@ -3,7 +3,6 @@ import { z } from "zod";
 import { Validator, type Schema } from "@cfworker/json-schema";
 
 import type { AutomationEventActor } from "./contracts";
-import { automationTimestampToIsoString } from "./timestamps";
 
 const idSchema = z.preprocess((value) => {
   if (typeof value === "string") {
@@ -17,17 +16,6 @@ const idSchema = z.preprocess((value) => {
   }
   return value;
 }, z.string());
-
-const isoTimestampSchema = z.preprocess((value) => {
-  if (
-    value instanceof Date ||
-    typeof value === "number" ||
-    (value && typeof value === "object" && (value as { tag?: unknown }).tag === "db-now")
-  ) {
-    return automationTimestampToIsoString(value);
-  }
-  return value;
-}, z.iso.datetime());
 
 const normalizeStringList = (value: unknown) => {
   if (!Array.isArray(value)) {
@@ -92,8 +80,18 @@ export const automationStoreEntrySchema = z.object({
   description: z.string().nullable().optional(),
   category: automationStoreCategorySchema,
   actor: z.preprocess((value) => value ?? null, automationStoreActorSchema.nullable()),
-  createdAt: isoTimestampSchema.optional(),
-  updatedAt: isoTimestampSchema.optional(),
+};
+
+export const automationStoreEntrySchema = z.object({
+  id: idSchema.optional(),
+  ...automationStoreValueShape,
+  createdAt: z.iso.datetime().optional(),
+  updatedAt: z.iso.datetime().optional(),
+});
+
+export const automationStoreSetResultSchema = z.object({
+  id: idSchema,
+  ...automationStoreValueShape,
 });
 
 export const automationStoreDeleteResultSchema = z.object({
@@ -101,7 +99,7 @@ export const automationStoreDeleteResultSchema = z.object({
   key: z.string(),
 });
 
-export type AutomationStoreVerification = z.infer<typeof automationStoreVerificationSchema>[number];
+type AutomationStoreVerification = z.infer<typeof automationStoreVerificationSchema>[number];
 
 export class AutomationStoreVerificationError extends Error {
   constructor(message: string) {

@@ -13,12 +13,12 @@ const starterSkill = ({
 }): Record<string, FileSystemArtifact> => ({
   [`skills/${name}/SKILL.md`]: `---
 name: ${name}
-description: ${description}
+description: ${JSON.stringify(description)}
 ---
 
 # ${title}
 
-${body}
+${body.trim()}
 `,
 });
 
@@ -27,303 +27,288 @@ export const GENERAL_SKILL_CONTENT: Record<string, FileSystemArtifact> = {
     name: "building-automations",
     title: "Building Automations",
     description:
-      "Build Backoffice automations in codemode. Use when creating event-triggered workflow behavior, wiring useful configured connections together, reading the event catalog, or adding durable workflow scripts. ONLY use when the user is explicit about wanting an automation/workflow.",
-    body: `Use this skill when the user wants the system to react to events from connections such as Telegram, Pi, OTP, or future integrations.
+      "Automate persistent Backoffice behavior from events or schedules. Use when the user explicitly asks to create or change an automation, event-triggered route, scheduled route, or saved workflow that should run later.",
+    body: `Treat every automation as a route with one **trigger → action**. Event triggers select catalog events; scheduled triggers own their cadence. The action starts or signals a saved workflow or forwards the event.
 
-## Codemode-first workflow
+## Required process
 
-1. Inspect available event shapes with the codemode events provider:
+1. Read the live declarations before editing:
+   - "/static/codemode/providers/events.d.ts" for the event catalog;
+   - "/static/codemode/providers/router.d.ts" for route schemas and actions;
+   - "/static/codemode/workflow-authoring.d.ts" when saving a workflow;
+   - "/static/codemode/providers/store.d.ts" only when durable key/value coordination is needed.
 
-\`\`\`js
-const catalog = await events.catalogList({});
-const telegramMessage = await events.catalogGet({
-  source: "telegram",
-  eventType: "message.received",
-});
-\`\`\`
+   Then inspect the event descriptor and existing artifacts:
 
-2. Inspect the existing workflow files under \`/workspace/automations/\`. Starter event routing is database-backed; workflow files remain user-editable.
+   \`\`\`js
+   async () => {
+     const catalog = await events.catalogList({});
+     const eventDescriptor = await events.catalogGet({
+       source: "telegram",
+       eventType: "message.received",
+     });
+     const routes = await router.list({});
+     const workflowFiles = await state.find("/workspace/automations", {
+       type: "file",
+       maxDepth: 2,
+     });
+     return { catalog, eventDescriptor, routes, workflowFiles };
+   };
+   \`\`\`
 
-\`\`\`js
-const files = await state.find("/workspace/automations", { type: "file", maxDepth: 2 });
-\`\`\`
+   **Complete when** the exact catalog \`source\` and \`eventType\`, relevant existing routes and workflow files are known.
 
-3. For long-running behavior, create a new \`*.workflow.js\` file under \`/workspace/automations/\`. Use \`state.writeFile\` when authoring from codemode.
+2. Choose the smallest topology that satisfies the request:
+   - External or product event: route with an \`event\` trigger.
+   - Time-based trigger: route with a \`schedule\` trigger.
+   - New work: \`start_workflow\`.
+   - Resume waiting work: \`send_workflow_event\`.
+   - Cross-scope delivery: \`forward_event\`.
 
-4. Create or update database-backed routing rules with the \`router\` provider. Routes decide when a workflow starts or receives an event; workflow files decide what happens after the route fires.
+   Use stable, namespaced ids. For \`start_workflow\`, make \`remoteWorkflowName\` equal the saved \`defineWorkflow\` name and make \`workflowScriptPath\` point to that file. **Complete when** every trigger, action, workflow name, file path, and instance-id template has one unambiguous value.
 
-5. If the automation depends on an external service, check whether the matching connection is configured. If not, use the Configuring Connections skill and work with the user to collect credentials or public URLs.
+3. Check prerequisites. When an external capability is involved, inspect it with \`connections.get({ id })\`. If configuration is incomplete, use the Configuring Connections skill and collect the missing values from the user. **Complete when** every provider the automation will call is configured or the user has been told exactly what remains missing.
 
-## Authoring pattern
+4. Create the required artifacts in dependency order: saved workflow, then route.
 
-\`\`\`js
-await state.writeFile(
-  "/workspace/automations/my-new-workflow.workflow.js",
-  'defineWorkflow(\n' +
-    '  { name: "my-new-workflow" },\n' +
-    '  async (event, step) => {\n' +
-    '    return await step.do("finish", async () => ({ ok: true }));\n' +
-    '  },\n' +
-    ');\n',
-);
-\`\`\`
+   Save workflow implementations under \`/workspace/automations/*.workflow.js\`:
 
-## Trigger pattern
+   \`\`\`js
+   async () => {
+     const path = "/workspace/automations/telegram-hello.workflow.js";
+     await state.writeFile(
+       path,
+       'defineWorkflow(\\n' +
+         '  { name: "telegram-hello" },\\n' +
+         '  async (event, step) => {\\n' +
+         '    return await step.do("capture-event", async () => {\\n' +
+         '      return { receivedEventId: event.id };\\n' +
+         '    });\\n' +
+         '  },\\n' +
+         ');\\n',
+     );
+     return { path };
+   };
+   \`\`\`
 
-Automation routes are stored in the Automations database. Workflow implementations live in \`/workspace/automations/*.workflow.js\`. Routes decide **when** automation behavior runs; workflow files decide **what** runs.
+   Create scheduled routes with an explicit IANA time zone:
 
-A route matches an incoming event by \`source\`, \`eventType\`, and an optional matcher JSON object. When matched, the route either starts \`automation-codemode-script\` with a workflow script path or sends an event to an existing \`automation-codemode-script\` instance.
+   \`\`\`js
+   async () => await router.create({
+     id: "daily-digest",
+     name: "Daily digest",
+     trigger: {
+       kind: "schedule",
+       cadence: {
+         kind: "cron",
+         expression: "0 9 * * 1-5",
+         timeZone: "America/New_York",
+       },
+     },
+     action: {
+       kind: "start_workflow",
+       remoteWorkflowName: "daily-digest",
+       workflowScriptPath: "/workspace/automations/daily-digest.workflow.js",
+       instanceIdTemplate: "daily-digest-\${event.id}",
+     },
+   });
+   \`\`\`
 
-Do not create or edit legacy \`router.cm.js\` files. Use \`router.list({})\` to inspect current rules, \`router.get({ id })\` to inspect one rule, \`router.create({...})\` to add a route, and \`router.update({...})\` to patch an existing route.
+   Create event-triggered routes with the \`router\` provider:
 
-\`\`\`js
-await router.create({
-  id: "telegram-hello",
-  name: "Telegram hello",
-  source: "telegram",
-  eventType: "message.received",
-  matcher: { path: "$.payload.text", op: "startsWith", value: "/hello" },
-  priority: 1000,
-  action: {
-    kind: "start_workflow",
-    remoteWorkflowName: "telegram-hello",
-    workflowScriptPath: "/workspace/automations/telegram-hello.workflow.js",
-    instanceIdTemplate: "telegram-hello-\${event}",
-  },
-});
+   \`\`\`js
+   async () => {
+     return await router.create({
+       id: "telegram-hello",
+       name: "Telegram hello",
+       trigger: {
+         kind: "event",
+         source: "telegram",
+         eventType: "message.received",
+         matcher: { path: "$.payload.text", op: "startsWith", value: "/hello" },
+       },
+       priority: 1000,
+       action: {
+         kind: "start_workflow",
+         remoteWorkflowName: "telegram-hello",
+         workflowScriptPath: "/workspace/automations/telegram-hello.workflow.js",
+         instanceIdTemplate: "telegram-hello-\${event}",
+       },
+     });
+   };
+   \`\`\`
 
-await router.update({
-  id: "telegram-hello",
-  enabled: false,
-});
-\`\`\`
+   For \`send_workflow_event\`, use \`{ kind: "instance_id", template }\` when the event can render the workflow instance id directly. Use \`{ kind: "stored_instance_id", keyTemplate }\` when a prior run stored the instance id under a rendered store key. **Complete when** every required artifact has been created or updated successfully.
 
-For \`send_workflow_event\` actions, provide a \`target\`: use \`{ kind: "instance_id", template }\` when the event can render the workflow instance id directly, or \`{ kind: "stored_instance_id", keyTemplate }\` when the router should render a store key, read that store value, and use it as the workflow instance id.
+5. Use the automation store only for small durable coordination values. Values are strings, structured values use \`JSON.stringify\`, and keys are stable and namespaced. When writing from a saved workflow, supply \`event.actor\` to \`store.set\`. Reserve the \`system\` category for protected entries that users must not delete. Use \`verification\` for JSON text that must satisfy a schema.
 
-Bash equivalents:
+6. Re-read the completed route with \`router.get({ id })\` and \`state.readFile(workflowScriptPath)\` when saved. Run \`connections.verify({ id })\` for external providers. **Complete only when** the route trigger, action, workflow name, file path, and connection status all line up end to end.
 
-\`\`\`bash
-router.list --format json
-router.get --id telegram-hello --format json
-router.create --json '{"id":"telegram-hello","name":"Telegram hello","source":"telegram","eventType":"message.received","priority":1000,"action":{"kind":"start_workflow","remoteWorkflowName":"telegram-hello","workflowScriptPath":"/workspace/automations/telegram-hello.workflow.js","instanceIdTemplate":"telegram-hello-\${event}"}}' --format json
-router.update --id telegram-hello --json '{"enabled":false}'
-\`\`\`
-
-## Using the automation store
-
-Use the \`store\` provider for small durable key/value coordination between automation runs and workflows. Store values are strings; use \`JSON.stringify\` for structured data.
-
-\`\`\`js
-const existing = await store.get({ key: "telegram/" + chatId });
-
-await store.set({
-  key: "telegram/" + chatId,
-  value: userId,
-  actor: event.actor,
-  description: "Backoffice user linked to this Telegram chat.",
-  category: ["telegram", "identity"],
-});
-\`\`\`
-
-Available operations:
-
-- \`store.get({ key })\`: returns an entry or \`null\`.
-- \`store.set({ key, value, actor, description, category, verification })\`: creates or updates an entry. The \`actor\` field is required but may be \`null\` when no event actor is available.
-- \`store.list({ prefix, limit })\`: lists entries whose keys start with \`prefix\`.
-- \`store.delete({ key })\`: deletes an entry unless its category includes \`"system"\`.
-
-Use stable, namespaced keys such as \`telegram/<chat-id>\`, \`telegram-pi-session/<user-id>\`, or \`pi/pi-default-agent\`. Add categories to make the Backoffice store overview easier to filter and understand. If \`category\` contains \`"system"\`, users cannot delete the entry from the overview or API, so only use it for entries that must be protected.
-
-Use \`verification\` when storing JSON text that must match a schema. Verification is server-side only and is not persisted:
-
-\`\`\`js
-await store.set({
-  key: "pi/default-agent-config",
-  value: JSON.stringify({ harness: "default", model: "openai:gpt-5-mini" }),
-  actor: event.actor,
-  verification: [
-    {
-      type: "json-schema",
-      schema: {
-        type: "object",
-        required: ["harness", "model"],
-        properties: {
-          harness: { type: "string" },
-          model: { type: "string" },
-        },
-      },
-    },
-  ],
-});
-\`\`\`
-
-## Useful connection setup examples
-
-- Telegram message automation usually needs the Telegram Connection skill first.
-- Email reply automation usually needs the Resend Connection skill first.
-- LLM/agent automation usually needs the Pi Connection skill first.
-- Identity linking usually uses OTP System plus the external connection's actor id.
-`,
+Legacy \`router.cm.js\` files are outside this topology. Database-backed \`router.*\` rules are the routing source of truth; saved workflow files contain the behavior.`,
   }),
   ...starterSkill({
     name: "configuring-connections",
     title: "Configuring Connections",
     description:
-      "Configure Backoffice connections with the user. Use when a connection is missing credentials, setup requires public URLs or secrets, or automations need Telegram, Resend, Reson8, Upload, Pi, GitHub, or Cloudflare status checked.",
-    body: `Use this skill when an automation or user request depends on a Backoffice connection that may not be configured yet.
+      "Configure and verify Backoffice connections. Use when the user asks to connect an integration, credentials or a public origin are missing, or another task depends on connection status.",
+    body: `Treat connection setup as a handshake: **inspect → collect → configure → verify**.
 
-## Codemode-first process
+## Required process
 
-1. Inspect connection status:
+1. Read "/static/codemode/providers/connections.d.ts", then inspect the catalog and selected connection:
 
-\`\`\`js
-const connectionList = await connections.list({});
-const telegram = await connections.get({ id: "telegram" });
-const schema = await connections.schema({ id: "telegram" });
-\`\`\`
+   \`\`\`js
+   async () => {
+     const connectionList = await connections.list({});
+     const status = await connections.get({ id: "telegram" });
+     const schema = await connections.schema({ id: "telegram" });
+     const setup = await connections.setup({ id: "telegram" });
+     return { connectionList, status, schema, setup };
+   };
+   \`\`\`
 
-2. Read the relevant connection skill in \`/static/skills/<connection-or-system>/SKILL.md or /workspace/skills/<connection-or-system>/SKILL.md\` for capability-specific fields and gotchas.
+   Read the matching capability skill from the available skills, such as \`/static/skills/telegram-connection/SKILL.md\`, for provider-specific fields, webhook behavior, events, and tools. **Complete when** configurability, current status, required fields, masked existing values, and provider-specific setup steps are known.
 
-3. Work with the user to obtain required information. Do not invent secrets, API keys, sender addresses, webhook origins, public tunnel URLs, bucket configuration, or model provider keys.
+2. Ask the user only for required values that remain missing. Collect secrets, sender identities, account ids, bucket details, and public webhook origins exactly as supplied. Never fabricate credentials or externally owned values. Send secrets directly to \`connections.configure\`; summarize them by field name rather than echoing their values. **Complete when** every required field has a user-supplied or already-configured value.
 
-4. Configure only after the user has supplied the required values:
+3. Configure with a payload that matches the live schema. Supply \`origin\` only when setup instructions require a public Backoffice origin:
 
-\`\`\`js
-await connections.configure({
-  id: "telegram",
-  payload: {
-    botToken: "...",
-    webhookSecretToken: "...",
-    webhookBaseUrl: "https://public.example.com",
-  },
-});
-\`\`\`
+   \`\`\`js
+   async () => {
+     return await connections.configure({
+       id: "telegram",
+       payload: {
+         botToken: "...",
+         webhookSecretToken: "...",
+         webhookBaseUrl: "https://public.example.com",
+       },
+     });
+   };
+   \`\`\`
 
-5. Verify after configuration:
+   When schema/setup exposes no configurable fields or identifies a managed connection, follow its manual steps and status \`nextSteps\` instead of calling \`configure\`. **Complete when** the configure call succeeds or the managed setup path is explicit.
 
-\`\`\`js
-const status = await connections.verify({ id: "telegram" });
-\`\`\`
+4. Verify and re-read status:
 
-## User collaboration checklist
+   \`\`\`js
+   async () => {
+     const verification = await connections.verify({ id: "telegram" });
+     const finalStatus = await connections.get({ id: "telegram" });
+     return { verification, finalStatus };
+   };
+   \`\`\`
 
-- Explain why the connection is needed for the requested automation.
-- Ask for only the fields the schema/status says are missing.
-- Mark secrets clearly and avoid echoing them back unnecessarily.
-- For webhook integrations, confirm the public Backoffice origin or tunnel URL.
-- After configuring, summarize configured status and next steps.
-`,
+   **Complete only when** verification succeeds. If it fails, report the exact verification message, \`missing\` fields, and \`nextSteps\` before requesting another value.
+
+Use \`connections.reset({ id, confirm: id })\` only for an explicit reset request, then re-read status so the cleared state is visible.`,
   }),
   ...starterSkill({
     name: "workflows",
     title: "Workflows",
     description:
-      "Build and operate durable workflows. Use when creating _complex_ multi-step workflows using defineWorkflow.",
-    body: `
-Workflows are either emphemeral (one-off) or durable. 
+      "Orchestrate durable multi-step work with defineWorkflow and operate workflow instances. Use when a current task needs retries, sleeps, waiting for an external event, or the user asks to inspect, signal, or retry a workflow instance.",
+    body: `A \`defineWorkflow\` run is durable. A top-level \`async () => { ... }\` script is immediate. Use the durable boundary only when work must survive retries, time, or an external continuation.
 
-- The former can be defined directly in codemode using the \`defineWorkflow({ name: "my-workflow" }, async (event, step) => {\` pattern. These run directly. 
-- The latter should first be written to the filesystem, e.g. \`/workspace/automations/*.workflow.js\`. They are not run directly; router scripts start them through \`workflow.createInstance\`.
+## Authoring a workflow
 
-## Coding workflow scripts
+1. Read "/static/codemode/workflow-authoring.d.ts" and "/static/codemode/providers/workflow.d.ts". **Complete when** the available step methods and workflow operations are known from the live declarations.
 
-Define a workflow with \`defineWorkflow\`:
+2. Define the workflow directly at the top level. Inline definitions automatically start; retain the returned \`workflowName\` and \`instanceId\`. Save a workflow file only when the user asks for persistent automation behavior; use the Building Automations skill for that branch.
 
-\`\`\`js
-defineWorkflow(
-  { name: "approval-workflow" },
-  async (event, step) => {
-    const input = event.payload;
+   \`\`\`js
+   defineWorkflow(
+     { name: "approval-workflow" },
+     async (_event, step) => {
+       const request = await step.do("prepare-request", async () => {
+         return { requestId: crypto.randomUUID() };
+       });
 
-    const result = await step.do("perform durable work", async () => {
-      return { ok: true, requestId: input.requestId };
-    });
+       const approval = await step.waitForEvent("approval", {
+         type: "approval",
+         timeout: "15 minutes",
+       });
 
-    await step.sleep("cooldown", "2 seconds");
+       return { request, approval: approval.payload };
+     },
+   );
+   \`\`\`
 
-    const approval = await step.waitForEvent("approval", {
-      type: "approval",
-      timeout: "15 minutes",
-    });
+   Put side effects, provider calls, and expensive work inside \`step.do\`. Keep pure deterministic calculations outside steps. Use stable, descriptive step names because history and retries address those names. Use \`step.sleep\` or \`step.sleepUntil\` for time and \`step.waitForEvent\` for external continuation. **Complete when** every non-deterministic operation has a durable step and every continuation has an exact event type.
 
-    return { result, approval: approval.payload };
-  },
-);
-\`\`\`
+3. After the tool returns the run handle, use its exact \`workflowName\` and \`instanceId\` with \`workflow.getInstance\` and \`workflow.getHistory\`. **Complete when** the instance is \`complete\`, intentionally \`waiting\` with its expected continuation recorded, or \`errored\` with the failed step identified.
 
-Use \`step.do\` around side effects and expensive calls. Use stable step names because history, retries, and debugging refer to them. Use \`step.sleep\` for timers and \`step.waitForEvent\` for external continuation.
+## Operating an existing workflow
 
-## Starting workflows from codemode
+Use the live provider declarations for exact inputs:
 
-\`\`\`js
-await workflow.createInstance({
-  workflowName: "automation-codemode-script",
-  remoteWorkflowName: "approval-workflow",
-  instanceId: "approval-" + event.id,
-  params: {
-    automationEvent: event,
-    workflowScriptPath: "/workspace/automations/approval.workflow.js",
-  },
-});
-\`\`\`
+- \`workflow.listWorkflows({})\` discovers registered workflow names.
+- \`workflow.createInstance({ workflowName, remoteWorkflowName, instanceId, params })\` starts a registered or saved workflow; inline \`defineWorkflow\` runs do not need this call.
+- \`workflow.listInstances({ workflowName, status, pageSize, cursor })\` lists instances.
+- \`workflow.getInstance({ workflowName, instanceId })\` reads status, output, and error.
+- \`workflow.getHistory({ workflowName, instanceId })\` exposes steps, events, and emissions.
+- \`workflow.sendEvent({ workflowName, instanceId, type, payload })\` resumes a waiting instance.
+- \`workflow.retryInstance({ workflowName, instanceId, stepKey, delayMs, reason })\` retries failed work.
 
-## Operating workflows with codemode tools
+For a waiting instance, read history and send the exact event \`type\` expected by \`step.waitForEvent\`. For an errored instance, inspect the latest failed step before retrying and use its exact \`stepKey\` when selecting a retry boundary.
 
-The \`workflow\` provider can:
-
-- \`listWorkflows({})\`: list registered workflow names;
-- \`createInstance({ workflowName, remoteWorkflowName, instanceId, params })\`: start a workflow;
-- \`listInstances({ workflowName, status, pageSize, cursor })\`: inspect instances;
-- \`getInstance({ workflowName, instanceId })\`: inspect one instance;
-- \`getHistory({ workflowName, instanceId })\`: debug steps, events, and emissions;
-- \`sendEvent({ workflowName, instanceId, type, payload })\`: resume a waiting workflow;
-- \`retryInstance({ workflowName, instanceId, stepKey, delayMs, reason })\`: retry failed work.
-
-## Debugging
-
-If an instance is stuck waiting, confirm the sent event \`type\` exactly matches the workflow's \`step.waitForEvent\` type. If retries or timeouts repeat, inspect history and the latest step error.
-`,
+**Completion criterion:** a run is complete when its status is \`complete\` and its output has been observed. A deliberate \`waiting\` status is complete for the current turn only when the expected event type and target instance are explicit. An error investigation is complete only after the failed step and error message are identified.`,
   }),
   ...starterSkill({
     name: "sandbox",
     title: "Sandbox",
     description:
-      "Work with Cloudflare sandboxes from Backoffice codemode. Use when starting, listing, killing, or executing commands in sandboxes with sandbox.startSandbox, sandbox.listSandboxes, sandbox.killSandbox, or sandbox.executeCommand.",
-    body: `Use this skill when the task needs an isolated Cloudflare sandbox to run shell commands or inspect a runtime environment. Sandbox tools are available when the Sandbox capability is configured by the deployment environment.
+      "Sandbox isolated shell work in Backoffice-managed Cloudflare containers. Use when the task requires starting, listing, executing commands in, or terminating a sandbox runtime.",
+    body: `Treat a sandbox as a leased environment: **acquire → execute → release**. The \`sandbox\` provider is available only when the deployment exposes the Sandbox capability.
 
-## Codemode provider
+## Required process
 
-Use the \`sandbox\` provider:
+1. Check for "/static/codemode/providers/sandbox.d.ts". If it is absent, report that this deployment does not expose the Sandbox capability. When present, read it and list current instances:
 
-\`\`\`js
-const started = await sandbox.startSandbox({
-  id: "dev",
-  sleepAfter: "15m",
-  startupCommand: "true",
-});
+   \`\`\`js
+   async () => await sandbox.listSandboxes({});
+   \`\`\`
 
-const sandboxes = await sandbox.listSandboxes({});
+   Reuse a suitable running sandbox or choose a stable id for a new one. **Complete when** the target sandbox id and lifecycle disposition are known.
 
-const result = await sandbox.executeCommand({
-  sandboxId: "dev",
-  command: "pwd && ls -la",
-  timeoutMs: 30000,
-});
+2. Start a sandbox with an idle lease. Set \`keepAlive\` only when the user asks to preserve it beyond the task:
 
-if (!result.ok) {
-  throw new Error(result.message);
-}
+   \`\`\`js
+   async () => {
+     return await sandbox.startSandbox({
+       id: "dev",
+       sleepAfter: "15m",
+       startupCommand: "true",
+       startupTimeoutMs: 30000,
+     });
+   };
+   \`\`\`
 
-await sandbox.killSandbox({ sandboxId: "dev" });
-\`\`\`
+   **Complete when** the requested sandbox exists and its returned status has been checked.
 
-## Guidance
+3. Execute bounded commands and inspect the discriminated result:
 
-- Use stable sandbox ids for repeatable work.
-- Prefer \`sleepAfter\` instead of leaving sandboxes alive forever.
-- Check \`result.ok\` before trusting stdout/stderr.
-- Use \`timeoutMs\` for commands that might hang.
-- Kill sandboxes when the user no longer needs them.
-`,
+   \`\`\`js
+   async () => {
+     const result = await sandbox.executeCommand({
+       sandboxId: "dev",
+       command: "pwd && ls -la",
+       timeoutMs: 30000,
+     });
+     if (!result.ok) {
+       throw new Error(result.reason + ": " + result.message);
+     }
+     return result;
+   };
+   \`\`\`
+
+   Trust command output only when \`result.ok\` is true. On failure, use \`reason\`, \`retryable\`, stdout, and stderr to decide whether to correct the command, restart the sandbox, or report the failure. **Complete when** every command succeeded and its expected output was checked, or a non-retryable failure was identified precisely.
+
+4. Release the lease when the task no longer needs the environment:
+
+   \`\`\`js
+   async () => await sandbox.killSandbox({ sandboxId: "dev" });
+   \`\`\`
+
+   **Complete only when** the sandbox is killed, intentionally retained at the user's request, or left under an explicit \`sleepAfter\` lease.`,
   }),
 };

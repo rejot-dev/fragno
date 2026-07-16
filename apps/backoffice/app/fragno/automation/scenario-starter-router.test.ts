@@ -118,9 +118,12 @@ describe("starter automation router scenarios", () => {
             include: [
               {
                 id: "telegram-test-command",
-                source: "telegram",
-                eventType: "message.received",
-                matcher: { path: "$.payload.text", op: "eq", value: "/test" },
+                trigger: {
+                  kind: "event",
+                  source: "telegram",
+                  eventType: "message.received",
+                  matcher: { path: "$.payload.text", op: "eq", value: "/test" },
+                },
                 action: {
                   kind: "start_workflow",
                   remoteWorkflowName: "telegram-test-command",
@@ -146,6 +149,7 @@ describe("starter automation router scenarios", () => {
             id: "telegram-pi-linking",
             enabled: true,
             priority: 120,
+            trigger: { kind: "event" },
           }),
           then.assert("assert starter routes are visible through Lofi", async (ctx) => {
             const lofi = ctx.lofi.forOrg("org-1");
@@ -210,12 +214,21 @@ describe("starter automation router scenarios", () => {
           when.router.updateRoute({
             orgId: "org-1",
             id: "telegram-test-command",
-            matcher: { path: "$.payload.text", op: "eq", value: "!test" },
+            trigger: {
+              kind: "event",
+              source: "telegram",
+              eventType: "message.received",
+              matcher: { path: "$.payload.text", op: "eq", value: "!test" },
+            },
+            priority: 110,
           }),
           then.router.route({
             orgId: "org-1",
             id: "telegram-test-command",
-            matcher: { path: "$.payload.text", op: "eq", value: "!test" },
+            trigger: {
+              kind: "event",
+              matcher: { path: "$.payload.text", op: "eq", value: "!test" },
+            },
           }),
 
           when.automation.ingestEvent(telegramMessageEvent({ id: "old-test", text: "/test" })),
@@ -271,9 +284,12 @@ describe("starter automation router scenarios", () => {
             id: "custom-alpha",
             name: "Custom alpha",
             enabled: true,
-            source: "custom",
-            eventType: "thing.happened",
-            matcher: { path: "$.payload.kind", op: "eq", value: "alpha" },
+            trigger: {
+              kind: "event",
+              source: "custom",
+              eventType: "thing.happened",
+              matcher: { path: "$.payload.kind", op: "eq", value: "alpha" },
+            },
             priority: 50,
             action: {
               kind: "start_workflow",
@@ -289,8 +305,11 @@ describe("starter automation router scenarios", () => {
           then.router.route({
             orgId: "org-1",
             id: "custom-alpha",
-            source: "custom",
-            eventType: "thing.happened",
+            trigger: {
+              kind: "event",
+              source: "custom",
+              eventType: "thing.happened",
+            },
           }),
 
           when.automation.ingestEvent(
@@ -359,9 +378,12 @@ describe("starter automation router scenarios", () => {
             id: "missing-workflow-file",
             name: "Missing workflow file",
             enabled: true,
-            source: "custom",
-            eventType: "thing.happened",
-            matcher: { path: "$.payload.kind", op: "eq", value: "missing-file" },
+            trigger: {
+              kind: "event",
+              source: "custom",
+              eventType: "thing.happened",
+              matcher: { path: "$.payload.kind", op: "eq", value: "missing-file" },
+            },
             priority: 50,
             action: {
               kind: "start_workflow",
@@ -433,9 +455,12 @@ describe("starter automation router scenarios", () => {
             id: "custom-signal-forwarder",
             name: "Custom signal forwarder",
             enabled: true,
-            source: "custom",
-            eventType: "signal.received",
-            matcher: { path: "$.payload.key", op: "eq", value: "alpha" },
+            trigger: {
+              kind: "event",
+              source: "custom",
+              eventType: "signal.received",
+              matcher: { path: "$.payload.key", op: "eq", value: "alpha" },
+            },
             priority: 40,
             action: {
               kind: "send_workflow_event",

@@ -1,7 +1,7 @@
 import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 
 import { defineFragment } from "@fragno-dev/core";
-import { withDatabase, type TxResult, type TypedUnitOfWork } from "@fragno-dev/db";
+import { withDatabase, type TxResult } from "@fragno-dev/db";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
@@ -24,7 +24,9 @@ import {
 } from "./event-definitions";
 import { createAutomationEventDefinitionServices } from "./event-definitions-storage-runtime";
 import { createAutomationEventServices } from "./events-storage-runtime";
+import type { AutomationHookUnitOfWork } from "./internal-hooks";
 import { createAutomationProjectServices } from "./projects-storage-runtime";
+import { dispatchAutomationRouteSchedule } from "./route-scheduling-runtime";
 import {
   buildWorkflowEventPayload,
   evaluateAutomationEventMatcher,
@@ -41,8 +43,6 @@ import { createAutomationRouteServices } from "./routing-storage-runtime";
 import { createAutomationSandboxServices } from "./sandboxes-storage-runtime";
 import { automationFragmentSchema } from "./schema";
 
-export type { AutomationPiBashContext } from "./engine/runtime";
-
 export type AutomationIngestResult = {
   accepted: boolean;
   eventId: string;
@@ -52,7 +52,7 @@ export type AutomationIngestResult = {
 };
 
 type AutomationWorkflowsServiceBase = WorkflowsFragmentServices;
-export type AutomationWorkflowsInstanceStatus = InstanceStatus;
+type AutomationWorkflowsInstanceStatus = InstanceStatus;
 export type AutomationWorkflowsService = Pick<
   AutomationWorkflowsServiceBase,
   "createInstance" | "getInstanceStatus" | "sendEvent"
@@ -82,18 +82,20 @@ const buildIngestResult = (event: AutomationEvent): AutomationIngestResult => ({
   eventType: event.eventType,
 });
 
-type AutomationIngestHooks = {
-  internalIngestEvent: (payload: AutomationEvent) => Promise<void> | void;
+type IngestAutomationEventOptions = {
+  /**
+   * A route already selected for this event. This bypasses normal event-trigger matching and
+   * snapshots the route across the durable hook boundary, so an accepted scheduled run executes
+   * the intended route even if it is later changed or deleted.
+   */
+  route?: AutomationRouteDefinition;
 };
 
-type AutomationEventRecorderUnitOfWork = TypedUnitOfWork<
-  typeof automationFragmentSchema,
-  [],
-  unknown,
-  AutomationIngestHooks
->;
-
-const ingestAutomationEvent = (uow: AutomationEventRecorderUnitOfWork, event: AutomationEvent) => {
+const ingestAutomationEvent = (
+  uow: AutomationHookUnitOfWork,
+  event: AutomationEvent,
+  { route }: IngestAutomationEventOptions = {},
+) => {
   const now = uow.now();
   const occurredAt = new Date(event.occurredAt);
   if (Number.isNaN(occurredAt.getTime())) {
@@ -113,7 +115,7 @@ const ingestAutomationEvent = (uow: AutomationEventRecorderUnitOfWork, event: Au
     createdAt: now,
   });
 
-  uow.triggerHook("internalIngestEvent", event, { id: event.id });
+  uow.triggerHook("internalIngestEvent", { event, route }, { id: event.id });
 };
 
 const toWorkflowIdentifier = (value: string) => value.replaceAll(":", "--");
@@ -273,7 +275,16 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
   .usesService<"workflows", AutomationWorkflowsService>("workflows")
   .provideHooks(({ defineHook, serviceDeps, config }) => {
     return {
-      internalIngestEvent: defineHook(async function (event) {
+      internalDispatchRouteSchedule: defineHook(async function (payload) {
+        await dispatchAutomationRouteSchedule({
+          payload,
+          hookCreatedAt: this.createdAt,
+          ownerScope: config.ownerScope,
+          ingestEvent: ingestAutomationEvent,
+          handlerTx: this.handlerTx.bind(this),
+        });
+      }),
+      internalIngestEvent: defineHook(async function (payload) {
         const { routes, store } = await this.handlerTx()
           .retrieve(({ forSchema }) => {
             const uow = forSchema(automationFragmentSchema);
@@ -288,12 +299,11 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               id: route.id.externalId,
               name: route.name,
               enabled: route.enabled,
-              source: route.source,
-              eventType: route.eventType,
-              matcher: route.matcher,
-              action: route.action,
               priority: route.priority,
+              trigger: route.trigger,
+              action: route.action,
               description: route.description,
+              nextOccurrenceAt: null,
             })),
             store: new Map(storeRows.map((entry) => [entry.key, entry.value])),
           }))
@@ -303,12 +313,16 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
           await this.handlerTx().withServiceCalls(call).execute();
         };
 
-        for (const route of routes) {
+        const event = payload.event;
+        const routesToExecute = payload.route ? [payload.route] : routes;
+        for (const route of routesToExecute) {
           if (
-            !route.enabled ||
-            (route.source !== event.source && route.source !== "*") ||
-            (route.eventType !== event.eventType && route.eventType !== "*") ||
-            !evaluateAutomationEventMatcher(route.matcher, event)
+            !payload.route &&
+            (!route.enabled ||
+              route.trigger.kind !== "event" ||
+              (route.trigger.source !== event.source && route.trigger.source !== "*") ||
+              (route.trigger.eventType !== event.eventType && route.trigger.eventType !== "*") ||
+              !evaluateAutomationEventMatcher(route.trigger.matcher, event))
           ) {
             continue;
           }
@@ -371,7 +385,6 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
           .retrieve((uow) => uow.find("automation_route", (b) => b.whereIndex("primary")))
           .mutate(
             ({ uow, retrieveResult: [existingRoutes] }): StarterAutomationRoutesSeedResult => {
-              const now = uow.now();
               const existingIds = new Set(existingRoutes.map((route) => route.id.externalId));
               const created: string[] = [];
               const skipped: string[] = [];
@@ -388,15 +401,27 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                   id: route.id,
                   name: route.name,
                   enabled: route.enabled,
-                  source: route.source,
-                  eventType: route.eventType,
-                  matcher: route.matcher,
-                  action: route.action,
                   priority: route.priority,
+                  trigger: route.trigger,
+                  action: route.action,
                   description: route.description ?? null,
-                  createdAt: now,
-                  updatedAt: now,
+                  createdAt: uow.now(),
+                  updatedAt: uow.now(),
                 });
+                if (route.trigger.kind === "schedule") {
+                  uow.create("automation_route_schedule_state", {
+                    id: route.id,
+                    initializationAt: route.enabled ? uow.now() : null,
+                    nextOccurrenceAt: null,
+                  });
+                  if (route.enabled) {
+                    uow.triggerHook(
+                      "internalDispatchRouteSchedule",
+                      { kind: "initialize", routeId: route.id },
+                      { processAt: uow.now() },
+                    );
+                  }
+                }
                 created.push(route.id);
               }
 

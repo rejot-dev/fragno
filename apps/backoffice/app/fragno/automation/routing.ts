@@ -1,4 +1,5 @@
 import type { AutomationEvent } from "./contracts";
+import type { AutomationScheduleCadence } from "./route-triggers";
 
 export type AutomationEventMatcher =
   | { path: string; op: "exists" }
@@ -13,7 +14,7 @@ export type AutomationRouteScopeTemplate =
   | { kind: "project"; orgIdTemplate: string; projectIdTemplate: string }
   | { kind: "user"; userIdTemplate: string };
 
-export type AutomationRouteScope =
+type AutomationRouteScope =
   | { kind: "system" }
   | { kind: "org"; orgId: string }
   | { kind: "project"; orgId: string; projectId: string }
@@ -50,16 +51,29 @@ export type AutomationRouteAction =
   | AutomationSendWorkflowEventAction
   | AutomationForwardEventAction;
 
+type AutomationRouteEventTrigger = {
+  kind: "event";
+  source: string;
+  eventType: string;
+  matcher: AutomationEventMatcher | null;
+};
+
+type AutomationRouteScheduleTrigger = {
+  kind: "schedule";
+  cadence: AutomationScheduleCadence;
+};
+
+export type AutomationRouteTrigger = AutomationRouteEventTrigger | AutomationRouteScheduleTrigger;
+
 export type AutomationRouteDefinition = {
   id: string;
   name: string;
   enabled: boolean;
-  source: string;
-  eventType: string;
-  matcher: AutomationEventMatcher | null;
-  action: AutomationRouteAction;
   priority: number;
+  trigger: AutomationRouteTrigger;
+  action: AutomationRouteAction;
   description?: string | null;
+  nextOccurrenceAt: string | null;
 };
 
 export type StarterAutomationRoutesSeedResult = {
@@ -93,7 +107,7 @@ type EventPathValue =
  * `$.payload.items[0]`. Unknown paths return `undefined` instead of throwing so route matchers can
  * treat missing data as a normal non-match.
  */
-export const readAutomationEventPath = (event: AutomationEvent, path: string): EventPathValue => {
+const readAutomationEventPath = (event: AutomationEvent, path: string): EventPathValue => {
   if (path === "$") {
     return event as EventPathValue;
   }

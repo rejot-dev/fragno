@@ -2,7 +2,7 @@ import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
 import type { AutomationEvent } from "./contracts";
 import type { AutomationEventDefinition } from "./event-definitions";
-import type { AutomationEventMatcher, AutomationRouteAction } from "./routing";
+import type { AutomationRouteAction, AutomationRouteTrigger } from "./routing";
 
 const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
 
@@ -77,11 +77,9 @@ export const automationFragmentSchema = schema("automations", (s) => {
         .addColumn("id", idColumn())
         .addColumn("name", column("string"))
         .addColumn("enabled", column("bool"))
-        .addColumn("source", column("string"))
-        .addColumn("eventType", column("string"))
-        .addColumn("matcher", jsonColumn<AutomationEventMatcher>().nullable())
-        .addColumn("action", jsonColumn<AutomationRouteAction>())
         .addColumn("priority", column("integer"))
+        .addColumn("trigger", jsonColumn<AutomationRouteTrigger>())
+        .addColumn("action", jsonColumn<AutomationRouteAction>())
         .addColumn("description", column("text").nullable())
         .addColumn(
           "createdAt",
@@ -91,8 +89,17 @@ export const automationFragmentSchema = schema("automations", (s) => {
           "updatedAt",
           column("timestamp").defaultTo((b) => b.now()),
         )
-        .createIndex("idx_automation_route_enabled_source_type", ["enabled", "source", "eventType"])
         .createIndex("idx_automation_route_priority_id", ["priority", "id"]);
+    })
+    .addTable("automation_route_schedule_state", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("initializationAt", column("timestamp").nullable())
+        .addColumn("nextOccurrenceAt", column("timestamp").nullable())
+        .createIndex("idx_automation_route_schedule_state_nextOccurrenceAt", [
+          "nextOccurrenceAt",
+          "id",
+        ]);
     })
     .addTable("automation_event", (t) => {
       return t

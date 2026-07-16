@@ -33,7 +33,7 @@ export type AutomationRuntime = AutomationStoreRuntime &
   OtpRuntime &
   EventRuntime;
 
-export type AutomationRuntimeCommandContext = AutomationCommandContext & {
+type AutomationRuntimeCommandContext = AutomationCommandContext & {
   runtime: AutomationRuntime;
 };
 
@@ -102,6 +102,8 @@ export const createAutomationRuntime = ({
     getRoute: async () => requireRouteBackend("router.get"),
     createRoute: async () => requireRouteBackend("router.create"),
     updateRoute: async () => requireRouteBackend("router.update"),
+    deleteRoute: async () => requireRouteBackend("router.delete"),
+    triggerScheduledRouteNow: async () => requireRouteBackend("router.trigger-now"),
     createClaim: async () => requireRouteBackend("otp.identity.create-claim"),
     ...createUnavailableEventRuntime(),
   };

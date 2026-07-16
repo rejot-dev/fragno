@@ -5,18 +5,6 @@ import { Validator, type Schema } from "@cfworker/json-schema";
 import { jsonSchema202012ValidationSchema } from "@/lib/json-schema/validation";
 
 import type { AutomationEvent } from "./contracts";
-import { automationTimestampToIsoString } from "./timestamps";
-
-const isoTimestampSchema = z.preprocess((value) => {
-  if (
-    value instanceof Date ||
-    typeof value === "number" ||
-    (value && typeof value === "object" && (value as { tag?: unknown }).tag === "db-now")
-  ) {
-    return automationTimestampToIsoString(value);
-  }
-  return value;
-}, z.iso.datetime());
 
 const jsonSchemaDocumentSchema = z.record(z.string(), z.unknown());
 
@@ -35,8 +23,8 @@ export const automationEventDefinitionSchema = z.object({
   example: z.unknown().nullable().optional(),
   enabled: z.boolean(),
   capabilityId: z.string(),
-  createdAt: isoTimestampSchema.optional(),
-  updatedAt: isoTimestampSchema.optional(),
+  createdAt: z.iso.datetime().optional(),
+  updatedAt: z.iso.datetime().optional(),
 });
 
 export const automationEventDefinitionCreateInputSchema = z.object({
