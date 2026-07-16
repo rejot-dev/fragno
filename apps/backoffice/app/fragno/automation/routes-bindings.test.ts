@@ -313,8 +313,7 @@ describe("automation routes /routes", () => {
       expect.arrayContaining([
         expect.objectContaining({
           hookName: "internalIngestEvent",
-          error:
-            "Automation route custom-cross-org-forwarder cannot forward events from org:org_123 to org:org_999.",
+          error: "automation.forward-event cannot use org:org_999 within org:org_123.",
         }),
       ]),
     );

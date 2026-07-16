@@ -30,6 +30,14 @@ export type BackofficeAuthorizationPolicy = (
   request: BackofficeAuthorizationRequest,
 ) => BackofficeAuthorizationDecision;
 
+export const BACKOFFICE_SCOPE_OPERATIONS = [
+  "automation.forward-event",
+  "billing.record-event",
+  "billing.read-trackers",
+] as const;
+
+export type BackofficeScopeOperation = (typeof BACKOFFICE_SCOPE_OPERATIONS)[number];
+
 export class BackofficeUnavailableError extends Error {
   constructor(message: string) {
     super(message);
@@ -111,23 +119,22 @@ export class BackofficeKernel {
     }
   }
 
-  assertAutomationForwardTargetAllowed({
+  async assertScopeAllowedByOwner({
     ownerScope,
     targetScope,
-    routeId,
+    operation,
   }: {
     ownerScope: BackofficeContextScope;
     targetScope: BackofficeContextScope;
-    routeId?: string;
+    operation: BackofficeScopeOperation;
   }) {
-    const routePrefix = routeId ? `Automation route ${routeId}` : "Automation route";
     const deny = () => {
       const ownerLabel =
         ownerScope.kind === "system" ? "system" : backofficeScopeSinglePathSegment(ownerScope);
       const targetLabel =
         targetScope.kind === "system" ? "system" : backofficeScopeSinglePathSegment(targetScope);
       throw new BackofficeForbiddenError(
-        `${routePrefix} cannot forward events from ${ownerLabel} to ${targetLabel}.`,
+        `${operation} cannot use ${targetLabel} within ${ownerLabel}.`,
       );
     };
 
@@ -141,19 +148,15 @@ export class BackofficeKernel {
         ) {
           return;
         }
-        // TODO: Check the Auth membership table before allowing org-scoped automations to
-        // forward events to user scopes.
+        // TODO: Check the Auth membership table before allowing an org-owned object to use a
+        // user scope. Keeping this decision in the kernel means Billing does not need to own
+        // membership rules when that lookup becomes available.
         if (targetScope.kind === "user") {
           return;
         }
         deny();
         return;
       case "project":
-        if (backofficeContextScopesEqual(ownerScope, targetScope)) {
-          return;
-        }
-        deny();
-        return;
       case "user":
         if (backofficeContextScopesEqual(ownerScope, targetScope)) {
           return;

@@ -199,10 +199,10 @@ const handleForwardEventRouteAction = async ({
     throw new Error(`Automation route ${route.id} resolved an empty target user id.`);
   }
 
-  new BackofficeKernel({ objects: runtime.objects }).assertAutomationForwardTargetAllowed({
+  await new BackofficeKernel({ objects: runtime.objects }).assertScopeAllowedByOwner({
     ownerScope,
     targetScope: scope,
-    routeId: route.id,
+    operation: "automation.forward-event",
   });
 
   const forwardedEvent = {

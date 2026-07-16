@@ -68,10 +68,10 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
     const resolvedTargetScope = targetScope ?? currentScope;
 
     if (!backofficeContextScopesEqual(resolvedTargetScope, currentScope)) {
-      options.kernel.assertAutomationForwardTargetAllowed({
+      await options.kernel.assertScopeAllowedByOwner({
         ownerScope: currentScope,
         targetScope: resolvedTargetScope,
-        routeId: "events.fire",
+        operation: "automation.forward-event",
       });
       options.kernel.assertAllowed({
         actor: options.execution.actor,
