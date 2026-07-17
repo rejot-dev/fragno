@@ -100,7 +100,8 @@ function inferFieldType(prop: JsonSchemaProperty, uiOptions?: Record<string, unk
       return "integer";
     case "boolean":
       return "boolean";
-    default:
+    case "array":
+    case "object":
       return "unsupported";
   }
 }

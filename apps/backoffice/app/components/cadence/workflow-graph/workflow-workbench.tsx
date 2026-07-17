@@ -596,8 +596,10 @@ function buildPayloadFromFields(
         }
         break;
       }
-      default:
+      case "enum":
+      case "string":
         payload[field.name] = raw;
+        break;
     }
   }
   return { ok: true, payload };

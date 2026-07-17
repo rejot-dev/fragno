@@ -179,6 +179,16 @@ function mapDBTypeToDrizzleFunction(
         return { name: "text" };
       case "bigint":
         return { name: "bigint", params: [`{ mode: "number" }`] };
+      case "blob":
+      case "date":
+      case "datetime":
+      case "decimal":
+      case "integer":
+      case "longblob":
+      case "real":
+      case "timestamp":
+      case "timestamptz":
+        return { name: dbType };
       default:
         if (dbType.startsWith("varchar(")) {
           const length = parseVarchar(dbType);
@@ -202,6 +212,18 @@ function mapDBTypeToDrizzleFunction(
       case "integer":
         // MySQL uses "int" not "integer" in Drizzle ORM
         return { name: "int" };
+      case "bigserial":
+      case "blob":
+      case "bytea":
+      case "date":
+      case "datetime":
+      case "decimal":
+      case "json":
+      case "real":
+      case "serial":
+      case "timestamp":
+      case "timestamptz":
+        return { name: dbType };
       default:
         if (dbType.startsWith("varchar(")) {
           const length = parseVarchar(dbType);
@@ -236,6 +258,19 @@ function mapDBTypeToDrizzleFunction(
         return { name: "text" };
       case "real":
         return { name: "real" };
+      case "bigint":
+      case "bigserial":
+      case "boolean":
+      case "bytea":
+      case "date":
+      case "datetime":
+      case "decimal":
+      case "json":
+      case "longblob":
+      case "serial":
+      case "timestamp":
+      case "timestamptz":
+        return { name: dbType };
       default:
         return { name: dbType };
     }

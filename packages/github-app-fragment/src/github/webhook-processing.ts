@@ -146,6 +146,7 @@ const normalizeInstallationStatus = (action: string | null) => {
       return "suspended";
     case "deleted":
       return "deleted";
+    case null:
     default:
       return null;
   }

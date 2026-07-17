@@ -67,7 +67,10 @@ export const getResendDomainStatusTone = (status: ResendDomain["status"]) => {
     case "failed":
     case "temporary_failure":
       return "border-red-500/40 bg-red-500/10 text-red-300";
-    default:
+    case "not_started":
+    case "partially_failed":
+    case "partially_verified":
+    case "pending":
       return "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]";
   }
 };

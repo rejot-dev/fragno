@@ -74,7 +74,7 @@ function nodePath(node: GraphNode): string | undefined {
     case "step":
     case "loop":
       return node.ref?.path;
-    default:
+    case "event":
       return undefined;
   }
 }

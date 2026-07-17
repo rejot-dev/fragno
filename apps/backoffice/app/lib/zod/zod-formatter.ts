@@ -62,9 +62,15 @@ const literalToType = (value: unknown): string => {
     case "number":
     case "boolean":
       return String(value);
-    default:
+    case "bigint":
+    case "function":
+    case "object":
+    case "symbol":
+    case "undefined":
       return "unknown";
   }
+
+  return "unknown";
 };
 
 const renderUnion = (items: string[]) => {
@@ -299,9 +305,11 @@ const renderJsonSchemaType = (
 
       return `\n{\n${indent(propertyLines.join("\n"), (depth + 1) * 2)}\n${" ".repeat(depth * 2)}}`.trimStart();
     }
-    default:
+    case undefined:
       return "unknown";
   }
+
+  return "unknown";
 };
 
 const renderProperty = ({
