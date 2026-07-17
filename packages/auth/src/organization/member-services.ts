@@ -1339,7 +1339,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
               uow.delete("session", expiredSession.id, (b) => b.check());
             }
 
-            if (!session || !session.sessionOwner) {
+            if (!session?.sessionOwner) {
               return { ok: false as const, code: "credential_invalid" as const };
             }
 
@@ -1506,7 +1506,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
               uow.delete("session", expiredSession.id, (b) => b.check());
             }
 
-            if (!session || !session.sessionOwner) {
+            if (!session?.sessionOwner) {
               return { ok: false as const, code: "credential_invalid" as const };
             }
 
@@ -1709,7 +1709,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
             uow.delete("session", expiredSession.id, (b) => b.check());
           }
 
-          if (!session || !session.sessionOwner) {
+          if (!session?.sessionOwner) {
             return { ok: false as const, code: "credential_invalid" as const };
           }
 

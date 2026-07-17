@@ -74,12 +74,12 @@ function unwrapExpression(expr) {
  * @param {Set<string>} keys
  */
 function collectKeysFromObjectExpression(node, keys) {
-  if (!node || node.type !== "ObjectExpression") {
+  if (node?.type !== "ObjectExpression") {
     return;
   }
 
   for (const property of node.properties || []) {
-    if (!property || property.type !== "Property") {
+    if (property?.type !== "Property") {
       continue;
     }
 
@@ -130,11 +130,11 @@ function extractIconComponentKeysFromAst(ast) {
     }
 
     for (const declarator of declaration.declarations || []) {
-      if (!declarator || declarator.type !== "VariableDeclarator") {
+      if (declarator?.type !== "VariableDeclarator") {
         continue;
       }
 
-      if (!declarator.id || declarator.id.type !== "Identifier") {
+      if (declarator.id?.type !== "Identifier") {
         continue;
       }
 

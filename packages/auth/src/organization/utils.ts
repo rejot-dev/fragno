@@ -19,7 +19,7 @@ export function slugifyOrganizationName(value: string): string {
 }
 
 export function normalizeOrganizationSlug(value: string): string | null {
-  if (!value || !value.trim()) {
+  if (!value?.trim()) {
     return null;
   }
   const slug = slugifyOrganizationName(value);

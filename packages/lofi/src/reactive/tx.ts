@@ -103,8 +103,7 @@ const createQueryToken = <TResult>(execute: () => Promise<TResult>): LofiRuntime
 
 const isQueryToken = (value: unknown): value is LofiRuntimeTxQuery<unknown> =>
   typeof value === "object" &&
-  value !== null &&
-  (value as { [lofiRuntimeTxQueryBrand]?: boolean })[lofiRuntimeTxQueryBrand] === true;
+  (value as { [lofiRuntimeTxQueryBrand]?: boolean })?.[lofiRuntimeTxQueryBrand] === true;
 
 const resolveSelection = async (selection: unknown): Promise<unknown> => {
   if (isQueryToken(selection)) {
@@ -186,5 +185,4 @@ export const createLofiRuntimeTx = (options: LofiRuntimeTxOptions): LofiRuntimeT
 
 export const isLofiRuntimeTxBuilder = (value: unknown): value is LofiRuntimeTxBuilder<unknown> =>
   typeof value === "object" &&
-  value !== null &&
-  (value as { [lofiRuntimeTxBuilderBrand]?: boolean })[lofiRuntimeTxBuilderBrand] === true;
+  (value as { [lofiRuntimeTxBuilderBrand]?: boolean })?.[lofiRuntimeTxBuilderBrand] === true;

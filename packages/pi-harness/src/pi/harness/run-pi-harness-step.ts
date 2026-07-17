@@ -517,7 +517,7 @@ export const runPiHarnessStep = async <TTool extends AgentTool = AgentTool>(
       });
 
       const userEntry = messageEntries(recoveredEntries).at(-1);
-      if (!userEntry || userEntry.message.role !== "user") {
+      if (userEntry?.message.role !== "user") {
         throw new Error(
           `Cannot safely retry ${operationId}: previous attempt emitted session entries without an operation completion journal.`,
         );

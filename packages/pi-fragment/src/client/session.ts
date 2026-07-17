@@ -276,7 +276,7 @@ const latestStepEmissionCommitState = (
     (frame) => "kind" in frame && frame.kind === "step-emission",
   );
 
-  if (!latestStepEmission || latestStepEmission.kind !== "step-emission") {
+  if (latestStepEmission?.kind !== "step-emission") {
     return "none";
   }
 

@@ -1085,7 +1085,7 @@ const resolveSchemaForLookup = (
 
   if (namespace !== undefined) {
     const entry = schemaByNamespace.get(namespace);
-    if (entry && entry.schema.tables[table.name] === table) {
+    if (entry?.schema.tables[table.name] === table) {
       return entry;
     }
     return null;

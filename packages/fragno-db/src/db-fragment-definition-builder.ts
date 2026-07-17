@@ -1381,9 +1381,7 @@ export class DatabaseFragmentDefinitionBuilder<
           }
         )[requestWaitUntilSymbol];
         const routeLabel =
-          routeInfo && routeInfo.method && routeInfo.path
-            ? `${routeInfo.method} ${routeInfo.path}`
-            : null;
+          routeInfo?.method && routeInfo.path ? `${routeInfo.method} ${routeInfo.path}` : null;
         const routeSuffix = routeLabel ? ` (route: ${routeLabel})` : "";
         const buildRoundtripError = (kind: "retrieve" | "mutate") =>
           new FragnoApiError(

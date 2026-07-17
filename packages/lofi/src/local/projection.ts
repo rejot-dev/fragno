@@ -207,16 +207,12 @@ export const createProjectionReadApi = (): LofiLocalProjectionRead => ({
 export const isProjectionReadRequest = (
   value: unknown,
 ): value is LofiProjectionReadRequest<unknown> =>
-  typeof value === "object" &&
-  value !== null &&
-  (value as { type?: unknown }).type === "lofi.projection.read.get";
+  typeof value === "object" && (value as { type?: unknown })?.type === "lofi.projection.read.get";
 
 export const isProjectionReadEachRequest = (
   value: unknown,
 ): value is LofiProjectionReadEachRequest<unknown, unknown> =>
-  typeof value === "object" &&
-  value !== null &&
-  (value as { type?: unknown }).type === "lofi.projection.read.each";
+  typeof value === "object" && (value as { type?: unknown })?.type === "lofi.projection.read.each";
 
 export const isThenable = (value: unknown): value is PromiseLike<unknown> =>
   typeof value === "object" &&

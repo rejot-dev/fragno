@@ -961,7 +961,7 @@ export function createOrganizationInvitationServices(
           }
 
           const session = sessions[0] ?? null;
-          if (!session || !session.sessionOwner) {
+          if (!session?.sessionOwner) {
             return { ok: false as const, code: "credential_invalid" as const };
           }
 
@@ -981,7 +981,7 @@ export function createOrganizationInvitationServices(
               (sessionOwner as { invitations?: unknown }).invitations,
             ) as InvitationRow[];
             for (const invitation of invitationsForUser) {
-              if (!invitation || invitation.status !== "pending") {
+              if (invitation?.status !== "pending") {
                 continue;
               }
 
@@ -1065,7 +1065,7 @@ export function createOrganizationInvitationServices(
           }
 
           const session = sessions[0] ?? null;
-          if (!session || !session.sessionOwner) {
+          if (!session?.sessionOwner) {
             return { ok: false as const, code: "credential_invalid" as const };
           }
           const sessionOwner = session.sessionOwner;
@@ -1338,7 +1338,7 @@ export function createOrganizationInvitationServices(
             uow.delete("session", expiredSession.id, (b) => b.check());
           }
 
-          if (!session || !session.sessionOwner) {
+          if (!session?.sessionOwner) {
             return { ok: false as const, code: "credential_invalid" as const };
           }
 
@@ -1424,7 +1424,7 @@ export function createOrganizationInvitationServices(
             uow.delete("session", expiredSession.id, (b) => b.check());
           }
 
-          if (!session || !session.sessionOwner) {
+          if (!session?.sessionOwner) {
             return { ok: false as const, code: "credential_invalid" as const };
           }
           const sessionOwner = session.sessionOwner;

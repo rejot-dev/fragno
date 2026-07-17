@@ -70,7 +70,7 @@ export function createActiveOrganizationServices() {
         ),
       )
       .transformRetrieve(([session]) => {
-        if (!session || !session.sessionActiveOrganization) {
+        if (!session?.sessionActiveOrganization) {
           return { organizationId: null };
         }
 

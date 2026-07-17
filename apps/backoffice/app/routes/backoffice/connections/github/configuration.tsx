@@ -527,7 +527,7 @@ export default function BackofficeOrganisationGitHubConfiguration() {
   }, [loaderData.configError, loaderData.configState, setConfigError, setConfigState]);
 
   const saveError = actionData && !actionData.ok ? actionData.message : null;
-  const saveSuccess = actionData && actionData.ok ? actionData.message : null;
+  const saveSuccess = actionData?.ok ? actionData.message : null;
   const installNotice = loaderData.installNotice;
   const linkingAvailable = Boolean(configState?.configured);
   const hasActiveInstallation = loaderData.installations.length > 0;

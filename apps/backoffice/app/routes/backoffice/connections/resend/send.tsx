@@ -134,7 +134,7 @@ export default function BackofficeOrganisationResendSend() {
   const defaultFrom = configState?.config?.defaultFrom ?? "";
   const defaultReplyTo = configState?.config?.defaultReplyTo?.join(", ") ?? "";
   const sendError = fetcher.data && !fetcher.data.ok ? fetcher.data.message : null;
-  const sendSuccess = fetcher.data && fetcher.data.ok ? fetcher.data.message : null;
+  const sendSuccess = fetcher.data?.ok ? fetcher.data.message : null;
 
   return (
     <div className="space-y-4">

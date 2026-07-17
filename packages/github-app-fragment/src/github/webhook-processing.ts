@@ -404,7 +404,7 @@ export const createWebhookProcessor = (config: Pick<GitHubAppFragmentConfig, "we
             continue;
           }
           const existing = existingById.get(repoId);
-          if (existing && existing.removedAt === null) {
+          if (existing?.removedAt === null) {
             removals.push(existing.id);
             const links = repoLinksByRepoId.get(repoId);
             if (links) {

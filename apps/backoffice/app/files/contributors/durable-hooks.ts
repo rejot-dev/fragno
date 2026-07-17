@@ -218,7 +218,7 @@ const createDurableHooksFileContributor = (
         },
         async readFile(path) {
           const found = await findByPath(normalizePath(path));
-          if (!found || found.kind !== "file") {
+          if (found?.kind !== "file") {
             throw createPathNotFoundFileSystemError("read", path);
           }
 
@@ -226,7 +226,7 @@ const createDurableHooksFileContributor = (
         },
         async readFileBuffer(path) {
           const found = await findByPath(normalizePath(path));
-          if (!found || found.kind !== "file") {
+          if (found?.kind !== "file") {
             throw createPathNotFoundFileSystemError("read", path);
           }
 

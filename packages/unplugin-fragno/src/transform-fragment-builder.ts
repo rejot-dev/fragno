@@ -156,7 +156,7 @@ export function transformFragmentBuilder(ast: Node, options: { ssr: boolean }): 
     CallExpression(path) {
       // Check if this is a builder method call
       const builderMethod = isBuilderMethodCall(path);
-      if (builderMethod && builderMethod.isChainedFromDefineFragment) {
+      if (builderMethod?.isChainedFromDefineFragment) {
         stripCallbackArguments(path, builderMethod.methodName);
       }
     },

@@ -214,7 +214,7 @@ export default function BackofficeOrganisationResendConfiguration() {
   }, [actionData, setConfigError, setConfigState]);
 
   const saveError = actionData && !actionData.ok ? actionData.message : null;
-  const saveSuccess = actionData && actionData.ok ? actionData.message : null;
+  const saveSuccess = actionData?.ok ? actionData.message : null;
 
   const statusLabel = configState?.configured ? "Configured" : "Not configured";
   const statusTone = configState?.configured

@@ -269,7 +269,7 @@ function parseInputSchema(optionsArg: AstNode | undefined): WorkflowInputField[]
 /** Find the `z.object(...)` call inside a (possibly chained) schema expression. */
 function unwrapToObjectCall(node: AstNode): AstNode | undefined {
   let current: AstNode | undefined = node;
-  while (current && current.type === "CallExpression") {
+  while (current?.type === "CallExpression") {
     if (memberCallee(current)?.method === "object") {
       return current;
     }
@@ -290,7 +290,7 @@ function parseSchemaField(name: string, node: AstNode): WorkflowInputField {
   let type: WorkflowInputFieldType = "unknown";
 
   let current: AstNode | undefined = node;
-  while (current && current.type === "CallExpression") {
+  while (current?.type === "CallExpression") {
     const member = memberCall(current);
     if (!member) {
       break;

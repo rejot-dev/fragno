@@ -891,7 +891,7 @@ const applyMutation = async <
   }
 
   const values = resolveMutationValues(mutation.op === "create" ? mutation.values : mutation.set);
-  if (existing && existing._lofi.versionstamp.startsWith("local-")) {
+  if (existing?._lofi?.versionstamp?.startsWith("local-")) {
     const isMatch = Object.entries(values).every(([column, value]) =>
       Object.is(existing.data[column], value),
     );

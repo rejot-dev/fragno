@@ -783,7 +783,7 @@ export default function BackofficeOrganisationUploadFiles() {
   const fileInputId = useId();
 
   const actionError = actionData && !actionData.ok ? actionData.message : null;
-  const actionSuccess = actionData && actionData.ok ? actionData.message : null;
+  const actionSuccess = actionData?.ok ? actionData.message : null;
   const actionSelectedFile =
     actionData && Object.prototype.hasOwnProperty.call(actionData, "selectedFile")
       ? (actionData.selectedFile ?? null)

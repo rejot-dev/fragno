@@ -1064,7 +1064,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
           }
 
           const session = sessions[0] ?? null;
-          if (!session || !session.sessionOwner) {
+          if (!session?.sessionOwner) {
             return { ok: false as const, code: "credential_invalid" as const };
           }
 
@@ -1266,7 +1266,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
           }
 
           const session = Array.isArray(sessions) ? sessions[0] : null;
-          if (!session || !session.sessionOwner) {
+          if (!session?.sessionOwner) {
             return { ok: false as const, code: "credential_invalid" as const };
           }
 
@@ -1439,7 +1439,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
             uow.delete("session", expiredSession.id, (b) => b.check());
           }
 
-          if (!session || !session.sessionOwner) {
+          if (!session?.sessionOwner) {
             return { ok: false as const, code: "credential_invalid" as const };
           }
 
@@ -1702,7 +1702,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
             uow.delete("session", expiredSession.id, (b) => b.check());
           }
 
-          if (!session || !session.sessionOwner) {
+          if (!session?.sessionOwner) {
             return { ok: false as const, code: "credential_invalid" as const };
           }
 
@@ -1823,7 +1823,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
               uow.delete("session", expiredSession.id, (b) => b.check());
             }
 
-            if (!session || !session.sessionOwner) {
+            if (!session?.sessionOwner) {
               return { ok: false as const, code: "credential_invalid" as const };
             }
 
@@ -1986,7 +1986,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
               uow.delete("session", expiredSession.id, (b) => b.check());
             }
 
-            if (!session || !session.sessionOwner) {
+            if (!session?.sessionOwner) {
               return { ok: false as const, code: "credential_invalid" as const };
             }
 

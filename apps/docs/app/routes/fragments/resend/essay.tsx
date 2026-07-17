@@ -16,9 +16,7 @@ import { ResendDataFlow } from "@/components/resend-data-flow";
 import { AccentText } from "../../home/essay-primitives";
 
 const BASE_URL =
-  typeof import.meta.env !== "undefined" && import.meta.env.MODE === "development"
-    ? "http://localhost:3000"
-    : "https://fragno.dev";
+  import.meta.env.MODE === "development" ? "http://localhost:3000" : "https://fragno.dev";
 
 export function meta() {
   const title = "Fragno — Receiving Resend inbound email without webhooks";

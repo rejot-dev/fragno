@@ -159,7 +159,7 @@ const isDefineLibraryChain = (node: t.Node, scope: Scope): boolean => {
   // Check if it's an identifier that refers to a defineFragment result
   if (t.isIdentifier(node)) {
     const binding = scope.getBinding(node.name);
-    if (binding && binding.path.isVariableDeclarator()) {
+    if (binding?.path?.isVariableDeclarator()) {
       const init = binding.path.node.init;
       if (init) {
         return isDefineLibraryChain(init, scope);

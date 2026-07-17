@@ -259,7 +259,7 @@ export class Reson8RealtimeSessionStore {
       realtimeBaseUrl: this.#realtimeBaseUrl,
     });
 
-    if (this.#socket && this.#socket.readyState === OPEN_READY_STATE) {
+    if (this.#socket?.readyState === OPEN_READY_STATE) {
       logReson8Realtime("Socket already open, skipping connect().");
       return;
     }

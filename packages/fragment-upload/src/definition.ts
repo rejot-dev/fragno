@@ -66,7 +66,7 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
                 );
             })
             .mutate(({ forSchema, retrieveResult: [file, document] }) => {
-              if (!file || file.status !== "ready" || file.objectKey !== objectKey || !document) {
+              if (file?.status !== "ready" || file.objectKey !== objectKey || !document) {
                 return;
               }
 
@@ -112,7 +112,7 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
               );
           })
           .mutate(({ forSchema, retrieveResult: [file, document] }) => {
-            if (!file || file.status !== "ready" || file.objectKey !== objectKey) {
+            if (file?.status !== "ready" || file.objectKey !== objectKey) {
               return;
             }
 

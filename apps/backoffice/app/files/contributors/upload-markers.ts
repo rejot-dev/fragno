@@ -24,11 +24,7 @@ export const isUploadDirectoryMarker = (file: UploadDirectoryMarkerLike): boolea
   }
 
   const metadata = file.metadata;
-  return (
-    typeof metadata === "object" &&
-    metadata !== null &&
-    metadata[DIRECTORY_MARKER_METADATA_KEY] === true
-  );
+  return typeof metadata === "object" && metadata?.[DIRECTORY_MARKER_METADATA_KEY] === true;
 };
 
 export const toUploadDirectoryMarkerFileKey = (folderKey: string): string => {

@@ -360,7 +360,7 @@ export default function BackofficeAutomationSandboxes() {
       ? actionData.message
       : null;
 
-  const commandDisabled = !selectedSandbox || selectedSandbox.status !== "running";
+  const commandDisabled = selectedSandbox?.status !== "running";
 
   return (
     <section className="grid w-full max-w-7xl gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">

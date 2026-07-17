@@ -159,7 +159,7 @@ const rule = {
 
     /** @param {any} node */
     const isAbruptSingleStatementIf = (node) => {
-      if (!node || node.type !== "IfStatement") {
+      if (node?.type !== "IfStatement") {
         return false;
       }
 

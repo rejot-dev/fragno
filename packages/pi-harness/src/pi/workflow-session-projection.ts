@@ -177,7 +177,7 @@ export const reducePiWorkflowSessionEmission = (
   emission: PiWorkflowSessionProjectionEmission,
 ): void => {
   const payload = emission.payload;
-  if (!payload || !payload.kind) {
+  if (!payload?.kind) {
     return;
   }
 

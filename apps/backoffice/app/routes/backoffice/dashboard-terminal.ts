@@ -216,8 +216,7 @@ const isMatchingPathAutocompleteResult = (
   result: DashboardPathAutocompleteResult | undefined,
 ) =>
   Boolean(
-    result &&
-    result.ok &&
+    result?.ok &&
     result.commandLine === request.commandLine &&
     result.cwd === request.cwd &&
     result.cursorPosition === request.cursorPosition &&

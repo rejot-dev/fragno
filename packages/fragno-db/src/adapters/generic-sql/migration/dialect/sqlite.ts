@@ -221,7 +221,7 @@ export class SQLiteSQLGenerator extends SQLGenerator {
 
       for (const index of indices) {
         const operation = result[index];
-        if (!operation || operation.type !== "alter-table") {
+        if (operation?.type !== "alter-table") {
           continue;
         }
 

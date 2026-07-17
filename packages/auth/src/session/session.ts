@@ -260,7 +260,7 @@ const buildInvitationsFromRows = (
   const seenInvitationIds = new Set<string>();
 
   for (const invitation of rows) {
-    if (!invitation || invitation.status !== "pending") {
+    if (invitation?.status !== "pending") {
       continue;
     }
     const organizationRow = invitation.organization;
@@ -406,7 +406,7 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
           if (!session) {
             return null;
           }
-          if (!session.sessionOwner || session.sessionOwner.bannedAt) {
+          if (session.sessionOwner?.bannedAt !== null) {
             return null;
           }
 

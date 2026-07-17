@@ -104,7 +104,7 @@ export default function BackofficeOrganisationPiConfiguration() {
   }, [actionData, setConfigError, setConfigState]);
 
   const saveError = localError ?? (actionData && !actionData.ok ? actionData.message : null);
-  const saveSuccess = !localError && actionData && actionData.ok ? actionData.message : null;
+  const saveSuccess = !localError && actionData?.ok ? actionData.message : null;
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     setLocalError(null);
