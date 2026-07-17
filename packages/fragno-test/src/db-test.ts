@@ -352,9 +352,7 @@ export class DatabaseFragmentsTestBuilder<
    * Opt out of the default roundtrip guard (enabled by default), or override its configuration.
    * Useful for allowing multi-roundtrip routes in tests.
    */
-  withDbRoundtripGuard(
-    guard: FragnoPublicConfigWithDatabase["dbRoundtripGuard"] = false,
-  ): DatabaseFragmentsTestBuilder<TFragments, TAdapter, TFirstFragmentThisContext> {
+  withDbRoundtripGuard(guard: FragnoPublicConfigWithDatabase["dbRoundtripGuard"] = false): this {
     this.#dbRoundtripGuard = guard;
     return this;
   }

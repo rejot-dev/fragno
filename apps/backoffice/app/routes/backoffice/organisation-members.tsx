@@ -253,13 +253,15 @@ function OrganizationMemberRow({
     const extras = member.roles.filter(
       (role) => !ROLE_OPTIONS.includes(role as (typeof ROLE_OPTIONS)[number]),
     );
-    const uniqueExtras = Array.from(new Set(extras)).sort();
+    const uniqueExtras = Array.from(new Set(extras)).sort((left, right) =>
+      left.localeCompare(right),
+    );
     return [...ROLE_OPTIONS, ...uniqueExtras];
   }, [member.roles]);
 
   const rolesChanged = useMemo(() => {
-    const current = [...member.roles].sort().join("|");
-    const next = [...selectedRoles].sort().join("|");
+    const current = [...member.roles].sort((left, right) => left.localeCompare(right)).join("|");
+    const next = [...selectedRoles].sort((left, right) => left.localeCompare(right)).join("|");
     return current !== next;
   }, [member.roles, selectedRoles]);
 

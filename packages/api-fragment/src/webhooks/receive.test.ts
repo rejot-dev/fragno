@@ -354,10 +354,11 @@ describe("webhook receiving", () => {
     await drainDurableHooks(fragment);
 
     expect(onWebhookReceived).toHaveBeenCalledTimes(2);
-    expect(onWebhookReceived.mock.calls.map(([payload]) => payload.deliveryId).toSorted()).toEqual([
-      "evt_1",
-      "evt_2",
-    ]);
+    expect(
+      onWebhookReceived.mock.calls
+        .map(([payload]) => payload.deliveryId)
+        .toSorted((left, right) => left.localeCompare(right)),
+    ).toEqual(["evt_1", "evt_2"]);
 
     await setup.test.cleanup();
   });

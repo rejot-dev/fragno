@@ -1759,7 +1759,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           .executeRetrieve();
         expect(event.created_at).toBeInstanceOf(Date);
         expect(event.happened_on).toBeInstanceOf(Date);
-        assert(event.happened_on.toISOString().slice(0, 10) === "2024-06-18");
+        assert(event.happened_on.toISOString().startsWith("2024-06-18"));
         expect(event.payload).toEqual(payload);
         expect(event.big_score).toBe(bigScore);
       } finally {

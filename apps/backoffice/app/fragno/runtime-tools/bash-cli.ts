@@ -479,7 +479,7 @@ export const buildCommandHelp = (spec: {
 }) => {
   const outputLines: string[] = [];
 
-  outputLines.push(`${spec.name}`);
+  outputLines.push(spec.name);
   outputLines.push("");
   outputLines.push(spec.help.summary);
   outputLines.push("");

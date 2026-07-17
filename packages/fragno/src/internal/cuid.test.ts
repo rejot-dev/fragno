@@ -158,7 +158,7 @@ describe("cuid", () => {
       fingerprint: "fingerprint",
     })();
 
-    assert(leadingA[0] === "a");
-    assert(leadingZ[0] === "z");
+    assert(leadingA.startsWith("a"));
+    assert(leadingZ.startsWith("z"));
   });
 });

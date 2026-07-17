@@ -124,7 +124,7 @@ export function SubscribeButton() {
       body: {
         priceId: "price_123",
         successUrl: \
-\`${"${window.location.origin}"}/success\`,
+\`\${window.location.origin}/success\`,
         cancelUrl: window.location.href,
       },
     });

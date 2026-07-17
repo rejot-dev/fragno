@@ -33,7 +33,7 @@ describe("local projection types", () => {
 
         // @ts-expect-error mutate is not called for skipped retrieve results.
         const skipped: undefined = retrieved;
-        void skipped;
+        expectTypeOf(skipped).toEqualTypeOf<undefined>();
       },
     });
   });

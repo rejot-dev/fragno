@@ -43,7 +43,7 @@ describe("resend-fragment webhook", () => {
 
   test("validates webhook signature headers", async () => {
     const response = await fragment.handler(
-      new Request(`${webhookUrl}`, {
+      new Request(webhookUrl, {
         method: "POST",
         headers: {
           "content-type": "application/json",
