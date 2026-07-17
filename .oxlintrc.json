@@ -46,7 +46,7 @@
     "typescript/no-misused-spread": "error",
     "typescript/no-mixed-enums": "error",
     "typescript/no-redundant-type-constituents": "error",
-    "typescript/no-unnecessary-boolean-literal-compare": "off",
+    "typescript/no-unnecessary-boolean-literal-compare": "error",
     "typescript/no-unnecessary-condition": "off",
     "typescript/no-unnecessary-qualifier": "error",
     "typescript/no-unnecessary-template-expression": "error",

@@ -134,10 +134,7 @@ describe("createVanillaListeners", () => {
     const { useUsers } = useFragno(clientObj);
     const userStore = useUsers();
 
-    const stateAfterInitialLoad = await waitForAsyncIterator(
-      userStore,
-      (state) => state.loading === false,
-    );
+    const stateAfterInitialLoad = await waitForAsyncIterator(userStore, (state) => !state.loading);
     expect(stateAfterInitialLoad).toEqual({
       loading: false,
       data: [{ id: 1, name: "John1" }],
@@ -146,10 +143,7 @@ describe("createVanillaListeners", () => {
     // Refetch data
     userStore.refetch();
 
-    const stateAfterRefetch = await waitForAsyncIterator(
-      userStore,
-      (state) => state.loading === false,
-    );
+    const stateAfterRefetch = await waitForAsyncIterator(userStore, (state) => !state.loading);
     expect(stateAfterRefetch).toEqual({
       loading: false,
       data: [{ id: 2, name: "John2" }],
@@ -239,7 +233,7 @@ describe("createVanillaListeners", () => {
     // Use waitForAsyncIterator to wait for the loaded state
     const finalState = await waitForAsyncIterator(
       userStore,
-      (state) => state.loading === false && state.data !== undefined,
+      (state) => !state.loading && state.data !== undefined,
       { timeout: 3000 },
     );
 
@@ -605,7 +599,7 @@ describe("createVanillaMutator", () => {
     // Use waitForAsyncIterator to wait for the completed state
     const finalState = await waitForAsyncIterator(
       mutator,
-      (state) => state.loading === false && state.data !== undefined,
+      (state) => !state.loading && state.data !== undefined,
       { timeout: 3000 },
     );
 
@@ -997,7 +991,7 @@ describe("error handling", () => {
 
     const finalState = await waitForAsyncIterator(
       mutator,
-      (state) => state.error !== undefined && state.loading === false,
+      (state) => state.error !== undefined && !state.loading,
     );
 
     expect(finalState).toEqual({

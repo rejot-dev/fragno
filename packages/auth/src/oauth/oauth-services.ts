@@ -397,7 +397,7 @@ export function createOAuthServices(options: {
               linkByEmail &&
               existingUserByEmail &&
               input.userInfo.email &&
-              input.userInfo.emailVerified === true
+              input.userInfo.emailVerified
             ) {
               resolvedUser = existingUserByEmail;
             }

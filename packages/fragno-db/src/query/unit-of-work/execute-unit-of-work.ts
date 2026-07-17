@@ -16,7 +16,7 @@ export function isTxResult(value: unknown): value is TxResult<unknown> {
     value !== null &&
     typeof value === "object" &&
     TX_RESULT_BRAND in value &&
-    (value as Record<symbol, boolean>)[TX_RESULT_BRAND] === true
+    (value as Record<symbol, boolean>)[TX_RESULT_BRAND]
   );
 }
 

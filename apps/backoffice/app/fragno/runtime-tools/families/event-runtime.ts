@@ -45,9 +45,7 @@ const automationActorFromPrincipal = (actor: BackofficePrincipal): AutomationEve
 };
 
 const normalizeEventPayload = (payload: Record<string, unknown> | undefined) =>
-  payload !== null && Array.isArray(payload) === false && typeof payload === "object"
-    ? payload
-    : {};
+  payload !== null && !Array.isArray(payload) && typeof payload === "object" ? payload : {};
 
 export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRuntime => ({
   emitEvent: async ({
