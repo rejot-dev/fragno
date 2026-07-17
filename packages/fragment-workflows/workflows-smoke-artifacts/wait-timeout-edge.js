@@ -105,9 +105,13 @@ async function main() {
       new Promise((resolve) => {
         setTimeout(() => {
           sendEdgeEvent(id, { expected: "before", sentAt: Date.now() })
-            .catch((error) => {
-              console.error(`sendEdgeEvent before failed for ${id}:`, error.message ?? error);
-            })
+            .catch(
+              /** @param {unknown} error */
+              (error) => {
+                const message = error instanceof Error ? error.message : String(error);
+                console.error(`sendEdgeEvent before failed for ${id}:`, message);
+              },
+            )
             .finally(resolve);
         }, beforeDelayMs);
       }),
@@ -120,9 +124,13 @@ async function main() {
         const delay = timeoutMs + lateOffsetMs;
         setTimeout(() => {
           sendEdgeEvent(id, { expected: "after", sentAt: Date.now() })
-            .catch((error) => {
-              console.error(`sendEdgeEvent after failed for ${id}:`, error.message ?? error);
-            })
+            .catch(
+              /** @param {unknown} error */
+              (error) => {
+                const message = error instanceof Error ? error.message : String(error);
+                console.error(`sendEdgeEvent after failed for ${id}:`, message);
+              },
+            )
             .finally(resolve);
         }, delay);
       }),
@@ -207,7 +215,10 @@ async function main() {
   console.log("Wait-timeout edge test finished with no issues.");
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+main().catch(
+  /** @param {unknown} error */
+  (error) => {
+    console.error(error);
+    process.exit(1);
+  },
+);

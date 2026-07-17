@@ -87,7 +87,10 @@ async function main() {
   console.log(`[runner-tick-storm] complete instances=${ids.length}`);
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+main().catch(
+  /** @param {unknown} error */
+  (error) => {
+    console.error(error);
+    process.exit(1);
+  },
+);

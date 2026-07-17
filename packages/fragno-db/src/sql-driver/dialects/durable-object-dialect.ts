@@ -197,7 +197,7 @@ class DOConnection implements DatabaseConnection {
           }
         });
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         // Don't clear state here - let commit/rollback handle it
         throw error;
       });

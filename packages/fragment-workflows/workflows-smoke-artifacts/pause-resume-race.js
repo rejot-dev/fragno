@@ -150,7 +150,10 @@ async function main() {
   console.log("Pause/resume race finished with no stuck instances.");
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+main().catch(
+  /** @param {unknown} error */
+  (error) => {
+    console.error(error);
+    process.exit(1);
+  },
+);

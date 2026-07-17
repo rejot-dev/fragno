@@ -760,7 +760,7 @@ async function main() {
   console.log(`\nDone — ${postsToGenerate.length * RATIO_KEYS.length} images in ${OUTPUT_DIR}`);
 }
 
-main().catch((err) => {
+main().catch((err: unknown) => {
   console.error("OG image generation failed:", err);
   process.exit(1);
 });

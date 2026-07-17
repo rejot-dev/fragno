@@ -855,7 +855,7 @@ export const startFauxPiHarnessOperation = (
         }
       }
     },
-    (error) => {
+    (error: unknown) => {
       for (const checkpoint of checkpoints.values()) {
         if (!checkpoint.hit) {
           checkpoint.deferred.reject(error);

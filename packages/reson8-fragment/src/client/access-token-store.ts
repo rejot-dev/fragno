@@ -116,7 +116,7 @@ export class Reson8AccessTokenStore {
         });
         return token;
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         this.error.set(error);
         console.error("[reson8/access-token] Token request failed.", error);
         throw error;

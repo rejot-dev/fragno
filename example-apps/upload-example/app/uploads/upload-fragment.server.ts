@@ -23,7 +23,7 @@ let serverPromise: Promise<UploadServers> | null = null;
 
 export function getUploadServers() {
   if (!serverPromise) {
-    serverPromise = createServers().catch((error) => {
+    serverPromise = createServers().catch((error: unknown) => {
       serverPromise = null;
       throw error;
     });

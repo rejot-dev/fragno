@@ -424,7 +424,7 @@ export function createBackofficeFragmentDurableObject<
         await ensurePendingOutboxAlarm();
         return current;
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         console.log(`${options.name} migration failed`, { error });
         throw error;
       })

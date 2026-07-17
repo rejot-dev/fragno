@@ -188,7 +188,10 @@ async function main() {
   console.log("Dispatcher crash recovery test finished with no detected anomalies.");
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+main().catch(
+  /** @param {unknown} error */
+  (error) => {
+    console.error(error);
+    process.exit(1);
+  },
+);

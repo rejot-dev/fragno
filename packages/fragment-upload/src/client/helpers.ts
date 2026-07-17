@@ -552,7 +552,7 @@ export const createUploadHelpers = (input: {
 
               pump();
             },
-            (error) => {
+            (error: unknown) => {
               controller.error(error);
             },
           );

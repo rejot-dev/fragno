@@ -46,7 +46,7 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
     const safeOnProcessError = (error: unknown) => {
       void Promise.resolve()
         .then(() => onProcessError(error))
-        .catch((callbackError) => {
+        .catch((callbackError: unknown) => {
           DurableHooksLogger.error("Durable hooks dispatcher onProcessError callback failed", {
             namespace: processor.namespace,
             fields: { error: DurableHooksLogger.toErrorMessage(callbackError) },
@@ -172,7 +172,7 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
     DurableHooksLogger.debug("Durable hooks dispatcher init", {
       namespace: processor.namespace,
     });
-    void refreshAlarm("alarm").catch((error) => {
+    void refreshAlarm("alarm").catch((error: unknown) => {
       DurableHooksLogger.error("Durable hooks alarm schedule failed", {
         namespace: processor.namespace,
         fields: { error: DurableHooksLogger.toErrorMessage(error) },
@@ -183,7 +183,7 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
     return {
       notify: (context) => {
         const schedulePromise = refreshAlarm(context.source);
-        const handledPromise = schedulePromise.catch((error) => {
+        const handledPromise = schedulePromise.catch((error: unknown) => {
           DurableHooksLogger.error("Durable hooks alarm schedule failed", {
             namespace: processor.namespace,
             fields: { error: DurableHooksLogger.toErrorMessage(error) },

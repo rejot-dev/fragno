@@ -93,7 +93,10 @@ async function main() {
   console.log(`[history-pagination] complete pages covered ${ids.length} ids`);
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+main().catch(
+  /** @param {unknown} error */
+  (error) => {
+    console.error(error);
+    process.exit(1);
+  },
+);

@@ -505,7 +505,7 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
           startLiveClients();
         }
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         running = false;
         updateStatus((current) => ({ ...current, status: getRuntimeStatus(current.sources) }));
         throw error;

@@ -1481,7 +1481,7 @@ describe("Error Handling", () => {
     uow.forSchema(testSchema).find("users", (b) => b.whereIndex("primary"));
 
     // Start executing (this will fail)
-    const executePromise = uow.executeRetrieve().catch((e) => {
+    const executePromise = uow.executeRetrieve().catch((e: unknown) => {
       return (e as Error).message;
     });
 
@@ -1511,7 +1511,7 @@ describe("Error Handling", () => {
     uow.forSchema(testSchema).create("users", { name: "Alice", email: "alice@example.com" });
 
     // Start executing (this will fail)
-    const executePromise = uow.executeMutations().catch((e) => {
+    const executePromise = uow.executeMutations().catch((e: unknown) => {
       return (e as Error).message;
     });
 
