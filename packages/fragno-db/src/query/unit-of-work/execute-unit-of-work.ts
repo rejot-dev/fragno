@@ -477,7 +477,7 @@ function createServiceTx<
   if (typedUow) {
     typedUow.retrievalPhase.then(
       (results) => resolveRetrievePhase(results as TRetrieveResults),
-      (error) => rejectRetrievePhase(error),
+      (error: unknown) => rejectRetrievePhase(error),
     );
   } else if (!callbacks.retrieve) {
     // No retrieve callback - resolve immediately with empty array

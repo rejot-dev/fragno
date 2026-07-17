@@ -21,7 +21,7 @@ export function getPostgresPool(): Pool {
       const poolToClose = poolInstance;
       poolInstance = undefined;
       dbInstance = undefined;
-      void poolToClose?.end().catch((closeError) => {
+      void poolToClose?.end().catch((closeError: unknown) => {
         console.error("Failed to close Postgres pool", closeError);
       });
     });

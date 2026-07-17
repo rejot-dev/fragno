@@ -126,7 +126,10 @@ async function main() {
   console.log("[api-route-validation] completed");
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+main().catch(
+  /** @param {unknown} error */
+  (error) => {
+    console.error(error);
+    process.exit(1);
+  },
+);

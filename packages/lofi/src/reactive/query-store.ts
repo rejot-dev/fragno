@@ -513,7 +513,7 @@ const createManagedLofiQueryStore = <TRetrieveResult, TData>({
           void runQuery();
         }
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         if (mounted) {
           $store.set({ ...$store.get(), loading: false, error });
         }

@@ -428,7 +428,7 @@ function notifyDurableHooks(
         },
       });
     })
-    .catch((error) => {
+    .catch((error: unknown) => {
       DurableHooksLogger.error(`Durable hooks notify failed${suffix}`, {
         namespace,
         fields: {

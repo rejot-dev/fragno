@@ -126,7 +126,10 @@ async function main() {
   console.log("Terminate-running test finished with no overwrites detected.");
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+main().catch(
+  /** @param {unknown} error */
+  (error) => {
+    console.error(error);
+    process.exit(1);
+  },
+);

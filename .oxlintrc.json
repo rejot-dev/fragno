@@ -87,7 +87,7 @@
     "typescript/strict-void-return": "off",
     "typescript/switch-exhaustiveness-check": "error",
     "typescript/unbound-method": "off",
-    "typescript/use-unknown-in-catch-callback-variable": "off",
+    "typescript/use-unknown-in-catch-callback-variable": "error",
     "tsdown-exports-sync/exports-match": "error",
     "fragment-dev-browser-exports/exports-match": "error",
     "docs-icons-sync/used-icons": "error",

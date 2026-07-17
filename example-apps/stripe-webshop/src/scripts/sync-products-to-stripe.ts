@@ -215,7 +215,7 @@ async function syncProductsToStripe() {
 }
 
 syncProductsToStripe()
-  .catch((error) => {
+  .catch((error: unknown) => {
     console.error("Fatal error during sync:", error);
     process.exit(1);
   })

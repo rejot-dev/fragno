@@ -98,7 +98,10 @@ async function main() {
   console.log(`[auth-hook-concurrency] complete created=${createdIds.length}`);
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+main().catch(
+  /** @param {unknown} error */
+  (error) => {
+    console.error(error);
+    process.exit(1);
+  },
+);

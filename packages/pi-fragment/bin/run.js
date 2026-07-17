@@ -62,11 +62,14 @@ const main = async () => {
   await runSourceCli();
 };
 
-main().catch((error) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error("fragno-pi: unexpected error while running CLI.");
-  if (message) {
-    console.error(message);
-  }
-  process.exit(1);
-});
+main().catch(
+  /** @param {unknown} error */
+  (error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("fragno-pi: unexpected error while running CLI.");
+    if (message) {
+      console.error(message);
+    }
+    process.exit(1);
+  },
+);

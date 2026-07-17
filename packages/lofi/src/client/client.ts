@@ -147,7 +147,7 @@ export class LofiClient {
       return;
     }
 
-    void this.syncOnce({ signal: this.loopSignal }).catch((error) => {
+    void this.syncOnce({ signal: this.loopSignal }).catch((error: unknown) => {
       if (isAbortError(error)) {
         return;
       }
@@ -164,7 +164,7 @@ export class LofiClient {
         return;
       }
 
-      void this.syncOnce({ signal: this.loopSignal }).catch((error) => {
+      void this.syncOnce({ signal: this.loopSignal }).catch((error: unknown) => {
         if (isAbortError(error)) {
           return;
         }
@@ -316,7 +316,7 @@ export class LofiClient {
     const cleanup = attachAbortSignal(controller, this.loopSignal);
 
     const promise = this.runStreamLoop(controller.signal)
-      .catch((error) => {
+      .catch((error: unknown) => {
         if (isAbortError(error)) {
           return;
         }
