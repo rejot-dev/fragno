@@ -2,6 +2,30 @@ import type { DriverConfig } from "../../../adapters/generic-sql/driver-config";
 import type { AnyColumn } from "../../../schema/create";
 import { SQLSerializer } from "../sql-serializer";
 
+const MYSQL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function parseMySQLDate(value: string): Date {
+  const match = MYSQL_DATE_PATTERN.exec(value);
+  if (!match) {
+    throw new Error(`Cannot deserialize MySQL DATE from value: ${value}`);
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    throw new Error(`Cannot deserialize MySQL DATE from value: ${value}`);
+  }
+
+  return date;
+}
+
 /**
  * MySQL-specific serializer.
  *
@@ -12,7 +36,8 @@ import { SQLSerializer } from "../sql-serializer";
  * - Native bigint support
  *
  * Similar to PostgreSQL, most values pass through without conversion.
- * Timestamps/dates are returned as strings and need to be parsed.
+ * Timestamp values may be returned as Date objects or strings. Fragno projects SQL DATE values as
+ * strings so mysql2 cannot change their calendar date through timezone conversion.
  */
 export class MySQLSerializer extends SQLSerializer {
   constructor(driverConfig: DriverConfig) {
@@ -37,14 +62,23 @@ export class MySQLSerializer extends SQLSerializer {
   }
 
   protected deserializeDate(value: unknown, col: AnyColumn): Date {
-    if (value instanceof Date) {
-      if (col.type === "date") {
-        return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+    if (col.type === "date") {
+      if (typeof value !== "string") {
+        throw new Error(
+          "MySQL DATE columns must be projected as strings before result deserialization.",
+        );
       }
+      return parseMySQLDate(value);
+    }
+
+    if (value instanceof Date) {
       return value;
     }
     if (typeof value === "string") {
-      return new Date(value);
+      const date = new Date(value);
+      if (!Number.isNaN(date.getTime())) {
+        return date;
+      }
     }
     throw new Error(`Cannot deserialize date from value: ${String(value)}`);
   }

@@ -13,6 +13,7 @@ import type { DriverConfig } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";
 import { buildCursorCondition } from "./cursor-utils";
 import { buildQueryTreeWhere } from "./query-tree-where-builder";
+import { projectSelectedColumn, projectSelectedColumnValue } from "./select-builder";
 import { buildWhere } from "./where-builder";
 
 // oxlint-disable-next-line no-explicit-any
@@ -97,7 +98,14 @@ export class QueryTreeSQLCompiler {
     const selections = selectedColumnNames.map((columnName) => {
       const column = root.table.columns[columnName];
       const physicalName = this.#getColumnName(root.table, column.name);
-      return sql.ref(`${rootAlias}.${physicalName}`).as(columnName);
+      return projectSelectedColumn(
+        {
+          column,
+          reference: `${rootAlias}.${physicalName}`,
+          alias: columnName,
+        },
+        this.#driverConfig,
+      );
     });
 
     for (const child of root.children) {
@@ -209,7 +217,10 @@ export class QueryTreeSQLCompiler {
     )) {
       const column = node.table.columns[columnName];
       const physicalName = this.#getColumnName(node.table, column.name);
-      items.push({ key: columnName, expr: sql.ref(`${rowAlias}.${physicalName}`) });
+      items.push({
+        key: columnName,
+        expr: projectSelectedColumnValue(column, `${rowAlias}.${physicalName}`, this.#driverConfig),
+      });
     }
 
     for (const child of node.children) {
