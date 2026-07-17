@@ -73,7 +73,7 @@
     "typescript/prefer-readonly-parameter-types": "off",
     "typescript/prefer-readonly": "off",
     "typescript/prefer-reduce-type-parameter": "error",
-    "typescript/prefer-regexp-exec": "off",
+    "typescript/prefer-regexp-exec": "error",
     "typescript/prefer-return-this-type": "error",
     "typescript/prefer-string-starts-ends-with": "error",
     "typescript/promise-function-async": "off",

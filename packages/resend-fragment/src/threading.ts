@@ -100,9 +100,9 @@ export const extractMailbox = (value?: string | null) => {
   }
 
   const trimmed = value.trim();
-  const angleMatch = trimmed.match(/<([^>]+)>/);
+  const angleMatch = /<([^>]+)>/.exec(trimmed);
   const candidate = angleMatch?.[1]?.trim() ?? trimmed;
-  const match = candidate.match(mailboxPattern);
+  const match = mailboxPattern.exec(candidate);
   return match?.[1]?.toLowerCase() ?? null;
 };
 

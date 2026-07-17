@@ -13,7 +13,7 @@ import type {
  * E.g., "#/properties/email" -> "email"
  */
 function extractFieldNameFromScope(scope: string): string | null {
-  const match = scope.match(/^#\/properties\/(.+)$/);
+  const match = /^#\/properties\/(.+)$/.exec(scope);
   return match ? match[1] : null;
 }
 

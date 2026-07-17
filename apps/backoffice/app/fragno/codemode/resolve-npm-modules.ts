@@ -109,7 +109,7 @@ function asImportSpecifier(key: string): string {
 
 /** Apply a pin to the package-name portion of a specifier, keeping any subpath. */
 function pinSpecifier(spec: string, pins: Record<string, string>): string {
-  const match = spec.match(/^(@[^/]+\/[^/]+|[^/]+)(\/.*)?$/);
+  const match = /^(@[^/]+\/[^/]+|[^/]+)(\/.*)?$/.exec(spec);
   if (!match) {
     return spec;
   }

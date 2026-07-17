@@ -96,7 +96,7 @@ export abstract class SQLTypeMapper<TDatabaseType extends DatabaseTypeLiteral> {
 
     // Handle varchar with length parameter
     if (typeof type === "string" && type.startsWith("varchar")) {
-      const match = type.match(/^varchar\((\d+)\)$/);
+      const match = /^varchar\((\d+)\)$/.exec(type);
       if (match) {
         const length = parseInt(match[1], 10);
         return this.mapVarchar(length);

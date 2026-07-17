@@ -45,7 +45,7 @@ export function parseSleepAfterInput(value: SleepAfterInput): SleepAfterParseRes
     return { ok: true, value: parsed };
   }
 
-  const durationMatch = trimmed.match(DURATION_PATTERN);
+  const durationMatch = DURATION_PATTERN.exec(trimmed);
   if (durationMatch) {
     const [, amount, unit] = durationMatch;
     const amountNum = Number(amount);

@@ -21,7 +21,7 @@ function isTargetFile(filename) {
  * @returns {Set<string>}
  */
 function extractIconComponentKeys(sourceText) {
-  const match = sourceText.match(/iconComponents\s*=\s*{([\s\S]*?)}\s*as\s+const/);
+  const match = /iconComponents\s*=\s*{([\s\S]*?)}\s*as\s+const/.exec(sourceText);
   if (!match) {
     return new Set();
   }
@@ -207,7 +207,7 @@ function extractIconsFromMarkdown(filePath) {
       break;
     }
 
-    const match = line.match(/^\s*icon\s*:\s*(.+)\s*$/);
+    const match = /^\s*icon\s*:\s*(.+)\s*$/.exec(line);
     if (!match) {
       continue;
     }

@@ -877,9 +877,8 @@ const createFakePiApi = (
     fetch: async (request) => {
       const url = new URL(request.url);
       const pathname = url.pathname;
-      const sessionMatch = pathname.match(
-        /\/api\/pi\/workflows\/([^/]+)\/sessions(?:\/([^/]+))?(?:\/([^/]+))?$/u,
-      );
+      const sessionMatch =
+        /\/api\/pi\/workflows\/([^/]+)\/sessions(?:\/([^/]+))?(?:\/([^/]+))?$/u.exec(pathname);
       const workflowName = sessionMatch?.[1] ?? "interactive-chat-workflow";
       const sessionId = sessionMatch?.[2] ?? "";
       const suffix = sessionMatch?.[3] ?? "";
@@ -1066,7 +1065,7 @@ const createFakeResendApi = (input: { threads?: FakeResendThreadSeed[] } = {}): 
     fetch: async (request) => {
       const url = new URL(request.url);
       const pathname = url.pathname;
-      const threadMatch = pathname.match(/\/api\/resend\/threads\/([^/]+)(?:\/([^/]+))?$/u);
+      const threadMatch = /\/api\/resend\/threads\/([^/]+)(?:\/([^/]+))?$/u.exec(pathname);
       const threadId = threadMatch ? decodeURIComponent(threadMatch[1] ?? "") : "";
       const suffix = threadMatch?.[2] ?? "";
 
@@ -1515,7 +1514,7 @@ const parseScenarioDurationMs = (duration: TimeAdvanceInput): number => {
   }
 
   const trimmed = duration.trim();
-  const match = trimmed.match(/^(\d+(?:\.\d+)?)\s*(\w+)?$/iu);
+  const match = /^(\d+(?:\.\d+)?)\s*(\w+)?$/iu.exec(trimmed);
   if (!match) {
     throw new Error(`Invalid duration: ${duration}`);
   }
@@ -2392,8 +2391,8 @@ const buildStepBuilders = <
             }
 
             const url = new URL(captured);
-            const orgId = url.pathname.match(
-              /\/backoffice\/automations\/([^/]+)\/claims\/complete/u,
+            const orgId = /\/backoffice\/automations\/([^/]+)\/claims\/complete/u.exec(
+              url.pathname,
             )?.[1];
             const externalId = url.searchParams.get("externalId");
             const code = url.searchParams.get("code");

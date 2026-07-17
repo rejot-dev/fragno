@@ -49,7 +49,7 @@ describe("resolveNpmModules", () => {
     const entryKey = imports["leftpad"];
     expect(modules[entryKey]).toBeDefined();
     // the facade's absolute import was rewritten to a relative in-map key
-    const innerSpec = modules[entryKey].match(/from "([^"]+)"/)?.[1];
+    const innerSpec = /from "([^"]+)"/.exec(modules[entryKey])?.[1];
     expect(innerSpec).toMatch(/^\.\//);
     const innerKey = innerSpec!.replace(/^\.\//, "");
     expect(modules[innerKey]).toContain("padStart");

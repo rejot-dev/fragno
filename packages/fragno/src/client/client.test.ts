@@ -326,7 +326,7 @@ describe("hook parameter reactivity", () => {
       assert(typeof input === "string");
 
       // Regex to extract id value from a URL string, matching only on /users/:id
-      const [, id] = input.match(/\/users\/([^/]+)/) ?? [];
+      const [, id] = /\/users\/([^/]+)/.exec(input) ?? [];
 
       expect(id).toBeDefined();
       expect(+id).not.toBeNaN();
@@ -580,7 +580,7 @@ describe("hook parameter reactivity", () => {
       assert(typeof input === "string");
 
       const url = new URL(input);
-      const [, userId] = url.pathname.match(/\/users\/([^/]+)\/posts/) ?? [];
+      const [, userId] = /\/users\/([^/]+)\/posts/.exec(url.pathname) ?? [];
       const status = url.searchParams.get("status");
       const limit = url.searchParams.get("limit");
 
@@ -693,7 +693,7 @@ describe("hook parameter reactivity", () => {
       assert(typeof input === "string");
 
       const url = new URL(input);
-      const [, userId] = url.pathname.match(/\/users\/([^/]+)\/posts/) ?? [];
+      const [, userId] = /\/users\/([^/]+)\/posts/.exec(url.pathname) ?? [];
       const category = url.searchParams.get("category");
       const sort = url.searchParams.get("sort");
 
@@ -810,7 +810,7 @@ describe("hook parameter reactivity", () => {
       fetchCallCount++;
       assert(typeof input === "string");
 
-      const [, id] = input.match(/\/users\/([^/]+)/) ?? [];
+      const [, id] = /\/users\/([^/]+)/.exec(input) ?? [];
       expect(id).toBeDefined();
 
       return {

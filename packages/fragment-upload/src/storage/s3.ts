@@ -247,7 +247,7 @@ const resolveMetadataSize = (metadata?: Record<string, unknown> | null) => {
 };
 
 const parseUploadId = (payload: string) => {
-  const match = payload.match(/<UploadId>([^<]+)<\/UploadId>/);
+  const match = /<UploadId>([^<]+)<\/UploadId>/.exec(payload);
   if (!match) {
     return null;
   }
