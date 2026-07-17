@@ -224,10 +224,7 @@ describe("invalidation", () => {
     const { useUsers, useMutateUsers } = useFragno(clientObj);
     const userStore = useUsers();
 
-    const stateAfterInitialLoad = await waitForAsyncIterator(
-      userStore,
-      (state) => state.loading === false,
-    );
+    const stateAfterInitialLoad = await waitForAsyncIterator(userStore, (state) => !state.loading);
     expect(stateAfterInitialLoad).toEqual({
       loading: false,
       data: [{ id: 1, name: "John1" }],
@@ -239,10 +236,7 @@ describe("invalidation", () => {
       body: { name: "John" },
     });
 
-    const stateAfterRefetch = await waitForAsyncIterator(
-      userStore,
-      (state) => state.loading === false,
-    );
+    const stateAfterRefetch = await waitForAsyncIterator(userStore, (state) => !state.loading);
     expect(stateAfterRefetch).toEqual({
       loading: false,
       data: [{ id: 3, name: "John3" }],
@@ -279,10 +273,7 @@ describe("invalidation", () => {
     const { useUsers, modifyUsersManual } = useFragno(clientObj);
     const userStore = useUsers();
 
-    const stateAfterInitialLoad = await waitForAsyncIterator(
-      userStore,
-      (state) => state.loading === false,
-    );
+    const stateAfterInitialLoad = await waitForAsyncIterator(userStore, (state) => !state.loading);
 
     expect(stateAfterInitialLoad).toEqual({
       loading: false,
@@ -296,10 +287,7 @@ describe("invalidation", () => {
     });
     assert(invalidateCalled);
 
-    const stateAfterRefetch = await waitForAsyncIterator(
-      userStore,
-      (state) => state.loading === false,
-    );
+    const stateAfterRefetch = await waitForAsyncIterator(userStore, (state) => !state.loading);
     expect(stateAfterRefetch).toEqual({
       loading: false,
       data: [{ id: 3, name: "John3" }],
@@ -1200,7 +1188,7 @@ describe("createHook - streaming", () => {
 
     const { error } = await waitForAsyncIterator(
       createAsyncIteratorFromCallback(userStore.listen),
-      (value) => value.loading === false && value.error !== undefined,
+      (value) => !value.loading && value.error !== undefined,
     );
 
     expect(error).toBeInstanceOf(FragnoClientUnknownApiError);
@@ -1240,7 +1228,7 @@ describe("createHook - streaming", () => {
 
     const { error } = await waitForAsyncIterator(
       createAsyncIteratorFromCallback(userStore.listen),
-      (value) => value.loading === false && value.error !== undefined,
+      (value) => !value.loading && value.error !== undefined,
     );
 
     expect(error).toBeInstanceOf(FragnoClientUnknownApiError);
@@ -1280,7 +1268,7 @@ describe("createHook - streaming", () => {
 
     const { error } = await waitForAsyncIterator(
       createAsyncIteratorFromCallback(userStore.listen),
-      (value) => value.loading === false && value.error !== undefined,
+      (value) => !value.loading && value.error !== undefined,
     );
 
     expect(error).toBeInstanceOf(FragnoClientUnknownApiError);

@@ -421,7 +421,7 @@ export default function BackofficeOrganisationPiSessionsLayout() {
   const listVisibility = isDetailView ? "max-lg:hidden lg:flex" : "flex";
   const detailVisibility = "block";
   const createError =
-    actionData?.intent === "create-session" && actionData.ok === false ? actionData.message : null;
+    actionData?.intent === "create-session" && !actionData.ok ? actionData.message : null;
   const createSessionPanel = (
     <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3">
       <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">

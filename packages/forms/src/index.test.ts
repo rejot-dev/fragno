@@ -789,7 +789,7 @@ describe("Forms Fragment", () => {
         name: "John",
       });
       assert(!invalidResult.success);
-      if (invalidResult.success === false) {
+      if (!invalidResult.success) {
         expect(invalidResult.error.errors[0]).toStrictEqual({
           instancePath: "/email",
           message: "Invalid input: expected string, received undefined",

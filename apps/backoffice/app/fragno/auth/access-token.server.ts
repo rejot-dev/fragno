@@ -132,7 +132,7 @@ export const requireAuthPrincipal = async (
 ): Promise<BackofficeAuthPrincipal> => {
   const auth = await resolveAuthPrincipal(request, context);
 
-  if (auth.ok === false) {
+  if (!auth.ok) {
     throw new Response(
       auth.reason === "malformed"
         ? "Malformed authentication"

@@ -55,7 +55,7 @@ const performCreateFolderAction = async (
   target: NonNullable<Awaited<ReturnType<typeof resolveFilesTarget>>>,
   folderName?: string,
 ): Promise<FilesActionResult> => {
-  if (target.isRoot === false && !target.isFolderPath) {
+  if (!target.isRoot && !target.isFolderPath) {
     return unsupportedAction("create-folder", "Select a root or folder to create a child folder.");
   }
 

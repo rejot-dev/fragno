@@ -88,7 +88,7 @@ describe("client flow test utilities", () => {
       const notesStore = client.useNotes();
       const initial = await waitForStore(
         notesStore,
-        (state) => state.loading === false && Array.isArray(state.data),
+        (state) => !state.loading && Array.isArray(state.data),
       );
       expect(initial.data).toEqual([]);
 
@@ -97,7 +97,7 @@ describe("client flow test utilities", () => {
 
       const refreshed = await waitForStore(
         notesStore,
-        (state) => state.loading === false && state.data?.length === 1,
+        (state) => !state.loading && state.data?.length === 1,
       );
       expect(refreshed.data).toEqual([created]);
 

@@ -341,10 +341,9 @@ export default function BackofficeAutomationSandboxes() {
   const syncError = sandboxData.syncError;
   const effectiveLoadError = sandboxData.blockingError;
 
-  const startError =
-    actionData?.intent === "start" && actionData.ok === false ? actionData.message : null;
+  const startError = actionData?.intent === "start" && !actionData.ok ? actionData.message : null;
   const startValues =
-    actionData?.intent === "start" && actionData.ok === false
+    actionData?.intent === "start" && !actionData.ok
       ? actionData.values
       : DEFAULT_NEW_SANDBOX_VALUES;
 
@@ -355,7 +354,7 @@ export default function BackofficeAutomationSandboxes() {
 
   const killError =
     actionData?.intent === "kill" &&
-    actionData.ok === false &&
+    !actionData.ok &&
     selectedSandboxId &&
     actionData.sandboxId === selectedSandboxId
       ? actionData.message
