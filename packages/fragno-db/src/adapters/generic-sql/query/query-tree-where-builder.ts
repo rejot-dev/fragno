@@ -172,12 +172,22 @@ export function buildQueryTreeWhere(
             ? sql`concat('%', ${eb.ref(getColumnSqlName(rightValue, resolver))})`
             : `%${rightValue}`;
         break;
-      default:
-        operator = condition.operator as BinaryOperator;
+      case "!=":
+      case "<":
+      case "<=":
+      case "=":
+      case ">":
+      case ">=":
+      case "in":
+      case "is":
+      case "is not":
+      case "not in":
+        operator = condition.operator;
         rhs =
           rightValue instanceof Column
             ? eb.ref(getColumnSqlName(rightValue, resolver))
             : rightValue;
+        break;
     }
 
     return eb(getColumnSqlName(left, resolver, childTable, childAlias), operator, rhs);

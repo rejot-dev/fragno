@@ -570,7 +570,10 @@ function stepMeta(stepType: StepType, args: AstNode[]): StepMeta {
         eventType: objectStringProp(args[1], "type"),
         timeout: objectStringProp(args[1], "timeout"),
       };
-    default:
+    case "do":
+    case "emit":
+    case "guard":
+    case "spawn":
       return {};
   }
 }

@@ -31,7 +31,10 @@ export const getTelegramAttachmentOriginalFilename = (
     case "video":
     case "animation":
       return normalizeAttachmentFilename(attachment.fileName);
-    default:
+    case "photo":
+    case "sticker":
+    case "video_note":
+    case "voice":
       return undefined;
   }
 };

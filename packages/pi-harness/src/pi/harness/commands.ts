@@ -150,7 +150,10 @@ const messagesFromEntries = <TTools extends AgentLoopToolsInput>(
       case "assistant":
       case "toolResult":
         return [entry.message as AgentLoopMessage<TTools>];
-      default:
+      case "bashExecution":
+      case "branchSummary":
+      case "compactionSummary":
+      case "custom":
         return [];
     }
   });

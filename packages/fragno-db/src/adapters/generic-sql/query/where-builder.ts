@@ -277,12 +277,22 @@ export function buildWhere(
             ? sql`concat('%', ${eb.ref(fullSQLNameWithAlias(val, resolver, table, tableAlias))})`
             : `%${val}`;
         break;
-      default:
+      case "!=":
+      case "<":
+      case "<=":
+      case "=":
+      case ">":
+      case ">=":
+      case "in":
+      case "is":
+      case "is not":
+      case "not in":
         v = op;
         rhs =
           val instanceof Column
             ? eb.ref(fullSQLNameWithAlias(val, resolver, table, tableAlias))
             : val;
+        break;
     }
 
     return eb(fullSQLNameWithAlias(left, resolver, table, tableAlias), v, rhs);

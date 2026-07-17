@@ -273,7 +273,9 @@ const getAttachmentTitle = (attachment: TelegramAttachment): string => {
       return attachment.fileName ?? formatAttachmentKind(attachment.kind);
     case "sticker":
       return attachment.setName ?? formatAttachmentKind(attachment.kind);
-    default:
+    case "photo":
+    case "video_note":
+    case "voice":
       return formatAttachmentKind(attachment.kind);
   }
 };
@@ -289,7 +291,7 @@ const getAttachmentThumbnail = (attachment: TelegramAttachment) => {
     case "sticker":
     case "animation":
       return attachment.thumbnail;
-    default:
+    case "voice":
       return undefined;
   }
 };

@@ -122,7 +122,8 @@ function computeBackoffDelayMs(
       return baseDelay * Math.max(attempt, 1);
     case "exponential":
       return baseDelay * Math.pow(2, Math.max(attempt - 1, 0));
-    default:
+    case "constant":
+    case undefined:
       return baseDelay;
   }
 }

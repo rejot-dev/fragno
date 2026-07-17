@@ -126,7 +126,7 @@ export function fieldToSchemaProperty(field: FormField): JsonSchemaProperty {
       }
       return base;
 
-    default:
+    case "label":
       return base;
   }
 }
