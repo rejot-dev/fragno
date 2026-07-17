@@ -11,6 +11,9 @@ import type { BackofficeObjectRegistry } from "./object-registry";
 
 export type BackofficeRuntimeConfig = {
   docsPublicBaseUrl?: string;
+  transactionalEmails: {
+    enabled: boolean;
+  };
   bindings: {
     api: boolean;
     auth: boolean;
@@ -44,10 +47,24 @@ type CreateCloudflareBackofficeRuntimeServicesOptions = {
   databaseScope?: BackofficeDatabaseAdapterScope;
 };
 
+export const parseBooleanEnv = (name: string, value: string | undefined): boolean => {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized || normalized === "false" || normalized === "0") {
+    return false;
+  }
+  if (normalized === "true" || normalized === "1") {
+    return true;
+  }
+  throw new Error(`${name} must be one of: true, false, 1, 0.`);
+};
+
 const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): BackofficeRuntimeConfig => ({
   ...(env.DOCS_PUBLIC_BASE_URL?.trim()
     ? { docsPublicBaseUrl: env.DOCS_PUBLIC_BASE_URL.trim() }
     : {}),
+  transactionalEmails: {
+    enabled: parseBooleanEnv("TRANSACTIONAL_EMAILS_ENABLED", env.TRANSACTIONAL_EMAILS_ENABLED),
+  },
   bindings: {
     api: Boolean(env.API),
     auth: Boolean(env.AUTH),

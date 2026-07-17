@@ -26,6 +26,7 @@ import {
   AUTH_AUTOMATION_SOURCE,
 } from "@/fragno/backoffice-capabilities/capabilities/auth";
 import { createDurableHookRepository } from "@/fragno/durable-hooks";
+import { buildUserSignUpEmail } from "@/transactional-emails/user-sign-up";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 
@@ -176,6 +177,23 @@ export class InMemoryAuthObject implements AuthObject {
       {
         baseUrl,
         beforeCreateUser: createDevRejotAdminHook(),
+        authHooks: {
+          onUserCreated: async (payload, context) => {
+            if (!this.#runtimeServices.config.transactionalEmails.enabled) {
+              return;
+            }
+
+            if (payload.actor?.id !== payload.user.id) {
+              return;
+            }
+
+            await this.#runtimeServices.objects.resend
+              .singleton()
+              .queueEmail(buildUserSignUpEmail(payload.user.email), {
+                idempotencyKey: `auth:user-created:${payload.user.id}:${context.idempotencyKey}`,
+              });
+          },
+        },
         organizationHooks: createOrganizationAutomationHooks(this.#runtimeServices),
       },
     );

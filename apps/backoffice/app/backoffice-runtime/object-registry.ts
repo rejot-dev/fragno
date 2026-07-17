@@ -10,6 +10,7 @@ import type { TelegramAdminConfigResponse } from "workers/telegram.do";
 import type { Upload } from "workers/upload.do";
 
 import type { Organization } from "@fragno-dev/auth";
+import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
 import type {
   AutomationEvent,
@@ -160,7 +161,9 @@ export type PiObject = FetchObject &
 export type ResendObject = FetchObject &
   AlarmableObject &
   DurableHookObject &
-  AdminConfigurableObject<AwaitedMethodReturn<Resend, "getAdminConfig">>;
+  AdminConfigurableObject<AwaitedMethodReturn<Resend, "getAdminConfig">> & {
+    queueEmail(input: ResendSendEmailInput, options: { idempotencyKey: string }): Promise<void>;
+  };
 export type Reson8Object = FetchObject &
   AdminConfigurableObject<AwaitedMethodReturn<Reson8, "getAdminConfig">> & {
     getRealtimeOriginDiagnostic(

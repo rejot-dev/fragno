@@ -13,34 +13,25 @@ const forwardToResend = async (
   }
 
   let scope: { kind: "system" } | { kind: "org"; orgId: string };
-  if (scopeSegment === "admin") {
-    scope = { kind: "system" };
-  } else {
-    try {
-      const resolvedScope = backofficeContextScopeFromSinglePathSegment(scopeSegment);
-      if (resolvedScope.kind !== "org") {
-        return new Response("Invalid Resend scope", { status: 404 });
-      }
-      scope = resolvedScope;
-    } catch {
+  try {
+    const resolvedScope = backofficeContextScopeFromSinglePathSegment(scopeSegment);
+    if (resolvedScope.kind !== "system" && resolvedScope.kind !== "org") {
       return new Response("Invalid Resend scope", { status: 404 });
     }
+    scope = resolvedScope;
+  } catch {
+    return new Response("Invalid Resend scope", { status: 404 });
   }
 
   const objects = context.get(BackofficeWorkerContext).runtime.objects;
-  const resendStorageScope = scope.kind === "system" ? "admin" : scope.orgId;
   const resendDo =
-    scope.kind === "system"
-      ? objects.resend.singleton()
-      : objects.resend.forOrg(resendStorageScope);
+    scope.kind === "system" ? objects.resend.singleton() : objects.resend.forOrg(scope.orgId);
   const url = new URL(request.url);
   const prefix = `/api/resend/${scopeSegment}`;
   if (url.pathname.startsWith(prefix)) {
     const suffix = url.pathname.slice(prefix.length);
     url.pathname = `/api/resend${suffix}`;
   }
-  url.searchParams.set("orgId", resendStorageScope);
-
   const proxyRequest = new Request(url.toString(), request);
   return resendDo.fetch(proxyRequest);
 };

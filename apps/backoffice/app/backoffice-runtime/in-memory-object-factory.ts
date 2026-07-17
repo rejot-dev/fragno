@@ -29,7 +29,11 @@ import type {
 } from "./object-registry";
 import { assertBackofficeObjectAddressAllowed } from "./object-registry";
 import { encodeBackofficeObjectAddress } from "./object-registry";
-import type { BackofficeRuntimeConfig, BackofficeRuntimeServices } from "./runtime-services";
+import {
+  parseBooleanEnv,
+  type BackofficeRuntimeConfig,
+  type BackofficeRuntimeServices,
+} from "./runtime-services";
 
 export type InMemoryBackofficeObjectFactory<TObject> = (input: {
   id: DurableObjectId;
@@ -77,6 +81,10 @@ class UnavailableInMemoryDurableObject {
 
   async setAdminConfig() {
     return { configured: false };
+  }
+
+  async queueEmail() {
+    throw new Error("Resend is not configured.");
   }
 
   async getDurableHookRepository() {
@@ -311,6 +319,12 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
       ...(this.env.DOCS_PUBLIC_BASE_URL?.trim()
         ? { docsPublicBaseUrl: this.env.DOCS_PUBLIC_BASE_URL.trim() }
         : {}),
+      transactionalEmails: {
+        enabled: parseBooleanEnv(
+          "TRANSACTIONAL_EMAILS_ENABLED",
+          this.env.TRANSACTIONAL_EMAILS_ENABLED,
+        ),
+      },
       bindings: {
         api: this.#hasNamespace("API"),
         auth: this.#hasNamespace("AUTH"),

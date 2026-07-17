@@ -26,6 +26,7 @@ import type { PiCodemodeWorkflowParams } from "./pi-codemode-workflow";
 
 const unusedObjects = {} as BackofficeObjectRegistry;
 const testRuntimeConfig: BackofficeRuntimeConfig = {
+  transactionalEmails: { enabled: false },
   bindings: {
     api: false,
     auth: false,

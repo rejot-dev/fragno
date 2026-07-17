@@ -2,7 +2,8 @@ import { DurableObject } from "cloudflare:workers";
 import { Resend as ResendClient } from "resend";
 import { z } from "zod";
 
-import type { ResendFragmentConfig } from "@fragno-dev/resend-fragment";
+import { isUniqueConstraintError } from "@fragno-dev/db";
+import type { ResendFragmentConfig, ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { ResendObject } from "@/backoffice-runtime/object-registry";
@@ -10,6 +11,7 @@ import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
+import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
 import { resendConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/resend";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
@@ -21,8 +23,10 @@ import {
   type BackofficeObjectState,
 } from "./lib/backoffice-fragment-durable-object";
 
+type ResendConfigScope = Extract<BackofficeContextScope, { kind: "system" | "org" }>;
+
 type StoredResendConfig = Omit<ResendConfig, "webhookSecret"> & {
-  scope: Extract<BackofficeContextScope, { kind: "org" }>;
+  scope: ResendConfigScope;
   webhookBaseUrl?: string;
   webhookId?: string;
   webhookSecret?: string;
@@ -56,6 +60,7 @@ type WebhookResult = {
 };
 
 const CONFIG_KEY = "resend-config";
+const DEVELOPMENT_SUBJECT_PREFIX = "[DEVELOPMENT]";
 
 const WEBHOOK_EVENTS = [
   "email.sent",
@@ -67,6 +72,20 @@ const WEBHOOK_EVENTS = [
   "email.complained",
   "email.received",
 ] as const;
+
+const prefixDevelopmentEmailSubject = (
+  input: ResendSendEmailInput,
+  runtimeMode: string,
+): ResendSendEmailInput => {
+  if (runtimeMode !== "development" || input.subject.startsWith(DEVELOPMENT_SUBJECT_PREFIX)) {
+    return input;
+  }
+
+  return {
+    ...input,
+    subject: `${DEVELOPMENT_SUBJECT_PREFIX} ${input.subject}`,
+  };
+};
 
 const maskSecret = (value: string) => {
   if (!value) {
@@ -110,11 +129,16 @@ const stringListSchema = z
   .transform(normalizeReplyTo)
   .optional();
 
-const storedResendConfigSchema: z.ZodType<StoredResendConfig> = z.object({
-  scope: z.object({
+const resendConfigScopeSchema: z.ZodType<ResendConfigScope> = z.union([
+  z.object({ kind: z.literal("system") }),
+  z.object({
     kind: z.literal("org"),
     orgId: z.string().trim().min(1, "Stored Resend config is missing an organisation id."),
   }),
+]);
+
+const storedResendConfigSchema: z.ZodType<StoredResendConfig> = z.object({
+  scope: resendConfigScopeSchema,
   apiKey: z.string().trim().min(1, "Stored Resend config is missing an API key."),
   defaultFrom: z.string().trim().min(1, "Stored Resend config is missing defaultFrom."),
   defaultReplyTo: stringListSchema,
@@ -208,10 +232,11 @@ const buildConfigResponse = (config: StoredResendConfig | null): ConfigResponse 
   };
 };
 
-const resolveWebhookUrl = (origin: string, orgId: string, baseUrl?: string) => {
+const resolveWebhookUrl = (origin: string, scope: ResendConfigScope, baseUrl?: string) => {
   const resolvedOrigin = baseUrl ?? origin;
   const trimmed = resolvedOrigin.replace(/\/+$/, "");
-  return `${trimmed}/api/resend/${orgId}/webhook`;
+  const scopeSegment = backofficeContextScopeSinglePathSegment(scope);
+  return `${trimmed}/api/resend/${scopeSegment}/webhook`;
 };
 
 const createWebhook = async (
@@ -284,21 +309,25 @@ export class InMemoryResendObject implements ResendObject {
     ResendFragment
   >;
   readonly #createClient: (apiKey: string) => ResendClient;
+  readonly #runtimeMode: string;
 
   constructor({
     state,
     env,
     runtime,
     createClient = (apiKey) => new ResendClient(apiKey),
+    runtimeMode = import.meta.env.MODE,
   }: {
     state: BackofficeObjectState;
     env?: unknown;
     runtime: BackofficeRuntimeServices;
     createClient?: (apiKey: string) => ResendClient;
+    runtimeMode?: string;
   }) {
     this.#state = state;
     this.#runtimeServices = runtime;
     this.#createClient = createClient;
+    this.#runtimeMode = runtimeMode;
     this.#host = createBackofficeFragmentDurableObject({
       name: "Resend",
       state,
@@ -327,6 +356,10 @@ export class InMemoryResendObject implements ResendObject {
           }
 
           const { scope } = stored;
+          if (scope.kind === "system") {
+            return;
+          }
+
           await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
             id: item.id,
             scope,
@@ -369,15 +402,15 @@ export class InMemoryResendObject implements ResendObject {
     return { configured: false };
   }
 
-  async setAdminConfig(payload: unknown, orgId: string, origin: string): Promise<ConfigResponse> {
-    const normalizedOrgId = orgId.trim();
-    if (!normalizedOrgId) {
-      throw new Error("Missing organisation id.");
-    }
+  async setAdminConfig(
+    payload: unknown,
+    scopeInput: ResendConfigScope,
+    origin: string,
+  ): Promise<ConfigResponse> {
+    const scope = resendConfigScopeSchema.parse(scopeInput);
 
     return await this.#state.blockConcurrencyWhile(async () => {
       const existing = await this.#host.loadStored();
-      const scope = { kind: "org" as const, orgId: normalizedOrgId };
       this.#host.assertSameScope(existing, scope);
 
       const parsed = await parseConfigInput(payload, existing);
@@ -404,20 +437,21 @@ export class InMemoryResendObject implements ResendObject {
       };
 
       const client = this.#createClient(stored.apiKey);
-      const webhookUrl = resolveWebhookUrl(origin, normalizedOrgId, stored.webhookBaseUrl);
+      const webhookUrl = resolveWebhookUrl(origin, scope, stored.webhookBaseUrl);
+      const scopeLabel = backofficeContextScopeSinglePathSegment(scope);
 
       let webhookResult: WebhookResult;
 
       if (stored.webhookId && stored.webhookSecret) {
-        webhookResult = await updateWebhook(client, stored.webhookId, webhookUrl, normalizedOrgId);
+        webhookResult = await updateWebhook(client, stored.webhookId, webhookUrl, scopeLabel);
         if (!webhookResult.ok) {
-          const fallback = await createWebhook(client, webhookUrl, normalizedOrgId);
+          const fallback = await createWebhook(client, webhookUrl, scopeLabel);
           if (fallback.ok) {
             webhookResult = fallback;
           }
         }
       } else {
-        webhookResult = await createWebhook(client, webhookUrl, normalizedOrgId);
+        webhookResult = await createWebhook(client, webhookUrl, scopeLabel);
       }
 
       if (webhookResult.ok) {
@@ -448,6 +482,29 @@ export class InMemoryResendObject implements ResendObject {
         webhook: { ok: webhookResult.ok, message: webhookResult.message },
       };
     });
+  }
+
+  async queueEmail(
+    input: ResendSendEmailInput,
+    options: { idempotencyKey: string },
+  ): Promise<void> {
+    const { runtime: fragment } = this.#host.requireConfigured(
+      "Resend is not configured for email delivery.",
+    );
+
+    try {
+      await fragment.callServices(() =>
+        fragment.services.queueEmail(prefixDevelopmentEmailSubject(input, this.#runtimeMode), {
+          idempotencyKey: options.idempotencyKey,
+        }),
+      );
+      await this.#state.storage.setAlarm(Date.now());
+    } catch (cause) {
+      if (isUniqueConstraintError(cause)) {
+        return;
+      }
+      throw cause;
+    }
   }
 
   getDurableHookRepository() {
@@ -485,8 +542,19 @@ export class Resend extends DurableObject<CloudflareEnv> implements ResendObject
     return await this.#object.resetAdminConfig();
   }
 
-  async setAdminConfig(payload: unknown, orgId: string, origin: string): Promise<ConfigResponse> {
-    return await this.#object.setAdminConfig(payload, orgId, origin);
+  async setAdminConfig(
+    payload: unknown,
+    scope: ResendConfigScope,
+    origin: string,
+  ): Promise<ConfigResponse> {
+    return await this.#object.setAdminConfig(payload, scope, origin);
+  }
+
+  async queueEmail(
+    input: ResendSendEmailInput,
+    options: { idempotencyKey: string },
+  ): Promise<void> {
+    await this.#object.queueEmail(input, options);
   }
 
   getDurableHookRepository() {
