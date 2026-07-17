@@ -52,7 +52,7 @@ describe("shadcnTimeCellTester", () => {
 describe("ShadcnTimeCell", () => {
   afterEach(() => cleanup());
 
-  const getTimeInput = () => document.querySelector('input[type="time"]') as HTMLInputElement;
+  const getTimeInput = () => document.querySelector<HTMLInputElement>('input[type="time"]')!;
 
   it("should render time input", () => {
     const core = initCore(schema, uischema, { startTime: "09:00:00" });

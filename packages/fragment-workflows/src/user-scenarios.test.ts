@@ -406,9 +406,7 @@ describe("Workflows Runner (User Scenarios)", () => {
         workflow.assert((ctx) => {
           expect(ctx.vars.wakeAt).toBeInstanceOf(Date);
           assert(ctx.vars.pausedStatus?.status === "paused");
-          expect(ctx.vars.afterResumeSteps?.[0].wakeAt?.getTime()).toBe(
-            (ctx.vars.wakeAt as Date).getTime(),
-          );
+          expect(ctx.vars.afterResumeSteps?.[0].wakeAt?.getTime()).toBe(ctx.vars.wakeAt!.getTime());
           assert(ctx.vars.finalStatus?.status === "complete");
           expect(ctx.vars.finalStatus?.output).toEqual({ done: true });
         }),

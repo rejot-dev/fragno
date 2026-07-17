@@ -47,12 +47,12 @@ const normalizeCondition = (condition?: Condition): NormalizedCondition | null =
     case "or":
       return {
         type: condition.type,
-        items: condition.items.map((item) => normalizeCondition(item) as NormalizedCondition),
+        items: condition.items.map((item) => normalizeCondition(item)!),
       };
     case "not":
       return {
         type: "not",
-        item: normalizeCondition(condition.item) as NormalizedCondition,
+        item: normalizeCondition(condition.item)!,
       };
     default: {
       const exhaustiveCheck: never = condition;

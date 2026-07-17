@@ -82,7 +82,7 @@ export const filesDownloadCommand = define({
       return;
     }
 
-    await pipeline(bodyStream, createWriteStream(outputPath as string));
+    await pipeline(bodyStream, createWriteStream(outputPath!));
     console.log(`Downloaded to ${outputPath}`);
   },
 });

@@ -367,7 +367,7 @@ describe("createDefaultOrganizationPreferenceState", () => {
     });
     const state = createDefaultOrganizationPreferenceState({
       meStore,
-      readMe: async () => meStore.get().data as TestAuthMeData,
+      readMe: async () => meStore.get().data!,
       getAccountId: (value) => value.user.id,
       storage,
       windowObject,

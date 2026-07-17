@@ -102,7 +102,7 @@ function createSolidHook<
     }
 
     for (const [key, value] of Object.entries(query ?? {})) {
-      const v = value as string | Accessor<string> | ReadableAtom<string>;
+      const v = value!;
       queryParams[key] = isAccessor(v) ? accessorToAtom(v) : v;
     }
 
@@ -160,7 +160,7 @@ function createSolidMutator<
       }
 
       for (const [key, value] of Object.entries(query ?? {})) {
-        const v = value as string | Accessor<string> | ReadableAtom<string>;
+        const v = value!;
         // For mutations, we read the current value of the accessor
         queryParams[key] = isAccessor(v) ? v() : v;
       }

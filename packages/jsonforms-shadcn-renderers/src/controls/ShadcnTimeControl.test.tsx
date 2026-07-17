@@ -81,7 +81,7 @@ describe("shadcnTimeControlTester", () => {
 describe("ShadcnTimeControl", () => {
   afterEach(() => cleanup());
 
-  const getTimeInput = () => document.querySelector('input[type="time"]') as HTMLInputElement;
+  const getTimeInput = () => document.querySelector<HTMLInputElement>('input[type="time"]')!;
 
   it("should render time input with label", () => {
     render(
