@@ -1,3 +1,4 @@
+import type { DatabaseConstraintError } from "../../errors";
 import type { TriggeredHook, TriggerHookOptions, HooksMap, HookPayload } from "../../hooks/hooks";
 import type { AnySchema, AnyTable, Index, IdColumn, AnyColumn } from "../../schema/create";
 import { FragnoId, getTableRelations } from "../../schema/create";
@@ -182,6 +183,26 @@ export type RetrievalOperation<
 /**
  * Mutation operations - write operations in the second phase
  */
+export interface UniqueConflictRetryContext {
+  error: DatabaseConstraintError;
+  operation: {
+    type: "create" | "update";
+    schema: string;
+    namespace: string | null;
+    table: string;
+  };
+}
+
+export type UniqueConflictRetryDecider = (context: UniqueConflictRetryContext) => boolean;
+
+export interface CreateOptions {
+  /**
+   * Decide whether a unique-constraint failure should be treated as an optimistic concurrency
+   * conflict. The transaction's retrieval phase must resolve any accepted conflict on retry.
+   */
+  retryOnUniqueConflict?: UniqueConflictRetryDecider;
+}
+
 export type MutationOperation<
   TSchema extends AnySchema,
   TTable extends AnyTable = TSchema["tables"][keyof TSchema["tables"]],
@@ -194,6 +215,7 @@ export type MutationOperation<
       id: FragnoId | string;
       checkVersion: boolean;
       set: TableToUpdateValues<TTable>;
+      retryOnUniqueConflict?: UniqueConflictRetryDecider;
     }
   | {
       type: "create";
@@ -202,6 +224,7 @@ export type MutationOperation<
       table: TTable["name"];
       values: TableToInsertValues<TTable>;
       generatedExternalId: string;
+      retryOnUniqueConflict?: UniqueConflictRetryDecider;
     }
   | {
       type: "delete";
@@ -560,6 +583,7 @@ export class UpdateBuilder<TTable extends AnyTable> {
   readonly #id: FragnoId | string;
 
   #checkVersion = false;
+  #retryOnUniqueConflict?: UniqueConflictRetryDecider;
   #setValues?: TableToUpdateValues<TTable>;
 
   constructor(tableName: string, id: FragnoId | string) {
@@ -602,11 +626,21 @@ export class UpdateBuilder<TTable extends AnyTable> {
   }
 
   /**
+   * Decide whether a unique-constraint failure should be treated as an optimistic concurrency
+   * conflict. The transaction's retrieval phase must resolve any accepted conflict on retry.
+   */
+  retryOnUniqueConflict(decide: UniqueConflictRetryDecider): this {
+    this.#retryOnUniqueConflict = decide;
+    return this;
+  }
+
+  /**
    * @internal
    */
   build(): {
     id: FragnoId | string;
     checkVersion: boolean;
+    retryOnUniqueConflict?: UniqueConflictRetryDecider;
     set: TableToUpdateValues<TTable>;
   } {
     if (!this.#setValues) {
@@ -618,6 +652,9 @@ export class UpdateBuilder<TTable extends AnyTable> {
     return {
       id: this.#id,
       checkVersion: this.#checkVersion,
+      ...(this.#retryOnUniqueConflict
+        ? { retryOnUniqueConflict: this.#retryOnUniqueConflict }
+        : {}),
       set: this.#setValues,
     };
   }
@@ -2198,6 +2235,7 @@ export class TypedUnitOfWork<
   create<TableName extends keyof TSchema["tables"] & string>(
     tableName: TableName,
     values: TableToInsertValues<TSchema["tables"][TableName]>,
+    options: CreateOptions = {},
   ): FragnoId {
     const tableSchema = this.#schema.tables[tableName];
     if (!tableSchema) {
@@ -2246,6 +2284,9 @@ export class TypedUnitOfWork<
       table: tableName,
       values: updatedValues,
       generatedExternalId: externalId,
+      ...(options.retryOnUniqueConflict
+        ? { retryOnUniqueConflict: options.retryOnUniqueConflict }
+        : {}),
     });
 
     return FragnoId.fromExternal(externalId, 0);
@@ -2260,7 +2301,7 @@ export class TypedUnitOfWork<
   ): void {
     const builder = new UpdateBuilder<TSchema["tables"][TableName]>(tableName, id);
     builderFn(builder);
-    const { id: opId, checkVersion, set } = builder.build();
+    const { id: opId, checkVersion, retryOnUniqueConflict, set } = builder.build();
 
     this.#uow.addMutationOperation({
       type: "update",
@@ -2270,6 +2311,7 @@ export class TypedUnitOfWork<
       id: opId,
       checkVersion,
       set,
+      ...(retryOnUniqueConflict ? { retryOnUniqueConflict } : {}),
     });
   }
 

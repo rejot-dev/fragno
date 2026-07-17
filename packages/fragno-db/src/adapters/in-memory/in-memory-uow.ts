@@ -1,5 +1,6 @@
 import superjson from "superjson";
 
+import { isUniqueConstraintError } from "../../errors";
 import {
   SETTINGS_NAMESPACE,
   SETTINGS_TABLE_NAME,
@@ -1479,7 +1480,27 @@ export const createInMemoryUowExecutor = (
           }
           const tableStore = getTableStore(namespaceStore, table, resolver);
           const previousInternalId = tableStore.nextInternalId;
-          const internalId = createRow(operation, namespaceStore, tableStore, options, resolver);
+          let internalId: bigint;
+          try {
+            internalId = createRow(operation, namespaceStore, tableStore, options, resolver);
+          } catch (error) {
+            if (
+              operation.retryOnUniqueConflict &&
+              isUniqueConstraintError(error) &&
+              operation.retryOnUniqueConflict({
+                error,
+                operation: {
+                  type: operation.type,
+                  schema: operation.schema.name,
+                  namespace: operation.namespace ?? null,
+                  table: operation.table,
+                },
+              })
+            ) {
+              throw new VersionConflictError("Retryable unique create conflict detected.");
+            }
+            throw error;
+          }
           createdInternalIds.push(internalId);
           rollbackActions.push(() => {
             const row = tableStore.rows.get(internalId);
@@ -1508,7 +1529,27 @@ export const createInMemoryUowExecutor = (
             throw new Error(`Invalid table name ${operation.table}.`);
           }
           const tableStore = getTableStore(namespaceStore, table, resolver);
-          const rollback = updateRow(operation, namespaceStore, tableStore, options, resolver);
+          let rollback: (() => void) | null;
+          try {
+            rollback = updateRow(operation, namespaceStore, tableStore, options, resolver);
+          } catch (error) {
+            if (
+              operation.retryOnUniqueConflict &&
+              isUniqueConstraintError(error) &&
+              operation.retryOnUniqueConflict({
+                error,
+                operation: {
+                  type: operation.type,
+                  schema: operation.schema.name,
+                  namespace: operation.namespace ?? null,
+                  table: operation.table,
+                },
+              })
+            ) {
+              throw new VersionConflictError("Retryable unique update conflict detected.");
+            }
+            throw error;
+          }
           if (rollback) {
             rollbackActions.push(rollback);
           }

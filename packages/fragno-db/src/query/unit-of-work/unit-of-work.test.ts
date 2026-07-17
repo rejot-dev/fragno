@@ -838,6 +838,25 @@ describe("UpdateBuilder with string ID", () => {
     ]);
   });
 
+  it("marks updates that should retry after an accepted unique conflict", () => {
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+    const retryOnUniqueConflict = () => true;
+
+    uow
+      .forSchema(testSchema)
+      .update("users", "user-123", (b) =>
+        b.set({ name: "New Name" }).retryOnUniqueConflict(retryOnUniqueConflict),
+      );
+
+    expect(uow.getMutationOperations()).toMatchObject([
+      {
+        type: "update",
+        id: "user-123",
+        retryOnUniqueConflict,
+      },
+    ]);
+  });
+
   it("should throw when using check() with string ID", async () => {
     const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
 
@@ -937,6 +956,27 @@ describe("generateId", () => {
 
     expect(createdIds).toHaveLength(1);
     expect(createdIds[0].externalId).toBe(id.externalId);
+  });
+
+  it("marks creates that should retry after an accepted unique conflict", () => {
+    const uow = createUnitOfWork(createMockCompiler(), createMockExecutor(), createMockDecoder());
+    const retryOnUniqueConflict = () => true;
+
+    uow
+      .forSchema(testSchema)
+      .create(
+        "users",
+        { id: "idempotent-user", email: "test@example.com", name: "Test" },
+        { retryOnUniqueConflict },
+      );
+
+    expect(uow.getMutationOperations()).toMatchObject([
+      {
+        type: "create",
+        generatedExternalId: "idempotent-user",
+        retryOnUniqueConflict,
+      },
+    ]);
   });
 
   it("should throw for non-existent table", () => {

@@ -11,6 +11,11 @@ export type CompareValue = (left: unknown, right: unknown) => number;
 
 export type SortedArrayIndexOptions = {
   unique?: boolean;
+  uniqueConstraint?: {
+    table?: string;
+    constraint?: string;
+    columns?: string[];
+  };
 };
 
 export type UniqueEnforcementOptions = {
@@ -42,10 +47,12 @@ export class SortedArrayIndex<T> {
   readonly #entries: SortedArrayIndexEntry<T>[] = [];
   readonly #compareValue: CompareValue;
   readonly #unique: boolean;
+  readonly #uniqueConstraint?: SortedArrayIndexOptions["uniqueConstraint"];
 
   constructor(compareValue: CompareValue, options: SortedArrayIndexOptions = {}) {
     this.#compareValue = compareValue;
     this.#unique = options.unique ?? false;
+    this.#uniqueConstraint = options.uniqueConstraint;
   }
 
   get size(): number {
@@ -103,7 +110,7 @@ export class SortedArrayIndex<T> {
         const entry = this.#entries[range.start];
         const isSameEntry = sameKey && singleEntry && entry?.value === value;
         if (!isSameEntry) {
-          throw new UniqueConstraintError(this.#uniqueErrorMessage(newKey));
+          throw this.#uniqueConstraintError(newKey);
         }
         if (sameKey) {
           return;
@@ -167,12 +174,15 @@ export class SortedArrayIndex<T> {
   #assertUnique(key: IndexKey): void {
     const range = this.#rangeForKey(key);
     if (range.start !== range.end) {
-      throw new UniqueConstraintError(this.#uniqueErrorMessage(key));
+      throw this.#uniqueConstraintError(key);
     }
   }
 
-  #uniqueErrorMessage(key: IndexKey): string {
-    return `Unique constraint violation for key ${this.#formatKey(key)}.`;
+  #uniqueConstraintError(key: IndexKey): UniqueConstraintError {
+    return new UniqueConstraintError({
+      message: `Unique constraint violation for key ${this.#formatKey(key)}.`,
+      ...this.#uniqueConstraint,
+    });
   }
 
   #formatKey(key: IndexKey): string {
