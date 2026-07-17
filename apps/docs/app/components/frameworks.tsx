@@ -26,10 +26,10 @@ export default function Frameworks({ className, variant = "default" }: Framework
 
   useEffect(() => {
     if (variant === "editorial") {
-      return;
+      return undefined;
     }
     if (window.innerWidth < 1024) {
-      return;
+      return undefined;
     }
     setHydrated(true);
 

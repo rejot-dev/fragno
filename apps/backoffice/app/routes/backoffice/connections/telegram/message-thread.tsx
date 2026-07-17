@@ -278,6 +278,8 @@ const getAttachmentTitle = (attachment: TelegramAttachment): string => {
     case "voice":
       return formatAttachmentKind(attachment.kind);
   }
+
+  throw new Error("Unsupported Telegram attachment kind.");
 };
 
 const getAttachmentThumbnail = (attachment: TelegramAttachment) => {
@@ -294,6 +296,8 @@ const getAttachmentThumbnail = (attachment: TelegramAttachment) => {
     case "voice":
       return undefined;
   }
+
+  return undefined;
 };
 
 function TelegramAttachmentCard({
@@ -399,7 +403,7 @@ function ChatMessages({
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) {
-      return;
+      return undefined;
     }
     const frame = requestAnimationFrame(() => {
       viewport.scrollTop = viewport.scrollHeight;

@@ -219,4 +219,6 @@ function createSQLGenerator(
     case "mysql":
       return new MySQLSQLGenerator(coldKysely, database, driverConfig, sqliteStorageMode);
   }
+
+  throw new Error("Unsupported database type.");
 }

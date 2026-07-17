@@ -327,7 +327,7 @@ function useLiveRevalidate(enabled: boolean) {
   const revalidator = useRevalidator();
   useEffect(() => {
     if (!enabled) {
-      return;
+      return undefined;
     }
     const id = setInterval(() => {
       if (revalidator.state === "idle") {

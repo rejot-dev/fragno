@@ -73,6 +73,8 @@ export const getResendDomainStatusTone = (status: ResendDomain["status"]) => {
     case "pending":
       return "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]";
   }
+
+  throw new Error("Unsupported Resend domain status.");
 };
 
 export const formatResendDomainStatus = (status: ResendDomain["status"]) =>

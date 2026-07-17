@@ -61,6 +61,8 @@ const routeActionLabel = (route: AutomationRouteItem) => {
     case "forward_event":
       return "Forward event";
   }
+
+  throw new Error("Unsupported automation route action kind.");
 };
 
 const routeActionDetail = (route: AutomationRouteItem) => {
@@ -87,6 +89,8 @@ const routeActionDetail = (route: AutomationRouteItem) => {
     case "forward_event":
       return [["target", JSON.stringify(action.targetScope)]];
   }
+
+  throw new Error("Unsupported automation route action kind.");
 };
 
 const routeSections = (routes: AutomationRouteItem[]) => [

@@ -44,6 +44,8 @@ const formatScope = (scope: AutomationEventItem["scope"] | null) => {
     case "system":
       return "system";
   }
+
+  throw new Error("Unsupported automation event scope kind.");
 };
 
 const jsonPreview = (value: unknown) => {

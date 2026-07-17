@@ -33,6 +33,8 @@ const address = (
     case "project":
       return { binding, scope: { kind: "project", orgId: "org-1", projectId: "project-1" } };
   }
+
+  throw new Error("Unsupported Backoffice object scope kind.");
 };
 
 describe("encodeBackofficeObjectAddress", () => {

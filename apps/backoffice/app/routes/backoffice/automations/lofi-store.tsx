@@ -130,6 +130,8 @@ const scopeRouteId = (scope: AutomationUiScope): string => {
     case "user":
       return backofficeScopeRouteId({ kind: "user", userId: scope.userId });
   }
+
+  throw new Error("Unsupported automation UI scope kind.");
 };
 
 const sandboxIdScope = (scope: AutomationUiScope): string => {
@@ -147,6 +149,8 @@ const sandboxIdScope = (scope: AutomationUiScope): string => {
     case "user":
       return backofficeScopeSinglePathSegment({ kind: "user", userId: scope.userId });
   }
+
+  throw new Error("Unsupported automation UI scope kind.");
 };
 
 const toPublicSandboxId = ({
@@ -409,7 +413,7 @@ export const useLofiAutomationScopeData = ({
 
   useEffect(() => {
     if (!lofi) {
-      return;
+      return undefined;
     }
 
     return lofi.runtime.retain();

@@ -38,13 +38,13 @@ const getStringMaxLength = (type: string): number | undefined => {
   }
 
   if (!type.startsWith("varchar(") || !type.endsWith(")")) {
-    return;
+    return undefined;
   }
 
   const rawLength = type.slice("varchar(".length, -1);
   const length = Number(rawLength);
   if (!Number.isFinite(length)) {
-    return;
+    return undefined;
   }
 
   return length;
@@ -66,7 +66,7 @@ const validateColumnValue = (
       if (maxLength !== undefined && value.externalId.length > maxLength) {
         return `String must have at most ${maxLength} characters`;
       }
-      return;
+      return undefined;
     }
 
     if (typeof value === "string") {
@@ -74,7 +74,7 @@ const validateColumnValue = (
       if (maxLength !== undefined && value.length > maxLength) {
         return `String must have at most ${maxLength} characters`;
       }
-      return;
+      return undefined;
     }
 
     return "Expected string or FragnoId";
@@ -87,7 +87,7 @@ const validateColumnValue = (
       typeof value === "string" ||
       typeof value === "bigint"
     ) {
-      return;
+      return undefined;
     }
 
     return "Expected reference (string, bigint, FragnoId, or FragnoReference)";
@@ -103,7 +103,7 @@ const validateColumnValue = (
       return `String must have at most ${maxLength} characters`;
     }
 
-    return;
+    return undefined;
   }
 
   if (col.type === "bigint") {
@@ -114,14 +114,14 @@ const validateColumnValue = (
     if (typeof value !== "number" || !Number.isInteger(value)) {
       return "Expected integer";
     }
-    return;
+    return undefined;
   }
 
   if (col.type === "decimal") {
     if (typeof value !== "number" || !Number.isFinite(value)) {
       return "Expected number";
     }
-    return;
+    return undefined;
   }
 
   if (col.type === "bool") {
@@ -136,14 +136,14 @@ const validateColumnValue = (
     if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
       return "Expected valid Date";
     }
-    return;
+    return undefined;
   }
 
   if (col.type === "json") {
-    return;
+    return undefined;
   }
 
-  return;
+  return undefined;
 };
 
 const validateTableInsertValues = <TTable extends Table>(

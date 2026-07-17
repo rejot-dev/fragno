@@ -57,6 +57,8 @@ const createCommandPayload = (
         ? { commandId, kind: command.kind, reason: command.reason }
         : { commandId, kind: command.kind };
   }
+
+  throw new Error("Unsupported Pi session command kind.");
 };
 
 const normalizeAgentEndWaitTimeout = (timeoutMs: number | undefined): number =>

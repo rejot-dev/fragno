@@ -37,6 +37,8 @@ export const getTelegramAttachmentOriginalFilename = (
     case "voice":
       return undefined;
   }
+
+  return undefined;
 };
 
 type TelegramAttachmentPathInput = {

@@ -23,7 +23,7 @@ function simplifyOrderBy(
   orderBy: OrderBy | OrderBy[] | undefined,
 ): OrderBy<AnyColumn>[] | undefined {
   if (!orderBy || orderBy.length === 0) {
-    return;
+    return undefined;
   }
 
   if (!isOrderByArray(orderBy)) {

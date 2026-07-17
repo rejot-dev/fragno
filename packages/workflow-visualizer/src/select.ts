@@ -77,6 +77,8 @@ function nodePath(node: GraphNode): string | undefined {
     case "event":
       return undefined;
   }
+
+  return undefined;
 }
 
 /** A lightweight summary of each workflow, for building a selector. */

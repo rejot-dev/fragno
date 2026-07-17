@@ -126,6 +126,8 @@ function computeBackoffDelayMs(
     case undefined:
       return baseDelay;
   }
+
+  throw new Error("Unsupported workflow retry backoff strategy.");
 }
 
 export function isRunnerStepSuspended(error: unknown): error is RunnerStepSuspended {

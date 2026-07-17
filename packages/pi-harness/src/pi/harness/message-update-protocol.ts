@@ -86,6 +86,8 @@ const piHarnessAssistantMessageEventFromPiEvent = (
     case "error":
       return { type: "error", reason: event.reason, errorMessage: event.error.errorMessage };
   }
+
+  throw new Error("Unsupported assistant message event type.");
 };
 
 const toolCallFromPartial = (

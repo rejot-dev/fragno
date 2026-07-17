@@ -156,6 +156,8 @@ const messagesFromEntries = <TTools extends AgentLoopToolsInput>(
       case "custom":
         return [];
     }
+
+    return [];
   });
 
 const promptArgsFromCommand = (
@@ -175,6 +177,8 @@ const operationFromCommand = (command: PiSessionCommandPayload): PiHarnessOperat
     case "abort":
       return undefined;
   }
+
+  return undefined;
 };
 
 export const createAgentLoop = <TTools extends AgentLoopToolsInput = AgentLoopToolsInput>(

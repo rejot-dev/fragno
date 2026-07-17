@@ -187,5 +187,7 @@ export class BackofficeKernel {
       case "project":
         return family.forProject({ orgId: scope.orgId, projectId: scope.projectId });
     }
+
+    throw new Error("Unsupported Backoffice context scope kind.");
   }
 }

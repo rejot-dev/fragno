@@ -97,7 +97,7 @@ function Carousel({
 
   React.useEffect(() => {
     if (!api) {
-      return;
+      return undefined;
     }
     onSelect(api);
     api.on("reInit", onSelect);

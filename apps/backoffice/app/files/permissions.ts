@@ -62,6 +62,8 @@ export const sameFileSubject = (left: FileSubject, right: FileSubject): boolean 
         backofficeContextScopesEqual(left.scope, right.scope)
       );
   }
+
+  throw new Error("Unsupported file subject kind.");
 };
 
 export const sameFileGroup = (left: FileGroup, right: FileGroup): boolean => {
@@ -73,6 +75,8 @@ export const sameFileGroup = (left: FileGroup, right: FileGroup): boolean => {
     case "org":
       return right.kind === "org" && left.orgId === right.orgId;
   }
+
+  throw new Error("Unsupported file group kind.");
 };
 
 export const isRootFilePrincipal = (principal: FilePrincipal): boolean =>
@@ -89,6 +93,8 @@ export const getScopePrimaryFileGroup = (scope: BackofficeContextScope): FileGro
     case "project":
       return { kind: "org", orgId: scope.orgId };
   }
+
+  throw new Error("Unsupported Backoffice context scope kind.");
 };
 
 export const resolveActorFilePrincipal = ({

@@ -76,6 +76,8 @@ export const executeAutomationScript = async ({
       return executeCodemodeAutomation({ script, context, masterFs, env });
     }
   }
+
+  throw new Error("Unsupported automation script engine.");
 };
 
 // ---------------------------------------------------------------------------

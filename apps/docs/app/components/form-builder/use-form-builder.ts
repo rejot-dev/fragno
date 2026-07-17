@@ -104,7 +104,7 @@ export function useFormBuilder(options: UseFormBuilderOptions = {}) {
     (id: string) => {
       const field = state.fields.find((f) => f.id === id);
       if (!field) {
-        return;
+        return undefined;
       }
 
       const newFieldName = ensureUniqueFieldName(field.fieldName, existingFieldNames);

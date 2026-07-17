@@ -405,6 +405,8 @@ const handleControlCommand = async (
     case "prompt":
       return false;
   }
+
+  throw new Error("Unsupported Pi session command kind.");
 };
 
 const runOperation = async (
@@ -423,6 +425,8 @@ const runOperation = async (
     case "navigateTree":
       return { navigateTreeResult: await harness.navigateTree(...operation.args) };
   }
+
+  throw new Error("Unsupported Pi harness operation kind.");
 };
 
 export const runPiHarnessStep = async <TTool extends AgentTool = AgentTool>(

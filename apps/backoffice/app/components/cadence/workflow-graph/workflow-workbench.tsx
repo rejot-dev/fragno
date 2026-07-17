@@ -112,7 +112,7 @@ export function WorkflowWorkbench({
   // graph (which may be refreshing via "Go live") stays authoritative.
   useEffect(() => {
     if (!dirty) {
-      return;
+      return undefined;
     }
     const id = setTimeout(() => {
       void previewFetcher.submit(

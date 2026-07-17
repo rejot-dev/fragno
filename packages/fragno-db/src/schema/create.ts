@@ -373,7 +373,7 @@ export class Column<TType extends keyof TypeMap, TIn = unknown, TOut = unknown> 
    */
   generateDefaultValue(): TypeMap[TType] | undefined {
     if (!this.default) {
-      return;
+      return undefined;
     }
 
     if ("value" in this.default) {
@@ -385,7 +385,7 @@ export class Column<TType extends keyof TypeMap, TIn = unknown, TOut = unknown> 
       if (this.default.dbSpecial === "now") {
         return new Date(Date.now()) as TypeMap[TType];
       }
-      return;
+      return undefined;
     }
 
     // Runtime defaults (defaultTo$)

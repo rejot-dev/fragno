@@ -51,6 +51,8 @@ export const backofficeScopeRouteId = (scope: BackofficeRoutableScope) => {
     case "user":
       return encodeScopeComponent(scope.userId);
   }
+
+  throw new Error("Unsupported routable Backoffice scope kind.");
 };
 
 export const backofficeScopeFromRouteParams = ({
@@ -99,6 +101,8 @@ export const backofficeContextScopeSinglePathSegment = (scope: BackofficeSingleP
     case "user":
       return `user:${encodeScopeComponent(scope.userId)}`;
   }
+
+  throw new Error("Unsupported single-path Backoffice scope kind.");
 };
 
 export const backofficeScopeSinglePathSegment = (scope: BackofficeRoutableScope) =>

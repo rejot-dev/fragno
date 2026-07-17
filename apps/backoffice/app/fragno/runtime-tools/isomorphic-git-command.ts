@@ -59,6 +59,8 @@ const nodeCodeFromMessage = (message: string): string | undefined => {
   if (message.includes("EEXIST") || message.includes("already exists")) {
     return "EEXIST";
   }
+
+  return undefined;
 };
 
 const asNodeFsError = (error: unknown, path?: string): NodeFsError => {

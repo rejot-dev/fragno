@@ -134,6 +134,8 @@ const canRunCommand = (command: PiSessionCommandPayload, status: TurnStatus) => 
     case "steer":
       return false;
   }
+
+  throw new Error("Unsupported Pi session command kind.");
 };
 
 const toRunMode = (command: PiSessionCommandPayload): PiAgentRunMode =>

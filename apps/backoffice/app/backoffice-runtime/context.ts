@@ -39,4 +39,6 @@ export const backofficeContextScopesEqual = (
         right.kind === "project" && left.orgId === right.orgId && left.projectId === right.projectId
       );
   }
+
+  throw new Error("Unsupported Backoffice context scope kind.");
 };

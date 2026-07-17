@@ -53,4 +53,6 @@ export function createColdKysely(database: SupportedDatabase): KyselyAny {
         },
       });
   }
+
+  throw new Error("Unsupported database type.");
 }
