@@ -82,7 +82,14 @@ const createTableIndexes = (
   };
   indexes.set("_primary", {
     definition: primaryDefinition,
-    index: new SortedArrayIndex(compareNormalizedValues, { unique: primaryDefinition.unique }),
+    index: new SortedArrayIndex(compareNormalizedValues, {
+      unique: primaryDefinition.unique,
+      uniqueConstraint: {
+        table: table.name,
+        constraint: "primary",
+        columns: [table.getIdColumn().name],
+      },
+    }),
   });
 
   for (const [name, index] of Object.entries(table.indexes)) {
@@ -97,7 +104,14 @@ const createTableIndexes = (
         ),
         unique: index.unique,
       },
-      index: new SortedArrayIndex(compareNormalizedValues, { unique: index.unique }),
+      index: new SortedArrayIndex(compareNormalizedValues, {
+        unique: index.unique,
+        uniqueConstraint: {
+          table: table.name,
+          constraint: name,
+          columns: [...index.columnNames],
+        },
+      }),
     });
   }
 

@@ -12,6 +12,7 @@ import {
   createServiceTxBuilder,
 } from "../../query/unit-of-work/execute-unit-of-work";
 import { ExponentialBackoffRetryPolicy } from "../../query/unit-of-work/retry-policy";
+import type { UniqueConflictRetryContext } from "../../query/unit-of-work/unit-of-work";
 import { FragnoId, type AnySchema } from "../../schema/create";
 import { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
 import type { DatabaseAdapter } from "../adapters";
@@ -1404,6 +1405,143 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
       }
     });
 
+    it("returns a retryable conflict when the unique conflict decider accepts it", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const seed = createSuiteUnitOfWork(adapter, "seed-retryable-unique-create");
+        seed.create("users", {
+          id: "retryable-unique-id",
+          name: "Original",
+          email: "retryable-original@example.com",
+          age: 1,
+        });
+        assert((await seed.executeMutations()).success);
+
+        let retryContext: UniqueConflictRetryContext | undefined;
+        const conflictingCreate = createSuiteUnitOfWork(adapter, "retryable-unique-create");
+        conflictingCreate.create(
+          "users",
+          {
+            id: "retryable-unique-id",
+            name: "Conflicting",
+            email: "retryable-conflicting@example.com",
+            age: 2,
+          },
+          {
+            retryOnUniqueConflict: (context) => {
+              retryContext = context;
+              return true;
+            },
+          },
+        );
+
+        assert(!(await conflictingCreate.executeMutations()).success);
+        expect(retryContext?.error).toBeInstanceOf(DatabaseConstraintError);
+        expect(retryContext?.operation).toEqual({
+          type: "create",
+          schema: "query_engine_suite",
+          namespace,
+          table: "users",
+        });
+
+        const [stored] = await createSuiteUnitOfWork(adapter, "verify-retryable-unique-create")
+          .find("users", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", "retryable-unique-id")),
+          )
+          .executeRetrieve();
+        expect(stored).toMatchObject([
+          {
+            name: "Original",
+            email: "retryable-original@example.com",
+            age: 1,
+          },
+        ]);
+      } finally {
+        await close?.();
+      }
+    });
+
+    it("preserves the constraint error when the unique conflict decider declines it", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const seed = createSuiteUnitOfWork(adapter, "seed-declined-unique-create");
+        seed.create("users", {
+          id: "declined-unique-id",
+          name: "Original",
+          email: "declined-original@example.com",
+          age: 1,
+        });
+        assert((await seed.executeMutations()).success);
+
+        let decisionCount = 0;
+        const conflictingCreate = createSuiteUnitOfWork(adapter, "declined-unique-create");
+        conflictingCreate.create(
+          "users",
+          {
+            id: "declined-unique-id",
+            name: "Conflicting",
+            email: "declined-conflicting@example.com",
+            age: 2,
+          },
+          {
+            retryOnUniqueConflict: () => {
+              decisionCount += 1;
+              return false;
+            },
+          },
+        );
+
+        await expect(conflictingCreate.executeMutations()).rejects.toBeInstanceOf(
+          DatabaseConstraintError,
+        );
+        expect(decisionCount).toBe(1);
+      } finally {
+        await close?.();
+      }
+    });
+
+    it("returns a retryable conflict for opted-in unique update races", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const seed = createSuiteUnitOfWork(adapter, "seed-retryable-unique-update");
+        seed.create("users", {
+          id: "retryable-update-owner",
+          name: "Owner",
+          email: "claimed@example.com",
+          age: 1,
+        });
+        seed.create("users", {
+          id: "retryable-update-target",
+          name: "Target",
+          email: "available@example.com",
+          age: 2,
+        });
+        assert((await seed.executeMutations()).success);
+
+        const conflictingUpdate = createSuiteUnitOfWork(adapter, "retryable-unique-update");
+        conflictingUpdate.update("users", "retryable-update-target", (b) =>
+          b.set({ email: "claimed@example.com" }).retryOnUniqueConflict(() => true),
+        );
+
+        assert(!(await conflictingUpdate.executeMutations()).success);
+
+        const [stored] = await createSuiteUnitOfWork(adapter, "verify-retryable-unique-update")
+          .find("users", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", "retryable-update-target")),
+          )
+          .executeRetrieve();
+        expect(stored).toMatchObject([
+          {
+            name: "Target",
+            email: "available@example.com",
+            age: 2,
+          },
+        ]);
+      } finally {
+        await close?.();
+      }
+    });
+
     it("rolls back earlier mutations when a later checked mutation conflicts", async () => {
       const { adapter, close } = await createContext();
       try {
@@ -1789,6 +1927,105 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           id: expect.objectContaining({ externalId: "handler-tx-user", version: 1 }),
           age: 43,
         });
+      } finally {
+        await close?.();
+      }
+    });
+
+    it("re-runs retrieval after a retryable unique update conflict", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const claimedEmail = "claimed-during-retry@example.com";
+        const seed = createSuiteUnitOfWork(adapter, "seed-unique-update-retry");
+        seed.create("users", {
+          id: "unique-update-owner",
+          name: "Owner",
+          email: "owner-before-retry@example.com",
+          age: 1,
+        });
+        seed.create("users", {
+          id: "unique-update-target",
+          name: "Target",
+          email: "target-before-retry@example.com",
+          age: 2,
+        });
+        assert((await seed.executeMutations()).success);
+
+        let injectedCompetingUpdate = false;
+        const decisions: Array<"claim" | "already-claimed"> = [];
+        let attempt = 0;
+        const result = await createHandlerTxBuilder({
+          createUnitOfWork: () =>
+            createSuiteUnitOfWork(adapter, `unique-update-retry-attempt-${attempt++}`),
+          retryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3, initialDelayMs: 1 }),
+          onAfterRetrieve: async () => {
+            if (injectedCompetingUpdate) {
+              return;
+            }
+            injectedCompetingUpdate = true;
+
+            const competingUpdate = createSuiteUnitOfWork(adapter, "claim-email-between-phases");
+            competingUpdate.update("users", "unique-update-owner", (b) =>
+              b.set({ email: claimedEmail }),
+            );
+            assert((await competingUpdate.executeMutations()).success);
+          },
+        })
+          .retrieve(({ forSchema }) =>
+            forSchema(queryEngineSuiteSchema)
+              .findFirst("users", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", "unique-update-target")),
+              )
+              .findFirst("users", (b) =>
+                b.whereIndex("users_email_idx", (eb) => eb("email", "=", claimedEmail)),
+              ),
+          )
+          .mutate(({ forSchema, retrieveResult: [target, owner], currentAttempt }) => {
+            if (!target) {
+              throw new Error("Target user not found.");
+            }
+
+            if (owner) {
+              decisions.push("already-claimed");
+              return {
+                status: "already-claimed" as const,
+                ownerId: owner.id.valueOf(),
+                currentAttempt,
+              };
+            }
+
+            decisions.push("claim");
+            forSchema(queryEngineSuiteSchema).update("users", target.id, (b) =>
+              b
+                .set({ email: claimedEmail })
+                .check()
+                .retryOnUniqueConflict(() => true),
+            );
+            return {
+              status: "claimed" as const,
+              ownerId: target.id.valueOf(),
+              currentAttempt,
+            };
+          })
+          .execute();
+
+        expect(decisions).toEqual(["claim", "already-claimed"]);
+        expect(result).toEqual({
+          status: "already-claimed",
+          ownerId: "unique-update-owner",
+          currentAttempt: 1,
+        });
+
+        const [target, owner] = await createSuiteUnitOfWork(adapter, "verify-unique-update-retry")
+          .findFirst("users", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", "unique-update-target")),
+          )
+          .findFirst("users", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", "unique-update-owner")),
+          )
+          .executeRetrieve();
+        expect(target).toMatchObject({ email: "target-before-retry@example.com" });
+        expect(owner).toMatchObject({ email: claimedEmail });
       } finally {
         await close?.();
       }

@@ -137,6 +137,52 @@ updateUser: function (userId: FragnoId) {
 }
 ```
 
+### Retrying unique mutation races
+
+Concurrent transactions can both observe a unique value as available before one create or update
+claims it. Mark that mutation as retryable so the unique-constraint race retries the complete
+transaction:
+
+```typescript
+createEvent: function (eventId: string, payload: EventPayload) {
+  return this.serviceTx(mySchema)
+    .retrieve((uow) =>
+      uow.findFirst("events", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", eventId)),
+      ),
+    )
+    .mutate(({ uow, retrieveResult: [existing] }) => {
+      if (existing) {
+        return existing;
+      }
+
+      uow.create("events", { id: eventId, payload }, {
+        retryOnUniqueConflict: ({ error }) =>
+          error.columns?.length === 1 && error.columns[0] === "id",
+      });
+      return { id: eventId, payload };
+    })
+    .build();
+}
+```
+
+Updates opt in through their builder and can combine this behavior with row-version checking:
+
+```typescript
+uow.update("users", user.id, (b) =>
+  b
+    .set({ slug })
+    .check()
+    .retryOnUniqueConflict(({ error }) => error.constraint === "users_slug_idx"),
+);
+```
+
+The callback receives the normalized `DatabaseConstraintError` and logical mutation context. Return
+`true` only when the retrieval phase checks that unique key and resolves the conflict on retry;
+returning `false` preserves the original constraint error. Constraint metadata varies by database,
+so fail closed when the callback cannot identify the intended constraint. `.check()` protects the
+updated row's version, while `.retryOnUniqueConflict(...)` handles the accepted unique race.
+
 ### Standalone `uow.check(table, id)`
 
 Sometimes you want to assert that a record hasn't changed _without_ updating it (e.g. guard related

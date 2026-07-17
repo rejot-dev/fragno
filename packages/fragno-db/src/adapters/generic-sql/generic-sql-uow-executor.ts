@@ -1,6 +1,6 @@
 import superjson from "superjson";
 
-import { isRetryableDatabaseError } from "../../errors";
+import { isRetryableDatabaseError, isUniqueConstraintError } from "../../errors";
 import { SETTINGS_NAMESPACE, internalSchema } from "../../fragments/internal-fragment.schema";
 import { createId } from "../../id";
 import { type SqlNamingStrategy } from "../../naming/sql-naming";
@@ -101,7 +101,34 @@ export async function executeMutation(
       }
 
       for (const compiledMutation of mutationBatch) {
-        const result = await tx.executeQuery(compiledMutation.query);
+        let result: Awaited<ReturnType<typeof tx.executeQuery>>;
+        try {
+          result = await tx.executeQuery(compiledMutation.query);
+        } catch (error) {
+          const operation = compiledMutation.operation;
+          if (
+            (operation?.type === "create" || operation?.type === "update") &&
+            operation.retryOnUniqueConflict
+          ) {
+            const normalizedError = driverConfig.normalizeError(error);
+            if (
+              isUniqueConstraintError(normalizedError) &&
+              operation.retryOnUniqueConflict({
+                error: normalizedError,
+                operation: {
+                  type: operation.type,
+                  schema: operation.schema.name,
+                  namespace: operation.namespace ?? null,
+                  table: operation.table,
+                },
+              })
+            ) {
+              throw new SqlVersionConflictError("Retryable unique mutation conflict detected.");
+            }
+            throw normalizedError;
+          }
+          throw error;
+        }
 
         // Extract internal ID for INSERT operations
         if (compiledMutation.op === "create") {

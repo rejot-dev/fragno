@@ -1,8 +1,13 @@
 import { DatabaseConstraintError } from "../../errors";
 
 export class UniqueConstraintError extends DatabaseConstraintError {
-  constructor(message: string) {
-    super({ kind: "unique", message });
+  constructor(options: {
+    message: string;
+    table?: string;
+    constraint?: string;
+    columns?: string[];
+  }) {
+    super({ kind: "unique", ...options });
     this.name = "UniqueConstraintError";
   }
 }
