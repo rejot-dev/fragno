@@ -8,48 +8,12 @@ import {
   automationEventDefinitionCreateInputSchema,
   automationEventDefinitionUpdateInputSchema,
   buildAutomationEventDefinitionId,
-  type AutomationEventDefinition,
   type AutomationEventDefinitionCreateInput,
   type AutomationEventDefinitionUpdateInput,
 } from "./event-definitions";
 import { automationFragmentSchema } from "./schema";
-import { type AutomationTimestampInput, automationTimestampToIsoString } from "./timestamps";
 
 type AutomationEventDefinitionServiceContext = DatabaseServiceContext<Record<string, never>>;
-
-type AutomationEventDefinitionRow = {
-  id: { externalId: string } | string;
-  source: string;
-  eventType: string;
-  label: string;
-  description: string | null;
-  payloadSchema?: Record<string, unknown> | null;
-  actorSchema?: Record<string, unknown> | null;
-  subjectSchema?: Record<string, unknown> | null;
-  example?: unknown | null;
-  enabled: boolean;
-  createdAt?: AutomationTimestampInput;
-  updatedAt?: AutomationTimestampInput;
-};
-
-const externalId = (id: AutomationEventDefinitionRow["id"]) =>
-  typeof id === "string" ? id : id.externalId;
-
-const normalizeDefinition = (row: AutomationEventDefinitionRow): AutomationEventDefinition => ({
-  id: externalId(row.id),
-  source: row.source,
-  eventType: row.eventType,
-  label: row.label,
-  description: row.description,
-  payloadSchema: row.payloadSchema ?? null,
-  actorSchema: row.actorSchema ?? null,
-  subjectSchema: row.subjectSchema ?? null,
-  example: row.example ?? null,
-  enabled: row.enabled,
-  capabilityId: "dynamic",
-  createdAt: row.createdAt ? automationTimestampToIsoString(row.createdAt) : undefined,
-  updatedAt: row.updatedAt ? automationTimestampToIsoString(row.updatedAt) : undefined,
-});
 
 const isStaticAutomationEvent = (input: { source: string; eventType: string }) =>
   listAutomationEventDescriptors().some(
@@ -71,9 +35,7 @@ export const createAutomationEventDefinitionServices = (
               .orderByIndex("idx_automation_event_definition_source_type", "asc"),
           ),
         )
-        .transformRetrieve(([definitions]) =>
-          definitions.map((definition) => normalizeDefinition(definition)),
-        )
+        .transformRetrieve(([definitions]) => definitions)
         .build();
     },
 
@@ -85,7 +47,7 @@ export const createAutomationEventDefinitionServices = (
             b.whereIndex("primary", (eb) => eb("id", "=", id)),
           ),
         )
-        .transformRetrieve(([definition]) => (definition ? normalizeDefinition(definition) : null))
+        .transformRetrieve(([definition]) => definition ?? null)
         .build();
     },
 
@@ -126,9 +88,8 @@ export const createAutomationEventDefinitionServices = (
             subjectSchema: definition.subjectSchema ?? null,
             example: definition.example ?? null,
             capabilityId: "dynamic",
-          } satisfies AutomationEventDefinition;
+          };
         })
-        .transform(({ mutateResult }) => mutateResult)
         .build();
     },
 
@@ -184,14 +145,12 @@ export const createAutomationEventDefinitionServices = (
               .check(),
           );
 
-          return normalizeDefinition({
-            ...existing,
+          return {
+            id: existing.id.valueOf(),
             ...next,
-            id: existing.id,
-            updatedAt,
-          });
+            capabilityId: "dynamic",
+          };
         })
-        .transform(({ mutateResult }) => mutateResult)
         .build();
     },
   });

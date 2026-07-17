@@ -8,7 +8,6 @@ import {
   automationProjectArchiveInputSchema,
   automationProjectCreateInputSchema,
   automationProjectListInputSchema,
-  automationProjectSchema,
   automationProjectLookupInputSchema,
   automationProjectUpdateInputSchema,
   projectSlugSchema,
@@ -21,23 +20,11 @@ import {
   type AutomationProjectUpdateInput,
 } from "./projects";
 import { automationFragmentSchema } from "./schema";
-import {
-  automationTimestampToDate,
-  automationTimestampToIsoString,
-  type AutomationTimestampInput,
-} from "./timestamps";
 
 type AutomationProjectServiceContext = DatabaseServiceContext<AutomationInternalHooks>;
 
 type AutomationProjectServicesOptions = {
   ownerScope: BackofficeContextScope;
-};
-
-const projectIdValue = (id: unknown): string => {
-  if (typeof id === "object" && id && "externalId" in id) {
-    return String((id as { externalId: unknown }).externalId);
-  }
-  return String(id);
 };
 
 type ProjectTimestampFields = {
@@ -46,31 +33,21 @@ type ProjectTimestampFields = {
   updatedAt: string;
 };
 
-const materializeProjectDates = <TProject extends object>(
-  project: TProject,
-  timestamps: ProjectTimestampFields,
-) => ({
-  ...project,
-  archivedAt: timestamps.archivedAt ? automationTimestampToDate(timestamps.archivedAt) : null,
-  createdAt: automationTimestampToDate(timestamps.createdAt),
-  updatedAt: automationTimestampToDate(timestamps.updatedAt),
-});
-
 const buildProjectPayload = (
   project: {
-    id: unknown;
+    id: { valueOf(): string };
     slug: string;
     name: string;
     description: string | null;
-    archivedAt: AutomationTimestampInput | null;
+    archivedAt: Date | null;
     createdByUserId: string;
-    createdAt: AutomationTimestampInput;
-    updatedAt: AutomationTimestampInput;
+    createdAt: Date;
+    updatedAt: Date;
   },
   timestamps: ProjectTimestampFields,
 ) => ({
   project: {
-    id: projectIdValue(project.id),
+    id: project.id.valueOf(),
     slug: project.slug,
     name: project.name,
     description: project.description,
@@ -104,7 +81,7 @@ const triggerProjectEvent = ({
   occurredAt: string;
   timestamps: ProjectTimestampFields;
 }) => {
-  const projectId = projectIdValue(project.id);
+  const projectId = project.id.valueOf();
   const event: AutomationEvent = {
     id: crypto.randomUUID(),
     scope: ownerScope,
@@ -181,7 +158,7 @@ export const createAutomationProjectServices = (
           }
 
           return {
-            projectId: String(project.id),
+            projectId: project.id.valueOf(),
             slug: project.slug,
             name: project.name,
           };
@@ -199,8 +176,8 @@ export const createAutomationProjectServices = (
       const slug = projectSlugSchema.parse(input.slug ?? slugFromProjectName(input.name));
       return this.serviceTx(automationFragmentSchema)
         .mutate(({ uow }) => {
-          const now = uow.now();
-          const nowIso = automationTimestampToIsoString(now);
+          const now = new Date();
+          const nowIso = now.toISOString();
           const project = {
             slug,
             name: input.name,
@@ -227,7 +204,10 @@ export const createAutomationProjectServices = (
             timestamps,
           });
 
-          return automationProjectSchema.parse(materializeProjectDates(created, timestamps));
+          return {
+            id: id.valueOf(),
+            ...project,
+          };
         })
         .build();
     },
@@ -245,8 +225,8 @@ export const createAutomationProjectServices = (
             return null;
           }
 
-          const now = uow.now();
-          const nowIso = automationTimestampToIsoString(now);
+          const now = new Date();
+          const nowIso = now.toISOString();
           const next = {
             ...existing,
             ...(input.slug ? { slug: input.slug } : {}),
@@ -255,10 +235,8 @@ export const createAutomationProjectServices = (
             updatedAt: now,
           };
           const timestamps = {
-            archivedAt: existing.archivedAt
-              ? automationTimestampToIsoString(existing.archivedAt)
-              : null,
-            createdAt: automationTimestampToIsoString(existing.createdAt),
+            archivedAt: existing.archivedAt?.toISOString() ?? null,
+            createdAt: existing.createdAt.toISOString(),
             updatedAt: nowIso,
           };
 
@@ -286,7 +264,10 @@ export const createAutomationProjectServices = (
             timestamps,
           });
 
-          return automationProjectSchema.parse(materializeProjectDates(next, timestamps));
+          return {
+            ...next,
+            id: existing.id.valueOf(),
+          };
         })
         .build();
     },
@@ -304,12 +285,10 @@ export const createAutomationProjectServices = (
             return null;
           }
 
-          const now = uow.now();
-          const nowIso = automationTimestampToIsoString(now);
+          const now = new Date();
+          const nowIso = now.toISOString();
           const archivedAt = existing.archivedAt ?? now;
-          const archivedAtIso = existing.archivedAt
-            ? automationTimestampToIsoString(existing.archivedAt)
-            : nowIso;
+          const archivedAtIso = existing.archivedAt?.toISOString() ?? nowIso;
           uow.update("project", existing.id, (b) =>
             b
               .set({
@@ -326,7 +305,7 @@ export const createAutomationProjectServices = (
           };
           const timestamps = {
             archivedAt: archivedAtIso,
-            createdAt: automationTimestampToIsoString(existing.createdAt),
+            createdAt: existing.createdAt.toISOString(),
             updatedAt: nowIso,
           };
 
@@ -343,7 +322,10 @@ export const createAutomationProjectServices = (
             timestamps,
           });
 
-          return automationProjectSchema.parse(materializeProjectDates(next, timestamps));
+          return {
+            ...next,
+            id: existing.id.valueOf(),
+          };
         })
         .build();
     },

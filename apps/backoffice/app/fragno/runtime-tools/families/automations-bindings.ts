@@ -7,9 +7,11 @@ import {
   automationStoreEntrySchema,
   automationStoreListInputSchema,
   automationStoreSetInputSchema,
+  automationStoreSetResultSchema,
   automationStoreVerificationSchema,
   type AutomationStoreDeleteResult,
   type AutomationStoreEntry,
+  type AutomationStoreSetResult,
 } from "@/fragno/automation/store";
 import type {
   StoreDeleteArgs,
@@ -31,11 +33,11 @@ import {
   type BackofficeToolContext,
 } from "../runtime-tools";
 
-export type { AutomationStoreDeleteResult, AutomationStoreEntry };
+export type { AutomationStoreDeleteResult, AutomationStoreEntry, AutomationStoreSetResult };
 
 export type AutomationStoreRuntime = {
   get: (input: StoreGetArgs) => Promise<AutomationStoreEntry | null>;
-  set: (input: StoreSetArgs) => Promise<AutomationStoreEntry>;
+  set: (input: StoreSetArgs) => Promise<AutomationStoreSetResult>;
   delete: (input: StoreDeleteArgs) => Promise<AutomationStoreDeleteResult | null>;
   list: (input: StoreListArgs) => Promise<AutomationStoreEntry[]>;
 };
@@ -193,7 +195,7 @@ const storeSetTool = defineAutomationStoreTool({
   description: "Create or update an automation store entry.",
   requiredPermissions: ["modify"],
   inputSchema: automationStoreSetInputSchema,
-  outputSchema: automationStoreEntrySchema,
+  outputSchema: automationStoreSetResultSchema,
   execute: async (input, context) =>
     await getAutomationStoreRuntime(context.runtimes.automations).set(input),
   adapters: {

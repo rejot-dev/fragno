@@ -1,16 +1,9 @@
 import type { Cursor, DatabaseServiceContext } from "@fragno-dev/db";
 
-import {
-  automationEventListInputSchema,
-  normalizeAutomationEventRecord,
-  type AutomationEventRecord,
-} from "./events";
+import { automationEventListInputSchema } from "./events";
 import { automationFragmentSchema } from "./schema";
 
 type AutomationEventServiceContext = DatabaseServiceContext<Record<string, never>>;
-
-const normalizeAutomationEventRecords = (entries: unknown[]): AutomationEventRecord[] =>
-  entries.map((entry) => normalizeAutomationEventRecord(entry));
 
 export const createAutomationEventServices = (
   defineService: <TService>(
@@ -35,7 +28,7 @@ export const createAutomationEventServices = (
           }),
         )
         .transformRetrieve(([entries]) => ({
-          events: normalizeAutomationEventRecords(entries.items),
+          events: entries.items,
           cursor: entries.cursor,
           hasNextPage: entries.hasNextPage,
         }))

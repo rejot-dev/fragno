@@ -9,7 +9,6 @@ import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "./contracts";
 import type { AutomationFragmentConfig, automationFragmentDefinition } from "./definition";
 import type { SandboxLifecycleWorkflowParams } from "./sandboxes-storage-runtime";
 import { automationFragmentSchema } from "./schema";
-import { automationTimestampToIsoString, type AutomationTimestampInput } from "./timestamps";
 
 type AutomationFragment = InstantiatedFragmentFromDefinition<typeof automationFragmentDefinition>;
 
@@ -32,19 +31,17 @@ const buildSandboxFailedEvent = ({
   config,
   params,
   errorMessage,
-  occurredAt,
 }: {
   config: SandboxLifecycleWorkflowConfig;
   params: SandboxLifecycleWorkflowParams;
   errorMessage: string;
-  occurredAt: AutomationTimestampInput;
 }): AutomationEvent => {
   return {
     id: crypto.randomUUID(),
     scope: config.ownerScope,
     source: "sandbox",
     eventType: "instance.failed",
-    occurredAt: automationTimestampToIsoString(occurredAt),
+    occurredAt: new Date().toISOString(),
     payload: {
       sandboxId: params.id,
       provider: params.provider,
@@ -108,7 +105,6 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
               config,
               params,
               errorMessage,
-              occurredAt: now,
             });
             uow.triggerHook("internalIngestEvent", { event: failedEvent }, { id: failedEvent.id });
           });
@@ -226,7 +222,6 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
               config,
               params,
               errorMessage,
-              occurredAt: now,
             });
             uow.triggerHook("internalIngestEvent", { event: failedEvent }, { id: failedEvent.id });
           });

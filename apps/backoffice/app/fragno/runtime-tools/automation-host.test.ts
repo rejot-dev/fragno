@@ -32,6 +32,7 @@ const createAutomationsRuntime = () => ({
     actor: automationStoreActor,
   }),
   set: async (input: StoreSetArgs & { source?: string }) => ({
+    id: input.key,
     source: input.source,
     key: input.key,
     value: input.value,

@@ -31,7 +31,6 @@ import {
   type SandboxInstanceStopRequestInput,
 } from "./sandboxes";
 import { automationFragmentSchema } from "./schema";
-import { automationTimestampToIsoString } from "./timestamps";
 
 export const SANDBOX_LIFECYCLE_WORKFLOW_NAME = "sandbox-lifecycle" as const;
 
@@ -176,7 +175,7 @@ export const createAutomationSandboxServices = (
             scope: options.ownerScope,
             source: "sandbox",
             eventType: "instance.stopped",
-            occurredAt: automationTimestampToIsoString(now),
+            occurredAt: new Date().toISOString(),
             payload: sandboxPayload(sandbox, { reason: "workflow_terminal" }),
             actor: AUTOMATION_SYSTEM_ACTOR,
             actors: [AUTOMATION_SYSTEM_ACTOR],
@@ -325,7 +324,7 @@ export const createAutomationSandboxServices = (
               scope: options.ownerScope,
               source: "sandbox",
               eventType: "instance.stopped",
-              occurredAt: automationTimestampToIsoString(now),
+              occurredAt: new Date().toISOString(),
               payload: sandboxPayload(sandbox, { reason: "stop_requested" }),
               actor: AUTOMATION_SYSTEM_ACTOR,
               actors: [AUTOMATION_SYSTEM_ACTOR],
@@ -379,7 +378,7 @@ export const createAutomationSandboxServices = (
             scope: options.ownerScope,
             source: "sandbox",
             eventType: "instance.ready",
-            occurredAt: automationTimestampToIsoString(now),
+            occurredAt: new Date().toISOString(),
             payload: sandboxPayload(sandbox),
             actor: AUTOMATION_SYSTEM_ACTOR,
             actors: [AUTOMATION_SYSTEM_ACTOR],
@@ -424,7 +423,7 @@ export const createAutomationSandboxServices = (
             scope: options.ownerScope,
             source: "sandbox",
             eventType: "instance.stopped",
-            occurredAt: automationTimestampToIsoString(now),
+            occurredAt: new Date().toISOString(),
             payload: sandboxPayload(sandbox),
             actor: AUTOMATION_SYSTEM_ACTOR,
             actors: [AUTOMATION_SYSTEM_ACTOR],
@@ -457,7 +456,7 @@ export const createAutomationSandboxServices = (
             scope: options.ownerScope,
             source: "sandbox",
             eventType: "instance.failed",
-            occurredAt: automationTimestampToIsoString(now),
+            occurredAt: new Date().toISOString(),
             payload: sandboxPayload(sandbox, { reason: "error", errorMessage: input.lastError }),
             actor: AUTOMATION_SYSTEM_ACTOR,
             actors: [AUTOMATION_SYSTEM_ACTOR],

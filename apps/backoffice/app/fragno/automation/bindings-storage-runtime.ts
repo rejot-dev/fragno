@@ -6,11 +6,9 @@ import type {
   StoreListArgs,
   StoreSetArgs,
 } from "../runtime-tools/automation-types";
-import type { AutomationStoreEntry } from "../runtime-tools/families/automations-bindings";
 import { automationFragmentSchema } from "./schema";
 import {
-  automationStoreDeleteResultSchema,
-  automationStoreEntrySchema,
+  type AutomationStoreEntry,
   hasSystemCategory,
   validateAutomationStoreVerification,
 } from "./store";
@@ -24,17 +22,11 @@ export class AutomationStoreProtectedEntryError extends Error {
 
 type AutomationStoreServiceContext = DatabaseServiceContext<Record<string, never>>;
 
-const normalizeStoreEntry = (entry: unknown): AutomationStoreEntry =>
-  automationStoreEntrySchema.parse(entry);
-
-const normalizeStoreEntries = (entries: unknown[]): AutomationStoreEntry[] =>
-  entries.map((entry) => normalizeStoreEntry(entry));
-
 const mergeCategoryForUpdate = ({
   existing,
   nextCategory,
 }: {
-  existing: AutomationStoreEntry;
+  existing: Pick<AutomationStoreEntry, "category">;
   nextCategory?: string[];
 }) => {
   if (typeof nextCategory === "undefined") {
@@ -64,7 +56,7 @@ export const createAutomationStoreServices = (
             return limit ? query.pageSize(limit) : query;
           }),
         )
-        .transformRetrieve(([entries]) => normalizeStoreEntries(entries))
+        .transformRetrieve(([entries]) => entries)
         .build();
     },
 
@@ -75,7 +67,7 @@ export const createAutomationStoreServices = (
             b.whereIndex("idx_kv_store_key", (eb) => eb("key", "=", key)),
           ),
         )
-        .transformRetrieve(([entry]) => (entry ? normalizeStoreEntry(entry) : null))
+        .transformRetrieve(([entry]) => entry ?? null)
         .build();
     },
 
@@ -93,9 +85,11 @@ export const createAutomationStoreServices = (
           const now = uow.now();
 
           if (rawExisting) {
-            const existing = normalizeStoreEntry(rawExisting);
-            const description = "description" in args ? args.description : existing.description;
-            const category = mergeCategoryForUpdate({ existing, nextCategory: args.category });
+            const description = "description" in args ? args.description : rawExisting.description;
+            const category = mergeCategoryForUpdate({
+              existing: { category: rawExisting.category ?? [] },
+              nextCategory: args.category,
+            });
 
             uow.update("kv_store", rawExisting.id, (b) =>
               b
@@ -111,13 +105,12 @@ export const createAutomationStoreServices = (
             );
 
             return {
-              ...existing,
+              id: rawExisting.id.valueOf(),
               key,
               value,
               actor,
               description: description ?? null,
               category,
-              updatedAt: now,
             };
           }
 
@@ -140,11 +133,8 @@ export const createAutomationStoreServices = (
             actor,
             description,
             category,
-            createdAt: now,
-            updatedAt: now,
           };
         })
-        .transform(({ mutateResult }) => normalizeStoreEntry(mutateResult))
         .build();
     },
 
@@ -160,17 +150,13 @@ export const createAutomationStoreServices = (
             return null;
           }
 
-          const existing = normalizeStoreEntry(rawExisting);
-          if (hasSystemCategory(existing)) {
+          if (hasSystemCategory({ category: rawExisting.category ?? [] })) {
             throw new AutomationStoreProtectedEntryError(key);
           }
 
           uow.delete("kv_store", rawExisting.id, (b) => b.check());
           return { ok: true as const, key };
         })
-        .transform(({ mutateResult }) =>
-          mutateResult ? automationStoreDeleteResultSchema.parse(mutateResult) : null,
-        )
         .build();
     },
   });

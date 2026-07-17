@@ -1,9 +1,11 @@
+import { z } from "zod";
+
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
-import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
-import type {
-  AutomationRouteCreateInput,
-  AutomationRouteUpdateInput,
+import {
+  automationRouteSchema,
+  type AutomationRouteCreateInput,
+  type AutomationRouteUpdateInput,
 } from "@/fragno/automation/routing-schemas";
 import type { AutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
 
@@ -26,7 +28,7 @@ export const createRouteBackedAutomationRouterRuntime = ({
     listRoutes: async () => {
       const response = await callRoute("GET", "/routes");
       if (response.type === "json") {
-        return response.data as AutomationRouteDefinition[];
+        return z.array(automationRouteSchema).parse(response.data);
       }
       if (response.type === "error") {
         raiseRouteError(response.status, response.error.message);
@@ -41,7 +43,7 @@ export const createRouteBackedAutomationRouterRuntime = ({
         return null;
       }
       if (response.type === "json") {
-        return response.data as AutomationRouteDefinition;
+        return automationRouteSchema.parse(response.data);
       }
       if (response.type === "error") {
         raiseRouteError(response.status, response.error.message);
@@ -51,7 +53,7 @@ export const createRouteBackedAutomationRouterRuntime = ({
     createRoute: async (input: AutomationRouteCreateInput) => {
       const response = await callRoute("POST", "/routes", { body: input });
       if (response.type === "json") {
-        return response.data as AutomationRouteDefinition;
+        return automationRouteSchema.parse(response.data);
       }
       if (response.type === "error") {
         raiseRouteError(response.status, response.error.message);
@@ -68,7 +70,7 @@ export const createRouteBackedAutomationRouterRuntime = ({
         return null;
       }
       if (response.type === "json") {
-        return response.data as AutomationRouteDefinition;
+        return automationRouteSchema.parse(response.data);
       }
       if (response.type === "error") {
         raiseRouteError(response.status, response.error.message);

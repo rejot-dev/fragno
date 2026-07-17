@@ -73,8 +73,7 @@ export const automationStoreListInputSchema = z.object({
   limit: z.number().int().positive().max(500).optional(),
 });
 
-export const automationStoreEntrySchema = z.object({
-  id: idSchema.optional(),
+const automationStoreValueShape = {
   key: z.string(),
   value: z.string(),
   description: z.string().nullable().optional(),
@@ -108,6 +107,7 @@ export class AutomationStoreVerificationError extends Error {
   }
 }
 export type AutomationStoreEntry = z.infer<typeof automationStoreEntrySchema>;
+export type AutomationStoreSetResult = z.infer<typeof automationStoreSetResultSchema>;
 export type AutomationStoreDeleteResult = z.infer<typeof automationStoreDeleteResultSchema>;
 
 const asValidatorSchema = (schema: unknown): Schema | boolean => {

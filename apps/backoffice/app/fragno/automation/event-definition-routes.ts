@@ -20,7 +20,23 @@ export const automationEventDefinitionRoutes = defineRoutes(automationFragmentDe
       handler: async function (_request, { json }) {
         const definitions = await this.handlerTx()
           .withServiceCalls(() => [services.listEventDefinitions()] as const)
-          .transform(({ serviceResult: [result] }) => result)
+          .transform(({ serviceResult: [definitions] }) =>
+            definitions.map((definition) => ({
+              id: definition.id.valueOf(),
+              source: definition.source,
+              eventType: definition.eventType,
+              label: definition.label,
+              description: definition.description,
+              payloadSchema: definition.payloadSchema,
+              actorSchema: definition.actorSchema,
+              subjectSchema: definition.subjectSchema,
+              example: definition.example,
+              enabled: definition.enabled,
+              capabilityId: "dynamic",
+              createdAt: definition.createdAt.toISOString(),
+              updatedAt: definition.updatedAt.toISOString(),
+            })),
+          )
           .execute();
 
         return json(definitions);
@@ -41,7 +57,25 @@ export const automationEventDefinitionRoutes = defineRoutes(automationFragmentDe
                 }),
               ] as const,
           )
-          .transform(({ serviceResult: [result] }) => result)
+          .transform(({ serviceResult: [definition] }) =>
+            definition
+              ? {
+                  id: definition.id.valueOf(),
+                  source: definition.source,
+                  eventType: definition.eventType,
+                  label: definition.label,
+                  description: definition.description,
+                  payloadSchema: definition.payloadSchema,
+                  actorSchema: definition.actorSchema,
+                  subjectSchema: definition.subjectSchema,
+                  example: definition.example,
+                  enabled: definition.enabled,
+                  capabilityId: "dynamic",
+                  createdAt: definition.createdAt.toISOString(),
+                  updatedAt: definition.updatedAt.toISOString(),
+                }
+              : null,
+          )
           .execute();
 
         if (!definition) {

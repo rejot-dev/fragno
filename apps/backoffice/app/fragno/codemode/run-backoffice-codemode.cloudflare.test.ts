@@ -84,6 +84,7 @@ describe("runBackofficeCodemode", () => {
       get: async (input) => {
         calls.push(["get", input]);
         return {
+          id: input.key,
           key: input.key,
           value: "user-55",
           category: [],
@@ -93,6 +94,7 @@ describe("runBackofficeCodemode", () => {
       set: async (input) => {
         calls.push(["set", input]);
         return {
+          id: input.key,
           key: input.key,
           value: input.value,
           category: input.category ?? [],
@@ -129,8 +131,20 @@ describe("runBackofficeCodemode", () => {
 
     expect(result.error).toBeUndefined();
     expect(result.result).toEqual({
-      existing: { key: "telegram/chat-123", value: "user-55", category: [], actor },
-      bound: { key: "telegram/chat-456", value: "user-55", category: [], actor },
+      existing: {
+        id: "telegram/chat-123",
+        key: "telegram/chat-123",
+        value: "user-55",
+        category: [],
+        actor,
+      },
+      bound: {
+        id: "telegram/chat-456",
+        key: "telegram/chat-456",
+        value: "user-55",
+        category: [],
+        actor,
+      },
     });
     expect(calls).toEqual([
       ["get", { key: "telegram/chat-123" }],
@@ -144,7 +158,7 @@ describe("runBackofficeCodemode", () => {
         inputSummary: '{"key":"telegram/chat-123"}',
         status: "success",
         resultSummary:
-          '{"key":"telegram/chat-123","value":"user-55","category":[],"actor":{"scope":"external","type":"chat","id":"chat-123","source":"telegram"}}',
+          '{"id":"telegram/chat-123","key":"telegram/chat-123","value":"user-55","category":[],"actor":{"scope":"external","type":"chat","id":"chat-123","source":"telegram"}}',
       },
       {
         providerName: "store",
@@ -489,6 +503,7 @@ describe("runBackofficeCodemode", () => {
       set: async (input) => {
         calls.push(["set", input]);
         return {
+          id: input.key,
           key: input.key,
           value: input.value,
           category: input.category ?? [],

@@ -176,6 +176,7 @@ const createAutomationStoreRuntime = (): RegisteredAutomationsRuntime => ({
     };
   },
   set: async ({ key, value, actor }) => ({
+    id: key,
     key,
     value,
     category: [],
@@ -215,6 +216,32 @@ const withTimeout = async <T>(promise: Promise<T>, message: string, ms = 1_000):
   ]);
 
 describe("pi bash command registration", () => {
+  it("formats store.set results as text, JSON, and printed fields", async () => {
+    const { bash } = createPiHost();
+    const actor = `'{"scope":"internal","type":"user","id":"user-1"}'`;
+
+    const result = await bash.exec(
+      `store.set --key text --value one --actor ${actor}\n` +
+        `store.set --key json --value two --actor ${actor} --format json\n` +
+        `store.set --key print --value three --actor ${actor} --print value`,
+    );
+
+    assert(result.exitCode === 0);
+    expect(result.stdout).toContain("Stored text\nkey: text\nvalue: one");
+    expect(result.stdout).toContain(
+      JSON.stringify({
+        id: "json",
+        key: "json",
+        value: "two",
+        category: [],
+        actor: { scope: "internal", type: "user", id: "user-1" },
+      }),
+    );
+    assert(result.stdout?.trim().endsWith("three"));
+    expect(result.stdout).not.toContain("createdAt");
+    expect(result.stdout).not.toContain("updatedAt");
+  });
+
   it("runs pi.session and automations commands from the pi bash host", async () => {
     const { bash, commandCallsResult } = createPiHost();
 
