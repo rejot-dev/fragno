@@ -1,4 +1,4 @@
-import { describe, expect, it, assert } from "vitest";
+import { assert, describe, expect, expectTypeOf, it } from "vitest";
 
 import {
   column,
@@ -673,7 +673,10 @@ describe("Lofi scenario DSL", () => {
       },
       steps: [
         steps.createStore("a", "users", "users", (b) => b.whereIndex("primary"), {
-          initialData: () => ["SSR Alice"],
+          initialData: (ctx) => {
+            expectTypeOf(ctx.vars).toEqualTypeOf<Partial<ScenarioVars>>();
+            return ["SSR Alice"];
+          },
           map: (rows) => (rows as UserRow[]).map((row) => row.name),
           mount: false,
         }),

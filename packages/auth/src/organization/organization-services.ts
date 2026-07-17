@@ -37,7 +37,7 @@ type CreateOrganizationForCredentialInput = {
     logoUrl?: string | null;
     metadata?: Record<string, unknown> | null;
   } | null;
-  inputError?: unknown | null;
+  inputError?: unknown;
 };
 
 type CreateOrganizationForActorInput = {
@@ -49,7 +49,7 @@ type CreateOrganizationForActorInput = {
     logoUrl?: string | null;
     metadata?: Record<string, unknown> | null;
   } | null;
-  inputError?: unknown | null;
+  inputError?: unknown;
 };
 
 type GetOrganizationsForActorParams = {

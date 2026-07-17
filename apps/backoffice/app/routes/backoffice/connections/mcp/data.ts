@@ -68,8 +68,8 @@ export type McpServerRefresh = {
     listToolsOk: boolean;
     toolCount: number | null;
     protocolVersion: string | null;
-    serverInfo: unknown | null;
-    capabilities: unknown | null;
+    serverInfo: unknown;
+    capabilities: unknown;
   };
   cache: {
     presentBeforeCheck: boolean;

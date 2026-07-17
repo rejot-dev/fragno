@@ -12,7 +12,7 @@ type RequestOptions = {
   path: string;
   method?: string;
   query?: Record<string, string | number | boolean | undefined>;
-  body?: BodyInit | null | unknown;
+  body?: unknown;
   json?: boolean;
   headers?: HeadersInit;
   retry?: boolean;

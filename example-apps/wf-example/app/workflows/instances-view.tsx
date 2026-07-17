@@ -27,7 +27,7 @@ type HistoryStep = {
   maxAttempts: number;
   createdAt: Date | string;
   updatedAt: Date | string;
-  result?: unknown | null;
+  result?: unknown;
   error?: { name: string; message: string };
 };
 

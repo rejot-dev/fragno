@@ -286,9 +286,9 @@ const isPlainObject = (value: object): value is Record<string, unknown> => {
 
 export const resolveProjectionReadPlan = <TPlan extends LofiProjectionReadPlan | void>(
   plan: TPlan,
-  resolveRead: (request: LofiProjectionReadRequest<unknown>) => unknown | Promise<unknown>,
+  resolveRead: (request: LofiProjectionReadRequest<unknown>) => unknown,
 ): LofiProjectionResolved<TPlan> | Promise<LofiProjectionResolved<TPlan>> => {
-  const resolveValue = (value: unknown): unknown | Promise<unknown> => {
+  const resolveValue = (value: unknown): unknown => {
     if (isThenable(value)) {
       void Promise.resolve(value).catch(() => {
         // The synchronous projection contract is reported by the caller; consume late rejections.

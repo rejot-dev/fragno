@@ -37,7 +37,7 @@ const getRow = async (db: IDBPDatabase, key: IDBValidKey): Promise<StoredRow | u
   return row;
 };
 
-const getInboxRow = async (db: IDBPDatabase, key: IDBValidKey): Promise<unknown | undefined> => {
+const getInboxRow = async (db: IDBPDatabase, key: IDBValidKey): Promise<unknown> => {
   const tx = db.transaction("lofi_inbox", "readonly");
   const store = tx.objectStore("lofi_inbox");
   const row = await store.get(key);
@@ -45,7 +45,7 @@ const getInboxRow = async (db: IDBPDatabase, key: IDBValidKey): Promise<unknown 
   return row;
 };
 
-const getMeta = async (db: IDBPDatabase, key: IDBValidKey): Promise<unknown | undefined> => {
+const getMeta = async (db: IDBPDatabase, key: IDBValidKey): Promise<unknown> => {
   const tx = db.transaction("lofi_meta", "readonly");
   const store = tx.objectStore("lofi_meta");
   const row = await store.get(key);

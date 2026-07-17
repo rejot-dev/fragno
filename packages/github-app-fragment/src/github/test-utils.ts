@@ -12,7 +12,7 @@ import type { GitHubAppFragmentConfig } from "./types";
 
 type GithubTestDb = TestDb;
 type GithubUow = TypedUnitOfWork<typeof githubAppSchema>;
-type GithubTableName = keyof (typeof githubAppSchema)["tables"] & string;
+type GithubTableName = keyof (typeof githubAppSchema)["tables"];
 
 /** Run one or more `create` calls in a single unit of work (replaces removed `db.create` helper). */
 export async function runGithubUowCreates(

@@ -909,7 +909,9 @@ async function executeTx(
         retrieveSuccessResult = retrieveResult as unknown as TRetrieveSuccessResult;
       }
 
-      let mutateResult: TMutateResult | undefined;
+      let mutateResult: { type: "not-provided" } | { type: "provided"; value: TMutateResult } = {
+        type: "not-provided",
+      };
       if (callbacks.mutate) {
         const mutateCtx: HandlerTxMutateContext<
           TRetrieveSuccessResult,
@@ -920,7 +922,7 @@ async function executeTx(
           retrieveResult: retrieveSuccessResult,
           serviceIntermediateResult: serviceResults as ExtractServiceRetrieveResults<TServiceCalls>,
         };
-        mutateResult = callbacks.mutate(mutateCtx);
+        mutateResult = { type: "provided", value: callbacks.mutate(mutateCtx) };
       }
 
       if (!options.planMode && options.onBeforeMutate) {
@@ -951,15 +953,26 @@ async function executeTx(
       if (callbacks.success) {
         // The success context type is determined by the overload - we construct it at runtime
         // and the type safety is guaranteed by the discriminated overloads
-        const successCtx = {
-          retrieveResult: retrieveSuccessResult,
-          mutateResult,
-          serviceResult: serviceFinalResults as ExtractServiceFinalResults<TServiceCalls>,
-          serviceIntermediateResult: serviceResults as ExtractServiceRetrieveResults<TServiceCalls>,
-        } as Parameters<NonNullable<typeof callbacks.success>>[0];
+        const successCtx = (
+          mutateResult.type === "provided"
+            ? {
+                retrieveResult: retrieveSuccessResult,
+                mutateResult: mutateResult.value,
+                serviceResult: serviceFinalResults as ExtractServiceFinalResults<TServiceCalls>,
+                serviceIntermediateResult:
+                  serviceResults as ExtractServiceRetrieveResults<TServiceCalls>,
+              }
+            : {
+                retrieveResult: retrieveSuccessResult,
+                mutateResult: undefined,
+                serviceResult: serviceFinalResults as ExtractServiceFinalResults<TServiceCalls>,
+                serviceIntermediateResult:
+                  serviceResults as ExtractServiceRetrieveResults<TServiceCalls>,
+              }
+        ) as Parameters<NonNullable<typeof callbacks.success>>[0];
         finalResult = callbacks.success(successCtx);
-      } else if (callbacks.mutate) {
-        finalResult = await awaitPromisesInObject(mutateResult);
+      } else if (mutateResult.type === "provided") {
+        finalResult = await awaitPromisesInObject(mutateResult.value);
       } else if (callbacks.retrieveSuccess || callbacks.retrieve) {
         finalResult = retrieveSuccessResult;
       } else {

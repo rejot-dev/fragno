@@ -11,6 +11,7 @@ import {
 import { buildScopedInstanceRowId } from "./instance-ref";
 import { workflowsSchema } from "./schema";
 import { streamWorkflowStepEmissions } from "./stream-step-emissions";
+import type { WorkflowEventActor } from "./system-events";
 import type { InstanceStatus, WorkflowsRegistry } from "./workflow";
 
 const identifierSchema = z
@@ -185,7 +186,7 @@ const mapStepEmissionOutput = (emission: {
   stepKey: string;
   epoch: string;
   sequence: number;
-  actor: string;
+  actor: WorkflowEventActor;
   payload: unknown;
   createdAt: Date;
 }): WorkflowStepEmissionOutput => ({

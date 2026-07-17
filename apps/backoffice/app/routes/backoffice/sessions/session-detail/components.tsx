@@ -441,9 +441,9 @@ export function SessionComposer({
   disabledReason?: string | null;
   error: string | null;
   needsNudge: boolean;
-  onContinue: () => Promise<unknown> | unknown;
+  onContinue: () => unknown;
   onSend: (command: { kind: "followUp" | "steer"; text: string }) => Promise<boolean> | boolean;
-  onStop: () => Promise<unknown> | unknown;
+  onStop: () => unknown;
 }) {
   const [draftMessage, setDraftMessage] = useState("");
   const [mode, setMode] = useState<"followUp" | "steer">("followUp");

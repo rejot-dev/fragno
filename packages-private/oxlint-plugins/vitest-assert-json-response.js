@@ -342,7 +342,7 @@ const rule = {
       },
 
       "Program:exit"(node) {
-        /** @type {any | null} */
+        /** @type {any} */
         const vitestImport = node.body.find(
           (statement) =>
             statement.type === "ImportDeclaration" &&

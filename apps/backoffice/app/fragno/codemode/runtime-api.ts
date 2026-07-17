@@ -4,12 +4,12 @@ export type CodemodeToolDescriptor = {
   description?: string;
   inputSchema?: unknown;
   outputSchema?: unknown;
-  execute(input: unknown, ...args: unknown[]): Promise<unknown> | unknown;
+  execute(input: unknown, ...args: unknown[]): unknown;
 };
 
 export type ToolProvider = {
   name: string;
-  fns?: Record<string, (...args: unknown[]) => Promise<unknown> | unknown>;
+  fns?: Record<string, (...args: unknown[]) => unknown>;
   tools?: Record<string, CodemodeToolDescriptor>;
 };
 
@@ -146,9 +146,9 @@ const parseCodemodeValue = (json: string): unknown =>
   JSON.parse(json, (_key, nested) => decodeCodemodeValue(nested));
 
 export class ToolDispatcher extends RpcTarget {
-  readonly #fns: Record<string, (...args: unknown[]) => Promise<unknown> | unknown>;
+  readonly #fns: Record<string, (...args: unknown[]) => unknown>;
 
-  constructor(fns: Record<string, (...args: unknown[]) => Promise<unknown> | unknown>) {
+  constructor(fns: Record<string, (...args: unknown[]) => unknown>) {
     super();
     this.#fns = fns;
   }

@@ -20,10 +20,13 @@ import {
 export type LofiQueryState<TData> = {
   data: TData;
   loading: boolean;
-  error: unknown | null;
+  error: Error | null;
   synced: boolean;
   updatedAt?: number;
 };
+
+const normalizeLofiQueryError = (error: unknown): Error =>
+  error instanceof Error ? error : new Error("Lofi query failed", { cause: error });
 
 export type LofiQueryStore<TData> = ReadableAtom<LofiQueryState<TData>> & {
   refresh: () => Promise<void>;
@@ -251,11 +254,11 @@ type RuntimeStoreEphemeralBinding<TRetrieveResult, TData> = {
     state: unknown,
     item: unknown,
     context: LofiRuntimeStoreEphemeralContext<TRetrieveResult, TData>,
-  ) => unknown | undefined;
+  ) => unknown;
   reconcile?: (
     state: unknown,
     context: LofiRuntimeStoreEphemeralContext<TRetrieveResult, TData>,
-  ) => unknown | void;
+  ) => unknown;
   overlay: (
     data: TData,
     state: unknown,
@@ -472,7 +475,7 @@ const createManagedLofiQueryStore = <TRetrieveResult, TData>({
       if (requestId !== currentRequestId) {
         return;
       }
-      $store.set({ ...$store.get(), loading: false, error });
+      $store.set({ ...$store.get(), loading: false, error: normalizeLofiQueryError(error) });
     }
   };
 
@@ -493,7 +496,7 @@ const createManagedLofiQueryStore = <TRetrieveResult, TData>({
         try {
           receiveEphemeralMutation(index, mutation as LofiMutation);
         } catch (error) {
-          $store.set({ ...$store.get(), error });
+          $store.set({ ...$store.get(), error: normalizeLofiQueryError(error) });
         }
       }),
     );
@@ -515,7 +518,11 @@ const createManagedLofiQueryStore = <TRetrieveResult, TData>({
       })
       .catch((error: unknown) => {
         if (mounted) {
-          $store.set({ ...$store.get(), loading: false, error });
+          $store.set({
+            ...$store.get(),
+            loading: false,
+            error: normalizeLofiQueryError(error),
+          });
         }
       });
 

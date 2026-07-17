@@ -547,6 +547,24 @@ describe("BufferedDatabasePump", () => {
     expect(pump.getFailure()).toBeUndefined();
   });
 
+  test("normalizes non-Error flush failures at the pump boundary", async () => {
+    const errors: Error[] = [];
+    const pump = new BufferedDatabasePump({
+      handlerTx,
+      flush: async () => {
+        throw "primitive failure";
+      },
+      onError: (error) => {
+        errors.push(error);
+      },
+    });
+
+    await expect(pump.flushNow()).rejects.toThrow("primitive failure");
+
+    expect(errors).toEqual([expect.any(Error)]);
+    expect(pump.getFailure()).toEqual(expect.any(Error));
+  });
+
   test("integration: flush uses a real sqlite handlerTx to read and write scoped outgoing items", async () => {
     const { fragment, cleanup } = await buildSqlitePumpIntegration();
     let pump: { stop(): void } | undefined;

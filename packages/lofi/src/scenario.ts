@@ -224,16 +224,28 @@ export type ScenarioClient<TSchema extends AnySchema = AnySchema, TCommandContex
   overlayManager?: LofiOverlayManager<TCommandContext>;
 };
 
-type CommandInput<
-  TSchema extends AnySchema = AnySchema,
-  TCommandContext = unknown,
-  TVars extends ScenarioVars = ScenarioVars,
-> = unknown | CommandInputFn<TSchema, TCommandContext, TVars>;
 type CommandInputFn<
   TSchema extends AnySchema = AnySchema,
   TCommandContext = unknown,
   TVars extends ScenarioVars = ScenarioVars,
-> = (ctx: ScenarioContext<TSchema, TCommandContext, TVars>) => unknown | Promise<unknown>;
+> = (ctx: ScenarioContext<TSchema, TCommandContext, TVars>) => unknown;
+
+type ScenarioResolvableValue<TContext> =
+  | { type: "value"; value: unknown }
+  | { type: "resolver"; resolve: (context: TContext) => unknown };
+
+const createScenarioResolvableValue = <TContext>(
+  value: unknown,
+): ScenarioResolvableValue<TContext> =>
+  typeof value === "function"
+    ? { type: "resolver", resolve: value as (context: TContext) => unknown }
+    : { type: "value", value };
+
+const resolveScenarioResolvableValue = async <TContext>(
+  resolvable: ScenarioResolvableValue<TContext>,
+  context: TContext,
+): Promise<unknown> =>
+  resolvable.type === "resolver" ? await resolvable.resolve(context) : resolvable.value;
 type ReadFn<
   TSchema extends AnySchema = AnySchema,
   TCommandContext = unknown,
@@ -256,7 +268,7 @@ export type ScenarioCommandStep<
   type: "command";
   client: string;
   name: string;
-  input: CommandInput<TSchema, TCommandContext, TVars>;
+  input: ScenarioResolvableValue<ScenarioContext<TSchema, TCommandContext, TVars>>;
   target?: LofiSubmitCommandTarget;
   optimistic?: boolean;
   submit?: boolean;
@@ -290,11 +302,7 @@ export type ScenarioInitialData<
   TSchema extends AnySchema = AnySchema,
   TCommandContext = unknown,
   TVars extends ScenarioVars = ScenarioVars,
-> =
-  | unknown
-  | BivariantCallback<
-      (ctx: ScenarioContext<TSchema, TCommandContext, TVars>) => unknown | Promise<unknown>
-    >;
+> = ScenarioResolvableValue<ScenarioContext<TSchema, TCommandContext, TVars>>;
 
 export type ScenarioCreateStoreStep<
   TSchema extends AnySchema = AnySchema,
@@ -307,7 +315,7 @@ export type ScenarioCreateStoreStep<
   schema?: AnySchema;
   table: keyof TSchema["tables"] & string;
   query: (builder: unknown) => unknown;
-  initialData?: ScenarioInitialData<TSchema, TCommandContext, TVars>;
+  initialData: ScenarioInitialData<TSchema, TCommandContext, TVars>;
   map?: (rows: unknown, ctx: ScenarioContext<TSchema, TCommandContext, TVars>) => unknown;
   mount?: boolean;
 };
@@ -475,7 +483,7 @@ function command<
 >(
   client: string,
   name: string,
-  input: CommandInput<TSchema, TCommandContext, TVars>,
+  input: unknown,
   options?: {
     target?: LofiSubmitCommandTarget;
     optimistic?: boolean;
@@ -487,7 +495,7 @@ function command<
     type: "command",
     client,
     name,
-    input,
+    input: createScenarioResolvableValue<ScenarioContext<TSchema, TCommandContext, TVars>>(input),
     target: options?.target,
     optimistic: options?.optimistic,
     submit: options?.submit,
@@ -567,7 +575,26 @@ function assert<
     assert,
   };
 }
-const createStore = <
+type ScenarioCreateStoreOptions<
+  TSchema extends AnySchema,
+  TCommandContext,
+  TVars extends ScenarioVars,
+> = {
+  schema?: AnySchema;
+  initialData?: unknown;
+  map?: (rows: unknown, ctx: ScenarioContext<TSchema, TCommandContext, TVars>) => unknown;
+  mount?: boolean;
+};
+
+type ScenarioCreateStoreResolverOptions<
+  TSchema extends AnySchema,
+  TCommandContext,
+  TVars extends ScenarioVars,
+> = Omit<ScenarioCreateStoreOptions<TSchema, TCommandContext, TVars>, "initialData"> & {
+  initialData: (ctx: ScenarioContext<TSchema, TCommandContext, TVars>) => unknown;
+};
+
+function createStore<
   TSchema extends AnySchema = AnySchema,
   TCommandContext = unknown,
   TVars extends ScenarioVars = ScenarioVars,
@@ -577,23 +604,46 @@ const createStore = <
   name: string,
   table: TTableName,
   query: (builder: LofiFindBuilder<TSchema, TTableName>) => unknown,
-  options?: {
-    schema?: AnySchema;
-    initialData?: ScenarioInitialData<TSchema, TCommandContext, TVars>;
-    map?: (rows: unknown, ctx: ScenarioContext<TSchema, TCommandContext, TVars>) => unknown;
-    mount?: boolean;
-  },
-): ScenarioCreateStoreStep<TSchema, TCommandContext, TVars> => ({
-  type: "createStore",
-  client,
-  name,
-  schema: options?.schema,
-  table,
-  query: query as (builder: unknown) => unknown,
-  initialData: options?.initialData,
-  map: options?.map,
-  mount: options?.mount,
-});
+  options: ScenarioCreateStoreResolverOptions<TSchema, TCommandContext, TVars>,
+): ScenarioCreateStoreStep<TSchema, TCommandContext, TVars>;
+function createStore<
+  TSchema extends AnySchema = AnySchema,
+  TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
+  TTableName extends keyof TSchema["tables"] & string = keyof TSchema["tables"] & string,
+>(
+  client: string,
+  name: string,
+  table: TTableName,
+  query: (builder: LofiFindBuilder<TSchema, TTableName>) => unknown,
+  options?: ScenarioCreateStoreOptions<TSchema, TCommandContext, TVars>,
+): ScenarioCreateStoreStep<TSchema, TCommandContext, TVars>;
+function createStore<
+  TSchema extends AnySchema = AnySchema,
+  TCommandContext = unknown,
+  TVars extends ScenarioVars = ScenarioVars,
+  TTableName extends keyof TSchema["tables"] & string = keyof TSchema["tables"] & string,
+>(
+  client: string,
+  name: string,
+  table: TTableName,
+  query: (builder: LofiFindBuilder<TSchema, TTableName>) => unknown,
+  options?: ScenarioCreateStoreOptions<TSchema, TCommandContext, TVars>,
+): ScenarioCreateStoreStep<TSchema, TCommandContext, TVars> {
+  return {
+    type: "createStore",
+    client,
+    name,
+    schema: options?.schema,
+    table,
+    query: query as (builder: unknown) => unknown,
+    initialData: createScenarioResolvableValue<ScenarioContext<TSchema, TCommandContext, TVars>>(
+      options?.initialData,
+    ),
+    map: options?.map,
+    mount: options?.mount,
+  };
+}
 const readStore = <TVars extends ScenarioVars = ScenarioVars, K extends keyof TVars = keyof TVars>(
   client: string,
   name: string,
@@ -675,7 +725,7 @@ export const createScenarioSteps = <
     function commandStep(
       client: string,
       name: string,
-      input: CommandInput<TSchema, TCommandContext, TVars>,
+      input: unknown,
       options?: {
         target?: LofiSubmitCommandTarget;
         optimistic?: boolean;
@@ -707,19 +757,38 @@ export const createScenarioSteps = <
       storeAs?: undefined,
     ): ScenarioReadStepNoStore<TSchema, TCommandContext, TVars>;
   },
-  createStore: <TTableName extends keyof TSchema["tables"] & string>(
-    client: string,
-    name: string,
-    table: TTableName,
-    query: (builder: LofiFindBuilder<TSchema, TTableName>) => unknown,
-    options?: {
-      schema?: AnySchema;
-      initialData?: ScenarioInitialData<TSchema, TCommandContext, TVars>;
-      map?: (rows: unknown, ctx: ScenarioContext<TSchema, TCommandContext, TVars>) => unknown;
-      mount?: boolean;
-    },
-  ) =>
-    createStore<TSchema, TCommandContext, TVars, TTableName>(client, name, table, query, options),
+  createStore: (() => {
+    function createStoreStep<TTableName extends keyof TSchema["tables"] & string>(
+      client: string,
+      name: string,
+      table: TTableName,
+      query: (builder: LofiFindBuilder<TSchema, TTableName>) => unknown,
+      options: ScenarioCreateStoreResolverOptions<TSchema, TCommandContext, TVars>,
+    ): ScenarioCreateStoreStep<TSchema, TCommandContext, TVars>;
+    function createStoreStep<TTableName extends keyof TSchema["tables"] & string>(
+      client: string,
+      name: string,
+      table: TTableName,
+      query: (builder: LofiFindBuilder<TSchema, TTableName>) => unknown,
+      options?: ScenarioCreateStoreOptions<TSchema, TCommandContext, TVars>,
+    ): ScenarioCreateStoreStep<TSchema, TCommandContext, TVars>;
+    function createStoreStep<TTableName extends keyof TSchema["tables"] & string>(
+      client: string,
+      name: string,
+      table: TTableName,
+      query: (builder: LofiFindBuilder<TSchema, TTableName>) => unknown,
+      options?: ScenarioCreateStoreOptions<TSchema, TCommandContext, TVars>,
+    ): ScenarioCreateStoreStep<TSchema, TCommandContext, TVars> {
+      return createStore<TSchema, TCommandContext, TVars, TTableName>(
+        client,
+        name,
+        table,
+        query,
+        options,
+      );
+    }
+    return createStoreStep;
+  })(),
   readStore: <K extends keyof TVars>(client: string, name: string, storeAs: K) =>
     readStore<TVars, K>(client, name, storeAs),
   readStoreState: <K extends keyof TVars>(client: string, name: string, storeAs: K) =>
@@ -746,20 +815,6 @@ const createServerFetch = (fragment: ScenarioFragment) => {
       headers,
     });
   };
-};
-
-const resolveCommandInput = async <
-  TSchema extends AnySchema,
-  TCommandContext,
-  TVars extends ScenarioVars,
->(
-  input: CommandInput<TSchema, TCommandContext, TVars>,
-  ctx: ScenarioContext<TSchema, TCommandContext, TVars>,
-): Promise<unknown> => {
-  if (typeof input === "function") {
-    return await input(ctx);
-  }
-  return input;
 };
 
 const resolveReadResult = async <
@@ -909,22 +964,6 @@ const mountScenarioReactiveStore = <TSchema extends AnySchema, TCommandContext>(
   const unsubscribe = store.subscribe((value) => values.push(value));
   cleanupCallbacks.push(unsubscribe);
   client.storeProbes[name] = { values, unsubscribe };
-};
-
-const resolveScenarioInitialData = async <
-  TSchema extends AnySchema,
-  TCommandContext,
-  TVars extends ScenarioVars,
->(
-  initialData: ScenarioInitialData<TSchema, TCommandContext, TVars> | undefined,
-  ctx: ScenarioContext<TSchema, TCommandContext, TVars>,
-): Promise<unknown> => {
-  if (typeof initialData === "function") {
-    return await (
-      initialData as (context: ScenarioContext<TSchema, TCommandContext, TVars>) => unknown
-    )(ctx);
-  }
-  return initialData;
 };
 
 const resolveCommandTarget = <TCommandContext = unknown>(
@@ -1209,7 +1248,7 @@ export const runScenario = async <
       }
 
       if (step.type === "command") {
-        const input = await resolveCommandInput(step.input, context);
+        const input = await resolveScenarioResolvableValue(step.input, context);
         const target = step.target ?? resolveCommandTarget(step.name, clientCommands) ?? null;
         if (!target) {
           throw new Error(`Unknown scenario command target: ${step.name}`);
@@ -1263,7 +1302,7 @@ export const runScenario = async <
       }
 
       if (step.type === "createStore") {
-        const initialData = await resolveScenarioInitialData(step.initialData, context);
+        const initialData = await resolveScenarioResolvableValue(step.initialData, context);
         const storeOptions = step.map
           ? {
               initialData,

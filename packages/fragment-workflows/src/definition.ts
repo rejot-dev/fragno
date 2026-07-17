@@ -22,6 +22,7 @@ import {
   WORKFLOW_EVENT_ACTOR_SYSTEM,
   WORKFLOW_EVENT_ACTOR_USER,
   WORKFLOW_SYSTEM_PAUSE_EVENT_TYPE,
+  type WorkflowEventActor,
 } from "./system-events";
 import type {
   InstanceStatus,
@@ -48,7 +49,7 @@ const TERMINAL_STATUSES = new Set<InstanceStatus["status"]>(["complete", "termin
 
 type WorkflowInstanceStatusRecord = {
   status: string;
-  output: unknown | null;
+  output: unknown;
   errorName: string | null;
   errorMessage: string | null;
 };
@@ -67,7 +68,7 @@ export type WorkflowsHistoryStep = {
   nextRetryAt: Date | null;
   wakeAt: Date | null;
   waitEventType: string | null;
-  result: unknown | null;
+  result: unknown;
   error?: { name: string; message: string };
   createdAt: Date;
   updatedAt: Date;
@@ -76,7 +77,7 @@ export type WorkflowsHistoryStep = {
 export type WorkflowsHistoryEvent = {
   id: string;
   type: string;
-  payload: unknown | null;
+  payload: unknown;
   createdAt: Date;
   deliveredAt: Date | null;
   consumedByStepKey: string | null;
@@ -87,8 +88,8 @@ export type WorkflowsHistoryEmission = {
   stepKey: string;
   epoch: string;
   sequence: number;
-  actor: string;
-  payload: unknown | null;
+  actor: WorkflowEventActor;
+  payload: unknown;
   createdAt: Date;
 };
 

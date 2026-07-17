@@ -17,7 +17,7 @@ export type PiLiveToolExecution = {
   toolCallId: string;
   toolName: string;
   args: unknown;
-  partialResult: unknown | null;
+  partialResult: unknown;
 };
 
 export type PiLiveToolCallDraft = {
@@ -26,7 +26,7 @@ export type PiLiveToolCallDraft = {
   toolCallId: string | null;
   toolName: string | null;
   argumentsText: string;
-  argumentsValue: unknown | null;
+  argumentsValue: unknown;
   status: "streaming" | "complete";
 };
 
@@ -409,7 +409,7 @@ export const createStorePiSessionTransport = ({
   sendCommand,
 });
 
-const tryParseJson = (value: string): unknown | null => {
+const tryParseJson = (value: string): unknown => {
   try {
     return JSON.parse(value) as unknown;
   } catch {

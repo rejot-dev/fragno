@@ -51,7 +51,7 @@ type TelegramChatRecord = {
   title: string | null;
   username: string | null;
   isForum: boolean;
-  commandBindings: unknown | null;
+  commandBindings: unknown;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -76,7 +76,7 @@ type TelegramMessageRecord = {
   replyToMessageId: RecordRef | null;
   messageType: string;
   text: string | null;
-  payload: unknown | null;
+  payload: unknown;
   sentAt: Date;
   editedAt: Date | null;
   commandName: string | null;

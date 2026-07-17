@@ -208,9 +208,7 @@ export class InMemoryUploadObject implements UploadObject {
   }
 
   async #loadConfig() {
-    const raw = await this.#state.storage.get<StoredUploadAdminConfig | unknown>(
-      UPLOAD_ADMIN_CONFIG_KEY,
-    );
+    const raw = await this.#state.storage.get<unknown>(UPLOAD_ADMIN_CONFIG_KEY);
     if (!raw) {
       return null;
     }

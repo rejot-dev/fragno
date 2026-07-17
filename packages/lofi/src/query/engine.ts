@@ -367,7 +367,7 @@ const decodeRow = (row: RowSelection, table: AnyTable): Record<string, unknown> 
   return output;
 };
 
-const coerceLocalInternalId = (value: unknown): number | unknown => {
+const coerceLocalInternalId = (value: unknown): unknown => {
   if (typeof value === "bigint") {
     const asNumber = Number(value);
     if (!Number.isSafeInteger(asNumber)) {

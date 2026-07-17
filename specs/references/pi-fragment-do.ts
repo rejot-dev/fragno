@@ -9,7 +9,6 @@ import { DurableObject } from "cloudflare:workers";
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { migrate } from "@fragno-dev/db";
-import type { createPiFragment } from "@fragno-dev/pi-fragment";
 
 import { getModel, streamSimple } from "@mariozechner/pi-ai";
 
@@ -114,9 +113,17 @@ const createLoggingStreamFn = () => {
   };
 };
 
+type PiFragmentHandler = {
+  handler(request: Request): Promise<Response>;
+};
+
+type DurableHooksAlarmHandler = {
+  alarm?: () => void | Promise<void>;
+};
+
 export class PiFragment extends DurableObject<CloudflareEnv> {
-  private fragment: ReturnType<typeof createPiFragment> | null = null;
-  private hooksDispatcher: ReturnType<ReturnType<typeof createDurableHooksProcessor>> | null = null;
+  private fragment: PiFragmentHandler | null = null;
+  private hooksDispatcher: DurableHooksAlarmHandler | null = null;
   private initPromise: Promise<void>;
 
   constructor(ctx: DurableObjectState, env: CloudflareEnv) {

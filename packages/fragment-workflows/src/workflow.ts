@@ -6,6 +6,7 @@ import type { HandlerTxContext, HooksMap, TxResult } from "@fragno-dev/db";
 import type { WorkflowsLoggerConfig } from "./debug-log";
 import { getRemoteWorkflowStepHost, type RemoteWorkflowStepHost } from "./remote-workflow";
 import type { WorkflowStepLivePumpRegistry } from "./runner/step-live-pump";
+import type { WorkflowEventActor } from "./system-events";
 
 /** Relative or absolute durations supported by workflow steps. */
 export type WorkflowDuration = string | number;
@@ -57,7 +58,7 @@ export type WorkflowStepEventHandler<TPayload = unknown> = (
 
 export type WorkflowStepEmission<TPayload = unknown> = {
   id: string;
-  actor: string;
+  actor: WorkflowEventActor;
   stepKey: string;
   epoch: string;
   sequence: number;
