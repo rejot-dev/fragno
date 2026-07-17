@@ -1,5 +1,7 @@
 import { afterAll, assert, describe, expect, it } from "vitest";
 
+import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
+
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
@@ -53,26 +55,45 @@ describe("auth-fragment organization upgrades", async () => {
     .build();
 
   const fragment = fragments.auth;
+  const sqlAdapter = test.adapter as SqlAdapter;
+
+  const seedLegacyCredential = async () => {
+    const userId = "legacy-upgrade-user";
+    const credentialToken = "legacy-upgrade-credential";
+    const insertedUsers = await sqlAdapter.driver.executeQuery({
+      sql: `
+        INSERT INTO "user_auth" ("id", "email", "passwordHash", "role")
+        VALUES (?, ?, ?, ?)
+        RETURNING "_internalId"
+      `,
+      parameters: [userId, "upgrade-user@test.com", "legacy-password-hash", "user"],
+    });
+    const insertedUser = insertedUsers.rows[0] as { _internalId: number | bigint } | undefined;
+    assert(insertedUser);
+
+    await sqlAdapter.driver.executeQuery({
+      sql: `
+        INSERT INTO "session_auth" ("id", "userId", "expiresAt")
+        VALUES (?, ?, ?)
+      `,
+      parameters: [
+        credentialToken,
+        insertedUser._internalId,
+        new Date("2100-01-01T00:00:00.000Z").getTime(),
+      ],
+    });
+
+    return credentialToken;
+  };
 
   afterAll(async () => {
     await test.cleanup();
   });
 
-  it("supports enabling organizations after upgrading", async () => {
-    const signUpResponse = await fragment.callRoute("POST", "/sign-up", {
-      body: { email: "upgrade-user@test.com", password: "password" },
-    });
-
-    assert(signUpResponse.type === "json");
-    const credentialToken = signUpResponse.data.auth.token as string;
-
-    const meBeforeUpgrade = await fragment.callRoute("GET", "/me", {
-      headers: authHeaders(credentialToken),
-    });
-
-    assert(meBeforeUpgrade.type === "json");
-    expect(meBeforeUpgrade.data.organizations).toHaveLength(0);
-    expect(meBeforeUpgrade.data.activeOrganization).toBeNull();
+  it("preserves legacy users when enabling organizations after upgrading", async () => {
+    // The current fragment is compiled against the latest schema, so legacy data is inserted
+    // through the SQLite boundary before the migration adds newer Auth columns and tables.
+    const credentialToken = await seedLegacyCredential();
 
     if (!test.adapter.prepareMigrations) {
       throw new Error("Adapter does not support migrations in upgrade test.");
@@ -81,6 +102,15 @@ describe("auth-fragment organization upgrades", async () => {
     await migrations.execute(preOrganizationSchemaVersion, authSchema.version, {
       updateVersionInMigration: false,
     });
+
+    const meBeforeOrganizationsEnabled = await fragment.callRoute("GET", "/me", {
+      headers: authHeaders(credentialToken),
+    });
+
+    assert(meBeforeOrganizationsEnabled.type === "json");
+    assert.equal(meBeforeOrganizationsEnabled.data.user.email, "upgrade-user@test.com");
+    expect(meBeforeOrganizationsEnabled.data.organizations).toHaveLength(0);
+    expect(meBeforeOrganizationsEnabled.data.activeOrganization).toBeNull();
 
     const upgradedFragment = instantiate(authFragmentDefinition)
       .withConfig({ organizations: {} })

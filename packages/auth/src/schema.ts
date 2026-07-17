@@ -187,6 +187,9 @@ export const authSchema = schema("auth", (s) => {
     .noOp("removed obsolete userOrganizationMembers join-only relation history")
     .alterTable("oauthState", (t) => {
       return t.addColumn("sessionSeed", column("json").nullable());
+    })
+    .alterTable("user", (t) => {
+      return t.addColumn("emailVerifiedAt", column("timestamp").nullable());
     });
 });
 
