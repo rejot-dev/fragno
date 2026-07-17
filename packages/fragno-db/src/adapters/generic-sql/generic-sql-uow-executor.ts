@@ -278,7 +278,7 @@ async function reserveOutboxVersion(
             `;
 
       const result = await tx.executeQuery(query.compile(dialect));
-      if (!result.rows[0] || result.rows[0]["value"] === undefined) {
+      if (result.rows[0]?.["value"] === undefined) {
         throw new Error("Outbox version row was not found for update-returning strategy.");
       }
       return parseReservedOutboxVersion(result.rows[0]);

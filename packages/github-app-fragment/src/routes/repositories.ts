@@ -57,7 +57,7 @@ export const githubAppRepositoryRoutesFactory = defineRoutes(githubAppFragmentDe
               continue;
             }
             const installation = normalizeJoinedInstallation(repo.installation);
-            if (!installation || installation.status !== "active") {
+            if (installation?.status !== "active") {
               continue;
             }
             const linkEntries = normalizeJoinedLinks(repo.links);

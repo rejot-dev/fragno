@@ -6,7 +6,7 @@ type DbNowLike = {
 };
 
 const isDbNowLike = (value: unknown): value is DbNowLike =>
-  typeof value === "object" && value !== null && (value as { tag?: string }).tag === "db-now";
+  typeof value === "object" && (value as { tag?: string })?.tag === "db-now";
 
 const resolveMutationValue = (value: unknown, baseNow: number): unknown => {
   if (isDbNowLike(value)) {

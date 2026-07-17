@@ -123,7 +123,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   };
 
   const result = await createResendThread(request, context, scope, payload);
-  if (result.error || !result.result || !result.result.thread.id) {
+  if (result.error || !result.result?.thread.id) {
     return {
       ok: false,
       message: result.error ?? "Failed to create thread.",

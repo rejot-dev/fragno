@@ -68,7 +68,7 @@
     "typescript/prefer-find": "error",
     "typescript/prefer-includes": "error",
     "typescript/prefer-nullish-coalescing": "off",
-    "typescript/prefer-optional-chain": "off",
+    "typescript/prefer-optional-chain": "error",
     "typescript/prefer-promise-reject-errors": "error",
     "typescript/prefer-readonly-parameter-types": "off",
     "typescript/prefer-readonly": "off",

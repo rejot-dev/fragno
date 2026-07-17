@@ -332,7 +332,7 @@ const collectCreatedInternalIds = async <TContext>(
 
   for (const mutation of mutationBatch) {
     const operation = mutation.operation;
-    if (!operation || operation.type !== "create") {
+    if (operation?.type !== "create") {
       continue;
     }
 

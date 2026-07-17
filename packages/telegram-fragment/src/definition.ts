@@ -114,7 +114,7 @@ export const telegramFragmentDefinition = defineFragment<TelegramFragmentConfig>
           return;
         }
 
-        const definition = (config.commands ?? {})[result.command.name];
+        const definition = config.commands?.[result.command.name];
         if (!definition) {
           return;
         }

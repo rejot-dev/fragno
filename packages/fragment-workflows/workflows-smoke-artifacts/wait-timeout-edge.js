@@ -165,7 +165,7 @@ async function main() {
   const beforeFailures = [];
   for (const id of beforeIds) {
     const status = latest.get(id);
-    if (!status || status.details.status !== "complete") {
+    if (status?.details.status !== "complete") {
       beforeFailures.push({ id, status: status?.details?.status });
     }
   }

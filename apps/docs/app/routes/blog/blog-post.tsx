@@ -49,9 +49,7 @@ export async function loader({ params }: Route.LoaderArgs) {
 }
 
 const BASE_URL =
-  typeof import.meta.env !== "undefined" && import.meta.env.MODE === "development"
-    ? "http://localhost:3000"
-    : "https://fragno.dev";
+  import.meta.env.MODE === "development" ? "http://localhost:3000" : "https://fragno.dev";
 
 export function meta({ data }: Route.MetaArgs) {
   if (!data) {

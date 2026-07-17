@@ -177,9 +177,7 @@ export const registerEmailRoutes = ({ defineRoute, config }: ResendRouteFactoryC
             b.whereIndex("primary", (eb) => eb("id", "=", pathParams.emailId)),
           ),
         )
-        .transformRetrieve(([record]) =>
-          record && record.direction === "outbound" ? record : null,
-        )
+        .transformRetrieve(([record]) => (record?.direction === "outbound" ? record : null))
         .execute();
 
       if (!email) {

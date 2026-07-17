@@ -222,7 +222,7 @@ export class Reson8RealtimeTranscriberStore {
         .join(" "),
     );
     this.interimTranscript = computed(this.latestMessage, (message) => {
-      if (!message || message.type !== "transcript") {
+      if (message?.type !== "transcript") {
         return null;
       }
 

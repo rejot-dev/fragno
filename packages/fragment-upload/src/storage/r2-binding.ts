@@ -440,7 +440,7 @@ export function createR2BindingStorageAdapter(
     },
     getDownloadStream: async ({ storageKey }) => {
       const object = await options.bucket.get(storageKey);
-      if (!object || !object.body) {
+      if (!object?.body) {
         throw new Error("STORAGE_ERROR");
       }
 

@@ -298,7 +298,7 @@ export function PromptProvider({
   // block then subscribes to it (via the Pi client) to render the live transcript.
   const composeData = composeFetcher.data;
   useEffect(() => {
-    if (!composeData || composeData.intent !== "compose") {
+    if (composeData?.intent !== "compose") {
       return;
     }
     if (composeData.ok) {

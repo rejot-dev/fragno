@@ -47,10 +47,10 @@ export function WorkflowPanel({
   // The workbench renders full-bleed (flush header + edge-to-edge panels) to
   // match the workflows page; the loading / not-found notices keep the panel's
   // padding, so the body is only flush while the workbench itself is shown.
-  const hasWorkbench = !!(data && data.source && data.selected && data.graph);
+  const hasWorkbench = !!(data?.source && data.selected && data.graph);
 
   let body: ReactNode;
-  if (data && data.source && data.selected && data.graph) {
+  if (data?.source && data.selected && data.graph) {
     body = (
       <WorkflowWorkbench
         key={data.source.absolutePath}

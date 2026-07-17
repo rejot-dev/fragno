@@ -33,7 +33,7 @@ const resolveEnvValue = (env: CloudflareEnv, key: string): string | undefined =>
   }
   const processEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } })
     .process?.env;
-  if (processEnv && processEnv[key]) {
+  if (processEnv?.[key]) {
     return processEnv[key];
   }
   return undefined;

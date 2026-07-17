@@ -469,7 +469,7 @@ export const cloudflareFragmentDefinition = defineFragment<CloudflareFragmentCon
 
       await finalizeDeploymentStateTx
         .mutate(({ forSchema, retrieveResult: { deployment, remoteDeployment } }) => {
-          if (!deployment || !deployment.app) {
+          if (!deployment?.app) {
             return;
           }
 

@@ -59,7 +59,7 @@ const createDbNow = (offsetMs = 0): DbNow => ({
 export const dbNow = (): DbNow => createDbNow(0);
 
 export const isDbNow = (value: unknown): value is DbNow =>
-  typeof value === "object" && value !== null && (value as { tag?: string }).tag === "db-now";
+  typeof value === "object" && (value as { tag?: string })?.tag === "db-now";
 
 export const getDbNowOffsetMs = (value: DbNow): number =>
   typeof value.offsetMs === "number" ? value.offsetMs : 0;
@@ -70,4 +70,4 @@ export const dbInterval = (input: DbIntervalInput): DbInterval => ({
 });
 
 export const isDbInterval = (value: unknown): value is DbInterval =>
-  typeof value === "object" && value !== null && (value as { tag?: string }).tag === "db-interval";
+  typeof value === "object" && (value as { tag?: string })?.tag === "db-interval";

@@ -47,12 +47,12 @@ export type PiSessionTurnResult = PiSessionDetail & {
 const extractMessageText = (
   message: PiSessionDetail["agent"]["state"]["messages"][number] | undefined,
 ): string => {
-  if (!message || message.role !== "assistant" || !Array.isArray(message.content)) {
+  if (message?.role !== "assistant" || !Array.isArray(message.content)) {
     return "";
   }
 
   return message.content
-    .filter((block) => typeof block === "object" && block !== null && block.type === "text")
+    .filter((block) => typeof block === "object" && block?.type === "text")
     .map((block) => ("text" in block && typeof block.text === "string" ? block.text : ""))
     .join("")
     .trim();

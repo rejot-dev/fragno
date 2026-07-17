@@ -347,7 +347,7 @@ const retitlePostHandler = async ({ input, tx }: CommandArgs) => {
     .transformRetrieve(([post]) => post ?? null)
     .mutate((ctx) => {
       const { retrieveResult } = ctx;
-      if (!retrieveResult || !retrieveResult.author) {
+      if (!retrieveResult?.author) {
         return { updated: false };
       }
       if (retrieveResult.author.name !== payload.expectedAuthorName) {
@@ -380,7 +380,7 @@ const secureRetitlePostHandler = async ({ input, tx, ctx }: CommandArgs) => {
     .transformRetrieve(([post]) => post ?? null)
     .mutate((ctx) => {
       const { retrieveResult } = ctx;
-      if (!retrieveResult || !retrieveResult.author) {
+      if (!retrieveResult?.author) {
         return { updated: false };
       }
       if (retrieveResult.author.name !== payload.expectedAuthorName) {
@@ -788,7 +788,7 @@ describe("Lofi scenario DSL", () => {
         clientSteps.assert((ctx) => {
           const response = ctx.lastSubmit["a"];
           assert(response?.status === "conflict");
-          if (response && response.status === "conflict") {
+          if (response?.status === "conflict") {
             assert(response.reason === "write_congestion");
           }
           const user = ctx.vars.userAFinal;

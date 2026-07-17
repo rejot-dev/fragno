@@ -134,7 +134,7 @@ const isDefineRouteMemberAccess = (
   }
 
   const binding = path.scope.getBinding(callee.object.name);
-  if (!binding || binding.kind !== "param") {
+  if (binding?.kind !== "param") {
     return false;
   }
 

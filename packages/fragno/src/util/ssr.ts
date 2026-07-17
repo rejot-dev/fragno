@@ -28,7 +28,7 @@ declare global {
 let clientInitialData: Map<string, unknown> | undefined;
 
 export function hydrateFromWindow() {
-  if (typeof window !== "undefined" && window.__FRAGNO_INITIAL_DATA__) {
+  if (window?.__FRAGNO_INITIAL_DATA__) {
     clientInitialData = new Map(window.__FRAGNO_INITIAL_DATA__);
     delete window.__FRAGNO_INITIAL_DATA__;
     console.warn("hydrateFromWindow", {

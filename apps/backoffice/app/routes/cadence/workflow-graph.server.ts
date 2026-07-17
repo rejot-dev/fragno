@@ -123,7 +123,7 @@ function jsonSchemaPropToField(
   const enumValues = Array.isArray(prop.enum)
     ? prop.enum.filter((v): v is string => typeof v === "string")
     : undefined;
-  const isEnum = enumValues !== undefined && enumValues.length === (prop.enum?.length ?? 0);
+  const isEnum = enumValues?.length === (prop.enum?.length ?? 0);
 
   let type: WorkflowInputFieldType = "unknown";
   if (isEnum && enumValues && enumValues.length > 0) {

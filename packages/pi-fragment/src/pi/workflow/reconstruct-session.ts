@@ -40,9 +40,7 @@ type WorkflowHistoryAgentRunStepRow = WorkflowHistoryStepRow & {
 };
 
 const isAgentRunStepResult = (result: unknown): result is AgentRunStepResult =>
-  typeof result === "object" &&
-  result !== null &&
-  (result as { type?: unknown }).type === "agent-run";
+  typeof result === "object" && (result as { type?: unknown })?.type === "agent-run";
 
 const messagesFromEvents = (events: AgentEvent[]): AgentMessage[] =>
   events.flatMap((event) => (event.type === "message_end" ? [event.message] : []));

@@ -422,7 +422,7 @@ export function createUserServices(
             .findFirst("user", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
         )
         .mutate(({ uow, retrieveResult: [session, user] }) => {
-          if (!session || !session.sessionOwner) {
+          if (!session?.sessionOwner) {
             return { ok: false as const, code: "credential_invalid" as const };
           }
 
@@ -480,7 +480,7 @@ export function createUserServices(
           ),
         )
         .mutate(({ uow, retrieveResult: [session] }) => {
-          if (!session || !session.sessionOwner) {
+          if (!session?.sessionOwner) {
             return { ok: false as const, code: "credential_invalid" as const };
           }
 

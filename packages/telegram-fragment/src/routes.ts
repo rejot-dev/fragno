@@ -193,7 +193,7 @@ export const telegramRoutesFactory = defineRoutes(telegramFragmentDefinition).cr
         errorCodes: ["chat_not_found", "command_not_found", "invalid_scopes"] as const,
         handler: async function ({ input }, { json, error }) {
           const payload = await input.valid();
-          const command = (config.commands ?? {})[payload.commandName];
+          const command = config.commands?.[payload.commandName];
 
           if (!command) {
             return error({ message: "Command not found", code: "command_not_found" }, 404);

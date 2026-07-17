@@ -75,7 +75,7 @@ const bytesToHex = (bytes: Uint8Array): string => {
 type DbNow = { tag: "db-now" };
 
 const isDbNow = (value: unknown): value is DbNow =>
-  typeof value === "object" && value !== null && (value as { tag?: string }).tag === "db-now";
+  typeof value === "object" && (value as { tag?: string })?.tag === "db-now";
 
 const resolveFragnoIdValue = (value: unknown, col: AnyColumn): unknown => {
   if (value instanceof FragnoReference) {
