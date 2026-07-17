@@ -577,7 +577,7 @@ const evaluateCondition = async (
     case "<=":
       return comparison <= 0;
     default:
-      throw new Error(`Unsupported operator "${op}".`);
+      throw new Error(`Unsupported operator "${String(op)}".`);
   }
 };
 
@@ -1207,7 +1207,7 @@ const evaluateQueryTreeCondition = async (options: {
     case "<=":
       return comparison <= 0;
     default:
-      throw new Error(`Unsupported operator "${op}".`);
+      throw new Error(`Unsupported operator "${String(op)}".`);
   }
 };
 

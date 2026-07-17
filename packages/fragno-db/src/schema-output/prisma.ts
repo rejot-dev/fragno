@@ -189,10 +189,8 @@ function getPrismaScalarType(
         return { type: "DateTime", nativeType: "@db.Date" };
       }
       return { type: "DateTime" };
-    default: {
-      const exhaustiveCheck: never = column.type;
-      throw new Error(`Unsupported column type: ${exhaustiveCheck}`);
-    }
+    default:
+      throw new Error("Unsupported column type.");
   }
 }
 

@@ -91,7 +91,7 @@ function assertJsonStream<TResponse extends { type: string }>(
 ): asserts response is Extract<TResponse, { type: "jsonStream" }> {
   assert(response.type === "jsonStream");
   if (response.type !== "jsonStream") {
-    throw new Error(`Expected jsonStream response, got ${response.type}.`);
+    throw new Error(`Expected jsonStream response, got ${String(response.type)}.`);
   }
 }
 

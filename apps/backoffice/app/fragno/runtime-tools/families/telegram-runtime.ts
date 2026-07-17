@@ -92,7 +92,7 @@ export const createRouteBackedTelegramRuntime = (
         throw new Error("telegram.chat.actions requires a chat id");
       }
       if (action !== "typing") {
-        throw new Error(`Unsupported Telegram chat action: ${action}`);
+        throw new Error(`Unsupported Telegram chat action: ${String(action)}`);
       }
 
       const response = await callRoute("POST", "/chats/:chatId/actions", {

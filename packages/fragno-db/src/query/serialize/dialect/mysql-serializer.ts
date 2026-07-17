@@ -46,7 +46,7 @@ export class MySQLSerializer extends SQLSerializer {
     if (typeof value === "string") {
       return new Date(value);
     }
-    throw new Error(`Cannot deserialize date from value: ${value}`);
+    throw new Error(`Cannot deserialize date from value: ${String(value)}`);
   }
 
   protected deserializeBoolean(value: unknown): boolean {
@@ -57,7 +57,7 @@ export class MySQLSerializer extends SQLSerializer {
     if (typeof value === "number") {
       return value === 1;
     }
-    throw new Error(`Cannot deserialize boolean from value: ${value}`);
+    throw new Error(`Cannot deserialize boolean from value: ${String(value)}`);
   }
 
   protected deserializeBigInt(value: unknown): bigint {
@@ -71,7 +71,7 @@ export class MySQLSerializer extends SQLSerializer {
     if (typeof value === "number") {
       return BigInt(value);
     }
-    throw new Error(`Cannot deserialize bigint from value: ${value}`);
+    throw new Error(`Cannot deserialize bigint from value: ${String(value)}`);
   }
 
   protected serializeJson(value: unknown): string {

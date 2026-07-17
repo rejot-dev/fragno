@@ -202,7 +202,8 @@ async function syncProductsToStripe() {
 
         console.log(`  ✓ Synced successfully\n`);
       } catch (error) {
-        console.error(`  ✗ Error syncing product: ${error}\n`);
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`  ✗ Error syncing product: ${message}\n`);
       }
     }
 

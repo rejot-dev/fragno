@@ -26,7 +26,7 @@ export function formatStepLine(step: Record<string, unknown>): string {
   const status = String(step["status"] ?? "-");
   const attempts = String(step["attempts"] ?? "-");
   const maxAttempts = String(step["maxAttempts"] ?? "-");
-  const waitEventType = step["waitEventType"] ? ` wait:${step["waitEventType"]}` : "";
+  const waitEventType = step["waitEventType"] ? ` wait:${String(step["waitEventType"])}` : "";
   const nextRetryAt = step["nextRetryAt"] ? ` retry:${formatDate(step["nextRetryAt"])}` : "";
   const wakeAt = step["wakeAt"] ? ` wake:${formatDate(step["wakeAt"])}` : "";
   const error = step["error"]

@@ -31,9 +31,7 @@ export function createSQLQueryCompiler(
       return new MySQLQueryCompiler(db, driverConfig, sqliteStorageMode, resolver);
     case "sqlite":
       return new SQLiteQueryCompiler(db, driverConfig, sqliteStorageMode, resolver);
-    default: {
-      const exhaustiveCheck: never = driverConfig.databaseType;
-      throw new Error(`Unsupported database type: ${exhaustiveCheck}`);
-    }
+    default:
+      throw new Error("Unsupported database type.");
   }
 }

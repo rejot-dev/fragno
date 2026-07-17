@@ -25,9 +25,7 @@ export function createSQLTypeMapper(
       return new MySQLTypeMapper(database);
     case "sqlite":
       return new SQLiteTypeMapper(database, sqliteStorageMode);
-    default: {
-      const exhaustiveCheck: never = database;
-      throw new Error(`Unsupported database type: ${exhaustiveCheck}`);
-    }
+    default:
+      throw new Error("Unsupported database type.");
   }
 }

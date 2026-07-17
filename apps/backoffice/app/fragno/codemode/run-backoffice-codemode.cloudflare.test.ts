@@ -378,7 +378,9 @@ describe("runBackofficeCodemode", () => {
       }),
       callTool: async (input) => {
         calls.push(["callTool", input]);
-        return { content: [{ type: "text", text: `result for ${input.arguments?.query}` }] };
+        return {
+          content: [{ type: "text", text: `result for ${String(input.arguments?.query ?? "")}` }],
+        };
       },
       createServer: async () => {
         throw new Error("not used");

@@ -47,14 +47,14 @@ export class PostgreSQLSerializer extends SQLSerializer {
       // Normalize timezone-less timestamps to UTC to avoid local offset drift.
       return new Date(normalizeTimestampString(value));
     }
-    throw new Error(`Cannot deserialize date from value: ${value}`);
+    throw new Error(`Cannot deserialize date from value: ${String(value)}`);
   }
 
   protected deserializeBoolean(value: unknown): boolean {
     if (typeof value === "boolean") {
       return value;
     }
-    throw new Error(`Cannot deserialize boolean from value: ${value}`);
+    throw new Error(`Cannot deserialize boolean from value: ${String(value)}`);
   }
 
   protected deserializeBigInt(value: unknown): bigint {
@@ -68,7 +68,7 @@ export class PostgreSQLSerializer extends SQLSerializer {
     if (typeof value === "number") {
       return BigInt(value);
     }
-    throw new Error(`Cannot deserialize bigint from value: ${value}`);
+    throw new Error(`Cannot deserialize bigint from value: ${String(value)}`);
   }
 
   protected serializeJson(value: unknown): unknown {

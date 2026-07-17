@@ -135,42 +135,42 @@ export function buildQueryTreeWhere(
         rhs =
           rightValue instanceof Column
             ? sql`concat('%', ${eb.ref(getColumnSqlName(rightValue, resolver))}, '%')`
-            : `%${rightValue}%`;
+            : `%${String(rightValue)}%`;
         break;
       case "not contains":
         operator = "not like";
         rhs =
           rightValue instanceof Column
             ? sql`concat('%', ${eb.ref(getColumnSqlName(rightValue, resolver))}, '%')`
-            : `%${rightValue}%`;
+            : `%${String(rightValue)}%`;
         break;
       case "starts with":
         operator = "like";
         rhs =
           rightValue instanceof Column
             ? sql`concat(${eb.ref(getColumnSqlName(rightValue, resolver))}, '%')`
-            : `${rightValue}%`;
+            : `${String(rightValue)}%`;
         break;
       case "not starts with":
         operator = "not like";
         rhs =
           rightValue instanceof Column
             ? sql`concat(${eb.ref(getColumnSqlName(rightValue, resolver))}, '%')`
-            : `${rightValue}%`;
+            : `${String(rightValue)}%`;
         break;
       case "ends with":
         operator = "like";
         rhs =
           rightValue instanceof Column
             ? sql`concat('%', ${eb.ref(getColumnSqlName(rightValue, resolver))})`
-            : `%${rightValue}`;
+            : `%${String(rightValue)}`;
         break;
       case "not ends with":
         operator = "not like";
         rhs =
           rightValue instanceof Column
             ? sql`concat('%', ${eb.ref(getColumnSqlName(rightValue, resolver))})`
-            : `%${rightValue}`;
+            : `%${String(rightValue)}`;
         break;
       case "!=":
       case "<":

@@ -240,42 +240,42 @@ export function buildWhere(
         rhs =
           val instanceof Column
             ? sql`concat('%', ${eb.ref(fullSQLNameWithAlias(val, resolver, table, tableAlias))}, '%')`
-            : `%${val}%`;
+            : `%${String(val)}%`;
         break;
       case "not contains":
         v = "not like";
         rhs =
           val instanceof Column
             ? sql`concat('%', ${eb.ref(fullSQLNameWithAlias(val, resolver, table, tableAlias))}, '%')`
-            : `%${val}%`;
+            : `%${String(val)}%`;
         break;
       case "starts with":
         v = "like";
         rhs =
           val instanceof Column
             ? sql`concat(${eb.ref(fullSQLNameWithAlias(val, resolver, table, tableAlias))}, '%')`
-            : `${val}%`;
+            : `${String(val)}%`;
         break;
       case "not starts with":
         v = "not like";
         rhs =
           val instanceof Column
             ? sql`concat(${eb.ref(fullSQLNameWithAlias(val, resolver, table, tableAlias))}, '%')`
-            : `${val}%`;
+            : `${String(val)}%`;
         break;
       case "ends with":
         v = "like";
         rhs =
           val instanceof Column
             ? sql`concat('%', ${eb.ref(fullSQLNameWithAlias(val, resolver, table, tableAlias))})`
-            : `%${val}`;
+            : `%${String(val)}`;
         break;
       case "not ends with":
         v = "not like";
         rhs =
           val instanceof Column
             ? sql`concat('%', ${eb.ref(fullSQLNameWithAlias(val, resolver, table, tableAlias))})`
-            : `%${val}`;
+            : `%${String(val)}`;
         break;
       case "!=":
       case "<":

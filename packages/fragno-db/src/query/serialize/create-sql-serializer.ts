@@ -31,9 +31,7 @@ export function createSQLSerializer(
       return new MySQLSerializer(driverConfig);
     case "sqlite":
       return new SQLiteSerializer(driverConfig, sqliteStorageMode);
-    default: {
-      const exhaustiveCheck: never = driverConfig.databaseType;
-      throw new Error(`Unsupported database type: ${exhaustiveCheck}`);
-    }
+    default:
+      throw new Error("Unsupported database type.");
   }
 }
