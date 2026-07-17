@@ -33,7 +33,7 @@
     "typescript/consistent-return": "off",
     "typescript/consistent-type-exports": "off",
     "typescript/dot-notation": "off",
-    "typescript/no-array-delete": "off",
+    "typescript/no-array-delete": "error",
     "typescript/no-base-to-string": "off",
     "typescript/no-confusing-void-expression": "off",
     "typescript/no-deprecated": "off",
