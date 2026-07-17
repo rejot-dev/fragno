@@ -428,11 +428,9 @@ describe("createReactMutator", () => {
     const { result: renderedHook } = renderHook(() => useCreateUserMutator());
     const { mutate: createUser } = renderedHook.current;
 
-    await expect(
-      createUser({
-        body: { name: "John", email: "john@example.com" },
-      }),
-    );
+    await createUser({
+      body: { name: "John", email: "john@example.com" },
+    });
 
     await waitFor(() => {
       assert(!renderedHook.current.loading);

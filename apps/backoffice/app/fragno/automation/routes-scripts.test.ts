@@ -90,7 +90,7 @@ describe("automation routes /scripts", () => {
   });
 
   test("loads scripts from a custom filesystem", async () => {
-    const fileSystem = await createTestMasterFileSystem({
+    const fileSystem = createTestMasterFileSystem({
       "/workspace/automations/present.sh": "#!/usr/bin/env bash\necho ok",
       "/workspace/automations/present.cm.js": "async () => true",
     });

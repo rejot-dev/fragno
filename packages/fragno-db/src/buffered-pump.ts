@@ -632,7 +632,9 @@ export class BufferedDatabasePump<
       if (!scope || scope.closed || this.#isAlreadyDeliveredToScope(delivery)) {
         continue;
       }
-      await Promise.all([...scope.handlers].map((handler) => handler(delivery.message)));
+      await Promise.all(
+        [...scope.handlers].map(async (handler) => await handler(delivery.message)),
+      );
     }
   }
 

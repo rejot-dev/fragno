@@ -77,7 +77,7 @@ const main = defineCommand({
         process.exit(1);
       }
 
-      await create(options.data);
+      create(options.data);
       console.log("Project created successfully!");
       return;
     }
@@ -191,7 +191,7 @@ const main = defineCommand({
       process.exit(1);
     }
 
-    await create(options.data);
+    create(options.data);
 
     p.outro("Project created successfully!");
   },

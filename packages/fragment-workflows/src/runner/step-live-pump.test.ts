@@ -102,7 +102,7 @@ describe("WorkflowStepLivePump", () => {
 
     const instanceId = await harness.createInstance("EMISSION_BUS");
     const instance = await readInstance(harness);
-    const emissionBus = await harness.fragment.inContext(function () {
+    const emissionBus = harness.fragment.inContext(function () {
       return openBus<{ type: string }>(stepEmissions, {
         handlerTx: this.handlerTx,
         workflowName: "step-emission-bus-flush-running-workflow",
@@ -162,7 +162,7 @@ describe("WorkflowStepLivePump", () => {
 
     const instanceId = await harness.createInstance("EMISSION_BUS");
     const instance = await readInstance(harness);
-    const emissionBus = await harness.fragment.inContext(function () {
+    const emissionBus = harness.fragment.inContext(function () {
       return openBus<{ type: string }>(stepEmissions, {
         handlerTx: this.handlerTx,
         workflowName: "step-emission-bus-control-output-workflow",
@@ -228,7 +228,7 @@ describe("WorkflowStepLivePump", () => {
 
     const instanceId = await harness.createInstance("EMISSION_BUS");
     const instance = await readInstance(harness);
-    const emissionBus = await harness.fragment.inContext(function () {
+    const emissionBus = harness.fragment.inContext(function () {
       return openBus<{ type: string; text?: string }>(stepEmissions, {
         handlerTx: this.handlerTx,
         workflowName: "step-emission-bus-observe-outbound-workflow",
@@ -284,7 +284,7 @@ describe("WorkflowStepLivePump", () => {
 
     const instanceId = await harness.createInstance("EMISSION_BUS");
     const instance = await readInstance(harness);
-    const localBus = await harness.fragment.inContext(function () {
+    const localBus = harness.fragment.inContext(function () {
       return openBus<{ type: string }>(localRegistry, {
         handlerTx: this.handlerTx,
         workflowName: "step-emission-bus-remote-observer-workflow",
@@ -294,7 +294,7 @@ describe("WorkflowStepLivePump", () => {
 
     const tick = harness.tick(buildPayload(instance, "create"));
     const remoteRegistry = createStepEmissions();
-    const remoteBus = await harness.fragment.inContext(function () {
+    const remoteBus = harness.fragment.inContext(function () {
       return openBus<{ type: string }>(remoteRegistry, {
         handlerTx: this.handlerTx,
         workflowName: "step-emission-bus-remote-observer-workflow",
@@ -352,7 +352,7 @@ describe("WorkflowStepLivePump", () => {
 
     const instanceId = await harness.createInstance("EMISSION_BUS");
     const instance = await readInstance(harness);
-    const emissionBus = await harness.fragment.inContext(function () {
+    const emissionBus = harness.fragment.inContext(function () {
       return openBus<{ type: string; tag?: string }>(stepEmissions, {
         handlerTx: this.handlerTx,
         workflowName: "step-emission-bus-snapshot-outbound-workflow",
@@ -417,7 +417,7 @@ describe("WorkflowStepLivePump", () => {
 
     const instanceId = await harness.createInstance("EMISSION_BUS");
     const instance = await readInstance(harness);
-    const emissionBus = await harness.fragment.inContext(function () {
+    const emissionBus = harness.fragment.inContext(function () {
       return openBus<{ type: string; tag: string }>(stepEmissions, {
         handlerTx: this.handlerTx,
         workflowName: "step-emission-bus-cumulative-snapshot-workflow",
@@ -496,7 +496,7 @@ describe("WorkflowStepLivePump", () => {
 
     const instanceId = await harness.createInstance("EMISSION_BUS");
     const instance = await readInstance(harness);
-    const emissionBus = await harness.fragment.inContext(function () {
+    const emissionBus = harness.fragment.inContext(function () {
       return openBus<{ type: string; tag: string }>(stepEmissions, {
         handlerTx: this.handlerTx,
         workflowName: "step-emission-bus-from-cursors-workflow",
