@@ -11,6 +11,9 @@ import { createReadableStreamFromReadable } from "@react-router/node";
 
 export const streamTimeout = 5_000;
 
+const normalizeError = (error: unknown): Error =>
+  error instanceof Error ? error : new Error(String(error));
+
 export default async function handleRequest(
   request: Request,
   responseStatusCode: number,
@@ -64,7 +67,7 @@ export default async function handleRequest(
           pipe(body);
         },
         onShellError(error: unknown) {
-          reject(error);
+          reject(normalizeError(error));
         },
         onError(error: unknown) {
           responseStatusCode = 500;
