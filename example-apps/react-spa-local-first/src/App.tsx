@@ -1398,7 +1398,7 @@ export default function App() {
                         const signature = getRowSignature(row);
                         const isNew = newRowSignatures.includes(signature);
                         const entries = orderRowEntries(row);
-                        const expanded = Boolean(expandedRows[signature]);
+                        const expanded = expandedRows[signature];
                         return (
                           <Fragment key={signature || rowIndex}>
                             <tr className={`db-row${isNew ? "db-row--new" : ""}`}>

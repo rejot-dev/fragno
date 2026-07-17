@@ -59,7 +59,7 @@ function toRequest(input: RequestInfo | URL, init: RequestInit | undefined, base
     return init ? new Request(input, init) : input;
   }
 
-  const url = input instanceof URL ? input : new URL(String(input), baseUrl);
+  const url = input instanceof URL ? input : new URL(input, baseUrl);
   return new Request(url, init);
 }
 

@@ -258,7 +258,7 @@ export class QueryTreeJoinBuilder<
   ): this {
     if (indexName !== "primary" && !(indexName in this.#table.indexes)) {
       throw new Error(
-        `Index "${String(indexName)}" not found on table "${this.#tableName}". ` +
+        `Index "${indexName}" not found on table "${this.#tableName}". ` +
           `Available indexes: primary, ${Object.keys(this.#table.indexes).join(", ")}`,
       );
     }
@@ -287,7 +287,7 @@ export class QueryTreeJoinBuilder<
   ): this {
     if (indexName !== "primary" && !(indexName in this.#table.indexes)) {
       throw new Error(
-        `Index "${String(indexName)}" not found on table "${this.#tableName}". ` +
+        `Index "${indexName}" not found on table "${this.#tableName}". ` +
           `Available indexes: primary, ${Object.keys(this.#table.indexes).join(", ")}`,
       );
     }
@@ -331,7 +331,7 @@ export class QueryTreeJoinBuilder<
   ): this {
     if (indexName !== "primary" && !(indexName in this.#table.indexes)) {
       throw new Error(
-        `Index "${String(indexName)}" not found on table "${this.#tableName}". ` +
+        `Index "${indexName}" not found on table "${this.#tableName}". ` +
           `Available indexes: primary, ${Object.keys(this.#table.indexes).join(", ")}`,
       );
     }
@@ -528,7 +528,7 @@ export class QueryTreeFindBuilder<
   ): this {
     if (indexName !== "primary" && !(indexName in this.#table.indexes)) {
       throw new Error(
-        `Index "${String(indexName)}" not found on table "${this.#tableName}". ` +
+        `Index "${indexName}" not found on table "${this.#tableName}". ` +
           `Available indexes: primary, ${Object.keys(this.#table.indexes).join(", ")}`,
       );
     }
@@ -583,7 +583,7 @@ export class QueryTreeFindBuilder<
   ): this {
     if (indexName !== "primary" && !(indexName in this.#table.indexes)) {
       throw new Error(
-        `Index "${String(indexName)}" not found on table "${this.#tableName}". ` +
+        `Index "${indexName}" not found on table "${this.#tableName}". ` +
           `Available indexes: primary, ${Object.keys(this.#table.indexes).join(", ")}`,
       );
     }

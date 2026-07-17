@@ -84,7 +84,7 @@ type TelegramMessageRecord = {
 };
 
 const parseCompositeId = (value: RecordId) => {
-  const raw = String(value.valueOf());
+  const raw = value.valueOf();
   const [first, second] = raw.split(":");
 
   return {
@@ -114,7 +114,7 @@ const parseMessageCompositeId = (value: RecordId) => {
 const parseTelegramMessagePayload = (payload: unknown) => safeNormalizeTelegramMessage(payload);
 
 const toUserSummary = (user: TelegramUserRecord): TelegramUserSummary => ({
-  id: String(user.id.valueOf()),
+  id: user.id.valueOf(),
   username: user.username,
   firstName: user.firstName,
   lastName: user.lastName,
@@ -125,7 +125,7 @@ const toUserSummary = (user: TelegramUserRecord): TelegramUserSummary => ({
 });
 
 const toChatSummary = (chat: TelegramChatRecord): TelegramChatSummary => ({
-  id: String(chat.id.valueOf()),
+  id: chat.id.valueOf(),
   type: chat.type as TelegramChatSummary["type"],
   title: chat.title,
   username: chat.username,
@@ -137,12 +137,10 @@ const toChatSummary = (chat: TelegramChatRecord): TelegramChatSummary => ({
 
 const toChatMemberSummary = (member: TelegramChatMemberRecord): TelegramChatMemberSummary => {
   const composite = parseChatMemberCompositeId(member.id);
-  const userId = member.chatMemberUser
-    ? String(member.chatMemberUser.id.valueOf())
-    : composite.userId;
+  const userId = member.chatMemberUser ? member.chatMemberUser.id.valueOf() : composite.userId;
 
   return {
-    id: String(member.id.valueOf()),
+    id: member.id.valueOf(),
     chatId: composite.chatId,
     userId,
     status: member.status,
@@ -161,7 +159,7 @@ const toMessageSummary = (message: TelegramMessageRecord): TelegramMessageSummar
   const fromUserId = payload?.from
     ? String(payload.from.id)
     : message.messageAuthor
-      ? String(message.messageAuthor.id.valueOf())
+      ? message.messageAuthor.id.valueOf()
       : null;
   const senderChatId = payload?.senderChat ? String(payload.senderChat.id) : null;
   const replyToMessageId = payload?.replyToMessage
@@ -170,7 +168,7 @@ const toMessageSummary = (message: TelegramMessageRecord): TelegramMessageSummar
   const attachments = payload ? extractTelegramAttachments(payload) : [];
 
   return {
-    id: String(message.id.valueOf()),
+    id: message.id.valueOf(),
     chatId,
     fromUserId,
     senderChatId,
@@ -329,9 +327,7 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
       });
     }
 
-    const chatIds = Array.from(
-      new Set([chatId, senderChatId ? String(senderChatId) : null].filter(Boolean) as string[]),
-    );
+    const chatIds = Array.from(new Set([chatId, senderChatId ?? null].filter(Boolean) as string[]));
 
     const userIds = Array.from(
       new Set(
@@ -632,7 +628,7 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
           }
 
           messageSummary = {
-            id: String(existingMessage.id.valueOf()),
+            id: existingMessage.id.valueOf(),
             chatId: String(existingMessage.chatId.valueOf()),
             fromUserId: existingMessage.fromUserId
               ? String(existingMessage.fromUserId.valueOf())

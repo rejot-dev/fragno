@@ -116,9 +116,7 @@ export default function BackofficeOrganisationMembers() {
     );
   }, [memberSearch, members]);
 
-  const isInitialMembersLoading = Boolean(
-    membersLoading && !membersInitialized && members.length === 0,
-  );
+  const isInitialMembersLoading = membersLoading && !membersInitialized && members.length === 0;
   const hasMemberSearch = memberSearch.trim().length > 0;
 
   return (

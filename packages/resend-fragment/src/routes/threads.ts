@@ -223,7 +223,7 @@ const appendToThreadSummary = (
           normalizedSubject: currentThread.normalizedSubject,
           participants: nextParticipants,
           heuristicKey,
-          messageCount: Number(currentThread.messageCount ?? 0) + 1,
+          messageCount: (currentThread.messageCount ?? 0) + 1,
           lastMessageAt: input.occurredAt,
           lastDirection: "outbound",
           lastMessagePreview: input.preview,
@@ -236,7 +236,7 @@ const appendToThreadSummary = (
       subject: currentThread.subject ?? input.subject,
       normalizedSubject: currentThread.normalizedSubject,
       participants: nextParticipants,
-      messageCount: Number(currentThread.messageCount ?? 0) + 1,
+      messageCount: (currentThread.messageCount ?? 0) + 1,
       firstMessageAt: currentThread.firstMessageAt,
       lastMessageAt: input.occurredAt,
       lastDirection: "outbound" as const,
@@ -441,7 +441,7 @@ const queueThreadMessage = async function (
 
       return {
         thread: {
-          id: String(threadSummary.threadId.valueOf()),
+          id: threadSummary.threadId.valueOf(),
           subject: threadSummary.subject,
           normalizedSubject: threadSummary.normalizedSubject,
           participants: threadSummary.participants,

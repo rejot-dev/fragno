@@ -124,7 +124,7 @@ export const githubAppInstallationRoutesFactory = defineRoutes(githubAppFragment
               ownerLogin: repo.ownerLogin ?? "",
               name: repo.name ?? "",
               fullName: repo.fullName ?? "",
-              isPrivate: Boolean(repo.isPrivate),
+              isPrivate: repo.isPrivate,
               isFork: repo.isFork ?? null,
               defaultBranch: repo.defaultBranch ?? null,
               removedAt: repo.removedAt ?? null,

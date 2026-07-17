@@ -121,7 +121,7 @@ const normalizeEvents = (
       createdAt: event.createdAt,
     }))
     .sort((left, right) => {
-      const occurred = String(right.occurredAt ?? "").localeCompare(String(left.occurredAt ?? ""));
+      const occurred = (right.occurredAt ?? "").localeCompare(left.occurredAt ?? "");
       return occurred || right.id.localeCompare(left.id);
     });
 

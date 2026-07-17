@@ -43,8 +43,8 @@ export const instancesGetCommand = define({
     console.log(`Status: ${String(details["status"] ?? "unknown")}`);
 
     if (details["error"]) {
-      const name = String((details["error"] as { name?: string }).name ?? "Error");
-      const message = String((details["error"] as { message?: string }).message ?? "");
+      const name = (details["error"] as { name?: string }).name ?? "Error";
+      const message = (details["error"] as { message?: string }).message ?? "";
       console.log(`Error: ${name}${message ? ` - ${message}` : ""}`);
     }
 

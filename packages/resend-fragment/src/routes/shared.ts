@@ -204,7 +204,7 @@ export const buildEmailSummary = (email: {
   updatedAt: Date;
 }) => ({
   id: email.id.valueOf(),
-  status: String(email.status),
+  status: email.status,
   resendId: resolveResendId(email),
   from: email.from ?? null,
   to: normalizeAddressList(asStringArray(email.to)),
@@ -253,7 +253,7 @@ export const buildEmailDetail = (email: {
 
   return {
     id: email.id.valueOf(),
-    status: String(email.status),
+    status: email.status,
     resendId: resolveResendId(email),
     payload: buildEmailPayload(email),
     scheduledAt,
@@ -400,7 +400,7 @@ export const buildThreadSummary = (thread: {
   subject: thread.subject ?? null,
   normalizedSubject: thread.normalizedSubject,
   participants: asStringArray(thread.participants),
-  messageCount: Number(thread.messageCount ?? 0),
+  messageCount: thread.messageCount ?? 0,
   firstMessageAt: thread.firstMessageAt,
   lastMessageAt: thread.lastMessageAt,
   lastDirection: thread.lastDirection ?? null,
