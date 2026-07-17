@@ -68,7 +68,18 @@ export const automationEventRoutes = defineRoutes(automationFragmentDefinition).
           .execute();
 
         return json({
-          events: result.events,
+          events: result.events.map((event) => ({
+            id: event.id.valueOf(),
+            scope: event.scope,
+            source: event.source,
+            eventType: event.eventType,
+            occurredAt: event.occurredAt.toISOString(),
+            payload: event.payload,
+            actor: event.actor,
+            actors: event.actors,
+            subject: event.subject ?? null,
+            createdAt: event.createdAt.toISOString(),
+          })),
           nextCursor: result.cursor?.encode(),
           hasNextPage: result.hasNextPage,
         });

@@ -17,6 +17,7 @@ const runtime: AutomationRuntime = {
   ...createUnavailableAutomationRouterRuntime(),
   get: async () => null,
   set: async (input) => ({
+    id: input.key,
     key: input.key,
     value: input.value,
     category: input.category ?? [],

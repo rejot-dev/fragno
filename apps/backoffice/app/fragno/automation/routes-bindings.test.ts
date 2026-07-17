@@ -643,7 +643,7 @@ describe("automation routes /event-definitions", () => {
     assert(response.error.code === "EVENT_DEFINITION_INVALID");
   });
 
-  test("returns the new updatedAt timestamp after patching a definition", async () => {
+  test("updates the read timestamp after patching a definition", async () => {
     await fragment.callRoute("POST", "/event-definitions", {
       body: {
         source: "custom",
@@ -667,7 +667,13 @@ describe("automation routes /event-definitions", () => {
     });
 
     assert(patched.type === "json");
-    expect(patched.data.updatedAt).not.toBe(before.data.updatedAt);
+    expect(patched.data).not.toHaveProperty("updatedAt");
+
+    const after = await fragment.callRoute("GET", "/event-definitions/:source/:eventType", {
+      pathParams: { source: "custom", eventType: "patched.definition" },
+    });
+    assert(after.type === "json");
+    expect(after.data.updatedAt).not.toBe(before.data.updatedAt);
   });
 });
 
@@ -826,7 +832,15 @@ describe("automation routes /store", () => {
     assert(getResponse.type === "json");
     if (getResponse.type === "json") {
       expect(getResponse.data).toMatchObject({ key: "telegram/chat-123", value: "user-55", actor });
+      assert(typeof getResponse.data.createdAt === "string");
+      assert(typeof getResponse.data.updatedAt === "string");
     }
+
+    const serviceEntry = await fragment.callServices(() =>
+      fragment.services.getStoreEntry({ key: "telegram/chat-123" }),
+    );
+    expect(serviceEntry?.createdAt).toBeInstanceOf(Date);
+    expect(serviceEntry?.updatedAt).toBeInstanceOf(Date);
   });
 
   test("rejects set without actor", async () => {
@@ -857,9 +871,19 @@ describe("automation routes /store", () => {
     assert(first.type === "json");
     assert(second.type === "json");
     if (first.type === "json" && second.type === "json") {
+      expect(first.data.id).toBeDefined();
       expect(second.data.id).toBe(first.data.id);
       assert(second.data.value === "user-99");
       expect(second.data.actor).toEqual(secondActor);
+    }
+
+    const getResponse = await fragment.callRoute("GET", "/store/get", {
+      query: { key: "telegram/chat-123" },
+    });
+    assert(getResponse.type === "json");
+    if (getResponse.type === "json") {
+      expect(getResponse.data.id).toBeDefined();
+      assert(getResponse.data.value === "user-99");
     }
   });
 

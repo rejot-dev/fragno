@@ -10,6 +10,7 @@ import {
   automationStoreEntrySchema,
   automationStoreListInputSchema,
   automationStoreSetInputSchema,
+  automationStoreSetResultSchema,
 } from "./store";
 
 export const automationStoreRoutes = defineRoutes(automationFragmentDefinition).create(
@@ -52,7 +53,18 @@ export const automationStoreRoutes = defineRoutes(automationFragmentDefinition).
 
         const entries = await this.handlerTx()
           .withServiceCalls(() => [services.listStoreEntries(parsed.data)] as const)
-          .transform(({ serviceResult: [result] }) => result)
+          .transform(({ serviceResult: [entries] }) =>
+            entries.map((entry) => ({
+              id: entry.id.valueOf(),
+              key: entry.key,
+              value: entry.value,
+              description: entry.description,
+              category: entry.category ?? [],
+              actor: entry.actor,
+              createdAt: entry.createdAt.toISOString(),
+              updatedAt: entry.updatedAt.toISOString(),
+            })),
+          )
           .execute();
         return json(entries);
       },
@@ -76,7 +88,20 @@ export const automationStoreRoutes = defineRoutes(automationFragmentDefinition).
 
         const entry = await this.handlerTx()
           .withServiceCalls(() => [services.getStoreEntry({ key })] as const)
-          .transform(({ serviceResult: [result] }) => result)
+          .transform(({ serviceResult: [entry] }) =>
+            entry
+              ? {
+                  id: entry.id.valueOf(),
+                  key: entry.key,
+                  value: entry.value,
+                  description: entry.description,
+                  category: entry.category ?? [],
+                  actor: entry.actor,
+                  createdAt: entry.createdAt.toISOString(),
+                  updatedAt: entry.updatedAt.toISOString(),
+                }
+              : null,
+          )
           .execute();
 
         if (!entry) {
@@ -96,7 +121,7 @@ export const automationStoreRoutes = defineRoutes(automationFragmentDefinition).
       method: "POST",
       path: "/store/set",
       inputSchema: automationStoreSetInputSchema,
-      outputSchema: automationStoreEntrySchema,
+      outputSchema: automationStoreSetResultSchema,
       handler: async function ({ input }, { json, error }) {
         const payload = await input.valid();
         try {

@@ -429,6 +429,7 @@ describe("Pi execCodeMode tool", () => {
       get: async (input) => {
         calls.push(["get", input]);
         return {
+          id: input.key,
           key: input.key,
           value: "user-55",
           category: [],
@@ -438,6 +439,7 @@ describe("Pi execCodeMode tool", () => {
       set: async (input) => {
         calls.push(["set", input]);
         return {
+          id: input.key,
           key: input.key,
           value: input.value,
           category: input.category ?? [],
@@ -479,7 +481,7 @@ describe("Pi execCodeMode tool", () => {
           inputSummary: '{"key":"telegram/chat-123"}',
           status: "success",
           resultSummary:
-            '{"key":"telegram/chat-123","value":"user-55","category":[],"actor":{"scope":"external","type":"chat","id":"chat-123","source":"telegram"}}',
+            '{"id":"telegram/chat-123","key":"telegram/chat-123","value":"user-55","category":[],"actor":{"scope":"external","type":"chat","id":"chat-123","source":"telegram"}}',
         },
         {
           providerName: "store",
@@ -497,7 +499,7 @@ describe("Pi execCodeMode tool", () => {
     }
     assert(
       content.text ===
-        '{"key":"telegram/chat-456","value":"user-55","category":[],"actor":{"scope":"external","type":"chat","id":"chat-123","source":"telegram"}}',
+        '{"id":"telegram/chat-456","key":"telegram/chat-456","value":"user-55","category":[],"actor":{"scope":"external","type":"chat","id":"chat-123","source":"telegram"}}',
     );
     expect(calls).toEqual([
       ["get", { key: "telegram/chat-123" }],
@@ -517,6 +519,7 @@ describe("Pi execCodeMode tool", () => {
       set: async (input) => {
         calls.push(["set", input]);
         return {
+          id: input.key,
           key: input.key,
           value: input.value,
           category: input.category ?? [],

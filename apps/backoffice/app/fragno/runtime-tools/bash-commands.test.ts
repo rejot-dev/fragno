@@ -29,6 +29,7 @@ describe("createBackofficeBashCommands", () => {
       get: async (input) => {
         calls.push(["get", input]);
         return {
+          id: input.key,
           key: input.key,
           value: "user-55",
           category: [],
@@ -38,6 +39,7 @@ describe("createBackofficeBashCommands", () => {
       set: async (input) => {
         calls.push(["set", input]);
         return {
+          id: input.key,
           key: input.key,
           value: input.value,
           category: input.category ?? [],
@@ -109,7 +111,13 @@ describe("createBackofficeBashCommands", () => {
       get: async () => null,
       set: async (input) => {
         calls.push(["set", input]);
-        return { key: input.key, value: input.value, category: [], actor: input.actor };
+        return {
+          id: input.key,
+          key: input.key,
+          value: input.value,
+          category: [],
+          actor: input.actor,
+        };
       },
       delete: async () => null,
       list: async () => [],
@@ -175,7 +183,13 @@ describe("createBackofficeBashCommands", () => {
       },
       set: async (input) => {
         calls.push(["set", input]);
-        return { key: input.key, value: input.value, category: [], actor: input.actor };
+        return {
+          id: input.key,
+          key: input.key,
+          value: input.value,
+          category: [],
+          actor: input.actor,
+        };
       },
       delete: async (input) => {
         calls.push(["delete", input]);

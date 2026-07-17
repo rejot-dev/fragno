@@ -505,6 +505,7 @@ const createRecordingAutomationRuntime = (calls: unknown[]): AutomationRuntime =
   set: async (input) => {
     calls.push(["set", input]);
     return {
+      id: input.key,
       key: input.key,
       value: input.value,
       category: input.category ?? [],

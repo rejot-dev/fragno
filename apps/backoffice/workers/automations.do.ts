@@ -362,9 +362,25 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     await this.#ensureConfigured({ scope: this.#requireScope() });
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
 
-    return await runtime.automationFragment.callServices(() =>
+    const definitions = await runtime.automationFragment.callServices(() =>
       runtime.automationFragment.services.listEventDefinitions(),
     );
+
+    return definitions.map((definition) => ({
+      id: definition.id.valueOf(),
+      source: definition.source,
+      eventType: definition.eventType,
+      label: definition.label,
+      description: definition.description,
+      payloadSchema: definition.payloadSchema,
+      actorSchema: definition.actorSchema,
+      subjectSchema: definition.subjectSchema,
+      example: definition.example,
+      enabled: definition.enabled,
+      capabilityId: "dynamic",
+      createdAt: definition.createdAt.toISOString(),
+      updatedAt: definition.updatedAt.toISOString(),
+    }));
   }
 
   async getEventDefinition(input: {
@@ -374,9 +390,27 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     await this.#ensureConfigured({ scope: this.#requireScope() });
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
 
-    return await runtime.automationFragment.callServices(() =>
+    const definition = await runtime.automationFragment.callServices(() =>
       runtime.automationFragment.services.getEventDefinition(input),
     );
+
+    return definition
+      ? {
+          id: definition.id.valueOf(),
+          source: definition.source,
+          eventType: definition.eventType,
+          label: definition.label,
+          description: definition.description,
+          payloadSchema: definition.payloadSchema,
+          actorSchema: definition.actorSchema,
+          subjectSchema: definition.subjectSchema,
+          example: definition.example,
+          enabled: definition.enabled,
+          capabilityId: "dynamic",
+          createdAt: definition.createdAt.toISOString(),
+          updatedAt: definition.updatedAt.toISOString(),
+        }
+      : null;
   }
 
   async createEventDefinition(
