@@ -5,14 +5,17 @@ import { createFragmentForTest } from "@fragno-dev/core/test";
 import { reson8FragmentDefinition, type Reson8FragmentConfig } from "./definition";
 import { reson8RoutesFactory } from "./routes";
 
-export const createJsonResponse = (body: unknown, init: ResponseInit = {}) =>
-  new Response(JSON.stringify(body), {
+export const createJsonResponse = (body: unknown, init: ResponseInit = {}) => {
+  const headers = new Headers(init.headers);
+  if (!headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
+
+  return new Response(JSON.stringify(body), {
     ...init,
-    headers: {
-      "content-type": "application/json",
-      ...init.headers,
-    },
+    headers,
   });
+};
 
 export const readRequestBody = async (init?: RequestInit) => {
   const body = init?.body;

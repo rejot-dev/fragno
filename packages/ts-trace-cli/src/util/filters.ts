@@ -29,19 +29,17 @@ const escapeRegularExpression = (value: string): string =>
 
 const patternToRegularExpression = (pattern: string): RegExp => {
   const normalizedPattern = pattern.replaceAll("\\", "/");
-  const source = [...normalizedPattern]
-    .map((character) => {
-      if (character === "*") {
-        return ".*";
-      }
+  let source = "";
 
-      if (character === "?") {
-        return ".";
-      }
-
-      return escapeRegularExpression(character);
-    })
-    .join("");
+  for (const character of normalizedPattern) {
+    if (character === "*") {
+      source += ".*";
+    } else if (character === "?") {
+      source += ".";
+    } else {
+      source += escapeRegularExpression(character);
+    }
+  }
 
   return new RegExp(`^${source}$`, "iu");
 };
