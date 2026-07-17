@@ -311,7 +311,9 @@ describe("stacked merge", () => {
     expect(users).toHaveLength(1);
     const posts = (users[0] as Record<string, unknown>)["posts"] as Array<Record<string, unknown>>;
     expect(posts).toHaveLength(2);
-    const titles = posts.map((post) => post["title"] as string | undefined).sort();
+    const titles = posts
+      .map((post) => post["title"] as string)
+      .sort((left, right) => left.localeCompare(right));
     expect(titles).toEqual(["Second", "Updated"]);
   });
 

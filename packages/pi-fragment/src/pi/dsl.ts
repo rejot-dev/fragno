@@ -578,14 +578,12 @@ export class PiBuilder<
     TOutput,
     TInputSchema extends StandardSchemaV1 | undefined,
     TOutputSchema extends StandardSchemaV1 | undefined,
-  >(
-    definition: PiWorkflowDefinition<TName, TParams, TOutput, TInputSchema, TOutputSchema>,
-  ): PiBuilder<TAgents, TTools, TSkills> {
+  >(definition: PiWorkflowDefinition<TName, TParams, TOutput, TInputSchema, TOutputSchema>): this {
     this.#workflows[definition.name] = definition as unknown as PiWorkflowDefinition;
     return this;
   }
 
-  logging(config: PiFragmentConfig["logging"]): PiBuilder<TAgents, TTools, TSkills> {
+  logging(config: PiFragmentConfig["logging"]): this {
     this.#logging = config;
     return this;
   }

@@ -153,13 +153,13 @@ fragno-wf instances send-event -b https://host.example.com/api/workflows -w appr
 
 const usageSnippet = `const baseUrl = "/api/workflows";
 
-await fetch(\`${"${baseUrl}"}/workflows/approval/instances\`, {
+await fetch(\`\${baseUrl}/workflows/approval/instances\`, {
   method: "POST",
   headers: { "content-type": "application/json" },
   body: JSON.stringify({ requestId: "req_123", amount: 200 }),
 });
 
-await fetch(\`${"${baseUrl}"}/workflows/approval/instances/inst_123/events\`, {
+await fetch(\`\${baseUrl}/workflows/approval/instances/inst_123/events\`, {
   method: "POST",
   headers: { "content-type": "application/json" },
   body: JSON.stringify({ type: "approval", approved: true }),

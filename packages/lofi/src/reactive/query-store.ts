@@ -626,10 +626,7 @@ export function createLofiQueryStore<TRaw, TData = TRaw>(
         ? await executeRetrieve(runtime, retrieveFn)
         : await runtime.adapter
             .createQueryEngine(retrieveFn)
-            .find(
-              optionsOrTable as keyof AnySchema["tables"] & string,
-              builderFn as never,
-            )) as TRaw,
+            .find(optionsOrTable as keyof AnySchema["tables"], builderFn as never)) as TRaw,
     transform: options.map ?? ((rows) => rows as unknown as TData),
     initialData: options.initialData,
   });

@@ -9,7 +9,6 @@ import { promisify } from "node:util";
 const execAsync = promisify(exec);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pnpmPathPattern = /node_modules[\\/]\.pnpm[\\/]|\.pnpm-store[\\/]/;
-const testPackagePattern = /@fragno-dev\/test/;
 
 async function collectFiles(dir: string, extensions: Set<string>): Promise<string[]> {
   const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -51,7 +50,7 @@ describe.sequential("packaging", () => {
         if (pnpmPathPattern.test(contents)) {
           pnpmOffenders.push(relativePath);
         }
-        if (testPackagePattern.test(contents)) {
+        if (contents.includes("@fragno-dev/test")) {
           testImportOffenders.push(relativePath);
         }
       }

@@ -307,7 +307,7 @@ const createStreamingFileContributor = ({
 }): FileContributor => ({
   id: `streaming-${path}`,
   kind: "custom",
-  mountPoint: `/${path.split("/").filter(Boolean)[0]}`,
+  mountPoint: `/${path.split("/").find(Boolean)}`,
   title: "Streaming",
   readOnly: true,
   persistence: "session",
@@ -341,7 +341,7 @@ const createBufferOnlyFileContributor = ({
 }): FileContributor => ({
   id: `buffered-${path}`,
   kind: "custom",
-  mountPoint: `/${path.split("/").filter(Boolean)[0]}`,
+  mountPoint: `/${path.split("/").find(Boolean)}`,
   title: "Buffered",
   readOnly: true,
   persistence: "session",

@@ -80,7 +80,9 @@ describe("Workflows Runner (User Scenarios)", () => {
           assert(ctx.vars.status?.status === "complete");
           expect(ctx.vars.status?.output).toEqual({ total: 6 });
 
-          const stepKeys = (ctx.vars.steps ?? []).map((step) => step.stepKey).sort();
+          const stepKeys = (ctx.vars.steps ?? [])
+            .map((step) => step.stepKey)
+            .sort((left, right) => left.localeCompare(right));
           expect(stepKeys).toEqual([
             "waitForEvent:ready-0",
             "waitForEvent:ready-1",
@@ -88,8 +90,11 @@ describe("Workflows Runner (User Scenarios)", () => {
           ]);
 
           const consumedKeys = (ctx.vars.events ?? [])
-            .map((event) => event.consumedByStepKey)
-            .sort();
+            .map((event) => {
+              assert(event.consumedByStepKey !== null);
+              return event.consumedByStepKey;
+            })
+            .sort((left, right) => left.localeCompare(right));
           expect(consumedKeys).toEqual([
             "waitForEvent:ready-0",
             "waitForEvent:ready-1",

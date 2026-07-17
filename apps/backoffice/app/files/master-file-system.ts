@@ -410,7 +410,7 @@ export class MasterFileSystem implements IFileSystem {
       }
 
       const remainder = getRelativeMountRemainder(normalizedPath, mount.mountPoint);
-      const nextSegment = remainder.split("/").filter(Boolean)[0];
+      const nextSegment = remainder.split("/").find(Boolean);
       if (nextSegment) {
         childNames.add(nextSegment);
       }

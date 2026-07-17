@@ -290,6 +290,7 @@ export class Column<TType extends keyof TypeMap, TIn = unknown, TOut = unknown> 
    * column("integer").defaultTo$((b) => Math.floor(Math.random() * 100))  // Custom function
    * ```
    */
+  // oxlint-disable typescript/prefer-return-this-type -- These return types make columns with defaults optional on insert.
   defaultTo$(
     value: TypeMap[TType] | ((builder: RuntimeDefaultBuilder) => RuntimeSpecial | TypeMap[TType]),
   ): Column<TType, TIn | null, TOut> {
@@ -363,6 +364,7 @@ export class Column<TType extends keyof TypeMap, TIn = unknown, TOut = unknown> 
     }
     return this;
   }
+  // oxlint-enable typescript/prefer-return-this-type
 
   /**
    * Generate default value for the column at runtime.
