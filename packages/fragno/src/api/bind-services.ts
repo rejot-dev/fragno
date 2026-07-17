@@ -15,9 +15,9 @@ export type BoundServices<T> = {
  * @param context - The context to bind to (e.g., { getUnitOfWork })
  * @returns A new object with all functions bound to the context
  */
-export function bindServicesToContext<T extends object, TContext extends object>(
+export function bindServicesToContext<T extends object>(
   services: T,
-  context: TContext,
+  context: object,
 ): BoundServices<T> {
   const bound = {} as BoundServices<T>;
 

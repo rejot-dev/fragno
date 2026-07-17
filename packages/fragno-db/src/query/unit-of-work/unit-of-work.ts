@@ -392,10 +392,7 @@ export class FindBuilder<
   /**
    * Order results by index in ascending or descending order
    */
-  orderByIndex<TIndexName extends ValidIndexName<TTable>>(
-    indexName: TIndexName,
-    direction: "asc" | "desc",
-  ): this {
+  orderByIndex(indexName: ValidIndexName<TTable>, direction: "asc" | "desc"): this {
     // Validate index exists (primary is always valid)
     if (indexName !== "primary" && !(indexName in this.#table.indexes)) {
       throw new Error(
@@ -730,10 +727,7 @@ export class JoinFindBuilder<
   /**
    * Order results by index in ascending or descending order
    */
-  orderByIndex<TIndexName extends ValidIndexName<TTable>>(
-    indexName: TIndexName,
-    direction: "asc" | "desc",
-  ): this {
+  orderByIndex(indexName: ValidIndexName<TTable>, direction: "asc" | "desc"): this {
     // Validate index exists (primary is always valid)
     if (indexName !== "primary" && !(indexName in this.#table.indexes)) {
       throw new Error(
@@ -815,9 +809,9 @@ export type IndexedJoinBuilder<_TTable extends AnyTable, _TJoinOut> = never;
  * Build join operations with indexed-only where clauses for Unit of Work
  * This ensures all join conditions can leverage indexes for optimal performance
  */
-export function buildJoinIndexed<TTable extends AnyTable, TJoinOut>(
+export function buildJoinIndexed<TTable extends AnyTable>(
   table: TTable,
-  fn: (builder: IndexedJoinBuilder<TTable, {}>) => IndexedJoinBuilder<TTable, TJoinOut>,
+  fn: (builder: IndexedJoinBuilder<TTable, {}>) => never,
 ): CompiledJoin[] {
   const compiled: CompiledJoin[] = [];
   const builder: Record<string, unknown> = {};
@@ -2188,7 +2182,7 @@ export class TypedUnitOfWork<
    * uow.create("users", { id: userId, name: "John" });
    * ```
    */
-  generateId<TableName extends keyof TSchema["tables"] & string>(tableName: TableName): FragnoId {
+  generateId(tableName: keyof TSchema["tables"] & string): FragnoId {
     return generateId(this.#schema, tableName);
   }
 
@@ -2270,8 +2264,8 @@ export class TypedUnitOfWork<
     });
   }
 
-  delete<TableName extends keyof TSchema["tables"] & string>(
-    tableName: TableName,
+  delete(
+    tableName: keyof TSchema["tables"] & string,
     id: FragnoId | string,
     builderFn?: (builder: Omit<DeleteBuilder, "build">) => Omit<DeleteBuilder, "build"> | void,
   ): void {
@@ -2305,10 +2299,7 @@ export class TypedUnitOfWork<
    * uow.create("transactions", { fromAccountId, toAccountId, amount });
    * ```
    */
-  check<TableName extends keyof TSchema["tables"] & string>(
-    tableName: TableName,
-    id: FragnoId,
-  ): void {
+  check(tableName: keyof TSchema["tables"] & string, id: FragnoId): void {
     this.#uow.addMutationOperation({
       type: "check",
       schema: this.#schema,

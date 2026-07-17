@@ -47,6 +47,7 @@ type NdjsonParseResult = {
   stopped: boolean;
 };
 
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- The output schema supplies the item type used to contextually type the streaming callback.
 const parseNdjsonBuffer = <T>(
   buffer: string,
   options: {

@@ -331,10 +331,7 @@ export type LofiProjectionSchemaTx<TSchema extends AnySchema> = {
       b: LofiProjectionUpdateBuilder<TSchema["tables"][TTableName]>,
     ) => LofiProjectionUpdateBuilder<TSchema["tables"][TTableName]> | void,
   ): void;
-  delete<const TTableName extends keyof TSchema["tables"] & string>(
-    table: TTableName,
-    externalId: string | FragnoId,
-  ): void;
+  delete(table: keyof TSchema["tables"] & string, externalId: string | FragnoId): void;
 };
 
 export type LofiProjectionTx = {

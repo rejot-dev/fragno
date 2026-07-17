@@ -625,7 +625,7 @@ export function buildUrl<TPath extends string>(
     path: TPath;
   },
   params: {
-    pathParams?: Record<string, string | ReadableAtom<string>>;
+    pathParams?: ExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>;
     queryParams?: Record<string, string | undefined | ReadableAtom<string | undefined>>;
   },
 ): string {
@@ -657,9 +657,9 @@ export function buildUrl<TPath extends string>(
  * @returns
  * @internal
  */
-export function getCacheKey<TMethod extends HTTPMethod, TPath extends string>(
-  method: TMethod,
-  path: TPath,
+export function getCacheKey(
+  method: HTTPMethod,
+  path: string,
   params?: {
     pathParams?: Record<string, string | ReadableAtom<string>>;
     queryParams?: Record<string, string | undefined | ReadableAtom<string | undefined>>;
@@ -888,7 +888,7 @@ export class ClientBuilder<
       mountRoute: this.#publicConfig.mountRoute,
     });
 
-    return buildUrl(
+    return buildUrl<TPath>(
       { baseUrl, mountRoute, path },
       { pathParams: params?.path, queryParams: params?.query },
     );
@@ -1068,7 +1068,16 @@ export class ClientBuilder<
         return task(async () => callServerSideHandler({ pathParams, queryParams }));
       }
 
-      const url = buildUrl({ baseUrl, mountRoute, path: route.path }, { pathParams, queryParams });
+      const url = buildUrl<typeof route.path>(
+        { baseUrl, mountRoute, path: route.path },
+        {
+          pathParams: pathParams as ExtractPathParamsOrWiden<
+            typeof route.path,
+            string | ReadableAtom<string>
+          >,
+          queryParams,
+        },
+      );
 
       let response: Response;
       try {

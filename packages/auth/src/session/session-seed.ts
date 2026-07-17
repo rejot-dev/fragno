@@ -32,15 +32,18 @@ export function parseCredentialSeed(value: unknown): CredentialSeed | null {
   return parsed.data.activeOrganizationId ? parsed.data : null;
 }
 
-export function resolveCredentialSeedFromMembers<
-  TMember extends {
-    createdAt: Date;
-    organization: {
-      id: unknown;
-      deletedAt: Date | null;
-    } | null;
-  },
->(members: TMember[], auth?: CredentialSeedInput | null): ResolvedCredentialSeed {
+type CredentialSeedMember = {
+  createdAt: Date;
+  organization: {
+    id: unknown;
+    deletedAt: Date | null;
+  } | null;
+};
+
+export function resolveCredentialSeedFromMembers(
+  members: readonly CredentialSeedMember[],
+  auth?: CredentialSeedInput | null,
+): ResolvedCredentialSeed {
   const normalizedCredential = normalizeCredentialSeed(auth);
   const requestedActiveOrganizationId = normalizedCredential?.activeOrganizationId ?? null;
 

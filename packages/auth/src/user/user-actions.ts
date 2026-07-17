@@ -41,13 +41,11 @@ const normalizeMany = <T>(value: T | T[] | null | undefined): T[] => {
 
 const normalizeRole = (role: string): "user" | "admin" => (role === "admin" ? "admin" : "user");
 
-const collectCredentialSeedMembers = <
-  TUser extends {
-    userOrganizationMembers?: CredentialSeedMemberRow | CredentialSeedMemberRow[] | null;
-  },
->(
-  rows: TUser[],
-) => {
+type UserWithCredentialSeedMembers = {
+  userOrganizationMembers?: CredentialSeedMemberRow | CredentialSeedMemberRow[] | null;
+};
+
+const collectCredentialSeedMembers = (rows: UserWithCredentialSeedMembers[]) => {
   return rows.flatMap((user) =>
     normalizeMany(user.userOrganizationMembers).map((member) => ({
       createdAt: member.createdAt,

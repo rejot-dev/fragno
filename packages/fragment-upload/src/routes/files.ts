@@ -115,6 +115,7 @@ type ErrorFn<Code extends string> = Parameters<
   FragnoRouteConfig<"GET", "/__error", undefined, undefined, Code>["handler"]
 >[1]["error"];
 
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- Each route supplies a narrower error callback, and Code keeps the shared mapper within that route's declared error union.
 const handleServiceError = <Code extends FileErrorCode>(
   err: unknown,
   error: ErrorFn<Code>,
@@ -178,6 +179,7 @@ const handleServiceError = <Code extends FileErrorCode>(
   }
 };
 
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- Callers project parsed form JSON to a boundary type before validating its shape.
 const parseJson = <T>(value: FormDataEntryValue | null): T | undefined => {
   if (value === null || typeof value !== "string" || value.length === 0) {
     return undefined;

@@ -11,7 +11,7 @@ import { useState, useCallback, useMemo } from "react";
  * @returns showErrors - Whether to display validation errors
  * @returns markTouched - Callback to mark the field as touched
  */
-export function useTouched<T>(data: T) {
+export function useTouched(data: unknown) {
   const [touched, setTouched] = useState(false);
 
   // Show errors if touched OR if data has a value

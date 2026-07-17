@@ -19,8 +19,8 @@ export const supportedDriverTypes = [
 
 export type SupportedDriverType = (typeof supportedDriverTypes)[number];
 
-export abstract class DriverConfig<T extends SupportedDriverType = SupportedDriverType> {
-  abstract readonly driverType: T;
+export abstract class DriverConfig {
+  abstract readonly driverType: SupportedDriverType;
   abstract readonly databaseType: SupportedDatabase;
 
   abstract readonly supportsReturning: boolean;
@@ -233,7 +233,7 @@ export type OutboxVersionstampStrategy =
   | "insert-on-conflict-returning"
   | "insert-on-duplicate-last-insert-id";
 
-export class SQLocalDriverConfig extends DriverConfig<"sqlocal"> {
+export class SQLocalDriverConfig extends DriverConfig {
   override readonly driverType = "sqlocal";
   override readonly databaseType = "sqlite";
   override readonly supportsReturning = true;
@@ -246,7 +246,7 @@ export class SQLocalDriverConfig extends DriverConfig<"sqlocal"> {
   }
 }
 
-export class CloudflareDurableObjectsDriverConfig extends DriverConfig<"cloudflare_durable_objects"> {
+export class CloudflareDurableObjectsDriverConfig extends DriverConfig {
   override readonly driverType = "cloudflare_durable_objects";
   override readonly databaseType = "sqlite";
   override readonly supportsReturning = true;
@@ -259,7 +259,7 @@ export class CloudflareDurableObjectsDriverConfig extends DriverConfig<"cloudfla
   }
 }
 
-export class BetterSQLite3DriverConfig extends DriverConfig<"better-sqlite3"> {
+export class BetterSQLite3DriverConfig extends DriverConfig {
   override readonly driverType = "better-sqlite3";
   override readonly databaseType = "sqlite";
   override readonly supportsReturning = true;
@@ -288,7 +288,7 @@ export class BetterSQLite3DriverConfig extends DriverConfig<"better-sqlite3"> {
   }
 }
 
-export class NodePostgresDriverConfig extends DriverConfig<"pg"> {
+export class NodePostgresDriverConfig extends DriverConfig {
   override readonly driverType = "pg";
   override readonly databaseType = "postgresql";
   override readonly supportsReturning = true;
@@ -325,7 +325,7 @@ export class NodePostgresDriverConfig extends DriverConfig<"pg"> {
   }
 }
 
-export class PGLiteDriverConfig extends DriverConfig<"pglite"> {
+export class PGLiteDriverConfig extends DriverConfig {
   override readonly driverType = "pglite";
   override readonly databaseType = "postgresql";
   override readonly supportsReturning = true;
@@ -353,7 +353,7 @@ export class PGLiteDriverConfig extends DriverConfig<"pglite"> {
   }
 }
 
-export class MySQL2DriverConfig extends DriverConfig<"mysql2"> {
+export class MySQL2DriverConfig extends DriverConfig {
   override readonly driverType = "mysql2";
   override readonly databaseType = "mysql";
   override readonly supportsReturning = false;

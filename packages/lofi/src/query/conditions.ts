@@ -39,7 +39,7 @@ export type ConditionBuilder<Columns extends Record<string, AnyColumn>> = {
     b: Columns[ColName]["$in"][],
   ): Condition;
 
-  <ColName extends keyof Columns>(a: ColName): Condition;
+  (a: keyof Columns & string): Condition;
 
   and: (...v: (Condition | boolean)[]) => Condition | boolean;
   or: (...v: (Condition | boolean)[]) => Condition | boolean;
@@ -81,7 +81,9 @@ export function createBuilder<Columns extends Record<string, AnyColumn>>(
     return out;
   }
 
-  const builder: ConditionBuilder<Columns> = (...args: [string, Operator, unknown] | [string]) => {
+  const builder: ConditionBuilder<Columns> = (
+    ...args: [string, Operator, unknown] | [string]
+  ): Condition => {
     if (args.length === 3) {
       const [a, operator, b] = args;
 

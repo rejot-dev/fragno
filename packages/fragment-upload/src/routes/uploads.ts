@@ -160,6 +160,7 @@ const rejectProviderMismatch = (
   return error({ message: "Upload provider mismatch", code: "PROVIDER_MISMATCH" }, 409);
 };
 
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- Each route supplies a narrower error callback, and Code keeps the shared mapper within that route's declared error union.
 const handleServiceError = <Code extends UploadErrorCode>(
   err: unknown,
   error: ErrorFn<Code>,

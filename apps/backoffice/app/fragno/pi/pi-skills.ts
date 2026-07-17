@@ -15,6 +15,7 @@ const toError = (error: unknown): Error => {
   return new Error(String(error));
 };
 
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- Frontmatter is parsed at a trusted file boundary and projected to the caller's schema type.
 function parseFrontmatter<T extends Record<string, unknown>>(
   content: string,
 ): Result<{ frontmatter: T; body: string }, Error> {

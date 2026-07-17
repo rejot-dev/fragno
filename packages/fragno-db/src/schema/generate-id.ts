@@ -13,10 +13,10 @@ import { FragnoId } from "./create";
  * uow.create("users", { id: userId, name: "John" });
  * ```
  */
-export function generateId<
-  TSchema extends AnySchema,
-  TableName extends keyof TSchema["tables"] & string,
->(schema: TSchema, tableName: TableName): FragnoId {
+export function generateId<TSchema extends AnySchema>(
+  schema: TSchema,
+  tableName: keyof TSchema["tables"] & string,
+): FragnoId {
   const tableSchema = schema.tables[tableName];
   if (!tableSchema) {
     throw new Error(`Table ${tableName} not found in schema`);

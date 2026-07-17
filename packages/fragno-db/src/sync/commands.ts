@@ -38,11 +38,11 @@ const createRegistry = (
   };
 };
 
-export const defineSyncCommands = <TSchema extends AnySchema>(options: { schema: TSchema }) => {
+export const defineSyncCommands = (options: { schema: AnySchema }) => {
   const schemaName = options.schema.name;
   return {
-    create: <const TCommands extends readonly SyncCommandDefinition[]>(
-      factory: (context: DefineSyncCommandsContext) => TCommands,
+    create: (
+      factory: (context: DefineSyncCommandsContext) => readonly SyncCommandDefinition[],
     ): SyncCommandRegistry => {
       const commands = factory({ defineCommand: (definition) => definition });
       return createRegistry(schemaName, commands);

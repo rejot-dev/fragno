@@ -67,10 +67,7 @@ const sanitizeFileSegment = (name: string): string => {
   return sanitized.length > 0 ? sanitized : "fragno";
 };
 
-const resolveSqliteDatabasePath = <TSchema extends AnySchema>(
-  options: DatabaseAdapterConfig,
-  schema: TSchema,
-): string => {
+const resolveSqliteDatabasePath = (options: DatabaseAdapterConfig, schema: AnySchema): string => {
   const baseName =
     typeof options.databaseNamespace === "string" && options.databaseNamespace.length > 0
       ? options.databaseNamespace
@@ -79,9 +76,9 @@ const resolveSqliteDatabasePath = <TSchema extends AnySchema>(
   return path.join(defaultDataDir(), fileName);
 };
 
-const createDefaultSqliteAdapter = <TSchema extends AnySchema>(
+const createDefaultSqliteAdapter = (
   options: DatabaseAdapterConfig,
-  schema: TSchema,
+  schema: AnySchema,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): DatabaseAdapter<any> | null => {
   if (!betterSqlite3Constructor) {
@@ -98,9 +95,9 @@ const createDefaultSqliteAdapter = <TSchema extends AnySchema>(
   return new SqlAdapter({ dialect, driverConfig });
 };
 
-export const resolveDatabaseAdapter = <TSchema extends AnySchema>(
+export const resolveDatabaseAdapter = (
   options: DatabaseAdapterConfig,
-  schema: TSchema,
+  schema: AnySchema,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): DatabaseAdapter<any> => {
   if (options.databaseAdapter) {

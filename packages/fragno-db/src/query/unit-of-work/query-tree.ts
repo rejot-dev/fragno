@@ -85,7 +85,7 @@ export type CorrelatedIndexSpecificConditionBuilder<
     b: Array<CorrelatedConditionValue<ColumnsForIndex<TChildTable, TIndexName>[ColName]>>,
   ): Condition;
 
-  <ColName extends keyof ColumnsForIndex<TChildTable, TIndexName>>(a: ColName): Condition;
+  (a: keyof ColumnsForIndex<TChildTable, TIndexName> & string): Condition;
 
   and: (...v: (Condition | boolean)[]) => Condition | boolean;
   or: (...v: (Condition | boolean)[]) => Condition | boolean;
@@ -325,10 +325,7 @@ export class QueryTreeJoinBuilder<
     >;
   }
 
-  orderByIndex<TIndexName extends QueryTreeValidIndexName<TTable>>(
-    indexName: TIndexName,
-    direction: "asc" | "desc",
-  ): this {
+  orderByIndex(indexName: QueryTreeValidIndexName<TTable>, direction: "asc" | "desc"): this {
     if (indexName !== "primary" && !(indexName in this.#table.indexes)) {
       throw new Error(
         `Index "${indexName}" not found on table "${this.#tableName}". ` +
@@ -449,13 +446,13 @@ export class QueryTreeJoinBuilder<
     >;
   }
 
-  #buildChildNode<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+  #buildChildNode<TTableName extends keyof TSchema["tables"] & string>(
     alias: string,
     tableName: TTableName,
     cardinality: QueryTreeCardinality,
     builderFn: (
       builder: QueryTreeJoinBuilder<TSchema, TSchema["tables"][TTableName], TTable>,
-    ) => TBuilderResult,
+    ) => unknown,
   ): CompiledQueryTreeChildNode {
     const childTable = this.#schema.tables[tableName];
     if (!childTable) {
@@ -577,10 +574,7 @@ export class QueryTreeFindBuilder<
     return this as this & QueryTreeCountBuilderMarker;
   }
 
-  orderByIndex<TIndexName extends QueryTreeValidIndexName<TTable>>(
-    indexName: TIndexName,
-    direction: "asc" | "desc",
-  ): this {
+  orderByIndex(indexName: QueryTreeValidIndexName<TTable>, direction: "asc" | "desc"): this {
     if (indexName !== "primary" && !(indexName in this.#table.indexes)) {
       throw new Error(
         `Index "${indexName}" not found on table "${this.#tableName}". ` +
@@ -709,13 +703,13 @@ export class QueryTreeFindBuilder<
     >;
   }
 
-  #buildChildNode<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
+  #buildChildNode<TTableName extends keyof TSchema["tables"] & string>(
     alias: string,
     tableName: TTableName,
     cardinality: QueryTreeCardinality,
     builderFn: (
       builder: QueryTreeJoinBuilder<TSchema, TSchema["tables"][TTableName], TTable>,
-    ) => TBuilderResult,
+    ) => unknown,
   ): CompiledQueryTreeChildNode {
     const childTable = this.#schema.tables[tableName];
     if (!childTable) {
