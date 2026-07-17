@@ -2,6 +2,8 @@ import {
   sql as kyselySql,
   type QueryExecutor,
   type CompiledQuery as KyselyCompiledQuery,
+  type OperationNode,
+  type OperationNodeSource,
 } from "kysely";
 
 import type { CompiledQuery, Dialect } from "./sql-driver";
@@ -9,11 +11,15 @@ import type { CompiledQuery, Dialect } from "./sql-driver";
 /**
  * Wrapper around Kysely's RawBuilder that provides a compile() method with a dialect parameter.
  */
-export class RawBuilder {
+export class RawBuilder implements OperationNodeSource {
   readonly #kyselyBuilder: ReturnType<typeof kyselySql>;
 
   constructor(kyselyBuilder: ReturnType<typeof kyselySql>) {
     this.#kyselyBuilder = kyselyBuilder;
+  }
+
+  toOperationNode(): OperationNode {
+    return this.#kyselyBuilder.toOperationNode();
   }
 
   /**
@@ -55,4 +61,9 @@ export class RawBuilder {
 export function sql(strings: TemplateStringsArray, ...values: unknown[]): RawBuilder {
   const kyselyBuilder = kyselySql(strings, ...values);
   return new RawBuilder(kyselyBuilder);
+}
+
+/** Creates a dialect-quoted SQL reference, including qualified table-column references. */
+export function sqlRef(reference: string): RawBuilder {
+  return new RawBuilder(kyselySql.ref(reference));
 }
