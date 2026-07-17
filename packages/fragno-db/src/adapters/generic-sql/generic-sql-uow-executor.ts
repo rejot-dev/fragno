@@ -1,7 +1,11 @@
 import superjson from "superjson";
 
 import { isRetryableDatabaseError, isUniqueConstraintError } from "../../errors";
-import { SETTINGS_NAMESPACE, internalSchema } from "../../fragments/internal-fragment.schema";
+import {
+  SETTINGS_NAMESPACE,
+  SETTINGS_TABLE_NAME,
+  internalSchema,
+} from "../../fragments/internal-fragment.schema";
 import { createId } from "../../id";
 import { type SqlNamingStrategy } from "../../naming/sql-naming";
 import {
@@ -19,7 +23,7 @@ import type {
   MutationResult,
   UOWExecutor,
 } from "../../query/unit-of-work/unit-of-work";
-import { sql } from "../../sql-driver/sql";
+import { sql, sqlRef } from "../../sql-driver/sql";
 import type { CompiledQuery, Dialect } from "../../sql-driver/sql-driver";
 import type { SqlDriverAdapter } from "../../sql-driver/sql-driver-adapter";
 import type { DriverConfig } from "./driver-config";
@@ -258,77 +262,101 @@ type ReservedOutboxVersion = {
   now: Date;
 };
 
+type OutboxVersionReservationPlan = {
+  reservationQuery: CompiledQuery;
+  resultQuery?: CompiledQuery;
+};
+
+export function compileOutboxVersionReservationPlan(
+  driverConfig: DriverConfig,
+  dialect: Dialect,
+  values: { id: string; key: string },
+): OutboxVersionReservationPlan {
+  const settingsTable = sqlRef(SETTINGS_TABLE_NAME);
+  const idColumn = sqlRef("id");
+  const keyColumn = sqlRef("key");
+  const valueColumn = sqlRef("value");
+  const qualifiedValueColumn = sqlRef(`${SETTINGS_TABLE_NAME}.value`);
+  const nowMsColumn = sqlRef("nowMs");
+
+  switch (driverConfig.outboxVersionstampStrategy) {
+    case "insert-on-conflict-returning": {
+      const reservationQuery =
+        driverConfig.databaseType === "postgresql"
+          ? sql`
+              insert into ${settingsTable} (${idColumn}, ${keyColumn}, ${valueColumn})
+              values (${values.id}, ${values.key}, '0')
+              on conflict (${keyColumn}) do update
+                set ${valueColumn} = (${qualifiedValueColumn}::bigint + 1)::text
+              returning ${valueColumn}, floor(extract(epoch from CURRENT_TIMESTAMP) * 1000)::bigint as ${nowMsColumn};
+            `
+          : sql`
+              insert into ${settingsTable} (${idColumn}, ${keyColumn}, ${valueColumn})
+              values (${values.id}, ${values.key}, '0')
+              on conflict (${keyColumn}) do update
+                set ${valueColumn} = cast(${qualifiedValueColumn} as integer) + 1
+              returning ${valueColumn}, cast((julianday('now') - 2440587.5) * 86400000 as integer) as ${nowMsColumn};
+            `;
+
+      return { reservationQuery: reservationQuery.compile(dialect) };
+    }
+    case "update-returning": {
+      const reservationQuery =
+        driverConfig.databaseType === "postgresql"
+          ? sql`
+              update ${settingsTable}
+              set ${valueColumn} = (${qualifiedValueColumn}::bigint + 1)::text
+              where ${keyColumn} = ${values.key}
+              returning ${valueColumn}, floor(extract(epoch from CURRENT_TIMESTAMP) * 1000)::bigint as ${nowMsColumn};
+            `
+          : sql`
+              update ${settingsTable}
+              set ${valueColumn} = cast(${qualifiedValueColumn} as integer) + 1
+              where ${keyColumn} = ${values.key}
+              returning ${valueColumn}, cast((julianday('now') - 2440587.5) * 86400000 as integer) as ${nowMsColumn};
+            `;
+
+      return { reservationQuery: reservationQuery.compile(dialect) };
+    }
+    case "insert-on-duplicate-last-insert-id": {
+      const reservationQuery = sql`
+        insert into ${settingsTable} (${idColumn}, ${keyColumn}, ${valueColumn})
+        values (${values.id}, ${values.key}, LAST_INSERT_ID(0))
+        on duplicate key update ${valueColumn} = LAST_INSERT_ID(cast(${valueColumn} as unsigned) + 1);
+      `;
+      const resultQuery = sql`
+        select LAST_INSERT_ID() as ${valueColumn},
+          cast(unix_timestamp(current_timestamp(3)) * 1000 as unsigned) as ${nowMsColumn};
+      `;
+
+      return {
+        reservationQuery: reservationQuery.compile(dialect),
+        resultQuery: resultQuery.compile(dialect),
+      };
+    }
+  }
+}
+
 async function reserveOutboxVersion(
   tx: SqlDriverAdapter,
   driverConfig: DriverConfig,
   dialect: Dialect,
 ): Promise<ReservedOutboxVersion> {
-  const key = `${SETTINGS_NAMESPACE}.outbox_version`;
-  const id = createId();
+  const plan = compileOutboxVersionReservationPlan(driverConfig, dialect, {
+    id: createId(),
+    key: `${SETTINGS_NAMESPACE}.outbox_version`,
+  });
+  const reservationResult = await tx.executeQuery(plan.reservationQuery);
 
-  switch (driverConfig.outboxVersionstampStrategy) {
-    case "insert-on-conflict-returning": {
-      const query =
-        driverConfig.databaseType === "postgresql"
-          ? sql`
-              insert into fragno_db_settings (id, key, value)
-              values (${id}, ${key}, '0')
-              on conflict (key) do update
-                set value = (fragno_db_settings.value::bigint + 1)::text
-              returning value, floor(extract(epoch from CURRENT_TIMESTAMP) * 1000)::bigint as "nowMs";
-            `
-          : sql`
-              insert into fragno_db_settings (id, key, value)
-              values (${id}, ${key}, '0')
-              on conflict (key) do update
-                set value = cast(fragno_db_settings.value as integer) + 1
-              returning value, cast((julianday('now') - 2440587.5) * 86400000 as integer) as nowMs;
-            `;
-
-      const result = await tx.executeQuery(query.compile(dialect));
-      return parseReservedOutboxVersion(result.rows[0]);
-    }
-    case "update-returning": {
-      const query =
-        driverConfig.databaseType === "postgresql"
-          ? sql`
-              update fragno_db_settings
-              set value = (fragno_db_settings.value::bigint + 1)::text
-              where key = ${key}
-              returning value, floor(extract(epoch from CURRENT_TIMESTAMP) * 1000)::bigint as "nowMs";
-            `
-          : sql`
-              update fragno_db_settings
-              set value = cast(fragno_db_settings.value as integer) + 1
-              where key = ${key}
-              returning value, cast((julianday('now') - 2440587.5) * 86400000 as integer) as nowMs;
-            `;
-
-      const result = await tx.executeQuery(query.compile(dialect));
-      if (result.rows[0]?.["value"] === undefined) {
-        throw new Error("Outbox version row was not found for update-returning strategy.");
-      }
-      return parseReservedOutboxVersion(result.rows[0]);
-    }
-    case "insert-on-duplicate-last-insert-id": {
-      const insertQuery = sql`
-        insert into fragno_db_settings (id, key, value)
-        values (${id}, ${key}, LAST_INSERT_ID(0))
-        on duplicate key update value = LAST_INSERT_ID(cast(value as unsigned) + 1);
-      `;
-
-      await tx.executeQuery(insertQuery.compile(dialect));
-
-      const selectQuery = sql`
-        select LAST_INSERT_ID() as value,
-          cast(unix_timestamp(current_timestamp(3)) * 1000 as unsigned) as nowMs;
-      `;
-      const result = await tx.executeQuery(selectQuery.compile(dialect));
-      return parseReservedOutboxVersion(result.rows[0]);
-    }
+  if (
+    driverConfig.outboxVersionstampStrategy === "update-returning" &&
+    (!reservationResult.rows[0] || reservationResult.rows[0]["value"] === undefined)
+  ) {
+    throw new Error("Outbox version row was not found for update-returning strategy.");
   }
 
-  throw new Error("Unsupported outbox versionstamp strategy.");
+  const result = plan.resultQuery ? await tx.executeQuery(plan.resultQuery) : reservationResult;
+  return parseReservedOutboxVersion(result.rows[0]);
 }
 
 function parseReservedOutboxVersion(
