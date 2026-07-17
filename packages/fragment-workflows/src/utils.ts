@@ -10,7 +10,7 @@ export const parseDurationMs = (duration: WorkflowDuration): number => {
     throw new Error("Invalid duration");
   }
 
-  const match = trimmed.match(/^(\d+(?:\.\d+)?)\s*(\w+)?$/i);
+  const match = /^(\d+(?:\.\d+)?)\s*(\w+)?$/i.exec(trimmed);
   if (!match) {
     throw new Error(`Invalid duration: ${duration}`);
   }

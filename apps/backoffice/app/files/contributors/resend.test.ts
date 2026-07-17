@@ -156,7 +156,7 @@ beforeEach(() => {
       } as const);
     }
 
-    const match = url.pathname.match(/^\/api\/resend\/threads\/([^/]+)\/messages$/);
+    const match = /^\/api\/resend\/threads\/([^/]+)\/messages$/.exec(url.pathname);
     if (match) {
       const threadId = decodeURIComponent(match[1] ?? "");
       return Response.json({

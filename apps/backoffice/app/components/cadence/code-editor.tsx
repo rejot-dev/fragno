@@ -123,7 +123,7 @@ function cssVarToHex(name: string, fallback: string): string {
 }
 
 function rgbToHex(color: string): string | null {
-  const match = color.match(/rgba?\(([^)]+)\)/);
+  const match = /rgba?\(([^)]+)\)/.exec(color);
   if (!match) {
     return null;
   }

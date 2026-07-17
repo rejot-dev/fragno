@@ -124,7 +124,7 @@ describe("createVueHook", () => {
       assert(typeof input === "string");
 
       // Regex to extract id value from a URL string, matching only on /users/:id
-      const [, id] = input.match(/\/users\/([^/]+)/) ?? [];
+      const [, id] = /\/users\/([^/]+)/.exec(input) ?? [];
 
       expect(id).toBeDefined();
       expect(+id).not.toBeNaN();
@@ -180,7 +180,7 @@ describe("createVueHook", () => {
       assert(typeof input === "string");
 
       // Regex to extract id value from a URL string, matching only on /users/:id
-      const [, id] = input.match(/\/users\/([^/]+)/) ?? [];
+      const [, id] = /\/users\/([^/]+)/.exec(input) ?? [];
 
       expect(id).toBeDefined();
       expect(+id).not.toBeNaN();
@@ -508,7 +508,7 @@ describe("createVueHook", () => {
       assert(typeof input === "string");
 
       // Extract user ID from path
-      const [, userId] = input.match(/\/users\/([^/]+)\/posts/) ?? [];
+      const [, userId] = /\/users\/([^/]+)\/posts/.exec(input) ?? [];
       expect(userId).toBeDefined();
       expect(+userId).not.toBeNaN();
 
@@ -665,7 +665,7 @@ describe("createVueMutator", () => {
 
     vi.mocked(global.fetch).mockImplementation(async (input) => {
       assert(typeof input === "string");
-      const [, id] = input.match(/\/users\/([^/]+)/) ?? [];
+      const [, id] = /\/users\/([^/]+)/.exec(input) ?? [];
 
       return {
         headers: new Headers(),

@@ -637,9 +637,10 @@ describe("generateDrizzleSchema", () => {
       );
 
       // Categories table should NOT have a constraint callback (no foreign keys, no indexes)
-      const categoriesTableMatch = generated.match(
-        /export const categories_test = schema_test\.table\("categories", \{[^}]+\}\)/,
-      );
+      const categoriesTableMatch =
+        /export const categories_test = schema_test\.table\("categories", \{[^}]+\}\)/.exec(
+          generated,
+        );
       expect(categoriesTableMatch).toBeTruthy();
 
       // Should have relations with many

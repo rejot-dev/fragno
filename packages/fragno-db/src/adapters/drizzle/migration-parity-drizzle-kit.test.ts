@@ -206,7 +206,7 @@ const STATEMENT_NORMALIZATION_RULES: StatementNormalizationRule[] = [
         return sql;
       }
 
-      const tableMatch = sql.match(/^create table\s+([\w.]+)\s*\(/);
+      const tableMatch = /^create table\s+([\w.]+)\s*\(/.exec(sql);
       const tableName = tableMatch?.[1];
       if (!tableName) {
         return sql;
@@ -235,7 +235,7 @@ const STATEMENT_NORMALIZATION_RULES: StatementNormalizationRule[] = [
         return sql;
       }
 
-      const tableMatch = sql.match(/^create table\s+(\w+)\s*\(/);
+      const tableMatch = /^create table\s+(\w+)\s*\(/.exec(sql);
       const tableName = tableMatch?.[1];
       if (!tableName) {
         return sql;
@@ -272,7 +272,7 @@ const STATEMENT_NORMALIZATION_RULES: StatementNormalizationRule[] = [
         return sql;
       }
 
-      const tableMatch = sql.match(/^create table\s+(\w+)\s*\(/);
+      const tableMatch = /^create table\s+(\w+)\s*\(/.exec(sql);
       const tableName = tableMatch?.[1];
       if (!tableName) {
         return sql;
@@ -318,7 +318,7 @@ const STATEMENT_NORMALIZATION_RULES: StatementNormalizationRule[] = [
         return sql;
       }
 
-      const tableMatch = sql.match(/^alter table\s+(\w+)\s+/);
+      const tableMatch = /^alter table\s+(\w+)\s+/.exec(sql);
       const tableName = tableMatch?.[1];
       const fkRegex =
         /(?:constraint\s+(\w+)\s+)?foreign key\s*\(([^)]+)\)\s+references\s+(\w+)\s*\(([^)]+)\)(?:\s+on delete\s+(\w+))?(?:\s+on update\s+(\w+))?/g;
@@ -350,7 +350,7 @@ const STATEMENT_NORMALIZATION_RULES: StatementNormalizationRule[] = [
     reason:
       "Some adapters emit a dedicated unique index for external IDs; normalize to external-id markers.",
     apply: (sql, ctx) => {
-      const uniqueIndexMatch = sql.match(/^create unique index\s+\w+\s+on\s+(\w+)\s*\(\s*id\s*\)/);
+      const uniqueIndexMatch = /^create unique index\s+\w+\s+on\s+(\w+)\s*\(\s*id\s*\)/.exec(sql);
       if (!uniqueIndexMatch) {
         return sql;
       }
@@ -367,7 +367,7 @@ const STATEMENT_NORMALIZATION_RULES: StatementNormalizationRule[] = [
         return sql;
       }
 
-      const tableMatch = sql.match(/^create table\s+(\w+)\s*\(/);
+      const tableMatch = /^create table\s+(\w+)\s*\(/.exec(sql);
       const tableName = tableMatch?.[1];
       let pkColumn: string | undefined;
       let pkConstraintName: string | undefined;
@@ -379,7 +379,7 @@ const STATEMENT_NORMALIZATION_RULES: StatementNormalizationRule[] = [
           ctx.extraStatements.push(`create unique index ${match[1]} on ${tableName} (${match[2]})`);
         }
 
-        const pkMatch = sql.match(/constraint\s+(\w+)\s+primary key\s*\(([^)]+)\)/);
+        const pkMatch = /constraint\s+(\w+)\s+primary key\s*\(([^)]+)\)/.exec(sql);
         if (pkMatch) {
           pkConstraintName = pkMatch[1].trim();
           pkColumn = pkMatch[2].trim();

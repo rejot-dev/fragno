@@ -409,7 +409,7 @@ const descriptionWithoutRequiredScopes = (description: string | undefined) => {
   let inRequiredScopesList = false;
 
   for (const line of description?.split("\n") ?? []) {
-    const requiredScopesLine = line.match(requiredScopesLinePattern);
+    const requiredScopesLine = requiredScopesLinePattern.exec(line);
     if (requiredScopesLine) {
       scopes.push(...splitScopes(requiredScopesLine[1] ?? ""));
       inRequiredScopesList = true;
@@ -423,7 +423,7 @@ const descriptionWithoutRequiredScopes = (description: string | undefined) => {
         continue;
       }
 
-      const bulletScope = line.match(bulletScopePattern);
+      const bulletScope = bulletScopePattern.exec(line);
       if (bulletScope) {
         scopes.push(...splitScopes(bulletScope[1] ?? ""));
         continue;
@@ -433,7 +433,7 @@ const descriptionWithoutRequiredScopes = (description: string | undefined) => {
     }
 
     let visibleLine = line;
-    const trailingInlineScope = visibleLine.match(trailingInlineScopePattern);
+    const trailingInlineScope = trailingInlineScopePattern.exec(visibleLine);
     if (trailingInlineScope && /[.!?]\s*$/.test(visibleLine.slice(0, trailingInlineScope.index))) {
       const trailingScopes = splitScopes(trailingInlineScope[1] ?? "");
       if (trailingScopes.length > 0) {

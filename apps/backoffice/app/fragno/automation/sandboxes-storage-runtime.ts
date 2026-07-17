@@ -51,7 +51,7 @@ const sleepAfterMs = (sleepAfter: string | number) => {
     return sleepAfter * 1000;
   }
 
-  const match = sleepAfter.match(/^(\d+)([smh])$/iu);
+  const match = /^(\d+)([smh])$/iu.exec(sleepAfter);
   if (!match) {
     throw new Error("Invalid sandbox sleepAfter value.");
   }
