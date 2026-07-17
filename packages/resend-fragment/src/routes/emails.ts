@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+import { isUniqueConstraintError } from "@fragno-dev/db";
+
+import { MAX_RESEND_EMAIL_IDEMPOTENCY_KEY_LENGTH } from "../definition";
 import { resendSchema } from "../schema";
 import type { ResendRouteFactoryContext } from "./context";
 import {
@@ -7,8 +10,6 @@ import {
   resolveEmailPayload,
   scheduledInSchema,
   safeDecodeCursor,
-  toArray,
-  buildEmailRecord,
   buildEmailSummary,
   buildEmailDetail,
 } from "./shared";
@@ -113,7 +114,11 @@ const resendListEmailsQuerySchema = z.object({
   status: z.string().min(1).optional(),
 });
 
-export const registerEmailRoutes = ({ defineRoute, config }: ResendRouteFactoryContext) => [
+export const registerEmailRoutes = ({
+  defineRoute,
+  config,
+  services,
+}: ResendRouteFactoryContext) => [
   defineRoute({
     method: "GET",
     path: "/emails",
@@ -198,10 +203,21 @@ export const registerEmailRoutes = ({ defineRoute, config }: ResendRouteFactoryC
     path: "/emails",
     inputSchema: resendSendEmailInputSchema,
     outputSchema: resendSendEmailOutputSchema,
-    errorCodes: ["MISSING_FROM"] as const,
-    handler: async function ({ input }, { json, error }) {
+    errorCodes: ["INVALID_IDEMPOTENCY_KEY", "MISSING_FROM"] as const,
+    handler: async function ({ input, headers }, { json, empty, error }) {
       const rawEmail = await input.valid();
       const payload = resolveEmailPayload(rawEmail, config);
+      const idempotencyKey = headers.get("idempotency-key")?.trim() || null;
+
+      if (idempotencyKey && idempotencyKey.length > MAX_RESEND_EMAIL_IDEMPOTENCY_KEY_LENGTH) {
+        return error(
+          {
+            message: `Idempotency-Key must be at most ${MAX_RESEND_EMAIL_IDEMPOTENCY_KEY_LENGTH} characters.`,
+            code: "INVALID_IDEMPOTENCY_KEY",
+          },
+          400,
+        );
+      }
 
       if (!payload.from) {
         return error(
@@ -213,56 +229,21 @@ export const registerEmailRoutes = ({ defineRoute, config }: ResendRouteFactoryC
         );
       }
 
-      const now = new Date();
+      try {
+        const [record] = await this.handlerTx()
+          .withServiceCalls(
+            () =>
+              [services.queueEmail(rawEmail, idempotencyKey ? { idempotencyKey } : {})] as const,
+          )
+          .execute();
 
-      const record = await this.handlerTx()
-        .mutate(({ forSchema }) => {
-          const uow = forSchema(resendSchema);
-          const scheduledAtValue = rawEmail.scheduledIn
-            ? uow.now().plus(rawEmail.scheduledIn)
-            : null;
-          const status = scheduledAtValue ? "scheduled" : "queued";
-          const to = toArray(payload.to) ?? [];
-          const cc = toArray(payload.cc);
-          const bcc = toArray(payload.bcc);
-          const replyTo = toArray(payload.replyTo);
-          const emailId = uow.create("emailMessage", {
-            direction: "outbound",
-            threadId: null,
-            status,
-            providerEmailId: null,
-            from: payload.from ?? null,
-            to,
-            cc: cc ?? null,
-            bcc: bcc ?? null,
-            replyTo: replyTo ?? null,
-            subject: payload.subject ?? null,
-            messageId: null,
-            headers: payload.headers ?? null,
-            html: payload.html ?? null,
-            text: payload.text ?? null,
-            attachments: null,
-            tags: payload.tags ?? null,
-            occurredAt: uow.now(),
-            scheduledAt: scheduledAtValue ?? null,
-            sentAt: null,
-            lastEventType: null,
-            lastEventAt: null,
-            errorCode: null,
-            errorMessage: null,
-          });
-
-          uow.triggerHook(
-            "sendEmail",
-            { emailId: emailId.valueOf() },
-            scheduledAtValue ? { processAt: scheduledAtValue } : undefined,
-          );
-
-          return buildEmailRecord(emailId.valueOf(), status, null, now, now);
-        })
-        .execute();
-
-      return json(record);
+        return json(record);
+      } catch (cause) {
+        if (idempotencyKey && isUniqueConstraintError(cause)) {
+          return empty(204);
+        }
+        throw cause;
+      }
     },
   }),
 ];

@@ -11,6 +11,8 @@ import {
   type TypedUnitOfWork,
 } from "@fragno-dev/db";
 
+import type { ResendSendEmailInput } from "./routes/emails";
+import { resolveEmailPayload, toArray } from "./routes/shared";
 import { resendSchema } from "./schema";
 import {
   buildHeuristicKey,
@@ -98,6 +100,11 @@ type ResendEmailMessageRow = SelectResult<
 >;
 type ResendThreadRow = SelectResult<(typeof resendSchema)["tables"]["emailThread"], {}, true>;
 type ResendServiceContext = DatabaseServiceContext<ResendHooksMap>;
+
+const SEND_EMAIL_HOOK_ID_PREFIX = "resend:send-email:";
+const MAX_DURABLE_HOOK_ID_LENGTH = 128;
+export const MAX_RESEND_EMAIL_IDEMPOTENCY_KEY_LENGTH =
+  MAX_DURABLE_HOOK_ID_LENGTH - SEND_EMAIL_HOOK_ID_PREFIX.length;
 
 const isEmailWebhookEvent = (event: WebhookEventPayload): event is ResendEmailWebhookEvent =>
   event.type.startsWith("email.");
@@ -292,8 +299,76 @@ const resolveInboundThread = ({
 
 const defineResendServiceMethods = <T>(methods: T & ThisType<ResendServiceContext>) => methods;
 
-const createResendServiceMethods = () => {
+const createResendServiceMethods = (config: ResendFragmentConfig) => {
   const services = defineResendServiceMethods({
+    queueEmail: function (input: ResendSendEmailInput, options: { idempotencyKey?: string } = {}) {
+      const payload = resolveEmailPayload(input, config);
+      if (!payload.from) {
+        throw new Error("Missing from address. Provide it in the request or config.defaultFrom.");
+      }
+
+      const idempotencyKey = options.idempotencyKey?.trim();
+      if (idempotencyKey && idempotencyKey.length > MAX_RESEND_EMAIL_IDEMPOTENCY_KEY_LENGTH) {
+        throw new Error(
+          `Idempotency key must be at most ${MAX_RESEND_EMAIL_IDEMPOTENCY_KEY_LENGTH} characters.`,
+        );
+      }
+
+      const now = new Date();
+      const sendEmailHookId = idempotencyKey
+        ? `${SEND_EMAIL_HOOK_ID_PREFIX}${idempotencyKey}`
+        : undefined;
+
+      return this.serviceTx(resendSchema)
+        .mutate(({ uow }) => {
+          const scheduledAtValue = input.scheduledIn ? uow.now().plus(input.scheduledIn) : null;
+          const status = scheduledAtValue ? "scheduled" : "queued";
+          const emailId = uow.create("emailMessage", {
+            direction: "outbound",
+            threadId: null,
+            status,
+            providerEmailId: null,
+            from: payload.from ?? null,
+            to: toArray(payload.to) ?? [],
+            cc: toArray(payload.cc) ?? null,
+            bcc: toArray(payload.bcc) ?? null,
+            replyTo: toArray(payload.replyTo) ?? null,
+            subject: payload.subject ?? null,
+            messageId: null,
+            headers: payload.headers ?? null,
+            html: payload.html ?? null,
+            text: payload.text ?? null,
+            attachments: null,
+            tags: payload.tags ?? null,
+            occurredAt: uow.now(),
+            scheduledAt: scheduledAtValue,
+            sentAt: null,
+            lastEventType: null,
+            lastEventAt: null,
+            errorCode: null,
+            errorMessage: null,
+          });
+
+          uow.triggerHook(
+            "sendEmail",
+            { emailId: emailId.valueOf() },
+            {
+              ...(sendEmailHookId ? { id: sendEmailHookId } : {}),
+              ...(scheduledAtValue ? { processAt: scheduledAtValue } : {}),
+            },
+          );
+
+          return {
+            id: emailId.valueOf(),
+            status,
+            resendId: null,
+            createdAt: now,
+            updatedAt: now,
+          };
+        })
+        .build();
+    },
+
     getThreadById: function (threadId: string) {
       return this.serviceTx(resendSchema)
         .retrieve((uow) =>
@@ -365,8 +440,11 @@ const createResendServiceMethods = () => {
   return services;
 };
 
-const createResendServices = (defineService: <T>(svc: T & ThisType<ResendServiceContext>) => T) => {
-  return defineService(createResendServiceMethods());
+const createResendServices = (
+  defineService: <T>(svc: T & ThisType<ResendServiceContext>) => T,
+  config: ResendFragmentConfig,
+) => {
+  return defineService(createResendServiceMethods(config));
 };
 
 export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("resend")
@@ -374,7 +452,7 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
   .withDependencies(({ config }) => ({
     resend: new Resend(config.apiKey),
   }))
-  .providesBaseService(({ defineService }) => createResendServices(defineService))
+  .providesBaseService(({ defineService, config }) => createResendServices(defineService, config))
   .provideHooks<ResendHooksMap>(({ defineHook, deps, config, services }) => ({
     sendEmail: defineHook(async function (payload) {
       const prepared = await this.handlerTx()
