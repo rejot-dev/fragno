@@ -6,31 +6,6 @@ on:
     branches: [main]
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    env:
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      TURBO_SCM_BASE: "origin/main"
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: ".node-version"
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Check formatting
-        run: pnpm run format:check
-
-      - name: Run lint
-        run: pnpm run lint:type-aware
-
   build:
     runs-on: ubuntu-latest
     env:
@@ -52,10 +27,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check formatting
+        run: pnpm run format:check
+
       - name: Check types & build
-        run:
-          pnpm exec turbo run types:check build ${{ github.event_name == 'pull_request' &&
-          '--affected' || '' }}
+        run: pnpm exec turbo run types:check build
+
+      - name: Run type-aware lint
+        run: pnpm run lint:type-aware
 
   test:
     runs-on: ubuntu-latest
