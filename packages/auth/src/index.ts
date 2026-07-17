@@ -54,6 +54,8 @@ import type {
   AuthHooksMap,
   BeforeCreateUserHook,
   CredentialHookPayload,
+  DurableUserCreatedHookPayload,
+  DurableUserEmailVerifiedHookPayload,
   InvitationExpiredHookPayload,
   UserHookPayload,
 } from "./hooks";
@@ -147,6 +149,14 @@ export interface AuthConfig<
   oauth?: AuthOAuthConfig;
 }
 
+const parseDurableHookDate = (value: string, fieldName: string): Date => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime()) || date.toISOString() !== value) {
+    throw new Error(`Invalid ${fieldName} durable hook timestamp.`);
+  }
+  return date;
+};
+
 export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
   .extend(withDatabase(authSchema))
   .provideHooks<AuthHooksMap>(({ defineHook, config }) => {
@@ -207,9 +217,25 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
     });
 
     const baseHooks = {
-      onUserCreated: defineHook<UserHookPayload>(async function (payload) {
-        await authHooks?.onUserCreated?.(payload, hookContext(this));
+      onUserCreated: defineHook<DurableUserCreatedHookPayload>(async function (payload) {
+        const emailVerifiedAt =
+          payload.emailVerifiedAt === null
+            ? null
+            : parseDurableHookDate(payload.emailVerifiedAt, "onUserCreated.emailVerifiedAt");
+        await authHooks?.onUserCreated?.({ ...payload, emailVerifiedAt }, hookContext(this));
       }),
+      onUserEmailVerified: defineHook<DurableUserEmailVerifiedHookPayload>(
+        async function (payload) {
+          const emailVerifiedAt = parseDurableHookDate(
+            payload.emailVerifiedAt,
+            "onUserEmailVerified.emailVerifiedAt",
+          );
+          await authHooks?.onUserEmailVerified?.(
+            { ...payload, emailVerifiedAt },
+            hookContext(this),
+          );
+        },
+      ),
       onUserRoleUpdated: defineHook<UserHookPayload>(async function (payload) {
         await authHooks?.onUserRoleUpdated?.(payload, hookContext(this));
       }),
@@ -963,7 +989,11 @@ export type {
   BeforeCreateUserPayload,
   CredentialHookPayload,
   CredentialSummary,
+  DurableUserCreatedHookPayload,
+  DurableUserEmailVerifiedHookPayload,
   InvitationExpiredHookPayload,
+  UserCreatedHookPayload,
+  UserEmailVerifiedHookPayload,
   UserHookPayload,
 } from "./hooks";
 export type {
@@ -1004,6 +1034,7 @@ export {
 } from "./client/session-cache";
 export type { AuthSessionCache, AuthSessionCacheOptions } from "./client/session-cache";
 export type { UserSummary } from "./types";
+export type { VerifyUserEmailInput, VerifyUserEmailResult } from "./user/user-actions";
 export type {
   AnyOAuthProvider,
   AuthOAuthConfig,

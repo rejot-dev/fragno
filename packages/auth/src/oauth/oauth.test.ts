@@ -1,9 +1,15 @@
 import { afterAll, assert, describe, expect, it } from "vitest";
 
 import { instantiate } from "@fragno-dev/core";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { getInternalFragment, type DurableHookRecord } from "@fragno-dev/db";
+import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
 import { authFragmentDefinition } from "..";
+import type {
+  DurableUserEmailVerifiedHookPayload,
+  UserCreatedHookPayload,
+  UserEmailVerifiedHookPayload,
+} from "../hooks";
 import { authSchema } from "../schema";
 import { sessionRoutesFactory } from "../session/session";
 import { hashPassword } from "../user/password";
@@ -15,6 +21,10 @@ const redirectURI = "http://localhost:3000/api/auth/oauth/test/callback";
 const authHeaders = (token: string) => ({
   Cookie: `fragno_auth=${token}`,
 });
+
+const readDurableUserEmailVerifiedHookPayload = (
+  hook: DurableHookRecord,
+): DurableUserEmailVerifiedHookPayload => hook.payload as DurableUserEmailVerifiedHookPayload;
 
 const createTestProvider = (options: {
   id: string;
@@ -311,6 +321,8 @@ describe("auth oauth access tokens", async () => {
 });
 
 describe("auth oauth", async () => {
+  const deliveredUserCreatedPayloads: UserCreatedHookPayload[] = [];
+  const deliveredUserEmailVerifiedPayloads: UserEmailVerifiedHookPayload[] = [];
   const { fragments, test } = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "kysely-sqlite" })
     .withFragment(
@@ -318,6 +330,14 @@ describe("auth oauth", async () => {
       instantiate(authFragmentDefinition)
         .withConfig({
           organizations: false,
+          hooks: {
+            onUserCreated(payload) {
+              deliveredUserCreatedPayloads.push(payload);
+            },
+            onUserEmailVerified(payload) {
+              deliveredUserEmailVerifiedPayloads.push(payload);
+            },
+          },
           oauth: {
             providers: {
               test: testProvider,
@@ -359,6 +379,34 @@ describe("auth oauth", async () => {
     return state ?? "";
   };
 
+  const getUserById = (userId: string) =>
+    test.inContext(function () {
+      return this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(authSchema).findFirst("user", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", userId)),
+          ),
+        )
+        .transformRetrieve(([user]) => user)
+        .execute();
+    });
+
+  const getUserEmailVerifiedPayloads = async () => {
+    const internalFragment = getInternalFragment(test.adapter);
+    const hooks = await internalFragment.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(
+          () => [internalFragment.services.hookService.getHooksByNamespace("auth")] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+
+    return hooks
+      .filter((hook) => hook.hookName === "onUserEmailVerified")
+      .map(readDurableUserEmailVerifiedHookPayload);
+  };
+
   it("/oauth/:provider/authorize returns an authorization url", async () => {
     const response = await fragment.callRoute("GET", "/oauth/:provider/authorize", {
       pathParams: { provider: "test" },
@@ -394,6 +442,30 @@ describe("auth oauth", async () => {
     assert(response.type === "json");
     assert(response.data.email === "new@test.com");
     expect(response.data.auth.token).toBeTruthy();
+
+    const user = await getUserById(response.data.userId);
+    assert(user?.emailVerifiedAt);
+
+    const verifiedPayload = (await getUserEmailVerifiedPayloads()).find(
+      (payload) => payload.user.id === response.data.userId,
+    );
+    assert(verifiedPayload);
+    expect(verifiedPayload.emailVerifiedAt).toBe(user.emailVerifiedAt.toISOString());
+
+    await drainDurableHooks(fragment.fragment);
+    const deliveredCreatedPayload = deliveredUserCreatedPayloads.find(
+      (payload) => payload.user.id === response.data.userId,
+    );
+    assert(deliveredCreatedPayload?.emailVerifiedAt);
+    expect(deliveredCreatedPayload.emailVerifiedAt).toBeInstanceOf(Date);
+    expect(deliveredCreatedPayload.emailVerifiedAt).toEqual(user.emailVerifiedAt);
+
+    const deliveredVerifiedPayload = deliveredUserEmailVerifiedPayloads.find(
+      (payload) => payload.user.id === response.data.userId,
+    );
+    assert(deliveredVerifiedPayload);
+    expect(deliveredVerifiedPayload.emailVerifiedAt).toBeInstanceOf(Date);
+    expect(deliveredVerifiedPayload.emailVerifiedAt).toEqual(user.emailVerifiedAt);
   });
 
   it("links oauth account by email when user exists", async () => {
@@ -427,7 +499,9 @@ describe("auth oauth", async () => {
     expect(callbackResponse.data.userId).toBe(existingUser.id);
     assert(callbackResponse.data.email === "linked@test.com");
 
-    expect(callbackResponse.data.userId).toBe(existingUser.id);
+    const linkedUser = await getUserById(existingUser.id);
+    assert(linkedUser);
+    expect(linkedUser.emailVerifiedAt).toBeInstanceOf(Date);
   });
 
   it("does not link oauth accounts when provider email is unverified", async () => {
@@ -460,6 +534,10 @@ describe("auth oauth", async () => {
     assert(callbackResponse.type === "json");
     assert(callbackResponse.data.email === "unverified@test.com");
     expect(callbackResponse.data.userId).not.toBe(existingUser.id);
+
+    const createdUser = await getUserById(callbackResponse.data.userId);
+    assert(createdUser);
+    expect(createdUser.emailVerifiedAt).toBeNull();
   });
 
   it("requires signup when email is unverified and implicit sign up is disabled", async () => {

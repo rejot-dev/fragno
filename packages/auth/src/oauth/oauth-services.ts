@@ -1,3 +1,5 @@
+import type { FragnoId } from "@fragno-dev/db/schema";
+
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import type { AuthActor, ValidatedCredential } from "../auth/types";
@@ -62,10 +64,11 @@ type CredentialSeedMemberRow = {
 };
 
 type SeedableUserRow = {
-  id: { valueOf(): string };
+  id: FragnoId;
   email: string;
   role: string;
   bannedAt?: Date | null;
+  emailVerifiedAt: Date | null;
   userOrganizationMembers?: CredentialSeedMemberRow | CredentialSeedMemberRow[] | null;
 };
 
@@ -116,9 +119,11 @@ const toResolvedUser = (rows: Array<SeedableUserRow | null | undefined>) => {
 
   return {
     id: first.id.valueOf(),
+    storageId: first.id,
     email: first.email,
     role: first.role as "user" | "admin",
     bannedAt: first.bannedAt ?? null,
+    emailVerifiedAt: first.emailVerifiedAt,
     members: collectCredentialSeedMembers(rows),
   };
 };
@@ -292,7 +297,7 @@ export function createOAuthServices(options: {
                 .joinOne("oauthStateLinkUser", "user", (user) =>
                   user
                     .onIndex("primary", (eb) => eb("id", "=", eb.parent("linkUserId")))
-                    .select(["id", "email", "role", "bannedAt"])
+                    .select(["id", "email", "role", "bannedAt", "emailVerifiedAt"])
                     .joinMany("userOrganizationMembers", "organizationMember", (member) =>
                       member
                         .onIndex("idx_org_member_user", (eb) => eb("userId", "=", eb.parent("id")))
@@ -316,7 +321,7 @@ export function createOAuthServices(options: {
                 .joinOne("oauthAccountUser", "user", (user) =>
                   user
                     .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
-                    .select(["id", "email", "role", "bannedAt"])
+                    .select(["id", "email", "role", "bannedAt", "emailVerifiedAt"])
                     .joinMany("userOrganizationMembers", "organizationMember", (member) =>
                       member
                         .onIndex("idx_org_member_user", (eb) => eb("userId", "=", eb.parent("id")))
@@ -382,9 +387,11 @@ export function createOAuthServices(options: {
 
             let resolvedUser: {
               id: string;
+              storageId: FragnoId;
               email: string;
               role: "user" | "admin";
               bannedAt?: Date | null;
+              emailVerifiedAt: Date | null;
               members: ReturnType<typeof mapCredentialSeedMembers>;
             } | null = null;
             let createdUser = false;
@@ -412,17 +419,21 @@ export function createOAuthServices(options: {
               }
 
               const role = options.beforeCreateUser?.({ email, role: "user" })?.role ?? "user";
+              const emailVerifiedAt = input.userInfo.emailVerified ? now : null;
               const userId = uow.create("user", {
                 email,
                 passwordHash: null,
                 role,
+                emailVerifiedAt,
               });
 
               resolvedUser = {
                 id: userId.valueOf(),
+                storageId: userId,
                 email,
                 role,
                 bannedAt: null,
+                emailVerifiedAt,
                 members: [],
               };
               createdUser = true;
@@ -431,6 +442,23 @@ export function createOAuthServices(options: {
             if (resolvedUser.bannedAt) {
               return { ok: false as const, code: "user_banned" as const };
             }
+
+            const providerVerifiedCurrentEmail =
+              input.userInfo.emailVerified === true && resolvedUser.email === email;
+            const emailVerifiedAt =
+              resolvedUser.emailVerifiedAt ?? (providerVerifiedCurrentEmail ? now : null);
+            const emailVerificationEstablished = createdUser
+              ? emailVerifiedAt !== null
+              : resolvedUser.emailVerifiedAt === null && emailVerifiedAt !== null;
+
+            if (!createdUser && emailVerificationEstablished && emailVerifiedAt) {
+              uow.update("user", resolvedUser.storageId, (b) => b.set({ emailVerifiedAt }).check());
+            }
+
+            resolvedUser = {
+              ...resolvedUser,
+              emailVerifiedAt,
+            };
 
             const tokenPayload = resolveTokenStorage(input.tokens, tokenStorage);
             const oauthAccountInput = {
@@ -479,6 +507,15 @@ export function createOAuthServices(options: {
               uow.triggerHook("onUserCreated", {
                 user: userSummary,
                 actor: userSummary,
+                emailVerifiedAt: resolvedUser.emailVerifiedAt?.toISOString() ?? null,
+              });
+            }
+
+            if (emailVerificationEstablished && emailVerifiedAt) {
+              uow.triggerHook("onUserEmailVerified", {
+                user: userSummary,
+                actor: userSummary,
+                emailVerifiedAt: emailVerifiedAt.toISOString(),
               });
             }
 

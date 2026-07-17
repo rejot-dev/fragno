@@ -24,6 +24,29 @@ import { hashPassword, verifyPassword } from "./password";
 import { mapUserSummary } from "./summary";
 
 type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
+
+export type VerifyUserEmailInput = {
+  userId: string;
+  expectedEmail: string;
+  verifiedAt: Date;
+};
+
+export type VerifyUserEmailResult =
+  | {
+      ok: true;
+      status: "verified";
+      emailVerifiedAt: Date;
+    }
+  | {
+      ok: true;
+      status: "already_verified";
+      emailVerifiedAt: Date;
+    }
+  | {
+      ok: false;
+      code: "user_not_found" | "email_changed";
+    };
+
 type CredentialSeedMemberRow = {
   createdAt: Date;
   organizationMemberOrganization?: {
@@ -107,6 +130,7 @@ export function createUserServices(
         uow.triggerHook("onUserCreated", {
           user: userSummary,
           actor: null,
+          emailVerifiedAt: null,
         });
 
         if (autoOrganization) {
@@ -152,9 +176,54 @@ export function createUserServices(
                 email: user.email,
                 passwordHash: user.passwordHash ?? null,
                 role: normalizeRole(user.role),
+                emailVerifiedAt: user.emailVerifiedAt ?? null,
               }
             : null,
         )
+        .build();
+    },
+    /**
+     * Mark the user's current email as verified.
+     */
+    verifyUserEmail: function (this: AuthServiceContext, input: VerifyUserEmailInput) {
+      return this.serviceTx(authSchema)
+        .retrieve((uow) =>
+          uow.findFirst("user", (b) =>
+            b
+              .whereIndex("primary", (eb) => eb("id", "=", input.userId))
+              .select(["id", "email", "role", "bannedAt", "emailVerifiedAt"]),
+          ),
+        )
+        .mutate(({ uow, retrieveResult: [user] }): VerifyUserEmailResult => {
+          if (!user) {
+            return { ok: false, code: "user_not_found" };
+          }
+
+          if (user.email !== input.expectedEmail) {
+            return { ok: false, code: "email_changed" };
+          }
+
+          if (user.emailVerifiedAt) {
+            return {
+              ok: true,
+              status: "already_verified",
+              emailVerifiedAt: user.emailVerifiedAt,
+            };
+          }
+
+          uow.update("user", user.id, (b) => b.set({ emailVerifiedAt: input.verifiedAt }).check());
+          uow.triggerHook("onUserEmailVerified", {
+            user: mapUserSummary(user),
+            actor: null,
+            emailVerifiedAt: input.verifiedAt.toISOString(),
+          });
+
+          return {
+            ok: true,
+            status: "verified",
+            emailVerifiedAt: input.verifiedAt,
+          };
+        })
         .build();
     },
     /**
@@ -234,7 +303,7 @@ export function createUserServices(
         .retrieve((uow) =>
           uow
             .findFirst("user", (b) =>
-              b.whereIndex("idx_user_email", (eb) => eb("email", "=", email)),
+              b.whereIndex("idx_user_email", (eb) => eb("email", "=", email)).select(["id"]),
             )
             .findFirst("organization", (b) =>
               b.whereIndex("idx_organization_slug", (eb) => eb("slug", "=", autoOrganizationSlug)),
@@ -282,6 +351,7 @@ export function createUserServices(
           uow.triggerHook("onUserCreated", {
             user: userSummary,
             actor: userSummary,
+            emailVerifiedAt: null,
           });
           uow.triggerHook("onCredentialIssued", {
             credential: {

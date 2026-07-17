@@ -12,6 +12,22 @@ export interface UserHookPayload {
   actor: UserSummary | null;
 }
 
+export interface UserCreatedHookPayload extends UserHookPayload {
+  emailVerifiedAt: Date | null;
+}
+
+export interface UserEmailVerifiedHookPayload extends UserHookPayload {
+  emailVerifiedAt: Date;
+}
+
+export interface DurableUserCreatedHookPayload extends UserHookPayload {
+  emailVerifiedAt: string | null;
+}
+
+export interface DurableUserEmailVerifiedHookPayload extends UserHookPayload {
+  emailVerifiedAt: string;
+}
+
 export interface CredentialSummary {
   id: string;
   user: UserSummary;
@@ -44,7 +60,14 @@ export interface AuthHookContext {
 }
 
 export interface AuthHooks {
-  onUserCreated?: (payload: UserHookPayload, context: AuthHookContext) => Promise<void> | void;
+  onUserCreated?: (
+    payload: UserCreatedHookPayload,
+    context: AuthHookContext,
+  ) => Promise<void> | void;
+  onUserEmailVerified?: (
+    payload: UserEmailVerifiedHookPayload,
+    context: AuthHookContext,
+  ) => Promise<void> | void;
   onUserRoleUpdated?: (payload: UserHookPayload, context: AuthHookContext) => Promise<void> | void;
   onUserPasswordChanged?: (
     payload: UserHookPayload,
@@ -61,7 +84,8 @@ export interface AuthHooks {
 }
 
 export type AuthHooksMap = {
-  onUserCreated: HookFn<UserHookPayload>;
+  onUserCreated: HookFn<DurableUserCreatedHookPayload>;
+  onUserEmailVerified: HookFn<DurableUserEmailVerifiedHookPayload>;
   onUserRoleUpdated: HookFn<UserHookPayload>;
   onUserPasswordChanged: HookFn<UserHookPayload>;
   onCredentialIssued: HookFn<CredentialHookPayload>;
