@@ -27,6 +27,7 @@ coverage.json
 out/
 build
 dist
+.prisma/
 # The Cadence prompt output has a real source folder named `build`.
 !apps/backoffice/app/components/cadence/prompt/output/build/
 !apps/backoffice/app/components/cadence/prompt/output/build/**

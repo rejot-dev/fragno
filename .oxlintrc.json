@@ -15,6 +15,7 @@
   "ignorePatterns": [
     "**/samples/**",
     "**/dist/**",
+    "**/.prisma/**",
     "**/node_modules/**",
     "**/build/**",
     "**/.react-router/**",
