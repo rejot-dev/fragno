@@ -19,9 +19,10 @@
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
-    "types:check": "prisma generate --schema ./prisma/schema.prisma && tsc --noEmit",
+    "types:check": "tsc --noEmit",
+    "prisma:generate": "prisma generate --schema ./prisma/schema.prisma",
     "db:push": "prisma db push --schema ./prisma/schema.prisma",
-    "db:generate:prisma-client": "prisma generate --schema ./prisma/schema.prisma",
+    "db:generate:prisma-client": "pnpm run prisma:generate",
     "db:generate:fragno": "fragno-cli db generate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts",
     "db:migrate:fragno": "fragno-cli db migrate ./src/fragno/comment-fragment.ts ./src/fragno/rating-fragment.ts",
     "db:generate": "pnpm run db:generate:fragno && pnpm run db:generate:prisma-client",

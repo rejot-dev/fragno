@@ -7,5 +7,8 @@ export default defineConfig([
     dts: true,
     platform: "node",
     outDir: "./dist",
+    deps: {
+      neverBundle: [/\.prisma\/client\/index\.js$/],
+    },
   },
 ]);

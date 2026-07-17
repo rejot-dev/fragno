@@ -1,5 +1,4 @@
-import type { Prisma, User } from "@prisma/client";
-
+import type { Prisma, User } from "../.prisma/client/index.js";
 import { getPrismaClient } from "./database";
 
 const prisma = getPrismaClient();
