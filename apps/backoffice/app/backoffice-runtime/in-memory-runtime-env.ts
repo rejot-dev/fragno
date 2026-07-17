@@ -45,6 +45,7 @@ const createInMemoryWorkerLoader = (): WorkerLoader => {
             "",
           )
           .replace(/export default class/u, "return class");
+        // oxlint-disable-next-line typescript/no-implied-eval -- This test-only loader evaluates generated Worker modules in memory.
         const createEntrypoint = new Function(
           "WorkerEntrypoint",
           "AsyncLocalStorage",
