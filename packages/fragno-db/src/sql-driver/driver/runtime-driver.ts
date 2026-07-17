@@ -7,6 +7,9 @@
 
 import type { DatabaseConnection, Driver, TransactionSettings } from "../sql-driver";
 
+const normalizeError = (error: unknown): Error =>
+  error instanceof Error ? error : new Error(String(error));
+
 /**
  * A small wrapper around {@link Driver} that makes sure the driver is
  * initialized before it is used, only initialized and destroyed
@@ -35,9 +38,9 @@ export class RuntimeDriver implements Driver {
         .then(() => {
           this.#initDone = true;
         })
-        .catch((err) => {
+        .catch((error: unknown) => {
           this.#initPromise = undefined;
-          return Promise.reject(err);
+          throw normalizeError(error);
         });
     }
 
@@ -80,9 +83,9 @@ export class RuntimeDriver implements Driver {
     await this.#initPromise;
 
     if (!this.#destroyPromise) {
-      this.#destroyPromise = this.#driver.destroy().catch((err) => {
+      this.#destroyPromise = this.#driver.destroy().catch((error: unknown) => {
         this.#destroyPromise = undefined;
-        return Promise.reject(err);
+        throw normalizeError(error);
       });
     }
 

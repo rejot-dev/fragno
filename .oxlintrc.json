@@ -69,7 +69,7 @@
     "typescript/prefer-includes": "off",
     "typescript/prefer-nullish-coalescing": "off",
     "typescript/prefer-optional-chain": "off",
-    "typescript/prefer-promise-reject-errors": "off",
+    "typescript/prefer-promise-reject-errors": "error",
     "typescript/prefer-readonly-parameter-types": "off",
     "typescript/prefer-readonly": "off",
     "typescript/prefer-reduce-type-parameter": "off",

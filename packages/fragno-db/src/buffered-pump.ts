@@ -51,6 +51,9 @@ export class BufferedPumpObserveTimeoutError extends Error {
 
 const DEFAULT_BUFFERED_PUMP_INTERVAL_MS = 100;
 
+const normalizeError = (error: unknown): Error =>
+  error instanceof Error ? error : new Error(String(error));
+
 type QueuedBufferedItem<TItem, TOutgoing, TScopeMeta> =
   | { kind: "value"; value: TItem }
   | { kind: "factory"; factory: BufferedItemFactory<TItem, TOutgoing, TScopeMeta> };
@@ -482,7 +485,7 @@ export class BufferedDatabasePump<
               }
               settle(() => resolve(message));
             } catch (error) {
-              settle(() => reject(error));
+              settle(() => reject(normalizeError(error)));
             }
           })();
         },
