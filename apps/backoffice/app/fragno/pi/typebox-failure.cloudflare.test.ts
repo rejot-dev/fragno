@@ -16,6 +16,7 @@ describe("typebox failure reproduction", () => {
 
   it("new Function works in the workers test runtime", () => {
     expect(env).toBeDefined();
+    // oxlint-disable-next-line typescript/no-implied-eval -- intentional code-generation compatibility test
     const fn = new Function("return 2 + 2;");
     assert(fn() === 4);
   });

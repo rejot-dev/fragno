@@ -1,6 +1,7 @@
 import { defineWorkflow } from "@fragno-dev/workflows/workflow";
 import { z } from "zod";
 
+import { evaluateArithmeticExpression } from "./arithmetic-expression";
 import { workflowUsageHooks } from "./definition";
 import type { WorkflowUsageDslState } from "./dsl";
 import { workflowUsageSchema } from "./schema";
@@ -64,12 +65,7 @@ function substituteVariables(expression: string, state: WorkflowUsageDslState): 
 
 const evaluateExpression = (expression: string, state: WorkflowUsageDslState): number => {
   const substituted = substituteVariables(expression, state);
-  if (!/^[0-9+\-*/%.()\s]+$/.test(substituted)) {
-    throw new Error(
-      "DSL calc expression contains unsupported characters after variable substitution.",
-    );
-  }
-  return Function(`"use strict"; return (${substituted});`)() as number;
+  return evaluateArithmeticExpression(substituted);
 };
 
 const applyRound = (value: number, round?: "floor" | "ceil" | "round") => {
