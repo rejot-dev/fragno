@@ -4,6 +4,7 @@ import z from "zod";
 import {
   createAuthFragment,
   github,
+  type AuthHooks,
   type AuthOAuthConfig,
   type BeforeCreateUserHook,
   type OrganizationHooks,
@@ -24,6 +25,7 @@ export type AuthInit =
 type AuthServerOptions = {
   baseUrl?: string;
   beforeCreateUser?: BeforeCreateUserHook;
+  authHooks?: AuthHooks;
   organizationHooks?: OrganizationHooks;
 };
 
@@ -125,6 +127,7 @@ export function createAuthServer(init: AuthInit, options: AuthServerOptions = {}
         secure: !isDev,
         path: "/",
       },
+      hooks: options.authHooks,
       beforeCreateUser: options.beforeCreateUser,
       organizations: {
         autoCreateOrganization: {},

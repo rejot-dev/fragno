@@ -129,16 +129,11 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   }
 
   const resendObjects = context.get(BackofficeWorkerContext).runtime.objects.resend;
-  const resendStorageScope = scope.kind === "system" ? "admin" : scope.orgId;
   const resendDo =
-    scope.kind === "system" ? resendObjects.singleton() : resendObjects.forOrg(resendStorageScope);
+    scope.kind === "system" ? resendObjects.singleton() : resendObjects.forOrg(scope.orgId);
 
   try {
-    const configState = await resendDo.setAdminConfig(
-      validation.payload,
-      resendStorageScope,
-      origin,
-    );
+    const configState = await resendDo.setAdminConfig(validation.payload, scope, origin);
     const webhook = configState.webhook;
     if (webhook && !webhook.ok) {
       return {
@@ -177,8 +172,7 @@ export default function BackofficeOrganisationResendConfiguration() {
 
   const isConfigured = Boolean(configState?.configured);
   const webhookBaseUrl = formState.webhookBaseUrl.trim();
-  const resendScopeSegment =
-    scope.kind === "system" ? "admin" : backofficeContextScopeSinglePathSegment(scope);
+  const resendScopeSegment = backofficeContextScopeSinglePathSegment(scope);
   const webhookUrl = `${webhookBaseUrl.replace(/\/+$/, "")}/api/resend/${resendScopeSegment}/webhook`;
   const webhookBaseUrlError = validateRequiredUrl(
     formState.webhookBaseUrl.trim(),

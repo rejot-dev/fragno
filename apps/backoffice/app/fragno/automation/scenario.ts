@@ -1,5 +1,6 @@
 import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 
+import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 import { createFragnoCollection } from "@fragno-dev/tanstack-db-adapter";
 import type { TelegramApi, TelegramMessage } from "@fragno-dev/telegram-fragment";
 
@@ -9,6 +10,7 @@ import {
   createInMemoryBackofficeRuntime,
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
+import type { InMemoryBackofficeRuntimeEnv } from "@/backoffice-runtime/in-memory-runtime-env";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type {
   BackofficeObjectAddress,
@@ -175,6 +177,11 @@ type FakeResendReplyCall = {
   body: Record<string, unknown>;
 };
 
+type FakeResendQueueEmailCall = {
+  input: ResendSendEmailInput;
+  options: { idempotencyKey: string };
+};
+
 type FakeMcpServer = {
   slug: string;
   name?: string | null;
@@ -217,6 +224,8 @@ export type FakePiApi = {
 
 export type FakeResendApi = {
   replyCalls: FakeResendReplyCall[];
+  queueEmailCalls: FakeResendQueueEmailCall[];
+  queueEmail(input: ResendSendEmailInput, options: { idempotencyKey: string }): Promise<void>;
   fetch(request: Request): Promise<Response>;
 };
 
@@ -287,6 +296,7 @@ export type BackofficeScenarioContext<TVars extends ScenarioVars = ScenarioVars>
 
 export type BackofficeScenarioDefinitionInput<TVars extends ScenarioVars = ScenarioVars> = {
   name: string;
+  env?: Partial<InMemoryBackofficeRuntimeEnv>;
   files?: BackofficeScenarioFilePreset;
   vars?: () => TVars;
   fakes?: (ctx: { fake: ScenarioFakeFactory }) => ScenarioFakes;
@@ -362,6 +372,18 @@ type PiRanTurnInput = {
 type ResendRepliedToThreadInput = {
   threadId?: string;
   body?: string | RegExp;
+};
+
+type ResendQueuedEmailInput = {
+  to?: string;
+  subject?: string;
+  text?: string | RegExp;
+  idempotencyKey?: string | RegExp;
+};
+
+type AuthSignUpInput = {
+  email: string;
+  password?: string;
 };
 
 type StoreEntryInput = {
@@ -610,6 +632,7 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
   };
   when: {
     auth: {
+      signUp(input: AuthSignUpInput): BackofficeScenarioStep;
       organizationCreated(input: OrganizationCreatedInput): BackofficeScenarioStep;
     };
     capability: {
@@ -662,6 +685,8 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
       ranTurn(input: PiRanTurnInput): BackofficeScenarioStep;
     };
     resend: {
+      queuedEmail(input: ResendQueuedEmailInput): BackofficeScenarioStep;
+      noQueuedEmails(): BackofficeScenarioStep;
       repliedToThread(input: ResendRepliedToThreadInput): BackofficeScenarioStep;
     };
     store: {
@@ -1063,6 +1088,7 @@ const createFakeResendThread = (input: FakeResendThreadSeed) => {
 
 const createFakeResendApi = (input: { threads?: FakeResendThreadSeed[] } = {}): FakeResendApi => {
   const replyCalls: FakeResendReplyCall[] = [];
+  const queueEmailCalls: FakeResendQueueEmailCall[] = [];
   const threads = new Map(
     (input.threads?.length ? input.threads : [{ id: "thread-1" }]).map((thread) => {
       const normalized = createFakeResendThread(thread);
@@ -1080,6 +1106,10 @@ const createFakeResendApi = (input: { threads?: FakeResendThreadSeed[] } = {}): 
 
   return {
     replyCalls,
+    queueEmailCalls,
+    queueEmail: async (emailInput, options) => {
+      queueEmailCalls.push({ input: emailInput, options });
+    },
     fetch: async (request) => {
       const url = new URL(request.url);
       const pathname = url.pathname;
@@ -2227,6 +2257,22 @@ const buildStepBuilders = <
   },
   when: {
     auth: {
+      signUp: (input) =>
+        createStep("when", "auth.signUp", `sign up ${input.email}`, async (ctx) => {
+          const response = await ctx.runtime.objects.auth.singleton().fetch(
+            new Request("https://backoffice.example/api/auth/sign-up", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                email: input.email,
+                password: input.password ?? "password123",
+              }),
+            }),
+          );
+          if (!response.ok) {
+            throw new Error(`Auth sign-up failed (${response.status}): ${await response.text()}`);
+          }
+        }),
       organizationCreated: (input) =>
         createStep(
           "when",
@@ -2614,6 +2660,60 @@ const buildStepBuilders = <
         ),
     },
     resend: {
+      queuedEmail: (input) =>
+        createStep(
+          "then",
+          "resend.queuedEmail",
+          "assert transactional email was queued",
+          (ctx) => {
+            const calls = ctx.fakes.resend?.queueEmailCalls ?? [];
+            const call = calls.find((candidate) => {
+              const recipients = Array.isArray(candidate.input.to)
+                ? candidate.input.to
+                : [candidate.input.to];
+              const text = candidate.input.text ?? "";
+              const textMatches =
+                typeof input.text === "undefined"
+                  ? true
+                  : typeof input.text === "string"
+                    ? text === input.text
+                    : input.text.test(text);
+              const keyMatches =
+                typeof input.idempotencyKey === "undefined"
+                  ? true
+                  : typeof input.idempotencyKey === "string"
+                    ? candidate.options.idempotencyKey === input.idempotencyKey
+                    : input.idempotencyKey.test(candidate.options.idempotencyKey);
+
+              return (
+                (!input.to || recipients.includes(input.to)) &&
+                (!input.subject || candidate.input.subject === input.subject) &&
+                textMatches &&
+                keyMatches
+              );
+            });
+
+            if (!call) {
+              throw new Error(
+                `Expected queued Resend email was not found. Calls: ${JSON.stringify(calls, null, 2)}`,
+              );
+            }
+          },
+          { drain: false },
+        ),
+      noQueuedEmails: () =>
+        createStep(
+          "then",
+          "resend.noQueuedEmails",
+          "assert no transactional emails were queued",
+          (ctx) => {
+            const calls = ctx.fakes.resend?.queueEmailCalls ?? [];
+            if (calls.length !== 0) {
+              throw new Error(`Expected no queued Resend emails. Calls: ${JSON.stringify(calls)}`);
+            }
+          },
+          { drain: false },
+        ),
       repliedToThread: (input) =>
         createStep(
           "then",
@@ -3309,6 +3409,8 @@ const createObjectFactories = (fakes: ScenarioFakes): InMemoryObjectFactoryOverr
 
   if (fakes.resend) {
     objectFactories.RESEND = () => ({
+      queueEmail: (input: ResendSendEmailInput, options: { idempotencyKey: string }) =>
+        fakes.resend!.queueEmail(input, options),
       fetch: (request: Request) => fakes.resend!.fetch(request),
       alarm: async () => undefined,
       getAdminConfig: async () => ({ configured: true }),
@@ -3514,6 +3616,7 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
   );
   const fakes = scenario.fakes?.({ fake: createScenarioFakeFactory() }) ?? {};
   const runtime = await createInMemoryBackofficeRuntime({
+    env: scenario.env,
     getAutomationFileSystem: async ({ execution }) =>
       execution.scope.kind === "project"
         ? files.forProject(execution.scope.projectId)

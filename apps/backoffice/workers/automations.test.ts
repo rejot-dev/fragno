@@ -29,6 +29,7 @@ import { createDefaultAutomationFileSystem } from "./automations.do";
 
 const objects = {} as BackofficeObjectRegistry;
 const config: BackofficeRuntimeConfig = {
+  transactionalEmails: { enabled: false },
   bindings: {
     api: false,
     auth: false,

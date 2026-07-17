@@ -100,7 +100,7 @@ export const resendCapability: BackofficeCapability = {
       toResendStatus(
         await getResendDo(objects, orgId).setAdminConfig(
           resendConfigureInputSchema.parse(payload),
-          orgId,
+          { kind: "org", orgId },
           origin,
         ),
       ),

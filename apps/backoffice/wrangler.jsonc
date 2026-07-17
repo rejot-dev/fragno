@@ -37,6 +37,7 @@
    */
   "vars": {
     "TURNSTILE_SITEKEY": "0x4AAAAAACEAKTUMl498hZ6v",
+    "TRANSACTIONAL_EMAILS_ENABLED": "false",
   },
   "r2_buckets": [
     {
