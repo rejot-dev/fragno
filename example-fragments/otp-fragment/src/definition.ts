@@ -2,6 +2,7 @@ import { defineFragment } from "@fragno-dev/core";
 import type { TxResult } from "@fragno-dev/db";
 import { withDatabase } from "@fragno-dev/db";
 
+import { OtpIssueError } from "./errors";
 import type {
   OtpConfirmedHookPayload,
   OtpExpiredHookPayload,
@@ -24,6 +25,8 @@ import type { OtpErrorCode, OtpType } from "./types";
 
 const DEFAULT_EXPIRY_MINUTES = 15;
 
+export const MAX_OTP_ID_LENGTH = 128;
+
 export type OtpPayload = Record<string, unknown>;
 
 export interface OtpIssueResult extends OtpIssuedHookPayload {}
@@ -44,6 +47,7 @@ export interface IOtpService {
     type: OtpType,
     durationMinutes?: number,
     payload?: OtpPayload,
+    otpId?: string,
   ): TxResult<OtpIssueResult>;
   confirmOtp(
     externalId: string,
@@ -135,6 +139,25 @@ const buildIssuedPayload = (input: {
   createdAt: input.createdAt,
   payload: input.payload,
 });
+
+const resolveRequestedOtpId = (otpId?: string): string | null => {
+  if (otpId === undefined) {
+    return null;
+  }
+
+  if (otpId.trim().length === 0) {
+    throw new OtpIssueError("OTP_ID_EMPTY", "OTP id must not be empty.");
+  }
+
+  if (otpId.length > MAX_OTP_ID_LENGTH) {
+    throw new OtpIssueError(
+      "OTP_ID_TOO_LONG",
+      `OTP id must be at most ${MAX_OTP_ID_LENGTH} characters.`,
+    );
+  }
+
+  return otpId;
+};
 
 const buildExpiredPayload = (
   issued: OtpIssuedHookPayload,
@@ -246,24 +269,49 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
         type: OtpType,
         durationMinutes?: number,
         inputPayload: OtpPayload | null = null,
+        otpId?: string,
       ) {
-        const code = generateOtpCode(config);
+        const requestedOtpId = resolveRequestedOtpId(otpId);
         const expiryMinutes =
           durationMinutes ?? config.defaultExpiryMinutes ?? DEFAULT_EXPIRY_MINUTES;
 
         return this.serviceTx(otpSchema)
           .retrieve((uow) =>
-            uow.find("otp", (b) =>
-              b.whereIndex("idx_otp_externalId_type_status", (eb) =>
-                eb.and(
-                  eb("externalId", "=", externalId),
-                  eb("type", "=", type),
-                  eb("status", "=", "pending"),
+            uow
+              .findFirst("otp", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", requestedOtpId ?? "")),
+              )
+              .find("otp", (b) =>
+                b.whereIndex("idx_otp_externalId_type_status", (eb) =>
+                  eb.and(
+                    eb("externalId", "=", externalId),
+                    eb("type", "=", type),
+                    eb("status", "=", "pending"),
+                  ),
                 ),
               ),
-            ),
           )
-          .mutate(({ uow, retrieveResult: [pendingOtps] }) => {
+          .mutate(({ uow, retrieveResult: [existingOtp, pendingOtps] }) => {
+            if (existingOtp) {
+              if (existingOtp.externalId !== externalId || existingOtp.type !== type) {
+                throw new OtpIssueError(
+                  "OTP_ID_CONFLICT",
+                  "OTP id cannot be reused for another externalId or type.",
+                );
+              }
+
+              return buildIssuedPayload({
+                id: existingOtp.id.valueOf(),
+                externalId: existingOtp.externalId,
+                type: existingOtp.type as OtpType,
+                code: existingOtp.code,
+                expiresAt: existingOtp.expiresAt,
+                createdAt: existingOtp.createdAt,
+                payload: normalizeOtpPayload(existingOtp.payload),
+              });
+            }
+
+            const code = generateOtpCode(config);
             const createdAt = uow.now();
             const expiresAt = uow.now().plus({ minutes: expiryMinutes });
 
@@ -278,22 +326,32 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
               );
             }
 
-            const otpId = uow.create("otp", {
-              externalId,
-              type,
-              code,
-              status: "pending",
-              expiresAt,
-              payload: inputPayload ?? null,
-              confirmationPayload: null,
-              confirmedAt: null,
-              expiredAt: null,
-              invalidatedAt: null,
-              createdAt,
-            });
+            const createdOtpId = uow.create(
+              "otp",
+              {
+                ...(requestedOtpId ? { id: requestedOtpId } : {}),
+                externalId,
+                type,
+                code,
+                status: "pending",
+                expiresAt,
+                payload: inputPayload ?? null,
+                confirmationPayload: null,
+                confirmedAt: null,
+                expiredAt: null,
+                invalidatedAt: null,
+                createdAt,
+              },
+              requestedOtpId === null
+                ? {}
+                : {
+                    // The OTP schema's external ID is its only unique key.
+                    retryOnUniqueConflict: () => true,
+                  },
+            );
 
             const issuedPayload = buildIssuedPayload({
-              id: otpId.valueOf(),
+              id: createdOtpId.valueOf(),
               externalId,
               type,
               code,
@@ -303,7 +361,11 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
             });
 
             uow.triggerHook("onOtpIssued", issuedPayload);
-            uow.triggerHook("expireOtp", { otpId: otpId.valueOf() }, { processAt: expiresAt });
+            uow.triggerHook(
+              "expireOtp",
+              { otpId: createdOtpId.valueOf() },
+              { processAt: expiresAt },
+            );
 
             return issuedPayload;
           })

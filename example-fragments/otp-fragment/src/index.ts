@@ -59,7 +59,8 @@ export function createOtpFragmentClients(fragnoConfig: FragnoPublicClientConfig 
   };
 }
 
-export { otpFragmentDefinition } from "./definition";
+export { MAX_OTP_ID_LENGTH, otpFragmentDefinition } from "./definition";
+export { OtpIssueError, type OtpIssueErrorCode } from "./errors";
 export { otpRoutesFactory } from "./routes";
 export { otpSchema } from "./schema";
 export { otpStatusSchema, otpTypeSchema };

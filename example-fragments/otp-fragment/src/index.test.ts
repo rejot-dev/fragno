@@ -3,7 +3,8 @@ import { afterAll, beforeEach, describe, expect, it, vi, assert } from "vitest";
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
-import { otpFragmentDefinition } from "./definition";
+import { MAX_OTP_ID_LENGTH, otpFragmentDefinition } from "./definition";
+import { OtpIssueError, type OtpIssueErrorCode } from "./errors";
 import { otpRoutes } from "./index";
 import { otpSchema } from "./schema";
 
@@ -18,6 +19,19 @@ const isDbNowMarker = (value: unknown): value is { tag: "db-now"; offsetMs?: num
 
 const expectOtpTimestamp = (value: unknown) => {
   assert(value instanceof Date || isDbNowMarker(value));
+};
+
+const expectOtpIssueError = async (
+  promise: Promise<unknown>,
+  code: OtpIssueErrorCode,
+): Promise<void> => {
+  const error = await promise.then(
+    () => null,
+    (reason: unknown) => reason,
+  );
+
+  assert(error instanceof OtpIssueError);
+  expect(error.code).toBe(code);
 };
 
 describe("otp fragment", async () => {
@@ -93,6 +107,7 @@ describe("otp fragment", async () => {
 
     expect(firstResponse.data.code).toMatch(/^[A-Z0-9]{8}$/);
     expect(secondResponse.data.code).toMatch(/^[A-Z0-9]{8}$/);
+    expect(secondResponse.data.id).not.toBe(firstResponse.data.id);
     expect(secondResponse.data.code).not.toBe(firstResponse.data.code);
     expectOtpTimestamp(firstResponse.data.createdAt);
     expectOtpTimestamp(firstResponse.data.expiresAt);
@@ -115,6 +130,114 @@ describe("otp fragment", async () => {
     expect(otpRows).toHaveLength(2);
     expect(otpRows.filter((otp) => otp.status === "pending")).toHaveLength(1);
     expect(otpRows.filter((otp) => otp.status === "invalidated")).toHaveLength(1);
+  });
+
+  it("reuses an issued OTP when concurrent calls use the same caller-provided ID", async () => {
+    const issueOtp = () =>
+      fragments.otp.fragment.callServices(() =>
+        fragments.otp.services.otp.issueOtp(
+          "user-idempotent-issue",
+          "email_verification",
+          30,
+          { email: "user@example.com" },
+          "auth:user-created:user-1",
+        ),
+      );
+
+    const [firstIssuedOtp, retriedIssuedOtp] = await Promise.all([issueOtp(), issueOtp()]);
+
+    expect(retriedIssuedOtp).toMatchObject({
+      id: firstIssuedOtp.id,
+      externalId: firstIssuedOtp.externalId,
+      type: firstIssuedOtp.type,
+      code: firstIssuedOtp.code,
+      payload: firstIssuedOtp.payload,
+    });
+    expectOtpTimestamp(firstIssuedOtp.createdAt);
+    expectOtpTimestamp(firstIssuedOtp.expiresAt);
+    expectOtpTimestamp(retriedIssuedOtp.createdAt);
+    expectOtpTimestamp(retriedIssuedOtp.expiresAt);
+
+    const otpRows = await (async () => {
+      const uow = fragments.otp.db
+        .createUnitOfWork("read")
+        .forSchema(otpSchema)
+        .find("otp", (b) =>
+          b.whereIndex("primary", (eb) => eb("id", "=", "auth:user-created:user-1")),
+        );
+      await uow.executeRetrieve();
+      return (await uow.retrievalPhase)[0];
+    })();
+
+    expect(otpRows).toHaveLength(1);
+    assert(otpRows[0]?.id.valueOf() === "auth:user-created:user-1");
+    expect(otpRows[0]).toMatchObject({
+      externalId: "user-idempotent-issue",
+      type: "email_verification",
+      status: "pending",
+      payload: { email: "user@example.com" },
+    });
+
+    await drainDurableHooks(fragments.otp.fragment);
+    expect(onOtpIssued).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects invalid or conflicting caller-provided OTP IDs", async () => {
+    await expectOtpIssueError(
+      fragments.otp.fragment.callServices(() =>
+        fragments.otp.services.otp.issueOtp("user-1", "email_verification", 30, undefined, "  "),
+      ),
+      "OTP_ID_EMPTY",
+    );
+
+    await expectOtpIssueError(
+      fragments.otp.fragment.callServices(() =>
+        fragments.otp.services.otp.issueOtp(
+          "user-1",
+          "email_verification",
+          30,
+          undefined,
+          "x".repeat(MAX_OTP_ID_LENGTH + 1),
+        ),
+      ),
+      "OTP_ID_TOO_LONG",
+    );
+
+    await fragments.otp.fragment.callServices(() =>
+      fragments.otp.services.otp.issueOtp(
+        "user-1",
+        "email_verification",
+        30,
+        undefined,
+        "shared-issuance-id",
+      ),
+    );
+
+    await expectOtpIssueError(
+      fragments.otp.fragment.callServices(() =>
+        fragments.otp.services.otp.issueOtp(
+          "user-2",
+          "email_verification",
+          30,
+          undefined,
+          "shared-issuance-id",
+        ),
+      ),
+      "OTP_ID_CONFLICT",
+    );
+
+    await expectOtpIssueError(
+      fragments.otp.fragment.callServices(() =>
+        fragments.otp.services.otp.issueOtp(
+          "user-1",
+          "password_reset",
+          30,
+          undefined,
+          "shared-issuance-id",
+        ),
+      ),
+      "OTP_ID_CONFLICT",
+    );
   });
 
   it("confirms an OTP, persists confirmation payload, and resolves hook dates", async () => {
