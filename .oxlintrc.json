@@ -63,7 +63,7 @@
     "typescript/no-unsafe-type-assertion": "off",
     "typescript/no-unsafe-unary-minus": "error",
     "typescript/no-useless-default-assignment": "error",
-    "typescript/non-nullable-type-assertion-style": "off",
+    "typescript/non-nullable-type-assertion-style": "error",
     "typescript/only-throw-error": "off",
     "typescript/prefer-find": "error",
     "typescript/prefer-includes": "error",

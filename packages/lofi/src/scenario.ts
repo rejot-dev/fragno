@@ -1033,7 +1033,7 @@ export const runScenario = async <
   if (shouldStartServer) {
     const { baseUrl: serverUrl, close } = await startScenarioServer(
       fragment,
-      scenario.server.port as number,
+      scenario.server.port!,
     );
     const mountRoute = resolveMountRoute(fragment);
     baseUrl = baseUrlOverride ?? `${serverUrl}${mountRoute ?? ""}`;

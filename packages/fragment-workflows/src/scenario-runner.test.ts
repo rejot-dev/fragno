@@ -2810,7 +2810,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         runner.advanceTimeAndRunUntilIdle({
           workflow: "GRACEFUL",
           instanceId: "graceful-1",
-          setTo: (ctx) => new Date((ctx.vars.wakeAt as Date).getTime() + 1),
+          setTo: (ctx) => new Date(ctx.vars.wakeAt!.getTime() + 1),
         }),
         workflow.read({
           read: (ctx) => ctx.state.getStatus("GRACEFUL", "graceful-1"),
@@ -2920,7 +2920,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         runner.advanceTimeAndRunUntilIdle({
           workflow: "TIMEOUT_MUTATE",
           instanceId: "tm-1",
-          setTo: (ctx) => new Date((ctx.vars.wakeAt as Date).getTime() + 1),
+          setTo: (ctx) => new Date(ctx.vars.wakeAt!.getTime() + 1),
         }),
         workflow.read({
           read: (ctx) => ctx.state.getStatus("TIMEOUT_MUTATE", "tm-1"),

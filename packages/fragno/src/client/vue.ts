@@ -109,8 +109,7 @@ function createVueHook<
     }
 
     for (const [key, value] of Object.entries(query ?? {})) {
-      // Dunno why the cast is necessary
-      const v = value as string | Ref<string> | ReadableAtom<string>;
+      const v = value!;
       queryParams[key] = isRef(v) ? (refToAtom(v) as ReadableAtom<string>) : v;
     }
 
@@ -181,7 +180,7 @@ function createVueMutator<
       }
 
       for (const [key, value] of Object.entries(query ?? {})) {
-        const v = value as string | Ref<string> | ReadableAtom<string>;
+        const v = value!;
         queryParams[key] = isRef(v) ? v.value : v;
       }
 

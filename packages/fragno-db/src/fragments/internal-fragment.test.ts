@@ -786,7 +786,7 @@ describe("Hook Service", () => {
     });
 
     expect(wakeAt).toBeInstanceOf(Date);
-    expect(Math.abs((wakeAt as Date).getTime() - Date.now())).toBeLessThan(5000);
+    expect(Math.abs(wakeAt!.getTime() - Date.now())).toBeLessThan(5000);
   });
 
   it("should return earliest scheduled hook time", async () => {
