@@ -25,6 +25,7 @@ import {
 
 import { createWorkflowStepLivePump, workflowStepLivePumpKey } from "./runner/step-live-pump";
 import { workflowsSchema } from "./schema";
+import type { WorkflowEventActor } from "./system-events";
 import {
   createWorkflowsTestHarness,
   type WorkflowsHistory,
@@ -524,7 +525,7 @@ export type WorkflowScenarioInstanceRow = {
   startedAt: Date | null;
   completedAt: Date | null;
   params: unknown;
-  output: unknown | null;
+  output: unknown;
   errorName: string | null;
   errorMessage: string | null;
 };
@@ -546,7 +547,7 @@ export type WorkflowScenarioStepRow = {
   nextRetryAt: Date | null;
   wakeAt: Date | null;
   waitEventType: string | null;
-  result: unknown | null;
+  result: unknown;
   errorName: string | null;
   errorMessage: string | null;
   createdAt: Date;
@@ -559,7 +560,7 @@ export type WorkflowScenarioEventRow = {
   workflowName: string;
   instanceId: string;
   type: string;
-  payload: unknown | null;
+  payload: unknown;
   createdAt: Date;
   deliveredAt: Date | null;
   consumedByStepKey: string | null;
@@ -573,8 +574,8 @@ export type WorkflowScenarioEmissionRow = {
   stepKey: string;
   epoch: string;
   sequence: number;
-  actor: "user" | "system" | string;
-  payload: unknown | null;
+  actor: WorkflowEventActor;
+  payload: unknown;
   createdAt: Date;
 };
 
@@ -585,7 +586,7 @@ export type WorkflowScenarioObservedEmission<TPayload = unknown> = {
   epoch: string;
   id: string;
   sequence: number;
-  actor: "user" | "system" | string;
+  actor: WorkflowEventActor;
   payload: TPayload;
 };
 
@@ -607,7 +608,7 @@ export type WorkflowScenarioState<TRegistry extends WorkflowsRegistry = Workflow
   getEmissions: (
     workflow: (keyof TRegistry & string) | string,
     instanceId: string,
-    options?: { order?: "asc" | "desc"; actor?: "user" | "system" | string; stepKey?: string },
+    options?: { order?: "asc" | "desc"; actor?: WorkflowEventActor; stepKey?: string },
   ) => Promise<WorkflowScenarioEmissionRow[]>;
   getStatus: (
     workflow: (keyof TRegistry & string) | string,
@@ -1588,7 +1589,7 @@ type ScenarioDbWorkflowInstance = {
   startedAt: Date | null;
   completedAt: Date | null;
   params: unknown;
-  output: unknown | null;
+  output: unknown;
   errorName: string | null;
   errorMessage: string | null;
 };
@@ -1637,7 +1638,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     completedAt: Date | null;
     instanceId: string;
     params: unknown;
-    output: unknown | null;
+    output: unknown;
     errorName: string | null;
     errorMessage: string | null;
   }): WorkflowScenarioInstanceRow => ({
@@ -1671,7 +1672,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
       nextRetryAt: Date | null;
       wakeAt: Date | null;
       waitEventType: string | null;
-      result: unknown | null;
+      result: unknown;
       errorName: string | null;
       errorMessage: string | null;
       createdAt: Date;
@@ -1707,7 +1708,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
       id: { internalId?: bigint } | bigint;
       instanceRef: { internalId?: bigint } | bigint;
       type: string;
-      payload: unknown | null;
+      payload: unknown;
       createdAt: Date;
       deliveredAt: Date | null;
       consumedByStepKey: string | null;
@@ -1732,8 +1733,8 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
       stepKey: string;
       epoch: string;
       sequence: number;
-      actor: string;
-      payload: unknown | null;
+      actor: WorkflowEventActor;
+      payload: unknown;
       createdAt: Date;
     },
     context: { workflowName: string; instanceId: string },
@@ -1827,7 +1828,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
   const getEmissions = async (
     workflow: (keyof TRegistry & string) | string,
     instanceId: string,
-    options?: { order?: "asc" | "desc"; actor?: "user" | "system" | string; stepKey?: string },
+    options?: { order?: "asc" | "desc"; actor?: WorkflowEventActor; stepKey?: string },
   ) => {
     const workflowName = resolver.resolveName(String(workflow));
     const instance = await getScenarioInstanceRow(harness, workflowName, instanceId);
@@ -1973,7 +1974,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
           nextRetryAt: Date | null;
           wakeAt: Date | null;
           waitEventType: string | null;
-          result: unknown | null;
+          result: unknown;
           errorName: string | null;
           errorMessage: string | null;
           createdAt: Date;
@@ -2002,7 +2003,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
         eventsRows as Array<{
           id: { toString(): string };
           type: string;
-          payload: unknown | null;
+          payload: unknown;
           createdAt: Date;
           deliveredAt: Date | null;
           consumedByStepKey: string | null;
@@ -2021,8 +2022,8 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
           stepKey: string;
           epoch: string;
           sequence: number;
-          actor: string;
-          payload: unknown | null;
+          actor: WorkflowEventActor;
+          payload: unknown;
           createdAt: Date;
         }>
       ).map((row) => ({

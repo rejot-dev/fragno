@@ -370,7 +370,7 @@ export interface TelegramMessageSummary {
   messageType: TelegramUpdateType;
   text: string | null;
   attachments: TelegramAttachment[];
-  payload: unknown | null;
+  payload: unknown;
   sentAt: Date;
   editedAt: Date | null;
   commandName: string | null;

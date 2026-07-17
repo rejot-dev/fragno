@@ -4,13 +4,8 @@ import { FragnoApiValidationError, type HTTPMethod } from "./api";
 import type { ExtractPathParams } from "./internal/path";
 import type { MutableRequestState } from "./mutable-request-state";
 
-export type RequestBodyType =
-  | unknown // JSON
-  | FormData
-  | Blob
-  | ReadableStream<Uint8Array>
-  | null
-  | undefined;
+/** Raw request input before route-specific validation and parsing. */
+export type RequestBodyType = unknown;
 
 export class RequestInputContext<
   TPath extends string = string,

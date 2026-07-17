@@ -24,7 +24,7 @@ type WorkflowUsageSession = {
   name: string | null;
   agent: string;
   status: InstanceStatus["status"];
-  metadata: unknown | null;
+  metadata: unknown;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -52,7 +52,7 @@ type SessionRow = {
   name: string | null;
   agent: string;
   status: string;
-  metadata: unknown | null;
+  metadata: unknown;
   createdAt: Date;
   updatedAt: Date;
 };

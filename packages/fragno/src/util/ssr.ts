@@ -37,7 +37,7 @@ export function hydrateFromWindow() {
   }
 }
 
-export function getInitialData(key: string): unknown | undefined {
+export function getInitialData(key: string): unknown {
   if (clientInitialData?.has(key)) {
     const data = clientInitialData.get(key);
     clientInitialData.delete(key);

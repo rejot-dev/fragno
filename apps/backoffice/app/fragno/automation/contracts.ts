@@ -50,8 +50,17 @@ export type AutomationExternalEntityRef<
   source: TSource;
 };
 
+export type AutomationActorRole =
+  | "initiator"
+  | "principal"
+  | "delegate"
+  | "system"
+  | "user"
+  | "assistant"
+  | (string & Record<never, never>);
+
 export type AutomationEventActor = AutomationEntityRef & {
-  role?: "initiator" | "principal" | "delegate" | "system" | string;
+  role?: AutomationActorRole;
 };
 export type AutomationEventActors = AutomationEventActor[];
 

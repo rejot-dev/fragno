@@ -99,10 +99,7 @@ export type BackofficeRuntimeToolBashAdapter<
     context: TContext;
     commandOutput: AutomationCommandOutputOptions;
     shell: BackofficeBashShellContext;
-  }):
-    | Promise<AutomationCommandExecutionResult | unknown>
-    | AutomationCommandExecutionResult
-    | unknown;
+  }): unknown;
 };
 
 export type BackofficeRuntimeToolAdapters<

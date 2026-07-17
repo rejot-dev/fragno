@@ -311,7 +311,7 @@ export class BufferedDatabasePump<
   #flush: (
     context: BufferedFlushContext<TOutgoing, TScopeMeta>,
   ) => Promise<BufferedFlushResult<TObserved, TScopeDelivery>>;
-  #onError: (error: unknown) => void;
+  #onError: (error: Error) => void;
   #scopes = new Map<string, BufferedScopeState<TOutgoing, TScopeDelivery, TScopeMeta>>();
   #observers = new Set<{
     handler: (message: TObserved) => void | Promise<void>;
@@ -323,7 +323,7 @@ export class BufferedDatabasePump<
   #scopeDeliveryCursors = new Map<string, Set<string>>();
   #lastSnapshot: TObserved[] = [];
   #hasFlushed = false;
-  #lastError: unknown;
+  #lastError: Error | undefined;
   #pumpTail = Promise.resolve();
   #loop: SerializedIntervalLoop;
 
@@ -333,7 +333,7 @@ export class BufferedDatabasePump<
       context: BufferedFlushContext<TOutgoing, TScopeMeta>,
     ) => Promise<BufferedFlushResult<TObserved, TScopeDelivery>>;
     intervalMs?: number;
-    onError?: (error: unknown) => void;
+    onError?: (error: Error) => void;
     cursorForObservedItem?: BufferedPumpCursorFor<TObserved>;
     resolveScopeMeta?: BufferedResolveScopeMeta<TOpenScopeMeta, TScopeMeta>;
     debugLabel?: () => string;
@@ -445,7 +445,7 @@ export class BufferedDatabasePump<
     return this.#scopes.size;
   }
 
-  getFailure(): unknown | undefined {
+  getFailure(): Error | undefined {
     return this.#lastError;
   }
 
@@ -568,10 +568,11 @@ export class BufferedDatabasePump<
       this.#lastError = undefined;
       await this.#deliverObserved(observedItems);
     } catch (error) {
-      this.#lastError = error;
+      const normalizedError = normalizeError(error);
+      this.#lastError = normalizedError;
       this.#restoreDrained(drainedOutgoingByScope);
-      this.#onError(error);
-      throw error;
+      this.#onError(normalizedError);
+      throw normalizedError;
     }
   }
 

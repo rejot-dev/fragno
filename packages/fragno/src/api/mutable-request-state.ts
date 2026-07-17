@@ -35,7 +35,7 @@ export class MutableRequestState {
   readonly #headers: Headers;
   // oxlint-disable-next-line no-unused-private-class-members False Positive?
   readonly #initialBody: RequestBodyType;
-  #bodyOverride: RequestBodyType | undefined;
+  #bodyOverride: { body: RequestBodyType } | undefined;
 
   constructor(config: {
     pathParams: Record<string, string>;
@@ -47,7 +47,6 @@ export class MutableRequestState {
     this.#searchParams = config.searchParams;
     this.#headers = config.headers;
     this.#initialBody = config.body;
-    this.#bodyOverride = undefined;
   }
 
   /**
@@ -79,7 +78,7 @@ export class MutableRequestState {
    * Returns the override if set, otherwise the initial body.
    */
   get body(): RequestBodyType {
-    return this.#bodyOverride !== undefined ? this.#bodyOverride : this.#initialBody;
+    return this.#bodyOverride ? this.#bodyOverride.body : this.#initialBody;
   }
 
   /**
@@ -95,7 +94,7 @@ export class MutableRequestState {
    * ```
    */
   setBody(body: RequestBodyType): void {
-    this.#bodyOverride = body;
+    this.#bodyOverride = { body };
   }
 
   /**

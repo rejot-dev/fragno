@@ -1103,7 +1103,7 @@ const compileJoins = (
     },
   }));
 
-const normalizeIndexName = (indexName: string): "primary" | string =>
+const normalizeIndexName = (indexName: string): string =>
   indexName === "_primary" ? "primary" : indexName;
 
 const mergeRows = (options: {

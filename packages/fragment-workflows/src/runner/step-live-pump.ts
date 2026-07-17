@@ -15,6 +15,7 @@ import {
   isSystemEventActor,
   WORKFLOW_EVENT_ACTOR_SYSTEM,
   WORKFLOW_EVENT_ACTOR_USER,
+  type WorkflowEventActor,
 } from "../system-events";
 import type { WorkflowStepEvent } from "../workflow";
 import type { WorkflowEventRecord } from "./types";
@@ -43,7 +44,7 @@ export type WorkflowStepEmissionScope<
 
 export type WorkflowStepEmission<TMessage = unknown> = {
   id: string;
-  actor: "user" | "system" | string;
+  actor: WorkflowEventActor;
   stepKey: string;
   epoch: string;
   sequence: number;
@@ -78,7 +79,7 @@ export const workflowStepLivePumpKey = (workflowName: string, instanceId: string
 
 type LogicalStepEmissionRow = {
   id: string;
-  actor: string;
+  actor: WorkflowEventActor;
   stepKey: string;
   epoch: string;
   sequence: number;

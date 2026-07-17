@@ -5,7 +5,7 @@ type OrganizationLike = {
   name: string;
   slug: string;
   logoUrl?: string | null;
-  metadata?: Record<string, unknown> | null | unknown;
+  metadata?: unknown;
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;

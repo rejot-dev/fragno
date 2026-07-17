@@ -513,7 +513,7 @@ describe("runtime.store().withEphemeral", () => {
       .withEphemeral(ephemeralStoreSchema, "events", {
         initialState: () => 0,
         reduce: () => {
-          throw new Error("broken reducer");
+          throw "broken reducer";
         },
         overlay: (data) => data,
       })
@@ -544,7 +544,9 @@ describe("runtime.store().withEphemeral", () => {
     ]);
     await runtime.syncOnce();
 
-    expect(failingStore.get().error).toEqual(new Error("broken reducer"));
+    expect(failingStore.get().error).toEqual(
+      new Error("Lofi query failed", { cause: "broken reducer" }),
+    );
     expect(receivingStore.get().data).toEqual(["delivered"]);
     unsubscribeFailing();
     unsubscribeReceiving();

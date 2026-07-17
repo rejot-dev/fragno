@@ -11,7 +11,7 @@ function isStripeError(error: unknown): error is { type: string; message: string
   );
 }
 
-export function stripeToApiError(error: unknown): FragnoApiError | unknown {
+export function stripeToApiError(error: unknown): unknown {
   // Attempt to generate more ergnomic error messages
   if (
     isStripeError(error) &&

@@ -819,7 +819,7 @@ const resolveDefaultProvider = (
 };
 
 export const normalizeStoredUploadAdminConfig = (
-  value: StoredUploadAdminConfig | LegacyStoredUploadAdminConfig | unknown,
+  value: unknown,
 ): StoredUploadAdminConfig | null => {
   if (!isRecord(value)) {
     return null;

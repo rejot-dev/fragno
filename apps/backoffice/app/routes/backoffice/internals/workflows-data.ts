@@ -92,7 +92,7 @@ export type WorkflowInstanceDetails = {
       nextRetryAt: string | Date | null;
       wakeAt: string | Date | null;
       waitEventType: string | null;
-      result: unknown | null;
+      result: unknown;
       error?: { name: string; message: string };
       createdAt: string | Date;
       updatedAt: string | Date;
@@ -100,7 +100,7 @@ export type WorkflowInstanceDetails = {
     events: Array<{
       id: string;
       type: string;
-      payload: unknown | null;
+      payload: unknown;
       createdAt: string | Date;
       deliveredAt: string | Date | null;
       consumedByStepKey: string | null;
@@ -111,7 +111,7 @@ export type WorkflowInstanceDetails = {
       epoch: string;
       sequence: number;
       actor: string;
-      payload: unknown | null;
+      payload: unknown;
       createdAt: string | Date;
     }>;
   };

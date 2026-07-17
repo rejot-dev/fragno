@@ -1,7 +1,7 @@
 import type { StatusCode } from "../http/http-status";
 
 export type FragnoErrorOptions = {
-  cause?: Error | unknown;
+  cause?: unknown;
 };
 
 /**

@@ -24,7 +24,7 @@ export type PiSession = {
 };
 
 export type PiOperationCompletedHookPayload = {
-  actor: unknown | null;
+  actor: unknown;
   workflowName: string;
   sessionId: string;
   agentName: string;

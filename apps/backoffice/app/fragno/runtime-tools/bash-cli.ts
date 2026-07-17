@@ -378,9 +378,7 @@ export const defineCliArgsParser =
 export const defineEmptyArgsParser = (commandName: string) =>
   defineNoPositionalsParser<Record<string, never>>(commandName, () => ({}));
 
-export const normalizeExecutionResult = (
-  rawResult: AutomationCommandExecutionResult | unknown,
-): AutomationCommandExecutionResult => {
+export const normalizeExecutionResult = (rawResult: unknown): AutomationCommandExecutionResult => {
   if (
     rawResult &&
     typeof rawResult === "object" &&

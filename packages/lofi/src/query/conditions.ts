@@ -15,7 +15,7 @@ export type Condition =
       type: "compare";
       a: AnyColumn;
       operator: Operator;
-      b: AnyColumn | unknown | null;
+      b: unknown;
     }
   | {
       type: "or" | "and";
