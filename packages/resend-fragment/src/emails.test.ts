@@ -111,6 +111,52 @@ describe("resend-fragment emails", async () => {
     expect(updated.updatedAt.getTime()).toBeGreaterThanOrEqual(updated.createdAt.getTime());
   });
 
+  test("deduplicates queued email by Idempotency-Key", async () => {
+    sendMock.mockResolvedValue({
+      data: { id: "re_idempotent" },
+      error: null,
+      headers: null,
+    });
+
+    const input = {
+      body: {
+        to: "user@example.com",
+        subject: "Welcome",
+        html: "<p>Welcome</p>",
+      },
+      headers: { "Idempotency-Key": "auth:user-created:user-1:tx-1" },
+    };
+
+    const first = await callRoute("POST", "/emails", input);
+    const second = await callRoute("POST", "/emails", input);
+
+    assert(first.type === "json");
+    assert(second.type === "empty");
+    assert(second.status === 204);
+
+    await drainDurableHooks(fragment);
+
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    const emails = await callRoute("GET", "/emails");
+    assert(emails.type === "json");
+    expect(emails.data.emails).toHaveLength(1);
+  });
+
+  test("rejects an oversized Idempotency-Key", async () => {
+    const response = await callRoute("POST", "/emails", {
+      body: {
+        to: "user@example.com",
+        subject: "Welcome",
+        html: "<p>Welcome</p>",
+      },
+      headers: { "Idempotency-Key": "x".repeat(111) },
+    });
+
+    assert(response.type === "error");
+    assert(response.error.code === "INVALID_IDEMPOTENCY_KEY");
+    assert(response.status === 400);
+  });
+
   test("schedules emails via durable hooks processAt", async () => {
     sendMock.mockResolvedValue({
       data: { id: "re_sched" },
