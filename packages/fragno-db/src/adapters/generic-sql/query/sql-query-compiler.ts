@@ -16,7 +16,13 @@ import type { AnyColumn, AnyTable } from "../../../schema/create";
 import type { DriverConfig, SupportedDatabase } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";
 import { UnitOfWorkEncoder } from "../uow-encoder";
-import { mapSelect, extendSelect } from "./select-builder";
+import {
+  mapSelect,
+  mapSelectColumns,
+  projectSelectedColumn,
+  extendSelect,
+  type ProjectedSelectExpression,
+} from "./select-builder";
 import { buildWhere, fullSQLName } from "./where-builder";
 
 /**
@@ -179,7 +185,7 @@ export abstract class SQLQueryCompiler {
     joins: CompiledJoin[],
     parentTable: AnyTable,
     parentTableName: string,
-    mappedSelect: string[],
+    mappedSelect: ProjectedSelectExpression[],
     parentPath: string = "",
     aliasCollector?: JoinAliasInfo[],
     readTracking?: boolean,
@@ -208,10 +214,10 @@ export abstract class SQLQueryCompiler {
       }
       const compiledJoinSelect = joinSelectBuilder.compile();
       mappedSelect.push(
-        ...mapSelect(compiledJoinSelect.result, targetTable, this.resolver, {
+        ...mapSelectColumns(compiledJoinSelect.result, targetTable, this.resolver, {
           relation: fullPath, // Use full path with colons for column aliases
           tableName: joinName, // Use underscore version for table name
-        }),
+        }).map((column) => projectSelectedColumn(column, this.driverConfig)),
       );
 
       result = result.leftJoin(`${this.getTableName(targetTable)} as ${joinName}`, (b) =>
@@ -298,7 +304,7 @@ export abstract class SQLQueryCompiler {
     }
 
     if (options.join && options.join.length > 0) {
-      const mappedSelect: string[] = [];
+      const mappedSelect: ProjectedSelectExpression[] = [];
       query = this.processJoins(query, options.join, table, tableName, mappedSelect, "", aliases);
     }
 
@@ -354,7 +360,7 @@ export abstract class SQLQueryCompiler {
     if (options.readTracking) {
       selectBuilder.extend(table.getIdColumn().name);
     }
-    const mappedSelect: string[] = [];
+    const mappedSelect: ProjectedSelectExpression[] = [];
 
     // Process joins if provided
     if (options.join && options.join.length > 0) {
@@ -372,9 +378,9 @@ export abstract class SQLQueryCompiler {
 
     const compiledSelect = selectBuilder.compile();
     mappedSelect.push(
-      ...mapSelect(compiledSelect.result, table, this.resolver, {
+      ...mapSelectColumns(compiledSelect.result, table, this.resolver, {
         tableName: this.getTableName(table),
-      }),
+      }).map((column) => projectSelectedColumn(column, this.driverConfig)),
     );
 
     return query.select(mappedSelect).compile();

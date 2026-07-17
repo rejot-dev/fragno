@@ -10,6 +10,7 @@ import {
   NodePostgresDriverConfig,
   MySQL2DriverConfig,
 } from "../driver-config";
+import { createColdKysely } from "../migration/cold-kysely";
 import { MySQLQueryCompiler } from "./dialect/mysql";
 import { PostgreSQLQueryCompiler } from "./dialect/postgres";
 import { SQLiteQueryCompiler } from "./dialect/sqlite";
@@ -30,6 +31,12 @@ const testSchema = schema("test", (s) => {
         .addColumn("title", column("string"))
         .addColumn("content", column("text"))
         .addColumn("userId", referenceColumn({ table: "users" }));
+    })
+    .addTable("events", (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("happenedOn", column("date"))
+        .addColumn("createdAt", column("timestamp"));
     });
 });
 
@@ -174,6 +181,19 @@ describe("SQLQueryCompiler", () => {
   });
 
   describe("MySQLQueryCompiler", () => {
+    test("projects DATE columns as strings without changing timestamp projections", () => {
+      const db = createColdKysely("mysql");
+      const compiler = new MySQLQueryCompiler(db, new MySQL2DriverConfig());
+
+      const query = compiler.compileFindMany(testSchema.tables.events, {
+        select: true,
+      });
+
+      expect(query.sql).toContain("cast(`events`.`happenedOn` as char) as `happenedOn`");
+      expect(query.sql).toContain("`events`.`createdAt` as `createdAt`");
+      expect(query.sql).not.toContain("cast(`events`.`createdAt` as char)");
+    });
+
     test("compileCreate does not include RETURNING", () => {
       const db = new Kysely({
         dialect: new SqliteDialect({ database: new Database(":memory:") }),
