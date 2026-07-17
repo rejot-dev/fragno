@@ -296,9 +296,9 @@ function createDatabaseContext<TSchema extends AnySchema>(
   };
 }
 
-function resolveDatabaseNamespace<TSchema extends AnySchema>(
+function resolveDatabaseNamespace(
   options: FragnoPublicConfigWithDatabase,
-  schema: TSchema,
+  schema: AnySchema,
 ): string | null {
   const hasOverride = options.databaseNamespace !== undefined;
   return hasOverride ? (options.databaseNamespace ?? null) : sanitizeNamespace(schema.name);
@@ -991,6 +991,7 @@ export class DatabaseFragmentDefinitionBuilder<
    * Declare that this fragment uses a required service provided by the runtime.
    * Delegates to the base builder.
    */
+  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- TService is supplied by the fragment author and accumulated in the builder's service dependency type.
   usesService<TServiceName extends string, TService>(
     serviceName: TServiceName,
   ): DatabaseFragmentDefinitionBuilder<
@@ -1021,6 +1022,7 @@ export class DatabaseFragmentDefinitionBuilder<
    * Declare that this fragment uses an optional service provided by the runtime.
    * Delegates to the base builder.
    */
+  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- TService is supplied by the fragment author and accumulated in the builder's optional service dependency type.
   usesOptionalService<TServiceName extends string, TService>(
     serviceName: TServiceName,
   ): DatabaseFragmentDefinitionBuilder<

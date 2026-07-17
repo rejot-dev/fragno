@@ -263,7 +263,7 @@ export class Column<TType extends keyof TypeMap, TIn = unknown, TOut = unknown> 
     >;
   }
 
-  hidden<THidden extends boolean = true>(hidden?: THidden) {
+  hidden(hidden?: boolean) {
     this.isHidden = hidden ?? true;
     return this as Column<TType, null, null>;
   }

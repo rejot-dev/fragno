@@ -84,7 +84,7 @@ const createR2Signer = (config: UploadR2SignerConfig): S3Signer => {
   };
 };
 
-const withDefined = <T extends object, K extends keyof T>(source: T, keys: readonly K[]) =>
+const withDefined = <T extends object>(source: T, keys: readonly (keyof T)[]) =>
   keys.reduce<Partial<T>>((acc, key) => {
     const value = source[key];
     if (value !== undefined) {

@@ -63,7 +63,7 @@ export interface DatabaseAdapter<TUOWConfig = void> {
    * Register a schema/namespace pair with the adapter for adapter-level bookkeeping
    * used by base UOWs and namespace-aware executor features.
    */
-  registerSchema: <const T extends AnySchema>(schema: T, namespace: string | null) => void;
+  registerSchema: (schema: AnySchema, namespace: string | null) => void;
 
   createUnitOfWork: <const T extends AnySchema>(
     schema: T,
@@ -82,10 +82,7 @@ export interface DatabaseAdapter<TUOWConfig = void> {
     namespace: string | null,
   ) => FragnoDatabase<T, TUOWConfig>;
 
-  prepareMigrations?: <const T extends AnySchema>(
-    schema: T,
-    namespace: string | null,
-  ) => PreparedMigrations;
+  prepareMigrations?: (schema: AnySchema, namespace: string | null) => PreparedMigrations;
 
   isConnectionHealthy: () => Promise<boolean>;
 

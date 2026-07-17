@@ -92,7 +92,7 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
     }
   }
 
-  registerSchema<T extends AnySchema>(schema: T, namespace: string | null): void {
+  registerSchema(schema: AnySchema, namespace: string | null): void {
     this.#schemaNamespaceMap.set(schema, namespace);
     const namespaceKey = namespace ?? schema.name;
     this.#schemaByNamespace.set(namespaceKey, { schema, namespace });
@@ -144,7 +144,7 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
     return new UnitOfWork(compiler, executor, decoder, name, config, this.#schemaNamespaceMap);
   }
 
-  prepareMigrations<T extends AnySchema>(schema: T, namespace: string | null) {
+  prepareMigrations(schema: AnySchema, namespace: string | null) {
     this.registerSchema(schema, namespace);
 
     return {

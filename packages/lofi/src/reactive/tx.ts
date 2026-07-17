@@ -155,13 +155,15 @@ class RuntimeTxBuilder<
     this.state = state;
   }
 
-  retrieve<TSelection>(fn: (ctx: LofiRuntimeTxRetrieveContext) => TSelection) {
+  retrieve<TSelection>(
+    fn: (ctx: LofiRuntimeTxRetrieveContext) => TSelection,
+  ): LofiRuntimeTxBuilder<LofiRuntimeTxResolved<TSelection>, TTransformResult, false> {
     return new RuntimeTxBuilder(this.options, { ...this.state, retrieveFn: fn }) as never;
   }
 
   transform<TNewTransformResult>(
     fn: (ctx: LofiRuntimeTxTransformContext<TRetrieveResult>) => TNewTransformResult,
-  ) {
+  ): LofiRuntimeTxBuilder<TRetrieveResult, Awaited<TNewTransformResult>, true> {
     return new RuntimeTxBuilder(this.options, { ...this.state, transformFn: fn as never }) as never;
   }
 

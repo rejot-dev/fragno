@@ -141,7 +141,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     return healthyValue === 1 || healthyValue === 1n || healthyValue === "1";
   }
 
-  prepareMigrations<T extends AnySchema>(schema: T, namespace: string | null): PreparedMigrations {
+  prepareMigrations(schema: AnySchema, namespace: string | null): PreparedMigrations {
     const resolver = createNamingResolver(schema, namespace, this.namingStrategy);
     return createPreparedMigrations({
       schema,
@@ -180,7 +180,7 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     );
   }
 
-  registerSchema<T extends AnySchema>(schema: T, namespace: string | null): void {
+  registerSchema(schema: AnySchema, namespace: string | null): void {
     this.#schemaNamespaceMap.set(schema, namespace);
   }
 

@@ -634,6 +634,7 @@ export class FragmentDefinitionBuilder<
   /**
    * Declare that this fragment uses a required service provided by the runtime.
    */
+  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- TService is supplied by the fragment author and accumulated in the builder's service dependency type.
   usesService<TServiceName extends string, TService>(
     serviceName: TServiceName,
   ): FragmentDefinitionBuilder<
@@ -684,6 +685,7 @@ export class FragmentDefinitionBuilder<
   /**
    * Declare that this fragment uses an optional service provided by the runtime.
    */
+  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- TService is supplied by the fragment author and accumulated in the builder's optional service dependency type.
   usesOptionalService<TServiceName extends string, TService>(
     serviceName: TServiceName,
   ): FragmentDefinitionBuilder<

@@ -49,6 +49,7 @@ export type RouteBackedRuntimeContextOptions = {
 const unavailableMessage = (family: string, execution: BackofficeExecutionContext) =>
   `${family} is not available in ${execution.scope.kind} context.`;
 
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- The caller supplies the unavailable runtime interface represented by this throwing proxy.
 const unavailableRuntime = <T>(message: string): T =>
   new Proxy(
     {},

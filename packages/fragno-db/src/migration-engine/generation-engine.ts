@@ -56,10 +56,11 @@ const DEFAULT_PRISMA_PATH = "fragno.prisma";
 const isSupportedDatabase = (value: string): value is SupportedDatabase =>
   supportedDatabases.includes(value as SupportedDatabase);
 
-export async function generateSchemaArtifacts<
+export async function generateSchemaArtifacts(
   // oxlint-disable-next-line no-explicit-any
-  const TDatabases extends FragnoDatabase<AnySchema, any>[],
->(databases: TDatabases, options?: GenerateSchemaOptions): Promise<GenerationEngineResult[]> {
+  databases: FragnoDatabase<AnySchema, any>[],
+  options?: GenerateSchemaOptions,
+): Promise<GenerationEngineResult[]> {
   if (databases.length === 0) {
     throw new Error("No databases provided for schema generation");
   }
@@ -230,8 +231,8 @@ export async function generateSchemaArtifacts<
  * @param databases - Array of FragnoDatabase instances to migrate
  * @returns Array of execution results for each migration
  */
-export async function executeMigrations<const TDatabases extends FragnoDatabase<AnySchema>[]>(
-  databases: TDatabases,
+export async function executeMigrations(
+  databases: FragnoDatabase<AnySchema>[],
 ): Promise<ExecuteMigrationResult[]> {
   if (databases.length === 0) {
     throw new Error("No databases provided for migration");

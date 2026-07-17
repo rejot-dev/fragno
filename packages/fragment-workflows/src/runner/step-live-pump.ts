@@ -290,6 +290,7 @@ const writeWorkflowStepEmissionFlush = async <TOutEmission, TInEvent>(options: {
 // DB json columns are typed as unknown by @fragno-dev/db. Workflow-specific
 // code supplies TOutEmission/TInEvent at the pump boundary; payload validation
 // before enqueue/persist is intentionally deferred.
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- Workflow registration supplies the payload type trusted at this persisted JSON boundary.
 const trustStoredStepEmissionPayload = <TEmission>(payload: unknown): TEmission =>
   payload as TEmission;
 

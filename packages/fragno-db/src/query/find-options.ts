@@ -60,10 +60,7 @@ export function buildFindOptions(
   };
 }
 
-function buildJoin<TTable extends AnyTable>(
-  table: AnyTable,
-  fn: (builder: JoinBuilder<TTable>) => void,
-): CompiledJoin[] {
+function buildJoin(table: AnyTable, fn: (builder: JoinBuilder<AnyTable>) => void): CompiledJoin[] {
   const compiled: CompiledJoin[] = [];
   const builder: Record<string, unknown> = {};
 
@@ -83,7 +80,7 @@ function buildJoin<TTable extends AnyTable>(
     };
   }
 
-  fn(builder as JoinBuilder<TTable>);
+  fn(builder as JoinBuilder<AnyTable>);
   return compiled;
 }
 

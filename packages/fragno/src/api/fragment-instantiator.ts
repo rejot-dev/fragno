@@ -1286,10 +1286,8 @@ interface IFragnoInstantiatedFragment {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   withMiddleware(handler: any): this;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  inContext<T>(callback: any): T;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  inContext<T>(callback: any): Promise<T>;
+  inContext<T>(callback: () => T): T;
+  inContext<T>(callback: () => Promise<T>): Promise<T>;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   callServices(serviceCalls: () => any): Promise<any>;

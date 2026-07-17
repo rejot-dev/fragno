@@ -274,10 +274,7 @@ type WorkflowScenarioRunnerStepBuilder<
   TRegistry extends WorkflowsRegistry,
   TVars extends WorkflowScenarioVars,
   TFragments extends Record<string, AnyFragmentResult>,
-  TClients,
-> = ReturnType<
-  typeof createScenarioRunnerSteps<TRunnerName, TRegistry, TVars, TFragments, TClients>
->;
+> = ReturnType<typeof createScenarioRunnerSteps<TRunnerName, TRegistry, TVars, TFragments>>;
 
 type WorkflowScenarioHookStepBuilder<
   TRegistry extends WorkflowsRegistry,
@@ -358,7 +355,7 @@ type WorkflowScenarioDefaultStepsContext<
 > = {
   workflow: WorkflowScenarioWorkflowStepBuilder<TRegistry, TVars, TFragments, TClients>;
   hooks: WorkflowScenarioHookStepBuilder<TRegistry, TVars, TFragments, TClients>;
-  runner: WorkflowScenarioRunnerStepBuilder<"scenario", TRegistry, TVars, TFragments, TClients>;
+  runner: WorkflowScenarioRunnerStepBuilder<"scenario", TRegistry, TVars, TFragments>;
   clients: TClients;
   stores: WorkflowScenarioStoreHandles<TRegistry, TVars, TFragments, TClients, TStores>;
   lofi: LofiRuntime;
@@ -378,13 +375,7 @@ type WorkflowScenarioNamedStepsContext<
   stores: WorkflowScenarioStoreHandles<TRegistry, TVars, TFragments, TClients, TStores>;
   lofi: LofiRuntime;
   runners: {
-    [K in TRunnerName]: WorkflowScenarioRunnerStepBuilder<
-      K,
-      TRegistry,
-      TVars,
-      TFragments,
-      TClients
-    >;
+    [K in TRunnerName]: WorkflowScenarioRunnerStepBuilder<K, TRegistry, TVars, TFragments>;
   };
   concurrent: (
     branches: Partial<
@@ -1170,7 +1161,6 @@ const createScenarioRunnerSteps = <
   TRegistry extends WorkflowsRegistry,
   TVars extends WorkflowScenarioVars,
   TFragments extends Record<string, AnyFragmentResult> = Record<string, AnyFragmentResult>,
-  TClients = Record<string, never>,
 >(
   runnerName: TRunnerName,
 ) => {
@@ -1178,7 +1168,7 @@ const createScenarioRunnerSteps = <
     step: TStep,
   ): RunnerNamedStep<TStep, TRunnerName> =>
     ({ ...step, runner: runnerName }) as RunnerNamedStep<TStep, TRunnerName>;
-  const raw = createRawScenarioStepBuilders<TRegistry, TVars, TFragments, TClients>();
+  const raw = createRawScenarioStepBuilders<TRegistry, TVars, TFragments>();
   return {
     initializeAndRunUntilIdle: (
       input: StepInput<WorkflowScenarioInitializeAndRunUntilIdleStep<TRegistry, TVars>>,
@@ -1280,9 +1270,7 @@ const createScenarioStepsContext = <
     const namedRunners = Object.fromEntries(
       runners.map((runnerName) => [
         runnerName,
-        createScenarioRunnerSteps<typeof runnerName, TRegistry, TVars, TFragments, TClients>(
-          runnerName,
-        ),
+        createScenarioRunnerSteps<typeof runnerName, TRegistry, TVars, TFragments>(runnerName),
       ]),
     );
     return {
@@ -1308,9 +1296,7 @@ const createScenarioStepsContext = <
   return {
     workflow,
     hooks,
-    runner: createScenarioRunnerSteps<"scenario", TRegistry, TVars, TFragments, TClients>(
-      "scenario",
-    ),
+    runner: createScenarioRunnerSteps<"scenario", TRegistry, TVars, TFragments>("scenario"),
     clients,
     stores,
     lofi,
@@ -1543,9 +1529,7 @@ type WorkflowResolver = {
   assertName: (workflowName: string) => void;
 };
 
-const createWorkflowResolver = <TRegistry extends WorkflowsRegistry>(
-  workflows: TRegistry,
-): WorkflowResolver => {
+const createWorkflowResolver = (workflows: WorkflowsRegistry): WorkflowResolver => {
   const workflowNames = new Set(Object.values(workflows).map((entry) => entry.name));
 
   return {

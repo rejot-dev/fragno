@@ -85,12 +85,12 @@ const mapCredentialSeedMembers = (
   }));
 };
 
-const collectCredentialSeedMembers = <
-  TUser extends {
-    userOrganizationMembers?: CredentialSeedMemberRow | CredentialSeedMemberRow[] | null;
-  },
->(
-  rows: Array<TUser | null | undefined>,
+type UserWithCredentialSeedMembers = {
+  userOrganizationMembers?: CredentialSeedMemberRow | CredentialSeedMemberRow[] | null;
+};
+
+const collectCredentialSeedMembers = (
+  rows: Array<UserWithCredentialSeedMembers | null | undefined>,
 ) => {
   return rows.flatMap((row) => (row ? mapCredentialSeedMembers(row.userOrganizationMembers) : []));
 };
@@ -108,8 +108,8 @@ const collectOrganizationIdsFromSeedMembers = (
     ),
   );
 
-const toResolvedUser = <TUser extends SeedableUserRow>(rows: Array<TUser | null | undefined>) => {
-  const first = rows.find((row): row is TUser => Boolean(row));
+const toResolvedUser = (rows: Array<SeedableUserRow | null | undefined>) => {
+  const first = rows.find((row): row is SeedableUserRow => Boolean(row));
   if (!first) {
     return null;
   }

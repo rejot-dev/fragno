@@ -41,6 +41,7 @@ export const createCommandHandlerApi = (
   };
 
   const commandApi: TelegramCommandApi = {
+    // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- TelegramApi defines a caller-selected response payload that this queueing wrapper forwards unchanged.
     call: async <T>(method: string, payload: Record<string, unknown>) => {
       const normalized = method.toLowerCase();
       if (normalized === "sendmessage") {

@@ -47,6 +47,7 @@ export function stringifySecretPayload(value: unknown) {
   return JSON.stringify(value);
 }
 
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- Secret consumers select the stored payload shape at this trusted serialization boundary.
 export function parseSecretPayload<T>(value: string) {
   return JSON.parse(value) as T;
 }
