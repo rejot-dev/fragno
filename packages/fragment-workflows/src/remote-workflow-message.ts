@@ -295,6 +295,8 @@ export class WorkflowStepMessageTarget {
         return undefined;
       }
     }
+
+    throw new Error("Unsupported remote workflow request method.");
   }
 
   async do<T>(

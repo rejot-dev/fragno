@@ -451,4 +451,6 @@ export const stringifyRuntimeToolFamilyReference = ({
     case "dashboard":
       return JSON.stringify(renderDashboardCommandGroups(reference.tools), null, 2);
   }
+
+  throw new Error("Unsupported runtime tool family reference target.");
 };

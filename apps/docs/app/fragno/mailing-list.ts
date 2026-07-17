@@ -76,6 +76,8 @@ export function createMailingListServer(
     if (getSubscribersResult) {
       return getSubscribersResult;
     }
+
+    return undefined;
   });
 }
 

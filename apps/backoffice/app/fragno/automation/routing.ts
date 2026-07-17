@@ -298,6 +298,8 @@ export const renderAutomationScopeTemplate = (
         ),
       };
   }
+
+  throw new Error("Unsupported automation route scope template kind.");
 };
 
 /**

@@ -81,7 +81,7 @@ export function useChatScroll({
 
   useLayoutEffect(() => {
     if (!pinnedToBottom && !shouldForceScrollRef.current) {
-      return;
+      return undefined;
     }
 
     const behavior = shouldForceScrollRef.current ? "auto" : "smooth";
@@ -94,7 +94,7 @@ export function useChatScroll({
     const viewport = viewportRef.current;
     const content = contentRef.current;
     if (!viewport || !content || typeof ResizeObserver === "undefined") {
-      return;
+      return undefined;
     }
 
     const observer = new ResizeObserver(() => {

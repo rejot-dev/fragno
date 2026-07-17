@@ -160,6 +160,8 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
           return await repository.getHookQueue({ cursor, pageSize });
         }
       }
+
+      throw new Error("Unsupported durable hook fragment.");
     })();
 
     return {

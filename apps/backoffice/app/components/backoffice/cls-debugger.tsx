@@ -13,13 +13,13 @@ type LayoutShiftEntry = PerformanceEntry & {
 export function BackofficeClsDebugger() {
   useEffect(() => {
     if (typeof window === "undefined") {
-      return;
+      return undefined;
     }
     if (import.meta.env.MODE !== "development") {
-      return;
+      return undefined;
     }
     if (!("PerformanceObserver" in window)) {
-      return;
+      return undefined;
     }
 
     let total = 0;

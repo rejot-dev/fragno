@@ -129,6 +129,8 @@ export function fieldToSchemaProperty(field: FormField): JsonSchemaProperty {
     case "label":
       return base;
   }
+
+  throw new Error("Unsupported form field type.");
 }
 
 /**

@@ -852,11 +852,11 @@ export default function App() {
 
   useEffect(() => {
     if (!selectedGroup) {
-      return;
+      return undefined;
     }
     const runtime = runtimesRef.current.get(selectedGroup.id);
     if (!runtime) {
-      return;
+      return undefined;
     }
 
     let cancelled = false;
@@ -996,7 +996,7 @@ export default function App() {
 
   useEffect(() => {
     if (!selectedGroup) {
-      return;
+      return undefined;
     }
 
     if (!selectedGroup.outboxEnabled) {
@@ -1007,12 +1007,12 @@ export default function App() {
           entries: [],
         },
       }));
-      return;
+      return undefined;
     }
 
     const runtime = runtimesRef.current.get(selectedGroup.id);
     if (!runtime) {
-      return;
+      return undefined;
     }
 
     let cancelled = false;

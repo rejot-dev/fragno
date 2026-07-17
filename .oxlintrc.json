@@ -30,7 +30,7 @@
   ],
   "rules": {
     "typescript/await-thenable": "error",
-    "typescript/consistent-return": "off",
+    "typescript/consistent-return": "error",
     "typescript/consistent-type-exports": "error",
     "typescript/dot-notation": "off",
     "typescript/no-array-delete": "error",

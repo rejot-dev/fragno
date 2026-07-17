@@ -148,7 +148,7 @@ export function useWorkflowRun({
 
   useEffect(() => {
     if (!instanceId || !orgId) {
-      return;
+      return undefined;
     }
 
     const controller = new AbortController();

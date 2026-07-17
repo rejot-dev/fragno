@@ -177,6 +177,8 @@ export abstract class SQLGenerator {
       case "custom":
         return this.compileCustom(operation);
     }
+
+    throw new Error("Unsupported migration operation type.");
   }
 
   /**
@@ -290,6 +292,8 @@ export abstract class SQLGenerator {
       case "update-column":
         return this.compileUpdateColumn(tableName, logicalTableName, operation, resolver);
     }
+
+    throw new Error("Unsupported column migration operation type.");
   }
 
   /**

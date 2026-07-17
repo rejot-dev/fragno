@@ -576,4 +576,6 @@ function stepMeta(stepType: StepType, args: AstNode[]): StepMeta {
     case "spawn":
       return {};
   }
+
+  throw new Error("Unsupported workflow step type.");
 }

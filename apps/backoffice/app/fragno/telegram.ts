@@ -54,6 +54,8 @@ const telegramEventScopeId = (scope: BackofficeContextScope) => {
     case "user":
       return `user:${scope.userId}`;
   }
+
+  throw new Error("Unsupported Backoffice context scope kind.");
 };
 
 export const buildTelegramAutomationEvent = (

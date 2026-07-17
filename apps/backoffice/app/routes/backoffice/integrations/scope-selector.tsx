@@ -14,6 +14,8 @@ const scopeKindLabel = (kind: IntegrationScopeSwitchOption["kind"]) => {
     case "user":
       return "User";
   }
+
+  throw new Error("Unsupported integration scope kind.");
 };
 
 export function IntegrationScopeBreadcrumbSelector({

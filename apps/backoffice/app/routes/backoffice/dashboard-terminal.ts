@@ -646,7 +646,7 @@ export const useDashboardTerminal = ({
 
   useEffect(() => {
     if (disabled || selectionVersion === 0) {
-      return;
+      return undefined;
     }
 
     const frameId = window.requestAnimationFrame(() => {

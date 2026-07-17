@@ -87,6 +87,8 @@ export function createFormsServer(
       if (!turnstileResult.success) {
         return error({ message: "Turnstile validation failed", code: "TURNSTILE_FAILED" }, 403);
       }
+
+      return undefined;
     });
 
     if (submitResult) {

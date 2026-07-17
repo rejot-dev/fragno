@@ -55,6 +55,8 @@ const createCommandPayload = (
     case "continue":
       return { commandId, kind: command.kind };
   }
+
+  throw new Error("Unsupported Pi session command kind.");
 };
 
 const LIVE_EVENT_STREAM_TIMEOUT_MS = 60_000;

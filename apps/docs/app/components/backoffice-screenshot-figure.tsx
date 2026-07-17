@@ -20,7 +20,7 @@ export function BackofficeScreenshotFigure({
 
   useEffect(() => {
     if (!fullscreenOpen) {
-      return;
+      return undefined;
     }
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {

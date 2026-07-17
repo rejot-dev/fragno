@@ -67,30 +67,30 @@ export default function BackofficeInvitationAccept() {
 
   useEffect(() => {
     if (status !== "idle" && status !== "checking") {
-      return;
+      return undefined;
     }
     if (!invitationId) {
       setStatus("error");
       setNotice({ type: "error", message: "Invitation ID is missing." });
-      return;
+      return undefined;
     }
     if (!token) {
       setStatus("error");
       setNotice({ type: "error", message: "Invite token is missing." });
-      return;
+      return undefined;
     }
 
     if (userInvitationsLoading) {
       if (status !== "checking") {
         setStatus("checking");
       }
-      return;
+      return undefined;
     }
 
     if (userInvitationsError) {
       setStatus("error");
       setNotice({ type: "error", message: getInvitationErrorMessage(userInvitationsError) });
-      return;
+      return undefined;
     }
 
     if (!invitationEntry) {
@@ -100,7 +100,7 @@ export default function BackofficeInvitationAccept() {
         message:
           "This invitation is not available for your account. Make sure you are signed in as the invited user.",
       });
-      return;
+      return undefined;
     }
 
     if (invitationEntry.invitation.token !== token) {
@@ -109,7 +109,7 @@ export default function BackofficeInvitationAccept() {
         type: "error",
         message: "The invitation token does not match. Please request a new link.",
       });
-      return;
+      return undefined;
     }
 
     let isActive = true;

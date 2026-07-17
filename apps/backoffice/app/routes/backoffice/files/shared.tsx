@@ -56,6 +56,8 @@ export function formatFileRootKind(kind: FileMountMetadata["kind"]) {
       return "Custom";
     }
   }
+
+  throw new Error("Unsupported file mount kind.");
 }
 
 export function formatFileRootPersistence(persistence: FileMountMetadata["persistence"]) {
@@ -70,6 +72,8 @@ export function formatFileRootPersistence(persistence: FileMountMetadata["persis
       return "Session";
     }
   }
+
+  throw new Error("Unsupported file mount persistence.");
 }
 
 export function formatFileRootMutability(readOnly: boolean) {

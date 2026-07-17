@@ -52,6 +52,8 @@ export const scopeLabel = (scope: BackofficeContextScope, me: AuthMeData): strin
     case "user":
       return me.user.id === scope.userId ? (me.user.email ?? me.user.id) : scope.userId;
   }
+
+  throw new Error("Unsupported Backoffice context scope kind.");
 };
 
 export const scopeToAutomationUiScope = (
@@ -73,6 +75,8 @@ export const scopeToAutomationUiScope = (
     case "user":
       return { kind: "user", userId: scope.userId, label: scopeLabel(scope, me) };
   }
+
+  throw new Error("Unsupported Backoffice context scope kind.");
 };
 
 export const integrationBasePath = (scope: AutomationUiScope, integration: string) =>

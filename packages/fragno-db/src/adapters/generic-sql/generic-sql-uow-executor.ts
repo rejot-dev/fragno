@@ -300,6 +300,8 @@ async function reserveOutboxVersion(
       return parseReservedOutboxVersion(result.rows[0]);
     }
   }
+
+  throw new Error("Unsupported outbox versionstamp strategy.");
 }
 
 function parseReservedOutboxVersion(

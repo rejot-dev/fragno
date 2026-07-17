@@ -46,6 +46,8 @@ export const toBackofficeScope = (scope: AutomationUiScope): BackofficeContextSc
     case "user":
       return { kind: "user", userId: scope.userId };
   }
+
+  throw new Error("Unsupported automation UI scope kind.");
 };
 
 export const automationScopeBasePath = (scope: AutomationUiScope) => {
@@ -59,6 +61,8 @@ export const automationScopeBasePath = (scope: AutomationUiScope) => {
     case "user":
       return `/backoffice/automations/user/${backofficeScopeRouteId(scope)}`;
   }
+
+  throw new Error("Unsupported automation UI scope kind.");
 };
 
 export type AutomationScopeTab =

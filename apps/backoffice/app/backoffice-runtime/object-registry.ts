@@ -360,6 +360,8 @@ export const encodeBackofficeObjectAddress = (address: BackofficeObjectAddress):
         encodeScopeValue("project id", address.scope.projectId),
       ].join(":");
   }
+
+  throw new Error("Unsupported Backoffice object scope kind.");
 };
 
 export const objectAddressToActor = (address: BackofficeObjectAddress): AutomationEventActor => ({
@@ -386,6 +388,8 @@ export const objectScopeToContextScope = (scope: BackofficeObjectScope): Backoff
     case "named":
       throw new Error("Named Backoffice object scopes do not have a Backoffice context scope.");
   }
+
+  throw new Error("Unsupported Backoffice object scope kind.");
 };
 
 type BackofficeRpcResult<TResult> = Promise<TResult> &
@@ -462,6 +466,8 @@ const scoped = <TObject>(
           objectAddress(objectBinding, project({ orgId: scope.orgId, projectId: scope.projectId })),
         );
     }
+
+    throw new Error("Unsupported Backoffice context scope kind.");
   },
   forOrg(orgId: string) {
     return scopedObject(factory, objectBinding, objectAddress(objectBinding, org(orgId)));
@@ -515,6 +521,8 @@ const scopedInitialized = <TObject>(
           objectAddress(objectBinding, project({ orgId: scope.orgId, projectId: scope.projectId })),
         );
     }
+
+    throw new Error("Unsupported Backoffice context scope kind.");
   },
   forOrg(orgId: string) {
     return scopedInitializedObject(

@@ -328,7 +328,7 @@ export function ComposeTranscript({
     const node = scrollRef.current;
     const content = contentRef.current;
     if (!node || !content) {
-      return;
+      return undefined;
     }
     const stickToBottom = () => {
       if (pinnedRef.current) {
@@ -462,7 +462,7 @@ function useCodemodeRunOutput(
 
   useEffect(() => {
     if (!workflowName || !instanceId) {
-      return;
+      return undefined;
     }
     const controller = new AbortController();
     const base = `/api/automations-workflows/${encodeURIComponent(orgId)}/${encodeURIComponent(

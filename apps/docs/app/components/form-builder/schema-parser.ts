@@ -104,6 +104,8 @@ function inferFieldType(prop: JsonSchemaProperty, uiOptions?: Record<string, unk
     case "object":
       return "unsupported";
   }
+
+  throw new Error("Unsupported JSON Schema property type.");
 }
 
 /**

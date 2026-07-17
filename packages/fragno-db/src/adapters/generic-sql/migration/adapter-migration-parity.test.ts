@@ -65,6 +65,8 @@ function createDummyDialect(database: "postgresql" | "mysql" | "sqlite"): Dialec
         createQueryCompiler: () => new SqliteQueryCompiler(),
       };
   }
+
+  throw new Error("Unsupported database type.");
 }
 
 function getMigrationSql(adapter: SqlAdapter, namespace: string): string[] {

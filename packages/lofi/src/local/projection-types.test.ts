@@ -22,7 +22,7 @@ describe("local projection types", () => {
           .map((candidate) => match.one(candidate, appSchema, "users", ["create", "update"]))
           .find((candidate) => candidate !== undefined);
         if (!mutation) {
-          return;
+          return undefined;
         }
         return { existing: read.get(localSchema, "user_cards", mutation.externalId) };
       },
