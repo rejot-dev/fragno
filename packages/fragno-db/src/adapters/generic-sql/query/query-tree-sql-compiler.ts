@@ -246,10 +246,8 @@ export class QueryTreeSQLCompiler {
         return sql`json_object(${sql.join(args)})`;
       case "postgresql":
         return sql`json_build_object(${sql.join(args)})`;
-      default: {
-        const exhaustiveCheck: never = this.#driverConfig.databaseType;
-        throw new Error(`Unsupported database type: ${exhaustiveCheck}`);
-      }
+      default:
+        throw new Error("Unsupported database type.");
     }
   }
 
@@ -285,10 +283,8 @@ export class QueryTreeSQLCompiler {
             json_array()
           )
         `;
-      default: {
-        const exhaustiveCheck: never = this.#driverConfig.databaseType;
-        throw new Error(`Unsupported database type: ${exhaustiveCheck}`);
-      }
+      default:
+        throw new Error("Unsupported database type.");
     }
   }
 

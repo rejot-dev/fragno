@@ -336,7 +336,7 @@ const evaluateCondition = (
     case "<=":
       return comparison <= 0;
     default:
-      throw new Error(`Unsupported operator "${op}".`);
+      throw new Error(`Unsupported operator "${String(op)}".`);
   }
 };
 
@@ -564,7 +564,7 @@ const evaluateCorrelatedCondition = (options: {
     case "<=":
       return comparison <= 0;
     default:
-      throw new Error(`Unsupported operator "${condition.operator}".`);
+      throw new Error(`Unsupported operator "${String(condition.operator)}".`);
   }
 };
 

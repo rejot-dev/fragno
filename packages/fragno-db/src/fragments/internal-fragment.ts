@@ -74,7 +74,7 @@ if (internalSchema.version < INTERNAL_SCHEMA_MIN_VERSION) {
 }
 
 const describeHookStatusSource = (event: { id: FragnoId; hookName: string }) =>
-  `fragno_hooks id=${event.id} hook=${event.hookName}`;
+  `fragno_hooks id=${event.id.externalId} hook=${event.hookName}`;
 
 const coerceHookStatus = (status: string, context: string): HookStatus => {
   if (isHookStatus(status)) {

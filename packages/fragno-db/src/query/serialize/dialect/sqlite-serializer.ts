@@ -135,7 +135,7 @@ export class SQLiteSerializer extends SQLSerializer {
         return date;
       }
     }
-    throw new Error(`Cannot deserialize date from value: ${value}`);
+    throw new Error(`Cannot deserialize date from value: ${String(value)}`);
   }
 
   protected deserializeBoolean(value: unknown): boolean {
@@ -145,7 +145,7 @@ export class SQLiteSerializer extends SQLSerializer {
     if (typeof value === "number") {
       return value === 1;
     }
-    throw new Error(`Cannot deserialize boolean from value: ${value}`);
+    throw new Error(`Cannot deserialize boolean from value: ${String(value)}`);
   }
 
   protected deserializeBigInt(value: unknown): bigint {
@@ -168,7 +168,7 @@ export class SQLiteSerializer extends SQLSerializer {
       }
       return BigInt(value);
     }
-    throw new Error(`Cannot deserialize bigint from value: ${value}`);
+    throw new Error(`Cannot deserialize bigint from value: ${String(value)}`);
   }
 
   protected serializeJson(value: unknown): string {

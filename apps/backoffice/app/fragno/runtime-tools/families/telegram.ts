@@ -194,7 +194,7 @@ const parseTelegramChatActions = defineCliArgsParser<TelegramSendActionArgs>(
       required: true,
       transform: (value) => {
         if (value !== "typing") {
-          throw new Error(`Unsupported Telegram chat action: ${value || "(empty)"}`);
+          throw new Error(`Unsupported Telegram chat action: ${String(value || "(empty)")}`);
         }
         return "typing";
       },

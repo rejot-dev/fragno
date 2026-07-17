@@ -1009,7 +1009,7 @@ export class ClientBuilder<
   ): FragnoClientHookData<"GET", TPath, TOutputSchema, TErrorCode, TQueryParameters> {
     if (route.method !== "GET") {
       throw new Error(
-        `Only GET routes are supported for hooks. Route '${route.path}' is a ${route.method} route.`,
+        `Only GET routes are supported for hooks. Route '${route.path}' is a ${String(route.method)} route.`,
       );
     }
 

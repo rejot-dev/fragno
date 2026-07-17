@@ -209,7 +209,9 @@ describe("LofiClient", () => {
     client.replayEphemeral(({ mutations }) => {
       for (const mutation of mutations) {
         if (mutation.op === "create") {
-          replayed.push(`${mutation.values["streamId"]}:${mutation.values["boundary"]}`);
+          replayed.push(
+            `${String(mutation.values["streamId"])}:${String(mutation.values["boundary"])}`,
+          );
         }
       }
     });

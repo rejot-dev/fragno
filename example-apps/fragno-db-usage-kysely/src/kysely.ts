@@ -18,11 +18,11 @@ async function printSettings() {
     for (const row of results.rows) {
       const r = row as Record<string, unknown>;
       console.log("─".repeat(60));
-      console.log(`ID:    ${r["id"]}`);
-      console.log(`Key:   ${r["key"]}`);
-      console.log(`Value: ${r["value"]}`);
-      console.log(`Version: ${r["_version"]}`);
-      console.log(`Internal ID: ${r["_internalId"]}`);
+      console.log(`ID:    ${String(r["id"])}`);
+      console.log(`Key:   ${String(r["key"])}`);
+      console.log(`Value: ${String(r["value"])}`);
+      console.log(`Version: ${String(r["_version"])}`);
+      console.log(`Internal ID: ${String(r["_internalId"])}`);
     }
     console.log("─".repeat(60));
   } catch (error) {

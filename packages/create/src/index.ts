@@ -49,7 +49,7 @@ export function create(options: CreateOptions) {
   if (options.template == "fragment") {
     writeFragmentTemplate(options.path, pkgOverride);
   } else {
-    throw new Error(`Unsupported template type: ${options.template}`);
+    throw new Error(`Unsupported template type: ${String(options.template)}`);
   }
 
   switch (options.buildTool) {
