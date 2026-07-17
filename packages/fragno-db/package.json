@@ -120,6 +120,7 @@
     "build:watch": "tsdown --watch",
     "types:check": "tsc --noEmit",
     "test": "vitest run",
+    "test:mysql": "vitest run --config vitest.mysql.config.ts",
     "test:watch": "vitest --watch"
   },
   "dependencies": {

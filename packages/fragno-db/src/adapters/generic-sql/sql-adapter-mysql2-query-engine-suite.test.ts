@@ -1,4 +1,4 @@
-import { describe, test, assert } from "vitest";
+import { afterAll, describe, test, assert } from "vitest";
 
 import { randomUUID } from "node:crypto";
 
@@ -10,6 +10,58 @@ import { describeQueryEngineSuite } from "../test-suite/query-engine-suite";
 import { MySQL2DriverConfig } from "./driver-config";
 import { SqlAdapter } from "./generic-sql-adapter";
 
+class MySQLTestDatabaseRegistry {
+  readonly #adminPoolOptions: PoolOptions;
+  readonly #runId = randomUUID().replaceAll("-", "").slice(0, 10);
+  readonly #activeDatabases = new Set<string>();
+  #databaseSequence = 0;
+
+  constructor(adminPoolOptions: PoolOptions) {
+    this.#adminPoolOptions = { ...adminPoolOptions, database: undefined };
+  }
+
+  async create(baseDatabase: string, variant: MySQLVariant): Promise<string> {
+    const database = createTestDatabaseName(baseDatabase, this.#runId, this.#databaseSequence++);
+    const adminPool = createPromisePool(this.#adminPoolOptions);
+    try {
+      await adminPool.query(createDatabaseSql(database, variant));
+      this.#activeDatabases.add(database);
+      return database;
+    } finally {
+      await adminPool.end();
+    }
+  }
+
+  async drop(database: string): Promise<void> {
+    if (!this.#activeDatabases.has(database)) {
+      return;
+    }
+
+    const adminPool = createPromisePool(this.#adminPoolOptions);
+    try {
+      await adminPool.query(`DROP DATABASE IF EXISTS \`${escapeIdentifier(database)}\``);
+      this.#activeDatabases.delete(database);
+    } finally {
+      await adminPool.end();
+    }
+  }
+
+  async cleanup(): Promise<void> {
+    const cleanupErrors: unknown[] = [];
+    for (const database of this.#activeDatabases) {
+      try {
+        await this.drop(database);
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+    }
+
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(cleanupErrors, "Failed to clean up MySQL test databases.");
+    }
+  }
+}
+
 const mysqlTestDatabase = process.env["FRAGNO_DB_MYSQL_TEST_DATABASE"];
 const mysqlVariantsEnabled = process.env["FRAGNO_DB_MYSQL_ENABLE_VARIANT"] === "true";
 
@@ -20,8 +72,18 @@ if (!mysqlTestDatabase) {
 } else {
   const baseOptions = createPoolOptions(mysqlTestDatabase);
   const baseDatabase = baseOptions.database ?? "fragno_test";
+  const databaseRegistry = new MySQLTestDatabaseRegistry(baseOptions);
 
-  describeMysqlQueryEngineSuite(baseOptions, baseDatabase, getDefaultMysqlVariant());
+  afterAll(async () => {
+    await databaseRegistry.cleanup();
+  });
+
+  describeMysqlQueryEngineSuite(
+    baseOptions,
+    baseDatabase,
+    getDefaultMysqlVariant(),
+    databaseRegistry,
+  );
 
   if (!mysqlVariantsEnabled) {
     describe.skip("query engine contract: generic-sql mysql2 variants", () => {
@@ -29,7 +91,7 @@ if (!mysqlTestDatabase) {
     });
   } else {
     for (const variant of getMysqlConfigVariants()) {
-      describeMysqlQueryEngineSuite(baseOptions, baseDatabase, variant);
+      describeMysqlQueryEngineSuite(baseOptions, baseDatabase, variant, databaseRegistry);
     }
 
     describe("generic-sql mysql2 configuration variants", () => {
@@ -38,6 +100,7 @@ if (!mysqlTestDatabase) {
           baseOptions,
           baseDatabase,
           variant,
+          databaseRegistry,
         );
         try {
           assert(await adapter.isConnectionHealthy());
@@ -81,13 +144,15 @@ function describeMysqlQueryEngineSuite(
   baseOptions: PoolOptions,
   baseDatabase: string,
   variant: MySQLVariant,
+  databaseRegistry: MySQLTestDatabaseRegistry,
 ): void {
   describeQueryEngineSuite({
     name: `generic-sql mysql2 ${variant.name}`,
     capabilities: {
       constraints: false,
     },
-    createAdapter: async () => createMysqlAdapterContext(baseOptions, baseDatabase, variant),
+    createAdapter: async () =>
+      createMysqlAdapterContext(baseOptions, baseDatabase, variant, databaseRegistry),
   });
 }
 
@@ -95,15 +160,9 @@ async function createMysqlAdapterContext(
   baseOptions: PoolOptions,
   baseDatabase: string,
   variant: MySQLVariant,
+  databaseRegistry: MySQLTestDatabaseRegistry,
 ): Promise<{ adapter: SqlAdapter; close: () => Promise<void> }> {
-  const database = createTestDatabaseName(baseDatabase);
-  const adminPool = createPromisePool({ ...baseOptions, database: undefined });
-  try {
-    await adminPool.query(createDatabaseSql(database, variant));
-  } finally {
-    await adminPool.end();
-  }
-
+  const database = await databaseRegistry.create(baseDatabase, variant);
   const poolOptions = { ...baseOptions, ...variant.poolOptions, database };
   const adapter = new SqlAdapter({
     dialect: new MysqlDialect({ pool: createPool(poolOptions) }),
@@ -113,12 +172,10 @@ async function createMysqlAdapterContext(
   return {
     adapter,
     close: async () => {
-      await adapter.close();
-      const cleanupPool = createPromisePool({ ...baseOptions, database: undefined });
       try {
-        await cleanupPool.query(`DROP DATABASE IF EXISTS \`${escapeIdentifier(database)}\``);
+        await adapter.close();
       } finally {
-        await cleanupPool.end();
+        await databaseRegistry.drop(database);
       }
     },
   };
@@ -147,9 +204,9 @@ function createPoolOptions(connectionUrl: string): PoolOptions {
   };
 }
 
-function createTestDatabaseName(baseDatabase: string): string {
-  const suffix = randomUUID().replaceAll("-", "").slice(0, 12);
-  return `${baseDatabase.slice(0, 48)}_qe_${suffix}`;
+function createTestDatabaseName(baseDatabase: string, runId: string, sequence: number): string {
+  const suffix = `_qe_${runId}_${sequence.toString(36)}`;
+  return `${baseDatabase.slice(0, 64 - suffix.length)}${suffix}`;
 }
 
 function escapeIdentifier(identifier: string): string {
