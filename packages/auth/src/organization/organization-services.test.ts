@@ -966,7 +966,7 @@ describe("organization services", async () => {
   });
 
   it("avoids unbounded member scans when resolving active organizations", async () => {
-    const txResult = await test.inContext(function () {
+    const txResult = test.inContext(function () {
       return fragment.services.getActiveOrganizationForCredential({
         credentialToken: "inactive-session",
       });

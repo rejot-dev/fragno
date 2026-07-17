@@ -142,7 +142,7 @@ describe("Workflows Runner", () => {
     )[0];
     expect(instance).toBeTruthy();
 
-    const emissionBus = await harness.fragment.inContext(function () {
+    const emissionBus = harness.fragment.inContext(function () {
       return openBus<{ type: string }>(stepEmissions, {
         handlerTx: this.handlerTx,
         workflowName: "step-emission-bus-workflow",
@@ -261,7 +261,7 @@ describe("Workflows Runner", () => {
     )[0];
     expect(instance).toBeTruthy();
 
-    const emissionBus = await harness.fragment.inContext(function () {
+    const emissionBus = harness.fragment.inContext(function () {
       return openBus<{ type: string }>(stepEmissions, {
         handlerTx: this.handlerTx,
         workflowName: "central-message-bus-outbound-workflow",
@@ -327,7 +327,7 @@ describe("Workflows Runner", () => {
     )[0];
     expect(instance).toBeTruthy();
 
-    const emissionBus = await harness.fragment.inContext(function () {
+    const emissionBus = harness.fragment.inContext(function () {
       return openBus(stepEmissions, {
         handlerTx: this.handlerTx,
         workflowName: "central-message-bus-commit-flush-workflow",
@@ -390,7 +390,7 @@ describe("Workflows Runner", () => {
     )[0];
     expect(instance).toBeTruthy();
 
-    const emissionBus = await harness.fragment.inContext(function () {
+    const emissionBus = harness.fragment.inContext(function () {
       return openBus(stepEmissions, {
         handlerTx: this.handlerTx,
         workflowName: "central-message-bus-commit-snapshot-workflow",
@@ -457,7 +457,7 @@ describe("Workflows Runner", () => {
     )[0];
     expect(instance).toBeTruthy();
 
-    const emissionBus = await harness.fragment.inContext(function () {
+    const emissionBus = harness.fragment.inContext(function () {
       return openBus<{ type: string; text?: string }>(stepEmissions, {
         handlerTx: this.handlerTx,
         workflowName: "central-message-bus-drain-before-close-workflow",
@@ -528,7 +528,7 @@ describe("Workflows Runner", () => {
     expect(instance).toBeTruthy();
 
     const remoteRegistry = createStepEmissions();
-    const remoteBus = await harness.fragment.inContext(function () {
+    const remoteBus = harness.fragment.inContext(function () {
       return openBus<{ type: string; text?: string }>(remoteRegistry, {
         handlerTx: this.handlerTx,
         workflowName: "central-message-bus-close-remote-outbound-workflow",
@@ -593,7 +593,7 @@ describe("Workflows Runner", () => {
     )[0];
     expect(instance).toBeTruthy();
 
-    const localBus = await harness.fragment.inContext(function () {
+    const localBus = harness.fragment.inContext(function () {
       return openBus<{ type: string }>(localRegistry, {
         handlerTx: this.handlerTx,
         workflowName: "central-message-bus-remote-outbound-workflow",
@@ -603,7 +603,7 @@ describe("Workflows Runner", () => {
 
     const tick = harness.tick(buildPayload(instance!, "create"));
     const remoteRegistry = createStepEmissions();
-    const remoteBus = await harness.fragment.inContext(function () {
+    const remoteBus = harness.fragment.inContext(function () {
       return openBus<{ type: string }>(remoteRegistry, {
         handlerTx: this.handlerTx,
         workflowName: "central-message-bus-remote-outbound-workflow",

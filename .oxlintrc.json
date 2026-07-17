@@ -29,7 +29,7 @@
     "packages/docs/.source/**"
   ],
   "rules": {
-    "typescript/await-thenable": "off",
+    "typescript/await-thenable": "error",
     "typescript/consistent-return": "off",
     "typescript/consistent-type-exports": "off",
     "typescript/dot-notation": "off",

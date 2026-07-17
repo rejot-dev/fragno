@@ -312,12 +312,16 @@ export const resolveProjectionReadPlan = <TPlan extends LofiProjectionReadPlan |
           ? row.then((resolvedRow) => ({ item, row: resolvedRow }))
           : { item, row };
       });
-      return resolvedItems.some(isThenable) ? Promise.all(resolvedItems) : resolvedItems;
+      return resolvedItems.some(isThenable)
+        ? Promise.all(resolvedItems.map((item) => Promise.resolve(item)))
+        : resolvedItems;
     }
 
     if (Array.isArray(value)) {
       const resolvedItems = value.map((item) => resolveValue(item));
-      return resolvedItems.some(isThenable) ? Promise.all(resolvedItems) : resolvedItems;
+      return resolvedItems.some(isThenable)
+        ? Promise.all(resolvedItems.map((item) => Promise.resolve(item)))
+        : resolvedItems;
     }
 
     if (typeof value === "object" && value !== null && isPlainObject(value)) {
