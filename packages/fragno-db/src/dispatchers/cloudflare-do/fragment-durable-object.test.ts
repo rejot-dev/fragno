@@ -14,6 +14,9 @@ const createFragment = (name: string, hooks = true) =>
     $internal: hooks ? { durableHooksToken: {} } : {},
   }) as AnyFragnoInstantiatedDatabaseFragment;
 
+const createFragmentWithOverrides = <T extends object>(name: string, overrides: T) =>
+  Object.assign(createFragment(name), overrides);
+
 type TestEnv = Record<string, never>;
 
 type TestDispatcher = DurableHooksDispatcherDurableObjectHandler;
@@ -127,15 +130,12 @@ describe("createFragmentDurableObjectHost", () => {
   it("wraps direct fragment calls to notify the durable hooks dispatcher", async () => {
     const routeCalls: unknown[][] = [];
     const notifications: HookNotifyContext[] = [];
-    const fragment = {
-      ...createFragment("test"),
+    const fragment = createFragmentWithOverrides("test", {
       callRoute: async (...args: unknown[]) => {
         routeCalls.push(args);
         return "ok";
       },
-    } as unknown as AnyFragnoInstantiatedDatabaseFragment & {
-      callRoute: (...args: unknown[]) => Promise<string>;
-    };
+    });
     const recording = createRecordingOperations({
       notify: (context) => {
         notifications.push(context);
@@ -159,24 +159,18 @@ describe("createFragmentDurableObjectHost", () => {
 
   it("dispatches fetch requests to mounted fragments", async () => {
     const calls: string[] = [];
-    const workflowsFragment = {
-      ...createFragment("workflows"),
+    const workflowsFragment = createFragmentWithOverrides("workflows", {
       handler: async () => {
         calls.push("workflows");
         return new Response("workflows");
       },
-    } as unknown as AnyFragnoInstantiatedDatabaseFragment & {
-      handler: (request: Request) => Promise<Response>;
-    };
-    const piFragment = {
-      ...createFragment("pi"),
+    });
+    const piFragment = createFragmentWithOverrides("pi", {
       handler: async () => {
         calls.push("pi");
         return new Response("pi");
       },
-    } as unknown as AnyFragnoInstantiatedDatabaseFragment & {
-      handler: (request: Request) => Promise<Response>;
-    };
+    });
 
     const host = createFragmentDurableObjectHost({
       state: { storage: { setAlarm: async () => {} } },
@@ -209,15 +203,12 @@ describe("createFragmentDurableObjectHost", () => {
 
   it("continues mount resolution after a matching mount returns no target", async () => {
     const calls: string[] = [];
-    const fallbackFragment = {
-      ...createFragment("fallback"),
+    const fallbackFragment = createFragmentWithOverrides("fallback", {
       handler: async () => {
         calls.push("fallback");
         return new Response("fallback");
       },
-    } as unknown as AnyFragnoInstantiatedDatabaseFragment & {
-      handler: (request: Request) => Promise<Response>;
-    };
+    });
 
     const host = createFragmentDurableObjectHost({
       state: { storage: { setAlarm: async () => {} } },
@@ -244,12 +235,9 @@ describe("createFragmentDurableObjectHost", () => {
 
   it("can host fragments inside multi-fragment runtimes", async () => {
     const notifications: HookNotifyContext[] = [];
-    const fragment = {
-      ...createFragment("pi"),
+    const fragment = createFragmentWithOverrides("pi", {
       callRoute: async () => "ok",
-    } as unknown as AnyFragnoInstantiatedDatabaseFragment & {
-      callRoute: () => Promise<string>;
-    };
+    });
 
     const host = createFragmentDurableObjectHost({
       state: { storage: { setAlarm: async () => {} } },
