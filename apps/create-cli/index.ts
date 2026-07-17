@@ -6,11 +6,11 @@ import { create, createOptionsSchema } from "@fragno-dev/create";
 import * as p from "@clack/prompts";
 
 function isInteractive() {
-  return Boolean(
+  return (
     process.stdin.isTTY &&
     process.stdout.isTTY &&
     !process.env["CI"] &&
-    process.env["TERM"] !== "dumb",
+    process.env["TERM"] !== "dumb"
   );
 }
 

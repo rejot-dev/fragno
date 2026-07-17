@@ -37,13 +37,13 @@ export const toRepoRecord = (
     ownerLogin,
     name: repo.name,
     fullName: repo.full_name ?? `${ownerLogin}/${repo.name}`,
-    isPrivate: Boolean(repo.private),
+    isPrivate: repo.private,
     removedAt: null,
     updatedAt: now,
   };
 
   if (repo.fork !== undefined) {
-    record.isFork = Boolean(repo.fork);
+    record.isFork = repo.fork;
   }
   if (repo.default_branch !== undefined) {
     record.defaultBranch = repo.default_branch ?? null;

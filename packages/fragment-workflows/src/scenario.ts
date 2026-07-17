@@ -1752,7 +1752,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
   });
 
   const getInstance = async (workflow: (keyof TRegistry & string) | string, instanceId: string) => {
-    const workflowName = resolver.resolveName(String(workflow));
+    const workflowName = resolver.resolveName(workflow);
     const instance = await getScenarioInstanceRow(harness, workflowName, instanceId);
     return instance ? mapInstanceRow(instance) : null;
   };
@@ -1762,7 +1762,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     instanceId: string,
     options?: { order?: "asc" | "desc" },
   ) => {
-    const workflowName = resolver.resolveName(String(workflow));
+    const workflowName = resolver.resolveName(workflow);
     const instance = await getScenarioInstanceRow(harness, workflowName, instanceId);
     if (!instance) {
       throw new Error("INSTANCE_NOT_FOUND");
@@ -1796,7 +1796,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     instanceId: string,
     options?: { order?: "asc" | "desc" },
   ) => {
-    const workflowName = resolver.resolveName(String(workflow));
+    const workflowName = resolver.resolveName(workflow);
     const instance = await getScenarioInstanceRow(harness, workflowName, instanceId);
     if (!instance) {
       throw new Error("INSTANCE_NOT_FOUND");
@@ -1830,7 +1830,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     instanceId: string,
     options?: { order?: "asc" | "desc"; actor?: WorkflowEventActor; stepKey?: string },
   ) => {
-    const workflowName = resolver.resolveName(String(workflow));
+    const workflowName = resolver.resolveName(workflow);
     const instance = await getScenarioInstanceRow(harness, workflowName, instanceId);
     if (!instance) {
       throw new Error("INSTANCE_NOT_FOUND");
@@ -1872,7 +1872,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
   };
 
   const getStatus = async (workflow: (keyof TRegistry & string) | string, instanceId: string) => {
-    const workflowName = resolver.resolveName(String(workflow));
+    const workflowName = resolver.resolveName(workflow);
     return await harness.getStatus(workflowName, instanceId);
   };
 
@@ -1886,7 +1886,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
       order?: "asc" | "desc";
     },
   ): Promise<WorkflowsHistory> => {
-    const workflowName = resolver.resolveName(String(workflow));
+    const workflowName = resolver.resolveName(workflow);
     const instance = await getScenarioInstanceRow(harness, workflowName, instanceId);
     if (!instance) {
       throw new Error("INSTANCE_NOT_FOUND");
@@ -2293,7 +2293,7 @@ export async function runScenario<
       return init ? new Request(input, init) : input;
     }
 
-    const url = input instanceof URL ? input : new URL(String(input), baseUrl);
+    const url = input instanceof URL ? input : new URL(input, baseUrl);
     return new Request(url, init);
   };
   const createClientConfig = (
@@ -2305,7 +2305,7 @@ export async function runScenario<
     return ((fragmentName, options = {}) => {
       const fallbackFragment = fallbackFragments[fragmentName];
       if (!fallbackFragment) {
-        throw new Error(`SCENARIO_CLIENT_FRAGMENT_NOT_FOUND: ${String(fragmentName)}`);
+        throw new Error(`SCENARIO_CLIENT_FRAGMENT_NOT_FOUND: ${fragmentName}`);
       }
 
       const baseUrl = options.baseUrl ?? "http://fragno.test";
@@ -2318,11 +2318,11 @@ export async function runScenario<
           useOnServer: true,
           fetcher: async (input, init) => {
             const fragments = runnerName
-              ? await getRunnerByName(String(runnerName)).getFragments()
+              ? await getRunnerByName(runnerName).getFragments()
               : await resolveFallbackFragments();
             const fragment = fragments[fragmentName]?.fragment;
             if (!fragment) {
-              throw new Error(`SCENARIO_CLIENT_FRAGMENT_NOT_FOUND: ${String(fragmentName)}`);
+              throw new Error(`SCENARIO_CLIENT_FRAGMENT_NOT_FOUND: ${fragmentName}`);
             }
             return fragment.handler(createRequest(input, init, baseUrl), options.lifecycleContext);
           },
@@ -2468,7 +2468,7 @@ export async function runScenario<
     reason: WorkflowEnqueuedHookPayload["reason"];
     timestamp?: Date;
   }): Promise<WorkflowEnqueuedHookPayload> => {
-    const workflowName = resolver.resolveName(String(options.workflow));
+    const workflowName = resolver.resolveName(options.workflow);
     if (options.timestamp) {
       context.clock.set(options.timestamp);
     }
@@ -2506,7 +2506,7 @@ export async function runScenario<
       switch (step.type) {
         case "create": {
           const workflowName = resolver.resolveName(
-            String(await resolveScenarioInput(step.workflow, context)),
+            await resolveScenarioInput(step.workflow, context),
           );
           const params = step.params ? await resolveScenarioInput(step.params, context) : undefined;
           const id = step.id ? await resolveScenarioInput(step.id, context) : undefined;
@@ -2525,7 +2525,7 @@ export async function runScenario<
         }
         case "initializeAndRunUntilIdle": {
           const workflowName = resolver.resolveName(
-            String(await resolveScenarioInput(step.workflow, context)),
+            await resolveScenarioInput(step.workflow, context),
           );
           const params = step.params ? await resolveScenarioInput(step.params, context) : undefined;
           const id = step.id ? await resolveScenarioInput(step.id, context) : undefined;
@@ -2564,7 +2564,7 @@ export async function runScenario<
         }
         case "createBatch": {
           const workflowName = resolver.resolveName(
-            String(await resolveScenarioInput(step.workflow, context)),
+            await resolveScenarioInput(step.workflow, context),
           );
           const instances = await resolveScenarioInput(step.instances, context);
           const remoteWorkflowName = step.remoteWorkflowName
@@ -2582,7 +2582,7 @@ export async function runScenario<
         }
         case "event": {
           const workflowName = resolver.resolveName(
-            String(await resolveScenarioInput(step.workflow, context)),
+            await resolveScenarioInput(step.workflow, context),
           );
           const instanceId = await resolveScenarioInput(step.instanceId, context);
           const event = await resolveScenarioInput(step.event, context);
@@ -2600,7 +2600,7 @@ export async function runScenario<
         }
         case "eventAndRunUntilIdle": {
           const workflowName = resolver.resolveName(
-            String(await resolveScenarioInput(step.workflow, context)),
+            await resolveScenarioInput(step.workflow, context),
           );
           const instanceId = await resolveScenarioInput(step.instanceId, context);
           const event = await resolveScenarioInput(step.event, context);
@@ -2638,7 +2638,7 @@ export async function runScenario<
         }
         case "pause": {
           const workflowName = resolver.resolveName(
-            String(await resolveScenarioInput(step.workflow, context)),
+            await resolveScenarioInput(step.workflow, context),
           );
           const instanceId = await resolveScenarioInput(step.instanceId, context);
           const status = await context.harness.pauseInstance(workflowName, instanceId);
@@ -2649,7 +2649,7 @@ export async function runScenario<
         }
         case "resume": {
           const workflowName = resolver.resolveName(
-            String(await resolveScenarioInput(step.workflow, context)),
+            await resolveScenarioInput(step.workflow, context),
           );
           const instanceId = await resolveScenarioInput(step.instanceId, context);
           const status = await context.harness.resumeInstance(workflowName, instanceId);
@@ -2660,7 +2660,7 @@ export async function runScenario<
         }
         case "retry": {
           const workflowName = resolver.resolveName(
-            String(await resolveScenarioInput(step.workflow, context)),
+            await resolveScenarioInput(step.workflow, context),
           );
           const instanceId = await resolveScenarioInput(step.instanceId, context);
           const stepKey = step.stepKey
@@ -2682,7 +2682,7 @@ export async function runScenario<
         }
         case "resumeAndRunUntilIdle": {
           const workflowName = resolver.resolveName(
-            String(await resolveScenarioInput(step.workflow, context)),
+            await resolveScenarioInput(step.workflow, context),
           );
           const instanceId = await resolveScenarioInput(step.instanceId, context);
           const status = await context.harness.resumeInstance(workflowName, instanceId);
@@ -2713,7 +2713,7 @@ export async function runScenario<
         }
         case "terminate": {
           const workflowName = resolver.resolveName(
-            String(await resolveScenarioInput(step.workflow, context)),
+            await resolveScenarioInput(step.workflow, context),
           );
           const instanceId = await resolveScenarioInput(step.instanceId, context);
           const status = await context.harness.terminateInstance(workflowName, instanceId);
@@ -2724,7 +2724,7 @@ export async function runScenario<
         }
         case "runCreateUntilIdle": {
           const workflowName = resolver.resolveName(
-            String(await resolveScenarioInput(step.workflow, context)),
+            await resolveScenarioInput(step.workflow, context),
           );
           const instanceId = await resolveScenarioInput(step.instanceId, context);
           const timestamp = step.timestamp
@@ -2750,7 +2750,7 @@ export async function runScenario<
         }
         case "runResumeUntilIdle": {
           const workflowName = resolver.resolveName(
-            String(await resolveScenarioInput(step.workflow, context)),
+            await resolveScenarioInput(step.workflow, context),
           );
           const instanceId = await resolveScenarioInput(step.instanceId, context);
           const timestamp = step.timestamp
@@ -2776,7 +2776,7 @@ export async function runScenario<
         }
         case "retryAndRunUntilIdle": {
           const workflowName = resolver.resolveName(
-            String(await resolveScenarioInput(step.workflow, context)),
+            await resolveScenarioInput(step.workflow, context),
           );
           const instanceId = await resolveScenarioInput(step.instanceId, context);
           const timestamp = step.timestamp
@@ -2913,7 +2913,7 @@ export async function runScenario<
         }
         case "advanceTimeAndRunUntilIdle": {
           const workflowName = resolver.resolveName(
-            String(await resolveScenarioInput(step.workflow, context)),
+            await resolveScenarioInput(step.workflow, context),
           );
           const instanceId = await resolveScenarioInput(step.instanceId, context);
           const advanceBy =
@@ -3013,7 +3013,7 @@ export async function runScenario<
           break;
         }
         case "waitForEmission": {
-          const workflowKey = String(await resolveScenarioInput(step.workflow, context));
+          const workflowKey = await resolveScenarioInput(step.workflow, context);
           const workflowName = resolver.resolveName(workflowKey);
           const instanceId = await resolveScenarioInput(step.instanceId, context);
           const timeoutMs = step.timeoutMs

@@ -927,7 +927,7 @@ const uploadDirectoryExists = async (
     directories?: UploadDirectoryRecord[];
   };
 
-  return Boolean((payload.files?.length ?? 0) > 0 || (payload.directories?.length ?? 0) > 0);
+  return (payload.files?.length ?? 0) > 0 || (payload.directories?.length ?? 0) > 0;
 };
 
 const listUploadDirectoryEntries = async (

@@ -187,9 +187,7 @@ const getWorkflowRuntimeMethod = <TMethod extends keyof AutomationWorkflowRuntim
 ): NonNullable<AutomationWorkflowRuntime[TMethod]> => {
   const fn = runtime[method];
   if (!fn) {
-    throw new Error(
-      `Workflow runtime method ${String(method)} is not available in this execution context`,
-    );
+    throw new Error(`Workflow runtime method ${method} is not available in this execution context`);
   }
   return fn as NonNullable<AutomationWorkflowRuntime[TMethod]>;
 };

@@ -114,8 +114,7 @@ export const infoCommand = define({
     );
 
     for (const info of dbInfos) {
-      const currentVersionStr =
-        info.currentVersion !== undefined ? String(info.currentVersion) : "-";
+      const currentVersionStr = info.currentVersion ?? "-";
       console.log(
         info.namespace.padEnd(namespaceWidth) +
           String(info.schemaVersion).padEnd(versionWidth) +

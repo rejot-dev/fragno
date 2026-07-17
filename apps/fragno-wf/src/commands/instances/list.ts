@@ -48,7 +48,7 @@ export const instancesListCommand = define({
     for (const instance of response.instances) {
       const status = instance.details["status"] ? String(instance.details["status"]) : "unknown";
       const error = instance.details["error"]
-        ? ` (${String((instance.details["error"] as { name?: string }).name ?? "Error")})`
+        ? ` (${(instance.details["error"] as { name?: string }).name ?? "Error"})`
         : "";
       console.log(`- ${instance.id} ${status}${error}`);
     }

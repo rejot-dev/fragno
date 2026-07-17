@@ -139,7 +139,7 @@ describe("IndexedDbAdapter", () => {
               }
               userCards.create("user_cards", {
                 id: mutation.externalId,
-                displayName: String(mutation.values.name),
+                displayName: mutation.values.name,
               });
             }
           },

@@ -631,8 +631,8 @@ const resolveWorkflowName = (
   workflows: WorkflowsRegistry,
   workflowNameOrKey: keyof WorkflowsRegistry,
 ) => {
-  const lookup = workflows[String(workflowNameOrKey)];
-  return lookup?.name ?? String(workflowNameOrKey);
+  const lookup = workflows[workflowNameOrKey];
+  return lookup?.name ?? workflowNameOrKey;
 };
 
 export async function createWorkflowsTestHarness<

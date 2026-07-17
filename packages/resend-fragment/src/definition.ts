@@ -217,7 +217,7 @@ const appendToThreadSummary = (
           normalizedSubject,
           participants: nextParticipants,
           heuristicKey,
-          messageCount: Number(existingThread.messageCount ?? 0) + 1,
+          messageCount: (existingThread.messageCount ?? 0) + 1,
           lastMessageAt: shouldUpdateLastMessage ? input.occurredAt : existingThread.lastMessageAt,
           lastDirection: shouldUpdateLastMessage ? input.direction : existingThread.lastDirection,
           lastMessagePreview: shouldUpdateLastMessage
@@ -392,7 +392,7 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
             return { action: "skip" as const };
           }
 
-          const status = String(email.status);
+          const status = email.status;
           if (
             status !== "queued" &&
             status !== "scheduled" &&

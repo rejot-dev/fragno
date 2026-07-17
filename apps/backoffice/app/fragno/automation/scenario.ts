@@ -1023,7 +1023,7 @@ const createFakeResendThread = (input: FakeResendThreadSeed) => {
   ).map((message) => createFakeResendMessage(thread, message));
   const firstMessage = messages[0];
   const lastMessage = messages[messages.length - 1] ?? firstMessage;
-  const lastText = String(lastMessage?.text ?? "");
+  const lastText = lastMessage?.text ?? "";
 
   return {
     detail: {

@@ -1625,7 +1625,7 @@ export class InMemoryUowDecoder implements UOWDecoder<InMemoryRawResult> {
     if (!first) {
       return 0;
     }
-    const count = Number(first.count);
+    const count = first.count;
     if (Number.isNaN(count)) {
       throw new Error(`Unexpected result for count, received: ${first.count}`);
     }
