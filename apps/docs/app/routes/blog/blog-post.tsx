@@ -51,28 +51,28 @@ export async function loader({ params }: Route.LoaderArgs) {
 const BASE_URL =
   import.meta.env.MODE === "development" ? "http://localhost:3000" : "https://fragno.dev";
 
-export function meta({ data }: Route.MetaArgs) {
-  if (!data) {
+export function meta({ loaderData }: Route.MetaArgs) {
+  if (!loaderData) {
     return [{ title: "Not Found" }];
   }
 
-  const ogImage = `${BASE_URL}/og/${data.slug}-og.webp`;
-  const twitterImage = `${BASE_URL}/og/${data.slug}-twitter.webp`;
+  const ogImage = `${BASE_URL}/og/${loaderData.slug}-og.webp`;
+  const twitterImage = `${BASE_URL}/og/${loaderData.slug}-twitter.webp`;
 
   return [
-    { title: `${data.title} | Fragno Blog` },
-    { name: "description", content: data.description },
-    { property: "og:title", content: data.title },
-    { property: "og:description", content: data.description },
+    { title: `${loaderData.title} | Fragno Blog` },
+    { name: "description", content: loaderData.description },
+    { property: "og:title", content: loaderData.title },
+    { property: "og:description", content: loaderData.description },
     { property: "og:type", content: "article" },
-    { property: "og:published_time", content: data.publishDateIso },
-    { property: "og:authors", content: data.author ? [data.author] : undefined },
+    { property: "og:published_time", content: loaderData.publishDateIso },
+    { property: "og:authors", content: loaderData.author ? [loaderData.author] : undefined },
     { property: "og:image", content: ogImage },
     { property: "og:image:width", content: "1200" },
     { property: "og:image:height", content: "630" },
     { name: "twitter:card", content: "summary_large_image" },
-    { name: "twitter:title", content: data.title },
-    { name: "twitter:description", content: data.description },
+    { name: "twitter:title", content: loaderData.title },
+    { name: "twitter:description", content: loaderData.description },
     { name: "twitter:image", content: twitterImage },
   ];
 }
