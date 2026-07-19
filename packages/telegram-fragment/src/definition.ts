@@ -151,7 +151,7 @@ export const telegramFragmentDefinition = defineFragment<TelegramFragmentConfig>
         }
 
         if (handlerError) {
-          throw handlerError;
+          throw handlerError instanceof Error ? handlerError : new Error(String(handlerError));
         }
       }),
       onMessageReceived: defineHook(async function (payload) {

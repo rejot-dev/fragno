@@ -52,7 +52,7 @@ export function UsersTable() {
       });
 
       if (error) {
-        throw error;
+        throw new Error(error.message, { cause: error });
       }
 
       return data.users as UserWithSubscription[];

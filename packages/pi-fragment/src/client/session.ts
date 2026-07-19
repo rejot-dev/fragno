@@ -387,7 +387,7 @@ async function* eventsStoreToAsyncIterable(
       }
 
       if (error) {
-        throw error;
+        throw error instanceof Error ? error : new Error(String(error));
       }
 
       await new Promise<void>((resolve) => {

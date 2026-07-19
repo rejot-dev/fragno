@@ -935,11 +935,11 @@ export class DatabaseFragmentsTestBuilder<
       }
 
       if (drainError) {
-        throw drainError;
+        throw drainError instanceof Error ? drainError : new Error(String(drainError));
       }
 
       if (cleanupError) {
-        throw cleanupError;
+        throw cleanupError instanceof Error ? cleanupError : new Error(String(cleanupError));
       }
     };
 

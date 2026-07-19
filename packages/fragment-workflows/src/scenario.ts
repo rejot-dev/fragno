@@ -3178,7 +3178,7 @@ export async function runScenario<
   }
 
   if (scenarioError) {
-    throw scenarioError;
+    throw scenarioError instanceof Error ? scenarioError : new Error(String(scenarioError));
   }
 
   if (!result) {

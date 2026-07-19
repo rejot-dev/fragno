@@ -140,7 +140,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
 
             if (result.code === "input_invalid") {
               if (inputError) {
-                throw inputError;
+                throw inputError instanceof Error ? inputError : new Error(String(inputError));
               }
               return error({ message: "Invalid input", code: "invalid_input" }, 400);
             }

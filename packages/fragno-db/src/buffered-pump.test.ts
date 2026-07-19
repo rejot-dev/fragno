@@ -552,6 +552,7 @@ describe("BufferedDatabasePump", () => {
     const pump = new BufferedDatabasePump({
       handlerTx,
       flush: async () => {
+        // oxlint-disable-next-line typescript/only-throw-error -- This regression test verifies normalization at the pump boundary.
         throw "primitive failure";
       },
       onError: (error) => {

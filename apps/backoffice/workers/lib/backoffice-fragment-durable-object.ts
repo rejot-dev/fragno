@@ -605,7 +605,9 @@ export function createBackofficeFragmentDurableObject<
       }
 
       if (fragmentAlarmError) {
-        throw fragmentAlarmError;
+        throw fragmentAlarmError instanceof Error
+          ? fragmentAlarmError
+          : new Error(String(fragmentAlarmError));
       }
     },
     async fetch(request, context) {
