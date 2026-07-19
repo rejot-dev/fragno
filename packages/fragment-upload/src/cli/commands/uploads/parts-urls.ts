@@ -58,7 +58,7 @@ export const uploadsPartsUrlsCommand = define({
       throw new Error("Missing --upload-id");
     }
 
-    const partNumbers = parsePartNumbers(ctx.values["parts"], ctx.values["part"]);
+    const partNumbers = parsePartNumbers(ctx.values.parts, ctx.values.part);
     if (!partNumbers.length) {
       throw new Error("Provide --parts or at least one --part");
     }

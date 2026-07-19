@@ -23,7 +23,7 @@ export const uploadsPartsCompleteCommand = define({
       throw new Error("Missing --upload-id");
     }
 
-    const rawParts = parseJsonValue("parts", ctx.values["parts"] as string | undefined);
+    const rawParts = parseJsonValue("parts", ctx.values.parts as string | undefined);
     if (!Array.isArray(rawParts) || rawParts.length === 0) {
       throw new Error("--parts must be a non-empty JSON array");
     }

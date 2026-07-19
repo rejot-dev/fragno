@@ -33,7 +33,12 @@
     "typescript/await-thenable": "error",
     "typescript/consistent-return": "error",
     "typescript/consistent-type-exports": "error",
-    "typescript/dot-notation": "off",
+    "typescript/dot-notation": [
+      "error",
+      {
+        "allowProtectedClassPropertyAccess": true
+      }
+    ],
     "typescript/no-array-delete": "error",
     "typescript/no-base-to-string": "off",
     "typescript/no-confusing-void-expression": "off",

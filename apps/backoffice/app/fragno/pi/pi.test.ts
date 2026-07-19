@@ -244,7 +244,7 @@ Filesystem-defined instructions.
       sessionFileSystemContext: createContext(),
     });
 
-    const readFactory = tools["read"];
+    const readFactory = tools.read;
     if (typeof readFactory !== "function") {
       throw new Error("Expected read to be registered as a factory.");
     }
@@ -283,7 +283,7 @@ describe("Pi bash tool", () => {
       bashCommandContext: createMockBashContext(),
     });
 
-    const bashFactory = tools["bash"];
+    const bashFactory = tools.bash;
     if (typeof bashFactory !== "function") {
       throw new Error("Expected bash tool to be registered as a factory.");
     }
@@ -328,7 +328,7 @@ describe("Pi bash tool", () => {
       bashCommandContext: createMockBashContext(),
     });
 
-    const bashFactory = tools["bash"];
+    const bashFactory = tools.bash;
     if (typeof bashFactory !== "function") {
       throw new Error("Expected bash tool to be registered as a factory.");
     }
@@ -364,7 +364,7 @@ describe("Pi bash tool", () => {
       bashCommandContext: createMockBashContext(),
     });
 
-    const bashFactory = tools["bash"];
+    const bashFactory = tools.bash;
     if (typeof bashFactory !== "function") {
       throw new Error("Expected bash tool to be registered as a factory.");
     }
@@ -394,7 +394,7 @@ describe("Pi bash tool", () => {
       bashCommandContext: createMockBashContext(),
     });
 
-    const bashFactory = tools["bash"];
+    const bashFactory = tools.bash;
     if (typeof bashFactory !== "function") {
       throw new Error("Expected bash tool to be registered as a factory.");
     }
@@ -435,7 +435,7 @@ describe("Pi bash tool", () => {
       bashCommandContext: createMockBashContext(),
     });
 
-    const bashFactory = tools["bash"];
+    const bashFactory = tools.bash;
     if (typeof bashFactory !== "function") {
       throw new Error("Expected bash tool to be registered as a factory.");
     }
@@ -486,7 +486,7 @@ describe("Pi bash tool", () => {
       bashCommandContext: createMockBashContext(),
     });
 
-    const bashFactory = tools["bash"];
+    const bashFactory = tools.bash;
     if (typeof bashFactory !== "function") {
       throw new Error("Expected bash tool to be registered as a factory.");
     }
@@ -529,7 +529,7 @@ describe("Pi bash tool", () => {
       bashCommandContext: createMockBashContext(),
     });
 
-    const bashFactory = tools["bash"];
+    const bashFactory = tools.bash;
     if (typeof bashFactory !== "function") {
       throw new Error("Expected bash tool to be registered as a factory.");
     }
@@ -575,7 +575,7 @@ describe("Pi bash tool", () => {
         bashCommandContext: createMockBashContext(),
       });
 
-      const bashFactory = tools["bash"];
+      const bashFactory = tools.bash;
       if (typeof bashFactory !== "function") {
         throw new Error("Expected bash tool to be registered as a factory.");
       }

@@ -56,7 +56,7 @@ async function createServer(): Promise<WorkflowsServer> {
   const { fragment, dispatcher } = createWorkflowsFragmentServer({ type: "live" });
 
   await migrate(fragment);
-  if (dispatcher && process.env["WF_DISABLE_INTERNAL_DISPATCHER"] !== "1") {
+  if (dispatcher && process.env.WF_DISABLE_INTERNAL_DISPATCHER !== "1") {
     dispatcher.startPolling();
   }
 

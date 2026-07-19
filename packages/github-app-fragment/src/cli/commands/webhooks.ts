@@ -102,13 +102,13 @@ export const webhooksSendCommand = define({
     },
   },
   run: async (ctx) => {
-    const event = ctx.values["event"] as string | undefined;
+    const event = ctx.values.event as string | undefined;
     if (!event) {
       throw new Error("Missing --event");
     }
 
     const payload = resolvePayload(ctx);
-    const action = ctx.values["action"] as string | undefined;
+    const action = ctx.values.action as string | undefined;
     const installationId = ctx.values["installation-id"] as string | undefined;
 
     if (action && typeof payload["action"] !== "string") {
@@ -128,7 +128,7 @@ export const webhooksSendCommand = define({
     const signature = createHmac("sha256", secret).update(rawBody).digest("hex");
 
     const client = createClientFromContext(ctx);
-    const delivery = (ctx.values["delivery"] as string | undefined) ?? randomUUID();
+    const delivery = (ctx.values.delivery as string | undefined) ?? randomUUID();
 
     const response = await client.request({
       method: "POST",

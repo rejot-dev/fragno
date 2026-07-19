@@ -99,13 +99,13 @@ const getInstallationIdFromPayload = (payload: unknown) => {
     return "";
   }
 
-  const installation = isRecord(payload["installation"]) ? payload["installation"] : null;
-  const nestedInstallationId = toStringValue(installation?.["id"]);
+  const installation = isRecord(payload.installation) ? payload.installation : null;
+  const nestedInstallationId = toStringValue(installation?.id);
   if (nestedInstallationId) {
     return nestedInstallationId;
   }
 
-  return toStringValue(payload["installation_id"]);
+  return toStringValue(payload.installation_id);
 };
 
 const extractWebhookPayload = async (request: Request) => {

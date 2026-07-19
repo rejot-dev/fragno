@@ -22,7 +22,7 @@ export const filesDownloadUrlCommand = define({
     },
   },
   run: async (ctx) => {
-    const provider = resolveProviderValue(ctx.values["provider"] as string | undefined);
+    const provider = resolveProviderValue(ctx.values.provider as string | undefined);
     const resolvedKey = resolveFileKeyValue({
       fileKey: ctx.values["file-key"] as string | undefined,
     });
