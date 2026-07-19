@@ -53,6 +53,6 @@ describe("file key validator", () => {
   });
 
   it("throws INVALID_FILE_KEY from assert helper", () => {
-    expect(() => assertFileKey("users//avatar")).toThrowError("INVALID_FILE_KEY");
+    expect(() => assertFileKey("users//avatar")).toThrow("INVALID_FILE_KEY");
   });
 });

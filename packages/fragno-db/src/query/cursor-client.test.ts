@@ -65,6 +65,6 @@ describe("cursor-client", () => {
   });
 
   it("rejects malformed cursor payloads", () => {
-    expect(() => decodeCursor("not-base64")).toThrowError(/Invalid cursor/);
+    expect(() => decodeCursor("not-base64")).toThrow(/Invalid cursor/);
   });
 });

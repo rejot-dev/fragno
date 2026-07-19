@@ -84,7 +84,7 @@ describe("subscription handlers", async () => {
     });
   });
 
-  describe.sequential("GET /subscriptions", () => {
+  describe("GET /subscriptions", { concurrent: false }, () => {
     test("should return empty array when no subscriptions exist", async () => {
       const response = await fragment.callRoute("GET", "/admin/subscriptions");
 

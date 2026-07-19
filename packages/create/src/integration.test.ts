@@ -77,7 +77,7 @@ function createFragmentTestSuite(buildTool: BuildTool, withDatabase: boolean) {
       await fs.rm(tempDir, { recursive: true });
     });
 
-    describe.sequential(buildTool, () => {
+    describe(buildTool, { concurrent: false }, () => {
       test("package.json correctly templated", async () => {
         const pkg = path.join(tempDir, "package.json");
         const pkgContent = await fs.readFile(pkg, "utf8");

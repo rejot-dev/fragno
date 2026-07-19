@@ -23,13 +23,13 @@ describe("file key encoding", () => {
   });
 
   it("rejects invalid parts", () => {
-    expect(() => encodeFileKey([Number.NaN])).toThrowError("File key number parts must be finite");
-    expect(() => encodeFileKey([3.5])).toThrowError("File key number parts must be integers");
+    expect(() => encodeFileKey([Number.NaN])).toThrow("File key number parts must be finite");
+    expect(() => encodeFileKey([3.5])).toThrow("File key number parts must be integers");
   });
 
   it("rejects invalid segments", () => {
-    expect(() => decodeFileKey("x~abc")).toThrowError("Invalid file key segment");
-    expect(() => decodeFileKey("n~01")).toThrowError("Invalid number part");
-    expect(() => decodeFileKey("s~++")).toThrowError("Invalid base64url value");
+    expect(() => decodeFileKey("x~abc")).toThrow("Invalid file key segment");
+    expect(() => decodeFileKey("n~01")).toThrow("Invalid number part");
+    expect(() => decodeFileKey("s~++")).toThrow("Invalid base64url value");
   });
 });

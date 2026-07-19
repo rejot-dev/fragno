@@ -135,7 +135,7 @@ describe("webhooks", async () => {
   });
 
   // CUSTOMER
-  describe.sequential("customer.subscription.updated", () => {
+  describe("customer.subscription.updated", { concurrent: false }, () => {
     const event = getEventJson("customer.subscription.updated");
 
     test("creates new subscription if missing", async () => {
@@ -170,7 +170,7 @@ describe("webhooks", async () => {
     });
   });
 
-  describe.sequential("customer.subscription.deleted", () => {
+  describe("customer.subscription.deleted", { concurrent: false }, () => {
     const event = getEventJson("customer.subscription.deleted");
 
     test("ignores event if no existing subscription", async () => {

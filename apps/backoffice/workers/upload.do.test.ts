@@ -251,7 +251,7 @@ describe("Upload Durable Object", () => {
     const state = createState();
     const upload = new Upload(state, {} as CloudflareEnv);
 
-    await expect(upload.setAdminConfig({ provider: "s3" }, "acme")).rejects.toThrowError(
+    await expect(upload.setAdminConfig({ provider: "s3" }, "acme")).rejects.toThrow(
       "Only providers 'database', 'r2', and 'r2-binding' are supported.",
     );
   });
