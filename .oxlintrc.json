@@ -65,7 +65,7 @@
     "typescript/no-unsafe-call": "off",
     "typescript/no-unsafe-enum-comparison": "error",
     "typescript/no-unsafe-member-access": "off",
-    "typescript/no-unsafe-return": "off",
+    "typescript/no-unsafe-return": "error",
     "typescript/no-unsafe-type-assertion": "off",
     "typescript/no-unsafe-unary-minus": "error",
     "typescript/no-useless-default-assignment": "error",
@@ -200,6 +200,7 @@
     {
       "files": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
       "rules": {
+        "typescript/no-unsafe-return": "off",
         "typescript/strict-void-return": "off",
         "typescript/unbound-method": "off"
       }
@@ -207,7 +208,21 @@
     {
       "files": ["packages/fragment-workflows/workflows-smoke-artifacts/**/*.js"],
       "rules": {
+        "typescript/no-unsafe-return": "off",
         "typescript/strict-void-return": "off"
+      }
+    },
+    {
+      "files": [
+        "**/*.js",
+        "**/*.mjs",
+        ".agents/**/*.ts",
+        "packages/create/templates/**/*.ts",
+        "packages/create/templates/**/*.tsx",
+        "specs/references/**/*.ts"
+      ],
+      "rules": {
+        "typescript/no-unsafe-return": "off"
       }
     },
     {

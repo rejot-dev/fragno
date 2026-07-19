@@ -4,6 +4,8 @@ import type { AutomationsObject } from "@/backoffice-runtime/object-registry";
 import type { AutomationWorkflowRuntime } from "../runtime-tools/families/automations-workflow";
 import { createWorkflowsRouteCaller } from "./route-callers";
 
+// Route outputs are validated by the Workflows fragment contract, whose generated caller defaults to `any`.
+// oxlint-disable typescript/no-unsafe-return
 export const createRouteBackedAutomationWorkflowRuntime = ({
   object,
   scope,
@@ -152,3 +154,4 @@ export const createRouteBackedAutomationWorkflowRuntime = ({
     },
   };
 };
+// oxlint-enable typescript/no-unsafe-return

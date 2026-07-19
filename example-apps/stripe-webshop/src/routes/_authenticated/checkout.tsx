@@ -40,7 +40,7 @@ function CheckoutPage() {
       if (!response.ok) {
         throw new Error("Failed to get subscription");
       }
-      return response.json();
+      return (await response.json()) as unknown;
     },
     retry: true,
   });

@@ -7,6 +7,18 @@ import type { MutableRequestState } from "./mutable-request-state";
 /** Raw request input before route-specific validation and parsing. */
 export type RequestBodyType = unknown;
 
+type ValidatedInputContext<TInputSchema extends StandardSchemaV1 | undefined> =
+  TInputSchema extends undefined
+    ? undefined
+    : {
+        schema: TInputSchema;
+        valid: () => Promise<
+          TInputSchema extends StandardSchemaV1
+            ? StandardSchemaV1.InferOutput<TInputSchema>
+            : unknown
+        >;
+      };
+
 export class RequestInputContext<
   TPath extends string = string,
   TInputSchema extends StandardSchemaV1 | undefined = undefined,
@@ -225,7 +237,7 @@ export class RequestInputContext<
         "Request body is not a ReadableStream. Ensure the request was sent with Content-Type: application/octet-stream.",
       );
     }
-    return this.#parsedBody;
+    return this.#parsedBody as ReadableStream<Uint8Array>;
   }
 
   /**
@@ -239,24 +251,14 @@ export class RequestInputContext<
    * Input validation context (only if inputSchema is defined)
    * @remarks `InputContext`
    */
-  get input(): TInputSchema extends undefined
-    ? undefined
-    : {
-        schema: TInputSchema;
-        valid: () => Promise<
-          TInputSchema extends StandardSchemaV1
-            ? StandardSchemaV1.InferOutput<TInputSchema>
-            : unknown
-        >;
-      } {
+  get input(): ValidatedInputContext<TInputSchema> {
     if (!this.#inputSchema) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return undefined as any;
+      return undefined as ValidatedInputContext<TInputSchema>;
     }
 
-    return {
+    const inputContext = {
       schema: this.#inputSchema,
-      valid: async () => {
+      valid: async (): Promise<unknown> => {
         if (!this.#shouldValidateInput) {
           // In SSR context, return the body directly without validation
           return this.#parsedBody;
@@ -264,8 +266,9 @@ export class RequestInputContext<
 
         return this.#validateInput();
       },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any;
+    };
+
+    return inputContext as ValidatedInputContext<TInputSchema>;
   }
 
   async #validateInput(): Promise<

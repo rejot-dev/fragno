@@ -47,31 +47,41 @@ type AutomationStoreToolContext = BackofficeToolContext<
   { actor?: AutomationEventActor | null }
 >;
 
-const readJsonValueOption = (parsed: ParsedCliTokens, name: string, required = false) => {
+const readJsonValueOption = (
+  parsed: ParsedCliTokens,
+  name: string,
+  required = false,
+): StoreSetArgs["actor"] | undefined => {
   const raw = readStringOption(parsed, name, required);
   if (typeof raw === "undefined") {
     return undefined;
   }
 
   try {
-    return JSON.parse(raw);
+    return JSON.parse(raw) as StoreSetArgs["actor"];
   } catch {
     throw new Error(`--${name} must be valid JSON`);
   }
 };
 
-const readJsonArrayOption = (parsed: ParsedCliTokens, name: string, required = false) => {
+const isUnknownArray = (value: unknown): value is unknown[] => Array.isArray(value);
+
+const readJsonArrayOption = (
+  parsed: ParsedCliTokens,
+  name: string,
+  required = false,
+): StoreSetArgs["verification"] => {
   const raw = readStringOption(parsed, name, required);
   if (typeof raw === "undefined") {
     return undefined;
   }
 
   try {
-    const value = JSON.parse(raw);
-    if (!Array.isArray(value)) {
+    const value: unknown = JSON.parse(raw);
+    if (!isUnknownArray(value)) {
       throw new Error(`--${name} must be a JSON array`);
     }
-    return value;
+    return value as NonNullable<StoreSetArgs["verification"]>;
   } catch (error) {
     if (error instanceof Error && error.message.includes("must be a JSON array")) {
       throw error;
@@ -95,7 +105,8 @@ const parseStoreSetArgs = defineCliArgsParser<StoreSetCliArgs>("store.set", {
   value: { required: true },
   actor: {
     read: (parsed, optionName, required) => readJsonValueOption(parsed, optionName, required),
-    transform: (value) => automationStoreActorSchema.nullable().parse(value),
+    transform: (value): StoreSetArgs["actor"] =>
+      automationStoreActorSchema.nullable().parse(value) as StoreSetArgs["actor"],
   },
   description: {},
   category: { kind: "stringArray" },

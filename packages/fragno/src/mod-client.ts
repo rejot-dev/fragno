@@ -98,9 +98,9 @@ export function instantiate(_definition: unknown) {
   const fragmentStub: IFragnoInstantiatedFragment = new Proxy(
     fragmentStubMethods as IFragnoInstantiatedFragment,
     {
-      get(target, prop) {
+      get(target, prop): unknown {
         if (prop in target) {
-          return target[prop as keyof typeof target];
+          return Reflect.get(target, prop) as unknown;
         }
         // Return a function that returns the stub for method chaining
         return () => fragmentStub;
@@ -124,9 +124,9 @@ export function instantiate(_definition: unknown) {
   const builderStub: IFragmentInstantiationBuilder = new Proxy(
     builderStubMethods as IFragmentInstantiationBuilder,
     {
-      get(target, prop) {
+      get(target, prop): unknown {
         if (prop in target) {
-          return target[prop as keyof typeof target];
+          return Reflect.get(target, prop) as unknown;
         }
         // Return a function that returns the stub for method chaining
         return () => builderStub;

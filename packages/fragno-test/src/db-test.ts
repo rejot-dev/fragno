@@ -327,6 +327,8 @@ type FragmentConfigMap = Map<string, AnyFragmentConfig>;
 /**
  * Builder for creating multiple database fragments for testing
  */
+// This test builder dynamically assembles heterogeneous fragment results behind phantom types.
+// oxlint-disable typescript/no-unsafe-return
 export class DatabaseFragmentsTestBuilder<
   TFragments extends Record<string, AnyFragmentResult>,
   TAdapter extends SupportedAdapter | undefined = undefined,
@@ -1004,6 +1006,8 @@ export class DatabaseFragmentsTestBuilder<
  * const adapter = test.adapter; // Access the database adapter
  * ```
  */
+// oxlint-enable typescript/no-unsafe-return
+
 export function buildDatabaseFragmentsTest(): DatabaseFragmentsTestBuilder<{}> {
   return new DatabaseFragmentsTestBuilder();
 }

@@ -75,12 +75,12 @@ const resolveModule = async (modulePath: string): Promise<ClientModule> => {
   return (mod.default ?? mod) as ClientModule;
 };
 
-const parseJsonInput = (raw: string | undefined) => {
+const parseJsonInput = (raw: string | undefined): unknown => {
   if (!raw) {
     return undefined;
   }
   try {
-    return JSON.parse(raw);
+    return JSON.parse(raw) as unknown;
   } catch (error) {
     throw new Error(`Failed to parse JSON input: ${String(error)}`);
   }

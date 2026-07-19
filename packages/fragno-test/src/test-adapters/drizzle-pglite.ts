@@ -146,6 +146,7 @@ export async function createDrizzlePgliteAdapter(
   return {
     testContext: {
       get drizzle() {
+        // oxlint-disable-next-line typescript/no-unsafe-return -- Drizzle's schema-less database type defaults to `any`.
         return drizzleDb;
       },
       get adapter() {

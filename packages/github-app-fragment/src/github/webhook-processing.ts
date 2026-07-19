@@ -121,7 +121,7 @@ const createWebhookEventDispatcher = (configureOn?: GitHubAppWebhookConfig) => {
     );
     const failures = settled
       .filter((result): result is PromiseRejectedResult => result.status === "rejected")
-      .map((result) => result.reason);
+      .map((result): unknown => result.reason);
 
     if (failures.length === 1) {
       throw failures[0];

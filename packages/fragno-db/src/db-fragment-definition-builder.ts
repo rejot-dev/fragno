@@ -361,16 +361,16 @@ function wrapHandlerTxBuilderWithRoundtripGuard<
   const wrap = (target: TBuilder): TBuilder => {
     const guarded = applyExecuteGuard(target);
     return new Proxy(guarded, {
-      get(obj, prop, receiver) {
-        const value = Reflect.get(obj, prop, receiver);
+      get(obj, prop, receiver): unknown {
+        const value: unknown = Reflect.get(obj, prop, receiver);
         if (typeof value !== "function") {
           return value;
         }
         if (prop === "execute") {
           return value;
         }
-        return (...args: unknown[]) => {
-          const result = value.apply(obj, args);
+        return (...args: unknown[]): unknown => {
+          const result: unknown = Reflect.apply(value, obj, args);
           if (result instanceof HandlerTxBuilder) {
             return wrap(result as TBuilder);
           }

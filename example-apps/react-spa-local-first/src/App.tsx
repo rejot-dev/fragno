@@ -2251,7 +2251,7 @@ function stringifyJson(value: unknown): string {
   return (
     JSON.stringify(
       value,
-      (_key, val) => {
+      (_key, val: unknown): unknown => {
         if (typeof val === "bigint") {
           return val.toString();
         }
@@ -2368,7 +2368,7 @@ function stableStringify(value: unknown): string {
   const seen = new WeakSet();
   try {
     return (
-      JSON.stringify(value, (_key, val) => {
+      JSON.stringify(value, (_key, val: unknown): unknown => {
         if (typeof val === "bigint") {
           return val.toString();
         }

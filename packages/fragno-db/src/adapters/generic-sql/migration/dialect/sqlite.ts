@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 
-import { type ColumnDefinitionBuilder, type CompiledQuery, type RawBuilder, sql } from "kysely";
+import {
+  type ColumnDefinitionBuilder,
+  type CompiledQuery,
+  type ForeignKeyConstraintBuilder,
+  type RawBuilder,
+  sql,
+} from "kysely";
 
 import type {
   ColumnInfo,
@@ -516,13 +522,13 @@ export class SQLiteSQLGenerator extends SQLGenerator {
           fk.referencedColumns.map((columnName) =>
             this.getColumnName(columnName, fk.referencedTable, resolver),
           ),
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (cb: any) => cb.onUpdate("restrict").onDelete("restrict"),
+          (builder: ForeignKeyConstraintBuilder) =>
+            builder.onUpdate("restrict").onDelete("restrict"),
         );
       }
     }
 
-    const compiled = builder.compile();
+    const compiled = builder.compile() as CompiledQuery;
     const sqlText = compiled.sql.replace(/\bconstraint\s+"[^"]+"\s+foreign key\b/gi, "foreign key");
     return {
       ...compiled,

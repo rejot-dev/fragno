@@ -187,6 +187,8 @@ const getStoreDisposer = (value: object): (() => void) | undefined => {
   return typeof disposer === "function" ? disposer.bind(value) : undefined;
 };
 
+// The React adapter intentionally bridges Nanostores' `any` defaults into mapped store types.
+// oxlint-disable typescript/no-unsafe-return
 const createReactStoreObjectView = <T extends object>(
   value: T,
   getAtomValue: (store: Store<unknown>) => unknown,
@@ -281,6 +283,10 @@ function unwrapReactStoreValue<T extends object>(value: T): FragnoReactStoreValu
   );
 }
 
+// oxlint-enable typescript/no-unsafe-return
+
+// Store factories expose a typed facade over runtime-discovered store objects.
+// oxlint-disable typescript/no-unsafe-return
 function createReactStore<const T extends object, const TArgs extends unknown[]>(
   hook: FragnoStoreData<T, TArgs>,
 ): FragnoReactStore<T, TArgs> {
@@ -327,6 +333,8 @@ function createReactStore<const T extends object, const TArgs extends unknown[]>
     return unwrapReactStoreValue(value);
   }) as FragnoReactStore<T, TArgs>;
 }
+
+// oxlint-enable typescript/no-unsafe-return
 
 export function useFragno<T extends Record<string, unknown>>(
   clientObj: T,
@@ -375,6 +383,7 @@ export function useFragno<T extends Record<string, unknown>>(
     }
   }
 
+  // oxlint-disable-next-line typescript/no-unsafe-return -- The mapped client type is assembled dynamically above.
   return result;
 }
 
@@ -395,6 +404,8 @@ export interface UseStoreOptions<SomeStore> {
   keys?: StoreKeys<SomeStore>[];
 }
 
+// Nanostores defaults its value type to `any`; this hook preserves the caller's StoreValue type.
+// oxlint-disable typescript/no-unsafe-return
 export function useStore<SomeStore extends Store>(
   store: SomeStore,
   options: UseStoreOptions<SomeStore> = {},
@@ -427,6 +438,8 @@ export function useStore<SomeStore extends Store>(
     return get();
   });
 }
+
+// oxlint-enable typescript/no-unsafe-return
 
 export function FragnoHydrator({ children }: { children: React.ReactNode }) {
   // Ensure initial data is transferred from window before any hooks run
