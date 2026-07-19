@@ -194,7 +194,7 @@ test("ValidateGetRoutePath type tests", () => {
 
   // Should return error message for invalid paths
   type InvalidPathError = ValidateGetRoutePath<typeof _testRoutes, "/nonexistent">;
-  expectTypeOf<InvalidPathError>().toMatchTypeOf<string>();
+  expectTypeOf<InvalidPathError>().toExtend<string>();
 
   // Should return error for POST/PUT/DELETE routes even if they exist
   type PostRouteError = ValidateGetRoutePath<typeof _testRoutes, "/users">;

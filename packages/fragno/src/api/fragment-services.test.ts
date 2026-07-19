@@ -561,7 +561,7 @@ describe("Fragment Service System", () => {
       const instance = instantiate(definition).withOptions({}).build();
 
       // Private service should NOT be accessible on the instance
-      expectTypeOf<typeof instance.services>().not.toMatchTypeOf<{ dataStore: IDataStore }>();
+      expectTypeOf<typeof instance.services>().not.toExtend<{ dataStore: IDataStore }>();
 
       // But the public service that uses it should work
       expect(instance.services.getValue).toBeDefined();

@@ -256,7 +256,7 @@ describe("Telegram Durable Object", () => {
 
     telegram.init({ kind: "org", orgId: "acme" });
 
-    expect(() => telegram.init({ kind: "org", orgId: "other-org" })).toThrowError(
+    expect(() => telegram.init({ kind: "org", orgId: "other-org" })).toThrow(
       "Backoffice object method scope does not match object address scope.",
     );
   });
@@ -295,7 +295,7 @@ describe("Telegram Durable Object", () => {
     ]);
     new Telegram(state, {} as CloudflareEnv);
 
-    await expect(waitForBlockConcurrency()).rejects.toThrowError(
+    await expect(waitForBlockConcurrency()).rejects.toThrow(
       "Stored Telegram config is missing a scope.",
     );
   });

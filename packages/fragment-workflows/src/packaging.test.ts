@@ -29,7 +29,7 @@ async function collectFiles(dir: string, extensions: Set<string>): Promise<strin
   return files;
 }
 
-describe.sequential("packaging", () => {
+describe("packaging", { concurrent: false }, () => {
   test.skip(
     "build output does not include pnpm store paths (slow: runs tsdown build)",
     { timeout: 120000 },

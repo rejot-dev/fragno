@@ -117,13 +117,13 @@ describe("buildPath (runtime building)", () => {
 
   test("throws on missing named param", () => {
     // @ts-expect-error - intentionally passing missing param to test runtime error
-    expect(() => buildPath("/users/:id", {})).toThrowError(/Missing value/);
+    expect(() => buildPath("/users/:id", {})).toThrow(/Missing value/);
   });
 
   test("throws on missing wildcard values", () => {
     // @ts-expect-error - intentionally passing missing param to test runtime error
-    expect(() => buildPath("/files/**", {})).toThrowError(/Missing value/);
+    expect(() => buildPath("/files/**", {})).toThrow(/Missing value/);
     // @ts-expect-error - intentionally passing missing param to test runtime error
-    expect(() => buildPath("/files/**:rest", {})).toThrowError(/Missing value/);
+    expect(() => buildPath("/files/**:rest", {})).toThrow(/Missing value/);
   });
 });

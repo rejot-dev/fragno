@@ -45,6 +45,6 @@ describe("createAutomationsDispatcher", () => {
         {} as DurableObjectState,
         {} as CloudflareEnv,
       ),
-    ).toThrowError("dispatcher init failed");
+    ).toThrow("dispatcher init failed");
   });
 });

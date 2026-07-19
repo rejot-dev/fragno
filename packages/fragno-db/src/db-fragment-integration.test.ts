@@ -13,7 +13,7 @@ import { ConcurrencyConflictError, type TxResult } from "./query/unit-of-work/ex
 import { column, idColumn, referenceColumn, schema, type FragnoId } from "./schema/create";
 import { withDatabase } from "./with-database";
 
-describe.sequential("Database Fragment Integration", () => {
+describe("Database Fragment Integration", { concurrent: false }, () => {
   // Schema 1: Users fragment
   const usersSchema = schema("users", (s) => {
     return s
