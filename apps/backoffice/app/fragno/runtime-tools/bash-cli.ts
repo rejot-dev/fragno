@@ -241,13 +241,13 @@ const readJsonOption = (
   }
 
   try {
-    const result = JSON.parse(raw);
+    const result: unknown = JSON.parse(raw);
 
-    if (typeof result !== "object" || result === null) {
+    if (typeof result !== "object" || result === null || Array.isArray(result)) {
       throw new Error(`--${name} must be a JSON object`);
     }
 
-    return result;
+    return result as Record<string, unknown>;
   } catch {
     throw new Error(`--${name} must be valid JSON`);
   }

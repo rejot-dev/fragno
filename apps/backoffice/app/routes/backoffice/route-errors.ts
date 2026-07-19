@@ -12,7 +12,7 @@ type RouteErrorData = {
 const stringifyRouteErrorValue = (value: unknown) =>
   JSON.stringify(
     value,
-    (_key, entry) => (typeof entry === "bigint" ? `${entry.toString()}n` : entry),
+    (_key, entry: unknown): unknown => (typeof entry === "bigint" ? `${entry.toString()}n` : entry),
     2,
   );
 

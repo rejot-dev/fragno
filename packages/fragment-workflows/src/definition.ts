@@ -271,7 +271,7 @@ export const validateWorkflowParams = async (
   >,
   workflowName: string,
   params: unknown,
-) => {
+): Promise<unknown> => {
   const entry = workflowsByName.get(workflowName);
   if (!entry) {
     throw new Error("WORKFLOW_NOT_FOUND");
@@ -288,7 +288,7 @@ export const validateWorkflowParams = async (
     throw error;
   }
 
-  return result.value;
+  return result.value as unknown;
 };
 
 export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfig>("workflows")

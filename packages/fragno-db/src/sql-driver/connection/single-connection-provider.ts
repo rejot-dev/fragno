@@ -12,8 +12,7 @@ const ignoreError = () => {};
 
 export class SingleConnectionProvider implements ConnectionProvider {
   readonly #connection: DatabaseConnection;
-  // oxlint-disable-next-line no-explicit-any
-  #runningPromise?: Promise<any>;
+  #runningPromise?: Promise<unknown>;
 
   constructor(connection: DatabaseConnection) {
     this.#connection = connection;
@@ -27,11 +26,12 @@ export class SingleConnectionProvider implements ConnectionProvider {
     // `#runningPromise` must be set to undefined before it's
     // resolved or rejected. Otherwise the while loop above
     // will misbehave.
-    this.#runningPromise = this.#run(consumer).finally(() => {
+    const runningPromise = this.#run(consumer).finally(() => {
       this.#runningPromise = undefined;
     });
+    this.#runningPromise = runningPromise;
 
-    return this.#runningPromise;
+    return runningPromise;
   }
 
   // Run the runner in an async function to make sure it doesn't

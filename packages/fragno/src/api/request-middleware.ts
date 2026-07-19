@@ -87,11 +87,11 @@ export class RequestMiddlewareInputContext<const TRoutes extends readonly AnyFra
   }
 
   get inputSchema(): StandardSchemaV1 | undefined {
-    return this.#route.inputSchema;
+    return this.#route.inputSchema as StandardSchemaV1 | undefined;
   }
 
   get outputSchema(): StandardSchemaV1 | undefined {
-    return this.#route.outputSchema;
+    return this.#route.outputSchema as StandardSchemaV1 | undefined;
   }
 
   /**
@@ -143,7 +143,16 @@ export class RequestMiddlewareInputContext<const TRoutes extends readonly AnyFra
 
     const outputContext = new RequestOutputContext(this.#route.outputSchema);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return await (handler as any)(inputContext, outputContext);
+    const result: unknown = await (handler as (input: unknown, output: unknown) => unknown)(
+      inputContext,
+      outputContext,
+    );
+    if (result === undefined) {
+      return undefined;
+    }
+    if (result instanceof Response) {
+      return result;
+    }
+    throw new TypeError("Route middleware handlers must return a Response or undefined.");
   };
 }

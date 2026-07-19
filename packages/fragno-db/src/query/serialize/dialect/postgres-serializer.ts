@@ -84,9 +84,11 @@ export class PostgreSQLSerializer extends SQLSerializer {
   protected deserializeBinary(value: unknown): Uint8Array {
     // PostgreSQL can return Buffer or Uint8Array for BYTEA columns
     if (value instanceof Buffer) {
+      // oxlint-disable-next-line typescript/no-unsafe-return -- Node's Buffer generic defaults differ from Uint8Array's lib type.
       return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
     }
     if (value instanceof Uint8Array) {
+      // oxlint-disable-next-line typescript/no-unsafe-return -- The runtime value already satisfies the declared typed-array contract.
       return value;
     }
     if (value instanceof ArrayBuffer) {

@@ -118,6 +118,8 @@ const toQuery = (args: ResendThreadListArgs | undefined): Record<string, string>
   return query;
 };
 
+// Route outputs are validated by the Resend fragment contract, whose generated caller defaults to `any`.
+// oxlint-disable typescript/no-unsafe-return
 export const createRouteBackedResendRuntime = (
   options: CreateRouteBackedResendRuntimeOptions,
 ): ResendRuntime => {
@@ -285,6 +287,8 @@ export const createRouteBackedResendRuntime = (
     },
   };
 };
+
+// oxlint-enable typescript/no-unsafe-return
 
 export const createResendRouteRuntime = ({ object }: { object: ResendObject }): ResendRuntime =>
   createRouteBackedResendRuntime({

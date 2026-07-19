@@ -237,8 +237,8 @@ export class InMemoryDurableObjectNamespace<TObject> {
     const cache = new Map<PropertyKey, unknown>();
 
     return new Proxy(object as object, {
-      get(target, property, _receiver) {
-        const value = Reflect.get(target, property, target);
+      get(target, property, _receiver): unknown {
+        const value: unknown = Reflect.get(target, property, target);
         if (typeof value !== "function") {
           return value;
         }

@@ -1310,17 +1310,17 @@ export class ClientBuilder<
         });
 
         if (response.status === 201 || response.status === 204) {
-          return undefined;
+          return undefined as InferOr<TOutputSchema, undefined>;
         }
 
         const isStreaming = isStreamingResponse(response);
 
         if (!isStreaming) {
-          return response.json();
+          return (await response.json()) as InferOr<TOutputSchema, undefined>;
         }
 
         if (typeof window === "undefined") {
-          return [];
+          return [] as unknown as InferOr<TOutputSchema, undefined>;
         }
 
         if (isStreaming === "ndjson") {
@@ -1344,7 +1344,7 @@ export class ClientBuilder<
           const { firstItem } = await handleNdjsonStreamingFirstItem(response, storeAdapter);
 
           // Return the first item immediately. The streaming will continue in the background
-          return [firstItem];
+          return [firstItem] as unknown as InferOr<TOutputSchema, undefined>;
         }
 
         if (isStreaming === "octet-stream") {
@@ -1374,19 +1374,19 @@ export class ClientBuilder<
       const response = await executeMutateQuery({ body, path, query });
 
       if (response.status === 201 || response.status === 204) {
-        return undefined;
+        return undefined as InferOr<TOutputSchema, undefined>;
       }
 
       const isStreaming = isStreamingResponse(response);
 
       if (!isStreaming) {
-        return response.json();
+        return (await response.json()) as InferOr<TOutputSchema, undefined>;
       }
 
       if (isStreaming === "ndjson") {
         const { streamingPromise } = await handleNdjsonStreamingFirstItem(response);
         // Resolves once the stream is done, i.e. we block until done
-        return await streamingPromise;
+        return (await streamingPromise) as unknown as InferOr<TOutputSchema, undefined>;
       }
 
       if (isStreaming === "octet-stream") {

@@ -6,7 +6,7 @@ import { createPiClient } from "@/fragno/pi/pi-client";
 const stringifyJson = (value: unknown) =>
   JSON.stringify(
     value,
-    (_key, current) => {
+    (_key, current: unknown): unknown => {
       if (current instanceof Error) {
         return {
           name: current.name,

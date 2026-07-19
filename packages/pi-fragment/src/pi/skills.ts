@@ -72,8 +72,12 @@ const escapeXml = (value: string) =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
 
+const isPiSkillDefinitionArray = (
+  skills: PiSkillCatalogXmlInput,
+): skills is readonly PiSkillDefinition[] => Array.isArray(skills);
+
 const skillCatalogEntries = (skills: PiSkillCatalogXmlInput) =>
-  (Array.isArray(skills) ? skills : Object.values(skills)).toSorted((left, right) =>
+  (isPiSkillDefinitionArray(skills) ? skills : Object.values(skills)).toSorted((left, right) =>
     left.name.localeCompare(right.name),
   );
 
@@ -159,7 +163,7 @@ export const renderPiSkillInvocationContext = (
 };
 
 const findSkill = (skills: PiSkillCatalogXmlInput, name: string) => {
-  if (Array.isArray(skills)) {
+  if (isPiSkillDefinitionArray(skills)) {
     return skills.find((skill) => skill.name === name);
   }
   return (skills as PiSkillRegistry)[name];

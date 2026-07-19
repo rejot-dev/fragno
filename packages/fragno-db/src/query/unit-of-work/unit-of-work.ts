@@ -1880,14 +1880,15 @@ export class TypedUnitOfWork<
       this.#cachedRetrievalPhase = this.#uow.retrievalPhase.then((allResults) => {
         const allOperations = this.#uow.getRetrievalOperations();
         const filteredResults = this.#operationIndices.map((opIndex) => {
-          const result = allResults[opIndex];
+          const result: unknown = allResults[opIndex];
           const operation = allOperations[opIndex];
           // Transform array to single item for findFirst operations
           if (operation?.type === "find" && operation.withSingleResult) {
-            return Array.isArray(result) ? (result[0] ?? null) : result;
+            return Array.isArray(result) ? ((result as unknown[])[0] ?? null) : result;
           }
           return result;
         });
+        // oxlint-disable-next-line typescript/no-unsafe-return -- Retrieval result tuples are tracked through phantom builder types.
         return filteredResults as TRetrievalResults;
       });
     }
@@ -1968,6 +1969,8 @@ export class TypedUnitOfWork<
     return this.#uow.compile(compiler);
   }
 
+  // These fluent methods mutate this instance while refining only its phantom result tuple type.
+  // oxlint-disable typescript/no-unsafe-return
   find<TTableName extends keyof TSchema["tables"] & string, const TBuilderResult>(
     tableName: TTableName,
     builderFn: (
@@ -2182,6 +2185,8 @@ export class TypedUnitOfWork<
    * uow.create("users", { id: userId, name: "John" });
    * ```
    */
+  // oxlint-enable typescript/no-unsafe-return
+
   generateId(tableName: keyof TSchema["tables"] & string): FragnoId {
     return generateId(this.#schema, tableName);
   }

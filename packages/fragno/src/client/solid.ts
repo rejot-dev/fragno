@@ -295,5 +295,6 @@ export function useFragno<T extends Record<string, unknown>>(
     }
   }
 
+  // oxlint-disable-next-line typescript/no-unsafe-return -- The mapped client type is assembled dynamically above.
   return result;
 }
