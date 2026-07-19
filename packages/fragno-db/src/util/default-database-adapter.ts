@@ -24,7 +24,7 @@ const isCloudflareWorkers = (): boolean => {
   return navigatorRef?.userAgent === "Cloudflare-Workers";
 };
 
-const createNodeRequire = (): NodeRequire | null => {
+const createNodeRequire = (): NodeJS.Require | null => {
   try {
     const metaUrl = typeof import.meta !== "undefined" ? import.meta.url : undefined;
     if (!metaUrl || typeof metaUrl !== "string") {
