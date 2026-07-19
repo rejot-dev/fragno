@@ -100,8 +100,7 @@ export const githubAppWebhookRoutesFactory = defineRoutes(githubAppFragmentDefin
             );
           }
 
-          const action =
-            typeof payload["action"] === "string" ? (payload["action"] as string) : null;
+          const action = typeof payload["action"] === "string" ? payload["action"] : null;
           const installationPayload = isRecord(payload["installation"])
             ? payload["installation"]
             : null;

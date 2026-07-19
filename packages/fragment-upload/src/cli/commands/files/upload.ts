@@ -61,23 +61,23 @@ export const filesUploadCommand = define({
     },
   },
   run: async (ctx) => {
-    const filePath = ctx.values.file as string | undefined;
+    const filePath = ctx.values.file;
     if (!filePath) {
       throw new Error("Missing --file");
     }
 
     const fileBuffer = await fs.readFile(filePath);
-    const filename = (ctx.values.filename as string | undefined) ?? path.basename(filePath);
-    const contentType = (ctx.values["content-type"] as string | undefined) ?? DEFAULT_CONTENT_TYPE;
-    const provider = resolveProviderValue(ctx.values.provider as string | undefined);
+    const filename = ctx.values.filename ?? path.basename(filePath);
+    const contentType = ctx.values["content-type"] ?? DEFAULT_CONTENT_TYPE;
+    const provider = resolveProviderValue(ctx.values.provider);
 
     const resolvedKey = resolveFileKeyValue({
-      fileKey: ctx.values["file-key"] as string | undefined,
+      fileKey: ctx.values["file-key"],
     });
 
-    const checksum = parseJsonValue("checksum", ctx.values.checksum as string | undefined);
-    const tags = parseJsonValue("tags", ctx.values.tags as string | undefined);
-    const metadata = parseJsonValue("metadata", ctx.values.metadata as string | undefined);
+    const checksum = parseJsonValue("checksum", ctx.values.checksum);
+    const tags = parseJsonValue("tags", ctx.values.tags);
+    const metadata = parseJsonValue("metadata", ctx.values.metadata);
 
     const form = new FormData();
     form.append("file", new File([fileBuffer], filename, { type: contentType }));
@@ -94,12 +94,12 @@ export const filesUploadCommand = define({
       form.append("metadata", JSON.stringify(metadata));
     }
 
-    const uploaderId = ctx.values["uploader-id"] as string | undefined;
+    const uploaderId = ctx.values["uploader-id"];
     if (uploaderId) {
       form.append("uploaderId", uploaderId);
     }
 
-    const visibility = ctx.values.visibility as string | undefined;
+    const visibility = ctx.values.visibility;
     if (visibility) {
       form.append("visibility", visibility);
     }

@@ -609,7 +609,7 @@ const compareRowToCursor = (
   cursorValues: readonly unknown[],
 ): number => {
   for (let i = 0; i < orderColumns.length; i += 1) {
-    const column = orderColumns[i]!;
+    const column = orderColumns[i];
     const rowValue = resolveOrderValue(row[column.name], column);
     const cursorValue = cursorValues[i];
     const comparison = compareNormalizedValues(rowValue, cursorValue);
@@ -677,7 +677,7 @@ const buildOutputFromLofiRow = (
   select: undefined | true | readonly string[],
 ): Record<string, unknown> => {
   const output: Record<string, unknown> = {};
-  const columnNames = select && select !== true ? select : (Object.keys(table.columns) as string[]);
+  const columnNames = select && select !== true ? select : Object.keys(table.columns);
 
   for (const columnName of columnNames) {
     const column = table.columns[columnName];
@@ -728,7 +728,7 @@ const mergeRowColumns = (
   select: undefined | true | readonly string[],
 ): Record<string, unknown> => {
   const merged: Record<string, unknown> = { ...baseRow };
-  const columnNames = select && select !== true ? select : (Object.keys(table.columns) as string[]);
+  const columnNames = select && select !== true ? select : Object.keys(table.columns);
 
   for (const columnName of columnNames) {
     if (!table.columns[columnName]) {
@@ -949,7 +949,7 @@ async function loadBaseJoinMatches<TSchema extends AnySchema>(options: {
     if (!matchesJoinOn({ parentRow, targetRow: baseRow, join, overlay, schemaName })) {
       continue;
     }
-    if (joinOptions.where && !evaluateCondition(joinOptions.where as Condition, baseRow)) {
+    if (joinOptions.where && !evaluateCondition(joinOptions.where, baseRow)) {
       continue;
     }
     addMatch({ ...baseRow });
@@ -964,7 +964,7 @@ async function loadBaseJoinMatches<TSchema extends AnySchema>(options: {
     if (!matchesJoinOn({ parentRow, targetRow: candidate, join, overlay, schemaName })) {
       continue;
     }
-    if (joinOptions.where && !evaluateCondition(joinOptions.where as Condition, candidate)) {
+    if (joinOptions.where && !evaluateCondition(joinOptions.where, candidate)) {
       continue;
     }
     addMatch(candidate);
@@ -1211,7 +1211,7 @@ export const createStackedQueryEngine = <T extends AnySchema>(options: {
         const select =
           selectOverride ?? (plan.queryTree.select as undefined | true | readonly string[]);
         if (select && select !== true) {
-          builder.select(select as readonly string[]);
+          builder.select(select);
         }
         if (plan.queryTree.orderByIndex) {
           builder.orderByIndex(

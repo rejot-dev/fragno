@@ -38,7 +38,7 @@ const RUN_STYLE: Record<string, { color: string; pulse: boolean }> = {
 };
 
 export function PipelineNode({ data, selected }: NodeProps<PipelineFlowNode>) {
-  const { node, run } = data as FlowNodeData;
+  const { node, run } = data;
   const meta = PIPELINE_NODE_META[node.kind];
   const Icon = node.kind === "step" ? STEP_TYPE_ICON[node.stepType] : meta.icon;
   const kindLabel = node.kind === "step" ? STEP_TYPE_LABEL[node.stepType] : meta.label;

@@ -219,7 +219,7 @@ const assertOrderByIndexOnly = (
   }
 
   for (const index of Object.values(table.indexes)) {
-    const indexColumnNames = (index.columnNames as readonly string[]).map((columnName) =>
+    const indexColumnNames = index.columnNames.map((columnName) =>
       resolver ? resolver.getColumnName(table.name, columnName) : columnName,
     );
     if (indexColumnNames.length !== orderColumnNames.length) {
@@ -552,8 +552,8 @@ const enforceNoIncomingForeignKeys = (
       for (const sourceRow of sourceStore.rows.values()) {
         let matches = true;
         for (let i = 0; i < relation.on.length; i += 1) {
-          const [localName] = relation.on[i]!;
-          const { column } = targetColumnInfo[i]!;
+          const [localName] = relation.on[i];
+          const { column } = targetColumnInfo[i];
           const localValue = sourceRow[getPhysicalColumnName(sourceTable, localName, resolver)];
           if (localValue === null || localValue === undefined) {
             matches = false;

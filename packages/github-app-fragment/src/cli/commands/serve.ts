@@ -176,8 +176,8 @@ export const serveCommand = define({
   },
   run: async (ctx) => {
     const config = resolveGitHubAppConfig(ctx);
-    const host = (ctx.values.host as string | undefined) ?? "127.0.0.1";
-    const port = (ctx.values.port as number | undefined) ?? 6173;
+    const host = ctx.values.host ?? "127.0.0.1";
+    const port = ctx.values.port ?? 6173;
     const mountRoute = resolveMountRoute(ctx);
     const pollIntervalMs = resolvePollInterval(ctx);
     const dbPath = resolveDbPath(ctx);

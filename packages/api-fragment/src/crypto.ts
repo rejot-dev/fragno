@@ -163,7 +163,7 @@ function equalLengthBytes(first: Uint8Array, second: Uint8Array) {
 
   let diff = 0;
   for (let index = 0; index < first.length; index += 1) {
-    diff |= first[index]! ^ second[index]!;
+    diff |= first[index] ^ second[index];
   }
   return diff === 0;
 }

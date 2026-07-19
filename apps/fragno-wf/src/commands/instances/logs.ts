@@ -57,8 +57,8 @@ export const instancesLogsCommand = define({
     },
   },
   run: async (ctx) => {
-    const workflowName = ctx.values.workflow as string | undefined;
-    const instanceId = ctx.values.id as string | undefined;
+    const workflowName = ctx.values.workflow;
+    const instanceId = ctx.values.id;
 
     if (!workflowName) {
       throw new Error("Missing --workflow");
@@ -69,8 +69,8 @@ export const instancesLogsCommand = define({
 
     const client = createClientFromContext(ctx);
     const follow = Boolean(ctx.values.follow);
-    const followInterval = (ctx.values["follow-interval"] as number | undefined) ?? 2000;
-    let logsCursor = ctx.values["logs-cursor"] as string | undefined;
+    const followInterval = ctx.values["follow-interval"] ?? 2000;
+    let logsCursor = ctx.values["logs-cursor"];
 
     let stop = false;
     const stopHandler = () => {
@@ -86,10 +86,10 @@ export const instancesLogsCommand = define({
         workflowName,
         instanceId,
         includeLogs: true,
-        logLevel: ctx.values["log-level"] as string | undefined,
-        logCategory: ctx.values["log-category"] as string | undefined,
-        order: ctx.values.order as string | undefined,
-        pageSize: ctx.values["page-size"] as number | undefined,
+        logLevel: ctx.values["log-level"],
+        logCategory: ctx.values["log-category"],
+        order: ctx.values.order,
+        pageSize: ctx.values["page-size"],
         logsCursor,
       });
 

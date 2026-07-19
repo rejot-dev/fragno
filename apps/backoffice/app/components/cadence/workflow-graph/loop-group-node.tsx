@@ -11,7 +11,7 @@ import { Repeat } from "lucide-react";
 import { Handle, Position } from "@xyflow/react";
 import type { NodeProps } from "@xyflow/react";
 
-import type { FlowNodeData, PipelineFlowNode } from "./flow";
+import type { PipelineFlowNode } from "./flow";
 
 // Invisible connection anchor (read-only graph).
 const handleStyle: React.CSSProperties = {
@@ -26,7 +26,7 @@ const handleStyle: React.CSSProperties = {
 };
 
 export function LoopGroupNode({ data }: NodeProps<PipelineFlowNode>) {
-  const { node } = data as FlowNodeData;
+  const { node } = data;
   if (node.kind !== "loop") {
     return null;
   }

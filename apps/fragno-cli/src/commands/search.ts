@@ -52,8 +52,8 @@ export const searchCommand = define({
     }
 
     // Determine output mode
-    const jsonMode = ctx.values.json as boolean;
-    const baseUrl = ctx.values["base-url"] as string;
+    const jsonMode = ctx.values.json;
+    const baseUrl = ctx.values["base-url"];
 
     if (!jsonMode) {
       console.log(`Searching for: "${query}"\n`);
@@ -71,7 +71,7 @@ export const searchCommand = define({
       const results = (await response.json()) as SearchResult[];
 
       // Apply limit
-      const limit = ctx.values.limit as number;
+      const limit = ctx.values.limit;
       const limitedResults = results.slice(0, limit);
 
       if (limitedResults.length === 0) {

@@ -208,7 +208,7 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
             const issuedPayload = buildIssuedPayload({
               id: otp.id.valueOf(),
               externalId: otp.externalId,
-              type: otp.type as OtpType,
+              type: otp.type,
               code: otp.code,
               expiresAt: otp.expiresAt,
               createdAt: otp.createdAt,
@@ -381,7 +381,7 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
               const issuedPayload = buildIssuedPayload({
                 id: latestExpiredOtp.id.valueOf(),
                 externalId: latestExpiredOtp.externalId,
-                type: latestExpiredOtp.type as OtpType,
+                type: latestExpiredOtp.type,
                 code: latestExpiredOtp.code,
                 expiresAt: latestExpiredOtp.expiresAt,
                 createdAt: latestExpiredOtp.createdAt,
@@ -422,7 +422,7 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
             const issuedPayload = buildIssuedPayload({
               id: latestPendingOtp.id.valueOf(),
               externalId: latestPendingOtp.externalId,
-              type: latestPendingOtp.type as OtpType,
+              type: latestPendingOtp.type,
               code: latestPendingOtp.code,
               expiresAt: latestPendingOtp.expiresAt,
               createdAt: latestPendingOtp.createdAt,

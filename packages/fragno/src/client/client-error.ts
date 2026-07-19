@@ -113,7 +113,7 @@ export class FragnoClientApiError<
    * for forward compatibility with future error codes.
    */
   override get code(): TErrorCode | (string & {}) {
-    return super.code as TErrorCode | (string & {});
+    return super.code;
   }
 
   static async fromResponse<TErrorCode extends string = string>(

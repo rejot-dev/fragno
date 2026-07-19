@@ -109,8 +109,8 @@ export const serveCommand = define({
     },
   },
   run: async (ctx) => {
-    const modulePath = ctx.values.module as string;
-    const port = (ctx.values.port as number | undefined) ?? 4100;
+    const modulePath = ctx.values.module;
+    const port = ctx.values.port ?? 4100;
 
     const { fragment, adapter } = await resolveFragment(modulePath);
     const handler = toNodeHandler(fragment.handler.bind(fragment));

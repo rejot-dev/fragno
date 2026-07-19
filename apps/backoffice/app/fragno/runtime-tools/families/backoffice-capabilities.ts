@@ -953,7 +953,7 @@ export const createBackofficeCapabilitiesRuntime = ({
         listConnectionCapabilities()
           .filter((capability) => scopeSupported(capability))
           .map(async (capability) => {
-            const status = await capability.connection!.getStatus(capabilityContext);
+            const status = await capability.connection.getStatus(capabilityContext);
             return {
               id: capability.id,
               label: capability.label,

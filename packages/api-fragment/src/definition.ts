@@ -258,7 +258,7 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
             if (retrieveResult.changes.authPayload) {
               uow.update("secret", `${connectionId}:auth`, (b) =>
                 b.set({
-                  payload: retrieveResult.changes.authPayload!,
+                  payload: retrieveResult.changes.authPayload,
                   expiresAt: retrieveResult.changes.authExpiresAt ?? null,
                   updatedAt: b.now(),
                 }),

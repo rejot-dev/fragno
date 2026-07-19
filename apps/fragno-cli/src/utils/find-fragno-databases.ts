@@ -201,7 +201,7 @@ export function findFragnoDatabases(
       // Handle new fragment API
       const internal = value.$internal;
       const deps = internal.deps as Record<string, unknown>;
-      const options = internal.options as Record<string, unknown>;
+      const options = internal.options;
 
       // Check if this is a database fragment by looking for implicit database dependencies
       if (!deps["schema"]) {

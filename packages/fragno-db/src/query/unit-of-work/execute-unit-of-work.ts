@@ -476,7 +476,7 @@ function createServiceTx<
   // Set up the retrieve phase promise to resolve when the handler executes retrieve
   if (typedUow) {
     typedUow.retrievalPhase.then(
-      (results) => resolveRetrievePhase(results as TRetrieveResults),
+      (results) => resolveRetrievePhase(results),
       (error: unknown) => rejectRetrievePhase(error),
     );
   } else if (!callbacks.retrieve) {
@@ -738,7 +738,7 @@ async function processTxResultAfterMutate<T>(txResult: TxResult<T>): Promise<T> 
         readonly TxResult<unknown>[]
       >,
     };
-    internal.finalResult = callbacks.success(successCtx) as T;
+    internal.finalResult = callbacks.success(successCtx);
   } else if (callbacks.mutate) {
     internal.finalResult = (await awaitPromisesInObject(internal.mutateResult)) as T;
   } else if (callbacks.retrieveSuccess || callbacks.retrieve) {
@@ -747,7 +747,7 @@ async function processTxResultAfterMutate<T>(txResult: TxResult<T>): Promise<T> 
     internal.finalResult = serviceFinalResults as T;
   }
 
-  return internal.finalResult as T;
+  return internal.finalResult;
 }
 
 /**
@@ -906,7 +906,7 @@ async function executeTx(
           serviceResults as ExtractServiceRetrieveResults<TServiceCalls>,
         );
       } else {
-        retrieveSuccessResult = retrieveResult as unknown as TRetrieveSuccessResult;
+        retrieveSuccessResult = retrieveResult as unknown;
       }
 
       let mutateResult: { type: "not-provided" } | { type: "provided"; value: TMutateResult } = {

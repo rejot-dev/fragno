@@ -80,7 +80,7 @@ const parseWithStandardSchema = async <T>(
   if ("issues" in result && result.issues) {
     throw new Error("Invalid access token context");
   }
-  return result.value as T;
+  return result.value;
 };
 
 export const resolveAccessTokenConfig = (

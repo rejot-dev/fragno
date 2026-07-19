@@ -431,7 +431,7 @@ export function useStore<SomeStore extends Store>(
     return store.listen(emitChange);
   }, deps);
 
-  const get = () => snapshotRef.current as StoreValue<SomeStore>;
+  const get = () => snapshotRef.current;
 
   return useSyncExternalStore(subscribe, get, () => {
     // Server-side rendering

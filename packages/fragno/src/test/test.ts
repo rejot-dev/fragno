@@ -103,7 +103,7 @@ export function withTestUtils() {
       return {
         ...existingServices,
         ...testUtils,
-      } as TBaseServices & TestBaseServices<TDeps>;
+      };
     };
 
     // Create new builder with updated base services

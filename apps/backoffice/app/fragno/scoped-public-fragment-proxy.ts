@@ -99,7 +99,7 @@ const readRequiredJsonObject = async (
 const readFragmentError = async (response: Response, label: string) => {
   const fallback = `${label} failed with status ${response.status}`;
   try {
-    const payload = (await response.clone().json()) as unknown;
+    const payload = await response.clone().json();
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
       return { message: fallback };
     }

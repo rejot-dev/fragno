@@ -24,16 +24,16 @@ export const instancesCreateCommand = define({
     },
   },
   run: async (ctx) => {
-    const workflowName = ctx.values.workflow as string | undefined;
+    const workflowName = ctx.values.workflow;
     if (!workflowName) {
       throw new Error("Missing --workflow");
     }
 
-    const params = parseJsonValue("params", ctx.values.params as string | undefined);
+    const params = parseJsonValue("params", ctx.values.params);
     const client = createClientFromContext(ctx);
     const response = await client.createInstance({
       workflowName,
-      id: ctx.values.id as string | undefined,
+      id: ctx.values.id,
       params,
     });
 

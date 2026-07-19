@@ -18,12 +18,12 @@ export const uploadsPartsCompleteCommand = define({
     },
   },
   run: async (ctx) => {
-    const uploadId = ctx.values["upload-id"] as string | undefined;
+    const uploadId = ctx.values["upload-id"];
     if (!uploadId) {
       throw new Error("Missing --upload-id");
     }
 
-    const rawParts = parseJsonValue("parts", ctx.values.parts as string | undefined);
+    const rawParts = parseJsonValue("parts", ctx.values.parts);
     if (!Array.isArray(rawParts) || rawParts.length === 0) {
       throw new Error("--parts must be a non-empty JSON array");
     }

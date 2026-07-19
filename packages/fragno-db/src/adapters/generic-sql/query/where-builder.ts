@@ -166,7 +166,7 @@ export function buildReferenceArrayWhere({
   }
 
   if (clauses.length === 1) {
-    return clauses[0]!;
+    return clauses[0];
   }
   return operator === "in" ? eb.or(clauses) : eb.and(clauses);
 }

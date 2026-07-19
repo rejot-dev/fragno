@@ -400,7 +400,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
           .build();
       }
 
-      const roleName = roleNames[0]!;
+      const roleName = roleNames[0];
       const now = new Date();
 
       return this.serviceTx(authSchema)
@@ -545,7 +545,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
           .build();
       }
 
-      const roleName = roleNames[0]!;
+      const roleName = roleNames[0];
 
       return this.serviceTx(authSchema)
         .retrieve((uow) =>

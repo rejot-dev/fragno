@@ -1,7 +1,6 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import type { AnySchema } from "@fragno-dev/db/schema";
 import { define } from "gunshi";
 import { openDB, type IDBPDatabase } from "idb";
 
@@ -72,7 +71,7 @@ const resolveModule = async (modulePath: string): Promise<ClientModule> => {
   const mod = (await import(url)) as ClientModule & {
     default?: ClientModule;
   };
-  return (mod.default ?? mod) as ClientModule;
+  return mod.default ?? mod;
 };
 
 const parseJsonInput = (raw: string | undefined): unknown => {
@@ -137,14 +136,14 @@ export const clientCommand = define({
     },
   },
   run: async (ctx) => {
-    const endpoint = ctx.values.endpoint as string;
+    const endpoint = ctx.values.endpoint;
     const timeoutSeconds = coerceNumber(ctx.values.timeout, 5);
     const pollIntervalMs = coerceNumber(ctx.values.pollInterval, 1000);
     const limit = coerceNumber(ctx.values.limit, 500);
-    const endpointOverride = ctx.values.endpointName as string | undefined;
+    const endpointOverride = ctx.values.endpointName;
     const modulePath = ctx.values.module as string | undefined;
-    const commandName = ctx.values.command as string | undefined;
-    const inputRaw = ctx.values.input as string | undefined;
+    const commandName = ctx.values.command;
+    const inputRaw = ctx.values.input;
     const submitQueued = Boolean(ctx.values.submit);
     const optimistic = !ctx.values["no-optimistic"];
 
@@ -199,7 +198,7 @@ export const clientCommand = define({
         submitUrl,
         internalUrl,
         adapter,
-        schemas: schemas.map((entry) => entry.schema) as AnySchema[],
+        schemas: schemas.map((entry) => entry.schema),
         commands,
         ...(moduleConfig?.createCommandContext
           ? { createCommandContext: moduleConfig.createCommandContext }

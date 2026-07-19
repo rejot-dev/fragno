@@ -55,9 +55,9 @@ export const uploadsCreateCommand = define({
     },
   },
   run: async (ctx) => {
-    const filename = ctx.values.filename as string | undefined;
-    const sizeBytes = ctx.values["size-bytes"] as number | undefined;
-    const contentType = ctx.values["content-type"] as string | undefined;
+    const filename = ctx.values.filename;
+    const sizeBytes = ctx.values["size-bytes"];
+    const contentType = ctx.values["content-type"];
 
     if (!filename) {
       throw new Error("Missing --filename");
@@ -69,14 +69,14 @@ export const uploadsCreateCommand = define({
       throw new Error("Missing --content-type");
     }
 
-    const provider = resolveProviderValue(ctx.values.provider as string | undefined);
+    const provider = resolveProviderValue(ctx.values.provider);
     const resolvedKey = resolveFileKeyValue({
-      fileKey: ctx.values["file-key"] as string | undefined,
+      fileKey: ctx.values["file-key"],
     });
 
-    const checksum = parseJsonValue("checksum", ctx.values.checksum as string | undefined);
-    const tags = parseJsonValue("tags", ctx.values.tags as string | undefined);
-    const metadata = parseJsonValue("metadata", ctx.values.metadata as string | undefined);
+    const checksum = parseJsonValue("checksum", ctx.values.checksum);
+    const tags = parseJsonValue("tags", ctx.values.tags);
+    const metadata = parseJsonValue("metadata", ctx.values.metadata);
 
     const client = createClientFromContext(ctx);
     const response = await client.createUpload({
@@ -87,8 +87,8 @@ export const uploadsCreateCommand = define({
       contentType,
       checksum,
       tags,
-      visibility: ctx.values.visibility as string | undefined,
-      uploaderId: ctx.values["uploader-id"] as string | undefined,
+      visibility: ctx.values.visibility,
+      uploaderId: ctx.values["uploader-id"],
       metadata,
     });
 

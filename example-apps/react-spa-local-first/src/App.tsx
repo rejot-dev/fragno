@@ -2379,10 +2379,10 @@ function stableStringify(value: unknown): string {
           return Array.from(val);
         }
         if (val && typeof val === "object") {
-          if (seen.has(val as object)) {
+          if (seen.has(val)) {
             return "[Circular]";
           }
-          seen.add(val as object);
+          seen.add(val);
           if (!Array.isArray(val)) {
             const entries = Object.entries(val as Record<string, unknown>).sort(([a], [b]) =>
               a.localeCompare(b),

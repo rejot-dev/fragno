@@ -139,7 +139,7 @@ const sessionsListCommand = define({
     },
   },
   run: async (ctx) => {
-    const limit = ctx.values.limit as number | undefined;
+    const limit = ctx.values.limit;
     const query = typeof limit === "number" ? `?limit=${limit}` : "";
     const result = await requestJson(ctx, {
       method: "GET",
@@ -169,9 +169,9 @@ const sessionsCreateCommand = define({
     },
   },
   run: async (ctx) => {
-    const agent = (ctx.values.agent as string | undefined) ?? "default";
-    const name = ctx.values.name as string | undefined;
-    const metadata = parseJsonValue("metadata", ctx.values.metadata as string | undefined);
+    const agent = ctx.values.agent ?? "default";
+    const name = ctx.values.name;
+    const metadata = parseJsonValue("metadata", ctx.values.metadata);
 
     const result = await requestJson(ctx, {
       method: "POST",
@@ -200,7 +200,7 @@ const sessionsGetCommand = define({
     },
   },
   run: async (ctx) => {
-    const id = ctx.values.id as string;
+    const id = ctx.values.id;
     const result = await requestJson(ctx, {
       method: "GET",
       path: `/sessions/${id}`,
@@ -231,9 +231,9 @@ const sessionsSendEventCommand = define({
     },
   },
   run: async (ctx) => {
-    const id = ctx.values.id as string;
-    const type = (ctx.values.type as string | undefined) ?? "user_message";
-    const payload = parseJsonValue("payload", ctx.values.payload as string | undefined);
+    const id = ctx.values.id;
+    const type = ctx.values.type ?? "user_message";
+    const payload = parseJsonValue("payload", ctx.values.payload);
 
     const result = await requestJson(ctx, {
       method: "POST",

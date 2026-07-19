@@ -71,7 +71,7 @@ export const generateOtpCode = (config: Pick<OtpCodeConfig, "alphabet" | "codeLe
         continue;
       }
 
-      code += alphabet[value % alphabet.length]!;
+      code += alphabet[value % alphabet.length];
       if (code.length === targetLength) {
         break;
       }

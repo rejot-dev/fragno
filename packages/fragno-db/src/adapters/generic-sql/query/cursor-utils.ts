@@ -47,7 +47,7 @@ export function buildCursorCondition(
 
   if (indexColumns.length === 1) {
     // Simple single-column case
-    const col = indexColumns[0]!;
+    const col = indexColumns[0];
     const val = serializedValues[col.name];
     const operator = useGreaterThan ? ">" : "<";
     return {
@@ -68,12 +68,12 @@ export function buildCursorCondition(
       : { type: "compare", a: column, operator: "=", b: value };
 
   for (let i = 0; i < indexColumns.length; i += 1) {
-    const col = indexColumns[i]!;
+    const col = indexColumns[i];
     const val = serializedValues[col.name];
     const andItems: Condition[] = [];
 
     for (let j = 0; j < i; j += 1) {
-      const prevCol = indexColumns[j]!;
+      const prevCol = indexColumns[j];
       andItems.push(buildEqualityCondition(prevCol, serializedValues[prevCol.name]));
     }
 
@@ -84,7 +84,7 @@ export function buildCursorCondition(
       b: val,
     });
 
-    orConditions.push(andItems.length === 1 ? andItems[0]! : { type: "and", items: andItems });
+    orConditions.push(andItems.length === 1 ? andItems[0] : { type: "and", items: andItems });
   }
 
   return { type: "or", items: orConditions };

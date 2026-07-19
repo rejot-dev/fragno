@@ -238,7 +238,7 @@ const rule = {
         }
 
         for (const reference of dependency.readReferences) {
-          const identifier = /** @type {any} */ (reference.identifier);
+          const identifier = reference.identifier;
           if (!isInsideRange(identifier, candidate.init)) {
             continue;
           }
@@ -373,7 +373,7 @@ const rule = {
               const initText = expandedInitText(candidate);
 
               for (const reference of candidate.readReferences) {
-                const identifier = /** @type {any} */ (reference.identifier);
+                const identifier = reference.identifier;
                 if (isInsideRemovedDeclaration(identifier)) {
                   continue;
                 }

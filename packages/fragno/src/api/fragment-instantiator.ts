@@ -1177,9 +1177,7 @@ export function instantiateFragment<
     path: joinRoutePath(INTERNAL_ROUTE_PREFIX, route.path),
   }));
   const finalRoutes =
-    prefixedInternalRoutes.length > 0
-      ? [...routes, ...prefixedInternalRoutes]
-      : (routes as AnyFragnoRouteConfig[]);
+    prefixedInternalRoutes.length > 0 ? [...routes, ...prefixedInternalRoutes] : routes;
 
   // 12. Wrap createRequestStorage to capture context
   const createRequestStorageWithContext = definition.createRequestStorage
@@ -1203,7 +1201,7 @@ export function instantiateFragment<
     storage,
     createRequestStorage: createRequestStorageWithContext,
     options,
-    internalData: internalData as Record<string, unknown>,
+    internalData: internalData,
   });
 }
 

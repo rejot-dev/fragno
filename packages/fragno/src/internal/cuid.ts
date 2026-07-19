@@ -21,7 +21,7 @@ const createCryptoRandom = (cryptoApi = globalThis.crypto) => {
       offset = 0;
     }
 
-    const value = values[offset]!;
+    const value = values[offset];
     offset += 1;
     return value * uint32ToFloatScale;
   };

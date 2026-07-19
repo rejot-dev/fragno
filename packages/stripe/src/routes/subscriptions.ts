@@ -230,7 +230,7 @@ export const subscriptionsRoutesFactory = defineRoutes(stripeFragmentDefinition)
                     items: [
                       {
                         // We always create subscriptions with a single item
-                        id: stripeSubscription.items.data[0]?.id as string,
+                        id: stripeSubscription.items.data[0]?.id,
                         quantity: body.quantity,
                         price: body.priceId,
                       },
@@ -366,7 +366,7 @@ export const subscriptionsRoutesFactory = defineRoutes(stripeFragmentDefinition)
 
             // Create billing portal session for cancellation
             const portalSession = await deps.stripe.billingPortal.sessions.create({
-              customer: activeSubscription.stripeCustomerId!,
+              customer: activeSubscription.stripeCustomerId,
               return_url: body.returnUrl,
               flow_data: {
                 type: "subscription_cancel",

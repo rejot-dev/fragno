@@ -766,7 +766,7 @@ const findJoinMatches = async (options: {
   }
 
   if (join.options.orderBy && join.options.orderBy.length > 0) {
-    return orderRows(matches, join.options.orderBy as [AnyColumn, "asc" | "desc"][]);
+    return orderRows(matches, join.options.orderBy);
   }
 
   return matches;

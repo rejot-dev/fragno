@@ -197,7 +197,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     // Otherwise, use buildFindOptions to process the query options
     const compiledOptions = buildFindOptions(op.table, {
       ...findManyOptions,
-      where: combinedWhere ? () => combinedWhere! : undefined,
+      where: combinedWhere ? () => combinedWhere : undefined,
       orderBy: orderBy?.map(([col, dir]) => [col.name, dir]),
       limit: effectiveLimit,
     });

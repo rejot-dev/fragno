@@ -178,7 +178,7 @@ const executeQueryEngineRetrievalOperation = async (
       return undefined;
     }
     if (typeof where === "function") {
-      const built = buildCondition(operation.table.columns as Record<string, AnyColumn>, where);
+      const built = buildCondition(operation.table.columns, where);
       if (built === true) {
         return undefined;
       }

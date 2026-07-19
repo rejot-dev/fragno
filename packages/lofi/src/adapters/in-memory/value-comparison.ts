@@ -14,7 +14,7 @@ const toByteArray = (value: unknown): Uint8Array | null => {
 const compareByteArrays = (left: Uint8Array, right: Uint8Array): number => {
   const minLength = Math.min(left.length, right.length);
   for (let i = 0; i < minLength; i += 1) {
-    const diff = left[i]! - right[i]!;
+    const diff = left[i] - right[i];
     if (diff !== 0) {
       return diff < 0 ? -1 : 1;
     }

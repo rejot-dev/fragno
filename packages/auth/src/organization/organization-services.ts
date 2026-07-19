@@ -1336,7 +1336,7 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
           const pagedEntries = orderedEntries.slice(0, effectivePageSize);
           const cursorRecord =
             hasNextPage && pagedEntries.length > 0
-              ? pagedEntries[pagedEntries.length - 1]!.member
+              ? pagedEntries[pagedEntries.length - 1].member
               : null;
           const nextCursor = cursorRecord
             ? createCursorFromRecord(

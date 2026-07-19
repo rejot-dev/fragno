@@ -120,7 +120,7 @@ const createRouteBackedMcpRuntime = (options: CreateRouteBackedMcpRuntimeOptions
         },
       });
       if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data as McpToolCallOutput;
+        return response.data;
       }
       return throwOnMcpRuntimeError(response, "mcp.tools.call");
     },

@@ -301,7 +301,7 @@ export async function fetchResendDomainDetail(
     });
 
     if (response.type === "json") {
-      return { domain: response.data as ResendDomainDetail, error: null };
+      return { domain: response.data, error: null };
     }
 
     if (response.type === "error") {
@@ -331,7 +331,7 @@ export async function sendResendEmail(
     const response = await callRoute("POST", "/emails", { body: payload });
 
     if (response.type === "json") {
-      return { record: response.data as ResendEmailRecord, error: null };
+      return { record: response.data, error: null };
     }
 
     if (response.type === "error") {
@@ -363,7 +363,7 @@ export async function fetchResendEmailDetail(
     });
 
     if (response.type === "json") {
-      return { email: response.data as ResendEmailDetail, error: null };
+      return { email: response.data, error: null };
     }
 
     if (response.type === "error") {
@@ -522,7 +522,7 @@ export async function fetchResendReceivedEmailDetail(
     });
 
     if (response.type === "json") {
-      return { email: response.data as ResendReceivedEmailDetail, error: null };
+      return { email: response.data, error: null };
     }
 
     if (response.type === "error") {
@@ -640,8 +640,7 @@ export async function fetchResendThreadDetail(
       }),
     ]);
 
-    const thread =
-      threadResponse.type === "json" ? (threadResponse.data as ResendThreadDetail) : null;
+    const thread = threadResponse.type === "json" ? threadResponse.data : null;
     const messages = messagesResponse.type === "json" ? (messagesResponse.data.messages ?? []) : [];
     const cursor = messagesResponse.type === "json" ? messagesResponse.data.cursor : undefined;
     const hasNextPage =
@@ -714,7 +713,7 @@ export async function createResendThread(
 
     if (response.type === "json") {
       return {
-        result: response.data as ResendThreadMutationOutput,
+        result: response.data,
         error: null,
       };
     }
@@ -754,7 +753,7 @@ export async function replyToResendThread(
 
     if (response.type === "json") {
       return {
-        result: response.data as ResendThreadMutationOutput,
+        result: response.data,
         error: null,
       };
     }

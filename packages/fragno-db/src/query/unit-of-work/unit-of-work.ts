@@ -819,7 +819,7 @@ export function buildJoinIndexed<TTable extends AnyTable>(
   const relations = getTableRelations(table);
 
   for (const name in relations) {
-    const relation = relations[name]!;
+    const relation = relations[name];
 
     builder[name] = (builderFn?: (b: JoinFindBuilder<AnyTable>) => JoinFindBuilder<AnyTable>) => {
       // Create join builder for this relation's table

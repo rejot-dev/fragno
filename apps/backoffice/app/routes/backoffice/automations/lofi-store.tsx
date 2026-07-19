@@ -16,7 +16,6 @@ import {
   backofficeScopeRouteId,
   backofficeScopeSinglePathSegment,
 } from "@/backoffice-runtime/scope-codec";
-import type { AutomationRouteAction } from "@/fragno/automation/routing";
 import { automationFragmentSchema } from "@/fragno/automation/schema";
 import {
   CLOUDFLARE_SANDBOX_PROVIDER,
@@ -264,7 +263,7 @@ const getAutomationScopeRuntime = (
           enabled: route.enabled,
           priority: route.priority,
           trigger: route.trigger,
-          action: route.action as AutomationRouteAction,
+          action: route.action,
           description: route.description,
           nextOccurrenceAt: null,
         })),
@@ -298,16 +297,16 @@ const getAutomationScopeRuntime = (
       map: (rows) =>
         rows.map((event) => ({
           id: event.id.externalId,
-          scope: event.scope as AutomationEventItem["scope"],
+          scope: event.scope,
           source: event.source,
           eventType: event.eventType,
           occurredAt: toIsoString(event.occurredAt),
           payload: event.payload as AutomationEventItem["payload"],
-          actor: event.actor as AutomationEventItem["actor"],
+          actor: event.actor,
           actors: Array.isArray(event.actors)
             ? (event.actors as AutomationEventItem["actors"])
             : [],
-          subject: (event.subject ?? null) as AutomationEventItem["subject"],
+          subject: event.subject ?? null,
           createdAt: toIsoString(event.createdAt),
         })),
     },

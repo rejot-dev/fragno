@@ -110,7 +110,7 @@ function createVueHook<
 
     for (const [key, value] of Object.entries(query ?? {})) {
       const v = value!;
-      queryParams[key] = isRef(v) ? (refToAtom(v) as ReadableAtom<string>) : v;
+      queryParams[key] = isRef(v) ? refToAtom(v) : v;
     }
 
     const store = hook.store({

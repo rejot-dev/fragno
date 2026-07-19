@@ -14,7 +14,7 @@ export const uploadsPartsListCommand = define({
     },
   },
   run: async (ctx) => {
-    const uploadId = ctx.values["upload-id"] as string | undefined;
+    const uploadId = ctx.values["upload-id"];
     if (!uploadId) {
       throw new Error("Missing --upload-id");
     }

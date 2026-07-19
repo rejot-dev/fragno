@@ -208,8 +208,8 @@ const blueprintTabs: TabbedCodeFigureTab[] = [
     snippets: [
       {
         label: "01_INITIALIZATION",
-        code: setupSteps[0]!.code,
-        lang: setupSteps[0]!.lang,
+        code: setupSteps[0].code,
+        lang: setupSteps[0].lang,
       },
     ],
   },
@@ -223,8 +223,8 @@ const blueprintTabs: TabbedCodeFigureTab[] = [
     snippets: [
       {
         label: "02_USAGE",
-        code: setupSteps[3]!.code,
-        lang: setupSteps[3]!.lang,
+        code: setupSteps[3].code,
+        lang: setupSteps[3].lang,
       },
     ],
   },

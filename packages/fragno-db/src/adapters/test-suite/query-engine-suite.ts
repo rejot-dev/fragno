@@ -120,7 +120,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           age: 20,
         });
         await create.executeMutations();
-        const createdId = create.getCreatedIds()[0]!;
+        const createdId = create.getCreatedIds()[0];
 
         const update = createSuiteUnitOfWork(adapter, "update-current");
         update.update("users", createdId, (b) => b.set({ name: "Fresh" }).check());
@@ -152,7 +152,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           age: 44,
         });
         await create.executeMutations();
-        const createdId = create.getCreatedIds()[0]!;
+        const createdId = create.getCreatedIds()[0];
         const wrongVersionId = new FragnoId({
           externalId: createdId.externalId,
           internalId: createdId.internalId,
@@ -380,7 +380,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           age: 1,
         });
         await create.executeMutations();
-        const staleId = create.getCreatedIds()[0]!;
+        const staleId = create.getCreatedIds()[0];
 
         const bump = createSuiteUnitOfWork(adapter, "bump-check-version");
         bump.update("users", staleId, (b) => b.set({ name: "After" }).check());
@@ -421,17 +421,17 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
         assert((await first.executeMutations()).success);
         const ids = first.getCreatedIds();
         expect(ids).toHaveLength(2);
-        assert(ids[1]!.externalId === "provided-id");
+        assert(ids[1].externalId === "provided-id");
 
         const mixed = createSuiteUnitOfWork(adapter, "created-ids-mixed");
-        mixed.update("users", ids[0]!, (b) => b.set({ age: 3 }).check());
+        mixed.update("users", ids[0], (b) => b.set({ age: 3 }).check());
         mixed.create("users", {
           id: "mixed-created",
           name: "Mixed",
           email: "mixed@example.com",
           age: 4,
         });
-        mixed.delete("users", ids[1]!, (b) => b.check());
+        mixed.delete("users", ids[1], (b) => b.check());
         assert((await mixed.executeMutations()).success);
         expect(mixed.getCreatedIds().map((id) => id.externalId)).toEqual(["mixed-created"]);
       } finally {
@@ -667,7 +667,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
             content: "Post",
           });
           await create.executeMutations();
-          const postId = create.getCreatedIds()[1]!;
+          const postId = create.getCreatedIds()[1];
 
           const badUpdate = createSuiteUnitOfWork(adapter, "bad-fk-update");
           badUpdate.update("posts", postId, (b) => b.set({ user_id: "missing-user" }));
@@ -697,7 +697,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
             content: "Post",
           });
           await create.executeMutations();
-          const userId = create.getCreatedIds()[0]!;
+          const userId = create.getCreatedIds()[0];
 
           const deleteUser = createSuiteUnitOfWork(adapter, "delete-fk-parent");
           deleteUser.delete("users", userId, (b) => b.check());
@@ -723,11 +723,11 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
         const [fromId, toId] = seed.getCreatedIds();
 
         const transfer = createSuiteUnitOfWork(adapter, "transfer");
-        transfer.update("users", fromId!, (b) => b.set({ age: 75 }).check());
-        transfer.update("users", toId!, (b) => b.set({ age: 35 }).check());
+        transfer.update("users", fromId, (b) => b.set({ age: 75 }).check());
+        transfer.update("users", toId, (b) => b.set({ age: 35 }).check());
         transfer.create("emails", {
           id: "transfer-receipt",
-          user_id: toId!,
+          user_id: toId,
           email: "receipt@example.com",
           is_primary: false,
         });
@@ -1150,7 +1150,7 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
         assert((await createMatchingInvitation.executeMutations()).success);
 
         const deleteUser = createSuiteUnitOfWork(adapter, "delete-join-only-user");
-        deleteUser.delete("users", createUser.getCreatedIds()[0]!, (b) => b.check());
+        deleteUser.delete("users", createUser.getCreatedIds()[0], (b) => b.check());
         assert((await deleteUser.executeMutations()).success);
       } finally {
         await close?.();
@@ -1366,12 +1366,12 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
         const [firstId, staleSecondId] = seed.getCreatedIds();
 
         const bumpSecond = createSuiteUnitOfWork(adapter, "bump-late-conflict-second");
-        bumpSecond.update("users", staleSecondId!, (b) => b.set({ age: 21 }).check());
+        bumpSecond.update("users", staleSecondId, (b) => b.set({ age: 21 }).check());
         assert((await bumpSecond.executeMutations()).success);
 
         const staleTransfer = createSuiteUnitOfWork(adapter, "late-conflict-rolls-back-first");
-        staleTransfer.update("users", firstId!, (b) => b.set({ age: 11 }).check());
-        staleTransfer.update("users", staleSecondId!, (b) => b.set({ age: 22 }).check());
+        staleTransfer.update("users", firstId, (b) => b.set({ age: 11 }).check());
+        staleTransfer.update("users", staleSecondId, (b) => b.set({ age: 22 }).check());
         assert(!(await staleTransfer.executeMutations()).success);
 
         const [[first], [second]] = await createSuiteUnitOfWork(adapter, "verify-late-conflict")
@@ -1519,9 +1519,9 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
           .find("posts", (b) =>
             b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", "reference-filter-user")),
           )
-          .find("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", userId!)))
+          .find("posts", (b) => b.whereIndex("posts_user_idx", (eb) => eb("user_id", "=", userId)))
           .find("posts", (b) =>
-            b.whereIndex("posts_user_idx", (eb) => eb("user_id", "in", [userId!])),
+            b.whereIndex("posts_user_idx", (eb) => eb("user_id", "in", [userId])),
           )
           .executeRetrieve();
 

@@ -672,7 +672,7 @@ export function getCacheKey(
           const value = queryParams[key];
           // If it's an atom, wrap it to convert undefined to ""
           if (value && typeof value === "object" && "get" in value) {
-            return computed(value as ReadableAtom<string | undefined>, (v) => v ?? "");
+            return computed(value, (v) => v ?? "");
           }
           // Plain string value (or undefined)
           return value ?? "";
@@ -1115,7 +1115,7 @@ export class ClientBuilder<
             if (isStreaming === "ndjson") {
               const storeAdapter = {
                 setData: (value) => {
-                  store.mutate(value as StandardSchemaV1.InferOutput<TOutputSchema>);
+                  store.mutate(value);
                 },
                 setError: (value) => {
                   store.set({
@@ -1255,10 +1255,7 @@ export class ClientBuilder<
 
         // Merge headers: fetcherOptions headers + body-specific headers (e.g., Content-Type for JSON)
         // For FormData, bodyHeaders is undefined and browser sets Content-Type with boundary automatically
-        const mergedHeaders = mergeRequestHeaders(
-          fetcherOptions?.headers as HeadersInit | undefined,
-          bodyHeaders,
-        );
+        const mergedHeaders = mergeRequestHeaders(fetcherOptions?.headers, bodyHeaders);
 
         const requestOptions: RequestInit & { duplex?: "half" } = {
           ...fetcherOptions,
