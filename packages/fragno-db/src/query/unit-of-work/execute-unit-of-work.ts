@@ -1007,7 +1007,9 @@ async function executeTx(
 
       const delayMs = retryPolicy.getDelayMs(attempt);
       if (delayMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        await new Promise((resolve) => {
+          setTimeout(resolve, delayMs);
+        });
       }
 
       attempt++;

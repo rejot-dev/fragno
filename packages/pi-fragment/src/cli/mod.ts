@@ -751,7 +751,9 @@ const defaultActions: CliActions = {
           ctx.logger.log(ctx.config.json ? JSON.stringify(event) : formatFollowEvent(event, index));
         }
 
-        await new Promise((resolve) => setTimeout(resolve, FOLLOW_RECONNECT_DELAY_MS));
+        await new Promise((resolve) => {
+          setTimeout(resolve, FOLLOW_RECONNECT_DELAY_MS);
+        });
         index = 0;
         ctx.logger.log(
           ctx.config.json ? JSON.stringify({ type: "reconnected" }) : "--- reconnected ---",

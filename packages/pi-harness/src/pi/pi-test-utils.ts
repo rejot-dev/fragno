@@ -556,7 +556,9 @@ const createCheckpointStreamFn = (options: {
         continue;
       }
       checkpoint.hit = true;
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
       await options.flushEmissions();
       let resume: () => void = () => undefined;
       const resumed = new Promise<void>((resolve) => {

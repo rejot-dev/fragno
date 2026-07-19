@@ -89,7 +89,9 @@ export const ParallelStepsWorkflow = defineWorkflow(
           if (Date.now() < readyAt) {
             throw new Error("TODO_FETCH_NOT_READY");
           }
-          await new Promise((resolve) => setTimeout(resolve, 750));
+          await new Promise((resolve) => {
+            setTimeout(resolve, 750);
+          });
           const response = await fetch("https://jsonplaceholder.typicode.com/todos/2");
           if (!response.ok) {
             throw new Error(`REMOTE_FETCH_FAILED_${response.status}`);
@@ -141,7 +143,9 @@ export const CrashTestWorkflow = defineWorkflow(
   async (_event: WorkflowEvent<unknown>, step: WorkflowStep) => {
     const startedAt = await step.do("record-start", () => Date.now());
     const slowStep = await step.do("slow-step", async () => {
-      await new Promise((resolve) => setTimeout(resolve, 15_000));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 15_000);
+      });
       return { finishedAt: Date.now() };
     });
     const finishedAt = await step.do("record-finish", () => Date.now());

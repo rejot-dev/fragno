@@ -43,6 +43,8 @@ export const waitFor = async (predicate: () => boolean, timeoutMs = 1000): Promi
     if (Date.now() - start > timeoutMs) {
       throw new Error("Timed out waiting for predicate.");
     }
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
   }
 };

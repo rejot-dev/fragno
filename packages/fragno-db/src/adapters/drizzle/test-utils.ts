@@ -69,7 +69,9 @@ export async function writeAndLoadSchema(
         throw new Error(`Schema file was not accessible after writing: ${schemaFilePath}`);
       }
       // Wait a bit before retrying
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 10);
+      });
       retries++;
     }
   }

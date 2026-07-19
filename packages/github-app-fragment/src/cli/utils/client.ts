@@ -20,7 +20,10 @@ type RequestOptions = {
 
 type JsonRequestOptions = Omit<RequestOptions, "body" | "json"> & { body?: unknown };
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const delay = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 
 const buildUrl = (
   baseUrl: string,

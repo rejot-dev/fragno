@@ -3,7 +3,10 @@ import { define } from "gunshi";
 import { formatLogLine } from "../../utils/format.js";
 import { baseArgs, createClientFromContext } from "../../utils/options.js";
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 
 export const instancesLogsCommand = define({
   name: "logs",

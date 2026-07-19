@@ -499,7 +499,9 @@ export function SessionComposer({
             <button
               type="button"
               disabled={busy || readyForInput}
-              onClick={onStop}
+              onClick={() => {
+                void onStop();
+              }}
               className="min-h-8 border border-red-400/40 bg-red-500/10 px-2.5 text-[10px] font-semibold tracking-[0.14em] text-red-500 uppercase transition-[border-color,background-color,transform,opacity] duration-150 hover:border-red-400 hover:bg-red-500/15 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
             >
               Stop
@@ -508,7 +510,9 @@ export function SessionComposer({
               <button
                 type="button"
                 disabled={busy}
-                onClick={onContinue}
+                onClick={() => {
+                  void onContinue();
+                }}
                 className="min-h-8 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-2.5 text-[10px] font-semibold tracking-[0.14em] text-[var(--bo-accent-fg)] uppercase transition-[border-color,background-color,transform,opacity] duration-150 hover:border-[color:var(--bo-accent-strong)] active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
               >
                 Continue

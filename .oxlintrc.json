@@ -90,7 +90,7 @@
     "typescript/restrict-template-expressions": "error",
     "typescript/return-await": ["error", "error-handling-correctness-only"],
     "typescript/strict-boolean-expressions": "off",
-    "typescript/strict-void-return": "off",
+    "typescript/strict-void-return": "error",
     "typescript/switch-exhaustiveness-check": "error",
     "typescript/unbound-method": "error",
     "typescript/use-unknown-in-catch-callback-variable": "error",
@@ -195,7 +195,14 @@
     {
       "files": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
       "rules": {
+        "typescript/strict-void-return": "off",
         "typescript/unbound-method": "off"
+      }
+    },
+    {
+      "files": ["packages/fragment-workflows/workflows-smoke-artifacts/**/*.js"],
+      "rules": {
+        "typescript/strict-void-return": "off"
       }
     },
     {

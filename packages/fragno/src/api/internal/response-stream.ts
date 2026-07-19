@@ -88,7 +88,9 @@ export class ResponseStream<TArray> {
   }
 
   sleep(ms: number): Promise<unknown> {
-    return new Promise((res) => setTimeout(res, ms));
+    return new Promise((resolve) => {
+      setTimeout(resolve, ms);
+    });
   }
 
   async close() {
