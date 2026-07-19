@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type SubmitEvent } from "react";
 import {
   Form,
   useActionData,
@@ -546,7 +546,7 @@ export default function BackofficeOrganisationUploadConfiguration() {
   const saveError = localError ?? (actionData && !actionData.ok ? actionData.message : null);
   const saveSuccess = !localError && actionData?.ok ? actionData.message : null;
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: SubmitEvent<HTMLFormElement>) => {
     setLocalError(null);
 
     const validation = normalizeUploadConfigInput(formState);

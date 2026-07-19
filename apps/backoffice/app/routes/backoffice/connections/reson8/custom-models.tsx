@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type SubmitEvent } from "react";
 import {
   Form,
   redirect,
@@ -152,7 +152,7 @@ export default function BackofficeOrganisationReson8CustomModels() {
     [models],
   );
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: SubmitEvent<HTMLFormElement>) => {
     setLocalError(null);
 
     const validation = normalizeCustomModelInput(formState);

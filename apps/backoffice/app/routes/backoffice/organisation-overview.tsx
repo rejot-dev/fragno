@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type SubmitEvent } from "react";
 import { useOutletContext } from "react-router";
 
 import { FormContainer, FormField } from "@/components/backoffice";
@@ -39,7 +39,7 @@ export default function BackofficeOrganisationOverview() {
     setNameNotice(null);
   }, [organization.id, organization.name]);
 
-  const handleNameSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleNameSubmit = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     setNameNotice(null);
 
