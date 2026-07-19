@@ -48,6 +48,9 @@ export const getMcpDurableObject = (
   orgId: string,
 ): McpObject => getBackofficeObjects(context).mcp.forOrg(orgId);
 
+export const getSystemOtpDurableObject = (context: Readonly<RouterContextProvider>): OtpObject =>
+  getBackofficeObjects(context).otp.singleton();
+
 export const getOtpDurableObject = (
   context: Readonly<RouterContextProvider>,
   orgId: string,

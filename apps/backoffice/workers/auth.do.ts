@@ -10,6 +10,8 @@ import type {
   OrganizationHooks,
   UserSummary,
   BeforeCreateUserHook,
+  VerifyUserEmailInput,
+  VerifyUserEmailResult,
 } from "@fragno-dev/auth";
 import { migrate } from "@fragno-dev/db";
 
@@ -26,7 +28,7 @@ import {
   AUTH_AUTOMATION_SOURCE,
 } from "@/fragno/backoffice-capabilities/capabilities/auth";
 import { createDurableHookRepository } from "@/fragno/durable-hooks";
-import { buildUserSignUpEmail } from "@/transactional-emails/user-sign-up";
+import { buildUserSignUpVerificationEmail } from "@/transactional-emails/user-sign-up";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 
@@ -133,6 +135,28 @@ const resolveAuthBaseUrl = (request: Request): string => {
   return requestUrl.origin;
 };
 
+const resolveTransactionalEmailPublicBaseUrl = (runtime: BackofficeRuntimeServices): string => {
+  const configuredBaseUrl = runtime.config.docsPublicBaseUrl;
+  if (!configuredBaseUrl) {
+    throw new Error(
+      "DOCS_PUBLIC_BASE_URL must be configured before sending transactional signup email.",
+    );
+  }
+
+  let url: URL;
+  try {
+    url = new URL(configuredBaseUrl);
+  } catch (cause) {
+    throw new Error("DOCS_PUBLIC_BASE_URL must be an absolute http or https URL.", { cause });
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("DOCS_PUBLIC_BASE_URL must be an absolute http or https URL.");
+  }
+
+  return url.toString();
+};
+
 export class InMemoryAuthObject implements AuthObject {
   readonly #env: AuthLiveEnv;
   readonly #state: BackofficeObjectState;
@@ -168,6 +192,8 @@ export class InMemoryAuthObject implements AuthObject {
   }
 
   #createFragment(baseUrl?: string) {
+    const runtime = this.#runtimeServices;
+
     return createAuthServer(
       {
         type: "live",
@@ -178,20 +204,33 @@ export class InMemoryAuthObject implements AuthObject {
         baseUrl,
         beforeCreateUser: createDevRejotAdminHook(),
         authHooks: {
-          onUserCreated: async (payload, context) => {
-            if (!this.#runtimeServices.config.transactionalEmails.enabled) {
+          onUserCreated: async function queueUserSignUpVerificationEmail(payload, context) {
+            if (!runtime.config.transactionalEmails.enabled) {
               return;
             }
 
-            if (payload.actor?.id !== payload.user.id) {
+            if (payload.actor?.id !== payload.user.id || payload.emailVerifiedAt !== null) {
               return;
             }
 
-            await this.#runtimeServices.objects.resend
-              .singleton()
-              .queueEmail(buildUserSignUpEmail(payload.user.email), {
+            const publicBaseUrl = resolveTransactionalEmailPublicBaseUrl(runtime);
+            const verification = await runtime.objects.otp.singleton().issueEmailVerification({
+              userId: payload.user.id,
+              email: payload.user.email,
+              publicBaseUrl,
+              otpId: context.hookId,
+            });
+
+            await runtime.objects.resend.singleton().queueEmail(
+              buildUserSignUpVerificationEmail({
+                email: payload.user.email,
+                verificationUrl: verification.url,
+                expiresInHours: verification.expiresInHours,
+              }),
+              {
                 idempotencyKey: `auth:user-created:${payload.user.id}:${context.idempotencyKey}`,
-              });
+              },
+            );
           },
         },
         organizationHooks: createOrganizationAutomationHooks(this.#runtimeServices),
@@ -251,6 +290,11 @@ export class InMemoryAuthObject implements AuthObject {
     return createDurableHookRepository(() => this.#ensureFragment());
   }
 
+  async verifyUserEmail(input: VerifyUserEmailInput): Promise<VerifyUserEmailResult> {
+    const fragment = this.#ensureFragment();
+    return await fragment.callServices(() => fragment.services.verifyUserEmail(input));
+  }
+
   async getAllOrganizations(): Promise<Organization[]> {
     const fragment = this.#ensureFragment();
     return await fragment.inContext(function () {
@@ -308,6 +352,10 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
 
   getDurableHookRepository() {
     return this.#object.getDurableHookRepository();
+  }
+
+  async verifyUserEmail(input: VerifyUserEmailInput): Promise<VerifyUserEmailResult> {
+    return await this.#object.verifyUserEmail(input);
   }
 
   async getAllOrganizations(): Promise<Organization[]> {

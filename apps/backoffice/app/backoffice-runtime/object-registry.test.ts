@@ -5,15 +5,15 @@ import {
   type BackofficeObjectScope,
 } from "./object-registry";
 
-const piAddress = (scope: BackofficeObjectScope) => ({
-  binding: "PI" as const,
+const scopedAddress = (binding: "OTP" | "PI", scope: BackofficeObjectScope) => ({
+  binding,
   scope,
 });
 
 describe("PI object scope policy", () => {
   it("allows organisation-scoped objects", () => {
     expect(() =>
-      assertBackofficeObjectAddressAllowed(piAddress({ kind: "org", orgId: "org-1" })),
+      assertBackofficeObjectAddressAllowed(scopedAddress("PI", { kind: "org", orgId: "org-1" })),
     ).not.toThrow();
   });
 
@@ -22,8 +22,17 @@ describe("PI object scope policy", () => {
     { kind: "user", userId: "user-1" } as const,
     { kind: "project", orgId: "org-1", projectId: "project-1" } as const,
   ])("rejects $kind-scoped objects", (scope) => {
-    expect(() => assertBackofficeObjectAddressAllowed(piAddress(scope))).toThrow(
+    expect(() => assertBackofficeObjectAddressAllowed(scopedAddress("PI", scope))).toThrow(
       `PI cannot be instantiated with ${scope.kind} scope`,
     );
   });
+});
+
+describe("OTP object scope policy", () => {
+  it.each([{ kind: "singleton" } as const, { kind: "org", orgId: "org-1" } as const])(
+    "allows $kind-scoped objects",
+    (scope) => {
+      expect(() => assertBackofficeObjectAddressAllowed(scopedAddress("OTP", scope))).not.toThrow();
+    },
+  );
 });
