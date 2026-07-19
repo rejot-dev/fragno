@@ -51,9 +51,12 @@ export function createDurableHooksProcessor(
   );
   const runner =
     durableHooks.runner ??
+    // oxlint-disable-next-line typescript/no-deprecated -- Preserve the deprecated scheduler bridge until its public compatibility API is removed.
     (durableHooks.runner = durableHooks.scheduler
       ? {
+          // oxlint-disable-next-line typescript/no-deprecated -- Adapt the legacy scheduler contract to the current runner contract.
           processDue: () => durableHooks.scheduler!.schedule(),
+          // oxlint-disable-next-line typescript/no-deprecated -- Adapt the legacy scheduler contract to the current runner contract.
           drain: () => durableHooks.scheduler!.drain(),
         }
       : createDurableHooksRunner(durableHooks));
