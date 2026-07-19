@@ -102,9 +102,7 @@ const sessionDetailOutputSchema = sessionDetailBaseOutputSchema.extend(sessionEx
 
 const sessionTurnOutputSchema = sessionDetailOutputSchema.extend({
   assistantText: z.string(),
-  commandStatus: z.enum(PI_SESSION_STATUSES).optional(),
-  /** @deprecated Use commandStatus. */
-  messageStatus: z.enum(PI_SESSION_STATUSES),
+  commandStatus: z.enum(PI_SESSION_STATUSES),
   stream: z.array(z.unknown()),
   terminalState: piAgentStateSnapshotOutputSchema,
 });
