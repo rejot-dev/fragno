@@ -11,7 +11,6 @@ import { z } from "zod";
 import { instantiate, defineFragment } from "@fragno-dev/core";
 
 import type { DatabaseAdapter } from "./adapters/adapters";
-import type { FragnoDatabase } from "./fragno-database";
 import { suffixNamingStrategy } from "./naming/sql-naming";
 import { schema, idColumn, column } from "./schema/create";
 import { withDatabase } from "./with-database";
@@ -29,8 +28,6 @@ const dashedSchema = schema("my-fragment", (s) => {
     return t.addColumn("id", idColumn()).addColumn("label", column("string"));
   });
 });
-
-type TestSchema = typeof testSchema;
 
 // Mock database adapter
 function createMockAdapter(): DatabaseAdapter {
@@ -89,17 +86,10 @@ function createMockAdapter(): DatabaseAdapter {
     state: "building-retrieval",
   });
 
-  const mockdb = {
-    createUnitOfWork: vi.fn(() => createMockUow()),
-    createBaseUnitOfWork: vi.fn(() => createMockUow()),
-    type: "mock",
-  } as unknown as FragnoDatabase<TestSchema>;
-
   return {
     registerSchema: vi.fn(),
     createUnitOfWork: vi.fn(() => createMockUow()),
     createBaseUnitOfWork: vi.fn(() => createMockUow()),
-    createQueryEngine: vi.fn(() => mockdb),
     getSchemaVersion: vi.fn(async () => undefined),
     close: vi.fn(),
     type: "mock",

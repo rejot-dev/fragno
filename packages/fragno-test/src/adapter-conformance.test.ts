@@ -78,6 +78,21 @@ async function withAdapter<T>(config: SupportedAdapter, run: (db: ConformanceDb)
 
 for (const adapterCase of adapterCases) {
   describe(`adapter conformance (${adapterCase.name})`, () => {
+    it("returns schema-view retrievals through the base unit of work", async () => {
+      await withAdapter(adapterCase.config, async (db) => {
+        const createUow = db.createUnitOfWork("create-user");
+        createUow.forSchema(conformanceSchema).create("users", { name: "Ada" });
+        const createResult = await createUow.executeMutations();
+        assert(createResult.success);
+
+        const readUow = db.createUnitOfWork("read-users");
+        readUow.forSchema(conformanceSchema).find("users", (b) => b.whereIndex("users_by_name"));
+
+        const [users] = await readUow.executeRetrieve();
+        expect(users).toEqual([expect.objectContaining({ name: "Ada" })]);
+      });
+    });
+
     it("enforces optimistic checks and version bumps", async () => {
       await withAdapter(adapterCase.config, async (db) => {
         const createUow = db.createUnitOfWork("create-user").forSchema(conformanceSchema);

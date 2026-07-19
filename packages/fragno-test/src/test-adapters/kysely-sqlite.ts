@@ -3,11 +3,11 @@ import { SQLocalDriverConfig } from "@fragno-dev/db/drivers";
 import { Kysely } from "kysely";
 import { SQLocalKysely } from "sqlocal/kysely";
 
-import type { FragnoDatabase } from "@fragno-dev/db";
 import { internalFragmentDef } from "@fragno-dev/db";
 
 import type { KyselySqliteAdapter, AdapterFactoryResult, SchemaConfig } from "../adapters";
 import { createCommonTestContextMethods } from "../common-test-context";
+import type { TestUnitOfWorkFactory } from "../test-db";
 
 const runInternalFragmentMigrations = async (
   adapter: SqlAdapter,
@@ -49,8 +49,7 @@ export async function createKyselySqliteAdapter(
     });
     internalSchemaConfig = await runInternalFragmentMigrations(adapter);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ormMap = new Map<string | null, FragnoDatabase<any, any>>();
+    const unitOfWorkFactories = new Map<string | null, TestUnitOfWorkFactory>();
     for (const { schema, namespace, migrateToVersion } of schemas) {
       const preparedMigrations = adapter.prepareMigrations(schema, namespace);
       if (migrateToVersion !== undefined) {
@@ -61,8 +60,10 @@ export async function createKyselySqliteAdapter(
         await preparedMigrations.execute(0, schema.version, { updateVersionInMigration: false });
       }
 
-      const orm = adapter.createQueryEngine(schema, namespace);
-      ormMap.set(namespace, orm);
+      adapter.registerSchema(schema, namespace);
+      unitOfWorkFactories.set(namespace, (name, uowConfig) =>
+        adapter.createBaseUnitOfWork(name, uowConfig as never),
+      );
     }
 
     const createAdditionalAdapter = async () =>
@@ -72,10 +73,10 @@ export async function createKyselySqliteAdapter(
         uowConfig: config.uowConfig,
       });
 
-    return { kysely, adapter, ormMap, createAdditionalAdapter };
+    return { kysely, adapter, unitOfWorkFactories, createAdditionalAdapter };
   };
 
-  let { kysely, adapter, ormMap, createAdditionalAdapter } = await createDatabase();
+  let { kysely, adapter, unitOfWorkFactories, createAdditionalAdapter } = await createDatabase();
 
   const resetDatabase = async () => {
     const schemasToTruncate = internalSchemaConfig ? [internalSchemaConfig, ...schemas] : schemas;
@@ -92,7 +93,7 @@ export async function createKyselySqliteAdapter(
     await kysely.destroy();
   };
 
-  const commonMethods = createCommonTestContextMethods(ormMap);
+  const commonMethods = createCommonTestContextMethods(unitOfWorkFactories);
 
   return {
     testContext: {

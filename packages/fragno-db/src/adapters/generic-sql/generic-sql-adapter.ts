@@ -1,6 +1,5 @@
 import { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
 
-import { FragnoDatabase } from "../../fragno-database";
 import { getOutboxConfigForAdapter } from "../../internal/outbox-state";
 import {
   createNamingResolver,
@@ -9,6 +8,8 @@ import {
 } from "../../naming/sql-naming";
 import type {
   CompiledMutation,
+  IUnitOfWork,
+  TypedUnitOfWork,
   UOWExecutor,
   UOWInstrumentation,
   UnitOfWorkConfig as BaseUnitOfWorkConfig,
@@ -218,15 +219,12 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     namespace: string | null,
     name?: string,
     config?: UnitOfWorkConfig,
-  ): ReturnType<FragnoDatabase<T, UnitOfWorkConfig>["createUnitOfWork"]> {
+  ): TypedUnitOfWork<T, [], unknown> {
     this.registerSchema(schema, namespace);
     return this.createBaseUnitOfWork(name, config).forSchema(schema);
   }
 
-  createBaseUnitOfWork(
-    name?: string,
-    config?: UnitOfWorkConfig,
-  ): ReturnType<FragnoDatabase<AnySchema, UnitOfWorkConfig>["createBaseUnitOfWork"]> {
+  createBaseUnitOfWork(name?: string, config?: UnitOfWorkConfig): IUnitOfWork {
     const compiler = createUOWCompilerFromOperationCompiler(this.#createOperationCompiler());
     const executor: UOWExecutor<CompiledQuery, unknown> = createExecutor(
       this.#driver,
@@ -248,14 +246,6 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
       this.#normalizeUowConfig({ ...this.uowConfig, ...config }),
       this.#schemaNamespaceMap,
     );
-  }
-
-  createQueryEngine<T extends AnySchema>(
-    schema: T,
-    namespace: string | null,
-  ): FragnoDatabase<T, UnitOfWorkConfig> {
-    this.registerSchema(schema, namespace);
-    return new FragnoDatabase({ adapter: this, schema, namespace });
   }
 }
 

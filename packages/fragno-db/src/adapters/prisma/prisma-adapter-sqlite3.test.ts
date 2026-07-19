@@ -135,11 +135,14 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
   });
 
   it("should store prisma storage values using sqlite-friendly types", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
     const happenedOn = new Date("2024-06-18T12:34:56.789Z");
     const bigScore = 12345n;
 
-    const createUow = queryEngine.createUnitOfWork("create-prisma-storage-event");
+    const createUow = adapter.createUnitOfWork(
+      testSchema,
+      "namespace",
+      "create-prisma-storage-event",
+    );
     createUow.create("events", {
       name: "Prisma Storage Event",
       happened_on: happenedOn,
@@ -177,11 +180,14 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
       expect(fragnoAdapter.sqliteStorageMode).toBe(sqliteStorageDefault);
 
-      const queryEngine = fragnoAdapter.createQueryEngine(testSchema, "namespace");
       const happenedOn = new Date("2024-06-18T12:34:56.789Z");
       const bigScore = 1234567890123n;
 
-      const createUow = queryEngine.createUnitOfWork("create-fragno-storage-event");
+      const createUow = fragnoAdapter.createUnitOfWork(
+        testSchema,
+        "namespace",
+        "create-fragno-storage-event",
+      );
       createUow.create("events", {
         name: "Fragno Storage Event",
         happened_on: happenedOn,
@@ -205,10 +211,9 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
     }
   });
   it("should store Date values as UTC ISO strings for sqlite prisma storage", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
     const happenedOn = new Date("2024-06-18T12:34:56.789Z");
 
-    const createUow = queryEngine.createUnitOfWork("create-iso-event");
+    const createUow = adapter.createUnitOfWork(testSchema, "namespace", "create-iso-event");
     createUow.create("events", {
       name: "ISO Stored Event",
       happened_on: happenedOn,
@@ -225,10 +230,9 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
     expect(row?.happened_on).toBe(happenedOn.toISOString());
   });
   it("should parse CURRENT_TIMESTAMP strings as UTC", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
     const tableName = adapter.namingStrategy.tableName("events", "namespace");
 
-    const createUow = queryEngine.createUnitOfWork("create-utc-event");
+    const createUow = adapter.createUnitOfWork(testSchema, "namespace", "create-utc-event");
     createUow.create("events", {
       name: "UTC Timestamp",
       happened_on: new Date("2024-06-15T00:00:00.000Z"),
@@ -241,8 +245,8 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
       .prepare(`UPDATE ${tableName} SET created_at = ? WHERE name = ?`)
       .run("2024-06-15 14:30:00", "UTC Timestamp");
 
-    const [[event]] = await queryEngine
-      .createUnitOfWork("get-utc-event")
+    const [[event]] = await adapter
+      .createUnitOfWork(testSchema, "namespace", "get-utc-event")
       .find("events", (b) =>
         b.whereIndex("events_name_idx", (eb) => eb("name", "=", "UTC Timestamp")),
       )
@@ -254,12 +258,15 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
   it("should roundtrip BigInt when sqlite returns bigint values", async () => {
     sqliteDatabase.defaultSafeIntegers(true);
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
     const safeIntegerLimit = BigInt(Number.MAX_SAFE_INTEGER);
     const bigScore = safeIntegerLimit + 42n;
 
     try {
-      const createUow = queryEngine.createUnitOfWork("create-safe-bigint-event");
+      const createUow = adapter.createUnitOfWork(
+        testSchema,
+        "namespace",
+        "create-safe-bigint-event",
+      );
       createUow.create("events", {
         name: "Safe BigInt",
         happened_on: new Date("2024-06-17T00:00:00.000Z"),
@@ -268,8 +275,8 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
       });
       await createUow.executeMutations();
 
-      const [[event]] = await queryEngine
-        .createUnitOfWork("get-safe-bigint-event")
+      const [[event]] = await adapter
+        .createUnitOfWork(testSchema, "namespace", "get-safe-bigint-event")
         .find("events", (b) =>
           b.whereIndex("events_name_idx", (eb) => eb("name", "=", "Safe BigInt")),
         )
@@ -283,11 +290,10 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
 
   it("should throw when sqlite returns unsafe BigInt numbers", async () => {
     sqliteDatabase.defaultSafeIntegers(false);
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
     const unsafeBigScore = BigInt(Number.MAX_SAFE_INTEGER) + 2n;
 
     try {
-      const createUow = queryEngine.createUnitOfWork("create-unsafe-event");
+      const createUow = adapter.createUnitOfWork(testSchema, "namespace", "create-unsafe-event");
       createUow.create("events", {
         name: "Unsafe BigInt",
         happened_on: new Date("2024-06-16T00:00:00.000Z"),
@@ -297,8 +303,8 @@ describe("SqlAdapter SQLite (prisma profile)", () => {
       await createUow.executeMutations();
 
       await expect(
-        queryEngine
-          .createUnitOfWork("get-unsafe-event")
+        adapter
+          .createUnitOfWork(testSchema, "namespace", "get-unsafe-event")
           .find("events", (b) =>
             b.whereIndex("events_name_idx", (eb) => eb("name", "=", "Unsafe BigInt")),
           )

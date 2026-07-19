@@ -5,10 +5,6 @@ import { createDurableHooksRunner } from "./hooks";
 
 export type DurableHooksProcessor = {
   processDue: () => Promise<number>;
-  /**
-   * @deprecated Use processDue().
-   */
-  process: () => Promise<number>;
   getNextWakeAt: () => Promise<Date | null>;
   drain: () => Promise<void>;
   namespace: string;
@@ -50,21 +46,11 @@ export function createDurableHooksProcessor(
     durableHooks.stuckProcessingTimeoutMinutes,
   );
   const runner =
-    durableHooks.runner ??
-    // oxlint-disable-next-line typescript/no-deprecated -- Preserve the deprecated scheduler bridge until its public compatibility API is removed.
-    (durableHooks.runner = durableHooks.scheduler
-      ? {
-          // oxlint-disable-next-line typescript/no-deprecated -- Adapt the legacy scheduler contract to the current runner contract.
-          processDue: () => durableHooks.scheduler!.schedule(),
-          // oxlint-disable-next-line typescript/no-deprecated -- Adapt the legacy scheduler contract to the current runner contract.
-          drain: () => durableHooks.scheduler!.drain(),
-        }
-      : createDurableHooksRunner(durableHooks));
+    durableHooks.runner ?? (durableHooks.runner = createDurableHooksRunner(durableHooks));
 
   return {
     namespace,
     processDue: async () => runner.processDue(),
-    process: async () => runner.processDue(),
     drain: async () => runner.drain(),
     getNextWakeAt: async () => {
       return await internalFragment.inContext(async function () {
@@ -130,7 +116,6 @@ export function createDurableHooksProcessorGroupFromProcessors(
   return {
     namespace,
     processDue,
-    process: processDue,
     drain: async () => {
       const results = await Promise.allSettled(
         processors.map(async (processor) => await processor.drain()),
