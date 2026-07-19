@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type SubmitEvent } from "react";
 import { Form, useActionData, useNavigation, useOutletContext } from "react-router";
 
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
@@ -249,7 +249,7 @@ export default function BackofficeOrganisationTelegramConfiguration() {
       ? actionData.message
       : null;
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: SubmitEvent<HTMLFormElement>) => {
     setLocalError(null);
 
     const validation = normalizeTelegramConfigInput(formState);

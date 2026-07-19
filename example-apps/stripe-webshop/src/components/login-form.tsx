@@ -18,7 +18,7 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
   const navigate = useNavigate();
   const search = useSearch({ from: "/login" });
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
     setLoading(true);

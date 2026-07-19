@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type SubmitEvent } from "react";
 import { Form, useActionData, useNavigation, useOutletContext } from "react-router";
 
 import { FormContainer, FormField } from "@/components/backoffice";
@@ -106,7 +106,7 @@ export default function BackofficeOrganisationPiConfiguration() {
   const saveError = localError ?? (actionData && !actionData.ok ? actionData.message : null);
   const saveSuccess = !localError && actionData?.ok ? actionData.message : null;
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: SubmitEvent<HTMLFormElement>) => {
     setLocalError(null);
     if (!formState.openaiKey && !formState.anthropicKey && !formState.geminiKey) {
       setLocalError("Provide at least one API key.");

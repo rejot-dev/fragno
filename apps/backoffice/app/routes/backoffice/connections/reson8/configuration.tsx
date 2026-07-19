@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type SubmitEvent } from "react";
 import {
   Form,
   useActionData,
@@ -72,7 +72,7 @@ export default function BackofficeOrganisationReson8Configuration() {
     }
   }, [actionData, setConfigError, setConfigState]);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: SubmitEvent<HTMLFormElement>) => {
     setLocalError(null);
 
     if (!isConfigured && !formState.apiKey.trim()) {

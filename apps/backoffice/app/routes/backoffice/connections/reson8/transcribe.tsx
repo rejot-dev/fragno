@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type SubmitEvent } from "react";
 import {
   Form,
   redirect,
@@ -509,7 +509,7 @@ export default function BackofficeOrganisationReson8Transcribe() {
     }));
   }, [actionData]);
 
-  const handlePrerecordedSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handlePrerecordedSubmit = (event: SubmitEvent<HTMLFormElement>) => {
     setLocalError(null);
     const fileInput = event.currentTarget.elements.namedItem("audioFile");
     if (!(fileInput instanceof HTMLInputElement) || !fileInput.files?.length) {
