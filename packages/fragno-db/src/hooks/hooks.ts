@@ -172,6 +172,7 @@ export interface HookProcessorConfig<THooks extends HooksMap = HooksMap> {
   /**
    * @deprecated Use `runner`.
    */
+  // oxlint-disable-next-line typescript/no-deprecated -- Keep the public scheduler compatibility field typed by its legacy contract.
   scheduler?: HookScheduler;
   defaultRetryPolicy?: RetryPolicy;
   /**
@@ -647,6 +648,7 @@ export function createDurableHooksRunner(config: HookProcessorConfig): DurableHo
 /**
  * @deprecated Use createDurableHooksRunner.
  */
+// oxlint-disable-next-line typescript/no-deprecated -- Keep the deprecated factory's return type accurate for compatibility callers.
 export function createHookScheduler(config: HookProcessorConfig): HookScheduler {
   const runner = createDurableHooksRunner(config);
   return {
