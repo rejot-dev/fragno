@@ -79,9 +79,7 @@ const _emptyRoutes = [] as const satisfies readonly FragnoRouteConfig<
   HTTPMethod,
   string,
   StandardSchemaV1 | undefined,
-  StandardSchemaV1 | undefined,
-  string,
-  string
+  StandardSchemaV1 | undefined
 >[];
 
 // Routes with no GET methods
@@ -401,9 +399,7 @@ describe("ExtractRouteByPath", () => {
           id: z.ZodNumber;
           name: z.ZodString;
           email: z.ZodString;
-        }>,
-        string,
-        string
+        }>
       >
     >();
   });

@@ -69,7 +69,7 @@ export interface DatabaseAdapter<TUOWConfig = void> {
     namespace: string | null,
     name?: string,
     config?: TUOWConfig,
-  ) => TypedUnitOfWork<T, [], unknown>;
+  ) => TypedUnitOfWork<T>;
 
   createBaseUnitOfWork: (name?: string, config?: TUOWConfig) => IUnitOfWork;
 

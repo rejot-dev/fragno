@@ -27,7 +27,7 @@ const testSchema = schema("test", (s) => {
 });
 
 // Test fragment definition
-const testFragmentDef = defineFragment<{}>("test-fragment")
+const testFragmentDef = defineFragment("test-fragment")
   .extend(withDatabase(testSchema))
   .providesBaseService(({ defineService }) =>
     defineService({
@@ -110,7 +110,7 @@ describe("buildDatabaseFragmentsTest", () => {
   });
 
   it("should throw error for non-database fragment", async () => {
-    const nonDbFragmentDef = defineFragment<{}>("non-db-fragment")
+    const nonDbFragmentDef = defineFragment("non-db-fragment")
       .providesBaseService(() => ({}))
       .build();
 
@@ -296,7 +296,7 @@ describe("buildDatabaseFragmentsTest", () => {
         });
     });
 
-    const authFragmentDef = defineFragment<{}>("auth-test")
+    const authFragmentDef = defineFragment("auth-test")
       .extend(withDatabase(authSchema))
       .providesBaseService(({ defineService }) =>
         defineService({
@@ -379,7 +379,7 @@ describe("multi-fragment tests", () => {
     });
   });
 
-  const userFragmentDef = defineFragment<{}>("user-fragment")
+  const userFragmentDef = defineFragment("user-fragment")
     .extend(withDatabase(userSchema))
     .providesBaseService(({ defineService }) =>
       defineService({
@@ -401,7 +401,7 @@ describe("multi-fragment tests", () => {
     )
     .build();
 
-  const postFragmentDef = defineFragment<{}>("post-fragment")
+  const postFragmentDef = defineFragment("post-fragment")
     .extend(withDatabase(postSchema))
     .providesBaseService(({ defineService }) =>
       defineService({
@@ -493,7 +493,7 @@ describe("ExtractFragmentServices", () => {
       doSomethingElse: (input: number) => Promise<number>;
     }
 
-    const fragment = defineFragment<{}>("test-db-fragment")
+    const fragment = defineFragment("test-db-fragment")
       .extend(withDatabase(testSchema))
       .providesService(
         "test",
@@ -515,7 +515,7 @@ describe("ExtractFragmentServices", () => {
   it("merges base services and provided services in database fragment", () => {
     const testSchema = schema("test", (s) => s);
 
-    const fragment = defineFragment<{}>("test-db-fragment")
+    const fragment = defineFragment("test-db-fragment")
       .extend(withDatabase(testSchema))
       .providesBaseService(() => ({
         internalService: async () => "internal",

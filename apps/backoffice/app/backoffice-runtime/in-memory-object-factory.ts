@@ -260,7 +260,7 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
     return namespace.get(namespace.idFromName(encodedName)) as unknown as TRawObject;
   }
 
-  instances(): InMemoryDurableObjectInstance<unknown>[] {
+  instances(): InMemoryDurableObjectInstance[] {
     return Object.values(this.#namespaces).flatMap((namespace) => namespace.instances());
   }
 

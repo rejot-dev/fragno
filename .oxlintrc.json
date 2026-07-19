@@ -56,7 +56,7 @@
     "typescript/no-unnecessary-condition": "off",
     "typescript/no-unnecessary-qualifier": "error",
     "typescript/no-unnecessary-template-expression": "error",
-    "typescript/no-unnecessary-type-arguments": "off",
+    "typescript/no-unnecessary-type-arguments": "error",
     "typescript/no-unnecessary-type-assertion": "off",
     "typescript/no-unnecessary-type-conversion": "error",
     "typescript/no-unnecessary-type-parameters": "error",

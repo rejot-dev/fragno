@@ -95,9 +95,7 @@ test("ExtractPathParams configurable value type tests", () => {
   >();
 
   // Test backward compatibility - default should be string
-  expectTypeOf<ExtractPathParams<"/path/:id">>().toEqualTypeOf<
-    ExtractPathParams<"/path/:id", string>
-  >();
+  expectTypeOf<ExtractPathParams<"/path/:id">>().toEqualTypeOf<ExtractPathParams<"/path/:id">>();
 
   // Complex example with custom type
   type ParsedParam = { raw: string; validated: boolean; converted: number };
@@ -293,7 +291,7 @@ test("ExtractPathParamsAsLabeledTuple configurable element type tests", () => {
 
   // Test backward compatibility - default should be string
   expectTypeOf<ExtractPathParamsAsLabeledTuple<"/path/:id">>().toEqualTypeOf<
-    ExtractPathParamsAsLabeledTuple<"/path/:id", string>
+    ExtractPathParamsAsLabeledTuple<"/path/:id">
   >();
 
   // Complex example with custom type

@@ -1,17 +1,13 @@
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import { getHookScope } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
-import type {
-  DurableHookQueueOptions,
-  DurableHookQueueResponse,
-  DurableHookRepository,
-} from "@/fragno/durable-hooks";
+import type { DurableHookQueueResponse, DurableHookRepository } from "@/fragno/durable-hooks";
 import type {
   DurableHookFragment,
   DurableHooksRuntime,
 } from "@/fragno/runtime-tools/families/automations-durable-hooks";
 
-type FragmentDurableHookRepository = DurableHookRepository<DurableHookQueueOptions>;
+type FragmentDurableHookRepository = DurableHookRepository;
 
 const getDurableHookRepository = async ({
   objects,

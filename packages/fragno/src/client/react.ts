@@ -349,7 +349,7 @@ export function useFragno<T extends Record<string, unknown>>(
         >
       ? FragnoReactMutator<TMethod, TPath, TInput, TOutput, TError, TQueryParameters>
       : T[K] extends FragnoStoreObjectData<infer TStoreObj>
-        ? FragnoReactStore<TStoreObj, []>
+        ? FragnoReactStore<TStoreObj>
         : T[K] extends FragnoStoreFactoryData<infer TStoreObj, infer TStoreArgs>
           ? FragnoReactStore<TStoreObj, TStoreArgs>
           : T[K];

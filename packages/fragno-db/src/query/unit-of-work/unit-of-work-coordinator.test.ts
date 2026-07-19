@@ -21,7 +21,7 @@ function createCompiler(): UOWCompiler<CompiledQuery> {
 }
 
 // Mock executor that tracks execution and works with CompiledQuery
-function createMockExecutor(): UOWExecutor<CompiledQuery, unknown> & {
+function createMockExecutor(): UOWExecutor<CompiledQuery> & {
   getLog: () => string[];
   clearLog: () => void;
 } {
@@ -547,7 +547,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
 
     // Create mock executor that returns account data with low balance
     const executionLog: string[] = [];
-    const customExecutor: UOWExecutor<CompiledQuery, unknown> = {
+    const customExecutor: UOWExecutor<CompiledQuery> = {
       executeRetrievalPhase: async (queries: CompiledQuery[]) => {
         executionLog.push(`RETRIEVAL: ${queries.length} queries`);
         // Return mock account data with balance field set to low value
@@ -782,7 +782,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     );
 
     // Create executor that throws "table does not exist" error
-    const failingExecutor: UOWExecutor<CompiledQuery, unknown> = {
+    const failingExecutor: UOWExecutor<CompiledQuery> = {
       executeRetrievalPhase: async () => {
         throw new Error('relation "settings" does not exist');
       },
@@ -929,7 +929,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     );
 
     // Create executor that returns empty results (no existing record)
-    const customExecutor: UOWExecutor<CompiledQuery, unknown> = {
+    const customExecutor: UOWExecutor<CompiledQuery> = {
       executeRetrievalPhase: async (queries: CompiledQuery[]) => {
         // Return empty array for each query (no existing records)
         return queries.map(() => []);
@@ -1010,7 +1010,7 @@ describe("UOW Coordinator - Parent-Child Execution", () => {
     );
 
     // Create executor that returns empty results (no existing record)
-    const customExecutor: UOWExecutor<CompiledQuery, unknown> = {
+    const customExecutor: UOWExecutor<CompiledQuery> = {
       executeRetrievalPhase: async (queries: CompiledQuery[]) => {
         return queries.map(() => []);
       },

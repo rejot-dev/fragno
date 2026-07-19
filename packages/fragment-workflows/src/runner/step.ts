@@ -441,15 +441,12 @@ export class RunnerStep implements WorkflowStep {
         }));
         emissionScope.enqueueOutgoing(payload);
       },
-      onEvent: (
-        type: string,
-        handler: (event: WorkflowStepEvent<unknown>) => void | Promise<void>,
-      ) => {
+      onEvent: (type: string, handler: (event: WorkflowStepEvent) => void | Promise<void>) => {
         const nextCount = (emissionScope.meta.eventTypeCounts.get(type) ?? 0) + 1;
         emissionScope.meta.eventTypeCounts.set(type, nextCount);
         const unsubscribeDelivery = emissionScope.onDelivery((event) => {
           if (event.type === type) {
-            return handler(event as WorkflowStepEvent<unknown>);
+            return handler(event as WorkflowStepEvent);
           }
         });
         return () => {

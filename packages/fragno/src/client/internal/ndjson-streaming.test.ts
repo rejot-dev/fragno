@@ -463,7 +463,7 @@ describe("handleNdjsonStreaming", () => {
     const mutatorStore = createMutatorStore<
       undefined,
       StandardSchemaV1.InferOutput<typeof _schema>,
-      FragnoClientError<string>
+      FragnoClientError
     >(() => {
       return Promise.resolve([]);
     });

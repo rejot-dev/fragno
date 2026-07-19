@@ -153,14 +153,8 @@ export function definePiWorkflow<
 >;
 export function definePiWorkflow<TName extends string>(
   options: { name: TName; schema?: StandardSchemaV1; outputSchema?: StandardSchemaV1 },
-  run: PiWorkflowRunFn<unknown, unknown>,
-): PiWorkflowDefinition<
-  TName,
-  unknown,
-  unknown,
-  StandardSchemaV1 | undefined,
-  StandardSchemaV1 | undefined
-> {
+  run: PiWorkflowRunFn,
+): PiWorkflowDefinition<TName> {
   return { ...options, run };
 }
 

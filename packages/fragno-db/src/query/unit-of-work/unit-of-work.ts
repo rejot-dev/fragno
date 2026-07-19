@@ -991,8 +991,8 @@ export type UOWInstrumentationFinalizer = {
 
 export function createUnitOfWork(
   compiler: UOWCompiler<unknown>,
-  executor: UOWExecutor<unknown, unknown>,
-  decoder: UOWDecoder<unknown>,
+  executor: UOWExecutor<unknown>,
+  decoder: UOWDecoder,
   schemaNamespaceMap?: WeakMap<AnySchema, string | null>,
   name?: string,
 ): UnitOfWork {

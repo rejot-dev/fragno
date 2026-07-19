@@ -56,7 +56,7 @@ export function collectPiToolCallResults(events: readonly AgentEvent[]): PiToolC
 export function createPiToolCallAccessor(
   toolCalls: readonly PiToolCallResult[],
   tool: string,
-): PiToolCallAccessor<unknown>;
+): PiToolCallAccessor;
 export function createPiToolCallAccessor<TTool extends { name: string }>(
   toolCalls: readonly PiToolCallResult[],
   tool: TTool,

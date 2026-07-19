@@ -7,7 +7,7 @@ import type {
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import type { AutomationExternalEntityDefinition } from "@/fragno/automation/contracts";
-import type { DurableHookQueueOptions, DurableHookRepository } from "@/fragno/durable-hooks";
+import type { DurableHookRepository } from "@/fragno/durable-hooks";
 import { zodSchemaToJsonSchema } from "@/lib/zod/zod-formatter";
 
 import { apiCapability } from "./capabilities/api";
@@ -68,9 +68,7 @@ type BackofficeHookScope = {
   label: string;
   getRepository(
     input: BackofficeCapabilityContext,
-  ):
-    | Promise<DurableHookRepository<DurableHookQueueOptions>>
-    | DurableHookRepository<DurableHookQueueOptions>;
+  ): Promise<DurableHookRepository> | DurableHookRepository;
 };
 
 type BackofficeAutomationEventDescriptor = {

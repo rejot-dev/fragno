@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { cli } from "gunshi";
-import type { Args, Command } from "gunshi";
+import type { Command } from "gunshi";
 
 import { clientCommand } from "./client.js";
 import { scenarioCommand } from "./scenario.js";
@@ -15,10 +15,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJson = JSON.parse(readFileSync(join(__dirname, "../../package.json"), "utf-8"));
 const version = packageJson.version as string;
 
-const subCommands: Map<string, Command<Args>> = new Map();
-subCommands.set("client", clientCommand as Command<Args>);
-subCommands.set("serve", serveCommand as Command<Args>);
-subCommands.set("scenario", scenarioCommand as Command<Args>);
+const subCommands: Map<string, Command> = new Map();
+subCommands.set("client", clientCommand as Command);
+subCommands.set("serve", serveCommand as Command);
+subCommands.set("scenario", scenarioCommand as Command);
 
 const printMainHelp = () => {
   console.log("Fragno Lofi CLI");
@@ -137,7 +137,7 @@ export async function run() {
   }
 
   if (subCommandName.startsWith("-")) {
-    await cli(args, clientCommand as Command<Args>, {
+    await cli(args, clientCommand as Command, {
       name: "fragno-lofi",
       version,
     });

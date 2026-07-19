@@ -333,10 +333,7 @@ type ExtractRoutePathExact<
     infer TMethod,
     infer TPath,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
-    string,
-    RequestThisContext
+    StandardSchemaV1 | undefined
   >
     ? TMethod extends TExpectedMethod
       ? TPath
@@ -355,10 +352,7 @@ type ExtractRoutePathLoose<
     infer _TMethod,
     infer TPath,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
-    string,
-    RequestThisContext
+    StandardSchemaV1 | undefined
   >
     ? TPath
     : never;
@@ -373,10 +367,7 @@ type HasWidenedRouteShape<T extends readonly AnyFragnoRouteConfig[]> =
         infer TMethod,
         infer TPath,
         StandardSchemaV1 | undefined,
-        StandardSchemaV1 | undefined,
-        string,
-        string,
-        RequestThisContext
+        StandardSchemaV1 | undefined
       >
       ? string extends TPath
         ? true
@@ -561,7 +552,7 @@ export type FragnoClientHookData<
     TQueryParameters
   >;
   query(args?: {
-    path?: MaybeExtractPathParamsOrWiden<TPath, string>;
+    path?: MaybeExtractPathParamsOrWiden<TPath>;
     query?: Record<TQueryParameters, string | undefined>;
   }): Promise<StandardSchemaV1.InferOutput<TOutputSchema>>;
   store(args?: {
@@ -596,7 +587,7 @@ export type FragnoClientMutatorData<
 
   mutateQuery(args?: {
     body?: InferOr<TInputSchema, undefined>;
-    path?: MaybeExtractPathParamsOrWiden<TPath, string>;
+    path?: MaybeExtractPathParamsOrWiden<TPath>;
     query?: Record<TQueryParameters, string | undefined>;
   }): Promise<InferOr<TOutputSchema, undefined>>;
 
@@ -632,7 +623,7 @@ export function buildUrl<TPath extends string>(
   const { baseUrl = "", mountRoute, path } = config;
   const { pathParams, queryParams } = params ?? {};
 
-  const normalizedPathParams = unwrapObject(pathParams) as ExtractPathParams<TPath, string>;
+  const normalizedPathParams = unwrapObject(pathParams) as ExtractPathParams<TPath>;
   const normalizedQueryParams = unwrapObject(queryParams) ?? {};
 
   // Filter out undefined values to prevent URLSearchParams from converting them to string "undefined"
@@ -797,12 +788,12 @@ type OnInvalidateFn<TPath extends string> = (
     method: HTTPMethod,
     path: TInnerPath,
     params: {
-      pathParams?: MaybeExtractPathParamsOrWiden<TInnerPath, string>;
+      pathParams?: MaybeExtractPathParamsOrWiden<TInnerPath>;
       queryParams?: Record<string, string>;
     },
   ) => void,
   params: {
-    pathParams: MaybeExtractPathParamsOrWiden<TPath, string>;
+    pathParams: MaybeExtractPathParamsOrWiden<TPath>;
     queryParams?: Record<string, string>;
   },
 ) => void;
@@ -823,9 +814,7 @@ export class ClientBuilder<
     HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
-    string
+    StandardSchemaV1 | undefined
   >[],
   TFragmentConfig extends FragnoFragmentSharedConfig<TRoutes>,
 > {
@@ -878,7 +867,7 @@ export class ClientBuilder<
   buildUrl<TPath extends string>(
     path: TPath,
     params?: {
-      path?: MaybeExtractPathParamsOrWiden<TPath, string>;
+      path?: MaybeExtractPathParamsOrWiden<TPath>;
       query?: Record<string, string>;
     },
   ): string {
@@ -935,16 +924,8 @@ export class ClientBuilder<
     >[number]
   > {
     const route = this.#fragmentConfig.routes.find(
-      (
-        r,
-      ): r is FragnoRouteConfig<
-        "GET",
-        TPath,
-        StandardSchemaV1 | undefined,
-        StandardSchemaV1,
-        string,
-        string
-      > => r.path === path && r.method === "GET" && r.outputSchema !== undefined,
+      (r): r is FragnoRouteConfig<"GET", TPath, StandardSchemaV1 | undefined, StandardSchemaV1> =>
+        r.path === path && r.method === "GET" && r.outputSchema !== undefined,
     );
 
     if (!route) {
@@ -975,9 +956,7 @@ export class ClientBuilder<
         NonGetHTTPMethod,
         TPath,
         TRoute["inputSchema"],
-        TRoute["outputSchema"],
-        string,
-        string
+        TRoute["outputSchema"]
       > => r.method !== "GET" && r.path === path && r.method === method,
     );
 
@@ -1035,7 +1014,7 @@ export class ClientBuilder<
     }): Promise<Response> {
       const { pathParams, queryParams } = params ?? {};
 
-      const normalizedPathParams = unwrapObject(pathParams) as ExtractPathParams<TPath, string>;
+      const normalizedPathParams = unwrapObject(pathParams) as ExtractPathParams<TPath>;
       const normalizedQueryParams = unwrapObject(queryParams) ?? {};
 
       // Filter out undefined values to prevent URLSearchParams from converting them to string "undefined"
@@ -1243,7 +1222,7 @@ export class ClientBuilder<
       query,
     }: {
       body?: InferOr<TInputSchema, undefined>;
-      path?: ExtractPathParamsOrWiden<TPath, string>;
+      path?: ExtractPathParamsOrWiden<TPath>;
       query?: Record<string, string>;
     }): Promise<Response> {
       if (typeof window === "undefined" && !useFetcherOnServer) {
@@ -1253,7 +1232,7 @@ export class ClientBuilder<
               inputSchema: route.inputSchema,
               method,
               path: route.path,
-              pathParams: (path ?? {}) as ExtractPathParams<TPath, string>,
+              pathParams: (path ?? {}) as ExtractPathParams<TPath>,
               searchParams: new URLSearchParams(query),
               body,
             }),
@@ -1317,7 +1296,7 @@ export class ClientBuilder<
 
         const { body, path, query } = data as {
           body?: InferOr<TInputSchema, undefined>;
-          path?: ExtractPathParamsOrWiden<TPath, string>;
+          path?: ExtractPathParamsOrWiden<TPath>;
           query?: Record<string, string>;
         };
 
@@ -1326,7 +1305,7 @@ export class ClientBuilder<
         const response = await executeMutateQuery({ body, path, query });
 
         onInvalidate(this.#invalidate.bind(this), {
-          pathParams: (path ?? {}) as MaybeExtractPathParamsOrWiden<TPath, string>,
+          pathParams: (path ?? {}) as MaybeExtractPathParamsOrWiden<TPath>,
           queryParams: query,
         });
 
@@ -1386,7 +1365,7 @@ export class ClientBuilder<
       // TypeScript infers the fields to not exist, even though they might
       const { body, path, query } = data as {
         body?: InferOr<TInputSchema, undefined>;
-        path?: ExtractPathParamsOrWiden<TPath, string>;
+        path?: ExtractPathParamsOrWiden<TPath>;
         query?: Record<string, string>;
       };
 
@@ -1436,7 +1415,7 @@ export class ClientBuilder<
     method: HTTPMethod,
     path: TPath,
     params: {
-      pathParams?: MaybeExtractPathParamsOrWiden<TPath, string>;
+      pathParams?: MaybeExtractPathParamsOrWiden<TPath>;
       queryParams?: Record<string, string>;
     },
   ) {

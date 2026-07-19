@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { cli, define } from "gunshi";
-import type { Args, Command } from "gunshi";
+import type { Command } from "gunshi";
 
 import { installationsCommand, installationsSubCommands } from "./commands/installations.js";
 import { pullsCommand, pullsSubCommands } from "./commands/pulls.js";
@@ -167,7 +167,7 @@ export async function run() {
       return;
     }
 
-    await cli(args.slice(1), serveCommand as Command<Args>, {
+    await cli(args.slice(1), serveCommand as Command, {
       name: "fragno-github-app serve",
       version,
     });
@@ -193,7 +193,7 @@ export async function run() {
       process.exit(1);
     }
 
-    await cli(args.slice(2), subCommand as Command<Args>, {
+    await cli(args.slice(2), subCommand as Command, {
       name: `fragno-github-app installations ${subCommandName}`,
       version,
     });
@@ -219,7 +219,7 @@ export async function run() {
       process.exit(1);
     }
 
-    await cli(args.slice(2), subCommand as Command<Args>, {
+    await cli(args.slice(2), subCommand as Command, {
       name: `fragno-github-app repositories ${subCommandName}`,
       version,
     });
@@ -245,7 +245,7 @@ export async function run() {
       process.exit(1);
     }
 
-    await cli(args.slice(2), subCommand as Command<Args>, {
+    await cli(args.slice(2), subCommand as Command, {
       name: `fragno-github-app pulls ${subCommandName}`,
       version,
     });
@@ -271,7 +271,7 @@ export async function run() {
       process.exit(1);
     }
 
-    await cli(args.slice(2), subCommand as Command<Args>, {
+    await cli(args.slice(2), subCommand as Command, {
       name: `fragno-github-app webhooks ${subCommandName}`,
       version,
     });
@@ -279,15 +279,15 @@ export async function run() {
   }
 
   if (args[0].startsWith("-")) {
-    await cli(args, mainCommand as Command<Args>, {
+    await cli(args, mainCommand as Command, {
       name: "fragno-github-app",
       version,
       subCommands: new Map([
-        ["serve", serveCommand as Command<Args>],
-        ["installations", installationsCommand as Command<Args>],
-        ["repositories", repositoriesCommand as Command<Args>],
-        ["pulls", pullsCommand as Command<Args>],
-        ["webhooks", webhooksCommand as Command<Args>],
+        ["serve", serveCommand as Command],
+        ["installations", installationsCommand as Command],
+        ["repositories", repositoriesCommand as Command],
+        ["pulls", pullsCommand as Command],
+        ["webhooks", webhooksCommand as Command],
       ]),
     });
     return;

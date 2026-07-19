@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { cli, define } from "gunshi";
-import type { Args, Command } from "gunshi";
+import type { Command } from "gunshi";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJsonPath = existsSync(join(__dirname, "../../package.json"))
@@ -248,11 +248,11 @@ const sessionsSendEventCommand = define({
   },
 });
 
-const sessionsSubCommands: Map<string, Command<Args>> = new Map();
-sessionsSubCommands.set("list", sessionsListCommand as Command<Args>);
-sessionsSubCommands.set("create", sessionsCreateCommand as Command<Args>);
-sessionsSubCommands.set("get", sessionsGetCommand as Command<Args>);
-sessionsSubCommands.set("send-event", sessionsSendEventCommand as Command<Args>);
+const sessionsSubCommands: Map<string, Command> = new Map();
+sessionsSubCommands.set("list", sessionsListCommand as Command);
+sessionsSubCommands.set("create", sessionsCreateCommand as Command);
+sessionsSubCommands.set("get", sessionsGetCommand as Command);
+sessionsSubCommands.set("send-event", sessionsSendEventCommand as Command);
 
 const printMainHelp = () => {
   console.log("Workflow usage fragment CLI");

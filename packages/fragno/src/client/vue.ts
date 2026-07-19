@@ -265,7 +265,7 @@ export function useFragno<T extends Record<string, unknown>>(
         >
       ? FragnoVueMutator<M, TPath, TInputSchema, TOutputSchema, TErrorCode, TQueryParameters>
       : T[K] extends FragnoStoreObjectData<infer TStoreObj>
-        ? FragnoVueStore<TStoreObj, []>
+        ? FragnoVueStore<TStoreObj>
         : T[K] extends FragnoStoreFactoryData<infer TStoreObj, infer TStoreArgs>
           ? FragnoVueStore<TStoreObj, TStoreArgs>
           : T[K];

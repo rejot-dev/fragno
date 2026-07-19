@@ -71,7 +71,7 @@ class WorkflowStepTxTarget extends RpcTarget {
     workflowServiceCalls(() => operations);
   }
 
-  onEvent(type: string, handler: (event: WorkflowStepEvent<unknown>) => void | Promise<void>) {
+  onEvent(type: string, handler: (event: WorkflowStepEvent) => void | Promise<void>) {
     const onEvent = (this.#tx as Partial<WorkflowStepTx>).onEvent;
     if (!onEvent) {
       return unsupportedRemoteTxFeature("ON_EVENT");

@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { cli, define } from "gunshi";
-import type { Args, Command } from "gunshi";
+import type { Command } from "gunshi";
 
 import { filesDeleteCommand } from "./commands/files/delete.js";
 import { filesDownloadUrlCommand } from "./commands/files/download-url.js";
@@ -39,26 +39,26 @@ export const filesCommand = define({
   description: "File commands",
 });
 
-const uploadsSubCommands: Map<string, Command<Args>> = new Map();
-uploadsSubCommands.set("create", uploadsCreateCommand as Command<Args>);
-uploadsSubCommands.set("get", uploadsGetCommand as Command<Args>);
-uploadsSubCommands.set("progress", uploadsProgressCommand as Command<Args>);
-uploadsSubCommands.set("parts-urls", uploadsPartsUrlsCommand as Command<Args>);
-uploadsSubCommands.set("parts-list", uploadsPartsListCommand as Command<Args>);
-uploadsSubCommands.set("parts-complete", uploadsPartsCompleteCommand as Command<Args>);
-uploadsSubCommands.set("complete", uploadsCompleteCommand as Command<Args>);
-uploadsSubCommands.set("abort", uploadsAbortCommand as Command<Args>);
-uploadsSubCommands.set("content", uploadsContentCommand as Command<Args>);
-uploadsSubCommands.set("transfer", uploadsTransferCommand as Command<Args>);
+const uploadsSubCommands: Map<string, Command> = new Map();
+uploadsSubCommands.set("create", uploadsCreateCommand as Command);
+uploadsSubCommands.set("get", uploadsGetCommand as Command);
+uploadsSubCommands.set("progress", uploadsProgressCommand as Command);
+uploadsSubCommands.set("parts-urls", uploadsPartsUrlsCommand as Command);
+uploadsSubCommands.set("parts-list", uploadsPartsListCommand as Command);
+uploadsSubCommands.set("parts-complete", uploadsPartsCompleteCommand as Command);
+uploadsSubCommands.set("complete", uploadsCompleteCommand as Command);
+uploadsSubCommands.set("abort", uploadsAbortCommand as Command);
+uploadsSubCommands.set("content", uploadsContentCommand as Command);
+uploadsSubCommands.set("transfer", uploadsTransferCommand as Command);
 
-const filesSubCommands: Map<string, Command<Args>> = new Map();
-filesSubCommands.set("upload", filesUploadCommand as Command<Args>);
-filesSubCommands.set("list", filesListCommand as Command<Args>);
-filesSubCommands.set("get", filesGetCommand as Command<Args>);
-filesSubCommands.set("update", filesUpdateCommand as Command<Args>);
-filesSubCommands.set("delete", filesDeleteCommand as Command<Args>);
-filesSubCommands.set("download-url", filesDownloadUrlCommand as Command<Args>);
-filesSubCommands.set("download", filesDownloadCommand as Command<Args>);
+const filesSubCommands: Map<string, Command> = new Map();
+filesSubCommands.set("upload", filesUploadCommand as Command);
+filesSubCommands.set("list", filesListCommand as Command);
+filesSubCommands.set("get", filesGetCommand as Command);
+filesSubCommands.set("update", filesUpdateCommand as Command);
+filesSubCommands.set("delete", filesDeleteCommand as Command);
+filesSubCommands.set("download-url", filesDownloadUrlCommand as Command);
+filesSubCommands.set("download", filesDownloadCommand as Command);
 
 const printMainHelp = () => {
   console.log("Upload management CLI for Fragno");

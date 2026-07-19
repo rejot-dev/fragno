@@ -449,8 +449,7 @@ describe("FragmentDefinitionBuilder", () => {
         {},
         {},
         RequestThisContext,
-        RequestThisContext,
-        {}
+        RequestThisContext
       >
         ? true
         : false = true;

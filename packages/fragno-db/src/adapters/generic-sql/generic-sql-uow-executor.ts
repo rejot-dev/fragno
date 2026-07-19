@@ -200,7 +200,7 @@ export function createExecutor(
   adapter: SqlDriverAdapter,
   driverConfig: DriverConfig,
   options: ExecutorOptions,
-): UOWExecutor<CompiledQuery, unknown> {
+): UOWExecutor<CompiledQuery> {
   const dryRun = options.dryRun ?? false;
 
   return {

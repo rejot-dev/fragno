@@ -439,7 +439,7 @@ export const createLocalHandlerTx = <TContext>(
     },
   };
 
-  const executor: UOWExecutor<LocalCompiledOperation, unknown> = {
+  const executor: UOWExecutor<LocalCompiledOperation> = {
     async executeRetrievalPhase(retrievalBatch: LocalCompiledOperation[]): Promise<unknown[]> {
       const results: unknown[] = [];
 
@@ -511,7 +511,7 @@ export const createLocalHandlerTx = <TContext>(
     },
   };
 
-  const decoder: UOWDecoder<unknown> = {
+  const decoder: UOWDecoder = {
     decode(rawResults) {
       return rawResults;
     },

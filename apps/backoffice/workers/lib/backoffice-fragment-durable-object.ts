@@ -379,7 +379,7 @@ export function createBackofficeFragmentDurableObject<
   };
 
   const loadStored = async () => {
-    const raw = await options.state.storage.get<unknown>(configKey);
+    const raw = await options.state.storage.get(configKey);
     if (raw === undefined || raw === null) {
       return null;
     }

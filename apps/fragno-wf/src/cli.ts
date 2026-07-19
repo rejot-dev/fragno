@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { cli, define } from "gunshi";
-import type { Args, Command } from "gunshi";
+import type { Command } from "gunshi";
 
 import { instancesCreateCommand } from "./commands/instances/create.js";
 import { instancesGetCommand } from "./commands/instances/get.js";
@@ -30,27 +30,27 @@ export const instancesCommand = define({
   description: "Workflow instance commands",
 });
 
-const workflowsSubCommands: Map<string, Command<Args>> = new Map();
-workflowsSubCommands.set("list", workflowsListCommand as Command<Args>);
+const workflowsSubCommands: Map<string, Command> = new Map();
+workflowsSubCommands.set("list", workflowsListCommand as Command);
 
-const instancesSubCommands: Map<string, Command<Args>> = new Map();
-instancesSubCommands.set("list", instancesListCommand as Command<Args>);
-instancesSubCommands.set("get", instancesGetCommand as Command<Args>);
-instancesSubCommands.set("history", instancesHistoryCommand as Command<Args>);
-instancesSubCommands.set("logs", instancesLogsCommand as Command<Args>);
-instancesSubCommands.set("create", instancesCreateCommand as Command<Args>);
-instancesSubCommands.set("send-event", instancesSendEventCommand as Command<Args>);
+const instancesSubCommands: Map<string, Command> = new Map();
+instancesSubCommands.set("list", instancesListCommand as Command);
+instancesSubCommands.set("get", instancesGetCommand as Command);
+instancesSubCommands.set("history", instancesHistoryCommand as Command);
+instancesSubCommands.set("logs", instancesLogsCommand as Command);
+instancesSubCommands.set("create", instancesCreateCommand as Command);
+instancesSubCommands.set("send-event", instancesSendEventCommand as Command);
 instancesSubCommands.set(
   "pause",
-  createManageCommand("pause", "Pause a workflow instance") as Command<Args>,
+  createManageCommand("pause", "Pause a workflow instance") as Command,
 );
 instancesSubCommands.set(
   "resume",
-  createManageCommand("resume", "Resume a workflow instance") as Command<Args>,
+  createManageCommand("resume", "Resume a workflow instance") as Command,
 );
 instancesSubCommands.set(
   "terminate",
-  createManageCommand("terminate", "Terminate a workflow instance") as Command<Args>,
+  createManageCommand("terminate", "Terminate a workflow instance") as Command,
 );
 
 const printMainHelp = () => {

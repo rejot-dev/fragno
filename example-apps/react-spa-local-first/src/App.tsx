@@ -2365,7 +2365,7 @@ function renderInlineCell(key: string, value: unknown) {
 }
 
 function stableStringify(value: unknown): string {
-  const seen = new WeakSet<object>();
+  const seen = new WeakSet();
   try {
     return (
       JSON.stringify(value, (_key, val) => {

@@ -574,7 +574,7 @@ const formatFollowEvent = (event: unknown, index: number): string => {
 
 const FOLLOW_RECONNECT_DELAY_MS = 500;
 
-async function* readNdjson(response: Response): AsyncGenerator<unknown> {
+async function* readNdjson(response: Response): AsyncGenerator {
   if (!response.body) {
     throw new Error("Streaming response has no body.");
   }

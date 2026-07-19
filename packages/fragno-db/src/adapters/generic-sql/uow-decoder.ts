@@ -14,7 +14,7 @@ import type { SQLiteStorageMode } from "./sqlite-storage";
  * Transforms raw database results into application format (e.g., converting raw columns
  * into FragnoId objects with external ID, internal ID, and version).
  */
-export class UnitOfWorkDecoder implements UOWDecoder<unknown> {
+export class UnitOfWorkDecoder implements UOWDecoder {
   readonly #driverConfig: DriverConfig;
   readonly #sqliteStorageMode?: SQLiteStorageMode;
   readonly #resolver?: NamingResolver;

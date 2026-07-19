@@ -92,15 +92,7 @@ type HooksFactoryContext<TConfig> = {
 
 type AnyHttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS";
 
-type AnyFragnoRouteConfig = FragnoRouteConfig<
-  AnyHttpMethod,
-  string,
-  undefined,
-  undefined,
-  string,
-  string,
-  RequestThisContext
->;
+type AnyFragnoRouteConfig = FragnoRouteConfig<AnyHttpMethod, string, undefined, undefined>;
 
 /**
  * Extended FragnoPublicConfig for database fragments.
@@ -267,7 +259,7 @@ export type DatabaseFragmentContext = {
 
 type DatabaseFragmentContextInternal<TSchema extends AnySchema> = DatabaseFragmentContext & {
   namespace: string | null;
-  createUnitOfWork: (name?: string) => TypedUnitOfWork<TSchema, [], unknown>;
+  createUnitOfWork: (name?: string) => TypedUnitOfWork<TSchema>;
   createBaseUnitOfWork: (name?: string) => IUnitOfWork;
 };
 

@@ -97,7 +97,7 @@ export type WorkflowStepTx<THooks extends HooksMap = HooksMap> = WorkflowStepCon
    * Observe durable workflow events of an exact type while this step is active.
    * Handlers may replay on retry; event.consume() commits only when this step completes.
    */
-  onEvent: (type: string, handler: WorkflowStepEventHandler<unknown>) => () => void;
+  onEvent: (type: string, handler: WorkflowStepEventHandler) => () => void;
 };
 
 /** Execution helpers that provide replay-safe step semantics. */
@@ -130,7 +130,7 @@ export type InstanceStatusWithOutput<TOutput = unknown> = {
   output?: TOutput;
 };
 
-export type InstanceStatus = InstanceStatusWithOutput<unknown>;
+export type InstanceStatus = InstanceStatusWithOutput;
 
 /** Summary of the latest step execution for an instance run. */
 export type WorkflowInstanceCurrentStep = {
@@ -334,7 +334,7 @@ export function defineRemoteWorkflow<TName extends string>(
     schema?: StandardSchemaV1;
     outputSchema?: StandardSchemaV1;
   },
-  run: RemoteWorkflowRunFn<unknown, unknown>,
+  run: RemoteWorkflowRunFn,
 ): WorkflowDefinition<
   unknown,
   unknown,

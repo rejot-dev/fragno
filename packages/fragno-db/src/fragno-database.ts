@@ -60,7 +60,7 @@ export class FragnoDatabase<const T extends AnySchema, TUOWConfig = void> {
     return this.#adapter;
   }
 
-  createUnitOfWork = (name?: string, config?: TUOWConfig): TypedUnitOfWork<T, [], unknown> => {
+  createUnitOfWork = (name?: string, config?: TUOWConfig): TypedUnitOfWork<T> => {
     return this.#adapter.createUnitOfWork(this.#schema, this.#namespace, name, config);
   };
 
