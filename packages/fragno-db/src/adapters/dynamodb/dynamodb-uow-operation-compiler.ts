@@ -1,3 +1,4 @@
+import { type SqlNamingStrategy, suffixNamingStrategy } from "../../naming/sql-naming";
 import {
   buildCondition,
   type Condition,
@@ -88,6 +89,7 @@ export interface DynamoDBCheckPlan extends DynamoDBPlanBase {
 
 export interface DynamoDBOperationCompilerOptions {
   tablePrefix?: string;
+  namingStrategy?: SqlNamingStrategy;
 }
 
 function normalizeSelectedColumns(select: true | readonly string[] | undefined): true | string[] {
@@ -99,10 +101,12 @@ function normalizeSelectedColumns(select: true | readonly string[] | undefined):
 
 export class DynamoDBUOWOperationCompiler extends UOWOperationCompiler<DynamoDBCommandPlan> {
   readonly #tablePrefix?: string;
+  readonly #namingStrategy: SqlNamingStrategy;
 
   constructor(options: DynamoDBOperationCompilerOptions = {}) {
     super(new SQLocalDriverConfig());
     this.#tablePrefix = options.tablePrefix;
+    this.#namingStrategy = options.namingStrategy ?? suffixNamingStrategy;
   }
 
   override compileCount(
@@ -234,6 +238,7 @@ export class DynamoDBUOWOperationCompiler extends UOWOperationCompiler<DynamoDBC
       schema,
       namespace: namespace ?? null,
       tablePrefix: this.#tablePrefix,
+      namingStrategy: this.#namingStrategy,
     });
     return {
       kind: "find",

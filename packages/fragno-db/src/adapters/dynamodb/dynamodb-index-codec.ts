@@ -58,7 +58,7 @@ export function encodeDynamoDBIndexValue(
   column: AnyColumn,
   mode: DynamoDBIndexEncodingMode = "ordering",
 ): string {
-  const resolved = resolveIndexValue(value);
+  const resolved = resolveIndexValue(value, column);
   if (resolved === null || resolved === undefined) {
     return "0";
   }
@@ -169,12 +169,12 @@ export function assertDynamoDBIndexRangeSupported(column: AnyColumn): void {
   }
 }
 
-function resolveIndexValue(value: unknown): unknown {
+function resolveIndexValue(value: unknown, column: AnyColumn): unknown {
   if (value instanceof FragnoReference) {
     return value.internalId;
   }
   if (value instanceof FragnoId) {
-    return value.databaseId;
+    return column.role === "external-id" ? value.externalId : value.databaseId;
   }
   return value;
 }

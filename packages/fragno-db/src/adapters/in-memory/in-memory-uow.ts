@@ -16,9 +16,9 @@ import {
 import { buildOutboxPlan, finalizeOutboxPayload } from "../../outbox/outbox-builder";
 import { buildCondition } from "../../query/condition-builder";
 import {
+  Cursor,
   createCursorFromRecord,
   decodeCursor,
-  type Cursor,
   type CursorResult,
 } from "../../query/cursor";
 import { getDbNowOffsetMs, isDbNow } from "../../query/db-now";
@@ -616,6 +616,8 @@ const buildCursorKey = (
   cursor: CursorInput,
   table: AnyTable,
   columnNames: readonly string[],
+  includeExternalIdTiebreaker: boolean,
+  tiebreakerFallback: unknown,
   resolver?: NamingResolver,
 ): readonly unknown[] | undefined => {
   if (!cursor) {
@@ -626,7 +628,7 @@ const buildCursorKey = (
 
   const columnMap = resolver ? resolver.getColumnNameMap(table) : undefined;
 
-  return columnNames.map((columnName) => {
+  const key = columnNames.map((columnName) => {
     const logicalName = columnMap?.[columnName] ?? columnName;
     const column = table.columns[logicalName];
     if (!column) {
@@ -641,6 +643,19 @@ const buildCursorKey = (
     const deserialized = cursorSerializer.deserialize(rawValue, column);
     return normalizeIndexValue(deserialized, column);
   });
+
+  if (includeExternalIdTiebreaker) {
+    const idColumn = table.getIdColumn();
+    const externalId = cursorObj.indexValues["__fragnoExternalId"];
+    key.push(
+      normalizeIndexValue(
+        typeof externalId === "string" ? externalId : tiebreakerFallback,
+        idColumn,
+      ),
+    );
+  }
+
+  return key;
 };
 
 const findRows = (
@@ -658,16 +673,25 @@ const findRows = (
     throw new Error(`Missing in-memory index "${orderIndexName}" on table "${table.name}".`);
   }
   const direction = orderByIndex?.direction ?? "asc";
+  const idColumnName = resolver
+    ? resolver.getColumnName(table.name, table.getIdColumn().name)
+    : table.getIdColumn().name;
+  const includeExternalIdTiebreaker =
+    !orderIndex.definition.unique && !orderIndex.definition.columnNames.includes(idColumnName);
   const afterKey = buildCursorKey(
     op.options.after,
     table,
     orderIndex.definition.columnNames,
+    includeExternalIdTiebreaker,
+    direction === "asc" ? "\uffff" : undefined,
     resolver,
   );
   const beforeKey = buildCursorKey(
     op.options.before,
     table,
     orderIndex.definition.columnNames,
+    includeExternalIdTiebreaker,
+    direction === "asc" ? undefined : "\uffff",
     resolver,
   );
   const limit =
@@ -1576,6 +1600,17 @@ export const createInMemoryUowExecutor = (
   },
 });
 
+function getDecodedRowExternalId(row: Record<string, unknown>, table: AnyTable): string {
+  const value = row[table.getIdColumn().name];
+  if (value instanceof FragnoId) {
+    return value.externalId;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  throw new Error(`In-memory cursor row for ${table.name} is missing external ID.`);
+}
+
 export class InMemoryUowDecoder implements UOWDecoder<InMemoryRawResult> {
   readonly #resolverFactory?: ResolverFactory;
 
@@ -1771,10 +1806,19 @@ export class InMemoryUowDecoder implements UOWDecoder<InMemoryRawResult> {
         }
 
         if (indexColumns && lastItem) {
-          cursor = createCursorFromRecord(lastItem, indexColumns, {
+          const baseCursor = createCursorFromRecord(lastItem, indexColumns, {
             indexName: operation.options.orderByIndex.indexName,
             orderDirection: operation.options.orderByIndex.direction,
             pageSize: operation.options.pageSize,
+          });
+          cursor = new Cursor({
+            indexName: baseCursor.indexName,
+            orderDirection: baseCursor.orderDirection,
+            pageSize: baseCursor.pageSize,
+            indexValues: {
+              ...baseCursor.indexValues,
+              __fragnoExternalId: getDecodedRowExternalId(lastItem, table),
+            },
           });
         }
       }

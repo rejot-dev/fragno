@@ -3,6 +3,7 @@ import type { CompiledQuery } from "kysely";
 import type { NamingResolver } from "../../../naming/sql-naming";
 import { buildCondition } from "../../../query/condition-builder";
 import type { Condition } from "../../../query/condition-builder";
+import { decodeCursor, type Cursor } from "../../../query/cursor";
 import { buildFindOptions } from "../../../query/find-options";
 import type { AnySelectClause } from "../../../query/mod";
 import type {
@@ -10,7 +11,7 @@ import type {
   MutationOperation,
   CompiledMutation,
 } from "../../../query/unit-of-work/unit-of-work";
-import type { AnyColumn, AnySchema } from "../../../schema/create";
+import type { AnyColumn, AnySchema, AnyTable } from "../../../schema/create";
 import { UOWOperationCompiler } from "../../shared/uow-operation-compiler";
 import type { DriverConfig } from "../driver-config";
 import { createColdKysely } from "../migration/cold-kysely";
@@ -26,6 +27,34 @@ import { SQLQueryCompiler } from "./sql-query-compiler";
  * Uses SQLQueryCompiler for dialect-specific SQL generation while handling
  * high-level business logic like cursor pagination, version checking, and index resolution.
  */
+function getStableIndexColumns(table: AnyTable, index: AnyTable["indexes"][string]): AnyColumn[] {
+  if (index.unique) {
+    return [...index.columns];
+  }
+
+  const idColumn = table.getIdColumn();
+  if (index.columnNames.includes(idColumn.name)) {
+    return [...index.columns];
+  }
+
+  return [...index.columns, idColumn];
+}
+
+function cursorHasValuesForColumns(
+  cursor: string | Cursor | undefined,
+  columns: readonly AnyColumn[],
+): boolean {
+  return columns.every((column) => cursorHasValueForColumn(cursor, column));
+}
+
+function cursorHasValueForColumn(cursor: string | Cursor | undefined, column: AnyColumn): boolean {
+  if (!cursor) {
+    return false;
+  }
+  const cursorObj = typeof cursor === "string" ? decodeCursor(cursor) : cursor;
+  return Object.prototype.hasOwnProperty.call(cursorObj.indexValues, column.name);
+}
+
 export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<CompiledQuery> {
   private readonly sqliteStorageMode?: SQLiteStorageMode;
 
@@ -134,8 +163,10 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
           );
         }
       } else {
-        // Order by all columns in the index with the specified direction
-        indexColumns = index.columns;
+        // Order by all columns in the index with the specified direction. For non-unique indexes,
+        // append the external ID as a deterministic tiebreaker so keyset pagination cannot skip
+        // rows that share the same indexed value.
+        indexColumns = getStableIndexColumns(op.table, index);
       }
     }
 
@@ -145,10 +176,15 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       orderBy = indexColumns.map((col) => [col, orderDirection]);
     }
 
+    const cursorInput = after || before;
+    const cursorColumns = cursorHasValuesForColumns(cursorInput, indexColumns)
+      ? indexColumns
+      : indexColumns.filter((column) => cursorHasValueForColumn(cursorInput, column));
+
     // Handle cursor pagination - build a cursor condition (supports multi-column lexicographic compare)
     const cursorCondition = buildCursorCondition(
-      after || before,
-      indexColumns,
+      cursorInput,
+      cursorColumns,
       orderDirection,
       !!after,
       this.driverConfig,

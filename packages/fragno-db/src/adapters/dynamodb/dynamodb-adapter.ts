@@ -156,7 +156,10 @@ export class DynamoDBAdapter implements DatabaseAdapter<DynamoDBUnitOfWorkConfig
     config?: DynamoDBUnitOfWorkConfig,
   ): ReturnType<FragnoDatabase<AnySchema, DynamoDBUnitOfWorkConfig>["createBaseUnitOfWork"]> {
     const compiler = createUOWCompilerFromOperationCompiler(
-      new DynamoDBUOWOperationCompiler({ tablePrefix: this.tablePrefix }),
+      new DynamoDBUOWOperationCompiler({
+        tablePrefix: this.tablePrefix,
+        namingStrategy: this.namingStrategy,
+      }),
     );
     const mergedConfig = { ...this.uowConfig, ...config };
     const settingsTableName = createDynamoDBLayout({

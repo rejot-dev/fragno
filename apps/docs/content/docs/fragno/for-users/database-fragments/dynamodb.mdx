@@ -1,0 +1,99 @@
+---
+title: DynamoDB Adapter
+description: Configure Fragno DB with AWS DynamoDB
+---
+
+Fragno DB includes a DynamoDB adapter at `@fragno-dev/db/adapters/dynamodb`. It preserves Fragno's
+Unit of Work API by storing rows in DynamoDB tables and maintaining Fragno indexes in sidecar index
+tables.
+
+## Install
+
+```bash
+npm install @fragno-dev/db @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
+```
+
+The AWS SDK packages are only needed when you use the DynamoDB adapter.
+
+## Adapter setup
+
+Pass a configured `DynamoDBDocumentClient` to the adapter. AWS credentials, region, endpoint, and
+retry settings are owned by the AWS SDK client.
+
+```ts title="lib/database-adapter.ts"
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBAdapter } from "@fragno-dev/db/adapters/dynamodb";
+
+const client = DynamoDBDocumentClient.from(
+  new DynamoDBClient({
+    region: process.env.AWS_REGION ?? "us-east-1",
+  }),
+);
+
+export const fragmentDbAdapter = new DynamoDBAdapter({
+  client,
+  tablePrefix: "fragno",
+});
+```
+
+For DynamoDB Local, configure the AWS SDK client endpoint:
+
+```ts
+const client = DynamoDBDocumentClient.from(
+  new DynamoDBClient({
+    endpoint: "http://localhost:8000",
+    region: "us-east-1",
+    credentials: {
+      accessKeyId: "local",
+      secretAccessKey: "local",
+    },
+  }),
+);
+```
+
+## Migrations
+
+Run Fragno migrations before using a schema. The DynamoDB migration step creates the shared settings
+table, one base table per Fragno table, and one sidecar index table per Fragno table. Re-running it
+is idempotent.
+
+```ts
+await fragmentDbAdapter.prepareMigrations(commentSchema, "comments").execute(0);
+```
+
+When you add an index to an existing schema, the migration backfills sidecar index rows from the
+base table.
+
+## DynamoDB-specific behavior
+
+- Each Fragno table maps to a base table and an index sidecar table.
+- Fragno indexes are maintained transactionally as sidecar rows, not DynamoDB GSIs.
+- `consistentRead` defaults to `true`.
+- DynamoDB transaction limits apply: 100 actions and 4 MB per transaction.
+- DynamoDB item limits apply: 400 KB per item.
+- Unbounded index scans are rejected by default. Set `allowScans: true` only for bounded/local use
+  cases where you understand the cost.
+- Filtered reads are bounded by `maxFilteredReadPages`.
+
+```ts
+export const fragmentDbAdapter = new DynamoDBAdapter({
+  client,
+  maxFilteredReadPages: 5,
+  allowScans: false,
+});
+```
+
+## Observability
+
+Use `uowConfig.onCommand` to inspect adapter command plans in tests or debug logs without depending
+on AWS SDK command internals.
+
+```ts
+const adapter = new DynamoDBAdapter({
+  client,
+  uowConfig: {
+    onCommand: (plan) => console.debug(plan),
+  },
+});
+```

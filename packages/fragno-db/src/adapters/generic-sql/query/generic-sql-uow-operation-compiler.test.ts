@@ -807,7 +807,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" order by "users"."name" asc"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" order by "users"."name" asc, "users"."id" asc"`,
       );
     });
 
@@ -830,7 +830,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."age" > ? order by "users"."age" desc limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."age" > ? order by "users"."age" desc, "users"."id" desc limit ?"`,
       );
     });
   });
@@ -861,7 +861,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."name" > ? order by "users"."name" asc limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."name" > ? order by "users"."name" asc, "users"."id" asc limit ?"`,
       );
       expect(result!.parameters).toEqual(["Alice", 10]);
     });
@@ -891,7 +891,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."name" > ? order by "users"."name" desc limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."name" > ? order by "users"."name" desc, "users"."id" desc limit ?"`,
       );
       expect(result!.parameters).toEqual(["Bob", 10]);
     });
@@ -922,7 +922,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."isActive" = ? and "users"."name" > ?) order by "users"."name" asc limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."isActive" = ? and "users"."name" > ?) order by "users"."name" asc, "users"."id" asc limit ?"`,
       );
       expect(result!.parameters).toEqual([1, "Alice", 5]);
     });
@@ -1655,7 +1655,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select \`users\`.\`id\` as \`id\`, \`users\`.\`name\` as \`name\`, \`users\`.\`_internalId\` as \`_internalId\`, \`users\`.\`_version\` as \`_version\` from \`users\` where \`users\`.\`name\` > ? order by \`users\`.\`name\` asc limit ?"`,
+        `"select \`users\`.\`id\` as \`id\`, \`users\`.\`name\` as \`name\`, \`users\`.\`_internalId\` as \`_internalId\`, \`users\`.\`_version\` as \`_version\` from \`users\` where \`users\`.\`name\` > ? order by \`users\`.\`name\` asc, \`users\`.\`id\` asc limit ?"`,
       );
     });
 

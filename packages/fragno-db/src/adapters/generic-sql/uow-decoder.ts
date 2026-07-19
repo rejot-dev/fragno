@@ -156,7 +156,7 @@ export class UnitOfWorkDecoder implements UOWDecoder<unknown> {
         } else {
           const index = table.indexes[indexName];
           if (index) {
-            indexColumns = index.columns;
+            indexColumns = getStableIndexColumns(table, index);
           }
         }
 
@@ -176,4 +176,20 @@ export class UnitOfWorkDecoder implements UOWDecoder<unknown> {
       hasNextPage,
     };
   }
+}
+
+function getStableIndexColumns(
+  table: AnyTable,
+  index: AnyTable["indexes"][string],
+): AnyTable["columns"][string][] {
+  if (index.unique) {
+    return [...index.columns];
+  }
+
+  const idColumn = table.getIdColumn();
+  if (index.columnNames.includes(idColumn.name)) {
+    return [...index.columns];
+  }
+
+  return [...index.columns, idColumn];
 }

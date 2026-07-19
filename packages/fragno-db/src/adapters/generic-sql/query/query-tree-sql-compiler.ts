@@ -3,6 +3,7 @@ import { sql } from "kysely";
 
 import type { NamingResolver } from "../../../naming/sql-naming";
 import type { Condition } from "../../../query/condition-builder";
+import { decodeCursor, type Cursor } from "../../../query/cursor";
 import type {
   CompiledQueryTreeChildNode,
   CompiledQueryTreeRootNode,
@@ -21,6 +22,21 @@ type AnyKysely = Kysely<any>;
 type AnySelectQueryBuilder<O = any> = SelectQueryBuilder<any, any, O>;
 
 const CHILD_JSON_COLUMN_ALIAS = "_fragno_item";
+
+function cursorHasValuesForColumns(
+  cursor: string | Cursor | undefined,
+  columns: readonly AnyColumn[],
+): boolean {
+  return columns.every((column) => cursorHasValueForColumn(cursor, column));
+}
+
+function cursorHasValueForColumn(cursor: string | Cursor | undefined, column: AnyColumn): boolean {
+  if (!cursor) {
+    return false;
+  }
+  const cursorObj = typeof cursor === "string" ? decodeCursor(cursor) : cursor;
+  return Object.prototype.hasOwnProperty.call(cursorObj.indexValues, column.name);
+}
 
 export class QueryTreeSQLCompiler {
   readonly #db: AnyKysely;
@@ -50,11 +66,15 @@ export class QueryTreeSQLCompiler {
       (root.after || root.before
         ? { indexName: root.useIndex, direction: "asc" as const }
         : undefined);
-    const cursorColumns = orderByIndex
+    const orderByColumns = orderByIndex
       ? this.#resolveOrderByColumns(root.table, orderByIndex.indexName)
       : [];
+    const cursorInput = root.after || root.before;
+    const cursorColumns = cursorHasValuesForColumns(cursorInput, orderByColumns)
+      ? orderByColumns
+      : orderByColumns.filter((column) => cursorHasValueForColumn(cursorInput, column));
     const cursorCondition = buildCursorCondition(
-      root.after || root.before,
+      cursorInput,
       cursorColumns,
       orderByIndex?.direction ?? "asc",
       !!root.after,
@@ -334,7 +354,16 @@ export class QueryTreeSQLCompiler {
       throw new Error(`Index "${indexName}" not found on table "${table.name}".`);
     }
 
-    return index.columns;
+    if (index.unique) {
+      return [...index.columns];
+    }
+
+    const idColumn = table.getIdColumn();
+    if (index.columnNames.includes(idColumn.name)) {
+      return [...index.columns];
+    }
+
+    return [...index.columns, idColumn];
   }
 
   #getTableName(table: AnyTable): string {

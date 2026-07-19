@@ -380,6 +380,42 @@ describeDynamoDBLocal("DynamoDB UOW executor", () => {
     expect(secondPage.hasNextPage).toBe(false);
   });
 
+  it("paginates duplicate non-unique index values without skipping rows", async () => {
+    const adapter = await createMigratedAdapter();
+    const createUow = adapter.createUnitOfWork(executorSchema, "shop");
+    createUow.create("orders", { id: "order_dup_page_1", status: "dup-page", total: 1 });
+    createUow.create("orders", { id: "order_dup_page_2", status: "dup-page", total: 1 });
+    createUow.create("orders", { id: "order_dup_page_3", status: "dup-page", total: 1 });
+    await expect(createUow.executeMutations()).resolves.toEqual({ success: true });
+
+    const firstPageUow = adapter.createUnitOfWork(executorSchema, "shop");
+    const [firstPage] = await firstPageUow
+      .findWithCursor("orders", (b) =>
+        b
+          .whereIndex("by_status", (eb) => eb("status", "=", "dup-page"))
+          .orderByIndex("by_status", "asc")
+          .pageSize(2),
+      )
+      .executeRetrieve();
+
+    expect(firstPage.items.map((order: { id: FragnoId }) => order.id.externalId)).toEqual([
+      "order_dup_page_1",
+      "order_dup_page_2",
+    ]);
+    expect(firstPage.hasNextPage).toBe(true);
+    expect(firstPage.cursor).toBeDefined();
+
+    const secondPageUow = adapter.createUnitOfWork(executorSchema, "shop");
+    const [secondPage] = await secondPageUow
+      .findWithCursor("orders", (b) => b.after(firstPage.cursor!))
+      .executeRetrieve();
+
+    expect(secondPage.items.map((order: { id: FragnoId }) => order.id.externalId)).toEqual([
+      "order_dup_page_3",
+    ]);
+    expect(secondPage.hasNextPage).toBe(false);
+  });
+
   it("counts rows by secondary index", async () => {
     const adapter = await createMigratedAdapter();
     const createUow = adapter.createUnitOfWork(executorSchema, "shop");

@@ -287,6 +287,63 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
       }
     });
 
+    it("paginates duplicate non-unique index values without skipping rows", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const create = createSuiteUnitOfWork(adapter, "create-duplicate-cursor-users");
+        for (const id of [
+          "duplicate-cursor-1",
+          "duplicate-cursor-2",
+          "duplicate-cursor-3",
+          "duplicate-cursor-4",
+          "duplicate-cursor-5",
+        ] as const) {
+          create.create("users", {
+            id,
+            name: "Duplicate Cursor",
+            email: `${id}@example.com`,
+            age: 1,
+          });
+        }
+        await create.executeMutations();
+
+        const seenIds: string[] = [];
+        let cursor: Cursor | undefined;
+        let hasNextPage = true;
+
+        while (hasNextPage) {
+          const pageUow = createSuiteUnitOfWork(
+            adapter,
+            `duplicate-cursor-page-${seenIds.length}`,
+          ).findWithCursor("users", (b) => {
+            let builder = b
+              .whereIndex("users_name_idx", (eb) => eb("name", "=", "Duplicate Cursor"))
+              .orderByIndex("users_name_idx", "asc")
+              .pageSize(2);
+            if (cursor) {
+              builder = builder.after(cursor);
+            }
+            return builder;
+          });
+          await pageUow.executeRetrieve();
+          const [page] = await pageUow.retrievalPhase;
+          seenIds.push(...page.items.map((user: { id: FragnoId }) => user.id.externalId));
+          cursor = page.cursor;
+          hasNextPage = page.hasNextPage;
+        }
+
+        expect(seenIds).toEqual([
+          "duplicate-cursor-1",
+          "duplicate-cursor-2",
+          "duplicate-cursor-3",
+          "duplicate-cursor-4",
+          "duplicate-cursor-5",
+        ]);
+      } finally {
+        await close?.();
+      }
+    });
+
     it("queries multiple schemas from one UOW with forSchema", async () => {
       const { adapter, close } = await createContext();
       try {
@@ -1228,9 +1285,9 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
         );
         await descFirstUow.executeRetrieve();
         const [descFirstPage] = await descFirstUow.retrievalPhase;
-        expect(descFirstPage.items.map((user: { name: string }) => user.name)).toEqual([
-          "Encoded D",
-          "Encoded Composite",
+        expect(descFirstPage.items.map((user: { id: FragnoId }) => user.id.externalId)).toEqual([
+          "encoded-d",
+          "composite-c",
         ]);
         expect(descFirstPage.hasNextPage).toBe(true);
         expect(descFirstPage.cursor).toBeInstanceOf(Cursor);
@@ -1248,9 +1305,9 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
         );
         await descSecondUow.executeRetrieve();
         const [descSecondPage] = await descSecondUow.retrievalPhase;
-        expect(descSecondPage.items.map((user: { name: string }) => user.name)).toEqual([
-          "Encoded C",
-          "Encoded B",
+        expect(descSecondPage.items.map((user: { id: FragnoId }) => user.id.externalId)).toEqual([
+          "composite-b",
+          "composite-a",
         ]);
         expect(descSecondPage.hasNextPage).toBe(true);
 

@@ -121,6 +121,7 @@ type QueryRowsOptions = {
   indexName: string;
   orderDirection?: "asc" | "desc";
   exclusiveStartKey?: Record<string, unknown>;
+  sortKeyPrefix?: string;
   limit?: number;
   predicate?: (row: DynamoDBRawRow) => boolean;
 };
@@ -269,14 +270,16 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       return this.#executeQueryTreeFind(plan, plan.queryTree);
     }
 
+    const cursorPagination = createCursorPagination(plan);
+    const condition = await this.#resolveReferenceCondition(plan, plan.condition);
+    const sortKeyPrefix = createLeadingEqualitySortKeyPrefix(plan.table, plan.indexName, condition);
     this.#assertQuerySupported(
       plan.table,
       plan.indexName,
-      plan.condition,
+      condition,
       Boolean(plan.after || plan.before),
+      sortKeyPrefix,
     );
-    const cursorPagination = createCursorPagination(plan);
-    const condition = await this.#resolveReferenceCondition(plan, plan.condition);
     const limit =
       plan.withCursor && plan.pageSize !== undefined ? plan.pageSize + 1 : plan.pageSize;
     const rows = await this.#queryRowsByIndex({
@@ -285,6 +288,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       indexName: plan.indexName,
       orderDirection: plan.orderDirection,
       exclusiveStartKey: cursorPagination.exclusiveStartKey,
+      sortKeyPrefix,
       limit,
       predicate: (row) =>
         (!cursorPagination.predicate || cursorPagination.predicate(row)) &&
@@ -295,14 +299,14 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
   }
 
   async #executeCount(plan: DynamoDBCountPlan): Promise<{ count: number }[]> {
-    this.#assertQuerySupported(plan.table, plan.indexName, plan.condition);
-    if (!plan.condition) {
+    const condition = await this.#resolveReferenceCondition(plan, plan.condition);
+    const sortKeyPrefix = createLeadingEqualitySortKeyPrefix(plan.table, plan.indexName, condition);
+    this.#assertQuerySupported(plan.table, plan.indexName, condition, false, sortKeyPrefix);
+    if (!condition) {
       const result = (await this.#client.send(
         new QueryCommand({
           TableName: plan.layout.indexTableName,
-          KeyConditionExpression: "#pk = :pk",
-          ExpressionAttributeNames: { "#pk": "pk" },
-          ExpressionAttributeValues: { ":pk": `idx#${plan.indexName}` },
+          ...createDynamoDBIndexQueryInput(plan.indexName),
           ConsistentRead: this.#consistentRead,
           Select: "COUNT",
         }),
@@ -310,7 +314,6 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       return [{ count: result.Count ?? 0 }];
     }
 
-    const condition = await this.#resolveReferenceCondition(plan, plan.condition);
     let count = 0;
     let lastEvaluatedKey: Record<string, unknown> | undefined;
     let pagesRead = 0;
@@ -324,9 +327,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       const queryResult = (await this.#client.send(
         new QueryCommand({
           TableName: plan.layout.indexTableName,
-          KeyConditionExpression: "#pk = :pk",
-          ExpressionAttributeNames: { "#pk": "pk" },
-          ExpressionAttributeValues: { ":pk": `idx#${plan.indexName}` },
+          ...createDynamoDBIndexQueryInput(plan.indexName, sortKeyPrefix),
           ConsistentRead: this.#consistentRead,
           ExclusiveStartKey: lastEvaluatedKey,
         }),
@@ -361,21 +362,42 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
 
     const orderedRows = new Map<string, DynamoDBRawRow>();
     for (let offset = 0; offset < externalIds.length; offset += 100) {
-      const chunk = externalIds.slice(offset, offset + 100);
-      const result = (await this.#client.send(
-        new BatchGetCommand({
-          RequestItems: {
-            [layout.baseTableName]: {
-              Keys: chunk.map((externalId) => ({ pk: externalId })),
-              ConsistentRead: this.#consistentRead,
-            },
-          },
-        }),
-      )) as { Responses?: Record<string, DynamoDBRawRow[]> };
+      let pendingKeys = externalIds.slice(offset, offset + 100).map((externalId) => ({
+        pk: externalId,
+      }));
 
-      for (const row of result.Responses?.[layout.baseTableName] ?? []) {
-        if (typeof row["pk"] === "string") {
-          orderedRows.set(row["pk"], row);
+      for (let attempt = 0; pendingKeys.length > 0; attempt += 1) {
+        if (attempt >= 8) {
+          throw new DynamoDBReadLimitError(
+            `DynamoDB BatchGet left ${pendingKeys.length} unprocessed keys for ${layout.baseTableName}.`,
+          );
+        }
+
+        const result = (await this.#client.send(
+          new BatchGetCommand({
+            RequestItems: {
+              [layout.baseTableName]: {
+                Keys: pendingKeys,
+                ConsistentRead: this.#consistentRead,
+              },
+            },
+          }),
+        )) as {
+          Responses?: Record<string, DynamoDBRawRow[]>;
+          UnprocessedKeys?: Record<string, { Keys?: Record<string, unknown>[] }>;
+        };
+
+        for (const row of result.Responses?.[layout.baseTableName] ?? []) {
+          if (typeof row["pk"] === "string") {
+            orderedRows.set(row["pk"], row);
+          }
+        }
+
+        pendingKeys = (result.UnprocessedKeys?.[layout.baseTableName]?.Keys ?? []).flatMap((key) =>
+          typeof key["pk"] === "string" ? [{ pk: key["pk"] }] : [],
+        );
+        if (pendingKeys.length > 0) {
+          await sleep(Math.min(25 * 2 ** attempt, 1_000));
         }
       }
     }
@@ -402,9 +424,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       const queryResult = (await this.#client.send(
         new QueryCommand({
           TableName: options.layout.indexTableName,
-          KeyConditionExpression: "#pk = :pk",
-          ExpressionAttributeNames: { "#pk": "pk" },
-          ExpressionAttributeValues: { ":pk": `idx#${options.indexName}` },
+          ...createDynamoDBIndexQueryInput(options.indexName, options.sortKeyPrefix),
           ConsistentRead: this.#consistentRead,
           ScanIndexForward: options.orderDirection !== "desc",
           ExclusiveStartKey: lastEvaluatedKey,
@@ -434,14 +454,11 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
   #assertQuerySupported(
     table: AnyTable,
     indexName: string,
-    condition: Condition | undefined,
+    _condition: Condition | undefined,
     hasCursor = false,
+    sortKeyPrefix?: string,
   ): void {
-    if (
-      this.#allowScans ||
-      hasCursor ||
-      hasEqualityConditionForLeadingIndexColumn(table, indexName, condition)
-    ) {
+    if (this.#allowScans || hasCursor || sortKeyPrefix !== undefined) {
       return;
     }
 
@@ -454,14 +471,16 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
     plan: DynamoDBFindPlan,
     root: CompiledQueryTreeRootNode,
   ): Promise<DynamoDBRawRow[]> {
+    const cursorPagination = createCursorPagination(plan);
+    const condition = await this.#resolveReferenceCondition(plan, root.where);
+    const sortKeyPrefix = createLeadingEqualitySortKeyPrefix(root.table, root.useIndex, condition);
     this.#assertQuerySupported(
       root.table,
       root.useIndex,
-      root.where,
+      condition,
       Boolean(plan.after || plan.before),
+      sortKeyPrefix,
     );
-    const cursorPagination = createCursorPagination(plan);
-    const condition = await this.#resolveReferenceCondition(plan, root.where);
     const limit =
       plan.withCursor && root.pageSize !== undefined ? root.pageSize + 1 : root.pageSize;
     const rows = await this.#queryRowsByIndex({
@@ -470,6 +489,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       indexName: root.useIndex,
       orderDirection: root.orderByIndex?.direction ?? plan.orderDirection,
       exclusiveStartKey: cursorPagination.exclusiveStartKey,
+      sortKeyPrefix,
       limit,
       predicate: (row) =>
         (!cursorPagination.predicate || cursorPagination.predicate(row)) &&
@@ -512,8 +532,21 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
     if (!layout) {
       throw new Error(`Missing DynamoDB layout for query-tree table ${child.table.name}.`);
     }
-    this.#assertQuerySupported(child.table, child.onIndexName, child.onIndex);
     const onIndex = await this.#resolveReferenceConditionForTable(child.table, plan, child.onIndex);
+    const onIndexSortKeyPrefix = createLeadingEqualitySortKeyPrefix(
+      child.table,
+      child.onIndexName,
+      onIndex,
+      parentTable,
+      parentRow,
+    );
+    this.#assertQuerySupported(
+      child.table,
+      child.onIndexName,
+      onIndex,
+      false,
+      onIndexSortKeyPrefix,
+    );
     const where = await this.#resolveReferenceConditionForTable(child.table, plan, child.where);
     const orderByDifferentIndex =
       child.orderByIndex !== undefined && child.orderByIndex.indexName !== child.onIndexName;
@@ -522,6 +555,7 @@ export class DynamoDBUOWExecutor implements UOWExecutor<DynamoDBCommandPlan, Dyn
       layout,
       indexName: child.onIndexName,
       orderDirection: child.orderByIndex?.direction ?? "asc",
+      sortKeyPrefix: onIndexSortKeyPrefix,
       limit: orderByDifferentIndex ? undefined : child.pageSize,
       predicate: (row) =>
         evaluateDynamoDBCondition(onIndex, child.table, row, parentTable, parentRow) &&
@@ -1259,15 +1293,94 @@ function assertDynamoDBTransactionLimits(actions: readonly TransactionAction[]):
   }
 }
 
-function hasEqualityConditionForLeadingIndexColumn(
+function createDynamoDBIndexQueryInput(
+  indexName: string,
+  sortKeyPrefix?: string,
+): {
+  KeyConditionExpression: string;
+  ExpressionAttributeNames: Record<string, string>;
+  ExpressionAttributeValues: Record<string, unknown>;
+} {
+  if (sortKeyPrefix === undefined) {
+    return {
+      KeyConditionExpression: "#pk = :pk",
+      ExpressionAttributeNames: { "#pk": "pk" },
+      ExpressionAttributeValues: { ":pk": `idx#${indexName}` },
+    };
+  }
+
+  return {
+    KeyConditionExpression: "#pk = :pk AND begins_with(#sk, :skPrefix)",
+    ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
+    ExpressionAttributeValues: { ":pk": `idx#${indexName}`, ":skPrefix": sortKeyPrefix },
+  };
+}
+
+function createLeadingEqualitySortKeyPrefix(
   table: AnyTable,
   indexName: string,
   condition: Condition | undefined,
-): boolean {
+  parentTable?: AnyTable,
+  parentRow?: DynamoDBRawRow,
+): string | undefined {
   const leadingColumnName = getLeadingIndexColumnName(table, indexName);
-  return (
-    leadingColumnName !== undefined && conditionHasLeadingEquality(condition, leadingColumnName)
+  if (leadingColumnName === undefined) {
+    return undefined;
+  }
+  const leadingColumn = getIndexColumns(table, indexName)[0];
+  if (!leadingColumn) {
+    return undefined;
+  }
+
+  const values = collectLeadingEqualityValues(condition, leadingColumnName);
+  if (!values || values.length === 0) {
+    return undefined;
+  }
+
+  const prefixes = new Set(
+    values.map((value) => {
+      const resolved = resolveParentConditionValue(value, leadingColumn, parentTable, parentRow);
+      return `${encodeDynamoDBIndexTuple([{ column: leadingColumn, value: resolved }])}#`;
+    }),
   );
+  return prefixes.size === 1 ? [...prefixes][0] : undefined;
+}
+
+function collectLeadingEqualityValues(
+  condition: Condition | undefined,
+  leadingColumnName: string,
+): unknown[] | undefined {
+  if (!condition) {
+    return undefined;
+  }
+  switch (condition.type) {
+    case "compare":
+      if (
+        condition.a.name === leadingColumnName &&
+        (condition.operator === "=" || condition.operator === "is")
+      ) {
+        return [condition.b];
+      }
+      return undefined;
+    case "and":
+      for (const item of condition.items) {
+        const values = collectLeadingEqualityValues(item, leadingColumnName);
+        if (values) {
+          return values;
+        }
+      }
+      return undefined;
+    case "or": {
+      const values = condition.items.map((item) =>
+        collectLeadingEqualityValues(item, leadingColumnName),
+      );
+      return values.every((item): item is unknown[] => item !== undefined)
+        ? values.flat()
+        : undefined;
+    }
+    case "not":
+      return undefined;
+  }
 }
 
 function getLeadingIndexColumnName(table: AnyTable, indexName: string): string | undefined {
@@ -1275,28 +1388,6 @@ function getLeadingIndexColumnName(table: AnyTable, indexName: string): string |
     return table.getIdColumn().name;
   }
   return table.indexes[indexName]?.columnNames[0];
-}
-
-function conditionHasLeadingEquality(
-  condition: Condition | undefined,
-  leadingColumnName: string,
-): boolean {
-  if (!condition) {
-    return false;
-  }
-  switch (condition.type) {
-    case "compare":
-      return (
-        condition.a.name === leadingColumnName &&
-        (condition.operator === "=" || condition.operator === "is")
-      );
-    case "and":
-      return condition.items.some((item) => conditionHasLeadingEquality(item, leadingColumnName));
-    case "or":
-      return condition.items.every((item) => conditionHasLeadingEquality(item, leadingColumnName));
-    case "not":
-      return false;
-  }
 }
 
 function encodeDynamoDBCreateItem(
@@ -2076,6 +2167,10 @@ function isOccTransactionCancellation(
     actions.some((action) => action.conditionFailure === "occ") &&
     actions.every((action) => action.conditionFailure === "occ")
   );
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function getCancellationReasons(error: Error): Array<{ Code?: string }> {

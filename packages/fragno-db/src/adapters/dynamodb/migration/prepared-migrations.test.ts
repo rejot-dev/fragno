@@ -3,6 +3,7 @@ import { expect, it } from "vitest";
 import { ListTablesCommand } from "@aws-sdk/client-dynamodb";
 import { PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 
+import { DatabaseConstraintError } from "../../../errors";
 import { column, idColumn, schema } from "../../../schema/create";
 import { DynamoDBAdapter } from "../dynamodb-adapter";
 import { createDynamoDBLayout } from "../dynamodb-layout";
@@ -16,6 +17,12 @@ const migrationSchema = schema("shop", (s) =>
   s
     .addTable("orders", (t) => t.addColumn("id", idColumn()).addColumn("status", column("string")))
     .alterTable("orders", (t) => t.createIndex("byStatus", ["status"])),
+);
+
+const uniqueMigrationSchema = schema("shop", (s) =>
+  s
+    .addTable("orders", (t) => t.addColumn("id", idColumn()).addColumn("status", column("string")))
+    .alterTable("orders", (t) => t.createIndex("uniqueStatus", ["status"], { unique: true })),
 );
 
 describeDynamoDBLocal("DynamoDB migrations", () => {
@@ -47,6 +54,50 @@ describeDynamoDBLocal("DynamoDB migrations", () => {
         layout.getTableLayout("orders").indexTableName,
       ]),
     );
+  });
+
+  it("fails unique index backfill when existing rows contain duplicates", async () => {
+    const context = getDynamoDBLocalTestContext();
+    expect(context).not.toBeNull();
+    const { client, tablePrefix } = context!;
+    const baseAdapter = new DynamoDBAdapter({ client, tablePrefix });
+    await baseAdapter.prepareMigrations(migrationBaseSchema, "shop").execute(0);
+
+    const layout = createDynamoDBLayout({
+      schema: migrationBaseSchema,
+      namespace: "shop",
+      tablePrefix,
+    });
+    const tableLayout = layout.getTableLayout("orders");
+    await client.send(
+      new PutCommand({
+        TableName: tableLayout.baseTableName,
+        Item: {
+          pk: "order_duplicate_status_1",
+          id: "order_duplicate_status_1",
+          status: "duplicate",
+          _internalId: "1",
+          _version: 0,
+        },
+      }),
+    );
+    await client.send(
+      new PutCommand({
+        TableName: tableLayout.baseTableName,
+        Item: {
+          pk: "order_duplicate_status_2",
+          id: "order_duplicate_status_2",
+          status: "duplicate",
+          _internalId: "2",
+          _version: 0,
+        },
+      }),
+    );
+
+    const uniqueAdapter = new DynamoDBAdapter({ client, tablePrefix });
+    await expect(
+      uniqueAdapter.prepareMigrations(uniqueMigrationSchema, "shop").execute(1, 2),
+    ).rejects.toBeInstanceOf(DatabaseConstraintError);
   });
 
   it("backfills added index entries during migration", async () => {

@@ -7,6 +7,7 @@ import {
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { GetCommand, PutCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 
+import { DatabaseConstraintError } from "../../../errors";
 import type { SqlNamingStrategy } from "../../../naming/sql-naming";
 import type { AnySchema, AnyTable } from "../../../schema/create";
 import type {
@@ -183,7 +184,7 @@ async function ensureTable(
   keySchema: { AttributeName: string; KeyType: "HASH" | "RANGE" }[],
 ): Promise<boolean> {
   try {
-    await client.send(new DescribeTableCommand({ TableName: tableName }));
+    await waitForTableActive(client, tableName);
     return false;
   } catch (error) {
     if (!isResourceNotFound(error)) {
@@ -199,7 +200,25 @@ async function ensureTable(
       BillingMode: "PAY_PER_REQUEST",
     }),
   );
+  await waitForTableActive(client, tableName);
   return true;
+}
+
+async function waitForTableActive(
+  client: DynamoDBSendableClient,
+  tableName: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const result = (await client.send(new DescribeTableCommand({ TableName: tableName }))) as {
+      Table?: { TableStatus?: string };
+    };
+    const status = result.Table?.TableStatus;
+    if (status === "ACTIVE") {
+      return;
+    }
+    await sleep(Math.min(100 * 2 ** attempt, 2_000));
+  }
+  throw new Error(`DynamoDB table ${tableName} did not become ACTIVE in time.`);
 }
 
 async function backfillIndexes(
@@ -249,7 +268,7 @@ async function backfillRowIndexes(
     internalId,
   };
   const items = [
-    primaryEntry,
+    { item: primaryEntry, unique: false },
     ...Object.values(table.indexes).flatMap((index) => {
       const segments = index.columns.map((column) => ({ column, value: row[column.name] }));
       const hasNullSegment = segments.some(
@@ -262,22 +281,67 @@ async function backfillRowIndexes(
         internalId,
       };
       if (!index.unique || hasNullSegment) {
-        return [entry];
+        return [{ item: entry, unique: false }];
       }
       return [
-        entry,
+        { item: entry, unique: false },
         {
-          pk: `unique#${index.name}`,
-          sk: encodeDynamoDBIndexTuple(segments, { mode: "equality" }),
-          externalId,
-          internalId,
+          item: {
+            pk: `unique#${index.name}`,
+            sk: encodeDynamoDBIndexTuple(segments, { mode: "equality" }),
+            externalId,
+            internalId,
+          },
+          unique: true,
         },
       ];
     }),
   ];
 
-  for (const item of items) {
-    await client.send(new PutCommand({ TableName: tableLayout.indexTableName, Item: item }));
+  for (const { item, unique } of items) {
+    await putBackfilledIndexItem(client, tableLayout.indexTableName, item, unique, table.name);
+  }
+}
+
+async function putBackfilledIndexItem(
+  client: DynamoDBSendableClient,
+  tableName: string,
+  item: { pk: string; sk: string; externalId: string; internalId: string },
+  unique: boolean,
+  logicalTableName: string,
+): Promise<void> {
+  try {
+    await client.send(
+      new PutCommand({
+        TableName: tableName,
+        Item: item,
+        ...(unique
+          ? {
+              ConditionExpression:
+                "attribute_not_exists(#pk) OR (#externalId = :externalId AND #internalId = :internalId)",
+              ExpressionAttributeNames: {
+                "#pk": "pk",
+                "#externalId": "externalId",
+                "#internalId": "internalId",
+              },
+              ExpressionAttributeValues: {
+                ":externalId": item.externalId,
+                ":internalId": item.internalId,
+              },
+            }
+          : {}),
+      }),
+    );
+  } catch (error) {
+    if (unique && isConditionalCheckFailed(error)) {
+      throw new DatabaseConstraintError({
+        kind: "unique",
+        table: logicalTableName,
+        cause: error,
+        message: `Unique index backfill failed for DynamoDB table ${logicalTableName}.`,
+      });
+    }
+    throw error;
   }
 }
 
@@ -348,9 +412,17 @@ function validateVersions(schema: AnySchema, fromVersion: number, toVersion: num
   }
 }
 
+function isConditionalCheckFailed(error: unknown): boolean {
+  return error instanceof Error && error.name === "ConditionalCheckFailedException";
+}
+
 function isResourceNotFound(error: unknown): boolean {
   return (
     error instanceof ResourceNotFoundException ||
     (error instanceof Error && error.name === "ResourceNotFoundException")
   );
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -62,10 +62,19 @@ export class DynamoDBUOWDecoder implements UOWDecoder<DynamoDBRawResult> {
           operation.table,
           operation.options.orderByIndex.indexName,
         );
-        cursor = createCursorFromRecord(lastItem, indexColumns, {
+        const baseCursor = createCursorFromRecord(lastItem, indexColumns, {
           indexName: operation.options.orderByIndex.indexName,
           orderDirection: operation.options.orderByIndex.direction,
           pageSize,
+        });
+        cursor = new Cursor({
+          indexName: baseCursor.indexName,
+          orderDirection: baseCursor.orderDirection,
+          pageSize: baseCursor.pageSize,
+          indexValues: {
+            ...baseCursor.indexValues,
+            __fragnoExternalId: getExternalIdFromDecodedRow(lastItem, operation.table),
+          },
         });
       }
     }
@@ -143,6 +152,17 @@ export class DynamoDBUOWDecoder implements UOWDecoder<DynamoDBRawResult> {
 
     return output;
   }
+}
+
+function getExternalIdFromDecodedRow(row: Record<string, unknown>, table: AnyTable): string {
+  const value = row[table.getIdColumn().name];
+  if (value instanceof FragnoId) {
+    return value.externalId;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  throw new Error(`DynamoDB cursor row for ${table.name} is missing external ID.`);
 }
 
 function getIndexColumns(table: AnyTable, indexName: string) {

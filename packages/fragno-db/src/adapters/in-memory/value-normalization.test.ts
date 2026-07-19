@@ -48,6 +48,6 @@ describe("in-memory index normalization", () => {
     const expectedBigint = Buffer.alloc(8);
     expectedBigint.writeBigInt64BE(size);
 
-    expect(key).toEqual([createdAt.getTime(), 1, expectedBigint, Number(userId)]);
+    expect(key).toEqual([createdAt.getTime(), 1, expectedBigint, Number(userId), "evt_1"]);
   });
 });

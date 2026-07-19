@@ -48,7 +48,7 @@ export const buildIndexKey = (
   resolver?: NamingResolver,
 ): readonly unknown[] => {
   const columnMap = resolver ? resolver.getColumnNameMap(table) : undefined;
-  return index.columnNames.map((columnName) => {
+  const key = index.columnNames.map((columnName) => {
     const logicalName = columnMap?.[columnName] ?? columnName;
     const column = table.columns[logicalName];
     if (!column) {
@@ -58,6 +58,14 @@ export const buildIndexKey = (
     }
     return normalizeIndexValue(row[columnName], column);
   });
+
+  const idColumn = table.getIdColumn();
+  const idColumnName = resolver ? resolver.getColumnName(table.name, idColumn.name) : idColumn.name;
+  if (!index.unique && !index.columnNames.includes(idColumnName)) {
+    key.push(normalizeIndexValue(row[idColumnName], idColumn));
+  }
+
+  return key;
 };
 
 const createTableIndexes = (

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { suffixNamingStrategy } from "../../naming/sql-naming";
 import { column, FragnoId, idColumn, schema } from "../../schema/create";
 import {
   fragnoDatabaseAdapterNameFakeSymbol,
@@ -141,6 +142,108 @@ describe("DynamoDBAdapter", () => {
 
     await expect(uow.executeMutations()).rejects.toBeInstanceOf(DynamoDBItemSizeError);
     expect(sentCommands).not.toContain("TransactWriteCommand");
+  });
+
+  it("pushes leading equality predicates into the DynamoDB sort-key condition", async () => {
+    const queryInputs: Record<string, unknown>[] = [];
+    const adapter = createExecutingAdapter({
+      send: async (command) => {
+        if (command.constructor.name === "QueryCommand") {
+          queryInputs.push((command as { input: Record<string, unknown> }).input);
+          return { Items: [] };
+        }
+        return {};
+      },
+    });
+
+    const uow = adapter.createUnitOfWork(testSchema, "shop");
+    uow.find("orders", (b) => b.whereIndex("byStatus", (eb) => eb("status", "=", "open")));
+
+    await expect(uow.executeRetrieve()).resolves.toEqual([[]]);
+    expect(queryInputs[0]).toMatchObject({
+      KeyConditionExpression: "#pk = :pk AND begins_with(#sk, :skPrefix)",
+      ExpressionAttributeValues: expect.objectContaining({ ":pk": "idx#byStatus" }),
+    });
+  });
+
+  it("retries BatchGet unprocessed keys before returning query rows", async () => {
+    let batchGetCalls = 0;
+    const adapter = createExecutingAdapter({
+      send: async (command) => {
+        if (command.constructor.name === "QueryCommand") {
+          return {
+            Items: [{ externalId: "order_batch_1" }, { externalId: "order_batch_2" }],
+          };
+        }
+        if (command.constructor.name === "BatchGetCommand") {
+          batchGetCalls += 1;
+          if (batchGetCalls === 1) {
+            return {
+              Responses: {
+                fragno__shop__orders: [
+                  {
+                    pk: "order_batch_1",
+                    id: "order_batch_1",
+                    status: "open",
+                    total: 1,
+                    _internalId: "1",
+                    _version: 0,
+                  },
+                ],
+              },
+              UnprocessedKeys: {
+                fragno__shop__orders: { Keys: [{ pk: "order_batch_2" }] },
+              },
+            };
+          }
+          return {
+            Responses: {
+              fragno__shop__orders: [
+                {
+                  pk: "order_batch_2",
+                  id: "order_batch_2",
+                  status: "open",
+                  total: 2,
+                  _internalId: "2",
+                  _version: 0,
+                },
+              ],
+            },
+          };
+        }
+        return {};
+      },
+    });
+
+    const uow = adapter.createUnitOfWork(testSchema, "shop");
+    uow.find("orders", (b) => b.whereIndex("byStatus", (eb) => eb("status", "=", "open")));
+
+    await uow.executeRetrieve();
+    const [orders] = (await uow.retrievalPhase) as unknown as [{ id: FragnoId }[]];
+    expect(orders.map((order) => order.id.externalId)).toEqual(["order_batch_1", "order_batch_2"]);
+    expect(batchGetCalls).toBe(2);
+  });
+
+  it("uses the configured naming strategy when compiling UOW plans", async () => {
+    const plans: DynamoDBCommandPlan[] = [];
+    const adapter = new DynamoDBAdapter({
+      client: { send: async () => ({}) } as never,
+      tablePrefix: "fragno",
+      namingStrategy: {
+        ...suffixNamingStrategy,
+        tableName: (logicalTable) => `custom_${logicalTable}`,
+      },
+      uowConfig: {
+        dryRun: true,
+        onCommand: (plan) => plans.push(plan),
+      },
+    });
+
+    const uow = adapter.createUnitOfWork(testSchema, "shop");
+    uow.find("orders", (b) => b.whereIndex("byStatus", (eb) => eb("status", "=", "open")));
+    await uow.executeRetrieve();
+
+    expect(plans[0]?.layout.baseTableName).toBe("fragno__shop__custom_orders");
   });
 
   it("throws DynamoDBUnsupportedQueryError for unbounded index reads unless scans are enabled", async () => {
