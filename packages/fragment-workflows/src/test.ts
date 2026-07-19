@@ -848,7 +848,8 @@ export async function createWorkflowsTestHarness<
       return getFragment().$internal.deps;
     },
     get callRoute() {
-      return getFragment().callRoute;
+      const fragment = getFragment();
+      return fragment.callRoute.bind(fragment);
     },
     clock,
     runtime,

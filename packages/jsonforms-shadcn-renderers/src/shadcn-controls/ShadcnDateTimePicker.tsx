@@ -44,19 +44,19 @@ function formatDateTimeForSave(date: Date | undefined, time: string): string | u
 export const ShadcnDateTimePicker = memo(function ShadcnDateTimePicker(
   props: ShadcnDateTimePickerProps,
 ) {
-  const { data, className, id, enabled, path, handleChange } = props;
+  const { data, className, id, enabled, path } = props;
   const [open, setOpen] = useState(false);
 
   const { date: selectedDate, time: selectedTime } = useMemo(() => parseDateTime(data), [data]);
 
   const handleDateSelect = (date: Date | undefined) => {
-    handleChange(path, formatDateTimeForSave(date, selectedTime || "00:00"));
+    props.handleChange(path, formatDateTimeForSave(date, selectedTime || "00:00"));
     setOpen(false);
   };
 
   const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newTime = e.target.value;
-    handleChange(path, formatDateTimeForSave(selectedDate, newTime));
+    props.handleChange(path, formatDateTimeForSave(selectedDate, newTime));
   };
 
   return (

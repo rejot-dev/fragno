@@ -39,7 +39,9 @@ export const subscriptionsRoutesFactory = defineRoutes(stripeFragmentDefinition)
 
           // TODO: Implement pagination
           return json({
-            subscriptions: await callService(this.handlerTx, () => services.getAllSubscriptions()),
+            subscriptions: await callService(this.handlerTx.bind(this), () =>
+              services.getAllSubscriptions(),
+            ),
           });
         },
       }),
@@ -73,7 +75,7 @@ export const subscriptionsRoutesFactory = defineRoutes(stripeFragmentDefinition)
           // Step 1: Get active subscriptions
           const stripeCustomerId = entity.stripeCustomerId;
           if (stripeCustomerId) {
-            const existingSubscriptions = await callService(this.handlerTx, () =>
+            const existingSubscriptions = await callService(this.handlerTx.bind(this), () =>
               services.getSubscriptionsByStripeCustomerId(stripeCustomerId),
             );
 
@@ -308,7 +310,7 @@ export const subscriptionsRoutesFactory = defineRoutes(stripeFragmentDefinition)
           }
 
           let activeSubscriptions = (
-            await callService(this.handlerTx, () =>
+            await callService(this.handlerTx.bind(this), () =>
               services.getSubscriptionsByStripeCustomerId(stripeCustomerId),
             )
           ).filter((s) => s.status === "active");

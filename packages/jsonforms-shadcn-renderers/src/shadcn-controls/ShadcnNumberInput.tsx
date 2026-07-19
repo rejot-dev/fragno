@@ -10,15 +10,15 @@ type ShadcnNumberInputProps = CellProps &
   };
 
 export const ShadcnNumberInput = memo(function ShadcnNumberInput(props: ShadcnNumberInputProps) {
-  const { data, className, id, enabled, path, handleChange, schema, step } = props;
+  const { data, className, id, enabled, path, schema, step } = props;
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     if (value === "") {
-      handleChange(path, undefined);
+      props.handleChange(path, undefined);
     } else {
       const parsed = Number(value);
-      handleChange(path, isNaN(parsed) ? undefined : parsed);
+      props.handleChange(path, isNaN(parsed) ? undefined : parsed);
     }
   };
 

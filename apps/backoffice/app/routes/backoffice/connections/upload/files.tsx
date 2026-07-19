@@ -511,7 +511,7 @@ const buildUploadFileTree = (files: UploadFileRecord[], extraPrefixes: string[] 
       fileCount,
       folderCount,
       totalSizeBytes,
-      providers: [...providers].sort(SORT_COLLATOR.compare),
+      providers: [...providers].sort((left, right) => SORT_COLLATOR.compare(left, right)),
     };
 
     foldersByPrefix.set(finalizedNode.prefix, finalizedNode);
@@ -826,7 +826,7 @@ export default function BackofficeOrganisationUploadFiles() {
       prefixes.add(selectedExplorerPrefix);
     }
 
-    return [...prefixes].sort(SORT_COLLATOR.compare);
+    return [...prefixes].sort((left, right) => SORT_COLLATOR.compare(left, right));
   }, [selectedExplorerPrefix, selectedProvider, virtualFolders]);
   const providerTrees = useMemo<UploadProviderTree[]>(
     () =>

@@ -10,12 +10,12 @@ type ShadcnTextareaProps = CellProps &
   };
 
 export const ShadcnTextarea = memo(function ShadcnTextarea(props: ShadcnTextareaProps) {
-  const { data, className, id, enabled, path, handleChange, schema, placeholder } = props;
+  const { data, className, id, enabled, path, schema, placeholder } = props;
 
   return (
     <Textarea
       value={data ?? ""}
-      onChange={(e) => handleChange(path, e.target.value || undefined)}
+      onChange={(e) => props.handleChange(path, e.target.value || undefined)}
       className={className}
       id={id}
       disabled={!enabled}

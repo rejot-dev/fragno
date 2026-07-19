@@ -884,7 +884,8 @@ export class FragnoInstantiatedFragment<
       return Response.json({ error: "Route not found", code: "ROUTE_NOT_FOUND" }, { status: 404 });
     }
 
-    const { handler, inputSchema, outputSchema, method, path } = route.data as AnyFragnoRouteConfig;
+    const routeConfig = route.data as AnyFragnoRouteConfig;
+    const { inputSchema, outputSchema, method, path } = routeConfig;
 
     const inputContext = await RequestInputContext.fromRequest({
       request: req,
@@ -915,7 +916,7 @@ export class FragnoInstantiatedFragment<
       // by the handler() method or inContext() method before this point
       // Use handler context (full capabilities)
       const contextForHandler = this.#handlerThisContext ?? ({} as RequestThisContext);
-      const result = await handler.call(contextForHandler, inputContext, outputContext);
+      const result = await routeConfig.handler.call(contextForHandler, inputContext, outputContext);
       return result;
     } catch (error) {
       console.error("Error in handler", error);

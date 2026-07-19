@@ -311,7 +311,7 @@ export const piRoutesFactory = defineRoutes(piHarnessDefinition).create(
             const emissionBusHandle = workflowsService.observeStepEmissions<PiHarnessEmission>({
               workflowName,
               instanceId: sessionId,
-              handlerTx: this.handlerTx,
+              handlerTx: this.handlerTx.bind(this),
             });
 
             try {

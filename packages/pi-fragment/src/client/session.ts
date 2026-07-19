@@ -370,7 +370,7 @@ async function* eventsStoreToAsyncIterable(
     }
   };
 
-  const unsubscribe = (store.subscribe ?? store.listen).call(store, pushState);
+  const unsubscribe = store.subscribe ? store.subscribe(pushState) : store.listen(pushState);
   const onAbort = () => {
     error = abortError();
     wake();

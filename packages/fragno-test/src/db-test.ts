@@ -951,8 +951,8 @@ export class DatabaseFragmentsTestBuilder<
       cleanup,
       adapter,
       createAdditionalRuntime,
-      recreateFragments: initialRuntime.recreateFragments,
-      inContext: initialRuntime.inContext,
+      recreateFragments: initialRuntime.recreateFragments.bind(initialRuntime),
+      inContext: initialRuntime.inContext.bind(initialRuntime),
     };
 
     // Safe cast: We've already validated that adapterConfig is SupportedAdapter at the beginning of build()

@@ -217,7 +217,7 @@ export type DynamicWorkerEntrypointRunOptions<TEntrypoint, TResult> = {
   modules: Record<string, string>;
   globalOutbound?: Fetcher | null;
   rpcTargets?: DynamicWorkerRpcTargetMap;
-  run(entrypoint: TEntrypoint, rpcTargets: DynamicWorkerRpcTargetMap): Promise<TResult>;
+  run: (entrypoint: TEntrypoint, rpcTargets: DynamicWorkerRpcTargetMap) => Promise<TResult>;
 };
 
 export class DynamicWorkerExecutor implements Executor {

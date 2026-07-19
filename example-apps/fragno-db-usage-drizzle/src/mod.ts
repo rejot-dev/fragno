@@ -39,10 +39,10 @@ const serveCommand: Command = {
       createWorkflowsFragmentServer(adapter);
     const commentFragment = createCommentFragmentServer(adapter);
     const ratingFragment = createRatingFragmentServer(adapter);
-    const authHandler = toNodeHandler(authFragment.handler);
-    const commentHandler = toNodeHandler(commentFragment.handler);
-    const ratingHandler = toNodeHandler(ratingFragment.handler);
-    const workflowsHandler = toNodeHandler(workflowsFragment.handler);
+    const authHandler = toNodeHandler(authFragment.handler.bind(authFragment));
+    const commentHandler = toNodeHandler(commentFragment.handler.bind(commentFragment));
+    const ratingHandler = toNodeHandler(ratingFragment.handler.bind(ratingFragment));
+    const workflowsHandler = toNodeHandler(workflowsFragment.handler.bind(workflowsFragment));
 
     const server = createServer((req, res) => {
       const url = req.url ?? "";

@@ -92,7 +92,7 @@
     "typescript/strict-boolean-expressions": "off",
     "typescript/strict-void-return": "off",
     "typescript/switch-exhaustiveness-check": "error",
-    "typescript/unbound-method": "off",
+    "typescript/unbound-method": "error",
     "typescript/use-unknown-in-catch-callback-variable": "error",
     "tsdown-exports-sync/exports-match": "error",
     "fragment-dev-browser-exports/exports-match": "error",
@@ -192,6 +192,12 @@
     "unicorn/number-literal-case": "off"
   },
   "overrides": [
+    {
+      "files": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
+      "rules": {
+        "typescript/unbound-method": "off"
+      }
+    },
     {
       "files": ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"],
       "rules": {

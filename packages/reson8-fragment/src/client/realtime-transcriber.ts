@@ -102,19 +102,14 @@ const createReson8WavBlobFromPcm16Chunks = (
 const createReson8RecordingFileName = () =>
   `reson8-recording-${new Date().toISOString().replace(/[.:]/g, "-")}.wav`;
 
-const createReson8ObjectUrl = (blob: Blob) => {
-  const createObjectURL = globalThis.URL?.createObjectURL;
-  return typeof createObjectURL === "function" ? createObjectURL(blob) : null;
-};
+const createReson8ObjectUrl = (blob: Blob) =>
+  typeof globalThis.URL?.createObjectURL === "function"
+    ? globalThis.URL.createObjectURL(blob)
+    : null;
 
 const revokeReson8ObjectUrl = (url: string | null) => {
-  if (!url) {
-    return;
-  }
-
-  const revokeObjectURL = globalThis.URL?.revokeObjectURL;
-  if (typeof revokeObjectURL === "function") {
-    revokeObjectURL(url);
+  if (url && typeof globalThis.URL?.revokeObjectURL === "function") {
+    globalThis.URL.revokeObjectURL(url);
   }
 };
 

@@ -64,7 +64,7 @@ export type RegisteredResendCommandContext = {
 type CreateRouteBackedResendRuntimeOptions = {
   baseUrl: string;
   headers?: HeadersInit;
-  fetch(request: Request): Promise<Response>;
+  fetch: (request: Request) => Promise<Response>;
 };
 
 const normalizeOrder = (value: string | undefined): ResendThreadOrder | undefined => {

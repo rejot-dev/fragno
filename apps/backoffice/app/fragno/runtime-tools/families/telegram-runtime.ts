@@ -24,7 +24,7 @@ const TELEGRAM_NOT_CONFIGURED = createOrganisationNotConfiguredMessage("Telegram
 type CreateRouteBackedTelegramRuntimeOptions = {
   baseUrl: string;
   headers?: HeadersInit;
-  fetch(request: Request): Promise<Response>;
+  fetch: (request: Request) => Promise<Response>;
 };
 
 export type TelegramRouteBackedCommands = Pick<

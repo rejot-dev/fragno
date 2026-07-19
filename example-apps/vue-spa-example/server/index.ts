@@ -4,7 +4,7 @@ import { createExampleFragment } from "@fragno-dev/example-fragment";
 import { toNodeHandler } from "@fragno-dev/node";
 
 const fragment = createExampleFragment();
-const server = createServer(toNodeHandler(fragment.handler));
+const server = createServer(toNodeHandler(fragment.handler.bind(fragment)));
 server.listen(8080, undefined, () => {
   const host = addressToString(server);
   console.log("Server is running on:", `${host}${fragment.mountRoute}`);

@@ -78,7 +78,13 @@ export const webhookRoutesFactory = defineRoutes(stripeFragmentDefinition).creat
           }
 
           deps.log.info(`Executing event handler for ${event.type}: ${event.id}`);
-          await eventHandler({ event, services, deps, config, handlerTx: this.handlerTx });
+          await eventHandler({
+            event,
+            services,
+            deps,
+            config,
+            handlerTx: this.handlerTx.bind(this),
+          });
 
           return json({ success: true });
         },

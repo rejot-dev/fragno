@@ -416,7 +416,7 @@ export class MasterFileSystem implements IFileSystem {
       }
     }
 
-    return Array.from(childNames).sort(FILE_SYSTEM_SORTER.compare);
+    return Array.from(childNames).sort((left, right) => FILE_SYSTEM_SORTER.compare(left, right));
   }
 
   #isSyntheticDirectory(path: string): boolean {

@@ -7,23 +7,23 @@ import { useTouched } from "../hooks/useTouched";
 import { withJsonFormsEnumProps } from "../jsonforms-hocs";
 import { ShadcnSelect } from "../shadcn-controls/ShadcnSelect";
 
-export const ShadcnEnumControl = ({
-  data,
-  visible,
-  label,
-  id,
-  enabled,
-  uischema,
-  schema,
-  rootSchema,
-  handleChange,
-  errors,
-  path,
-  config,
-  description,
-  options,
-  required,
-}: ControlProps & OwnPropsOfEnum) => {
+export const ShadcnEnumControl = (props: ControlProps & OwnPropsOfEnum) => {
+  const {
+    data,
+    visible,
+    label,
+    id,
+    enabled,
+    uischema,
+    schema,
+    rootSchema,
+    errors,
+    path,
+    config,
+    description,
+    options,
+    required,
+  } = props;
   const { showErrors, markTouched } = useTouched(data);
   const isValid = errors.length === 0;
 
@@ -33,7 +33,7 @@ export const ShadcnEnumControl = ({
 
   const handleChangeWithTouch = (path: string, value: string | undefined) => {
     markTouched();
-    handleChange(path, value);
+    props.handleChange(path, value);
   };
 
   return (

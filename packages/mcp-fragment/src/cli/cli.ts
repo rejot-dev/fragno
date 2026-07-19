@@ -136,7 +136,7 @@ async function startServer(options: Parsed["options"], logger: Logger): Promise<
   );
   logger.log("migrating sqlite database if needed...");
   await migrate(fragment);
-  const handler = toNodeHandler(fragment.handler);
+  const handler = toNodeHandler(fragment.handler.bind(fragment));
   const server = createServer((req, res) => {
     if (req.url?.startsWith(fragment.mountRoute)) {
       return handler(req, res);
