@@ -11,6 +11,7 @@ export default [
 
   route("backoffice/login", "routes/backoffice/login.tsx"),
   route("backoffice/sign-up", "routes/backoffice/sign-up.tsx"),
+  route("backoffice/verify-email", "routes/backoffice/verify-email.tsx"),
   layout("layouts/backoffice-layout.tsx", [
     ...prefix("backoffice", [
       index("routes/backoffice/index.tsx"),

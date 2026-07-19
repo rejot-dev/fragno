@@ -9,7 +9,7 @@ import type { Reson8 } from "workers/reson8.do";
 import type { TelegramAdminConfigResponse } from "workers/telegram.do";
 import type { Upload } from "workers/upload.do";
 
-import type { Organization } from "@fragno-dev/auth";
+import type { Organization, VerifyUserEmailInput, VerifyUserEmailResult } from "@fragno-dev/auth";
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
 import type {
@@ -75,6 +75,7 @@ export type AdminConfigurableObject<TConfig = unknown> = {
 export type AuthObject = FetchObject &
   AlarmableObject &
   DurableHookObject & {
+    verifyUserEmail(input: VerifyUserEmailInput): Promise<VerifyUserEmailResult>;
     getAllOrganizations(): Promise<Organization[]>;
     getDevOrganizations(): Promise<
       Array<
@@ -138,6 +139,12 @@ export type TelegramObject = FetchObject &
 export type OtpObject = FetchObject &
   AlarmableObject &
   DurableHookObject & {
+    issueEmailVerification(
+      input: Parameters<Otp["issueEmailVerification"]>[0],
+    ): Promise<AwaitedMethodReturn<Otp, "issueEmailVerification">>;
+    confirmEmailVerification(
+      input: Parameters<Otp["confirmEmailVerification"]>[0],
+    ): Promise<AwaitedMethodReturn<Otp, "confirmEmailVerification">>;
     issueIdentityClaim(input: {
       orgId: string;
       actor: unknown;
@@ -271,7 +278,7 @@ export const backofficeObjectScopePolicy = {
   BILLING: ["org"],
 
   TELEGRAM: ["singleton", "org", "user", "project"],
-  OTP: ["org"],
+  OTP: ["singleton", "org"],
   RESEND: ["singleton", "org"],
   RESON8: ["org"],
   MCP: ["org", "user", "project"],

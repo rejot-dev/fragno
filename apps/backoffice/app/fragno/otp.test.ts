@@ -2,8 +2,10 @@ import { describe, expect, it, assert } from "vitest";
 
 import {
   IDENTITY_LINK_TYPE,
+  buildEmailVerificationUrl,
   buildIdentityClaimCompletedAutomationEvent,
   buildIdentityClaimCompletionUrl,
+  emailVerificationPayloadSchema,
   identityClaimConfirmationPayloadSchema,
   identityClaimPayloadSchema,
 } from "./otp";
@@ -72,6 +74,27 @@ describe("otp identity claim helpers", () => {
       !identityClaimConfirmationPayloadSchema.safeParse({
         subjectUserId: "",
       }).success,
+    );
+  });
+
+  it("parses complete email verification delivery payloads", () => {
+    const payload = {
+      email: "user@example.com",
+      publicBaseUrl: "https://backoffice.example",
+      expiresInHours: 24,
+    };
+
+    expect(emailVerificationPayloadSchema.parse(payload)).toEqual(payload);
+    assert(
+      !emailVerificationPayloadSchema.safeParse({ ...payload, email: "not-an-email" }).success,
+    );
+    assert(!emailVerificationPayloadSchema.safeParse({ email: "user@example.com" }).success);
+  });
+
+  it("builds email verification urls from issued otp data", () => {
+    assert(
+      buildEmailVerificationUrl("https://docs.example/base", "user_123", "ABC12345") ===
+        "https://docs.example/backoffice/verify-email?userId=user_123&code=ABC12345",
     );
   });
 

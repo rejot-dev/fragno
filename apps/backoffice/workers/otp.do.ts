@@ -15,16 +15,52 @@ import {
 import { createDurableHookRepository } from "@/fragno/durable-hooks";
 import {
   DEFAULT_IDENTITY_LINK_EXPIRY_MINUTES,
+  EMAIL_VERIFICATION_EXPIRY_HOURS,
+  EMAIL_VERIFICATION_EXPIRY_MINUTES,
+  EMAIL_VERIFICATION_TYPE,
   IDENTITY_LINK_TYPE,
+  buildEmailVerificationUrl,
   buildIdentityClaimCompletedAutomationEvent,
   buildIdentityClaimCompletionUrl,
   createOtpServer,
+  emailVerificationPayloadSchema,
   identityClaimConfirmationPayloadSchema,
   identityClaimPayloadSchema,
   type OtpFragment,
 } from "@/fragno/otp";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
+
+export type IssueEmailVerificationInput = {
+  userId: string;
+  email: string;
+  publicBaseUrl: string;
+  otpId: string;
+};
+
+export type IssueEmailVerificationResult = {
+  ok: true;
+  otpId: string;
+  userId: string;
+  url: string;
+  expiresInHours: number;
+  type: typeof EMAIL_VERIFICATION_TYPE;
+};
+
+export type ConfirmEmailVerificationInput = {
+  userId: string;
+  code: string;
+};
+
+export type ConfirmEmailVerificationResult =
+  | {
+      ok: true;
+      userId: string;
+    }
+  | {
+      ok: false;
+      error: "INVALID_INPUT" | "OTP_INVALID" | "OTP_EXPIRED";
+    };
 
 export type IssueIdentityClaimInput = {
   orgId: string;
@@ -63,6 +99,23 @@ export type ConfirmIdentityClaimResult =
       error: "INVALID_INPUT" | "OTP_INVALID" | "OTP_EXPIRED";
     };
 
+const publicHttpUrlSchema = z.url().refine((value) => {
+  const protocol = new URL(value).protocol;
+  return protocol === "http:" || protocol === "https:";
+}, "Public base URL must use http or https.");
+
+const issueEmailVerificationInputSchema = z.object({
+  userId: z.string().trim().min(1),
+  email: z.email(),
+  publicBaseUrl: publicHttpUrlSchema,
+  otpId: z.string().trim().min(1),
+});
+
+const confirmEmailVerificationInputSchema = z.object({
+  userId: z.string().trim().min(1),
+  code: z.string().trim().min(1),
+});
+
 const issueIdentityClaimInputSchema = z.object({
   orgId: z.string().trim().min(1, "orgId, actor, and publicBaseUrl are required."),
   actor: z.object({
@@ -85,6 +138,68 @@ const confirmIdentityClaimInputSchema = z.object({
   code: z.string().trim().min(1),
   subjectUserId: z.string().trim().min(1),
 });
+
+export const handleEmailVerificationConfirmed = async (
+  runtime: BackofficeRuntimeServices,
+  payload: ResolvedOtpConfirmedHookPayload,
+) => {
+  const verification = emailVerificationPayloadSchema.parse(payload.payload);
+
+  const result = await runtime.objects.auth.singleton().verifyUserEmail({
+    userId: payload.externalId,
+    expectedEmail: verification.email,
+    verifiedAt: payload.confirmedAt,
+  });
+
+  if (!result.ok) {
+    console.warn("Ignoring email verification OTP that no longer matches an Auth user", {
+      otpId: payload.id,
+      userId: payload.externalId,
+      code: result.code,
+    });
+  }
+};
+
+const handleIdentityClaimConfirmed = async (
+  runtime: BackofficeRuntimeServices,
+  payload: ResolvedOtpConfirmedHookPayload,
+  hookId: string,
+) => {
+  const claimResult = identityClaimPayloadSchema.safeParse(payload.payload);
+  if (!claimResult.success) {
+    console.warn("Ignoring confirmed identity claim OTP with invalid payload", {
+      otpId: payload.id,
+      type: payload.type,
+      issues: claimResult.error.issues,
+    });
+    return;
+  }
+
+  const confirmationResult = identityClaimConfirmationPayloadSchema.safeParse(
+    payload.confirmationPayload,
+  );
+  if (!confirmationResult.success) {
+    console.warn("Ignoring confirmed identity claim OTP with invalid confirmation payload", {
+      otpId: payload.id,
+      type: payload.type,
+      issues: confirmationResult.error.issues,
+    });
+    return;
+  }
+
+  const claim = claimResult.data;
+  const confirmation = confirmationResult.data;
+
+  await runtime.objects.automations.forOrg(claim.orgId).triggerIngestEvent(
+    buildIdentityClaimCompletedAutomationEvent({
+      orgId: claim.orgId,
+      userId: confirmation.subjectUserId,
+      otp: payload,
+      claim,
+      eventId: hookId,
+    }),
+  );
+};
 
 export class InMemoryOtpObject implements OtpObject {
   readonly #state: BackofficeObjectState;
@@ -132,44 +247,12 @@ export class InMemoryOtpObject implements OtpObject {
   }
 
   async #handleOtpConfirmed(payload: ResolvedOtpConfirmedHookPayload, context: { hookId: string }) {
-    if (payload.type !== IDENTITY_LINK_TYPE) {
-      return;
+    switch (payload.type) {
+      case EMAIL_VERIFICATION_TYPE:
+        return await handleEmailVerificationConfirmed(this.#runtime, payload);
+      case IDENTITY_LINK_TYPE:
+        return await handleIdentityClaimConfirmed(this.#runtime, payload, context.hookId);
     }
-
-    const claimResult = identityClaimPayloadSchema.safeParse(payload.payload);
-    if (!claimResult.success) {
-      console.warn("Ignoring confirmed identity claim OTP with invalid payload", {
-        otpId: payload.id,
-        type: payload.type,
-        issues: claimResult.error.issues,
-      });
-      return;
-    }
-
-    const confirmationResult = identityClaimConfirmationPayloadSchema.safeParse(
-      payload.confirmationPayload,
-    );
-    if (!confirmationResult.success) {
-      console.warn("Ignoring confirmed identity claim OTP with invalid confirmation payload", {
-        otpId: payload.id,
-        type: payload.type,
-        issues: confirmationResult.error.issues,
-      });
-      return;
-    }
-
-    const claim = claimResult.data;
-    const confirmation = confirmationResult.data;
-
-    await this.#runtime.objects.automations.forOrg(claim.orgId).triggerIngestEvent(
-      buildIdentityClaimCompletedAutomationEvent({
-        orgId: claim.orgId,
-        userId: confirmation.subjectUserId,
-        otp: payload,
-        claim,
-        eventId: context.hookId,
-      }),
-    );
   }
 
   #getFragment() {
@@ -177,6 +260,73 @@ export class InMemoryOtpObject implements OtpObject {
       throw new Error("OTP is unavailable.");
     }
     return this.#fragment;
+  }
+
+  async issueEmailVerification(
+    input: IssueEmailVerificationInput,
+  ): Promise<IssueEmailVerificationResult> {
+    const parsed = issueEmailVerificationInputSchema.parse(input);
+    const requestedPayload = {
+      email: parsed.email,
+      publicBaseUrl: parsed.publicBaseUrl,
+      expiresInHours: EMAIL_VERIFICATION_EXPIRY_HOURS,
+    };
+    const fragment = this.#getFragment();
+    const issued = await fragment.callServices(() =>
+      fragment.services.otp.issueOtp(
+        parsed.userId,
+        EMAIL_VERIFICATION_TYPE,
+        EMAIL_VERIFICATION_EXPIRY_MINUTES,
+        requestedPayload,
+        parsed.otpId,
+      ),
+    );
+    const persistedPayload = emailVerificationPayloadSchema.parse(issued.payload);
+
+    if (
+      persistedPayload.email !== requestedPayload.email ||
+      persistedPayload.publicBaseUrl !== requestedPayload.publicBaseUrl ||
+      persistedPayload.expiresInHours !== requestedPayload.expiresInHours
+    ) {
+      throw new Error("Email verification OTP id cannot be reused with different delivery input.");
+    }
+
+    return {
+      ok: true,
+      otpId: issued.id,
+      userId: issued.externalId,
+      url: buildEmailVerificationUrl(
+        persistedPayload.publicBaseUrl,
+        issued.externalId,
+        issued.code,
+      ),
+      expiresInHours: persistedPayload.expiresInHours,
+      type: EMAIL_VERIFICATION_TYPE,
+    };
+  }
+
+  async confirmEmailVerification(
+    input: ConfirmEmailVerificationInput,
+  ): Promise<ConfirmEmailVerificationResult> {
+    const parsed = confirmEmailVerificationInputSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, error: "INVALID_INPUT" };
+    }
+
+    const { userId, code } = parsed.data;
+    const fragment = this.#getFragment();
+    const confirmation = await fragment.callServices(() =>
+      fragment.services.otp.confirmOtp(userId, code, EMAIL_VERIFICATION_TYPE),
+    );
+
+    if (!confirmation.confirmed) {
+      return { ok: false, error: confirmation.error ?? "OTP_INVALID" };
+    }
+
+    return {
+      ok: true,
+      userId,
+    };
   }
 
   async issueIdentityClaim(input: IssueIdentityClaimInput): Promise<IssueIdentityClaimResult> {
@@ -260,6 +410,18 @@ export class Otp extends DurableObject<CloudflareEnv> implements OtpObject {
       env,
       runtime: createCloudflareDurableObjectRuntimeServices(env, state),
     });
+  }
+
+  async issueEmailVerification(
+    input: IssueEmailVerificationInput,
+  ): Promise<IssueEmailVerificationResult> {
+    return await this.#object.issueEmailVerification(input);
+  }
+
+  async confirmEmailVerification(
+    input: ConfirmEmailVerificationInput,
+  ): Promise<ConfirmEmailVerificationResult> {
+    return await this.#object.confirmEmailVerification(input);
   }
 
   async issueIdentityClaim(input: IssueIdentityClaimInput): Promise<IssueIdentityClaimResult> {
