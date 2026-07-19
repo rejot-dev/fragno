@@ -26,7 +26,10 @@ const joinUrl = (baseUrl: string, path: string): string => {
   return `${normalizedBase}${normalizedPath}`;
 };
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const delay = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 
 const isRetryableStatus = (status: number): boolean => status === 429 || status >= 500;
 

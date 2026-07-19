@@ -32,7 +32,9 @@ export const chatnoDefinition = defineFragment<ChatnoServerConfig>("chatno")
       getOpenAIURL: () => deps.openaiClient.baseURL,
       generateStreamMessages: async function* () {
         for (let i = 0; i < 10; i++) {
-          await new Promise((resolve) => setTimeout(resolve, 0));
+          await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+          });
           yield { message: `Item ${i + 1}` };
         }
       },

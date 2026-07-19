@@ -25,7 +25,9 @@ function createDrizzleDatabase() {
 export async function getDrizzleDatabase() {
   if (!dbInstance) {
     // Simulate async database initialization (e.g., connection pool, remote connection)
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
     dbInstance = createDrizzleDatabase();
   }
   return dbInstance;

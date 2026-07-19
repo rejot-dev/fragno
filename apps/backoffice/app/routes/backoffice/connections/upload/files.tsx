@@ -1600,11 +1600,11 @@ export default function BackofficeOrganisationUploadFiles() {
                     {hasFailedUploads ? (
                       <button
                         type="button"
-                        onClick={() =>
-                          uploadTargetProvider &&
-                          uploadTargetPrefix !== null &&
-                          void startUploads(uploadTargetProvider, uploadTargetPrefix)
-                        }
+                        onClick={() => {
+                          if (uploadTargetProvider && uploadTargetPrefix !== null) {
+                            void startUploads(uploadTargetProvider, uploadTargetPrefix);
+                          }
+                        }}
                         disabled={
                           uploadingFiles || !uploadTargetProvider || uploadTargetPrefix === null
                         }
@@ -1618,11 +1618,11 @@ export default function BackofficeOrganisationUploadFiles() {
                     ) : null}
                     <button
                       type="button"
-                      onClick={() =>
-                        uploadTargetProvider &&
-                        uploadTargetPrefix !== null &&
-                        clearFinishedUploads(uploadTargetProvider, uploadTargetPrefix)
-                      }
+                      onClick={() => {
+                        if (uploadTargetProvider && uploadTargetPrefix !== null) {
+                          clearFinishedUploads(uploadTargetProvider, uploadTargetPrefix);
+                        }
+                      }}
                       disabled={
                         !hasFinishedUploads ||
                         uploadingFiles ||

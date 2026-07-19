@@ -1091,7 +1091,9 @@ export default function App() {
   const columns = useMemo(() => {
     const keys = new Set<string>();
     for (const row of rows) {
-      Object.keys(row).forEach((key) => keys.add(key));
+      Object.keys(row).forEach((key) => {
+        keys.add(key);
+      });
     }
     const ordered = Array.from(keys);
     ordered.sort((a, b) => {

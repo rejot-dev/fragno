@@ -901,7 +901,9 @@ const waitForScenarioStore = async (
     if (Date.now() - start > timeoutMs) {
       throw new Error("Timed out waiting for scenario store.");
     }
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
   }
 };
 
@@ -918,7 +920,9 @@ const waitForScenarioBootstrap = async <TSchema extends AnySchema, TCommandConte
         )}`,
       );
     }
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
   }
 };
 
@@ -961,7 +965,9 @@ const mountScenarioReactiveStore = <TSchema extends AnySchema, TCommandContext>(
 
   const store = getScenarioReactiveStore(client, name);
   const values: LofiQueryState<unknown>[] = [];
-  const unsubscribe = store.subscribe((value) => values.push(value));
+  const unsubscribe = store.subscribe((value) => {
+    values.push(value);
+  });
   cleanupCallbacks.push(unsubscribe);
   client.storeProbes[name] = { values, unsubscribe };
 };

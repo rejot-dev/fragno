@@ -47,7 +47,9 @@ export function Chat() {
         <textarea
           id="message"
           value={message()}
-          onInput={(e) => setMessage(e.currentTarget.value)}
+          onInput={(event) => {
+            setMessage(event.currentTarget.value);
+          }}
           placeholder="Type your message here..."
           class="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
           rows={4}

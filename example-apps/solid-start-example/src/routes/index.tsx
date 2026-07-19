@@ -20,7 +20,9 @@ export default function Home() {
             type="checkbox"
             name="show-example"
             checked={showExample()}
-            onChange={() => setShowExample(!showExample())}
+            onChange={() => {
+              setShowExample(!showExample());
+            }}
           />
           <label for="show-example" class="text-gray-700">
             Show Example Fragment

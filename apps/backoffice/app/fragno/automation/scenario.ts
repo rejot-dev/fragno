@@ -929,7 +929,9 @@ const createFakePiApi = (
       }
 
       if (request.method === "GET" && suffix === "wait-for-agent-end") {
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await new Promise((resolve) => {
+          setTimeout(resolve, 0);
+        });
         return Response.json(toSessionDetail(session));
       }
 

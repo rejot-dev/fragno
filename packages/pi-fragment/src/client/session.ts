@@ -940,7 +940,9 @@ export const createPiSessionStore = (args: PiSessionStoreArgs, deps: PiSessionSt
     stop();
     void (async () => {
       while (running) {
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await new Promise((resolve) => {
+          setTimeout(resolve, 0);
+        });
       }
       await run();
     })();
@@ -983,7 +985,9 @@ export const createPiSessionStore = (args: PiSessionStoreArgs, deps: PiSessionSt
       stop();
       void (async () => {
         while (running) {
-          await new Promise((resolve) => setTimeout(resolve, 0));
+          await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+          });
         }
         await run();
       })();
