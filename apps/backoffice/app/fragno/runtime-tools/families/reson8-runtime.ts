@@ -40,7 +40,7 @@ export type RegisteredReson8CommandContext = {
 type CreateRouteBackedReson8RuntimeOptions = {
   baseUrl: string;
   headers?: HeadersInit;
-  fetch(request: Request): Promise<Response>;
+  fetch: (request: Request) => Promise<Response>;
 };
 
 const createReson8RouteCaller = (options: CreateRouteBackedReson8RuntimeOptions) => {

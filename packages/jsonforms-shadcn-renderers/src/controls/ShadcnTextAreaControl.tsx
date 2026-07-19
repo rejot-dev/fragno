@@ -7,22 +7,22 @@ import { useTouched } from "../hooks/useTouched";
 import { withJsonFormsControlProps } from "../jsonforms-hocs";
 import { ShadcnTextarea } from "../shadcn-controls/ShadcnTextarea";
 
-export const ShadcnTextAreaControl = ({
-  data,
-  visible,
-  label,
-  id,
-  enabled,
-  uischema,
-  schema,
-  rootSchema,
-  handleChange,
-  errors,
-  path,
-  config,
-  description,
-  required,
-}: ControlProps) => {
+export const ShadcnTextAreaControl = (props: ControlProps) => {
+  const {
+    data,
+    visible,
+    label,
+    id,
+    enabled,
+    uischema,
+    schema,
+    rootSchema,
+    errors,
+    path,
+    config,
+    description,
+    required,
+  } = props;
   const { showErrors, markTouched } = useTouched(data);
   const isValid = errors.length === 0;
 
@@ -34,7 +34,7 @@ export const ShadcnTextAreaControl = ({
 
   const handleChangeWithTouch = (path: string, value: string | undefined) => {
     markTouched();
-    handleChange(path, value);
+    props.handleChange(path, value);
   };
 
   return (

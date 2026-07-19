@@ -12,12 +12,12 @@ type ShadcnRadioGroupProps = CellProps &
   };
 
 export const ShadcnRadioGroup = memo(function ShadcnRadioGroup(props: ShadcnRadioGroupProps) {
-  const { data, className, id, enabled, path, handleChange, options } = props;
+  const { data, className, id, enabled, path, options } = props;
 
   return (
     <RadioGroup
       value={data ?? ""}
-      onValueChange={(value) => handleChange(path, value || undefined)}
+      onValueChange={(value) => props.handleChange(path, value || undefined)}
       disabled={!enabled}
       className={cn("flex flex-col gap-2", className)}
     >

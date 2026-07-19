@@ -379,13 +379,16 @@ export class InMemoryUploadObject implements UploadObject {
 
   async getDurableHookRepository() {
     await this.#refreshConfigured();
-    return this.#host.getDurableHookRepository<DurableHookQueueOptions>(({ runtime }) => {
-      const provider = resolveHooksProvider(runtime.response);
-      if (!provider) {
-        throw new Error("Upload does not have a configured durable hook provider.");
-      }
-      return runtime.fragmentsByProvider.get(provider)!;
-    }, hookQueueOptionsSchema.parse);
+    return this.#host.getDurableHookRepository<DurableHookQueueOptions>(
+      ({ runtime }) => {
+        const provider = resolveHooksProvider(runtime.response);
+        if (!provider) {
+          throw new Error("Upload does not have a configured durable hook provider.");
+        }
+        return runtime.fragmentsByProvider.get(provider)!;
+      },
+      (value) => hookQueueOptionsSchema.parse(value),
+    );
   }
 
   async alarm(): Promise<void> {

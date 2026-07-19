@@ -147,7 +147,7 @@ export const githubAppInstallationRoutesFactory = defineRoutes(githubAppFragment
         errorCodes: ["GITHUB_API_ERROR", "INSTALLATION_NOT_FOUND"],
         handler: async function ({ pathParams }, { json, error }) {
           const syncResult = await syncInstallationFromGitHub(
-            this.handlerTx,
+            this.handlerTx.bind(this),
             services,
             api,
             pathParams.installationId,

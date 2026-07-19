@@ -13,13 +13,13 @@ import { formatDateForSave, parseDate } from "../util/date-time";
 type ShadcnDatePickerProps = CellProps & WithClassname;
 
 export const ShadcnDatePicker = memo(function ShadcnDatePicker(props: ShadcnDatePickerProps) {
-  const { data, className, id, enabled, path, handleChange } = props;
+  const { data, className, id, enabled, path } = props;
   const [open, setOpen] = useState(false);
 
   const selectedDate = useMemo(() => parseDate(data), [data]);
 
   const handleSelect = (date: Date | undefined) => {
-    handleChange(path, formatDateForSave(date));
+    props.handleChange(path, formatDateForSave(date));
     setOpen(false);
   };
 

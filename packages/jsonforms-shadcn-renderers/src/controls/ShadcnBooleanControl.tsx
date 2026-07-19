@@ -13,22 +13,22 @@ import { useTouched } from "../hooks/useTouched";
 import { withJsonFormsControlProps } from "../jsonforms-hocs";
 import { ShadcnCheckbox } from "../shadcn-controls/ShadcnCheckbox";
 
-export const ShadcnBooleanControl = ({
-  data,
-  visible,
-  label,
-  id,
-  enabled,
-  uischema,
-  schema,
-  rootSchema,
-  handleChange,
-  errors,
-  path,
-  config,
-  description,
-  required,
-}: ControlProps) => {
+export const ShadcnBooleanControl = (props: ControlProps) => {
+  const {
+    data,
+    visible,
+    label,
+    id,
+    enabled,
+    uischema,
+    schema,
+    rootSchema,
+    errors,
+    path,
+    config,
+    description,
+    required,
+  } = props;
   const { showErrors, markTouched } = useTouched(data);
   const isValid = errors.length === 0;
 
@@ -38,7 +38,7 @@ export const ShadcnBooleanControl = ({
 
   const handleChangeWithTouch = (path: string, value: boolean | undefined) => {
     markTouched();
-    handleChange(path, value);
+    props.handleChange(path, value);
   };
 
   return (

@@ -58,7 +58,7 @@ const API_NOT_CONFIGURED = createOrganisationNotConfiguredMessage("API");
 type CreateRouteBackedApiRuntimeOptions = {
   baseUrl: string;
   headers?: HeadersInit;
-  fetch(request: Request): Promise<Response>;
+  fetch: (request: Request) => Promise<Response>;
 };
 
 const createApiRouteCaller = (options: CreateRouteBackedApiRuntimeOptions) =>

@@ -672,7 +672,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
               const emissionBusHandle = services.observeStepEmissions<WorkflowStepEmissionOutput>({
                 workflowName,
                 instanceId,
-                handlerTx: this.handlerTx,
+                handlerTx: this.handlerTx.bind(this),
               });
 
               try {

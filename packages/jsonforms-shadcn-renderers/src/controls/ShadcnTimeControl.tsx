@@ -7,22 +7,22 @@ import { useTouched } from "../hooks/useTouched";
 import { withJsonFormsControlProps } from "../jsonforms-hocs";
 import { ShadcnTimePicker } from "../shadcn-controls/ShadcnTimePicker";
 
-export const ShadcnTimeControl = ({
-  data,
-  visible,
-  label,
-  id,
-  enabled,
-  uischema,
-  schema,
-  rootSchema,
-  handleChange,
-  errors,
-  path,
-  config,
-  description,
-  required,
-}: ControlProps) => {
+export const ShadcnTimeControl = (props: ControlProps) => {
+  const {
+    data,
+    visible,
+    label,
+    id,
+    enabled,
+    uischema,
+    schema,
+    rootSchema,
+    errors,
+    path,
+    config,
+    description,
+    required,
+  } = props;
   const { showErrors, markTouched } = useTouched(data);
   const isValid = errors.length === 0;
 
@@ -32,7 +32,7 @@ export const ShadcnTimeControl = ({
 
   const handleChangeWithTouch = (path: string, value: string | undefined) => {
     markTouched();
-    handleChange(path, value);
+    props.handleChange(path, value);
   };
 
   return (

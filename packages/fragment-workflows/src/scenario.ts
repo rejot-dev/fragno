@@ -3027,12 +3027,12 @@ export async function runScenario<
               workflowStepLivePumpKey(workflowName, instanceId),
               () =>
                 createWorkflowStepLivePump({
-                  handlerTx: this.handlerTx,
+                  handlerTx: this.handlerTx.bind(this),
                   workflowName,
                   instanceId,
                 }),
             );
-            handle.pump.setHandlerTx(this.handlerTx);
+            handle.pump.setHandlerTx(this.handlerTx.bind(this));
             return await new Promise<WorkflowScenarioObservedEmission | undefined>((resolve) => {
               let unsubscribe: () => void = () => {};
               const timeout = setTimeout(() => {

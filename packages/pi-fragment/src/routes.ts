@@ -334,7 +334,7 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
                 workflowsService.observeStepEmissions<PiSessionEventStreamItem>({
                   workflowName,
                   instanceId: sessionId,
-                  handlerTx: this.handlerTx,
+                  handlerTx: this.handlerTx.bind(this),
                 });
               const emissionBus = emissionBusHandle.pump;
 

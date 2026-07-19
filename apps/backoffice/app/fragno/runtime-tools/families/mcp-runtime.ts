@@ -40,7 +40,7 @@ const MCP_NOT_CONFIGURED = createOrganisationNotConfiguredMessage("MCP");
 type CreateRouteBackedMcpRuntimeOptions = {
   baseUrl: string;
   headers?: HeadersInit;
-  fetch(request: Request): Promise<Response>;
+  fetch: (request: Request) => Promise<Response>;
 };
 
 const createMcpRouteCaller = (options: CreateRouteBackedMcpRuntimeOptions) =>

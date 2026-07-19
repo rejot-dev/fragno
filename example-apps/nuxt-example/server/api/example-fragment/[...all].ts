@@ -2,4 +2,4 @@ import { createExampleFragment } from "@fragno-dev/example-fragment";
 
 const exampleFragment = createExampleFragment({});
 
-export default fromWebHandler(exampleFragment.handler);
+export default fromWebHandler(exampleFragment.handler.bind(exampleFragment));
