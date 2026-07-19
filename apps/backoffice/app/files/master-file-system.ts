@@ -377,7 +377,7 @@ export class MasterFileSystem implements IFileSystem {
         return await mount.fs.readdirWithFileTypes(path);
       }
 
-      return Promise.all(
+      return await Promise.all(
         (await mount.fs.readdir(path)).map(async (name) => {
           const stat = await mount.fs.stat(resolveFilePath(path, name));
           return {
