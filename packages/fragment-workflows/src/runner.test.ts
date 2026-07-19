@@ -1645,6 +1645,7 @@ describe("Workflows Runner", () => {
       { name: "falsy-throw-workflow" },
       async (_event, step) => {
         await step.do("throws-false", () => {
+          // oxlint-disable-next-line typescript/only-throw-error -- This regression test verifies that workflows normalize falsy thrown values.
           throw false;
         });
         return { ok: true };

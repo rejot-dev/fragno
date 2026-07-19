@@ -513,6 +513,7 @@ describe("runtime.store().withEphemeral", () => {
       .withEphemeral(ephemeralStoreSchema, "events", {
         initialState: () => 0,
         reduce: () => {
+          // oxlint-disable-next-line typescript/only-throw-error -- This regression test verifies isolation from third-party reducers that throw primitive values.
           throw "broken reducer";
         },
         overlay: (data) => data,

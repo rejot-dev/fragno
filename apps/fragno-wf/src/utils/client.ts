@@ -97,7 +97,7 @@ async function fetchWithRetry(
     }
   }
 
-  throw lastError ?? new Error("Request failed");
+  throw lastError instanceof Error ? lastError : new Error(String(lastError ?? "Request failed"));
 }
 
 async function requestJson<T>(

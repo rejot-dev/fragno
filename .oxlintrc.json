@@ -65,7 +65,12 @@
     "typescript/no-unsafe-unary-minus": "error",
     "typescript/no-useless-default-assignment": "error",
     "typescript/non-nullable-type-assertion-style": "error",
-    "typescript/only-throw-error": "off",
+    "typescript/only-throw-error": [
+      "error",
+      {
+        "allow": [{ "from": "lib", "name": "Response" }]
+      }
+    ],
     "typescript/prefer-find": "error",
     "typescript/prefer-includes": "error",
     "typescript/prefer-nullish-coalescing": "off",

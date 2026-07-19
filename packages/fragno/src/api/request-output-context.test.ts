@@ -414,6 +414,7 @@ describe("RequestOutputContext", () => {
       const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       ctx.jsonStream(() => {
+        // oxlint-disable-next-line typescript/only-throw-error -- This regression test verifies canceled streams represented by undefined.
         throw undefined;
       });
 
@@ -431,6 +432,7 @@ describe("RequestOutputContext", () => {
       const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       ctx.jsonStream(() => {
+        // oxlint-disable-next-line typescript/only-throw-error -- This regression test verifies reporting of primitive thrown values.
         throw "String error";
       });
 
