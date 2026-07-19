@@ -198,7 +198,7 @@ export function walkCalls(
     // step's internal logic, not workflow flow.
     if (LOOP_TYPES.has(node.type) && onLoop && !inFunction) {
       const header = loopHeader(source, node);
-      const loopId = onLoop({ node, header, loopKind: LOOP_KIND[node.type]!, branch, parentId });
+      const loopId = onLoop({ node, header, loopKind: LOOP_KIND[node.type], branch, parentId });
       const body = node["body"];
       // Only the loop *body* repeats and nests under the loop; its head
       // (init/test/iterable) runs in the enclosing container and scope.

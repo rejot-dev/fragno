@@ -541,12 +541,12 @@ export class DatabaseFragmentsTestBuilder<
             options: {
               ...actualOptions,
               databaseAdapter: mockAdapter as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-            } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+            }, // eslint-disable-line @typescript-eslint/no-explicit-any
           });
 
           if (deps && typeof deps === "object" && "schema" in deps) {
-            schema = (deps as any).schema; // eslint-disable-line @typescript-eslint/no-explicit-any
-            namespace = (deps as any).namespace; // eslint-disable-line @typescript-eslint/no-explicit-any
+            schema = deps.schema; // eslint-disable-line @typescript-eslint/no-explicit-any
+            namespace = deps.namespace; // eslint-disable-line @typescript-eslint/no-explicit-any
           }
         } catch (error) {
           const errorMessage =
@@ -809,7 +809,7 @@ export class DatabaseFragmentsTestBuilder<
         if (serviceDependencies) {
           for (const serviceName of Object.keys(serviceDependencies)) {
             if (providedServicesByName[serviceName]) {
-              serviceImplementations[serviceName] = providedServicesByName[serviceName]!.service;
+              serviceImplementations[serviceName] = providedServicesByName[serviceName].service;
             }
           }
         }
@@ -910,7 +910,7 @@ export class DatabaseFragmentsTestBuilder<
       let cleanupError: unknown;
 
       for (const runtime of runtimes) {
-        for (const result of Object.values(runtime.fragments) as AnyFragmentResult[]) {
+        for (const result of Object.values(runtime.fragments)) {
           try {
             await drainDurableHooks(result.fragment);
           } catch (error) {

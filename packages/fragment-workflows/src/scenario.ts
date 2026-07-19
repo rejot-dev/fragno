@@ -2065,7 +2065,7 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
         namespace: hook.namespace,
         hookName: hook.hookName,
         payload: hook.payload,
-        status: hook.status as WorkflowScenarioHookRow["status"],
+        status: hook.status,
         attempts: hook.attempts,
         maxAttempts: hook.maxAttempts,
         lastAttemptAt: hook.lastAttemptAt,
@@ -2329,14 +2329,11 @@ export async function runScenario<
     WorkflowScenarioClientRuntime<TRegistry, TFragments, TClients>
   > => {
     const runtime = await typedHarness.test.createAdditionalRuntime();
-    const fragments = runtime.fragments as WorkflowScenarioRuntimeFragments<TRegistry, TFragments>;
+    const fragments = runtime.fragments;
 
     return {
       fragments,
-      clients: createClients(
-        fragments,
-        () => runtime.fragments as WorkflowScenarioRuntimeFragments<TRegistry, TFragments>,
-      ),
+      clients: createClients(fragments, () => runtime.fragments),
       recreateFragments: runtime.recreateFragments,
     };
   };

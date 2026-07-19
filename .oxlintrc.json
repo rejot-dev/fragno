@@ -57,7 +57,7 @@
     "typescript/no-unnecessary-qualifier": "error",
     "typescript/no-unnecessary-template-expression": "error",
     "typescript/no-unnecessary-type-arguments": "error",
-    "typescript/no-unnecessary-type-assertion": "off",
+    "typescript/no-unnecessary-type-assertion": "error",
     "typescript/no-unnecessary-type-conversion": "error",
     "typescript/no-unnecessary-type-parameters": "error",
     "typescript/no-unsafe-argument": "off",
@@ -200,6 +200,7 @@
     {
       "files": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
       "rules": {
+        "typescript/no-unnecessary-type-assertion": "off",
         "typescript/no-unsafe-return": "off",
         "typescript/strict-void-return": "off",
         "typescript/unbound-method": "off"

@@ -358,7 +358,7 @@ const latestAssistantMessage = (
   const message = [...messageEntries(entries)]
     .reverse()
     .find((entry) => entry.message.role === "assistant")?.message;
-  return message?.role === "assistant" ? (message as AssistantMessage) : undefined;
+  return message?.role === "assistant" ? message : undefined;
 };
 
 const isFailedAssistantMessage = (

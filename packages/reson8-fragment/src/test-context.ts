@@ -24,7 +24,7 @@ export const readRequestBody = async (init?: RequestInit) => {
     return new Uint8Array();
   }
 
-  return new Uint8Array(await new Response(body as BodyInit).arrayBuffer());
+  return new Uint8Array(await new Response(body).arrayBuffer());
 };
 
 export const readRequestText = async (init?: RequestInit) =>

@@ -18,12 +18,12 @@ export const uploadsCompleteCommand = define({
     },
   },
   run: async (ctx) => {
-    const uploadId = ctx.values["upload-id"] as string | undefined;
+    const uploadId = ctx.values["upload-id"];
     if (!uploadId) {
       throw new Error("Missing --upload-id");
     }
 
-    const rawParts = parseJsonValue("parts", ctx.values.parts as string | undefined);
+    const rawParts = parseJsonValue("parts", ctx.values.parts);
     let parts: { partNumber: number; etag: string }[] | undefined;
 
     if (rawParts !== undefined) {

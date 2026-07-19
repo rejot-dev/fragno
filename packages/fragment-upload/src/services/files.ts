@@ -194,7 +194,7 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
           const updatedFile = {
             ...file,
             filename: input.filename ?? file.filename,
-            visibility: (input.visibility ?? file.visibility) as string,
+            visibility: input.visibility ?? file.visibility,
             tags: input.tags ?? file.tags,
             metadata: input.metadata ?? file.metadata,
             updatedAt: now,

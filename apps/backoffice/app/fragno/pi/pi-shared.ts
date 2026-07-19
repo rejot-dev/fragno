@@ -108,7 +108,7 @@ export const DEFAULT_PI_HARNESSES: PiHarnessConfig[] = [
   },
 ];
 
-export const DEFAULT_PI_HARNESS: PiHarnessConfig = DEFAULT_PI_HARNESSES[0] as PiHarnessConfig;
+export const DEFAULT_PI_HARNESS: PiHarnessConfig = DEFAULT_PI_HARNESSES[0];
 
 export const resolvePiHarnesses = (harnesses?: PiHarnessConfig[] | null): PiHarnessConfig[] => {
   if (Array.isArray(harnesses) && harnesses.length > 0) {

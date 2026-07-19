@@ -358,7 +358,7 @@ export const telegramRoutesFactory = defineRoutes(telegramFragmentDefinition).cr
           const cursor = parsed.cursor
             ? (() => {
                 try {
-                  return decodeCursor(parsed.cursor!);
+                  return decodeCursor(parsed.cursor);
                 } catch {
                   return undefined;
                 }

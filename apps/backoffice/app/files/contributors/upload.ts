@@ -1181,7 +1181,7 @@ const assertUploadContainingDirectoryWritable = async (
 ): Promise<void> => {
   const ancestorFolderKeys = getAncestorFolderKeys(folderKey);
   for (let index = ancestorFolderKeys.length - 1; index >= 0; index -= 1) {
-    const marker = await fetchUploadDirectoryMarker(ctx, provider, ancestorFolderKeys[index]!);
+    const marker = await fetchUploadDirectoryMarker(ctx, provider, ancestorFolderKeys[index]);
     if (!marker) {
       continue;
     }

@@ -766,7 +766,7 @@ export class TableBuilder<
 
   // For SchemaBuilder to read collected indexes
   getIndexes(): Index[] {
-    return Object.values(this.#indexes) as Index[];
+    return Object.values(this.#indexes);
   }
 
   getColumnOrder(): string[] {
@@ -1109,7 +1109,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
       }
     }
 
-    this.#tables = { ...this.#tables, ...schema.tables } as TTables & TNewTables;
+    this.#tables = { ...this.#tables, ...schema.tables };
     this.#operations = [...this.#operations, ...schema.operations];
     this.#version += schema.version;
 

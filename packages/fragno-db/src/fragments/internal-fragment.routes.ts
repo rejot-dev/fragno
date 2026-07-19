@@ -86,7 +86,7 @@ const getOrCreateAdapterIdentity = async (
       .withServiceCalls(
         () => [services.settingsService.get(SETTINGS_NAMESPACE, ADAPTER_IDENTITY_KEY)] as const,
       )
-      .transform(({ serviceResult: [result] }) => result?.value as string | undefined)
+      .transform(({ serviceResult: [result] }) => result?.value)
       .execute();
 
   try {

@@ -389,7 +389,7 @@ export class InMemoryLofiStore {
         continue;
       }
       const tableStore = this.getTableStore(row.schema, row.table);
-      this.upsertRow(tableStore, row as InMemoryLofiRow);
+      this.upsertRow(tableStore, row);
       tableStore.tombstones.delete(row.id);
     }
   }

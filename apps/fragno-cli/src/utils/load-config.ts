@@ -52,7 +52,7 @@ export function convertTsconfigPathsToJitiAlias(
 ): Record<string, string> {
   return Object.fromEntries(
     Object.entries(tsconfigPaths).map(([_alias, paths]) => {
-      const pathsArray = paths as string[];
+      const pathsArray = paths;
       // trim '*' if present and resolve the actual path
       const aliasKey = _alias.endsWith("*") ? _alias.slice(0, -1) : _alias;
       const pathValue = pathsArray[0].endsWith("*") ? pathsArray[0].slice(0, -1) : pathsArray[0];

@@ -109,7 +109,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const workflowStatuses: Record<string, PiWorkflowStatus | null> = {};
   const detailResults = await Promise.all(
     sessions.map((session) =>
-      fetchPiSessionDetail(request, context, params.orgId!, session.workflowName, session.id),
+      fetchPiSessionDetail(request, context, params.orgId, session.workflowName, session.id),
     ),
   );
   const failedDetail = detailResults.find((result) => result.sessionError);

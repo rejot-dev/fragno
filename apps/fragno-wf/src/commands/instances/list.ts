@@ -26,7 +26,7 @@ export const instancesListCommand = define({
     },
   },
   run: async (ctx) => {
-    const workflowName = ctx.values.workflow as string | undefined;
+    const workflowName = ctx.values.workflow;
     if (!workflowName) {
       throw new Error("Missing --workflow");
     }
@@ -34,9 +34,9 @@ export const instancesListCommand = define({
     const client = createClientFromContext(ctx);
     const response = await client.listInstances({
       workflowName,
-      status: ctx.values.status as string | undefined,
-      pageSize: ctx.values["page-size"] as number | undefined,
-      cursor: ctx.values.cursor as string | undefined,
+      status: ctx.values.status,
+      pageSize: ctx.values["page-size"],
+      cursor: ctx.values.cursor,
     });
 
     if (!response.instances.length) {

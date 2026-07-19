@@ -22,13 +22,13 @@ export const uploadsProgressCommand = define({
     },
   },
   run: async (ctx) => {
-    const uploadId = ctx.values["upload-id"] as string | undefined;
+    const uploadId = ctx.values["upload-id"];
     if (!uploadId) {
       throw new Error("Missing --upload-id");
     }
 
-    const bytesUploaded = ctx.values["bytes-uploaded"] as number | undefined;
-    const partsUploaded = ctx.values["parts-uploaded"] as number | undefined;
+    const bytesUploaded = ctx.values["bytes-uploaded"];
+    const partsUploaded = ctx.values["parts-uploaded"];
 
     if (bytesUploaded === undefined && partsUploaded === undefined) {
       throw new Error("Provide --bytes-uploaded, --parts-uploaded, or both.");

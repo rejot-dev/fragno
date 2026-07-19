@@ -20,7 +20,7 @@ export const installationsListCommand = define({
   },
   run: async (ctx) => {
     const client = createClientFromContext(ctx);
-    const status = ctx.values.status as string | undefined;
+    const status = ctx.values.status;
 
     const response = await client.requestJson({
       method: "GET",
@@ -52,14 +52,14 @@ export const installationsReposCommand = define({
     },
   },
   run: async (ctx) => {
-    const installationId = ctx.values["installation-id"] as string | undefined;
+    const installationId = ctx.values["installation-id"];
     if (!installationId) {
       throw new Error("Missing --installation-id");
     }
 
     const client = createClientFromContext(ctx);
-    const linkedOnly = ctx.values["linked-only"] as boolean | undefined;
-    const linkKey = ctx.values["link-key"] as string | undefined;
+    const linkedOnly = ctx.values["linked-only"];
+    const linkKey = ctx.values["link-key"];
 
     const query: Record<string, string> = {};
     if (linkedOnly) {
@@ -91,7 +91,7 @@ export const installationsSyncCommand = define({
     },
   },
   run: async (ctx) => {
-    const installationId = ctx.values["installation-id"] as string | undefined;
+    const installationId = ctx.values["installation-id"];
     if (!installationId) {
       throw new Error("Missing --installation-id");
     }

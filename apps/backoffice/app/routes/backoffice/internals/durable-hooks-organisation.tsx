@@ -54,7 +54,7 @@ const resolveFragment = (value?: string | null): DurableHooksOrgFragment | null 
     return "automations";
   }
   if (value && isDurableHookOrgFragment(value)) {
-    return value as DurableHooksOrgFragment;
+    return value;
   }
   return null;
 };

@@ -20,7 +20,7 @@ export const repositoriesLinkedCommand = define({
   },
   run: async (ctx) => {
     const client = createClientFromContext(ctx);
-    const linkKey = ctx.values["link-key"] as string | undefined;
+    const linkKey = ctx.values["link-key"];
 
     const response = await client.requestJson({
       method: "GET",
@@ -53,8 +53,8 @@ export const repositoriesLinkCommand = define({
     },
   },
   run: async (ctx) => {
-    const installationId = ctx.values["installation-id"] as string | undefined;
-    const repoId = ctx.values["repo-id"] as string | undefined;
+    const installationId = ctx.values["installation-id"];
+    const repoId = ctx.values["repo-id"];
     if (!installationId) {
       throw new Error("Missing --installation-id");
     }
@@ -63,7 +63,7 @@ export const repositoriesLinkCommand = define({
     }
 
     const client = createClientFromContext(ctx);
-    const linkKey = ctx.values["link-key"] as string | undefined;
+    const linkKey = ctx.values["link-key"];
 
     const response = await client.requestJson({
       method: "POST",
@@ -95,13 +95,13 @@ export const repositoriesUnlinkCommand = define({
     },
   },
   run: async (ctx) => {
-    const repoId = ctx.values["repo-id"] as string | undefined;
+    const repoId = ctx.values["repo-id"];
     if (!repoId) {
       throw new Error("Missing --repo-id");
     }
 
     const client = createClientFromContext(ctx);
-    const linkKey = ctx.values["link-key"] as string | undefined;
+    const linkKey = ctx.values["link-key"];
 
     const response = await client.requestJson({
       method: "POST",

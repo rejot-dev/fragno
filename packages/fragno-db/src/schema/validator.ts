@@ -158,7 +158,7 @@ const validateTableInsertValues = <TTable extends Table>(
     return { issues: [{ message: "Expected object" }] };
   }
 
-  const input = value as Record<string, unknown>;
+  const input = value;
   const entries = Object.entries(table.columns).filter(([, col]) => !col.isHidden);
   const allowedKeys = new Set(entries.map(([key]) => key));
   const unknownKeysMode = getUnknownKeysMode(options);

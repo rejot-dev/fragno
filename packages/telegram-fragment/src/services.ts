@@ -368,7 +368,7 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
         continue;
       }
       seenUserIds.add(id);
-      usersForUpsert.push(user as NonNullable<typeof fromUser>);
+      usersForUpsert.push(user);
     }
 
     return {

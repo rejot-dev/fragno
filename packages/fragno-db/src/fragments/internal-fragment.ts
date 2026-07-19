@@ -212,7 +212,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
             return events.map((event) => ({
               id: event.id,
               hookName: event.hookName,
-              payload: event.payload as unknown,
+              payload: event.payload,
               status: coerceHookStatus(event.status, describeHookStatusSource(event)),
               attempts: event.attempts,
               maxAttempts: event.maxAttempts,
@@ -304,7 +304,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
             return events.map((event) => ({
               id: event.id,
               hookName: event.hookName,
-              payload: event.payload as unknown,
+              payload: event.payload,
               status: coerceHookStatus(event.status, describeHookStatusSource(event)),
               attempts: event.attempts,
               maxAttempts: event.maxAttempts,

@@ -377,7 +377,7 @@ function wrapHandlerTxBuilderWithRoundtripGuard<
           return result;
         };
       },
-    }) as TBuilder;
+    });
   };
 
   return wrap(builder);
@@ -598,10 +598,10 @@ function getDbRoundtripGuardState(
   if (!storageWithGuard[dbRoundtripGuardStateSymbol]) {
     storageWithGuard[dbRoundtripGuardStateSymbol] = { ...guard };
   } else {
-    storageWithGuard[dbRoundtripGuardStateSymbol]!.maxRoundtrips = guard.maxRoundtrips;
-    storageWithGuard[dbRoundtripGuardStateSymbol]!.routes = guard.routes;
+    storageWithGuard[dbRoundtripGuardStateSymbol].maxRoundtrips = guard.maxRoundtrips;
+    storageWithGuard[dbRoundtripGuardStateSymbol].routes = guard.routes;
   }
-  return storageWithGuard[dbRoundtripGuardStateSymbol]!;
+  return storageWithGuard[dbRoundtripGuardStateSymbol];
 }
 
 function isRouteRequest(storage: DatabaseContextStorage): boolean {
@@ -1593,11 +1593,11 @@ export class DatabaseFragmentDefinitionBuilder<
     if (this.#hooksFactory) {
       finalDef.internalDataFactory = ({ config, options, deps, services, serviceDeps }) => {
         const hooksConfig = createHooksConfig({
-          config: config as TConfig,
-          options: options as FragnoPublicConfigWithDatabase,
-          deps: deps as TDeps,
-          services: services as BoundServices<TBaseServices & TServices>,
-          serviceDeps: serviceDeps as TServiceDependencies,
+          config: config,
+          options: options,
+          deps: deps,
+          services: services,
+          serviceDeps: serviceDeps,
         });
         if (!hooksConfig) {
           return {};

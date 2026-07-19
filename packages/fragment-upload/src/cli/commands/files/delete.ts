@@ -22,9 +22,9 @@ export const filesDeleteCommand = define({
     },
   },
   run: async (ctx) => {
-    const provider = resolveProviderValue(ctx.values.provider as string | undefined);
+    const provider = resolveProviderValue(ctx.values.provider);
     const resolvedKey = resolveFileKeyValue({
-      fileKey: ctx.values["file-key"] as string | undefined,
+      fileKey: ctx.values["file-key"],
     });
 
     const client = createClientFromContext(ctx);

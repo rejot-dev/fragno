@@ -35,7 +35,7 @@ export async function loader({
     const pageSize = parsePageSize(url.searchParams.get("pageSize"));
     const authDo = getAuthDurableObject(context);
     const repository = await authDo.getDurableHookRepository();
-    const queue = (await repository.getHookQueue({ cursor, pageSize })) as DurableHookQueueResponse;
+    const queue = await repository.getHookQueue({ cursor, pageSize });
     return {
       configured: queue.configured,
       hooksEnabled: queue.hooksEnabled,

@@ -74,7 +74,7 @@ export const organizationRoutesFactory = defineRoutes<typeof authFragmentDefinit
               403,
             );
           }
-          return (route.handler as typeof route.handler).call(this, input, helpers);
+          return route.handler.call(this, input, helpers);
         },
       })) as typeof defineRoute;
 

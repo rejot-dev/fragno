@@ -28,17 +28,17 @@ export const uploadsContentCommand = define({
     },
   },
   run: async (ctx) => {
-    const uploadId = ctx.values["upload-id"] as string | undefined;
+    const uploadId = ctx.values["upload-id"];
     if (!uploadId) {
       throw new Error("Missing --upload-id");
     }
 
-    const filePath = ctx.values.file as string | undefined;
+    const filePath = ctx.values.file;
     if (!filePath) {
       throw new Error("Missing --file");
     }
 
-    const contentType = (ctx.values["content-type"] as string | undefined) ?? DEFAULT_CONTENT_TYPE;
+    const contentType = ctx.values["content-type"] ?? DEFAULT_CONTENT_TYPE;
 
     const client = createClientFromContext(ctx);
     const stream = createReadStream(filePath);

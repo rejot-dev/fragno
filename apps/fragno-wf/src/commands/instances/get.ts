@@ -24,8 +24,8 @@ export const instancesGetCommand = define({
     },
   },
   run: async (ctx) => {
-    const workflowName = ctx.values.workflow as string | undefined;
-    const instanceId = ctx.values.id as string | undefined;
+    const workflowName = ctx.values.workflow;
+    const instanceId = ctx.values.id;
 
     if (!workflowName) {
       throw new Error("Missing --workflow");

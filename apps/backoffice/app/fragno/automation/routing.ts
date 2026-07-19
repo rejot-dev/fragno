@@ -127,7 +127,7 @@ const readAutomationEventPath = (event: AutomationEvent, path: string): EventPat
         : undefined;
     const arrayMatch = /^(?<key>[^[]+)\[(?<index>\d+)\]$/u.exec(segment);
     if (arrayMatch?.groups) {
-      const value = record?.[arrayMatch.groups.key!];
+      const value = record?.[arrayMatch.groups.key];
       current = Array.isArray(value)
         ? (value[Number(arrayMatch.groups.index)] as EventPathValue)
         : undefined;

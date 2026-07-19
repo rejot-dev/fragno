@@ -105,8 +105,7 @@ const parseStoreSetArgs = defineCliArgsParser<StoreSetCliArgs>("store.set", {
   value: { required: true },
   actor: {
     read: (parsed, optionName, required) => readJsonValueOption(parsed, optionName, required),
-    transform: (value): StoreSetArgs["actor"] =>
-      automationStoreActorSchema.nullable().parse(value) as StoreSetArgs["actor"],
+    transform: (value): StoreSetArgs["actor"] => automationStoreActorSchema.nullable().parse(value),
   },
   description: {},
   category: { kind: "stringArray" },
@@ -270,7 +269,7 @@ const storeSetTool = defineAutomationStoreTool({
         }
         const entry = await getAutomationStoreRuntime(context.runtimes.automations).set({
           ...parsedInput,
-          actor: actor as StoreSetArgs["actor"],
+          actor: actor,
         });
         return commandOutput.format === "json" || commandOutput.print
           ? { data: entry }

@@ -67,7 +67,7 @@ function buildJoin(table: AnyTable, fn: (builder: JoinBuilder<AnyTable>) => void
   const relations = getTableRelations(table);
 
   for (const name in relations) {
-    const relation = relations[name]!;
+    const relation = relations[name];
 
     builder[name] = (options: FindFirstOptions | FindManyOptions = {}) => {
       compiled.push({

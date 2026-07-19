@@ -99,7 +99,7 @@ export function listWorkflows(graph: WorkflowGraph): WorkflowSummary[] {
   return graph.nodes
     .filter((n) => n.kind === "workflow")
     .map((n) => {
-      const workflow = n as Extract<GraphNode, { kind: "workflow" }>;
+      const workflow = n;
       return {
         name: workflow.name,
         label: workflow.label,

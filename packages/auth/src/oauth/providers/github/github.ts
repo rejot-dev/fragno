@@ -190,7 +190,7 @@ export const github = (options: GithubOptions) => {
       const emails = await client.fetchEmails(token.accessToken);
 
       if (!profile.email && emails.length > 0) {
-        profile.email = (emails.find((entry) => entry.primary) ?? emails[0])?.email as string;
+        profile.email = (emails.find((entry) => entry.primary) ?? emails[0])?.email;
       }
 
       const emailVerified =

@@ -354,7 +354,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
                 services.listInstances({
                   workflowName,
                   remoteWorkflowName: params.remoteWorkflowName,
-                  status: params.status as InstanceStatus["status"] | undefined,
+                  status: params.status,
                   pageSize: params.pageSize,
                   cursor,
                 }),

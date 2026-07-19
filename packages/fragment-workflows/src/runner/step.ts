@@ -340,12 +340,8 @@ export class RunnerStep implements WorkflowStep {
     configOrCallback: WorkflowStepConfig | ((tx: WorkflowStepTx) => Promise<T> | T),
     maybeCallback?: (tx: WorkflowStepTx) => Promise<T> | T,
   ): Promise<T> {
-    const config =
-      typeof configOrCallback === "function" ? undefined : (configOrCallback as WorkflowStepConfig);
-    const callback =
-      typeof configOrCallback === "function"
-        ? configOrCallback
-        : (maybeCallback as typeof maybeCallback);
+    const config = typeof configOrCallback === "function" ? undefined : configOrCallback;
+    const callback = typeof configOrCallback === "function" ? configOrCallback : maybeCallback;
 
     if (!callback) {
       throw new Error("WORKFLOW_STEP_CALLBACK_REQUIRED");

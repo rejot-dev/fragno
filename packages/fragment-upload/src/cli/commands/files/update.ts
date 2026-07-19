@@ -39,17 +39,17 @@ export const filesUpdateCommand = define({
     },
   },
   run: async (ctx) => {
-    const provider = resolveProviderValue(ctx.values.provider as string | undefined);
+    const provider = resolveProviderValue(ctx.values.provider);
     const resolvedKey = resolveFileKeyValue({
-      fileKey: ctx.values["file-key"] as string | undefined,
+      fileKey: ctx.values["file-key"],
     });
 
     const payload: Record<string, unknown> = {};
     if (ctx.values.filename) {
-      payload["filename"] = ctx.values.filename as string;
+      payload["filename"] = ctx.values.filename;
     }
     if (ctx.values.visibility) {
-      payload["visibility"] = ctx.values.visibility as string;
+      payload["visibility"] = ctx.values.visibility;
     }
     if (ctx.values.tags !== undefined) {
       payload["tags"] = parseJsonValue("tags", ctx.values.tags as string | undefined);

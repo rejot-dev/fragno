@@ -25,7 +25,7 @@ const toIntervalMs = (input: DbInterval | DbIntervalInput): number => {
   }
 
   if (typeof input === "object" && input !== null && "tag" in input) {
-    const tagged = input as DbInterval;
+    const tagged = input;
     if (tagged.tag === "db-interval") {
       if (!Number.isFinite(tagged.ms)) {
         throw new Error("DB_INTERVAL_INVALID");
@@ -35,7 +35,7 @@ const toIntervalMs = (input: DbInterval | DbIntervalInput): number => {
     throw new Error("DB_INTERVAL_INVALID");
   }
 
-  const interval = input as Exclude<DbIntervalInput, number>;
+  const interval = input;
   const totalMs =
     (interval.ms ?? 0) +
     (interval.seconds ?? 0) * 1000 +

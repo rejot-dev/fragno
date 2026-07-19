@@ -11,7 +11,7 @@ export async function loader(_: Route.LoaderArgs) {
       title: post.data.title,
       description: post.data.description,
       date: "date" in post.data ? new Date(post.data.date) : new Date(),
-      author: "author" in post.data ? (post.data.author as string) : undefined,
+      author: "author" in post.data ? post.data.author : undefined,
     }))
     .sort((a, b) => b.date.getTime() - a.date.getTime());
 

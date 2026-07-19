@@ -508,9 +508,7 @@ function generateModel(
     .sort((a, b) => a.name.localeCompare(b.name));
 
   for (const index of sortedIndexes) {
-    const fields = index.columnNames
-      .map((name) => fieldNameByColumn.get(name as string) ?? name)
-      .join(", ");
+    const fields = index.columnNames.map((name) => fieldNameByColumn.get(name) ?? name).join(", ");
     const mapName = getIndexMapName(index.name, table.name, namespace, resolver, index.unique);
     const directive = index.unique ? "@@unique" : "@@index";
     indexLines.push(`  ${directive}([${fields}], map: "${mapName}")`);

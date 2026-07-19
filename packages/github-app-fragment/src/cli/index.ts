@@ -193,7 +193,7 @@ export async function run() {
       process.exit(1);
     }
 
-    await cli(args.slice(2), subCommand as Command, {
+    await cli(args.slice(2), subCommand, {
       name: `fragno-github-app installations ${subCommandName}`,
       version,
     });
@@ -219,7 +219,7 @@ export async function run() {
       process.exit(1);
     }
 
-    await cli(args.slice(2), subCommand as Command, {
+    await cli(args.slice(2), subCommand, {
       name: `fragno-github-app repositories ${subCommandName}`,
       version,
     });
@@ -245,7 +245,7 @@ export async function run() {
       process.exit(1);
     }
 
-    await cli(args.slice(2), subCommand as Command, {
+    await cli(args.slice(2), subCommand, {
       name: `fragno-github-app pulls ${subCommandName}`,
       version,
     });
@@ -271,7 +271,7 @@ export async function run() {
       process.exit(1);
     }
 
-    await cli(args.slice(2), subCommand as Command, {
+    await cli(args.slice(2), subCommand, {
       name: `fragno-github-app webhooks ${subCommandName}`,
       version,
     });
@@ -279,15 +279,15 @@ export async function run() {
   }
 
   if (args[0].startsWith("-")) {
-    await cli(args, mainCommand as Command, {
+    await cli(args, mainCommand, {
       name: "fragno-github-app",
       version,
       subCommands: new Map([
         ["serve", serveCommand as Command],
-        ["installations", installationsCommand as Command],
-        ["repositories", repositoriesCommand as Command],
-        ["pulls", pullsCommand as Command],
-        ["webhooks", webhooksCommand as Command],
+        ["installations", installationsCommand],
+        ["repositories", repositoriesCommand],
+        ["pulls", pullsCommand],
+        ["webhooks", webhooksCommand],
       ]),
     });
     return;

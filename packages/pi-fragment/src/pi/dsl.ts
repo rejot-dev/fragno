@@ -410,7 +410,7 @@ export const compilePiWorkflow = <
       sessionId: event.instanceId,
       event,
       step,
-      do: step.do.bind(step) as WorkflowStep["do"],
+      do: step.do.bind(step),
       sleep: step.sleep.bind(step),
       sleepUntil: step.sleepUntil.bind(step),
       agentStep,

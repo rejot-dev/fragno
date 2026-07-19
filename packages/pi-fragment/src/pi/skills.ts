@@ -166,7 +166,7 @@ const findSkill = (skills: PiSkillCatalogXmlInput, name: string) => {
   if (isPiSkillDefinitionArray(skills)) {
     return skills.find((skill) => skill.name === name);
   }
-  return (skills as PiSkillRegistry)[name];
+  return skills[name];
 };
 
 const skillActivationParameters = Type.Object({ name: Type.String() });

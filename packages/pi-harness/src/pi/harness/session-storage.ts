@@ -41,7 +41,7 @@ export type WorkflowBackedSessionStorageOptions<
 };
 
 const cloneEntry = <TEntry extends SessionTreeEntry>(entry: TEntry): TEntry =>
-  structuredClone(entry) as TEntry;
+  structuredClone(entry);
 
 const leafIdAfterEntry = (entry: SessionTreeEntry): string | null =>
   entry.type === "leaf" ? entry.targetId : entry.id;

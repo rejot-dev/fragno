@@ -200,7 +200,7 @@ const parseTags = (value: FormDataEntryValue | null): string[] | undefined => {
   }
   const parsed = parseJson<unknown>(value);
   if (Array.isArray(parsed)) {
-    return parsed.filter((tag) => typeof tag === "string") as string[];
+    return parsed.filter((tag) => typeof tag === "string");
   }
   if (typeof value === "string" && value.length > 0) {
     return [value];

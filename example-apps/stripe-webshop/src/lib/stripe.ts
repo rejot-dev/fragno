@@ -17,13 +17,13 @@ export const stripeFragment: ReturnType<typeof createStripeFragment> = createStr
       if (!process.env["STRIPE_SECRET_KEY"]) {
         throw new Error("STRIPE_SECRET_KEY is not set");
       }
-      return process.env["STRIPE_SECRET_KEY"]!;
+      return process.env["STRIPE_SECRET_KEY"];
     },
     get webhookSecret() {
       if (!process.env["STRIPE_WEBHOOK_KEY"]) {
         throw new Error("STRIPE_WEBHOOK_KEY is not set");
       }
-      return process.env["STRIPE_WEBHOOK_KEY"]!;
+      return process.env["STRIPE_WEBHOOK_KEY"];
     },
     resolveEntityFromRequest: async ({ headers }) => {
       const session = await auth.api.getSession({ headers });

@@ -396,7 +396,7 @@ export function generateMigrationFromSchema(
           const metadata: SqliteAlterTableMetadata = {
             recreateTable: {
               columns: nextState.columnOrder.map((colName) =>
-                toColumnInfo(colName, nextState.columns[colName]!),
+                toColumnInfo(colName, nextState.columns[colName]),
               ),
               copyColumns: buildCopyColumns(tableState.columnOrder, op.operations),
               indexes: Object.values(tableState.indexes).flatMap((idx) => {

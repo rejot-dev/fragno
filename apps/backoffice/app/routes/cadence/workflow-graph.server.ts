@@ -158,7 +158,7 @@ function buildRunnableEvents(): RunnableEvent[] {
     source: descriptor.source,
     eventType: descriptor.eventType,
     label: descriptor.label,
-    fields: jsonSchemaToFields(descriptor.payloadSchema as JsonSchemaObject | undefined),
+    fields: jsonSchemaToFields(descriptor.payloadSchema),
   }));
 }
 

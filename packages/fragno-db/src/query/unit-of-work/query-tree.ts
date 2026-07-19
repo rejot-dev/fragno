@@ -107,7 +107,7 @@ const getIndexedColumnNames = (table: AnyTable, indexName: string): Set<string> 
     throw new Error(`Index "${indexName}" not found on table "${table.name}".`);
   }
 
-  return new Set(index.columnNames as readonly string[]);
+  return new Set(index.columnNames);
 };
 
 export function buildCorrelatedCondition<
@@ -465,7 +465,7 @@ export class QueryTreeJoinBuilder<
       childTable as TSchema["tables"][TTableName],
       this.#table,
     );
-    builderFn(childBuilder as QueryTreeJoinBuilder<TSchema, TSchema["tables"][TTableName], TTable>);
+    builderFn(childBuilder);
     return childBuilder.build(alias, cardinality);
   }
 
@@ -722,7 +722,7 @@ export class QueryTreeFindBuilder<
       childTable as TSchema["tables"][TTableName],
       this.#table,
     );
-    builderFn(childBuilder as QueryTreeJoinBuilder<TSchema, TSchema["tables"][TTableName], TTable>);
+    builderFn(childBuilder);
     return childBuilder.build(alias, cardinality);
   }
 

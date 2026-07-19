@@ -43,5 +43,5 @@ export function buildNestedStepKey(parentStepKey: string, childStepKey: string):
 }
 
 export function getOutermostStepKey(stepKey: string): string {
-  return stepKey.split(NESTED_STEP_SEPARATOR)[0]!;
+  return stepKey.split(NESTED_STEP_SEPARATOR)[0];
 }
