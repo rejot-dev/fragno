@@ -28,7 +28,7 @@ const apiCapabilityConfiguredPayloadSchema = z.object({
 const apiConnectionSnapshotSchema = z.object({
   slug: z.string().min(1),
   name: z.string().nullable(),
-  baseUrl: z.string().url(),
+  baseUrl: z.url(),
   authMode: z.string().min(1),
   status: z.string().min(1),
 });

@@ -63,7 +63,7 @@ const createServerInputSchema = z.object({
     .min(1)
     .regex(/^[a-z0-9][a-z0-9-]*$/),
   name: z.string().trim().optional(),
-  endpointUrl: z.string().url(),
+  endpointUrl: z.url(),
   auth: authSchema.default({ type: "none" }),
 });
 const deleteServerInputSchema = z.object({ slug: z.string().trim().min(1) });
@@ -75,7 +75,7 @@ const oauthStartInputSchema = z.object({
   clientId: z.string().trim().optional(),
   clientSecret: z.string().trim().optional(),
 });
-const oauthStartOutputSchema = z.object({ authorizationUrl: z.string().url(), state: z.string() });
+const oauthStartOutputSchema = z.object({ authorizationUrl: z.url(), state: z.string() });
 const setTokenInputSchema = z.object({
   slug: z.string().trim().min(1),
   token: z.string().trim().min(1),

@@ -21,7 +21,7 @@ export const billingMeterSchema = z.string().trim().min(1).max(100);
 export const billingMeasurementInputSchema = z.object({
   meter: billingMeterSchema,
   unit: z.string().trim().min(1).max(50),
-  quantity: z.number().int().nonnegative().safe(),
+  quantity: z.number().int().nonnegative(),
 });
 
 export type BillingMeasurementInput = z.infer<typeof billingMeasurementInputSchema>;

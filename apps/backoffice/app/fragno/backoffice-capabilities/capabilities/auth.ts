@@ -24,7 +24,7 @@ const authOrganizationActorSchema = z.object({
   scope: z.literal("internal"),
   type: z.literal("user"),
   id: z.string().trim().min(1),
-  email: z.string().email(),
+  email: z.email(),
   role: z.enum(["user", "admin"]),
 });
 

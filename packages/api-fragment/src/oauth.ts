@@ -17,7 +17,7 @@ export const oauthTokensSchema = z.object({
   accessToken: z.string().optional(),
   refreshToken: z.string().optional(),
   tokenType: z.string().optional(),
-  expiresIn: z.number().finite().optional(),
+  expiresIn: z.number().optional(),
   scope: z.string().optional(),
   idToken: z.string().optional(),
   raw: z.record(z.string(), z.unknown()).optional(),
@@ -27,7 +27,7 @@ const oauthTokenResponseSchema = z.looseObject({
   access_token: z.string().optional(),
   refresh_token: z.string().optional(),
   token_type: z.string().optional(),
-  expires_in: z.coerce.number().finite().optional(),
+  expires_in: z.coerce.number().optional(),
   scope: z.string().optional(),
   id_token: z.string().optional(),
 });

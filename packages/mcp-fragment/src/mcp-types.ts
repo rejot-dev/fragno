@@ -32,7 +32,7 @@ export const createServerInputSchema = z.object({
     .min(1)
     .regex(/^[a-z0-9][a-z0-9-]*$/),
   name: z.string().optional(),
-  endpointUrl: z.string().url(),
+  endpointUrl: z.url(),
   auth: authConfigSchema.default({ type: "none" }),
 });
 

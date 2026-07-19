@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { defineCommand, runMain } from "citty";
+import { treeifyError } from "zod";
 
 import { create, createOptionsSchema } from "@fragno-dev/create";
 
@@ -73,7 +74,7 @@ const main = defineCommand({
       });
 
       if (!options.success) {
-        console.error("Invalid options:", options.error.format());
+        console.error("Invalid options:", treeifyError(options.error));
         process.exit(1);
       }
 
