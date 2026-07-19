@@ -54,8 +54,8 @@ export interface CursorConditionResult {
  * @template TCompiledQuery - The type of compiled query for the target ORM
  */
 export abstract class UOWOperationCompiler<TCompiledQuery> {
-  #driverConfig: DriverConfig;
-  #resolverFactory?: (schema: AnySchema, namespace: string | null) => NamingResolver;
+  readonly #driverConfig: DriverConfig;
+  readonly #resolverFactory?: (schema: AnySchema, namespace: string | null) => NamingResolver;
 
   constructor(
     driverConfig: DriverConfig,

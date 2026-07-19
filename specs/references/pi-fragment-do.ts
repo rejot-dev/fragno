@@ -124,7 +124,7 @@ type DurableHooksAlarmHandler = {
 export class PiFragment extends DurableObject<CloudflareEnv> {
   private fragment: PiFragmentHandler | null = null;
   private hooksDispatcher: DurableHooksAlarmHandler | null = null;
-  private initPromise: Promise<void>;
+  private readonly initPromise: Promise<void>;
 
   constructor(ctx: DurableObjectState, env: CloudflareEnv) {
     super(ctx, env);

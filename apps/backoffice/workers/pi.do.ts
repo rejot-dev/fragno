@@ -201,11 +201,15 @@ const toStoredHarnesses = (harnesses: z.infer<typeof harnessesSchema>) =>
   harnesses.map(toStoredHarness);
 
 export class InMemoryPiObject implements PiObject {
-  #env: Parameters<typeof createPiRuntime>[0]["env"];
-  #state: BackofficeObjectState;
-  #runtimeServices: BackofficeRuntimeServices;
-  #host: BackofficeFragmentDurableObject<StoredPiConfig, StoredPiConfig, PiRuntimeFragments>;
-  #sessionFileSystems = new Map<string, Promise<MasterFileSystem>>();
+  readonly #env: Parameters<typeof createPiRuntime>[0]["env"];
+  readonly #state: BackofficeObjectState;
+  readonly #runtimeServices: BackofficeRuntimeServices;
+  readonly #host: BackofficeFragmentDurableObject<
+    StoredPiConfig,
+    StoredPiConfig,
+    PiRuntimeFragments
+  >;
+  readonly #sessionFileSystems = new Map<string, Promise<MasterFileSystem>>();
 
   constructor({
     state,
@@ -420,7 +424,7 @@ export class InMemoryPiObject implements PiObject {
 }
 
 export class Pi extends DurableObject<CloudflareEnv> implements PiObject {
-  #object: InMemoryPiObject;
+  readonly #object: InMemoryPiObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);

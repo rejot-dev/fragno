@@ -152,16 +152,16 @@ function buildErrorFromSnapshot(snapshot: WorkflowStepSnapshot): Error {
 }
 
 export class RunnerStep implements WorkflowStep {
-  #state: RunnerState;
-  #taskKind: RunnerTaskKind;
-  #stepOccurrences = new Map<string, number>();
-  #scopeStorage = new AsyncLocalStorage<StepExecutionContext>();
-  #workflowName: string;
-  #instanceId: string;
-  #handlerTx: DatabaseRequestContext["handlerTx"];
-  #createEpoch: () => string;
-  #stepEmissions: WorkflowStepLivePumpRegistry;
-  #workflowsByName: Map<string, WorkflowRegistryEntry>;
+  readonly #state: RunnerState;
+  readonly #taskKind: RunnerTaskKind;
+  readonly #stepOccurrences = new Map<string, number>();
+  readonly #scopeStorage = new AsyncLocalStorage<StepExecutionContext>();
+  readonly #workflowName: string;
+  readonly #instanceId: string;
+  readonly #handlerTx: DatabaseRequestContext["handlerTx"];
+  readonly #createEpoch: () => string;
+  readonly #stepEmissions: WorkflowStepLivePumpRegistry;
+  readonly #workflowsByName: Map<string, WorkflowRegistryEntry>;
 
   constructor(options: RunnerStepOptions) {
     this.#state = options.state;

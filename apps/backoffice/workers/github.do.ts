@@ -31,14 +31,14 @@ type StoredGitHubConfig = {
 };
 
 export class InMemoryGitHubObject implements GitHubObject {
-  #state: BackofficeObjectState;
-  #runtimeServices: BackofficeRuntimeServices;
-  #host: BackofficeFragmentDurableObject<
+  readonly #state: BackofficeObjectState;
+  readonly #runtimeServices: BackofficeRuntimeServices;
+  readonly #host: BackofficeFragmentDurableObject<
     StoredGitHubConfig,
     GitHubAppFragmentConfig,
     GitHubFragment
   >;
-  #configResolution: ReturnType<typeof resolveGitHubConfig>;
+  readonly #configResolution: ReturnType<typeof resolveGitHubConfig>;
 
   constructor({
     state,
@@ -255,7 +255,7 @@ export class InMemoryGitHubObject implements GitHubObject {
 }
 
 export class GitHub extends DurableObject<CloudflareEnv> implements GitHubObject {
-  #object: InMemoryGitHubObject;
+  readonly #object: InMemoryGitHubObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);

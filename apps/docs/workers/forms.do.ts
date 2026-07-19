@@ -6,8 +6,8 @@ import type { FormsFragment } from "@/fragno/forms/forms";
 import { createFormsServer } from "@/fragno/forms/forms";
 
 export class Forms extends DurableObject<CloudflareEnv> {
-  #state: DurableObjectState;
-  #fragment: FormsFragment;
+  readonly #state: DurableObjectState;
+  readonly #fragment: FormsFragment;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);

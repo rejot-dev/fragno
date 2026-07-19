@@ -251,19 +251,19 @@ export class FragnoInstantiatedFragment<
   readonly [instantiatedFragmentFakeSymbol] = instantiatedFragmentFakeSymbol;
 
   // Private fields
-  #name: string;
-  #routes: TRoutes;
-  #deps: TDeps;
-  #services: TServices;
-  #mountRoute: string;
-  #router: ReturnType<typeof createRouter>;
+  readonly #name: string;
+  readonly #routes: TRoutes;
+  readonly #deps: TDeps;
+  readonly #services: TServices;
+  readonly #mountRoute: string;
+  readonly #router: ReturnType<typeof createRouter>;
   #middlewareHandler?: FragnoMiddlewareCallback<TRoutes, TDeps, TServices>;
-  #serviceThisContext?: TServiceThisContext; // Context for services (may have restricted capabilities)
-  #handlerThisContext?: THandlerThisContext; // Context for handlers (full capabilities)
-  #contextStorage: RequestContextStorage<TRequestStorage>;
-  #createRequestStorage?: () => TRequestStorage;
-  #options: TOptions;
-  #internalData: Record<string, unknown>;
+  readonly #serviceThisContext?: TServiceThisContext; // Context for services (may have restricted capabilities)
+  readonly #handlerThisContext?: THandlerThisContext; // Context for handlers (full capabilities)
+  readonly #contextStorage: RequestContextStorage<TRequestStorage>;
+  readonly #createRequestStorage?: () => TRequestStorage;
+  readonly #options: TOptions;
+  readonly #internalData: Record<string, unknown>;
 
   constructor(params: {
     name: string;
@@ -1320,7 +1320,7 @@ export class FragmentInstantiationBuilder<
   TRoutesOrFactories extends readonly AnyRouteOrFactory[],
   TInternalRoutes extends readonly AnyRouteOrFactory[],
 > implements IFragmentInstantiationBuilder {
-  #definition: FragmentDefinition<
+  readonly #definition: FragmentDefinition<
     TConfig,
     TOptions,
     TDeps,
@@ -1334,7 +1334,7 @@ export class FragmentInstantiationBuilder<
     TInternalRoutes
   >;
   #config?: TConfig;
-  #routes?: TRoutesOrFactories;
+  readonly #routes?: TRoutesOrFactories;
   #options?: TOptions;
   #services?: TServiceDependencies;
 

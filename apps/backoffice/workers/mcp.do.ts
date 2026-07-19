@@ -92,10 +92,10 @@ function buildConfigResponse(
 }
 
 export class InMemoryMcpObject implements McpObject {
-  #env: McpObjectEnv;
-  #state: BackofficeObjectState;
-  #runtimeServices: BackofficeRuntimeServices;
-  #host: BackofficeFragmentDurableObject<StoredMcpConfig, McpConfig, McpFragment>;
+  readonly #env: McpObjectEnv;
+  readonly #state: BackofficeObjectState;
+  readonly #runtimeServices: BackofficeRuntimeServices;
+  readonly #host: BackofficeFragmentDurableObject<StoredMcpConfig, McpConfig, McpFragment>;
 
   constructor({
     state,
@@ -242,7 +242,7 @@ export class InMemoryMcpObject implements McpObject {
 }
 
 export class Mcp extends DurableObject<CloudflareEnv> implements McpObject {
-  #object: InMemoryMcpObject;
+  readonly #object: InMemoryMcpObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);

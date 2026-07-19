@@ -144,15 +144,15 @@ export class Reson8RealtimeTranscriberStore {
   readonly recordedAudioFileName;
   readonly hasRecordedAudio;
 
-  #query: CreateReson8RealtimeTranscriberArgs["query"];
-  #microphoneConfig: NonNullable<CreateReson8RealtimeTranscriberArgs["microphone"]>;
+  readonly #query: CreateReson8RealtimeTranscriberArgs["query"];
+  readonly #microphoneConfig: NonNullable<CreateReson8RealtimeTranscriberArgs["microphone"]>;
   #session: Reson8RealtimeSessionStore | null = null;
   #sessionUnsubscribers: Array<() => void> = [];
-  #createSessionOptions: Pick<
+  readonly #createSessionOptions: Pick<
     CreateReson8RealtimeSessionStoreOptions,
     "createWebSocket" | "realtimeBaseUrl"
   >;
-  #recordAudio = false;
+  readonly #recordAudio: boolean = false;
   #recordedChunks: Uint8Array[] = [];
   #recordedAudioSampleRate: number | null = null;
   #recordedAudioChannels: number | null = null;

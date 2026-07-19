@@ -223,9 +223,9 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
   readonly env: InMemoryBackofficeRuntimeEnv;
 
   #namespaces: NamespaceMap = {};
-  #getRuntimeServices: () => BackofficeRuntimeServices;
-  #getAutomationFileSystem?: InMemoryObjectFactoryOptions["getAutomationFileSystem"];
-  #objectFactories?: InMemoryObjectFactoryOverrides;
+  readonly #getRuntimeServices: () => BackofficeRuntimeServices;
+  readonly #getAutomationFileSystem?: InMemoryObjectFactoryOptions["getAutomationFileSystem"];
+  readonly #objectFactories?: InMemoryObjectFactoryOverrides;
   #timeOffsetMs = 0;
 
   constructor(options: InMemoryObjectFactoryOptions) {

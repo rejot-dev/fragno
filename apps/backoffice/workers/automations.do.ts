@@ -107,16 +107,16 @@ export const createDefaultAutomationFileSystem = async ({
 };
 
 export class InMemoryAutomationsObject extends RpcTarget implements AutomationsObject {
-  #env: AutomationFragmentConfig["env"] | undefined;
-  #state: BackofficeObjectState;
-  #runtimeServices: BackofficeRuntimeServices;
-  #host: BackofficeFragmentDurableObject<
+  readonly #env: AutomationFragmentConfig["env"] | undefined;
+  readonly #state: BackofficeObjectState;
+  readonly #runtimeServices: BackofficeRuntimeServices;
+  readonly #host: BackofficeFragmentDurableObject<
     AutomationDurableObjectConfig,
     AutomationDurableObjectConfig,
     AutomationsRuntime,
     AutomationsOutboxItem
   >;
-  #getAutomationFileSystem?: AutomationsFileSystemResolver;
+  readonly #getAutomationFileSystem?: AutomationsFileSystemResolver;
   #scope: BackofficeContextScope | null = null;
   private readonly automationRoutePrefix = "/api/automations";
 
@@ -528,7 +528,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
 }
 
 export class Automations extends DurableObject<CloudflareEnv> {
-  #object: InMemoryAutomationsObject;
+  readonly #object: InMemoryAutomationsObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);

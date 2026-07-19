@@ -86,7 +86,7 @@ export interface DODialectConfig {
  * [1]: https://github.com/koskimas/kysely
  */
 export class DurableObjectDialect implements Dialect {
-  #config: DODialectConfig;
+  readonly #config: DODialectConfig;
 
   constructor(config: DODialectConfig) {
     this.#config = config;
@@ -110,7 +110,7 @@ export class DurableObjectDialect implements Dialect {
 }
 
 class DurableObjectDriver implements Driver {
-  #config: DODialectConfig;
+  readonly #config: DODialectConfig;
 
   constructor(config: DODialectConfig) {
     this.#config = config;
@@ -144,7 +144,7 @@ class DurableObjectDriver implements Driver {
 }
 
 class DOConnection implements DatabaseConnection {
-  #config: DODialectConfig;
+  readonly #config: DODialectConfig;
   #transactionPromise: Promise<void> | null = null;
   #transactionControl: {
     resolve: () => void;

@@ -238,10 +238,10 @@ export class QueryTreeJoinBuilder<
   #onIndexName?: string;
   #onIndexCondition?: Condition;
   #whereCondition?: Condition;
-  #selectClause?: TSelect;
+  readonly #selectClause?: TSelect;
   #orderByIndexClause?: QueryTreeOrderBy;
   #pageSizeValue?: number;
-  #children: CompiledQueryTreeChildNode[] = [];
+  readonly #children: CompiledQueryTreeChildNode[] = [];
 
   constructor(schema: TSchema, tableName: string, table: TTable, parentTable: TParentTable) {
     this.#schema = schema;
@@ -504,13 +504,13 @@ export class QueryTreeFindBuilder<
 
   #indexName?: string;
   #whereClause?: Condition;
-  #selectClause?: TSelect;
+  readonly #selectClause?: TSelect;
   #orderByIndexClause?: QueryTreeOrderBy;
   #afterCursor?: Cursor | string;
   #beforeCursor?: Cursor | string;
   #pageSizeValue?: number;
   #cursorMetadata?: Cursor;
-  #children: CompiledQueryTreeChildNode[] = [];
+  readonly #children: CompiledQueryTreeChildNode[] = [];
   #countMode = false;
 
   constructor(schema: TSchema, tableName: string, table: TTable) {

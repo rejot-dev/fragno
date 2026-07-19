@@ -12,10 +12,10 @@
 type Error<Message extends string> = { __errorMessage: Message };
 
 export class ResponseStream<TArray> {
-  #writer: WritableStreamDefaultWriter<Uint8Array>;
-  #encoder: TextEncoder;
-  #abortSubscribers: (() => void | Promise<void>)[] = [];
-  #responseReadable: ReadableStream;
+  readonly #writer: WritableStreamDefaultWriter<Uint8Array>;
+  readonly #encoder: TextEncoder;
+  readonly #abortSubscribers: (() => void | Promise<void>)[] = [];
+  readonly #responseReadable: ReadableStream;
 
   #aborted: boolean = false;
   #closed: boolean = false;

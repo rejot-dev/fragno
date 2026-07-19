@@ -17,7 +17,7 @@ import {
 } from "./default-organization";
 
 class MemoryStorage implements Pick<Storage, "getItem" | "setItem" | "removeItem"> {
-  #values = new Map<string, string>();
+  readonly #values = new Map<string, string>();
 
   getItem(key: string) {
     return this.#values.get(key) ?? null;
@@ -36,7 +36,7 @@ class MemoryWindow implements Pick<
   Window,
   "addEventListener" | "removeEventListener" | "dispatchEvent"
 > {
-  #listeners = new Map<string, Set<EventListenerOrEventListenerObject>>();
+  readonly #listeners = new Map<string, Set<EventListenerOrEventListenerObject>>();
 
   addEventListener(type: string, callback: EventListenerOrEventListenerObject | null) {
     if (!callback) {

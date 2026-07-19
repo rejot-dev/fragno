@@ -319,7 +319,7 @@ export class FindBuilder<
   #afterCursor?: Cursor | string;
   #beforeCursor?: Cursor | string;
   #pageSizeValue?: number;
-  #selectClause?: TSelect;
+  readonly #selectClause?: TSelect;
   #joinClause?: (jb: IndexedJoinBuilder<TTable, {}>) => IndexedJoinBuilder<TTable, TJoinOut>;
   #countMode = false;
   #cursorMetadata?: Cursor;
@@ -678,7 +678,7 @@ export class JoinFindBuilder<
     direction: "asc" | "desc";
   };
   #pageSizeValue?: number;
-  #selectClause?: TSelect;
+  readonly #selectClause?: TSelect;
   #joinClause?: (jb: IndexedJoinBuilder<TTable, TJoinOut>) => IndexedJoinBuilder<TTable, TJoinOut>;
 
   constructor(tableName: string, table: TTable) {
@@ -1113,11 +1113,11 @@ class ReadinessTracker {
 class UOWChildCoordinator<TRawInput> {
   #parent: UnitOfWork<TRawInput> | null = null;
   #parentCoordinator: UOWChildCoordinator<TRawInput> | null = null;
-  #children: Set<UnitOfWork<TRawInput>> = new Set();
+  readonly #children: Set<UnitOfWork<TRawInput>> = new Set();
   #isRestricted = false;
 
-  #retrievalTracker = new ReadinessTracker();
-  #mutationTracker = new ReadinessTracker();
+  readonly #retrievalTracker = new ReadinessTracker();
+  readonly #mutationTracker = new ReadinessTracker();
 
   get isRestricted(): boolean {
     return this.#isRestricted;
@@ -1242,9 +1242,9 @@ class UOWChildCoordinator<TRawInput> {
  * ```
  */
 export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
-  #name?: string;
-  #config?: UnitOfWorkConfig;
-  #idempotencyKey: string;
+  readonly #name?: string;
+  readonly #config?: UnitOfWorkConfig;
+  readonly #idempotencyKey: string;
 
   #state: UOWState = "building-retrieval";
 
@@ -1252,10 +1252,10 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
   #retrievalOps: RetrievalOperation<AnySchema>[] = [];
   #mutationOps: MutationOperation<AnySchema>[] = [];
 
-  #compiler: UOWCompiler<unknown>;
-  #executor: UOWExecutor<unknown, TRawInput>;
-  #decoder: UOWDecoder<TRawInput>;
-  #schemaNamespaceMap: WeakMap<AnySchema, string | null>;
+  readonly #compiler: UOWCompiler<unknown>;
+  readonly #executor: UOWExecutor<unknown, TRawInput>;
+  readonly #decoder: UOWDecoder<TRawInput>;
+  readonly #schemaNamespaceMap: WeakMap<AnySchema, string | null>;
 
   #retrievalResults?: unknown[];
   #createdInternalIds: (bigint | null)[] = [];
@@ -1270,7 +1270,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
   #mutationError: Error | null = null;
 
   // Child coordination
-  #coordinator: UOWChildCoordinator<TRawInput> = new UOWChildCoordinator();
+  readonly #coordinator: UOWChildCoordinator<TRawInput> = new UOWChildCoordinator();
 
   // Hook triggers
   #triggeredHooks: TriggeredHook[] = [];
@@ -1839,10 +1839,10 @@ export class TypedUnitOfWork<
   const TRawInput = unknown,
   const THooks extends HooksMap = {},
 > {
-  #schema: TSchema;
-  #namespace?: string | null;
-  #uow: UnitOfWork<TRawInput>;
-  #operationIndices: number[] = [];
+  readonly #schema: TSchema;
+  readonly #namespace?: string | null;
+  readonly #uow: UnitOfWork<TRawInput>;
+  readonly #operationIndices: number[] = [];
   #cachedRetrievalPhase?: Promise<TRetrievalResults>;
 
   constructor(schema: TSchema, namespace: string | null | undefined, uow: UnitOfWork<TRawInput>) {

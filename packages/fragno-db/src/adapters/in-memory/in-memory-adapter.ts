@@ -32,10 +32,10 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
   readonly options: ResolvedInMemoryAdapterOptions;
   readonly namingStrategy: SqlNamingStrategy;
 
-  #contextStorage: RequestContextStorage<DatabaseContextStorage>;
-  #store = createInMemoryStore();
-  #schemaNamespaceMap = new WeakMap<AnySchema, string | null>();
-  #schemaByNamespace = new Map<string, { schema: AnySchema; namespace: string | null }>();
+  readonly #contextStorage: RequestContextStorage<DatabaseContextStorage>;
+  readonly #store = createInMemoryStore();
+  readonly #schemaNamespaceMap = new WeakMap<AnySchema, string | null>();
+  readonly #schemaByNamespace = new Map<string, { schema: AnySchema; namespace: string | null }>();
 
   constructor(options: InMemoryAdapterOptions = {}, internals?: { store?: InMemoryStore }) {
     this.options = resolveInMemoryAdapterOptions(options);

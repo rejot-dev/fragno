@@ -39,9 +39,9 @@ const compareKeys = (left: IndexKey, right: IndexKey, compareValue: CompareValue
 };
 
 export class SortedArrayIndex<T> {
-  #entries: SortedArrayIndexEntry<T>[] = [];
-  #compareValue: CompareValue;
-  #unique: boolean;
+  readonly #entries: SortedArrayIndexEntry<T>[] = [];
+  readonly #compareValue: CompareValue;
+  readonly #unique: boolean;
 
   constructor(compareValue: CompareValue, options: SortedArrayIndexOptions = {}) {
     this.#compareValue = compareValue;

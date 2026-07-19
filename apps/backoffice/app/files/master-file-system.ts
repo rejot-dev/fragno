@@ -61,7 +61,7 @@ export type MasterFileSystemOptions = {
  * combined namespace without needing each mount to materialize those directories itself.
  */
 export class MasterFileSystem implements IFileSystem {
-  #mounts: ResolvedFileMount[];
+  readonly #mounts: ResolvedFileMount[];
 
   constructor(options: MasterFileSystemOptions) {
     const mounts = normalizeAndValidateMounts(options.mounts);

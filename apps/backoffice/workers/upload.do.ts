@@ -123,10 +123,10 @@ type UploadRuntime = {
 };
 
 export class InMemoryUploadObject implements UploadObject {
-  #state: BackofficeObjectState;
-  #env: Parameters<typeof createUploadServerForProvider>[3];
-  #runtimeServices: BackofficeRuntimeServices;
-  #host: BackofficeFragmentDurableObject<
+  readonly #state: BackofficeObjectState;
+  readonly #env: Parameters<typeof createUploadServerForProvider>[3];
+  readonly #runtimeServices: BackofficeRuntimeServices;
+  readonly #host: BackofficeFragmentDurableObject<
     StoredUploadAdminConfig,
     StoredUploadAdminConfig,
     UploadRuntime
@@ -414,7 +414,7 @@ export class InMemoryUploadObject implements UploadObject {
 }
 
 export class Upload extends DurableObject<CloudflareEnv> implements UploadObject {
-  #object: InMemoryUploadObject;
+  readonly #object: InMemoryUploadObject;
 
   constructor(
     state: DurableObjectState,

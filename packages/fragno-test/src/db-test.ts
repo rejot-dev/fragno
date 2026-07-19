@@ -335,7 +335,7 @@ export class DatabaseFragmentsTestBuilder<
   TFirstFragmentThisContext extends RequestThisContext = RequestThisContext,
 > {
   #adapter?: SupportedAdapter;
-  #fragments: FragmentConfigMap = new Map();
+  readonly #fragments: FragmentConfigMap = new Map();
   #dbRoundtripGuard?: FragnoPublicConfigWithDatabase["dbRoundtripGuard"] = true;
 
   /**

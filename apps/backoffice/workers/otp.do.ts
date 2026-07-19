@@ -87,9 +87,9 @@ const confirmIdentityClaimInputSchema = z.object({
 });
 
 export class InMemoryOtpObject implements OtpObject {
-  #state: BackofficeObjectState;
-  #runtime: BackofficeRuntimeServices;
-  #host: FragmentDurableObjectHost<void, OtpFragment>;
+  readonly #state: BackofficeObjectState;
+  readonly #runtime: BackofficeRuntimeServices;
+  readonly #host: FragmentDurableObjectHost<void, OtpFragment>;
   #fragment: OtpFragment | null = null;
 
   constructor({
@@ -251,7 +251,7 @@ export class InMemoryOtpObject implements OtpObject {
 }
 
 export class Otp extends DurableObject<CloudflareEnv> implements OtpObject {
-  #object: InMemoryOtpObject;
+  readonly #object: InMemoryOtpObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);

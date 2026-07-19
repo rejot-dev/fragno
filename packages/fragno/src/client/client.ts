@@ -818,15 +818,15 @@ export class ClientBuilder<
   >[],
   TFragmentConfig extends FragnoFragmentSharedConfig<TRoutes>,
 > {
-  #publicConfig: FragnoPublicClientConfig;
-  #fragmentConfig: TFragmentConfig;
-  #fetcherConfig?: FetcherConfig;
+  readonly #publicConfig: FragnoPublicClientConfig;
+  readonly #fragmentConfig: TFragmentConfig;
+  readonly #fetcherConfig?: FetcherConfig;
 
-  #cache = new Map<string, CacheLine>();
+  readonly #cache = new Map<string, CacheLine>();
 
-  #createFetcherStore;
-  #createMutatorStore;
-  #invalidateKeys;
+  readonly #createFetcherStore;
+  readonly #createMutatorStore;
+  readonly #invalidateKeys;
 
   constructor(publicConfig: FragnoPublicClientConfig, fragmentConfig: TFragmentConfig) {
     this.#publicConfig = publicConfig;

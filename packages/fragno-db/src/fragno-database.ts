@@ -29,9 +29,9 @@ export function isFragnoDatabase(value: unknown): value is FragnoDatabase<AnySch
  * Created from a FragnoDatabaseDefinition by calling .create(adapter).
  */
 export class FragnoDatabase<const T extends AnySchema, TUOWConfig = void> {
-  #namespace: string | null;
-  #schema: T;
-  #adapter: DatabaseAdapter<TUOWConfig>;
+  readonly #namespace: string | null;
+  readonly #schema: T;
+  readonly #adapter: DatabaseAdapter<TUOWConfig>;
 
   constructor(options: {
     namespace: string | null;

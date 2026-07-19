@@ -96,8 +96,8 @@ function asValidatorSchema(schema: unknown): Schema | boolean {
 
 class AjvShim {
   opts: AjvOptions;
-  private schemas: Array<{ schema: unknown; id?: string }> = [];
-  private formats = new Map<string, unknown>();
+  private readonly schemas: Array<{ schema: unknown; id?: string }> = [];
+  private readonly formats = new Map<string, unknown>();
 
   constructor(options: AjvOptions = {}) {
     this.opts = { ...options, code: options.code ?? {} };

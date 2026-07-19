@@ -92,10 +92,10 @@ const buildRealtimeDiagnosticUrl = () => {
 };
 
 export class InMemoryReson8Object implements Reson8Object {
-  #state: BackofficeObjectState;
-  #runtime: BackofficeRuntimeServices;
-  #host: BackofficeFragmentDurableObject<StoredReson8Config, Reson8Source, Reson8Fragment>;
-  #fetch: typeof fetch;
+  readonly #state: BackofficeObjectState;
+  readonly #runtime: BackofficeRuntimeServices;
+  readonly #host: BackofficeFragmentDurableObject<StoredReson8Config, Reson8Source, Reson8Fragment>;
+  readonly #fetch: typeof fetch;
 
   constructor({
     state,
@@ -298,7 +298,7 @@ export class InMemoryReson8Object implements Reson8Object {
 }
 
 export class Reson8 extends DurableObject<CloudflareEnv> implements Reson8Object {
-  #object: InMemoryReson8Object;
+  readonly #object: InMemoryReson8Object;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
