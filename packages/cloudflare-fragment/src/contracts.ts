@@ -26,7 +26,7 @@ export const cloudflareDeployRequestSchema = z.object({
   compatibilityFlags: z.array(z.string().min(1)).optional(),
 });
 
-const cloudflareTimestampSchema = z.string().datetime({ offset: true });
+const cloudflareTimestampSchema = z.iso.datetime({ offset: true });
 
 export const cloudflareProviderSummarySchema = z.object({
   etag: z.string().nullable(),

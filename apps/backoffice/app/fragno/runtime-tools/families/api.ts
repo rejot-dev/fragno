@@ -24,8 +24,8 @@ const authSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("bearer"), token: z.string().trim().min(1) }),
   z.object({
     type: z.literal("oauth"),
-    authorizationEndpoint: z.string().url(),
-    tokenEndpoint: z.string().url(),
+    authorizationEndpoint: z.url(),
+    tokenEndpoint: z.url(),
     clientId: z.string().trim().min(1),
     clientSecret: z.string().trim().min(1).optional(),
     scopes: z.array(z.string().trim().min(1)).optional(),
@@ -33,7 +33,7 @@ const authSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("client_credentials"),
-    tokenEndpoint: z.string().url(),
+    tokenEndpoint: z.url(),
     clientId: z.string().trim().min(1),
     clientSecret: z.string().trim().min(1),
     scopes: z.array(z.string().trim().min(1)).optional(),
@@ -45,7 +45,7 @@ const authSchema = z.discriminatedUnion("type", [
 const connectionSchema = z.object({
   slug: z.string().trim().min(1),
   name: z.string().nullable().optional(),
-  baseUrl: z.string().url(),
+  baseUrl: z.url(),
   authMode: z.string().trim().min(1),
   status: z.string().trim().min(1),
   createdAt: z.union([z.string(), z.date()]).optional(),
@@ -59,7 +59,7 @@ const createConnectionInputSchema = z.object({
     .min(1)
     .regex(/^[a-z0-9][a-z0-9-]*$/),
   name: z.string().trim().optional(),
-  baseUrl: z.string().url(),
+  baseUrl: z.url(),
   auth: authSchema.default({ type: "none" }),
 });
 const slugInputSchema = z.object({ slug: z.string().trim().min(1) });
@@ -78,7 +78,7 @@ const oauthStartInputSchema = z.object({
   scopes: z.array(z.string().trim().min(1)).optional(),
   extraAuthorizationParams: z.record(z.string(), z.string()).optional(),
 });
-const oauthStartOutputSchema = z.object({ authorizationUrl: z.string().url(), state: z.string() });
+const oauthStartOutputSchema = z.object({ authorizationUrl: z.url(), state: z.string() });
 const requestInputSchema = z.object({
   slug: z.string().trim().min(1),
   method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
@@ -97,7 +97,7 @@ const requestOutputSchema = z.object({
 });
 
 const webhookEndpointSchema = webhookEndpointOutputSchema.extend({
-  publicUrl: z.string().url().nullable(),
+  publicUrl: z.url().nullable(),
 });
 const webhookEndpointsOutputSchema = z.object({ endpoints: z.array(webhookEndpointSchema) });
 const webhookEndpointCreateInputSchema = apiFragmentCreateWebhookEndpointInputSchema.extend({

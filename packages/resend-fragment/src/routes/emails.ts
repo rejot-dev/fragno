@@ -37,7 +37,7 @@ const resendEmailSchemaBase = z.object({
 const applyBodyValidation = (value: { html?: string; text?: string }, ctx: z.RefinementCtx) => {
   if (!value.html && !value.text) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       message: "Either html or text is required.",
       path: ["html"],
     });
@@ -50,7 +50,7 @@ export const resendSendEmailInputSchema = resendEmailSchema;
 const resendEmailPayloadSchema = resendEmailSchemaBase
   .omit({ scheduledIn: true })
   .partial()
-  .passthrough();
+  .loose();
 
 export const resendEmailRecordSchema = z.object({
   id: z.string(),

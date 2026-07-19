@@ -29,7 +29,7 @@ export const storedAuthPayloadSchema = z.discriminatedUnion("type", [
   authConfigSchema.options[2].extend({ tokens: oauthTokensSchema.optional() }),
   authConfigSchema.options[3].extend({
     tokens: oauthTokensSchema.optional(),
-    redirectUri: z.string().url().optional(),
+    redirectUri: z.url().optional(),
   }),
 ]);
 

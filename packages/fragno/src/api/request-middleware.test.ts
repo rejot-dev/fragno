@@ -462,7 +462,7 @@ describe("Request Middleware", () => {
         path: "/users",
         inputSchema: z.object({
           name: z.string().min(1, "Name is required"),
-          email: z.string().email("Invalid email format"),
+          email: z.email("Invalid email format"),
         }),
         outputSchema: z.object({ id: z.number(), name: z.string(), email: z.string() }),
         handler: async ({ input }, { json }) => {

@@ -129,7 +129,7 @@ const resendThreadReplyInputSchema = z
   .superRefine((value, ctx) => {
     if (!value.html && !value.text) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         message: "Either html or text is required.",
         path: ["html"],
       });

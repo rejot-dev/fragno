@@ -296,6 +296,9 @@ importers:
       citty:
         specifier: ^0.1.6
         version: 0.1.6
+      zod:
+        specifier: 4.3.5
+        version: 4.3.5
     devDependencies:
       '@fragno-private/typescript-config':
         specifier: workspace:*

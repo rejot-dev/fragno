@@ -18,7 +18,7 @@ export const authConfigSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("bearer"), token: z.string().min(1) }),
   z.object({
     type: z.literal("client_credentials"),
-    tokenEndpoint: z.string().url(),
+    tokenEndpoint: z.url(),
     clientId: z.string().min(1),
     clientSecret: z.string().min(1),
     scopes: z.array(z.string()).optional(),
@@ -29,8 +29,8 @@ export const authConfigSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("oauth"),
-    authorizationEndpoint: z.string().url(),
-    tokenEndpoint: z.string().url(),
+    authorizationEndpoint: z.url(),
+    tokenEndpoint: z.url(),
     clientId: z.string().min(1),
     clientSecret: z.string().min(1).optional(),
     scopes: z.array(z.string()).optional(),
@@ -42,7 +42,7 @@ export const authConfigSchema = z.discriminatedUnion("type", [
 
 export const createApiConnectionInputSchema = z.object({
   name: z.string().min(1).optional(),
-  baseUrl: z.string().url(),
+  baseUrl: z.url(),
   auth: authConfigSchema.default({ type: "none" }),
 });
 
