@@ -687,7 +687,9 @@ export class DatabaseFragmentsTestBuilder<
         if (existing) {
           return existing;
         }
-        const db = createTestDb(() => runtimeAdapter.createQueryEngine(schema, namespace));
+        const db = createTestDb((name, config) =>
+          runtimeAdapter.createUnitOfWork(schema, namespace, name, config),
+        );
         runtimeDbs.set(key, db);
         return db;
       };

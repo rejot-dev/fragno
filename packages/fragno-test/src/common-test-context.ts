@@ -30,12 +30,12 @@ export function createCommonTestContextMethods(
 ): InternalTestContextMethods {
   return {
     getDb: (namespace: string | null) =>
-      createTestDb(() => {
+      createTestDb((name, config) => {
         const orm = ormMap.get(namespace);
         if (!orm) {
           throw new Error(`No ORM found for namespace: ${String(namespace)}`);
         }
-        return orm;
+        return orm.createBaseUnitOfWork(name, config as never);
       }),
   };
 }

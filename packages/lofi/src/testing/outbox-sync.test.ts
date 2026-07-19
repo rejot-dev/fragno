@@ -14,7 +14,6 @@ import {
 } from "fake-indexeddb";
 
 import { defineFragment, instantiate } from "@fragno-dev/core";
-import type { FragnoDatabase } from "@fragno-dev/db";
 import {
   InMemoryAdapter,
   getInternalFragment,
@@ -51,13 +50,7 @@ const fragmentDef = defineFragment(fragmentName).extend(withDatabase(appSchema))
 
 const createDbName = () => `lofi-outbox-${Math.random().toString(16).slice(2)}`;
 
-type OutboxContext = {
-  db: FragnoDatabase<typeof appSchema>;
-  internalFragment: InternalFragmentInstance;
-  cleanup: () => Promise<void>;
-};
-
-async function buildOutboxContext(): Promise<OutboxContext> {
+async function buildOutboxContext() {
   const adapter = new InMemoryAdapter({
     idSeed: "lofi-outbox-seed",
   });
@@ -69,10 +62,11 @@ async function buildOutboxContext(): Promise<OutboxContext> {
     .build();
 
   const deps = fragment.$internal.deps as ImplicitDatabaseDependencies;
-  const db = deps.databaseAdapter.createQueryEngine(appSchema, deps.namespace);
+  const createUnitOfWork = (name?: string) =>
+    deps.databaseAdapter.createUnitOfWork(appSchema, deps.namespace, name);
 
   return {
-    db,
+    createUnitOfWork,
     internalFragment: getInternalFragment(adapter),
     cleanup: async () => {
       await adapter.close();
@@ -106,11 +100,11 @@ describe("outbox sync integration", () => {
   });
 
   it("syncs outbox entries into IndexedDB and advances the cursor", async () => {
-    const { db, internalFragment, cleanup } = await buildOutboxContext();
+    const { createUnitOfWork, internalFragment, cleanup } = await buildOutboxContext();
 
     try {
       const betaUserId = await (async () => {
-        const uow = db.createUnitOfWork("seed-users");
+        const uow = createUnitOfWork("seed-users");
         uow.create("users", { email: "alpha@example.com", age: 30 });
         uow.create("users", { email: "beta@example.com", age: 20 });
         uow.create("users", { email: "gamma@example.com", age: 40 });
@@ -127,7 +121,7 @@ describe("outbox sync integration", () => {
       }
 
       {
-        const uow = db.createUnitOfWork("seed-post");
+        const uow = createUnitOfWork("seed-post");
         uow.create("posts", {
           title: "Hello",
           authorId: FragnoReference.fromInternal(betaUserId.internalId),
@@ -215,11 +209,11 @@ describe("outbox sync integration", () => {
   });
 
   it("stores materialized outbox timestamps instead of db-now sentinels", async () => {
-    const { db, internalFragment, cleanup } = await buildOutboxContext();
+    const { createUnitOfWork, internalFragment, cleanup } = await buildOutboxContext();
 
     try {
       {
-        const uow = db.createUnitOfWork("seed-user-timestamp");
+        const uow = createUnitOfWork("seed-user-timestamp");
         uow.create("users", {
           email: "timestamp@example.com",
           age: 50,
@@ -260,11 +254,11 @@ describe("outbox sync integration", () => {
   });
 
   it("skips duplicate outbox entries when re-synced", async () => {
-    const { db, internalFragment, cleanup } = await buildOutboxContext();
+    const { createUnitOfWork, internalFragment, cleanup } = await buildOutboxContext();
 
     try {
       {
-        const uow = db.createUnitOfWork("seed-users-dup");
+        const uow = createUnitOfWork("seed-users-dup");
         uow.create("users", { email: "alpha@example.com", age: 30 });
         uow.create("users", { email: "beta@example.com", age: 20 });
         const { success } = await uow.executeMutations();
