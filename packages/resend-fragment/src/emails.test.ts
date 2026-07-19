@@ -17,11 +17,9 @@ describe("resend-fragment emails", async () => {
       updatedAt?: Date;
     };
     const createdAt =
-      values["createdAt"] instanceof Date
-        ? values["createdAt"]
-        : new Date("2026-03-01T10:00:00.000Z");
-    const occurredAt = values["occurredAt"] instanceof Date ? values["occurredAt"] : createdAt;
-    const updatedAt = values["updatedAt"] instanceof Date ? values["updatedAt"] : createdAt;
+      values.createdAt instanceof Date ? values.createdAt : new Date("2026-03-01T10:00:00.000Z");
+    const occurredAt = values.occurredAt instanceof Date ? values.occurredAt : createdAt;
+    const updatedAt = values.updatedAt instanceof Date ? values.updatedAt : createdAt;
 
     const uow = db.createUnitOfWork("outbound-msg").forSchema(resendSchema);
     uow.create("emailMessage", {

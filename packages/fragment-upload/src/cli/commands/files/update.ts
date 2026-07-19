@@ -39,26 +39,23 @@ export const filesUpdateCommand = define({
     },
   },
   run: async (ctx) => {
-    const provider = resolveProviderValue(ctx.values["provider"] as string | undefined);
+    const provider = resolveProviderValue(ctx.values.provider as string | undefined);
     const resolvedKey = resolveFileKeyValue({
       fileKey: ctx.values["file-key"] as string | undefined,
     });
 
     const payload: Record<string, unknown> = {};
-    if (ctx.values["filename"]) {
-      payload["filename"] = ctx.values["filename"] as string;
+    if (ctx.values.filename) {
+      payload["filename"] = ctx.values.filename as string;
     }
-    if (ctx.values["visibility"]) {
-      payload["visibility"] = ctx.values["visibility"] as string;
+    if (ctx.values.visibility) {
+      payload["visibility"] = ctx.values.visibility as string;
     }
-    if (ctx.values["tags"] !== undefined) {
-      payload["tags"] = parseJsonValue("tags", ctx.values["tags"] as string | undefined);
+    if (ctx.values.tags !== undefined) {
+      payload["tags"] = parseJsonValue("tags", ctx.values.tags as string | undefined);
     }
-    if (ctx.values["metadata"] !== undefined) {
-      payload["metadata"] = parseJsonValue(
-        "metadata",
-        ctx.values["metadata"] as string | undefined,
-      );
+    if (ctx.values.metadata !== undefined) {
+      payload["metadata"] = parseJsonValue("metadata", ctx.values.metadata as string | undefined);
     }
 
     if (Object.keys(payload).length === 0) {

@@ -226,7 +226,7 @@ const renderTools = (result: McpServerRefreshOutput) => {
 };
 
 const renderToolCall = (result: McpToolCallOutput) => {
-  const content = result["content"];
+  const content = result.content;
   if (Array.isArray(content)) {
     const text = content
       .map((item) =>

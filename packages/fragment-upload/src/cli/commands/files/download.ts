@@ -36,13 +36,13 @@ export const filesDownloadCommand = define({
     },
   },
   run: async (ctx) => {
-    const provider = resolveProviderValue(ctx.values["provider"] as string | undefined);
+    const provider = resolveProviderValue(ctx.values.provider as string | undefined);
     const resolvedKey = resolveFileKeyValue({
       fileKey: ctx.values["file-key"] as string | undefined,
     });
 
-    const outputPath = ctx.values["output"] as string | undefined;
-    const toStdout = Boolean(ctx.values["stdout"]);
+    const outputPath = ctx.values.output as string | undefined;
+    const toStdout = Boolean(ctx.values.stdout);
 
     if (!outputPath && !toStdout) {
       throw new Error("Provide --output or --stdout.");

@@ -137,15 +137,15 @@ export const clientCommand = define({
     },
   },
   run: async (ctx) => {
-    const endpoint = ctx.values["endpoint"] as string;
-    const timeoutSeconds = coerceNumber(ctx.values["timeout"], 5);
-    const pollIntervalMs = coerceNumber(ctx.values["pollInterval"], 1000);
-    const limit = coerceNumber(ctx.values["limit"], 500);
-    const endpointOverride = ctx.values["endpointName"] as string | undefined;
-    const modulePath = ctx.values["module"] as string | undefined;
-    const commandName = ctx.values["command"] as string | undefined;
-    const inputRaw = ctx.values["input"] as string | undefined;
-    const submitQueued = Boolean(ctx.values["submit"]);
+    const endpoint = ctx.values.endpoint as string;
+    const timeoutSeconds = coerceNumber(ctx.values.timeout, 5);
+    const pollIntervalMs = coerceNumber(ctx.values.pollInterval, 1000);
+    const limit = coerceNumber(ctx.values.limit, 500);
+    const endpointOverride = ctx.values.endpointName as string | undefined;
+    const modulePath = ctx.values.module as string | undefined;
+    const commandName = ctx.values.command as string | undefined;
+    const inputRaw = ctx.values.input as string | undefined;
+    const submitQueued = Boolean(ctx.values.submit);
     const optimistic = !ctx.values["no-optimistic"];
 
     if (timeoutSeconds < 0) {

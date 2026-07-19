@@ -46,7 +46,7 @@ describe("resolveNpmModules", () => {
       expect(key.endsWith(".js"), key).toBe(true);
     }
     // the requested specifier maps to a real module
-    const entryKey = imports["leftpad"];
+    const entryKey = imports.leftpad;
     expect(modules[entryKey]).toBeDefined();
     // the facade's absolute import was rewritten to a relative in-map key
     const innerSpec = /from "([^"]+)"/.exec(modules[entryKey])?.[1];

@@ -39,7 +39,7 @@ export const scenarioCommand = define({
     },
   },
   run: async (ctx) => {
-    const file = ctx.values["file"] as string;
+    const file = ctx.values.file as string;
     installIndexedDbGlobals();
 
     const scenario = await resolveScenarioModule(file);

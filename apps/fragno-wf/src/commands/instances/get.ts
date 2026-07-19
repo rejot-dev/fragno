@@ -24,8 +24,8 @@ export const instancesGetCommand = define({
     },
   },
   run: async (ctx) => {
-    const workflowName = ctx.values["workflow"] as string | undefined;
-    const instanceId = ctx.values["id"] as string | undefined;
+    const workflowName = ctx.values.workflow as string | undefined;
+    const instanceId = ctx.values.id as string | undefined;
 
     if (!workflowName) {
       throw new Error("Missing --workflow");
@@ -70,7 +70,7 @@ export const instancesGetCommand = define({
       console.log(`  Waiting for: ${String(current["waitEventType"] ?? "-")}`);
     }
 
-    if (ctx.values["full"]) {
+    if (ctx.values.full) {
       console.log("Params:");
       console.log(formatJson(meta["params"]));
       console.log("Output:");

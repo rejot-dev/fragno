@@ -56,8 +56,8 @@ export const instancesHistoryCommand = define({
     },
   },
   run: async (ctx) => {
-    const workflowName = ctx.values["workflow"] as string | undefined;
-    const instanceId = ctx.values["id"] as string | undefined;
+    const workflowName = ctx.values.workflow as string | undefined;
+    const instanceId = ctx.values.id as string | undefined;
 
     if (!workflowName) {
       throw new Error("Missing --workflow");
@@ -73,7 +73,7 @@ export const instancesHistoryCommand = define({
       includeLogs: ctx.values["include-logs"] as boolean | undefined,
       logLevel: ctx.values["log-level"] as string | undefined,
       logCategory: ctx.values["log-category"] as string | undefined,
-      order: ctx.values["order"] as string | undefined,
+      order: ctx.values.order as string | undefined,
       pageSize: ctx.values["page-size"] as number | undefined,
       stepsCursor: ctx.values["steps-cursor"] as string | undefined,
       eventsCursor: ctx.values["events-cursor"] as string | undefined,

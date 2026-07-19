@@ -29,9 +29,9 @@ export const instancesSendEventCommand = define({
     },
   },
   run: async (ctx) => {
-    const workflowName = ctx.values["workflow"] as string | undefined;
-    const instanceId = ctx.values["id"] as string | undefined;
-    const type = ctx.values["type"] as string | undefined;
+    const workflowName = ctx.values.workflow as string | undefined;
+    const instanceId = ctx.values.id as string | undefined;
+    const type = ctx.values.type as string | undefined;
 
     if (!workflowName) {
       throw new Error("Missing --workflow");
@@ -43,7 +43,7 @@ export const instancesSendEventCommand = define({
       throw new Error("Missing --type");
     }
 
-    const payload = parseJsonValue("payload", ctx.values["payload"] as string | undefined);
+    const payload = parseJsonValue("payload", ctx.values.payload as string | undefined);
     const client = createClientFromContext(ctx);
     const response = await client.sendEvent({
       workflowName,

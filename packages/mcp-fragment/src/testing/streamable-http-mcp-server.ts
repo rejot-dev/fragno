@@ -35,7 +35,7 @@ function rejectUnauthorized(request: IncomingMessage, requiredBearerToken: strin
   if (!requiredBearerToken) {
     return false;
   }
-  return request.headers["authorization"] !== `Bearer ${requiredBearerToken}`;
+  return request.headers.authorization !== `Bearer ${requiredBearerToken}`;
 }
 
 function hasExpectedClientAuth(

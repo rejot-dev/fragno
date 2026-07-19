@@ -35,8 +35,8 @@ export const pullsListCommand = define({
     },
   },
   run: async (ctx) => {
-    const owner = ctx.values["owner"] as string | undefined;
-    const repo = ctx.values["repo"] as string | undefined;
+    const owner = ctx.values.owner as string | undefined;
+    const repo = ctx.values.repo as string | undefined;
 
     if (!owner) {
       throw new Error("Missing --owner");
@@ -46,9 +46,9 @@ export const pullsListCommand = define({
     }
 
     const client = createClientFromContext(ctx);
-    const state = ctx.values["state"] as string | undefined;
+    const state = ctx.values.state as string | undefined;
     const perPage = ctx.values["per-page"] as number | undefined;
-    const page = ctx.values["page"] as number | undefined;
+    const page = ctx.values.page as number | undefined;
 
     const query: Record<string, string> = {};
     if (state) {
@@ -106,9 +106,9 @@ export const pullsReviewCommand = define({
     },
   },
   run: async (ctx) => {
-    const owner = ctx.values["owner"] as string | undefined;
-    const repo = ctx.values["repo"] as string | undefined;
-    const number = ctx.values["number"] as number | undefined;
+    const owner = ctx.values.owner as string | undefined;
+    const repo = ctx.values.repo as string | undefined;
+    const number = ctx.values.number as number | undefined;
 
     if (!owner) {
       throw new Error("Missing --owner");
@@ -120,12 +120,12 @@ export const pullsReviewCommand = define({
       throw new Error("Missing --number");
     }
 
-    const event = ctx.values["event"] as string | undefined;
+    const event = ctx.values.event as string | undefined;
     if (event && !["APPROVE", "REQUEST_CHANGES", "COMMENT"].includes(event)) {
       throw new Error("Invalid --event. Use APPROVE, REQUEST_CHANGES, or COMMENT.");
     }
 
-    const comments = parseJsonValue("comments", ctx.values["comments"] as string | undefined);
+    const comments = parseJsonValue("comments", ctx.values.comments as string | undefined);
     if (comments !== undefined && !Array.isArray(comments)) {
       throw new Error("--comments must be a JSON array");
     }
@@ -137,7 +137,7 @@ export const pullsReviewCommand = define({
       path: `/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}/reviews`,
       body: {
         event: event || undefined,
-        body: ctx.values["body"] as string | undefined,
+        body: ctx.values.body as string | undefined,
         comments: comments as unknown[] | undefined,
         commitId: ctx.values["commit-id"] as string | undefined,
       },

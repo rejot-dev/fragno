@@ -1,5 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
-export const pgFile = process.env["UPLOAD_EXAMPLE_DB"] ?? ("./upload-example.pglite" as const);
+export const pgFile = process.env.UPLOAD_EXAMPLE_DB ?? ("./upload-example.pglite" as const);
 
 let clientInstance: PGlite | undefined;
 

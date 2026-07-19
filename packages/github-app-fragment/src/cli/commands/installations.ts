@@ -20,7 +20,7 @@ export const installationsListCommand = define({
   },
   run: async (ctx) => {
     const client = createClientFromContext(ctx);
-    const status = ctx.values["status"] as string | undefined;
+    const status = ctx.values.status as string | undefined;
 
     const response = await client.requestJson({
       method: "GET",

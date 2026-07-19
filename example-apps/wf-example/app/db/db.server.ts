@@ -4,8 +4,8 @@ import { Pool } from "pg";
 import { schema } from "./schema";
 
 export const postgresUrl =
-  process.env["WF_EXAMPLE_DATABASE_URL"] ??
-  process.env["DATABASE_URL"] ??
+  process.env.WF_EXAMPLE_DATABASE_URL ??
+  process.env.DATABASE_URL ??
   "postgres://postgres:postgres@localhost:5436/wilco";
 
 type DatabaseInstance = ReturnType<typeof createDrizzleDatabase>;

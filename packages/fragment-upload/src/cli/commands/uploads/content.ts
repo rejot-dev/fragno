@@ -33,7 +33,7 @@ export const uploadsContentCommand = define({
       throw new Error("Missing --upload-id");
     }
 
-    const filePath = ctx.values["file"] as string | undefined;
+    const filePath = ctx.values.file as string | undefined;
     if (!filePath) {
       throw new Error("Missing --file");
     }

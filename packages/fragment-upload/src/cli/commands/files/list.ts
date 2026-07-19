@@ -34,16 +34,16 @@ export const filesListCommand = define({
   },
   run: async (ctx) => {
     const prefix = resolvePrefixValue({
-      prefix: ctx.values["prefix"] as string | undefined,
+      prefix: ctx.values.prefix as string | undefined,
     });
 
     const client = createClientFromContext(ctx);
     const response = await client.listFiles({
-      provider: ctx.values["provider"] as string | undefined,
+      provider: ctx.values.provider as string | undefined,
       prefix,
-      cursor: ctx.values["cursor"] as string | undefined,
+      cursor: ctx.values.cursor as string | undefined,
       pageSize: ctx.values["page-size"] as number | undefined,
-      status: ctx.values["status"] as string | undefined,
+      status: ctx.values.status as string | undefined,
       uploaderId: ctx.values["uploader-id"] as string | undefined,
     });
 

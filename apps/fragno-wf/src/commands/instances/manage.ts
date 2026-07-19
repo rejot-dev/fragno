@@ -22,8 +22,8 @@ export const createManageCommand = (action: ManageAction, description: string) =
       },
     },
     run: async (ctx) => {
-      const workflowName = ctx.values["workflow"] as string | undefined;
-      const instanceId = ctx.values["id"] as string | undefined;
+      const workflowName = ctx.values.workflow as string | undefined;
+      const instanceId = ctx.values.id as string | undefined;
       if (!workflowName) {
         throw new Error("Missing --workflow");
       }

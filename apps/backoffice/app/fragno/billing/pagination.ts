@@ -33,9 +33,9 @@ export const decodeBillingTrackerCursor = (input: {
       cursor.indexName !== BILLING_TRACKER_INDEX_NAME ||
       cursor.orderDirection !== "asc" ||
       cursor.pageSize > BILLING_TRACKER_MAX_PAGE_SIZE ||
-      cursor.indexValues["scopeKey"] !== expectedScopeKey ||
-      cursor.indexValues["period"] !== input.period ||
-      typeof cursor.indexValues["meter"] !== "string"
+      cursor.indexValues.scopeKey !== expectedScopeKey ||
+      cursor.indexValues.period !== input.period ||
+      typeof cursor.indexValues.meter !== "string"
     ) {
       throw new BillingTrackerCursorError();
     }
