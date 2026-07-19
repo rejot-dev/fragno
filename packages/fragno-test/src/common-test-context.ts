@@ -1,7 +1,7 @@
-import type { DatabaseAdapter, FragnoDatabase } from "@fragno-dev/db";
+import type { DatabaseAdapter } from "@fragno-dev/db";
 
 import type { SupportedAdapter, AdapterContext } from "./adapters";
-import { createTestDb, type TestDb } from "./test-db";
+import { createTestDb, type TestDb, type TestUnitOfWorkFactory } from "./test-db";
 
 /**
  * Base test context with common functionality across all adapters.
@@ -21,22 +21,20 @@ export interface InternalTestContextMethods {
 }
 
 /**
- * Helper to create common test context methods from an ORM map.
+ * Helper to create common test context methods from schema-bound unit-of-work factories.
  * This is used internally by adapter implementations to avoid code duplication.
  */
 export function createCommonTestContextMethods(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ormMap: Map<string | null, FragnoDatabase<any>>,
+  unitOfWorkFactories: Map<string | null, TestUnitOfWorkFactory>,
 ): InternalTestContextMethods {
   return {
-    getDb: (namespace: string | null) =>
-      createTestDb((name, config) => {
-        const orm = ormMap.get(namespace);
-        if (!orm) {
-          throw new Error(`No ORM found for namespace: ${String(namespace)}`);
-        }
-        return orm.createBaseUnitOfWork(name, config as never);
-      }),
+    getDb: (namespace: string | null) => {
+      const createUnitOfWork = unitOfWorkFactories.get(namespace);
+      if (!createUnitOfWork) {
+        throw new Error(`No schema registered for namespace: ${String(namespace)}`);
+      }
+      return createTestDb(createUnitOfWork);
+    },
   };
 }
 

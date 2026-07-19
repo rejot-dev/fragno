@@ -1,6 +1,5 @@
 import type { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
 
-import type { FragnoDatabase } from "../fragno-database";
 import type { SqlNamingStrategy } from "../naming/sql-naming";
 import type { IUnitOfWork, TypedUnitOfWork } from "../query/unit-of-work/unit-of-work";
 import type { AnySchema } from "../schema/create";
@@ -73,14 +72,6 @@ export interface DatabaseAdapter<TUOWConfig = void> {
   ) => TypedUnitOfWork<T, [], unknown>;
 
   createBaseUnitOfWork: (name?: string, config?: TUOWConfig) => IUnitOfWork;
-
-  /**
-   * @deprecated Prefer adapter.createUnitOfWork(schema, namespace, ...) directly.
-   */
-  createQueryEngine: <const T extends AnySchema>(
-    schema: T,
-    namespace: string | null,
-  ) => FragnoDatabase<T, TUOWConfig>;
 
   prepareMigrations?: (schema: AnySchema, namespace: string | null) => PreparedMigrations;
 

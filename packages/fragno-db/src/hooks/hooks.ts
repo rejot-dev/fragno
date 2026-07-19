@@ -141,14 +141,6 @@ export type DurableHooksRunner = {
 };
 
 /**
- * @deprecated Use DurableHooksRunner.
- */
-export type HookScheduler = {
-  schedule: () => Promise<number>;
-  drain: () => Promise<void>;
-};
-
-/**
  * Configuration for hook processing.
  */
 export interface HookProcessorConfig<THooks extends HooksMap = HooksMap> {
@@ -169,11 +161,6 @@ export interface HookProcessorConfig<THooks extends HooksMap = HooksMap> {
    * Post-commit durable hooks notifier.
    */
   notifier?: HookNotifier;
-  /**
-   * @deprecated Use `runner`.
-   */
-  // oxlint-disable-next-line typescript/no-deprecated -- Keep the public scheduler compatibility field typed by its legacy contract.
-  scheduler?: HookScheduler;
   defaultRetryPolicy?: RetryPolicy;
   /**
    * Re-queue hooks that have been in `processing` for at least this many minutes.
@@ -643,16 +630,4 @@ export function createDurableHooksRunner(config: HookProcessorConfig): DurableHo
   };
 
   return { processDue, drain };
-}
-
-/**
- * @deprecated Use createDurableHooksRunner.
- */
-// oxlint-disable-next-line typescript/no-deprecated -- Keep the deprecated factory's return type accurate for compatibility callers.
-export function createHookScheduler(config: HookProcessorConfig): HookScheduler {
-  const runner = createDurableHooksRunner(config);
-  return {
-    schedule: () => runner.processDue(),
-    drain: () => runner.drain(),
-  };
 }

@@ -1,9 +1,8 @@
 import { InMemoryAdapter } from "@fragno-dev/db/adapters/in-memory";
 
-import type { FragnoDatabase } from "@fragno-dev/db";
-
 import type { AdapterFactoryResult, InMemoryAdapterConfig, SchemaConfig } from "../adapters";
 import { createCommonTestContextMethods } from "../common-test-context";
+import type { TestUnitOfWorkFactory } from "../test-db";
 
 export async function createInMemoryAdapter(
   config: InMemoryAdapterConfig,
@@ -11,11 +10,12 @@ export async function createInMemoryAdapter(
 ): Promise<AdapterFactoryResult<InMemoryAdapterConfig>> {
   const adapter = new InMemoryAdapter(config.options);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ormMap = new Map<string | null, FragnoDatabase<any, any>>();
+  const unitOfWorkFactories = new Map<string | null, TestUnitOfWorkFactory>();
   for (const { schema, namespace } of schemas) {
-    const orm = adapter.createQueryEngine(schema, namespace);
-    ormMap.set(namespace, orm);
+    adapter.registerSchema(schema, namespace);
+    unitOfWorkFactories.set(namespace, (name, uowConfig) =>
+      adapter.createBaseUnitOfWork(name, uowConfig as never),
+    );
   }
 
   const resetDatabase = async () => {
@@ -26,7 +26,7 @@ export async function createInMemoryAdapter(
     await adapter.close();
   };
 
-  const commonMethods = createCommonTestContextMethods(ormMap);
+  const commonMethods = createCommonTestContextMethods(unitOfWorkFactories);
 
   return {
     testContext: {

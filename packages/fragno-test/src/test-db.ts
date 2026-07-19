@@ -1,11 +1,11 @@
 import type { IUnitOfWork } from "@fragno-dev/db";
 
+export type TestUnitOfWorkFactory = (name?: string, config?: unknown) => IUnitOfWork;
+
 export interface TestDb {
-  createUnitOfWork: (name?: string, config?: unknown) => IUnitOfWork;
+  createUnitOfWork: TestUnitOfWorkFactory;
 }
 
-export function createTestDb(
-  createUnitOfWork: (name?: string, config?: unknown) => IUnitOfWork,
-): TestDb {
+export function createTestDb(createUnitOfWork: TestUnitOfWorkFactory): TestDb {
   return { createUnitOfWork };
 }

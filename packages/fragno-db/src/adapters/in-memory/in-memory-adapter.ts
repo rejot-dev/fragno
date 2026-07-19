@@ -1,6 +1,5 @@
 import { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
 
-import { FragnoDatabase } from "../../fragno-database";
 import { getOutboxConfigForAdapter } from "../../internal/outbox-state";
 import {
   createNamingResolver,
@@ -166,13 +165,5 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
         };
       },
     };
-  }
-
-  createQueryEngine<T extends AnySchema>(
-    schema: T,
-    namespace: string | null,
-  ): FragnoDatabase<T, InMemoryUowConfig> {
-    this.registerSchema(schema, namespace);
-    return new FragnoDatabase({ adapter: this, schema, namespace });
   }
 }

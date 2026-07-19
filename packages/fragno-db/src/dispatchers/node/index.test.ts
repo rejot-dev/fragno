@@ -10,7 +10,6 @@ describe("createDurableHooksDispatcher", () => {
       const dispatcher = createDurableHooksDispatcher({
         processor: {
           processDue,
-          process: processDue,
           getNextWakeAt: vi.fn().mockResolvedValue(null),
           drain: vi.fn().mockResolvedValue(undefined),
           namespace: "test",
@@ -36,7 +35,7 @@ describe("createDurableHooksDispatcher", () => {
     const drain = vi.fn().mockResolvedValue(undefined);
 
     const dispatcher = createDurableHooksDispatcher({
-      processor: { processDue, process: processDue, getNextWakeAt, drain, namespace: "test" },
+      processor: { processDue, getNextWakeAt, drain, namespace: "test" },
     });
 
     await dispatcher.wake();
@@ -55,7 +54,6 @@ describe("createDurableHooksDispatcher", () => {
     const dispatcher = createDurableHooksDispatcher({
       processor: {
         processDue,
-        process: processDue,
         getNextWakeAt: vi.fn().mockResolvedValue(null),
         drain,
         namespace: "test",
@@ -84,7 +82,7 @@ describe("createDurableHooksDispatcher", () => {
     const drain = vi.fn().mockResolvedValue(undefined);
 
     const dispatcher = createDurableHooksDispatcher({
-      processor: { processDue, process: processDue, getNextWakeAt, drain, namespace: "test" },
+      processor: { processDue, getNextWakeAt, drain, namespace: "test" },
       pollIntervalMs: 1000,
     });
 
@@ -106,7 +104,7 @@ describe("createDurableHooksDispatcher", () => {
     const drain = vi.fn().mockResolvedValue(undefined);
 
     const dispatcher = createDurableHooksDispatcher({
-      processor: { processDue, process: processDue, getNextWakeAt, drain, namespace: "test" },
+      processor: { processDue, getNextWakeAt, drain, namespace: "test" },
       pollIntervalMs: 1000,
     });
 

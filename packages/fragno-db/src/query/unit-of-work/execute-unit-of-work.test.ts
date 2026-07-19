@@ -48,10 +48,6 @@ function setupCrossSchemaHookTest() {
   const namespaceA = "alpha";
   const namespaceB = "beta";
 
-  const queryA = adapter.createQueryEngine(schemaA, namespaceA);
-  const queryB = adapter.createQueryEngine(schemaB, namespaceB);
-  const internalQuery = adapter.createQueryEngine(internalSchema, null);
-
   const internalFragment = {
     $internal: {
       deps: {
@@ -66,9 +62,7 @@ function setupCrossSchemaHookTest() {
     schemaB,
     namespaceA,
     namespaceB,
-    queryA,
-    queryB,
-    internalQuery,
+    adapter,
     internalFragment,
   };
 }
@@ -2175,7 +2169,7 @@ describe("Unified Tx API", () => {
     });
 
     it("should create hook records when handler uses schema A and service uses schema B", async () => {
-      const { schemaA, schemaB, namespaceA, namespaceB, queryA, internalQuery, internalFragment } =
+      const { schemaA, schemaB, namespaceA, namespaceB, adapter, internalFragment } =
         setupCrossSchemaHookTest();
 
       type HooksA = {
@@ -2204,7 +2198,7 @@ describe("Unified Tx API", () => {
 
       await createHandlerTxBuilder({
         createUnitOfWork: () => {
-          currentUow = queryA.createBaseUnitOfWork();
+          currentUow = adapter.createBaseUnitOfWork();
           currentUow.registerSchema(schemaA, namespaceA);
           currentUow.registerSchema(schemaB, namespaceB);
           currentUow.registerSchema(internalSchema, null);
@@ -2223,8 +2217,8 @@ describe("Unified Tx API", () => {
         .execute();
 
       const hooks = await (async () => {
-        const uow = internalQuery
-          .createUnitOfWork("read")
+        const uow = adapter
+          .createUnitOfWork(internalSchema, null, "read")
           .find("fragno_hooks", (b) => b.whereIndex("primary"));
         await uow.executeRetrieve();
         return (await uow.retrievalPhase)[0];
@@ -2239,7 +2233,7 @@ describe("Unified Tx API", () => {
     });
 
     it("should create hook records when handler uses schema B and service uses schema A", async () => {
-      const { schemaA, schemaB, namespaceA, namespaceB, queryB, internalQuery, internalFragment } =
+      const { schemaA, schemaB, namespaceA, namespaceB, adapter, internalFragment } =
         setupCrossSchemaHookTest();
 
       type HooksA = {
@@ -2268,7 +2262,7 @@ describe("Unified Tx API", () => {
 
       await createHandlerTxBuilder({
         createUnitOfWork: () => {
-          currentUow = queryB.createBaseUnitOfWork();
+          currentUow = adapter.createBaseUnitOfWork();
           currentUow.registerSchema(schemaA, namespaceA);
           currentUow.registerSchema(schemaB, namespaceB);
           currentUow.registerSchema(internalSchema, null);
@@ -2287,8 +2281,8 @@ describe("Unified Tx API", () => {
         .execute();
 
       const hooks = await (async () => {
-        const uow = internalQuery
-          .createUnitOfWork("read")
+        const uow = adapter
+          .createUnitOfWork(internalSchema, null, "read")
           .find("fragno_hooks", (b) => b.whereIndex("primary"));
         await uow.executeRetrieve();
         return (await uow.retrievalPhase)[0];

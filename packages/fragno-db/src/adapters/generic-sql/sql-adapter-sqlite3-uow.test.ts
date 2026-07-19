@@ -112,7 +112,6 @@ describe("SqlAdapter SQLite", () => {
     };
   }, 12000);
   it("should fail inserting duplicate triggered hook ids", async () => {
-    const queryEngine = adapter.createQueryEngine(testSchema, "namespace");
     const hookId = "hook-duplicate-id";
     const hooks: HooksMap = {
       onTest: () => {},
@@ -123,7 +122,9 @@ describe("SqlAdapter SQLite", () => {
     } as unknown as InternalFragmentInstance;
 
     const buildHookUow = (name: string) => {
-      const uow = queryEngine.createUnitOfWork(name).forSchema(testSchema, hooks);
+      const uow = adapter
+        .createUnitOfWork(testSchema, "namespace", name)
+        .forSchema(testSchema, hooks);
       uow.triggerHook("onTest", { data: name }, { id: hookId });
       prepareHookMutations(
         uow,
@@ -140,7 +141,7 @@ describe("SqlAdapter SQLite", () => {
     const secondUow = buildHookUow("hook-duplicate-second");
     await expect(secondUow.executeMutations()).rejects.toThrow();
 
-    const verifyUow = queryEngine.createUnitOfWork("verify-duplicate-hook-id");
+    const verifyUow = adapter.createUnitOfWork(testSchema, "namespace", "verify-duplicate-hook-id");
     const internalUow = verifyUow.forSchema(internalSchema);
     const findUow = internalUow.find("fragno_hooks", (b) =>
       b.whereIndex("primary", (eb) => eb("id", "=", hookId)),

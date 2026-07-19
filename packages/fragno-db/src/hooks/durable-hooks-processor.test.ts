@@ -206,7 +206,6 @@ describe("createDurableHooksProcessorGroupFromProcessors", () => {
     return {
       namespace: "test",
       processDue,
-      process: processDue,
       getNextWakeAt: vi.fn().mockResolvedValue(null),
       drain: vi.fn().mockResolvedValue(undefined),
     };

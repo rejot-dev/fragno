@@ -521,7 +521,6 @@ export class DatabaseFragmentsTestBuilder<
             registerSchema: () => {},
             createUnitOfWork: () => ({ schema: null }),
             createBaseUnitOfWork: () => ({ schema: null }),
-            createQueryEngine: () => ({ schema: null }),
             getSchemaVersion: async () => undefined,
             namingStrategy: {
               namespaceScope: "suffix",

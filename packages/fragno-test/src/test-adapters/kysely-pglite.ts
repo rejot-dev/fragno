@@ -6,11 +6,11 @@ import { PGLiteDriverConfig } from "@fragno-dev/db/drivers";
 import { Kysely } from "kysely";
 import { KyselyPGlite } from "kysely-pglite";
 
-import type { FragnoDatabase } from "@fragno-dev/db";
 import { internalFragmentDef } from "@fragno-dev/db";
 
 import type { AdapterFactoryResult, KyselyPgliteAdapter, SchemaConfig } from "../adapters";
 import { createCommonTestContextMethods } from "../common-test-context";
+import type { TestUnitOfWorkFactory } from "../test-db";
 
 const runInternalFragmentMigrations = async (
   adapter: SqlAdapter,
@@ -64,8 +64,7 @@ export async function createKyselyPgliteAdapter(
     });
     internalSchemaConfig = await runInternalFragmentMigrations(adapter);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ormMap = new Map<string | null, FragnoDatabase<any, any>>();
+    const unitOfWorkFactories = new Map<string | null, TestUnitOfWorkFactory>();
 
     for (const { schema, namespace, migrateToVersion } of schemas) {
       const preparedMigrations = adapter.prepareMigrations(schema, namespace);
@@ -77,8 +76,10 @@ export async function createKyselyPgliteAdapter(
         await preparedMigrations.execute(0, schema.version, { updateVersionInMigration: false });
       }
 
-      const orm = adapter.createQueryEngine(schema, namespace);
-      ormMap.set(namespace, orm);
+      adapter.registerSchema(schema, namespace);
+      unitOfWorkFactories.set(namespace, (name, uowConfig) =>
+        adapter.createBaseUnitOfWork(name, uowConfig as never),
+      );
     }
 
     const createAdditionalAdapter = async () =>
@@ -88,10 +89,11 @@ export async function createKyselyPgliteAdapter(
         uowConfig: config.uowConfig,
       });
 
-    return { kysely, adapter, kyselyPglite, ormMap, createAdditionalAdapter };
+    return { kysely, adapter, kyselyPglite, unitOfWorkFactories, createAdditionalAdapter };
   };
 
-  const { kysely, adapter, kyselyPglite, ormMap, createAdditionalAdapter } = await createDatabase();
+  const { kysely, adapter, kyselyPglite, unitOfWorkFactories, createAdditionalAdapter } =
+    await createDatabase();
 
   const resetDatabase = async () => {
     if (databasePath && databasePath !== ":memory:") {
@@ -124,7 +126,7 @@ export async function createKyselyPgliteAdapter(
     }
   };
 
-  const commonMethods = createCommonTestContextMethods(ormMap);
+  const commonMethods = createCommonTestContextMethods(unitOfWorkFactories);
 
   return {
     testContext: {

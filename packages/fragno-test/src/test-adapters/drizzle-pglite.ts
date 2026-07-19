@@ -6,13 +6,13 @@ import { PGLiteDriverConfig } from "@fragno-dev/db/drivers";
 import { drizzle } from "drizzle-orm/pglite";
 import { KyselyPGlite } from "kysely-pglite";
 
-import type { FragnoDatabase } from "@fragno-dev/db";
 import { internalFragmentDef } from "@fragno-dev/db";
 
 import { PGlite } from "@electric-sql/pglite";
 
 import type { AdapterFactoryResult, DrizzlePgliteAdapter, SchemaConfig } from "../adapters";
 import { createCommonTestContextMethods } from "../common-test-context";
+import type { TestUnitOfWorkFactory } from "../test-db";
 
 const runInternalFragmentMigrations = async (
   adapter: SqlAdapter,
@@ -63,8 +63,7 @@ export async function createDrizzlePgliteAdapter(
 
     internalSchemaConfig = await runInternalFragmentMigrations(adapter);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ormMap = new Map<string | null, FragnoDatabase<any, any>>();
+    const unitOfWorkFactories = new Map<string | null, TestUnitOfWorkFactory>();
     for (const { schema, namespace, migrateToVersion } of schemas) {
       const preparedMigrations = adapter.prepareMigrations(schema, namespace);
       if (migrateToVersion !== undefined) {
@@ -75,8 +74,10 @@ export async function createDrizzlePgliteAdapter(
         await preparedMigrations.execute(0, schema.version, { updateVersionInMigration: false });
       }
 
-      const orm = adapter.createQueryEngine(schema, namespace);
-      ormMap.set(namespace, orm);
+      adapter.registerSchema(schema, namespace);
+      unitOfWorkFactories.set(namespace, (name, uowConfig) =>
+        adapter.createBaseUnitOfWork(name, uowConfig as never),
+      );
     }
 
     // oxlint-disable-next-line typescript/no-explicit-any
@@ -89,10 +90,15 @@ export async function createDrizzlePgliteAdapter(
         uowConfig: config.uowConfig,
       });
 
-    return { drizzle: db, adapter, ormMap, createAdditionalAdapter };
+    return { drizzle: db, adapter, unitOfWorkFactories, createAdditionalAdapter };
   };
 
-  const { drizzle: drizzleDb, adapter, ormMap, createAdditionalAdapter } = await createDatabase();
+  const {
+    drizzle: drizzleDb,
+    adapter,
+    unitOfWorkFactories,
+    createAdditionalAdapter,
+  } = await createDatabase();
 
   const resetDatabase = async () => {
     if (databasePath && databasePath !== ":memory:") {
@@ -135,7 +141,7 @@ export async function createDrizzlePgliteAdapter(
     }
   };
 
-  const commonMethods = createCommonTestContextMethods(ormMap);
+  const commonMethods = createCommonTestContextMethods(unitOfWorkFactories);
 
   return {
     testContext: {

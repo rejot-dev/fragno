@@ -23,7 +23,6 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     const handlerFactory = createDurableHooksDispatcherDurableObject({
       createProcessor: () => ({
         processDue,
-        process: processDue,
         getNextWakeAt,
         drain,
         namespace: "test",
@@ -46,7 +45,6 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     const handlerFactory = createDurableHooksDispatcherDurableObject({
       createProcessor: () => ({
         processDue,
-        process: processDue,
         getNextWakeAt,
         drain,
         namespace: "test",
@@ -73,7 +71,6 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     const handlerFactory = createDurableHooksDispatcherDurableObject({
       createProcessor: () => ({
         processDue,
-        process: processDue,
         getNextWakeAt,
         drain,
         namespace: "test",
@@ -109,7 +106,6 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     const handlerFactory = createDurableHooksDispatcherDurableObject({
       createProcessor: () => ({
         processDue,
-        process: processDue,
         getNextWakeAt,
         drain,
         namespace: "test",
@@ -136,7 +132,6 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     const handlerFactory = createDurableHooksDispatcherDurableObject({
       createProcessor: () => ({
         processDue,
-        process: processDue,
         getNextWakeAt,
         drain,
         namespace: "test",
@@ -171,7 +166,6 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     const handlerFactory = createDurableHooksDispatcherDurableObject({
       createProcessor: () => ({
         processDue,
-        process: processDue,
         getNextWakeAt,
         drain,
         namespace: "test",
@@ -212,7 +206,6 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     const handlerFactory = createDurableHooksDispatcherDurableObject({
       createProcessor: () => ({
         processDue,
-        process: processDue,
         getNextWakeAt,
         drain,
         namespace: "test",

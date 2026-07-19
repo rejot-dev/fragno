@@ -18,7 +18,6 @@ import {
   type ImplicitDatabaseDependencies,
 } from "./db-fragment-definition-builder";
 import { internalSchema } from "./fragments/internal-fragment";
-import type { FragnoDatabase } from "./fragno-database";
 import { getDurableHooksRuntimeByToken } from "./hooks/durable-hooks-runtime";
 import type { HookFn } from "./hooks/hooks";
 import * as hooks from "./hooks/hooks";
@@ -40,8 +39,6 @@ const testSchema = schema("test", (s) => {
   });
 });
 
-type TestSchema = typeof testSchema;
-
 // Mock database adapter
 function createMockAdapter(): DatabaseAdapter {
   const createMockUow = () => ({
@@ -52,16 +49,10 @@ function createMockAdapter(): DatabaseAdapter {
     reset: vi.fn(),
   });
 
-  const mockdb = {
-    createUnitOfWork: vi.fn(() => createMockUow()),
-    createBaseUnitOfWork: vi.fn(() => createMockUow()),
-  } as unknown as FragnoDatabase<TestSchema>;
-
   return {
     registerSchema: vi.fn(),
     createUnitOfWork: vi.fn(() => createMockUow()),
     createBaseUnitOfWork: vi.fn(() => createMockUow()),
-    createQueryEngine: vi.fn(() => mockdb),
     getSchemaVersion: vi.fn(async () => undefined),
     close: vi.fn(),
     contextStorage: new RequestContextStorage(),
