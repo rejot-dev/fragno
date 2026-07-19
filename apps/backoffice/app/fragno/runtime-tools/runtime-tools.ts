@@ -138,11 +138,7 @@ export type BackofficeRuntimeTool<
   reference?: BackofficeRuntimeToolReferenceHints;
 };
 
-export type AnyBackofficeRuntimeTool = BackofficeRuntimeTool<
-  z.ZodType,
-  z.ZodType,
-  BackofficeToolContext
->;
+export type AnyBackofficeRuntimeTool = BackofficeRuntimeTool;
 
 export type BackofficeRuntimeToolFamily = {
   namespace: string;

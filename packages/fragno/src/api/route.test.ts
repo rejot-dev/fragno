@@ -182,7 +182,7 @@ describe("defineRoute", () => {
 
 describe("defineRoutes", () => {
   test("defineRoutes extracts services correctly for route factory", () => {
-    const fragment = defineFragment<{}>("test-fragment")
+    const fragment = defineFragment("test-fragment")
       .providesBaseService(({ defineService }) =>
         defineService({
           getUserById: async (id: string) => ({ id, name: "John" }),

@@ -69,7 +69,7 @@ export type WorkflowScenarioHarnessOptions<TRegistry extends WorkflowsRegistry> 
   "workflows" | "adapter" | "testBuilder"
 > & {
   adapter?: SupportedAdapter;
-  testBuilder?: DatabaseFragmentsTestBuilder<{}, undefined>;
+  testBuilder?: DatabaseFragmentsTestBuilder<{}>;
   /**
    * Register fragments that depend on the workflows fragment. The returned builders are registered
    * with @fragno-dev/test, so additional runtimes recreate them normally.
@@ -707,8 +707,8 @@ export type WorkflowScenarioStep<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   | WorkflowScenarioWaitForStoreStep<TRegistry, TVars, TFragments, TClients, any>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  | WorkflowScenarioReadStoreStep<TRegistry, TVars, TFragments, TClients, any, unknown>
-  | WorkflowScenarioReadStep<TRegistry, TVars, TFragments, TClients, unknown>
+  | WorkflowScenarioReadStoreStep<TRegistry, TVars, TFragments, TClients, any>
+  | WorkflowScenarioReadStep<TRegistry, TVars, TFragments, TClients>
   | WorkflowScenarioAssertStep<TRegistry, TVars, TFragments, TClients>;
 
 export type WorkflowScenarioCreateStep<

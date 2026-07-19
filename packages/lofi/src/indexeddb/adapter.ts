@@ -66,7 +66,7 @@ type InboxRow = {
 
 type MetaRow = { key: string; value: string };
 
-type LofiDb = IDBPDatabase<unknown>;
+type LofiDb = IDBPDatabase;
 type WriteStore<TxStores extends ArrayLike<string>, StoreName extends string> = IDBPObjectStore<
   unknown,
   TxStores,

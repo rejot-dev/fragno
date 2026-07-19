@@ -159,8 +159,7 @@ interface FragmentResult<
     TServices,
     TServiceThisContext,
     THandlerThisContext,
-    TRequestStorage,
-    FragnoPublicConfig
+    TRequestStorage
   >;
   services: TServices;
   deps: TDeps;
@@ -170,8 +169,7 @@ interface FragmentResult<
     TServices,
     TServiceThisContext,
     THandlerThisContext,
-    TRequestStorage,
-    FragnoPublicConfig
+    TRequestStorage
   >["callRoute"];
   db: TestDb;
 }
@@ -1006,10 +1004,6 @@ export class DatabaseFragmentsTestBuilder<
  * const adapter = test.adapter; // Access the database adapter
  * ```
  */
-export function buildDatabaseFragmentsTest(): DatabaseFragmentsTestBuilder<
-  {},
-  undefined,
-  RequestThisContext
-> {
+export function buildDatabaseFragmentsTest(): DatabaseFragmentsTestBuilder<{}> {
   return new DatabaseFragmentsTestBuilder();
 }

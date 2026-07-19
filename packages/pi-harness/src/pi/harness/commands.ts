@@ -105,7 +105,7 @@ export const waitForPiCommand = async (
   name = "command",
   options: WaitForPiCommandOptions = {},
 ): Promise<PiSessionCommandPayload> => {
-  const event = await step.waitForEvent<unknown>(name, {
+  const event = await step.waitForEvent(name, {
     type: "command",
     timeout: options.timeout,
   });

@@ -24,10 +24,7 @@ export type RouteFactory<
     HTTPMethod,
     string,
     StandardSchemaV1 | undefined,
-    StandardSchemaV1 | undefined,
-    string,
-    string,
-    RequestThisContext
+    StandardSchemaV1 | undefined
   >[],
 > = (context: RouteFactoryContext<TConfig, TDeps, TServices, TServiceDeps>) => TRoutes;
 

@@ -12,7 +12,7 @@ import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
-import { createDurableHookRepository, type DurableHookQueueOptions } from "@/fragno/durable-hooks";
+import { createDurableHookRepository } from "@/fragno/durable-hooks";
 import {
   DEFAULT_IDENTITY_LINK_EXPIRY_MINUTES,
   IDENTITY_LINK_TYPE,
@@ -236,7 +236,7 @@ export class InMemoryOtpObject implements OtpObject {
   }
 
   getDurableHookRepository() {
-    return createDurableHookRepository<DurableHookQueueOptions>(() => this.#getFragment());
+    return createDurableHookRepository(() => this.#getFragment());
   }
 
   async alarm(): Promise<void> {

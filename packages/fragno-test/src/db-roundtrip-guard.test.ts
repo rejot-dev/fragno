@@ -21,7 +21,7 @@ const userSchema = schema("user-roundtrip", (s) => {
 
 describe("dbRoundtripGuard", () => {
   it("blocks multiple handlerTx().execute() calls by default", async () => {
-    const userFragmentDef = defineFragment<{}>("user-roundtrip-fragment")
+    const userFragmentDef = defineFragment("user-roundtrip-fragment")
       .extend(withDatabase(userSchema))
       .providesBaseService(() => ({}))
       .build();
@@ -72,7 +72,7 @@ describe("dbRoundtripGuard", () => {
   });
 
   it("counts withServiceCalls retrieve roundtrips", async () => {
-    const userFragmentDef = defineFragment<{}>("user-roundtrip-fragment")
+    const userFragmentDef = defineFragment("user-roundtrip-fragment")
       .extend(withDatabase(userSchema))
       .providesBaseService(({ defineService }) =>
         defineService({
@@ -127,7 +127,7 @@ describe("dbRoundtripGuard", () => {
   });
 
   it("allows retrieve-only then mutate-only when maxRoundtrips is 1", async () => {
-    const userFragmentDef = defineFragment<{}>("user-roundtrip-fragment")
+    const userFragmentDef = defineFragment("user-roundtrip-fragment")
       .extend(withDatabase(userSchema))
       .providesBaseService(() => ({}))
       .build();
@@ -177,7 +177,7 @@ describe("dbRoundtripGuard", () => {
   });
 
   it("does not enforce the guard inside jsonStream callbacks", async () => {
-    const userFragmentDef = defineFragment<{}>("user-roundtrip-fragment")
+    const userFragmentDef = defineFragment("user-roundtrip-fragment")
       .extend(withDatabase(userSchema))
       .providesBaseService(() => ({}))
       .build();
@@ -231,7 +231,7 @@ describe("dbRoundtripGuard", () => {
   });
 
   it("does not enforce the guard inside inContext", async () => {
-    const userFragmentDef = defineFragment<{}>("user-roundtrip-fragment")
+    const userFragmentDef = defineFragment("user-roundtrip-fragment")
       .extend(withDatabase(userSchema))
       .providesBaseService(() => ({}))
       .build();

@@ -168,7 +168,7 @@ describe("Unified Tx API", () => {
   describe("isTxResult", () => {
     it("should return true for TxResult objects", () => {
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -194,7 +194,7 @@ describe("Unified Tx API", () => {
   describe("createServiceTx", () => {
     it("should create a TxResult with retrieve callback", () => {
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [
           [
             {
@@ -221,7 +221,7 @@ describe("Unified Tx API", () => {
 
     it("should create a TxResult with transformRetrieve callback", () => {
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [
           [
             {
@@ -254,7 +254,7 @@ describe("Unified Tx API", () => {
         name: "Existing",
         balance: 100,
       };
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[existingUser]],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -295,7 +295,7 @@ describe("Unified Tx API", () => {
 
     it("should continue normally when earlyReturn returns control.continue", async () => {
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[]],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -337,7 +337,7 @@ describe("Unified Tx API", () => {
         name: "Existing",
         balance: 100,
       };
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[existingUser]],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -382,7 +382,7 @@ describe("Unified Tx API", () => {
         name: "Existing",
         balance: 100,
       };
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[existingUser]],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -424,7 +424,7 @@ describe("Unified Tx API", () => {
         name: "Existing",
         balance: 100,
       };
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[existingUser]],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -459,7 +459,7 @@ describe("Unified Tx API", () => {
 
     it("should create a TxResult with serviceCalls", () => {
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [
           [
             {
@@ -498,7 +498,7 @@ describe("Unified Tx API", () => {
 
     it("should type mutateResult as non-undefined when success AND mutate are provided", () => {
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -522,7 +522,7 @@ describe("Unified Tx API", () => {
 
     it("should type mutateResult as undefined when success is provided but mutate is NOT", () => {
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [
           [
             {
@@ -557,7 +557,7 @@ describe("Unified Tx API", () => {
 
     it("should type retrieveResult as TRetrieveResults when retrieve is provided but retrieveSuccess is NOT", () => {
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [
           [
             {
@@ -618,7 +618,7 @@ describe("Unified Tx API", () => {
           balance: 200,
         },
       ];
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [mockUsers],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -647,7 +647,7 @@ describe("Unified Tx API", () => {
           balance: 100,
         },
       ];
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [mockUsers],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -677,7 +677,7 @@ describe("Unified Tx API", () => {
           balance: 100,
         },
       ];
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [mockUsers],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -703,7 +703,7 @@ describe("Unified Tx API", () => {
 
     it("should execute a simple mutate-only transaction", async () => {
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [BigInt(1)] }),
       };
@@ -727,7 +727,7 @@ describe("Unified Tx API", () => {
 
     it("should throw when retry policy is provided without retrieve operations", async () => {
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => ({ success: false }),
       };
@@ -753,7 +753,7 @@ describe("Unified Tx API", () => {
         name: "Test",
         balance: 100,
       };
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[mockUser]],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -783,7 +783,7 @@ describe("Unified Tx API", () => {
         name: "Test",
         balance: 100,
       };
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[mockUser]],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -820,7 +820,7 @@ describe("Unified Tx API", () => {
         name: "Test",
         balance: 100,
       };
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[mockUser]],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -857,7 +857,7 @@ describe("Unified Tx API", () => {
         name: "Test",
         balance: 100,
       };
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[mockUser]],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [BigInt(2)] }),
       };
@@ -907,7 +907,7 @@ describe("Unified Tx API", () => {
         name: "Test",
         balance: 100,
       };
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[mockUser]],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [BigInt(2)] }),
       };
@@ -963,7 +963,7 @@ describe("Unified Tx API", () => {
         name: "Test",
         balance: 100,
       };
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[mockUser]],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [BigInt(2)] }),
       };
@@ -1010,7 +1010,7 @@ describe("Unified Tx API", () => {
 
     it("should type check serviceCalls with undefined (optional service pattern)", async () => {
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [BigInt(1)] }),
       };
@@ -1054,7 +1054,7 @@ describe("Unified Tx API", () => {
 
     it("should handle serviceCalls with mix of TxResult and undefined", async () => {
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [BigInt(1)] }),
       };
@@ -1153,7 +1153,7 @@ describe("Unified Tx API", () => {
 
     it("should preserve tuple inference for dynamic serviceCalls using helper", async () => {
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [BigInt(1)] }),
       };
@@ -1220,7 +1220,7 @@ describe("Unified Tx API", () => {
     it("should retry on concurrency conflict", async () => {
       const compiler = createMockCompiler();
       let mutationAttempts = 0;
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => {
           mutationAttempts++;
@@ -1257,7 +1257,7 @@ describe("Unified Tx API", () => {
 
     it("should throw ConcurrencyConflictError when retries are exhausted", async () => {
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => ({ success: false }),
       };
@@ -1278,7 +1278,7 @@ describe("Unified Tx API", () => {
 
     it("should abort when signal is aborted", async () => {
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -1301,7 +1301,7 @@ describe("Unified Tx API", () => {
       const compiler = createMockCompiler();
       let callCount = 0;
       let mutationAttempts = 0;
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => {
           mutationAttempts++;
@@ -1338,7 +1338,7 @@ describe("Unified Tx API", () => {
 
     it("should abort when signal is aborted during retry delay", async () => {
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => ({ success: false }),
       };
@@ -1371,7 +1371,7 @@ describe("Unified Tx API", () => {
         name: "Alice",
         balance: 100,
       };
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[existingUser]],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -1409,7 +1409,7 @@ describe("Unified Tx API", () => {
 
     it("should succeed when retrieve guard finds no existing record", async () => {
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[]],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [BigInt(1)] }),
       };
@@ -1453,7 +1453,7 @@ describe("Unified Tx API", () => {
         name: "Test",
         balance: 100,
       };
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[mockUser]],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [BigInt(2)] }),
       };
@@ -1513,7 +1513,7 @@ describe("Unified Tx API", () => {
   describe("return type priority", () => {
     it("should return transform result when transform callback is provided", async () => {
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -1552,7 +1552,7 @@ describe("Unified Tx API", () => {
 
     it("should return mutate result when no transform callback", async () => {
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -1570,7 +1570,7 @@ describe("Unified Tx API", () => {
 
     it("should return transformRetrieve result when no mutate or transform", async () => {
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -1593,7 +1593,7 @@ describe("Unified Tx API", () => {
         name: "Test",
         balance: 100,
       };
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[mockUser]],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -1632,7 +1632,7 @@ describe("Unified Tx API", () => {
         name: "Test",
         balance: 100,
       };
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[mockUser]],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -1676,7 +1676,7 @@ describe("Unified Tx API", () => {
         name: "Test",
         balance: 100,
       };
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[mockUser]],
         executeMutationPhase: async () => ({ success: true, createdInternalIds: [] }),
       };
@@ -1722,7 +1722,7 @@ describe("Unified Tx API", () => {
       // The key is that the nested service itself (wrapperService) has a transform callback,
       // so processTxResultAfterMutate is called for it.
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => ({
           success: true,
@@ -1806,7 +1806,7 @@ describe("Unified Tx API", () => {
         balance: 100,
       };
       let retrievePhaseExecuted = false;
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => {
           retrievePhaseExecuted = true;
           return [[mockUser]];
@@ -1890,7 +1890,7 @@ describe("Unified Tx API", () => {
         name: "Test User",
         balance: 100,
       };
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[mockUser]],
         executeMutationPhase: async () => ({
           success: true,
@@ -1960,7 +1960,7 @@ describe("Unified Tx API", () => {
         name: "Test User",
         balance: 100,
       };
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[mockUser]],
         executeMutationPhase: async () => ({
           success: true,
@@ -2037,7 +2037,7 @@ describe("Unified Tx API", () => {
     it("should record triggered hooks on the base UOW when using createServiceTx with retrieve and mutate", async () => {
       const compiler = createMockCompiler();
       // Return empty array to simulate no existing user, so the hook will be triggered
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[]],
         executeMutationPhase: async () => ({
           success: true,
@@ -2106,7 +2106,7 @@ describe("Unified Tx API", () => {
         name: "Test User",
         balance: 100,
       };
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [[mockUser]],
         executeMutationPhase: async () => ({
           success: true,
@@ -2305,7 +2305,7 @@ describe("Unified Tx API", () => {
       // this test would cause an "Unhandled Rejection" warning from Vitest.
 
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => ({
           success: true,
@@ -2347,7 +2347,7 @@ describe("Unified Tx API", () => {
       // the error is properly propagated without causing an unhandled rejection warning.
 
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => ({
           success: true,
@@ -2399,7 +2399,7 @@ describe("Unified Tx API", () => {
       // typed as `[]` (empty tuple) even though at runtime it's the mutate result.
 
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => {
           return [];
         },
@@ -2491,7 +2491,7 @@ describe("Unified Tx API", () => {
       // Test with multiple mutate-only dependencies to verify tuple typing works
 
       const compiler = createMockCompiler();
-      const executor: UOWExecutor<unknown, unknown> = {
+      const executor: UOWExecutor<unknown> = {
         executeRetrievalPhase: async () => [],
         executeMutationPhase: async () => ({
           success: true,

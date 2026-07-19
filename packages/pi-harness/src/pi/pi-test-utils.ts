@@ -906,7 +906,7 @@ export const recordFauxPiHarnessPrompt = async (options: FauxPiHarnessPromptOpti
 };
 
 type PiFragmentInstance = ReturnType<typeof createPiFragment>;
-type WorkflowsHarness = WorkflowsTestHarness<ReturnType<typeof createPiWorkflows>>;
+type WorkflowsHarness = WorkflowsTestHarness;
 
 export const getWorkflowInstanceRef = async (
   workflows: WorkflowsHarness,

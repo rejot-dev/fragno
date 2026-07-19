@@ -25,7 +25,7 @@ import {
   AUTH_AUTOMATION_EVENT_ORGANIZATION_UPDATED,
   AUTH_AUTOMATION_SOURCE,
 } from "@/fragno/backoffice-capabilities/capabilities/auth";
-import { createDurableHookRepository, type DurableHookQueueOptions } from "@/fragno/durable-hooks";
+import { createDurableHookRepository } from "@/fragno/durable-hooks";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 
@@ -230,7 +230,7 @@ export class InMemoryAuthObject implements AuthObject {
   }
 
   getDurableHookRepository() {
-    return createDurableHookRepository<DurableHookQueueOptions>(() => this.#ensureFragment());
+    return createDurableHookRepository(() => this.#ensureFragment());
   }
 
   async getAllOrganizations(): Promise<Organization[]> {

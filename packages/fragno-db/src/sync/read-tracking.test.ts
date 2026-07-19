@@ -21,7 +21,7 @@ import {
   stripReadTrackingResults,
 } from "./read-tracking";
 
-type AnyExecutor = UOWExecutor<unknown, unknown>;
+type AnyExecutor = UOWExecutor<unknown>;
 
 const testSchema = schema("test", (s) =>
   s

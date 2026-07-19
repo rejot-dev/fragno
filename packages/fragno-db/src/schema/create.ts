@@ -8,17 +8,13 @@ import { createTableStandardSchemaProps, createTableValidator } from "./validato
 export { generateId } from "./generate-id";
 export { FragnoDbValidationError } from "./validator";
 
-export type AnySchema = Schema<Record<string, AnyTable>>;
+export type AnySchema = Schema;
 
 export type AnyRelation = Relation;
 
 export type AnyTable = Table;
 
-export type AnyColumn =
-  | Column<keyof TypeMap, unknown, unknown>
-  | IdColumn<IdColumnType, unknown, unknown>
-  | InternalIdColumn<unknown, unknown>
-  | VersionColumn<unknown, unknown>;
+export type AnyColumn = Column<keyof TypeMap> | IdColumn | InternalIdColumn | VersionColumn;
 /**
  * Sub-operations that can be performed within table operations.
  * These are stored in order within add-table and alter-table operations.
@@ -1008,10 +1004,7 @@ type UpdateColumn<
 > = Prettify<Omit<TColumns, TColumnName> & Record<TColumnName, TUpdatedColumn>>;
 
 type NonIdColumnName<TColumns extends Record<string, AnyColumn>> = {
-  [K in keyof TColumns]: TColumns[K] extends
-    | IdColumn<IdColumnType, unknown, unknown>
-    | InternalIdColumn<unknown, unknown>
-    | VersionColumn<unknown, unknown>
+  [K in keyof TColumns]: TColumns[K] extends IdColumn | InternalIdColumn | VersionColumn
     ? never
     : K;
 }[keyof TColumns];
@@ -1139,9 +1132,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     TIndexes extends Record<string, Index> = Record<string, Index>,
   >(
     name: TTableName,
-    callback: (
-      builder: TableBuilder<{}, Record<string, Index>>,
-    ) => TableBuilder<TColumns, TIndexes>,
+    callback: (builder: TableBuilder<{}>) => TableBuilder<TColumns, TIndexes>,
   ): SchemaBuilder<TTables & Record<TTableName, Table<TColumns, TIndexes>>> {
     this.#version++;
 
@@ -1149,7 +1140,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
       throw new Error(`Duplicate table name "${name}" in schema "${this.#name}".`);
     }
 
-    const tableBuilder = new TableBuilder<{}, Record<string, Index>>(name);
+    const tableBuilder = new TableBuilder<{}>(name);
     const result = callback(tableBuilder);
     const builtTable = result.build();
     const indexNames = result.getIndexes().map((idx) => idx.name);
@@ -1256,7 +1247,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
   >(
     tableName: TTableName,
     callback: (
-      builder: TableBuilder<TTables[TTableName]["columns"], Record<string, Index>>,
+      builder: TableBuilder<TTables[TTableName]["columns"]>,
     ) => TableBuilder<TNewColumns, TNewIndexes>,
   ): SchemaBuilder<UpdateTable<TTables, TTableName, TNewColumns, TNewIndexes>> {
     const table = this.#tables[tableName];
@@ -1279,9 +1270,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     }
 
     // Apply modifications
-    const resultBuilder = callback(
-      tableBuilder as TableBuilder<TTables[TTableName]["columns"], Record<string, Index>>,
-    );
+    const resultBuilder = callback(tableBuilder as TableBuilder<TTables[TTableName]["columns"]>);
     const newTable = resultBuilder.build();
 
     // Collect sub-operations
@@ -1516,7 +1505,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
  */
 export function schema<const TTables extends Record<string, AnyTable> = {}>(
   name: string,
-  callback: (builder: SchemaBuilder<{}>) => SchemaBuilder<TTables>,
+  callback: (builder: SchemaBuilder) => SchemaBuilder<TTables>,
 ): Schema<TTables> {
   return callback(new SchemaBuilder(name)).build();
 }

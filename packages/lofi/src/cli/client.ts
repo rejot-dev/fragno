@@ -21,7 +21,7 @@ type ClientModule = {
   schemas?: LofiSchemaRegistration[] | Array<{ schema: unknown }> | unknown[];
   schema?: unknown;
   commands?: LofiSubmitCommandDefinition[];
-  createCommandContext?: (command: LofiSubmitCommandDefinition<unknown, unknown>) => unknown;
+  createCommandContext?: (command: LofiSubmitCommandDefinition) => unknown;
   endpointName?: string;
 };
 
@@ -190,7 +190,7 @@ export const clientCommand = define({
       limit,
     });
 
-    let submitClient: LofiSubmitClient<unknown> | undefined;
+    let submitClient: LofiSubmitClient | undefined;
     const commands = moduleConfig?.commands ?? [];
     if (commands.length > 0) {
       const { submitUrl, internalUrl } = deriveInternalUrls(outboxUrl);

@@ -83,7 +83,7 @@ export async function findBlogPostsWithAuthor() {
       "user.id as author_id",
       "user.name as author_name",
       "user.email as author_email",
-      sql<unknown>`json_agg(${sql.table("comment_comment")})`.as("comments"),
+      sql`json_agg(${sql.table("comment_comment")})`.as("comments"),
       sql<number>`COALESCE(${sql.ref("upvote_total_upvote.total")}, 0)`.as("rating"),
     ])
     .groupBy(["blog_post.id", "user.id", sql.ref("upvote_total_upvote.total")])

@@ -287,7 +287,7 @@ describe("ServiceTxBuilder type inference", () => {
     it("ServiceBuilderMutateContext has correct shape", () => {
       type Ctx = ServiceBuilderMutateContext<TestSchema, string, readonly [], {}>;
 
-      expectTypeOf<Ctx["uow"]>().toExtend<TypedUnitOfWork<TestSchema, [], unknown, {}>>();
+      expectTypeOf<Ctx["uow"]>().toExtend<TypedUnitOfWork<TestSchema>>();
       expectTypeOf<Ctx["retrieveResult"]>().toEqualTypeOf<string>();
       expectTypeOf<Ctx["serviceIntermediateResult"]>().toEqualTypeOf<readonly []>();
     });
@@ -809,7 +809,7 @@ describe("ServiceTxBuilder method parameter types", () => {
       type UowParam = Parameters<RetrieveCallback>[0];
 
       // The UoW should be typed for TestSchema
-      expectTypeOf<UowParam>().toExtend<TypedUnitOfWork<TestSchema, [], unknown, {}>>();
+      expectTypeOf<UowParam>().toExtend<TypedUnitOfWork<TestSchema>>();
     });
   });
 
@@ -864,7 +864,7 @@ describe("ServiceTxBuilder method parameter types", () => {
       type MutateCallback = Parameters<InitialBuilder["mutate"]>[0];
       type MutateCtx = Parameters<MutateCallback>[0];
 
-      expectTypeOf<MutateCtx["uow"]>().toExtend<TypedUnitOfWork<TestSchema, [], unknown, {}>>();
+      expectTypeOf<MutateCtx["uow"]>().toExtend<TypedUnitOfWork<TestSchema>>();
     });
 
     it("has retrieveResult from retrieve results when no transformRetrieve", () => {

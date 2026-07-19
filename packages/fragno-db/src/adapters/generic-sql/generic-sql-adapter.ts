@@ -219,23 +219,19 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
     namespace: string | null,
     name?: string,
     config?: UnitOfWorkConfig,
-  ): TypedUnitOfWork<T, [], unknown> {
+  ): TypedUnitOfWork<T> {
     this.registerSchema(schema, namespace);
     return this.createBaseUnitOfWork(name, config).forSchema(schema);
   }
 
   createBaseUnitOfWork(name?: string, config?: UnitOfWorkConfig): IUnitOfWork {
     const compiler = createUOWCompilerFromOperationCompiler(this.#createOperationCompiler());
-    const executor: UOWExecutor<CompiledQuery, unknown> = createExecutor(
-      this.#driver,
-      this.driverConfig,
-      {
-        dialect: this.dialect,
-        dryRun: false,
-        outbox: getOutboxConfigForAdapter(this),
-        namingStrategy: this.namingStrategy,
-      },
-    );
+    const executor: UOWExecutor<CompiledQuery> = createExecutor(this.#driver, this.driverConfig, {
+      dialect: this.dialect,
+      dryRun: false,
+      outbox: getOutboxConfigForAdapter(this),
+      namingStrategy: this.namingStrategy,
+    });
     const decoder = new UnitOfWorkDecoder(this.driverConfig, this.sqliteStorageMode);
 
     return new UnitOfWork(

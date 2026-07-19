@@ -39,18 +39,17 @@ type LofiRow = {
   };
 };
 
-type LofiDb = IDBPDatabase<unknown>;
+type LofiDb = IDBPDatabase;
 type ReadStore<TxStores extends ArrayLike<string>, StoreName extends string> = IDBPObjectStore<
   unknown,
   TxStores,
-  StoreName,
-  "readonly"
+  StoreName
 >;
 type ReadIndex<
   TxStores extends ArrayLike<string>,
   StoreName extends string,
   IndexName extends string,
-> = IDBPIndex<unknown, TxStores, StoreName, IndexName, "readonly">;
+> = IDBPIndex<unknown, TxStores, StoreName, IndexName>;
 
 type RowSelection = Record<string, unknown>;
 

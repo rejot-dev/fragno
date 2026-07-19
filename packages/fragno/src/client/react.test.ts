@@ -1090,7 +1090,7 @@ describe("useFragno - createStore", () => {
             id: number;
             name: string;
           }[],
-          FragnoClientError<string>
+          FragnoClientError
         >
       >
     >();

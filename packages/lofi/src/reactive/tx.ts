@@ -74,7 +74,7 @@ export type LofiRuntimeTxBuilder<
     fn: (
       ctx: LofiRuntimeTxRetrieveContext,
     ) => TSelection extends PromiseLike<unknown> ? never : TSelection,
-  ) => LofiRuntimeTxBuilder<LofiRuntimeTxResolved<TSelection>, TTransformResult, false>;
+  ) => LofiRuntimeTxBuilder<LofiRuntimeTxResolved<TSelection>, TTransformResult>;
 
   transform: <TNewTransformResult>(
     fn: (ctx: LofiRuntimeTxTransformContext<TRetrieveResult>) => TNewTransformResult,
@@ -157,7 +157,7 @@ class RuntimeTxBuilder<
 
   retrieve<TSelection>(
     fn: (ctx: LofiRuntimeTxRetrieveContext) => TSelection,
-  ): LofiRuntimeTxBuilder<LofiRuntimeTxResolved<TSelection>, TTransformResult, false> {
+  ): LofiRuntimeTxBuilder<LofiRuntimeTxResolved<TSelection>, TTransformResult> {
     return new RuntimeTxBuilder(this.options, { ...this.state, retrieveFn: fn }) as never;
   }
 

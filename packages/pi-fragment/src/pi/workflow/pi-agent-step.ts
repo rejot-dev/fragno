@@ -46,7 +46,7 @@ export type PiAgentStepResult = {
   events: AgentEvent[];
   toolCallResults: PiToolCallResult[];
   errorMessage: string | null;
-  toolCalls(name: string): PiToolCallAccessor<unknown>;
+  toolCalls(name: string): PiToolCallAccessor;
 };
 
 export type PiAgentStepRuntime = {

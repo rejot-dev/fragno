@@ -297,10 +297,7 @@ export class FragnoInstantiatedFragment<
           HTTPMethod,
           string,
           StandardSchemaV1 | undefined,
-          StandardSchemaV1 | undefined,
-          string,
-          string,
-          RequestThisContext
+          StandardSchemaV1 | undefined
         >
       >();
 

@@ -37,7 +37,7 @@ const postSchema = schema("post", (s) => {
 describe("buildDatabaseFragmentsTest", () => {
   it("should create multiple fragments with shared adapter", async () => {
     // Define fragments using new API
-    const userFragmentDef = defineFragment<{}>("user-fragment")
+    const userFragmentDef = defineFragment("user-fragment")
       .extend(withDatabase(userSchema))
       .providesBaseService(({ defineService }) =>
         defineService({
@@ -59,7 +59,7 @@ describe("buildDatabaseFragmentsTest", () => {
       )
       .build();
 
-    const postFragmentDef = defineFragment<{}>("post-fragment")
+    const postFragmentDef = defineFragment("post-fragment")
       .extend(withDatabase(postSchema))
       .providesBaseService(({ defineService }) =>
         defineService({
@@ -133,7 +133,7 @@ describe("buildDatabaseFragmentsTest", () => {
   });
 
   it("should reset database and recreate fragments", async () => {
-    const userFragmentDef = defineFragment<{}>("user-fragment")
+    const userFragmentDef = defineFragment("user-fragment")
       .extend(withDatabase(userSchema))
       .providesBaseService(({ defineService }) =>
         defineService({
@@ -186,7 +186,7 @@ describe("buildDatabaseFragmentsTest", () => {
   });
 
   it("should allow handlerTx for direct queries", async () => {
-    const userFragmentDef = defineFragment<{}>("user-fragment")
+    const userFragmentDef = defineFragment("user-fragment")
       .extend(withDatabase(userSchema))
       .providesBaseService(() => ({}))
       .build();
@@ -235,7 +235,7 @@ describe("buildDatabaseFragmentsTest", () => {
   });
 
   it("should expose deps and adapter", async () => {
-    const userFragmentDef = defineFragment<{}>("user-fragment")
+    const userFragmentDef = defineFragment("user-fragment")
       .extend(withDatabase(userSchema))
       .withDependencies(() => ({
         testValue: "test-dependency",
@@ -264,7 +264,7 @@ describe("buildDatabaseFragmentsTest", () => {
   });
 
   it("should create additional runtimes with isolated fragments on the same database", async () => {
-    const userFragmentDef = defineFragment<{}>("user-fragment")
+    const userFragmentDef = defineFragment("user-fragment")
       .extend(withDatabase(userSchema))
       .withDependencies(() => ({
         state: { count: 0 },
@@ -346,7 +346,7 @@ describe("buildDatabaseFragmentsTest", () => {
   });
 
   it("should create additional runtimes with isolated fragments on the same database through clients", async () => {
-    const counterFragmentDef = defineFragment<{}>("counter-client-fragment")
+    const counterFragmentDef = defineFragment("counter-client-fragment")
       .extend(withDatabase(postSchema))
       .withDependencies(() => ({
         state: { count: 0 },
@@ -422,7 +422,7 @@ describe("buildDatabaseFragmentsTest", () => {
   it("should support callRoute with database operations", async () => {
     // This is a simpler test that verifies callRoute exists and can be called.
     // For now, we just verify that the method exists and is callable.
-    const userFragmentDef = defineFragment<{}>("user-fragment")
+    const userFragmentDef = defineFragment("user-fragment")
       .extend(withDatabase(userSchema))
       .providesBaseService(() => ({}))
       .build();

@@ -62,7 +62,7 @@ describe("fragment-instantiator", () => {
         client: { apiKey: string };
       }
 
-      const definition = defineFragment<Config, FragnoPublicConfig>(" test-fragment")
+      const definition = defineFragment<Config>(" test-fragment")
         .withDependencies(
           ({ config }): Deps => ({
             client: { apiKey: config.apiKey },
