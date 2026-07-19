@@ -1,6 +1,6 @@
 import { sqliteTable, text, integer, uniqueIndex, index, foreignKey } from "drizzle-orm/sqlite-core"
 import { createId } from "@fragno-dev/db/id"
-import { relations } from "drizzle-orm"
+import { sql, relations } from "drizzle-orm"
 
 // ============================================================================
 // Fragment: (none)
@@ -28,7 +28,7 @@ export const fragno_hooks = sqliteTable("fragno_hooks", {
   lastAttemptAt: integer("lastAttemptAt", { mode: "timestamp" }),
   nextRetryAt: integer("nextRetryAt", { mode: "timestamp" }),
   error: text("error"),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   nonce: text("nonce").notNull(),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0)
@@ -46,7 +46,7 @@ export const fragno_db_outbox = sqliteTable("fragno_db_outbox", {
   uowId: text("uowId").notNull(),
   payload: text("payload", { mode: "json" }).notNull(),
   refMap: text("refMap", { mode: "json" }),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -64,7 +64,7 @@ export const fragno_db_outbox_mutations = sqliteTable("fragno_db_outbox_mutation
   table: text("table").notNull(),
   externalId: text("externalId").notNull(),
   op: text("op").notNull(),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -82,7 +82,7 @@ export const fragno_db_sync_requests = sqliteTable("fragno_db_sync_requests", {
   conflictCommandId: text("conflictCommandId"),
   baseVersionstamp: text("baseVersionstamp"),
   lastVersionstamp: text("lastVersionstamp"),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -99,7 +99,7 @@ export const user_auth = sqliteTable("user_auth", {
   email: text("email").notNull(),
   passwordHash: text("passwordHash"),
   role: text("role").notNull().default("user"),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0),
   bannedAt: integer("bannedAt", { mode: "timestamp" })
@@ -114,7 +114,7 @@ export const session_auth = sqliteTable("session_auth", {
   id: text("id").notNull().unique().$defaultFn(() => createId()),
   userId: integer("userId").notNull(),
   expiresAt: integer("expiresAt", { mode: "timestamp" }).notNull(),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0),
   activeOrganizationId: integer("activeOrganizationId")
@@ -141,8 +141,8 @@ export const organization_auth = sqliteTable("organization_auth", {
   logoUrl: text("logoUrl"),
   metadata: text("metadata", { mode: "json" }),
   createdBy: integer("createdBy").notNull(),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
-  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().defaultNow(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   deletedAt: integer("deletedAt", { mode: "timestamp" }),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0)
@@ -161,8 +161,8 @@ export const organizationMember_auth = sqliteTable("organizationMember_auth", {
   id: text("id").notNull().unique().$defaultFn(() => createId()),
   organizationId: integer("organizationId").notNull(),
   userId: integer("userId").notNull(),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
-  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().defaultNow(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -186,7 +186,7 @@ export const organizationMemberRole_auth = sqliteTable("organizationMemberRole_a
   id: text("id").notNull().unique().$defaultFn(() => createId()),
   memberId: integer("memberId").notNull(),
   role: text("role").notNull(),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -210,7 +210,7 @@ export const organizationInvitation_auth = sqliteTable("organizationInvitation_a
   token: text("token").notNull(),
   inviterId: integer("inviterId").notNull(),
   expiresAt: integer("expiresAt", { mode: "timestamp" }).notNull(),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   respondedAt: integer("respondedAt", { mode: "timestamp" }),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0)
@@ -247,8 +247,8 @@ export const oauthAccount_auth = sqliteTable("oauthAccount_auth", {
   tokenExpiresAt: integer("tokenExpiresAt", { mode: "timestamp" }),
   scopes: text("scopes", { mode: "json" }),
   rawProfile: text("rawProfile", { mode: "json" }),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
-  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().defaultNow(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -271,7 +271,7 @@ export const oauthState_auth = sqliteTable("oauthState_auth", {
   redirectUri: text("redirectUri"),
   returnTo: text("returnTo"),
   linkUserId: integer("linkUserId"),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   expiresAt: integer("expiresAt", { mode: "timestamp" }).notNull(),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0),
@@ -436,7 +436,7 @@ export const comment_comment = sqliteTable("comment_comment", {
   id: text("id").notNull().unique().$defaultFn(() => createId()),
   title: text("title").notNull(),
   content: text("content").notNull(),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   postReference: text("postReference").notNull(),
   userReference: text("userReference").notNull(),
   parentId: integer("parentId"),
@@ -481,7 +481,7 @@ export const upvote_upvote = sqliteTable("upvote_upvote", {
   reference: text("reference").notNull(),
   ownerReference: text("ownerReference"),
   rating: integer("rating").notNull(),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   note: text("note"),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0)
@@ -519,8 +519,8 @@ export const workflow_instance_workflows = sqliteTable("workflow_instance_workfl
   remoteWorkflowName: text("remoteWorkflowName"),
   instanceId: text("instanceId").notNull(),
   status: text("status").notNull(),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
-  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().defaultNow(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   startedAt: integer("startedAt", { mode: "timestamp" }),
   completedAt: integer("completedAt", { mode: "timestamp" }),
   params: text("params", { mode: "json" }).notNull(),
@@ -555,8 +555,8 @@ export const workflow_step_workflows = sqliteTable("workflow_step_workflows", {
   result: text("result", { mode: "json" }),
   errorName: text("errorName"),
   errorMessage: text("errorMessage"),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
-  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().defaultNow(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [
@@ -577,7 +577,7 @@ export const workflow_event_workflows = sqliteTable("workflow_event_workflows", 
   actor: text("actor").notNull().default("user"),
   type: text("type").notNull(),
   payload: text("payload", { mode: "json" }),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   deliveredAt: integer("deliveredAt", { mode: "timestamp" }),
   consumedByStepKey: text("consumedByStepKey"),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
@@ -600,7 +600,7 @@ export const workflow_step_emission_workflows = sqliteTable("workflow_step_emiss
   sequence: integer("sequence").notNull(),
   actor: text("actor").notNull().default("user"),
   payload: text("payload", { mode: "json" }),
-  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
   _version: integer("_version").notNull().default(0)
 }, (table) => [

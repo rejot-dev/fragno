@@ -1,4 +1,5 @@
 import { createId } from "@fragno-dev/db/id";
+import { sql } from "drizzle-orm";
 import { sqliteTable, text, integer, uniqueIndex, index } from "drizzle-orm/sqlite-core";
 
 // ============================================================================
@@ -30,7 +31,9 @@ export const subscriber_mailing_list = sqliteTable(
       .notNull()
       .$defaultFn(() => createId()),
     email: text("email").notNull(),
-    subscribedAt: integer("subscribedAt", { mode: "timestamp" }).notNull().defaultNow(),
+    subscribedAt: integer("subscribedAt", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
     _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
     _version: integer("_version").notNull().default(0),
   },

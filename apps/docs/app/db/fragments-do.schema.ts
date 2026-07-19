@@ -1,4 +1,5 @@
 import { createId } from "@fragno-dev/db/id";
+import { sql } from "drizzle-orm";
 import { sqliteTable, text, integer, uniqueIndex, blob, index } from "drizzle-orm/sqlite-core";
 
 // ============================================================================
@@ -36,8 +37,12 @@ export const form_forms = sqliteTable(
     dataSchema: blob("dataSchema", { mode: "json" }).notNull(),
     uiSchema: blob("uiSchema", { mode: "json" }).notNull(),
     version: integer("version").notNull().default(1),
-    createdAt: integer("createdAt", { mode: "timestamp" }).notNull().defaultNow(),
-    updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().defaultNow(),
+    createdAt: integer("createdAt", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
+    updatedAt: integer("updatedAt", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
     _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
     _version: integer("_version").notNull().default(0),
   },
@@ -56,7 +61,9 @@ export const response_forms = sqliteTable(
     formId: text("formId"),
     formVersion: integer("formVersion").notNull(),
     data: blob("data", { mode: "json" }).notNull(),
-    submittedAt: integer("submittedAt", { mode: "timestamp" }).notNull().defaultNow(),
+    submittedAt: integer("submittedAt", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
     userAgent: text("userAgent"),
     ip: text("ip"),
     _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
@@ -87,7 +94,9 @@ export const subscriber_mailing_list = sqliteTable(
       .notNull()
       .$defaultFn(() => createId()),
     email: text("email").notNull(),
-    subscribedAt: integer("subscribedAt", { mode: "timestamp" }).notNull().defaultNow(),
+    subscribedAt: integer("subscribedAt", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
     _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
     _version: integer("_version").notNull().default(0),
   },

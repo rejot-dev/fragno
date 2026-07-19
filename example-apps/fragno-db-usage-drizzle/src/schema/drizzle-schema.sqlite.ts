@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import {
   comment_schema,
@@ -10,7 +11,7 @@ export const user = sqliteTable("user", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   email: text("email").notNull(),
   name: text("name").notNull(),
-  createdAt: integer("created_at", { mode: "timestamp" }).defaultNow().notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`).notNull(),
 });
 
 export const blogPost = sqliteTable("blog_post", {
@@ -18,8 +19,8 @@ export const blogPost = sqliteTable("blog_post", {
   title: text("title").notNull(),
   content: text("content").notNull(),
   authorId: integer("author_id").notNull(),
-  createdAt: integer("created_at", { mode: "timestamp" }).defaultNow().notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).defaultNow().notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`).notNull(),
 });
 
 // Runtime schema object for drizzle-orm
