@@ -9,10 +9,10 @@ class InMemoryDurableObjectState {
   readonly id: DurableObjectId;
   readonly storage: DurableObjectStorage;
 
-  #storage = new Map<string, unknown>();
+  readonly #storage = new Map<string, unknown>();
   #alarm: number | null = null;
-  #pendingWaitUntil = new Set<Promise<unknown>>();
-  #pendingBlockConcurrency = new Set<Promise<unknown>>();
+  readonly #pendingWaitUntil = new Set<Promise<unknown>>();
+  readonly #pendingBlockConcurrency = new Set<Promise<unknown>>();
 
   constructor(id: DurableObjectId) {
     this.id = id;
@@ -175,8 +175,8 @@ const isAsyncFunction = (value: unknown) =>
 export class InMemoryDurableObjectNamespace<TObject> {
   readonly name: string;
 
-  #createObject: InMemoryDurableObjectFactory<TObject>;
-  #instances = new Map<string, InMemoryDurableObjectInstance<TObject>>();
+  readonly #createObject: InMemoryDurableObjectFactory<TObject>;
+  readonly #instances = new Map<string, InMemoryDurableObjectInstance<TObject>>();
 
   constructor(options: { name: string; createObject: InMemoryDurableObjectFactory<TObject> }) {
     this.name = options.name;

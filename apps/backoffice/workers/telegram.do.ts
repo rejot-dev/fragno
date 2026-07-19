@@ -265,12 +265,12 @@ const createFetchTelegramAdminApi = (): TelegramAdminApi => ({
 });
 
 export class InMemoryTelegramObject extends RpcTarget implements TelegramObject {
-  #state: BackofficeObjectState;
-  #runtime: BackofficeRuntimeServices;
-  #api?: TelegramApi;
-  #adminApi?: TelegramAdminApi;
+  readonly #state: BackofficeObjectState;
+  readonly #runtime: BackofficeRuntimeServices;
+  readonly #api?: TelegramApi;
+  readonly #adminApi?: TelegramAdminApi;
   #scope: BackofficeContextScope | null = null;
-  #host: BackofficeFragmentDurableObject<
+  readonly #host: BackofficeFragmentDurableObject<
     StoredTelegramConfig,
     TelegramFragmentConfig,
     TelegramFragment
@@ -546,7 +546,7 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
 }
 
 export class Telegram extends DurableObject<CloudflareEnv> {
-  #object: InMemoryTelegramObject;
+  readonly #object: InMemoryTelegramObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);

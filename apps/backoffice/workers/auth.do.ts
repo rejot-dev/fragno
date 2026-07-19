@@ -133,9 +133,9 @@ const resolveAuthBaseUrl = (request: Request): string => {
 };
 
 export class InMemoryAuthObject implements AuthObject {
-  #env: AuthLiveEnv;
-  #state: BackofficeObjectState;
-  #runtimeServices: BackofficeRuntimeServices;
+  readonly #env: AuthLiveEnv;
+  readonly #state: BackofficeObjectState;
+  readonly #runtimeServices: BackofficeRuntimeServices;
   #fragment: AuthFragment | null = null;
   #fragmentBaseUrl: string | null = null;
   #dispatcher: DurableHooksDispatcherDurableObjectHandler | null = null;
@@ -273,7 +273,7 @@ export class InMemoryAuthObject implements AuthObject {
 }
 
 export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
-  #object: InMemoryAuthObject;
+  readonly #object: InMemoryAuthObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);

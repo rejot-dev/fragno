@@ -92,10 +92,10 @@ function buildConfigResponse(
 }
 
 export class InMemoryApiObject implements ApiObject {
-  #env: ApiObjectEnv;
-  #state: BackofficeObjectState;
-  #runtimeServices: BackofficeRuntimeServices;
-  #host: BackofficeFragmentDurableObject<StoredApiConfig, ApiConfig, ApiFragment>;
+  readonly #env: ApiObjectEnv;
+  readonly #state: BackofficeObjectState;
+  readonly #runtimeServices: BackofficeRuntimeServices;
+  readonly #host: BackofficeFragmentDurableObject<StoredApiConfig, ApiConfig, ApiFragment>;
 
   constructor({
     state,
@@ -270,7 +270,7 @@ export class InMemoryApiObject implements ApiObject {
 }
 
 export class Api extends DurableObject<CloudflareEnv> implements ApiObject {
-  #object: InMemoryApiObject;
+  readonly #object: InMemoryApiObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);

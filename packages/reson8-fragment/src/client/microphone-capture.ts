@@ -140,8 +140,8 @@ export class Reson8MicrophoneCapture {
   readonly lastChunkByteLength = atom<number | null>(null);
   readonly error = atom<unknown>(null);
 
-  #getUserMedia: GetReson8UserMedia;
-  #createAudioContext: CreateReson8AudioContext;
+  readonly #getUserMedia: GetReson8UserMedia;
+  readonly #createAudioContext: CreateReson8AudioContext;
   #stream: Reson8MediaStreamLike | null = null;
   #audioContext: Reson8AudioContextLike | null = null;
   #sourceNode: Reson8MediaStreamSourceLike | null = null;

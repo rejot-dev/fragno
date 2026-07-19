@@ -744,10 +744,10 @@ export class TableBuilder<
   TColumns extends Record<string, AnyColumn> = Record<string, AnyColumn>,
   TIndexes extends Record<string, Index> = Record<string, Index>,
 > {
-  #name: string;
+  readonly #name: string;
   #columns: TColumns;
   #indexes: TIndexes;
-  #columnOrder: string[] = [];
+  readonly #columnOrder: string[] = [];
 
   constructor(name: string) {
     this.#name = name;
@@ -1032,12 +1032,12 @@ type ColumnAlterer<
 };
 
 export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
-  #name: string;
+  readonly #name: string;
   #tables: TTables;
   #version: number = 0;
   #operations: SchemaOperation[] = [];
-  #tableNames: Set<string> = new Set();
-  #indexNames: Set<string> = new Set();
+  readonly #tableNames: Set<string> = new Set();
+  readonly #indexNames: Set<string> = new Set();
 
   constructor(name: string, existingSchema?: Schema<TTables>) {
     this.#name = name;

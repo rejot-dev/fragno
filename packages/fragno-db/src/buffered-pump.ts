@@ -152,11 +152,11 @@ class BufferedScopeState<TOutgoing, TScopeDelivery, TScopeMeta> {
 }
 
 class SerializedIntervalLoop {
-  #intervalMs: number;
-  #onTick: () => Promise<void>;
-  #afterTick: () => void;
+  readonly #intervalMs: number;
+  readonly #onTick: () => Promise<void>;
+  readonly #afterTick: () => void;
   #abortController: AbortController | undefined;
-  #waiters: Array<{ resolve: () => void; reject: (error: unknown) => void }> = [];
+  readonly #waiters: Array<{ resolve: () => void; reject: (error: unknown) => void }> = [];
 
   constructor(options: { intervalMs: number; onTick: () => Promise<void>; afterTick: () => void }) {
     this.#intervalMs = options.intervalMs;
@@ -254,7 +254,7 @@ export type BufferedPumpHandle<TPump extends BufferedPumpLifecycle> = {
 };
 
 export class BufferedPumpRegistry<TPump extends BufferedPumpLifecycle> {
-  #entries = new Map<string, { pump: TPump; handles: number }>();
+  readonly #entries = new Map<string, { pump: TPump; handles: number }>();
 
   getOrCreate(key: string, create: () => TPump): BufferedPumpHandle<TPump> {
     let entry = this.#entries.get(key);
@@ -308,24 +308,24 @@ export class BufferedDatabasePump<
   TOpenScopeMeta = TScopeMeta,
 > {
   #handlerTx: DatabaseHandlerTx;
-  #flush: (
+  readonly #flush: (
     context: BufferedFlushContext<TOutgoing, TScopeMeta>,
   ) => Promise<BufferedFlushResult<TObserved, TScopeDelivery>>;
-  #onError: (error: Error) => void;
-  #scopes = new Map<string, BufferedScopeState<TOutgoing, TScopeDelivery, TScopeMeta>>();
-  #observers = new Set<{
+  readonly #onError: (error: Error) => void;
+  readonly #scopes = new Map<string, BufferedScopeState<TOutgoing, TScopeDelivery, TScopeMeta>>();
+  readonly #observers = new Set<{
     handler: (message: TObserved) => void | Promise<void>;
     cursors: Set<string>;
   }>();
-  #cursorForObservedItem: BufferedPumpCursorFor<TObserved> | undefined;
-  #resolveScopeMeta: BufferedResolveScopeMeta<TOpenScopeMeta, TScopeMeta> | undefined;
-  #debugLabel: (() => string) | undefined;
-  #scopeDeliveryCursors = new Map<string, Set<string>>();
+  readonly #cursorForObservedItem: BufferedPumpCursorFor<TObserved> | undefined;
+  readonly #resolveScopeMeta: BufferedResolveScopeMeta<TOpenScopeMeta, TScopeMeta> | undefined;
+  readonly #debugLabel: (() => string) | undefined;
+  readonly #scopeDeliveryCursors = new Map<string, Set<string>>();
   #lastSnapshot: TObserved[] = [];
   #hasFlushed = false;
   #lastError: Error | undefined;
   #pumpTail = Promise.resolve();
-  #loop: SerializedIntervalLoop;
+  readonly #loop: SerializedIntervalLoop;
 
   constructor(options: {
     handlerTx: DatabaseHandlerTx;

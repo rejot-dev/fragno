@@ -1018,7 +1018,7 @@ describe("useFragno - createStore", () => {
 
     class SessionStore {
       sessionId = atom("initial");
-      #prefix: string;
+      readonly #prefix: string;
 
       constructor(sessionId: string) {
         this.sessionId.set(sessionId);

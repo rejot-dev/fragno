@@ -637,7 +637,7 @@ export class DatabaseFragmentDefinitionBuilder<
   TInternalRoutes extends readonly AnyRouteOrFactory[] = readonly [],
 > {
   // Store the base builder - we'll replace its storage and context setup when building
-  #baseBuilder: FragmentDefinitionBuilder<
+  readonly #baseBuilder: FragmentDefinitionBuilder<
     TConfig,
     FragnoPublicConfigWithDatabase,
     TDeps,
@@ -650,10 +650,10 @@ export class DatabaseFragmentDefinitionBuilder<
     DatabaseRequestStorage,
     TInternalRoutes
   >;
-  #schema: TSchema;
+  readonly #schema: TSchema;
   #hooksFactory?: (context: HooksFactoryContext<TConfig>) => THooks;
-  #syncRegistry?: SyncCommandRegistry;
-  #registryResolver?: RegistryResolver;
+  readonly #syncRegistry?: SyncCommandRegistry;
+  readonly #registryResolver?: RegistryResolver;
 
   constructor(
     baseBuilder: FragmentDefinitionBuilder<

@@ -10,7 +10,7 @@ import type { CompiledQuery, Dialect } from "./sql-driver";
  * Wrapper around Kysely's RawBuilder that provides a compile() method with a dialect parameter.
  */
 export class RawBuilder {
-  #kyselyBuilder: ReturnType<typeof kyselySql>;
+  readonly #kyselyBuilder: ReturnType<typeof kyselySql>;
 
   constructor(kyselyBuilder: ReturnType<typeof kyselySql>) {
     this.#kyselyBuilder = kyselyBuilder;

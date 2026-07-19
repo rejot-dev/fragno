@@ -41,7 +41,7 @@ type LogOptions = {
 
 export class DurableHooksLogger {
   static #defaultScope: LoggerScope = { ...DEFAULT_SCOPE };
-  static #namespaceScopes = new Map<string, LoggerScope>();
+  static readonly #namespaceScopes = new Map<string, LoggerScope>();
 
   static configure(config?: DurableHooksLoggerConfig, namespace?: string): void {
     if (!config) {

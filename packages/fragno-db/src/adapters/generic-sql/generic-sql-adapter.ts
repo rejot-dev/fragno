@@ -74,10 +74,10 @@ export class SqlAdapter implements DatabaseAdapter<UnitOfWorkConfig> {
   readonly adapterMetadata: DatabaseAdapterMetadata;
   readonly namingStrategy: SqlNamingStrategy;
 
-  #schemaNamespaceMap = new WeakMap<AnySchema, string | null>();
-  #contextStorage: RequestContextStorage<DatabaseContextStorage>;
+  readonly #schemaNamespaceMap = new WeakMap<AnySchema, string | null>();
+  readonly #contextStorage: RequestContextStorage<DatabaseContextStorage>;
 
-  #driver: SqlDriverAdapter;
+  readonly #driver: SqlDriverAdapter;
 
   constructor({
     dialect,

@@ -12,7 +12,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * @internal - Used by @fragno-dev/db, not part of public API
  */
 export class RequestContextStorage<TRequestStorage> {
-  #storage: AsyncLocalStorage<TRequestStorage>;
+  readonly #storage: AsyncLocalStorage<TRequestStorage>;
 
   constructor() {
     this.#storage = new AsyncLocalStorage<TRequestStorage>();

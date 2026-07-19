@@ -38,9 +38,9 @@ export class Reson8AccessTokenStore {
   readonly loading = atom(false);
   readonly error = atom<unknown>(null);
 
-  #requestToken: () => Promise<Reson8AuthToken>;
-  #now: () => number;
-  #refreshBufferMs: number;
+  readonly #requestToken: () => Promise<Reson8AuthToken>;
+  readonly #now: () => number;
+  readonly #refreshBufferMs: number;
   #inflight: Promise<Reson8AuthToken> | null = null;
 
   constructor(options: CreateReson8AccessTokenStoreOptions) {

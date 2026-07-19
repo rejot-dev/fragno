@@ -232,9 +232,9 @@ export class FragmentDefinitionBuilder<
   TRequestStorage = {},
   TInternalRoutes extends readonly AnyRouteOrFactory[] = readonly [],
 > {
-  #name: string;
-  #dependencies?: (context: { config: TConfig; options: TOptions }) => TDeps;
-  #baseServices?: ServiceConstructorFn<
+  readonly #name: string;
+  readonly #dependencies?: (context: { config: TConfig; options: TOptions }) => TDeps;
+  readonly #baseServices?: ServiceConstructorFn<
     TConfig,
     TOptions,
     TDeps,
@@ -243,7 +243,7 @@ export class FragmentDefinitionBuilder<
     TBaseServices,
     TServiceThisContext
   >;
-  #namedServices?: {
+  readonly #namedServices?: {
     [K in keyof TServices]: ServiceConstructorFn<
       TConfig,
       TOptions,
@@ -254,7 +254,7 @@ export class FragmentDefinitionBuilder<
       TServiceThisContext
     >;
   };
-  #privateServices?: {
+  readonly #privateServices?: {
     [K in keyof TPrivateServices]: ServiceConstructorFn<
       TConfig,
       TOptions,
@@ -265,26 +265,26 @@ export class FragmentDefinitionBuilder<
       TServiceThisContext
     >;
   };
-  #serviceDependencies?: {
+  readonly #serviceDependencies?: {
     [K in keyof TServiceDependencies]: ServiceMetadata;
   };
-  #createRequestStorage?: (context: {
+  readonly #createRequestStorage?: (context: {
     config: TConfig;
     options: TOptions;
     deps: TDeps;
   }) => TRequestStorage;
-  #createThisContext?: (
+  readonly #createThisContext?: (
     context: RequestContextFactoryContext<TConfig, TOptions, TDeps, TRequestStorage>,
   ) => {
     serviceContext: TServiceThisContext;
     handlerContext: THandlerThisContext;
   };
-  #getExternalStorage?: (context: {
+  readonly #getExternalStorage?: (context: {
     config: TConfig;
     options: TOptions;
     deps: TDeps;
   }) => RequestContextStorage<TRequestStorage>;
-  #internalRoutes?: TInternalRoutes;
+  readonly #internalRoutes?: TInternalRoutes;
 
   constructor(
     name: string,

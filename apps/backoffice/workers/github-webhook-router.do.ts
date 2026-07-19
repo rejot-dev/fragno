@@ -166,8 +166,8 @@ const toStateTokenPreview = (value: string) => {
 };
 
 export class InMemoryGitHubWebhookRouterObject {
-  #env: CloudflareEnv;
-  #state: GitHubWebhookRouterObjectState;
+  readonly #env: CloudflareEnv;
+  readonly #state: GitHubWebhookRouterObjectState;
 
   constructor({ state, env }: { state: GitHubWebhookRouterObjectState; env: CloudflareEnv }) {
     this.#env = env;
@@ -563,7 +563,7 @@ export class InMemoryGitHubWebhookRouterObject {
 }
 
 export class GitHubWebhookRouter extends DurableObject<CloudflareEnv> {
-  #object: InMemoryGitHubWebhookRouterObject;
+  readonly #object: InMemoryGitHubWebhookRouterObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);

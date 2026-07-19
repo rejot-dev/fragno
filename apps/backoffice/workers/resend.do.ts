@@ -276,10 +276,14 @@ const updateWebhook = async (
 };
 
 export class InMemoryResendObject implements ResendObject {
-  #state: BackofficeObjectState;
-  #runtimeServices: BackofficeRuntimeServices;
-  #host: BackofficeFragmentDurableObject<StoredResendConfig, ResendFragmentConfig, ResendFragment>;
-  #createClient: (apiKey: string) => ResendClient;
+  readonly #state: BackofficeObjectState;
+  readonly #runtimeServices: BackofficeRuntimeServices;
+  readonly #host: BackofficeFragmentDurableObject<
+    StoredResendConfig,
+    ResendFragmentConfig,
+    ResendFragment
+  >;
+  readonly #createClient: (apiKey: string) => ResendClient;
 
   constructor({
     state,
@@ -458,7 +462,7 @@ export class InMemoryResendObject implements ResendObject {
 }
 
 export class Resend extends DurableObject<CloudflareEnv> implements ResendObject {
-  #object: InMemoryResendObject;
+  readonly #object: InMemoryResendObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);

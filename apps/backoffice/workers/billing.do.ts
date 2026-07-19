@@ -28,9 +28,9 @@ import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-ob
 type BillingOwnerScope = Extract<BackofficeContextScope, { kind: "org" }>;
 
 export class InMemoryBillingObject extends RpcTarget implements BillingObject {
-  #state: BackofficeObjectState;
-  #kernel: BackofficeKernel;
-  #host: FragmentDurableObjectHost<void, BillingFragment>;
+  readonly #state: BackofficeObjectState;
+  readonly #kernel: BackofficeKernel;
+  readonly #host: FragmentDurableObjectHost<void, BillingFragment>;
   #fragment: BillingFragment | null = null;
   #ownerScope: BillingOwnerScope | null = null;
 
@@ -125,7 +125,7 @@ export class InMemoryBillingObject extends RpcTarget implements BillingObject {
 }
 
 export class Billing extends DurableObject<CloudflareEnv> implements BillingObject {
-  #object: InMemoryBillingObject;
+  readonly #object: InMemoryBillingObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);

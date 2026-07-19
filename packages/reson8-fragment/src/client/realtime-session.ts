@@ -224,9 +224,9 @@ export class Reson8RealtimeSessionStore {
 
   readonly query: Reson8RealtimeQuery;
 
-  #ensureToken: CreateReson8RealtimeSessionStoreOptions["ensureToken"];
-  #createWebSocket: CreateReson8WebSocket;
-  #realtimeBaseUrl: string;
+  readonly #ensureToken: CreateReson8RealtimeSessionStoreOptions["ensureToken"];
+  readonly #createWebSocket: CreateReson8WebSocket;
+  readonly #realtimeBaseUrl: string;
   #socket: Reson8WebSocketLike | null = null;
   #connectPromise: Promise<void> | null = null;
 

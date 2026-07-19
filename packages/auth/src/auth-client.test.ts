@@ -3,7 +3,7 @@ import { describe, expect, it, vi, assert } from "vitest";
 import { createAuthFragmentClients, getDefaultOrganizationStorageKey } from ".";
 
 class MemoryStorage implements Pick<Storage, "getItem" | "setItem" | "removeItem"> {
-  #values = new Map<string, string>();
+  readonly #values = new Map<string, string>();
 
   getItem(key: string) {
     return this.#values.get(key) ?? null;

@@ -6,7 +6,7 @@ import type { MailingListFragment } from "@/fragno/mailing-list";
 import { createMailingListServer } from "@/fragno/mailing-list";
 
 export class MailingList extends DurableObject<CloudflareEnv> {
-  #fragment: MailingListFragment;
+  readonly #fragment: MailingListFragment;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);

@@ -14,8 +14,8 @@ import {
  * @internal
  */
 export class ReferenceSubquery {
-  #referencedTable: AnyTable;
-  #externalIdValue: string;
+  readonly #referencedTable: AnyTable;
+  readonly #externalIdValue: string;
 
   constructor(referencedTable: AnyTable, externalIdValue: string) {
     this.#referencedTable = referencedTable;

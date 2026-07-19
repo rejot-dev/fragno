@@ -51,7 +51,7 @@ export type OutputContextOptions = {
 };
 
 export abstract class OutputContext<const TOutput, const TErrorCode extends string> {
-  #runJsonStreamCallback?: JsonStreamCallbackRunner;
+  readonly #runJsonStreamCallback?: JsonStreamCallbackRunner;
 
   constructor(options: OutputContextOptions = {}) {
     this.#runJsonStreamCallback = options.runJsonStreamCallback;
@@ -201,7 +201,7 @@ export class RequestOutputContext<
   const TErrorCode extends string = string,
 > extends OutputContext<InferOrUnknown<TOutputSchema>, TErrorCode> {
   // eslint-disable-next-line no-unused-private-class-members
-  #outputSchema?: TOutputSchema;
+  readonly #outputSchema?: TOutputSchema;
 
   constructor(outputSchema?: TOutputSchema, options?: OutputContextOptions) {
     super(options);
