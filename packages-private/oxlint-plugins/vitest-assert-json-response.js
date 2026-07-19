@@ -18,7 +18,7 @@ const rule = {
   },
 
   create(context) {
-    const sourceCode = context.getSourceCode();
+    const sourceCode = context.sourceCode;
     let hasRelevantMatch = false;
     /** @type {Array<[number, number]>} */
     const replacedRanges = [];

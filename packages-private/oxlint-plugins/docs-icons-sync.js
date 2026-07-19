@@ -291,7 +291,7 @@ const rule = {
   },
 
   create(context) {
-    const filename = context.filename || context.getFilename?.();
+    const filename = context.filename;
 
     if (!filename || !isTargetFile(filename)) {
       return {};
@@ -302,7 +302,7 @@ const rule = {
       Program(node) {
         try {
           const sourceText = context.sourceCode.getText();
-          const sourceCode = context.sourceCode ?? context.getSourceCode?.();
+          const sourceCode = context.sourceCode;
           const iconKeysFromAst = extractIconComponentKeysFromAst(sourceCode?.ast);
           const iconKeys = iconKeysFromAst ?? extractIconComponentKeys(sourceText);
 
