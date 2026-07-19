@@ -354,6 +354,9 @@ function generateColumnDefinition(
         if (ctx.provider === "mysql") {
           ctx.imports.addImport("sql", "drizzle-orm");
           parts.push("default(sql`(now())`)");
+        } else if (ctx.provider === "sqlite") {
+          ctx.imports.addImport("sql", "drizzle-orm");
+          parts.push("default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`)");
         } else {
           parts.push("defaultNow()");
         }

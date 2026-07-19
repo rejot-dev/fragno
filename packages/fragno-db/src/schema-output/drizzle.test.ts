@@ -349,6 +349,27 @@ describe("generateDrizzleSchema", () => {
         }"
       `);
     });
+
+    it("should generate SQLite database timestamps as SQL defaults", () => {
+      const timestampSchema = schema("timestamp", (s) => {
+        return s.addTable("events", (t) => {
+          return t.addColumn("id", idColumn()).addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          );
+        });
+      });
+
+      const generated = generateDrizzleSchema(
+        [{ namespace: "test", schema: timestampSchema }],
+        "sqlite",
+      );
+
+      expect(generated).toContain('import { sql } from "drizzle-orm"');
+      expect(generated).toContain(
+        'createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday(\'now\') - 2440587.5)*86400000 as integer))`)',
+      );
+    });
   });
 
   describe("binary columns", () => {
