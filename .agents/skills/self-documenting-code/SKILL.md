@@ -61,7 +61,8 @@ access path explicitly and efficiently.
 
 ## 3. Build the semantic core
 
-Extract well-defined operations into **semantic functions**. A semantic function:
+Give well-defined operations names. Extract them into **semantic functions** when they own an
+independent boundary. A semantic function:
 
 - has a name that states its domain operation;
 - receives every required input explicitly;
@@ -70,13 +71,28 @@ Extract well-defined operations into **semantic functions**. A semantic function
 - composes safely without knowledge of its internals;
 - is small enough for focused unit tests.
 
-Use semantic functions to index meaningful logic even when they have one caller. Compose recurring
-flows from them rather than duplicating their internals. Keep a short, mechanical, one-off
-transformation inline when a helper would only rename the mapping and hide its data flow.
+Naming and extraction are separate decisions. A named inline function is often clearest when a
+callback has one configuration-owned caller and its placement makes the surrounding lifecycle or
+orchestration obvious. This is especially useful in hook registries, route tables, workflow
+definitions, and similar declarative APIs:
 
-**Complete when:** each reusable rule or independently meaningful calculation has an explicit
-boundary and can be tested through inputs and outputs, while obvious local transformations remain
-visible at their point of use.
+```ts
+hooks: {
+  onUserCreated: async function queueUserSignUpVerificationEmail(payload, context) {
+    // The complete configured behavior remains visible here.
+  },
+}
+```
+
+Extract a function when it is reused, owns independently meaningful rules, requires focused testing,
+or makes its containing flow difficult to scan. Do not extract solely because a block can be given a
+domain-oriented name. Compose recurring flows from semantic functions rather than duplicating their
+internals. Keep short mechanical transformations inline when a helper would only rename the mapping
+and hide its data flow.
+
+**Complete when:** meaningful operations are named, reusable rules and independently meaningful
+calculations have explicit boundaries, and each operation is placed where the owning flow is easiest
+to understand. Extraction adds independence rather than merely reducing indentation.
 
 ## 4. Respect trust boundaries
 
@@ -185,8 +201,14 @@ Pragmatic functions should delegate stable domain rules to the semantic core. Wh
 part of an orchestration function, extract that behavior as a semantic function instead of widening
 the orchestration function's incidental contract.
 
-**Complete when:** orchestration reads as a sequence of domain operations, shared callers depend on
-semantic functions, and asynchronous effects have an explicit durable handoff.
+Configuration should reveal its lifecycle locally. Keep a named callback inline when moving it would
+force readers away from a hook registry, route table, workflow definition, or similar declaration to
+understand the configured behavior. Extract the callback when it has an independent contract rather
+than merely to shorten the declaration.
+
+**Complete when:** orchestration reads as a sequence of named domain operations, shared callers
+depend on semantic functions, asynchronous effects have an explicit durable handoff, and declarative
+configuration keeps locally owned behavior visible.
 
 ## 9. Add comments for surprises
 

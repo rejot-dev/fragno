@@ -31,6 +31,46 @@ return rows.map((row) => ({
 A helper such as `normalizeRow`, used once and containing only these assignments, hides data flow
 without adding domain vocabulary.
 
+## Name inline behavior without hiding its flow
+
+Naming does not require extraction. Keep a named function inline when the behavior belongs to one
+declaration and moving it would hide the configured lifecycle.
+
+### Positive — Name a configuration-owned callback inline
+
+```ts
+const fragment = createAuthFragment({
+  hooks: {
+    onUserCreated: async function queueUserSignUpVerificationEmail(payload, context) {
+      if (payload.emailVerifiedAt !== null) {
+        return;
+      }
+
+      const verification = await otp.issueForUser(payload.user.id, context.hookId);
+      await email.queueVerification(payload.user.email, verification.url);
+    },
+  },
+});
+```
+
+The function name provides domain vocabulary and useful stack traces. Keeping its body beside the
+hook declaration lets a reader understand the configured signup lifecycle without jumping to another
+location.
+
+### Negative — Extract only to shorten the declaration
+
+```ts
+const fragment = createAuthFragment({
+  hooks: {
+    onUserCreated: queueUserSignUpVerificationEmail,
+  },
+});
+```
+
+When the extracted function has one caller, no independent contract, and no reuse or focused testing
+value, this indirection makes the lifecycle harder to follow. Extract it when the behavior becomes a
+shared rule, independently testable operation, or substantial distraction from the declaration.
+
 ## Keep orchestration in the pragmatic shell
 
 Entry points should expose the sequence while semantic functions own stable rules.
@@ -127,6 +167,7 @@ than an alias for symbols owned elsewhere.
 
 ## Review criterion
 
-Boundaries are clear when extracted functions add domain meaning, orchestration reads as a sequence
-of those meanings, each symbol has one definition and name, package exports point to defining files,
-and every caller uses the current API directly.
+Boundaries are clear when meaningful behavior is named, extraction adds an independent contract,
+configuration-owned callbacks remain local when locality makes the lifecycle obvious, orchestration
+reads as a sequence of domain operations, each symbol has one definition and name, package exports
+point to defining files, and every caller uses the current API directly.
