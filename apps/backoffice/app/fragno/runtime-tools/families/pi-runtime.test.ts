@@ -66,7 +66,7 @@ const createTurnResult = (sessionId: string, assistantText = "assistant:hello") 
       status: "waiting" as const,
     },
     assistantText,
-    messageStatus: "active" as const,
+    commandStatus: "active" as const,
     stream: [{ type: "snapshot" as const, state }],
     terminalState: state,
   };
@@ -495,7 +495,7 @@ describe("pi bash command registration", () => {
     expect(JSON.parse(defaultTurnLine ?? "null")).toMatchObject({
       id: "session-1",
       assistantText: "assistant:hello world",
-      messageStatus: "active",
+      commandStatus: "active",
     });
 
     expect(createCalls).toEqual([
@@ -913,7 +913,7 @@ describe("createPiRouteRuntime", () => {
     expect(turned).toMatchObject({
       id: "session-2",
       assistantText: "assistant:route-turn",
-      messageStatus: "active",
+      commandStatus: "active",
       workflow: { status: "waiting" },
       terminalState: {
         messages: expect.arrayContaining([

@@ -32,7 +32,7 @@ const createRuntime = (): PiRuntime =>
     runTurn: vi.fn(async ({ sessionId, text }) => ({
       ...createSessionDetail(sessionId),
       assistantText: `echo: ${text}`,
-      messageStatus: "waiting",
+      commandStatus: "waiting",
       stream: [],
       terminalState: { messages: [] },
     })),

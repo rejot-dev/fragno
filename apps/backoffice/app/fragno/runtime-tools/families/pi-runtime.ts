@@ -36,9 +36,7 @@ export type PiSessionTurnArgs = {
 
 export type PiSessionTurnResult = PiSessionDetail & {
   assistantText: string;
-  commandStatus?: PiWorkflowStatus;
-  /** @deprecated Use commandStatus. */
-  messageStatus: PiWorkflowStatus;
+  commandStatus: PiWorkflowStatus;
   stream: unknown[];
   /** Agent state after the turn (from session detail fetch). */
   terminalState: PiSessionDetail["agent"]["state"];
@@ -248,7 +246,6 @@ export const createPiRouteRuntime = ({
         ...detail,
         assistantText: extractAssistantText(detail.agent.state.messages),
         commandStatus: promptResponse.data.status,
-        messageStatus: promptResponse.data.status,
         stream: [],
         terminalState: detail.agent.state,
       };
