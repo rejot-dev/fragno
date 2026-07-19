@@ -774,7 +774,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       // Create a mock storage
       const mockStorage = {
         getStore: () => ({
-          uow: mockAdapter.createQueryEngine(testSchema, "test").createUnitOfWork(),
+          uow: mockAdapter.createUnitOfWork(testSchema, "test"),
         }),
       } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -1003,7 +1003,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
       // Create a mock storage
       const mockStorage = {
         getStore: () => ({
-          uow: mockAdapter.createQueryEngine(testSchema, "test").createUnitOfWork(),
+          uow: mockAdapter.createUnitOfWork(testSchema, "test"),
         }),
       } as unknown as RequestContextStorage<DatabaseContextStorage>;
 
@@ -1146,7 +1146,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
 
       const mockStorage = {
         getStore: () => ({
-          uow: mockAdapter.createQueryEngine(testSchema, "test").createUnitOfWork(),
+          uow: mockAdapter.createUnitOfWork(testSchema, "test"),
           [requestSourceSymbol]: "route",
           [requestRouteSymbol]: { method: "POST", path: "/users" },
           [requestWaitUntilSymbol]: waitUntilSpy,
@@ -1253,7 +1253,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         await storage.runWithInitializer(
           () =>
             ({
-              uow: mockAdapter.createQueryEngine(testSchema, "test").createUnitOfWork(),
+              uow: mockAdapter.createUnitOfWork(testSchema, "test"),
               [requestWaitUntilSymbol]: waitUntilSpy,
             }) as DatabaseContextStorage,
           async () => {
@@ -1722,7 +1722,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
 
       const mockStorage = {
         getStore: () => ({
-          uow: mockAdapter.createQueryEngine(testSchema, "test").createUnitOfWork(),
+          uow: mockAdapter.createUnitOfWork(testSchema, "test"),
         }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any;
