@@ -70,7 +70,9 @@ export default function BackofficeDurableHooksLanding() {
             <div className="mt-auto pt-4">
               <Link
                 to="/backoffice/internals/durable-hooks/singletons"
-                onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
+                onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+                  event.stopPropagation();
+                }}
                 className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
               >
                 Auth
@@ -125,7 +127,9 @@ export default function BackofficeDurableHooksLanding() {
                       <Link
                         key={fragment.id}
                         to={fragment.to}
-                        onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
+                        onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+                          event.stopPropagation();
+                        }}
                         className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                       >
                         {fragment.label}

@@ -20,7 +20,9 @@ function SearchBar() {
   return (
     <button
       type="button"
-      onClick={() => setOpenSearch(true)}
+      onClick={() => {
+        setOpenSearch(true);
+      }}
       className="inline-flex items-center gap-2 bg-[color-mix(in_srgb,var(--editorial-surface)_75%,transparent)] px-3 py-1.5 text-base shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)] backdrop-blur-[12px]"
       aria-label="Open Search"
       data-search

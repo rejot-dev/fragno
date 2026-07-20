@@ -299,7 +299,9 @@ export function SessionDisplayOptions({
       <div className="flex justify-end">
         <button
           type="button"
-          onClick={() => setExpanded((current) => !current)}
+          onClick={() => {
+            setExpanded((current) => !current);
+          }}
           className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:text-[var(--bo-fg)]"
         >
           Options {expanded ? "−" : "+"}
@@ -480,7 +482,9 @@ export function SessionComposer({
           name="text"
           rows={1}
           value={draftMessage}
-          onChange={(event) => setDraftMessage(event.target.value)}
+          onChange={(event) => {
+            setDraftMessage(event.target.value);
+          }}
           onKeyDown={(event) => {
             if (event.key === "Enter" && event.metaKey) {
               event.preventDefault();
@@ -523,7 +527,9 @@ export function SessionComposer({
             <div className="grid grid-cols-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-0.5">
               <button
                 type="button"
-                onClick={() => setMode("followUp")}
+                onClick={() => {
+                  setMode("followUp");
+                }}
                 aria-pressed={mode === "followUp"}
                 className={`min-h-8 px-2.5 text-[10px] font-semibold tracking-[0.14em] uppercase transition-[background-color,color,transform] duration-150 active:scale-[0.96] ${
                   mode === "followUp"
@@ -535,7 +541,9 @@ export function SessionComposer({
               </button>
               <button
                 type="button"
-                onClick={() => setMode("steer")}
+                onClick={() => {
+                  setMode("steer");
+                }}
                 aria-pressed={mode === "steer"}
                 className={`min-h-8 px-2.5 text-[10px] font-semibold tracking-[0.14em] uppercase transition-[background-color,color,transform] duration-150 active:scale-[0.96] ${
                   mode === "steer"
@@ -959,7 +967,9 @@ function ToolCallBlock({
                     resultExpanded ? "Collapse execCodeMode result" : "Expand execCodeMode result"
                   }
                   title={resultExpanded ? "Collapse result" : "Expand result"}
-                  onClick={() => setResultExpanded((current) => !current)}
+                  onClick={() => {
+                    setResultExpanded((current) => !current);
+                  }}
                   className="inline-flex h-6 w-6 items-center justify-center border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)] transition-[border-color,color,transform] duration-150 hover:border-[color:var(--bo-accent)] hover:text-[var(--bo-fg)] active:scale-[0.96]"
                 >
                   {resultExpanded ? (

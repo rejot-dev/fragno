@@ -61,7 +61,9 @@ export function PromptComposer() {
       <textarea
         ref={textareaRef}
         value={value}
-        onChange={(event) => handleChange(event.target.value)}
+        onChange={(event) => {
+          handleChange(event.target.value);
+        }}
         onKeyDown={(event) => {
           if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
             handleConduct();

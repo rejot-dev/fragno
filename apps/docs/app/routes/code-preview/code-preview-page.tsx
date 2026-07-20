@@ -139,7 +139,9 @@ export default function CodePreviewPage() {
             </div>
             <div className="flex items-center justify-between gap-2">
               <button
-                onClick={() => setCurrentIndex(Math.max(0, currentIndex - 1))}
+                onClick={() => {
+                  setCurrentIndex(Math.max(0, currentIndex - 1));
+                }}
                 disabled={currentIndex === 0}
                 className="rounded-lg p-2 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-slate-700"
               >
@@ -149,7 +151,9 @@ export default function CodePreviewPage() {
                 {currentIndex + 1} of {currentLayout.count}
               </div>
               <button
-                onClick={() => setCurrentIndex(Math.min(currentLayout.count - 1, currentIndex + 1))}
+                onClick={() => {
+                  setCurrentIndex(Math.min(currentLayout.count - 1, currentIndex + 1));
+                }}
                 disabled={currentIndex === currentLayout.count - 1}
                 className="rounded-lg p-2 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-slate-700"
               >
@@ -229,7 +233,9 @@ export default function CodePreviewPage() {
               </label>
               <textarea
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => {
+                  setDescription(e.target.value);
+                }}
                 rows={2}
                 className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
                 placeholder="Enter description..."
@@ -243,7 +249,9 @@ export default function CodePreviewPage() {
                 </label>
                 <textarea
                   value={code}
-                  onChange={(e) => setCode(e.target.value)}
+                  onChange={(e) => {
+                    setCode(e.target.value);
+                  }}
                   rows={15}
                   className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 font-mono text-sm text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
                   placeholder="Enter code..."
@@ -257,7 +265,9 @@ export default function CodePreviewPage() {
                 </label>
                 <select
                   value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
+                  onChange={(e) => {
+                    setLanguage(e.target.value);
+                  }}
                   className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
                 >
                   <option value="typescript">TypeScript</option>

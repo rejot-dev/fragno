@@ -183,7 +183,9 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        */
       delete(id: FragnoId) {
         return this.serviceTx(internalSchema)
-          .mutate(({ uow }) => uow.delete(SETTINGS_TABLE_NAME, id))
+          .mutate(({ uow }) => {
+            uow.delete(SETTINGS_TABLE_NAME, id);
+          })
           .build();
       },
     });
@@ -492,11 +494,11 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
        */
       markHookProcessing(eventId: FragnoId) {
         return this.serviceTx(internalSchema)
-          .mutate(({ uow }) =>
+          .mutate(({ uow }) => {
             uow.update("fragno_hooks", eventId, (b) =>
               b.set({ status: "processing", lastAttemptAt: dbNow() }).check(),
-            ),
-          )
+            );
+          })
           .build();
       },
 

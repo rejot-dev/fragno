@@ -338,7 +338,9 @@ export function ComposeTranscript({
     stickToBottom();
     const observer = new ResizeObserver(stickToBottom);
     observer.observe(content);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+    };
   }, []);
 
   return (
@@ -592,7 +594,9 @@ function ToolOutputRow({ name, text, isError }: { name: string; text: string; is
     <div className="flex flex-col gap-1">
       <button
         type="button"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => {
+          setExpanded((v) => !v);
+        }}
         aria-expanded={expanded}
         className="flex items-center gap-1.5 text-left text-xs text-[var(--cad-muted-2)] hover:text-[var(--cad-fg)]"
       >

@@ -48,7 +48,9 @@ export function BackofficeScreenshotFigure({
             <button
               type="button"
               className="absolute inset-0 bg-[rgb(15_23_42/0.88)] backdrop-blur-[2px] dark:bg-[rgb(2_6_23/0.94)]"
-              onClick={() => setFullscreenOpen(false)}
+              onClick={() => {
+                setFullscreenOpen(false);
+              }}
               aria-label="Close fullscreen view"
             />
             <div className="relative z-10 flex max-h-[min(96dvh,96vh)] w-[96vw] max-w-[min(1800px,96vw)] flex-col">
@@ -57,7 +59,9 @@ export function BackofficeScreenshotFigure({
               </div>
               <button
                 type="button"
-                onClick={() => setFullscreenOpen(false)}
+                onClick={() => {
+                  setFullscreenOpen(false);
+                }}
                 className="absolute top-2 right-2 z-20 inline-flex size-10 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--editorial-surface)_92%,transparent)] text-(--editorial-ink) shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)] transition-colors hover:bg-[color-mix(in_srgb,var(--editorial-surface)_88%,var(--editorial-ink)_6%)]"
                 aria-label="Close"
               >
@@ -87,7 +91,9 @@ export function BackofficeScreenshotFigure({
         <div className="overflow-hidden bg-[color-mix(in_srgb,var(--editorial-surface)_84%,transparent)] shadow-[0_24px_48px_rgb(15_23_42/0.08)] backdrop-blur-md dark:shadow-[0_24px_48px_rgb(2_6_23/0.28)]">
           <button
             type="button"
-            onClick={() => setFullscreenOpen(true)}
+            onClick={() => {
+              setFullscreenOpen(true);
+            }}
             className="group relative block w-full cursor-zoom-in border-0 bg-transparent p-0 text-left"
             aria-label="View backoffice screenshot fullscreen"
           >

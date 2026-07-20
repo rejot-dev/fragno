@@ -277,22 +277,28 @@ export const dispatchAutomationRouteSchedule = async ({
   handlerTx: DatabaseHandlerTx<AutomationInternalHooks>;
 }) => {
   switch (payload.kind) {
-    case "initialize":
-      return await initializeScheduledRoute({ routeId: payload.routeId, handlerTx });
-    case "dispatch":
-      return await dispatchScheduledRouteOccurrence({
+    case "initialize": {
+      await initializeScheduledRoute({ routeId: payload.routeId, handlerTx });
+      return;
+    }
+    case "dispatch": {
+      await dispatchScheduledRouteOccurrence({
         payload,
         ownerScope,
         ingestEvent,
         handlerTx,
       });
-    case "manual":
-      return await dispatchManualScheduledRouteTrigger({
+      return;
+    }
+    case "manual": {
+      await dispatchManualScheduledRouteTrigger({
         payload,
         requestedAt: hookCreatedAt,
         ownerScope,
         ingestEvent,
         handlerTx,
       });
+      return;
+    }
   }
 };

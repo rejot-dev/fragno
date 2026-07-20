@@ -521,7 +521,7 @@ export class IndexedDbAdapter
         if (readPlan === undefined) {
           continue;
         }
-        const resolved = resolveProjectionReadPlan(readPlan, resolveRead);
+        const resolved: unknown = resolveProjectionReadPlan(readPlan, resolveRead);
         retrieved = isThenable(resolved) ? await resolved : resolved;
       }
 
@@ -841,7 +841,9 @@ const openDatabaseWithUpgrade = (
       void onUpgrade(db, tx as UpgradeTx<ArrayLike<string>>);
     },
   }).then((db) => {
-    db.onversionchange = () => db.close();
+    db.onversionchange = () => {
+      db.close();
+    };
     return db;
   });
 

@@ -33,7 +33,9 @@ export function CadenceCodeEditor({
   // Monaco references `window`/`document` and loads from a CDN, so only render
   // it after hydration — SSR gets the plain placeholder below.
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Keep the latest onSave reachable from the editor command (registered once).
   const onSaveRef = useRef(onSave);
@@ -50,7 +52,9 @@ export function CadenceCodeEditor({
       noSyntaxValidation: false,
     });
 
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSaveRef.current());
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      onSaveRef.current();
+    });
   };
 
   // Before hydration (and while Monaco itself is loading from the CDN) show the
@@ -66,7 +70,9 @@ export function CadenceCodeEditor({
         height="100%"
         language={LANGUAGE[engine]}
         value={value}
-        onChange={(next) => onChange(next ?? "")}
+        onChange={(next) => {
+          onChange(next ?? "");
+        }}
         onMount={onMount}
         theme="cadence"
         loading={<EditorLoader />}

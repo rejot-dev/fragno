@@ -19,7 +19,12 @@ export function PromptModeToggle() {
         <Sparkles className="h-3.5 w-3.5" />
         Compose
       </ToggleButton>
-      <ToggleButton active={mode === "dev"} onClick={() => enterDev()}>
+      <ToggleButton
+        active={mode === "dev"}
+        onClick={() => {
+          enterDev();
+        }}
+      >
         <TerminalSquare className="h-3.5 w-3.5" />
         Dev
       </ToggleButton>

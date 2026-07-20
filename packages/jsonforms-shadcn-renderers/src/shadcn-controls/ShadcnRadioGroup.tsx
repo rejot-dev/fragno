@@ -17,7 +17,9 @@ export const ShadcnRadioGroup = memo(function ShadcnRadioGroup(props: ShadcnRadi
   return (
     <RadioGroup
       value={data ?? ""}
-      onValueChange={(value) => props.handleChange(path, value || undefined)}
+      onValueChange={(value) => {
+        props.handleChange(path, value || undefined);
+      }}
       disabled={!enabled}
       className={cn("flex flex-col gap-2", className)}
     >

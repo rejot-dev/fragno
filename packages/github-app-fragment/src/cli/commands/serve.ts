@@ -198,7 +198,9 @@ export const serveCommand = define({
 
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
-      server.listen(port, host, () => resolve());
+      server.listen(port, host, () => {
+        resolve();
+      });
     });
 
     const dispatcher = createDurableHooksProcessor([fragment], {
@@ -223,7 +225,9 @@ export const serveCommand = define({
     const cleanup = async () => {
       dispatcher.stopPolling();
       await new Promise<void>((resolve) => {
-        server.close(() => resolve());
+        server.close(() => {
+          resolve();
+        });
       });
       await close();
     };

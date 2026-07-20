@@ -41,7 +41,9 @@ export function FormMetadataEditor({ value, onChange, className }: FormMetadataE
         <Input
           id="form-title"
           value={value.title}
-          onChange={(e) => updateField("title", e.target.value)}
+          onChange={(e) => {
+            updateField("title", e.target.value);
+          }}
         />
       </div>
 
@@ -52,14 +54,21 @@ export function FormMetadataEditor({ value, onChange, className }: FormMetadataE
         <Input
           id="form-description"
           value={value.description}
-          onChange={(e) => updateField("description", e.target.value)}
+          onChange={(e) => {
+            updateField("description", e.target.value);
+          }}
         />
       </div>
 
       <div className="space-y-2">
         <Label htmlFor="form-status">Status</Label>
         {/* Cast is safe: select options are constrained to FormStatus values */}
-        <Select value={value.status} onValueChange={(v) => updateField("status", v as FormStatus)}>
+        <Select
+          value={value.status}
+          onValueChange={(v) => {
+            updateField("status", v as FormStatus);
+          }}
+        >
           <SelectTrigger id="form-status">
             <SelectValue placeholder="Select status" />
           </SelectTrigger>

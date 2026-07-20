@@ -130,7 +130,9 @@ export function TabbedCodeFigure({
                 type="button"
                 role="tab"
                 aria-selected={isActive}
-                onClick={() => setActiveTabId(tab.id)}
+                onClick={() => {
+                  setActiveTabId(tab.id);
+                }}
                 className={`transition-colors ${
                   isActive
                     ? `text-[${TAB_COLOR_VAR[tab.color]}] underline decoration-2 underline-offset-[0.65rem]`

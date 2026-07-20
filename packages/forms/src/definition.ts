@@ -114,7 +114,9 @@ export const formsFragmentDef = defineFragment<FormsConfig>("forms")
 
       deleteForm: function (id: string) {
         return this.serviceTx(formsSchema)
-          .mutate(({ uow }) => uow.delete("form", id))
+          .mutate(({ uow }) => {
+            uow.delete("form", id);
+          })
           .build();
       },
 
@@ -185,7 +187,9 @@ export const formsFragmentDef = defineFragment<FormsConfig>("forms")
 
       deleteResponse: function (id: string) {
         return this.serviceTx(formsSchema)
-          .mutate(({ uow }) => uow.delete("response", id))
+          .mutate(({ uow }) => {
+            uow.delete("response", id);
+          })
           .build();
       },
     }),

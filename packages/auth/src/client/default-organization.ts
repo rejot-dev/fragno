@@ -163,10 +163,13 @@ export function subscribeToDefaultOrganizationPreference(
     return () => {};
   }
 
-  const handleChange = () => onChange();
+  const handleChange = () => {
+    onChange();
+  };
   const handleStorage = (e: Event) => {
     if (typeof StorageEvent === "undefined") {
-      return onChange();
+      onChange();
+      return;
     }
     if (e instanceof StorageEvent && (!e.key || e.key === storageKey)) {
       onChange();
@@ -267,7 +270,9 @@ export function createDefaultOrganizationPreferenceState<TMe extends AuthMeLike>
   const { meStore, readMe, storage, windowObject } = options;
   const storageVersion = atom(0);
 
-  const refresh = () => storageVersion.set(storageVersion.get() + 1);
+  const refresh = () => {
+    storageVersion.set(storageVersion.get() + 1);
+  };
   const getCurrentStorageKey = () => getDefaultOrganizationStorageKey();
   const storedOrganizationId = computed(storageVersion, () =>
     readDefaultOrganizationId(null, storage),

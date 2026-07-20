@@ -319,7 +319,9 @@ export default function UploadPage() {
                       <button
                         key={adapter.id}
                         type="button"
-                        onClick={() => setActiveAdapter(adapter.id)}
+                        onClick={() => {
+                          setActiveAdapter(adapter.id);
+                        }}
                         className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
                           isActive
                             ? "border-cyan-400/40 text-cyan-700 dark:text-cyan-200"

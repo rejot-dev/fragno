@@ -1026,7 +1026,9 @@ export const createTelegramServices = (config: TelegramFragmentConfig) => {
       const ops = createUpsertOutgoingMessageOps(input);
       return this.serviceTx(telegramSchema)
         .retrieve(ops.retrieve)
-        .mutate(({ uow, retrieveResult }) => ops.mutate({ uow, retrieveResult }))
+        .mutate(({ uow, retrieveResult }) => {
+          ops.mutate({ uow, retrieveResult });
+        })
         .build();
     },
   };

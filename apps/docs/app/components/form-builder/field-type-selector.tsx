@@ -17,7 +17,12 @@ export interface FieldTypeSelectorProps {
 export function FieldTypeSelector({ value, onChange }: FieldTypeSelectorProps) {
   return (
     // Cast is safe: select options are constrained to FieldType values
-    <Select value={value} onValueChange={(v) => onChange(v as FieldType)}>
+    <Select
+      value={value}
+      onValueChange={(v) => {
+        onChange(v as FieldType);
+      }}
+    >
       <SelectTrigger data-slot="field-type-selector" className="w-[180px]">
         <SelectValue placeholder="Select type" />
       </SelectTrigger>

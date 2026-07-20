@@ -106,7 +106,9 @@ export function useChatScroll({
     });
 
     observer.observe(content);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+    };
   }, [contentVersion, scrollToBottom]);
 
   return {

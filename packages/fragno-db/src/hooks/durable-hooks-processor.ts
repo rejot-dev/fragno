@@ -118,7 +118,9 @@ export function createDurableHooksProcessorGroupFromProcessors(
     processDue,
     drain: async () => {
       const results = await Promise.allSettled(
-        processors.map(async (processor) => await processor.drain()),
+        processors.map(async (processor) => {
+          await processor.drain();
+        }),
       );
       for (const result of results) {
         if (result.status === "rejected") {

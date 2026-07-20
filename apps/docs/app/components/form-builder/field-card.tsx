@@ -58,7 +58,9 @@ export function FieldCard({
               <Input
                 id={`field-label-${field.id}`}
                 value={field.label}
-                onChange={(e) => onUpdateLabel(e.target.value)}
+                onChange={(e) => {
+                  onUpdateLabel(e.target.value);
+                }}
               />
             </div>
             <div className="space-y-2">
@@ -75,7 +77,9 @@ export function FieldCard({
               <Input
                 id={`field-description-${field.id}`}
                 value={field.description ?? ""}
-                onChange={(e) => onUpdate({ description: e.target.value || undefined })}
+                onChange={(e) => {
+                  onUpdate({ description: e.target.value || undefined });
+                }}
               />
             </div>
           )}
@@ -86,7 +90,9 @@ export function FieldCard({
                 <Switch
                   id={`field-required-${field.id}`}
                   checked={field.required}
-                  onCheckedChange={(checked) => onUpdate({ required: checked })}
+                  onCheckedChange={(checked) => {
+                    onUpdate({ required: checked });
+                  }}
                 />
                 <Label htmlFor={`field-required-${field.id}`} className="cursor-pointer">
                   Required
@@ -170,7 +176,9 @@ export function FieldCard({
           <FieldOptions
             fieldType={field.fieldType}
             options={field.options}
-            onChange={(options) => onUpdate({ options })}
+            onChange={(options) => {
+              onUpdate({ options });
+            }}
           />
         </div>
       </CardContent>

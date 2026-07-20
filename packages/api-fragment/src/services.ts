@@ -255,7 +255,9 @@ export async function performApiRequest(args: {
 
   const controller = args.request.timeoutMs ? new AbortController() : undefined;
   const timeout = controller
-    ? setTimeout(() => controller.abort(), args.request.timeoutMs)
+    ? setTimeout(() => {
+        controller.abort();
+      }, args.request.timeoutMs)
     : undefined;
   try {
     const response = await (args.config.fetch ?? fetch)(url, {

@@ -28,7 +28,9 @@ export default function OgImagePage() {
           </div>
           <div className="flex flex-col gap-1">
             <button
-              onClick={() => setImageType("main")}
+              onClick={() => {
+                setImageType("main");
+              }}
               className={`flex items-center justify-between px-3 py-2 text-sm font-medium transition-all duration-200 ${
                 imageType === "main"
                   ? "bg-primary text-primary-foreground shadow-sm"
@@ -42,7 +44,9 @@ export default function OgImagePage() {
               {imageType === "main" && <Check className="h-3.5 w-3.5" />}
             </button>
             <button
-              onClick={() => setImageType("blog")}
+              onClick={() => {
+                setImageType("blog");
+              }}
               className={`flex items-center justify-between px-3 py-2 text-sm font-medium transition-all duration-200 ${
                 imageType === "blog"
                   ? "bg-primary text-primary-foreground shadow-sm"

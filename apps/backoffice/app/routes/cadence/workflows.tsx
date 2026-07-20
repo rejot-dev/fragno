@@ -186,7 +186,9 @@ export default function WorkflowsPage() {
       <WorkflowSelector
         workflows={workflows}
         selected={selected}
-        onSelect={(name) => setParam("workflow", name)}
+        onSelect={(name) => {
+          setParam("workflow", name);
+        }}
         onRefresh={() => void revalidator.revalidate()}
         refreshing={revalidator.state !== "idle"}
       />
@@ -262,7 +264,9 @@ function WorkflowSelector({
             <button
               key={workflow.name}
               type="button"
-              onClick={() => onSelect(workflow.name)}
+              onClick={() => {
+                onSelect(workflow.name);
+              }}
               className={cn(
                 "group flex items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors",
                 isActive
@@ -334,6 +338,8 @@ function useLiveRevalidate(enabled: boolean) {
         void revalidator.revalidate();
       }
     }, LIVE_INTERVAL_MS);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+    };
   }, [enabled, revalidator]);
 }

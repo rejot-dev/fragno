@@ -35,7 +35,9 @@ export function WorkflowBlockView({ block }: { block: WorkflowBlock }) {
           <CadenceButton
             type="button"
             className="shrink-0"
-            onClick={() => openBuild({ graph, title: block.title, sourceBlockId: block.id })}
+            onClick={() => {
+              openBuild({ graph, title: block.title, sourceBlockId: block.id });
+            }}
           >
             Open in build
           </CadenceButton>

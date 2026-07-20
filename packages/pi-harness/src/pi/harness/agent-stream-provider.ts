@@ -98,5 +98,7 @@ export const registerAgentStreamFn = <TTool extends AgentTool>(
     sourceId,
   );
 
-  return () => unregisterApiProviders(sourceId);
+  return () => {
+    unregisterApiProviders(sourceId);
+  };
 };

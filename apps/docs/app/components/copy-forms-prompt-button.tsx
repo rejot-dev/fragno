@@ -24,7 +24,9 @@ export function CopyFormsPromptButton() {
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(LLM_PROMPT);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => {
+      setCopied(false);
+    }, 2000);
   }, []);
 
   return (

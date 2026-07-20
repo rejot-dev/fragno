@@ -485,7 +485,7 @@ export class InMemoryLofiAdapter
         if (readPlan === undefined) {
           continue;
         }
-        const resolved = resolveProjectionReadPlan(readPlan, resolveRead);
+        const resolved: unknown = resolveProjectionReadPlan(readPlan, resolveRead);
         retrieved = isThenable(resolved) ? await resolved : resolved;
       }
 

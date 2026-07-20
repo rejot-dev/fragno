@@ -76,7 +76,9 @@ async function fetchWithRetry(
 
   while (attempt <= config.retries) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), config.timeoutMs);
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, config.timeoutMs);
 
     try {
       const response = await fetch(url, { ...init, signal: controller.signal });

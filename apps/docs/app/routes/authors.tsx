@@ -358,7 +358,9 @@ export function Chat() {
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                  }}
                   className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 ${
                     activeTab === tab.id
                       ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"

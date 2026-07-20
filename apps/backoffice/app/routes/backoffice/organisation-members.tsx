@@ -129,7 +129,9 @@ export default function BackofficeOrganisationMembers() {
           <input
             type="search"
             value={memberSearch}
-            onChange={(event) => setMemberSearch(event.target.value)}
+            onChange={(event) => {
+              setMemberSearch(event.target.value);
+            }}
             placeholder="Search members"
             className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-xs text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none sm:w-52"
           />
@@ -327,7 +329,9 @@ function OrganizationMemberRow({
                 <button
                   key={role}
                   type="button"
-                  onClick={() => handleToggleRole(role)}
+                  onClick={() => {
+                    handleToggleRole(role);
+                  }}
                   className={cn(
                     "border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] transition-colors",
                     isSelected

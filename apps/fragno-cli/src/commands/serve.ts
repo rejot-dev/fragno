@@ -91,7 +91,8 @@ export const serveCommand = define({
 
       for (const { mountRoute, handler } of handlers) {
         if (url.startsWith(mountRoute)) {
-          return handler(req, res);
+          handler(req, res);
+          return;
         }
       }
 

@@ -296,20 +296,20 @@ export class RunnerStep implements WorkflowStep {
         parentScope: RemoteWorkflowStepScope,
         name: string,
         duration: WorkflowDuration,
-      ): Promise<void> =>
-        await this.#runInRemoteParentScope(
-          parentScope,
-          async () => await this.sleep(name, duration),
-        ),
+      ): Promise<void> => {
+        await this.#runInRemoteParentScope(parentScope, async () => {
+          await this.sleep(name, duration);
+        });
+      },
       sleepUntil: async (
         parentScope: RemoteWorkflowStepScope,
         name: string,
         timestamp: Date | number,
-      ): Promise<void> =>
-        await this.#runInRemoteParentScope(
-          parentScope,
-          async () => await this.sleepUntil(name, timestamp),
-        ),
+      ): Promise<void> => {
+        await this.#runInRemoteParentScope(parentScope, async () => {
+          await this.sleepUntil(name, timestamp);
+        });
+      },
       waitForEvent: async <T = unknown>(
         parentScope: RemoteWorkflowStepScope,
         name: string,

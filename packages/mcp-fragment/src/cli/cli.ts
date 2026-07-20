@@ -139,7 +139,8 @@ async function startServer(options: Parsed["options"], logger: Logger): Promise<
   const handler = toNodeHandler(fragment.handler.bind(fragment));
   const server = createServer((req, res) => {
     if (req.url?.startsWith(fragment.mountRoute)) {
-      return handler(req, res);
+      handler(req, res);
+      return;
     }
     res.writeHead(404, { "content-type": "text/plain" }).end("Not found");
   });

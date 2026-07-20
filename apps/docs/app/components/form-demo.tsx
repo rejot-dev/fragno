@@ -440,7 +440,9 @@ export function FormDemo() {
           schema={feedbackSchema}
           uischema={feedbackUiSchema}
           data={feedbackData}
-          onChange={({ data }) => setFeedbackData(data)}
+          onChange={({ data }) => {
+            setFeedbackData(data);
+          }}
         />
       </BentoCard>
 
@@ -456,7 +458,9 @@ export function FormDemo() {
           schema={bookingSchema}
           uischema={bookingUiSchema}
           data={bookingData}
-          onChange={({ data }) => setBookingData(data)}
+          onChange={({ data }) => {
+            setBookingData(data);
+          }}
         />
       </BentoCard>
 
@@ -473,7 +477,9 @@ export function FormDemo() {
           schema={settingsSchema}
           uischema={settingsUiSchema}
           data={settingsData}
-          onChange={({ data }) => setSettingsData(data)}
+          onChange={({ data }) => {
+            setSettingsData(data);
+          }}
         />
       </BentoCard>
 
@@ -490,7 +496,9 @@ export function FormDemo() {
           schema={eventRegSchema}
           uischema={eventRegUiSchema}
           data={eventData}
-          onChange={({ data }) => setEventData(data)}
+          onChange={({ data }) => {
+            setEventData(data);
+          }}
         />
       </BentoCard>
 
@@ -506,7 +514,9 @@ export function FormDemo() {
           schema={surveySchema}
           uischema={surveyUiSchema}
           data={surveyData}
-          onChange={({ data }) => setSurveyData(data)}
+          onChange={({ data }) => {
+            setSurveyData(data);
+          }}
         />
       </BentoCard>
     </BentoGrid>

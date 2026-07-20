@@ -36,7 +36,9 @@ export function LevelSlider() {
               max="3"
               step="1"
               value={currentLevel}
-              onChange={(e) => setCurrentLevel(Number(e.target.value))}
+              onChange={(e) => {
+                setCurrentLevel(Number(e.target.value));
+              }}
               className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-200 dark:bg-gray-700 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-gray-300 [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:shadow-md [&::-moz-range-thumb]:transition-all [&::-moz-range-thumb]:hover:border-gray-400 dark:[&::-moz-range-thumb]:border-gray-600 dark:[&::-moz-range-thumb]:bg-gray-800 dark:[&::-moz-range-thumb]:hover:border-gray-500 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-gray-300 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:transition-all [&::-webkit-slider-thumb]:hover:border-gray-400 dark:[&::-webkit-slider-thumb]:border-gray-600 dark:[&::-webkit-slider-thumb]:bg-gray-800 dark:[&::-webkit-slider-thumb]:hover:border-gray-500"
             />
           </div>
@@ -47,7 +49,9 @@ export function LevelSlider() {
               <button
                 key={level.value}
                 type="button"
-                onClick={() => setCurrentLevel(level.value)}
+                onClick={() => {
+                  setCurrentLevel(level.value);
+                }}
                 className={cn(
                   "text-xs transition-colors",
                   currentLevel === level.value

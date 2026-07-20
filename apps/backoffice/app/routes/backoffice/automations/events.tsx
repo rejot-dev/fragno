@@ -155,7 +155,9 @@ export default function BackofficeAutomationEvents() {
                         tabIndex={0}
                         aria-expanded={isExpanded}
                         aria-controls={`automation-event-payload-${event.id}`}
-                        onClick={() => togglePayload(event.id)}
+                        onClick={() => {
+                          togglePayload(event.id);
+                        }}
                         onKeyDown={(keyboardEvent) => {
                           if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
                             keyboardEvent.preventDefault();

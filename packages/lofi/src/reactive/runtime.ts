@@ -630,7 +630,9 @@ export const createLofiRuntime = (options: LofiRuntimeOptions): LofiRuntime => {
         throw createAbortError();
       }
 
-      runtime.client.replayEphemeral(({ mutations }) => emitEphemeralMutations(mutations));
+      runtime.client.replayEphemeral(({ mutations }) => {
+        emitEphemeralMutations(mutations);
+      });
       if (bootstrapStatus !== "complete") {
         await options.adapter.setMeta(bootstrapMetaKey, "complete");
       }

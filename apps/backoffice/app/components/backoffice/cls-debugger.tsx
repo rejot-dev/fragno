@@ -67,7 +67,9 @@ export function BackofficeClsDebugger() {
 
     observer.observe({ type: "layout-shift", buffered: true });
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+    };
   }, []);
 
   return null;

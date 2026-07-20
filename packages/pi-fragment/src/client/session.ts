@@ -741,8 +741,12 @@ export const createPiSessionStore = (args: PiSessionStoreArgs, deps: PiSessionSt
   const createInitialState = () => createInitialStateForPath(readPath());
   const staleCheckNow = atom(now());
   onMount(staleCheckNow, () => {
-    const interval = setInterval(() => staleCheckNow.set(now()), 1_000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => {
+      staleCheckNow.set(now());
+    }, 1_000);
+    return () => {
+      clearInterval(interval);
+    };
   });
 
   const state = atom<PiSessionStoreState>(createInitialState());

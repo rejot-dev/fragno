@@ -78,9 +78,9 @@ export const telegramFragmentDefinition = defineFragment<TelegramFragmentConfig>
           });
           await this.handlerTx()
             .retrieve(({ forSchema }) => ops.retrieve(forSchema(telegramSchema)))
-            .mutate(({ forSchema, retrieveResult }) =>
-              ops.mutate({ uow: forSchema(telegramSchema), retrieveResult }),
-            )
+            .mutate(({ forSchema, retrieveResult }) => {
+              ops.mutate({ uow: forSchema(telegramSchema), retrieveResult });
+            })
             .execute();
         } catch (error) {
           console.error("telegram outgoing message persist error", error);

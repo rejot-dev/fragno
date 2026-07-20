@@ -84,7 +84,9 @@ export async function startUsageTestServer(options: UsageTestServerOptions = {})
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(port, host, () => resolve());
+    server.listen(port, host, () => {
+      resolve();
+    });
   });
 
   const address = server.address() as AddressInfo;

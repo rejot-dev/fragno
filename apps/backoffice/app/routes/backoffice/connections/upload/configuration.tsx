@@ -570,7 +570,7 @@ export default function BackofficeOrganisationUploadConfiguration() {
     <div className="space-y-4">
       <UploadProviderTabs
         activeProvider={formState.provider}
-        onSelect={(provider) =>
+        onSelect={(provider) => {
           setFormState((prev) => ({
             ...prev,
             provider,
@@ -584,8 +584,8 @@ export default function BackofficeOrganisationUploadConfiguration() {
                 : prev.bindingName,
             secretAccessKey: "",
             sessionToken: "",
-          }))
-        }
+          }));
+        }}
       />
 
       <section className="grid gap-3 lg:grid-cols-[1.1fr_1fr]">
@@ -730,9 +730,9 @@ export default function BackofficeOrganisationUploadConfiguration() {
                       name="bucket"
                       required={formState.provider === "r2"}
                       value={formState.bucket}
-                      onChange={(event) =>
-                        setFormState((prev) => ({ ...prev, bucket: event.target.value }))
-                      }
+                      onChange={(event) => {
+                        setFormState((prev) => ({ ...prev, bucket: event.target.value }));
+                      }}
                       placeholder="acme-upload-bucket"
                       className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
                     />
@@ -742,9 +742,9 @@ export default function BackofficeOrganisationUploadConfiguration() {
                       name="endpoint"
                       required={formState.provider === "r2"}
                       value={formState.endpoint}
-                      onChange={(event) =>
-                        setFormState((prev) => ({ ...prev, endpoint: event.target.value }))
-                      }
+                      onChange={(event) => {
+                        setFormState((prev) => ({ ...prev, endpoint: event.target.value }));
+                      }}
                       placeholder="https://<account>.r2.cloudflarestorage.com"
                       className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
                     />
@@ -757,9 +757,9 @@ export default function BackofficeOrganisationUploadConfiguration() {
                       name="accessKeyId"
                       required={formState.provider === "r2"}
                       value={formState.accessKeyId}
-                      onChange={(event) =>
-                        setFormState((prev) => ({ ...prev, accessKeyId: event.target.value }))
-                      }
+                      onChange={(event) => {
+                        setFormState((prev) => ({ ...prev, accessKeyId: event.target.value }));
+                      }}
                       placeholder={r2Config?.accessKeyIdPreview || "AKIA..."}
                       className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
                     />
@@ -769,9 +769,9 @@ export default function BackofficeOrganisationUploadConfiguration() {
                       name="secretAccessKey"
                       type="password"
                       value={formState.secretAccessKey}
-                      onChange={(event) =>
-                        setFormState((prev) => ({ ...prev, secretAccessKey: event.target.value }))
-                      }
+                      onChange={(event) => {
+                        setFormState((prev) => ({ ...prev, secretAccessKey: event.target.value }));
+                      }}
                       placeholder={r2Config?.secretAccessKeyPreview || "••••••••"}
                       className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
                     />
@@ -783,9 +783,9 @@ export default function BackofficeOrganisationUploadConfiguration() {
                     <input
                       name="region"
                       value={formState.region}
-                      onChange={(event) =>
-                        setFormState((prev) => ({ ...prev, region: event.target.value }))
-                      }
+                      onChange={(event) => {
+                        setFormState((prev) => ({ ...prev, region: event.target.value }));
+                      }}
                       placeholder="auto"
                       className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
                     />
@@ -794,9 +794,9 @@ export default function BackofficeOrganisationUploadConfiguration() {
                     <input
                       name="sessionToken"
                       value={formState.sessionToken}
-                      onChange={(event) =>
-                        setFormState((prev) => ({ ...prev, sessionToken: event.target.value }))
-                      }
+                      onChange={(event) => {
+                        setFormState((prev) => ({ ...prev, sessionToken: event.target.value }));
+                      }}
                       placeholder="Optional session token"
                       className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
                     />
@@ -808,9 +808,9 @@ export default function BackofficeOrganisationUploadConfiguration() {
                     name="pathStyle"
                     type="checkbox"
                     checked={formState.pathStyle}
-                    onChange={(event) =>
-                      setFormState((prev) => ({ ...prev, pathStyle: event.target.checked }))
-                    }
+                    onChange={(event) => {
+                      setFormState((prev) => ({ ...prev, pathStyle: event.target.checked }));
+                    }}
                     className="h-4 w-4 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]"
                   />
                   Use path-style addressing
@@ -832,9 +832,9 @@ export default function BackofficeOrganisationUploadConfiguration() {
               <input
                 name="storageKeySuffix"
                 value={formState.storageKeySuffix}
-                onChange={(event) =>
-                  setFormState((prev) => ({ ...prev, storageKeySuffix: event.target.value }))
-                }
+                onChange={(event) => {
+                  setFormState((prev) => ({ ...prev, storageKeySuffix: event.target.value }));
+                }}
                 placeholder="uploads"
                 className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
               />
@@ -855,90 +855,90 @@ export default function BackofficeOrganisationUploadConfiguration() {
                     label="Direct threshold"
                     name="directUploadThresholdBytes"
                     value={formState.directUploadThresholdBytes}
-                    onChange={(directUploadThresholdBytes) =>
+                    onChange={(directUploadThresholdBytes) => {
                       setFormState((prev) => ({
                         ...prev,
                         directUploadThresholdBytes,
-                      }))
-                    }
+                      }));
+                    }}
                   />
                   <ByteUnitField
                     label="Multipart threshold"
                     name="multipartThresholdBytes"
                     value={formState.multipartThresholdBytes}
-                    onChange={(multipartThresholdBytes) =>
+                    onChange={(multipartThresholdBytes) => {
                       setFormState((prev) => ({
                         ...prev,
                         multipartThresholdBytes,
-                      }))
-                    }
+                      }));
+                    }}
                   />
                   <ByteUnitField
                     label="Multipart part size"
                     name="multipartPartSizeBytes"
                     value={formState.multipartPartSizeBytes}
-                    onChange={(multipartPartSizeBytes) =>
+                    onChange={(multipartPartSizeBytes) => {
                       setFormState((prev) => ({
                         ...prev,
                         multipartPartSizeBytes,
-                      }))
-                    }
+                      }));
+                    }}
                   />
                   <TimeUnitField
                     label="Upload expiry"
                     name="uploadExpiresInSeconds"
                     value={formState.uploadExpiresInSeconds}
-                    onChange={(uploadExpiresInSeconds) =>
+                    onChange={(uploadExpiresInSeconds) => {
                       setFormState((prev) => ({
                         ...prev,
                         uploadExpiresInSeconds,
-                      }))
-                    }
+                      }));
+                    }}
                   />
                   <TimeUnitField
                     label="Signed URL expiry"
                     name="signedUrlExpiresInSeconds"
                     value={formState.signedUrlExpiresInSeconds}
-                    onChange={(signedUrlExpiresInSeconds) =>
+                    onChange={(signedUrlExpiresInSeconds) => {
                       setFormState((prev) => ({
                         ...prev,
                         signedUrlExpiresInSeconds,
-                      }))
-                    }
+                      }));
+                    }}
                   />
                   <ByteUnitField
                     label="Max single upload"
                     name="maxSingleUploadBytes"
                     value={formState.maxSingleUploadBytes}
-                    onChange={(maxSingleUploadBytes) =>
+                    onChange={(maxSingleUploadBytes) => {
                       setFormState((prev) => ({
                         ...prev,
                         maxSingleUploadBytes,
-                      }))
-                    }
+                      }));
+                    }}
                   />
                   <ByteUnitField
                     label="Max multipart upload"
                     name="maxMultipartUploadBytes"
                     value={formState.maxMultipartUploadBytes}
-                    onChange={(maxMultipartUploadBytes) =>
+                    onChange={(maxMultipartUploadBytes) => {
                       setFormState((prev) => ({
                         ...prev,
                         maxMultipartUploadBytes,
-                      }))
-                    }
+                      }));
+                    }}
                   />
                   <ByteUnitField
                     label="Max metadata"
                     hint="Can be zero."
                     name="maxMetadataBytes"
                     value={formState.maxMetadataBytes}
-                    onChange={(maxMetadataBytes) =>
+                    onChange={(maxMetadataBytes) => {
                       setFormState((prev) => ({
                         ...prev,
                         maxMetadataBytes,
-                      }))
-                    }
+                      }));
+                    }}
                   />
                 </div>
               </div>

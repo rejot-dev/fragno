@@ -107,7 +107,9 @@ export default function BackofficeAutomationEventsCatalog() {
           <input
             type="search"
             value={search}
-            onChange={(event) => setSearch(event.currentTarget.value)}
+            onChange={(event) => {
+              setSearch(event.currentTarget.value);
+            }}
             placeholder="source, event type, label, capability…"
             className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] transition-colors outline-none placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)]"
           />
@@ -120,9 +122,11 @@ export default function BackofficeAutomationEventsCatalog() {
             </span>
             <select
               value={pageSize}
-              onChange={(event) =>
-                setPageSize(Number(event.currentTarget.value) as (typeof PAGE_SIZE_OPTIONS)[number])
-              }
+              onChange={(event) => {
+                setPageSize(
+                  Number(event.currentTarget.value) as (typeof PAGE_SIZE_OPTIONS)[number],
+                );
+              }}
               className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] outline-none focus:border-[color:var(--bo-accent)]"
             >
               {PAGE_SIZE_OPTIONS.map((option) => (
@@ -153,7 +157,9 @@ export default function BackofficeAutomationEventsCatalog() {
                   type="button"
                   role="radio"
                   aria-checked={payloadFormat === option.value}
-                  onClick={() => setPayloadFormat(option.value)}
+                  onClick={() => {
+                    setPayloadFormat(option.value);
+                  }}
                   className={
                     payloadFormat === option.value
                       ? "bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase"
@@ -177,7 +183,9 @@ export default function BackofficeAutomationEventsCatalog() {
         {normalizedSearch ? (
           <button
             type="button"
-            onClick={() => setSearch("")}
+            onClick={() => {
+              setSearch("");
+            }}
             className="text-[10px] font-semibold tracking-[0.22em] uppercase transition-colors hover:text-[var(--bo-fg)]"
           >
             Clear search
@@ -252,7 +260,9 @@ export default function BackofficeAutomationEventsCatalog() {
           <button
             type="button"
             disabled={clampedPage <= 1}
-            onClick={() => setPage((current) => Math.max(1, current - 1))}
+            onClick={() => {
+              setPage((current) => Math.max(1, current - 1));
+            }}
             className="border border-[color:var(--bo-border)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Previous
@@ -260,7 +270,9 @@ export default function BackofficeAutomationEventsCatalog() {
           <button
             type="button"
             disabled={clampedPage >= pageCount}
-            onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+            onClick={() => {
+              setPage((current) => Math.min(pageCount, current + 1));
+            }}
             className="border border-[color:var(--bo-border)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Next

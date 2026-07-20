@@ -41,7 +41,7 @@
     ],
     "typescript/no-array-delete": "error",
     "typescript/no-base-to-string": "off",
-    "typescript/no-confusing-void-expression": "off",
+    "typescript/no-confusing-void-expression": "error",
     "typescript/no-deprecated": "error",
     "typescript/no-duplicate-type-constituents": "error",
     "typescript/no-floating-promises": "error",
@@ -200,6 +200,7 @@
     {
       "files": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
       "rules": {
+        "typescript/no-confusing-void-expression": "off",
         "typescript/no-unnecessary-type-assertion": "off",
         "typescript/no-unsafe-return": "off",
         "typescript/strict-void-return": "off",
@@ -209,6 +210,7 @@
     {
       "files": ["packages/fragment-workflows/workflows-smoke-artifacts/**/*.js"],
       "rules": {
+        "typescript/no-confusing-void-expression": "off",
         "typescript/no-unsafe-return": "off",
         "typescript/strict-void-return": "off"
       }

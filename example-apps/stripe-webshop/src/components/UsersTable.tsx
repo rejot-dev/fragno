@@ -226,7 +226,9 @@ export function UsersTable() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => handleStartEdit(user.id, user.stripeCustomerId)}
+                            onClick={() => {
+                              handleStartEdit(user.id, user.stripeCustomerId);
+                            }}
                             className="h-6 w-6 p-0"
                           >
                             <PencilIcon className="h-3 w-3" />

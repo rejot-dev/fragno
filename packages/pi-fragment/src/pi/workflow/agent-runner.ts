@@ -356,19 +356,23 @@ export const runAgentTurn = async (
   });
 
   lifecycle.onController?.({
-    abort: () => agent.abort(),
-    steer: (input) =>
+    abort: () => {
+      agent.abort();
+    },
+    steer: (input) => {
       agent.steer({
         role: "user",
         content: [{ type: "text", text: input.text }, ...(input.images ?? [])],
         timestamp: Date.now(),
-      }),
-    followUp: (input) =>
+      });
+    },
+    followUp: (input) => {
       agent.followUp({
         role: "user",
         content: [{ type: "text", text: input.text }, ...(input.images ?? [])],
         timestamp: Date.now(),
-      }),
+      });
+    },
   });
 
   try {

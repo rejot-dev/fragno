@@ -108,7 +108,9 @@ const addPortMessageListener = (
   listener: (message: unknown) => void,
 ): (() => void) => {
   if (port.addEventListener) {
-    const eventListener = (event: { data: unknown }) => listener(event.data);
+    const eventListener = (event: { data: unknown }) => {
+      listener(event.data);
+    };
     port.addEventListener("message", eventListener);
     return () => port.removeEventListener?.("message", eventListener);
   }
@@ -192,7 +194,9 @@ export class WorkflowStepMessageTarget {
     this.#disposeListener = addPortMessageListener(this.#port, (message) => {
       void this.#handleMessage(message);
     });
-    return () => this.dispose();
+    return () => {
+      this.dispose();
+    };
   }
 
   dispose(): void {

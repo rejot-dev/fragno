@@ -60,7 +60,9 @@ export const ShadcnCategorizationStepperLayout = ({
             <div key={index} className="flex flex-1 items-center last:flex-none">
               <button
                 type="button"
-                onClick={() => handleStepClick(index)}
+                onClick={() => {
+                  handleStepClick(index);
+                }}
                 className={cn(
                   "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-medium transition-colors",
                   index === currentStep

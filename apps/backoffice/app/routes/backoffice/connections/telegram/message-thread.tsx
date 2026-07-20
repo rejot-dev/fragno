@@ -408,7 +408,9 @@ function ChatMessages({
     const frame = requestAnimationFrame(() => {
       viewport.scrollTop = viewport.scrollHeight;
     });
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+    };
   }, [chatId, messages.length, messagesError]);
 
   return (
