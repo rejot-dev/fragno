@@ -161,20 +161,24 @@ export function PerspectiveControls({ children }: { children: ReactNode }) {
                     setPreviewAudience(null);
                     setMotionKey((current) => current + 1);
                   }}
-                  onFocus={() => setPreviewAudience(option.value as PerspectiveAudience)}
-                  onBlur={() => setPreviewAudience(null)}
+                  onFocus={() => {
+                    setPreviewAudience(option.value as PerspectiveAudience);
+                  }}
+                  onBlur={() => {
+                    setPreviewAudience(null);
+                  }}
                 >
                   <input
                     type="radio"
                     name="audience"
                     value={option.value}
                     checked={checked}
-                    onChange={(event) =>
+                    onChange={(event) => {
                       updatePerspective({
                         ...committedPerspective,
                         audience: event.currentTarget.value as PerspectiveAudience,
-                      })
-                    }
+                      });
+                    }}
                     className="sr-only"
                   />
                   <span
@@ -239,9 +243,15 @@ export function PerspectiveControls({ children }: { children: ReactNode }) {
                       setPreviewTime(time);
                       setMotionKey((current) => current + 1);
                     }}
-                    onMouseLeave={() => setPreviewTime(null)}
-                    onPointerUp={() => setPreviewTime(null)}
-                    onBlur={() => setPreviewTime(null)}
+                    onMouseLeave={() => {
+                      setPreviewTime(null);
+                    }}
+                    onPointerUp={() => {
+                      setPreviewTime(null);
+                    }}
+                    onBlur={() => {
+                      setPreviewTime(null);
+                    }}
                     name="timeRange"
                     className="relative z-20 h-6 w-full cursor-pointer appearance-none bg-transparent [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-[var(--editorial-ink)] [&::-moz-range-track]:h-[2px] [&::-moz-range-track]:bg-[var(--editorial-ghost-border)] [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:bg-[var(--editorial-ghost-border)] [&::-webkit-slider-thumb]:mt-[-5px] [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--editorial-ink)]"
                     aria-label="Time available"
@@ -259,9 +269,9 @@ export function PerspectiveControls({ children }: { children: ReactNode }) {
                     <button
                       key={timeOption.value}
                       type="button"
-                      onClick={() =>
-                        updatePerspective({ ...committedPerspective, time: timeOption.value })
-                      }
+                      onClick={() => {
+                        updatePerspective({ ...committedPerspective, time: timeOption.value });
+                      }}
                       className={`cursor-pointer transition-colors hover:text-[var(--editorial-ink)] ${
                         perspective.time === timeOption.value ? "text-[var(--editorial-ink)]" : ""
                       }`}
@@ -309,7 +319,9 @@ export function PerspectiveControls({ children }: { children: ReactNode }) {
           <div className="pointer-events-none fixed right-[max(1rem,calc(50%-560px))] bottom-4 z-30 min-[1120px]:bottom-0">
             <button
               type="button"
-              onClick={() => updatePerspective(defaultPerspective)}
+              onClick={() => {
+                updatePerspective(defaultPerspective);
+              }}
               className="pointer-events-auto inline-flex items-center rounded-full bg-(--editorial-ink) px-3 py-2 text-[10px] font-bold tracking-widest text-(--editorial-surface) uppercase shadow-[0_10px_30px_rgb(15_23_42/0.25)] transition-opacity hover:opacity-90"
             >
               Reset Perspective

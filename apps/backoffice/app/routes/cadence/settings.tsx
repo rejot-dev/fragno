@@ -52,7 +52,9 @@ export default function SettingsPage() {
           <button
             key={s.id}
             type="button"
-            onClick={() => setActive(s.id)}
+            onClick={() => {
+              setActive(s.id);
+            }}
             className={cn(
               "rounded-lg border px-4 py-3 text-left transition-colors",
               active === s.id

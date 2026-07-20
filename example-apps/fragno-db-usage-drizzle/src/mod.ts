@@ -66,19 +66,23 @@ const serveCommand: Command = {
       }
 
       if (url.startsWith(authFragment.mountRoute)) {
-        return authHandler(req, res);
+        authHandler(req, res);
+        return;
       }
 
       if (url.startsWith(commentFragment.mountRoute)) {
-        return commentHandler(req, res);
+        commentHandler(req, res);
+        return;
       }
 
       if (url.startsWith(ratingFragment.mountRoute)) {
-        return ratingHandler(req, res);
+        ratingHandler(req, res);
+        return;
       }
 
       if (url.startsWith(workflowsFragment.mountRoute)) {
-        return workflowsHandler(req, res);
+        workflowsHandler(req, res);
+        return;
       }
 
       res.statusCode = 404;
@@ -97,7 +101,9 @@ const serveCommand: Command = {
       workflowsDispatcher.startPolling();
     });
 
-    server.on("close", () => workflowsDispatcher.stopPolling());
+    server.on("close", () => {
+      workflowsDispatcher.stopPolling();
+    });
   },
 };
 

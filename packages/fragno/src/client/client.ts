@@ -1194,8 +1194,9 @@ export class ClientBuilder<
       TErrorCode,
       TQueryParameters
     >,
-    onInvalidate: OnInvalidateFn<TPath> = (invalidate, params) =>
-      invalidate("GET", route.path, params),
+    onInvalidate: OnInvalidateFn<TPath> = (invalidate, params) => {
+      invalidate("GET", route.path, params);
+    },
   ): FragnoClientMutatorData<
     NonGetHTTPMethod,
     TPath,

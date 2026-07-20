@@ -48,7 +48,9 @@ function mergeHeaders(author?: HeadersInit, user?: HeadersInit): HeadersInit | u
 
   // Convert to Headers objects and merge
   const merged = new Headers(author);
-  new Headers(user).forEach((value, key) => merged.set(key, value));
+  new Headers(user).forEach((value, key) => {
+    merged.set(key, value);
+  });
 
   // If no headers after merge, return undefined
   if (merged.keys().next().done) {

@@ -186,7 +186,9 @@ export function DashboardTerminalPanel({
               ref={terminal.inputRef}
               name="command"
               value={terminal.command}
-              onChange={(event) => terminal.onCommandChange(event.target.value)}
+              onChange={(event) => {
+                terminal.onCommandChange(event.target.value);
+              }}
               onKeyDown={terminal.onCommandKeyDown}
               placeholder="Run a bash command (e.g. ls /workspace, pwd, find /static)"
               className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-[var(--bo-fg)] outline-none"

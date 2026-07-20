@@ -267,7 +267,12 @@ export function FragnoExplainer() {
       `}</style>
       <h2 className="text-center text-3xl font-bold tracking-tight md:text-4xl">
         Ship the next{" "}
-        <Select value={activeExample} onValueChange={(v) => handleExampleChange(v as ExampleKey)}>
+        <Select
+          value={activeExample}
+          onValueChange={(v) => {
+            handleExampleChange(v as ExampleKey);
+          }}
+        >
           <SelectTrigger className="inline-flex h-auto w-auto border-blue-600 px-3 py-1 text-3xl font-bold text-blue-600 shadow-none md:text-4xl dark:text-blue-400">
             <SelectValue>{examples[activeExample].label}</SelectValue>
           </SelectTrigger>

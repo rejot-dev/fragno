@@ -84,7 +84,9 @@ export function CreateInstanceForm() {
             </label>
             <select
               value={selectedWorkflow}
-              onChange={(event) => setSelectedWorkflow(event.target.value)}
+              onChange={(event) => {
+                setSelectedWorkflow(event.target.value);
+              }}
               className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm"
             >
               {workflows.map((workflow) => (
@@ -102,7 +104,9 @@ export function CreateInstanceForm() {
             </label>
             <input
               value={createName}
-              onChange={(event) => setCreateName(event.target.value)}
+              onChange={(event) => {
+                setCreateName(event.target.value);
+              }}
               placeholder="Request id (optional)"
               className="rounded-lg border border-slate-200 px-3 py-2"
             />
@@ -114,7 +118,9 @@ export function CreateInstanceForm() {
             </label>
             <input
               value={createAmount}
-              onChange={(event) => setCreateAmount(event.target.value)}
+              onChange={(event) => {
+                setCreateAmount(event.target.value);
+              }}
               placeholder="Amount"
               className="rounded-lg border border-slate-200 px-3 py-2"
             />
@@ -126,7 +132,9 @@ export function CreateInstanceForm() {
             </label>
             <input
               value={createRequester}
-              onChange={(event) => setCreateRequester(event.target.value)}
+              onChange={(event) => {
+                setCreateRequester(event.target.value);
+              }}
               placeholder="Requested by"
               className="rounded-lg border border-slate-200 px-3 py-2"
             />

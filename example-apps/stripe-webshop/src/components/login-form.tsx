@@ -55,7 +55,9 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
                   type="email"
                   placeholder="m@example.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                  }}
                   required
                 />
               </Field>
@@ -73,7 +75,9 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
                   id="password"
                   type="password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                  }}
                   required
                 />
               </Field>

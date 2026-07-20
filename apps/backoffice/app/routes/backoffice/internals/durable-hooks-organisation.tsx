@@ -477,9 +477,9 @@ export default function BackofficeDurableHooksOrganisation() {
                             <td className="px-3 py-2 text-right">
                               <Link
                                 to={detailHref}
-                                onClick={(event: ReactMouseEvent<HTMLAnchorElement>) =>
-                                  event.stopPropagation()
-                                }
+                                onClick={(event: ReactMouseEvent<HTMLAnchorElement>) => {
+                                  event.stopPropagation();
+                                }}
                                 className={
                                   isSelected
                                     ? "text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase"

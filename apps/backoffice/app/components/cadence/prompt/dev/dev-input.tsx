@@ -54,7 +54,9 @@ export function DevInput() {
       exitDev();
     };
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [autocompleteOpen, closeAutocomplete, inputRef, exitDev]);
 
   return (
@@ -93,7 +95,9 @@ export function DevInput() {
               ref={terminal.inputRef}
               name="command"
               value={terminal.command}
-              onChange={(event) => terminal.onCommandChange(event.target.value)}
+              onChange={(event) => {
+                terminal.onCommandChange(event.target.value);
+              }}
               onKeyDown={terminal.onCommandKeyDown}
               placeholder="Run a bash command (e.g. ls /workspace, pwd, find /static)"
               className="min-w-0 flex-1 bg-transparent py-2.5 pl-3 font-mono text-sm text-[var(--cad-fg)] placeholder:text-[var(--cad-muted-2)] focus:outline-none sm:pl-0"

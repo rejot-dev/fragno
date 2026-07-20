@@ -98,7 +98,9 @@ function FormPreview({ schemas }: { schemas: GeneratedSchemas | null }) {
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => setShowCode((current) => !current)}
+            onClick={() => {
+              setShowCode((current) => !current);
+            }}
             aria-pressed={showCode}
           >
             <FileJson className="mr-2 size-4" />
@@ -111,7 +113,9 @@ function FormPreview({ schemas }: { schemas: GeneratedSchemas | null }) {
           schema={schemas.dataSchema}
           uischema={schemas.uiSchema}
           data={formData}
-          onChange={({ data }) => setFormData(data)}
+          onChange={({ data }) => {
+            setFormData(data);
+          }}
         />
         {showCode && (
           <div className="space-y-4 border-t pt-4">

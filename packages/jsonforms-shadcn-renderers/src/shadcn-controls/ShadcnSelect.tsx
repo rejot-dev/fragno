@@ -22,7 +22,9 @@ export const ShadcnSelect = memo(function ShadcnSelect(props: ShadcnSelectProps)
   return (
     <Select
       value={data ?? ""}
-      onValueChange={(value) => props.handleChange(path, value || undefined)}
+      onValueChange={(value) => {
+        props.handleChange(path, value || undefined);
+      }}
       disabled={!enabled}
     >
       <SelectTrigger id={id} className={cn("w-full", className)}>

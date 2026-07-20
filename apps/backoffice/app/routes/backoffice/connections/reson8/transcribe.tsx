@@ -345,7 +345,9 @@ function RealtimeSpeechSection({
         <select
           value={realtimeModelId}
           disabled={realtime.started}
-          onChange={(event) => setRealtimeModelId(event.target.value)}
+          onChange={(event) => {
+            setRealtimeModelId(event.target.value);
+          }}
           className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none disabled:opacity-60"
         >
           <option value="">No custom model</option>
@@ -572,12 +574,12 @@ export default function BackofficeOrganisationReson8Transcribe() {
                   <select
                     name="customModelId"
                     value={prerecordedForm.customModelId}
-                    onChange={(event) =>
+                    onChange={(event) => {
                       setPrerecordedForm((prev) => ({
                         ...prev,
                         customModelId: event.target.value,
-                      }))
-                    }
+                      }));
+                    }}
                     className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
                   >
                     <option value="">No custom model</option>
@@ -596,12 +598,12 @@ export default function BackofficeOrganisationReson8Transcribe() {
                     type="checkbox"
                     name="includeTimestamps"
                     checked={prerecordedForm.includeTimestamps}
-                    onChange={(event) =>
+                    onChange={(event) => {
                       setPrerecordedForm((prev) => ({
                         ...prev,
                         includeTimestamps: event.target.checked,
-                      }))
-                    }
+                      }));
+                    }}
                     className="h-4 w-4 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]"
                   />
                   Include timestamps

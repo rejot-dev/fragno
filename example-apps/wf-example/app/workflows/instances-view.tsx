@@ -174,7 +174,9 @@ export function InstancesView() {
           </label>
           <select
             value={selectedWorkflow}
-            onChange={(event) => handleWorkflowChange(event.target.value)}
+            onChange={(event) => {
+              handleWorkflowChange(event.target.value);
+            }}
             className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
           >
             {workflows.map((workflow) => (
@@ -447,7 +449,9 @@ function InstanceDetailPanel({
           <button
             key={tab}
             type="button"
-            onClick={() => setDetailTab(tab)}
+            onClick={() => {
+              setDetailTab(tab);
+            }}
             className={`rounded-full px-4 py-2 text-xs font-semibold tracking-[0.2em] uppercase transition ${
               detailTab === tab
                 ? "bg-slate-900 text-white"
@@ -518,7 +522,9 @@ function InstanceDetailPanel({
                 <input
                   type="checkbox"
                   checked={includeLogs}
-                  onChange={(event) => setIncludeLogs(event.target.checked)}
+                  onChange={(event) => {
+                    setIncludeLogs(event.target.checked);
+                  }}
                 />
                 Include logs
               </label>
@@ -626,7 +632,9 @@ function InstanceDetailPanel({
             </label>
             <input
               value={eventType}
-              onChange={(event) => setEventType(event.target.value)}
+              onChange={(event) => {
+                setEventType(event.target.value);
+              }}
               className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
             />
             <label className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
@@ -634,7 +642,9 @@ function InstanceDetailPanel({
             </label>
             <textarea
               value={eventPayload}
-              onChange={(event) => setEventPayload(event.target.value)}
+              onChange={(event) => {
+                setEventPayload(event.target.value);
+              }}
               rows={7}
               className="rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-xs"
             />
@@ -651,9 +661,9 @@ function InstanceDetailPanel({
             </button>
             <button
               type="button"
-              onClick={() =>
-                setEventPayload('{\n  "approved": true,\n  "approver": "client-demo"\n}')
-              }
+              onClick={() => {
+                setEventPayload('{\n  "approved": true,\n  "approver": "client-demo"\n}');
+              }}
               className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300"
             >
               Reset example payload

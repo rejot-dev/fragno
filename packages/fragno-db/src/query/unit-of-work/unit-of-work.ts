@@ -1933,7 +1933,7 @@ export class TypedUnitOfWork<
   }
 
   reset(): void {
-    return this.#uow.reset();
+    this.#uow.reset();
   }
 
   forSchema<TOtherSchema extends AnySchema, TOtherHooks extends HooksMap = {}>(

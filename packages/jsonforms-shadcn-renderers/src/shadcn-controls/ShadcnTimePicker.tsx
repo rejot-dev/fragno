@@ -19,7 +19,9 @@ export const ShadcnTimePicker = memo(function ShadcnTimePicker(props: ShadcnTime
       type="time"
       id={id}
       value={inputValue}
-      onChange={(e) => props.handleChange(path, formatTimeForSave(e.target.value))}
+      onChange={(e) => {
+        props.handleChange(path, formatTimeForSave(e.target.value));
+      }}
       disabled={!enabled}
       className={cn(
         "bg-background w-full appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none",

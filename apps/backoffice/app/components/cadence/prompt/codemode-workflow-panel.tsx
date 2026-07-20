@@ -125,7 +125,9 @@ function CodemodeTabs({
         <button
           key={entry.id}
           type="button"
-          onClick={() => onSelect(index)}
+          onClick={() => {
+            onSelect(index);
+          }}
           aria-pressed={index === activeIndex}
           title={entry.title}
           className={cn(

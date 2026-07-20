@@ -13,7 +13,9 @@ export const ShadcnSwitch = memo(function ShadcnSwitch(props: ShadcnSwitchProps)
   return (
     <Switch
       checked={checked}
-      onCheckedChange={(isChecked) => props.handleChange(path, isChecked)}
+      onCheckedChange={(isChecked) => {
+        props.handleChange(path, isChecked);
+      }}
       className={className}
       id={id}
       disabled={!enabled}

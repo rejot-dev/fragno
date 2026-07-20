@@ -344,11 +344,16 @@ export class BufferedDatabasePump<
     this.#resolveScopeMeta = options.resolveScopeMeta;
     this.#debugLabel = options.debugLabel;
     this.#onError =
-      options.onError ?? ((error) => console.error("[buffered-pump] flush failed", error));
+      options.onError ??
+      ((error) => {
+        console.error("[buffered-pump] flush failed", error);
+      });
     this.#loop = new SerializedIntervalLoop({
       intervalMs: options.intervalMs ?? DEFAULT_BUFFERED_PUMP_INTERVAL_MS,
       onTick: () => this.flushNow(),
-      afterTick: () => this.#stopIfIdle(),
+      afterTick: () => {
+        this.#stopIfIdle();
+      },
     });
   }
 
@@ -483,9 +488,13 @@ export class BufferedDatabasePump<
               if (!(await predicate(message))) {
                 return;
               }
-              settle(() => resolve(message));
+              settle(() => {
+                resolve(message);
+              });
             } catch (error) {
-              settle(() => reject(normalizeError(error)));
+              settle(() => {
+                reject(normalizeError(error));
+              });
             }
           })();
         },
@@ -506,9 +515,9 @@ export class BufferedDatabasePump<
 
       if (options.timeoutMs !== undefined) {
         timeout = setTimeout(() => {
-          settle(() =>
-            reject(new BufferedPumpObserveTimeoutError(options.timeoutMs!, options.timeoutMessage)),
-          );
+          settle(() => {
+            reject(new BufferedPumpObserveTimeoutError(options.timeoutMs!, options.timeoutMessage));
+          });
         }, options.timeoutMs);
       }
     });
@@ -637,7 +646,9 @@ export class BufferedDatabasePump<
         continue;
       }
       await Promise.all(
-        [...scope.handlers].map(async (handler) => await handler(delivery.message)),
+        [...scope.handlers].map(async (handler) => {
+          await handler(delivery.message);
+        }),
       );
     }
   }

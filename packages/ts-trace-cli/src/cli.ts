@@ -117,8 +117,12 @@ NOTE:
 
 const createLogger = (logger?: CliLogger): CliLogger =>
   logger ?? {
-    log: (message: string) => console.log(message),
-    error: (message: string) => console.error(message),
+    log: (message: string) => {
+      console.log(message);
+    },
+    error: (message: string) => {
+      console.error(message);
+    },
   };
 
 const sliceLimit = <T>(values: T[], limit: number): T[] => values.slice(0, Math.max(0, limit));

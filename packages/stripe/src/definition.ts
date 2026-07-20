@@ -16,11 +16,21 @@ import { stripeSubscriptionToInternalSubscription } from "./utils";
 
 const LOG_PREFIX = "[Stripe Fragment]";
 const defaultLogger: Logger = {
-  info: (...data) => console.info(LOG_PREFIX, ...data),
-  error: (...data) => console.error(LOG_PREFIX, ...data),
-  warn: (...data) => console.warn(LOG_PREFIX, ...data),
-  debug: (...data) => console.debug(LOG_PREFIX, ...data),
-  log: (...data) => console.log(LOG_PREFIX, ...data),
+  info: (...data) => {
+    console.info(LOG_PREFIX, ...data);
+  },
+  error: (...data) => {
+    console.error(LOG_PREFIX, ...data);
+  },
+  warn: (...data) => {
+    console.warn(LOG_PREFIX, ...data);
+  },
+  debug: (...data) => {
+    console.debug(LOG_PREFIX, ...data);
+  },
+  log: (...data) => {
+    console.log(LOG_PREFIX, ...data);
+  },
 };
 
 type SubscriptionRow = TableToColumnValues<typeof stripeSchema.tables.subscription>;
@@ -69,9 +79,9 @@ function createStripeServices(
       data: Partial<Omit<TableToInsertValues<typeof stripeSchema.tables.subscription>, "id">>,
     ) {
       return this.serviceTx(stripeSchema)
-        .mutate(({ uow }) =>
-          uow.update("subscription", id, (b) => b.set({ ...data, updatedAt: new Date() })),
-        )
+        .mutate(({ uow }) => {
+          uow.update("subscription", id, (b) => b.set({ ...data, updatedAt: new Date() }));
+        })
         .build();
     },
 
@@ -120,7 +130,9 @@ function createStripeServices(
 
     deleteSubscription(id: string) {
       return this.serviceTx(stripeSchema)
-        .mutate(({ uow }) => uow.delete("subscription", id))
+        .mutate(({ uow }) => {
+          uow.delete("subscription", id);
+        })
         .build();
     },
 

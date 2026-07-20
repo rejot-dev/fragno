@@ -137,7 +137,9 @@ export class LofiClient {
     }
 
     if (this.loopSignal) {
-      const abortListener = () => this.stop();
+      const abortListener = () => {
+        this.stop();
+      };
       this.loopSignal.addEventListener("abort", abortListener, { once: true });
       this.loopSignalListener = () => this.loopSignal?.removeEventListener("abort", abortListener);
     }
@@ -750,9 +752,13 @@ function attachAbortSignal(controller: AbortController, signal?: AbortSignal) {
     return () => undefined;
   }
 
-  const abort = () => controller.abort(signal.reason);
+  const abort = () => {
+    controller.abort(signal.reason);
+  };
   signal.addEventListener("abort", abort, { once: true });
-  return () => signal.removeEventListener("abort", abort);
+  return () => {
+    signal.removeEventListener("abort", abort);
+  };
 }
 
 function isAbortError(error: unknown): boolean {

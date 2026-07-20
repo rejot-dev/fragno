@@ -33,7 +33,9 @@ function CopyButton({
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
+      window.setTimeout(() => {
+        setCopied(false);
+      }, 2000);
     } catch {
       // Ignore clipboard failures.
     }
@@ -180,7 +182,9 @@ export default function BackofficeOrganisationInvites() {
                   <button
                     key={role}
                     type="button"
-                    onClick={() => toggleRole(role)}
+                    onClick={() => {
+                      toggleRole(role);
+                    }}
                     disabled={!canManageMembers}
                     className={cn(
                       "border px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] transition-colors",

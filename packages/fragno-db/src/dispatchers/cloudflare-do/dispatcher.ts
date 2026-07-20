@@ -45,7 +45,9 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
       });
     const safeOnProcessError = (error: unknown) => {
       void Promise.resolve()
-        .then(() => onProcessError(error))
+        .then(() => {
+          onProcessError(error);
+        })
         .catch((callbackError: unknown) => {
           DurableHooksLogger.error("Durable hooks dispatcher onProcessError callback failed", {
             namespace: processor.namespace,

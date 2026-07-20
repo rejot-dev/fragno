@@ -211,7 +211,9 @@ function ProfilePage() {
                 type="text"
                 placeholder="Enter promotion code"
                 value={promotionCode}
-                onChange={(e) => setPromotionCode(e.target.value)}
+                onChange={(e) => {
+                  setPromotionCode(e.target.value);
+                }}
                 className="max-w-xs"
               />
               <p className="text-muted-foreground text-xs">
@@ -223,13 +225,17 @@ function ProfilePage() {
             <div className="flex items-center justify-center gap-4">
               <Button
                 variant={billingCycle === "monthly" ? "default" : "outline"}
-                onClick={() => setBillingCycle("monthly")}
+                onClick={() => {
+                  setBillingCycle("monthly");
+                }}
               >
                 Monthly
               </Button>
               <Button
                 variant={billingCycle === "yearly" ? "default" : "outline"}
-                onClick={() => setBillingCycle("yearly")}
+                onClick={() => {
+                  setBillingCycle("yearly");
+                }}
               >
                 Yearly
                 <span className="ml-2 rounded bg-green-600 px-2 py-0.5 text-xs text-white">

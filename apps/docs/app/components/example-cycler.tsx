@@ -52,7 +52,9 @@ export default function ExampleCycler({ className }: { className?: string }) {
         <div className="relative overflow-hidden rounded-[26px] bg-white/94 p-4 shadow-[0_20px_40px_-35px_rgba(59,130,246,0.4)] transition-transform duration-500 dark:bg-slate-900/75">
           <div className="flex flex-wrap gap-2 rounded-full bg-white/92 p-1 dark:bg-slate-900/70">
             <button
-              onClick={() => setCodeView("backend")}
+              onClick={() => {
+                setCodeView("backend");
+              }}
               className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 ${
                 codeView === "backend"
                   ? "bg-gradient-to-r from-sky-500/80 via-blue-500/70 to-indigo-500/80 text-white shadow-sm"
@@ -62,7 +64,9 @@ export default function ExampleCycler({ className }: { className?: string }) {
               Backend
             </button>
             <button
-              onClick={() => setCodeView("frontend")}
+              onClick={() => {
+                setCodeView("frontend");
+              }}
               className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 ${
                 codeView === "frontend"
                   ? "bg-gradient-to-r from-rose-500/80 via-fuchsia-500/70 to-purple-500/80 text-white shadow-sm"

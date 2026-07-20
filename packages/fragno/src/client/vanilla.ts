@@ -81,38 +81,38 @@ function createVanillaListeners<
 
     return {
       listen: (callback) => {
-        return store.listen(({ loading, error, data }) =>
+        return store.listen(({ loading, error, data }) => {
           callback({
             loading,
             error,
             data: data as InferOr<TOutputSchema, undefined>,
-          }),
-        );
+          });
+        });
       },
       subscribe: (callback) => {
-        return store.subscribe(({ loading, error, data }) =>
+        return store.subscribe(({ loading, error, data }) => {
           callback({
             loading,
             error,
             data: data as InferOr<TOutputSchema, undefined>,
-          }),
-        );
+          });
+        });
       },
       refetch: () => {
-        return store.revalidate();
+        store.revalidate();
       },
       get: () => {
         return store.get() as StoreData<TOutputSchema, TErrorCode[number]>;
       },
       [Symbol.asyncIterator]() {
         return createAsyncIteratorFromCallback((callback) =>
-          store.listen(({ loading, error, data }) =>
+          store.listen(({ loading, error, data }) => {
             callback({
               loading,
               error,
               data: data as InferOr<TOutputSchema, undefined>,
-            }),
-          ),
+            });
+          }),
         );
       },
     };

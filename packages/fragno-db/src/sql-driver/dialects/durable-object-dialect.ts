@@ -123,15 +123,15 @@ class DurableObjectDriver implements Driver {
   }
 
   async beginTransaction(conn: DOConnection): Promise<void> {
-    return await conn.beginTransaction();
+    await conn.beginTransaction();
   }
 
   async commitTransaction(conn: DOConnection): Promise<void> {
-    return await conn.commitTransaction();
+    await conn.commitTransaction();
   }
 
   async rollbackTransaction(conn: DOConnection): Promise<void> {
-    return await conn.rollbackTransaction();
+    await conn.rollbackTransaction();
   }
 
   async releaseConnection(_conn: DOConnection): Promise<void> {

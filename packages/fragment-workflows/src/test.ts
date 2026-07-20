@@ -523,7 +523,9 @@ const createWorkflowsTestControls = (): WorkflowsTestControls => {
       }
       return new Promise<T>((resolve, reject) => {
         entry.waiters.add({
-          resolve: (value) => resolve(value as T),
+          resolve: (value) => {
+            resolve(value as T);
+          },
           reject,
         });
       });

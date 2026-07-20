@@ -191,7 +191,9 @@ export function UploadProviderTabs({
               role="tab"
               aria-selected={isActive}
               className={className}
-              onClick={() => onSelect(tab.id as UploadConfigurableProvider)}
+              onClick={() => {
+                onSelect(tab.id as UploadConfigurableProvider);
+              }}
             >
               {tab.label}
               {tab.description ? (

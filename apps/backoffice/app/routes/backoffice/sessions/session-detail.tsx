@@ -169,7 +169,9 @@ export default function BackofficeOrganisationPiSessionDetail() {
       <SessionConversationPanel
         draftAgentMessage={projection.draftAgentMessage}
         messages={messages}
-        onJumpToLatest={() => chatScroll.jumpToLatest("smooth")}
+        onJumpToLatest={() => {
+          chatScroll.jumpToLatest("smooth");
+        }}
         onScroll={chatScroll.onScroll}
         readyForInput={readyForInput}
         scrollContentRef={chatScroll.contentRef}

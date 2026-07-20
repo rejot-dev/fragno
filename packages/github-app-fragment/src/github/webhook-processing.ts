@@ -117,7 +117,9 @@ const createWebhookEventDispatcher = (configureOn?: GitHubAppWebhookConfig) => {
     }
 
     const settled = await Promise.allSettled(
-      handlers.map(async (handler) => await handler(event, idempotencyKey, meta)),
+      handlers.map(async (handler) => {
+        await handler(event, idempotencyKey, meta);
+      }),
     );
     const failures = settled
       .filter((result): result is PromiseRejectedResult => result.status === "rejected")

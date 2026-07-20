@@ -108,7 +108,9 @@ export function UploadPanel({
       const result = await helpers.createUploadAndTransfer(file, {
         provider,
         fileKey: fileKey!,
-        onProgress: (value: UploadProgress) => setProgress(value),
+        onProgress: (value: UploadProgress) => {
+          setProgress(value);
+        },
       });
 
       setSuccess(`Uploaded ${result.file.fileKey}`);
@@ -168,7 +170,9 @@ export function UploadPanel({
               <input
                 className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
                 value={provider}
-                onChange={(event) => setProvider(event.target.value)}
+                onChange={(event) => {
+                  setProvider(event.target.value);
+                }}
               />
             </label>
             <label className="grid gap-2 text-sm font-medium text-slate-700">
@@ -176,7 +180,9 @@ export function UploadPanel({
               <input
                 className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
                 value={collection}
-                onChange={(event) => setCollection(event.target.value)}
+                onChange={(event) => {
+                  setCollection(event.target.value);
+                }}
               />
               {collectionError ? (
                 <span className="text-xs text-rose-600">{collectionError}</span>
@@ -187,7 +193,9 @@ export function UploadPanel({
               <input
                 className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
                 value={entityId}
-                onChange={(event) => setEntityId(event.target.value)}
+                onChange={(event) => {
+                  setEntityId(event.target.value);
+                }}
               />
               {entityIdError ? (
                 <span className="text-xs text-rose-600">{entityIdError}</span>
@@ -198,7 +206,9 @@ export function UploadPanel({
               <input
                 className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
                 type="file"
-                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                onChange={(event) => {
+                  setFile(event.target.files?.[0] ?? null);
+                }}
               />
               {fileNameError ? (
                 <span className="text-xs text-rose-600">{fileNameError}</span>
@@ -260,7 +270,9 @@ export function UploadPanel({
               <input
                 type="checkbox"
                 checked={filterByPrefix}
-                onChange={(event) => setFilterByPrefix(event.target.checked)}
+                onChange={(event) => {
+                  setFilterByPrefix(event.target.checked);
+                }}
               />
               Use prefix
             </label>

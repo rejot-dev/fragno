@@ -1804,7 +1804,9 @@ function UploadFolderTreeNode({
   return (
     <Collapsible.Root
       open={isOpen}
-      onOpenChange={(open) => onOpenChange(provider, folder.prefix, open)}
+      onOpenChange={(open) => {
+        onOpenChange(provider, folder.prefix, open);
+      }}
     >
       <div className="space-y-1">
         <div className="flex items-center gap-2">

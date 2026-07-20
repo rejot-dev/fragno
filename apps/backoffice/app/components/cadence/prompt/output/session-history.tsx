@@ -62,7 +62,9 @@ export function SessionHistory({
                   return (
                     <Menu.Item
                       key={session.id}
-                      onClick={() => onResume(session)}
+                      onClick={() => {
+                        onResume(session);
+                      }}
                       className="flex cursor-pointer items-start gap-2 rounded-sm px-3 py-2 transition-colors data-[highlighted]:bg-[var(--cad-panel-2)]"
                     >
                       <Check

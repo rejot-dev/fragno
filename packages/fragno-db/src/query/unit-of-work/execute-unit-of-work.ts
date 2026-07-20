@@ -476,8 +476,12 @@ function createServiceTx<
   // Set up the retrieve phase promise to resolve when the handler executes retrieve
   if (typedUow) {
     typedUow.retrievalPhase.then(
-      (results) => resolveRetrievePhase(results),
-      (error: unknown) => rejectRetrievePhase(error),
+      (results) => {
+        resolveRetrievePhase(results);
+      },
+      (error: unknown) => {
+        rejectRetrievePhase(error);
+      },
     );
   } else if (!callbacks.retrieve) {
     // No retrieve callback - resolve immediately with empty array

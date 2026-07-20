@@ -265,7 +265,9 @@ export const createInternalFragmentOutboxRoutes = () =>
             handlerTx: (options) => this.handlerTx(options),
             intervalMs: OUTBOX_STREAM_PUMP_INTERVAL_MS,
             cursorForObservedItem: (entry) => entry.versionstamp,
-            onError: (error) => console.error("[outbox-stream] flush failed", error),
+            onError: (error) => {
+              console.error("[outbox-stream] flush failed", error);
+            },
             flush: async ({ handlerTx }) => ({ observedItems: await listEntries(handlerTx) }),
           });
 

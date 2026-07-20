@@ -546,7 +546,9 @@ function BackofficeThemeToggle() {
           role="radio"
           aria-checked={choice === option.value}
           disabled={!mounted}
-          onClick={() => updateTheme(option.value)}
+          onClick={() => {
+            updateTheme(option.value);
+          }}
           className={cn(
             "flex-1 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] transition-colors",
             choice === option.value

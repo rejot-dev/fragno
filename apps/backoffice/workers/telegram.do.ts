@@ -203,7 +203,9 @@ const normalizeTelegramAutomationFile = (
 const createFetchTelegramAdminApi = (): TelegramAdminApi => ({
   async setWebhook({ botToken, apiBaseUrl, webhookUrl, secretToken, scope }) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const timeout = setTimeout(() => {
+      controller.abort();
+    }, 8000);
     let response: Response;
 
     try {
@@ -391,7 +393,9 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
     const { fileId } = automationFileInputSchema.parse(input);
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const timeout = setTimeout(() => {
+      controller.abort();
+    }, 8000);
 
     try {
       const response = await fetch(
@@ -437,7 +441,9 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => {
+      controller.abort();
+    }, 15000);
 
     try {
       const response = await fetch(resolveTelegramFileDownloadUrl(config, metadata.filePath), {

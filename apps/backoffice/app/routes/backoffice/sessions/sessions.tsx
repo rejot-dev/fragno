@@ -446,7 +446,9 @@ export default function BackofficeOrganisationPiSessionsLayout() {
               name="harnessId"
               required
               value={selectedHarnessId}
-              onChange={(event) => setSelectedHarnessId(event.target.value)}
+              onChange={(event) => {
+                setSelectedHarnessId(event.target.value);
+              }}
               className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)]"
             >
               {harnesses.map((harness) => (
@@ -482,7 +484,9 @@ export default function BackofficeOrganisationPiSessionsLayout() {
                       type="button"
                       role="radio"
                       aria-checked={isSelected}
-                      onClick={() => setSelectedModelOption(value)}
+                      onClick={() => {
+                        setSelectedModelOption(value);
+                      }}
                       className={`border px-2 py-1 text-[10px] font-semibold tracking-[0.22em] uppercase ${
                         isSelected
                           ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"

@@ -371,7 +371,7 @@ export type LofiProjectionRetrieved<TRetrieve extends LofiProjectionReadPlan | v
   : LofiProjectionResolved<Exclude<TRetrieve, undefined | void>>;
 
 type LofiLocalProjectionMutateHandler<TRetrieved> = {
-  bivarianceHack(ctx: LofiLocalProjectionMutateContext<TRetrieved>): void;
+  bivarianceHack(ctx: LofiLocalProjectionMutateContext<TRetrieved>): unknown;
 }["bivarianceHack"];
 
 export type LofiLocalProjection<TRetrieve extends LofiProjectionReadPlan | void = undefined> = {

@@ -13,7 +13,9 @@ export const ShadcnCheckbox = memo(function ShadcnCheckbox(props: ShadcnCheckbox
   return (
     <Checkbox
       checked={checked}
-      onCheckedChange={(isChecked) => props.handleChange(path, isChecked === true)}
+      onCheckedChange={(isChecked) => {
+        props.handleChange(path, isChecked === true);
+      }}
       className={className}
       id={id}
       disabled={!enabled}

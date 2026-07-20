@@ -15,7 +15,9 @@ export const ShadcnTextarea = memo(function ShadcnTextarea(props: ShadcnTextarea
   return (
     <Textarea
       value={data ?? ""}
-      onChange={(e) => props.handleChange(path, e.target.value || undefined)}
+      onChange={(e) => {
+        props.handleChange(path, e.target.value || undefined);
+      }}
       className={className}
       id={id}
       disabled={!enabled}

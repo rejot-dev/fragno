@@ -80,7 +80,9 @@ const adaptCloudflareSandboxHandle = (
 ): SandboxRuntimeHandle => ({
   id,
   exec: async (command, options) => await rawHandle.exec(command, options),
-  destroy: async () => await rawHandle.destroy(),
+  destroy: async () => {
+    await rawHandle.destroy();
+  },
   getRuntimeStatus: async () => await rawHandle.getRuntimeStatus(),
   mountBucket: async (bucket, mountPoint, options) => {
     await rawHandle.mountBucket(bucket, mountPoint, toCloudflareMountBucketOptions(options));

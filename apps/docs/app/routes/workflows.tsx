@@ -282,7 +282,9 @@ export default function WorkflowsPage() {
                 <button
                   key={example.id}
                   type="button"
-                  onClick={() => setActiveExample(example.id)}
+                  onClick={() => {
+                    setActiveExample(example.id);
+                  }}
                   className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)] transition-colors ${isActive ? "bg-[var(--editorial-surface-low)] text-[var(--editorial-ink)]" : "bg-transparent text-[var(--editorial-muted)] hover:bg-[color-mix(in_srgb,var(--editorial-ink)_4%,transparent)]"}`}
                 >
                   <div>

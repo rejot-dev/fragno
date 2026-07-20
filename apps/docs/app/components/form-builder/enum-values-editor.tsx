@@ -44,7 +44,9 @@ export function EnumValuesEditor({ values, onChange, className }: EnumValuesEdit
             <span className="text-muted-foreground w-4 text-xs">{index + 1}.</span>
             <Input
               value={value}
-              onChange={(e) => updateOption(index, e.target.value)}
+              onChange={(e) => {
+                updateOption(index, e.target.value);
+              }}
               placeholder={`Option ${index + 1}`}
               className="flex-1"
             />
@@ -54,7 +56,9 @@ export function EnumValuesEditor({ values, onChange, className }: EnumValuesEdit
                 variant="ghost"
                 size="icon"
                 className="size-8"
-                onClick={() => moveOption(index, index - 1)}
+                onClick={() => {
+                  moveOption(index, index - 1);
+                }}
                 disabled={index === 0}
               >
                 <ChevronUp className="size-4" />
@@ -65,7 +69,9 @@ export function EnumValuesEditor({ values, onChange, className }: EnumValuesEdit
                 variant="ghost"
                 size="icon"
                 className="size-8"
-                onClick={() => moveOption(index, index + 1)}
+                onClick={() => {
+                  moveOption(index, index + 1);
+                }}
                 disabled={index === values.length - 1}
               >
                 <ChevronDown className="size-4" />
@@ -76,7 +82,9 @@ export function EnumValuesEditor({ values, onChange, className }: EnumValuesEdit
                 variant="ghost"
                 size="icon"
                 className="text-destructive hover:text-destructive size-8"
-                onClick={() => deleteOption(index)}
+                onClick={() => {
+                  deleteOption(index);
+                }}
                 disabled={values.length <= 1}
               >
                 <Trash2 className="size-4" />

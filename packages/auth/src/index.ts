@@ -512,7 +512,9 @@ const createBearerAccessTokenFetcher = (input: {
   return async (resource, init) => {
     const storedToken = readStorageItem(tokenStorageKey, input.storage);
     const headers = new Headers(defaultOptions?.headers);
-    new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
+    new Headers(init?.headers).forEach((value, key) => {
+      headers.set(key, value);
+    });
 
     if (storedToken && !headers.has("Authorization")) {
       headers.set("Authorization", `Bearer ${storedToken}`);

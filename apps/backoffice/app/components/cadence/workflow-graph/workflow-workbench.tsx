@@ -120,7 +120,9 @@ export function WorkflowWorkbench({
         { method: "post", action: WORKFLOWS_ACTION },
       );
     }, PREVIEW_DEBOUNCE_MS);
-    return () => clearTimeout(id);
+    return () => {
+      clearTimeout(id);
+    };
     // previewFetcher identity is stable across renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, dirty, workflow, source.absolutePath]);
@@ -343,8 +345,9 @@ function RunBar({
   const fields = activeEvent?.fields ?? [];
   const useFields = activeEvent !== null && fields.length > 0 && !raw;
 
-  const setField = (name: string, value: string) =>
+  const setField = (name: string, value: string) => {
     setFieldValues((prev) => ({ ...prev, [name]: value }));
+  };
 
   const onSelectEvent = (key: string) => {
     setSelectedKey(key);
@@ -378,7 +381,9 @@ function RunBar({
     <div className="relative flex items-center gap-2">
       <CadenceGhostButton
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setOpen((v) => !v);
+        }}
         disabled={disabled || running}
         title={disabled ? disabledReason : "Run this workflow"}
         className="px-3 py-1.5 text-xs"
@@ -399,7 +404,9 @@ function RunBar({
             <span className="cad-eyebrow text-[var(--cad-muted-2)]">trigger event</span>
             <select
               value={selectedKey}
-              onChange={(e) => onSelectEvent(e.target.value)}
+              onChange={(e) => {
+                onSelectEvent(e.target.value);
+              }}
               className="cad-mono rounded border border-[color:var(--cad-line)] bg-[var(--cad-bg-2)] px-2 py-1 text-xs text-[var(--cad-fg)] outline-none"
             >
               {events.map((event) => (
@@ -417,7 +424,9 @@ function RunBar({
                 <span className="cad-eyebrow text-[var(--cad-muted-2)]">source</span>
                 <input
                   value={customSource}
-                  onChange={(e) => setCustomSource(e.target.value)}
+                  onChange={(e) => {
+                    setCustomSource(e.target.value);
+                  }}
                   className="cad-mono rounded border border-[color:var(--cad-line)] bg-[var(--cad-bg-2)] px-2 py-1 text-xs text-[var(--cad-fg)] outline-none"
                 />
               </label>
@@ -425,7 +434,9 @@ function RunBar({
                 <span className="cad-eyebrow text-[var(--cad-muted-2)]">eventType</span>
                 <input
                   value={customEventType}
-                  onChange={(e) => setCustomEventType(e.target.value)}
+                  onChange={(e) => {
+                    setCustomEventType(e.target.value);
+                  }}
                   placeholder="workflow.test"
                   className="cad-mono rounded border border-[color:var(--cad-line)] bg-[var(--cad-bg-2)] px-2 py-1 text-xs text-[var(--cad-fg)] outline-none"
                 />
@@ -438,7 +449,9 @@ function RunBar({
             {activeEvent !== null && fields.length > 0 ? (
               <button
                 type="button"
-                onClick={() => setRaw((v) => !v)}
+                onClick={() => {
+                  setRaw((v) => !v);
+                }}
                 className="cad-mono text-[10px] text-[var(--cad-muted-2)] underline-offset-2 hover:underline"
               >
                 {raw ? "Use form" : "Edit as JSON"}
@@ -453,14 +466,18 @@ function RunBar({
                   key={field.name}
                   field={field}
                   value={fieldValues[field.name] ?? ""}
-                  onChange={(value) => setField(field.name, value)}
+                  onChange={(value) => {
+                    setField(field.name, value);
+                  }}
                 />
               ))}
             </div>
           ) : (
             <textarea
               value={payload}
-              onChange={(e) => setPayload(e.target.value)}
+              onChange={(e) => {
+                setPayload(e.target.value);
+              }}
               spellCheck={false}
               rows={4}
               className="cad-mono cad-scroll resize-none rounded border border-[color:var(--cad-line)] bg-[var(--cad-bg-2)] px-2 py-1.5 text-xs leading-relaxed text-[var(--cad-fg)] outline-none"
@@ -509,7 +526,9 @@ function SchemaField({
         <input
           type="checkbox"
           checked={value === "true"}
-          onChange={(e) => onChange(e.target.checked ? "true" : "false")}
+          onChange={(e) => {
+            onChange(e.target.checked ? "true" : "false");
+          }}
         />
         {label}
       </label>
@@ -520,7 +539,13 @@ function SchemaField({
     return (
       <label className="flex flex-col gap-1">
         {label}
-        <select value={value} onChange={(e) => onChange(e.target.value)} className={inputClass}>
+        <select
+          value={value}
+          onChange={(e) => {
+            onChange(e.target.value);
+          }}
+          className={inputClass}
+        >
           <option value="">{field.optional ? "— none —" : "— select —"}</option>
           {field.enumValues.map((option) => (
             <option key={option} value={option}>
@@ -538,7 +563,9 @@ function SchemaField({
       <input
         type={field.type === "number" ? "number" : "text"}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          onChange(e.target.value);
+        }}
         placeholder={field.description}
         className={inputClass}
       />
@@ -643,7 +670,9 @@ function RunFooter({
           <button
             key={t.key}
             type="button"
-            onClick={() => setTab(t.key)}
+            onClick={() => {
+              setTab(t.key);
+            }}
             aria-pressed={tab === t.key}
             className={cn(
               "cad-eyebrow inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 transition-colors",

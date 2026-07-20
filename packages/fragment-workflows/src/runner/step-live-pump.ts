@@ -105,7 +105,9 @@ export function createWorkflowStepLivePump<TOutEmission = unknown, TInEvent = un
   >({
     handlerTx: options.handlerTx,
     intervalMs: WORKFLOW_STEP_EMISSION_PUMP_INTERVAL_MS,
-    onError: (error) => console.error("[step-live-pump] flush failed", error),
+    onError: (error) => {
+      console.error("[step-live-pump] flush failed", error);
+    },
     flush: (context: StepEmissionFlushContext<TOutEmission>) =>
       writeWorkflowStepEmissionFlush<TOutEmission, TInEvent>({
         handlerTx: context.handlerTx,
@@ -302,5 +304,7 @@ const buildWorkflowStepEvent = <TPayload>(
   type: event.type,
   payload: (event.payload ?? null) as Readonly<TPayload>,
   timestamp: event.createdAt,
-  consume: () => scope.queueEventConsumption(event, scope.stepKey),
+  consume: () => {
+    scope.queueEventConsumption(event, scope.stepKey);
+  },
 });

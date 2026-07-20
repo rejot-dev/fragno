@@ -528,7 +528,9 @@ export default function App() {
 
   useEffect(() => {
     return () => {
-      tableHighlightTimers.current.forEach((timer) => clearTimeout(timer));
+      tableHighlightTimers.current.forEach((timer) => {
+        clearTimeout(timer);
+      });
       tableHighlightTimers.current.clear();
       if (rowHighlightTimer.current) {
         clearTimeout(rowHighlightTimer.current);
@@ -541,7 +543,9 @@ export default function App() {
     previousRowSignaturesRef.current.clear();
     setTableHighlights({});
     triggerRowHighlights([]);
-    tableHighlightTimers.current.forEach((timer) => clearTimeout(timer));
+    tableHighlightTimers.current.forEach((timer) => {
+      clearTimeout(timer);
+    });
     tableHighlightTimers.current.clear();
   }, [selectedGroup?.id, triggerRowHighlights]);
 
@@ -783,7 +787,9 @@ export default function App() {
 
     return () => {
       cancelled = true;
-      controllers.forEach((controller) => controller.abort());
+      controllers.forEach((controller) => {
+        controller.abort();
+      });
     };
   }, [endpoints]);
 
@@ -817,7 +823,9 @@ export default function App() {
               return next;
             });
           },
-          () => setSyncTick((prev) => prev + 1),
+          () => {
+            setSyncTick((prev) => prev + 1);
+          },
         );
         runtimes.set(group.id, runtime);
       }
@@ -1282,21 +1290,27 @@ export default function App() {
       <div className="tabs">
         <button
           className={`tab ${activeTab === "tables" ? "tab--active" : ""}`}
-          onClick={() => setActiveTab("tables")}
+          onClick={() => {
+            setActiveTab("tables");
+          }}
           type="button"
         >
           Tables
         </button>
         <button
           className={`tab ${activeTab === "endpoints" ? "tab--active" : ""}`}
-          onClick={() => setActiveTab("endpoints")}
+          onClick={() => {
+            setActiveTab("endpoints");
+          }}
           type="button"
         >
           Endpoints
         </button>
         <button
           className={`tab ${activeTab === "commands" ? "tab--active" : ""}`}
-          onClick={() => setActiveTab("commands")}
+          onClick={() => {
+            setActiveTab("commands");
+          }}
           type="button"
         >
           Commands
@@ -1313,7 +1327,9 @@ export default function App() {
               </div>
               <button
                 className="btn btn--ghost"
-                onClick={() => setActiveTab("endpoints")}
+                onClick={() => {
+                  setActiveTab("endpoints");
+                }}
                 type="button"
               >
                 Manage endpoints
@@ -1333,7 +1349,9 @@ export default function App() {
                       isHot ? "table-item--hot" : ""
                     }`}
                     key={tableKey}
-                    onClick={() => setSelectedTable(table)}
+                    onClick={() => {
+                      setSelectedTable(table);
+                    }}
                     type="button"
                   >
                     <span className="mono">
@@ -1408,7 +1426,9 @@ export default function App() {
                                 <button
                                   className="db-toggle"
                                   type="button"
-                                  onClick={() => toggleRowExpanded(signature)}
+                                  onClick={() => {
+                                    toggleRowExpanded(signature);
+                                  }}
                                   aria-expanded={expanded}
                                   aria-label={expanded ? "Collapse row" : "Expand row"}
                                 >
@@ -1468,7 +1488,9 @@ export default function App() {
               </div>
               <button
                 className="btn btn--ghost"
-                onClick={() => setActiveTab("endpoints")}
+                onClick={() => {
+                  setActiveTab("endpoints");
+                }}
                 type="button"
               >
                 Manage endpoints
@@ -1480,7 +1502,9 @@ export default function App() {
                 <select
                   className="input"
                   value={selectedGroupId}
-                  onChange={(event) => selectAdapterGroup(event.target.value)}
+                  onChange={(event) => {
+                    selectAdapterGroup(event.target.value);
+                  }}
                   disabled={!adapterGroupOptions.length}
                 >
                   {adapterGroupOptions.length ? null : <option value="">No endpoints</option>}
@@ -1538,12 +1562,12 @@ export default function App() {
                   <input
                     type="checkbox"
                     checked={commandForm.optimistic}
-                    onChange={(event) =>
+                    onChange={(event) => {
                       setCommandForm((prev) => ({
                         ...prev,
                         optimistic: event.target.checked,
-                      }))
-                    }
+                      }));
+                    }}
                   />
                   <span>Optimistic apply</span>
                 </label>
@@ -1604,9 +1628,9 @@ export default function App() {
                         <input
                           className="input input--title"
                           value={endpoint.label}
-                          onChange={(event) =>
-                            updateEndpoint(endpoint.id, { label: event.target.value })
-                          }
+                          onChange={(event) => {
+                            updateEndpoint(endpoint.id, { label: event.target.value });
+                          }}
                         />
                         <p className="muted">{endpoint.baseUrl}</p>
                       </div>
@@ -1614,9 +1638,9 @@ export default function App() {
                         <input
                           type="checkbox"
                           checked={endpoint.enabled}
-                          onChange={(event) =>
-                            updateEndpoint(endpoint.id, { enabled: event.target.checked })
-                          }
+                          onChange={(event) => {
+                            updateEndpoint(endpoint.id, { enabled: event.target.checked });
+                          }}
                         />
                         <span>Sync</span>
                       </label>
@@ -1628,9 +1652,9 @@ export default function App() {
                         <input
                           className="input"
                           value={endpoint.baseUrl}
-                          onChange={(event) =>
-                            updateEndpoint(endpoint.id, { baseUrl: event.target.value })
-                          }
+                          onChange={(event) => {
+                            updateEndpoint(endpoint.id, { baseUrl: event.target.value });
+                          }}
                         />
                       </label>
                       <label>
@@ -1640,11 +1664,11 @@ export default function App() {
                           type="number"
                           min={250}
                           value={endpoint.pollIntervalMs}
-                          onChange={(event) =>
+                          onChange={(event) => {
                             updateEndpoint(endpoint.id, {
                               pollIntervalMs: Math.max(250, Number(event.target.value) || 250),
-                            })
-                          }
+                            });
+                          }}
                         />
                       </label>
                       <label>
@@ -1696,7 +1720,9 @@ export default function App() {
                       </button>
                       <button
                         className="btn btn--danger"
-                        onClick={() => removeEndpoint(endpoint.id)}
+                        onClick={() => {
+                          removeEndpoint(endpoint.id);
+                        }}
                         type="button"
                       >
                         Remove
@@ -1719,7 +1745,9 @@ export default function App() {
               <button
                 className="btn btn--ghost"
                 type="button"
-                onClick={() => setOutboxRefreshTick((prev) => prev + 1)}
+                onClick={() => {
+                  setOutboxRefreshTick((prev) => prev + 1);
+                }}
                 disabled={!selectedGroup?.outboxEnabled}
               >
                 Refresh
@@ -1732,7 +1760,9 @@ export default function App() {
                   <select
                     className="input"
                     value={selectedGroupId}
-                    onChange={(event) => selectAdapterGroup(event.target.value)}
+                    onChange={(event) => {
+                      selectAdapterGroup(event.target.value);
+                    }}
                     disabled={!adapterGroupOptions.length}
                   >
                     {adapterGroupOptions.length ? null : <option value="">No endpoints</option>}

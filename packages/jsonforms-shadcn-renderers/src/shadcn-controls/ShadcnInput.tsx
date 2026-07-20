@@ -19,7 +19,9 @@ export const ShadcnInput = memo(function ShadcnInput(props: ShadcnInputProps) {
     <Input
       type="text"
       value={data ?? ""}
-      onChange={(e) => handleChange(path, e.target.value || undefined)}
+      onChange={(e) => {
+        handleChange(path, e.target.value || undefined);
+      }}
       className={className}
       id={id}
       disabled={!enabled}

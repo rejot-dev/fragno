@@ -704,7 +704,9 @@ function SegmentedControl<T extends string>({
         <button
           key={option.value}
           type="button"
-          onClick={() => onChange(option.value)}
+          onClick={() => {
+            onChange(option.value);
+          }}
           className={`min-h-10 border px-3 py-2 text-[10px] font-semibold tracking-[0.18em] uppercase transition-colors active:scale-[0.96] ${tabButtonClass(value === option.value)}`}
         >
           {option.label}
@@ -729,7 +731,9 @@ function CompactSegmentedControl<T extends string>({
         <button
           key={option.value}
           type="button"
-          onClick={() => onChange(option.value)}
+          onClick={() => {
+            onChange(option.value);
+          }}
           className={`min-h-9 border-r border-[color:var(--bo-border)] px-2 text-[10px] font-semibold tracking-[0.12em] uppercase last:border-r-0 active:scale-[0.96] ${
             value === option.value
               ? "bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
@@ -902,7 +906,9 @@ function ConnectionDetail({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => setEditingAuth((editing) => !editing)}
+              onClick={() => {
+                setEditingAuth((editing) => !editing);
+              }}
               className="min-h-10 border border-[color:var(--bo-border)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase active:scale-[0.96]"
             >
               {editingAuth ? "Close edit" : "Edit"}
@@ -1060,7 +1066,9 @@ function ConnectionDetail({
               </span>
               <button
                 type="button"
-                onClick={() => setHeadersValue("")}
+                onClick={() => {
+                  setHeadersValue("");
+                }}
                 className="text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-accent)] uppercase"
               >
                 Clear
@@ -1069,7 +1077,9 @@ function ConnectionDetail({
             <textarea
               name="headers"
               value={headersValue}
-              onChange={(event) => setHeadersValue(event.currentTarget.value)}
+              onChange={(event) => {
+                setHeadersValue(event.currentTarget.value);
+              }}
               className={`${inputClass} min-h-24 font-mono text-xs`}
             />
           </div>
@@ -1143,7 +1153,9 @@ function WebhookConfigureForm({
     }
     await navigator.clipboard.writeText(endpointUrl);
     setCopiedWebhookUrl(true);
-    window.setTimeout(() => setCopiedWebhookUrl(false), 1600);
+    window.setTimeout(() => {
+      setCopiedWebhookUrl(false);
+    }, 1600);
   };
 
   return (
@@ -1172,7 +1184,9 @@ function WebhookConfigureForm({
               required
               placeholder="Stripe webhooks"
               value={name}
-              onChange={(event) => setName(event.currentTarget.value)}
+              onChange={(event) => {
+                setName(event.currentTarget.value);
+              }}
               className={inputClass}
             />
           </FormField>

@@ -267,7 +267,7 @@ export class GitHub extends DurableObject<CloudflareEnv> implements GitHubObject
   }
 
   async ensureAdminConfig(orgId: string) {
-    return await this.#object.ensureAdminConfig(orgId);
+    await this.#object.ensureAdminConfig(orgId);
   }
 
   async alarm() {

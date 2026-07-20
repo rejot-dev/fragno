@@ -16,7 +16,9 @@ export function CopyMarkdownButton({ markdownText }: CopyMarkdownButtonProps) {
     try {
       await navigator.clipboard.writeText(markdownText);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => {
+        setCopied(false);
+      }, 2000);
     } catch {
       // Do nothing
     }

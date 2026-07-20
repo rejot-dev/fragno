@@ -283,21 +283,27 @@ function ServerConfigureForm({
       <div className="mt-4 grid grid-cols-3 gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-1">
         <button
           type="button"
-          onClick={() => setAuthTab("oauth")}
+          onClick={() => {
+            setAuthTab("oauth");
+          }}
           className={`min-h-10 border px-3 py-2 text-[10px] font-semibold tracking-[0.22em] uppercase transition-colors active:scale-[0.96] ${tabClass("oauth")}`}
         >
           OAuth
         </button>
         <button
           type="button"
-          onClick={() => setAuthTab("bearer")}
+          onClick={() => {
+            setAuthTab("bearer");
+          }}
           className={`min-h-10 border px-3 py-2 text-[10px] font-semibold tracking-[0.22em] uppercase transition-colors active:scale-[0.96] ${tabClass("bearer")}`}
         >
           Bearer
         </button>
         <button
           type="button"
-          onClick={() => setAuthTab("none")}
+          onClick={() => {
+            setAuthTab("none");
+          }}
           className={`min-h-10 border px-3 py-2 text-[10px] font-semibold tracking-[0.22em] uppercase transition-colors active:scale-[0.96] ${tabClass("none")}`}
         >
           No auth
@@ -634,7 +640,9 @@ function ToolsList({ tools }: { tools: McpServerToolsState["tools"] }) {
             <input
               type="search"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+              }}
               placeholder="Search by tool name…"
               className="mt-2 min-h-11 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] outline-none placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)]"
             />
@@ -652,7 +660,9 @@ function ToolsList({ tools }: { tools: McpServerToolsState["tools"] }) {
                   key={mode}
                   type="button"
                   aria-pressed={representationMode === mode}
-                  onClick={() => setRepresentationMode(mode)}
+                  onClick={() => {
+                    setRepresentationMode(mode);
+                  }}
                   className={`border-r border-[color:var(--bo-border)] px-3 py-2 text-[10px] font-semibold tracking-[0.18em] uppercase last:border-r-0 ${
                     representationMode === mode
                       ? "bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"

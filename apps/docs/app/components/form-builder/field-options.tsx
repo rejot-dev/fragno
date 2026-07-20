@@ -28,7 +28,9 @@ export function FieldOptions({ fieldType, options, onChange, className }: FieldO
       <div data-slot="field-options" className={cn("border-t pt-4", className)}>
         <EnumValuesEditor
           values={options?.enumValues ?? ["Option 1"]}
-          onChange={(enumValues) => updateOption("enumValues", enumValues)}
+          onChange={(enumValues) => {
+            updateOption("enumValues", enumValues);
+          }}
         />
       </div>
     );
@@ -102,9 +104,9 @@ export function FieldOptions({ fieldType, options, onChange, className }: FieldO
               type="number"
               placeholder="No minimum"
               value={options?.minimum ?? ""}
-              onChange={(e) =>
-                updateOption("minimum", e.target.value ? Number(e.target.value) : undefined)
-              }
+              onChange={(e) => {
+                updateOption("minimum", e.target.value ? Number(e.target.value) : undefined);
+              }}
             />
           </div>
           <div className="space-y-2">
@@ -116,9 +118,9 @@ export function FieldOptions({ fieldType, options, onChange, className }: FieldO
               type="number"
               placeholder="No maximum"
               value={options?.maximum ?? ""}
-              onChange={(e) =>
-                updateOption("maximum", e.target.value ? Number(e.target.value) : undefined)
-              }
+              onChange={(e) => {
+                updateOption("maximum", e.target.value ? Number(e.target.value) : undefined);
+              }}
             />
           </div>
         </div>
@@ -137,7 +139,9 @@ export function FieldOptions({ fieldType, options, onChange, className }: FieldO
             id="placeholder"
             placeholder="Enter placeholder text"
             value={options?.placeholder ?? ""}
-            onChange={(e) => updateOption("placeholder", e.target.value || undefined)}
+            onChange={(e) => {
+              updateOption("placeholder", e.target.value || undefined);
+            }}
           />
         </div>
       </div>
@@ -157,7 +161,9 @@ export function FieldOptions({ fieldType, options, onChange, className }: FieldO
             rows={6}
             placeholder="{}"
             value={options?.rawJsonSchema ?? "{}"}
-            onChange={(e) => updateOption("rawJsonSchema", e.target.value)}
+            onChange={(e) => {
+              updateOption("rawJsonSchema", e.target.value);
+            }}
           />
         </div>
         <div className="space-y-2">
@@ -170,7 +176,9 @@ export function FieldOptions({ fieldType, options, onChange, className }: FieldO
             rows={4}
             placeholder="{}"
             value={options?.rawUiSchema ?? "{}"}
-            onChange={(e) => updateOption("rawUiSchema", e.target.value)}
+            onChange={(e) => {
+              updateOption("rawUiSchema", e.target.value);
+            }}
           />
         </div>
       </div>

@@ -65,7 +65,9 @@ export function deriveEndpointName(outboxUrl: string): string {
 
 export const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => {
-    setTimeout(() => resolve(), ms);
+    setTimeout(() => {
+      resolve();
+    }, ms);
   });
 
 export const formatError = (error: unknown): string => {

@@ -66,10 +66,18 @@ export const createInMemoryBackofficeDatabaseAdapters = (
       return createInMemoryBackofficeDatabaseAdapters(options, nextScope, internals);
     },
     async reset() {
-      await Promise.all([...adapters.values()].map(async (adapter) => await adapter.reset()));
+      await Promise.all(
+        [...adapters.values()].map(async (adapter) => {
+          await adapter.reset();
+        }),
+      );
     },
     async cleanup() {
-      await Promise.all([...adapters.values()].map(async (adapter) => await adapter.close()));
+      await Promise.all(
+        [...adapters.values()].map(async (adapter) => {
+          await adapter.close();
+        }),
+      );
       adapters.clear();
     },
   };
