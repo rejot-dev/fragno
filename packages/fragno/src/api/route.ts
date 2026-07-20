@@ -8,6 +8,63 @@ import type { FragmentDefinition } from "./fragment-definition-builder";
 
 export type AnyFragnoRouteConfig = FragnoRouteConfig<HTTPMethod, string, any, any, any, any, any>;
 
+type RouteCallTypesOverlap<TLeft, TRight> = [Extract<TLeft, TRight>] extends [never]
+  ? [Extract<TRight, TLeft>] extends [never]
+    ? false
+    : true
+  : true;
+
+type RouteCallPathFromRoute<TRoute, TMethod extends HTTPMethod> =
+  TRoute extends FragnoRouteConfig<
+    infer TRouteMethod,
+    infer TRoutePath,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >
+    ? RouteCallTypesOverlap<TRouteMethod, TMethod> extends true
+      ? TRoutePath
+      : never
+    : never;
+
+type RouteCallMatchFromRoute<TRoute, TMethod extends HTTPMethod, TPath extends string> =
+  TRoute extends FragnoRouteConfig<
+    infer TRouteMethod,
+    infer TRoutePath,
+    StandardSchemaV1 | undefined,
+    StandardSchemaV1 | undefined
+  >
+    ? RouteCallTypesOverlap<TRouteMethod, TMethod> extends true
+      ? RouteCallTypesOverlap<TRoutePath, TPath> extends true
+        ? TRoute
+        : never
+      : never
+    : never;
+
+/**
+ * Route path accepted by a typed fragment route caller.
+ * @internal
+ */
+export type RouteCallPath<
+  TRoutes extends readonly AnyFragnoRouteConfig[],
+  TMethod extends HTTPMethod,
+> = [RouteCallPathFromRoute<TRoutes[number], TMethod>] extends [never]
+  ? string
+  : string extends RouteCallPathFromRoute<TRoutes[number], TMethod>
+    ? string
+    : RouteCallPathFromRoute<TRoutes[number], TMethod> & string;
+
+/**
+ * Route selected by method and path from a fragment's route union.
+ * @internal
+ */
+export type RouteCallMatch<
+  TRoutes extends readonly AnyFragnoRouteConfig[],
+  TMethod extends HTTPMethod,
+  TPath extends string,
+> = [RouteCallMatchFromRoute<TRoutes[number], TMethod, TPath>] extends [never]
+  ? AnyFragnoRouteConfig
+  : RouteCallMatchFromRoute<TRoutes[number], TMethod, TPath>;
+
 export interface RouteFactoryContext<TConfig, TDeps, TServices, TServiceDeps = {}> {
   config: TConfig;
   deps: TDeps;
@@ -65,6 +122,8 @@ export function resolveRouteFactories<
     if (typeof item === "function") {
       // It's a route factory
       const factoryRoutes = item(context);
+      // Route factories are intentionally type-erased here and restored by FlattenRouteFactories.
+      // oxlint-disable-next-line typescript/no-unsafe-argument
       routes.push(...factoryRoutes);
     } else {
       // It's a direct route
@@ -457,12 +516,12 @@ export function defineRoutes<
       TRoutes
     > => {
       // Create a wrapper around the callback that adds the defineRoute function
-      return (ctx: RouteFactoryContext<unknown, unknown, unknown, unknown>) => {
+      return (ctx) => {
         const extendedCtx = {
           ...ctx,
           defineRoute,
         };
-        return fn(extendedCtx as any);
+        return fn(extendedCtx);
       };
     },
   };

@@ -1,12 +1,11 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
-import type { ExtractRouteByPath, ExtractRoutePath } from "../client/client";
 import type { InferOrUnknown } from "../util/types-util";
 import type { HTTPMethod } from "./api";
 import type { FragnoResponse } from "./fragno-response";
 import { parseFragnoResponse } from "./fragno-response";
 import { buildPath, type ExtractPathParams } from "./internal/path";
-import type { AnyFragnoRouteConfig } from "./route";
+import type { AnyFragnoRouteConfig, RouteCallMatch, RouteCallPath } from "./route";
 import type { RouteHandlerInputOptions } from "./route-handler-input-options";
 
 export type RouteCallerConfig = {
@@ -24,34 +23,19 @@ type FragmentLike = {
   callRoute?: (...args: never[]) => Promise<unknown>;
 };
 
-type RouteCallerPath<
-  TRoutes extends readonly AnyFragnoRouteConfig[],
-  TMethod extends HTTPMethod,
-> = [ExtractRoutePath<TRoutes, TMethod>] extends [never]
-  ? string
-  : ExtractRoutePath<TRoutes, TMethod>;
-
-type RouteCallerMatch<
-  TRoutes extends readonly AnyFragnoRouteConfig[],
-  TMethod extends HTTPMethod,
-  TPath extends string,
-> = [ExtractRouteByPath<TRoutes, TPath, TMethod>] extends [never]
-  ? AnyFragnoRouteConfig
-  : ExtractRouteByPath<TRoutes, TPath, TMethod>;
-
 export type RouteCallerForFragment<TFragment extends FragmentLike> = TFragment extends {
   routes: infer TRoutes extends readonly AnyFragnoRouteConfig[];
 }
-  ? <TMethod extends HTTPMethod, TPath extends RouteCallerPath<TRoutes, TMethod>>(
+  ? <TMethod extends HTTPMethod, TPath extends RouteCallPath<TRoutes, TMethod>>(
       method: TMethod,
       path: TPath,
       inputOptions?: RouteHandlerInputOptions<
         TPath,
-        RouteCallerMatch<TRoutes, TMethod, TPath>["inputSchema"]
+        RouteCallMatch<TRoutes, TMethod, TPath>["inputSchema"]
       >,
     ) => Promise<
       FragnoResponse<
-        InferOrUnknown<NonNullable<RouteCallerMatch<TRoutes, TMethod, TPath>["outputSchema"]>>
+        InferOrUnknown<NonNullable<RouteCallMatch<TRoutes, TMethod, TPath>["outputSchema"]>>
       >
     >
   : TFragment extends { callRoute: (...args: never[]) => Promise<unknown> }

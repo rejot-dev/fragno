@@ -19,7 +19,7 @@ import {
   type FragnoStoreFactoryData,
   type FragnoStoreObjectData,
 } from "./client";
-import type { FragnoClientError } from "./client-error";
+import type { FragnoClientRequestError } from "./client-error";
 
 export type FragnoSolidHook<
   _TMethod extends "GET",
@@ -33,7 +33,7 @@ export type FragnoSolidHook<
 }) => {
   data: Accessor<InferOr<TOutputSchema, undefined>>;
   loading: Accessor<boolean>;
-  error: Accessor<FragnoClientError<TErrorCode[number]> | undefined>;
+  error: Accessor<FragnoClientRequestError<TErrorCode[number]> | undefined>;
 };
 
 export type FragnoSolidMutator<
@@ -50,7 +50,7 @@ export type FragnoSolidMutator<
     query?: QueryParamsHint<TQueryParameters, string | Accessor<string> | ReadableAtom<string>>;
   }) => Promise<InferOr<TOutputSchema, undefined>>;
   loading: Accessor<boolean | undefined>;
-  error: Accessor<FragnoClientError<TErrorCode[number]> | undefined>;
+  error: Accessor<FragnoClientRequestError<TErrorCode[number]> | undefined>;
   data: Accessor<InferOr<TOutputSchema, undefined>>;
 };
 

@@ -762,7 +762,9 @@ export class DatabaseFragmentsTestBuilder<
           );
         }
 
-        for (const [serviceName, serviceImpl] of Object.entries(fragment.services)) {
+        // Built fragments expose a service record, but generic fragment factories erase its shape.
+        const fragmentServices = fragment.services as Record<string, unknown>;
+        for (const [serviceName, serviceImpl] of Object.entries(fragmentServices)) {
           providedServicesByName[serviceName] = {
             service: serviceImpl,
           };

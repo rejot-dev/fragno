@@ -61,6 +61,44 @@ export function convertTsconfigPathsToJitiAlias(
   );
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const parseCompilerOptions = (
+  value: unknown,
+): { baseUrl?: unknown; paths?: unknown } | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    throw new TypeError("compilerOptions must be an object");
+  }
+
+  const { baseUrl, paths } = value;
+  return { baseUrl, paths };
+};
+
+const parseTsconfigPaths = (value: unknown): Record<string, string[]> | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    throw new TypeError("compilerOptions.paths must be an object");
+  }
+
+  const paths: Record<string, string[]> = {};
+  for (const [alias, targets] of Object.entries(value)) {
+    if (!Array.isArray(targets) || targets.length === 0) {
+      throw new TypeError(`compilerOptions.paths['${alias}'] must be a non-empty array`);
+    }
+    if (targets.some((target) => typeof target !== "string")) {
+      throw new TypeError(`compilerOptions.paths['${alias}'] must contain only strings`);
+    }
+    paths[alias] = targets;
+  }
+  return paths;
+};
+
 /**
  * Resolves tsconfig path aliases for use with jiti.
  */
@@ -73,24 +111,34 @@ async function resolveTsconfigAliases(targetPath: string): Promise<Record<string
 
   try {
     const tsconfigContent = await readFile(tsconfigPath, "utf-8");
-    // Strip comments to handle JSONC format
     const jsonContent = stripJsonComments(tsconfigContent);
-    const tsconfig = JSON.parse(jsonContent);
-    const tsconfigPaths = tsconfig?.compilerOptions?.paths;
+    const parsed: unknown = JSON.parse(jsonContent);
+    if (!isRecord(parsed)) {
+      throw new TypeError("tsconfig root must be an object");
+    }
 
-    if (!tsconfigPaths || typeof tsconfigPaths !== "object") {
+    const { compilerOptions: rawCompilerOptions } = parsed;
+    const compilerOptions = parseCompilerOptions(rawCompilerOptions);
+    if (!compilerOptions) {
       return {};
     }
 
-    const tsconfigDir = dirname(tsconfigPath);
-    const baseUrl = tsconfig?.compilerOptions?.baseUrl || ".";
-    const baseUrlResolved = resolve(tsconfigDir, baseUrl);
+    const tsconfigPaths = parseTsconfigPaths(compilerOptions.paths);
+    if (!tsconfigPaths) {
+      return {};
+    }
 
-    // Convert tsconfig paths to jiti alias format
+    const configuredBaseUrl = compilerOptions.baseUrl;
+    if (configuredBaseUrl !== undefined && typeof configuredBaseUrl !== "string") {
+      throw new TypeError("compilerOptions.baseUrl must be a string");
+    }
+    const baseUrlResolved = resolve(dirname(tsconfigPath), configuredBaseUrl ?? ".");
+
     return convertTsconfigPathsToJitiAlias(tsconfigPaths, baseUrlResolved);
   } catch (error) {
-    console.warn(`Warning: Failed to parse tsconfig at ${tsconfigPath}:`, error);
-    return {};
+    throw new Error(`Failed to resolve TypeScript path aliases from ${tsconfigPath}`, {
+      cause: error,
+    });
   }
 }
 

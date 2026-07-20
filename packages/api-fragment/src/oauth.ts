@@ -63,24 +63,39 @@ export function createAuthorizationUrl(args: {
   return url;
 }
 
+type OAuthTokenRecord = Record<string, unknown> & {
+  error?: unknown;
+  error_description?: unknown;
+};
+
+const isOAuthTokenRecord = (value: unknown): value is OAuthTokenRecord =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 async function parseTokenResponse(response: Response) {
   const contentType = response.headers.get("content-type") ?? "";
-  const data = contentType.includes("application/json")
+  const data: unknown = contentType.includes("application/json")
     ? await response.json()
     : Object.fromEntries(new URLSearchParams(await response.text()));
+
+  if (!isOAuthTokenRecord(data)) {
+    if (!response.ok) {
+      throw new Error(`Token request failed with status ${response.status}`);
+    }
+    throw new Error("Token response was empty");
+  }
+
+  const tokenRecord = data;
   if (!response.ok) {
     const message =
-      typeof data?.error_description === "string"
-        ? data.error_description
-        : typeof data?.error === "string"
-          ? data.error
+      typeof tokenRecord.error_description === "string"
+        ? tokenRecord.error_description
+        : typeof tokenRecord.error === "string"
+          ? tokenRecord.error
           : `Token request failed with status ${response.status}`;
     throw new Error(message);
   }
-  if (!data || typeof data !== "object" || Array.isArray(data)) {
-    throw new Error("Token response was empty");
-  }
-  const parsed = oauthTokenResponseSchema.parse(data);
+
+  const parsed = oauthTokenResponseSchema.parse(tokenRecord);
   return {
     accessToken: parsed.access_token,
     refreshToken: parsed.refresh_token,
@@ -88,7 +103,7 @@ async function parseTokenResponse(response: Response) {
     scope: parsed.scope,
     idToken: parsed.id_token,
     expiresIn: parsed.expires_in,
-    raw: data as Record<string, unknown>,
+    raw: tokenRecord,
   } satisfies OAuthTokens;
 }
 

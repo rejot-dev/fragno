@@ -468,7 +468,7 @@ describe("handleNdjsonStreaming", () => {
       return Promise.resolve([]);
     });
 
-    const storeAdapter: NdjsonStreamingStore<typeof _schema, string> = {
+    const storeAdapter: NdjsonStreamingStore<typeof _schema> = {
       setData: (value) => {
         mutatorStore.set({
           ...mutatorStore.get(),

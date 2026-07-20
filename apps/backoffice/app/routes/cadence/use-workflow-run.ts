@@ -342,7 +342,7 @@ function mergeEmission(prev: RunEmission[], next: RunEmission): RunEmission[] {
 
 /** Yield parsed objects from a newline-delimited JSON stream, honoring abort. */
 async function* readNdjson<T>(
-  body: ReadableStream<Uint8Array>,
+  body: ReadableStream<unknown>,
   signal: AbortSignal,
 ): AsyncGenerator<T> {
   const reader = body.getReader();
@@ -353,6 +353,9 @@ async function* readNdjson<T>(
       const { done, value } = await reader.read();
       if (done) {
         break;
+      }
+      if (!(value instanceof Uint8Array)) {
+        throw new Error("Workflow emission stream produced a non-binary chunk");
       }
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");

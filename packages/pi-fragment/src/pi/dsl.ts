@@ -198,7 +198,8 @@ const resolveAgentSkills = async (
     turnId: string;
   },
 ): Promise<PiSkillDefinition[]> => {
-  if (!agent.skills || (Array.isArray(agent.skills) && agent.skills.length === 0)) {
+  const selectedSkills = agent.skills;
+  if (!selectedSkills || selectedSkills.length === 0) {
     return [];
   }
 
@@ -207,12 +208,12 @@ const resolveAgentSkills = async (
     return [];
   }
 
-  if (agent.skills === "all") {
+  if (selectedSkills === "all") {
     return Object.values(registry);
   }
 
   const seen = new Set<string>();
-  return agent.skills.flatMap((name) => {
+  return selectedSkills.flatMap((name) => {
     if (seen.has(name)) {
       return [];
     }

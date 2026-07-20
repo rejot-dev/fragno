@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { cli, define } from "gunshi";
+import { cli, define, type Command } from "gunshi";
 
 import { generateCommand } from "./commands/db/generate.js";
 import { infoCommand } from "./commands/db/info.js";
@@ -16,10 +16,11 @@ const packageJson = JSON.parse(readFileSync(join(__dirname, "../package.json"), 
 const version = packageJson.version;
 
 // Create a Map of db sub-commands
-const dbSubCommands = new Map();
-dbSubCommands.set("generate", generateCommand);
-dbSubCommands.set("migrate", migrateCommand);
-dbSubCommands.set("info", infoCommand);
+const dbSubCommands = new Map<string, Command>([
+  ["generate", generateCommand],
+  ["migrate", migrateCommand],
+  ["info", infoCommand],
+]);
 
 // Define the db command with nested subcommands
 export const dbCommand = define({

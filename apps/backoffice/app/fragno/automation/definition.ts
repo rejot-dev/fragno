@@ -24,7 +24,7 @@ import {
 } from "./event-definitions";
 import { createAutomationEventDefinitionServices } from "./event-definitions-storage-runtime";
 import { createAutomationEventServices } from "./events-storage-runtime";
-import type { AutomationHookUnitOfWork } from "./internal-hooks";
+import type { AutomationEventIngestionPayload, AutomationHookUnitOfWork } from "./internal-hooks";
 import { createAutomationProjectServices } from "./projects-storage-runtime";
 import { dispatchAutomationRouteSchedule } from "./route-scheduling-runtime";
 import {
@@ -284,7 +284,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
           handlerTx: this.handlerTx.bind(this),
         });
       }),
-      internalIngestEvent: defineHook(async function (payload) {
+      internalIngestEvent: defineHook(async function (payload: AutomationEventIngestionPayload) {
         const { routes, store } = await this.handlerTx()
           .retrieve(({ forSchema }) => {
             const uow = forSchema(automationFragmentSchema);

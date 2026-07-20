@@ -18,7 +18,7 @@ import {
   type FragnoStoreFactoryData,
   type FragnoStoreObjectData,
 } from "./client";
-import type { FragnoClientError } from "./client-error";
+import type { FragnoClientRequestError } from "./client-error";
 
 export type FragnoVueHook<
   _TMethod extends "GET",
@@ -32,7 +32,7 @@ export type FragnoVueHook<
 }) => {
   data: Ref<InferOr<TOutputSchema, undefined>>;
   loading: Ref<boolean>;
-  error: Ref<FragnoClientError<TErrorCode[number]> | undefined>;
+  error: Ref<FragnoClientRequestError<TErrorCode[number]> | undefined>;
 };
 
 export type FragnoVueMutator<
@@ -49,7 +49,7 @@ export type FragnoVueMutator<
     query?: QueryParamsHint<TQueryParameters, string | Ref<string> | ReadableAtom<string>>;
   }) => Promise<InferOr<TOutputSchema, undefined>>;
   loading: Ref<boolean | undefined>;
-  error: Ref<FragnoClientError<TErrorCode[number]> | undefined>;
+  error: Ref<FragnoClientRequestError<TErrorCode[number]> | undefined>;
   data: Ref<InferOr<TOutputSchema, undefined>>;
 };
 

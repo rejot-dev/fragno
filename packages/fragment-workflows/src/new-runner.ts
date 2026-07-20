@@ -407,6 +407,9 @@ async function runTask(
     return { type: "errored", error: new Error("WORKFLOW_NOT_FOUND") };
   }
 
+  // WorkflowRegistryEntry erases schema generics, but registered definitions retain this contract.
+  const outputSchema = workflow.outputSchema as StandardSchemaV1 | undefined;
+
   const step = new RunnerStep({
     state,
     taskKind,
@@ -421,11 +424,7 @@ async function runTask(
 
   try {
     const rawOutput = await workflow.run(initialEvent, step);
-    const output = await validateWorkflowOutput(
-      instance.workflowName,
-      workflow.outputSchema,
-      rawOutput,
-    );
+    const output = await validateWorkflowOutput(instance.workflowName, outputSchema, rawOutput);
     return { type: "completed", output };
   } catch (err) {
     if (err instanceof BufferedPumpScopeAlreadyOpenError) {

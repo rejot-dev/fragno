@@ -43,7 +43,7 @@ const isOptionalString = (value: unknown): value is string | undefined =>
 
 const decodeMetaValue = (raw: string, key: string): unknown => {
   try {
-    return superjson.deserialize(JSON.parse(raw));
+    return superjson.parse(raw);
   } catch (error) {
     throw new Error(`Failed to decode persisted Lofi meta value for ${key}`, { cause: error });
   }

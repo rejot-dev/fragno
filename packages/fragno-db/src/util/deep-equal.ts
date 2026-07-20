@@ -1,6 +1,8 @@
 // Minimal deep equal utility for primitives, arrays, and plain objects
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function deepEqual(a: any, b: any): boolean {
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+export function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) {
     return true;
   }
@@ -8,8 +10,8 @@ export function deepEqual(a: any, b: any): boolean {
     return false;
   }
 
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
       return false;
     }
     for (let i = 0; i < a.length; i++) {
@@ -20,17 +22,13 @@ export function deepEqual(a: any, b: any): boolean {
     return true;
   }
 
-  if (typeof a === "object" && typeof b === "object") {
+  if (isPlainObject(a) && isPlainObject(b)) {
     const aKeys = Object.keys(a);
     const bKeys = Object.keys(b);
     if (aKeys.length !== bKeys.length) {
       return false;
     }
     for (const key of aKeys) {
-      if (!(key in b)) {
-        return false;
-      }
-
       if (!Object.hasOwn(b, key) || !deepEqual(a[key], b[key])) {
         return false;
       }

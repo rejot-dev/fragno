@@ -60,7 +60,7 @@
     "typescript/no-unnecessary-type-assertion": "error",
     "typescript/no-unnecessary-type-conversion": "error",
     "typescript/no-unnecessary-type-parameters": "error",
-    "typescript/no-unsafe-argument": "off",
+    "typescript/no-unsafe-argument": "error",
     "typescript/no-unsafe-assignment": "off",
     "typescript/no-unsafe-call": "off",
     "typescript/no-unsafe-enum-comparison": "error",
@@ -202,6 +202,7 @@
       "rules": {
         "typescript/no-confusing-void-expression": "off",
         "typescript/no-unnecessary-type-assertion": "off",
+        "typescript/no-unsafe-argument": "off",
         "typescript/no-unsafe-return": "off",
         "typescript/strict-void-return": "off",
         "typescript/unbound-method": "off"
@@ -211,6 +212,7 @@
       "files": ["packages/fragment-workflows/workflows-smoke-artifacts/**/*.js"],
       "rules": {
         "typescript/no-confusing-void-expression": "off",
+        "typescript/no-unsafe-argument": "off",
         "typescript/no-unsafe-return": "off",
         "typescript/strict-void-return": "off"
       }
@@ -225,6 +227,7 @@
         "specs/references/**/*.ts"
       ],
       "rules": {
+        "typescript/no-unsafe-argument": "off",
         "typescript/no-unsafe-return": "off"
       }
     },
