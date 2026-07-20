@@ -417,14 +417,17 @@ function BentoGrid({ children }: { children: React.ReactNode }) {
 // =============================================================================
 
 export function FormDemo() {
-  const [eventData, setEventData] = useState({});
-  const [feedbackData, setFeedbackData] = useState({ satisfaction: 5 });
-  const [surveyData, setSurveyData] = useState({});
-  const [settingsData, setSettingsData] = useState({
+  const [eventData, setEventData] = useState<unknown>({});
+  const [feedbackData, setFeedbackData] = useState<unknown>({ satisfaction: 5 });
+  const [surveyData, setSurveyData] = useState<unknown>({});
+  const [settingsData, setSettingsData] = useState<unknown>({
     pushNotifications: true,
     profileVisible: true,
   });
-  const [bookingData, setBookingData] = useState({ guests: 4, preferredTime: "12:30:00" });
+  const [bookingData, setBookingData] = useState<unknown>({
+    guests: 4,
+    preferredTime: "12:30:00",
+  });
 
   return (
     <BentoGrid>

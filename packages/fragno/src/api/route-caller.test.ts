@@ -117,7 +117,8 @@ describe("createRouteCaller", () => {
     ] as const;
 
     type FakeFragment = {
-      routes: typeof routes;
+      // Fragment route factories flatten to an array whose element is a union of route types.
+      routes: readonly (typeof routes)[number][];
     };
 
     const callRoute = createRouteCaller<FakeFragment>({

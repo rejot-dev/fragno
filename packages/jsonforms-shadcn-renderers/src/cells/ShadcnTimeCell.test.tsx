@@ -90,6 +90,23 @@ describe("ShadcnTimeCell", () => {
     expect(input).toHaveValue("");
   });
 
+  it("rejects non-string time data", () => {
+    const core = initCore(schema, uischema, { startTime: 123 });
+
+    expect(() =>
+      render(
+        <JsonFormsStateProvider initState={{ renderers: [], cells: [], core }}>
+          <ShadcnTimeCellContext
+            schema={{ type: "string", format: "time" }}
+            uischema={uischema}
+            path="startTime"
+            enabled={true}
+          />
+        </JsonFormsStateProvider>,
+      ),
+    ).toThrow(TypeError);
+  });
+
   it("should update value on change with seconds appended", () => {
     const core = initCore(schema, uischema, { startTime: "" });
     const onChangeData: { data: unknown } = { data: undefined };

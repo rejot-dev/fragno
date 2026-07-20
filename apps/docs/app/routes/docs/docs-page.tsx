@@ -39,23 +39,17 @@ function usePageData() {
  * The docs tree is hierarchical - folders contain subfolders and pages.
  * Icons can appear at any level, so we traverse the entire tree.
  *
- * Why `any` type:
- * Fumadocs' PageTree is a complex dynamic structure not fully typed.
- * We preserve the structure and only modify icon properties.
- *
  * Icon hydration:
  * - String icon names (from meta.json) → React elements
  * - Uses only explicitly imported icons from iconComponents
  * - Missing icons are silently ignored (no icon displayed)
  */
-function hydrateIcons(node: PageTree.Root): PageTree.Root;
-function hydrateIcons(node: unknown): unknown {
-  if (!node || typeof node !== "object") {
+function hydrateIconNode(node: unknown): unknown {
+  if (!node || typeof node !== "object" || Array.isArray(node)) {
     return node;
   }
 
-  const nodeObj = node as Record<string, unknown>;
-  const hydrated = { ...nodeObj };
+  const hydrated: Record<string, unknown> = { ...node };
 
   // Hydrate string icon names to React components
   if (typeof hydrated.icon === "string") {
@@ -72,14 +66,19 @@ function hydrateIcons(node: unknown): unknown {
 
   // Recursively hydrate children (folders → subfolders → pages)
   if (Array.isArray(hydrated.children)) {
-    hydrated.children = hydrated.children.map((child) => hydrateIcons(child));
+    hydrated.children = hydrated.children.map(hydrateIconNode);
   }
 
   if (Array.isArray(hydrated.index)) {
-    hydrated.index = hydrated.index.map((item) => hydrateIcons(item));
+    hydrated.index = hydrated.index.map(hydrateIconNode);
   }
 
   return hydrated;
+}
+
+function hydrateIcons(node: PageTree.Root): PageTree.Root {
+  // Icon hydration preserves the Fumadocs tree structure while replacing icon values.
+  return hydrateIconNode(node) as PageTree.Root;
 }
 
 export async function loader({ params, request }: Route.LoaderArgs) {

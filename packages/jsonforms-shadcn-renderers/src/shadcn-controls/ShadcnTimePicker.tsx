@@ -5,14 +5,17 @@ import type { CellProps, WithClassname } from "@jsonforms/core";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-import { formatTimeForSave, toTimeInputValue } from "../util/date-time";
+import { formatTimeForSave, parseOptionalString, toTimeInputValue } from "../util/date-time";
 
 type ShadcnTimePickerProps = CellProps & WithClassname;
 
 export const ShadcnTimePicker = memo(function ShadcnTimePicker(props: ShadcnTimePickerProps) {
   const { data, className, id, enabled, path } = props;
 
-  const inputValue = useMemo(() => toTimeInputValue(data), [data]);
+  const inputValue = useMemo(
+    () => toTimeInputValue(parseOptionalString(data, "Time picker data")),
+    [data],
+  );
 
   return (
     <Input

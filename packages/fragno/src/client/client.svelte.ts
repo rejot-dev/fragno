@@ -17,7 +17,7 @@ import {
   type FragnoStoreFactoryData,
   type FragnoStoreObjectData,
 } from "./client";
-import type { FragnoClientError } from "./client-error";
+import type { FragnoClientRequestError } from "./client-error";
 
 export type FragnoSvelteHook<
   _TMethod extends "GET",
@@ -36,7 +36,7 @@ export type FragnoSvelteHook<
 }) => {
   data: Readable<InferOr<TOutputSchema, undefined>>;
   loading: Readable<boolean>;
-  error: Readable<FragnoClientError<TErrorCode[number]> | undefined>;
+  error: Readable<FragnoClientRequestError<TErrorCode[number]> | undefined>;
 };
 
 export type FragnoSvelteMutator<
@@ -59,7 +59,7 @@ export type FragnoSvelteMutator<
     >;
   }) => Promise<InferOr<TOutputSchema, undefined>>;
   loading: Readable<boolean | undefined>;
-  error: Readable<FragnoClientError<TErrorCode[number]> | undefined>;
+  error: Readable<FragnoClientRequestError<TErrorCode[number]> | undefined>;
   data: Readable<InferOr<TOutputSchema, undefined>>;
 };
 
@@ -129,7 +129,7 @@ function createSvelteHook<
 
     const data = writable<InferOr<TOutputSchema, undefined>>(undefined);
     const loading = writable<boolean>(false);
-    const error = writable<FragnoClientError<TErrorCode[number]> | undefined>(undefined);
+    const error = writable<FragnoClientRequestError<TErrorCode[number]> | undefined>(undefined);
 
     const unsubscribe = store.subscribe((updatedStoreValue) => {
       data.set(updatedStoreValue.data as InferOr<TOutputSchema, undefined>);
@@ -169,7 +169,7 @@ function createSvelteMutator<
   return () => {
     const data = writable<InferOr<TOutputSchema, undefined>>(undefined);
     const loading = writable<boolean | undefined>(undefined);
-    const error = writable<FragnoClientError<TErrorCode[number]> | undefined>(undefined);
+    const error = writable<FragnoClientRequestError<TErrorCode[number]> | undefined>(undefined);
 
     // Subscribe to the mutator store and sync with our Svelte stores
     const unsubscribe = hook.mutatorStore.subscribe((storeValue) => {

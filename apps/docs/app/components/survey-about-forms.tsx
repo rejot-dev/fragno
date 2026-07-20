@@ -14,8 +14,11 @@ interface SurveyAboutFormsProps {
   turnstileSitekey: string;
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 export function SurveyAboutForms({ turnstileSitekey }: SurveyAboutFormsProps) {
-  const [data, setData] = useState({});
+  const [data, setData] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<{ message?: string }[]>([]);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const { mutate: submitForm, loading, error, data: responseId } = formsClient.useSubmitForm();
@@ -68,7 +71,11 @@ export function SurveyAboutForms({ turnstileSitekey }: SurveyAboutFormsProps) {
           renderers={shadcnRenderers}
           cells={shadcnCells}
           onChange={({ data, errors }) => {
-            setData(data);
+            const nextData: unknown = data;
+            if (!isRecord(nextData)) {
+              throw new Error("Survey form data must be an object");
+            }
+            setData(nextData);
             setErrors(errors ?? []);
           }}
         />

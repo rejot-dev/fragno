@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 
 import { ChevronDownIcon } from "../icons/ChevronDown";
-import { formatTimeFromDate } from "../util/date-time";
+import { formatTimeFromDate, parseOptionalString } from "../util/date-time";
 
 type ShadcnDateTimePickerProps = CellProps & WithClassname;
 
@@ -47,7 +47,10 @@ export const ShadcnDateTimePicker = memo(function ShadcnDateTimePicker(
   const { data, className, id, enabled, path } = props;
   const [open, setOpen] = useState(false);
 
-  const { date: selectedDate, time: selectedTime } = useMemo(() => parseDateTime(data), [data]);
+  const { date: selectedDate, time: selectedTime } = useMemo(
+    () => parseDateTime(parseOptionalString(data, "Date-time picker data")),
+    [data],
+  );
 
   const handleDateSelect = (date: Date | undefined) => {
     props.handleChange(path, formatDateTimeForSave(date, selectedTime || "00:00"));

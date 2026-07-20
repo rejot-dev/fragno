@@ -1,3 +1,13 @@
+export function parseOptionalString(value: unknown, fieldName: string): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    throw new TypeError(`${fieldName} must be a string or undefined`);
+  }
+  return value;
+}
+
 // TODO: What kind of format is this parsing?
 export function parseDate(value: string | undefined): Date | undefined {
   if (!value) {

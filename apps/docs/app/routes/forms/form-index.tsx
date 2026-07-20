@@ -64,7 +64,7 @@ function ClientSideJsonForms(props: Omit<ComponentProps<typeof JsonForms>, "rend
 }
 
 function FormPreview({ schemas }: { schemas: GeneratedSchemas | null }) {
-  const [formData, setFormData] = useState({});
+  const [formData, setFormData] = useState<unknown>({});
   const [showCode, setShowCode] = useState(false);
   const hasDataFields = schemas
     ? Object.keys(schemas.dataSchema.properties ?? {}).length > 0

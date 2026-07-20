@@ -37,7 +37,11 @@ import { parseContentType } from "../util/content-type";
 import { unwrapObject } from "../util/nanostores";
 import { addStore, getInitialData, SSR_ENABLED } from "../util/ssr";
 import type { InferOr } from "../util/types-util";
-import { FragnoClientApiError, FragnoClientError, FragnoClientFetchError } from "./client-error";
+import {
+  FragnoClientApiError,
+  FragnoClientFetchError,
+  type FragnoClientRequestError,
+} from "./client-error";
 import { mergeFetcherConfigs } from "./internal/fetcher-merge";
 import {
   handleNdjsonStreamingFirstItem,
@@ -558,7 +562,10 @@ export type FragnoClientHookData<
   store(args?: {
     path?: MaybeExtractPathParamsOrWiden<TPath, string | ReadableAtom<string>>;
     query?: Record<TQueryParameters, string | undefined | ReadableAtom<string | undefined>>;
-  }): FetcherStore<StandardSchemaV1.InferOutput<TOutputSchema>, FragnoClientError<TErrorCode>>;
+  }): FetcherStore<
+    StandardSchemaV1.InferOutput<TOutputSchema>,
+    FragnoClientRequestError<TErrorCode>
+  >;
   [GET_HOOK_SYMBOL]: true;
 } & {
   // Phantom field that preserves the specific TOutputSchema type parameter
@@ -598,7 +605,7 @@ export type FragnoClientMutatorData<
       query?: Record<TQueryParameters, string | undefined | ReadableAtom<string | undefined>>;
     },
     InferOr<TOutputSchema, undefined>,
-    FragnoClientError<TErrorCode>
+    FragnoClientRequestError<TErrorCode>
   >;
   [MUTATOR_HOOK_SYMBOL]: true;
 } & {
@@ -1084,7 +1091,7 @@ export class ClientBuilder<
 
         const store = this.#createFetcherStore<
           StandardSchemaV1.InferOutput<TOutputSchema>,
-          FragnoClientError<TErrorCode>
+          FragnoClientRequestError<TErrorCode>
         >(key, {
           fetcher: async (): Promise<StandardSchemaV1.InferOutput<TOutputSchema>> => {
             if (SSR_ENABLED) {
@@ -1123,7 +1130,7 @@ export class ClientBuilder<
                     error: value,
                   });
                 },
-              } satisfies NdjsonStreamingStore<TOutputSchema, TErrorCode>;
+              } satisfies NdjsonStreamingStore<TOutputSchema>;
 
               // Start streaming in background and return the shared items array. The streaming
               // continuation mutates this array before publishing copies to nanoquery, so returning
@@ -1322,7 +1329,7 @@ export class ClientBuilder<
         }
 
         if (isStreaming === "ndjson") {
-          const storeAdapter: NdjsonStreamingStore<NonNullable<TOutputSchema>, TErrorCode> = {
+          const storeAdapter: NdjsonStreamingStore<NonNullable<TOutputSchema>> = {
             setData: (value) => {
               mutatorStore.set({
                 ...mutatorStore.get(),

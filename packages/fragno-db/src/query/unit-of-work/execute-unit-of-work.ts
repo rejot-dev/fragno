@@ -1591,8 +1591,15 @@ export class ServiceTxBuilder<
     };
 
     // Use the existing createServiceTx implementation
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return createServiceTx(state.schema, callbacks as any, state.baseUow) as unknown as TxResult<
+    return createServiceTx<
+      TSchema,
+      TRetrieveResults,
+      TRetrieveSuccessResult,
+      TServiceCalls,
+      TMutateResult,
+      TTransformResult,
+      THooks
+    >(state.schema, callbacks, state.baseUow) as unknown as TxResult<
       InferBuilderResultType<
         TRetrieveResults,
         TRetrieveSuccessResult,

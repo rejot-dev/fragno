@@ -104,6 +104,23 @@ describe("ShadcnDateCell", () => {
     expect(button).toHaveTextContent("Select date");
   });
 
+  it("rejects non-string date data", () => {
+    const core = initCore(schema, uischema, { eventDate: 123 });
+
+    expect(() =>
+      render(
+        <JsonFormsStateProvider initState={{ renderers: [], cells: [], core }}>
+          <ShadcnDateCellContext
+            schema={{ type: "string", format: "date" }}
+            uischema={uischema}
+            path="eventDate"
+            enabled={true}
+          />
+        </JsonFormsStateProvider>,
+      ),
+    ).toThrow(TypeError);
+  });
+
   it("should handle date selection", async () => {
     const core = initCore(schema, uischema, {});
     const onChangeData: { data: unknown } = { data: undefined };

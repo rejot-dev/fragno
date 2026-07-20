@@ -30,6 +30,7 @@ import type {
   WorkflowInstanceCurrentStep,
   WorkflowInstanceMetadata,
   WorkflowRegistryEntry,
+  WorkflowStepEmissionsCleanupHookPayload,
   WorkflowTerminalHookPayload,
   WorkflowsFragmentConfig,
 } from "./workflow";
@@ -327,7 +328,9 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
       onWorkflowTerminal: defineHook(async function (payload: WorkflowTerminalHookPayload) {
         await config.onWorkflowTerminal?.(payload);
       }),
-      onWorkflowStepEmissionsCleanup: defineHook(async function (payload) {
+      onWorkflowStepEmissionsCleanup: defineHook(async function (
+        payload: WorkflowStepEmissionsCleanupHookPayload,
+      ) {
         await this.handlerTx()
           .retrieve(({ forSchema }) =>
             forSchema(workflowsSchema).find("workflow_step_emission", (b) =>

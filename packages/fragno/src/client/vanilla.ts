@@ -20,14 +20,14 @@ import {
   type FragnoStoreFactoryData,
   type FragnoStoreObjectData,
 } from "./client";
-import type { FragnoClientError } from "./client-error";
+import type { FragnoClientRequestError } from "./client-error";
 
 export type StoreData<
   TOutputSchema extends StandardSchemaV1 | undefined,
   TErrorCodes extends string,
 > = {
   loading: boolean;
-  error?: FragnoClientError<TErrorCodes>;
+  error?: FragnoClientRequestError<TErrorCodes>;
   data?: InferOr<TOutputSchema, undefined>;
 };
 
@@ -133,7 +133,7 @@ export type FragnoVanillaMutator<
   subscribe: (
     callback: (value: {
       loading: boolean;
-      error?: FragnoClientError<TErrorCode[number]>;
+      error?: FragnoClientRequestError<TErrorCode[number]>;
       data?: InferOr<TOutputSchema, undefined>;
     }) => void,
   ) => () => void;

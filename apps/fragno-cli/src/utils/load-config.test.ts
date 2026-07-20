@@ -1,8 +1,10 @@
 import { describe, it, expect, assert } from "vitest";
 
-import { resolve } from "node:path";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
-import { stripJsonComments, convertTsconfigPathsToJitiAlias } from "./load-config";
+import { stripJsonComments, convertTsconfigPathsToJitiAlias, loadConfig } from "./load-config";
 
 describe("stripJsonComments", () => {
   it("should strip single-line comments", () => {
@@ -130,6 +132,40 @@ describe("stripJsonComments", () => {
     assert(parsed.compilerOptions.module === "ESNext");
     assert(parsed.compilerOptions.moduleResolution === "bundler");
     assert(parsed.compilerOptions.strict);
+  });
+});
+
+describe("loadConfig", () => {
+  it("rejects malformed tsconfig path aliases", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "fragno-cli-load-config-"));
+
+    try {
+      await writeFile(
+        join(directory, "tsconfig.json"),
+        JSON.stringify({
+          compilerOptions: {
+            paths: {
+              "@/*": ["./src/*"],
+              "@broken/*": [],
+            },
+          },
+        }),
+      );
+      const configPath = join(directory, "fragno.config.ts");
+      await writeFile(configPath, "export default { loaded: true };\n");
+
+      let thrown: unknown;
+      try {
+        await loadConfig(configPath);
+      } catch (error) {
+        thrown = error;
+      }
+
+      assert(thrown instanceof Error);
+      expect(thrown.cause).toBeInstanceOf(TypeError);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });
 

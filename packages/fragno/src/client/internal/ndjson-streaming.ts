@@ -2,7 +2,6 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 import type { StatusCode } from "../../http/http-status";
 import {
-  FragnoClientError,
   FragnoClientFetchError,
   FragnoClientFetchAbortError,
   FragnoClientUnknownApiError,
@@ -34,12 +33,9 @@ export interface NdjsonStreamingResult<T> {
   streamingPromise: Promise<T[]>;
 }
 
-export interface NdjsonStreamingStore<
-  TOutputSchema extends StandardSchemaV1,
-  TErrorCode extends string,
-> {
+export interface NdjsonStreamingStore<TOutputSchema extends StandardSchemaV1> {
   setData(value: StandardSchemaV1.InferOutput<TOutputSchema>): void;
-  setError(value: FragnoClientError<TErrorCode>): void;
+  setError(value: FragnoClientFetchError | FragnoClientUnknownApiError): void;
 }
 
 type NdjsonParseResult = {
@@ -104,12 +100,9 @@ const parseNdjsonBuffer = <T>(
  * @param abortSignal - Optional AbortSignal to cancel the streaming operation
  * @returns A promise that resolves to an object containing the first item and a streaming promise
  */
-export async function handleNdjsonStreamingFirstItem<
-  TOutputSchema extends StandardSchemaV1,
-  TErrorCode extends string,
->(
+export async function handleNdjsonStreamingFirstItem<TOutputSchema extends StandardSchemaV1>(
   response: Response,
-  store?: NdjsonStreamingStore<TOutputSchema, TErrorCode>,
+  store?: NdjsonStreamingStore<TOutputSchema>,
   options: { abortSignal?: AbortSignal } = {},
 ): Promise<NdjsonStreamingResult<StandardSchemaV1.InferOutput<TOutputSchema>>> {
   if (!response.body) {
@@ -189,17 +182,16 @@ export async function handleNdjsonStreamingFirstItem<
     throw new FragnoClientFetchError("Unexpected end of stream processing", "NO_BODY");
   } catch (error) {
     // Handle errors during streaming
-    if (error instanceof FragnoClientError) {
+    if (error instanceof FragnoClientFetchError || error instanceof FragnoClientUnknownApiError) {
       store?.setError(error);
       throw error;
-    } else {
-      // TODO: Not sure about the typing here
-      const clientError = new FragnoClientUnknownApiError("Unknown streaming error", 500, {
-        cause: error,
-      }) as unknown as FragnoClientError<TErrorCode>;
-      store?.setError(clientError);
-      throw clientError;
     }
+
+    const clientError = new FragnoClientUnknownApiError("Unknown streaming error", 500, {
+      cause: error,
+    });
+    store?.setError(clientError);
+    throw clientError;
   }
 }
 
@@ -207,12 +199,12 @@ export async function handleNdjsonStreamingFirstItem<
  * Continues streaming the remaining items in the background
  */
 // FIXME: Shitty code
-async function continueStreaming<TOutputSchema extends StandardSchemaV1, TErrorCode extends string>(
+async function continueStreaming<TOutputSchema extends StandardSchemaV1>(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   decoder: TextDecoder,
   initialBuffer: string,
   items: StandardSchemaV1.InferOutput<TOutputSchema>[],
-  store?: NdjsonStreamingStore<TOutputSchema, TErrorCode>,
+  store?: NdjsonStreamingStore<TOutputSchema>,
   abortSignal?: AbortSignal,
 ): Promise<StandardSchemaV1.InferOutput<TOutputSchema>[]> {
   let buffer = initialBuffer;
@@ -251,17 +243,16 @@ async function continueStreaming<TOutputSchema extends StandardSchemaV1, TErrorC
       buffer += decoder.decode(value, { stream: true });
     }
   } catch (error) {
-    if (error instanceof FragnoClientError) {
+    if (error instanceof FragnoClientFetchError || error instanceof FragnoClientUnknownApiError) {
       store?.setError(error);
-    } else {
-      const clientError = new FragnoClientUnknownApiError("Unknown streaming error", 400, {
-        cause: error,
-      }) as unknown as FragnoClientError<TErrorCode>;
-      store?.setError(clientError);
-      throw clientError;
+      throw error;
     }
 
-    throw error;
+    const clientError = new FragnoClientUnknownApiError("Unknown streaming error", 400, {
+      cause: error,
+    });
+    store?.setError(clientError);
+    throw clientError;
   } finally {
     reader.releaseLock();
   }

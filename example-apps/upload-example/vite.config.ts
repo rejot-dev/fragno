@@ -8,15 +8,9 @@ import tailwindcss from "@tailwindcss/vite";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 
 export default defineConfig(({ mode }) => {
-  const plugins: PluginOption[] = [
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    envOnlyMacros() as any,
-    tailwindcss(),
-    reactRouter(),
-  ];
+  const plugins: PluginOption[] = [envOnlyMacros() as PluginOption, tailwindcss(), reactRouter()];
   if (mode !== "production") {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    plugins.push(devtoolsJson() as any);
+    plugins.push(devtoolsJson() as PluginOption);
     plugins.push(basicSsl());
   }
   return {

@@ -139,3 +139,8 @@ export class FragnoClientApiError<
     );
   }
 }
+
+export type FragnoClientRequestError<TErrorCode extends string = string> =
+  | FragnoClientApiError<TErrorCode>
+  | FragnoClientFetchError
+  | FragnoClientUnknownApiError;

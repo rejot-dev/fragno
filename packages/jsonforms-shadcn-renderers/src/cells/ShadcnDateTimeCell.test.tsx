@@ -104,6 +104,23 @@ describe("ShadcnDateTimeCell", () => {
     expect(button).toHaveTextContent("Select date");
   });
 
+  it("rejects non-string date-time data", () => {
+    const core = initCore(schema, uischema, { appointmentTime: 123 });
+
+    expect(() =>
+      render(
+        <JsonFormsStateProvider initState={{ renderers: [], cells: [], core }}>
+          <ShadcnDateTimeCellContext
+            schema={{ type: "string", format: "date-time" }}
+            uischema={uischema}
+            path="appointmentTime"
+            enabled={true}
+          />
+        </JsonFormsStateProvider>,
+      ),
+    ).toThrow(TypeError);
+  });
+
   it("should open popover on click", async () => {
     const core = initCore(schema, uischema, {});
     render(

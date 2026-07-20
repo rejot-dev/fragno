@@ -113,17 +113,32 @@ async function fetchFont(url: string): Promise<ArrayBuffer> {
 // Blog post discovery
 // ---------------------------------------------------------------------------
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 function getBlogPosts(): BlogPost[] {
   const files = readdirSync(BLOG_DIR).filter((f) => f.endsWith(".mdx") && !f.startsWith("."));
 
   return files.map((file) => {
     const content = readFileSync(join(BLOG_DIR, file), "utf-8");
-    const { data } = matter(content);
+    const frontmatter: unknown = matter(content).data;
+    if (!isRecord(frontmatter)) {
+      throw new Error(`Blog post ${file} must have frontmatter`);
+    }
+
+    const { title, author, date } = frontmatter;
+    if (typeof title !== "string" || typeof author !== "string") {
+      throw new Error(`Blog post ${file} must have string title and author fields`);
+    }
+    if (!(typeof date === "string" || typeof date === "number" || date instanceof Date)) {
+      throw new Error(`Blog post ${file} must have a valid date field`);
+    }
+
     return {
       slug: basename(file, ".mdx"),
-      title: data.title,
-      author: data.author,
-      date: new Date(data.date),
+      title,
+      author,
+      date: new Date(date),
     };
   });
 }

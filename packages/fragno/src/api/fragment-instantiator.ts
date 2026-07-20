@@ -2,7 +2,6 @@ import { addRoute, createRouter, findRoute } from "rou3";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
-import type { ExtractRouteByPath, ExtractRoutePath } from "../client/client";
 import { instantiatedFragmentFakeSymbol } from "../internal/symbols";
 import type { InferOrUnknown } from "../util/types-util";
 import { type FragnoRouteConfig, type HTTPMethod, type RequestThisContext } from "./api";
@@ -26,6 +25,8 @@ import {
   type AnyRouteOrFactory,
   type FlattenRouteFactories,
   resolveRouteFactories,
+  type RouteCallMatch,
+  type RouteCallPath,
 } from "./route";
 import type { RouteHandlerInputOptions } from "./route-handler-input-options";
 import type { FragnoPublicConfig } from "./shared-types";
@@ -34,19 +35,16 @@ import type { FragnoPublicConfig } from "./shared-types";
 export type { BoundServices };
 export type { FragnoFragmentSharedConfig } from "./shared-types";
 
-type CallRoutePath<TRoutes extends readonly AnyFragnoRouteConfig[], TMethod extends HTTPMethod> = [
-  ExtractRoutePath<TRoutes, TMethod>,
-] extends [never]
-  ? string
-  : ExtractRoutePath<TRoutes, TMethod>;
+type CallRoutePath<
+  TRoutes extends readonly AnyFragnoRouteConfig[],
+  TMethod extends HTTPMethod,
+> = RouteCallPath<TRoutes, TMethod>;
 
 type CallRouteMatch<
   TRoutes extends readonly AnyFragnoRouteConfig[],
   TMethod extends HTTPMethod,
   TPath extends string,
-> = [ExtractRouteByPath<TRoutes, TPath, TMethod>] extends [never]
-  ? AnyFragnoRouteConfig
-  : ExtractRouteByPath<TRoutes, TPath, TMethod>;
+> = RouteCallMatch<TRoutes, TMethod, TPath>;
 
 const requestSourceSymbol = Symbol.for("fragno-request-source");
 const requestRouteSymbol = Symbol.for("fragno-request-route");

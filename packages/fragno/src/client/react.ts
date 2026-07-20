@@ -30,7 +30,7 @@ import {
   type FragnoStoreFactoryData,
   type FragnoStoreObjectData,
 } from "./client";
-import type { FragnoClientError } from "./client-error";
+import type { FragnoClientRequestError } from "./client-error";
 
 export type FragnoReactHook<
   _TMethod extends "GET",
@@ -43,7 +43,7 @@ export type FragnoReactHook<
   query?: QueryParamsHint<TQueryParameters, string | ReadableAtom<string>>;
 }) => FetcherValue<
   StandardSchemaV1.InferOutput<TOutputSchema>,
-  FragnoClientError<NonNullable<TErrorCode>>
+  FragnoClientRequestError<NonNullable<TErrorCode>>
 >;
 
 export type FragnoReactMutator<
@@ -66,7 +66,7 @@ export type FragnoReactMutator<
     query?: QueryParamsHint<TQueryParameters, string | ReadableAtom<string>>;
   }) => Promise<InferOr<TOutputSchema, undefined>>;
   loading?: boolean | undefined;
-  error?: FragnoClientError<NonNullable<TErrorCode>[number]> | undefined;
+  error?: FragnoClientRequestError<NonNullable<TErrorCode>[number]> | undefined;
   data?: InferOr<TOutputSchema, undefined> | undefined;
 };
 
@@ -410,7 +410,8 @@ export function useStore<SomeStore extends Store>(
   store: SomeStore,
   options: UseStoreOptions<SomeStore> = {},
 ): StoreValue<SomeStore> {
-  const snapshotRef = useRef<StoreValue<SomeStore>>(store.get());
+  const readStoreValue = (): StoreValue<SomeStore> => store.get();
+  const snapshotRef = useRef<StoreValue<SomeStore>>(readStoreValue());
 
   const { keys, deps = [store, keys] } = options;
 
@@ -423,7 +424,7 @@ export function useStore<SomeStore extends Store>(
       onChange();
     };
 
-    emitChange(store.value);
+    emitChange(readStoreValue());
     if (keys?.length) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return listenKeys(store as any, keys, emitChange);
