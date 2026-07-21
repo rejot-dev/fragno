@@ -155,6 +155,27 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
       },
 
       /**
+       * Read a setting or create it with the provided value in the same transaction.
+       */
+      getOrCreate(namespace: string, key: string, value: string) {
+        const fullKey = `${namespace}.${key}`;
+        return this.serviceTx(internalSchema)
+          .retrieve((uow) =>
+            uow.findFirst(SETTINGS_TABLE_NAME, (b) =>
+              b.whereIndex("unique_key", (eb) => eb("key", "=", fullKey)),
+            ),
+          )
+          .transformRetrieve(([result]) => result)
+          .mutate(({ uow, retrieveResult }) => {
+            if (!retrieveResult) {
+              uow.create(SETTINGS_TABLE_NAME, { key: fullKey, value });
+            }
+          })
+          .transform(({ retrieveResult }) => retrieveResult?.value ?? value)
+          .build();
+      },
+
+      /**
        * Set a setting value only if it does not already exist.
        */
       setIfMissing(namespace: string, key: string, value: string) {

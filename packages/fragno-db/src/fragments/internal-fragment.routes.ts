@@ -4,6 +4,7 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 import { BufferedDatabasePump } from "../buffered-pump";
 import type { DatabaseHandlerContext, DatabaseHandlerTx } from "../db-fragment-definition-builder";
+import { isUniqueConstraintError } from "../errors";
 import type { OutboxEntry } from "../outbox/outbox";
 import { submitSyncRequest, type SyncRequestRecord } from "../sync/submit";
 import type { SubmitRequest, SyncCommandDefinition } from "../sync/types";
@@ -81,8 +82,8 @@ const getOrCreateAdapterIdentity = async (
   handlerTx: () => ReturnType<DatabaseHandlerContext["handlerTx"]>,
   services: Pick<InternalFragmentInstance["services"], "settingsService">,
 ): Promise<AdapterIdentityResult> => {
-  const readIdentity = async () =>
-    handlerTx()
+  const readAdapterIdentity = async () =>
+    await handlerTx()
       .withServiceCalls(
         () => [services.settingsService.get(SETTINGS_NAMESPACE, ADAPTER_IDENTITY_KEY)] as const,
       )
@@ -90,35 +91,36 @@ const getOrCreateAdapterIdentity = async (
       .execute();
 
   try {
-    const existingIdentity = await readIdentity();
-    if (existingIdentity) {
-      return { ok: true, value: existingIdentity };
-    }
-
     const adapterIdentity = crypto.randomUUID();
+
     try {
-      await handlerTx()
+      const identity = await handlerTx()
         .withServiceCalls(
           () =>
             [
-              services.settingsService.setIfMissing(
+              services.settingsService.getOrCreate(
                 SETTINGS_NAMESPACE,
                 ADAPTER_IDENTITY_KEY,
                 adapterIdentity,
               ),
             ] as const,
         )
+        .transform(({ serviceResult: [result] }) => result)
         .execute();
+      return { ok: true, value: identity };
     } catch (error) {
-      const recoveredIdentity = await readIdentity();
-      if (recoveredIdentity) {
-        return { ok: true, value: recoveredIdentity };
+      if (!isUniqueConstraintError(error)) {
+        throw error;
+      }
+
+      // Concurrent cold-start requests can both observe the missing setting. The unique index
+      // chooses the persisted identity; the losing request reads that committed value.
+      const concurrentIdentity = await readAdapterIdentity();
+      if (concurrentIdentity !== undefined) {
+        return { ok: true, value: concurrentIdentity };
       }
       throw error;
     }
-
-    const persistedIdentity = await readIdentity();
-    return { ok: true, value: persistedIdentity ?? adapterIdentity };
   } catch (error) {
     return {
       ok: false,
