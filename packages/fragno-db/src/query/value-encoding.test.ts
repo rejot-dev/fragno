@@ -12,6 +12,7 @@ import {
   resolveFragnoIdValue,
   encodeValues,
   encodeValuesWithDbDefaults,
+  materializeRuntimeCreateValues,
   ReferenceSubquery,
 } from "./value-encoding";
 
@@ -149,6 +150,54 @@ describe("encodeValues", () => {
 
       assert(result["id"] === "entry_1");
       expect(result["createdAt"]).toBe(testDate);
+    });
+  });
+
+  describe("runtime create value materialization", () => {
+    it("materializes runtime defaults once while preserving explicit values", () => {
+      const testDate = new Date("2026-07-21T12:00:00.000Z");
+      let customDefaultCalls = 0;
+      const defaultsSchema = schema("runtime_defaults", (s) =>
+        s.addTable("records", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn(
+              "createdAt",
+              column("timestamp").defaultTo$((b) => b.now()),
+            )
+            .addColumn(
+              "token",
+              column("string").defaultTo$(() => `token-${customDefaultCalls++}`),
+            )
+            .addColumn("explicit", column("string").defaultTo$("generated"))
+            .addColumn("staticValue", column("integer").defaultTo(0)),
+        ),
+      );
+      const records = defaultsSchema.tables.records;
+      const callsAfterSchemaDefinition = customDefaultCalls;
+
+      const materialized = materializeRuntimeCreateValues(
+        { id: "record-1", explicit: "provided" },
+        records,
+        {
+          now: () => testDate,
+          createId: () => "generated-id",
+        },
+      );
+
+      expect(materialized).toEqual({
+        id: "record-1",
+        createdAt: testDate,
+        token: `token-${callsAfterSchemaDefinition}`,
+        explicit: "provided",
+      });
+      assert(customDefaultCalls === callsAfterSchemaDefinition + 1);
+
+      const rematerialized = materializeRuntimeCreateValues(materialized, records, {
+        now: () => new Date("2026-07-22T12:00:00.000Z"),
+      });
+      expect(rematerialized).toEqual(materialized);
+      assert(customDefaultCalls === callsAfterSchemaDefinition + 1);
     });
   });
 

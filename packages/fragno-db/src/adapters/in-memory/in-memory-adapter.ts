@@ -109,7 +109,10 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
 
     const resolverFactory = (schemaForResolver: AnySchema, namespaceForResolver: string | null) =>
       createNamingResolver(schemaForResolver, namespaceForResolver, this.namingStrategy);
-    const compiler = createInMemoryUowCompiler();
+    const compiler = createInMemoryUowCompiler({
+      now: this.options.clock.now,
+      createId: this.options.idGenerator,
+    });
     const executor = createInMemoryUowExecutor(
       this.#store,
       this.options,
@@ -131,7 +134,10 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
   createBaseUnitOfWork(name?: string, config?: InMemoryUowConfig) {
     const resolverFactory = (schemaForResolver: AnySchema, namespaceForResolver: string | null) =>
       createNamingResolver(schemaForResolver, namespaceForResolver, this.namingStrategy);
-    const compiler = createInMemoryUowCompiler();
+    const compiler = createInMemoryUowCompiler({
+      now: this.options.clock.now,
+      createId: this.options.idGenerator,
+    });
     const executor = createInMemoryUowExecutor(
       this.#store,
       this.options,

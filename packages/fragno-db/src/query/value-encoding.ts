@@ -79,31 +79,34 @@ export function resolveFragnoIdValue(value: unknown, col: AnyColumn): unknown {
 }
 
 /**
- * Encodes a record of values from the application format to resolved format.
+ * Resolves application-owned defaults once so execution and durable side effects share values.
+ * Database-owned defaults remain omitted for the database and outbox builder to materialize.
  *
- * This function:
- * - Transforms object keys from ORM names to database column names
- * - Resolves FragnoId/FragnoReference objects to primitive values
- * - Generates default values for undefined columns
- * - Creates ReferenceSubquery markers for external ID lookups
- *
- * Note: This function does NOT serialize values (Date → number, bigint → Buffer, etc.).
- * Use UnitOfWorkEncoder.encode() to apply driver-specific serialization after this step.
- *
- * @param values - The record of values to encode in application format
- * @param table - The table schema definition containing column information
- * @param generateDefault - Whether to generate default values for undefined columns
- * @returns A record with database column names and resolved (but not serialized) values
- *
- * @example
- * ```ts
- * const encoded = encodeValues(
- *   { userId: 123, createdAt: new Date() },
- *   userTable,
- *   true
- * );
- * // Returns: { user_id: 123, created_at: Date } (not yet serialized)
- * ```
+ * @internal
+ */
+export function materializeRuntimeCreateValues<TValues extends Record<string, unknown>>(
+  values: TValues,
+  table: AnyTable,
+  runtimeDefaults: RuntimeDefaultContext = {},
+): TValues {
+  const materialized: Record<string, unknown> = { ...values };
+
+  for (const [columnName, column] of Object.entries(table.columns)) {
+    if (column.role === "internal-id" || materialized[columnName] !== undefined) {
+      continue;
+    }
+
+    const generated = generateRuntimeDefault(column, runtimeDefaults);
+    if (generated !== undefined) {
+      materialized[columnName] = generated;
+    }
+  }
+
+  return materialized as TValues;
+}
+
+/**
+ * Encodes application values into resolved database-column values without driver serialization.
  */
 export function encodeValues(
   values: Record<string, unknown>,
@@ -113,6 +116,9 @@ export function encodeValues(
   resolver?: NamingResolver,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
+  const resolvedValues = generateDefault
+    ? materializeRuntimeCreateValues(values, table, runtimeDefaults)
+    : values;
 
   for (const k in table.columns) {
     const col = table.columns[k];
@@ -121,14 +127,8 @@ export function encodeValues(
     if (col.role === "internal-id") {
       continue;
     }
-    let value = values[k];
 
-    if (generateDefault && value === undefined) {
-      // Only generate runtime defaults (defaultTo$), not static defaults (defaultTo).
-      // Static defaults should be handled by the database via DEFAULT constraints.
-      value = generateRuntimeDefault(col, runtimeDefaults);
-    }
-
+    const value = resolvedValues[k];
     if (value !== undefined) {
       const physicalColumnName = resolver ? resolver.getColumnName(table.name, col.name) : col.name;
 

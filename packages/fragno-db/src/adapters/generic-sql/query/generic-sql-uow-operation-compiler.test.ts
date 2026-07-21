@@ -256,6 +256,42 @@ describe("GenericSQLUOWOperationCompiler", () => {
     expect(result!.expectedAffectedRows).toBeNull();
   });
 
+  test("compileCreate materializes runtime defaults once for execution and outbox", () => {
+    let runtimeDefaultCalls = 0;
+    const runtimeSchema = schema("runtime", (s) =>
+      s.addTable("records", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("label", column("string"))
+          .addColumn(
+            "runtimeLabel",
+            column("string").defaultTo$(() => `runtime-${runtimeDefaultCalls++}`),
+          ),
+      ),
+    );
+    const callsAfterSchemaDefinition = runtimeDefaultCalls;
+    const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
+    const operation = {
+      type: "create" as const,
+      schema: runtimeSchema,
+      table: "records" as const,
+      values: { id: "record-1", label: "Record" },
+      generatedExternalId: "record-1",
+    };
+
+    const result = compiler.compileCreate(operation);
+
+    expect(result).not.toBeNull();
+    assert(result?.materializedOperation?.type === "create");
+    expect(result.materializedOperation.values).toMatchObject({
+      id: "record-1",
+      label: "Record",
+      runtimeLabel: `runtime-${callsAfterSchemaDefinition}`,
+    });
+    expect(result.query.parameters).toContain(`runtime-${callsAfterSchemaDefinition}`);
+    assert(runtimeDefaultCalls === callsAfterSchemaDefinition + 1);
+  });
+
   test("compileUpdate operation", () => {
     const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
