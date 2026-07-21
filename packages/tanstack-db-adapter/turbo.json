@@ -1,0 +1,8 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "test": {
+      "outputs": ["$TURBO_EXTENDS$", "coverage.json"]
+    }
+  }
+}
