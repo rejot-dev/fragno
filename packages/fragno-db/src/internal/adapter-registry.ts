@@ -52,6 +52,7 @@ export type AdapterRegistry = {
     commandName: string,
   ) => { command: SyncCommandDefinition; namespace: string | null } | undefined;
   listSchemas: () => SchemaInfo[];
+  listOutboxSchemas: () => SchemaInfo[];
   listFragments: () => FragmentMeta[];
   listOutboxFragments: () => FragmentMeta[];
   isOutboxEnabled: () => boolean;
@@ -195,6 +196,12 @@ const createRegistry = (adapter: DatabaseAdapter<unknown>): AdapterRegistry => {
       return { command, namespace: target.namespace };
     },
     listSchemas: () => sortSchemas([...schemas.values()]),
+    listOutboxSchemas: () =>
+      sortSchemas(
+        [...schemas.entries()]
+          .filter(([namespaceKey]) => outboxState.enabledSchemaKeys.has(namespaceKey))
+          .map(([, schema]) => schema),
+      ),
     listFragments: () => sortFragments([...fragments.values()]),
     listOutboxFragments: () =>
       sortFragments(

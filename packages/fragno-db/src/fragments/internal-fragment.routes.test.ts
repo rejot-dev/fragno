@@ -27,6 +27,12 @@ const betaSchema = schema("beta", (s) =>
   ),
 );
 
+const streamSchema = schema("stream", (s) =>
+  s.addTable("stream_items", (t) =>
+    t.addColumn("id", idColumn()).addColumn("name", column("string")),
+  ),
+);
+
 const setupAdapter = async ({ migrateInternal = true } = {}) => {
   const sqliteDatabase = new SQLite(":memory:");
 
@@ -152,6 +158,8 @@ describe("internal fragment describe routes", () => {
     const payload = await response.json();
     assert(payload.routes.outbox === "/_internal/outbox");
     assert(payload.routes.outboxStream === "/_internal/outbox/stream");
+    assert(payload.routes.outboxDurableStream === "/_internal/outbox/durable/schema/:schema");
+    assert(payload.routes.outboxDurableStreamAll === "/_internal/outbox/durable/all");
     expect(payload.fragments).toEqual(
       expect.arrayContaining([{ name: "alpha-fragment", mountRoute: "/alpha" }]),
     );
@@ -162,6 +170,14 @@ describe("internal fragment describe routes", () => {
     const outboxResponse = await alphaFragment.callRouteRaw("GET", "/_internal/outbox" as never);
     assert(outboxResponse.status === 200);
     await expect(outboxResponse.json()).resolves.toEqual([]);
+
+    const durableOutboxResponse = await alphaFragment.callRouteRaw(
+      "GET",
+      "/_internal/outbox/durable/all" as never,
+    );
+    assert(durableOutboxResponse.status === 200);
+    assert(durableOutboxResponse.headers.get("stream-up-to-date") === "true");
+    await expect(durableOutboxResponse.json()).resolves.toEqual([]);
 
     const betaResponse = await betaFragment.callRouteRaw("GET", "/_internal" as never);
     const betaPayload = await betaResponse.json();
@@ -180,12 +196,30 @@ describe("internal fragment describe routes", () => {
 
     const noOutboxResponse = await gammaFragment.callRouteRaw("GET", "/_internal/outbox" as never);
     assert(noOutboxResponse.status === 404);
+    await expect(noOutboxResponse.json()).resolves.toEqual({
+      error: {
+        code: "OUTBOX_UNAVAILABLE",
+        message: "Outbox is not enabled for this adapter.",
+      },
+    });
 
     const noOutboxStreamResponse = await gammaFragment.callRouteRaw(
       "GET",
       "/_internal/outbox/stream" as never,
     );
     assert(noOutboxStreamResponse.status === 404);
+    await expect(noOutboxStreamResponse.json()).resolves.toEqual({
+      error: {
+        code: "OUTBOX_UNAVAILABLE",
+        message: "Outbox is not enabled for this adapter.",
+      },
+    });
+
+    const noDurableOutboxResponse = await gammaFragment.callRouteRaw(
+      "GET",
+      "/_internal/outbox/durable/all" as never,
+    );
+    assert(noDurableOutboxResponse.status === 404);
 
     await closeNoOutbox();
   });
@@ -295,6 +329,80 @@ describe("internal fragment describe routes", () => {
     } finally {
       await streamResponse.stream.return(undefined);
     }
+
+    await close();
+  });
+
+  it("exposes all enabled schemas through the adapter-wide Durable Stream", async () => {
+    const { adapter, close } = await setupAdapter();
+
+    const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
+    const betaDef = defineFragment("beta-fragment").extend(withDatabase(betaSchema)).build();
+    const alphaFragment = instantiate(alphaDef)
+      .withOptions({ databaseAdapter: adapter, mountRoute: "/alpha", outbox: { enabled: true } })
+      .build();
+    const betaFragment = instantiate(betaDef)
+      .withOptions({ databaseAdapter: adapter, mountRoute: "/beta", outbox: { enabled: true } })
+      .build();
+
+    const alphaNamespace = (alphaFragment.$internal.deps as { namespace: string | null }).namespace;
+    const betaNamespace = (betaFragment.$internal.deps as { namespace: string | null }).namespace;
+    await adapter
+      .prepareMigrations(alphaSchema, alphaNamespace)
+      .executeWithDriver(adapter.driver, 0);
+    await adapter.prepareMigrations(betaSchema, betaNamespace).executeWithDriver(adapter.driver, 0);
+
+    await alphaFragment.inContext(async function (this: DatabaseRequestContext) {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => forSchema(alphaSchema).create("alpha_items", { name: "Ada" }))
+        .execute();
+    });
+    await betaFragment.inContext(async function (this: DatabaseRequestContext) {
+      await this.handlerTx()
+        .mutate(({ forSchema }) => forSchema(betaSchema).create("beta_items", { title: "Grace" }))
+        .execute();
+    });
+
+    const response = await alphaFragment.callRouteRaw(
+      "GET",
+      "/_internal/outbox/durable/all" as never,
+    );
+    assert(response.status === 200);
+    const entries = (await response.json()) as Array<{
+      payload: { json: { mutations: Array<{ schemaName?: string }> } };
+    }>;
+    expect(
+      entries.flatMap((entry) =>
+        entry.payload.json.mutations.map((mutation) => mutation.schemaName),
+      ),
+    ).toEqual([alphaSchema.name, betaSchema.name]);
+
+    await close();
+  });
+
+  it("keeps a schema named stream distinct from the legacy NDJSON route", async () => {
+    const { adapter, close } = await setupAdapter();
+    const streamDef = defineFragment("stream-fragment").extend(withDatabase(streamSchema)).build();
+    const streamFragment = instantiate(streamDef)
+      .withOptions({ databaseAdapter: adapter, mountRoute: "", outbox: { enabled: true } })
+      .build();
+    const namespace = (streamFragment.$internal.deps as { namespace: string | null }).namespace;
+    await adapter.prepareMigrations(streamSchema, namespace).executeWithDriver(adapter.driver, 0);
+
+    await streamFragment.inContext(async function (this: DatabaseRequestContext) {
+      await this.handlerTx()
+        .mutate(({ forSchema }) =>
+          forSchema(streamSchema).create("stream_items", { name: "schema-stream" }),
+        )
+        .execute();
+    });
+
+    const response = await streamFragment.handler(
+      new Request("http://fragno.local/_internal/outbox/durable/schema/stream"),
+    );
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    await expect(response.json()).resolves.toHaveLength(1);
 
     await close();
   });

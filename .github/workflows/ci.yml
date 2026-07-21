@@ -82,3 +82,6 @@ jobs:
         run:
           pnpm exec turbo run test --concurrency=80% ${{ github.event_name == 'pull_request' &&
           '--affected' || '' }}
+
+      - name: Run Durable Streams read-path conformance
+        run: pnpm exec turbo run conformance:durable-streams --filter=@fragno-dev/db

@@ -1,0 +1,31 @@
+{
+  "packageVersion": "0.3.6",
+  "serverConformanceSourceSha256": "9e42aa7274e345d3595f33afea5c7e38d1d8a6629e71d6ba4cbea59dc540779a",
+  "serverConformanceSourceTreeSha256": "5f268c38e6ca359c5cb8fda0cbc554954c9f9e04568535e38e01980129522b78",
+  "clientPackageVersion": "0.2.6",
+  "clientSourceTreeSha256": "030867cf47fae4291874fffe98a458442a5b3fdb71c7ca3a9fd3e9ead927dae5",
+  "reviewedClientCheckoutSourceTreeSha256": "bc3ade764cdeff51966d5e36ff365043fb82e53e9dab50b47b98de4164759a93",
+  "reviewedProtocolCommit": "a172acc389351cb3db6deb5cd60e3dec11e7ff39",
+  "protocolSha256": "b8f39bcfe479079c07179b909be23c0a19714892265f3c788949b043c910552f",
+  "reviewedAt": "2026-07-17",
+  "coveredReadAreas": [
+    "HEAD metadata",
+    "catch-up reads",
+    "offset validation, boundaries, and resumption",
+    "schema and namespace projection",
+    "long-poll and HTTP disconnect propagation",
+    "conditional GET and ETag",
+    "CORS preflight and browser security headers",
+    "bounded JSON reads",
+    "read-only method responses",
+    "standard TypeScript client catch-up and long-poll",
+    "in-memory, SQLite, and PGlite HTTP fixtures"
+  ],
+  "knownUnsupportedReadAreas": ["Server-Sent Events"],
+  "notApplicableReadAreas": [
+    "closed finite streams",
+    "protocol writes and deletion",
+    "TTL and expiry",
+    "forks, producers, and subscriptions"
+  ]
+}

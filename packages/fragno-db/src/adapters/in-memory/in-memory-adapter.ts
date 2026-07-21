@@ -119,14 +119,10 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
     );
     const decoder = new InMemoryUowDecoder(resolverFactory);
 
-    return new UnitOfWork(
-      compiler,
-      executor,
-      decoder,
-      name,
-      config,
-      this.#schemaNamespaceMap,
-    ).forSchema(schema);
+    return new UnitOfWork(compiler, executor, decoder, name, config, this.#schemaNamespaceMap, {
+      now: this.options.clock.now,
+      createId: this.options.idGenerator,
+    }).forSchema(schema);
   }
 
   createBaseUnitOfWork(name?: string, config?: InMemoryUowConfig) {
@@ -141,7 +137,10 @@ export class InMemoryAdapter implements DatabaseAdapter<InMemoryUowConfig> {
     );
     const decoder = new InMemoryUowDecoder(resolverFactory);
 
-    return new UnitOfWork(compiler, executor, decoder, name, config, this.#schemaNamespaceMap);
+    return new UnitOfWork(compiler, executor, decoder, name, config, this.#schemaNamespaceMap, {
+      now: this.options.clock.now,
+      createId: this.options.idGenerator,
+    });
   }
 
   prepareMigrations<T extends AnySchema>(schema: T, namespace: string | null) {

@@ -1606,6 +1606,39 @@ describe("fragment-instantiator", () => {
       assert(data.code === "INTERNAL_SERVER_ERROR");
     });
 
+    it("should silently handle errors caused by an aborted request", async () => {
+      const definition = defineFragment("test-fragment").build();
+      const controller = new AbortController();
+
+      const route = defineRoute({
+        method: "GET",
+        path: "/long-poll",
+        handler: async ({ request }) => {
+          await Promise.resolve();
+          assert(request);
+          throw request.signal.reason;
+        },
+      });
+
+      const fragment = instantiate(definition)
+        .withRoutes([route])
+        .withOptions({ mountRoute: "/api" })
+        .build();
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+      controller.abort();
+
+      try {
+        const response = await fragment.handler(
+          new Request("http://localhost/api/long-poll", { signal: controller.signal }),
+        );
+
+        assert(response.status === 499);
+        expect(consoleError).not.toHaveBeenCalled();
+      } finally {
+        consoleError.mockRestore();
+      }
+    });
+
     it("should handle errors in middleware", async () => {
       const definition = defineFragment("test-fragment").build();
 

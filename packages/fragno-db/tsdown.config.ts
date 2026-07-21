@@ -8,6 +8,8 @@ export default defineConfig([
       "./src/durable-hooks.ts",
       "./src/id.ts",
       "./src/schema/create.ts",
+      "./src/outbox/outbox.ts",
+      "./src/outbox/state-protocol.ts",
       "./src/query/mod.ts",
       "./src/adapters/adapters.ts",
       "./src/adapters/in-memory/index.ts",

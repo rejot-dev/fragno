@@ -3,6 +3,7 @@ import type { AnySchema, AnyTable, Index, IdColumn, AnyColumn } from "../../sche
 import { FragnoId, getTableRelations } from "../../schema/create";
 import { generateId } from "../../schema/generate-id";
 import type { Prettify } from "../../util/types";
+import { generateRuntimeDefault, type RuntimeDefaultContext } from "../column-defaults";
 import type { Condition, ConditionBuilder } from "../condition-builder";
 import { buildCondition } from "../condition-builder";
 import type { CursorResult } from "../cursor";
@@ -1262,6 +1263,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
   #executor: UOWExecutor<unknown, TRawInput>;
   #decoder: UOWDecoder<TRawInput>;
   #schemaNamespaceMap: WeakMap<AnySchema, string | null>;
+  #runtimeDefaults: RuntimeDefaultContext;
 
   #retrievalResults?: unknown[];
   #createdInternalIds: (bigint | null)[] = [];
@@ -1288,11 +1290,13 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     name?: string,
     config?: UnitOfWorkConfig,
     schemaNamespaceMap?: WeakMap<AnySchema, string | null>,
+    runtimeDefaults: RuntimeDefaultContext = {},
   ) {
     this.#compiler = compiler;
     this.#executor = executor;
     this.#decoder = decoder;
     this.#schemaNamespaceMap = schemaNamespaceMap ?? new WeakMap();
+    this.#runtimeDefaults = runtimeDefaults;
     this.#name = name;
     this.#config = config;
     this.#idempotencyKey = config?.idempotencyKey ?? crypto.randomUUID();
@@ -1402,6 +1406,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
       this.#name,
       { ...this.#config, idempotencyKey: this.#idempotencyKey },
       this.#schemaNamespaceMap,
+      this.#runtimeDefaults,
     );
     child.#coordinator.setAsRestricted(this, this.#coordinator);
 
@@ -1763,6 +1768,28 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
       throw new Error(`Cannot add mutation operation in executed state.`);
     }
     this.#mutationOps.push(op);
+  }
+
+  /** @internal Materialize application runtime defaults once for every create consumer. */
+  materializeRuntimeCreateValues<TTable extends AnyTable>(
+    table: TTable,
+    values: TableToInsertValues<TTable>,
+  ): TableToInsertValues<TTable> {
+    const materialized = { ...values } as TableToInsertValues<TTable>;
+    const output = materialized as Record<string, unknown>;
+
+    for (const [columnName, column] of Object.entries(table.columns)) {
+      if (output[columnName] !== undefined) {
+        continue;
+      }
+
+      const runtimeDefault = generateRuntimeDefault(column, this.#runtimeDefaults);
+      if (runtimeDefault !== undefined) {
+        output[columnName] = runtimeDefault;
+      }
+    }
+
+    return materialized;
   }
 
   /**
@@ -2203,10 +2230,13 @@ export class TypedUnitOfWork<
 
     const idColumn = tableSchema.getIdColumn();
     let externalId: string;
-    let updatedValues = values;
+    let updatedValues = this.#uow.materializeRuntimeCreateValues(
+      tableSchema as TSchema["tables"][TableName],
+      values,
+    );
 
-    // Check if ID value is provided in values
-    const providedIdValue = (values as Record<string, unknown>)[idColumn.name];
+    // Check if ID value is provided after materializing runtime defaults.
+    const providedIdValue = (updatedValues as Record<string, unknown>)[idColumn.name];
 
     if (providedIdValue !== undefined) {
       // Extract string from FragnoId or use string directly
@@ -2231,7 +2261,7 @@ export class TypedUnitOfWork<
 
       // Add the generated ID to values so it's used in the insert
       updatedValues = {
-        ...values,
+        ...updatedValues,
         [idColumn.name]: externalId,
       } as TableToInsertValues<TSchema["tables"][TableName]>;
     }

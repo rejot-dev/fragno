@@ -175,12 +175,14 @@ describe("outbox utilities", () => {
     ]);
   });
 
-  it("adds db-now defaults when converting create uow operations", () => {
+  it("materializes complete create values when converting uow operations", () => {
     const appSchema = schema("app", (s) =>
       s.addTable("users", (t) =>
         t
           .addColumn("id", idColumn())
           .addColumn("name", column("string"))
+          .addColumn("enabled", column("bool").defaultTo(true))
+          .addColumn("note", column("string").nullable())
           .addColumn(
             "createdAt",
             column("timestamp").defaultTo((b) => b.now()),
@@ -188,36 +190,33 @@ describe("outbox utilities", () => {
       ),
     );
 
-    const [mutation] = uowOperationsToLofiMutations([
-      {
-        type: "create",
-        schema: appSchema,
-        table: "users",
-        generatedExternalId: "user-1",
-        values: { name: "Ada" },
-      },
-    ]);
+    const operation = {
+      type: "create" as const,
+      schema: appSchema,
+      table: "users",
+      generatedExternalId: "user-1",
+      values: { id: "user-1", name: "Ada" },
+    };
+    const [mutation] = uowOperationsToLofiMutations([operation]);
 
     assert(mutation?.op === "create");
-    expect(mutation.values).toMatchObject({
+    expect(mutation.values).toEqual({
       name: "Ada",
-      createdAt: { tag: "db-now" },
+      enabled: true,
+      note: null,
+      createdAt: expect.objectContaining({ tag: "db-now", offsetMs: 0 }),
     });
 
-    const [materializedMutation] = uowOperationsToLofiMutations(
-      [
-        {
-          type: "create",
-          schema: appSchema,
-          table: "users",
-          generatedExternalId: "user-1",
-          values: { name: "Ada" },
-        },
-      ],
-      { now: new Date("2026-07-03T00:00:00.000Z") },
-    );
+    const [materializedMutation] = uowOperationsToLofiMutations([operation], {
+      now: new Date("2026-07-03T00:00:00.000Z"),
+    });
     assert(materializedMutation?.op === "create");
-    expect(materializedMutation.values["createdAt"]).toEqual(new Date("2026-07-03T00:00:00.000Z"));
+    expect(materializedMutation.values).toEqual({
+      name: "Ada",
+      enabled: true,
+      note: null,
+      createdAt: new Date("2026-07-03T00:00:00.000Z"),
+    });
   });
 
   it("converts outbox mutations into uow operations", () => {

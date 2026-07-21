@@ -4,7 +4,15 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 import { BufferedDatabasePump } from "../buffered-pump";
 import type { DatabaseHandlerContext, DatabaseHandlerTx } from "../db-fragment-definition-builder";
+import {
+  durableStreamErrorResponse,
+  durableStreamMethodNotAllowedResponse,
+  durableStreamPreflightResponse,
+  handleDurableStreamRequest,
+  type DurableStreamSchema,
+} from "../outbox/durable-streams";
 import type { OutboxEntry } from "../outbox/outbox";
+import { projectOutboxEntriesToStateEvents } from "../outbox/state-protocol";
 import { submitSyncRequest, type SyncRequestRecord } from "../sync/submit";
 import type { SubmitRequest, SyncCommandDefinition } from "../sync/types";
 import {
@@ -27,6 +35,9 @@ type InternalDescribeResponse = {
     internal: "/_internal";
     outbox?: "/_internal/outbox";
     outboxStream?: "/_internal/outbox/stream";
+    outboxDurableStream?: "/_internal/outbox/durable/schema/:schema";
+    outboxDurableStreamAll?: "/_internal/outbox/durable/all";
+    outboxDurableState?: "/_internal/outbox/durable/state";
   };
 };
 
@@ -169,6 +180,11 @@ export const createInternalFragmentDescribeRoutes = () =>
             internal: "/_internal",
             outbox: outboxEnabled ? "/_internal/outbox" : undefined,
             outboxStream: outboxEnabled ? "/_internal/outbox/stream" : undefined,
+            outboxDurableStream: outboxEnabled
+              ? "/_internal/outbox/durable/schema/:schema"
+              : undefined,
+            outboxDurableStreamAll: outboxEnabled ? "/_internal/outbox/durable/all" : undefined,
+            outboxDurableState: outboxEnabled ? "/_internal/outbox/durable/state" : undefined,
           },
         };
 
@@ -178,70 +194,106 @@ export const createInternalFragmentDescribeRoutes = () =>
   ]);
 
 export const createInternalFragmentOutboxRoutes = () =>
-  defineRoutes(internalFragmentDef).create(({ defineRoute, services, config }) => [
-    defineRoute({
-      method: "GET",
-      path: "/outbox",
-      handler: async function (input, { json }) {
-        const registry = config.registry;
-        if (!registry || !registry.isOutboxEnabled()) {
-          return json(
-            {
-              error: {
-                code: "OUTBOX_UNAVAILABLE",
-                message: "Outbox is not enabled for this adapter.",
+  defineRoutes(internalFragmentDef).create(({ defineRoute, services, config }) => {
+    const outboxUnavailableResponse = () => {
+      const registry = config.registry;
+      if (registry?.isOutboxEnabled()) {
+        return undefined;
+      }
+
+      return durableStreamErrorResponse(404, "Outbox is not enabled for this adapter.");
+    };
+
+    const resolveSchema = (identifier: string): DurableStreamSchema | undefined => {
+      if (!identifier) {
+        return undefined;
+      }
+
+      const schemas = config.registry?.listOutboxSchemas() ?? [];
+      const namespaceMatch = schemas.find(({ namespace }) => namespace === identifier);
+      if (namespaceMatch) {
+        return namespaceMatch;
+      }
+
+      const nameMatches = schemas.filter(({ name }) => name === identifier);
+      if (nameMatches.length === 1) {
+        return nameMatches[0];
+      }
+
+      // A null namespace has no alternative namespace URL, while the other registrations do.
+      return nameMatches.find(({ namespace }) => namespace === null);
+    };
+
+    const rejectDurableStreamWrite = (path: string): Response =>
+      resolveSchema(path)
+        ? durableStreamMethodNotAllowedResponse()
+        : durableStreamErrorResponse(404, "Requested schema stream does not exist.");
+
+    const handleDurableStream = async (options: {
+      method: "GET" | "HEAD";
+      path?: string;
+      query: URLSearchParams;
+      headers: Headers;
+      signal?: AbortSignal;
+      handlerTx: DatabaseHandlerContext["handlerTx"];
+      projection?: "outbox" | "state";
+    }) => {
+      const schema = options.path === undefined ? undefined : resolveSchema(options.path);
+      if (options.path !== undefined && !schema) {
+        return durableStreamErrorResponse(404, "Requested schema stream does not exist.");
+      }
+
+      return handleDurableStreamRequest({
+        method: options.method,
+        query: options.query,
+        headers: options.headers,
+        signal: options.signal,
+        schema,
+        listOutboxEntries: async (listOptions) =>
+          await options
+            .handlerTx()
+            .withServiceCalls(() => [services.outboxService.list(listOptions)] as const)
+            .transform(({ serviceResult: [entries] }) => entries as OutboxEntry[])
+            .execute(),
+        getTailOffset: async () =>
+          await options
+            .handlerTx()
+            .withServiceCalls(() => [services.outboxService.tailVersionstamp()] as const)
+            .transform(({ serviceResult: [versionstamp] }) => versionstamp)
+            .execute(),
+        ...(options.projection === "state"
+          ? { projectEntries: projectOutboxEntriesToStateEvents }
+          : {}),
+      });
+    };
+
+    return [
+      defineRoute({
+        method: "GET",
+        path: "/outbox",
+        handler: async function (input, { json }) {
+          if (!config.registry?.isOutboxEnabled()) {
+            return json(
+              {
+                error: {
+                  code: "OUTBOX_UNAVAILABLE",
+                  message: "Outbox is not enabled for this adapter.",
+                },
               },
-            },
-            { status: 404 },
-          );
-        }
+              { status: 404 },
+            );
+          }
 
-        // We intentionally skip input/output schemas here to keep the internal route lightweight.
-        // Query params are validated manually and the response shape is stable (OutboxEntry[]),
-        // while the public API surface is still gated behind adapter config.
-        const afterVersionstamp = input.query.get("afterVersionstamp") ?? undefined;
-        const limitResult = parseLimitQueryParam(input.query.get("limit"));
-        if (!limitResult.ok) {
-          return json(limitResult.response, { status: limitResult.status });
-        }
+          // We intentionally skip input/output schemas here to keep the internal route lightweight.
+          // Query params are validated manually and the response shape is stable (OutboxEntry[]),
+          // while the public API surface is still gated behind adapter config.
+          const afterVersionstamp = input.query.get("afterVersionstamp") ?? undefined;
+          const limitResult = parseLimitQueryParam(input.query.get("limit"));
+          if (!limitResult.ok) {
+            return json(limitResult.response, { status: limitResult.status });
+          }
 
-        const limit = limitResult.limit;
-
-        const entries = await this.handlerTx()
-          .withServiceCalls(
-            () => [services.outboxService.list({ afterVersionstamp, limit })] as const,
-          )
-          .transform(({ serviceResult: [result] }) => result)
-          .execute();
-
-        return json(entries);
-      },
-    }),
-    defineRoute({
-      method: "GET",
-      path: "/outbox/stream",
-      handler: async function (input, { json, jsonStream }) {
-        const registry = config.registry;
-        if (!registry || !registry.isOutboxEnabled()) {
-          return json(
-            {
-              error: {
-                code: "OUTBOX_UNAVAILABLE",
-                message: "Outbox is not enabled for this adapter.",
-              },
-            },
-            { status: 404 },
-          );
-        }
-
-        let afterVersionstamp = input.query.get("afterVersionstamp") ?? undefined;
-        const limitResult = parseLimitQueryParam(input.query.get("limit"));
-        if (!limitResult.ok) {
-          return json(limitResult.response, { status: limitResult.status });
-        }
-
-        const listEntries = async (handlerTx: DatabaseHandlerTx): Promise<OutboxEntry[]> => {
-          const entries = await handlerTx()
+          const entries = await this.handlerTx()
             .withServiceCalls(
               () =>
                 [
@@ -251,51 +303,261 @@ export const createInternalFragmentOutboxRoutes = () =>
                   }),
                 ] as const,
             )
-            .transform(({ serviceResult: [result] }) => result as OutboxEntry[])
+            .transform(({ serviceResult: [result] }) => result)
             .execute();
 
-          afterVersionstamp = entries[entries.length - 1]?.versionstamp ?? afterVersionstamp;
-          return entries;
-        };
+          return json(entries);
+        },
+      }),
+      defineRoute({
+        method: "GET",
+        path: "/outbox/stream",
+        handler: async function (input, { json, jsonStream }) {
+          if (!config.registry?.isOutboxEnabled()) {
+            return json(
+              {
+                error: {
+                  code: "OUTBOX_UNAVAILABLE",
+                  message: "Outbox is not enabled for this adapter.",
+                },
+              },
+              { status: 404 },
+            );
+          }
 
-        const initialEntries = await listEntries((options) => this.handlerTx(options));
+          let afterVersionstamp = input.query.get("afterVersionstamp") ?? undefined;
+          const limitResult = parseLimitQueryParam(input.query.get("limit"));
+          if (!limitResult.ok) {
+            return json(limitResult.response, { status: limitResult.status });
+          }
 
-        return jsonStream(async (stream) => {
-          const pump = new BufferedDatabasePump<never, never, OutboxEntry>({
-            handlerTx: (options) => this.handlerTx(options),
-            intervalMs: OUTBOX_STREAM_PUMP_INTERVAL_MS,
-            cursorForObservedItem: (entry) => entry.versionstamp,
-            onError: (error) => console.error("[outbox-stream] flush failed", error),
-            flush: async ({ handlerTx }) => ({ observedItems: await listEntries(handlerTx) }),
-          });
+          const listEntries = async (handlerTx: DatabaseHandlerTx): Promise<OutboxEntry[]> => {
+            const entries = await handlerTx()
+              .withServiceCalls(
+                () =>
+                  [
+                    services.outboxService.list({
+                      afterVersionstamp,
+                      limit: limitResult.limit,
+                    }),
+                  ] as const,
+              )
+              .transform(({ serviceResult: [result] }) => result as OutboxEntry[])
+              .execute();
 
-          let stopObserving = () => {};
-          const waitForAbort = new Promise<void>((resolve) => {
-            stream.onAbort(() => {
+            afterVersionstamp = entries[entries.length - 1]?.versionstamp ?? afterVersionstamp;
+            return entries;
+          };
+
+          const initialEntries = await listEntries((options) => this.handlerTx(options));
+
+          return jsonStream(async (stream) => {
+            const pump = new BufferedDatabasePump<never, never, OutboxEntry>({
+              handlerTx: (options) => this.handlerTx(options),
+              intervalMs: OUTBOX_STREAM_PUMP_INTERVAL_MS,
+              cursorForObservedItem: (entry) => entry.versionstamp,
+              onError: (error) => console.error("[outbox-stream] flush failed", error),
+              flush: async ({ handlerTx }) => ({ observedItems: await listEntries(handlerTx) }),
+            });
+
+            let stopObserving = () => {};
+            const waitForAbort = new Promise<void>((resolve) => {
+              stream.onAbort(() => {
+                stopObserving();
+                pump.stop();
+                resolve();
+              });
+            });
+
+            stopObserving = pump.observe(async (entry) => {
+              await stream.writeRaw(`${JSON.stringify(entry)}\n`);
+            });
+
+            try {
+              for (const entry of initialEntries) {
+                await stream.writeRaw(`${JSON.stringify(entry)}\n`);
+              }
+              await pump.flushNow();
+              await waitForAbort;
+            } finally {
               stopObserving();
               pump.stop();
-              resolve();
-            });
-          });
-
-          stopObserving = pump.observe(async (entry) => {
-            await stream.writeRaw(`${JSON.stringify(entry)}\n`);
-          });
-
-          try {
-            for (const entry of initialEntries) {
-              await stream.writeRaw(`${JSON.stringify(entry)}\n`);
             }
-            await pump.flushNow();
-            await waitForAbort;
-          } finally {
-            stopObserving();
-            pump.stop();
+          });
+        },
+      }),
+      defineRoute({
+        method: "GET",
+        path: "/outbox/durable/state",
+        handler: async function (input) {
+          const unavailableResponse = outboxUnavailableResponse();
+          if (unavailableResponse) {
+            return unavailableResponse;
           }
-        });
-      },
-    }),
-  ]);
+
+          return handleDurableStream({
+            method: "GET",
+            projection: "state",
+            query: input.query,
+            headers: input.headers,
+            signal: input.request?.signal,
+            handlerTx: () => this.handlerTx(),
+          });
+        },
+      }),
+      defineRoute({
+        method: "HEAD",
+        path: "/outbox/durable/state",
+        handler: async function (input) {
+          const unavailableResponse = outboxUnavailableResponse();
+          if (unavailableResponse) {
+            return unavailableResponse;
+          }
+
+          return handleDurableStream({
+            method: "HEAD",
+            projection: "state",
+            query: input.query,
+            headers: input.headers,
+            signal: input.request?.signal,
+            handlerTx: () => this.handlerTx(),
+          });
+        },
+      }),
+      defineRoute({
+        method: "OPTIONS",
+        path: "/outbox/durable/state",
+        handler: async function () {
+          const unavailableResponse = outboxUnavailableResponse();
+          return unavailableResponse ?? durableStreamPreflightResponse();
+        },
+      }),
+      ...(["POST", "PUT", "DELETE", "PATCH"] as const).map((method) =>
+        defineRoute({
+          method,
+          path: "/outbox/durable/state",
+          handler: async function () {
+            const unavailableResponse = outboxUnavailableResponse();
+            return unavailableResponse ?? durableStreamMethodNotAllowedResponse();
+          },
+        }),
+      ),
+      defineRoute({
+        method: "GET",
+        path: "/outbox/durable/all",
+        handler: async function (input) {
+          const unavailableResponse = outboxUnavailableResponse();
+          if (unavailableResponse) {
+            return unavailableResponse;
+          }
+
+          return handleDurableStream({
+            method: "GET",
+            query: input.query,
+            headers: input.headers,
+            signal: input.request?.signal,
+            handlerTx: () => this.handlerTx(),
+          });
+        },
+      }),
+      defineRoute({
+        method: "HEAD",
+        path: "/outbox/durable/all",
+        handler: async function (input) {
+          const unavailableResponse = outboxUnavailableResponse();
+          if (unavailableResponse) {
+            return unavailableResponse;
+          }
+
+          return handleDurableStream({
+            method: "HEAD",
+            query: input.query,
+            headers: input.headers,
+            signal: input.request?.signal,
+            handlerTx: () => this.handlerTx(),
+          });
+        },
+      }),
+      defineRoute({
+        method: "OPTIONS",
+        path: "/outbox/durable/all",
+        handler: async function () {
+          const unavailableResponse = outboxUnavailableResponse();
+          return unavailableResponse ?? durableStreamPreflightResponse();
+        },
+      }),
+      ...(["POST", "PUT", "DELETE", "PATCH"] as const).map((method) =>
+        defineRoute({
+          method,
+          path: "/outbox/durable/all",
+          handler: async function () {
+            const unavailableResponse = outboxUnavailableResponse();
+            return unavailableResponse ?? durableStreamMethodNotAllowedResponse();
+          },
+        }),
+      ),
+      defineRoute({
+        method: "GET",
+        path: "/outbox/durable/schema/:schema",
+        handler: async function (input) {
+          const unavailableResponse = outboxUnavailableResponse();
+          if (unavailableResponse) {
+            return unavailableResponse;
+          }
+
+          return handleDurableStream({
+            method: "GET",
+            path: input.pathParams.schema,
+            query: input.query,
+            headers: input.headers,
+            signal: input.request?.signal,
+            handlerTx: () => this.handlerTx(),
+          });
+        },
+      }),
+      defineRoute({
+        method: "HEAD",
+        path: "/outbox/durable/schema/:schema",
+        handler: async function (input) {
+          const unavailableResponse = outboxUnavailableResponse();
+          if (unavailableResponse) {
+            return unavailableResponse;
+          }
+
+          return handleDurableStream({
+            method: "HEAD",
+            path: input.pathParams.schema,
+            query: input.query,
+            headers: input.headers,
+            signal: input.request?.signal,
+            handlerTx: () => this.handlerTx(),
+          });
+        },
+      }),
+      defineRoute({
+        method: "OPTIONS",
+        path: "/outbox/durable/schema/:schema",
+        handler: async function () {
+          const unavailableResponse = outboxUnavailableResponse();
+          return unavailableResponse ?? durableStreamPreflightResponse();
+        },
+      }),
+      ...(["POST", "PUT", "DELETE", "PATCH"] as const).map((method) =>
+        defineRoute({
+          method,
+          path: "/outbox/durable/schema/:schema",
+          handler: async function (input) {
+            const unavailableResponse = outboxUnavailableResponse();
+            if (unavailableResponse) {
+              return unavailableResponse;
+            }
+
+            return rejectDurableStreamWrite(input.pathParams.schema);
+          },
+        }),
+      ),
+    ];
+  });
 
 type InternalSyncError = {
   error: {

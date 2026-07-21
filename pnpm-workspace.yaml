@@ -27,6 +27,7 @@ patchedDependencies:
 allowBuilds:
   better-sqlite3: true
   "@mongodb-js/zstd": false
+  "@journeyapps/wa-sqlite": true
   "@parcel/watcher": false
   "@prisma/client": false
   "@prisma/engines": false
@@ -40,3 +41,10 @@ allowBuilds:
   protobufjs: false
   sharp: false
   workerd: false
+
+minimumReleaseAgeExclude:
+  - "@durable-streams/server-conformance-tests@0.3.6"
+  - "@tanstack/db-sqlite-persistence-core@0.2.8"
+  - "@tanstack/db@0.6.16"
+  - "@tanstack/browser-db-sqlite-persistence@0.2.8"
+  - "@tanstack/react-db@0.1.94"

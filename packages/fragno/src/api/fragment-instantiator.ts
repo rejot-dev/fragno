@@ -52,6 +52,17 @@ const requestSourceSymbol = Symbol.for("fragno-request-source");
 const requestRouteSymbol = Symbol.for("fragno-request-route");
 const requestWaitUntilSymbol = Symbol.for("fragno-request-wait-until");
 
+const isRequestAbortError = (request: Request, error: unknown): boolean =>
+  request.signal.aborted &&
+  (error === request.signal.reason ||
+    (typeof error === "object" &&
+      error !== null &&
+      "name" in error &&
+      error.name === "AbortError"));
+
+const clientClosedRequestResponse = (): Response =>
+  new Response(null, { status: 499, statusText: "Client Closed Request" });
+
 type RequestRouteInfo = {
   method: HTTPMethod;
   path: string;
@@ -855,6 +866,10 @@ export class FragnoInstantiatedFragment<
         return middlewareResult;
       }
     } catch (error) {
+      if (isRequestAbortError(options.req, error)) {
+        return clientClosedRequestResponse();
+      }
+
       console.error("Error in middleware", error);
 
       if (error instanceof FragnoApiError) {
@@ -918,6 +933,10 @@ export class FragnoInstantiatedFragment<
       const result = await handler.call(contextForHandler, inputContext, outputContext);
       return result;
     } catch (error) {
+      if (isRequestAbortError(req, error)) {
+        return clientClosedRequestResponse();
+      }
+
       console.error("Error in handler", error);
 
       if (error instanceof FragnoApiError) {

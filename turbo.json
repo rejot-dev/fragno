@@ -34,6 +34,14 @@
     },
     "lint": {
       "outputs": []
+    },
+    "conformance:durable-streams": {
+      "dependsOn": ["build"],
+      "outputs": []
+    },
+    "conformance:durable-streams:freshness": {
+      "cache": false,
+      "env": ["DURABLE_STREAMS_REPO"]
     }
   }
 }

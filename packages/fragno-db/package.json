@@ -25,6 +25,14 @@
       "types": "./dist/schema/create.d.ts",
       "default": "./dist/schema/create.js"
     },
+    "./outbox": {
+      "types": "./dist/outbox/outbox.d.ts",
+      "default": "./dist/outbox/outbox.js"
+    },
+    "./state-protocol": {
+      "types": "./dist/outbox/state-protocol.d.ts",
+      "default": "./dist/outbox/state-protocol.js"
+    },
     "./drivers": {
       "types": "./dist/adapters/generic-sql/driver-config.d.ts",
       "default": "./dist/adapters/generic-sql/driver-config.js"
@@ -114,18 +122,24 @@
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
+    "conformance:durable-streams": "vitest run src/outbox/durable-streams.read-conformance.test.ts src/outbox/durable-streams.conformance-freshness.test.ts",
+    "conformance:durable-streams:freshness": "vitest run src/outbox/durable-streams.conformance-freshness.test.ts",
     "types:check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest --watch"
   },
   "dependencies": {
+    "@durable-streams/state": "0.3.1",
     "@fragno-dev/core": "workspace:*",
     "@standard-schema/spec": "^1.1.0",
     "kysely": "^0.28.10",
     "superjson": "^2.2.1"
   },
   "devDependencies": {
+    "@durable-streams/client": "^0.2.6",
+    "@durable-streams/server-conformance-tests": "^0.3.6",
     "@electric-sql/pglite": "^0.3.15",
+    "@fragno-dev/node": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
     "@libsql/client": "^0.15.15",

@@ -1,10 +1,10 @@
 import { internalSchema } from "../fragments/internal-fragment.schema";
-import { dbNow, getDbNowOffsetMs, isDbNow } from "../query/db-now";
+import { getDbNowOffsetMs, isDbNow } from "../query/db-now";
 import type { MutationOperation } from "../query/unit-of-work/unit-of-work";
 import type { AnySchema, AnyTable } from "../schema/create";
 import { FragnoId, FragnoReference, getTableForeignKey } from "../schema/create";
 import type { OutboxRefLookup, OutboxPayload, OutboxMutation } from "./outbox";
-import { encodeVersionstamp, versionstampToHex } from "./outbox";
+import { encodeVersionstamp, materializeOutboxCreateValues, versionstampToHex } from "./outbox";
 
 const INTERNAL_TABLE_NAMES = new Set(Object.keys(internalSchema.tables));
 
@@ -34,13 +34,15 @@ export function buildOutboxPlan(operations: MutationOperation<AnySchema>[]): Out
 
     const table = getTable(op.schema, op.table);
     const schemaName = op.namespace ?? "";
-    const namespace = op.namespace ? op.namespace : undefined;
+    const logicalSchemaName = op.schema.name;
+    const namespace = op.namespace ?? undefined;
     const mutationIndex = drafts.length;
 
     if (op.type === "create") {
       drafts.push({
         op: "create",
         schema: schemaName,
+        schemaName: logicalSchemaName,
         namespace,
         table: op.table,
         externalId: op.generatedExternalId,
@@ -61,6 +63,7 @@ export function buildOutboxPlan(operations: MutationOperation<AnySchema>[]): Out
       drafts.push({
         op: "update",
         schema: schemaName,
+        schemaName: logicalSchemaName,
         namespace,
         table: op.table,
         externalId: getExternalId(op.id),
@@ -82,6 +85,7 @@ export function buildOutboxPlan(operations: MutationOperation<AnySchema>[]): Out
       drafts.push({
         op: "delete",
         schema: schemaName,
+        schemaName: logicalSchemaName,
         namespace,
         table: op.table,
         externalId: getExternalId(op.id),
@@ -149,19 +153,10 @@ function encodeOutboxCreateValues(options: {
   namespace?: string;
   lookups: OutboxRefLookup[];
 }): Record<string, unknown> {
-  const output = encodeOutboxValues(options);
-
-  for (const [key, column] of Object.entries(options.table.columns)) {
-    if (column.role === "internal-id" || Object.prototype.hasOwnProperty.call(output, key)) {
-      continue;
-    }
-
-    if (column.default && "dbSpecial" in column.default && column.default.dbSpecial === "now") {
-      output[key] = dbNow();
-    }
-  }
-
-  return output;
+  return encodeOutboxValues({
+    ...options,
+    values: materializeOutboxCreateValues(options.table, options.values),
+  });
 }
 
 function encodeOutboxValues(options: {

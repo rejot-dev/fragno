@@ -27,6 +27,12 @@ type AdapterRegistry = {
     version: number;
     tables: string[];
   }>;
+  listOutboxSchemas: () => Array<{
+    name: string;
+    namespace: string | null;
+    version: number;
+    tables: string[];
+  }>;
   listOutboxFragments: () => Array<{ name: string; mountRoute: string }>;
   isOutboxEnabled: () => boolean;
   resolveSyncCommand: (
@@ -606,6 +612,19 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               createdAt: entry.createdAt,
             })),
           )
+          .build();
+      },
+
+      tailVersionstamp() {
+        return this.serviceTx(internalSchema)
+          .retrieve((uow) =>
+            uow.findFirst("fragno_db_outbox", (b) =>
+              b
+                .whereIndex("idx_outbox_versionstamp")
+                .orderByIndex("idx_outbox_versionstamp", "desc"),
+            ),
+          )
+          .transformRetrieve(([entry]) => entry?.versionstamp)
           .build();
       },
     });

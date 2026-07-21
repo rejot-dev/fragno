@@ -24,6 +24,9 @@ const outboxSchema = schema("outbox", (s) => {
       return t
         .addColumn("id", idColumn())
         .addColumn("email", column("string"))
+        .addColumn("enabled", column("bool").defaultTo(true))
+        .addColumn("runtimeLabel", column("string").defaultTo$("generated"))
+        .addColumn("note", column("string").nullable())
         .addColumn(
           "createdAt",
           column("timestamp").defaultTo((b) => b.now()),
@@ -303,7 +306,7 @@ describe("Fragno DB Outbox", () => {
     await cleanup();
   });
 
-  it("materializes omitted db-now defaults before serializing create outbox payloads", async () => {
+  it("serializes complete visible create rows", async () => {
     const { fragment, internalFragment, cleanup } = await buildOutboxTest({
       type: "kysely-sqlite",
       outboxEnabled: true,
@@ -316,7 +319,13 @@ describe("Fragno DB Outbox", () => {
     const payload = superjson.deserialize(entries[0].payload as SuperJSONResult) as OutboxPayload;
     const mutation = payload.mutations[0];
     assert(mutation.op === "create");
-    expect(mutation.values["createdAt"]).toBeInstanceOf(Date);
+    expect(mutation.values).toEqual({
+      email: "db-now-default@example.com",
+      enabled: true,
+      runtimeLabel: "generated",
+      note: null,
+      createdAt: expect.any(Date),
+    });
     expect(mutation.values["createdAt"]).not.toMatchObject({ tag: "db-now" });
 
     await cleanup();

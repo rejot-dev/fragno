@@ -949,6 +949,56 @@ describe("generateId", () => {
   });
 });
 
+describe("create runtime defaults", () => {
+  it("materializes runtime defaults once with the unit of work context", () => {
+    let labelDefaultCalls = 0;
+    let idDefaultCalls = 0;
+    const now = new Date("2026-07-17T12:00:00.000Z");
+    const runtimeSchema = schema("runtime-defaults", (s) =>
+      s.addTable("items", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .addColumn(
+            "label",
+            column("string").defaultTo$(() => `label-${++labelDefaultCalls}`),
+          )
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo$((builder) => builder.now()),
+          ),
+      ),
+    );
+    const labelDefaultCallsBeforeCreate = labelDefaultCalls;
+    const uow = new UnitOfWork(
+      createMockCompiler(),
+      createMockExecutor(),
+      createMockDecoder(),
+      undefined,
+      undefined,
+      undefined,
+      {
+        now: () => now,
+        createId: () => `item-${++idDefaultCalls}`,
+      },
+    );
+
+    const id = uow.forSchema(runtimeSchema).create("items", { name: "Complete row" });
+    const [operation] = uow.getMutationOperations();
+
+    assert(operation?.type === "create");
+    assert(id.externalId === "item-1");
+    expect(operation.values).toEqual({
+      id: "item-1",
+      name: "Complete row",
+      label: `label-${labelDefaultCallsBeforeCreate + 1}`,
+      createdAt: now,
+    });
+    assert(labelDefaultCalls === labelDefaultCallsBeforeCreate + 1);
+    assert(idDefaultCalls === 1);
+  });
+});
+
 describe("getCreatedIds", () => {
   const testSchema = schema("test", (s) =>
     s.addTable("users", (t) =>
