@@ -25,6 +25,7 @@ patchedDependencies:
   "@earendil-works/pi-ai": patches/@earendil-works__pi-ai.patch
 
 allowBuilds:
+  "@journeyapps/wa-sqlite": true
   better-sqlite3: true
   "@mongodb-js/zstd": false
   "@parcel/watcher": false
