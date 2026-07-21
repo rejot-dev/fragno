@@ -109,6 +109,26 @@ describe("internal fragment describe routes", () => {
     await close();
   });
 
+  it("returns one adapter identity to concurrent cold-start requests", async () => {
+    const { adapter, close } = await setupAdapter();
+    const alphaDef = defineFragment("alpha-fragment").extend(withDatabase(alphaSchema)).build();
+    const alphaFragment = instantiate(alphaDef)
+      .withOptions({ databaseAdapter: adapter, mountRoute: "/alpha" })
+      .build();
+
+    const responses = await Promise.all(
+      Array.from({ length: 25 }, async () => {
+        const response = await alphaFragment.callRouteRaw("GET", "/_internal" as never);
+        return { status: response.status, payload: await response.json() };
+      }),
+    );
+
+    expect(responses.map(({ status }) => status)).toEqual(Array.from({ length: 25 }, () => 200));
+    assert(new Set(responses.map(({ payload }) => payload.adapterIdentity)).size === 1);
+
+    await close();
+  });
+
   it("returns an error when internal settings are unavailable", async () => {
     const { adapter, close } = await setupAdapter({ migrateInternal: false });
 
