@@ -369,6 +369,64 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
       }
     });
 
+    it("writes outbox create payloads with static and runtime defaults", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const outboxState = getOutboxStateForAdapter(adapter);
+        outboxState.config.enabled = true;
+        outboxState.enabledSchemaKeys.add(namespace);
+
+        const create = createSuiteUnitOfWork(adapter, "create-outbox-defaults");
+        const uowId = create.idempotencyKey;
+        create.create("users", {
+          id: "outbox-default-user",
+          name: "Defaults",
+          email: "outbox-default-user@example.com",
+          age: 1,
+        });
+        create.create("emails", {
+          id: "outbox-default-email",
+          user_id: "outbox-default-user",
+          email: "outbox-default-email@example.com",
+        });
+        assert((await create.executeMutations()).success);
+
+        const [[email]] = await createSuiteUnitOfWork(adapter, "read-outbox-default-email")
+          .find("emails", (b) =>
+            b.whereIndex("emails_email_idx", (eb) =>
+              eb("email", "=", "outbox-default-email@example.com"),
+            ),
+          )
+          .executeRetrieve();
+        expect(email).toMatchObject({
+          is_primary: false,
+          runtime_label: "runtime-generated",
+        });
+
+        const [entries] = await adapter
+          .createUnitOfWork(internalSchema, null, "read-outbox-default-entry")
+          .find("fragno_db_outbox", (b) =>
+            b.whereIndex("idx_outbox_uow", (eb) => eb("uowId", "=", uowId)),
+          )
+          .executeRetrieve();
+
+        expect(entries).toHaveLength(1);
+        const payload = superjson.deserialize(
+          entries[0].payload as SuperJSONResult,
+        ) as OutboxPayload;
+        const mutation = payload.mutations.find((candidate) => candidate.table === "emails");
+        assert(mutation?.op === "create");
+        expect(mutation.values).toMatchObject({
+          is_primary: false,
+          runtime_label: email.runtime_label,
+        });
+        expect(mutation.values).not.toHaveProperty("_internalId");
+        expect(mutation.values).not.toHaveProperty("_version");
+      } finally {
+        await close?.();
+      }
+    });
+
     it("fails a UOW when check() sees a changed version and rolls back following mutations", async () => {
       const { adapter, close } = await createContext();
       try {

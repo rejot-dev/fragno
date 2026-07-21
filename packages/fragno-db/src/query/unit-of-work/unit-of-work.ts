@@ -225,9 +225,13 @@ export type MutationOperation<
 export interface CompiledMutation<TOutput> {
   query: TOutput;
   /**
-   * Original mutation operation for execution metadata (e.g., outbox payloads).
+   * Original mutation operation for execution metadata and outbox inclusion decisions.
    */
   operation?: MutationOperation<AnySchema>;
+  /**
+   * Mutation operation containing runtime-generated values exactly as compiled for execution.
+   */
+  materializedOperation?: MutationOperation<AnySchema>;
   /**
    * Idempotency key for the Unit of Work that produced this mutation.
    */

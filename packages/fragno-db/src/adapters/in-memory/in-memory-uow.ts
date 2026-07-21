@@ -14,6 +14,7 @@ import {
   parseOutboxVersionValue,
 } from "../../outbox/outbox";
 import { buildOutboxPlan, finalizeOutboxPayload } from "../../outbox/outbox-builder";
+import type { RuntimeDefaultContext } from "../../query/column-defaults";
 import { buildCondition } from "../../query/condition-builder";
 import {
   createCursorFromRecord,
@@ -36,6 +37,7 @@ import type {
 import {
   encodeValues,
   encodeValuesWithDbDefaults,
+  materializeRuntimeCreateValues,
   ReferenceSubquery,
 } from "../../query/value-encoding";
 import type { AnySchema, AnyTable } from "../../schema/create";
@@ -1347,13 +1349,42 @@ const insertOutboxMutationRows = (
   return rollbackActions;
 };
 
-export const createInMemoryUowCompiler = (): UOWCompiler<InMemoryCompiledQuery> => ({
+export const createInMemoryUowCompiler = (
+  runtimeDefaults: RuntimeDefaultContext = {},
+): UOWCompiler<InMemoryCompiledQuery> => ({
   compileRetrievalOperation(op: RetrievalOperation<AnySchema>): InMemoryCompiledQuery | null {
     return op;
   },
   compileMutationOperation(
     op: MutationOperation<AnySchema>,
   ): CompiledMutation<InMemoryCompiledQuery> | null {
+    if (op.type === "create") {
+      const table = op.schema.tables[op.table];
+      if (!table) {
+        throw new Error(`Invalid table name ${op.table}.`);
+      }
+
+      const idColumnName = table.getIdColumn().name;
+      const operationValues = op.values as Record<string, unknown>;
+      const createValues =
+        operationValues[idColumnName] === undefined
+          ? { ...operationValues, [idColumnName]: op.generatedExternalId }
+          : operationValues;
+      const materializedOperation = {
+        ...op,
+        values: materializeRuntimeCreateValues(createValues, table, runtimeDefaults),
+      };
+
+      return {
+        query: materializedOperation,
+        operation: op,
+        materializedOperation,
+        op: op.type,
+        expectedAffectedRows: null,
+        expectedReturnedRows: null,
+      };
+    }
+
     return {
       query: op,
       operation: op,
@@ -1418,7 +1449,7 @@ export const createInMemoryUowExecutor = (
           if (shouldInclude && !shouldInclude(operation)) {
             return [];
           }
-          return [operation];
+          return [mutation.materializedOperation ?? operation];
         })
       : [];
     const outboxPlan = outboxOperations.length > 0 ? buildOutboxPlan(outboxOperations) : null;

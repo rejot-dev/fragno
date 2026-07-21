@@ -19,6 +19,10 @@ export const queryEngineSuiteSchema = schema("query_engine_suite", (s) =>
         .addColumn("user_id", referenceColumn({ table: "users" }))
         .addColumn("email", column("string"))
         .addColumn("is_primary", column("bool").defaultTo(false))
+        .addColumn(
+          "runtime_label",
+          column("string").defaultTo$(() => "runtime-generated"),
+        )
         .createIndex("emails_email_idx", ["email"], { unique: true })
         .createIndex("emails_user_idx", ["user_id"]),
     )

@@ -152,7 +152,16 @@ function encodeOutboxCreateValues(options: {
   const output = encodeOutboxValues(options);
 
   for (const [key, column] of Object.entries(options.table.columns)) {
-    if (column.role === "internal-id" || Object.prototype.hasOwnProperty.call(output, key)) {
+    if (
+      column.role === "internal-id" ||
+      column.isHidden ||
+      Object.prototype.hasOwnProperty.call(output, key)
+    ) {
+      continue;
+    }
+
+    if (column.default && "value" in column.default) {
+      output[key] = column.default.value;
       continue;
     }
 
@@ -175,11 +184,10 @@ function encodeOutboxValues(options: {
   const output: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(values)) {
-    if (value === undefined) {
+    const column = table.columns[key];
+    if (value === undefined || column?.isHidden) {
       continue;
     }
-
-    const column = table.columns[key];
 
     if (column?.role === "reference") {
       const resolved = resolveReferenceValue({

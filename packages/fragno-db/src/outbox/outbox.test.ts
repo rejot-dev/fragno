@@ -28,6 +28,13 @@ const outboxSchema = schema("outbox", (s) => {
           "createdAt",
           column("timestamp").defaultTo((b) => b.now()),
         )
+        .addColumn("status", column("string").defaultTo("pending"))
+        .addColumn("count", column("integer").defaultTo(0))
+        .addColumn("enabled", column("bool").defaultTo(true))
+        .addColumn(
+          "runtimeLabel",
+          column("string").defaultTo$(() => "runtime-generated"),
+        )
         .createIndex("idx_users_email", ["email"], { unique: true });
     })
     .addTable("posts", (t) => {
@@ -189,6 +196,19 @@ async function createUser(fragment: AnyFragnoInstantiatedDatabaseFragment, email
     }
 
     return user.id;
+  });
+}
+
+async function findUser(fragment: AnyFragnoInstantiatedDatabaseFragment, email: string) {
+  return fragment.inContext(async function (this: DatabaseRequestContext) {
+    return await this.handlerTx()
+      .retrieve(({ forSchema }) =>
+        forSchema(outboxSchema).findFirst("users", (b) =>
+          b.whereIndex("idx_users_email", (eb) => eb("email", "=", email)),
+        ),
+      )
+      .transformRetrieve(([result]) => result)
+      .execute();
   });
 }
 
@@ -444,6 +464,41 @@ describe("Fragno DB Outbox", () => {
   });
 
   describe.each(adapterConfigs)("adapter opt-in (%s)", (adapterConfig) => {
+    it("materializes omitted static and runtime defaults in create payloads", async () => {
+      const { fragment, internalFragment, cleanup } = await buildOutboxTest({
+        ...adapterConfig,
+        outboxEnabled: true,
+      });
+
+      const email = `defaults-${adapterConfig.type}@example.com`;
+      await createUser(fragment, email);
+
+      const user = await findUser(fragment, email);
+      expect(user).toMatchObject({
+        status: "pending",
+        count: 0,
+        enabled: true,
+        runtimeLabel: "runtime-generated",
+      });
+
+      const entries = await listOutbox(internalFragment);
+      expect(entries).toHaveLength(1);
+      const payload = superjson.deserialize(entries[0].payload as SuperJSONResult) as OutboxPayload;
+      const mutation = payload.mutations[0];
+      assert(mutation.op === "create");
+      expect(mutation.values).toMatchObject({
+        status: "pending",
+        count: 0,
+        enabled: true,
+        runtimeLabel: user?.runtimeLabel,
+      });
+      expect(mutation.values["createdAt"]).toBeInstanceOf(Date);
+      expect(mutation.values).not.toHaveProperty("_internalId");
+      expect(mutation.values).not.toHaveProperty("_version");
+
+      await cleanup();
+    });
+
     it("writes outbox rows only when enabled", async () => {
       const { fragment, internalFragment, cleanup } = await buildOutboxTest(adapterConfig);
 

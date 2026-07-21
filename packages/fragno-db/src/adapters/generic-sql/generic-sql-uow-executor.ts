@@ -85,7 +85,7 @@ export async function executeMutation(
         if (shouldInclude && !shouldInclude(operation)) {
           return [];
         }
-        return [operation];
+        return [mutation.materializedOperation ?? operation];
       })
     : [];
 

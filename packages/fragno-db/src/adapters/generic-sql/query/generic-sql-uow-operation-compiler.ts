@@ -10,6 +10,7 @@ import type {
   MutationOperation,
   CompiledMutation,
 } from "../../../query/unit-of-work/unit-of-work";
+import { materializeRuntimeCreateValues } from "../../../query/value-encoding";
 import type { AnyColumn, AnySchema } from "../../../schema/create";
 import { UOWOperationCompiler } from "../../shared/uow-operation-compiler";
 import type { DriverConfig } from "../driver-config";
@@ -217,10 +218,19 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
   ): CompiledMutation<CompiledQuery> | null {
     const sqlCompiler = this.getSQLCompiler(op.schema, op.namespace);
     const table = this.getTable(op.schema, op.table);
+    const idColumnName = table.getIdColumn().name;
+    const operationValues = op.values as Record<string, unknown>;
+    const createValues =
+      operationValues[idColumnName] === undefined
+        ? { ...operationValues, [idColumnName]: op.generatedExternalId }
+        : operationValues;
+    const materializedValues = materializeRuntimeCreateValues(createValues, table);
+    const materializedOperation = { ...op, values: materializedValues };
 
     return {
-      query: sqlCompiler.compileCreate(table, op.values),
+      query: sqlCompiler.compileCreate(table, materializedValues),
       operation: op,
+      materializedOperation,
       op: "create",
       expectedAffectedRows: null, // creates don't need affected row checks
       expectedReturnedRows: null,
