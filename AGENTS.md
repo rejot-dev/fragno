@@ -119,7 +119,8 @@ E.g.
 - `pnpm exec turbo build --filter=@fragno-dev/db --output-logs=errors-only`
 - `pnpm exec turbo test --filter=./packages/fragment-workflows --output-logs=errors-only`
 
-And Oxlint + Oxfmt: `pnpm run lint:fix && pnpm run format:changed`
+Oxlint: `pnpm run lint:type-aware-fix`
+Oxfmt: `pnpm run format:changed`
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
