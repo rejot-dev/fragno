@@ -23,17 +23,17 @@
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/upload": "workspace:*",
-    "@react-router/node": "^7.5.3",
-    "@react-router/serve": "^7.5.3",
+    "@react-router/node": "^7.17.0",
+    "@react-router/serve": "^7.17.0",
     "isbot": "^5",
     "kysely-pglite": "^0.6.1",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-router": "^7.5.3"
+    "react-router": "^7.17.0"
   },
   "devDependencies": {
     "@fragno-dev/cli": "workspace:*",
-    "@react-router/dev": "^7.5.3",
+    "@react-router/dev": "^7.17.0",
     "@tailwindcss/vite": "^4.2.1",
     "@types/node": "^22",
     "@types/react": "catalog:",
