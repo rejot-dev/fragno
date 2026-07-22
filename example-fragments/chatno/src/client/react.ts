@@ -1,8 +1,8 @@
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
-import { useFragno } from "@fragno-dev/core/react";
+import { createFragnoReactClient } from "@fragno-dev/core/react";
 
 import { createChatnoClients } from "..";
 
 export function createChatnoClient(config: FragnoPublicClientConfig = {}) {
-  return useFragno(createChatnoClients(config));
+  return createFragnoReactClient(createChatnoClients(config));
 }

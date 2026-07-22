@@ -83,17 +83,10 @@ function createReactHook<
   return ({ path, query } = {}) => {
     const pathParamValues = path ? Object.values(path) : [];
     const queryParamValues = query ? Object.values(query) : [];
-
-    const deps = [...pathParamValues, ...queryParamValues];
-
-    const store = useMemo(() => hook.store({ path, query }), [hook, ...deps]);
-
-    if (typeof window === "undefined") {
-      // TODO(Wilco): Handle server-side rendering. In React we have to implement onShellReady
-      // and onAllReady in renderToPipable stream.
-      const serverSideData = store.get();
-      return serverSideData;
-    }
+    const store = useMemoWithDependencies(
+      () => hook.store({ path, query }),
+      [hook, ...pathParamValues, ...queryParamValues],
+    );
 
     return useStore(store);
   };
@@ -130,6 +123,12 @@ export type FragnoReactStore<T extends object, TArgs extends unknown[] = []> = (
   ...args: TArgs
 ) => FragnoReactStoreValue<T>;
 
+function useMemoWithDependencies<T>(factory: () => T, dependencies: DependencyList): T {
+  // Generated route hooks accept dynamic path and query parameter keys.
+  // oxlint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(factory, dependencies);
+}
+
 const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   if (!value || typeof value !== "object") {
     return false;
@@ -139,7 +138,7 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   return prototype === Object.prototype || prototype === null;
 };
 
-const areStoreFactoryValuesEqual = (left: unknown, right: unknown): boolean => {
+function areStoreFactoryValuesEqual(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) {
     return true;
   }
@@ -164,8 +163,8 @@ const areStoreFactoryValuesEqual = (left: unknown, right: unknown): boolean => {
   }
 
   if (isPlainObject(left) && isPlainObject(right)) {
-    const leftKeys = Object.keys(left).sort();
-    const rightKeys = Object.keys(right).sort();
+    const leftKeys = Object.keys(left).toSorted();
+    const rightKeys = Object.keys(right).toSorted();
     return (
       leftKeys.length === rightKeys.length &&
       leftKeys.every(
@@ -176,11 +175,14 @@ const areStoreFactoryValuesEqual = (left: unknown, right: unknown): boolean => {
   }
 
   return false;
-};
+}
 
-const areStoreFactoryArgsEqual = (left: unknown[], right: unknown[]) =>
-  left.length === right.length &&
-  left.every((value, index) => areStoreFactoryValuesEqual(value, right[index]));
+function areStoreFactoryArgsEqual(left: unknown[], right: unknown[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => areStoreFactoryValuesEqual(value, right[index]))
+  );
+}
 
 const getStoreDisposer = (value: object): (() => void) | undefined => {
   const disposer = (value as { [Symbol.dispose]?: (() => void) | undefined })[Symbol.dispose];
@@ -225,32 +227,28 @@ const createReactStoreObjectView = <T extends object>(
   }) as FragnoReactStoreValue<T>;
 };
 
-function unwrapReactStoreValueOnServer<T extends object>(value: T): FragnoReactStoreValue<T> {
-  if (isReadableAtom(value)) {
-    return value.get() as FragnoReactStoreValue<T>;
+function useReactStoreValue<T extends object>(value: T): FragnoReactStoreValue<T> {
+  const atomEntries = useMemo<Array<[string | undefined, Store<unknown>]>>(() => {
+    if (isReadableAtom(value)) {
+      return [[undefined, value as Store<unknown>]];
+    }
+
+    return Object.keys(value).flatMap((key) => {
+      const fieldValue = value[key as keyof T];
+      return isReadableAtom(fieldValue) ? [[key, fieldValue]] : [];
+    });
+  }, [value]);
+
+  const snapshotRef = useRef<unknown[] | null>(null);
+  if (snapshotRef.current === null) {
+    snapshotRef.current = atomEntries.map(([, store]) => store.get());
   }
 
-  return createReactStoreObjectView(value, (store) => store.get());
-}
-
-function unwrapReactStoreValue<T extends object>(value: T): FragnoReactStoreValue<T> {
-  if (isReadableAtom(value)) {
-    return useStore(value as Store) as FragnoReactStoreValue<T>;
-  }
-
-  const keys = Object.keys(value);
-  const atomEntries = keys.flatMap((key) => {
-    const fieldValue = value[key as keyof T];
-    return isReadableAtom(fieldValue)
-      ? ([[key, fieldValue]] as Array<[string, Store<unknown>]>)
-      : [];
-  });
-  const snapshotRef = useRef<unknown[]>(atomEntries.map(([, store]) => store.get()));
-
-  const getSnapshot = () => {
+  const getSnapshot = useCallback(() => {
     const nextSnapshot = atomEntries.map(([, store]) => store.get());
     const previousSnapshot = snapshotRef.current;
     if (
+      previousSnapshot !== null &&
       previousSnapshot.length === nextSnapshot.length &&
       previousSnapshot.every((entry, index) => Object.is(entry, nextSnapshot[index]))
     ) {
@@ -258,10 +256,10 @@ function unwrapReactStoreValue<T extends object>(value: T): FragnoReactStoreValu
     }
     snapshotRef.current = nextSnapshot;
     return nextSnapshot;
-  };
+  }, [atomEntries]);
 
-  const atomValues = useSyncExternalStore(
-    (onStoreChange) => {
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
       const unsubscribes = atomEntries.map(([, store]) => store.listen(onStoreChange));
       return () => {
         for (const unsubscribe of unsubscribes) {
@@ -269,18 +267,21 @@ function unwrapReactStoreValue<T extends object>(value: T): FragnoReactStoreValu
         }
       };
     },
-    getSnapshot,
-    getSnapshot,
+    [atomEntries],
   );
 
-  return useMemo(
-    () =>
-      createReactStoreObjectView(value, (store) => {
-        const atomIndex = atomEntries.findIndex(([, entryStore]) => entryStore === store);
-        return atomIndex === -1 ? store.get() : atomValues[atomIndex];
-      }),
-    [value, atomEntries, atomValues],
-  );
+  const atomValues = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+
+  return useMemo(() => {
+    if (isReadableAtom(value)) {
+      return atomValues[0] as FragnoReactStoreValue<T>;
+    }
+
+    return createReactStoreObjectView(value, (store) => {
+      const atomIndex = atomEntries.findIndex(([, entryStore]) => entryStore === store);
+      return atomIndex === -1 ? store.get() : atomValues[atomIndex];
+    });
+  }, [value, atomEntries, atomValues]);
 }
 
 // oxlint-enable typescript/no-unsafe-return
@@ -291,26 +292,32 @@ function createReactStore<const T extends object, const TArgs extends unknown[]>
   hook: FragnoStoreData<T, TArgs>,
 ): FragnoReactStore<T, TArgs> {
   return ((...args: TArgs) => {
+    const pendingDisposalsRef = useRef<Map<object, ReturnType<typeof setTimeout>> | null>(null);
+    if (pendingDisposalsRef.current === null) {
+      pendingDisposalsRef.current = new Map();
+    }
+    const pendingDisposals = pendingDisposalsRef.current;
+
     const stableArgsRef = useRef<TArgs>(args);
-    const pendingDisposalsRef = useRef<Map<object, ReturnType<typeof setTimeout>>>(new Map());
     if (!areStoreFactoryArgsEqual(stableArgsRef.current, args)) {
       stableArgsRef.current = args;
     }
+    const stableArgs = stableArgsRef.current;
 
     const value = useMemo(() => {
       if ("factory" in hook) {
-        return hook.factory(...stableArgsRef.current);
+        return hook.factory(...stableArgs);
       }
 
       return hook.obj;
-    }, [hook, stableArgsRef.current]);
+    }, [hook, stableArgs]);
 
     useEffect(() => {
       const disposer = getStoreDisposer(value);
-      const pendingTimeout = pendingDisposalsRef.current.get(value);
+      const pendingTimeout = pendingDisposals.get(value);
       if (pendingTimeout !== undefined) {
         clearTimeout(pendingTimeout);
-        pendingDisposalsRef.current.delete(value);
+        pendingDisposals.delete(value);
       }
 
       return () => {
@@ -319,24 +326,20 @@ function createReactStore<const T extends object, const TArgs extends unknown[]>
         }
 
         const timeoutId = setTimeout(() => {
-          pendingDisposalsRef.current.delete(value);
+          pendingDisposals.delete(value);
           disposer();
         }, 0);
-        pendingDisposalsRef.current.set(value, timeoutId);
+        pendingDisposals.set(value, timeoutId);
       };
-    }, [value]);
+    }, [pendingDisposals, value]);
 
-    if (typeof window === "undefined") {
-      return unwrapReactStoreValueOnServer(value);
-    }
-
-    return unwrapReactStoreValue(value);
+    return useReactStoreValue(value);
   }) as FragnoReactStore<T, TArgs>;
 }
 
 // oxlint-enable typescript/no-unsafe-return
 
-export function useFragno<T extends Record<string, unknown>>(
+export function createFragnoReactClient<T extends Record<string, unknown>>(
   clientObj: T,
 ): {
   [K in keyof T]: T[K] extends FragnoClientHookData<
@@ -391,14 +394,6 @@ type StoreKeys<T> = T extends { setKey: (k: infer K, v: unknown) => unknown } ? 
 
 export interface UseStoreOptions<SomeStore> {
   /**
-   * @default
-   * ```ts
-   * [store, options.keys]
-   * ```
-   */
-  deps?: DependencyList;
-
-  /**
    * Will re-render components only on specific key changes.
    */
   keys?: StoreKeys<SomeStore>[];
@@ -411,28 +406,34 @@ export function useStore<SomeStore extends Store>(
   options: UseStoreOptions<SomeStore> = {},
 ): StoreValue<SomeStore> {
   const readStoreValue = (): StoreValue<SomeStore> => store.get();
-  const snapshotRef = useRef<StoreValue<SomeStore>>(readStoreValue());
+  const snapshotRef = useRef<{ value: StoreValue<SomeStore> } | null>(null);
+  if (snapshotRef.current === null) {
+    snapshotRef.current = { value: readStoreValue() };
+  }
 
-  const { keys, deps = [store, keys] } = options;
+  const { keys } = options;
 
-  const subscribe = useCallback((onChange: () => void) => {
-    const emitChange = (value: StoreValue<SomeStore>) => {
-      if (snapshotRef.current === value) {
-        return;
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      const emitChange = (value: StoreValue<SomeStore>) => {
+        if (snapshotRef.current?.value === value) {
+          return;
+        }
+        snapshotRef.current = { value };
+        onChange();
+      };
+
+      emitChange(readStoreValue());
+      if (keys?.length) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return listenKeys(store as any, keys, emitChange);
       }
-      snapshotRef.current = value;
-      onChange();
-    };
+      return store.listen(emitChange);
+    },
+    [keys, store],
+  );
 
-    emitChange(readStoreValue());
-    if (keys?.length) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return listenKeys(store as any, keys, emitChange);
-    }
-    return store.listen(emitChange);
-  }, deps);
-
-  const get = () => snapshotRef.current;
+  const get = () => snapshotRef.current!.value;
 
   return useSyncExternalStore(subscribe, get, () => {
     // Server-side rendering

@@ -13,7 +13,7 @@ import { defineRoute } from "../api/route";
 import { createClientBuilder } from "./client";
 import type { FragnoPublicClientConfig } from "./client";
 import { FragnoClientFetchNetworkError, type FragnoClientError } from "./client-error";
-import { useFragno, useStore, type FragnoReactStore } from "./react";
+import { createFragnoReactClient, useStore, type FragnoReactStore } from "./react";
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -67,7 +67,7 @@ describe("createReactHook", () => {
       users: client.createHook("/users"),
     };
 
-    const { users } = useFragno(clientObj);
+    const { users } = createFragnoReactClient(clientObj);
     const { result } = renderHook(() => users());
 
     await waitFor(() => {
@@ -90,7 +90,7 @@ describe("createReactHook", () => {
       user: client.createHook("/users/:id"),
     };
 
-    const { user } = useFragno(clientObj);
+    const { user } = createFragnoReactClient(clientObj);
     const { result } = renderHook(() => user({ path: { id: "123" } }));
 
     await waitFor(() => {
@@ -113,7 +113,7 @@ describe("createReactHook", () => {
       search: client.createHook("/search"),
     };
 
-    const { search } = useFragno(clientObj);
+    const { search } = createFragnoReactClient(clientObj);
     const { result } = renderHook(() => search({ query: { q: "test" } }));
 
     await waitFor(() => {
@@ -144,7 +144,7 @@ describe("createReactHook", () => {
       user: client.createHook("/users/:id"),
     };
 
-    const { user } = useFragno(clientObj);
+    const { user } = createFragnoReactClient(clientObj);
     const { result } = renderHook(() => user({ path: { id: idAtom } }));
 
     await waitFor(() => {
@@ -173,7 +173,7 @@ describe("createReactHook", () => {
       useUsers: client.createHook("/users"),
     };
 
-    const { useUsers } = useFragno(clientObj);
+    const { useUsers } = createFragnoReactClient(clientObj);
     const { result } = renderHook(() => useUsers());
 
     await waitFor(() => {
@@ -228,7 +228,7 @@ describe("createReactMutator", () => {
       useCreateUserMutator: client.createMutator("POST", "/users"),
     };
 
-    const { useCreateUserMutator } = useFragno(clientObj);
+    const { useCreateUserMutator } = createFragnoReactClient(clientObj);
     const { result: renderedHook } = renderHook(() => useCreateUserMutator());
     const { mutate: createUser } = renderedHook.current;
 
@@ -258,7 +258,7 @@ describe("createReactMutator", () => {
       useCreateUserMutator: client.createMutator("POST", "/users"),
     };
 
-    const { useCreateUserMutator } = useFragno(clientObj);
+    const { useCreateUserMutator } = createFragnoReactClient(clientObj);
     const { result: renderedHook } = renderHook(() => useCreateUserMutator());
     const { mutate: createUser } = renderedHook.current;
 
@@ -292,7 +292,7 @@ describe("createReactMutator", () => {
       useUpdateUserMutator: client.createMutator("PUT", "/users/:id"),
     };
 
-    const { useUpdateUserMutator } = useFragno(clientObj);
+    const { useUpdateUserMutator } = createFragnoReactClient(clientObj);
     const { result: renderedHook } = renderHook(() => useUpdateUserMutator());
     const { mutate: updateUser } = renderedHook.current;
 
@@ -334,7 +334,7 @@ describe("createReactMutator", () => {
       useDeleteUserMutator: client.createMutator("DELETE", "/users/:id"),
     };
 
-    const { useDeleteUserMutator } = useFragno(clientObj);
+    const { useDeleteUserMutator } = createFragnoReactClient(clientObj);
     const { result: renderedHook } = renderHook(() => useDeleteUserMutator());
     const hook = renderedHook.current;
 
@@ -386,7 +386,7 @@ describe("createReactMutator", () => {
       useDeleteUserMutator: client.createMutator("DELETE", "/users/:id"),
     };
 
-    const { useDeleteUserMutator } = useFragno(clientObj);
+    const { useDeleteUserMutator } = createFragnoReactClient(clientObj);
     const { result: renderedHook } = renderHook(() => useDeleteUserMutator());
     const hook = renderedHook.current;
 
@@ -424,7 +424,7 @@ describe("createReactMutator", () => {
       useCreateUserMutator: client.createMutator("POST", "/users"),
     };
 
-    const { useCreateUserMutator } = useFragno(clientObj);
+    const { useCreateUserMutator } = createFragnoReactClient(clientObj);
     const { result: renderedHook } = renderHook(() => useCreateUserMutator());
     const { mutate: createUser } = renderedHook.current;
 
@@ -440,7 +440,7 @@ describe("createReactMutator", () => {
   });
 });
 
-describe("useFragno", () => {
+describe("createFragnoReactClient", () => {
   const testFragmentDefinition = defineFragment("test-fragment");
   const testRoutes = [
     defineRoute({
@@ -475,7 +475,7 @@ describe("useFragno", () => {
       usePostAction: client.createMutator("POST", "/action"),
     };
 
-    const { useData, usePostAction } = useFragno(clientObj);
+    const { useData, usePostAction } = createFragnoReactClient(clientObj);
 
     const { result: renderedHook } = renderHook(() => usePostAction());
     const { mutate: postAction } = renderedHook.current;
@@ -515,7 +515,7 @@ describe("useFragno", () => {
       someUndefined: undefined,
     };
 
-    const result = useFragno(clientObj);
+    const result = createFragnoReactClient(clientObj);
 
     // Check that non-hook values are passed through unchanged
     assert(result.someString === "hello world");
@@ -543,7 +543,7 @@ describe("useFragno", () => {
       fn: sharedFunction,
     };
 
-    const result = useFragno(clientObj);
+    const result = createFragnoReactClient(clientObj);
 
     // Check that references are preserved
     expect(result.obj).toBe(sharedObject);
@@ -573,7 +573,7 @@ describe("useFragno", () => {
       },
     };
 
-    const result = useFragno(clientObj);
+    const result = createFragnoReactClient(clientObj);
 
     // Check hooks are transformed
     assert(typeof result.useData === "function");
@@ -604,7 +604,7 @@ describe("useFragno", () => {
 
   test("should handle empty object", () => {
     const clientObj = {};
-    const result = useFragno(clientObj);
+    const result = createFragnoReactClient(clientObj);
     expect(result).toEqual({});
   });
 
@@ -616,7 +616,7 @@ describe("useFragno", () => {
       d: [4, 5, 6],
     };
 
-    const result = useFragno(clientObj);
+    const result = createFragnoReactClient(clientObj);
 
     expect(result).toEqual(clientObj);
     assert(result.a === 1);
@@ -680,7 +680,7 @@ describe("useStore", () => {
   });
 });
 
-describe("useFragno - createStore", () => {
+describe("createFragnoReactClient - createStore", () => {
   const clientConfig: FragnoPublicClientConfig = {
     baseUrl: "http://localhost:3000",
   };
@@ -713,7 +713,7 @@ describe("useFragno - createStore", () => {
       }),
     };
 
-    const { useStore } = useFragno(client);
+    const { useStore } = createFragnoReactClient(client);
 
     // Type assertions to ensure the types are correctly inferred
     expectTypeOf(useStore).toExtend<
@@ -752,7 +752,7 @@ describe("useFragno - createStore", () => {
       }),
     };
 
-    const { useComputedValues } = useFragno(client);
+    const { useComputedValues } = createFragnoReactClient(client);
 
     // Type assertions
     expectTypeOf(useComputedValues).toExtend<
@@ -788,7 +788,7 @@ describe("useFragno - createStore", () => {
       }),
     };
 
-    const { useMixed } = useFragno(client);
+    const { useMixed } = createFragnoReactClient(client);
 
     // Type assertions
     expectTypeOf(useMixed).toExtend<
@@ -817,7 +817,7 @@ describe("useFragno - createStore", () => {
     const clientSingle = {
       useSingle: cb.createStore(singleAtom),
     };
-    const { useSingle } = useFragno(clientSingle);
+    const { useSingle } = createFragnoReactClient(clientSingle);
     expectTypeOf(useSingle).toExtend<() => string>();
 
     // Object with stores case
@@ -826,7 +826,7 @@ describe("useFragno - createStore", () => {
         value: singleAtom,
       }),
     };
-    const { useObject } = useFragno(clientObject);
+    const { useObject } = createFragnoReactClient(clientObject);
     expectTypeOf(useObject).toExtend<() => { value: string }>();
 
     // Runtime test
@@ -857,7 +857,7 @@ describe("useFragno - createStore", () => {
       }),
     };
 
-    const { useAppState } = useFragno(client);
+    const { useAppState } = createFragnoReactClient(client);
 
     // Type assertions for complex nested structure
     expectTypeOf(useAppState).toExtend<
@@ -893,7 +893,7 @@ describe("useFragno - createStore", () => {
       useSession: cb.createStore(createSessionStore),
     };
 
-    const { useSession } = useFragno(client);
+    const { useSession } = createFragnoReactClient(client);
 
     expectTypeOf(useSession).toExtend<
       (args: { path: { sessionId: string } }) => {
@@ -953,7 +953,7 @@ describe("useFragno - createStore", () => {
       useSession: cb.createStore(factory),
     };
 
-    const { useSession } = useFragno(client);
+    const { useSession } = createFragnoReactClient(client);
 
     const buildInitialData = () => ({
       createdAt: new Date("2026-01-01T00:00:00.000Z"),
@@ -980,6 +980,40 @@ describe("useFragno - createStore", () => {
     expect(dispose).not.toHaveBeenCalled();
   });
 
+  test("supports factory arguments whose nested collection size changes", () => {
+    const factory = vi.fn(({ filters }: { filters: string[] }) => ({
+      filterCount: filters.length,
+    }));
+
+    const cb = createClientBuilder(defineFragment("test-fragment"), clientConfig, []);
+    const client = {
+      useFilteredStore: cb.createStore(factory),
+    };
+
+    const { useFilteredStore } = createFragnoReactClient(client);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const { result, rerender } = renderHook(({ filters }) => useFilteredStore({ filters }), {
+        initialProps: { filters: ["active"] },
+      });
+
+      const initialFilterCount = result.current.filterCount;
+      assert(initialFilterCount === 1);
+
+      rerender({ filters: ["active", "recent"] });
+
+      const updatedFilterCount = result.current.filterCount;
+      assert(updatedFilterCount === 2);
+      expect(factory).toHaveBeenCalledTimes(2);
+      expect(consoleError).not.toHaveBeenCalledWith(
+        expect.stringContaining("changed size between renders"),
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   test("does not dispose a factory store during StrictMode remount probing", async () => {
     const dispose = vi.fn();
     const factory = vi.fn(({ path }: { path: { sessionId: string } }) => ({
@@ -992,7 +1026,7 @@ describe("useFragno - createStore", () => {
       useSession: cb.createStore(factory),
     };
 
-    const { useSession } = useFragno(client);
+    const { useSession } = createFragnoReactClient(client);
 
     const { result, unmount } = renderHook(() => useSession({ path: { sessionId: "session-1" } }), {
       wrapper: ({ children }) => createElement(StrictMode, null, children),
@@ -1036,7 +1070,7 @@ describe("useFragno - createStore", () => {
       ),
     };
 
-    const { useSession } = useFragno(client);
+    const { useSession } = createFragnoReactClient(client);
     const { result } = renderHook(() => useSession({ path: { sessionId: "abc" } }));
 
     assert(result.current.sessionId === "abc");
@@ -1081,7 +1115,7 @@ describe("useFragno - createStore", () => {
       });
     });
 
-    const { useNames, useUsersStream } = useFragno(client);
+    const { useNames, useUsersStream } = createFragnoReactClient(client);
 
     expectTypeOf(useUsersStream).toEqualTypeOf<
       FragnoReactStore<

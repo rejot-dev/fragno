@@ -1,8 +1,8 @@
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
-import { useFragno } from "@fragno-dev/core/react";
+import { createFragnoReactClient } from "@fragno-dev/core/react";
 
 import { createUploadFragmentClients } from "./clients";
 
 export function createUploadFragmentClient(config: FragnoPublicClientConfig = {}) {
-  return useFragno(createUploadFragmentClients(config));
+  return createFragnoReactClient(createUploadFragmentClients(config));
 }

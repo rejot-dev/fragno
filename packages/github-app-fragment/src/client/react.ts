@@ -1,8 +1,8 @@
-import { useFragno } from "@fragno-dev/core/react";
+import { createFragnoReactClient } from "@fragno-dev/core/react";
 
-import { createGitHubAppFragmentClients } from "..";
+import { createGitHubAppFragmentClients } from "../github/clients";
 import type { GitHubAppFragmentPublicClientConfig } from "../github/types";
 
 export function createGitHubAppFragmentClient(config: GitHubAppFragmentPublicClientConfig = {}) {
-  return useFragno(createGitHubAppFragmentClients(config));
+  return createFragnoReactClient(createGitHubAppFragmentClients(config));
 }

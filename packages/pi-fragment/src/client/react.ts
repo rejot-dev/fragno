@@ -1,7 +1,7 @@
-import { useFragno } from "@fragno-dev/core/react";
+import { createFragnoReactClient } from "@fragno-dev/core/react";
 
 import { createPiFragmentClients, type PiFragmentClientConfig } from "./clients";
 
 export function createPiFragmentClient(config: PiFragmentClientConfig = {}) {
-  return useFragno(createPiFragmentClients(config));
+  return createFragnoReactClient(createPiFragmentClients(config));
 }
