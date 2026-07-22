@@ -9,10 +9,19 @@ const crashDelayMs = Number(process.env.CRASH_DELAY_MS ?? 2_000);
 const recoveryTimeoutMs = Number(process.env.RECOVERY_TIMEOUT_MS ?? 45_000);
 const appPort = Number(new URL(baseUrl).port || 80);
 const databaseUrl =
-  process.env.WF_EXAMPLE_DATABASE_URL ??
-  process.env.DATABASE_URL ??
-  `postgres://${process.env.PGUSER ?? "postgres"}:${process.env.PGPASSWORD ?? "postgres"}@${process.env.PGHOST ?? "localhost"}:${process.env.PGPORT ?? 5436}/${process.env.PGDATABASE ?? "wilco"}`;
+  process.env.WF_EXAMPLE_DATABASE_URL ?? process.env.DATABASE_URL ?? createLocalDatabaseUrl();
 const require = createRequire(import.meta.url);
+
+function createLocalDatabaseUrl() {
+  const password = process.env.PGPASSWORD;
+  if (!password) {
+    throw new Error(
+      "Set WF_EXAMPLE_DATABASE_URL, DATABASE_URL, or PGPASSWORD before running crash recovery",
+    );
+  }
+
+  return `postgres://${process.env.PGUSER ?? "postgres"}:${password}@${process.env.PGHOST ?? "localhost"}:${process.env.PGPORT ?? 5436}/${process.env.PGDATABASE ?? "wilco"}`;
+}
 
 function getAppPid() {
   if (process.env.APP_PID) {

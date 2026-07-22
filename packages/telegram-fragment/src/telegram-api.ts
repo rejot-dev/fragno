@@ -114,11 +114,20 @@ export function createTelegramApi(
       body: JSON.stringify(payload),
     });
 
-    try {
-      return await response.json();
-    } catch {
-      return null;
+    if (!response.ok) {
+      const responseText = await response.text();
+      try {
+        return JSON.parse(responseText) as unknown;
+      } catch (cause) {
+        const detail = responseText || "empty response body";
+        throw new Error(
+          `Telegram API request failed (${response.status} ${response.statusText}): ${detail}`,
+          { cause },
+        );
+      }
     }
+
+    return response.json();
   };
 
   const call = async <T>(
