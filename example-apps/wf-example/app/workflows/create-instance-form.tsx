@@ -56,7 +56,7 @@ export function CreateInstanceForm() {
 
   return (
     <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
-      <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-slate-200/70 p-8 shadow-sm">
+      <div className="rounded-3xl border border-slate-200 bg-linear-to-br from-white via-slate-50 to-slate-200/70 p-8 shadow-sm">
         <p className="text-xs font-semibold tracking-[0.3em] text-slate-400 uppercase">Payload</p>
         <h2 className="mt-3 text-2xl font-semibold text-slate-900">Shape your new run</h2>
         <p className="mt-4 text-sm text-slate-600">
@@ -79,10 +79,14 @@ export function CreateInstanceForm() {
       <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
         <div className="grid gap-4">
           <div>
-            <label className="text-xs font-semibold tracking-[0.25em] text-slate-400 uppercase">
+            <label
+              htmlFor="create-workflow-type"
+              className="text-xs font-semibold tracking-[0.25em] text-slate-400 uppercase"
+            >
               Workflow type
             </label>
             <select
+              id="create-workflow-type"
               value={selectedWorkflow}
               onChange={(event) => {
                 setSelectedWorkflow(event.target.value);
@@ -99,10 +103,14 @@ export function CreateInstanceForm() {
           </div>
 
           <div className="grid gap-3">
-            <label className="text-xs font-semibold tracking-[0.25em] text-slate-400 uppercase">
+            <label
+              htmlFor="create-instance-id"
+              className="text-xs font-semibold tracking-[0.25em] text-slate-400 uppercase"
+            >
               Instance id
             </label>
             <input
+              id="create-instance-id"
               value={createName}
               onChange={(event) => {
                 setCreateName(event.target.value);
@@ -113,10 +121,14 @@ export function CreateInstanceForm() {
           </div>
 
           <div className="grid gap-3">
-            <label className="text-xs font-semibold tracking-[0.25em] text-slate-400 uppercase">
+            <label
+              htmlFor="create-instance-amount"
+              className="text-xs font-semibold tracking-[0.25em] text-slate-400 uppercase"
+            >
               Amount
             </label>
             <input
+              id="create-instance-amount"
               value={createAmount}
               onChange={(event) => {
                 setCreateAmount(event.target.value);
@@ -127,10 +139,14 @@ export function CreateInstanceForm() {
           </div>
 
           <div className="grid gap-3">
-            <label className="text-xs font-semibold tracking-[0.25em] text-slate-400 uppercase">
+            <label
+              htmlFor="create-instance-requester"
+              className="text-xs font-semibold tracking-[0.25em] text-slate-400 uppercase"
+            >
               Requested by
             </label>
             <input
+              id="create-instance-requester"
               value={createRequester}
               onChange={(event) => {
                 setCreateRequester(event.target.value);

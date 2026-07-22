@@ -45,7 +45,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <div className="min-h-screen">
+    <div className="min-h-dvh">
       <TopNav />
       <main className="px-6 py-10 lg:px-10">
         <Outlet />

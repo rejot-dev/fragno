@@ -10,26 +10,26 @@ import {
 import { formatDate } from "@/lib/dates";
 import { stripeClient } from "@/lib/stripe-client";
 
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case "active":
+      return "text-green-600";
+    case "trialing":
+      return "text-blue-600";
+    case "incomplete":
+      return "text-amber-600";
+    case "canceled":
+    case "incomplete_expired":
+      return "text-red-600";
+    case "past_due":
+      return "text-orange-600";
+    default:
+      return "text-gray-600";
+  }
+};
+
 export function Subscriptions() {
   const { data, loading, error } = stripeClient.useSubscription();
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "active":
-        return "text-green-600";
-      case "trialing":
-        return "text-blue-600";
-      case "incomplete":
-        return "text-amber-600";
-      case "canceled":
-      case "incomplete_expired":
-        return "text-red-600";
-      case "past_due":
-        return "text-orange-600";
-      default:
-        return "text-gray-600";
-    }
-  };
 
   return (
     <Card>

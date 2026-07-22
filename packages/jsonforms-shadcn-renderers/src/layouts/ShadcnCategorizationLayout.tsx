@@ -8,6 +8,9 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { withJsonFormsLayoutProps } from "../jsonforms-hocs";
+import { createUiSchemaElementKeys } from "../util/ui-schema-keys";
+
+const getTabValue = (index: number) => `tab-${index}`;
 
 export const ShadcnCategorizationLayout = ({
   uischema,
@@ -20,9 +23,7 @@ export const ShadcnCategorizationLayout = ({
 }: LayoutProps) => {
   const categorization = uischema as Categorization;
   const categories = (categorization.elements || []) as Category[];
-  const [activeTab, setActiveTab] = useState(
-    categories.length > 0 ? categories[0].label || "tab-0" : "tab-0",
-  );
+  const [activeTab, setActiveTab] = useState(() => getTabValue(0));
 
   if (!visible) {
     return null;
@@ -32,7 +33,10 @@ export const ShadcnCategorizationLayout = ({
     return null;
   }
 
-  const getTabValue = (category: Category, index: number) => category.label || `tab-${index}`;
+  const categoryKeys = createUiSchemaElementKeys(categories);
+  const categoryElementKeys = categories.map((category) =>
+    createUiSchemaElementKeys(category.elements ?? []),
+  );
 
   return (
     <Card>
@@ -40,7 +44,7 @@ export const ShadcnCategorizationLayout = ({
         <CardHeader>
           <TabsList className="w-full">
             {categories.map((category, index) => (
-              <TabsTrigger key={index} value={getTabValue(category, index)} className="flex-1">
+              <TabsTrigger key={categoryKeys[index]} value={getTabValue(index)} className="flex-1">
                 {category.label || `Tab ${index + 1}`}
               </TabsTrigger>
             ))}
@@ -48,15 +52,15 @@ export const ShadcnCategorizationLayout = ({
         </CardHeader>
         {categories.map((category, categoryIndex) => (
           <TabsContent
-            key={categoryIndex}
-            value={getTabValue(category, categoryIndex)}
+            key={categoryKeys[categoryIndex]}
+            value={getTabValue(categoryIndex)}
             className="mt-0"
           >
             <CardContent>
               <div className="flex flex-col gap-4">
                 {category.elements?.map((element, elementIndex) => (
                   <JsonFormsDispatch
-                    key={`${path}-${categoryIndex}-${elementIndex}`}
+                    key={`${path}-${getTabValue(categoryIndex)}-${categoryElementKeys[categoryIndex]?.[elementIndex]}`}
                     uischema={element}
                     schema={schema}
                     path={path}

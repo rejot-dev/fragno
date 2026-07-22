@@ -7,6 +7,7 @@ import { JsonFormsDispatch } from "@jsonforms/react";
 import { FieldSeparator, FieldGroup } from "@/components/ui/field";
 
 import { withJsonFormsLayoutProps } from "../jsonforms-hocs";
+import { createUiSchemaElementKeys } from "../util/ui-schema-keys";
 
 export const ShadcnVerticalLayout = ({
   uischema,
@@ -24,6 +25,8 @@ export const ShadcnVerticalLayout = ({
     return null;
   }
 
+  const elementKeys = createUiSchemaElementKeys(verticalLayout.elements);
+
   return (
     <FieldGroup>
       {verticalLayout.elements.map((child, index) => {
@@ -33,7 +36,7 @@ export const ShadcnVerticalLayout = ({
         const showSeparator = index > 0 && (isGroup || prevIsGroup);
 
         return (
-          <Fragment key={`${path}-${index}`}>
+          <Fragment key={`${path}-${elementKeys[index]}`}>
             {showSeparator && <FieldSeparator />}
             <div>
               <JsonFormsDispatch

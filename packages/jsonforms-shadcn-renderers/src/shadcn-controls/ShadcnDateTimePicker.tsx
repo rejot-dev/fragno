@@ -9,37 +9,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 
 import { ChevronDownIcon } from "../icons/ChevronDown";
-import { formatTimeFromDate, parseOptionalString } from "../util/date-time";
+import {
+  formatDateForDisplay,
+  formatDateTimeForSave,
+  parseDateTimeForPicker,
+  parseOptionalString,
+} from "../util/date-time";
 
 type ShadcnDateTimePickerProps = CellProps & WithClassname;
-
-function parseDateTime(value: string | undefined): { date: Date | undefined; time: string } {
-  if (!value) {
-    return { date: undefined, time: "" };
-  }
-
-  const dateTime = new Date(value);
-  if (isNaN(dateTime.getTime())) {
-    return { date: undefined, time: "" };
-  }
-
-  return {
-    date: dateTime,
-    time: formatTimeFromDate(dateTime),
-  };
-}
-
-function formatDateTimeForSave(date: Date | undefined, time: string): string | undefined {
-  if (!date) {
-    return undefined;
-  }
-
-  const [hours, minutes] = time ? time.split(":").map(Number) : [0, 0];
-  const dateTime = new Date(date);
-  dateTime.setHours(hours || 0, minutes || 0, 0, 0);
-
-  return dateTime.toISOString();
-}
 
 export const ShadcnDateTimePicker = memo(function ShadcnDateTimePicker(
   props: ShadcnDateTimePickerProps,
@@ -48,7 +25,7 @@ export const ShadcnDateTimePicker = memo(function ShadcnDateTimePicker(
   const [open, setOpen] = useState(false);
 
   const { date: selectedDate, time: selectedTime } = useMemo(
-    () => parseDateTime(parseOptionalString(data, "Date-time picker data")),
+    () => parseDateTimeForPicker(parseOptionalString(data, "Date-time picker data")),
     [data],
   );
 
@@ -75,7 +52,7 @@ export const ShadcnDateTimePicker = memo(function ShadcnDateTimePicker(
               !selectedDate && "text-muted-foreground",
             )}
           >
-            {selectedDate ? selectedDate.toLocaleDateString() : "Select date"}
+            {selectedDate ? formatDateForDisplay(selectedDate) : "Select date"}
             <ChevronDownIcon />
           </Button>
         </PopoverTrigger>

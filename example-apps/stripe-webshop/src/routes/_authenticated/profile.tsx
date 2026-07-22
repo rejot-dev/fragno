@@ -14,6 +14,13 @@ export const Route = createFileRoute("/_authenticated/profile")({
   component: ProfilePage,
 });
 
+const formatPrice = (cents: number) => {
+  if (cents === 0) {
+    return "Free";
+  }
+  return `$${(cents / 100).toFixed(0)}`;
+};
+
 function ProfilePage() {
   const { data: session } = useSession();
   const navigate = useNavigate();
@@ -38,8 +45,6 @@ function ProfilePage() {
     loading: isCreatingPortal,
   } = stripeClient.useBillingPortal();
 
-  const baseUrl = window.location.origin;
-
   const handleUpgradeSubscription = async (priceId: string) => {
     if (!session?.user.id) {
       return;
@@ -47,7 +52,7 @@ function ProfilePage() {
     const result = await upgrade({
       body: {
         priceId,
-        successUrl: `${baseUrl}/checkout?checkoutType=subscribe`,
+        successUrl: `${window.location.origin}/checkout?checkoutType=subscribe`,
         cancelUrl: window.location.href,
         quantity: 1,
         ...(promotionCode && { promotionCode }),
@@ -65,7 +70,7 @@ function ProfilePage() {
     }
     const result = await createPortal({
       body: {
-        returnUrl: `${baseUrl}/checkout?checkoutType=subscribe`,
+        returnUrl: `${window.location.origin}/checkout?checkoutType=subscribe`,
       },
     });
 
@@ -81,7 +86,7 @@ function ProfilePage() {
 
     const result = await cancelSubscription({
       body: {
-        returnUrl: `${baseUrl}/checkout?checkoutType=cancel`,
+        returnUrl: `${window.location.origin}/checkout?checkoutType=cancel`,
       },
     });
 
@@ -93,13 +98,6 @@ function ProfilePage() {
   const handleSignOut = async () => {
     await signOut();
     await navigate({ to: "/" });
-  };
-
-  const formatPrice = (cents: number) => {
-    if (cents === 0) {
-      return "Free";
-    }
-    return `$${(cents / 100).toFixed(0)}`;
   };
 
   // Safety check - should be protected by _authenticated layout
@@ -119,17 +117,17 @@ function ProfilePage() {
           <CardContent className="space-y-6">
             <div className="space-y-4">
               <div>
-                <label className="text-muted-foreground text-sm font-medium">Name</label>
+                <span className="text-muted-foreground text-sm font-medium">Name</span>
                 <p className="text-lg font-semibold">{session.user.name}</p>
               </div>
 
               <div>
-                <label className="text-muted-foreground text-sm font-medium">Email</label>
+                <span className="text-muted-foreground text-sm font-medium">Email</span>
                 <p className="text-lg">{session.user.email}</p>
               </div>
 
               <div>
-                <label className="text-muted-foreground text-sm font-medium">Email Verified</label>
+                <span className="text-muted-foreground text-sm font-medium">Email Verified</span>
                 <p className="text-lg">
                   {session.user.emailVerified ? (
                     <span className="text-green-600">✓ Verified</span>
@@ -140,9 +138,9 @@ function ProfilePage() {
               </div>
 
               <div>
-                <label className="text-muted-foreground text-sm font-medium">
+                <span className="text-muted-foreground text-sm font-medium">
                   Subscription Status
-                </label>
+                </span>
                 <p className="text-lg">
                   {session.subscription?.status || "No subscription"}
                   {session.subscription?.cancelAt && (
@@ -155,7 +153,7 @@ function ProfilePage() {
 
               {session.subscription?.product && (
                 <div>
-                  <label className="text-muted-foreground text-sm font-medium">Current Plan</label>
+                  <span className="text-muted-foreground text-sm font-medium">Current Plan</span>
                   <p className="text-lg font-semibold">
                     {session.subscription.product.displayName}
                   </p>
@@ -181,7 +179,7 @@ function ProfilePage() {
               )}
 
               <div>
-                <label className="text-muted-foreground text-sm font-medium">Account Created</label>
+                <span className="text-muted-foreground text-sm font-medium">Account Created</span>
                 <p className="text-lg">{formatDate(session.user.createdAt)}</p>
               </div>
             </div>

@@ -5,6 +5,13 @@ import { useSearchParams } from "react-router";
 import { workflowsClient } from "./workflows-client";
 
 const detailTabs = ["run", "events"] as const;
+const dateTimeFormatter = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium",
+  timeStyle: "medium",
+  timeZone: "UTC",
+});
+
+const formatDateTime = (value: Date | string) => dateTimeFormatter.format(new Date(value));
 
 type DetailTab = (typeof detailTabs)[number];
 
@@ -169,10 +176,14 @@ export function InstancesView() {
     <div className="grid gap-6 lg:grid-cols-[320px_1fr] lg:items-stretch">
       <aside className="flex h-[calc(100vh-220px)] flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="p-5">
-          <label className="text-xs font-semibold tracking-[0.25em] text-slate-400 uppercase">
+          <label
+            htmlFor="instances-workflow-type"
+            className="text-xs font-semibold tracking-[0.25em] text-slate-400 uppercase"
+          >
             Workflow type
           </label>
           <select
+            id="instances-workflow-type"
             value={selectedWorkflow}
             onChange={(event) => {
               handleWorkflowChange(event.target.value);
@@ -479,7 +490,7 @@ function InstanceDetailPanel({
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs tracking-[0.2em] text-slate-400 uppercase">Created</span>
-                  <span>{data.meta.createdAt.toLocaleString()}</span>
+                  <span>{formatDateTime(data.meta.createdAt)}</span>
                 </div>
                 {data.meta.currentStep && (
                   <div className="rounded-lg border border-slate-200 bg-white p-3">
@@ -565,8 +576,8 @@ function InstanceDetailPanel({
                             <span>
                               Attempts: {step.attempts} / {step.maxAttempts}
                             </span>
-                            <span>Created: {new Date(step.createdAt).toLocaleString()}</span>
-                            <span>Updated: {new Date(step.updatedAt).toLocaleString()}</span>
+                            <span>Created: {formatDateTime(step.createdAt)}</span>
+                            <span>Updated: {formatDateTime(step.updatedAt)}</span>
                           </div>
                           {step.error && (
                             <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
@@ -608,7 +619,7 @@ function InstanceDetailPanel({
                         >
                           <span>{event.type}</span>
                           <span className="text-xs text-slate-500">
-                            {new Date(event.createdAt).toLocaleString()}
+                            {formatDateTime(event.createdAt)}
                           </span>
                         </div>
                       ))
@@ -627,20 +638,28 @@ function InstanceDetailPanel({
           </p>
 
           <div className="mt-4 grid gap-3">
-            <label className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
+            <label
+              htmlFor="workflow-event-type"
+              className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase"
+            >
               Event type
             </label>
             <input
+              id="workflow-event-type"
               value={eventType}
               onChange={(event) => {
                 setEventType(event.target.value);
               }}
               className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
             />
-            <label className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase">
+            <label
+              htmlFor="workflow-event-payload"
+              className="text-xs font-semibold tracking-[0.2em] text-slate-400 uppercase"
+            >
               Payload (JSON)
             </label>
             <textarea
+              id="workflow-event-payload"
               value={eventPayload}
               onChange={(event) => {
                 setEventPayload(event.target.value);

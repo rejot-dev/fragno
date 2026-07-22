@@ -8,7 +8,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 
 import { ChevronDownIcon } from "../icons/ChevronDown";
-import { formatDateForSave, parseDate, parseOptionalString } from "../util/date-time";
+import {
+  formatDateForDisplay,
+  formatDateForSave,
+  parseDate,
+  parseOptionalString,
+} from "../util/date-time";
 
 type ShadcnDatePickerProps = CellProps & WithClassname;
 
@@ -39,7 +44,7 @@ export const ShadcnDatePicker = memo(function ShadcnDatePicker(props: ShadcnDate
             className,
           )}
         >
-          {selectedDate ? selectedDate.toLocaleDateString() : "Select date"}
+          {selectedDate ? formatDateForDisplay(selectedDate) : "Select date"}
           <ChevronDownIcon />
         </Button>
       </PopoverTrigger>
