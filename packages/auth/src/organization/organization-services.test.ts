@@ -926,8 +926,8 @@ describe("organization services", async () => {
         .execute();
     });
 
-    if (!signUpResult.ok) {
-      throw new Error("Expected sign up to succeed");
+    if (!signUpResult.ok || signUpResult.status !== "authenticated") {
+      throw new Error("Expected sign up to authenticate the user");
     }
 
     const [orgsResult] = await test.inContext(function () {

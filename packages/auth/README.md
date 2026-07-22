@@ -128,9 +128,24 @@ Credential-issuing JSON routes return a normalized auth envelope:
 
 This applies to:
 
-- `POST /sign-up`
+- `POST /sign-up` when its `status` is `"authenticated"`
 - `POST /sign-in`
 - `GET /oauth/:provider/callback` when it returns JSON
+
+When email verification is required, sign-up succeeds without issuing a credential:
+
+```json
+{
+  "status": "email_verification_required",
+  "userId": "...",
+  "email": "user@example.com",
+  "role": "user"
+}
+```
+
+Authenticated sign-up responses use `status: "authenticated"`. Until the email is verified, password
+sign-in returns the `email_verification_required` error code and existing opaque sessions fail
+credential validation.
 
 When `authentication.accessTokens.enabled` is `true`, issuing routes still create a backing session
 row first, but return `auth.kind: "jwt"` and `auth.token` contains a short-lived signed access JWT.
@@ -162,6 +177,7 @@ refresh.
   `onOrganizationCreated`, and more
 - `organizations`: `false` to disable or an organization config object
 - `emailAndPassword`: `{ enabled?: boolean }` to toggle email/password routes
+- `emailVerification`: `{ required, isExempt? }` to require verification before credential issuance
 - `authentication.accessTokens`: optional session-backed access-token mode
 - `oauth`: providers and OAuth settings
 
@@ -170,6 +186,16 @@ Organization config fields:
 - `roles`, `creatorRoles`, `defaultMemberRoles`
 - `allowUserToCreateOrganization`, `invitationExpiresInDays`
 - `autoCreateOrganization`, `limits`, `hooks`
+
+Email-verification config fields:
+
+- `required`: enable credential enforcement for unverified users
+- `isExempt`: optional synchronous policy callback; for example,
+  `({ user }) => user.role === "admin"`
+
+The callback decides whether the policy applies to a user. Auth always owns the `emailVerifiedAt`
+check. Exemptions apply consistently to sign-up, sign-in, OAuth callbacks, direct credential
+issuance, session validation, and refresh.
 
 Access-token config fields:
 

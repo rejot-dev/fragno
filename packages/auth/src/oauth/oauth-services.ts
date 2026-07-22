@@ -3,6 +3,10 @@ import type { FragnoId } from "@fragno-dev/db/schema";
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import type { AuthActor, ValidatedCredential } from "../auth/types";
+import {
+  evaluateCredentialEligibility,
+  type AuthEmailVerificationConfig,
+} from "../email-verification-policy";
 import type { AuthHooksMap, BeforeCreateUserHook } from "../hooks";
 import { authSchema } from "../schema";
 import {
@@ -51,7 +55,8 @@ export type OAuthCallbackResult =
         | "email_required"
         | "signup_disabled"
         | "signup_required"
-        | "user_banned";
+        | "user_banned"
+        | "email_verification_required";
     };
 
 type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
@@ -190,6 +195,7 @@ export function createOAuthServices(options: {
   oauth?: AuthOAuthConfig;
   autoCreateOptions?: AutoCreateOrganizationOptions;
   beforeCreateUser?: BeforeCreateUserHook;
+  emailVerification?: AuthEmailVerificationConfig;
 }) {
   const oauthConfig = normalizeOAuthConfig(options.oauth);
 
@@ -529,6 +535,17 @@ export function createOAuthServices(options: {
                 member: autoOrganization.member,
                 actor: userSummary,
               });
+            }
+
+            const eligibility = evaluateCredentialEligibility(
+              {
+                ...userSummary,
+                emailVerifiedAt: resolvedUser.emailVerifiedAt,
+              },
+              options.emailVerification,
+            );
+            if (!eligibility.ok) {
+              return eligibility;
             }
 
             const existingOrganizationIds = collectOrganizationIdsFromSeedMembers(

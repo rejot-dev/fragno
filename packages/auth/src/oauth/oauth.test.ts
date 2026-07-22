@@ -1709,3 +1709,72 @@ describe("auth oauth token storage", async () => {
     expect(updatedAt).toBeGreaterThan(0);
   });
 });
+
+describe("auth oauth email verification policy", async () => {
+  const { fragments, test } = await buildDatabaseFragmentsTest()
+    .withTestAdapter({ type: "kysely-sqlite" })
+    .withFragment(
+      "auth",
+      instantiate(authFragmentDefinition)
+        .withConfig({
+          organizations: false,
+          emailVerification: { required: true },
+          oauth: {
+            providers: {
+              unverified: createTestProvider({
+                id: "unverified",
+                getUserInfo: async () => ({
+                  user: {
+                    id: "unverified-user",
+                    email: "oauth-unverified@test.com",
+                    emailVerified: false,
+                  },
+                  data: { id: "unverified-user", email: "oauth-unverified@test.com" },
+                }),
+              }),
+            },
+          },
+        })
+        .withRoutes([oauthRoutesFactory]),
+    )
+    .build();
+
+  afterAll(async () => {
+    await test.cleanup();
+  });
+
+  it("persists the user without issuing a credential for an unverified provider email", async () => {
+    const authorize = await fragments.auth.callRoute("GET", "/oauth/:provider/authorize", {
+      pathParams: { provider: "unverified" },
+      query: {},
+    });
+    assert(authorize.type === "json");
+    const state = new URL(authorize.data.url).searchParams.get("state");
+    assert(state);
+
+    const callback = await fragments.auth.callRoute("GET", "/oauth/:provider/callback", {
+      pathParams: { provider: "unverified" },
+      query: { code: "oauth-code", state },
+    });
+    assert(callback.type === "error");
+    expect(callback).toMatchObject({
+      status: 403,
+      error: { code: "email_verification_required" },
+    });
+
+    const user = await test.inContext(function () {
+      return this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(authSchema).findFirst("user", (builder) =>
+            builder.whereIndex("idx_user_email", (expression) =>
+              expression("email", "=", "oauth-unverified@test.com"),
+            ),
+          ),
+        )
+        .transformRetrieve(([storedUser]) => storedUser)
+        .execute();
+    });
+    assert(user);
+    expect(user.emailVerifiedAt).toBeNull();
+  });
+});

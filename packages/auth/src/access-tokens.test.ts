@@ -51,6 +51,7 @@ describe("auth-fragment session-backed access tokens", async () => {
     });
 
     assert(response.type === "json");
+    assert(response.data.status === "authenticated");
     expect(response.data.auth).toMatchObject({
       token: expect.any(String),
       kind: "jwt",
@@ -76,6 +77,7 @@ describe("auth-fragment session-backed access tokens", async () => {
       body: { email: "access-signin@test.com", password: "password123" },
     });
     assert(signUp.type === "json");
+    assert(signUp.data.status === "authenticated");
 
     const response = await fragment.callRoute("POST", "/sign-in", {
       body: { email: "access-signin@test.com", password: "password123" },
@@ -95,6 +97,7 @@ describe("auth-fragment session-backed access tokens", async () => {
       body: { email: "access-refresh@test.com", password: "password123" },
     });
     assert(signUp.type === "json");
+    assert(signUp.data.status === "authenticated");
 
     const refresh = await fragment.callRoute("POST", "/token/refresh", {
       headers: { Authorization: `Bearer ${signUp.data.auth.refreshToken}` },
@@ -141,6 +144,7 @@ describe("auth-fragment session-backed access tokens", async () => {
       body: { email: "deleted-refresh@test.com", password: "password123" },
     });
     assert(deleted.type === "json");
+    assert(deleted.data.status === "authenticated");
     const deletedRefreshToken = deleted.data.auth.refreshToken;
     if (!deletedRefreshToken) {
       throw new Error("Expected refresh token");
@@ -164,6 +168,7 @@ describe("auth-fragment session-backed access tokens", async () => {
       body: { email: "expired-refresh@test.com", password: "password123" },
     });
     assert(expired.type === "json");
+    assert(expired.data.status === "authenticated");
     const expiredRefreshToken = expired.data.auth.refreshToken;
     if (!expiredRefreshToken) {
       throw new Error("Expected refresh token");
@@ -197,6 +202,7 @@ describe("auth-fragment session-backed access tokens", async () => {
       body: { email: "refresh-cookie-me@test.com", password: "password123" },
     });
     assert(signUp.type === "json");
+    assert(signUp.data.status === "authenticated");
 
     const meResponse = await fragment.callRoute("GET", "/me", {
       headers: { Cookie: `fragno_auth_refresh=${signUp.data.auth.refreshToken}` },
@@ -211,6 +217,7 @@ describe("auth-fragment session-backed access tokens", async () => {
       body: { email: "refresh-cookie-over-bearer@test.com", password: "password123" },
     });
     assert(signUp.type === "json");
+    assert(signUp.data.status === "authenticated");
 
     const refresh = await fragment.callRoute("POST", "/token/refresh", {
       headers: {
@@ -229,6 +236,7 @@ describe("auth-fragment session-backed access tokens", async () => {
       body: { email: "bearer-signout@test.com", password: "password123" },
     });
     assert(signUp.type === "json");
+    assert(signUp.data.status === "authenticated");
 
     const signOut = await fragment.callRoute("POST", "/sign-out", {
       headers: { Authorization: `Bearer ${signUp.data.auth.refreshToken}` },
@@ -247,7 +255,9 @@ describe("auth-fragment session-backed access tokens", async () => {
       body: { email: "refresh-preferred-b@test.com", password: "password123" },
     });
     assert(first.type === "json");
+    assert(first.data.status === "authenticated");
     assert(second.type === "json");
+    assert(second.data.status === "authenticated");
 
     const signOut = await fragment.callRoute("POST", "/sign-out", {
       headers: {
@@ -284,6 +294,7 @@ describe("auth-fragment session-backed access tokens", async () => {
       body: { email: "access-signout@test.com", password: "password123" },
     });
     assert(signUp.type === "json");
+    assert(signUp.data.status === "authenticated");
 
     const signOut = await fragment.callRoute("POST", "/sign-out", {
       headers: authHeaders(signUp.data.auth.token),
@@ -337,6 +348,7 @@ describe("auth-fragment access-token transport restrictions", async () => {
       body: { email: "no-bearer@test.com", password: "password123" },
     });
     assert(signUp.type === "json");
+    assert(signUp.data.status === "authenticated");
 
     const me = await fragments.auth.callRoute("GET", "/me", {
       headers: { Authorization: `Bearer ${signUp.data.auth.token}` },
@@ -388,12 +400,14 @@ describe("auth-fragment active organization access-token refresh", async () => {
       body: { email: "active-access@test.com", password: "password123" },
     });
     assert(signUp.type === "json");
+    assert(signUp.data.status === "authenticated");
+    const signUpAuth = signUp.data.auth;
 
     const [created] = await test.inContext(function () {
       return this.handlerTx()
         .withServiceCalls(() => [
           fragments.auth.services.createOrganizationForCredential({
-            credentialToken: signUp.data.auth.refreshToken ?? "",
+            credentialToken: signUpAuth.refreshToken ?? "",
             input: { name: "Access Org", slug: "access-org" },
             inputError: null,
           }),
@@ -451,17 +465,19 @@ describe("auth-fragment access token organization context", async () => {
       body: { email: "org-context@test.com", password: "password123" },
     });
     assert(signUp.type === "json");
+    assert(signUp.data.status === "authenticated");
+    const signUpAuth = signUp.data.auth;
 
-    const initialClaims = decodeJwt(signUp.data.auth.token) as {
+    const initialClaims = decodeJwt(signUpAuth.token) as {
       ctx?: { organizationIds?: string[] };
     };
-    expect(initialClaims.ctx?.organizationIds).toEqual([signUp.data.auth.activeOrganizationId]);
+    expect(initialClaims.ctx?.organizationIds).toEqual([signUpAuth.activeOrganizationId]);
 
     const [created] = await test.inContext(function () {
       return this.handlerTx()
         .withServiceCalls(() => [
           fragments.auth.services.createOrganizationForCredential({
-            credentialToken: signUp.data.auth.refreshToken ?? "",
+            credentialToken: signUpAuth.refreshToken ?? "",
             input: { name: "Second Context Org", slug: "second-context-org" },
             inputError: null,
           }),
@@ -473,7 +489,7 @@ describe("auth-fragment access token organization context", async () => {
     }
 
     const refresh = await fragments.auth.callRoute("POST", "/token/refresh", {
-      headers: { Cookie: `fragno_auth_refresh=${signUp.data.auth.refreshToken}` },
+      headers: { Cookie: `fragno_auth_refresh=${signUpAuth.refreshToken}` },
       body: {},
     });
     assert(refresh.type === "json");
@@ -482,7 +498,7 @@ describe("auth-fragment access token organization context", async () => {
       ctx?: { organizationIds?: string[] };
     };
     expect(refreshedClaims.ctx?.organizationIds).toEqual(
-      expect.arrayContaining([signUp.data.auth.activeOrganizationId, created.organization.id]),
+      expect.arrayContaining([signUpAuth.activeOrganizationId, created.organization.id]),
     );
   });
 });
@@ -518,6 +534,7 @@ describe("auth-fragment bearer-only access tokens", async () => {
     });
 
     assert(response.type === "json");
+    assert(response.data.status === "authenticated");
     assert(response.data.auth.kind === "jwt");
     expect(response.data.auth.refreshToken).toEqual(expect.any(String));
     assert(response.headers.get("Set-Cookie") ?? "" === "");

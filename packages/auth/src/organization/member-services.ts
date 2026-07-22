@@ -3,8 +3,13 @@ import type { Cursor } from "@fragno-dev/db/cursor";
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import type { AuthActor } from "../auth/types";
+import type { AuthEmailVerificationConfig } from "../email-verification-policy";
 import type { AuthHooksMap } from "../hooks";
 import { authSchema } from "../schema";
+import {
+  sessionCredentialOwnerSelect,
+  validateSessionCredentialOwner,
+} from "../session/session-credential-validator";
 import type { Role } from "../types";
 import { mapUserSummary } from "../user/summary";
 import { canManageOrganization, isGlobalAdmin, OWNER_ROLE } from "./permissions";
@@ -54,6 +59,7 @@ type DeleteOrganizationMemberForCredentialParams = {
 
 type OrganizationMemberServiceOptions = {
   organizationConfig?: OrganizationConfig<string>;
+  emailVerification?: AuthEmailVerificationConfig;
 };
 
 const mapOrganization = (organization: {
@@ -228,8 +234,9 @@ const matchesOrganizationId = (left: unknown, right: unknown): boolean => {
   return toExternalId(left) === toExternalId(right);
 };
 
-export function createOrganizationMemberServices(options: OrganizationMemberServiceOptions = {}) {
+export function createOrganizationMemberServices(options: OrganizationMemberServiceOptions) {
   const limits = options.organizationConfig?.limits;
+  const emailVerification = options.emailVerification;
   const defaultMemberRoles = options.organizationConfig?.defaultMemberRoles;
   const services = {
     /**
@@ -1166,6 +1173,11 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
                 .whereIndex("idx_session_id_expiresAt", (eb) =>
                   eb.and(eb("id", "=", credentialToken), eb("expiresAt", ">", eb.now())),
                 )
+                .joinOne("sessionOwner", "user", (owner) =>
+                  owner
+                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
+                    .select(sessionCredentialOwnerSelect),
+                )
                 .joinMany("sessionMembers", "organizationMember", (member) =>
                   member.onIndex("idx_org_member_user", (eb) =>
                     eb("userId", "=", eb.parent("userId")),
@@ -1215,8 +1227,12 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
             }
 
             const session = sessions[0] ?? null;
-            if (!session) {
-              return { ok: false as const, code: "credential_invalid" as const };
+            const validation = validateSessionCredentialOwner(
+              session?.sessionOwner,
+              emailVerification,
+            );
+            if (!validation.ok) {
+              return validation;
             }
 
             if (!organization || organization.deletedAt != null) {
@@ -1297,7 +1313,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
                 .joinOne("sessionOwner", "user", (owner) =>
                   owner
                     .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
-                    .select(["id", "email", "role", "bannedAt"]),
+                    .select(sessionCredentialOwnerSelect),
                 )
                 .joinMany("sessionMembers", "organizationMember", (member) =>
                   member
@@ -1340,7 +1356,11 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
               uow.delete("session", expiredSession.id, (b) => b.check());
             }
 
-            if (!session?.sessionOwner) {
+            const validation = validateSessionCredentialOwner(
+              session?.sessionOwner,
+              emailVerification,
+            );
+            if (!validation.ok || !session) {
               return { ok: false as const, code: "credential_invalid" as const };
             }
 
@@ -1363,10 +1383,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
             const actorRoles = extractRoles(
               (actorMember as { organizationMemberRoles?: unknown }).organizationMemberRoles,
             );
-            if (
-              !isGlobalAdmin(session.sessionOwner.role as Role) &&
-              !canManageOrganization(actorRoles)
-            ) {
+            if (!isGlobalAdmin(validation.user.role) && !canManageOrganization(actorRoles)) {
               return { ok: false as const, code: "permission_denied" as const };
             }
 
@@ -1418,17 +1435,10 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
                 userId: params.userId,
               },
             );
-            const actorSummary = mapUserSummary({
-              id: session.sessionOwner.id,
-              email: session.sessionOwner.email,
-              role: session.sessionOwner.role,
-              bannedAt: session.sessionOwner.bannedAt ?? null,
-            });
-
             uow.triggerHook("onMemberAdded", {
               organization: organizationSummary,
               member: memberSummary,
-              actor: actorSummary,
+              actor: validation.user,
             });
 
             return {
@@ -1460,7 +1470,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
                 .joinOne("sessionOwner", "user", (owner) =>
                   owner
                     .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
-                    .select(["id", "email", "role", "bannedAt"]),
+                    .select(sessionCredentialOwnerSelect),
                 )
                 .joinMany("sessionMembers", "organizationMember", (member) =>
                   member
@@ -1507,7 +1517,11 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
               uow.delete("session", expiredSession.id, (b) => b.check());
             }
 
-            if (!session?.sessionOwner) {
+            const validation = validateSessionCredentialOwner(
+              session?.sessionOwner,
+              emailVerification,
+            );
+            if (!validation.ok || !session) {
               return { ok: false as const, code: "credential_invalid" as const };
             }
 
@@ -1543,10 +1557,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
             const actorRoles = extractRoles(
               (actorMember as { organizationMemberRoles?: unknown }).organizationMemberRoles,
             );
-            if (
-              !isGlobalAdmin(session.sessionOwner.role as Role) &&
-              !canManageOrganization(actorRoles)
-            ) {
+            if (!isGlobalAdmin(validation.user.role) && !canManageOrganization(actorRoles)) {
               return { ok: false as const, code: "permission_denied" as const };
             }
 
@@ -1614,13 +1625,6 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
                 })
               : null;
 
-            const actorSummary = mapUserSummary({
-              id: session.sessionOwner.id,
-              email: session.sessionOwner.email,
-              role: session.sessionOwner.role,
-              bannedAt: session.sessionOwner.bannedAt ?? null,
-            });
-
             const updatedMember = mapMember(
               {
                 id: member.id,
@@ -1636,7 +1640,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
               uow.triggerHook("onMemberRolesUpdated", {
                 organization: organizationSummary,
                 member: updatedMember,
-                actor: actorSummary,
+                actor: validation.user,
               });
             }
 
@@ -1667,7 +1671,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
                 .joinOne("sessionOwner", "user", (owner) =>
                   owner
                     .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
-                    .select(["id", "email", "role", "bannedAt"]),
+                    .select(sessionCredentialOwnerSelect),
                 )
                 .joinMany("sessionMembers", "organizationMember", (member) =>
                   member
@@ -1710,7 +1714,11 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
             uow.delete("session", expiredSession.id, (b) => b.check());
           }
 
-          if (!session?.sessionOwner) {
+          const validation = validateSessionCredentialOwner(
+            session?.sessionOwner,
+            emailVerification,
+          );
+          if (!validation.ok || !session) {
             return { ok: false as const, code: "credential_invalid" as const };
           }
 
@@ -1743,13 +1751,13 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
             return { ok: false as const, code: "permission_denied" as const };
           }
 
-          const isSelf = toExternalId(member.userId) === toExternalId(session.sessionOwner.id);
+          const isSelf = toExternalId(member.userId) === validation.user.id;
           const actorRoles = extractRoles(
             (actorMember as { organizationMemberRoles?: unknown }).organizationMemberRoles,
           );
           if (
             !isSelf &&
-            !isGlobalAdmin(session.sessionOwner.role as Role) &&
+            !isGlobalAdmin(validation.user.role) &&
             !canManageOrganization(actorRoles)
           ) {
             return { ok: false as const, code: "permission_denied" as const };
@@ -1810,13 +1818,6 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
               })
             : null;
 
-          const actorSummary = mapUserSummary({
-            id: session.sessionOwner.id,
-            email: session.sessionOwner.email,
-            role: session.sessionOwner.role,
-            bannedAt: session.sessionOwner.bannedAt ?? null,
-          });
-
           const removedMember = mapMember(
             {
               id: member.id,
@@ -1832,7 +1833,7 @@ export function createOrganizationMemberServices(options: OrganizationMemberServ
             uow.triggerHook("onMemberRemoved", {
               organization: organizationSummary,
               member: removedMember,
-              actor: actorSummary,
+              actor: validation.user,
             });
           }
 

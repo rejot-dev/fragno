@@ -3,7 +3,7 @@ import { z } from "zod";
 import { defineRoute, defineRoutes } from "@fragno-dev/core";
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
-import type { Role, authFragmentDefinition } from "..";
+import type { authFragmentDefinition } from "..";
 import { buildClearedCredentialHeaders } from "../auth/credential-strategy";
 import { resolveRequestCredential } from "../auth/request-auth";
 import { buildIssuedAuthResponse } from "../auth/response-auth";
@@ -15,6 +15,10 @@ import {
   verifySessionAccessToken,
 } from "../auth/session-access-token";
 import type { ValidatedCredential } from "../auth/types";
+import {
+  evaluateCredentialEligibility,
+  type AuthEmailVerificationConfig,
+} from "../email-verification-policy";
 import type { AuthHooksMap } from "../hooks";
 import { invitationSummarySchema, memberSchema, organizationSchema } from "../organization/schemas";
 import {
@@ -32,6 +36,10 @@ import { toExternalId } from "../organization/utils";
 import { authSchema } from "../schema";
 import { mapUserSummary } from "../user/summary";
 import { buildSetCookieHeader, type CookieOptions } from "../utils/cookie";
+import {
+  sessionCredentialOwnerSelect,
+  validateSessionCredentialOwner,
+} from "./session-credential-validator";
 import { resolveCredentialSeedFromMembers, type CredentialSeedInput } from "./session-seed";
 
 type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
@@ -152,8 +160,6 @@ const normalizeInvitationStatus = (status: string): OrganizationInvitationStatus
       return "pending";
   }
 };
-
-const normalizeRole = (role: string): Role => (role === "admin" ? "admin" : "user");
 
 const mapOrganizationRow = (organization: OrganizationRow): Organization => ({
   id: toExternalId(organization.id),
@@ -284,7 +290,10 @@ const buildInvitationsFromRows = (
   return invitations;
 };
 
-export function createSessionServices(cookieOptions?: CookieOptions) {
+export function createSessionServices(
+  cookieOptions: CookieOptions | undefined,
+  emailVerification: AuthEmailVerificationConfig | undefined,
+) {
   const services = {
     resolveCredentialSeedForUser: function (
       this: AuthServiceContext,
@@ -341,8 +350,16 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
           if (!user) {
             return { ok: false as const, code: "user_not_found" as const };
           }
-          if (user.bannedAt) {
-            return { ok: false as const, code: "user_banned" as const };
+          const userSummary = mapUserSummary(user);
+          const eligibility = evaluateCredentialEligibility(
+            {
+              ...userSummary,
+              emailVerifiedAt: user.emailVerifiedAt ?? null,
+            },
+            emailVerification,
+          );
+          if (!eligibility.ok) {
+            return eligibility;
           }
 
           const expiresAt = uow.now().plus({ days: 30 });
@@ -351,7 +368,6 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
             activeOrganizationId: options?.activeOrganizationId ?? null,
             expiresAt,
           });
-          const userSummary = mapUserSummary(user);
 
           uow.triggerHook("onCredentialIssued", {
             credential: {
@@ -382,31 +398,41 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
           uow
-            .findFirst("session", (b) =>
-              b
-                .whereIndex("idx_session_id_expiresAt", (eb) =>
-                  eb.and(eb("id", "=", credentialToken), eb("expiresAt", ">", eb.now())),
+            .findFirst("session", (builder) =>
+              builder
+                .whereIndex("idx_session_id_expiresAt", (expression) =>
+                  expression.and(
+                    expression("id", "=", credentialToken),
+                    expression("expiresAt", ">", expression.now()),
+                  ),
                 )
                 .joinOne("sessionOwner", "user", (owner) =>
                   owner
-                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
-                    .select(["id", "email", "role", "bannedAt"]),
+                    .onIndex("primary", (expression) =>
+                      expression("id", "=", expression.parent("userId")),
+                    )
+                    .select(sessionCredentialOwnerSelect),
                 ),
             )
-            .findFirst("session", (b) =>
-              b.whereIndex("idx_session_id_expiresAt", (eb) =>
-                eb.and(eb("id", "=", credentialToken), eb("expiresAt", "<=", eb.now())),
+            .findFirst("session", (builder) =>
+              builder.whereIndex("idx_session_id_expiresAt", (expression) =>
+                expression.and(
+                  expression("id", "=", credentialToken),
+                  expression("expiresAt", "<=", expression.now()),
+                ),
               ),
             ),
         )
         .mutate(({ uow, retrieveResult: [session, expiredSession] }) => {
           if (expiredSession) {
-            uow.delete("session", expiredSession.id, (b) => b.check());
+            uow.delete("session", expiredSession.id, (builder) => builder.check());
           }
-          if (!session) {
-            return null;
-          }
-          if (session.sessionOwner?.bannedAt !== null) {
+
+          const validation = validateSessionCredentialOwner(
+            session?.sessionOwner,
+            emailVerification,
+          );
+          if (!validation.ok || !session) {
             return null;
           }
 
@@ -415,12 +441,12 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
             userId: toExternalId(session.userId),
             expiresAt: session.expiresAt,
             activeOrganizationId: session.activeOrganizationId
-              ? String(session.activeOrganizationId)
+              ? toExternalId(session.activeOrganizationId)
               : null,
             user: {
-              id: session.sessionOwner.id.valueOf(),
-              email: session.sessionOwner.email,
-              role: normalizeRole(session.sessionOwner.role),
+              id: validation.user.id,
+              email: validation.user.email,
+              role: validation.user.role,
             },
           };
         })
@@ -436,6 +462,11 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
             b
               .whereIndex("idx_session_id_expiresAt", (eb) =>
                 eb.and(eb("id", "=", credentialToken), eb("expiresAt", ">", eb.now())),
+              )
+              .joinOne("sessionOwner", "user", (owner) =>
+                owner
+                  .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
+                  .select(sessionCredentialOwnerSelect),
               )
               .joinOne("sessionActiveOrganization", "organization", (organization) =>
                 organization
@@ -461,7 +492,11 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
           ),
         )
         .transformRetrieve(([session]) => {
-          if (!session) {
+          const validation = validateSessionCredentialOwner(
+            session?.sessionOwner,
+            emailVerification,
+          );
+          if (!validation.ok || !session) {
             return { organizations: [], activeOrganizationId: null };
           }
 
@@ -493,7 +528,7 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
               .joinOne("sessionOwner", "user", (owner) =>
                 owner
                   .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
-                  .select(["email"])
+                  .select(sessionCredentialOwnerSelect)
                   .joinMany("invitations", "organizationInvitation", (invitation) =>
                     invitation
                       .onIndex("idx_org_invitation_email", (eb) =>
@@ -508,9 +543,15 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
               ),
           ),
         )
-        .transformRetrieve(([session]) =>
-          buildInvitationsFromRows(normalizeMany(session?.sessionOwner?.invitations)),
-        )
+        .transformRetrieve(([session]) => {
+          const validation = validateSessionCredentialOwner(
+            session?.sessionOwner,
+            emailVerification,
+          );
+          return validation.ok
+            ? buildInvitationsFromRows(normalizeMany(validation.owner.invitations))
+            : [];
+        })
         .mutate(({ retrieveResult }) => retrieveResult)
         .build();
     },
@@ -525,6 +566,11 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
               .whereIndex("idx_session_id_expiresAt", (eb) =>
                 eb.and(eb("id", "=", credentialToken), eb("expiresAt", ">", eb.now())),
               )
+              .joinOne("sessionOwner", "user", (owner) =>
+                owner
+                  .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
+                  .select(sessionCredentialOwnerSelect),
+              )
               .joinMany("sessionMembers", "organizationMember", (member) =>
                 member
                   .onIndex("idx_org_member_user", (eb) => eb("userId", "=", eb.parent("userId")))
@@ -537,7 +583,11 @@ export function createSessionServices(cookieOptions?: CookieOptions) {
           ),
         )
         .transformRetrieve(([session]) => {
-          if (!session) {
+          const validation = validateSessionCredentialOwner(
+            session?.sessionOwner,
+            emailVerification,
+          );
+          if (!validation.ok || !session) {
             return [];
           }
           const sessionMembers = normalizeMany(session.sessionMembers);

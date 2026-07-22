@@ -1,8 +1,13 @@
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import type { AuthActor } from "../auth/types";
+import type { AuthEmailVerificationConfig } from "../email-verification-policy";
 import type { AuthHooksMap } from "../hooks";
 import { authSchema } from "../schema";
+import {
+  sessionCredentialOwnerSelect,
+  validateSessionCredentialOwner,
+} from "../session/session-credential-validator";
 import type { Role } from "../types";
 import { mapUserSummary } from "../user/summary";
 import { bytesToHex, randomBytes } from "../utils/crypto";
@@ -62,6 +67,7 @@ type CreateOrganizationInvitationForCredentialParams = {
 
 type OrganizationInvitationServiceOptions = {
   organizationConfig?: OrganizationConfig<string>;
+  emailVerification?: AuthEmailVerificationConfig;
 };
 
 type OrganizationRow = {
@@ -209,9 +215,10 @@ const filterRolesForMemberId = (
 };
 
 export function createOrganizationInvitationServices(
-  options: OrganizationInvitationServiceOptions = {},
+  options: OrganizationInvitationServiceOptions,
 ) {
   const limits = options.organizationConfig?.limits;
+  const emailVerification = options.emailVerification;
   const invitationExpiresInDays = options.organizationConfig?.invitationExpiresInDays;
   const defaultMemberRoles = options.organizationConfig?.defaultMemberRoles;
   const services = {
@@ -936,7 +943,7 @@ export function createOrganizationInvitationServices(
                 .joinOne("sessionOwner", "user", (user) =>
                   user
                     .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
-                    .select(["id", "email", "role", "bannedAt"])
+                    .select(sessionCredentialOwnerSelect)
                     .joinMany("invitations", "organizationInvitation", (invitation) =>
                       invitation
                         .onIndex("idx_org_invitation_email", (eb) =>
@@ -962,8 +969,12 @@ export function createOrganizationInvitationServices(
           }
 
           const session = sessions[0] ?? null;
-          if (!session?.sessionOwner) {
-            return { ok: false as const, code: "credential_invalid" as const };
+          const validation = validateSessionCredentialOwner(
+            session?.sessionOwner,
+            emailVerification,
+          );
+          if (!validation.ok) {
+            return validation;
           }
 
           const invitations: Array<{
@@ -1029,7 +1040,7 @@ export function createOrganizationInvitationServices(
                 .joinOne("sessionOwner", "user", (user) =>
                   user
                     .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
-                    .select(["id", "email", "role", "bannedAt"]),
+                    .select(sessionCredentialOwnerSelect),
                 )
                 .joinMany("sessionMembers", "organizationMember", (member) =>
                   member
@@ -1066,10 +1077,14 @@ export function createOrganizationInvitationServices(
           }
 
           const session = sessions[0] ?? null;
-          if (!session?.sessionOwner) {
+          const validation = validateSessionCredentialOwner(
+            session?.sessionOwner,
+            emailVerification,
+          );
+          if (!validation.ok || !session) {
             return { ok: false as const, code: "credential_invalid" as const };
           }
-          const sessionOwner = session.sessionOwner;
+          const sessionOwner = validation.owner;
 
           const invitation = invitations[0] ?? null;
           if (!invitation) {
@@ -1153,7 +1168,7 @@ export function createOrganizationInvitationServices(
             const isInviter = toExternalId(invitation.inviterId) === toExternalId(sessionOwner.id);
             const canCancel =
               isInviter ||
-              isGlobalAdmin(sessionOwner.role as Role) ||
+              isGlobalAdmin(validation.user.role) ||
               (actorMember && canManageOrganization(actorRoles));
 
             if (!canCancel) {
@@ -1161,12 +1176,7 @@ export function createOrganizationInvitationServices(
             }
           }
 
-          const actorSummary = mapUserSummary({
-            id: sessionOwner.id,
-            email: sessionOwner.email,
-            role: sessionOwner.role,
-            bannedAt: sessionOwner.bannedAt ?? null,
-          });
+          const actorSummary = validation.user;
 
           const invitationRoles = Array.isArray(invitation.roles)
             ? (invitation.roles as string[])
@@ -1308,7 +1318,7 @@ export function createOrganizationInvitationServices(
                 .joinOne("sessionOwner", "user", (user) =>
                   user
                     .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
-                    .select(["role"]),
+                    .select(sessionCredentialOwnerSelect),
                 )
                 .joinMany("sessionMembers", "organizationMember", (member) =>
                   member
@@ -1339,7 +1349,11 @@ export function createOrganizationInvitationServices(
             uow.delete("session", expiredSession.id, (b) => b.check());
           }
 
-          if (!session?.sessionOwner) {
+          const validation = validateSessionCredentialOwner(
+            session?.sessionOwner,
+            emailVerification,
+          );
+          if (!validation.ok || !session) {
             return { ok: false as const, code: "credential_invalid" as const };
           }
 
@@ -1357,10 +1371,7 @@ export function createOrganizationInvitationServices(
           const actorRoles = extractRoles(
             (actorMember as { organizationMemberRoles?: unknown }).organizationMemberRoles,
           );
-          if (
-            !isGlobalAdmin(session.sessionOwner.role as Role) &&
-            !canManageOrganization(actorRoles)
-          ) {
+          if (!isGlobalAdmin(validation.user.role) && !canManageOrganization(actorRoles)) {
             return { ok: false as const, code: "permission_denied" as const };
           }
 
@@ -1391,7 +1402,7 @@ export function createOrganizationInvitationServices(
                 .joinOne("sessionOwner", "user", (user) =>
                   user
                     .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
-                    .select(["id", "email", "role", "bannedAt"]),
+                    .select(sessionCredentialOwnerSelect),
                 )
                 .joinMany("sessionMembers", "organizationMember", (member) =>
                   member
@@ -1425,10 +1436,14 @@ export function createOrganizationInvitationServices(
             uow.delete("session", expiredSession.id, (b) => b.check());
           }
 
-          if (!session?.sessionOwner) {
+          const validation = validateSessionCredentialOwner(
+            session?.sessionOwner,
+            emailVerification,
+          );
+          if (!validation.ok || !session) {
             return { ok: false as const, code: "credential_invalid" as const };
           }
-          const sessionOwner = session.sessionOwner;
+          const sessionOwner = validation.owner;
 
           if (!organization || organization.deletedAt != null) {
             return { ok: false as const, code: "organization_not_found" as const };
@@ -1442,16 +1457,11 @@ export function createOrganizationInvitationServices(
           }
 
           const actorRoles = extractRoles(actorMember.organizationMemberRoles);
-          if (!isGlobalAdmin(sessionOwner.role as Role) && !canManageOrganization(actorRoles)) {
+          if (!isGlobalAdmin(validation.user.role) && !canManageOrganization(actorRoles)) {
             return { ok: false as const, code: "permission_denied" as const };
           }
 
-          const actorSummary = mapUserSummary({
-            id: sessionOwner.id,
-            email: sessionOwner.email,
-            role: sessionOwner.role,
-            bannedAt: sessionOwner.bannedAt ?? null,
-          });
+          const actorSummary = validation.user;
 
           const normalizedEmail = normalizeEmail(params.email);
           const pendingInvitesForEmail = invitations.filter(
@@ -1470,10 +1480,10 @@ export function createOrganizationInvitationServices(
             organizationId: params.organizationId,
             email: params.email,
             roles,
-            inviterId: toExternalId(sessionOwner.id),
+            inviterId: validation.user.id,
             actor: {
-              userId: toExternalId(sessionOwner.id),
-              userRole: sessionOwner.role as Role,
+              userId: validation.user.id,
+              userRole: validation.user.role,
             },
             expiresInDays: invitationExpiresInDays,
           });
