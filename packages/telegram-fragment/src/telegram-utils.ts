@@ -346,14 +346,6 @@ export function safeNormalizeTelegramMessage(input: unknown): TelegramMessage | 
   }
 }
 
-export function safeNormalizeTelegramUpdate(input: unknown): TelegramUpdate | null {
-  try {
-    return normalizeTelegramUpdate(input);
-  } catch {
-    return null;
-  }
-}
-
 export function parseTelegramUpdate(update: TelegramUpdate): ParsedTelegramUpdate | null {
   if (update.message) {
     return { updateId: update.updateId, type: "message", message: update.message };

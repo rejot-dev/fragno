@@ -1,4 +1,4 @@
-import { createGitHubAppFragmentClients } from "..";
+import { createGitHubAppFragmentClients } from "../github/clients";
 import type { GitHubAppFragmentPublicClientConfig } from "../github/types";
 
 export function createGitHubAppFragmentClient(config: GitHubAppFragmentPublicClientConfig = {}) {

@@ -13,14 +13,6 @@ export { githubAppPullRoutesFactory } from "./routes/pulls";
 export { githubAppRepositoryRoutesFactory } from "./routes/repositories";
 export { githubAppWebhookRoutesFactory } from "./routes/webhooks";
 
-export const githubAppRouteFactories = [
-  githubAppWebhookRoutesFactory,
-  githubAppOAuthRoutesFactory,
-  githubAppInstallationRoutesFactory,
-  githubAppRepositoryRoutesFactory,
-  githubAppPullRoutesFactory,
-] as const;
-
 export const githubAppRoutesFactory = defineRoutes(githubAppFragmentDefinition).create(
   (context) => [
     ...githubAppWebhookRoutesFactory(context),

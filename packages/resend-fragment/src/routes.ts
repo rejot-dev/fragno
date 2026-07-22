@@ -1,38 +1,10 @@
 import { defineRoutes } from "@fragno-dev/core";
 
 import { resendFragmentDefinition } from "./definition";
-import {
-  registerDomainRoutes,
-  resendDomainDetailSchema,
-  resendDomainRecordSchema,
-  resendDomainSchema,
-  resendListDomainsOutputSchema,
-} from "./routes/domains";
-import {
-  registerEmailRoutes,
-  resendEmailRecordSchema,
-  resendEmailDetailSchema,
-  resendEmailSummarySchema,
-  resendListEmailsOutputSchema,
-  resendSendEmailInputSchema,
-  resendSendEmailOutputSchema,
-  resendEmailSchema,
-} from "./routes/emails";
-import {
-  registerReceivedEmailRoutes,
-  resendListReceivedEmailsOutputSchema,
-  resendReceivedEmailAttachmentSchema,
-  resendReceivedEmailDetailSchema,
-  resendReceivedEmailSummarySchema,
-} from "./routes/received-emails";
-import {
-  registerThreadRoutes,
-  resendListThreadMessagesOutputSchema,
-  resendListThreadsOutputSchema,
-  resendThreadDetailSchema,
-  resendThreadMessageSchema,
-  resendThreadMutationOutputSchema,
-} from "./routes/threads";
+import { registerDomainRoutes } from "./routes/domains";
+import { registerEmailRoutes } from "./routes/emails";
+import { registerReceivedEmailRoutes } from "./routes/received-emails";
+import { registerThreadRoutes } from "./routes/threads";
 import { registerWebhookRoutes } from "./routes/webhook";
 
 export {
@@ -50,29 +22,6 @@ export const resendRoutesFactory = defineRoutes(resendFragmentDefinition).create
   ...registerEmailRoutes(context),
   ...registerWebhookRoutes(context),
 ]);
-
-export {
-  resendListDomainsOutputSchema,
-  resendDomainSchema,
-  resendDomainRecordSchema,
-  resendDomainDetailSchema,
-  resendReceivedEmailAttachmentSchema,
-  resendReceivedEmailSummarySchema,
-  resendReceivedEmailDetailSchema,
-  resendListReceivedEmailsOutputSchema,
-  resendEmailSchema,
-  resendSendEmailInputSchema,
-  resendEmailRecordSchema,
-  resendEmailSummarySchema,
-  resendEmailDetailSchema,
-  resendSendEmailOutputSchema,
-  resendListEmailsOutputSchema,
-  resendThreadMessageSchema,
-  resendThreadDetailSchema,
-  resendListThreadsOutputSchema,
-  resendListThreadMessagesOutputSchema,
-  resendThreadMutationOutputSchema,
-};
 
 export type {
   ResendDomain,
