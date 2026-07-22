@@ -1,8 +1,8 @@
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
-import { useFragno } from "@fragno-dev/core/react";
+import { createFragnoReactClient } from "@fragno-dev/core/react";
 
 import { createMailingListFragmentClients } from "..";
 
 export function createMailingListClient(config: FragnoPublicClientConfig = {}) {
-  return useFragno(createMailingListFragmentClients(config));
+  return createFragnoReactClient(createMailingListFragmentClients(config));
 }

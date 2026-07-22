@@ -1,9 +1,9 @@
-import { useFragno } from "@fragno-dev/core/react";
+import { createFragnoReactClient } from "@fragno-dev/core/react";
 
 import { createAuthFragmentClients, type AuthFragmentClientConfig } from "..";
 
 export function createAuthFragmentClient(config: AuthFragmentClientConfig = {}) {
-  return useFragno(createAuthFragmentClients(config));
+  return createFragnoReactClient(createAuthFragmentClients(config));
 }
 
 export type {
