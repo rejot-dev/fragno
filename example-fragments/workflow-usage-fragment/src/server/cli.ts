@@ -102,25 +102,25 @@ const requestJson = async (
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 
-  const text = await response.text();
-  let data: unknown = undefined;
-  if (text) {
-    try {
-      data = JSON.parse(text) as unknown;
-    } catch (err) {
-      if (!response.ok) {
-        throw new Error(`${response.status} ${response.statusText}: ${text}`);
-      }
-      throw err;
-    }
-  }
-
   if (!response.ok) {
-    const message = typeof data === "string" ? data : JSON.stringify(data ?? text);
+    const errorText = await response.text();
+    let errorData: unknown;
+    try {
+      errorData = errorText ? (JSON.parse(errorText) as unknown) : undefined;
+    } catch {
+      errorData = errorText;
+    }
+    const message =
+      typeof errorData === "string" ? errorData : JSON.stringify(errorData ?? errorText);
     throw new Error(`${response.status} ${response.statusText}: ${message}`);
   }
 
-  return data;
+  const text = await response.text();
+  if (!text) {
+    return undefined;
+  }
+
+  return JSON.parse(text) as unknown;
 };
 
 const printJson = (value: unknown) => {

@@ -19,6 +19,10 @@ export const createAuthorizationURL = (params: {
   codeChallengeMethod?: "S256" | "plain";
   extraParams?: Record<string, string | undefined>;
 }): URL => {
+  if (!URL.canParse(params.authorizationEndpoint)) {
+    throw new Error(`Invalid OAuth authorization endpoint: ${params.authorizationEndpoint}`);
+  }
+
   const url = new URL(params.authorizationEndpoint);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", params.clientId);
