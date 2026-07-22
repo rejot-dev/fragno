@@ -70,6 +70,7 @@ describe("auth-fragment", async () => {
         },
       });
       assert(response.type === "json");
+      assert(response.data.status === "authenticated");
       expect(response.data).toMatchObject({
         auth: {
           token: expect.any(String),

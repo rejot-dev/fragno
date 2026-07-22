@@ -12,8 +12,16 @@ import {
   resolveBackingSessionCredential,
 } from "../auth/session-access-token";
 import type { AuthActor } from "../auth/types";
+import {
+  evaluateCredentialEligibility,
+  type AuthEmailVerificationConfig,
+} from "../email-verification-policy";
 import type { AuthHooksMap, BeforeCreateUserHook } from "../hooks";
 import { authSchema } from "../schema";
+import {
+  sessionCredentialOwnerSelect,
+  validateSessionCredentialOwner,
+} from "../session/session-credential-validator";
 import { resolveCredentialSeedFromMembers, credentialSeedSchema } from "../session/session-seed";
 import {
   createAutoOrganization,
@@ -46,6 +54,22 @@ export type VerifyUserEmailResult =
       ok: false;
       code: "user_not_found" | "email_changed";
     };
+
+const authSignUpDataSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("authenticated"),
+    auth: issuedAuthSchema,
+    userId: z.string(),
+    email: z.string(),
+    role: z.enum(["user", "admin"]),
+  }),
+  z.object({
+    status: z.literal("email_verification_required"),
+    userId: z.string(),
+    email: z.string(),
+    role: z.enum(["user", "admin"]),
+  }),
+]);
 
 type CredentialSeedMemberRow = {
   createdAt: Date;
@@ -91,8 +115,9 @@ const collectOrganizationIdsFromSeedMembers = (
   );
 
 export function createUserServices(
-  options?: AutoCreateOrganizationOptions,
-  beforeCreateUser?: BeforeCreateUserHook,
+  options: AutoCreateOrganizationOptions | undefined,
+  beforeCreateUser: BeforeCreateUserHook | undefined,
+  emailVerification: AuthEmailVerificationConfig | undefined,
 ) {
   const resolveCreateUserRole = (email: string, role: "user" | "admin") =>
     beforeCreateUser?.({ email, role })?.role ?? role;
@@ -336,11 +361,6 @@ export function createUserServices(
             autoOrganizationInput,
           });
 
-          const credentialId = uow.create("session", {
-            userId,
-            activeOrganizationId: autoOrganization?.organization.id ?? null,
-            expiresAt,
-          });
           const userSummary = mapUserSummary({
             id: userId.valueOf(),
             email,
@@ -352,15 +372,6 @@ export function createUserServices(
             user: userSummary,
             actor: userSummary,
             emailVerifiedAt: null,
-          });
-          uow.triggerHook("onCredentialIssued", {
-            credential: {
-              id: credentialId.valueOf(),
-              user: userSummary,
-              expiresAt,
-              activeOrganizationId: autoOrganization?.organization.id ?? null,
-            },
-            actor: userSummary,
           });
 
           if (autoOrganization) {
@@ -375,21 +386,52 @@ export function createUserServices(
             });
           }
 
-          const credential = {
-            id: credentialId.valueOf(),
-            expiresAt,
-            activeOrganizationId: autoOrganization?.organization.id ?? null,
-            organizationIds: autoOrganization ? [autoOrganization.organization.id] : [],
-            user: {
-              id: userId.valueOf(),
-              email,
-              role,
+          const eligibility = evaluateCredentialEligibility(
+            {
+              ...userSummary,
+              emailVerifiedAt: null,
             },
-          };
+            emailVerification,
+          );
+          if (!eligibility.ok) {
+            return {
+              ok: true as const,
+              status: "email_verification_required" as const,
+              user: userSummary,
+            };
+          }
+
+          const activeOrganizationId = autoOrganization?.organization.id ?? null;
+          const credentialId = uow.create("session", {
+            userId,
+            activeOrganizationId,
+            expiresAt,
+          });
+
+          uow.triggerHook("onCredentialIssued", {
+            credential: {
+              id: credentialId.valueOf(),
+              user: userSummary,
+              expiresAt,
+              activeOrganizationId,
+            },
+            actor: userSummary,
+          });
 
           return {
             ok: true as const,
-            credential,
+            status: "authenticated" as const,
+            credential: {
+              id: credentialId.valueOf(),
+              expiresAt,
+              activeOrganizationId,
+              organizationIds: autoOrganization ? [autoOrganization.organization.id] : [],
+              user: {
+                id: userId.valueOf(),
+                email,
+                role,
+              },
+            },
           };
         })
         .build();
@@ -484,13 +526,13 @@ export function createUserServices(
                 .joinOne("sessionOwner", "user", (owner) =>
                   owner
                     .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
-                    .select(["id", "email", "role", "bannedAt"]),
+                    .select(sessionCredentialOwnerSelect),
                 ),
             )
             .findFirst("user", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
         )
         .mutate(({ uow, retrieveResult: [session, user] }) => {
-          if (!session?.sessionOwner) {
+          if (!session) {
             return { ok: false as const, code: "credential_invalid" as const };
           }
 
@@ -499,19 +541,21 @@ export function createUserServices(
             return { ok: false as const, code: "credential_invalid" as const };
           }
 
-          if (session.sessionOwner.role !== "admin") {
+          const validation = validateSessionCredentialOwner(
+            session.sessionOwner,
+            emailVerification,
+          );
+          if (!validation.ok) {
+            return validation;
+          }
+
+          if (validation.user.role !== "admin") {
             return { ok: false as const, code: "permission_denied" as const };
           }
 
           uow.update("user", userId, (b) => b.set({ role }));
 
           if (user) {
-            const actorSummary = mapUserSummary({
-              id: session.sessionOwner.id,
-              email: session.sessionOwner.email,
-              role: session.sessionOwner.role,
-              bannedAt: session.sessionOwner.bannedAt ?? null,
-            });
             uow.triggerHook("onUserRoleUpdated", {
               user: mapUserSummary({
                 id: userId,
@@ -519,7 +563,7 @@ export function createUserServices(
                 role,
                 bannedAt: user.bannedAt ?? null,
               }),
-              actor: actorSummary,
+              actor: validation.user,
             });
           }
           return { ok: true as const };
@@ -543,12 +587,12 @@ export function createUserServices(
               .joinOne("sessionOwner", "user", (owner) =>
                 owner
                   .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
-                  .select(["id", "email", "role", "bannedAt"]),
+                  .select(sessionCredentialOwnerSelect),
               ),
           ),
         )
         .mutate(({ uow, retrieveResult: [session] }) => {
-          if (!session?.sessionOwner) {
+          if (!session) {
             return { ok: false as const, code: "credential_invalid" as const };
           }
 
@@ -557,16 +601,18 @@ export function createUserServices(
             return { ok: false as const, code: "credential_invalid" as const };
           }
 
-          uow.update("user", session.sessionOwner.id, (b) => b.set({ passwordHash }).check());
-          const actorSummary = mapUserSummary({
-            id: session.sessionOwner.id,
-            email: session.sessionOwner.email,
-            role: session.sessionOwner.role,
-            bannedAt: session.sessionOwner.bannedAt ?? null,
-          });
+          const validation = validateSessionCredentialOwner(
+            session.sessionOwner,
+            emailVerification,
+          );
+          if (!validation.ok) {
+            return validation;
+          }
+
+          uow.update("user", validation.owner.id, (b) => b.set({ passwordHash }).check());
           uow.triggerHook("onUserPasswordChanged", {
-            user: actorSummary,
-            actor: actorSummary,
+            user: validation.user,
+            actor: validation.user,
           });
           return { ok: true as const };
         })
@@ -642,12 +688,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
           email: z.email().max(191),
           password: z.string().min(8).max(100),
         }),
-        outputSchema: z.object({
-          auth: issuedAuthSchema,
-          userId: z.string(),
-          email: z.string(),
-          role: z.enum(["user", "admin"]),
-        }),
+        outputSchema: authSignUpDataSchema,
         errorCodes: [
           "email_already_exists",
           "invalid_input",
@@ -696,6 +737,15 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
             return error({ message: "Email already exists", code: "email_already_exists" }, 400);
           }
 
+          if (result.status === "email_verification_required") {
+            return Response.json({
+              status: result.status,
+              userId: result.user.id,
+              email: result.user.email,
+              role: result.user.role,
+            });
+          }
+
           const issuedCredential = await issueSessionBackedAuthCredential({
             accessTokens,
             session: result.credential,
@@ -706,6 +756,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
 
           return Response.json(
             {
+              status: result.status,
               auth: issuedAuth.auth,
               userId: result.credential.user.id,
               email: result.credential.user.email,
@@ -730,7 +781,12 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
           email: z.string(),
           role: z.enum(["user", "admin"]),
         }),
-        errorCodes: ["invalid_credentials", "user_banned", "email_password_disabled"],
+        errorCodes: [
+          "invalid_credentials",
+          "user_banned",
+          "email_verification_required",
+          "email_password_disabled",
+        ],
         handler: async function ({ input }, { error }) {
           if (!emailAndPasswordEnabled) {
             return error(
@@ -740,17 +796,14 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
           }
 
           const { email, password, auth } = await input.valid();
-          let passwordCheck:
-            | { ok: true }
-            | { ok: false; code: "invalid_credentials" | "user_banned" }
-            | null = null;
+          let passwordCheck: { ok: true } | { ok: false; code: "invalid_credentials" } | null =
+            null;
 
           const result = await this.handlerTx({
             onAfterRetrieve: async (_uow, results) => {
               const firstResult = Array.isArray(results[0]) ? results[0] : [];
               const user = (firstResult[0] ?? null) as {
                 passwordHash?: string | null;
-                bannedAt?: Date | null;
               } | null;
 
               if (!user?.passwordHash) {
@@ -761,11 +814,6 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
               const isValid = await verifyPassword(password, user.passwordHash);
               if (!isValid) {
                 passwordCheck = { ok: false, code: "invalid_credentials" };
-                return;
-              }
-
-              if (user.bannedAt) {
-                passwordCheck = { ok: false, code: "user_banned" };
                 return;
               }
 
@@ -798,6 +846,23 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
                 return { ok: false as const, code: passwordCheck.code };
               }
 
+              const userSummary = mapUserSummary({
+                id: user.id.valueOf(),
+                email: user.email,
+                role: user.role,
+                bannedAt: user.bannedAt ?? null,
+              });
+              const eligibility = evaluateCredentialEligibility(
+                {
+                  ...userSummary,
+                  emailVerifiedAt: user.emailVerifiedAt ?? null,
+                },
+                config.emailVerification,
+              );
+              if (!eligibility.ok) {
+                return eligibility;
+              }
+
               const uow = forSchema(authSchema);
               // TODO: Use services.issueCredential instead of inline credential issuance (sign-up and
               // handleOAuthCallback also duplicate this logic)
@@ -815,13 +880,6 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
                 activeOrganizationId,
                 expiresAt,
               });
-              const userSummary = mapUserSummary({
-                id: user.id.valueOf(),
-                email: user.email,
-                role: user.role,
-                bannedAt: user.bannedAt ?? null,
-              });
-
               uow.triggerHook("onCredentialIssued", {
                 credential: {
                   id: credentialId.valueOf(),
@@ -854,6 +912,15 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
           if (!result.ok) {
             if (result.code === "user_banned") {
               return error({ message: "User is banned", code: "user_banned" }, 403);
+            }
+            if (result.code === "email_verification_required") {
+              return error(
+                {
+                  message: "Verify your email before signing in.",
+                  code: "email_verification_required",
+                },
+                403,
+              );
             }
             return error({ message: "Invalid credentials", code: "invalid_credentials" }, 401);
           }

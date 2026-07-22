@@ -45,6 +45,7 @@ import {
   writeStorageItem,
   type StorageLike,
 } from "./client/storage";
+import type { AuthEmailVerificationConfig } from "./email-verification-policy";
 import type {
   AuthHooks,
   AuthHooksMap,
@@ -136,6 +137,7 @@ export interface AuthConfig<
     schema: StandardSchemaV1<unknown, TSessionContext>;
   };
   cookieOptions?: CookieOptions;
+  emailVerification?: AuthEmailVerificationConfig;
   hooks?: AuthHooks;
   beforeCreateUser?: BeforeCreateUserHook;
   organizations?: OrganizationConfig<TRole> | false;
@@ -380,25 +382,29 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
       : undefined;
 
     return defineService({
-      ...createUserServices(autoCreateOptions, config.beforeCreateUser),
-      ...createSessionServices(config.cookieOptions),
+      ...createUserServices(autoCreateOptions, config.beforeCreateUser, config.emailVerification),
+      ...createSessionServices(config.cookieOptions, config.emailVerification),
       ...createUserOverviewServices(),
       ...createAdminOrganizationServices(),
       ...createOrganizationServices({
         organizationConfig: organizationConfigResolved,
+        emailVerification: config.emailVerification,
       }),
       ...createOrganizationMemberServices({
         organizationConfig: organizationConfigResolved,
+        emailVerification: config.emailVerification,
       }),
       ...createOrganizationInvitationServices({
         organizationConfig: organizationConfigResolved,
+        emailVerification: config.emailVerification,
       }),
-      ...createActiveOrganizationServices(),
+      ...createActiveOrganizationServices(config.emailVerification),
       accessTokens: createAuthAccessTokenMethods(config),
       ...createOAuthServices({
         oauth: config.oauth,
         autoCreateOptions,
         beforeCreateUser: config.beforeCreateUser,
+        emailVerification: config.emailVerification,
       }),
     });
   })
@@ -1029,6 +1035,10 @@ export {
   writeAuthSessionCache,
 } from "./client/session-cache";
 export type { AuthSessionCache, AuthSessionCacheOptions } from "./client/session-cache";
+export type {
+  AuthEmailVerificationConfig,
+  AuthEmailVerificationPolicyUser,
+} from "./email-verification-policy";
 export type { UserSummary } from "./types";
 export type { VerifyUserEmailInput, VerifyUserEmailResult } from "./user/user-actions";
 export type {

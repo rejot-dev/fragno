@@ -85,6 +85,7 @@ describe("auth user email verification", async () => {
     });
 
     assert(result.ok);
+    assert(result.status === "authenticated");
     const user = await getUserById(result.credential.user.id);
     assert(user);
     expect(user.emailVerifiedAt).toBeNull();

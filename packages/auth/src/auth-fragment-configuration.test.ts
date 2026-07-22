@@ -44,6 +44,7 @@ describe("auth-fragment with a custom auth cookie name", async () => {
     });
 
     assert(response.type === "json");
+    assert(response.data.status === "authenticated");
     expect(response.headers.get("Set-Cookie")).toContain("custom_auth=");
 
     const meResponse = await fragment.callRoute("GET", "/me", {
@@ -87,6 +88,7 @@ describe("auth-fragment access tokens with a custom auth cookie name", async () 
       body: { email: "custom-access-cookie@test.com", password: "password123" },
     });
     assert(response.type === "json");
+    assert(response.data.status === "authenticated");
     const setCookie = getSetCookieHeaders(response.headers);
     expect(setCookie).toEqual(expect.arrayContaining([expect.stringContaining("custom_auth=")]));
     expect(setCookie).toEqual(
@@ -190,6 +192,7 @@ describe("auth-fragment auto-create organizations", async () => {
     });
 
     assert(signUpResponse.type === "json");
+    assert(signUpResponse.data.status === "authenticated");
     const credentialToken = signUpResponse.data.auth.token as string;
 
     const meResponse = await fragment.callRoute("GET", "/me", {
@@ -235,7 +238,9 @@ describe("auth-fragment default auto-create organization slugs", async () => {
     });
 
     assert(firstSignUpResponse.type === "json");
+    assert(firstSignUpResponse.data.status === "authenticated");
     assert(secondSignUpResponse.type === "json");
+    assert(secondSignUpResponse.data.status === "authenticated");
 
     const firstMeResponse = await fragment.callRoute("GET", "/me", {
       headers: authHeaders(firstSignUpResponse.data.auth.token as string),
@@ -288,6 +293,7 @@ describe("auth-fragment auto-create organization slug collisions", async () => {
     });
 
     assert(firstSignUpResponse.type === "json");
+    assert(firstSignUpResponse.data.status === "authenticated");
     assert(secondSignUpResponse.type === "error");
     assert(secondSignUpResponse.status === 400);
     assert(secondSignUpResponse.error.code === "organization_slug_taken");
@@ -387,6 +393,7 @@ describe("auth-fragment beforeCreateUser role override", async () => {
     });
 
     assert(response.type === "json");
+    assert(response.data.status === "authenticated");
     const meResponse = await fragment.callRoute("GET", "/me", {
       headers: authHeaders(response.data.auth.token as string),
     });

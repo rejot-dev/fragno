@@ -202,6 +202,7 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
           "signup_disabled",
           "signup_required",
           "user_banned",
+          "email_verification_required",
         ],
         handler: async function ({ query, pathParams }, { error }) {
           if (!oauthConfig) {
@@ -281,8 +282,19 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
                       ? 403
                       : result.code === "user_banned"
                         ? 403
-                        : 400;
-            return error({ message: "OAuth failed", code: result.code }, status);
+                        : result.code === "email_verification_required"
+                          ? 403
+                          : 400;
+            return error(
+              {
+                message:
+                  result.code === "email_verification_required"
+                    ? "Verify your email before signing in."
+                    : "OAuth failed",
+                code: result.code,
+              },
+              status,
+            );
           }
 
           const issuedCredential = await issueSessionBackedAuthCredential({
