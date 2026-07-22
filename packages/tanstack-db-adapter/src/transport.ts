@@ -1,5 +1,10 @@
 import type { FragnoOutboxEntry } from "./protocol";
 
+const browserAdapterIdentityRequests = new WeakMap<
+  typeof globalThis.fetch,
+  Map<string, Promise<string>>
+>();
+
 export type FragnoOutboxIdentityRequest = {
   signal: AbortSignal;
 };
@@ -23,21 +28,48 @@ export function createFetchFragnoOutboxTransport(options: {
   const fetch = options.fetch ?? globalThis.fetch;
   const internalUrl = new URL(options.internalUrl, getUrlBase()).toString();
   const outboxUrl = createFragnoOutboxUrl(internalUrl);
+  let adapterIdentity: string | undefined;
+  let adapterIdentityRequest: Promise<string> | undefined;
+
+  const requestAdapterIdentity = async (signal: AbortSignal): Promise<string> => {
+    const response = await fetch(internalUrl, { signal });
+    if (!response.ok) {
+      throw new Error(
+        `Fragno internal describe request failed: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    const body: unknown = await response.json();
+    if (!isRecord(body) || typeof body["adapterIdentity"] !== "string") {
+      throw new Error("Invalid Fragno internal describe response.");
+    }
+    return body["adapterIdentity"];
+  };
 
   return {
     async getAdapterIdentity(request) {
-      const response = await fetch(internalUrl, { signal: request.signal });
-      if (!response.ok) {
-        throw new Error(
-          `Fragno internal describe request failed: ${response.status} ${response.statusText}`,
-        );
+      if (adapterIdentity !== undefined) {
+        return adapterIdentity;
       }
 
-      const body: unknown = await response.json();
-      if (!isRecord(body) || typeof body["adapterIdentity"] !== "string") {
-        throw new Error("Invalid Fragno internal describe response.");
+      const pageRequests = getBrowserAdapterIdentityRequests(fetch);
+      adapterIdentityRequest ??= pageRequests?.get(internalUrl);
+      if (!adapterIdentityRequest) {
+        adapterIdentityRequest = requestAdapterIdentity(request.signal);
+        pageRequests?.set(internalUrl, adapterIdentityRequest);
       }
-      return body["adapterIdentity"];
+
+      try {
+        adapterIdentity = await adapterIdentityRequest;
+        return adapterIdentity;
+      } catch (error) {
+        if (pageRequests?.get(internalUrl) === adapterIdentityRequest) {
+          pageRequests.delete(internalUrl);
+        }
+        throw error;
+      } finally {
+        adapterIdentityRequest = undefined;
+      }
     },
     async list(request) {
       const response = await fetch(createFragnoOutboxRequestUrl(outboxUrl, request), {
@@ -73,6 +105,21 @@ export function createFragnoOutboxRequestUrl(
   url.searchParams.set("limit", String(request.limit));
 
   return url.toString();
+}
+
+function getBrowserAdapterIdentityRequests(
+  fetch: typeof globalThis.fetch,
+): Map<string, Promise<string>> | undefined {
+  if (typeof globalThis.window === "undefined") {
+    return undefined;
+  }
+
+  let requests = browserAdapterIdentityRequests.get(fetch);
+  if (!requests) {
+    requests = new Map();
+    browserAdapterIdentityRequests.set(fetch, requests);
+  }
+  return requests;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -6,12 +6,13 @@ import type { BaseCollectionConfig, CollectionConfig, UtilsRecord } from "@tanst
 import { applyFragnoOutboxEntry, type FragnoOutboxApplyControls } from "./apply-entry";
 import {
   FRAGNO_OUTBOX_CHECKPOINT_METADATA_KEY,
+  FRAGNO_OUTBOX_INITIALIZED_METADATA_KEY,
   FRAGNO_OUTBOX_SOURCE_METADATA_KEY,
   shouldApplyOutboxEntry,
   type FragnoOutboxCheckpoint,
   type FragnoOutboxSource,
 } from "./checkpoint";
-import type { FragnoOutboxCoordinator } from "./coordinator";
+import type { FragnoOutboxConsumer, FragnoOutboxCoordinator } from "./coordinator";
 import {
   resolveTargetNamespace,
   type FragnoCollectionRow,
@@ -84,6 +85,7 @@ export function fragnoCollectionOptions<
 
   let checkpoint: FragnoOutboxCheckpoint | undefined;
   let source: FragnoOutboxSource | undefined;
+  let initialized = false;
   let syncStatus: FragnoCollectionSyncStatus = "idle";
   let lastError: unknown;
   let syncOnce: () => Promise<void> = async () => {
@@ -126,6 +128,7 @@ export function fragnoCollectionOptions<
         source = metadata.collection.get(FRAGNO_OUTBOX_SOURCE_METADATA_KEY) as
           | FragnoOutboxSource
           | undefined;
+        initialized = metadata.collection.get(FRAGNO_OUTBOX_INITIALIZED_METADATA_KEY) === true;
 
         const applyControls = {
           begin: controls.begin,
@@ -135,9 +138,10 @@ export function fragnoCollectionOptions<
         } satisfies FragnoOutboxApplyControls<Row>;
         let ready = false;
 
-        const unregister = coordinator.register({
+        const consumer: FragnoOutboxConsumer = {
           id,
           getCheckpoint: () => checkpoint,
+          isInitialized: () => initialized,
           prepareSource(adapterIdentity) {
             const nextSource = {
               adapterIdentity,
@@ -152,10 +156,12 @@ export function fragnoCollectionOptions<
               controls.begin();
               controls.truncate();
               metadata.collection.delete(FRAGNO_OUTBOX_CHECKPOINT_METADATA_KEY);
+              metadata.collection.delete(FRAGNO_OUTBOX_INITIALIZED_METADATA_KEY);
               metadata.collection.set(FRAGNO_OUTBOX_SOURCE_METADATA_KEY, nextSource);
               controls.commit();
               source = nextSource;
               checkpoint = undefined;
+              initialized = false;
             }
           },
           applyEntry(entry) {
@@ -169,6 +175,13 @@ export function fragnoCollectionOptions<
             syncStatus = "loading";
           },
           markReady() {
+            if (!initialized) {
+              controls.begin();
+              metadata.collection.set(FRAGNO_OUTBOX_INITIALIZED_METADATA_KEY, true);
+              controls.commit();
+              initialized = true;
+            }
+
             syncStatus = "ready";
             lastError = undefined;
             if (!ready) {
@@ -188,11 +201,47 @@ export function fragnoCollectionOptions<
               rejectInitialSync(error);
             }
           },
-        });
+        };
+        let unregisterConsumer: (() => void) | undefined;
 
-        syncOnce = () => coordinator.syncOnce();
+        const registerConsumer = () => {
+          unregisterConsumer ??= coordinator.register(consumer);
+        };
+        const unregisterConsumerWhenInactive = () => {
+          if (controls.collection.subscriberCount === 0) {
+            unregisterConsumer?.();
+            unregisterConsumer = undefined;
+          }
+        };
+        const unsubscribeFromSubscriberChanges = controls.collection.on(
+          "subscribers:change",
+          ({ subscriberCount }) => {
+            if (subscriberCount === 0) {
+              unregisterConsumerWhenInactive();
+            } else {
+              registerConsumer();
+            }
+          },
+        );
 
-        return unregister;
+        registerConsumer();
+        syncOnce = async () => {
+          const wasRegistered = unregisterConsumer !== undefined;
+          registerConsumer();
+          try {
+            await coordinator.syncOnce();
+          } finally {
+            if (!wasRegistered) {
+              unregisterConsumerWhenInactive();
+            }
+          }
+        };
+
+        return () => {
+          unsubscribeFromSubscriberChanges();
+          unregisterConsumer?.();
+          unregisterConsumer = undefined;
+        };
       },
     },
     utils: collectionUtils,
