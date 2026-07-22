@@ -30,9 +30,9 @@ export function createMyFragmentClient(fragnoConfig: FragnoPublicClientConfig = 
 
 The object returned from the `createMyFragmentClient` function is the client-side Fragment's entry
 point. It contains the hooks and mutators for the routes, as well as any other values that you want
-to expose to the user on the client-side. The object is passed through the framework-specific
-`useFragno` helper function, which returns the hooks and mutators as reactive stores for the
-framework.
+to expose to the user on the client-side. Pass the object through the framework-specific adapter,
+such as `createFragnoReactClient` for React or `useFragno` for Vue, Svelte, Solid, and vanilla
+JavaScript, to expose reactive hooks and stores for that framework.
 
 ## Reading from GET routes with `createHook`
 
