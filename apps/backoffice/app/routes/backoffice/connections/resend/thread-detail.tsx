@@ -134,15 +134,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 export default function BackofficeOrganisationResendThreadDetail() {
   const { thread, messages, hasNextPage, error } = useLoaderData<typeof loader>();
   const outletContext = useOutletContext<ResendThreadsOutletContext | null>();
-  if (!outletContext) {
-    return (
-      <div className="rounded border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-        Unable to initialize the thread detail view. Reload this page and try again.
-      </div>
-    );
-  }
-
-  const { basePath } = outletContext;
   const { threadId } = useParams();
   const fetcher = useFetcher<typeof action>();
   const [formResetKey, setFormResetKey] = useState(0);
@@ -152,6 +143,16 @@ export default function BackofficeOrganisationResendThreadDetail() {
       setFormResetKey((value) => value + 1);
     }
   }, [fetcher.data]);
+
+  if (!outletContext) {
+    return (
+      <div className="rounded border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
+        Unable to initialize the thread detail view. Reload this page and try again.
+      </div>
+    );
+  }
+
+  const { basePath } = outletContext;
 
   if (!threadId || !thread) {
     return (

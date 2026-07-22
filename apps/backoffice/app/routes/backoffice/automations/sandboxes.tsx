@@ -690,6 +690,7 @@ function SandboxDetailView({
 
           <textarea
             name="command"
+            aria-label="Sandbox command"
             required
             rows={3}
             defaultValue={commandRun?.command ?? ""}

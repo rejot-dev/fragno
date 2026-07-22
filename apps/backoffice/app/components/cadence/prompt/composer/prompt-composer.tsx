@@ -60,6 +60,7 @@ export function PromptComposer() {
 
       <textarea
         ref={textareaRef}
+        aria-label="Automation prompt"
         value={value}
         onChange={(event) => {
           handleChange(event.target.value);

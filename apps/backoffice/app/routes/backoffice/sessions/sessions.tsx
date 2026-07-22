@@ -367,14 +367,11 @@ export default function BackofficeOrganisationPiSessionsLayout() {
   const creating = navigation.state === "submitting" && activeIntent === "create-session";
   const harnesses = resolvePiHarnesses(configState?.config?.harnesses);
   const [selectedHarnessId, setSelectedHarnessId] = useState(harnesses[0]?.id ?? "");
-  const availableModelOptions = useMemo(() => {
-    const apiKeys = configState?.config?.apiKeys;
-    return PI_MODEL_CATALOG.filter((option) => Boolean(apiKeys?.[option.provider]));
-  }, [
-    configState?.config?.apiKeys?.gemini,
-    configState?.config?.apiKeys?.anthropic,
-    configState?.config?.apiKeys?.openai,
-  ]);
+  const apiKeys = configState?.config?.apiKeys;
+  const availableModelOptions = useMemo(
+    () => PI_MODEL_CATALOG.filter((option) => Boolean(apiKeys?.[option.provider])),
+    [apiKeys],
+  );
   const [selectedModelOption, setSelectedModelOption] = useState("");
   useEffect(() => {
     if (harnesses.length === 0) {
@@ -502,8 +499,11 @@ export default function BackofficeOrganisationPiSessionsLayout() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-[var(--bo-fg)]">Session name</label>
+            <label htmlFor="new-session-name" className="text-xs font-semibold text-[var(--bo-fg)]">
+              Session name
+            </label>
             <input
+              id="new-session-name"
               type="text"
               name="name"
               placeholder="Optional session title"

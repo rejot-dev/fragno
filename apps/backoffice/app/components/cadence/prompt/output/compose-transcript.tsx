@@ -467,6 +467,7 @@ function useCodemodeRunOutput(
       return undefined;
     }
     const controller = new AbortController();
+    let cancelled = false;
     const base = `/api/automations-workflows/${encodeURIComponent(orgId)}/${encodeURIComponent(
       workflowName,
     )}/instances/${encodeURIComponent(instanceId)}`;
@@ -491,6 +492,9 @@ function useCodemodeRunOutput(
         const body = (await res.json()) as {
           details?: { status?: string; output?: unknown };
         };
+        if (cancelled) {
+          return;
+        }
         const status = body.details?.status ?? "active";
         const hasOutput = Boolean(body.details && "output" in body.details);
         setState({ status, output: body.details?.output, hasOutput });
@@ -506,6 +510,7 @@ function useCodemodeRunOutput(
     timer = setInterval(() => void poll(), RUN_OUTPUT_POLL_MS);
 
     return () => {
+      cancelled = true;
       stop();
       controller.abort();
     };

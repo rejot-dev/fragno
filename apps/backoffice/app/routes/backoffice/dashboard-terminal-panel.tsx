@@ -185,6 +185,7 @@ export function DashboardTerminalPanel({
             <input
               ref={terminal.inputRef}
               name="command"
+              aria-label="Dashboard terminal command"
               value={terminal.command}
               onChange={(event) => {
                 terminal.onCommandChange(event.target.value);

@@ -603,10 +603,14 @@ function ToolsList({ tools }: { tools: McpServerToolsState["tools"] }) {
       <div className="sticky top-0 z-10 bg-[var(--bo-panel)] pb-3">
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-64 flex-1">
-            <label className="block text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+            <label
+              htmlFor="automation-mcp-tool-search"
+              className="block text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase"
+            >
               Search Tools
             </label>
             <input
+              id="automation-mcp-tool-search"
               type="search"
               value={query}
               onChange={(event) => {
@@ -757,6 +761,7 @@ function ServerDetail({
               </p>
               <input
                 name="scope"
+                aria-label="OAuth scope override"
                 placeholder="scope override (optional)"
                 className="mt-3 min-h-10 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-xs text-[var(--bo-fg)] outline-none placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)]"
               />
@@ -787,6 +792,7 @@ function ServerDetail({
               <input
                 type="password"
                 name="token"
+                aria-label="Bearer token"
                 placeholder="Bearer token"
                 required
                 className="mt-3 min-h-10 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-xs text-[var(--bo-fg)] outline-none placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)]"
@@ -846,6 +852,7 @@ export default function BackofficeOrganisationMcpConfiguration() {
   const selectedServer = selectedSlug
     ? (servers.find((server) => server.slug === selectedSlug) ?? null)
     : null;
+  const selectedServerSlug = selectedServer?.slug ?? null;
   const saveError = actionData && !actionData.ok ? actionData.message : null;
   const saveSuccess = actionData?.ok ? actionData.message : null;
 
@@ -874,19 +881,19 @@ export default function BackofficeOrganisationMcpConfiguration() {
   }, [refreshFetcher.data]);
 
   useEffect(() => {
-    if (!selectedServer || isConfiguring) {
+    if (!selectedServerSlug || isConfiguring) {
       lastAutoRefreshSlug.current = null;
       return;
     }
-    if (lastAutoRefreshSlug.current === selectedServer.slug) {
+    if (lastAutoRefreshSlug.current === selectedServerSlug) {
       return;
     }
-    lastAutoRefreshSlug.current = selectedServer.slug;
+    lastAutoRefreshSlug.current = selectedServerSlug;
     const formData = new FormData();
     formData.set("intent", "refresh-server");
-    formData.set("slug", selectedServer.slug);
+    formData.set("slug", selectedServerSlug);
     void refreshFetcher.submit(formData, { method: "post" });
-  }, [isConfiguring, selectedServer?.slug, refreshFetcher]);
+  }, [isConfiguring, selectedServerSlug, refreshFetcher]);
 
   useEffect(() => {
     const slugs = new Set(servers.map((server) => server.slug));

@@ -14,7 +14,7 @@
  * the automation fragment, which does not expose workflow instance endpoints.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 
 import type { GraphNode, WorkflowGraph } from "@fragno-dev/workflow-visualizer";
 
@@ -73,6 +73,11 @@ type HistoryStep = RunStep;
 // while the run is still going.
 const POLL_INTERVAL_MS = 3500;
 const RUN_MAX_MS = 10 * 60 * 1000;
+
+type WorkflowRunPollResult = {
+  history?: { steps?: HistoryStep[] };
+  details?: { status?: string; error?: { message?: string }; output?: unknown };
+};
 
 export type WorkflowRun = {
   status: RunStatus;
@@ -146,6 +151,29 @@ export function useWorkflowRun({
     [stop],
   );
 
+  const applyPollResult = useEffectEvent(({ history, details }: WorkflowRunPollResult) => {
+    if (Array.isArray(history?.steps)) {
+      setSteps(history.steps);
+    }
+
+    if (!details) {
+      return null;
+    }
+    if ("output" in details) {
+      setOutput(details.output);
+    }
+    const next = (details.status as RunStatus | undefined) ?? "active";
+    setStatus(next);
+    if (next === "errored" && details.error?.message) {
+      setError(details.error.message);
+    }
+    return next;
+  });
+
+  const applyEmission = useEffectEvent((emission: RunEmission) => {
+    setEmissions((previous) => mergeEmission(previous, emission));
+  });
+
   useEffect(() => {
     if (!instanceId || !orgId) {
       return undefined;
@@ -173,43 +201,35 @@ export function useWorkflowRun({
     // --- History + status polling -------------------------------------------
     const poll = async () => {
       try {
-        const [historyRes, statusRes] = await Promise.all([
+        const [historyResponse, statusResponse] = await Promise.all([
           fetch(`${base}/history`, { signal, headers: { accept: "application/json" } }),
           fetch(base, { signal, headers: { accept: "application/json" } }),
         ]);
-
-        if (historyRes.ok) {
-          const history = (await historyRes.json()) as { steps?: HistoryStep[] };
-          if (Array.isArray(history.steps)) {
-            setSteps(history.steps);
-          }
+        const [historyJson, statusJson] = await Promise.all([
+          historyResponse.ok ? historyResponse.json() : undefined,
+          statusResponse.ok ? statusResponse.json() : undefined,
+        ]);
+        const history = historyJson as WorkflowRunPollResult["history"];
+        const statusResult = statusJson as
+          | { details?: WorkflowRunPollResult["details"] }
+          | undefined;
+        if (stopped || signal.aborted) {
+          return;
         }
 
-        if (statusRes.ok) {
-          const body = (await statusRes.json()) as {
-            details?: { status?: string; error?: { message?: string }; output?: unknown };
-          };
-          if (body.details && "output" in body.details) {
-            setOutput(body.details.output);
-          }
-          const next = (body.details?.status as RunStatus | undefined) ?? "active";
-          setStatus(next);
-          if (next === "errored" && body.details?.error?.message) {
-            setError(body.details.error.message);
-          }
-          if (isTerminal(next)) {
-            finish();
-            return;
-          }
+        const nextStatus = applyPollResult({ history, details: statusResult?.details });
+        if (nextStatus && isTerminal(nextStatus)) {
+          finish();
+          return;
         }
 
         if (Date.now() - startedAtRef.current > RUN_MAX_MS) {
           finish();
         }
-      } catch (err) {
+      } catch (error) {
         if (!signal.aborted) {
           // Transient poll failures are non-fatal; the next tick retries.
-          console.warn("workflow run poll failed", err);
+          console.warn("workflow run poll failed", error);
         }
       }
     };
@@ -226,7 +246,10 @@ export function useWorkflowRun({
             break;
           }
           for await (const emission of readNdjson<RunEmission>(res.body, signal)) {
-            setEmissions((prev) => mergeEmission(prev, emission));
+            if (stopped || signal.aborted) {
+              return;
+            }
+            applyEmission(emission);
           }
         } catch (err) {
           if (signal.aborted) {

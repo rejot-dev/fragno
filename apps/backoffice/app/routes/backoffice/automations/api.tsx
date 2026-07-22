@@ -977,9 +977,15 @@ function ConnectionDetail({
               <p className="mt-2 text-sm text-[var(--bo-muted)]">
                 Start or restart provider authorization for this connection.
               </p>
-              <input name="scopes" placeholder="scope override" className={`${inputClass} mt-3`} />
+              <input
+                name="scopes"
+                aria-label="OAuth scope override"
+                placeholder="scope override"
+                className={`${inputClass} mt-3`}
+              />
               <textarea
                 name="extraAuthorizationParams"
+                aria-label="Extra OAuth authorization parameters"
                 placeholder='extra params JSON, e.g. {"prompt":"consent"}'
                 className={`${inputClass} mt-3 min-h-20 font-mono text-xs`}
               />
@@ -1008,6 +1014,7 @@ function ConnectionDetail({
               <input
                 type="password"
                 name="token"
+                aria-label="Bearer token"
                 required
                 placeholder="Bearer token"
                 className={`${inputClass} mt-3`}

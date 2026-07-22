@@ -813,37 +813,34 @@ export const useDashboardTerminal = ({
     event.preventDefault();
 
     if (event.key === "ArrowUp") {
-      setHistoryIndex((currentIndex) => {
-        const nextIndex =
-          currentIndex === -1 ? snapshot.commands.length - 1 : Math.max(currentIndex - 1, 0);
+      const nextIndex =
+        historyIndex === -1 ? snapshot.commands.length - 1 : Math.max(historyIndex - 1, 0);
 
-        if (currentIndex === -1) {
-          setHistoryDraft(command);
-        }
+      if (historyIndex === -1) {
+        setHistoryDraft(command);
+      }
 
-        setCommand(snapshot.commands[nextIndex] ?? "");
-        closeAutocomplete();
-        return nextIndex;
-      });
+      setHistoryIndex(nextIndex);
+      setCommand(snapshot.commands[nextIndex] ?? "");
+      closeAutocomplete();
       return;
     }
 
-    setHistoryIndex((currentIndex) => {
-      if (currentIndex === -1) {
-        return -1;
-      }
+    if (historyIndex === -1) {
+      return;
+    }
 
-      if (currentIndex >= snapshot.commands.length - 1) {
-        setCommand(historyDraft);
-        closeAutocomplete();
-        return -1;
-      }
-
-      const nextIndex = currentIndex + 1;
-      setCommand(snapshot.commands[nextIndex] ?? "");
+    if (historyIndex >= snapshot.commands.length - 1) {
+      setHistoryIndex(-1);
+      setCommand(historyDraft);
       closeAutocomplete();
-      return nextIndex;
-    });
+      return;
+    }
+
+    const nextIndex = historyIndex + 1;
+    setHistoryIndex(nextIndex);
+    setCommand(snapshot.commands[nextIndex] ?? "");
+    closeAutocomplete();
   };
 
   return {
