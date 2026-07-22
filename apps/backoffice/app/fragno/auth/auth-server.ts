@@ -41,7 +41,7 @@ export async function getAuthMe(
     if (response.type !== "json") {
       return null;
     }
-    return response.data as AuthMeData;
+    return response.data;
   } catch {
     return null;
   }

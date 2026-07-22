@@ -122,7 +122,7 @@ export async function action({ request, context, url }: Route.ActionArgs) {
       body: {
         email,
         password,
-        session: activeOrganizationId ? { activeOrganizationId } : undefined,
+        auth: activeOrganizationId ? { activeOrganizationId } : undefined,
       },
     });
 

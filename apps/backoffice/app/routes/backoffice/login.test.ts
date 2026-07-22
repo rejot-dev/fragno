@@ -168,7 +168,7 @@ describe("backoffice login route", () => {
       body: {
         email: "dev@fragno.test",
         password: "password123",
-        session: { activeOrganizationId: "org_123" },
+        auth: { activeOrganizationId: "org_123" },
       },
     });
   });

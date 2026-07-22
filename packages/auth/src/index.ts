@@ -1,10 +1,6 @@
 import { createClientBuilder, type FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
-import {
-  defineFragment,
-  instantiate,
-  type InstantiatedFragmentFromDefinition,
-} from "@fragno-dev/core";
+import { defineFragment, instantiate } from "@fragno-dev/core";
 import { withDatabase, type FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
@@ -454,7 +450,7 @@ export interface AuthAccessTokenMethods {
   }): Promise<AuthAccessTokenVerificationResult>;
 }
 
-export type AuthFragmentInstance = InstantiatedFragmentFromDefinition<AuthFragmentDefinition>;
+export type AuthFragmentInstance = ReturnType<typeof buildAuthFragment>;
 
 export function createAuthAccessTokenMethods(config: AuthConfig): AuthAccessTokenMethods {
   const accessTokens = resolveAccessTokenConfig(config.authentication?.accessTokens);
