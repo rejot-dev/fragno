@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "react-doctor": {
+      "source": "millionco/react-doctor",
+      "sourceType": "github",
+      "skillPath": "skills/react-doctor/SKILL.md",
+      "computedHash": "99ce09a65a0c78f23bc685739e106f02edb1279699a94805368d54ea7f399d6f"
+    }
+  }
+}
