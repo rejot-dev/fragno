@@ -83,7 +83,7 @@ export async function handleInviteAcceptance(
   dependencies: InviteDependencies,
 ) {
   const invite = await dependencies.invites.find(input.inviteId);
-  assertInviteCanBeAccepted(invite, dependencies.clock.now());
+  assertInviteCanBeAccepted(invite);
 
   const membership = createMembershipFromInvite(invite);
   await dependencies.memberships.save(membership);
@@ -93,7 +93,8 @@ export async function handleInviteAcceptance(
 ```
 
 The handler may change as the use case evolves. The invariant and domain construction remain
-independently named and testable.
+independently named and testable. If expiration also guards acceptance, enforce it against database
+time inside the database unit of work rather than passing the process clock into this orchestration.
 
 ## Give every export one canonical path
 
