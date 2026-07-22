@@ -128,6 +128,7 @@ export default function BackofficeOrganisationMembers() {
         actions={
           <input
             type="search"
+            aria-label="Search organisation members"
             value={memberSearch}
             onChange={(event) => {
               setMemberSearch(event.target.value);
@@ -247,7 +248,7 @@ function OrganizationMemberRow({
     setActionNotice(null);
     setSaving(false);
     setRemoving(false);
-  }, [member.id, member.roles.join("|")]);
+  }, [member.id, member.roles]);
 
   const roleOptions = useMemo(() => {
     const extras = member.roles.filter(

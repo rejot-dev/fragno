@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type SubmitEvent } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type SubmitEvent,
+} from "react";
 import {
   Form,
   redirect,
@@ -245,6 +253,10 @@ function RealtimeSpeechSection({
       : null;
   const realtimeRecordedAudioFileName =
     typeof realtime.recordedAudioFileName === "string" ? realtime.recordedAudioFileName : null;
+  const clearRealtimeConversation = useEffectEvent(() => {
+    processedRealtimeSegmentsRef.current = realtime.finalTranscripts.length;
+    realtime.clearRecordedAudio();
+  });
 
   useEffect(() => {
     onInterimTranscriptChange(realtimeInterimText);
@@ -324,8 +336,7 @@ function RealtimeSpeechSection({
   };
 
   useEffect(() => {
-    processedRealtimeSegmentsRef.current = realtime.finalTranscripts.length;
-    realtime.clearRecordedAudio();
+    clearRealtimeConversation();
     onInterimTranscriptChange(null);
     onRecordedAudioChange(null);
   }, [clearConversationVersion, onInterimTranscriptChange, onRecordedAudioChange]);

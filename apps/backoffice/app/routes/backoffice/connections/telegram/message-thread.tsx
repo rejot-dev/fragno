@@ -506,6 +506,7 @@ function ChatMessages({
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <textarea
             name="text"
+            aria-label="Bot message"
             rows={3}
             required
             minLength={1}

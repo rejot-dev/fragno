@@ -39,7 +39,9 @@ export function CadenceCodeEditor({
 
   // Keep the latest onSave reachable from the editor command (registered once).
   const onSaveRef = useRef(onSave);
-  onSaveRef.current = onSave;
+  useEffect(() => {
+    onSaveRef.current = onSave;
+  }, [onSave]);
 
   const onMount: OnMount = (editor, monaco) => {
     monaco.editor.defineTheme("cadence", buildCadenceTheme());
