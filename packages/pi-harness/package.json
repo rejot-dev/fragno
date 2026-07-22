@@ -97,6 +97,11 @@
       "types": "./dist/node/pi/types.d.ts",
       "default": "./dist/node/pi/types.js"
     },
+    "./workflow-session-projection": {
+      "types": "./dist/browser/pi/workflow-session-projection.d.ts",
+      "browser": "./dist/browser/pi/workflow-session-projection.js",
+      "default": "./dist/node/pi/workflow-session-projection.js"
+    },
     "./vanilla": {
       "types": "./dist/browser/client/vanilla.d.ts",
       "default": "./dist/browser/client/vanilla.js"

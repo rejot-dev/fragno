@@ -7,17 +7,7 @@ import { piRoutesFactory } from "../routes";
 
 export {
   createSessionProjectionDataStore,
-  latestCompletedPiHarnessEntries,
-  piAgentMessagesFromSessionEntries,
-  projectPiWorkflowSession,
   readPiWorkflowLofiSessionProjection,
-} from "./workflow-lofi-session-projection";
-
-export type {
-  DraftAgentActivity,
-  DraftAgentMessage,
-  DraftTool,
-  PiWorkflowSessionProjectionState,
 } from "./workflow-lofi-session-projection";
 
 export type PiSessionCommandInput = z.infer<typeof commandInputSchema>;

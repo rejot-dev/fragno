@@ -14,6 +14,7 @@ export default defineConfig([
       "./src/client/vanilla.ts",
       "./src/client/vue.ts",
       "./src/pi/route-schemas.ts",
+      "./src/pi/workflow-session-projection.ts",
     ],
     dts: true,
     failOnWarn: true,
