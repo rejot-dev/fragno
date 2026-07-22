@@ -126,6 +126,21 @@ describe("subscription handlers", async () => {
   });
 
   describe("POST /subscription/upgrade", () => {
+    test("validates input before resolving the request entity", async () => {
+      const response = await fragment.callRoute("POST", "/subscription/upgrade", {
+        // @ts-expect-error Deliberately omit required fields to verify validation ordering.
+        body: {},
+      });
+
+      assert(response.type === "error");
+      assert(response.status === 400);
+      expect(response.error).toEqual({
+        code: "FRAGNO_VALIDATION_ERROR",
+        message: "Validation failed",
+      });
+      expect(mockResolveEntityFromRequest).not.toHaveBeenCalled();
+    });
+
     test("should create new subscription without existing stripe customer", async () => {
       // Mock auth middleware to return user without Stripe customer
       mockResolveEntityFromRequest.mockResolvedValue({
