@@ -95,7 +95,6 @@
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@standard-schema/spec": "^1.0.0",
-    "better-sqlite3": "^12.5.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

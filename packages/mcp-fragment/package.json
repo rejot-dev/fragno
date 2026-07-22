@@ -101,7 +101,6 @@
     "@fragno-dev/node": "workspace:*",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@standard-schema/spec": "^1.0.0",
-    "better-sqlite3": "^12.5.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
