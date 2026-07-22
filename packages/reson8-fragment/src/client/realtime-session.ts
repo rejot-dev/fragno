@@ -210,8 +210,10 @@ export class Reson8RealtimeSessionStore {
   );
   readonly fullTranscript = computed(this.finalTranscripts, (messages) =>
     messages
-      .map((message) => message.text.trim())
-      .filter((message) => message.length > 0)
+      .flatMap((message) => {
+        const text = message.text.trim();
+        return text ? [text] : [];
+      })
       .join(" "),
   );
   readonly interimTranscript = computed(this.latestMessage, (message) => {

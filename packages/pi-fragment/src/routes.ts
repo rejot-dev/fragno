@@ -340,15 +340,19 @@ export const piRoutesFactory = defineRoutes(piFragmentDefinition).create(
 
               const snapshot = await emissionBus.snapshot();
 
-              const inFlightEvents: PiSessionEventStreamItem[] = snapshot
-                .filter((emission) => !initialDetail.completedStepKeys.has(emission.stepKey))
-                .map((emission) => ({
-                  kind: "step-emission" as const,
-                  actor: emission.actor,
-                  stepKey: emission.stepKey,
-                  epoch: emission.epoch,
-                  payload: emission.payload,
-                }));
+              const inFlightEvents: PiSessionEventStreamItem[] = snapshot.flatMap((emission) =>
+                initialDetail.completedStepKeys.has(emission.stepKey)
+                  ? []
+                  : [
+                      {
+                        kind: "step-emission" as const,
+                        actor: emission.actor,
+                        stepKey: emission.stepKey,
+                        epoch: emission.epoch,
+                        payload: emission.payload,
+                      },
+                    ],
+              );
 
               const initialEmissions: PiSessionEventStreamItem[] = [
                 {

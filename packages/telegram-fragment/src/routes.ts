@@ -199,10 +199,10 @@ export const telegramRoutesFactory = defineRoutes(telegramFragmentDefinition).cr
             return error({ message: "Command not found", code: "command_not_found" }, 404);
           }
 
-          const allowedScopes = command.scopes ?? DEFAULT_COMMAND_SCOPES;
+          const allowedScopes = new Set(command.scopes ?? DEFAULT_COMMAND_SCOPES);
           if (
             payload.scopes &&
-            !payload.scopes.every((scope: TelegramCommandScope) => allowedScopes.includes(scope))
+            !payload.scopes.every((scope: TelegramCommandScope) => allowedScopes.has(scope))
           ) {
             return error({ message: "Invalid scopes", code: "invalid_scopes" }, 400);
           }

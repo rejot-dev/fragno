@@ -81,7 +81,7 @@ const splitScope = (scope: string | null | undefined) => {
 };
 
 const newestOAuthScope = (states: OAuthStateForDiagnostics[]) => {
-  const [state] = [...states].sort(
+  const [state] = states.toSorted(
     (left, right) => new Date(right.expiresAt).getTime() - new Date(left.expiresAt).getTime(),
   );
   return splitScope(state?.scope);
@@ -115,8 +115,9 @@ export const buildAuthDiagnostics = ({
       : mode === "oauth"
         ? newestOAuthScope(oauthStates)
         : null;
+  const grantedScopes = granted ? new Set(granted) : null;
   const missing =
-    requested && granted ? requested.filter((scope) => !granted.includes(scope)) : null;
+    requested && grantedScopes ? requested.filter((scope) => !grantedScopes.has(scope)) : null;
   const tokenPresent =
     parsedAuth?.type === "bearer"
       ? Boolean(parsedAuth.token)

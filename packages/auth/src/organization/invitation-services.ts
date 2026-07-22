@@ -196,15 +196,16 @@ const filterRolesForMemberId = (
   if (!member) {
     return [];
   }
-  const candidates = new Set([member.id, member._internalId].filter(Boolean).map(toExternalId));
-  return roles
-    .filter(
-      (role) =>
-        candidates.has(toExternalId(role.memberId)) ||
-        (role.organizationMemberRoleMember &&
-          candidates.has(toExternalId(role.organizationMemberRoleMember.id))),
-    )
-    .map((role) => role.role);
+  const candidates = new Set(
+    [member.id, member._internalId].flatMap((id) => (id ? [toExternalId(id)] : [])),
+  );
+  return roles.flatMap((role) =>
+    candidates.has(toExternalId(role.memberId)) ||
+    (role.organizationMemberRoleMember &&
+      candidates.has(toExternalId(role.organizationMemberRoleMember.id)))
+      ? [role.role]
+      : [],
+  );
 };
 
 export function createOrganizationInvitationServices(

@@ -81,9 +81,9 @@ export const piFragmentDefinition = defineFragment<PiFragmentConfig>("pi-fragmen
               steps: history.steps,
             });
             const completedStepKeys = new Set(
-              history.steps
-                .filter((step) => step.status === "completed" && step.result !== null)
-                .map((step) => step.stepKey),
+              history.steps.flatMap((step) =>
+                step.status === "completed" && step.result !== null ? [step.stepKey] : [],
+              ),
             );
 
             return {

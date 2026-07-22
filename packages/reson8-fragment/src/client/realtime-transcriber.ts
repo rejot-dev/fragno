@@ -212,8 +212,10 @@ export class Reson8RealtimeTranscriberStore {
     );
     this.fullTranscript = computed(this.finalTranscripts, (messages) =>
       messages
-        .map((message) => message.text.trim())
-        .filter((message) => message.length > 0)
+        .flatMap((message) => {
+          const text = message.text.trim();
+          return text ? [text] : [];
+        })
         .join(" "),
     );
     this.interimTranscript = computed(this.latestMessage, (message) => {

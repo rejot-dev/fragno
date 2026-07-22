@@ -300,15 +300,16 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
             }
 
             const nextSecretRefs = new Set(authStorage.secrets.map((secret) => secret.ref));
+            const existingSecretsByRef = new Map(
+              existingSecrets.map((secret) => [secret.ref, secret] as const),
+            );
             for (const secret of existingSecrets) {
               if (!nextSecretRefs.has(secret.ref)) {
                 uow.delete("webhookSecret", secret.id);
               }
             }
             for (const secret of authStorage.secrets) {
-              const existingSecret = existingSecrets.find(
-                (candidate) => candidate.ref === secret.ref,
-              );
+              const existingSecret = existingSecretsByRef.get(secret.ref);
               if (existingSecret) {
                 uow.update("webhookSecret", existingSecret.id, (b) =>
                   b.set({ payload: secret.payload, updatedAt: b.now() }).check(),
@@ -487,14 +488,14 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
 
               const sensitiveValues = getSensitiveWebhookAuthValues(retrieveResult.authConfig);
               const sensitiveHeaderNames = new Set(
-                sensitiveValues
-                  .filter((value) => value.location === "header")
-                  .map((value) => value.name.toLowerCase()),
+                sensitiveValues.flatMap((value) =>
+                  value.location === "header" ? [value.name.toLowerCase()] : [],
+                ),
               );
               const sensitiveQueryNames = new Set(
-                sensitiveValues
-                  .filter((value) => value.location === "query")
-                  .map((value) => value.name),
+                sensitiveValues.flatMap((value) =>
+                  value.location === "query" ? [value.name] : [],
+                ),
               );
 
               const uow = forSchema(apiSchema);

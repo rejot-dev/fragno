@@ -278,13 +278,17 @@ const writeWorkflowStepEmissionFlush = async <TOutEmission, TInEvent>(options: {
       if (scope.closed || scope.meta.eventTypeCounts.size === 0) {
         return [];
       }
-      return pendingEvents
-        .filter((event) => scope.meta.eventTypeCounts.has(event.type))
-        .map((event) => ({
-          scopeKey: scope.meta.stepKey,
-          message: buildWorkflowStepEvent<TInEvent>(event, scope.meta),
-          cursor: event.id.toString(),
-        }));
+      return pendingEvents.flatMap((event) =>
+        scope.meta.eventTypeCounts.has(event.type)
+          ? [
+              {
+                scopeKey: scope.meta.stepKey,
+                message: buildWorkflowStepEvent<TInEvent>(event, scope.meta),
+                cursor: event.id.toString(),
+              },
+            ]
+          : [],
+      );
     }),
   };
 };

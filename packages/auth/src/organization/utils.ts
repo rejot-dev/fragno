@@ -34,7 +34,12 @@ export function normalizeRoleNames<TRole extends string>(
   fallback: readonly TRole[],
 ): OrganizationRoleName<TRole>[] {
   const base = roles && roles.length > 0 ? roles : fallback;
-  const unique = new Set(base.map((role) => role.trim()).filter(Boolean));
+  const unique = new Set(
+    base.flatMap((role) => {
+      const normalizedRole = role.trim();
+      return normalizedRole ? [normalizedRole] : [];
+    }),
+  );
   return Array.from(unique) as OrganizationRoleName<TRole>[];
 }
 

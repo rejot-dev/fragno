@@ -188,10 +188,14 @@ function createStripeServices(
           ),
         )
         .mutate(({ uow, retrieveResult: [existingSubscriptions] }) => {
+          const existingSubscriptionsByStripeId = new Map(
+            existingSubscriptions.map((subscription) => [
+              subscription.stripeSubscriptionId,
+              subscription,
+            ]),
+          );
           for (const stripeSubscription of stripeSubscriptions) {
-            const existingSubscription = existingSubscriptions.find(
-              (sub) => sub.stripeSubscriptionId === stripeSubscription.id,
-            );
+            const existingSubscription = existingSubscriptionsByStripeId.get(stripeSubscription.id);
 
             if (existingSubscription) {
               uow.update("subscription", existingSubscription.id, (b) =>

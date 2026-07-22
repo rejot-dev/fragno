@@ -63,12 +63,13 @@ export const projectSessionDetailFromWorkflowHistory = ({
   const messages = [...initialMessages];
   const events: AgentEvent[] = [];
 
-  const agentRunSteps = steps
-    .map((step) => ({
+  const agentRunSteps = steps.flatMap((step) => {
+    const agentRunStep = {
       ...step,
       agentRunResult: isAgentRunStepResult(step.result) ? step.result : null,
-    }))
-    .filter(isCompletedAgentRunStep);
+    };
+    return isCompletedAgentRunStep(agentRunStep) ? [agentRunStep] : [];
+  });
 
   for (const step of agentRunSteps) {
     events.push(...(step.agentRunResult.events ?? []));

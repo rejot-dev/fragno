@@ -184,7 +184,7 @@ const buildResendPayload = (email: ResendEmailMessageRow): CreateEmailOptions =>
 };
 
 const sortThreadsByRecent = (threads: ResendThreadRow[]) => {
-  return [...threads].sort((a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime());
+  return threads.toSorted((a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime());
 };
 
 const appendToThreadSummary = (

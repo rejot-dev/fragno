@@ -120,12 +120,11 @@ export const githubAppOAuthRoutesFactory = defineRoutes(githubAppFragmentDefinit
             });
             githubUser = await api.getUserProfile(token.accessToken);
             const response = await api.listUserInstallations(token.accessToken);
-            installations = response.installations
-              .filter(
-                (installation) =>
-                  installation.appId === config.appId || installation.appSlug === config.appSlug,
-              )
-              .map(toOAuthInstallation);
+            installations = response.installations.flatMap((installation) =>
+              installation.appId === config.appId || installation.appSlug === config.appSlug
+                ? [toOAuthInstallation(installation)]
+                : [],
+            );
           } catch (err) {
             return error(
               {

@@ -404,7 +404,11 @@ const readThumbnail = (
 export function extractTelegramAttachments(message: TelegramMessage): TelegramAttachment[] {
   const attachments: TelegramAttachment[] = [];
 
-  const photoSizes = message.photo?.map(toAttachmentPhotoSize).filter(isDefined) ?? [];
+  const photoSizes =
+    message.photo?.flatMap((photo) => {
+      const photoSize = toAttachmentPhotoSize(photo);
+      return isDefined(photoSize) ? [photoSize] : [];
+    }) ?? [];
   const largestPhoto = photoSizes.at(-1);
   if (largestPhoto) {
     attachments.push({

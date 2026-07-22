@@ -84,9 +84,9 @@ async function main() {
     }
   }
 
-  const completedIds = await collectInstancePages("approval-workflow", "complete");
+  const completedIds = new Set(await collectInstancePages("approval-workflow", "complete"));
   for (const id of ids) {
-    assert(completedIds.includes(id), `completed instance ${id} missing from paginated list`);
+    assert(completedIds.has(id), `completed instance ${id} missing from paginated list`);
   }
 
   assert(failed.length === 0, `History validation failures:\n${failed.join("\n")}`);
