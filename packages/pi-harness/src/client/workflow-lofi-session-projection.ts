@@ -12,29 +12,15 @@ import type { PiAgentStateSnapshot } from "../pi/types";
 import {
   createPiWorkflowSessionLiveState,
   emptyPiWorkflowSessionProjectionState,
-  latestCompletedPiHarnessEntries,
   overlayPiWorkflowSessionLiveState,
-  piAgentMessagesFromSessionEntries,
   projectPiWorkflowSession,
   reducePiWorkflowSessionEmission,
   settleCompletedPiWorkflowSessionLiveSteps,
-  type DraftAgentActivity,
-  type DraftAgentMessage,
-  type DraftTool,
   type PiSessionProjectionError,
   type PiSessionProjectionStatus,
   type PiWorkflowSessionProjectionEmission,
   type PiWorkflowSessionProjectionState,
 } from "../pi/workflow-session-projection";
-
-export {
-  latestCompletedPiHarnessEntries,
-  piAgentMessagesFromSessionEntries,
-  projectPiWorkflowSession,
-};
-export type { DraftAgentActivity, DraftAgentMessage, DraftTool, PiWorkflowSessionProjectionState };
-
-export type PiWorkflowLofiSessionProjectionState = PiWorkflowSessionProjectionState;
 
 export type PiSessionProjectionSourceState = {
   state: PiAgentStateSnapshot;

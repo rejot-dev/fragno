@@ -42,11 +42,9 @@ import {
   recordFauxPiHarnessPrompt,
   startFauxPiHarnessOperation,
 } from "../pi/pi-test-utils";
+import type { PiWorkflowSessionProjectionState } from "../pi/workflow-session-projection";
 import { piWorkflowStepEmissionEphemeralTable } from "./pi-workflow-emission-stream";
-import {
-  createSessionProjectionDataStore,
-  type PiWorkflowLofiSessionProjectionState,
-} from "./workflow-lofi-session-projection";
+import { createSessionProjectionDataStore } from "./workflow-lofi-session-projection";
 
 const workflowName = "interactive-chat";
 let runtimeSequence = 0;
@@ -159,7 +157,7 @@ const createRuntime = async (mutations: readonly LofiMutation[] = []) => {
 const settledProjection = async (
   runtimeContext: Awaited<ReturnType<typeof createRuntime>>,
   store: ReturnType<typeof createSessionProjectionDataStore>,
-): Promise<PiWorkflowLofiSessionProjectionState> => {
+): Promise<PiWorkflowSessionProjectionState> => {
   const unlisten = store.listen(() => undefined);
   runtimeContext.allowOutboxRequest();
   await runtimeContext.runtime.whenBootstrapped();
@@ -173,7 +171,7 @@ const projectWorkflowMutations = async (
   sessionId: string,
   mutations: Parameters<typeof uowOperationsToLofiMutations>[0],
   options?: Parameters<typeof createSessionProjectionDataStore>[3],
-): Promise<PiWorkflowLofiSessionProjectionState> => {
+): Promise<PiWorkflowSessionProjectionState> => {
   const runtimeContext = await createRuntime(
     uowOperationsToLofiMutations(mutations, { now: new Date("2026-07-03T00:00:00.000Z") }),
   );
@@ -202,7 +200,7 @@ const projectManualWorkflow = async (
     }[];
   } = {},
   storeOptions?: Parameters<typeof createSessionProjectionDataStore>[3],
-): Promise<PiWorkflowLofiSessionProjectionState> => {
+): Promise<PiWorkflowSessionProjectionState> => {
   const instanceRef = buildScopedInstanceRowId(workflowName, sessionId);
   const now = new Date(0);
   const mutations: LofiMutation[] = [
@@ -286,7 +284,7 @@ const projectFauxPrompt = async (options: {
   operation: PiHarnessOperation;
   responses: readonly AssistantMessage[];
   tools?: readonly AgentTool[];
-}): Promise<PiWorkflowLofiSessionProjectionState> => {
+}): Promise<PiWorkflowSessionProjectionState> => {
   const recording = await recordFauxPiHarnessPrompt({
     workflowName,
     sessionId: options.sessionId,
@@ -308,7 +306,7 @@ const withFauxCheckpointProjection = async (
   run: ReturnType<typeof startFauxPiHarnessOperation>,
   sessionId: string,
   checkpointName: string,
-  assertProjection: (projection: PiWorkflowLofiSessionProjectionState) => void | Promise<void>,
+  assertProjection: (projection: PiWorkflowSessionProjectionState) => void | Promise<void>,
   options: CheckpointProjectionOptions = {},
 ) => {
   const checkpoint = await run.waitForCheckpoint(checkpointName);
