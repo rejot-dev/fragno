@@ -59,6 +59,15 @@ const getQueuedEmailVerificationUrl = (ctx: BackofficeScenarioContext): URL => {
   return new URL(verificationUrl);
 };
 
+const signInWithPassword = (ctx: BackofficeScenarioContext, email: string) =>
+  ctx.runtime.objects.auth.singleton().fetch(
+    new Request("https://backoffice.example/api/auth/sign-in", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password: "password123" }),
+    }),
+  );
+
 const createScenarioRouterContext = (ctx: BackofficeScenarioContext) => {
   const routerContext = new RouterContextProvider();
   routerContext.set(BackofficeWorkerContext, {
@@ -147,7 +156,17 @@ describe("Auth transactional email scenarios", () => {
             text: /\/backoffice\/verify-email\?userId=[^&]+&code=[A-Z0-9]+/u,
             idempotencyKey: /^auth:user-created:[^:]+:[^:]+$/u,
           }),
+          then.assert("unverified user cannot sign in", async (ctx) => {
+            const response = await signInWithPassword(ctx, "new-user@example.com");
+            assert.equal(response.status, 403);
+            const body = (await response.json()) as { code?: string };
+            assert.equal(body.code, "email_verification_required");
+          }),
           confirmQueuedSignUpEmail(),
+          then.assert("verified user can sign in", async (ctx) => {
+            const response = await signInWithPassword(ctx, "new-user@example.com");
+            assert(response.ok);
+          }),
           then.assert("verification route marks the Auth email as verified", async (ctx) => {
             const userId = getQueuedEmailVerificationUrl(ctx).searchParams.get("userId");
             assert(userId);
@@ -196,6 +215,9 @@ describe("Auth transactional email scenarios", () => {
 
             const otpHook = await getOtpIssuedHook(ctx);
             assert.equal(otpHook.status, "completed");
+
+            const signInResponse = await signInWithPassword(ctx, "new-user@example.com");
+            assert.equal(signInResponse.status, 403);
           }),
         ],
       }),
