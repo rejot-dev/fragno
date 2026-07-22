@@ -151,6 +151,9 @@ importers:
       '@fragno-dev/reson8-fragment':
         specifier: workspace:*
         version: link:../../packages/reson8-fragment
+      '@fragno-dev/tanstack-db-adapter':
+        specifier: workspace:*
+        version: link:../../packages/tanstack-db-adapter
       '@fragno-dev/telegram-fragment':
         specifier: workspace:*
         version: link:../../packages/telegram-fragment
@@ -163,9 +166,18 @@ importers:
       '@fragno-dev/workflows':
         specifier: workspace:*
         version: link:../../packages/fragment-workflows
+      '@journeyapps/wa-sqlite':
+        specifier: ^1.4.1
+        version: 1.7.2
       '@monaco-editor/react':
         specifier: ^4.7.0
         version: 4.7.0(monaco-editor@0.55.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@tanstack/browser-db-sqlite-persistence':
+        specifier: 0.2.8
+        version: 0.2.8(@journeyapps/wa-sqlite@1.7.2)(@typescript/typescript6@6.0.2)
+      '@tanstack/react-db':
+        specifier: 0.1.94
+        version: 0.1.94(@typescript/typescript6@6.0.2)(react@19.2.7)
       '@xyflow/react':
         specifier: ^12.8.6
         version: 12.11.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
