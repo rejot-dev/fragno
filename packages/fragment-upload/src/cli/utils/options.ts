@@ -140,10 +140,6 @@ export const resolveFileKeyValue = (input: { fileKey: string | undefined }) => {
   throw new Error("Missing file key. Provide --file-key.");
 };
 
-export const resolveOptionalFileKeyValue = (input: { fileKey: string | undefined }) => {
-  return { fileKey: input.fileKey };
-};
-
 export const resolvePrefixValue = (input: { prefix: string | undefined }) => input.prefix;
 
 export const resolveProviderValue = (provider: string | undefined) => {

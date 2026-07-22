@@ -47,24 +47,10 @@ export const PLANS: Plan[] = [
 ];
 
 /**
- * Get a plan by its ID
- */
-export function getPlanById(id: string): Plan | undefined {
-  return PLANS.find((plan) => plan.id === id);
-}
-
-/**
  * Get a plan by its Stripe price ID
  */
 export function getPlanByStripePriceId(priceId: string): Plan | undefined {
   return PLANS.find(
     (plan) => plan.stripeMonthlyPriceId === priceId || plan.stripeYearlyPriceId === priceId,
   );
-}
-
-/**
- * Get a plan by its Stripe product ID
- */
-export function getPlanByStripeProductId(productId: string): Plan | undefined {
-  return PLANS.find((plan) => plan.stripeProductId === productId);
 }

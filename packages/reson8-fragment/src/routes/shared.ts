@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import type { Reson8FragmentConfig } from "../definition";
 
-export const reson8ErrorSchema = z.object({
+const reson8ErrorSchema = z.object({
   message: z.string(),
   code: z.string(),
 });
