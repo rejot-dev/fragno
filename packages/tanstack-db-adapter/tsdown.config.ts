@@ -9,6 +9,7 @@ export default defineConfig({
     "./src/persistence.ts",
     "./src/protocol.ts",
     "./src/transport.ts",
+    "./src/streaming-transport.ts",
     "./src/scenario.ts",
   ],
   dts: true,

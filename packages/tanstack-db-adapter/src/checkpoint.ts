@@ -2,6 +2,7 @@ import type { FragnoOutboxEntry } from "./protocol";
 
 export const FRAGNO_OUTBOX_CHECKPOINT_METADATA_KEY = "fragno.outbox.checkpoint.v1";
 export const FRAGNO_OUTBOX_SOURCE_METADATA_KEY = "fragno.outbox.source.v1";
+export const FRAGNO_OUTBOX_INITIALIZED_METADATA_KEY = "fragno.outbox.initialized.v1";
 
 export type FragnoOutboxCheckpoint = {
   versionstamp: string;

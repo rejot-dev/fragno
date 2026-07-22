@@ -149,7 +149,7 @@ function domainUsers(context: ResumeContext): User[] {
 }
 
 describe("Fragno outbox resume behavior", () => {
-  it("requests from the persisted checkpoint after collection recreation", async () => {
+  it("hydrates without a request and explicitly ingests from the persisted checkpoint", async () => {
     const requests: string[] = [];
     let persistedCheckpoint: FragnoOutboxCheckpoint | undefined;
     const user = { id: "user-1", name: "Ada", email: "ada@example.com" };
@@ -166,6 +166,10 @@ describe("Fragno outbox resume behavior", () => {
           requests.length = 0;
         }),
         steps.reload(),
+        steps.assert(() => {
+          expect(requests).toEqual([]);
+        }),
+        steps.ingest(),
         steps.assert(() => {
           expect(requests).toHaveLength(1);
           expect(new URL(requests[0]).searchParams.get("afterVersionstamp")).toBe(

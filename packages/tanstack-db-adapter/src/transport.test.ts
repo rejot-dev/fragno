@@ -1,4 +1,4 @@
-import { describe, expect, it, assert } from "vitest";
+import { describe, expect, it, assert, vi } from "vitest";
 
 import type { FragnoOutboxEntry } from "./protocol";
 import {
@@ -34,6 +34,33 @@ describe("Fragno fetch outbox transport", () => {
     assert(request);
     assert(request.url === "https://example.com/api/app/_internal?token=secret");
     expect(requestSignal).toBe(abortController.signal);
+  });
+
+  it("shares one internal describe request across transports in the same browser page", async () => {
+    vi.stubGlobal("window", {});
+    let requestCount = 0;
+    const fetcher: typeof globalThis.fetch = async () => {
+      requestCount += 1;
+      return Response.json({ adapterIdentity: "adapter-1" });
+    };
+    const first = createFetchFragnoOutboxTransport({
+      internalUrl: "https://example.com/shared/_internal",
+      fetch: fetcher,
+    });
+    const second = createFetchFragnoOutboxTransport({
+      internalUrl: "https://example.com/shared/_internal",
+      fetch: fetcher,
+    });
+
+    try {
+      await Promise.all([
+        first.getAdapterIdentity({ signal: new AbortController().signal }),
+        second.getAdapterIdentity({ signal: new AbortController().signal }),
+      ]);
+      assert(requestCount === 1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("rejects malformed internal describe responses", async () => {

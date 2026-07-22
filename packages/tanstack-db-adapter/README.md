@@ -2,9 +2,9 @@
 
 Ingest Fragno's durable database outbox into eager TanStack DB collections.
 
-The current adapter is intentionally one-way: it polls server mutations into TanStack DB. Client
-mutations, optimistic overlays, command submission, streaming, and on-demand subsets are out of
-scope.
+The current adapter is intentionally one-way: it synchronizes server mutations into TanStack DB
+through polling or a persistent outbox stream. Client mutations, optimistic overlays, command
+submission, and on-demand subsets are out of scope.
 
 ## Collection setup
 
@@ -52,7 +52,7 @@ Dispose the coordinator when the application no longer uses the endpoint:
 coordinator.dispose();
 ```
 
-## Coordinator transport and polling
+## Coordinator transports
 
 The default transport requests `GET /_internal/outbox` with `afterVersionstamp` and `limit` query
 parameters. Configure page size, polling, error handling, or an authenticated Fetch implementation
@@ -76,12 +76,50 @@ const coordinator = createFragnoOutboxCoordinator({
 });
 ```
 
-The coordinator owns no row state. It registers collection consumers, refreshes the adapter identity
-before each synchronization, fetches from the oldest registered collection checkpoint, serializes
-synchronization attempts, and dispatches every outbox entry to every registered collection before
-advancing to the next entry. Failed background polls retry with exponential backoff and jitter,
-capped at one minute or the configured polling interval when it is longer; a successful
-synchronization resets the retry interval.
+Use the streaming transport to bootstrap new collections through the paginated endpoint and then
+keep one NDJSON connection open for catch-up and live entries:
+
+```ts
+import { createFragnoOutboxCoordinator } from "@fragno-dev/tanstack-db-adapter/coordinator";
+import { createFetchFragnoOutboxStreamingTransport } from "@fragno-dev/tanstack-db-adapter/streaming-transport";
+
+const transport = createFetchFragnoOutboxStreamingTransport({ internalUrl });
+const coordinator = createFragnoOutboxCoordinator({
+  internalUrl,
+  transport,
+});
+```
+
+The coordinator owns no row state. It registers collection consumers, resolves the adapter identity
+once for its lifetime, serializes synchronization attempts, and dispatches every outbox entry to
+every registered collection before advancing to the next entry. A new or invalidated collection uses
+the paginated endpoint for its initial bootstrap. Once collection metadata records a completed
+bootstrap, reconnects open the stream directly from the oldest checkpoint and let the stream replay
+entries committed while disconnected. Failed background polls and stream connections retry with
+exponential backoff and jitter, capped at one minute or the configured polling interval when it is
+longer.
+
+`dispose()` permanently stops the coordinator and clears its consumers. When TanStack cleans up an
+inactive collection, its consumer unregisters automatically and the coordinator closes an unused
+stream.
+
+A server loader can supply the serializable bootstrap data and avoid the internal describe request
+in the browser:
+
+```ts
+const coordinator = createFragnoOutboxCoordinator({
+  internalUrl,
+  bootstrap: {
+    adapterIdentity: loaderData.adapterIdentity,
+  },
+  transport: createFetchFragnoOutboxStreamingTransport({ internalUrl }),
+});
+```
+
+Without supplied bootstrap data, concurrent identity requests are deduplicated and a successful
+response is cached. Fetch transports share that cache by internal URL for the lifetime of a browser
+page, while server runtimes do not use a process-global cache. Reload the page or supply new
+bootstrap data to discover a changed adapter identity.
 
 Calling `collection.utils.syncOnce()` synchronizes every collection registered with the same
 coordinator. `getSyncStatus()`, `getLastError()`, and `initialSync()` expose synchronization state;
@@ -97,11 +135,16 @@ Each collection applies an outbox entry as one TanStack sync transaction:
 4. Store the entry checkpoint in collection metadata.
 5. Call `commit()`.
 
-The metadata key is:
+The collection metadata keys are:
 
 ```ts
 fragno.outbox.checkpoint.v1;
+fragno.outbox.initialized.v1;
 ```
+
+The initialized flag is written only after the first finite bootstrap succeeds. It allows a retained
+or persisted collection to expose its existing snapshot immediately while the stream catches up in
+the background.
 
 Its value is:
 
@@ -130,8 +173,8 @@ the sync configuration uses `rowUpdateMode: "partial"`.
 
 ## Persistence
 
-Persistence remains a TanStack concern. Create the platform persistence adapter, then bind it once
-to a Fragno collection factory:
+Fragno collections should normally be persisted. Create the platform persistence adapter, then bind
+it once to a Fragno collection factory:
 
 ```ts
 import { createPersistedFragnoCollectionFactory } from "@fragno-dev/tanstack-db-adapter/persistence";
@@ -150,9 +193,10 @@ const users = createPersistedCollection({
 
 The factory creates the Fragno collection options, wraps them with TanStack persistence, and
 preserves the inferred row and synchronization utility types. TanStack persists a collection's row
-changes and checkpoint from the same sync transaction. Recreating the collection hydrates both
-before it registers with the coordinator. Bump `schemaVersion` when the materialized row shape
-changes.
+changes, checkpoint, source identity, and initialization state. Recreating an initialized collection
+hydrates its local snapshot before registering with the coordinator, exposes those rows without
+waiting for the network, and reconnects from its checkpoint in the background. Bump `schemaVersion`
+when the materialized row shape changes.
 
 Browser consumers must use TanStack's browser collection coordinator so only one tab owns the SQLite
 writer.

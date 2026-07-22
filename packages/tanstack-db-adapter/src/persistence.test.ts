@@ -6,12 +6,18 @@ import superjson from "superjson";
 
 import type { OutboxPayload } from "@fragno-dev/db";
 
+import { createLiveQueryCollection } from "@tanstack/db";
 import { createNodeSQLitePersistence } from "@tanstack/node-db-sqlite-persistence";
 
-import { FRAGNO_OUTBOX_SOURCE_METADATA_KEY, type FragnoOutboxSource } from "./checkpoint";
+import {
+  FRAGNO_OUTBOX_INITIALIZED_METADATA_KEY,
+  FRAGNO_OUTBOX_SOURCE_METADATA_KEY,
+  type FragnoOutboxSource,
+} from "./checkpoint";
 import { createFragnoOutboxCoordinator } from "./coordinator";
 import { createPersistedFragnoCollectionFactory } from "./persistence";
 import type { FragnoCollectionTarget, FragnoOutboxEntry } from "./protocol";
+import type { FragnoOutboxStreamingTransport } from "./streaming-transport";
 
 const appSchema = schema("app", (s) =>
   s
@@ -114,6 +120,28 @@ async function waitForPersistedSource(
   }
 
   throw new Error(`Timed out waiting for persisted source ${JSON.stringify(expectedSource)}.`);
+}
+
+async function waitForPersistedInitialization(
+  persistence: ReturnType<typeof createNodeSQLitePersistence>,
+): Promise<void> {
+  const adapter = persistence.adapter;
+  if (!adapter.loadCollectionMetadata) {
+    throw new Error("The persistence adapter does not support collection metadata.");
+  }
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt <= PERSISTENCE_TIMEOUT_MS) {
+    const metadata = await adapter.loadCollectionMetadata(COLLECTION_ID);
+    if (
+      metadata.find(({ key }) => key === FRAGNO_OUTBOX_INITIALIZED_METADATA_KEY)?.value === true
+    ) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  throw new Error("Timed out waiting for persisted Fragno outbox initialization.");
 }
 
 async function waitForPersistedRowIds(
@@ -243,6 +271,7 @@ describe("persisted Fragno collection factory", () => {
       namespace: appSchema.name,
       table: "users",
     });
+    await waitForPersistedInitialization(persistence);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     assert(users.id === COLLECTION_ID);
@@ -252,6 +281,82 @@ describe("persisted Fragno collection factory", () => {
     await users.cleanup();
     coordinator.dispose();
     database.close();
+  });
+
+  it("hydrates an initialized snapshot without waiting for outbox availability", async () => {
+    const database = new Database(":memory:");
+    const persistence = createNodeSQLitePersistence({ database });
+    const createPersistedCollection = createPersistedFragnoCollectionFactory({
+      persistence,
+      schemaVersion: 1,
+    });
+    const entry = createInsertEntry({ table: "users", id: "local-user", name: "Local" });
+    const initialCoordinator = createCoordinator("adapter-1", entry);
+    const initialCollection = createPersistedCollection({
+      id: COLLECTION_ID,
+      coordinator: initialCoordinator,
+      target: { schema: appSchema, table: "users" },
+    });
+
+    try {
+      await Promise.all([initialCollection.preload(), initialCollection.utils.initialSync()]);
+      await waitForPersistedRowIds(persistence, ["local-user"]);
+    } finally {
+      await initialCollection.cleanup();
+      initialCoordinator.dispose();
+    }
+
+    let listRequests = 0;
+    let streamRequests = 0;
+    const unavailableTransport: FragnoOutboxStreamingTransport = {
+      async getAdapterIdentity() {
+        throw new Error("The persisted source should use supplied bootstrap identity.");
+      },
+      async list() {
+        listRequests += 1;
+        throw new Error("The persisted snapshot should not require outbox history.");
+      },
+      async stream() {
+        streamRequests += 1;
+        throw new Error("The stream is offline.");
+      },
+    };
+    const offlineCoordinator = createFragnoOutboxCoordinator({
+      internalUrl: "https://example.com/_internal",
+      bootstrap: { adapterIdentity: "adapter-1" },
+      transport: unavailableTransport,
+      onError() {},
+    });
+    const offlineCollection = createPersistedCollection({
+      id: COLLECTION_ID,
+      coordinator: offlineCoordinator,
+      target: { schema: appSchema, table: "users" },
+    });
+
+    const localUsers = createLiveQueryCollection((query) =>
+      query.from({ user: offlineCollection }).orderBy(({ user }) => user.name, "asc"),
+    );
+
+    try {
+      await Promise.all([
+        offlineCollection.preload(),
+        offlineCollection.utils.initialSync(),
+        localUsers.preload(),
+      ]);
+      await waitForCollectionReady(offlineCollection);
+
+      expect([...localUsers.values()]).toEqual([
+        expect.objectContaining({ id: "local-user", name: "Local" }),
+      ]);
+      expect(listRequests).toBe(0);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(streamRequests).toBeGreaterThan(0);
+    } finally {
+      await localUsers.cleanup();
+      await offlineCollection.cleanup();
+      offlineCoordinator.dispose();
+      database.close();
+    }
   });
 
   it("truncates stale rows and replays history when the adapter identity changes", async () => {

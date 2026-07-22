@@ -7,6 +7,7 @@ import {
 } from "./checkpoint";
 import { createFragnoOutboxCoordinator, type FragnoOutboxConsumer } from "./coordinator";
 import type { FragnoOutboxEntry } from "./protocol";
+import type { FragnoOutboxStreamingTransport } from "./streaming-transport";
 import type { FragnoOutboxTransport } from "./transport";
 
 function entry(index: number): FragnoOutboxEntry {
@@ -33,15 +34,18 @@ function createMemoryTransport(entries: FragnoOutboxEntry[]): FragnoOutboxTransp
 function createConsumer(options: {
   id: string;
   checkpoint?: FragnoOutboxCheckpoint;
+  initialized?: boolean;
   beforeApply?: (entry: FragnoOutboxEntry) => void;
 }) {
   let checkpoint = options.checkpoint;
+  let initialized = options.initialized ?? false;
   let ready = false;
   const applied: string[] = [];
 
   const consumer: FragnoOutboxConsumer = {
     id: options.id,
     getCheckpoint: () => checkpoint,
+    isInitialized: () => initialized,
     prepareSource() {},
     applyEntry(entry) {
       if (!shouldApplyOutboxEntry(checkpoint, entry)) {
@@ -54,6 +58,7 @@ function createConsumer(options: {
     },
     markLoading() {},
     markReady() {
+      initialized = true;
       ready = true;
     },
     markError() {},
@@ -65,6 +70,16 @@ function createConsumer(options: {
     getCheckpoint: () => checkpoint,
     isReady: () => ready,
   };
+}
+
+async function waitForStreamStart(waiters: Array<() => void>, isStarted: () => boolean) {
+  if (isStarted()) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    waiters.push(resolve);
+  });
 }
 
 describe("Fragno outbox coordinator", () => {
@@ -149,7 +164,7 @@ describe("Fragno outbox coordinator", () => {
     coordinator.dispose();
   });
 
-  it("replays from the beginning when the adapter identity changes", async () => {
+  it("keeps the adapter identity stable for the coordinator lifetime", async () => {
     let adapterIdentity = "adapter-1";
     let sourceIdentity: string | undefined;
     let checkpoint: FragnoOutboxCheckpoint | undefined;
@@ -170,6 +185,7 @@ describe("Fragno outbox coordinator", () => {
     const consumer: FragnoOutboxConsumer = {
       id: "users",
       getCheckpoint: () => checkpoint,
+      isInitialized: () => false,
       prepareSource(nextAdapterIdentity) {
         if (sourceIdentity !== nextAdapterIdentity) {
           sourceIdentity = nextAdapterIdentity;
@@ -192,9 +208,196 @@ describe("Fragno outbox coordinator", () => {
     adapterIdentity = "adapter-2";
     await coordinator.syncOnce();
 
-    expect(sourceIdentity).toBe("adapter-2");
-    expect(applied).toEqual([entry(9).versionstamp, entry(1).versionstamp]);
+    expect(sourceIdentity).toBe("adapter-1");
+    expect(applied).toEqual([entry(9).versionstamp]);
     coordinator.dispose();
+  });
+
+  it("makes an initialized polling consumer ready without listing outbox history", async () => {
+    let listRequests = 0;
+    const users = createConsumer({ id: "users", initialized: true });
+    const coordinator = createFragnoOutboxCoordinator({
+      internalUrl: "https://example.com/_internal",
+      bootstrap: { adapterIdentity: "adapter-1" },
+      pollIntervalMs: 60_000,
+      transport: {
+        async getAdapterIdentity() {
+          throw new Error("The supplied adapter identity should be used.");
+        },
+        async list() {
+          listRequests += 1;
+          throw new Error("Initialized collection history should not be listed on registration.");
+        },
+      },
+    });
+
+    coordinator.register(users.consumer);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert(users.isReady());
+    expect(listRequests).toBe(0);
+    coordinator.dispose();
+  });
+
+  it("resolves the adapter identity once for the coordinator lifetime", async () => {
+    let identityRequests = 0;
+    const coordinator = createFragnoOutboxCoordinator({
+      internalUrl: "https://example.com/_internal",
+      pollIntervalMs: 60_000,
+      transport: {
+        async getAdapterIdentity() {
+          identityRequests += 1;
+          return "adapter-1";
+        },
+        async list() {
+          return [];
+        },
+      },
+    });
+
+    coordinator.register(createConsumer({ id: "users" }).consumer);
+    await Promise.all([coordinator.syncOnce(), coordinator.syncOnce()]);
+
+    expect(identityRequests).toBe(1);
+    coordinator.dispose();
+  });
+
+  it("uses statically supplied bootstrap data without requesting the internal route", async () => {
+    let preparedIdentity: string | undefined;
+    const users = createConsumer({ id: "users" });
+    users.consumer.prepareSource = (adapterIdentity) => {
+      preparedIdentity = adapterIdentity;
+    };
+    const coordinator = createFragnoOutboxCoordinator({
+      internalUrl: "https://example.com/_internal",
+      bootstrap: { adapterIdentity: "server-loaded-adapter" },
+      pollIntervalMs: 60_000,
+      transport: {
+        async getAdapterIdentity() {
+          throw new Error("The internal route should not be requested.");
+        },
+        async list() {
+          return [];
+        },
+      },
+    });
+
+    coordinator.register(users.consumer);
+    await coordinator.syncOnce();
+
+    expect(preparedIdentity).toBe("server-loaded-adapter");
+    coordinator.dispose();
+  });
+
+  it("catches up once and then applies entries from one shared stream", async () => {
+    const availableEntries = [entry(1)];
+    let identityRequests = 0;
+    let streamRequests = 0;
+    let activeStream:
+      | {
+          onEntry(entry: FragnoOutboxEntry): void | Promise<void>;
+          close(): void;
+        }
+      | undefined;
+    const streamStarted: Array<() => void> = [];
+    const transport: FragnoOutboxTransport & {
+      stream(options: {
+        afterVersionstamp?: string;
+        limit: number;
+        signal: AbortSignal;
+        onEntry(entry: FragnoOutboxEntry): void | Promise<void>;
+      }): Promise<void>;
+    } = {
+      async getAdapterIdentity() {
+        identityRequests += 1;
+        return "adapter-1";
+      },
+      async list({ afterVersionstamp, limit }) {
+        return availableEntries
+          .filter(({ versionstamp }) => !afterVersionstamp || versionstamp > afterVersionstamp)
+          .slice(0, limit);
+      },
+      stream(options) {
+        streamRequests += 1;
+        return new Promise<void>((resolve) => {
+          const close = () => resolve();
+          activeStream = { onEntry: options.onEntry, close };
+          options.signal.addEventListener("abort", close, { once: true });
+          for (const markStarted of streamStarted.splice(0)) {
+            markStarted();
+          }
+        });
+      },
+    };
+    const users = createConsumer({ id: "users" });
+    const posts = createConsumer({ id: "posts" });
+    const coordinator = createFragnoOutboxCoordinator({
+      internalUrl: "https://example.com/_internal",
+      transport,
+      pageSize: 10,
+      pollIntervalMs: 60_000,
+    });
+
+    coordinator.register(users.consumer);
+    coordinator.register(posts.consumer);
+    await coordinator.syncOnce();
+    await waitForStreamStart(streamStarted, () => activeStream !== undefined);
+
+    expect(users.applied).toEqual([entry(1).versionstamp]);
+    expect(posts.applied).toEqual([entry(1).versionstamp]);
+    assert(activeStream);
+    await activeStream.onEntry(entry(2));
+
+    expect(users.applied).toEqual([entry(1).versionstamp, entry(2).versionstamp]);
+    expect(posts.applied).toEqual([entry(1).versionstamp, entry(2).versionstamp]);
+    expect(identityRequests).toBe(1);
+    expect(streamRequests).toBe(1);
+    coordinator.dispose();
+  });
+
+  it("backs off repeated stream failures without repeating initialized catch-up", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+
+    const failure = new Error("stream unavailable");
+    let listRequests = 0;
+    let streamRequests = 0;
+    const transport: FragnoOutboxStreamingTransport = {
+      async getAdapterIdentity() {
+        return "adapter-1";
+      },
+      async list() {
+        listRequests += 1;
+        return [];
+      },
+      async stream() {
+        streamRequests += 1;
+        throw failure;
+      },
+    };
+    const coordinator = createFragnoOutboxCoordinator({
+      internalUrl: "https://example.com/_internal",
+      pollIntervalMs: 100,
+      transport,
+    });
+
+    try {
+      coordinator.register(createConsumer({ id: "users" }).consumer);
+      await vi.advanceTimersByTimeAsync(0);
+      expect({ listRequests, streamRequests }).toEqual({ listRequests: 1, streamRequests: 1 });
+
+      await vi.advanceTimersByTimeAsync(100);
+      expect({ listRequests, streamRequests }).toEqual({ listRequests: 1, streamRequests: 2 });
+
+      await vi.advanceTimersByTimeAsync(199);
+      expect({ listRequests, streamRequests }).toEqual({ listRequests: 1, streamRequests: 2 });
+      await vi.advanceTimersByTimeAsync(1);
+      expect({ listRequests, streamRequests }).toEqual({ listRequests: 1, streamRequests: 3 });
+    } finally {
+      coordinator.dispose();
+      vi.restoreAllMocks();
+      vi.useRealTimers();
+    }
   });
 
   it("serializes concurrent synchronization requests", async () => {

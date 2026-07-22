@@ -41,6 +41,10 @@
       "types": "./dist/transport.d.ts",
       "default": "./dist/transport.js"
     },
+    "./streaming-transport": {
+      "types": "./dist/streaming-transport.d.ts",
+      "default": "./dist/streaming-transport.js"
+    },
     "./scenario": {
       "types": "./dist/scenario.d.ts",
       "default": "./dist/scenario.js"

@@ -2,10 +2,11 @@ import { assert, describe, expect, it } from "vitest";
 
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
 
-import { createCollection } from "@tanstack/db";
+import { createCollection, createLiveQueryCollection } from "@tanstack/db";
 
 import { fragnoCollectionOptions } from "./collection-options";
 import { createFragnoOutboxCoordinator } from "./coordinator";
+import type { FragnoOutboxStreamingTransport } from "./streaming-transport";
 
 const appSchema = schema("app", (s) =>
   s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
@@ -52,6 +53,57 @@ describe("Fragno collection synchronization state", () => {
 
     assert(collection.utils.getSyncStatus() === "ready");
     expect(collection.utils.getLastError()).toBeUndefined();
+    await collection.cleanup();
+    coordinator.dispose();
+  });
+
+  it("closes an active stream when the last live query releases the collection", async () => {
+    let resolveStreamStarted!: () => void;
+    let resolveStreamAborted!: () => void;
+    const streamStarted = new Promise<void>((resolve) => {
+      resolveStreamStarted = resolve;
+    });
+    const streamAborted = new Promise<void>((resolve) => {
+      resolveStreamAborted = resolve;
+    });
+    const transport: FragnoOutboxStreamingTransport = {
+      async getAdapterIdentity() {
+        return "adapter-1";
+      },
+      async list() {
+        return [];
+      },
+      stream({ signal }) {
+        resolveStreamStarted();
+        return new Promise<void>((resolve) => {
+          signal.addEventListener(
+            "abort",
+            () => {
+              resolveStreamAborted();
+              resolve();
+            },
+            { once: true },
+          );
+        });
+      },
+    };
+    const coordinator = createFragnoOutboxCoordinator({
+      internalUrl: "https://example.com/_internal",
+      transport,
+    });
+    const collection = createCollection(
+      fragnoCollectionOptions({
+        id: "users",
+        coordinator,
+        target: { schema: appSchema, table: "users" },
+      }),
+    );
+    const users = createLiveQueryCollection((query) => query.from({ user: collection }));
+
+    await Promise.all([users.preload(), streamStarted]);
+    await users.cleanup();
+    await streamAborted;
+
     await collection.cleanup();
     coordinator.dispose();
   });
