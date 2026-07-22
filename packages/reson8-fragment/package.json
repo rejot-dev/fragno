@@ -62,7 +62,6 @@
   },
   "devDependencies": {
     "@fragno-dev/cli": "workspace:*",
-    "@fragno-dev/test": "workspace:*",
     "@fragno-dev/unplugin-fragno": "workspace:*",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
