@@ -878,6 +878,8 @@ export default function App() {
           [...selectedGroup.schemas, ...selectedGroup.localSchemas].flatMap((schema) => {
             const query = runtime.adapter.createQueryEngine(schema);
             return Object.keys(schema.tables).map(async (tableName) => {
+              // Every query promise is collected by the outer Promise.all.
+              // react-doctor-disable-next-line react-doctor/async-await-in-loop
               const data = await query.find(tableName as never, (b) => b);
               return [`${schema.name}.${tableName}`, data.length] as const;
             });
@@ -918,6 +920,8 @@ export default function App() {
     };
   }, [selectedGroup, syncTick, triggerTableHighlight]);
 
+  // Retry timers are cleared by the returned effect cleanup.
+  // react-doctor-disable-next-line react-doctor/effect-needs-cleanup
   useEffect(() => {
     let cancelled = false;
     let retryTimeout: ReturnType<typeof setTimeout> | undefined;
