@@ -1,7 +1,9 @@
 import { useMemo } from "react";
-import { useParams } from "react-router";
+import { useOutletContext, useParams } from "react-router";
 
 import { createPiClient } from "@/fragno/pi/pi-client";
+
+import type { PiSessionsOutletContext } from "./sessions";
 
 const stringifyJson = (value: unknown) =>
   JSON.stringify(
@@ -34,15 +36,15 @@ const JsonPanel = ({ title, value }: { title: string; value: unknown }) => (
 );
 
 export default function BackofficeOrganisationPiDebugSessionDetail() {
-  const { orgId, workflowName, sessionId } = useParams();
-  const resolvedOrgId = orgId ?? "";
+  const { workflowName, sessionId } = useParams();
+  const { scope } = useOutletContext<PiSessionsOutletContext>();
   const resolvedWorkflowName = workflowName ?? "";
   const resolvedSessionId = sessionId ?? "";
-  const pi = useMemo(() => createPiClient(resolvedOrgId), [resolvedOrgId]);
+  const pi = useMemo(() => createPiClient(scope), [scope]);
   const sessionPath = { workflowName: resolvedWorkflowName, sessionId: resolvedSessionId };
   const sessionDetail = pi.useSessionDetail({ path: sessionPath });
 
-  if (!orgId || !workflowName || !sessionId) {
+  if (!workflowName || !sessionId) {
     throw new Response("Not Found", { status: 404 });
   }
 
@@ -50,7 +52,7 @@ export default function BackofficeOrganisationPiDebugSessionDetail() {
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       <div>
         <p className="text-xs tracking-[0.22em] text-(--bo-muted) uppercase">
-          Debug Session Detail 2
+          Debug session detail
         </p>
         <h1 className="mt-1 font-mono text-lg text-(--bo-foreground)">{resolvedSessionId}</h1>
       </div>

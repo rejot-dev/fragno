@@ -1,9 +1,10 @@
 import type { Dispatch, SetStateAction } from "react";
 import { Link, isRouteErrorResponse } from "react-router";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { BackofficePageHeader } from "@/components/backoffice";
-import type { AuthMeData } from "@/fragno/auth/auth-client";
 import type { PiConfigState } from "@/fragno/pi/pi-shared";
+import type { PiPersistenceSource } from "@/fragno/pi/tanstack/database";
 
 import {
   getRouteErrorDebugDetails,
@@ -11,14 +12,11 @@ import {
   isOrganisationNotFoundError,
 } from "../route-errors";
 
-type BackofficeOrganisation = AuthMeData["organizations"][number]["organization"];
-
 export type PiLayoutContext = {
-  orgId: string;
-  origin: string;
-  organisation: BackofficeOrganisation;
+  scope: Extract<BackofficeContextScope, { kind: "org" }>;
+  persistenceSource: PiPersistenceSource | null;
+  persistenceError: string | null;
   configState: PiConfigState | null;
-  configLoading: boolean;
   configError: string | null;
   setConfigState: Dispatch<SetStateAction<PiConfigState | null>>;
   setConfigError: Dispatch<SetStateAction<string | null>>;

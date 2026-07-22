@@ -21,7 +21,10 @@ import {
 } from "@earendil-works/pi-agent-core";
 import { getModels, type Model } from "@earendil-works/pi-ai";
 
-import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import type {
+  BackofficeContextScope,
+  BackofficeExecutionContext,
+} from "@/backoffice-runtime/context";
 import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
@@ -93,7 +96,7 @@ export type PiBashCommandContext = InteractiveBashCommandContext & {
 };
 
 export type PiSessionFileSystemContext = {
-  orgId: string;
+  scope: BackofficeContextScope;
   objects: BackofficeObjectRegistry;
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
@@ -283,7 +286,7 @@ const createExecCodeModeTool = (
   sessionId: string,
   codemode: PiCodemodeRuntime | undefined,
   bashCommandContext: PiBashCommandContext | undefined,
-  orgId: string,
+  scope: BackofficeContextScope,
 ): AgentTool =>
   defineTool({
     name: "execCodeMode",
@@ -344,7 +347,7 @@ const createExecCodeModeTool = (
               remoteWorkflowName: result.workflowDefinition.name,
               instanceId,
               params: {
-                orgId,
+                scope,
                 code: result.preparedCode ?? code,
                 ...(result.preparedModules ? { modules: result.preparedModules } : {}),
                 sessionId,
@@ -451,7 +454,7 @@ export const createPiToolFactory =
         sessionId,
         codemode,
         bashCommandContext,
-        sessionFileSystemContext.orgId,
+        sessionFileSystemContext.scope,
       ),
     };
   };
@@ -735,7 +738,6 @@ const buildPiRuntime = (
 export const createPiRuntime = (options: {
   config: StoredPiConfig;
   adapters: BackofficeDatabaseAdapterFactory;
-  orgId: string;
   env: CloudflareEnv;
   sessionFileSystems: Map<string, Promise<MasterFileSystem>>;
   sessionFileSystemContext: PiSessionFileSystemContext;

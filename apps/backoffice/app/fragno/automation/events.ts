@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
 
 import type { AutomationEventSubject } from "./contracts";
 import { automationStoreActorSchema } from "./store";
@@ -18,20 +18,6 @@ const idSchema = z.preprocess((value) => {
   return value;
 }, z.string());
 
-const automationContextScopeSchema: z.ZodType<BackofficeContextScope> = z.discriminatedUnion(
-  "kind",
-  [
-    z.object({ kind: z.literal("system") }),
-    z.object({ kind: z.literal("org"), orgId: z.string().trim().min(1) }),
-    z.object({ kind: z.literal("user"), userId: z.string().trim().min(1) }),
-    z.object({
-      kind: z.literal("project"),
-      orgId: z.string().trim().min(1),
-      projectId: z.string().trim().min(1),
-    }),
-  ],
-);
-
 const automationEventSubjectSchema: z.ZodType<AutomationEventSubject> = z
   .object({
     orgId: z.string().trim().min(1).optional(),
@@ -41,7 +27,7 @@ const automationEventSubjectSchema: z.ZodType<AutomationEventSubject> = z
 
 const automationEventRecordSchema = z.object({
   id: idSchema,
-  scope: automationContextScopeSchema,
+  scope: backofficeContextScopeSchema,
   source: z.string().trim().min(1),
   eventType: z.string().trim().min(1),
   occurredAt: z.iso.datetime(),

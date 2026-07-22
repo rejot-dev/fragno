@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 
 import type { PiOperationCompletedHookPayload } from "@fragno-dev/pi-harness/types";
 
@@ -72,12 +72,20 @@ describe("createPiOperationBillingEvent", () => {
     });
 
     expect(event).toMatchObject({
-      id: "pi:org-1:42",
+      id: "pi:org:org-1:42",
       scope: { kind: "org", orgId: "org-1" },
       source: "pi-harness",
       eventType: "operation.completed",
       occurredAt: "2026-07-16T12:00:00.000Z",
     });
+    const projectEvent = createPiOperationBillingEvent({
+      scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
+      payload,
+      hookId: "43",
+      idempotencyKey: "pi-project-hook-key",
+    });
+    assert.equal(projectEvent.id, "pi:project:org-1:project-1:43");
+
     expect(
       Object.fromEntries(event.measurements.map(({ meter, quantity }) => [meter, quantity])),
     ).toMatchObject({

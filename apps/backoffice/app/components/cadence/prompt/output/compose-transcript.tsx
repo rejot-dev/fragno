@@ -1,21 +1,26 @@
 /*
  * Compose transcript — renders the live Pi session a prompt started. Each prompt
  * gets its own session (see `compose-action`), so this subscribes to exactly that
- * session via the Pi client and renders the conversation as it streams in.
+ * session through the persisted Pi collections and renders the conversation as it streams in.
  *
  * It deliberately stays lightweight compared to the full backoffice session view:
  * the exec surface only needs the back-and-forth (the user's prompt and the
  * agent's reply), plus a compact note for tool activity and a working indicator.
  */
 
-import { useStore } from "@fragno-dev/core/react";
+import {
+  emptyPiWorkflowSessionProjectionState,
+  type PiWorkflowSessionProjectionState,
+} from "@fragno-dev/pi-harness/workflow-session-projection";
 import { AlertTriangle, ChevronRight, Sparkles, Terminal, Workflow, Wrench } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 
 import type { WorkflowGraph as CodemodeWorkflowGraph } from "@fragno-dev/workflow-visualizer";
 
-import { createPiLofiSessionProjectionStore } from "@/fragno/pi/pi-client";
+import { ClientOnly } from "@/components/client-only";
+import type { PiPersistenceSource } from "@/fragno/pi/tanstack/database";
+import { usePiSessionProjection } from "@/fragno/pi/tanstack/use-session-projection";
 import type { ComposeSessionRef } from "@/routes/cadence/compose-action";
 
 /** The live durable run an `execCodeMode` result scheduled, for realtime progress. */
@@ -204,15 +209,8 @@ function toRows(
   return rows;
 }
 
-export function ComposeTranscript({
-  orgId,
-  session,
-  prompt,
-  onShowWorkflow,
-  onShowCodemode,
-  onWorkflowWritten,
-}: {
-  orgId: string;
+type ComposeTranscriptProps = {
+  source: PiPersistenceSource;
   session: ComposeSessionRef;
   prompt?: string;
   /** Called when the agent issues a `showWorkflow` tool call (name + mode). */
@@ -221,31 +219,59 @@ export function ComposeTranscript({
   onShowCodemode?: (entry: CodemodeRowEntry) => void;
   /** Called when a `writeAutomation` tool result lands, so the panel reloads. */
   onWorkflowWritten?: () => void;
-}) {
-  const projectionStore = useMemo(
-    () => createPiLofiSessionProjectionStore(orgId, session.workflowName, session.id),
-    [orgId, session.workflowName, session.id],
+};
+
+export function ComposeTranscript(props: ComposeTranscriptProps) {
+  const fallback = (
+    <ComposeTranscriptView
+      {...props}
+      projection={emptyPiWorkflowSessionProjectionState()}
+      projectionError={null}
+    />
   );
-  const projectionQuery = useStore(projectionStore);
-  const projection = projectionQuery.data;
+
+  return (
+    <ClientOnly fallback={fallback}>
+      <Suspense fallback={fallback}>
+        <SynchronizedComposeTranscript {...props} />
+      </Suspense>
+    </ClientOnly>
+  );
+}
+
+function SynchronizedComposeTranscript(props: ComposeTranscriptProps) {
+  const { projection, error } = usePiSessionProjection({
+    source: props.source,
+    workflowName: props.session.workflowName,
+    sessionId: props.session.id,
+  });
+
+  return <ComposeTranscriptView {...props} projection={projection} projectionError={error} />;
+}
+
+function ComposeTranscriptView({
+  source,
+  prompt,
+  onShowWorkflow,
+  onShowCodemode,
+  onWorkflowWritten,
+  projection,
+  projectionError,
+}: ComposeTranscriptProps & {
+  projection: PiWorkflowSessionProjectionState;
+  projectionError: string | null;
+}) {
+  const orgId =
+    source.scope.kind === "org" || source.scope.kind === "project" ? source.scope.orgId : null;
   const messages = projection.state.messages;
   const rows = useMemo(() => toRows(messages), [messages]);
 
   // Drive the working indicator off genuine agent activity, not connection state.
-  // The event stream closes and reopens on the route's ~60s idle timeout, which
-  // flips the connection to "connecting"/"retrying" each cycle — keying the
-  // indicator on `readyForInput` (which needs an *open* connection) made it flash
-  // on every reconnect. The send and any in-flight tool calls survive a reconnect
-  // (snapshot replay restores them), so this stays steady across the churn.
+  // The send and any in-flight tool calls survive a reconnect because collection
+  // persistence restores the latest durable projection before network catch-up.
   const working = !projection.readyForInput;
   const workingStatusText = projection.statusText || "Working…";
-  const fatalError =
-    projection.error?.message ??
-    (projectionQuery.error instanceof Error
-      ? projectionQuery.error.message
-      : projectionQuery.error
-        ? "Pi session projection source failed."
-        : null);
+  const fatalError = projection.error?.message ?? projectionError;
 
   // React to the agent's workflow tool *results* (not calls — calls stream in
   // before the tool runs, with raw/partial args):
@@ -403,7 +429,9 @@ export function ComposeTranscript({
                   </button>
                   {/* The durable run finishes after the tool returns, so its final
                       output is forwarded here once it lands. */}
-                  {row.entry.run ? <CodemodeRunOutput orgId={orgId} run={row.entry.run} /> : null}
+                  {row.entry.run && orgId ? (
+                    <CodemodeRunOutput orgId={orgId} run={row.entry.run} />
+                  ) : null}
                 </div>
               );
             }

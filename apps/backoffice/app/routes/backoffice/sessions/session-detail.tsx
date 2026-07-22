@@ -1,12 +1,13 @@
-import { useStore } from "@fragno-dev/core/react";
+import type { PiSession } from "@fragno-dev/pi-harness/types";
+import type { PiWorkflowSessionProjectionState } from "@fragno-dev/pi-harness/workflow-session-projection";
 import { useMemo, useState } from "react";
-import { useLoaderData, useOutletContext, useParams } from "react-router";
+import { useOutletContext, useParams } from "react-router";
 
-import { createPiClient, createPiLofiSessionProjectionStore } from "@/fragno/pi/pi-client";
+import { createPiClient } from "@/fragno/pi/pi-client";
 import { findPiModelOption, parsePiAgentName } from "@/fragno/pi/pi-shared";
+import { usePiSessionProjection } from "@/fragno/pi/tanstack/use-session-projection";
+import { scopedPublicMountPath } from "@/fragno/scoped-public-fragment-routes";
 
-import type { Route } from "./+types/session-detail";
-import { fetchPiSessionDetail } from "./data";
 import { useChatScroll } from "./session-detail/chat-scroll";
 import {
   SessionComposer,
@@ -16,71 +17,113 @@ import {
 } from "./session-detail/components";
 import type { PiSessionsOutletContext } from "./sessions";
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId || !params.workflowName || !params.sessionId) {
+export default function BackofficeOrganisationPiSessionDetail() {
+  const { workflowName, sessionId } = useParams();
+  const { scope, persistenceSource, basePath, harnesses } =
+    useOutletContext<PiSessionsOutletContext>();
+
+  if (!workflowName || !sessionId) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const detail = await fetchPiSessionDetail(
-    request,
-    context,
-    params.orgId,
-    params.workflowName,
-    params.sessionId,
+  return (
+    <SynchronizedPiSessionDetail
+      scope={scope}
+      source={persistenceSource}
+      workflowName={workflowName}
+      sessionId={sessionId}
+      basePath={basePath}
+      harnesses={harnesses}
+    />
   );
-  if (detail.sessionError || !detail.session) {
-    throw Response.json(detail.sessionError ?? { message: "Not Found", code: "NOT_FOUND" }, {
-      status: detail.status ?? 404,
-    });
-  }
-
-  return { session: detail.session };
 }
 
-export default function BackofficeOrganisationPiSessionDetail() {
-  const { session } = useLoaderData<typeof loader>();
-  const { basePath, harnesses } = useOutletContext<PiSessionsOutletContext>();
-  const { orgId } = useParams();
+function PiSessionDetailLoading() {
+  return (
+    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4 text-sm text-[var(--bo-muted)]">
+      Loading local Pi session…
+    </div>
+  );
+}
+
+function SynchronizedPiSessionDetail({
+  scope,
+  source,
+  workflowName,
+  sessionId,
+  basePath,
+  harnesses,
+}: {
+  scope: PiSessionsOutletContext["scope"];
+  source: PiSessionsOutletContext["persistenceSource"];
+  workflowName: string;
+  sessionId: string;
+  basePath: string;
+  harnesses: PiSessionsOutletContext["harnesses"];
+}) {
+  const {
+    session,
+    projection,
+    error: projectionError,
+    isLoading,
+  } = usePiSessionProjection({
+    source,
+    workflowName,
+    sessionId,
+  });
+
+  if (!session) {
+    return isLoading ? (
+      <PiSessionDetailLoading />
+    ) : (
+      <div className="border border-red-200 bg-red-50 p-4 text-sm text-red-600">
+        {projectionError ?? `Pi session ${workflowName}/${sessionId} was not found.`}
+      </div>
+    );
+  }
+
+  return (
+    <PiSessionDetailView
+      scope={scope}
+      session={session}
+      basePath={basePath}
+      harnesses={harnesses}
+      projection={projection}
+      projectionError={projectionError}
+    />
+  );
+}
+
+function PiSessionDetailView({
+  scope,
+  session,
+  basePath,
+  harnesses,
+  projection,
+  projectionError,
+}: {
+  scope: PiSessionsOutletContext["scope"];
+  session: PiSession;
+  basePath: string;
+  harnesses: PiSessionsOutletContext["harnesses"];
+  projection: PiWorkflowSessionProjectionState;
+  projectionError: string | null;
+}) {
   const [displayOptions, setDisplayOptions] = useState({
     showToolCalls: true,
     showThinking: true,
     showUsage: false,
   });
-  if (!orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const pi = useMemo(() => createPiClient(orgId), [orgId]);
+  const pi = useMemo(() => createPiClient(scope), [scope]);
   const commandSession = pi.useCommandSession();
-  const projectionStore = useMemo(
-    () =>
-      createPiLofiSessionProjectionStore(orgId, session.workflowName, session.id, {
-        initialState: session.agent.state,
-        initialCompletedStepKeys: session.agent.completedStepKeys,
-      }),
-    [orgId, session.workflowName, session.id, session.agent.state, session.agent.completedStepKeys],
-  );
-  const projectionQuery = useStore(projectionStore);
-  const projection = projectionQuery.data;
   const messages = projection.state.messages;
-  const displaySession = {
-    ...session,
-    agent: { ...session.agent, state: { ...session.agent.state, messages } },
-  };
   const sending = commandSession.loading ?? false;
-  const projectionError =
-    projection.error?.message ??
-    (projectionQuery.error instanceof Error
-      ? projectionQuery.error.message
-      : projectionQuery.error
-        ? "Pi session projection source failed."
-        : null);
   const sendError = commandSession.error?.message ?? null;
   const readyForInput = !sending && projection.readyForInput;
   const statusText = sending ? "Sending…" : projection.statusText;
   const needsNudge = !sending && !readyForInput && statusText === "Working…";
 
-  const agentName = displaySession.agentName;
+  const agentName = session.agent;
   const parsedAgent = parsePiAgentName(agentName);
   const harnessLabel = parsedAgent
     ? (harnesses.find((entry) => entry.id === parsedAgent.harnessId)?.label ??
@@ -142,14 +185,14 @@ export default function BackofficeOrganisationPiSessionDetail() {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden">
       <SessionHeader
-        session={displaySession}
+        session={session}
         backTo={basePath}
         harnessLabel={harnessLabel}
         modelLabel={modelLabel}
         options={
           <SessionDisplayOptions
-            exportHref={`/api/pi/${orgId}/workflows/${encodeURIComponent(displaySession.workflowName)}/sessions/${encodeURIComponent(displaySession.id)}/export/pi-jsonl`}
-            exportFilename={`pi-session-${displaySession.id}.jsonl`}
+            exportHref={`${scopedPublicMountPath({ publicPrefix: "/api/pi", scope })}/workflows/${encodeURIComponent(session.workflowName)}/sessions/${encodeURIComponent(session.id)}/export/pi-jsonl`}
+            exportFilename={`pi-session-${session.id}.jsonl`}
             showToolCalls={displayOptions.showToolCalls}
             showThinking={displayOptions.showThinking}
             showUsage={displayOptions.showUsage}

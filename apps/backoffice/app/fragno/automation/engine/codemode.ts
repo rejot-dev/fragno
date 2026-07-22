@@ -4,6 +4,7 @@ import type { WorkflowEvent } from "@fragno-dev/workflows/workflow";
 import type { BackofficePrincipal } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import type { MasterFileSystem } from "@/files/master-file-system";
 import {
   runBackofficeCodemode,
@@ -125,10 +126,18 @@ export const executePiCodemodeWorkflow = async ({
   workflowEvent: WorkflowEvent<unknown>;
   remote: RemoteWorkflowStepHost;
 }): Promise<unknown> => {
-  const orgId = params.orgId.trim();
-  if (!orgId) {
-    throw new Error("Pi codemode workflow requires an organisation id.");
-  }
+  const { scope } = params;
+  const scopeKey = backofficeContextScopeSinglePathSegment(scope);
+  const actor: BackofficePrincipal =
+    scope.kind === "system"
+      ? { type: "system", id: `pi-codemode-workflow:${scopeKey}` }
+      : {
+          type: "automation",
+          id: `pi-codemode-workflow:${scopeKey}`,
+          ...(scope.kind === "org" || scope.kind === "project"
+            ? { organizationIds: [scope.orgId] }
+            : {}),
+        };
 
   if (!runtime) {
     throw new Error("Pi codemode workflow requires Backoffice runtime services.");
@@ -138,12 +147,8 @@ export const executePiCodemodeWorkflow = async ({
     runtime,
     kernel: new BackofficeKernel({ objects: runtime.objects }),
     execution: {
-      actor: {
-        type: "automation",
-        id: `pi-codemode-workflow:${orgId}`,
-        organizationIds: [orgId],
-      } satisfies BackofficePrincipal,
-      scope: { kind: "org", orgId },
+      actor,
+      scope,
     },
   });
   const context = createBackofficeToolContext(runtimeContext);

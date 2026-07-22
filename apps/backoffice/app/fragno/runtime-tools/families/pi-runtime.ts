@@ -3,7 +3,9 @@ import type { createPiHarness } from "@fragno-dev/pi-harness/factory";
 import type { PiSession, PiSessionDetail, PiWorkflowStatus } from "@fragno-dev/pi-harness/types";
 import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { PiObject } from "@/backoffice-runtime/object-registry";
+import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../runtime-errors";
 
@@ -72,29 +74,20 @@ export type RegisteredPiCommandContext = {
   runtime: PiRuntime;
 };
 
-export const createUnavailablePiRuntime = (message: string): PiRuntime => ({
-  createSession: async () => {
-    throw new Error(message);
-  },
-  getSession: async () => {
-    throw new Error(message);
-  },
-  listSessions: async () => {
-    throw new Error(message);
-  },
-  runTurn: async () => {
-    throw new Error(message);
-  },
-});
-
-const createPiRouteCaller = ({ object, orgId }: { object: PiObject; orgId: string }) =>
+const createPiRouteCaller = ({
+  object,
+  scope,
+}: {
+  object: PiObject;
+  scope: BackofficeContextScope;
+}) =>
   createRouteCaller<PiFragment>({
     // Durable Object route helpers still need absolute URLs, so use a synthetic origin.
     baseUrl: "https://pi.do",
     mountRoute: "/api/pi",
     fetch: async (outboundRequest) => {
       const url = new URL(outboundRequest.url);
-      url.searchParams.set("orgId", orgId);
+      url.searchParams.set("scope", backofficeContextScopeSinglePathSegment(scope));
       return object.fetch(new Request(url.toString(), outboundRequest));
     },
   });
@@ -116,17 +109,12 @@ const parsePiRuntimeAgentName = (agent: string) => {
 
 export const createPiRouteRuntime = ({
   object,
-  orgId,
+  scope,
 }: {
   object: PiObject;
-  orgId: string;
+  scope: BackofficeContextScope;
 }): PiRuntime => {
-  const normalizedOrgId = orgId.trim();
-  if (!normalizedOrgId) {
-    throw new Error("pi.session commands require an organisation id");
-  }
-
-  const callRoute = createPiRouteCaller({ object, orgId: normalizedOrgId });
+  const callRoute = createPiRouteCaller({ object, scope });
 
   return {
     createSession: async (args) => {

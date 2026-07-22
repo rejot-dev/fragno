@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
 import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
 import {
   UPLOAD_PROVIDER_DATABASE,
@@ -1032,13 +1033,6 @@ type UploadFsMetadata = {
   mode?: number;
   mtime?: string;
 };
-
-const backofficeContextScopeSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("system") }),
-  z.object({ kind: z.literal("org"), orgId: z.string() }),
-  z.object({ kind: z.literal("user"), userId: z.string() }),
-  z.object({ kind: z.literal("project"), orgId: z.string(), projectId: z.string() }),
-]);
 
 const fileSubjectSchema: z.ZodType<FileSubject> = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("root") }),

@@ -4,6 +4,8 @@ import type { PiSession, PiSessionDetail, PiWorkflowStatus } from "@fragno-dev/p
 import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 import type { RouterContextProvider } from "react-router";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import type { PiConfigState, PiThinkingLevel } from "@/fragno/pi/pi-shared";
 import { getPiDurableObject } from "@/worker-runtime/durable-objects";
 
@@ -15,9 +17,9 @@ type PiFragment = ReturnType<typeof createPiHarness>;
 const createPiRouteCaller = (
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  scope: BackofficeContextScope,
 ) => {
-  const piDo = getPiDurableObject(context, orgId);
+  const piDo = getPiDurableObject(context, scope);
   return createRouteCaller<PiFragment>({
     baseUrl: request.url,
     mountRoute: "/api/pi",
@@ -54,12 +56,48 @@ type PiSendMessageResult = {
   error: string | null;
 };
 
+export async function fetchPiAdapterIdentity(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+): Promise<string> {
+  const piDo = getPiDurableObject(context, scope);
+  const url = new URL(request.url);
+  url.pathname = "/api/pi/_internal";
+  url.search = "";
+  url.searchParams.set("scope", backofficeContextScopeSinglePathSegment(scope));
+
+  const response = await piDo.fetch(
+    new Request(url, {
+      method: "GET",
+      headers: request.headers,
+    }),
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load Pi adapter identity (${response.status} ${response.statusText}).`,
+    );
+  }
+
+  const description: unknown = await response.json();
+  if (
+    typeof description !== "object" ||
+    description === null ||
+    !("adapterIdentity" in description) ||
+    typeof description.adapterIdentity !== "string"
+  ) {
+    throw new Error("Pi internal description did not include an adapter identity.");
+  }
+
+  return description.adapterIdentity;
+}
+
 export async function fetchPiConfig(
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  scope: BackofficeContextScope,
 ): Promise<PiConfigResult> {
   try {
-    const piDo = getPiDurableObject(context, orgId);
+    const piDo = getPiDurableObject(context, scope);
     const configState = await piDo.getAdminConfig();
     return { configState, configError: null };
   } catch (error) {
@@ -73,11 +111,11 @@ export async function fetchPiConfig(
 export async function fetchPiSessions(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  scope: BackofficeContextScope,
   options: { limit?: number } = {},
 ): Promise<PiSessionsResult> {
   try {
-    const callRoute = createPiRouteCaller(request, context, orgId);
+    const callRoute = createPiRouteCaller(request, context, scope);
     const requestedLimit =
       typeof options.limit === "number" && Number.isFinite(options.limit)
         ? options.limit
@@ -112,11 +150,11 @@ export async function fetchPiSessions(
 export async function fetchPiSessionDetail(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  scope: BackofficeContextScope,
   workflowName: string,
   sessionId: string,
 ): Promise<PiSessionDetailResult> {
-  const callRoute = createPiRouteCaller(request, context, orgId);
+  const callRoute = createPiRouteCaller(request, context, scope);
   const response = await callRoute("GET", "/workflows/:workflowName/sessions/:sessionId", {
     pathParams: { workflowName, sessionId },
   });
@@ -145,7 +183,7 @@ export async function fetchPiSessionDetail(
 export async function createPiSession(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  scope: BackofficeContextScope,
   payload: {
     workflowName?: string;
     input: {
@@ -157,7 +195,7 @@ export async function createPiSession(
   },
 ): Promise<PiCreateSessionResult> {
   try {
-    const callRoute = createPiRouteCaller(request, context, orgId);
+    const callRoute = createPiRouteCaller(request, context, scope);
     const { workflowName = INTERACTIVE_CHAT_WORKFLOW_NAME, ...body } = payload;
     const response = await callRoute("POST", "/workflows/:workflowName/sessions", {
       pathParams: { workflowName },
@@ -193,7 +231,7 @@ export async function createPiSession(
 export async function sendPiSessionMessage(
   request: Request,
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  scope: BackofficeContextScope,
   workflowName: string,
   sessionId: string,
   payload: {
@@ -202,7 +240,7 @@ export async function sendPiSessionMessage(
   },
 ): Promise<PiSendMessageResult> {
   try {
-    const callRoute = createPiRouteCaller(request, context, orgId);
+    const callRoute = createPiRouteCaller(request, context, scope);
     const response = await callRoute(
       "POST",
       "/workflows/:workflowName/sessions/:sessionId/command",

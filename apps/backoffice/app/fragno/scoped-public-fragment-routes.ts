@@ -1,7 +1,5 @@
-import {
-  backofficeScopeSinglePathSegment,
-  type BackofficeRoutableScope,
-} from "@/backoffice-runtime/scope-codec";
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 
 export const API_PUBLIC_PREFIX = "/api/http";
 export const API_INTERNAL_PREFIX = "/api/api";
@@ -11,9 +9,17 @@ export const MCP_PUBLIC_PREFIX = "/api/mcp";
 export const MCP_INTERNAL_PREFIX = "/api/mcp";
 export const MCP_INTERNAL_OAUTH_CALLBACK_PATH = "/api/mcp/oauth/callback";
 
-export const appendBackofficeScopeQuery = (url: URL, scope: BackofficeRoutableScope) => {
-  url.searchParams.set("scope", backofficeScopeSinglePathSegment(scope));
+export const appendBackofficeScopeQuery = (url: URL, scope: BackofficeContextScope) => {
+  url.searchParams.set("scope", backofficeContextScopeSinglePathSegment(scope));
 };
+
+export const scopedPublicMountPath = ({
+  publicPrefix,
+  scope,
+}: {
+  publicPrefix: string;
+  scope: BackofficeContextScope;
+}) => `${publicPrefix}/${encodeURIComponent(backofficeContextScopeSinglePathSegment(scope))}`;
 
 export const scopedPublicBaseUrl = ({
   baseUrl,
@@ -22,10 +28,10 @@ export const scopedPublicBaseUrl = ({
 }: {
   baseUrl: string;
   publicPrefix: string;
-  scope: BackofficeRoutableScope;
+  scope: BackofficeContextScope;
 }) => {
   const parsed = new URL(baseUrl);
-  const mountPath = `${publicPrefix}/${encodeURIComponent(backofficeScopeSinglePathSegment(scope))}`;
+  const mountPath = scopedPublicMountPath({ publicPrefix, scope });
   const trimmedPath = parsed.pathname.replace(/\/+$/, "");
   if (trimmedPath !== mountPath) {
     parsed.pathname = `${trimmedPath}${mountPath}`.replace(/\/+/g, "/");

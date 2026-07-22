@@ -57,14 +57,19 @@ describe("planCompose", () => {
 
 describe("handleComposeAction", () => {
   // A context is never reached for the guard paths below; the request/context are
-  // only used once a prompt and org are present, which these cases short-circuit.
+  // only used once a prompt and scope are present, which these cases short-circuit.
   const request = new Request("http://localhost/cadence");
   const context = {} as Readonly<RouterContextProvider>;
 
   test("rejects an empty prompt before touching any session", async () => {
     const formData = new FormData();
     formData.set("prompt", "   ");
-    const response = await handleComposeAction({ formData, request, context, orgId: "org-1" });
+    const response = await handleComposeAction({
+      formData,
+      request,
+      context,
+      scope: { kind: "org", orgId: "org-1" },
+    });
     assert(!response.ok);
     if (!response.ok) {
       expect(response.error).toMatch(/describe/i);
@@ -74,7 +79,7 @@ describe("handleComposeAction", () => {
   test("rejects a prompt with no active organisation", async () => {
     const formData = new FormData();
     formData.set("prompt", EXAMPLE);
-    const response = await handleComposeAction({ formData, request, context, orgId: null });
+    const response = await handleComposeAction({ formData, request, context, scope: null });
     assert(!response.ok);
     if (!response.ok) {
       expect(response.error).toMatch(/organisation/i);

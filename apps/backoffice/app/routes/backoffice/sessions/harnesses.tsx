@@ -5,16 +5,8 @@ import { resolvePiHarnesses } from "@/fragno/pi/pi-shared";
 import type { PiLayoutContext } from "./shared";
 
 export default function BackofficeOrganisationPiHarnesses() {
-  const { configState, configLoading, configError } = useOutletContext<PiLayoutContext>();
+  const { configState, configError } = useOutletContext<PiLayoutContext>();
   const harnesses = resolvePiHarnesses(configState?.config?.harnesses);
-
-  if (configLoading) {
-    return (
-      <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-        Loading harnesses…
-      </div>
-    );
-  }
 
   if (configError) {
     return (

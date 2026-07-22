@@ -2,7 +2,8 @@ import { describe, expect, it, assert } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
-import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import type { BackofficeObjectRegistry, PiObject } from "@/backoffice-runtime/object-registry";
 
 import { createBashHost } from "../bash-host";
 import type { RegisteredAutomationsRuntime } from "../bash-host";
@@ -703,6 +704,34 @@ describe("pi bash command registration", () => {
 });
 
 describe("createPiRouteRuntime", () => {
+  it.each([
+    [{ kind: "system" } satisfies BackofficeContextScope, "system"],
+    [{ kind: "org", orgId: "org-1" } satisfies BackofficeContextScope, "org:org-1"],
+    [{ kind: "user", userId: "user-1" } satisfies BackofficeContextScope, "user:user-1"],
+    [
+      {
+        kind: "project",
+        orgId: "org-1",
+        projectId: "project-1",
+      } satisfies BackofficeContextScope,
+      "project:org-1:project-1",
+    ],
+  ])("calls Pi through a %s scope", async (scope, expectedScopeQuery) => {
+    let receivedUrl = "";
+    const object = {
+      fetch: async (request: Request) => {
+        receivedUrl = request.url;
+        return Response.json([]);
+      },
+    } as PiObject;
+
+    await createPiRouteRuntime({ object, scope }).listSessions({});
+
+    expect(new URL(receivedUrl || "https://missing").searchParams.get("scope")).toBe(
+      expectedScopeQuery,
+    );
+  });
+
   it("calls Pi routes with the expected payloads and query params", async () => {
     const assistantMessage = {
       role: "assistant",
@@ -759,7 +788,7 @@ describe("createPiRouteRuntime", () => {
             const path = `${url.pathname}${url.search}`;
 
             if (
-              path === "/api/pi/workflows/interactive-chat-workflow/sessions?orgId=acme" &&
+              path === "/api/pi/workflows/interactive-chat-workflow/sessions?scope=org%3Aacme" &&
               request.method === "POST"
             ) {
               return new Response(
@@ -781,7 +810,7 @@ describe("createPiRouteRuntime", () => {
 
             if (
               path ===
-                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2?events=true&trace=false&turns=true&orgId=acme" &&
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2?events=true&trace=false&turns=true&scope=org%3Aacme" &&
               request.method === "GET"
             ) {
               return new Response(
@@ -807,7 +836,8 @@ describe("createPiRouteRuntime", () => {
             }
 
             if (
-              path === "/api/pi/workflows/interactive-chat-workflow/sessions?limit=10&orgId=acme" &&
+              path ===
+                "/api/pi/workflows/interactive-chat-workflow/sessions?limit=10&scope=org%3Aacme" &&
               request.method === "GET"
             ) {
               return new Response(
@@ -831,7 +861,7 @@ describe("createPiRouteRuntime", () => {
 
             if (
               path ===
-                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&orgId=acme" &&
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&scope=org%3Aacme" &&
               request.method === "GET"
             ) {
               return new Response(JSON.stringify(turnDetail), {
@@ -842,7 +872,7 @@ describe("createPiRouteRuntime", () => {
 
             if (
               path ===
-                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme" &&
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?scope=org%3Aacme" &&
               request.method === "POST"
             ) {
               return new Response(JSON.stringify({ status: "active" }), {
@@ -862,7 +892,7 @@ describe("createPiRouteRuntime", () => {
 
     const runtime = createPiRouteRuntime({
       object: createPiObjects(env).pi.forOrg("acme"),
-      orgId: "acme",
+      scope: { kind: "org", orgId: "acme" },
     });
 
     const created = await runtime.createSession({
@@ -927,7 +957,7 @@ describe("createPiRouteRuntime", () => {
     expect(turned.stream).toEqual([]);
     expect(requests).toEqual([
       {
-        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions?orgId=acme",
+        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions?scope=org%3Aacme",
         method: "POST",
         body: {
           name: "route-session",
@@ -937,22 +967,22 @@ describe("createPiRouteRuntime", () => {
         },
       },
       {
-        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2?events=true&trace=false&turns=true&orgId=acme",
+        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2?events=true&trace=false&turns=true&scope=org%3Aacme",
         method: "GET",
         body: undefined,
       },
       {
-        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions?limit=10&orgId=acme",
+        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions?limit=10&scope=org%3Aacme",
         method: "GET",
         body: undefined,
       },
       {
-        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&orgId=acme",
+        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&scope=org%3Aacme",
         method: "GET",
         body: undefined,
       },
       {
-        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme",
+        url: "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?scope=org%3Aacme",
         method: "POST",
         body: {
           kind: "prompt",
@@ -1012,7 +1042,7 @@ describe("createPiRouteRuntime", () => {
 
             if (
               path ===
-              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&orgId=acme"
+              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&scope=org%3Aacme"
             ) {
               if (commandHandled) {
                 return Response.json(detail);
@@ -1024,7 +1054,7 @@ describe("createPiRouteRuntime", () => {
 
             if (
               path ===
-              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme"
+              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?scope=org%3Aacme"
             ) {
               commandHandled = true;
               waitResolver?.(Response.json(detail));
@@ -1039,7 +1069,7 @@ describe("createPiRouteRuntime", () => {
 
     const runtime = createPiRouteRuntime({
       object: createPiObjects(env).pi.forOrg("acme"),
-      orgId: "acme",
+      scope: { kind: "org", orgId: "acme" },
     });
     const turned = await withTimeout(
       runtime.runTurn({ sessionId: "session-2", text: "hello" }),
@@ -1049,8 +1079,8 @@ describe("createPiRouteRuntime", () => {
     assert(turned.assistantText === "assistant:done");
     expect(turned.stream).toEqual([]);
     expect(requests.map((request) => request.url)).toEqual([
-      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&orgId=acme",
-      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme",
+      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&scope=org%3Aacme",
+      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?scope=org%3Aacme",
     ]);
   });
 
@@ -1108,7 +1138,7 @@ describe("createPiRouteRuntime", () => {
 
             if (
               path ===
-              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&orgId=acme"
+              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&scope=org%3Aacme"
             ) {
               return Response.json({
                 id: "session-2",
@@ -1133,7 +1163,7 @@ describe("createPiRouteRuntime", () => {
 
             if (
               path ===
-              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme"
+              "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?scope=org%3Aacme"
             ) {
               return Response.json({ status: "active" });
             }
@@ -1146,14 +1176,14 @@ describe("createPiRouteRuntime", () => {
 
     const runtime = createPiRouteRuntime({
       object: createPiObjects(env).pi.forOrg("acme"),
-      orgId: "acme",
+      scope: { kind: "org", orgId: "acme" },
     });
     const turned = await runtime.runTurn({ sessionId: "session-2", text: "poem" });
 
     assert(turned.assistantText === "new answer after tool");
     expect(requests.map((request) => request.url)).toEqual([
-      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&orgId=acme",
-      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme",
+      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&scope=org%3Aacme",
+      "https://pi.do/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?scope=org%3Aacme",
     ]);
   });
 
@@ -1167,7 +1197,7 @@ describe("createPiRouteRuntime", () => {
             const path = `${url.pathname}${url.search}`;
 
             if (
-              path === "/api/pi/workflows/interactive-chat-workflow/sessions?orgId=acme" &&
+              path === "/api/pi/workflows/interactive-chat-workflow/sessions?scope=org%3Aacme" &&
               request.method === "POST"
             ) {
               return new Response(JSON.stringify({ message: "Agent not found" }), {
@@ -1187,7 +1217,7 @@ describe("createPiRouteRuntime", () => {
 
     const runtime = createPiRouteRuntime({
       object: createPiObjects(env).pi.forOrg("acme"),
-      orgId: "acme",
+      scope: { kind: "org", orgId: "acme" },
     });
 
     await expect(runtime.createSession({ agent: "missing::openai::gpt-5-mini" })).rejects.toThrow(
@@ -1215,7 +1245,7 @@ describe("createPiRouteRuntime", () => {
 
             if (
               path ===
-                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&orgId=acme" &&
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&scope=org%3Aacme" &&
               request.method === "GET"
             ) {
               return Response.json({
@@ -1236,7 +1266,7 @@ describe("createPiRouteRuntime", () => {
 
             if (
               path ===
-                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme" &&
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?scope=org%3Aacme" &&
               request.method === "POST"
             ) {
               return new Response(JSON.stringify({ message: "Session not ready" }), {
@@ -1256,7 +1286,7 @@ describe("createPiRouteRuntime", () => {
 
     const runtime = createPiRouteRuntime({
       object: createPiObjects(env).pi.forOrg("acme"),
-      orgId: "acme",
+      scope: { kind: "org", orgId: "acme" },
     });
 
     await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(
@@ -1275,7 +1305,7 @@ describe("createPiRouteRuntime", () => {
 
             if (
               path ===
-                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&orgId=acme" &&
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/wait-for-agent-end?timeoutMs=60000&scope=org%3Aacme" &&
               request.method === "GET"
             ) {
               return new Response(JSON.stringify({ message: "Agent end unavailable" }), {
@@ -1286,7 +1316,7 @@ describe("createPiRouteRuntime", () => {
 
             if (
               path ===
-                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?orgId=acme" &&
+                "/api/pi/workflows/interactive-chat-workflow/sessions/session-2/command?scope=org%3Aacme" &&
               request.method === "POST"
             ) {
               return new Response(JSON.stringify({ status: "active" }), {
@@ -1306,7 +1336,7 @@ describe("createPiRouteRuntime", () => {
 
     const runtime = createPiRouteRuntime({
       object: createPiObjects(env).pi.forOrg("acme"),
-      orgId: "acme",
+      scope: { kind: "org", orgId: "acme" },
     });
 
     await expect(runtime.runTurn({ sessionId: "session-2", text: "hello" })).rejects.toThrow(

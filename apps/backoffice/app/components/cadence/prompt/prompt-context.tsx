@@ -33,6 +33,7 @@ import { useFetcher } from "react-router";
 
 import type { WorkflowGraph as CodemodeWorkflowGraph } from "@fragno-dev/workflow-visualizer";
 
+import type { PiPersistenceSource } from "@/fragno/pi/tanstack/database";
 import {
   type DashboardCommandResult,
   type DashboardPathAutocompleteRequest,
@@ -131,10 +132,12 @@ type PromptContextValue = {
   consumeComposeFocus: () => boolean;
   /** Read (and clear) the one-shot flag asking the dev input to focus on mount. */
   consumeDevFocus: () => boolean;
-  /** The active org's id, for the Pi client subscribing to compose sessions. */
+  /** The active org's id used by the terminal and companion workflow panels. */
   organizationId?: string | null;
   /** The active org's name, for greetings and labels. */
   organizationName?: string | null;
+  /** The scoped Pi source used to isolate and synchronize persisted transcript rows. */
+  piPersistenceSource?: PiPersistenceSource | null;
   /** The live dev terminal session (history, autocomplete, cwd, key handlers). */
   terminal: DevTerminal;
   /** Fetcher whose `Form` the dev input submits commands through. */
@@ -188,12 +191,14 @@ const PromptContext = createContext<PromptContextValue | null>(null);
 export function PromptProvider({
   organizationId,
   organizationName,
+  piPersistenceSource,
   history = [],
   onConduct,
   children,
 }: {
   organizationId?: string | null;
   organizationName?: string | null;
+  piPersistenceSource?: PiPersistenceSource | null;
   /** Past sessions for the active org (loaded by the route), newest first. */
   history?: ComposeHistorySession[];
   onConduct?: (text: string) => void;
@@ -295,7 +300,7 @@ export function PromptProvider({
   );
 
   // Fold the started session into the compose state once it lands. The output
-  // block then subscribes to it (via the Pi client) to render the live transcript.
+  // block then subscribes to its persisted collections to render the live transcript.
   const composeData = composeFetcher.data;
   useEffect(() => {
     if (composeData?.intent !== "compose") {
@@ -376,8 +381,8 @@ export function PromptProvider({
   }, []);
 
   // Reopen a past session: bind it to the surface as a ready session. The output
-  // block then renders <ComposeTranscript> for it (loading its history via the Pi
-  // client), and the next prompt continues it as a follow-up. Any companion panel
+  // block then renders <ComposeTranscript> for it (loading its persisted history),
+  // and the next prompt continues it as a follow-up. Any companion panel
   // from the previous session is dismissed, since it belonged to that conversation.
   const resumeSession = useCallback((session: ComposeHistorySession) => {
     setCompose({
@@ -411,6 +416,7 @@ export function PromptProvider({
       consumeDevFocus,
       organizationId,
       organizationName,
+      piPersistenceSource,
       terminal,
       commandFetcher,
       isSubmitting,
@@ -438,6 +444,7 @@ export function PromptProvider({
       consumeDevFocus,
       organizationId,
       organizationName,
+      piPersistenceSource,
       terminal,
       commandFetcher,
       isSubmitting,

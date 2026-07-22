@@ -321,14 +321,14 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
 
   async #createPiAutomationContext(input: { event: AutomationEvent; idempotencyKey: string }) {
     const scope = input.event.scope;
-    if (scope?.kind !== "org" && scope?.kind !== "project") {
+    if (!scope) {
       return undefined;
     }
 
     return {
       runtime: createPiRouteRuntime({
-        object: this.#runtimeServices.objects.pi.forOrg(scope.orgId),
-        orgId: scope.orgId,
+        object: this.#runtimeServices.objects.pi.for(scope),
+        scope,
       }),
     };
   }

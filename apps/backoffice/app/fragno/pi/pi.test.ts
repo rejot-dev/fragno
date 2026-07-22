@@ -159,7 +159,6 @@ describe("Backoffice Pi fragment", () => {
       adapters: {
         createAdapter: () => new InMemoryAdapter({ idSeed: "pi-invalid-model-test" }),
       } as never,
-      orgId: "acme-org",
       env: createMockEnv(),
       sessionFileSystems: new Map(),
       sessionFileSystemContext: context,
@@ -645,7 +644,7 @@ const createContext = (
   } as unknown as PiSessionFileSystemContext["objects"];
 
   return {
-    orgId: "acme-org",
+    scope: { kind: "org", orgId: "acme-org" },
     objects,
     kernel: new BackofficeKernel({ objects }),
     runtimeConfig: testRuntimeConfig,

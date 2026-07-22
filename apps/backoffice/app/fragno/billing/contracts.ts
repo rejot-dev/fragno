@@ -1,20 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-
-export const billingContextScopeSchema: z.ZodType<BackofficeContextScope> = z.discriminatedUnion(
-  "kind",
-  [
-    z.object({ kind: z.literal("system") }),
-    z.object({ kind: z.literal("org"), orgId: z.string().trim().min(1) }),
-    z.object({ kind: z.literal("user"), userId: z.string().trim().min(1) }),
-    z.object({
-      kind: z.literal("project"),
-      orgId: z.string().trim().min(1),
-      projectId: z.string().trim().min(1),
-    }),
-  ],
-);
+import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
 
 export const billingMeterSchema = z.string().trim().min(1).max(100);
 
@@ -29,7 +16,7 @@ export type BillingMeasurementInput = z.infer<typeof billingMeasurementInputSche
 export const billingEventInputSchema = z
   .object({
     id: z.string().trim().min(1).max(128),
-    scope: billingContextScopeSchema,
+    scope: backofficeContextScopeSchema,
     source: z.string().trim().min(1).max(100),
     eventType: z.string().trim().min(1).max(100),
     occurredAt: z.iso.datetime(),
@@ -63,7 +50,7 @@ export const BILLING_TRACKER_DEFAULT_PAGE_SIZE = 25;
 export const BILLING_TRACKER_MAX_PAGE_SIZE = 100;
 
 export const billingTrackerPageInputSchema = z.object({
-  scope: billingContextScopeSchema,
+  scope: backofficeContextScopeSchema,
   period: billingPeriodSchema,
   pageSize: z
     .number()
