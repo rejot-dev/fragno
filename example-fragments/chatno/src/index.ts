@@ -97,8 +97,7 @@ export function createChatnoClients(fragnoConfig: FragnoPublicClientConfig) {
 
   const aggregatedMessage = computed(chatStream.mutatorStore, ({ data }) => {
     return (data ?? [])
-      .filter((item) => item.type === "response.output_text.delta")
-      .map((item) => item.delta)
+      .flatMap((item) => (item.type === "response.output_text.delta" ? [item.delta] : []))
       .join("");
   });
 

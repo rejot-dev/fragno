@@ -203,17 +203,21 @@ export class RunnerStep implements WorkflowStep {
   }
 
   #previousEmissionsFor(stepKey: string): WorkflowStepEmission[] {
-    return this.#state.stepEmissions
-      .filter((emission) => emission.stepKey === stepKey)
-      .map((emission) => ({
-        id: emission.id.toString(),
-        actor: emission.actor,
-        stepKey: emission.stepKey,
-        epoch: emission.epoch,
-        sequence: emission.sequence,
-        payload: emission.payload,
-        createdAt: emission.createdAt,
-      }));
+    return this.#state.stepEmissions.flatMap((emission) =>
+      emission.stepKey === stepKey
+        ? [
+            {
+              id: emission.id.toString(),
+              actor: emission.actor,
+              stepKey: emission.stepKey,
+              epoch: emission.epoch,
+              sequence: emission.sequence,
+              payload: emission.payload,
+              createdAt: emission.createdAt,
+            },
+          ]
+        : [],
+    );
   }
 
   #prepareWaitingDraft(

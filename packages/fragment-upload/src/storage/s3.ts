@@ -264,7 +264,7 @@ const escapeXml = (value: string) =>
     .replace(/'/g, "&apos;");
 
 const buildCompleteMultipartBody = (parts: { partNumber: number; etag: string }[]) => {
-  const sorted = [...parts].sort((a, b) => a.partNumber - b.partNumber);
+  const sorted = parts.toSorted((a, b) => a.partNumber - b.partNumber);
   const entries = sorted
     .map(
       (part) =>

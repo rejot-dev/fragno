@@ -160,15 +160,16 @@ const filterRolesForMemberId = (
   if (!member) {
     return [];
   }
-  const candidates = new Set([member.id, member._internalId].filter(Boolean).map(toExternalId));
-  return roles
-    .filter(
-      (role) =>
-        candidates.has(toExternalId(role.memberId)) ||
-        (role.organizationMemberRoleMember &&
-          candidates.has(toExternalId(role.organizationMemberRoleMember.id))),
-    )
-    .map((role) => role.role);
+  const candidates = new Set(
+    [member.id, member._internalId].flatMap((id) => (id ? [toExternalId(id)] : [])),
+  );
+  return roles.flatMap((role) =>
+    candidates.has(toExternalId(role.memberId)) ||
+    (role.organizationMemberRoleMember &&
+      candidates.has(toExternalId(role.organizationMemberRoleMember.id)))
+      ? [role.role]
+      : [],
+  );
 };
 
 const resolveInternalId = (value: unknown): string | bigint | undefined => {
@@ -899,29 +900,28 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
           }),
         )
         .transformRetrieve(([result]) => {
-          const organizations = result.items
-            .filter(
-              (member) =>
-                member.organizationMemberOrganization &&
-                member.organizationMemberOrganization.deletedAt == null,
-            )
-            .map((member) => {
-              const organization = member.organizationMemberOrganization;
-              const memberUserId = member.organizationMemberUser
-                ? toExternalId(member.organizationMemberUser.id)
-                : toExternalId(member.userId);
-              return {
+          const organizations = result.items.flatMap((member) => {
+            const organization = member.organizationMemberOrganization;
+            if (!organization || organization.deletedAt != null) {
+              return [];
+            }
+
+            const memberUserId = member.organizationMemberUser
+              ? toExternalId(member.organizationMemberUser.id)
+              : toExternalId(member.userId);
+            return [
+              {
                 organization: mapOrganization({
-                  id: organization!.id,
-                  name: organization!.name,
-                  slug: organization!.slug,
-                  logoUrl: organization!.logoUrl,
-                  metadata: organization!.metadata,
-                  createdBy: organization!.createdBy,
-                  organizationCreator: organization!.organizationCreator ?? null,
-                  createdAt: organization!.createdAt,
-                  updatedAt: organization!.updatedAt,
-                  deletedAt: organization!.deletedAt,
+                  id: organization.id,
+                  name: organization.name,
+                  slug: organization.slug,
+                  logoUrl: organization.logoUrl,
+                  metadata: organization.metadata,
+                  createdBy: organization.createdBy,
+                  organizationCreator: organization.organizationCreator ?? null,
+                  createdAt: organization.createdAt,
+                  updatedAt: organization.updatedAt,
+                  deletedAt: organization.deletedAt,
                 }),
                 member: mapMember(
                   {
@@ -933,12 +933,13 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
                   },
                   [],
                   {
-                    organizationId: toExternalId(organization!.id),
+                    organizationId: toExternalId(organization.id),
                     userId: memberUserId,
                   },
                 ),
-              };
-            });
+              },
+            ];
+          });
 
           return {
             organizations,
@@ -978,41 +979,43 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
           }),
         )
         .transformRetrieve(([result]) => ({
-          organizations: result.items
-            .filter(
-              (member) =>
-                member.organizationMemberOrganization &&
-                member.organizationMemberOrganization.deletedAt == null,
-            )
-            .map((member) => ({
-              organization: mapOrganization({
-                id: member.organizationMemberOrganization!.id,
-                name: member.organizationMemberOrganization!.name,
-                slug: member.organizationMemberOrganization!.slug,
-                logoUrl: member.organizationMemberOrganization!.logoUrl,
-                metadata: member.organizationMemberOrganization!.metadata,
-                createdBy: member.organizationMemberOrganization!.createdBy,
-                organizationCreator:
-                  member.organizationMemberOrganization!.organizationCreator ?? null,
-                createdAt: member.organizationMemberOrganization!.createdAt,
-                updatedAt: member.organizationMemberOrganization!.updatedAt,
-                deletedAt: member.organizationMemberOrganization!.deletedAt,
-              }),
-              member: mapMember(
-                {
-                  id: member.id,
-                  organizationId: member.organizationId,
-                  userId: member.userId,
-                  createdAt: member.createdAt,
-                  updatedAt: member.updatedAt,
-                },
-                [],
-                {
-                  organizationId: toExternalId(member.organizationMemberOrganization!.id),
-                  userId: params.actor.userId,
-                },
-              ),
-            })),
+          organizations: result.items.flatMap((member) => {
+            const organization = member.organizationMemberOrganization;
+            if (!organization || organization.deletedAt != null) {
+              return [];
+            }
+
+            return [
+              {
+                organization: mapOrganization({
+                  id: organization.id,
+                  name: organization.name,
+                  slug: organization.slug,
+                  logoUrl: organization.logoUrl,
+                  metadata: organization.metadata,
+                  createdBy: organization.createdBy,
+                  organizationCreator: organization.organizationCreator ?? null,
+                  createdAt: organization.createdAt,
+                  updatedAt: organization.updatedAt,
+                  deletedAt: organization.deletedAt,
+                }),
+                member: mapMember(
+                  {
+                    id: member.id,
+                    organizationId: member.organizationId,
+                    userId: member.userId,
+                    createdAt: member.createdAt,
+                    updatedAt: member.updatedAt,
+                  },
+                  [],
+                  {
+                    organizationId: toExternalId(organization.id),
+                    userId: params.actor.userId,
+                  },
+                ),
+              },
+            ];
+          }),
           cursor: result.cursor,
           hasNextPage: result.hasNextPage,
         }))
@@ -1324,13 +1327,10 @@ export function createOrganizationServices(options: OrganizationServiceOptions =
             }
           }
 
-          const orderedEntries = orderedMemberIds
-            .map((memberId) => membersById.get(memberId))
-            .filter(Boolean) as Array<{
-            member: SessionMemberRow;
-            organization: NonNullable<SessionMemberRow["organization"]>;
-            roles: Set<string>;
-          }>;
+          const orderedEntries = orderedMemberIds.flatMap((memberId) => {
+            const entry = membersById.get(memberId);
+            return entry ? [entry] : [];
+          });
 
           const hasNextPage = orderedEntries.length > effectivePageSize;
           const pagedEntries = orderedEntries.slice(0, effectivePageSize);

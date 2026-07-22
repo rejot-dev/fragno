@@ -14,8 +14,7 @@ export async function exportSessionStorageToJsonl(
   storage: SessionStorage,
   options: ExportSessionStorageToJsonlOptions,
 ): Promise<string> {
-  const metadata = await storage.getMetadata();
-  const entries = await storage.getEntries();
+  const [metadata, entries] = await Promise.all([storage.getMetadata(), storage.getEntries()]);
 
   const lines: string[] = [
     JSON.stringify({

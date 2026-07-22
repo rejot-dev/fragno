@@ -88,7 +88,10 @@ export const asAddressList = (value?: string | string[] | null) => {
   }
 
   if (Array.isArray(value)) {
-    return value.map((entry) => entry.trim()).filter(Boolean);
+    return value.flatMap((entry) => {
+      const normalizedEntry = entry.trim();
+      return normalizedEntry ? [normalizedEntry] : [];
+    });
   }
 
   return splitCommaSeparated(value);
@@ -107,10 +110,12 @@ export const extractMailbox = (value?: string | null) => {
 };
 
 export const normalizeParticipants = (values: Array<string | null | undefined>) => {
-  const participants = values
-    .flatMap((value) => asAddressList(value ?? undefined))
-    .map((value) => extractMailbox(value))
-    .filter((value): value is string => Boolean(value));
+  const participants = values.flatMap((value) =>
+    asAddressList(value ?? undefined).flatMap((address) => {
+      const mailbox = extractMailbox(address);
+      return mailbox ? [mailbox] : [];
+    }),
+  );
 
   return dedupe(participants).sort();
 };

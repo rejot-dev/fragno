@@ -186,7 +186,8 @@ async function main() {
       continue;
     }
 
-    if (workflow === "approval-workflow" && status.details.status === "complete") {
+    const workflowStatus = status.details.status;
+    if (workflow === "approval-workflow" && workflowStatus === "complete") {
       const history = await getHistory(workflow, id);
       const eventTypes = new Set(history.events.map((event) => event.type));
       if (!eventTypes.has("approval") || !eventTypes.has("fulfillment")) {
@@ -195,13 +196,13 @@ async function main() {
     }
 
     if (workflow === "wait-timeout-workflow") {
-      if (status.details.status === "complete") {
+      if (workflowStatus === "complete") {
         const history = await getHistory(workflow, id);
         if (!history.events.some((event) => event.type === "edge")) {
           findings.push(`wait-timeout ${id} completed without edge event`);
         }
       }
-      if (status.details.status === "errored") {
+      if (workflowStatus === "errored") {
         const errorName = status.details.error?.name;
         if (errorName && errorName !== "WaitForEventTimeoutError") {
           findings.push(`wait-timeout ${id} errored with ${errorName}`);

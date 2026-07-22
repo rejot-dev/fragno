@@ -144,9 +144,10 @@ export const buildCloudflareScriptTags = (
   const normalizedDynamicTags = Array.isArray(dynamicTags) ? dynamicTags : [dynamicTags];
 
   return unique(
-    [...staticTags, ...normalizedDynamicTags]
-      .map(sanitizeCloudflareTag)
-      .filter((tag) => tag.length > 0),
+    [...staticTags, ...normalizedDynamicTags].flatMap((tag) => {
+      const sanitizedTag = sanitizeCloudflareTag(tag);
+      return sanitizedTag ? [sanitizedTag] : [];
+    }),
   );
 };
 

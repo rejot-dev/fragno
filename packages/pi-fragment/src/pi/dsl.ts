@@ -384,6 +384,7 @@ export const compilePiWorkflow = <
       name: string,
       waitOptions?: PiWorkflowCommandWaitOptions,
     ): Promise<PiSessionCommandPayload> => {
+      const allowedCommands = waitOptions?.allowed ? new Set(waitOptions.allowed) : null;
       for (let ignoredCommands = 0; ; ignoredCommands += 1) {
         const commandEvent = await step.waitForEvent<PiSessionCommandPayload>(
           ignoredCommands === 0 ? name : `${name}-${ignoredCommands}`,
@@ -392,7 +393,7 @@ export const compilePiWorkflow = <
             timeout: waitOptions?.timeout,
             onConsume: waitOptions?.onConsume
               ? (tx, event) => {
-                  if (!waitOptions.allowed || waitOptions.allowed.includes(event.payload.kind)) {
+                  if (!allowedCommands || allowedCommands.has(event.payload.kind)) {
                     return waitOptions.onConsume?.(tx, event.payload);
                   }
                 }
@@ -400,7 +401,7 @@ export const compilePiWorkflow = <
           },
         );
         const command = commandEvent.payload;
-        if (!waitOptions?.allowed || waitOptions.allowed.includes(command.kind)) {
+        if (!allowedCommands || allowedCommands.has(command.kind)) {
           return command;
         }
       }

@@ -112,9 +112,9 @@ export const githubAppInstallationRoutesFactory = defineRoutes(githubAppFragment
               continue;
             }
             const linkEntries = normalizeJoinedLinks(repo.links);
-            const linkKeys = linkEntries
-              .filter((link) => !linkKeyFilter || link.linkKey === linkKeyFilter)
-              .map((link) => link.linkKey);
+            const linkKeys = linkEntries.flatMap((link) =>
+              !linkKeyFilter || link.linkKey === linkKeyFilter ? [link.linkKey] : [],
+            );
             if (linkedOnly && linkKeys.length === 0) {
               continue;
             }

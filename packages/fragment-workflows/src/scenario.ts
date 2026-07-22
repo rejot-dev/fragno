@@ -1848,11 +1848,16 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
         .executeRetrieve()
     )[0];
 
-    return rows
-      .filter((row) => (options?.stepKey ? row.stepKey === options.stepKey : true))
-      .map((row) =>
-        mapEmissionRow(row as Parameters<typeof mapEmissionRow>[0], { workflowName, instanceId }),
-      );
+    return rows.flatMap((row) =>
+      options?.stepKey && row.stepKey !== options.stepKey
+        ? []
+        : [
+            mapEmissionRow(row as Parameters<typeof mapEmissionRow>[0], {
+              workflowName,
+              instanceId,
+            }),
+          ],
+    );
   };
 
   const getStatus = async (workflow: (keyof TRegistry & string) | string, instanceId: string) => {
@@ -1878,69 +1883,69 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
     const order = options?.order ?? "asc";
     const instanceRef = resolveInternalId(instance.id, "workflow instance");
 
-    const stepsRows = await (async () => {
-      return (
-        await harness.db
-          .createUnitOfWork("scenario-history-steps")
-          .forSchema(workflowsSchema)
-          .find("workflow_step", (b) => {
-            let builder = b
-              .whereIndex("idx_workflow_step_instanceRef_createdAt", (eb) =>
-                eb("instanceRef", "=", instanceRef),
-              )
-              .orderByIndex("idx_workflow_step_instanceRef_createdAt", order);
+    const [stepsRows, eventsRows, emissionsRows] = await Promise.all([
+      (async () => {
+        return (
+          await harness.db
+            .createUnitOfWork("scenario-history-steps")
+            .forSchema(workflowsSchema)
+            .find("workflow_step", (b) => {
+              let builder = b
+                .whereIndex("idx_workflow_step_instanceRef_createdAt", (eb) =>
+                  eb("instanceRef", "=", instanceRef),
+                )
+                .orderByIndex("idx_workflow_step_instanceRef_createdAt", order);
 
-            if (options?.stepsCursor) {
-              builder = builder.after(options.stepsCursor);
-            }
-            if (options?.pageSize) {
-              builder = builder.pageSize(options.pageSize);
-            }
-            return builder;
-          })
-          .executeRetrieve()
-      )[0];
-    })();
+              if (options?.stepsCursor) {
+                builder = builder.after(options.stepsCursor);
+              }
+              if (options?.pageSize) {
+                builder = builder.pageSize(options.pageSize);
+              }
+              return builder;
+            })
+            .executeRetrieve()
+        )[0];
+      })(),
+      (async () => {
+        return (
+          await harness.db
+            .createUnitOfWork("scenario-history-events")
+            .forSchema(workflowsSchema)
+            .find("workflow_event", (b) => {
+              let builder = b
+                .whereIndex("idx_workflow_event_instanceRef_createdAt", (eb) =>
+                  eb("instanceRef", "=", instanceRef),
+                )
+                .orderByIndex("idx_workflow_event_instanceRef_createdAt", order);
 
-    const eventsRows = await (async () => {
-      return (
-        await harness.db
-          .createUnitOfWork("scenario-history-events")
-          .forSchema(workflowsSchema)
-          .find("workflow_event", (b) => {
-            let builder = b
-              .whereIndex("idx_workflow_event_instanceRef_createdAt", (eb) =>
-                eb("instanceRef", "=", instanceRef),
-              )
-              .orderByIndex("idx_workflow_event_instanceRef_createdAt", order);
-
-            if (options?.eventsCursor) {
-              builder = builder.after(options.eventsCursor);
-            }
-            if (options?.pageSize) {
-              builder = builder.pageSize(options.pageSize);
-            }
-            return builder;
-          })
-          .executeRetrieve()
-      )[0];
-    })();
-
-    const emissionsRows = await (async () => {
-      return (
-        await harness.db
-          .createUnitOfWork("scenario-history-emissions")
-          .forSchema(workflowsSchema)
-          .find("workflow_step_emission", (b) =>
-            b
-              .whereIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", (eb) =>
-                eb("instanceRef", "=", instanceRef),
-              )
-              .orderByIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", order),
-          )
-          .executeRetrieve()
-      )[0];
-    })();
+              if (options?.eventsCursor) {
+                builder = builder.after(options.eventsCursor);
+              }
+              if (options?.pageSize) {
+                builder = builder.pageSize(options.pageSize);
+              }
+              return builder;
+            })
+            .executeRetrieve()
+        )[0];
+      })(),
+      (async () => {
+        return (
+          await harness.db
+            .createUnitOfWork("scenario-history-emissions")
+            .forSchema(workflowsSchema)
+            .find("workflow_step_emission", (b) =>
+              b
+                .whereIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", (eb) =>
+                  eb("instanceRef", "=", instanceRef),
+                )
+                .orderByIndex("idx_workflow_step_emission_instance_createdAt_sequence_id", order),
+            )
+            .executeRetrieve()
+        )[0];
+      })(),
+    ]);
 
     return {
       steps: (
@@ -2041,39 +2046,43 @@ const createScenarioState = <TRegistry extends WorkflowsRegistry>(
         .execute();
     });
 
-    return hooks
-      .filter((hook) => (options?.hookName ? hook.hookName === options.hookName : true))
-      .filter((hook) => (options?.status ? hook.status === options.status : true))
-      .filter((hook) => {
-        if (!options?.workflowName && !options?.instanceId) {
-          return true;
-        }
+    return hooks.flatMap((hook) => {
+      if (options?.hookName && hook.hookName !== options.hookName) {
+        return [];
+      }
+      if (options?.status && hook.status !== options.status) {
+        return [];
+      }
+      if (options?.workflowName || options?.instanceId) {
         if (!hook.payload || typeof hook.payload !== "object") {
-          return false;
+          return [];
         }
         const payload = hook.payload as Partial<WorkflowEnqueuedHookPayload>;
         if (options.workflowName && payload.workflowName !== options.workflowName) {
-          return false;
+          return [];
         }
         if (options.instanceId && payload.instanceId !== options.instanceId) {
-          return false;
+          return [];
         }
-        return true;
-      })
-      .map((hook) => ({
-        id: resolveInternalId(hook.id, "hook"),
-        namespace: hook.namespace,
-        hookName: hook.hookName,
-        payload: hook.payload,
-        status: hook.status,
-        attempts: hook.attempts,
-        maxAttempts: hook.maxAttempts,
-        lastAttemptAt: hook.lastAttemptAt,
-        nextRetryAt: hook.nextRetryAt,
-        error: hook.error ?? null,
-        createdAt: hook.createdAt,
-        nonce: hook.nonce,
-      }));
+      }
+
+      return [
+        {
+          id: resolveInternalId(hook.id, "hook"),
+          namespace: hook.namespace,
+          hookName: hook.hookName,
+          payload: hook.payload,
+          status: hook.status,
+          attempts: hook.attempts,
+          maxAttempts: hook.maxAttempts,
+          lastAttemptAt: hook.lastAttemptAt,
+          nextRetryAt: hook.nextRetryAt,
+          error: hook.error ?? null,
+          createdAt: hook.createdAt,
+          nonce: hook.nonce,
+        },
+      ];
+    });
   };
 
   return {
@@ -3124,10 +3133,10 @@ export async function runScenario<
           break;
         }
         case "read": {
-          const value = await step.read(context);
           if (step.storeAs && step.assert) {
             throw new Error("SCENARIO_READ_STEP_STORE_AS_AND_ASSERT_ARE_MUTUALLY_EXCLUSIVE");
           }
+          const value = await step.read(context);
           if (step.storeAs) {
             (context.vars as Record<string, unknown>)[step.storeAs] = value;
           }

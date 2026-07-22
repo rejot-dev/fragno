@@ -191,7 +191,7 @@ export function countConsumedEvents(history, type) {
 }
 
 export function eventPayloads(history, type) {
-  return history.events.filter((event) => event.type === type).map((event) => event.payload);
+  return history.events.flatMap((event) => (event.type === type ? [event.payload] : []));
 }
 
 export function assertNoAttemptOverflow(history, label = "history") {

@@ -177,10 +177,11 @@ async function main() {
     if (!status) {
       continue;
     }
-    if (status.details.status === "complete") {
+    const workflowStatus = status.details.status;
+    if (workflowStatus === "complete") {
       afterLeaks.push(id);
-    } else if (status.details.status !== "errored") {
-      afterTimeoutFailures.push({ id, status: status.details.status });
+    } else if (workflowStatus !== "errored") {
+      afterTimeoutFailures.push({ id, status: workflowStatus });
     }
   }
 

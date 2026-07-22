@@ -135,7 +135,7 @@ function coerceTaskKind(reason: WorkflowEnqueuedHookPayload["reason"]): RunnerTa
  * Bigger picture: keeps event consumption stable across retries and OCC conflicts.
  */
 function sortEventsForRunner(events: WorkflowEventRecord[]): WorkflowEventRecord[] {
-  return [...events].sort((a, b) => {
+  return events.toSorted((a, b) => {
     const timeDiff = a.createdAt.getTime() - b.createdAt.getTime();
     return timeDiff !== 0 ? timeDiff : String(a.id).localeCompare(String(b.id));
   });

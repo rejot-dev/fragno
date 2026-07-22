@@ -687,9 +687,9 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
 
             return {
               steps: steps.map(buildStepHistoryEntry),
-              events: events
-                .filter((event) => !isSystemEventActor(event.actor))
-                .map(buildEventHistoryEntry),
+              events: events.flatMap((event) =>
+                isSystemEventActor(event.actor) ? [] : [buildEventHistoryEntry(event)],
+              ),
               emissions: emissions.map(buildEmissionHistoryEntry),
             };
           })
