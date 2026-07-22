@@ -1,3 +1,4 @@
+import { resolveDatabaseNamespace } from "@fragno-dev/db/database-namespace";
 import type { TableToColumnValues } from "@fragno-dev/db/query";
 import type { AnySchema, AnyTable, FragnoId, FragnoReference } from "@fragno-dev/db/schema";
 import superjson, { type SuperJSONResult } from "superjson";
@@ -12,7 +13,7 @@ export type FragnoCollectionTarget<
 > = {
   schema: TSchema;
   table: TTableName;
-  /** Defaults to the schema name. Use null for the empty physical namespace. */
+  /** Defaults to the schema's sanitized database namespace. Use null for no namespace. */
   namespace?: string | null;
 };
 
@@ -85,7 +86,7 @@ export function projectFragnoOutboxEntry<
   target: FragnoCollectionTarget<TSchema, TTableName>,
 ): FragnoCollectionChange<FragnoCollectionRow<TSchema["tables"][TTableName]>>[] {
   const payload = decodeFragnoOutboxPayload(entry.payload);
-  const targetNamespace = resolveTargetNamespace(target);
+  const targetNamespace = resolveDatabaseNamespace(target.schema.name, target.namespace) ?? "";
   const table = target.schema.tables[target.table];
   const externalIdColumnName = table.getIdColumn().name;
   const metadata = {
@@ -154,14 +155,6 @@ export function toTanStackChangeMessage<TRow extends object>(
     value: change.value as TRow,
     metadata: change.metadata,
   };
-}
-
-export function resolveTargetNamespace(target: FragnoCollectionTarget): string {
-  if (target.namespace === null) {
-    return "";
-  }
-
-  return target.namespace ?? target.schema.name;
 }
 
 function resolveMutationNamespace(mutation: OutboxMutation): string {

@@ -13,6 +13,7 @@ import { defineFragment, instantiate } from "@fragno-dev/core";
 import type { DatabaseAdapter, DatabaseContextStorage } from "./adapters/adapters";
 import { BetterSQLite3DriverConfig } from "./adapters/generic-sql/driver-config";
 import { SqlAdapter } from "./adapters/generic-sql/generic-sql-adapter";
+import { sanitizeNamespace } from "./database-namespace";
 import {
   DatabaseFragmentDefinitionBuilder,
   type ImplicitDatabaseDependencies,
@@ -22,7 +23,7 @@ import { getDurableHooksRuntimeByToken } from "./hooks/durable-hooks-runtime";
 import type { HookFn } from "./hooks/hooks";
 import * as hooks from "./hooks/hooks";
 import { getInternalFragment, getRegistryForAdapterSync } from "./internal/adapter-registry";
-import { suffixNamingStrategy, sanitizeNamespace } from "./naming/sql-naming";
+import { suffixNamingStrategy } from "./naming/sql-naming";
 import * as executeUnitOfWork from "./query/unit-of-work/execute-unit-of-work";
 import type { IUnitOfWork } from "./query/unit-of-work/unit-of-work";
 import { schema, column, idColumn } from "./schema/create";

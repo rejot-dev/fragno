@@ -4,9 +4,9 @@ import {
 } from "../adapters/generic-sql/driver-config";
 import type { SQLiteStorageMode } from "../adapters/generic-sql/sqlite-storage";
 import { sqliteStorageDefault, sqliteStoragePrisma } from "../adapters/generic-sql/sqlite-storage";
+import { sanitizeNamespace } from "../database-namespace";
 import { internalSchema } from "../fragments/internal-fragment.schema";
 import {
-  sanitizeNamespace,
   createNamingResolver,
   type NamingResolver,
   type SqlNamingStrategy,

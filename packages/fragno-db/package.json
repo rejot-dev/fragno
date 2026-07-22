@@ -21,6 +21,10 @@
       "types": "./dist/id.d.ts",
       "default": "./dist/id.js"
     },
+    "./database-namespace": {
+      "types": "./dist/database-namespace.d.ts",
+      "default": "./dist/database-namespace.js"
+    },
     "./schema": {
       "types": "./dist/schema/create.d.ts",
       "default": "./dist/schema/create.js"

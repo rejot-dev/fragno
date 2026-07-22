@@ -14,6 +14,7 @@ import {
 } from "@fragno-dev/core";
 
 import type { DatabaseAdapter, DatabaseContextStorage } from "./adapters/adapters";
+import { resolveDatabaseNamespace } from "./database-namespace";
 import type { InternalFragmentInstance } from "./fragments/internal-fragment";
 import { DurableHooksLogger } from "./hooks/durable-hooks-logger";
 import {
@@ -32,7 +33,6 @@ import {
   type DurableHooksProcessingOptions,
   createDurableHooksRunner,
 } from "./hooks/hooks";
-import { sanitizeNamespace } from "./naming/sql-naming";
 import {
   createServiceTxBuilder,
   createHandlerTxBuilder,
@@ -272,7 +272,7 @@ function createDatabaseContext<TSchema extends AnySchema>(
   schema: TSchema,
 ): DatabaseFragmentContextInternal<TSchema> {
   const databaseAdapter = resolveDatabaseAdapter(options, schema);
-  const namespace = resolveDatabaseNamespace(options, schema);
+  const namespace = resolveDatabaseNamespace(schema.name, options.databaseNamespace);
 
   databaseAdapter.registerSchema(schema, namespace);
 
@@ -286,14 +286,6 @@ function createDatabaseContext<TSchema extends AnySchema>(
       return uow;
     },
   };
-}
-
-function resolveDatabaseNamespace(
-  options: FragnoPublicConfigWithDatabase,
-  schema: AnySchema,
-): string | null {
-  const hasOverride = options.databaseNamespace !== undefined;
-  return hasOverride ? (options.databaseNamespace ?? null) : sanitizeNamespace(schema.name);
 }
 
 function resolveMountRoute(name: string, mountRoute?: string): string {
@@ -1172,7 +1164,10 @@ export class DatabaseFragmentDefinitionBuilder<
         typeof context.deps === "object" && context.deps !== null
           ? (context.deps as object)
           : undefined;
-      const namespace = resolveDatabaseNamespace(context.options, this.#schema);
+      const namespace = resolveDatabaseNamespace(
+        this.#schema.name,
+        context.options.databaseNamespace,
+      );
       const namespaceKey = namespace ?? this.#schema.name;
       const durableHooksOptions = context.options.durableHooks;
       DurableHooksLogger.configure(durableHooksOptions?.logging, namespaceKey);

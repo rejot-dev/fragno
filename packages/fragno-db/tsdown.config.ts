@@ -7,6 +7,7 @@ export default defineConfig([
       "./src/mod.ts",
       "./src/durable-hooks.ts",
       "./src/id.ts",
+      "./src/database-namespace.ts",
       "./src/schema/create.ts",
       "./src/query/mod.ts",
       "./src/adapters/adapters.ts",

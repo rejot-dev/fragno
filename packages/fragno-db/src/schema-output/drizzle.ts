@@ -2,10 +2,10 @@ import {
   defaultNamingStrategyForDatabase,
   type SupportedDatabase,
 } from "../adapters/generic-sql/driver-config";
+import { sanitizeNamespace } from "../database-namespace";
 import { internalSchema } from "../fragments/internal-fragment.schema";
 import {
   createNamingResolver,
-  sanitizeNamespace,
   type NamingResolver,
   type SqlNamingStrategy,
 } from "../naming/sql-naming";
