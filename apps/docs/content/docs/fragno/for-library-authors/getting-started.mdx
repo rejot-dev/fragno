@@ -252,11 +252,11 @@ Then, create a client entrypoint file for each frontend framework.
 ```typescript title="src/client/react.ts" tab="React"
 import { createTodosClients } from "../fragment";
 
-import { useFragno } from "@fragno-dev/core/react";
+import { createFragnoReactClient } from "@fragno-dev/core/react";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 
 export function createTodosClient(config: FragnoPublicClientConfig = {}) {
-  return useFragno(createTodosClients(config));
+  return createFragnoReactClient(createTodosClients(config));
 }
 ```
 
@@ -305,11 +305,11 @@ export function createTodosClient(config: FragnoPublicClientConfig = {}) {
 ```
 
 This file should be created for every frontend framework: React, Vue, Svelte, and vanilla
-JavaScript. The only difference between these files is the import of the `useFragno` hook.
+JavaScript. React uses `createFragnoReactClient`; the other adapters expose `useFragno`.
 
 <Callout title="Create this file for every frontend framework" type="warning">
-  Fragment authors must explicitly include a stub for every framework, make sure to create this file
-  for other frameworks as well using the respective `useFragno` hooks.
+  Fragment authors must explicitly include a stub for every framework. Create each file with the
+  corresponding framework adapter helper.
 </Callout>
 
 ## Next Steps
