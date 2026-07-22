@@ -168,14 +168,3 @@ export const createNamingResolver = (
   namespace: string | null,
   strategy: SqlNamingStrategy,
 ): NamingResolver => new NamingResolver(schema, namespace, strategy);
-
-/**
- * Sanitizes a namespace for use in SQL identifiers and TypeScript exports.
- * Converts dashes to underscores to ensure compatibility with SQL identifiers.
- *
- * @example
- * sanitizeNamespace("my-fragment") // => "my_fragment"
- */
-export function sanitizeNamespace(namespace: string): string {
-  return namespace.replace(/-/g, "_");
-}

@@ -1,3 +1,4 @@
+import { resolveDatabaseNamespace } from "@fragno-dev/db/database-namespace";
 import type { AnySchema } from "@fragno-dev/db/schema";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
@@ -13,11 +14,7 @@ import {
   type FragnoOutboxSource,
 } from "./checkpoint";
 import type { FragnoOutboxConsumer, FragnoOutboxCoordinator } from "./coordinator";
-import {
-  resolveTargetNamespace,
-  type FragnoCollectionRow,
-  type FragnoCollectionTarget,
-} from "./protocol";
+import type { FragnoCollectionRow, FragnoCollectionTarget } from "./protocol";
 
 export type FragnoCollectionSyncStatus = "idle" | "loading" | "ready" | "error";
 
@@ -145,7 +142,7 @@ export function fragnoCollectionOptions<
           prepareSource(adapterIdentity) {
             const nextSource = {
               adapterIdentity,
-              namespace: resolveTargetNamespace(target),
+              namespace: resolveDatabaseNamespace(target.schema.name, target.namespace) ?? "",
               table: target.table,
             } satisfies FragnoOutboxSource;
             if (

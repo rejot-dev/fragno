@@ -1,15 +1,11 @@
-import { describe, expect, it, assert } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 import superjson from "superjson";
 
 import type { OutboxPayload } from "@fragno-dev/db";
 
-import {
-  projectFragnoOutboxEntry,
-  resolveTargetNamespace,
-  type FragnoOutboxEntry,
-} from "./protocol";
+import { projectFragnoOutboxEntry, type FragnoOutboxEntry } from "./protocol";
 
 const appSchema = schema("app", (s) =>
   s
@@ -21,6 +17,12 @@ const appSchema = schema("app", (s) =>
         .addColumn("title", column("string")),
     )
     .addTable("records", (t) => t.addColumn("id", idColumn()).addColumn("payload", column("json"))),
+);
+
+const dashedSchema = schema("pi-harness", (s) =>
+  s.addTable("session", (t) =>
+    t.addColumn("id", idColumn()).addColumn("sessionId", column("string")),
+  ),
 );
 
 const createSerializedEntry = (
@@ -174,6 +176,27 @@ describe("Fragno outbox protocol", () => {
     );
   });
 
+  it("matches the sanitized default physical namespace", () => {
+    const entry = createEntry({
+      version: 1,
+      mutations: [
+        {
+          op: "create",
+          schema: "pi-harness",
+          namespace: "pi_harness",
+          table: "session",
+          externalId: "session-row-1",
+          versionstamp: "000000000000000000000001",
+          values: { sessionId: "session-1" },
+        },
+      ],
+    });
+
+    expect(
+      projectFragnoOutboxEntry(entry, { schema: dashedSchema, table: "session" }),
+    ).toHaveLength(1);
+  });
+
   it("uses explicit physical namespaces", () => {
     const entry = createEntry({
       version: 1,
@@ -198,6 +221,5 @@ describe("Fragno outbox protocol", () => {
       }),
     ).toHaveLength(1);
     expect(projectFragnoOutboxEntry(entry, { schema: appSchema, table: "users" })).toEqual([]);
-    assert(resolveTargetNamespace({ schema: appSchema, table: "users", namespace: null }) === "");
   });
 });
