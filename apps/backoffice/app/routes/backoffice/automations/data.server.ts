@@ -73,14 +73,21 @@ const applyAutomationScopeQuery = (url: URL, scope: BackofficeContextScope) => {
   }
 };
 
-const createAutomationsRouteCaller = (
-  request: Request,
+const getScopedAutomationsObject = (
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
 ) => {
   const { runtime } = context.get(BackofficeWorkerContext);
   const kernel = new BackofficeKernel({ objects: runtime.objects });
-  const automationsDo = kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
+  return kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
+};
+
+const createAutomationsRouteCaller = (
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+) => {
+  const automationsDo = getScopedAutomationsObject(context, scope);
   return createRouteCaller<AutomationFragment>({
     baseUrl: request.url,
     mountRoute: "/api/automations",
@@ -92,6 +99,42 @@ const createAutomationsRouteCaller = (
     },
   });
 };
+
+export async function fetchAutomationAdapterIdentity(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+): Promise<string> {
+  const automationsDo = getScopedAutomationsObject(context, scope);
+  const url = new URL(request.url);
+  url.pathname = "/api/automations/_internal";
+  url.search = "";
+  applyAutomationScopeQuery(url, scope);
+
+  const response = await automationsDo.fetch(
+    new Request(url, {
+      method: "GET",
+      headers: request.headers,
+    }),
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load automation adapter identity (${response.status} ${response.statusText}).`,
+    );
+  }
+
+  const description: unknown = await response.json();
+  if (
+    typeof description !== "object" ||
+    description === null ||
+    !("adapterIdentity" in description) ||
+    typeof description.adapterIdentity !== "string"
+  ) {
+    throw new Error("Automation internal description did not include an adapter identity.");
+  }
+
+  return description.adapterIdentity;
+}
 
 const toRecordArray = <T extends Record<string, unknown>>(value: unknown): T[] => {
   if (!Array.isArray(value)) {

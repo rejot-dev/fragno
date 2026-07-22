@@ -13,7 +13,7 @@ import {
 } from "@fragno-dev/lofi";
 
 import {
-  backofficeScopeRouteId,
+  backofficeContextScopeSinglePathSegment,
   backofficeScopeSinglePathSegment,
 } from "@/backoffice-runtime/scope-codec";
 import { automationFragmentSchema } from "@/fragno/automation/schema";
@@ -23,23 +23,11 @@ import {
   type SandboxInstanceSummary,
 } from "@/sandbox/contracts";
 
-import type { AutomationUiScope } from "./scope";
-import type {
-  AutomationEventItem,
-  AutomationLocalScopeState,
-  AutomationRouteItem,
-  AutomationStoreItem,
-} from "./shared";
+import { automationScopeRouteId, toBackofficeScope, type AutomationUiScope } from "./scope";
+import type { AutomationEventItem, AutomationLocalScopeState, AutomationRouteItem } from "./shared";
 
 const AUTOMATIONS_BINDINGS_ENDPOINT = "automations-bindings";
 const AUTOMATION_EVENTS_LOFI_PAGE_SIZE = 100;
-
-const EMPTY_STORE_QUERY_STATE: LofiQueryState<AutomationStoreItem[]> = {
-  data: [],
-  loading: false,
-  error: null,
-  synced: false,
-};
 
 const EMPTY_ROUTES_QUERY_STATE: LofiQueryState<AutomationRouteItem[]> = {
   data: [],
@@ -91,7 +79,6 @@ const IDLE_RUNTIME_STATUS: LofiRuntimeStatus = {
 
 type AutomationScopeRuntime = {
   runtime: LofiRuntime;
-  $entries: LofiQueryStore<AutomationStoreItem[]>;
   $routes: LofiQueryStore<AutomationRouteItem[]>;
   $routeScheduleStates: LofiQueryStore<AutomationRouteScheduleStateItem[]>;
   $events: LofiQueryStore<AutomationEventItem[]>;
@@ -112,25 +99,6 @@ type AutomationStoreScopeRuntimeConfig = {
 type ReadableStore<T> = {
   get: () => T;
   listen: (listener: (value: T) => void) => () => void;
-};
-
-const scopeRouteId = (scope: AutomationUiScope): string => {
-  switch (scope.kind) {
-    case "system":
-      return "system";
-    case "org":
-      return backofficeScopeRouteId({ kind: "org", orgId: scope.orgId });
-    case "project":
-      return backofficeScopeRouteId({
-        kind: "project",
-        orgId: scope.orgId,
-        projectId: scope.projectId,
-      });
-    case "user":
-      return backofficeScopeRouteId({ kind: "user", userId: scope.userId });
-  }
-
-  throw new Error("Unsupported automation UI scope kind.");
 };
 
 const sandboxIdScope = (scope: AutomationUiScope): string => {
@@ -180,8 +148,8 @@ const sanitizeScopeKeyForDatabaseName = (scopeKey: string) =>
 const automationStoreScopeRuntimeConfig = (
   scope: AutomationUiScope,
 ): AutomationStoreScopeRuntimeConfig => {
-  const routeId = scopeRouteId(scope);
-  const scopeKey = `${scope.kind}:${routeId}`;
+  const scopeKey = backofficeContextScopeSinglePathSegment(toBackofficeScope(scope));
+  const routeId = automationScopeRouteId(scope);
 
   return {
     scope,
@@ -224,31 +192,6 @@ const getAutomationScopeRuntime = (
   }
 
   const runtime = automationsLofiRuntimes.get(config);
-  const $entries = createLofiQueryStore(
-    runtime,
-    automationFragmentSchema,
-    "kv_store",
-    (b) => b.whereIndex("idx_kv_store_key").orderByIndex("idx_kv_store_key", "asc"),
-    {
-      initialData: [],
-      map: (rows) =>
-        rows.map((entry) => ({
-          id: entry.id.externalId,
-          key: entry.key,
-          value: entry.value,
-          description: entry.description,
-          category: Array.isArray(entry.category)
-            ? entry.category.filter((item): item is string => typeof item === "string")
-            : [],
-          actor:
-            entry.actor && typeof entry.actor === "object"
-              ? (entry.actor as AutomationStoreItem["actor"])
-              : null,
-          createdAt: entry.createdAt,
-          updatedAt: entry.updatedAt,
-        })),
-    },
-  );
   const $routes = createLofiQueryStore(
     runtime,
     automationFragmentSchema,
@@ -359,7 +302,6 @@ const getAutomationScopeRuntime = (
   );
   const created = {
     runtime,
-    $entries,
     $routes,
     $routeScheduleStates,
     $events,
@@ -391,18 +333,14 @@ const hasLocalQueryResult = <TData,>(queryState: LofiQueryState<TData>): boolean
 
 export const useLofiAutomationScopeData = ({
   scope,
-  initialEntries,
   initialRoutes,
   initialEvents,
   initialEventDefinitions,
-  prefix,
 }: {
   scope: AutomationUiScope;
-  initialEntries: AutomationStoreItem[];
   initialRoutes: AutomationRouteItem[];
   initialEvents: AutomationEventItem[];
   initialEventDefinitions: AutomationLocalScopeState["eventDefinitions"]["eventDefinitions"];
-  prefix: string;
 }): AutomationLocalScopeState => {
   const scopeConfig = useMemo(() => automationStoreScopeRuntimeConfig(scope), [scope]);
   const lofi = useMemo(
@@ -418,7 +356,6 @@ export const useLofiAutomationScopeData = ({
     return lofi.runtime.retain();
   }, [lofi]);
 
-  const entriesQueryState = useNanostore(lofi?.$entries ?? null, EMPTY_STORE_QUERY_STATE);
   const routesQueryState = useNanostore(lofi?.$routes ?? null, EMPTY_ROUTES_QUERY_STATE);
   const routeScheduleStatesQueryState = useNanostore(
     lofi?.$routeScheduleStates ?? null,
@@ -431,13 +368,8 @@ export const useLofiAutomationScopeData = ({
   );
   const sandboxesQueryState = useNanostore(lofi?.$sandboxes ?? null, EMPTY_SANDBOXES_QUERY_STATE);
   const runtimeStatus = useNanostore(lofi?.runtime.$status ?? null, IDLE_RUNTIME_STATUS);
-  const normalizedPrefix = prefix.trim();
 
   return useMemo(() => {
-    const entries = entriesQueryState.data.filter(
-      (entry) => !normalizedPrefix || entry.key.startsWith(normalizedPrefix),
-    );
-    const storeHasLocalData = hasLocalQueryResult(entriesQueryState);
     const routesHaveLocalData =
       hasLocalQueryResult(routesQueryState) && hasLocalQueryResult(routeScheduleStatesQueryState);
     const scheduleStateByRouteId = new Map(
@@ -456,11 +388,6 @@ export const useLofiAutomationScopeData = ({
     const runtimeError = errorMessage(runtimeStatus.lastError);
 
     return {
-      store: {
-        entries: storeHasLocalData ? entries : initialEntries,
-        synced: storeHasLocalData,
-        error: errorMessage(entriesQueryState.error) ?? runtimeError,
-      },
       routes: {
         routes: routesHaveLocalData ? routes : initialRoutes,
         synced: routesHaveLocalData,
@@ -488,14 +415,11 @@ export const useLofiAutomationScopeData = ({
       },
     };
   }, [
-    entriesQueryState,
     eventDefinitionsQueryState,
     eventsQueryState,
-    initialEntries,
     initialEventDefinitions,
     initialEvents,
     initialRoutes,
-    normalizedPrefix,
     routesQueryState,
     routeScheduleStatesQueryState,
     runtimeStatus,

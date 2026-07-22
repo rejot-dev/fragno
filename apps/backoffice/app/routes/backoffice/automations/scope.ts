@@ -50,20 +50,11 @@ export const toBackofficeScope = (scope: AutomationUiScope): BackofficeContextSc
   throw new Error("Unsupported automation UI scope kind.");
 };
 
-export const automationScopeBasePath = (scope: AutomationUiScope) => {
-  switch (scope.kind) {
-    case "system":
-      return `/backoffice/automations/system/${SYSTEM_AUTOMATION_SCOPE_ID}`;
-    case "org":
-      return `/backoffice/automations/org/${backofficeScopeRouteId(scope)}`;
-    case "project":
-      return `/backoffice/automations/project/${backofficeScopeRouteId(scope)}`;
-    case "user":
-      return `/backoffice/automations/user/${backofficeScopeRouteId(scope)}`;
-  }
+export const automationScopeRouteId = (scope: AutomationUiScope): string =>
+  scope.kind === "system" ? SYSTEM_AUTOMATION_SCOPE_ID : backofficeScopeRouteId(scope);
 
-  throw new Error("Unsupported automation UI scope kind.");
-};
+export const automationScopeBasePath = (scope: AutomationUiScope) =>
+  `/backoffice/automations/${scope.kind}/${automationScopeRouteId(scope)}`;
 
 export type AutomationScopeTab =
   | "terminal"

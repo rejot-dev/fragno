@@ -51,12 +51,6 @@ export type AutomationStoreItem = {
   updatedAt?: string | Date | null;
 };
 
-type AutomationLocalStoreState = {
-  entries: AutomationStoreItem[];
-  synced: boolean;
-  error: string | null;
-};
-
 type AutomationLocalRoutesState = {
   routes: AutomationRouteItem[];
   synced: boolean;
@@ -82,7 +76,6 @@ type AutomationLocalSandboxesState = {
 };
 
 export type AutomationLocalScopeState = {
-  store: AutomationLocalStoreState;
   routes: AutomationLocalRoutesState;
   events: AutomationLocalEventsState;
   eventDefinitions: AutomationLocalEventDefinitionsState;
@@ -130,30 +123,26 @@ export type AutomationLayoutContext = {
   orgId: string;
   organisation: BackofficeOrganisation;
   selectedScope: AutomationUiScope;
+  adapterIdentity: string;
   scopeOptions: AutomationScopeOption[];
   projectsError: string | null;
   scripts: AutomationScriptItem[];
   routes: AutomationRouteItem[];
-  storeEntries: AutomationStoreItem[];
   events: AutomationEventItem[];
   eventDefinitions: AutomationEventDefinition[];
   eventsCursor?: string;
   eventsHasNextPage: boolean;
   eventsCurrentCursor: string | null;
   eventsPageSize: number;
-  storeData: AutomationServerLofiDataState<AutomationStoreItem[]>;
   routesData: AutomationServerLofiDataState<AutomationRouteItem[]>;
   eventsData: AutomationServerLofiDataState<AutomationEventItem[]>;
   eventDefinitionsData: AutomationServerLofiDataState<AutomationEventDefinition[]>;
-  lofiStore: AutomationLocalStoreState;
   lofiRoutes: AutomationLocalRoutesState;
   lofiEvents: AutomationLocalEventsState;
   lofiEventDefinitions: AutomationLocalEventDefinitionsState;
   lofiSandboxes: AutomationLocalSandboxesState;
-  storePrefix: string;
   scriptsError: string | null;
   routesError: string | null;
-  storeEntriesError: string | null;
   eventsError: string | null;
   eventDefinitionsError: string | null;
 };
@@ -169,34 +158,6 @@ export type AutomationTab =
   | "integrations"
   | "mcp"
   | "sandboxes";
-
-export const formatTimestampInTimeZone = (
-  value: string | Date | null | undefined,
-  timeZone: string,
-) => {
-  if (!value) {
-    return "—";
-  }
-
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "—";
-  }
-
-  const formatted = new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-    timeZone,
-  }).format(date);
-  return `${formatted} ${timeZone}`;
-};
-
-export const formatTimestamp = (value?: string | Date | null) =>
-  formatTimestampInTimeZone(value, "UTC");
 
 export function AutomationHeader({ selectedScope }: { selectedScope: AutomationUiScope }) {
   const scopeLabel = selectedScope.label;
