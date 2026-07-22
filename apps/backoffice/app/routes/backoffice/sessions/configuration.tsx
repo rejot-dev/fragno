@@ -7,7 +7,8 @@ import type { PiConfigState } from "@/fragno/pi/pi-shared";
 import { getPiDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { Route } from "./+types/configuration";
-import { formatTimestamp, type PiLayoutContext } from "./shared";
+import { formatTimestamp } from "./formatting";
+import type { PiLayoutContext } from "./shared";
 
 type PiConfigForm = {
   openaiKey: string;
@@ -62,10 +63,11 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     apiKeys.gemini = geminiKey;
   }
 
-  const piDo = getPiDurableObject(context, params.orgId);
+  const scope = { kind: "org" as const, orgId: params.orgId };
+  const piDo = getPiDurableObject(context, scope);
 
   try {
-    const configState = await piDo.setAdminConfig({ orgId: params.orgId, apiKeys });
+    const configState = await piDo.setAdminConfig({ scope, apiKeys });
     return {
       ok: true,
       message: "Pi API keys saved.",
@@ -80,7 +82,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
 }
 
 export default function BackofficeOrganisationPiConfiguration() {
-  const { configState, configLoading, configError, setConfigState, setConfigError } =
+  const { configState, configError, setConfigState, setConfigError } =
     useOutletContext<PiLayoutContext>();
   const actionData = useActionData<PiConfigActionData>();
   const navigation = useNavigation();
@@ -144,9 +146,7 @@ export default function BackofficeOrganisationPiConfiguration() {
           </div>
 
           <div className="mt-4 space-y-2 text-sm text-[var(--bo-muted)]">
-            {configLoading ? (
-              <p>Loading configuration…</p>
-            ) : configError ? (
+            {configError ? (
               <p className="text-red-500">{configError}</p>
             ) : config ? (
               <>

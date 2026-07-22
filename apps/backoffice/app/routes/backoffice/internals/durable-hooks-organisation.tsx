@@ -146,17 +146,17 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
           return await repository.getHookQueue({ cursor, pageSize });
         }
         case "pi": {
-          const repository = await getPiDurableObject(
-            context,
-            params.orgId,
-          ).getDurableHookRepository("pi");
+          const repository = await getPiDurableObject(context, {
+            kind: "org",
+            orgId: params.orgId,
+          }).getDurableHookRepository("pi");
           return await repository.getHookQueue({ cursor, pageSize });
         }
         case "pi-workflows": {
-          const repository = await getPiDurableObject(
-            context,
-            params.orgId,
-          ).getDurableHookRepository("workflows");
+          const repository = await getPiDurableObject(context, {
+            kind: "org",
+            orgId: params.orgId,
+          }).getDurableHookRepository("workflows");
           return await repository.getHookQueue({ cursor, pageSize });
         }
       }

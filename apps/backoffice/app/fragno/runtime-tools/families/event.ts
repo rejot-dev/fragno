@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
 import type { EventEmitArgs } from "@/fragno/runtime-tools/automation-types";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
@@ -14,21 +16,10 @@ import {
   automationEventsCatalogListTool,
 } from "./backoffice-capabilities";
 
-const contextScopeSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("system") }),
-  z.object({ kind: z.literal("org"), orgId: z.string().trim().min(1) }),
-  z.object({ kind: z.literal("user"), userId: z.string().trim().min(1) }),
-  z.object({
-    kind: z.literal("project"),
-    orgId: z.string().trim().min(1),
-    projectId: z.string().trim().min(1),
-  }),
-]);
-
 export type AutomationEmitEventResult = {
   accepted: boolean;
   eventId: string;
-  scope: z.infer<typeof contextScopeSchema>;
+  scope: BackofficeContextScope;
   source: string;
   eventType: string;
 };
@@ -47,13 +38,13 @@ const eventEmitInputSchema = z.object({
   actorType: z.string().trim().min(1).optional(),
   subjectUserId: z.string().trim().min(1).optional(),
   payload: z.record(z.string(), z.unknown()).optional(),
-  targetScope: contextScopeSchema.optional(),
+  targetScope: backofficeContextScopeSchema.optional(),
 });
 
 const eventEmitOutputSchema = z.object({
   accepted: z.boolean(),
   eventId: z.string().trim().min(1),
-  scope: contextScopeSchema,
+  scope: backofficeContextScopeSchema,
   source: z.string().trim().min(1),
   eventType: z.string().trim().min(1),
 });

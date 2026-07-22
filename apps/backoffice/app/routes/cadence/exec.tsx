@@ -9,7 +9,12 @@ import { getAuthMe } from "@/fragno/auth/auth-server";
 import type { CadenceLayoutContext } from "@/layouts/cadence-layout";
 import { cn } from "@/lib/utils";
 import { handlePiTerminalAction } from "@/routes/backoffice/pi-terminal-action";
-import { fetchPiSessionDetail, fetchPiSessions } from "@/routes/backoffice/sessions/data";
+import {
+  fetchPiAdapterIdentity,
+  fetchPiConfig,
+  fetchPiSessionDetail,
+  fetchPiSessions,
+} from "@/routes/backoffice/sessions/data";
 
 import type { Route } from "./+types/exec";
 import { handleComposeAction } from "./compose-action";
@@ -29,16 +34,23 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const me = await getAuthMe(request, context);
   const activeOrg = me?.activeOrganization?.organization ?? null;
   if (!me?.user || !activeOrg) {
-    return { history: [] as ComposeHistorySession[] };
+    return { history: [] as ComposeHistorySession[], piPersistenceSource: null };
   }
 
-  const { sessions } = await fetchPiSessions(request, context, activeOrg.id, {
-    limit: HISTORY_LIMIT,
-  });
+  const scope = { kind: "org" as const, orgId: activeOrg.id };
+  const { configState, configError } = await fetchPiConfig(context, scope);
+  if (configError || !configState?.configured) {
+    return { history: [] as ComposeHistorySession[], piPersistenceSource: null };
+  }
+
+  const [adapterIdentity, { sessions }] = await Promise.all([
+    fetchPiAdapterIdentity(request, context, scope),
+    fetchPiSessions(request, context, scope, { limit: HISTORY_LIMIT }),
+  ]);
 
   const detailResults = await Promise.all(
     sessions.map((session) =>
-      fetchPiSessionDetail(request, context, activeOrg.id, session.workflowName, session.id),
+      fetchPiSessionDetail(request, context, scope, session.workflowName, session.id),
     ),
   );
   const failedDetail = detailResults.find((result) => result.sessionError);
@@ -47,6 +59,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   }
 
   return {
+    piPersistenceSource: { scope, adapterIdentity },
     history: sessions.map((session, index): ComposeHistorySession => {
       const status = detailResults[index]?.session?.workflow.status ?? "unknown";
       return {
@@ -82,7 +95,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       formData,
       request,
       context,
-      orgId: activeOrg?.id ?? null,
+      scope: activeOrg ? { kind: "org", orgId: activeOrg.id } : null,
     });
   }
 
@@ -97,13 +110,14 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 export default function ExecPage() {
   const { me } = useOutletContext<CadenceLayoutContext>();
-  const { history } = useLoaderData<typeof loader>();
+  const { history, piPersistenceSource } = useLoaderData<typeof loader>();
   const activeOrg = me?.activeOrganization?.organization ?? null;
 
   return (
     <PromptProvider
       organizationId={activeOrg?.id}
       organizationName={activeOrg?.name}
+      piPersistenceSource={piPersistenceSource}
       history={history}
     >
       <ExecWorkspace />

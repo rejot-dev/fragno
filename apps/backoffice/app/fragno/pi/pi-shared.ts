@@ -24,7 +24,7 @@ export type PiHarnessConfig = {
 };
 
 export type StoredPiConfig = {
-  scope: Extract<BackofficeContextScope, { kind: "org" }>;
+  scope: BackofficeContextScope;
   apiKeys: {
     openai?: string;
     anthropic?: string;
@@ -38,7 +38,7 @@ export type StoredPiConfig = {
 export type PiConfigState = {
   configured: boolean;
   config?: {
-    orgId: string;
+    scope: BackofficeContextScope;
     apiKeys: {
       openai?: string | null;
       anthropic?: string | null;

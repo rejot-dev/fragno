@@ -37,7 +37,7 @@ Payload fields:
 
 Subject:
 
-- \`orgId\`: organisation id.
+- \`orgId\`: the configured organisation id.
 - \`capabilityId\`: \`pi\`.
 
 Common automation pattern: store a default agent binding from the first available harness and model, then use it when routing chat messages into Pi sessions.

@@ -6,8 +6,8 @@ import type { PiConfigState } from "@/fragno/pi/pi-shared";
 
 import { throwOrganisationNotFound } from "../route-errors";
 import type { Route } from "./+types/organisation-layout";
-import { fetchPiConfig } from "./data";
-import { PiErrorBoundary, PiHeader, PiTabs, type PiTab } from "./shared";
+import { fetchPiAdapterIdentity, fetchPiConfig } from "./data";
+import { PiErrorBoundary, PiHeader, PiTabs, type PiLayoutContext, type PiTab } from "./shared";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.orgId) {
@@ -25,19 +25,32 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     throwOrganisationNotFound(params.orgId);
   }
 
-  const { configState, configError } = await fetchPiConfig(context, params.orgId);
+  const scope = { kind: "org" as const, orgId: params.orgId };
+  const { configState, configError } = await fetchPiConfig(context, scope);
+  let persistenceSource: PiLayoutContext["persistenceSource"] = null;
+  let persistenceError: string | null = null;
+  if (configState?.configured) {
+    try {
+      const adapterIdentity = await fetchPiAdapterIdentity(request, context, scope);
+      persistenceSource = { scope, adapterIdentity };
+    } catch (error) {
+      persistenceError =
+        error instanceof Error ? error.message : "Failed to load Pi session persistence.";
+    }
+  }
 
   return {
-    orgId: params.orgId,
-    origin: new URL(request.url).origin,
+    scope,
     organisation,
+    persistenceSource,
+    persistenceError,
     configState,
     configError,
   };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
-  const orgId = loaderData?.orgId ?? "organisation";
+  const orgId = loaderData?.scope.orgId ?? "organisation";
   return [{ title: `Pi Sessions · ${orgId}` }];
 }
 
@@ -50,15 +63,16 @@ export default function BackofficeOrganisationPiLayout({
   matches,
 }: Route.ComponentProps) {
   const {
-    orgId,
-    origin,
+    scope,
     organisation,
+    persistenceSource,
+    persistenceError,
     configState: initialConfigState,
     configError: initialConfigError,
   } = loaderData;
+  const orgId = scope.orgId;
   const [configState, setConfigState] = useState<PiConfigState | null>(initialConfigState);
   const [configError, setConfigError] = useState<string | null>(initialConfigError);
-  const configLoading = false;
 
   useEffect(() => {
     setConfigState(initialConfigState);
@@ -96,11 +110,10 @@ export default function BackofficeOrganisationPiLayout({
       >
         <Outlet
           context={{
-            orgId,
-            origin,
-            organisation,
+            scope,
+            persistenceSource,
+            persistenceError,
             configState,
-            configLoading,
             configError,
             setConfigState,
             setConfigError,

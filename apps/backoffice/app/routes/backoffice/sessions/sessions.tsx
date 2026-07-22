@@ -1,23 +1,20 @@
 import { ScrollArea } from "@base-ui/react/scroll-area";
-import { useStore } from "@fragno-dev/core/react";
-import type { PiSession, PiWorkflowStatus } from "@fragno-dev/pi-harness/types";
 import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Suspense, useMemo, useState, type ReactNode } from "react";
 import {
   Form,
   Link,
   Outlet,
   redirect,
   useActionData,
-  useLoaderData,
   useNavigation,
   useOutletContext,
   useParams,
   useSearchParams,
 } from "react-router";
 
+import { ClientOnly } from "@/components/client-only";
 import { getAuthMe } from "@/fragno/auth/auth-server";
-import { createPiLofiSessionListingStore } from "@/fragno/pi/pi-client";
 import {
   createPiAgentName,
   findPiModelOption,
@@ -26,25 +23,13 @@ import {
   resolvePiModelThinkingLevel,
   type PiHarnessConfig,
 } from "@/fragno/pi/pi-shared";
+import type { PiSessionListingState } from "@/fragno/pi/tanstack/session-listing";
+import { usePiSessionListing } from "@/fragno/pi/tanstack/use-session-listing";
 
 import type { Route } from "./+types/sessions";
-import {
-  createPiSession,
-  fetchPiConfig,
-  fetchPiSessionDetail,
-  fetchPiSessions,
-  sendPiSessionMessage,
-} from "./data";
+import { createPiSession, fetchPiConfig } from "./data";
+import { formatTimestamp } from "./formatting";
 import type { PiLayoutContext } from "./shared";
-import { formatTimestamp } from "./shared";
-
-type PiSessionsLoaderData = {
-  configError: string | null;
-  sessionsError: string | null;
-  sessions: PiSession[];
-  turnSummaries: Record<string, string | null>;
-  workflowStatuses: Record<string, PiWorkflowStatus | null>;
-};
 
 type PiCreateSessionActionData = {
   intent: "create-session";
@@ -52,98 +37,15 @@ type PiCreateSessionActionData = {
   message?: string;
 };
 
-type PiSendMessageActionData = {
-  intent: "send-message";
-  ok: boolean;
-  message?: string;
-  status?: PiWorkflowStatus | null;
-};
-
-type PiSessionsActionData = PiCreateSessionActionData | PiSendMessageActionData;
-
 export type PiSessionsOutletContext = {
-  sessions: PiSession[];
-  turnSummaries: Record<string, string | null>;
-  workflowStatuses: Record<string, PiWorkflowStatus | null>;
+  scope: PiLayoutContext["scope"];
+  persistenceSource: NonNullable<PiLayoutContext["persistenceSource"]>;
   harnesses: PiHarnessConfig[];
-  selectedSessionId: string | null;
   basePath: string;
   createSessionPanel?: ReactNode;
 };
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
-  if (!params.orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const emptyTurnSummaries: Record<string, string | null> = {};
-  const emptyWorkflowStatuses: Record<string, PiWorkflowStatus | null> = {};
-
-  const { configState, configError } = await fetchPiConfig(context, params.orgId);
-  if (configError) {
-    return {
-      configError,
-      sessionsError: null,
-      sessions: [],
-      turnSummaries: emptyTurnSummaries,
-      workflowStatuses: emptyWorkflowStatuses,
-    } satisfies PiSessionsLoaderData;
-  }
-
-  if (!configState?.configured) {
-    return redirect(`/backoffice/sessions/${params.orgId}/configuration`);
-  }
-
-  const { sessions, sessionsError } = await fetchPiSessions(request, context, params.orgId);
-  if (sessionsError) {
-    return {
-      configError: null,
-      sessionsError,
-      sessions: [],
-      turnSummaries: emptyTurnSummaries,
-      workflowStatuses: emptyWorkflowStatuses,
-    } satisfies PiSessionsLoaderData;
-  }
-
-  const turnSummaries: Record<string, string | null> = {};
-  const workflowStatuses: Record<string, PiWorkflowStatus | null> = {};
-  const detailResults = await Promise.all(
-    sessions.map((session) =>
-      fetchPiSessionDetail(request, context, params.orgId, session.workflowName, session.id),
-    ),
-  );
-  const failedDetail = detailResults.find((result) => result.sessionError);
-  if (failedDetail?.sessionError) {
-    return {
-      configError: null,
-      sessionsError: failedDetail.sessionError.message,
-      sessions: [],
-      turnSummaries: emptyTurnSummaries,
-      workflowStatuses: emptyWorkflowStatuses,
-    } satisfies PiSessionsLoaderData;
-  }
-
-  detailResults.forEach((result, index) => {
-    const session = sessions[index];
-    if (!session) {
-      return;
-    }
-    workflowStatuses[session.id] = result?.session?.workflow.status ?? null;
-    const messages = result?.session?.agent.state.messages ?? [];
-    const assistantMessage = [...messages]
-      .reverse()
-      .find((message) => message.role === "assistant");
-    turnSummaries[session.id] = assistantMessage ? "Last assistant response available" : null;
-  });
-
-  return {
-    configError: null,
-    sessionsError: null,
-    sessions,
-    turnSummaries,
-    workflowStatuses,
-  } satisfies PiSessionsLoaderData;
-}
+const PI_SESSIONS_LOADING = <PiSessionsLoading />;
 
 export async function action({ request, params, context }: Route.ActionArgs) {
   if (!params.orgId) {
@@ -161,71 +63,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     throw new Response("Not Found", { status: 404 });
   }
 
+  const scope = { kind: "org" as const, orgId: params.orgId };
   const formData = await request.formData();
   const getValue = (key: string) => {
     const value = formData.get(key);
     return typeof value === "string" ? value.trim() : "";
   };
-  const intent = getValue("intent") || "create-session";
-
-  if (intent === "send-message") {
-    const sessionId = getValue("sessionId");
-    const text = getValue("text");
-    const commandKind = getValue("commandKind");
-    if (!sessionId) {
-      return {
-        intent: "send-message",
-        ok: false,
-        message: "Session ID is required.",
-      } satisfies PiSendMessageActionData;
-    }
-
-    if (!text) {
-      return {
-        intent: "send-message",
-        ok: false,
-        message: "Message text is required.",
-      } satisfies PiSendMessageActionData;
-    }
-
-    if (commandKind && commandKind !== "followUp" && commandKind !== "steer") {
-      return {
-        intent: "send-message",
-        ok: false,
-        message: "Command kind must be followUp or steer.",
-      } satisfies PiSendMessageActionData;
-    }
-
-    const workflowName = getValue("workflowName");
-    if (!workflowName) {
-      return {
-        intent: "send-message",
-        ok: false,
-        message: "Workflow name is required.",
-      } satisfies PiSendMessageActionData;
-    }
-
-    const result = await sendPiSessionMessage(
-      request,
-      context,
-      params.orgId,
-      workflowName,
-      sessionId,
-      {
-        text,
-        commandKind:
-          commandKind === "followUp" || commandKind === "steer" ? commandKind : undefined,
-      },
-    );
-
-    return {
-      intent: "send-message",
-      ok: !result.error && result.status !== null,
-      message: result.error ?? undefined,
-      status: result.status,
-    } satisfies PiSendMessageActionData;
-  }
-
   const harnessId = getValue("harnessId");
   const modelOption = getValue("modelOption");
   const name = getValue("name");
@@ -264,7 +107,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     } satisfies PiCreateSessionActionData;
   }
 
-  const { configState, configError } = await fetchPiConfig(context, params.orgId);
+  const { configState, configError } = await fetchPiConfig(context, scope);
   if (configError) {
     return {
       intent: "create-session",
@@ -304,7 +147,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     model: modelSelection.name,
   });
 
-  const result = await createPiSession(request, context, params.orgId, {
+  const result = await createPiSession(request, context, scope, {
     workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME,
     input: {
       harnessName: agent,
@@ -327,16 +170,90 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function BackofficeOrganisationPiSessionsLayout() {
-  const {
-    sessions: serverSessions,
-    configError,
-    sessionsError,
-    turnSummaries: serverTurnSummaries,
-    workflowStatuses: serverWorkflowStatuses,
-  } = useLoaderData<typeof loader>();
-  const actionData = useActionData<typeof action>() as PiSessionsActionData | undefined;
+  const layoutContext = useOutletContext<PiLayoutContext>();
+
+  if (!layoutContext.persistenceSource) {
+    return <PiSessionsUnavailable layoutContext={layoutContext} />;
+  }
+
+  return (
+    <ClientOnly fallback={PI_SESSIONS_LOADING}>
+      <Suspense fallback={PI_SESSIONS_LOADING}>
+        <SynchronizedPiSessionsLayout
+          layoutContext={layoutContext}
+          source={layoutContext.persistenceSource}
+        />
+      </Suspense>
+    </ClientOnly>
+  );
+}
+
+function PiSessionsLoading() {
+  return (
+    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
+      Loading local Pi sessions…
+      <noscript>
+        <span className="mt-2 block text-red-700 dark:text-red-200">
+          JavaScript is required to open Pi sessions.
+        </span>
+      </noscript>
+    </div>
+  );
+}
+
+function PiSessionsUnavailable({ layoutContext }: { layoutContext: PiLayoutContext }) {
+  const message =
+    layoutContext.configError ??
+    layoutContext.persistenceError ??
+    (layoutContext.configState?.configured
+      ? "Local Pi session persistence is unavailable."
+      : "Configure Pi before opening sessions.");
+
+  return (
+    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
+      {message}
+    </div>
+  );
+}
+
+function SynchronizedPiSessionsLayout({
+  layoutContext,
+  source,
+}: {
+  layoutContext: PiLayoutContext;
+  source: NonNullable<PiLayoutContext["persistenceSource"]>;
+}) {
+  const listingState = usePiSessionListing({
+    source,
+    workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME,
+  });
+
+  if (listingState.status === "synchronizing" && listingState.snapshot.sessions.length === 0) {
+    return <PiSessionsLoading />;
+  }
+
+  return (
+    <PiSessionsLayoutView
+      layoutContext={layoutContext}
+      source={source}
+      listingState={listingState}
+    />
+  );
+}
+
+function PiSessionsLayoutView({
+  layoutContext,
+  source,
+  listingState,
+}: {
+  layoutContext: PiLayoutContext;
+  source: NonNullable<PiLayoutContext["persistenceSource"]>;
+  listingState: PiSessionListingState;
+}) {
+  const actionData = useActionData<typeof action>() as PiCreateSessionActionData | undefined;
   const navigation = useNavigation();
-  const { orgId, configState } = useOutletContext<PiLayoutContext>();
+  const { scope, configState } = layoutContext;
+  const orgId = scope.orgId;
   const { sessionId, workflowName } = useParams();
   const [searchParams] = useSearchParams();
   const selectedWorkflowName = workflowName ?? null;
@@ -344,74 +261,33 @@ export default function BackofficeOrganisationPiSessionsLayout() {
   const isNewSession = searchParams.get("new") === "1";
   const basePath = `/backoffice/sessions/${orgId}/sessions`;
   const isDetailRoute = Boolean(selectedSessionId);
-  const lofiSessionListingStore = useMemo(
-    () =>
-      createPiLofiSessionListingStore(orgId, INTERACTIVE_CHAT_WORKFLOW_NAME, {
-        initialData: {
-          sessions: serverSessions,
-          workflowStatuses: serverWorkflowStatuses,
-        },
-      }),
-    [orgId, serverSessions, serverWorkflowStatuses],
-  );
-  const lofiSessionListing = useStore(lofiSessionListingStore);
-  const { sessions, workflowStatuses } = lofiSessionListing.data;
-  const turnSummaries = serverTurnSummaries;
-  const lofiSessionListingError =
-    lofiSessionListing.error instanceof Error
-      ? lofiSessionListing.error.message
-      : lofiSessionListing.error
-        ? "Pi session listing sync failed."
-        : null;
+  const { sessions, workflowStatuses } = listingState.snapshot;
+  const listingError = listingState.status === "error" ? listingState.error : null;
   const activeIntent = navigation.formData?.get("intent");
   const creating = navigation.state === "submitting" && activeIntent === "create-session";
   const harnesses = resolvePiHarnesses(configState?.config?.harnesses);
-  const [selectedHarnessId, setSelectedHarnessId] = useState(harnesses[0]?.id ?? "");
+  const [preferredHarnessId, setPreferredHarnessId] = useState("");
+  const selectedHarnessId = harnesses.some((harness) => harness.id === preferredHarnessId)
+    ? preferredHarnessId
+    : (harnesses[0]?.id ?? "");
   const apiKeys = configState?.config?.apiKeys;
   const availableModelOptions = useMemo(
     () => PI_MODEL_CATALOG.filter((option) => Boolean(apiKeys?.[option.provider])),
     [apiKeys],
   );
-  const [selectedModelOption, setSelectedModelOption] = useState("");
-  useEffect(() => {
-    if (harnesses.length === 0) {
-      setSelectedHarnessId("");
-      return;
-    }
-    if (!harnesses.some((harness) => harness.id === selectedHarnessId)) {
-      setSelectedHarnessId(harnesses[0].id);
-    }
-  }, [harnesses, selectedHarnessId]);
-
-  useEffect(() => {
-    const nextModel =
-      selectedModelOption &&
-      availableModelOptions.some(
-        (option) => `${option.provider}::${option.name}` === selectedModelOption,
-      )
-        ? selectedModelOption
-        : availableModelOptions[0]
-          ? `${availableModelOptions[0].provider}::${availableModelOptions[0].name}`
-          : "";
-    if (nextModel !== selectedModelOption) {
-      setSelectedModelOption(nextModel);
-    }
-  }, [availableModelOptions, selectedModelOption]);
+  const [preferredModelOption, setPreferredModelOption] = useState("");
+  const selectedModelOption = availableModelOptions.some(
+    (option) => `${option.provider}::${option.name}` === preferredModelOption,
+  )
+    ? preferredModelOption
+    : availableModelOptions[0]
+      ? `${availableModelOptions[0].provider}::${availableModelOptions[0].name}`
+      : "";
 
   const selectedHarness = useMemo(
     () => harnesses.find((entry) => entry.id === selectedHarnessId) ?? null,
     [harnesses, selectedHarnessId],
   );
-
-  if (configError) {
-    return (
-      <div className="border border-red-200 bg-red-50 p-4 text-sm text-red-600">{configError}</div>
-    );
-  }
-
-  const sessionListingServerError = sessionsError?.trim() || null;
-  const sessionListingBlockingError =
-    sessionListingServerError && sessions.length === 0 ? sessionListingServerError : null;
 
   const isDetailView = isDetailRoute || isNewSession;
   // Use flex for both; max-lg:hidden only applies below lg so lg layout stays stable
@@ -444,7 +320,7 @@ export default function BackofficeOrganisationPiSessionsLayout() {
               required
               value={selectedHarnessId}
               onChange={(event) => {
-                setSelectedHarnessId(event.target.value);
+                setPreferredHarnessId(event.target.value);
               }}
               className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)]"
             >
@@ -482,7 +358,7 @@ export default function BackofficeOrganisationPiSessionsLayout() {
                       role="radio"
                       aria-checked={isSelected}
                       onClick={() => {
-                        setSelectedModelOption(value);
+                        setPreferredModelOption(value);
                       }}
                       className={`border px-2 py-1 text-[10px] font-semibold tracking-[0.22em] uppercase ${
                         isSelected
@@ -552,15 +428,9 @@ export default function BackofficeOrganisationPiSessionsLayout() {
           </div>
         </Link>
 
-        {sessionListingServerError ? (
-          <div className="border border-amber-300/60 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-200">
-            {sessionListingBlockingError ?? "Server refresh failed; showing local session data."}
-          </div>
-        ) : null}
-
-        {lofiSessionListingError ? (
+        {listingError ? (
           <div className="border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
-            {lofiSessionListingError}
+            {listingError}
           </div>
         ) : null}
 
@@ -573,7 +443,6 @@ export default function BackofficeOrganisationPiSessionsLayout() {
                 </div>
               ) : (
                 sessions.map((session) => {
-                  const summary = turnSummaries[session.id];
                   const workflowStatus = workflowStatuses[session.id] ?? "unknown";
                   const isSelected =
                     session.workflowName === selectedWorkflowName &&
@@ -616,9 +485,6 @@ export default function BackofficeOrganisationPiSessionsLayout() {
                       <p className="mt-2 text-xs text-[var(--bo-muted-2)]">
                         Updated {formatTimestamp(session.updatedAt)}
                       </p>
-                      <p className="mt-2 text-xs text-[var(--bo-muted)]">
-                        {summary ? summary.slice(0, 140) : "No summary yet."}
-                      </p>
                     </Link>
                   );
                 })
@@ -641,11 +507,9 @@ export default function BackofficeOrganisationPiSessionsLayout() {
       >
         <Outlet
           context={{
-            sessions,
-            turnSummaries,
-            workflowStatuses,
+            scope,
+            persistenceSource: source,
             harnesses,
-            selectedSessionId,
             basePath,
             createSessionPanel,
           }}

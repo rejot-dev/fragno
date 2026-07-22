@@ -66,7 +66,7 @@ const LEFTPAD_ESM = {
 };
 
 const createPiSessionFileSystemContext = () => ({
-  orgId: "org-1",
+  scope: { kind: "org" as const, orgId: "org-1" },
   objects: unusedObjects,
   kernel: new BackofficeKernel({ objects: unusedObjects }),
   runtimeConfig: testRuntimeConfig,

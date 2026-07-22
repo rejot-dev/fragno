@@ -16,11 +16,7 @@ import {
   createOtpRuntime,
   createUnavailableOtpRuntime,
 } from "@/fragno/runtime-tools/families/otp-runtime";
-import {
-  createPiRouteRuntime,
-  createUnavailablePiRuntime,
-  type PiRuntime,
-} from "@/fragno/runtime-tools/families/pi-runtime";
+import { createPiRouteRuntime, type PiRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
 import {
   createResendRouteRuntime,
   createUnavailableResendRuntime,
@@ -187,12 +183,10 @@ export const createRouteBackedRuntimeContext = ({
         : createUnavailableOtpRuntime(unavailableMessage("OTP", execution)),
     },
     pi: pi ?? {
-      runtime: selectedOrg
-        ? createPiRouteRuntime({
-            object: kernel.scoped("PI", execution.scope, runtime.objects.pi),
-            orgId: selectedOrg.orgId,
-          })
-        : createUnavailablePiRuntime(unavailableMessage("PI", execution)),
+      runtime: createPiRouteRuntime({
+        object: kernel.scoped("PI", execution.scope, runtime.objects.pi),
+        scope: execution.scope,
+      }),
     },
     reson8: {
       runtime: selectedOrg

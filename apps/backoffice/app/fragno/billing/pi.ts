@@ -1,6 +1,7 @@
 import type { PiOperationCompletedHookPayload } from "@fragno-dev/pi-harness/types";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 
 import type { BillingEventInput, BillingMeasurementInput } from "./contracts";
 
@@ -43,7 +44,7 @@ export const createPiOperationBillingEvent = (input: {
   }
 
   return {
-    id: `pi:${input.scope.kind === "org" ? input.scope.orgId : input.scope.kind}:${input.hookId}`,
+    id: `pi:${backofficeContextScopeSinglePathSegment(input.scope)}:${input.hookId}`,
     scope: input.scope,
     source: "pi-harness",
     eventType: "operation.completed",

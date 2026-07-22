@@ -1,5 +1,6 @@
 import type { RouterContextProvider } from "react-router";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type {
   ApiObject,
   AuthObject,
@@ -69,8 +70,8 @@ export const getUploadDurableObject = (
 
 export const getPiDurableObject = (
   context: Readonly<RouterContextProvider>,
-  orgId: string,
-): PiObject => getBackofficeObjects(context).pi.forOrg(orgId);
+  scope: BackofficeContextScope,
+): PiObject => getBackofficeObjects(context).pi.for(scope);
 
 export const getGitHubDurableObject = (
   context: Readonly<RouterContextProvider>,

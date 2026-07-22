@@ -3,8 +3,8 @@
  * `compose` intent with the drafted text. The first prompt starts a Pi agent
  * session and sends the prompt as its first message; subsequent prompts carry the
  * session ref and are sent as follow-ups to that same session. Either way the
- * result is a reference to the session, which the client subscribes to (via the
- * Pi client) to render the live transcript.
+ * result is a reference to the session, which the client resolves from the
+ * persisted Pi projection to render the live transcript.
  *
  * It mirrors `handlePiTerminalAction` (the dev-terminal handler) so a single
  * route `action` can dispatch both: terminal intents go there, `compose` comes
@@ -15,6 +15,7 @@
 import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 import type { RouterContextProvider } from "react-router";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import {
   createPiAgentName,
   PI_MODEL_CATALOG,
@@ -42,12 +43,12 @@ export async function handleComposeAction({
   formData,
   request,
   context,
-  orgId,
+  scope,
 }: {
   formData: FormData;
   request: Request;
   context: Readonly<RouterContextProvider>;
-  orgId: string | null;
+  scope: BackofficeContextScope | null;
 }): Promise<ComposeActionResult> {
   const prompt = String(formData.get("prompt") ?? "").trim();
 
@@ -55,7 +56,7 @@ export async function handleComposeAction({
     return { intent: "compose", ok: false, error: "Describe an automation to compose." };
   }
 
-  if (!orgId) {
+  if (!scope) {
     return { intent: "compose", ok: false, error: "Select an organisation to compose." };
   }
 
@@ -67,7 +68,7 @@ export async function handleComposeAction({
     const followUp = await sendPiSessionMessage(
       request,
       context,
-      orgId,
+      scope,
       existingWorkflowName,
       existingSessionId,
       { text: prompt },
@@ -89,7 +90,7 @@ export async function handleComposeAction({
   // No session yet — start one. Pick the org's first configured harness and the
   // first model that has an API key (the same defaults the sessions UI seeds), so
   // exec doesn't need a picker.
-  const { configState, configError } = await fetchPiConfig(context, orgId);
+  const { configState, configError } = await fetchPiConfig(context, scope);
   if (configError) {
     return { intent: "compose", ok: false, error: configError };
   }
@@ -117,7 +118,7 @@ export async function handleComposeAction({
   // Name the session after the prompt so it's recognisable in the sessions list.
   const name = prompt.length > 60 ? `${prompt.slice(0, 59)}…` : prompt;
 
-  const created = await createPiSession(request, context, orgId, {
+  const created = await createPiSession(request, context, scope, {
     workflowName: INTERACTIVE_CHAT_WORKFLOW_NAME,
     input: {
       harnessName: agentName,
@@ -132,7 +133,7 @@ export async function handleComposeAction({
   const sent = await sendPiSessionMessage(
     request,
     context,
-    orgId,
+    scope,
     created.session.workflowName,
     created.session.id,
     { text: prompt },

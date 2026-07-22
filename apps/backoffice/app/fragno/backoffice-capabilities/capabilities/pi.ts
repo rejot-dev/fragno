@@ -101,7 +101,7 @@ export const piCapability: BackofficeCapability = {
       toPiStatus(
         await getPiDo(objects, orgId).setAdminConfig({
           ...piConfigureInputSchema.parse(payload),
-          orgId,
+          scope: { kind: "org", orgId },
         }),
       ),
   },

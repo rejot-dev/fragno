@@ -1,12 +1,15 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
+import type { BackofficePrincipal } from "@/backoffice-runtime/context";
+import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { PiObject } from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
+import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import type { MasterFileSystem } from "@/files";
 import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
@@ -92,10 +95,7 @@ const harnessesSchema = z.array(harnessSchema).superRefine((harnesses, context) 
 });
 
 const storedPiConfigSchema: z.ZodType<StoredPiConfig> = z.object({
-  scope: z.object({
-    kind: z.literal("org"),
-    orgId: z.string().trim().min(1, "Stored Pi config is missing an organisation id."),
-  }),
+  scope: backofficeContextScopeSchema,
   apiKeys: z.object({
     openai: apiKeySchema,
     anthropic: apiKeySchema,
@@ -107,7 +107,7 @@ const storedPiConfigSchema: z.ZodType<StoredPiConfig> = z.object({
 });
 
 const setAdminConfigInputSchema = piConfigureInputSchema.extend({
-  orgId: z.string().trim().min(1, "Pi configuration requires an organisation id."),
+  scope: backofficeContextScopeSchema,
   harnesses: harnessesSchema.optional(),
 });
 
@@ -157,12 +157,11 @@ const isConfigured = (config: StoredPiConfig | null) => {
   if (!config) {
     return false;
   }
-  const hasScope = config.scope.kind === "org" && config.scope.orgId.trim().length > 0;
   const hasKeys = Boolean(
     config.apiKeys.openai || config.apiKeys.anthropic || config.apiKeys.gemini,
   );
   const hasHarnesses = resolvePiHarnesses(config.harnesses).length > 0;
-  return hasScope && hasKeys && hasHarnesses;
+  return hasKeys && hasHarnesses;
 };
 
 const buildConfigState = (config: StoredPiConfig | null): PiConfigState => {
@@ -173,7 +172,7 @@ const buildConfigState = (config: StoredPiConfig | null): PiConfigState => {
   return {
     configured: isConfigured(config),
     config: {
-      orgId: config.scope.orgId,
+      scope: config.scope,
       apiKeys: {
         openai: maskSecret(config.apiKeys.openai),
         anthropic: maskSecret(config.apiKeys.anthropic),
@@ -258,7 +257,11 @@ export class InMemoryPiObject implements PiObject {
           }
 
           const { scope } = stored;
-          await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
+          if (scope.kind !== "org") {
+            return;
+          }
+
+          await this.#runtimeServices.objects.automations.forOrg(scope.orgId).ingestEvent({
             id: item.id,
             scope,
             source: "pi",
@@ -282,15 +285,23 @@ export class InMemoryPiObject implements PiObject {
   }
 
   #createRuntime(config: StoredPiConfig) {
-    const orgId = config.scope.orgId;
+    const { scope } = config;
+    const scopeKey = backofficeContextScopeSinglePathSegment(scope);
+    const actor: BackofficePrincipal =
+      scope.kind === "system"
+        ? { type: "system", id: `pi:${scopeKey}` }
+        : {
+            type: "object",
+            id: `pi:${scopeKey}`,
+            ...(scope.kind === "org" || scope.kind === "project"
+              ? { organizationIds: [scope.orgId] }
+              : {}),
+          };
 
     const kernel = new BackofficeKernel({ objects: this.#runtimeServices.objects });
-    const execution = {
-      actor: { type: "object" as const, id: `pi:${orgId}`, organizationIds: [orgId] },
-      scope: { kind: "org" as const, orgId },
-    };
+    const execution = { actor, scope };
     const sessionFileSystemContext: PiSessionFileSystemContext = {
-      orgId,
+      scope,
       objects: this.#runtimeServices.objects,
       kernel,
       execution,
@@ -300,13 +311,12 @@ export class InMemoryPiObject implements PiObject {
     return createPiRuntime({
       config,
       adapters: this.#runtimeServices.adapters,
-      orgId,
       env: this.#env,
       codemode: {
         ...createPiCodemodeRuntime(this.#env),
         workflow: createRouteBackedAutomationWorkflowRuntime({
-          object: this.#runtimeServices.objects.automations.forOrg(orgId),
-          scope: { kind: "org", orgId },
+          object: this.#runtimeServices.objects.automations.for(scope),
+          scope,
         }),
       },
       sessionFileSystems: this.#sessionFileSystems,
@@ -332,7 +342,10 @@ export class InMemoryPiObject implements PiObject {
           throw error;
         }
 
-        await this.#runtimeServices.objects.billing.forOrg(orgId).recordEvent(event);
+        // Billing objects are organisation-owned, so only scopes with an owning organisation emit usage events.
+        if (scope.kind === "org" || scope.kind === "project") {
+          await this.#runtimeServices.objects.billing.forOrg(scope.orgId).recordEvent(event);
+        }
       },
     });
   }
@@ -355,10 +368,9 @@ export class InMemoryPiObject implements PiObject {
 
   async setAdminConfig(payload: unknown): Promise<PiConfigState> {
     const parsed = setAdminConfigInputSchema.parse(payload);
-    const normalizedOrgId = parsed.orgId;
+    const scope = parsed.scope;
 
     const existing = await this.#host.loadStored();
-    const scope = { kind: "org" as const, orgId: normalizedOrgId };
     this.#host.assertSameScope(existing, scope);
 
     const now = new Date().toISOString();
