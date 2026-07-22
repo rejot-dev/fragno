@@ -13,7 +13,6 @@ Make infrastructure and nondeterminism explicit in the operation's inputs.
 type RegistrationDependencies = {
   users: UserRepository;
   mail: MailDelivery;
-  clock: Clock;
   ids: IdGenerator;
 };
 
@@ -21,13 +20,11 @@ export async function registerUser(
   input: RegisterUserInput,
   dependencies: RegistrationDependencies,
 ) {
-  const user = createUser({
+  const user = await dependencies.users.insert({
     id: dependencies.ids.next(),
     email: input.email,
-    createdAt: dependencies.clock.now(),
   });
 
-  await dependencies.users.insert(user);
   await dependencies.mail.deliver(welcomeMessageFor(user));
 
   return user;
@@ -47,12 +44,20 @@ A local implementation should honor the production contract and maintain real st
 class MemoryUserRepository implements UserRepository {
   readonly users = new Map<UserId, User>();
 
-  async insert(user: User) {
-    if (this.users.has(user.id)) {
-      throw new DuplicateUserError(user.id);
+  constructor(private readonly databaseClock: Clock) {}
+
+  async insert(input: NewUser): Promise<User> {
+    if (this.users.has(input.id)) {
+      throw new DuplicateUserError(input.id);
     }
 
+    const user = {
+      ...input,
+      createdAt: this.databaseClock.now(),
+    };
+
     this.users.set(user.id, user);
+    return user;
   }
 
   async find(id: UserId) {
@@ -66,17 +71,25 @@ per-test object programmed to return a particular answer.
 
 ## Control nondeterminism with implementations
 
-Clocks and identifier generators should remain ordinary dependencies.
+Clocks and identifier generators should remain ordinary dependencies at the boundary that owns them.
+An application clock belongs to operations that own a domain decision. A database clock belongs to
+the repository or adapter that assigns persistence timestamps and evaluates database-coordinated
+time invariants.
 
-### Positive — Supply deterministic implementations
+### Positive — Supply deterministic implementations to the owning boundary
 
 ```ts
-const clock = new FixedClock(new Date("2026-01-15T12:00:00Z"));
+const applicationClock = new FixedClock(new Date("2026-01-15T12:00:00Z"));
+const databaseClock = new FixedClock(new Date("2026-01-15T12:00:05Z"));
 const ids = new SequenceIdGenerator([userId("user-1")]);
+
+const users = new MemoryUserRepository(databaseClock);
+const trial = beginTrial({ plan, startsAt: applicationClock.now() });
 ```
 
-These are deterministic implementations of production contracts, so the tested operation follows its
-normal path.
+These implementations control nondeterminism without making the application clock authoritative for
+database-owned values. Production database adapters should use database time for persisted lifecycle
+timestamps, scheduling, leases, and other state coordinated through the database.
 
 ## Assert observable behavior
 
@@ -85,10 +98,11 @@ Exercise the public operation and inspect the concrete collaborators' resulting 
 ### Positive — Assert observable state
 
 ```ts
-const users = new MemoryUserRepository();
+const databaseClock = new FixedClock(new Date("2026-01-15T12:00:05Z"));
+const users = new MemoryUserRepository(databaseClock);
 const mail = new MemoryMailDelivery();
 
-const user = await registerUser(input, { users, mail, clock, ids });
+const user = await registerUser(input, { users, mail, ids });
 
 expect(await users.find(user.id)).toEqual(user);
 expect(mail.deliveries).toContainEqual(welcomeMessageFor(user));
@@ -139,6 +153,6 @@ discoverable while editing.
 ## Review criterion
 
 Code is concretely testable when dependencies are explicit, deterministic implementations control
-time and identity, local implementations preserve real contract behavior, tests exercise public
-operations, infrastructure adapters receive integration coverage, and source files sit beside their
-tests.
+time and identity at the boundaries that own them, database time remains owned by storage adapters,
+local implementations preserve real contract behavior, tests exercise public operations,
+infrastructure adapters receive integration coverage, and source files sit beside their tests.

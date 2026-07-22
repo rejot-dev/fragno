@@ -176,6 +176,12 @@ the modeled query graph, then derive locally. Keep external or long-running work
 transaction. When an operation genuinely requires **retrieve → external work → mutate**, make that
 split explicit in its structure and naming.
 
+**Use database time as the single source of truth for database-coordinated time.** Timestamps used
+for persistence lifecycle, scheduling, leases, expiration, or transaction invariants should be
+generated and compared inside the database unit of work. Do not mix process time with database time
+within the same decision. Preserve externally owned timestamps as separate facts, and use revisions
+or sequences—not wall-clock time—for causal ordering.
+
 **Complete when:** every database-dependent decision is backed by an upfront read, every write
 follows its validation, and each operation has the smallest explicit transaction boundary that
 preserves consistency.
