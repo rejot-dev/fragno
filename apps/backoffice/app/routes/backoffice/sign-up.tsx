@@ -7,10 +7,16 @@ import { createAuthRouteCaller, getAuthMe } from "@/fragno/auth/auth-server";
 
 import type { Route } from "./+types/sign-up";
 
-type BackofficeSignUpActionData = {
-  ok: false;
-  message: string;
-};
+type BackofficeSignUpActionData =
+  | {
+      ok: false;
+      message: string;
+    }
+  | {
+      ok: true;
+      status: "email_verification_required";
+      email: string;
+    };
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   if (import.meta.env.MODE !== "development") {
@@ -62,10 +68,18 @@ export async function action({ request, context }: Route.ActionArgs) {
       } satisfies BackofficeSignUpActionData;
     }
 
-    if (response.type !== "json" && response.type !== "empty") {
+    if (response.type !== "json") {
       return {
         ok: false,
         message: "Unable to create an account.",
+      } satisfies BackofficeSignUpActionData;
+    }
+
+    if (response.data.status === "email_verification_required") {
+      return {
+        ok: true,
+        status: response.data.status,
+        email: response.data.email,
       } satisfies BackofficeSignUpActionData;
     }
 
@@ -88,7 +102,8 @@ export function meta() {
 export default function BackofficeSignUp() {
   const actionData = useActionData<BackofficeSignUpActionData>();
   const navigation = useNavigation();
-  const signUpError = actionData?.message ?? null;
+  const verificationRequired = actionData?.ok ? actionData : null;
+  const signUpError = actionData && !actionData.ok ? actionData.message : null;
   const signUpPending = navigation.state === "submitting";
 
   return (
@@ -126,68 +141,87 @@ export default function BackofficeSignUp() {
 
         <div className="w-full max-w-md">
           <FormContainer
-            title="Create account"
-            description="Use your team email to create a backoffice login."
-            eyebrow="Get access"
+            title={verificationRequired ? "Check your email" : "Create account"}
+            description={
+              verificationRequired
+                ? `A verification link is being delivered to ${verificationRequired.email}.`
+                : "Use your team email to create a backoffice login."
+            }
+            eyebrow={verificationRequired ? "Verification required" : "Get access"}
           >
-            <Form method="post" className="space-y-3">
-              <FormField label="Work email" hint="Use the email tied to your team access.">
-                <input
-                  type="email"
-                  name="signUpEmail"
-                  autoComplete="username"
-                  required
-                  placeholder="team@fragno.dev"
-                  className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-                />
-              </FormField>
-              <FormField label="Create password" hint="At least 8 characters.">
-                <input
-                  type="password"
-                  name="signUpPassword"
-                  autoComplete="new-password"
-                  required
-                  placeholder="••••••••"
-                  className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-                />
-              </FormField>
-              <FormField label="Confirm password" hint="Re-type to confirm.">
-                <input
-                  type="password"
-                  name="signUpPasswordConfirm"
-                  autoComplete="new-password"
-                  required
-                  placeholder="••••••••"
-                  className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-                />
-              </FormField>
-              {signUpError ? (
-                <p className="text-xs text-red-400">{signUpError}</p>
-              ) : (
-                <p className="text-xs text-[var(--bo-muted-2)]">
-                  Created accounts are active immediately in development.
+            {verificationRequired ? (
+              <div className="space-y-4">
+                <p className="text-sm leading-6 text-[var(--bo-muted)]">
+                  Open the link in the email before signing in. Delivery is retried automatically if
+                  the email provider is temporarily unavailable.
                 </p>
-              )}
-              <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
-                <button
-                  type="submit"
-                  disabled={signUpPending}
-                  className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+                <Link
+                  to="/backoffice/login"
+                  className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
                 >
-                  {signUpPending ? "Creating account…" : "Sign up"}
-                </button>
-                <span className="text-xs text-[var(--bo-muted-2)]">
-                  Already registered?{" "}
-                  <Link
-                    to="/backoffice/login"
-                    className="font-semibold tracking-[0.22em] text-[var(--bo-accent)] uppercase transition-colors hover:text-[var(--bo-accent-strong)]"
-                  >
-                    Sign in
-                  </Link>
-                  .
-                </span>
+                  Continue to sign in
+                </Link>
               </div>
-            </Form>
+            ) : (
+              <Form method="post" className="space-y-3">
+                <FormField label="Work email" hint="Use the email tied to your team access.">
+                  <input
+                    type="email"
+                    name="signUpEmail"
+                    autoComplete="username"
+                    required
+                    placeholder="team@fragno.dev"
+                    className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                  />
+                </FormField>
+                <FormField label="Create password" hint="At least 8 characters.">
+                  <input
+                    type="password"
+                    name="signUpPassword"
+                    autoComplete="new-password"
+                    required
+                    placeholder="••••••••"
+                    className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                  />
+                </FormField>
+                <FormField label="Confirm password" hint="Re-type to confirm.">
+                  <input
+                    type="password"
+                    name="signUpPasswordConfirm"
+                    autoComplete="new-password"
+                    required
+                    placeholder="••••••••"
+                    className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                  />
+                </FormField>
+                {signUpError ? (
+                  <p className="text-xs text-red-400">{signUpError}</p>
+                ) : (
+                  <p className="text-xs text-[var(--bo-muted-2)]">
+                    Email verification may be required before signing in.
+                  </p>
+                )}
+                <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
+                  <button
+                    type="submit"
+                    disabled={signUpPending}
+                    className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+                  >
+                    {signUpPending ? "Creating account…" : "Sign up"}
+                  </button>
+                  <span className="text-xs text-[var(--bo-muted-2)]">
+                    Already registered?{" "}
+                    <Link
+                      to="/backoffice/login"
+                      className="font-semibold tracking-[0.22em] text-[var(--bo-accent)] uppercase transition-colors hover:text-[var(--bo-accent-strong)]"
+                    >
+                      Sign in
+                    </Link>
+                    .
+                  </span>
+                </div>
+              </Form>
+            )}
           </FormContainer>
         </div>
       </div>

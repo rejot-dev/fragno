@@ -4,6 +4,7 @@ import z from "zod";
 import {
   createAuthFragment,
   github,
+  type AuthEmailVerificationConfig,
   type AuthHooks,
   type AuthOAuthConfig,
   type BeforeCreateUserHook,
@@ -25,6 +26,7 @@ export type AuthInit =
 type AuthServerOptions = {
   baseUrl?: string;
   beforeCreateUser?: BeforeCreateUserHook;
+  emailVerification?: AuthEmailVerificationConfig;
   authHooks?: AuthHooks;
   organizationHooks?: OrganizationHooks;
 };
@@ -129,6 +131,7 @@ export function createAuthServer(init: AuthInit, options: AuthServerOptions = {}
       },
       hooks: options.authHooks,
       beforeCreateUser: options.beforeCreateUser,
+      emailVerification: options.emailVerification,
       organizations: {
         autoCreateOrganization: {},
         ...(options.organizationHooks ? { hooks: options.organizationHooks } : {}),

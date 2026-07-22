@@ -103,6 +103,9 @@ const createDevRejotAdminHook = (): BeforeCreateUserHook | undefined => {
     email.trim().toLowerCase().endsWith("@rejot.dev") ? { role: "admin" } : undefined;
 };
 
+const isDevelopmentAdminEmailVerificationExempt = (user: Pick<UserSummary, "role">): boolean =>
+  import.meta.env.MODE === "development" && user.role === "admin";
+
 const createOrganizationAutomationHooks = (
   runtime: BackofficeRuntimeServices,
 ): OrganizationHooks => ({
@@ -203,6 +206,10 @@ export class InMemoryAuthObject implements AuthObject {
       {
         baseUrl,
         beforeCreateUser: createDevRejotAdminHook(),
+        emailVerification: {
+          required: runtime.config.transactionalEmails.enabled,
+          isExempt: ({ user }) => isDevelopmentAdminEmailVerificationExempt(user),
+        },
         authHooks: {
           onUserCreated: async function queueUserSignUpVerificationEmail(payload, context) {
             if (!runtime.config.transactionalEmails.enabled) {
@@ -210,6 +217,10 @@ export class InMemoryAuthObject implements AuthObject {
             }
 
             if (payload.actor?.id !== payload.user.id || payload.emailVerifiedAt !== null) {
+              return;
+            }
+
+            if (isDevelopmentAdminEmailVerificationExempt(payload.user)) {
               return;
             }
 
