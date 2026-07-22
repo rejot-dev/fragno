@@ -5,11 +5,6 @@ import { piHarnessDefinition } from "../pi/definition";
 import type { commandAckSchema, commandInputSchema } from "../pi/route-schemas";
 import { piRoutesFactory } from "../routes";
 
-export {
-  createSessionProjectionDataStore,
-  readPiWorkflowLofiSessionProjection,
-} from "./workflow-lofi-session-projection";
-
 export type PiSessionCommandInput = z.infer<typeof commandInputSchema>;
 export type PiSessionCommandAck = z.infer<typeof commandAckSchema>;
 
