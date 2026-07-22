@@ -2,7 +2,7 @@ import { assert, describe, expect, it } from "vitest";
 
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
 
-import { createCollection, createLiveQueryCollection } from "@tanstack/db";
+import { BTreeIndex, createCollection, createLiveQueryCollection } from "@tanstack/db";
 
 import { fragnoCollectionOptions } from "./collection-options";
 import { createFragnoOutboxCoordinator } from "./coordinator";
@@ -11,6 +11,32 @@ import type { FragnoOutboxStreamingTransport } from "./streaming-transport";
 const appSchema = schema("app", (s) =>
   s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),
 );
+
+describe("Fragno collection configuration", () => {
+  it("enables eager automatic indexing with the B-tree index by default", () => {
+    const coordinator = createFragnoOutboxCoordinator({
+      internalUrl: "https://example.com/_internal",
+      transport: {
+        async getAdapterIdentity() {
+          return "adapter-1";
+        },
+        async list() {
+          return [];
+        },
+      },
+    });
+
+    const options = fragnoCollectionOptions({
+      id: "users",
+      coordinator,
+      target: { schema: appSchema, table: "users" },
+    });
+
+    assert(options.autoIndex === "eager");
+    expect(options.defaultIndexType).toBe(BTreeIndex);
+    coordinator.dispose();
+  });
+});
 
 describe("Fragno collection synchronization state", () => {
   it("resolves the initial sync and exposes the ready state", async () => {

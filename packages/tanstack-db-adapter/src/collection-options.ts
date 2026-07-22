@@ -2,7 +2,12 @@ import { resolveDatabaseNamespace } from "@fragno-dev/db/database-namespace";
 import type { AnySchema } from "@fragno-dev/db/schema";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { BaseCollectionConfig, CollectionConfig, UtilsRecord } from "@tanstack/db";
+import {
+  BTreeIndex,
+  type BaseCollectionConfig,
+  type CollectionConfig,
+  type UtilsRecord,
+} from "@tanstack/db";
 
 import { applyFragnoOutboxEntry, type FragnoOutboxApplyControls } from "./apply-entry";
 import {
@@ -108,6 +113,8 @@ export function fragnoCollectionOptions<
 
   return {
     ...collectionBehavior,
+    autoIndex: collectionBehavior.autoIndex ?? "eager",
+    defaultIndexType: collectionBehavior.defaultIndexType ?? BTreeIndex,
     id,
     getKey: (row) => row[idColumnName] as string,
     syncMode: "eager",
