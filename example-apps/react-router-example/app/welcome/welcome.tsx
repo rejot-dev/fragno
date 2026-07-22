@@ -4,7 +4,7 @@ export function WelcomeShell({ children }: { children: ReactNode }) {
   return (
     <main className="relative isolate">
       <div className="pointer-events-none absolute inset-0 -z-10 [mask-image:radial-gradient(60%_60%_at_50%_20%,black,transparent)] opacity-60">
-        <div className="h-full w-full bg-gradient-to-b from-blue-50 via-transparent to-transparent dark:from-blue-950" />
+        <div className="h-full w-full bg-linear-to-b from-blue-50 via-transparent to-transparent dark:from-blue-950" />
       </div>
       {children}
     </main>
@@ -20,7 +20,7 @@ export function WelcomeHero() {
       </div>
 
       <h1 className="mt-6 text-5xl leading-[1.1] font-semibold tracking-tight text-balance sm:text-6xl">
-        <span className="bg-gradient-to-r from-blue-600 via-purple-600 to-rose-600 bg-clip-text text-transparent">
+        <span className="bg-linear-to-r from-blue-600 via-purple-600 to-rose-600 bg-clip-text text-transparent">
           Fragno
         </span>{" "}
         — Composable web primitives
@@ -67,40 +67,40 @@ export function WelcomeHero() {
   );
 }
 
-export function WelcomeExperiments() {
-  const experiments = [
-    {
-      title: "Core + Adapters",
-      description: "Framework‑agnostic core with thin React/Vanilla adapters.",
-      icon: "🧩",
-    },
-    {
-      title: "Typed Client Builder",
-      description: "Generate ergonomic, typed client hooks and stores.",
-      icon: "🧪",
-    },
-    {
-      title: "File‑based API",
-      description: "Minimal API surfaces with composable routing primitives.",
-      icon: "🗂️",
-    },
-    {
-      title: "Tiny Runtime",
-      description: "Small, explicit primitives over heavy abstractions.",
-      icon: "✨",
-    },
-    {
-      title: "First‑class DX",
-      description: "Great defaults, strict types, zero magic.",
-      icon: "⚙️",
-    },
-    {
-      title: "Chatno Integration",
-      description: "Seamless AI assistant tooling built on the same core.",
-      icon: "🤖",
-    },
-  ];
+const experiments = [
+  {
+    title: "Core + Adapters",
+    description: "Framework‑agnostic core with thin React/Vanilla adapters.",
+    icon: "🧩",
+  },
+  {
+    title: "Typed Client Builder",
+    description: "Generate ergonomic, typed client hooks and stores.",
+    icon: "🧪",
+  },
+  {
+    title: "File‑based API",
+    description: "Minimal API surfaces with composable routing primitives.",
+    icon: "🗂️",
+  },
+  {
+    title: "Tiny Runtime",
+    description: "Small, explicit primitives over heavy abstractions.",
+    icon: "✨",
+  },
+  {
+    title: "First‑class DX",
+    description: "Great defaults, strict types, zero magic.",
+    icon: "⚙️",
+  },
+  {
+    title: "Chatno Integration",
+    description: "Seamless AI assistant tooling built on the same core.",
+    icon: "🤖",
+  },
+];
 
+export function WelcomeExperiments() {
   return (
     <section className="mx-auto max-w-5xl px-6 pb-16">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -109,7 +109,7 @@ export function WelcomeExperiments() {
             key={item.title}
             className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white/60 p-4 shadow-sm backdrop-blur transition dark:border-gray-800 dark:bg-gray-900/60"
           >
-            <div className="absolute inset-0 -z-10 bg-gradient-to-br from-transparent via-transparent to-blue-50 opacity-0 transition group-hover:opacity-100 dark:to-blue-950" />
+            <div className="absolute inset-0 -z-10 bg-linear-to-br from-transparent via-transparent to-blue-50 opacity-0 transition group-hover:opacity-100 dark:to-blue-950" />
             <div className="flex items-start gap-3">
               <div className="text-2xl leading-none">{item.icon}</div>
               <div>

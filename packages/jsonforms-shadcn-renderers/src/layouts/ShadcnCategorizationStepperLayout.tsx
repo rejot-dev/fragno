@@ -9,6 +9,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { cn } from "@/lib/utils";
 
 import { withJsonFormsLayoutProps } from "../jsonforms-hocs";
+import { createUiSchemaElementKeys } from "../util/ui-schema-keys";
 
 export const ShadcnCategorizationStepperLayout = ({
   uischema,
@@ -31,7 +32,9 @@ export const ShadcnCategorizationStepperLayout = ({
     return null;
   }
 
+  const categoryKeys = createUiSchemaElementKeys(categories);
   const currentCategory = categories[currentStep];
+  const currentElementKeys = createUiSchemaElementKeys(currentCategory.elements ?? []);
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === categories.length - 1;
 
@@ -57,7 +60,7 @@ export const ShadcnCategorizationStepperLayout = ({
         {/* Step Indicator */}
         <div className="flex w-full items-center">
           {categories.map((category, index) => (
-            <div key={index} className="flex flex-1 items-center last:flex-none">
+            <div key={categoryKeys[index]} className="flex flex-1 items-center last:flex-none">
               <button
                 type="button"
                 onClick={() => {
@@ -92,7 +95,7 @@ export const ShadcnCategorizationStepperLayout = ({
         <div className="flex flex-col gap-4">
           {currentCategory.elements?.map((element, index) => (
             <JsonFormsDispatch
-              key={`${path}-${currentStep}-${index}`}
+              key={`${path}-${currentElementKeys[index]}`}
               uischema={element}
               schema={schema}
               path={path}

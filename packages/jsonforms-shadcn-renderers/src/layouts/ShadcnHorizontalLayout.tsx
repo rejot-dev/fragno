@@ -3,6 +3,7 @@ import { rankWith, uiTypeIs } from "@jsonforms/core";
 import { JsonFormsDispatch } from "@jsonforms/react";
 
 import { withJsonFormsLayoutProps } from "../jsonforms-hocs";
+import { createUiSchemaElementKeys } from "../util/ui-schema-keys";
 
 export const ShadcnHorizontalLayout = ({
   uischema,
@@ -19,10 +20,12 @@ export const ShadcnHorizontalLayout = ({
     return null;
   }
 
+  const elementKeys = createUiSchemaElementKeys(horizontalLayout.elements);
+
   return (
     <div className="flex flex-row gap-4">
       {horizontalLayout.elements.map((child, index) => (
-        <div key={`${path}-${index}`} className="flex-1">
+        <div key={`${path}-${elementKeys[index]}`} className="flex-1">
           <JsonFormsDispatch
             uischema={child}
             schema={schema}

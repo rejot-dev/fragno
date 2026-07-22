@@ -1,3 +1,10 @@
+function createLocalCalendarDate(year: number, monthIndex: number, day: number): Date {
+  const date = new Date(0);
+  date.setFullYear(year, monthIndex, day);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
 export function parseOptionalString(value: unknown, fieldName: string): string | undefined {
   if (value === undefined) {
     return undefined;
@@ -8,13 +15,66 @@ export function parseOptionalString(value: unknown, fieldName: string): string |
   return value;
 }
 
-// TODO: What kind of format is this parsing?
 export function parseDate(value: string | undefined): Date | undefined {
   if (!value) {
     return undefined;
   }
-  const date = new Date(value);
-  return isNaN(date.getTime()) ? undefined : date;
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
+    return undefined;
+  }
+
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const date = createLocalCalendarDate(year, monthIndex, day);
+
+  if (date.getFullYear() !== year || date.getMonth() !== monthIndex || date.getDate() !== day) {
+    return undefined;
+  }
+
+  return date;
+}
+
+export function formatDateForDisplay(date: Date): string {
+  return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
+}
+
+export function parseDateTimeForPicker(value: string | undefined): {
+  date: Date | undefined;
+  time: string;
+} {
+  if (!value) {
+    return { date: undefined, time: "" };
+  }
+
+  const instant = new Date(value);
+  if (isNaN(instant.getTime())) {
+    return { date: undefined, time: "" };
+  }
+
+  return {
+    date: createLocalCalendarDate(
+      instant.getUTCFullYear(),
+      instant.getUTCMonth(),
+      instant.getUTCDate(),
+    ),
+    time: `${String(instant.getUTCHours()).padStart(2, "0")}:${String(
+      instant.getUTCMinutes(),
+    ).padStart(2, "0")}`,
+  };
+}
+
+export function formatDateTimeForSave(date: Date | undefined, time: string): string | undefined {
+  if (!date) {
+    return undefined;
+  }
+
+  const [hours, minutes] = time ? time.split(":").map(Number) : [0, 0];
+  return new Date(
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), hours || 0, minutes || 0),
+  ).toISOString();
 }
 
 // Format as YYYY-MM-DD while preserving local date. Using toISOString().slice(0,10) would
@@ -45,11 +105,4 @@ export function formatTimeForSave(value: string): string | undefined {
   }
   // Native time input returns "HH:mm", append ":00" for seconds
   return value.length === 5 ? `${value}:00` : value;
-}
-
-// Extract "HH:mm" from a Date object
-export function formatTimeFromDate(date: Date): string {
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
 }

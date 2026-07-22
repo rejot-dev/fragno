@@ -5,6 +5,7 @@ import { JsonFormsDispatch } from "@jsonforms/react";
 import { FieldSet, FieldLabel, FieldDescription } from "@/components/ui/field";
 
 import { withJsonFormsLayoutProps } from "../jsonforms-hocs";
+import { createUiSchemaElementKeys } from "../util/ui-schema-keys";
 
 export const ShadcnGroupLayout = ({
   uischema,
@@ -23,24 +24,24 @@ export const ShadcnGroupLayout = ({
     return null;
   }
 
-  const hasElements = groupLayout.elements && groupLayout.elements.length > 0;
+  const elements = groupLayout.elements ?? [];
+  const elementKeys = createUiSchemaElementKeys(elements);
 
   return (
     <FieldSet>
       {label && <FieldLabel>{label}</FieldLabel>}
       {description && <FieldDescription>{description}</FieldDescription>}
-      {hasElements &&
-        groupLayout.elements.map((child, index) => (
-          <JsonFormsDispatch
-            key={`${path}-${index}`}
-            uischema={child}
-            schema={schema}
-            path={path}
-            enabled={enabled}
-            renderers={renderers}
-            cells={cells}
-          />
-        ))}
+      {elements.map((child, index) => (
+        <JsonFormsDispatch
+          key={`${path}-${elementKeys[index]}`}
+          uischema={child}
+          schema={schema}
+          path={path}
+          enabled={enabled}
+          renderers={renderers}
+          cells={cells}
+        />
+      ))}
     </FieldSet>
   );
 };

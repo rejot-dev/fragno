@@ -12,7 +12,7 @@ export function meta(_: Route.MetaArgs) {
 export default function Home() {
   return (
     <main className="flex flex-col gap-12">
-      <header className="grid gap-8 rounded-[32px] border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-slate-200/70 p-10 shadow-sm lg:grid-cols-[1.2fr_0.8fr]">
+      <header className="grid gap-8 rounded-[32px] border border-slate-200 bg-linear-to-br from-white via-slate-50 to-slate-200/70 p-10 shadow-sm lg:grid-cols-[1.2fr_0.8fr]">
         <div>
           <p className="text-xs font-semibold tracking-[0.35em] text-slate-500 uppercase">
             Fragno workflows

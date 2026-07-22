@@ -41,7 +41,7 @@ export const ShadcnObjectControl = ({
         uischema,
         rootSchema,
       ),
-    [uischemas, schema, uischema.scope, path, label, uischema, rootSchema],
+    [uischemas, schema, path, label, uischema, rootSchema],
   );
 
   if (!visible) {

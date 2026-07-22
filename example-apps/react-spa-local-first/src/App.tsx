@@ -236,6 +236,7 @@ const projectUsageProjection = defineLocalProjection({
     );
 
     for (const { item, row: previous } of retrieved.comments) {
+      const mutationId = item.mutation.externalId;
       const reference = item.reference ?? previous?.reference;
       if (!reference) {
         continue;
@@ -244,21 +245,21 @@ const projectUsageProjection = defineLocalProjection({
       const title = item.title ?? previous?.title ?? null;
       const content = item.content ?? previous?.content ?? null;
       if (previous) {
-        projectUsage.update("comment_projection_state", item.mutation.externalId, (b) =>
+        projectUsage.update("comment_projection_state", mutationId, (b) =>
           b.set({ reference, title, content }),
         );
       } else {
         projectUsage.create("comment_projection_state", {
-          id: item.mutation.externalId,
+          id: mutationId,
           reference,
           title,
           content,
         });
       }
 
-      const existing = commentProjectUsageByMutationId.get(item.mutation.externalId);
+      const existing = commentProjectUsageByMutationId.get(mutationId);
       const values = { latestCommentTitle: title, latestCommentContent: content };
-      if (existing || !commentProjectUsageByMutationId.has(item.mutation.externalId)) {
+      if (existing || !commentProjectUsageByMutationId.has(mutationId)) {
         projectUsage.update("project_usage", reference, (b) => b.set(values));
       } else {
         projectUsage.create("project_usage", { id: reference, reference, ...values });
@@ -266,6 +267,7 @@ const projectUsageProjection = defineLocalProjection({
     }
 
     for (const { item, row: previous } of retrieved.totals) {
+      const mutationId = item.mutation.externalId;
       const reference = item.reference ?? previous?.reference;
       if (!reference || item.total === undefined) {
         continue;
@@ -273,14 +275,14 @@ const projectUsageProjection = defineLocalProjection({
 
       if (!previous) {
         projectUsage.create("upvote_total_projection_state", {
-          id: item.mutation.externalId,
+          id: mutationId,
           reference,
         });
       }
 
-      const existing = totalProjectUsageByMutationId.get(item.mutation.externalId);
+      const existing = totalProjectUsageByMutationId.get(mutationId);
       const values = { ratingTotal: item.total };
-      if (existing || !totalProjectUsageByMutationId.has(item.mutation.externalId)) {
+      if (existing || !totalProjectUsageByMutationId.has(mutationId)) {
         projectUsage.update("project_usage", reference, (b) => b.set(values));
       } else {
         projectUsage.create("project_usage", { id: reference, reference, ...values });
@@ -415,6 +417,7 @@ export default function App() {
   const [submitStatuses, setSubmitStatuses] = useState<Record<string, SubmitStatus>>({});
   const [tableHighlights, setTableHighlights] = useState<Record<string, number>>({});
   const [newRowSignatures, setNewRowSignatures] = useState<string[]>([]);
+  const newRowSignatureSet = useMemo(() => new Set(newRowSignatures), [newRowSignatures]);
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [commandForm, setCommandForm] = useState<{
     commandKey: string;
@@ -466,7 +469,7 @@ export default function App() {
   const selectedEndpointSummary = selectedGroup
     ? `${selectedGroupLabel} · ${selectedEndpoint?.baseUrl ?? selectedGroup.outboxUrl}`
     : "Choose an endpoint from the Endpoints tab.";
-  const availableCommands = selectedGroup?.commands ?? [];
+  const availableCommands = useMemo(() => selectedGroup?.commands ?? [], [selectedGroup?.commands]);
   const selectedCommand =
     availableCommands.find((command) => command.key === commandForm.commandKey) ??
     availableCommands[0];
@@ -720,7 +723,6 @@ export default function App() {
 
       try {
         const response = await fetch(buildInternalDescribeUrl(endpoint.baseUrl), { signal });
-        const data = (await response.json()) as InternalDescribeResponse | InternalDescribeError;
 
         if (signal.aborted || cancelled) {
           return;
@@ -738,6 +740,7 @@ export default function App() {
           return;
         }
 
+        const data = (await response.json()) as InternalDescribeResponse | InternalDescribeError;
         if (data && typeof data === "object" && "error" in data) {
           setEndpointInfos((prev) => ({
             ...prev,
@@ -871,14 +874,16 @@ export default function App() {
 
     const refreshCounts = async () => {
       try {
-        const nextCounts: Record<string, number> = {};
-        for (const schema of [...selectedGroup.schemas, ...selectedGroup.localSchemas]) {
-          const query = runtime.adapter.createQueryEngine(schema);
-          for (const tableName of Object.keys(schema.tables)) {
-            const data = await query.find(tableName as never, (b) => b);
-            nextCounts[`${schema.name}.${tableName}`] = data.length;
-          }
-        }
+        const tableCounts = await Promise.all(
+          [...selectedGroup.schemas, ...selectedGroup.localSchemas].flatMap((schema) => {
+            const query = runtime.adapter.createQueryEngine(schema);
+            return Object.keys(schema.tables).map(async (tableName) => {
+              const data = await query.find(tableName as never, (b) => b);
+              return [`${schema.name}.${tableName}`, data.length] as const;
+            });
+          }),
+        );
+        const nextCounts = Object.fromEntries(tableCounts);
 
         if (cancelled) {
           return;
@@ -915,6 +920,7 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
+    let retryTimeout: ReturnType<typeof setTimeout> | undefined;
 
     const loadRows = async () => {
       if (!selectedTable) {
@@ -979,7 +985,7 @@ export default function App() {
         }
         if (isDbClosingError(error)) {
           setTableError(null);
-          setTimeout(() => {
+          retryTimeout = setTimeout(() => {
             if (!cancelled) {
               void loadRows();
             }
@@ -999,6 +1005,9 @@ export default function App() {
 
     return () => {
       cancelled = true;
+      if (retryTimeout !== undefined) {
+        clearTimeout(retryTimeout);
+      }
     };
   }, [endpointToGroup, selectedTable, syncTick, triggerRowHighlights, triggerTableHighlight]);
 
@@ -1087,14 +1096,7 @@ export default function App() {
       cancelled = true;
       controller.abort();
     };
-  }, [
-    buildOutboxEntries,
-    outboxRefreshTick,
-    selectedGroup?.id,
-    selectedGroup?.outboxEnabled,
-    selectedGroup?.outboxUrl,
-    syncTick,
-  ]);
+  }, [buildOutboxEntries, outboxRefreshTick, selectedGroup, syncTick]);
 
   const columns = useMemo(() => {
     const keys = new Set<string>();
@@ -1416,7 +1418,7 @@ export default function App() {
                     <tbody>
                       {rows.map((row, rowIndex) => {
                         const signature = getRowSignature(row);
-                        const isNew = newRowSignatures.includes(signature);
+                        const isNew = newRowSignatureSet.has(signature);
                         const entries = orderRowEntries(row);
                         const expanded = expandedRows[signature];
                         return (
@@ -1626,6 +1628,7 @@ export default function App() {
                     <div className="endpoint-head">
                       <div>
                         <input
+                          aria-label={`Endpoint name for ${endpoint.baseUrl}`}
                           className="input input--title"
                           value={endpoint.label}
                           onChange={(event) => {
