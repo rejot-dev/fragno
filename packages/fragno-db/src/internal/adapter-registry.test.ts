@@ -50,7 +50,7 @@ describe("adapter registry", () => {
         tables: ["alpha_items"],
       },
       { name: "alpha-fragment", mountRoute: "/alpha" },
-      { outboxEnabled: true },
+      { outbox: {} },
     );
 
     expect(registryA.listSchemas()).toHaveLength(1);
@@ -78,14 +78,44 @@ describe("adapter registry", () => {
         name: "alpha",
         namespace: "alpha",
         version: 1,
-        tables: ["alpha_items"],
+        tables: ["alpha_items", "alpha_events"],
       },
       { name: "alpha-fragment", mountRoute: "/alpha" },
-      { outboxEnabled: true },
+      { outbox: { tables: ["alpha_items"] } },
     );
 
     assert(outboxConfig.enabled);
     assert(registry.isOutboxEnabled());
+    expect(registry.outboxState.enabledTablesBySchemaKey.get("alpha")).toEqual(
+      new Set(["alpha_items"]),
+    );
+
+    await adapter.close();
+    sqlite.close();
+  });
+
+  it("rejects outbox tables that are not part of the fragment schema", async () => {
+    const sqlite = new SQLite(":memory:");
+    const adapter = new SqlAdapter({
+      dialect: new SqliteDialect({ database: sqlite }),
+      driverConfig: new BetterSQLite3DriverConfig(),
+    });
+
+    const registry = getRegistryForAdapterSync(adapter);
+    expect(() =>
+      registry.registerSchema(
+        {
+          name: "alpha",
+          namespace: "alpha",
+          version: 1,
+          tables: ["alpha_items"],
+        },
+        { name: "alpha-fragment", mountRoute: "/alpha" },
+        { outbox: { tables: ["missing"] } },
+      ),
+    ).toThrow("Cannot enable outbox for unknown table(s) in schema 'alpha': missing.");
+    expect(registry.listSchemas()).toEqual([]);
+    expect(registry.listOutboxFragments()).toEqual([]);
 
     await adapter.close();
     sqlite.close();

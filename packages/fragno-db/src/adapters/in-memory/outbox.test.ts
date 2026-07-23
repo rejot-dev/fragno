@@ -43,7 +43,10 @@ type OutboxTestContext = {
   cleanup: () => Promise<void>;
 };
 
-async function buildOutboxTest(options: { outboxEnabled?: boolean }): Promise<OutboxTestContext> {
+async function buildOutboxTest(options: {
+  outboxEnabled?: boolean;
+  outboxTables?: readonly string[];
+}): Promise<OutboxTestContext> {
   const adapter = new InMemoryAdapter({
     idSeed: "outbox-seed",
   });
@@ -53,7 +56,12 @@ async function buildOutboxTest(options: { outboxEnabled?: boolean }): Promise<Ou
     .withRoutes([])
     .withOptions({
       databaseAdapter: adapter,
-      outbox: options.outboxEnabled ? { enabled: true } : undefined,
+      outbox: options.outboxEnabled
+        ? {
+            enabled: true,
+            ...(options.outboxTables ? { tables: options.outboxTables } : {}),
+          }
+        : undefined,
     })
     .build();
 
@@ -151,6 +159,35 @@ describe("in-memory outbox", () => {
     expect(entries).toHaveLength(0);
     const mutations = await listOutboxMutations(internalFragment);
     expect(mutations).toHaveLength(0);
+
+    await cleanup();
+  });
+
+  it("writes only mutations from the configured tables", async () => {
+    const { fragment, internalFragment, cleanup } = await buildOutboxTest({
+      outboxEnabled: true,
+      outboxTables: ["posts"],
+    });
+
+    const userId = await createUser(fragment, "selected-tables@example.com");
+    expect(await listOutbox(internalFragment)).toHaveLength(0);
+
+    await createPost(fragment, "Included", FragnoReference.fromInternal(userId.internalId!));
+
+    const entries = await listOutbox(internalFragment);
+    expect(entries).toHaveLength(1);
+    const payload = superjson.deserialize(entries[0].payload as SuperJSONResult) as OutboxPayload;
+    expect(payload.mutations).toEqual([
+      expect.objectContaining({
+        op: "create",
+        table: "posts",
+        values: expect.objectContaining({ title: "Included" }),
+      }),
+    ]);
+    expect(entries[0].refMap).toEqual({ "0.authorId": userId.externalId });
+    expect(await listOutboxMutations(internalFragment)).toEqual([
+      expect.objectContaining({ table: "posts", externalId: payload.mutations[0].externalId }),
+    ]);
 
     await cleanup();
   });

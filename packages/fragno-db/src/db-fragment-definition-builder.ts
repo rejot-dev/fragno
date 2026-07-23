@@ -73,7 +73,7 @@ type RegistryResolver = {
     registerSchema: (
       schema: RegistrySchemaInfo,
       fragment: RegistryFragmentMeta,
-      options?: { outboxEnabled?: boolean },
+      options?: { outbox?: { tables?: readonly string[] } },
     ) => void;
     registerSyncCommands: (registration: SyncCommandTargetRegistration) => void;
   };
@@ -94,6 +94,14 @@ type AnyHttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPT
 
 type AnyFragnoRouteConfig = FragnoRouteConfig<AnyHttpMethod, string, undefined, undefined>;
 
+export type FragmentOutboxOptions = {
+  enabled?: boolean;
+  /**
+   * Table names to include in the outbox. When omitted, mutations from every table are included.
+   */
+  tables?: readonly string[];
+};
+
 /**
  * Extended FragnoPublicConfig for database fragments.
  * If databaseAdapter is omitted and better-sqlite3 is available, a default SQLite adapter is used.
@@ -111,9 +119,7 @@ export type FragnoPublicConfigWithDatabase = FragnoPublicConfig & {
   /**
    * Optional outbox configuration for this fragment.
    */
-  outbox?: {
-    enabled?: boolean;
-  };
+  outbox?: FragmentOutboxOptions;
   /**
    * Optional durable hooks processing configuration.
    */
@@ -1090,7 +1096,7 @@ export class DatabaseFragmentDefinitionBuilder<
         const registry = this.#registryResolver.getRegistryForAdapterSync(
           dbContext.databaseAdapter,
         );
-        const outboxEnabled = context.options.outbox?.enabled ?? false;
+        const outboxOptions = context.options.outbox;
         registry.registerSchema(
           {
             name: this.#schema.name,
@@ -1102,7 +1108,11 @@ export class DatabaseFragmentDefinitionBuilder<
             name: baseDef.name,
             mountRoute: resolveMountRoute(baseDef.name, context.options.mountRoute),
           },
-          { outboxEnabled },
+          outboxOptions?.enabled
+            ? {
+                outbox: outboxOptions.tables ? { tables: outboxOptions.tables } : {},
+              }
+            : undefined,
         );
         if (this.#syncRegistry) {
           registry.registerSyncCommands({
