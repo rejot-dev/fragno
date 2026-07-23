@@ -41,6 +41,33 @@ the processor it drives.
   Durable hooks are at-least-once. Your hook handlers must be idempotent.
 </Callout>
 
+## Trace propagation
+
+Hook processors preserve the propagation carrier stored when each hook was enqueued. Incoming W3C
+`traceparent` and `tracestate` headers are captured automatically for hooks triggered by Fragno
+routes. When processing starts, Fragno restores that carrier around the hook attempt.
+
+If the fragment has durable-hooks instrumentation configured, every retry is passed through its
+`runAttempt()` method. The instrumentation can create a separate consumer span for each attempt. If
+the hook calls `this.handlerTx()` and triggers another hook, the child hook captures that attempt
+span only when the instrumentation's `captureContext()` method exports its active carrier. When
+`captureContext()` returns `null`, Fragno instead propagates the original carrier restored for the
+attempt.
+
+For an outbound RPC, queue message, or call to a fragment with separate request storage, use
+`this.capturePropagationContext()` and transport the returned carrier explicitly. It uses the active
+carrier exported by `captureContext()` and falls back to the hook's persisted carrier otherwise. The
+receiver can seed it with `fragment.callServices(factory, { propagationContext })` or
+`fragment.inContext(callback, { propagationContext })` before starting mutations.
+
+The carrier is persisted in the database, so propagation continues when the processor runs in a
+different process or wakes later through a scheduler. The original stored carrier is not replaced by
+retry attempts.
+
+See
+[Durable Hooks: Propagating trace context](/docs/fragno/for-library-authors/database-integration/durable-hooks#propagating-trace-context)
+for configuration, precedence, and explicit override examples.
+
 ## Node hook processor (polling)
 
 Use the Node hook processor for long-lived servers or local development:
