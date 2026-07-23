@@ -226,18 +226,13 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
       respondedAt: invitation.respondedAt ?? null,
     });
 
-    const hookContext = (context: { idempotencyKey: string; hookId: { toString(): string } }) => ({
-      idempotencyKey: context.idempotencyKey,
-      hookId: context.hookId.toString(),
-    });
-
     const baseHooks = {
       onUserCreated: defineHook<DurableUserCreatedHookPayload>(async function (payload) {
         const emailVerifiedAt =
           payload.emailVerifiedAt === null
             ? null
             : parseDurableHookDate(payload.emailVerifiedAt, "onUserCreated.emailVerifiedAt");
-        await authHooks?.onUserCreated?.({ ...payload, emailVerifiedAt }, hookContext(this));
+        await authHooks?.onUserCreated?.({ ...payload, emailVerifiedAt }, this);
       }),
       onUserEmailVerified: defineHook<DurableUserEmailVerifiedHookPayload>(
         async function (payload) {
@@ -245,28 +240,25 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
             payload.emailVerifiedAt,
             "onUserEmailVerified.emailVerifiedAt",
           );
-          await authHooks?.onUserEmailVerified?.(
-            { ...payload, emailVerifiedAt },
-            hookContext(this),
-          );
+          await authHooks?.onUserEmailVerified?.({ ...payload, emailVerifiedAt }, this);
         },
       ),
       onUserEmailVerificationRequested: defineHook<UserEmailVerificationRequestedHookPayload>(
         async function (payload) {
-          await authHooks?.onUserEmailVerificationRequested?.(payload, hookContext(this));
+          await authHooks?.onUserEmailVerificationRequested?.(payload, this);
         },
       ),
       onUserRoleUpdated: defineHook<UserHookPayload>(async function (payload) {
-        await authHooks?.onUserRoleUpdated?.(payload, hookContext(this));
+        await authHooks?.onUserRoleUpdated?.(payload, this);
       }),
       onUserPasswordChanged: defineHook<UserHookPayload>(async function (payload) {
-        await authHooks?.onUserPasswordChanged?.(payload, hookContext(this));
+        await authHooks?.onUserPasswordChanged?.(payload, this);
       }),
       onCredentialIssued: defineHook<CredentialHookPayload>(async function (payload) {
-        await authHooks?.onCredentialIssued?.(payload, hookContext(this));
+        await authHooks?.onCredentialIssued?.(payload, this);
       }),
       onCredentialInvalidated: defineHook<CredentialHookPayload>(async function (payload) {
-        await authHooks?.onCredentialInvalidated?.(payload, hookContext(this));
+        await authHooks?.onCredentialInvalidated?.(payload, this);
       }),
     };
 
@@ -283,15 +275,15 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
                 updatedAt: this.createdAt,
               },
             },
-            hookContext(this),
+            this,
           );
         },
       ),
       onOrganizationUpdated: defineHook<OrganizationHookPayload>(async function (payload) {
-        await organizationHooks?.onOrganizationUpdated?.(payload, hookContext(this));
+        await organizationHooks?.onOrganizationUpdated?.(payload, this);
       }),
       onOrganizationDeleted: defineHook<OrganizationHookPayload>(async function (payload) {
-        await organizationHooks?.onOrganizationDeleted?.(payload, hookContext(this));
+        await organizationHooks?.onOrganizationDeleted?.(payload, this);
       }),
       onMemberAdded: defineHook<DurableOrganizationMemberAddedHookPayload>(
         async function (payload) {
@@ -309,36 +301,36 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
                 updatedAt: this.createdAt,
               },
             },
-            hookContext(this),
+            this,
           );
         },
       ),
       onMemberRemoved: defineHook<OrganizationMemberHookPayload<string>>(async function (payload) {
-        await organizationHooks?.onMemberRemoved?.(payload, hookContext(this));
+        await organizationHooks?.onMemberRemoved?.(payload, this);
       }),
       onMemberRolesUpdated: defineHook<OrganizationMemberHookPayload<string>>(
         async function (payload) {
-          await organizationHooks?.onMemberRolesUpdated?.(payload, hookContext(this));
+          await organizationHooks?.onMemberRolesUpdated?.(payload, this);
         },
       ),
       onInvitationCreated: defineHook<OrganizationInvitationHookPayload<string>>(
         async function (payload) {
-          await organizationHooks?.onInvitationCreated?.(payload, hookContext(this));
+          await organizationHooks?.onInvitationCreated?.(payload, this);
         },
       ),
       onInvitationAccepted: defineHook<OrganizationInvitationHookPayload<string>>(
         async function (payload) {
-          await organizationHooks?.onInvitationAccepted?.(payload, hookContext(this));
+          await organizationHooks?.onInvitationAccepted?.(payload, this);
         },
       ),
       onInvitationRejected: defineHook<OrganizationInvitationHookPayload<string>>(
         async function (payload) {
-          await organizationHooks?.onInvitationRejected?.(payload, hookContext(this));
+          await organizationHooks?.onInvitationRejected?.(payload, this);
         },
       ),
       onInvitationCanceled: defineHook<OrganizationInvitationHookPayload<string>>(
         async function (payload) {
-          await organizationHooks?.onInvitationCanceled?.(payload, hookContext(this));
+          await organizationHooks?.onInvitationCanceled?.(payload, this);
         },
       ),
       onInvitationExpired: defineHook<InvitationExpiredHookPayload>(async function (payload) {
@@ -411,7 +403,7 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
               invitation: result.invitation,
               actor: null,
             },
-            hookContext(this),
+            this,
           );
         }
       }),
@@ -1046,7 +1038,6 @@ export type { FragnoRouteConfig } from "@fragno-dev/core/api";
 export type { GetUsersParams, UserResult, SortField, SortOrder };
 export type AuthMeData = Awaited<ReturnType<ReturnType<typeof createAuthFragmentClients>["me"]>>;
 export type {
-  AuthHookContext,
   AuthHooks,
   BeforeCreateUserHook,
   BeforeCreateUserPayload,
