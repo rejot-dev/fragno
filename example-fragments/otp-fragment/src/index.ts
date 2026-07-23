@@ -6,11 +6,11 @@ import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import { otpFragmentDefinition } from "./definition";
 import type {
   IOtpService,
+  IssueOtpInput,
   OtpConfirmResult,
   OtpFragmentConfig,
   OtpInvalidateResult,
   OtpIssueResult,
-  OtpPayload,
 } from "./definition";
 import type {
   OtpConfirmedHookPayload,
@@ -19,10 +19,6 @@ import type {
   OtpHooks,
   OtpHooksMap,
   OtpIssuedHookPayload,
-  OtpTimestamp,
-  ResolvedOtpConfirmedHookPayload,
-  ResolvedOtpExpiredHookPayload,
-  ResolvedOtpIssuedHookPayload,
 } from "./hooks";
 import { otpRoutesFactory } from "./routes";
 import type {
@@ -34,7 +30,7 @@ import type {
   OtpIssueOutput,
 } from "./routes";
 import { otpStatusSchema, otpTypeSchema } from "./types";
-import type { OtpErrorCode, OtpStatus, OtpType } from "./types";
+import type { OtpErrorCode, OtpPayload, OtpStatus, OtpType } from "./types";
 
 export const otpRoutes = [otpRoutesFactory] as const;
 
@@ -59,7 +55,7 @@ export function createOtpFragmentClients(fragnoConfig: FragnoPublicClientConfig 
   };
 }
 
-export { MAX_OTP_ID_LENGTH, otpFragmentDefinition } from "./definition";
+export { MAX_OTP_REQUEST_ID_LENGTH, otpFragmentDefinition } from "./definition";
 export { OtpIssueError, type OtpIssueErrorCode } from "./errors";
 export { otpRoutesFactory } from "./routes";
 export { otpSchema } from "./schema";
@@ -67,6 +63,7 @@ export { otpStatusSchema, otpTypeSchema };
 export type { FragnoRouteConfig } from "@fragno-dev/core";
 export type {
   IOtpService,
+  IssueOtpInput,
   OtpConfirmResult,
   OtpFragmentConfig,
   OtpInvalidateResult,
@@ -86,9 +83,5 @@ export type {
   OtpInvalidateOutput,
   OtpErrorCode,
   OtpStatus,
-  OtpTimestamp,
   OtpType,
-  ResolvedOtpIssuedHookPayload,
-  ResolvedOtpConfirmedHookPayload,
-  ResolvedOtpExpiredHookPayload,
 };

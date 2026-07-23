@@ -30,7 +30,7 @@ import type {
 import { assertBackofficeObjectAddressAllowed } from "./object-registry";
 import { encodeBackofficeObjectAddress } from "./object-registry";
 import {
-  parseBooleanEnv,
+  parseAuthEmailVerificationRuntimeConfig,
   type BackofficeRuntimeConfig,
   type BackofficeRuntimeServices,
 } from "./runtime-services";
@@ -319,12 +319,10 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
       ...(this.env.DOCS_PUBLIC_BASE_URL?.trim()
         ? { docsPublicBaseUrl: this.env.DOCS_PUBLIC_BASE_URL.trim() }
         : {}),
-      transactionalEmails: {
-        enabled: parseBooleanEnv(
-          "TRANSACTIONAL_EMAILS_ENABLED",
-          this.env.TRANSACTIONAL_EMAILS_ENABLED,
-        ),
-      },
+      authEmailVerification: parseAuthEmailVerificationRuntimeConfig({
+        enabled: this.env.AUTH_EMAIL_VERIFICATION_ENABLED,
+        publicBaseUrl: this.env.DOCS_PUBLIC_BASE_URL,
+      }),
       bindings: {
         api: this.#hasNamespace("API"),
         auth: this.#hasNamespace("AUTH"),

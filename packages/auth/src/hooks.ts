@@ -1,8 +1,10 @@
 import type { DbNow, HookFn } from "@fragno-dev/db";
 
 import type {
+  Organization,
   OrganizationHookPayload,
   OrganizationInvitationHookPayload,
+  OrganizationMember,
   OrganizationMemberHookPayload,
 } from "./organization/types";
 import type { UserSummary } from "./types";
@@ -28,6 +30,13 @@ export interface DurableUserEmailVerifiedHookPayload extends UserHookPayload {
   emailVerifiedAt: string;
 }
 
+export type UserEmailVerificationRequestReason = "sign_up" | "sign_in" | "oauth" | "resend";
+
+export interface UserEmailVerificationRequestedHookPayload {
+  user: UserSummary;
+  reason: UserEmailVerificationRequestReason;
+}
+
 export interface CredentialSummary {
   id: string;
   user: UserSummary;
@@ -51,6 +60,20 @@ export interface InvitationExpiredHookPayload {
 
 export type BeforeCreateUserResult = void | { role?: UserSummary["role"] };
 
+export interface DurableOrganizationCreatedHookPayload extends Omit<
+  OrganizationHookPayload,
+  "organization"
+> {
+  organization: Omit<Organization, "createdAt" | "updatedAt">;
+}
+
+export interface DurableOrganizationMemberAddedHookPayload<
+  TRole extends string = string,
+> extends Omit<OrganizationMemberHookPayload<TRole>, "organization" | "member"> {
+  organization: Omit<Organization, "createdAt" | "updatedAt">;
+  member: Omit<OrganizationMember<TRole>, "createdAt" | "updatedAt">;
+}
+
 // Synchronous to ensure checks run before mutations are committed.
 export type BeforeCreateUserHook = (payload: BeforeCreateUserPayload) => BeforeCreateUserResult;
 
@@ -66,6 +89,10 @@ export interface AuthHooks {
   ) => Promise<void> | void;
   onUserEmailVerified?: (
     payload: UserEmailVerifiedHookPayload,
+    context: AuthHookContext,
+  ) => Promise<void> | void;
+  onUserEmailVerificationRequested?: (
+    payload: UserEmailVerificationRequestedHookPayload,
     context: AuthHookContext,
   ) => Promise<void> | void;
   onUserRoleUpdated?: (payload: UserHookPayload, context: AuthHookContext) => Promise<void> | void;
@@ -86,14 +113,15 @@ export interface AuthHooks {
 export type AuthHooksMap = {
   onUserCreated: HookFn<DurableUserCreatedHookPayload>;
   onUserEmailVerified: HookFn<DurableUserEmailVerifiedHookPayload>;
+  onUserEmailVerificationRequested: HookFn<UserEmailVerificationRequestedHookPayload>;
   onUserRoleUpdated: HookFn<UserHookPayload>;
   onUserPasswordChanged: HookFn<UserHookPayload>;
   onCredentialIssued: HookFn<CredentialHookPayload>;
   onCredentialInvalidated: HookFn<CredentialHookPayload>;
-  onOrganizationCreated: HookFn<OrganizationHookPayload>;
+  onOrganizationCreated: HookFn<DurableOrganizationCreatedHookPayload>;
   onOrganizationUpdated: HookFn<OrganizationHookPayload>;
   onOrganizationDeleted: HookFn<OrganizationHookPayload>;
-  onMemberAdded: HookFn<OrganizationMemberHookPayload<string>>;
+  onMemberAdded: HookFn<DurableOrganizationMemberAddedHookPayload>;
   onMemberRemoved: HookFn<OrganizationMemberHookPayload<string>>;
   onMemberRolesUpdated: HookFn<OrganizationMemberHookPayload<string>>;
   onInvitationCreated: HookFn<OrganizationInvitationHookPayload<string>>;

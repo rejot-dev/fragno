@@ -8,8 +8,9 @@ GITHUB_CLIENT_SECRET=
 # For auth access-token cookies. Set a strong secret in production.
 AUTH_ACCESS_TOKEN_SECRET=dev-auth-access-token-secret-replace-me
 
-# Deliver system transactional email through the singleton Resend connection.
-TRANSACTIONAL_EMAILS_ENABLED=false
+# Require Auth email verification and deliver challenges through the singleton Resend connection.
+# DOCS_PUBLIC_BASE_URL must be an absolute HTTP(S) URL when this is true.
+AUTH_EMAIL_VERIFICATION_ENABLED=false
 
 DOCS_PUBLIC_BASE_URL=http://localhost:5173/
 

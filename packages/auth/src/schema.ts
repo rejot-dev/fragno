@@ -12,7 +12,7 @@ export const authSchema = schema("auth", (s) => {
           "createdAt",
           column("timestamp").defaultTo((b) => b.now()),
         )
-        .createIndex("idx_user_email", ["email"])
+        .createIndex("idx_user_email", ["email"], { unique: true })
         .createIndex("idx_user_id", ["id"], { unique: true });
     })
     .addTable("session", (t) => {
@@ -190,6 +190,21 @@ export const authSchema = schema("auth", (s) => {
     })
     .alterTable("user", (t) => {
       return t.addColumn("emailVerifiedAt", column("timestamp").nullable());
+    })
+    .alterTable("oauthState", (t) => {
+      return t.createIndex("idx_oauth_state_state_expires_at", ["state", "expiresAt"]);
+    })
+    .alterTable("user", (t) => {
+      return t
+        .addColumn("emailVerificationRequestedAt", column("timestamp").nullable())
+        .createIndex("idx_user_email_verification_request", [
+          "email",
+          "emailVerificationRequestedAt",
+        ])
+        .createIndex("idx_user_id_email_verification_request", [
+          "id",
+          "emailVerificationRequestedAt",
+        ]);
     });
 });
 

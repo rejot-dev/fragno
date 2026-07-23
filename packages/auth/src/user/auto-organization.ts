@@ -20,8 +20,8 @@ export type AutoCreateOrganizationOptions = {
 };
 
 export type AutoCreateOrganizationResult = {
-  organization: Organization;
-  member: OrganizationMember<string>;
+  organization: Omit<Organization, "createdAt" | "updatedAt">;
+  member: Omit<OrganizationMember<string>, "createdAt" | "updatedAt">;
 };
 
 export type ResolvedAutoOrganizationInput = {
@@ -70,7 +70,6 @@ export const createAutoOrganization = (
   input: {
     userId: string;
     email: string;
-    now: Date;
     options?: AutoCreateOrganizationOptions;
     autoOrganizationInput?: ResolvedAutoOrganizationInput | null;
   },
@@ -85,6 +84,7 @@ export const createAutoOrganization = (
 
   const { name, slug: normalizedSlug, logoUrl, metadata } = autoOrganizationInput;
   const creatorRoles = normalizeRoleNames(input.options?.creatorRoles, DEFAULT_CREATOR_ROLES);
+  const databaseNow = uow.now();
 
   const organizationId = uow.create("organization", {
     name,
@@ -92,22 +92,22 @@ export const createAutoOrganization = (
     logoUrl: logoUrl ?? null,
     metadata: metadata ?? null,
     createdBy: input.userId,
-    createdAt: input.now,
-    updatedAt: input.now,
+    createdAt: databaseNow,
+    updatedAt: databaseNow,
   });
 
   const memberId = uow.create("organizationMember", {
     organizationId,
     userId: input.userId,
-    createdAt: input.now,
-    updatedAt: input.now,
+    createdAt: databaseNow,
+    updatedAt: databaseNow,
   });
 
   for (const role of creatorRoles) {
     uow.create("organizationMemberRole", {
       memberId,
       role,
-      createdAt: input.now,
+      createdAt: databaseNow,
     });
   }
 
@@ -119,8 +119,6 @@ export const createAutoOrganization = (
       logoUrl: logoUrl ?? null,
       metadata: metadata ?? null,
       createdBy: input.userId,
-      createdAt: input.now,
-      updatedAt: input.now,
       deletedAt: null,
     },
     member: {
@@ -128,8 +126,6 @@ export const createAutoOrganization = (
       organizationId: toExternalId(organizationId),
       userId: input.userId,
       roles: creatorRoles,
-      createdAt: input.now,
-      updatedAt: input.now,
     },
   };
 };

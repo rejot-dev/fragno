@@ -64,13 +64,13 @@ afterEach(async () => {
   }
 });
 
-describe("Auth Durable Object signup verification", () => {
+describe("Auth Durable Object email verification delivery", () => {
   test("reuses the OTP after a committed issuance response is lost", async () => {
     let issueAttempts = 0;
     let loseFirstIssueResponse = true;
     const resend = new RecordingResendObject();
     const runtime = await createInMemoryBackofficeRuntime({
-      env: { TRANSACTIONAL_EMAILS_ENABLED: "true" },
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" },
       objectFactories: {
         OTP: ({ state, env, runtime: runtimeServices }) =>
           new (class extends InMemoryOtpObject {
@@ -106,12 +106,12 @@ describe("Auth Durable Object signup verification", () => {
 
     const authRepository = await runtime.objects.auth.singleton().getDurableHookRepository();
     const firstAuthQueue = await authRepository.getHookQueue({ pageSize: 100 });
-    const pendingUserCreatedHook = firstAuthQueue.items.find(
-      (hook) => hook.hookName === "onUserCreated",
+    const pendingVerificationHook = firstAuthQueue.items.find(
+      (hook) => hook.hookName === "onUserEmailVerificationRequested",
     );
-    assert(pendingUserCreatedHook);
-    assert(pendingUserCreatedHook.status === "pending");
-    assert(pendingUserCreatedHook.nextRetryAt);
+    assert(pendingVerificationHook);
+    assert(pendingVerificationHook.status === "pending");
+    assert(pendingVerificationHook.nextRetryAt);
 
     const otpRepository = await runtime.objects.otp.singleton().getDurableHookRepository();
     const firstOtpQueue = await otpRepository.getHookQueue({ pageSize: 100 });
@@ -121,15 +121,15 @@ describe("Auth Durable Object signup verification", () => {
     expect(resend.attempts).toHaveLength(0);
     expect(issueAttempts).toBe(1);
 
-    const retryAt = toTimestamp(pendingUserCreatedHook.nextRetryAt);
+    const retryAt = toTimestamp(pendingVerificationHook.nextRetryAt);
     runtime.advanceTime(Math.max(0, retryAt - runtime.now()));
     await runtime.drain();
 
     const completedAuthQueue = await authRepository.getHookQueue({ pageSize: 100 });
-    const completedUserCreatedHook = completedAuthQueue.items.find(
-      (hook) => hook.hookName === "onUserCreated",
+    const completedVerificationHook = completedAuthQueue.items.find(
+      (hook) => hook.hookName === "onUserEmailVerificationRequested",
     );
-    assert(completedUserCreatedHook?.status === "completed");
+    assert(completedVerificationHook?.status === "completed");
 
     const completedOtpQueue = await otpRepository.getHookQueue({ pageSize: 100 });
     expect(completedOtpQueue.items.filter((hook) => hook.hookName === "onOtpIssued")).toHaveLength(
@@ -144,7 +144,7 @@ describe("Auth Durable Object signup verification", () => {
     const resend = new RecordingResendObject();
     resend.loseNextQueueResponse = true;
     const runtime = await createInMemoryBackofficeRuntime({
-      env: { TRANSACTIONAL_EMAILS_ENABLED: "true" },
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" },
       objectFactories: {
         RESEND: () => resend,
       },
@@ -166,11 +166,11 @@ describe("Auth Durable Object signup verification", () => {
 
     const authRepository = await runtime.objects.auth.singleton().getDurableHookRepository();
     const firstAuthQueue = await authRepository.getHookQueue({ pageSize: 100 });
-    const pendingUserCreatedHook = firstAuthQueue.items.find(
-      (hook) => hook.hookName === "onUserCreated",
+    const pendingVerificationHook = firstAuthQueue.items.find(
+      (hook) => hook.hookName === "onUserEmailVerificationRequested",
     );
-    assert(pendingUserCreatedHook?.status === "pending");
-    assert(pendingUserCreatedHook.nextRetryAt);
+    assert(pendingVerificationHook?.status === "pending");
+    assert(pendingVerificationHook.nextRetryAt);
 
     const otpRepository = await runtime.objects.otp.singleton().getDurableHookRepository();
     const otpQueue = await otpRepository.getHookQueue({ pageSize: 100 });
@@ -179,15 +179,15 @@ describe("Auth Durable Object signup verification", () => {
     expect(resend.attempts).toHaveLength(1);
     assert.equal(resend.queuedEmails.size, 1);
 
-    const retryAt = toTimestamp(pendingUserCreatedHook.nextRetryAt);
+    const retryAt = toTimestamp(pendingVerificationHook.nextRetryAt);
     runtime.advanceTime(Math.max(0, retryAt - runtime.now()));
     await runtime.drain();
 
     const completedAuthQueue = await authRepository.getHookQueue({ pageSize: 100 });
-    const completedUserCreatedHook = completedAuthQueue.items.find(
-      (hook) => hook.hookName === "onUserCreated",
+    const completedVerificationHook = completedAuthQueue.items.find(
+      (hook) => hook.hookName === "onUserEmailVerificationRequested",
     );
-    assert(completedUserCreatedHook?.status === "completed");
+    assert(completedVerificationHook?.status === "completed");
     expect(resend.attempts).toHaveLength(2);
     assert.equal(new Set(resend.attempts.map((attempt) => attempt.idempotencyKey)).size, 1);
     assert.equal(resend.queuedEmails.size, 1);

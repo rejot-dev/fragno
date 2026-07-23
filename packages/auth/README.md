@@ -99,6 +99,10 @@ Organizations (enabled by default):
 - `GET /organizations/invitations`
 - `PATCH /organizations/invitations/:invitationId`
 
+Email verification:
+
+- `POST /email-verification/resend`
+
 OAuth:
 
 - `GET /oauth/:provider/authorize`
@@ -144,8 +148,10 @@ When email verification is required, sign-up succeeds without issuing a credenti
 ```
 
 Authenticated sign-up responses use `status: "authenticated"`. Until the email is verified, password
-sign-in returns the `email_verification_required` error code and existing opaque sessions fail
-credential validation.
+sign-in returns the `email_verification_required` error code, schedules another verification request
+when the cooldown permits, and existing opaque sessions fail credential validation.
+`POST /email-verification/resend` always returns `202 { "accepted": true }` for syntactically valid
+input so callers cannot use it to enumerate accounts.
 
 When `authentication.accessTokens.enabled` is `true`, issuing routes still create a backing session
 row first, but return `auth.kind: "jwt"` and `auth.token` contains a short-lived signed access JWT.
@@ -173,11 +179,12 @@ refresh.
 `createAuthFragment(config, options)` supports:
 
 - `cookieOptions`: `httpOnly`, `secure`, `sameSite`, `maxAge`, `path`
-- `hooks`: `onUserCreated`, `onCredentialIssued`, `onCredentialInvalidated`,
-  `onOrganizationCreated`, and more
+- `hooks`: `onUserCreated`, `onUserEmailVerificationRequested`, `onCredentialIssued`,
+  `onCredentialInvalidated`, `onOrganizationCreated`, and more
 - `organizations`: `false` to disable or an organization config object
 - `emailAndPassword`: `{ enabled?: boolean }` to toggle email/password routes
-- `emailVerification`: `{ required, isExempt? }` to require verification before credential issuance
+- `emailVerification`: `{ requestCooldownSeconds?, isExempt? }` to require verification before
+  credential issuance
 - `authentication.accessTokens`: optional session-backed access-token mode
 - `oauth`: providers and OAuth settings
 
@@ -189,13 +196,26 @@ Organization config fields:
 
 Email-verification config fields:
 
-- `required`: enable credential enforcement for unverified users
+- `requestCooldownSeconds`: minimum interval between durable verification requests; defaults to 60
 - `isExempt`: optional synchronous policy callback; for example,
   `({ user }) => user.role === "admin"`
 
-The callback decides whether the policy applies to a user. Auth always owns the `emailVerifiedAt`
-check. Exemptions apply consistently to sign-up, sign-in, OAuth callbacks, direct credential
-issuance, session validation, and refresh.
+Configuring `emailVerification` enables enforcement and requires
+`hooks.onUserEmailVerificationRequested`. The hook receives the user and a `sign_up`, `sign_in`,
+`oauth`, or `resend` reason. The application is responsible for issuing and delivering the challenge
+after the Auth transaction commits.
+
+Auth trims and lowercases email addresses at its route and service boundaries and stores them behind
+a unique index. Signup, signin, resend, OAuth email linking, and organization invitations therefore
+use the same canonical email identity. OAuth callbacks that cannot safely link to an existing email
+return `email_already_exists` rather than creating a duplicate Auth user.
+
+Pure verification policy contracts and helpers are also available from
+`@fragno-dev/auth/email-verification`.
+
+The exemption callback decides whether the policy applies to a user. Auth always owns the
+`emailVerifiedAt` check. Exemptions apply consistently to sign-up, sign-in, OAuth callbacks, direct
+credential issuance, session validation, and refresh.
 
 Access-token config fields:
 

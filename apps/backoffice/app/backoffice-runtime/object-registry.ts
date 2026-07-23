@@ -142,9 +142,16 @@ export type OtpObject = FetchObject &
     issueEmailVerification(
       input: Parameters<Otp["issueEmailVerification"]>[0],
     ): Promise<AwaitedMethodReturn<Otp, "issueEmailVerification">>;
-    confirmEmailVerification(
-      input: Parameters<Otp["confirmEmailVerification"]>[0],
-    ): Promise<AwaitedMethodReturn<Otp, "confirmEmailVerification">>;
+    confirmEmailVerificationChallenge(
+      input: Parameters<Otp["confirmEmailVerificationChallenge"]>[0],
+    ): Promise<AwaitedMethodReturn<Otp, "confirmEmailVerificationChallenge">>;
+    confirmEmailVerification(input: {
+      userId: string;
+      code: string;
+    }): Promise<
+      | { ok: true; userId: string }
+      | { ok: false; error: "INVALID_INPUT" | "OTP_INVALID" | "OTP_EXPIRED" }
+    >;
     issueIdentityClaim(input: {
       orgId: string;
       actor: unknown;

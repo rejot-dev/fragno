@@ -22,7 +22,7 @@ import {
 import { loadBackofficePiSkills } from "./pi-skills";
 
 const testRuntimeConfig: BackofficeRuntimeConfig = {
-  transactionalEmails: { enabled: false },
+  authEmailVerification: { enabled: false },
   bindings: {
     api: false,
     auth: false,

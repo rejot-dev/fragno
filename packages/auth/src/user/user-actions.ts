@@ -13,9 +13,11 @@ import {
 } from "../auth/session-access-token";
 import type { AuthActor } from "../auth/types";
 import {
+  DEFAULT_EMAIL_VERIFICATION_REQUEST_COOLDOWN_SECONDS,
   evaluateCredentialEligibility,
+  planEmailVerificationRequest,
   type AuthEmailVerificationConfig,
-} from "../email-verification-policy";
+} from "../email-verification";
 import type { AuthHooksMap, BeforeCreateUserHook } from "../hooks";
 import { authSchema } from "../schema";
 import {
@@ -28,32 +30,12 @@ import {
   resolveAutoOrganizationInput,
   type AutoCreateOrganizationOptions,
 } from "./auto-organization";
+import { authEmailSchema, normalizeAuthEmail } from "./email";
+import { recordEmailVerificationRequest } from "./email-verification-services";
 import { hashPassword, verifyPassword } from "./password";
 import { mapUserSummary } from "./summary";
 
 type AuthServiceContext = DatabaseServiceContext<AuthHooksMap>;
-
-export type VerifyUserEmailInput = {
-  userId: string;
-  expectedEmail: string;
-  verifiedAt: Date;
-};
-
-export type VerifyUserEmailResult =
-  | {
-      ok: true;
-      status: "verified";
-      emailVerifiedAt: Date;
-    }
-  | {
-      ok: true;
-      status: "already_verified";
-      emailVerifiedAt: Date;
-    }
-  | {
-      ok: false;
-      code: "user_not_found" | "email_changed";
-    };
 
 const authSignUpDataSchema = z.discriminatedUnion("status", [
   z.object({
@@ -129,26 +111,26 @@ export function createUserServices(
     role: "user" | "admin" = "user",
     autoCreateOptions?: AutoCreateOrganizationOptions,
   ) {
+    const normalizedEmail = normalizeAuthEmail(email);
+
     return this.serviceTx(authSchema)
       .mutate(({ uow }) => {
-        const resolvedRole = resolveCreateUserRole(email, role);
-        const now = new Date();
+        const resolvedRole = resolveCreateUserRole(normalizedEmail, role);
         const id = uow.create("user", {
-          email,
+          email: normalizedEmail,
           passwordHash,
           role: resolvedRole,
         });
         const userSummary = mapUserSummary({
           id: id.valueOf(),
-          email,
+          email: normalizedEmail,
           role: resolvedRole,
           bannedAt: null,
         });
 
         const autoOrganization = createAutoOrganization(uow, {
           userId: id.valueOf(),
-          email,
-          now,
+          email: normalizedEmail,
           options: autoCreateOptions ?? options,
         });
 
@@ -172,7 +154,7 @@ export function createUserServices(
 
         return {
           id: id.valueOf(),
-          email,
+          email: normalizedEmail,
           role: resolvedRole,
         };
       })
@@ -181,17 +163,20 @@ export function createUserServices(
 
   const services = {
     /**
-     * Create a user without email uniqueness checks or session creation.
+     * Create a user without a preflight email lookup or session creation.
+     * The schema's unique email index still rejects duplicates.
      */
     createUserUnvalidated,
     /**
      * Fetch a user by email with password hash metadata.
      */
     getUserByEmail: function (this: AuthServiceContext, email: string) {
+      const normalizedEmail = normalizeAuthEmail(email);
+
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
           uow.findFirst("user", (b) =>
-            b.whereIndex("idx_user_email", (eb) => eb("email", "=", email)),
+            b.whereIndex("idx_user_email", (eb) => eb("email", "=", normalizedEmail)),
           ),
         )
         .transformRetrieve(([user]) =>
@@ -205,50 +190,6 @@ export function createUserServices(
               }
             : null,
         )
-        .build();
-    },
-    /**
-     * Mark the user's current email as verified.
-     */
-    verifyUserEmail: function (this: AuthServiceContext, input: VerifyUserEmailInput) {
-      return this.serviceTx(authSchema)
-        .retrieve((uow) =>
-          uow.findFirst("user", (b) =>
-            b
-              .whereIndex("primary", (eb) => eb("id", "=", input.userId))
-              .select(["id", "email", "role", "bannedAt", "emailVerifiedAt"]),
-          ),
-        )
-        .mutate(({ uow, retrieveResult: [user] }): VerifyUserEmailResult => {
-          if (!user) {
-            return { ok: false, code: "user_not_found" };
-          }
-
-          if (user.email !== input.expectedEmail) {
-            return { ok: false, code: "email_changed" };
-          }
-
-          if (user.emailVerifiedAt) {
-            return {
-              ok: true,
-              status: "already_verified",
-              emailVerifiedAt: user.emailVerifiedAt,
-            };
-          }
-
-          uow.update("user", user.id, (b) => b.set({ emailVerifiedAt: input.verifiedAt }).check());
-          uow.triggerHook("onUserEmailVerified", {
-            user: mapUserSummary(user),
-            actor: null,
-            emailVerifiedAt: input.verifiedAt.toISOString(),
-          });
-
-          return {
-            ok: true,
-            status: "verified",
-            emailVerifiedAt: input.verifiedAt,
-          };
-        })
         .build();
     },
     /**
@@ -312,14 +253,13 @@ export function createUserServices(
       passwordHash: string,
       autoCreateOptions?: AutoCreateOrganizationOptions,
     ) {
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 30); // 30 days from now
+      const normalizedEmail = normalizeAuthEmail(email);
 
       const userId = generateId(authSchema, "user");
       const effectiveAutoCreateOptions = autoCreateOptions ?? options;
       const autoOrganizationInput = resolveAutoOrganizationInput({
         userId: userId.valueOf(),
-        email,
+        email: normalizedEmail,
         options: effectiveAutoCreateOptions,
       });
       const autoOrganizationSlug = autoOrganizationInput?.slug ?? "";
@@ -328,7 +268,9 @@ export function createUserServices(
         .retrieve((uow) =>
           uow
             .findFirst("user", (b) =>
-              b.whereIndex("idx_user_email", (eb) => eb("email", "=", email)).select(["id"]),
+              b
+                .whereIndex("idx_user_email", (eb) => eb("email", "=", normalizedEmail))
+                .select(["id"]),
             )
             .findFirst("organization", (b) =>
               b.whereIndex("idx_organization_slug", (eb) => eb("slug", "=", autoOrganizationSlug)),
@@ -344,34 +286,50 @@ export function createUserServices(
           }
 
           const now = new Date();
-          const role = resolveCreateUserRole(email, "user");
+          const credentialExpiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1_000);
+          const role = resolveCreateUserRole(normalizedEmail, "user");
+          const userSummary = mapUserSummary({
+            id: userId.valueOf(),
+            email: normalizedEmail,
+            role,
+            bannedAt: null,
+          });
+          const emailVerificationRequest = planEmailVerificationRequest(
+            {
+              ...userSummary,
+              bannedAt: null,
+              emailVerifiedAt: null,
+            },
+            emailVerification,
+            { requestCooldownElapsed: true },
+          );
 
           uow.create("user", {
             id: userId,
-            email,
+            email: normalizedEmail,
             passwordHash,
             role,
+            emailVerificationRequestedAt:
+              emailVerificationRequest.status === "requested" ? uow.now() : null,
           });
 
           const autoOrganization = createAutoOrganization(uow, {
             userId: userId.valueOf(),
-            email,
-            now,
+            email: normalizedEmail,
             options: effectiveAutoCreateOptions,
             autoOrganizationInput,
-          });
-
-          const userSummary = mapUserSummary({
-            id: userId.valueOf(),
-            email,
-            role,
-            bannedAt: null,
           });
 
           uow.triggerHook("onUserCreated", {
             user: userSummary,
             actor: userSummary,
             emailVerifiedAt: null,
+          });
+          recordEmailVerificationRequest(uow, {
+            plan: emailVerificationRequest,
+            target: { kind: "new" },
+            user: userSummary,
+            reason: "sign_up",
           });
 
           if (autoOrganization) {
@@ -402,17 +360,18 @@ export function createUserServices(
           }
 
           const activeOrganizationId = autoOrganization?.organization.id ?? null;
+          const sessionExpiresAt = uow.now().plus({ days: 30 });
           const credentialId = uow.create("session", {
             userId,
             activeOrganizationId,
-            expiresAt,
+            expiresAt: sessionExpiresAt,
           });
 
           uow.triggerHook("onCredentialIssued", {
             credential: {
               id: credentialId.valueOf(),
               user: userSummary,
-              expiresAt,
+              expiresAt: sessionExpiresAt,
               activeOrganizationId,
             },
             actor: userSummary,
@@ -423,7 +382,7 @@ export function createUserServices(
             status: "authenticated" as const,
             credential: {
               id: credentialId.valueOf(),
-              expiresAt,
+              expiresAt: credentialExpiresAt,
               activeOrganizationId,
               organizationIds: autoOrganization ? [autoOrganization.organization.id] : [],
               user: {
@@ -627,6 +586,9 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
   ({ services, config, defineRoute }) => {
     const emailAndPasswordEnabled = config.emailAndPassword?.enabled !== false;
     const accessTokens = resolveAccessTokenConfig(config.authentication?.accessTokens);
+    const emailVerificationRequestCooldownSeconds =
+      config.emailVerification?.requestCooldownSeconds ??
+      DEFAULT_EMAIL_VERIFICATION_REQUEST_COOLDOWN_SECONDS;
 
     return [
       defineRoute({
@@ -685,7 +647,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
         method: "POST",
         path: "/sign-up",
         inputSchema: z.object({
-          email: z.email().max(191),
+          email: authEmailSchema,
           password: z.string().min(8).max(100),
         }),
         outputSchema: authSignUpDataSchema,
@@ -715,11 +677,20 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
           try {
             serviceResults = await signUpTx.execute();
           } catch (cause) {
-            if (isUniqueConstraintError(cause) && cause.constraint === "idx_organization_slug") {
-              return error(
-                { message: "Organization slug taken", code: "organization_slug_taken" },
-                400,
-              );
+            if (isUniqueConstraintError(cause)) {
+              if (cause.columns?.includes("email")) {
+                return error(
+                  { message: "Email already exists", code: "email_already_exists" },
+                  400,
+                );
+              }
+
+              if (cause.constraint === "idx_organization_slug" || cause.columns?.includes("slug")) {
+                return error(
+                  { message: "Organization slug taken", code: "organization_slug_taken" },
+                  400,
+                );
+              }
             }
             throw cause;
           }
@@ -771,7 +742,7 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
         method: "POST",
         path: "/sign-in",
         inputSchema: z.object({
-          email: z.email().max(191),
+          email: authEmailSchema,
           password: z.string().min(8).max(100),
           auth: credentialSeedSchema.optional(),
         }),
@@ -821,22 +792,42 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
             },
           })
             .retrieve(({ forSchema }) =>
-              forSchema(authSchema).find("user", (b) =>
-                b
-                  .whereIndex("idx_user_email", (eb) => eb("email", "=", email))
-                  .joinMany("userOrganizationMembers", "organizationMember", (member) =>
-                    member
-                      .onIndex("idx_org_member_user", (eb) => eb("userId", "=", eb.parent("id")))
-                      .select(["createdAt"])
-                      .joinOne("organizationMemberOrganization", "organization", (organization) =>
-                        organization
-                          .onIndex("primary", (eb) => eb("id", "=", eb.parent("organizationId")))
-                          .select(["id", "deletedAt"]),
+              forSchema(authSchema)
+                .find("user", (b) =>
+                  b
+                    .whereIndex("idx_user_email", (eb) => eb("email", "=", email))
+                    .joinMany("userOrganizationMembers", "organizationMember", (member) =>
+                      member
+                        .onIndex("idx_org_member_user", (eb) => eb("userId", "=", eb.parent("id")))
+                        .select(["createdAt"])
+                        .joinOne("organizationMemberOrganization", "organization", (organization) =>
+                          organization
+                            .onIndex("primary", (eb) => eb("id", "=", eb.parent("organizationId")))
+                            .select(["id", "deletedAt"]),
+                        ),
+                    ),
+                )
+                .findFirst("user", (b) =>
+                  b
+                    .whereIndex("idx_user_email_verification_request", (eb) =>
+                      eb.and(
+                        eb("email", "=", email),
+                        eb.or(
+                          eb.isNull("emailVerificationRequestedAt"),
+                          eb(
+                            "emailVerificationRequestedAt",
+                            "<=",
+                            eb.now().plus({
+                              seconds: -emailVerificationRequestCooldownSeconds,
+                            }),
+                          ),
+                        ),
                       ),
-                  ),
-              ),
+                    )
+                    .select(["id"]),
+                ),
             )
-            .mutate(({ forSchema, retrieveResult: [users] }) => {
+            .mutate(({ forSchema, retrieveResult: [users, requestEligibleUser] }) => {
               const user = users[0] ?? null;
               if (!user || !passwordCheck) {
                 return { ok: false as const, code: "invalid_credentials" as const };
@@ -859,32 +850,51 @@ export const userActionsRoutesFactory = defineRoutes<typeof authFragmentDefiniti
                 },
                 config.emailVerification,
               );
+              const uow = forSchema(authSchema);
               if (!eligibility.ok) {
+                if (eligibility.code === "email_verification_required") {
+                  const emailVerificationRequest = planEmailVerificationRequest(
+                    {
+                      ...userSummary,
+                      bannedAt: user.bannedAt ?? null,
+                      emailVerifiedAt: user.emailVerifiedAt ?? null,
+                    },
+                    config.emailVerification,
+                    {
+                      requestCooldownElapsed:
+                        requestEligibleUser?.id.valueOf() === user.id.valueOf(),
+                    },
+                  );
+                  recordEmailVerificationRequest(uow, {
+                    plan: emailVerificationRequest,
+                    target: { kind: "persisted", userId: user.id },
+                    user: userSummary,
+                    reason: "sign_in",
+                  });
+                }
                 return eligibility;
               }
 
-              const uow = forSchema(authSchema);
               // TODO: Use services.issueCredential instead of inline credential issuance (sign-up and
               // handleOAuthCallback also duplicate this logic)
-              const now = new Date();
-              const expiresAt = uow.now().plus({ days: 30 });
-              const sessionExpiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+              const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
               const credentialSeedMembers = collectCredentialSeedMembers(users);
               const resolvedCredentialSeed = resolveCredentialSeedFromMembers(
                 credentialSeedMembers,
                 auth,
               );
               const activeOrganizationId = resolvedCredentialSeed.activeOrganizationId;
+              const databaseSessionExpiresAt = uow.now().plus({ days: 30 });
               const credentialId = uow.create("session", {
                 userId: user.id,
                 activeOrganizationId,
-                expiresAt,
+                expiresAt: databaseSessionExpiresAt,
               });
               uow.triggerHook("onCredentialIssued", {
                 credential: {
                   id: credentialId.valueOf(),
                   user: userSummary,
-                  expiresAt,
+                  expiresAt: databaseSessionExpiresAt,
                   activeOrganizationId,
                 },
                 actor: userSummary,

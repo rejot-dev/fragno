@@ -85,16 +85,44 @@ describe("auth-fragment", async () => {
       userId = data.userId;
     });
 
-    it("/sign-up - duplicate email", async () => {
+    it("/sign-up - rejects a differently cased duplicate email", async () => {
       const response = await fragment.callRoute("POST", "/sign-up", {
         body: {
-          email: "test@test.com",
+          email: " TEST@Test.COM ",
           password: "password",
         },
       });
 
       assert(response.type === "error");
       assert(response.error.code === "email_already_exists");
+    });
+
+    it("/sign-in - accepts a differently cased email", async () => {
+      const response = await fragment.callRoute("POST", "/sign-in", {
+        body: {
+          email: "TEST@TEST.COM",
+          password: "password",
+        },
+      });
+
+      assert(response.type === "json");
+      assert(response.data.email === "test@test.com");
+    });
+
+    it("/sign-up - allows only one concurrent request for an email", async () => {
+      const responses = await Promise.all([
+        fragment.callRoute("POST", "/sign-up", {
+          body: { email: "concurrent@test.com", password: "password" },
+        }),
+        fragment.callRoute("POST", "/sign-up", {
+          body: { email: "CONCURRENT@test.com", password: "password" },
+        }),
+      ]);
+
+      expect(responses.filter((response) => response.type === "json")).toHaveLength(1);
+      const rejected = responses.find((response) => response.type === "error");
+      assert(rejected?.type === "error");
+      assert(rejected.error.code === "email_already_exists");
     });
 
     it("/me - get active session", async () => {

@@ -1,6 +1,6 @@
 ---
 "@fragno-dev/auth": patch
+"@fragno-dev/db": patch
 ---
 
-feat: track verified user emails, expose durable verification hooks, and optionally require
-verification before issuing credentials
+feat: add Auth-owned email verification requests, resend APIs, and database-time checks.

@@ -3,7 +3,7 @@ import type { Cursor } from "@fragno-dev/db/cursor";
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import type { AuthActor } from "../auth/types";
-import type { AuthEmailVerificationConfig } from "../email-verification-policy";
+import type { AuthEmailVerificationConfig } from "../email-verification";
 import type { AuthHooksMap } from "../hooks";
 import { authSchema } from "../schema";
 import {

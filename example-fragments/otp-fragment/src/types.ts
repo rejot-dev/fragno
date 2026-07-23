@@ -6,4 +6,6 @@ export type OtpType = z.infer<typeof otpTypeSchema>;
 export const otpStatusSchema = z.enum(["pending", "confirmed", "expired", "invalidated"]);
 export type OtpStatus = z.infer<typeof otpStatusSchema>;
 
+export type OtpPayload = Record<string, unknown>;
+
 export type OtpErrorCode = "OTP_INVALID" | "OTP_EXPIRED";

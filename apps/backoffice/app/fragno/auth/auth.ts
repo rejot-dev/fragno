@@ -31,6 +31,8 @@ type AuthServerOptions = {
   organizationHooks?: OrganizationHooks;
 };
 
+export type AuthFragment = ReturnType<typeof createAuthFragment>;
+
 export const ACCESS_TOKEN_ISSUER = "fragno-backoffice-auth";
 export const ACCESS_TOKEN_AUDIENCE = "fragno-backoffice";
 const DEV_ACCESS_TOKEN_SECRET = "fragno-backoffice-development-access-token-secret";
@@ -101,7 +103,7 @@ const buildOauthConfig = (init: AuthInit, baseUrl?: string): AuthOAuthConfig | u
   };
 };
 
-export function createAuthServer(init: AuthInit, options: AuthServerOptions = {}) {
+export function createAuthServer(init: AuthInit, options: AuthServerOptions = {}): AuthFragment {
   const baseUrl = resolveBaseUrl(options.baseUrl);
   const oauthConfig = buildOauthConfig(init, baseUrl);
   const isDev = import.meta.env.MODE === "development";
@@ -148,5 +150,3 @@ export function createAuthServer(init: AuthInit, options: AuthServerOptions = {}
     },
   );
 }
-
-export type AuthFragment = ReturnType<typeof createAuthServer>;

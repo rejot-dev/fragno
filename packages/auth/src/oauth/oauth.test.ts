@@ -504,7 +504,7 @@ describe("auth oauth", async () => {
     expect(linkedUser.emailVerifiedAt).toBeInstanceOf(Date);
   });
 
-  it("does not link oauth accounts when provider email is unverified", async () => {
+  it("rejects oauth signup when an unverified provider email already belongs to a user", async () => {
     const passwordHash = await hashPassword("password-123");
     const [existingUser] = await test.inContext(function () {
       return this.handlerTx()
@@ -531,13 +531,13 @@ describe("auth oauth", async () => {
       },
     });
 
-    assert(callbackResponse.type === "json");
-    assert(callbackResponse.data.email === "unverified@test.com");
-    expect(callbackResponse.data.userId).not.toBe(existingUser.id);
+    assert(callbackResponse.type === "error");
+    assert(callbackResponse.status === 409);
+    assert(callbackResponse.error.code === "email_already_exists");
 
-    const createdUser = await getUserById(callbackResponse.data.userId);
-    assert(createdUser);
-    expect(createdUser.emailVerifiedAt).toBeNull();
+    const persistedUser = await getUserById(existingUser.id);
+    assert(persistedUser);
+    expect(persistedUser.emailVerifiedAt).toBeNull();
   });
 
   it("requires signup when email is unverified and implicit sign up is disabled", async () => {
@@ -1468,9 +1468,9 @@ describe("auth oauth linkByEmail false", async () => {
     await test.cleanup();
   });
 
-  it("does not link users by email when linkByEmail is false", async () => {
+  it("rejects oauth signup for an existing email when linkByEmail is false", async () => {
     const passwordHash = await hashPassword("password-123");
-    const [existingUser] = await test.inContext(function () {
+    await test.inContext(function () {
       return this.handlerTx()
         .withServiceCalls(() => [
           fragment.services.createUserUnvalidated("new@test.com", passwordHash),
@@ -1495,9 +1495,9 @@ describe("auth oauth linkByEmail false", async () => {
       },
     });
 
-    assert(callbackResponse.type === "json");
-    assert(callbackResponse.data.email === "new@test.com");
-    expect(callbackResponse.data.userId).not.toBe(existingUser.id);
+    assert(callbackResponse.type === "error");
+    assert(callbackResponse.status === 409);
+    assert(callbackResponse.error.code === "email_already_exists");
   });
 });
 
@@ -1718,7 +1718,10 @@ describe("auth oauth email verification policy", async () => {
       instantiate(authFragmentDefinition)
         .withConfig({
           organizations: false,
-          emailVerification: { required: true },
+          emailVerification: {},
+          hooks: {
+            onUserEmailVerificationRequested() {},
+          },
           oauth: {
             providers: {
               unverified: createTestProvider({
@@ -1743,7 +1746,21 @@ describe("auth oauth email verification policy", async () => {
     await test.cleanup();
   });
 
-  it("persists the user without issuing a credential for an unverified provider email", async () => {
+  const getEmailVerificationRequests = async () => {
+    const internalFragment = getInternalFragment(test.adapter);
+    return internalFragment.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(
+          () => [internalFragment.services.hookService.getHooksByNamespace("auth")] as const,
+        )
+        .transform(({ serviceResult: [hooks] }) =>
+          hooks.filter((hook) => hook.hookName === "onUserEmailVerificationRequested"),
+        )
+        .execute();
+    });
+  };
+
+  const callUnverifiedOAuth = async () => {
     const authorize = await fragments.auth.callRoute("GET", "/oauth/:provider/authorize", {
       pathParams: { provider: "unverified" },
       query: {},
@@ -1752,10 +1769,14 @@ describe("auth oauth email verification policy", async () => {
     const state = new URL(authorize.data.url).searchParams.get("state");
     assert(state);
 
-    const callback = await fragments.auth.callRoute("GET", "/oauth/:provider/callback", {
+    return fragments.auth.callRoute("GET", "/oauth/:provider/callback", {
       pathParams: { provider: "unverified" },
       query: { code: "oauth-code", state },
     });
+  };
+
+  it("persists the user without issuing a credential for an unverified provider email", async () => {
+    const callback = await callUnverifiedOAuth();
     assert(callback.type === "error");
     expect(callback).toMatchObject({
       status: 403,
@@ -1776,5 +1797,33 @@ describe("auth oauth email verification policy", async () => {
     });
     assert(user);
     expect(user.emailVerifiedAt).toBeNull();
+    expect(user.emailVerificationRequestedAt).toBeInstanceOf(Date);
+
+    const verificationRequests = await getEmailVerificationRequests();
+    expect(verificationRequests).toHaveLength(1);
+    expect(verificationRequests[0]?.payload).toMatchObject({
+      user: { id: user.id.valueOf(), email: "oauth-unverified@test.com" },
+      reason: "oauth",
+    });
+
+    const cooldownCallback = await callUnverifiedOAuth();
+    assert(cooldownCallback.type === "error");
+    assert(cooldownCallback.error.code === "email_verification_required");
+    expect(await getEmailVerificationRequests()).toHaveLength(1);
+
+    await test.inContext(function () {
+      return this.handlerTx()
+        .mutate(({ forSchema }) => {
+          forSchema(authSchema).update("user", user.id, (builder) =>
+            builder.set({ emailVerificationRequestedAt: new Date(0) }).check(),
+          );
+        })
+        .execute();
+    });
+
+    const elapsedCooldownCallback = await callUnverifiedOAuth();
+    assert(elapsedCooldownCallback.type === "error");
+    assert(elapsedCooldownCallback.error.code === "email_verification_required");
+    expect(await getEmailVerificationRequests()).toHaveLength(2);
   });
 });

@@ -45,15 +45,21 @@ import {
   writeStorageItem,
   type StorageLike,
 } from "./client/storage";
-import type { AuthEmailVerificationConfig } from "./email-verification-policy";
+import {
+  validateEmailVerificationConfig,
+  type AuthEmailVerificationConfig,
+} from "./email-verification";
 import type {
   AuthHooks,
   AuthHooksMap,
   BeforeCreateUserHook,
   CredentialHookPayload,
+  DurableOrganizationCreatedHookPayload,
+  DurableOrganizationMemberAddedHookPayload,
   DurableUserCreatedHookPayload,
   DurableUserEmailVerifiedHookPayload,
   InvitationExpiredHookPayload,
+  UserEmailVerificationRequestedHookPayload,
   UserHookPayload,
 } from "./hooks";
 import { createOAuthServices } from "./oauth/oauth-services";
@@ -79,6 +85,8 @@ import { authSchema } from "./schema";
 import { createSessionServices, sessionRoutesFactory } from "./session/session";
 import { serializeCredentialSeedForQuery } from "./session/session-seed";
 import type { Role } from "./types";
+import { emailVerificationRoutesFactory } from "./user/email-verification-routes";
+import { createEmailVerificationServices } from "./user/email-verification-services";
 import { createUserServices, userActionsRoutesFactory } from "./user/user-actions";
 import {
   createUserOverviewServices,
@@ -157,6 +165,15 @@ const parseDurableHookDate = (value: string, fieldName: string): Date => {
 
 export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
   .extend(withDatabase(authSchema))
+  .withDependencies(({ config }) => {
+    validateEmailVerificationConfig(config.emailVerification);
+    if (config.emailVerification && !config.hooks?.onUserEmailVerificationRequested) {
+      throw new Error(
+        "emailVerification requires hooks.onUserEmailVerificationRequested to deliver verification challenges.",
+      );
+    }
+    return {};
+  })
   .provideHooks<AuthHooksMap>(({ defineHook, config }) => {
     const authHooks = config.hooks;
     const organizationConfig = config.organizations === false ? undefined : config.organizations;
@@ -234,6 +251,11 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
           );
         },
       ),
+      onUserEmailVerificationRequested: defineHook<UserEmailVerificationRequestedHookPayload>(
+        async function (payload) {
+          await authHooks?.onUserEmailVerificationRequested?.(payload, hookContext(this));
+        },
+      ),
       onUserRoleUpdated: defineHook<UserHookPayload>(async function (payload) {
         await authHooks?.onUserRoleUpdated?.(payload, hookContext(this));
       }),
@@ -250,18 +272,47 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
 
     return {
       ...baseHooks,
-      onOrganizationCreated: defineHook<OrganizationHookPayload>(async function (payload) {
-        await organizationHooks?.onOrganizationCreated?.(payload, hookContext(this));
-      }),
+      onOrganizationCreated: defineHook<DurableOrganizationCreatedHookPayload>(
+        async function (payload) {
+          await organizationHooks?.onOrganizationCreated?.(
+            {
+              ...payload,
+              organization: {
+                ...payload.organization,
+                createdAt: this.createdAt,
+                updatedAt: this.createdAt,
+              },
+            },
+            hookContext(this),
+          );
+        },
+      ),
       onOrganizationUpdated: defineHook<OrganizationHookPayload>(async function (payload) {
         await organizationHooks?.onOrganizationUpdated?.(payload, hookContext(this));
       }),
       onOrganizationDeleted: defineHook<OrganizationHookPayload>(async function (payload) {
         await organizationHooks?.onOrganizationDeleted?.(payload, hookContext(this));
       }),
-      onMemberAdded: defineHook<OrganizationMemberHookPayload<string>>(async function (payload) {
-        await organizationHooks?.onMemberAdded?.(payload, hookContext(this));
-      }),
+      onMemberAdded: defineHook<DurableOrganizationMemberAddedHookPayload>(
+        async function (payload) {
+          await organizationHooks?.onMemberAdded?.(
+            {
+              ...payload,
+              organization: {
+                ...payload.organization,
+                createdAt: this.createdAt,
+                updatedAt: this.createdAt,
+              },
+              member: {
+                ...payload.member,
+                createdAt: this.createdAt,
+                updatedAt: this.createdAt,
+              },
+            },
+            hookContext(this),
+          );
+        },
+      ),
       onMemberRemoved: defineHook<OrganizationMemberHookPayload<string>>(async function (payload) {
         await organizationHooks?.onMemberRemoved?.(payload, hookContext(this));
       }),
@@ -383,6 +434,7 @@ export const authFragmentDefinition = defineFragment<AuthConfig>("auth")
 
     return defineService({
       ...createUserServices(autoCreateOptions, config.beforeCreateUser, config.emailVerification),
+      ...createEmailVerificationServices(config.emailVerification),
       ...createSessionServices(config.cookieOptions, config.emailVerification),
       ...createUserOverviewServices(),
       ...createAdminOrganizationServices(),
@@ -432,6 +484,7 @@ const buildAuthFragment = (
     .withOptions(options)
     .withRoutes([
       userActionsRoutesFactory,
+      emailVerificationRoutesFactory,
       sessionRoutesFactory,
       userOverviewRoutesFactory,
       organizationRoutesFactory,
@@ -623,6 +676,7 @@ export function createAuthFragmentClients(fragnoConfig?: AuthFragmentClientConfi
     clientConfig,
     [
       userActionsRoutesFactory,
+      emailVerificationRoutesFactory,
       sessionRoutesFactory,
       userOverviewRoutesFactory,
       organizationRoutesFactory,
@@ -639,6 +693,7 @@ export function createAuthFragmentClients(fragnoConfig?: AuthFragmentClientConfi
   const useMe = b.createHook("/me");
   const useSignUp = b.createMutator("POST", "/sign-up");
   const useSignIn = b.createMutator("POST", "/sign-in");
+  const useResendEmailVerification = b.createMutator("POST", "/email-verification/resend");
   const useSignOut = b.createMutator("POST", "/sign-out", (invalidate) => {
     invalidate("GET", "/me", {});
     invalidate("GET", "/users", {});
@@ -836,6 +891,7 @@ export function createAuthFragmentClients(fragnoConfig?: AuthFragmentClientConfi
     // Reactive hooks - Auth
     useSignUp,
     useSignIn,
+    useResendEmailVerification,
     useSignOut,
     useMe,
     useDefaultOrganizationPreference: b.createStore(defaultOrganizationPreference.store),
@@ -902,7 +958,7 @@ export function createAuthFragmentClients(fragnoConfig?: AuthFragmentClientConfi
             password,
           },
         });
-        if (sessionCacheEnabled) {
+        if (sessionCacheEnabled && result?.status === "authenticated") {
           try {
             writeMeSessionCache(await useMe.query());
           } catch {
@@ -911,6 +967,11 @@ export function createAuthFragmentClients(fragnoConfig?: AuthFragmentClientConfi
         }
         return result;
       },
+    },
+
+    emailVerification: {
+      resend: async ({ email }: { email: string }) =>
+        useResendEmailVerification.mutateQuery({ body: { email } }),
     },
 
     signOut: async () => {
@@ -991,10 +1052,14 @@ export type {
   BeforeCreateUserPayload,
   CredentialHookPayload,
   CredentialSummary,
+  DurableOrganizationCreatedHookPayload,
+  DurableOrganizationMemberAddedHookPayload,
   DurableUserCreatedHookPayload,
   DurableUserEmailVerifiedHookPayload,
   InvitationExpiredHookPayload,
   UserCreatedHookPayload,
+  UserEmailVerificationRequestedHookPayload,
+  UserEmailVerificationRequestReason,
   UserEmailVerifiedHookPayload,
   UserHookPayload,
 } from "./hooks";
@@ -1020,6 +1085,7 @@ export {
 } from "./auth/request-auth";
 export {
   resolveAccessTokenConfig,
+  resolveRefreshCookieName,
   verifySessionAccessToken,
   verifySessionAccessTokenDetailed,
   type ResolvedSessionAccessTokenConfig,
@@ -1038,9 +1104,14 @@ export type { AuthSessionCache, AuthSessionCacheOptions } from "./client/session
 export type {
   AuthEmailVerificationConfig,
   AuthEmailVerificationPolicyUser,
-} from "./email-verification-policy";
+  CredentialEligibilityResult,
+  EmailVerificationRequestPlan,
+  EmailVerificationRequestSuppressionReason,
+  EmailVerificationRequestUser,
+  RequestUserEmailVerificationResult,
+} from "./email-verification";
 export type { UserSummary } from "./types";
-export type { VerifyUserEmailInput, VerifyUserEmailResult } from "./user/user-actions";
+export type { VerifyUserEmailInput, VerifyUserEmailResult } from "./email-verification";
 export type {
   AnyOAuthProvider,
   AuthOAuthConfig,

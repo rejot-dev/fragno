@@ -1,12 +1,15 @@
-import type { FragnoId } from "@fragno-dev/db/schema";
+import { generateId, type FragnoId } from "@fragno-dev/db/schema";
 
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import type { AuthActor, ValidatedCredential } from "../auth/types";
 import {
+  DEFAULT_EMAIL_VERIFICATION_REQUEST_COOLDOWN_SECONDS,
   evaluateCredentialEligibility,
+  planEmailVerificationRequest,
   type AuthEmailVerificationConfig,
-} from "../email-verification-policy";
+  type EmailVerificationRequestPlan,
+} from "../email-verification";
 import type { AuthHooksMap, BeforeCreateUserHook } from "../hooks";
 import { authSchema } from "../schema";
 import {
@@ -19,6 +22,8 @@ import {
   createAutoOrganization,
   type AutoCreateOrganizationOptions,
 } from "../user/auto-organization";
+import { normalizeAuthEmail } from "../user/email";
+import { recordEmailVerificationRequest } from "../user/email-verification-services";
 import { mapUserSummary } from "../user/summary";
 import type { AnyOAuthProvider, AuthOAuthConfig, OAuth2Tokens, OAuth2UserInfo } from "./types";
 import { createOAuthState, DEFAULT_STATE_TTL_MS, normalizeOAuthConfig } from "./utils";
@@ -29,7 +34,6 @@ export type OAuthStateResult =
       state: string;
       redirectUri: string;
       returnTo: string | null;
-      expiresAt: Date;
     }
   | {
       ok: false;
@@ -55,6 +59,7 @@ export type OAuthCallbackResult =
         | "email_required"
         | "signup_disabled"
         | "signup_required"
+        | "email_already_exists"
         | "user_banned"
         | "email_verification_required";
     };
@@ -74,6 +79,7 @@ type SeedableUserRow = {
   role: string;
   bannedAt?: Date | null;
   emailVerifiedAt: Date | null;
+  emailVerificationRequestedAt: Date | null;
   userOrganizationMembers?: CredentialSeedMemberRow | CredentialSeedMemberRow[] | null;
 };
 
@@ -129,6 +135,7 @@ const toResolvedUser = (rows: Array<SeedableUserRow | null | undefined>) => {
     role: first.role as "user" | "admin",
     bannedAt: first.bannedAt ?? null,
     emailVerifiedAt: first.emailVerifiedAt,
+    emailVerificationRequestedAt: first.emailVerificationRequestedAt ?? null,
     members: collectCredentialSeedMembers(rows),
   };
 };
@@ -198,6 +205,9 @@ export function createOAuthServices(options: {
   emailVerification?: AuthEmailVerificationConfig;
 }) {
   const oauthConfig = normalizeOAuthConfig(options.oauth);
+  const emailVerificationRequestCooldownSeconds =
+    options.emailVerification?.requestCooldownSeconds ??
+    DEFAULT_EMAIL_VERIFICATION_REQUEST_COOLDOWN_SECONDS;
 
   return {
     /**
@@ -216,8 +226,6 @@ export function createOAuthServices(options: {
     ) {
       const ttlMs = oauthConfig?.stateTtlMs ?? DEFAULT_STATE_TTL_MS;
       const state = createOAuthState();
-      const now = new Date();
-      const expiresAt = new Date(now.getTime() + ttlMs);
       const returnTo = sanitizeReturnTo(input.returnTo);
       const shouldLink = Boolean(input.link);
       const credentialSeed = normalizeCredentialSeed(input.auth);
@@ -238,8 +246,8 @@ export function createOAuthServices(options: {
             returnTo,
             sessionSeed: credentialSeed,
             linkUserId,
-            createdAt: now,
-            expiresAt,
+            createdAt: uow.now(),
+            expiresAt: uow.now().plus({ ms: ttlMs }),
           });
 
           return {
@@ -247,7 +255,6 @@ export function createOAuthServices(options: {
             state,
             redirectUri: input.redirectUri,
             returnTo,
-            expiresAt,
           };
         })
         .build();
@@ -273,17 +280,30 @@ export function createOAuthServices(options: {
       const requestSignUp = input.requestSignUp ?? false;
 
       const providerAccountId = coerceProviderAccountId(input.userInfo.id);
-      const email = input.userInfo.email ?? null;
+      const email = input.userInfo.email ? normalizeAuthEmail(input.userInfo.email) : null;
 
       if (!email) {
         return this.serviceTx(authSchema)
           .retrieve((uow) =>
-            uow.findFirst("oauthState", (b) =>
-              b.whereIndex("idx_oauth_state_state", (eb) => eb("state", "=", input.state)),
-            ),
+            uow
+              .findFirst("oauthState", (b) =>
+                b.whereIndex("idx_oauth_state_state", (eb) => eb("state", "=", input.state)),
+              )
+              .findFirst("oauthState", (b) =>
+                b
+                  .whereIndex("idx_oauth_state_state_expires_at", (eb) =>
+                    eb.and(eb("state", "=", input.state), eb("expiresAt", ">", eb.now())),
+                  )
+                  .select(["id"]),
+              ),
           )
-          .mutate(({ uow, retrieveResult: [oauthState] }): OAuthCallbackResult => {
+          .mutate(({ uow, retrieveResult: [oauthState, validOauthState] }): OAuthCallbackResult => {
             if (!oauthState || oauthState.provider !== input.providerId) {
+              return { ok: false as const, code: "invalid_state" as const };
+            }
+
+            if (validOauthState?.id.valueOf() !== oauthState.id.valueOf()) {
+              uow.delete("oauthState", oauthState.id, (b) => b.check());
               return { ok: false as const, code: "invalid_state" as const };
             }
 
@@ -303,7 +323,14 @@ export function createOAuthServices(options: {
                 .joinOne("oauthStateLinkUser", "user", (user) =>
                   user
                     .onIndex("primary", (eb) => eb("id", "=", eb.parent("linkUserId")))
-                    .select(["id", "email", "role", "bannedAt", "emailVerifiedAt"])
+                    .select([
+                      "id",
+                      "email",
+                      "role",
+                      "bannedAt",
+                      "emailVerifiedAt",
+                      "emailVerificationRequestedAt",
+                    ])
                     .joinMany("userOrganizationMembers", "organizationMember", (member) =>
                       member
                         .onIndex("idx_org_member_user", (eb) => eb("userId", "=", eb.parent("id")))
@@ -327,7 +354,14 @@ export function createOAuthServices(options: {
                 .joinOne("oauthAccountUser", "user", (user) =>
                   user
                     .onIndex("primary", (eb) => eb("id", "=", eb.parent("userId")))
-                    .select(["id", "email", "role", "bannedAt", "emailVerifiedAt"])
+                    .select([
+                      "id",
+                      "email",
+                      "role",
+                      "bannedAt",
+                      "emailVerifiedAt",
+                      "emailVerificationRequestedAt",
+                    ])
                     .joinMany("userOrganizationMembers", "organizationMember", (member) =>
                       member
                         .onIndex("idx_org_member_user", (eb) => eb("userId", "=", eb.parent("id")))
@@ -353,27 +387,123 @@ export function createOAuthServices(options: {
                         .select(["id", "deletedAt"]),
                     ),
                 ),
+            )
+            .find("oauthState", (b) =>
+              b
+                .whereIndex("idx_oauth_state_state_expires_at", (eb) =>
+                  eb.and(eb("state", "=", input.state), eb("expiresAt", ">", eb.now())),
+                )
+                .select(["id"])
+                .joinOne("oauthStateLinkUser", "user", (user) =>
+                  user
+                    .onIndex("idx_user_id_email_verification_request", (eb) =>
+                      eb.and(
+                        eb("id", "=", eb.parent("linkUserId")),
+                        eb.or(
+                          eb.isNull("emailVerificationRequestedAt"),
+                          eb(
+                            "emailVerificationRequestedAt",
+                            "<=",
+                            eb.now().plus({
+                              seconds: -emailVerificationRequestCooldownSeconds,
+                            }),
+                          ),
+                        ),
+                      ),
+                    )
+                    .select(["id"]),
+                ),
+            )
+            .find("oauthAccount", (b) =>
+              b
+                .whereIndex("idx_oauth_account_provider_account", (eb) =>
+                  eb.and(
+                    eb("provider", "=", input.providerId),
+                    eb("providerAccountId", "=", providerAccountId),
+                  ),
+                )
+                .select(["id"])
+                .joinOne("oauthAccountUser", "user", (user) =>
+                  user
+                    .onIndex("idx_user_id_email_verification_request", (eb) =>
+                      eb.and(
+                        eb("id", "=", eb.parent("userId")),
+                        eb.or(
+                          eb.isNull("emailVerificationRequestedAt"),
+                          eb(
+                            "emailVerificationRequestedAt",
+                            "<=",
+                            eb.now().plus({
+                              seconds: -emailVerificationRequestCooldownSeconds,
+                            }),
+                          ),
+                        ),
+                      ),
+                    )
+                    .select(["id"]),
+                ),
+            )
+            .findFirst("user", (b) =>
+              b
+                .whereIndex("idx_user_email_verification_request", (eb) =>
+                  eb.and(
+                    eb("email", "=", email),
+                    eb.or(
+                      eb.isNull("emailVerificationRequestedAt"),
+                      eb(
+                        "emailVerificationRequestedAt",
+                        "<=",
+                        eb.now().plus({
+                          seconds: -emailVerificationRequestCooldownSeconds,
+                        }),
+                      ),
+                    ),
+                  ),
+                )
+                .select(["id"]),
             ),
         )
         .mutate(
           ({
             uow,
-            retrieveResult: [oauthStates, oauthAccounts, usersByEmail],
+            retrieveResult: [
+              oauthStates,
+              oauthAccounts,
+              usersByEmail,
+              validOauthStates,
+              requestEligibleOauthAccounts,
+              requestEligibleUserByEmail,
+            ],
           }): OAuthCallbackResult => {
             const now = new Date();
             const oauthState = oauthStates[0] ?? null;
             const oauthAccount = oauthAccounts[0] ?? null;
+            const validOauthState = validOauthStates[0] ?? null;
 
             if (!oauthState || oauthState.provider !== input.providerId) {
               return { ok: false as const, code: "invalid_state" as const };
             }
 
-            if (oauthState.expiresAt < now) {
+            if (validOauthState?.id.valueOf() !== oauthState.id.valueOf()) {
               uow.delete("oauthState", oauthState.id, (b) => b.check());
               return { ok: false as const, code: "invalid_state" as const };
             }
 
             uow.delete("oauthState", oauthState.id, (b) => b.check());
+
+            const requestEligibleUserIds = new Set<string>();
+            const requestEligibleLinkedUser = validOauthState.oauthStateLinkUser;
+            if (requestEligibleLinkedUser) {
+              requestEligibleUserIds.add(requestEligibleLinkedUser.id.valueOf());
+            }
+            const requestEligibleAccountUser =
+              requestEligibleOauthAccounts[0]?.oauthAccountUser ?? null;
+            if (requestEligibleAccountUser) {
+              requestEligibleUserIds.add(requestEligibleAccountUser.id.valueOf());
+            }
+            if (requestEligibleUserByEmail) {
+              requestEligibleUserIds.add(requestEligibleUserByEmail.id.valueOf());
+            }
 
             const providerConfig = input.provider;
             if (!oauthAccount && providerConfig?.disableSignUp) {
@@ -398,9 +528,11 @@ export function createOAuthServices(options: {
               role: "user" | "admin";
               bannedAt?: Date | null;
               emailVerifiedAt: Date | null;
+              emailVerificationRequestedAt: Date | null;
               members: ReturnType<typeof mapCredentialSeedMembers>;
             } | null = null;
             let createdUser = false;
+            let createdUserEmailVerificationRequest: EmailVerificationRequestPlan | null = null;
 
             if (accountUser) {
               resolvedUser = accountUser;
@@ -424,13 +556,32 @@ export function createOAuthServices(options: {
                 return { ok: false as const, code: "email_required" as const };
               }
 
+              if (existingUserByEmail) {
+                return { ok: false as const, code: "email_already_exists" as const };
+              }
+
               const role = options.beforeCreateUser?.({ email, role: "user" })?.role ?? "user";
               const emailVerifiedAt = input.userInfo.emailVerified ? now : null;
-              const userId = uow.create("user", {
+              const userId = generateId(authSchema, "user");
+              const emailVerificationRequest = planEmailVerificationRequest(
+                {
+                  id: userId.valueOf(),
+                  email,
+                  role,
+                  bannedAt: null,
+                  emailVerifiedAt,
+                },
+                options.emailVerification,
+                { requestCooldownElapsed: true },
+              );
+              uow.create("user", {
+                id: userId,
                 email,
                 passwordHash: null,
                 role,
                 emailVerifiedAt,
+                emailVerificationRequestedAt:
+                  emailVerificationRequest.status === "requested" ? uow.now() : null,
               });
 
               resolvedUser = {
@@ -440,9 +591,11 @@ export function createOAuthServices(options: {
                 role,
                 bannedAt: null,
                 emailVerifiedAt,
+                emailVerificationRequestedAt: null,
                 members: [],
               };
               createdUser = true;
+              createdUserEmailVerificationRequest = emailVerificationRequest;
             }
 
             if (resolvedUser.bannedAt) {
@@ -450,7 +603,7 @@ export function createOAuthServices(options: {
             }
 
             const providerVerifiedCurrentEmail =
-              input.userInfo.emailVerified === true && resolvedUser.email === email;
+              input.userInfo.emailVerified && resolvedUser.email === email;
             const emailVerifiedAt =
               resolvedUser.emailVerifiedAt ?? (providerVerifiedCurrentEmail ? now : null);
             const emailVerificationEstablished = createdUser
@@ -480,7 +633,7 @@ export function createOAuthServices(options: {
               tokenExpiresAt: tokenPayload.tokenExpiresAt,
               scopes: tokenPayload.scopes,
               rawProfile: input.rawProfile ?? null,
-              updatedAt: now,
+              updatedAt: uow.now(),
             };
 
             if (oauthAccount) {
@@ -489,7 +642,7 @@ export function createOAuthServices(options: {
               uow.create("oauthAccount", {
                 ...oauthAccountInput,
                 userId: resolvedUser.id,
-                createdAt: now,
+                createdAt: uow.now(),
               });
             }
 
@@ -497,7 +650,6 @@ export function createOAuthServices(options: {
               ? createAutoOrganization(uow, {
                   userId: resolvedUser.id,
                   email: resolvedUser.email,
-                  now,
                   options: options.autoCreateOptions,
                 })
               : null;
@@ -516,6 +668,27 @@ export function createOAuthServices(options: {
                 emailVerifiedAt: resolvedUser.emailVerifiedAt?.toISOString() ?? null,
               });
             }
+
+            const emailVerificationRequest =
+              createdUser && createdUserEmailVerificationRequest
+                ? createdUserEmailVerificationRequest
+                : planEmailVerificationRequest(
+                    {
+                      ...userSummary,
+                      bannedAt: resolvedUser.bannedAt ?? null,
+                      emailVerifiedAt: resolvedUser.emailVerifiedAt,
+                    },
+                    options.emailVerification,
+                    { requestCooldownElapsed: requestEligibleUserIds.has(resolvedUser.id) },
+                  );
+            recordEmailVerificationRequest(uow, {
+              plan: emailVerificationRequest,
+              target: createdUser
+                ? { kind: "new" }
+                : { kind: "persisted", userId: resolvedUser.storageId },
+              user: userSummary,
+              reason: "oauth",
+            });
 
             if (emailVerificationEstablished && emailVerifiedAt) {
               uow.triggerHook("onUserEmailVerified", {
@@ -560,17 +733,18 @@ export function createOAuthServices(options: {
               autoOrganization?.organization.id ??
               null;
             const sessionExpiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+            const databaseSessionExpiresAt = uow.now().plus({ days: 30 });
             const credentialId = uow.create("session", {
               userId: resolvedUser.id,
               activeOrganizationId,
-              expiresAt: uow.now().plus({ days: 30 }),
+              expiresAt: databaseSessionExpiresAt,
             });
 
             uow.triggerHook("onCredentialIssued", {
               credential: {
                 id: credentialId.valueOf(),
                 user: userSummary,
-                expiresAt: sessionExpiresAt,
+                expiresAt: databaseSessionExpiresAt,
                 activeOrganizationId,
               },
               actor: userSummary,

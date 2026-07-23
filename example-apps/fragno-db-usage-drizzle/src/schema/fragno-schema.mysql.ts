@@ -97,11 +97,15 @@ export const user_auth = mysqlTable("user_auth", {
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
   _version: int("_version").notNull().default(0),
-  bannedAt: datetime("bannedAt")
+  bannedAt: datetime("bannedAt"),
+  emailVerifiedAt: datetime("emailVerifiedAt"),
+  emailVerificationRequestedAt: datetime("emailVerificationRequestedAt")
 }, (table) => [
-  index("idx_user_idx_user_email_auth_47062eb8").on(table.email),
+  uniqueIndex("uidx_user_idx_user_email_auth_47062eb8").on(table.email),
   uniqueIndex("uidx_user_idx_user_id_auth_1370c3c6").on(table.id),
-  index("idx_user_idx_user_createdAt_auth_3290a418").on(table.createdAt)
+  index("idx_user_idx_user_createdAt_auth_3290a418").on(table.createdAt),
+  index("idx_user_idx_user_email_verification_request_auth_b3653e28").on(table.email, table.emailVerificationRequestedAt),
+  index("idx_user_idx_user_id_email_verification_request_auth_8d6490bf").on(table.id, table.emailVerificationRequestedAt)
 ])
 
 export const session_auth = mysqlTable("session_auth", {
@@ -272,7 +276,8 @@ export const oauthState_auth = mysqlTable("oauthState_auth", {
   }),
   uniqueIndex("uidx_oauthState_idx_oauth_state_state_auth_f65e8ad2").on(table.state),
   index("idx_oauthState_idx_oauth_state_provider_auth_2c66010f").on(table.provider),
-  index("idx_oauthState_idx_oauth_state_expiresAt_auth_462c5a44").on(table.expiresAt)
+  index("idx_oauthState_idx_oauth_state_expiresAt_auth_462c5a44").on(table.expiresAt),
+  index("idx_oauthState_idx_oauth_state_state_expires_at_auth_19408242").on(table.state, table.expiresAt)
 ])
 
 export const user_authRelations = relations(user_auth, ({ many }) => ({
@@ -412,7 +417,7 @@ export const auth_schema = {
   oauthState_authRelations: oauthState_authRelations,
   oauthState: oauthState_auth,
   oauthStateRelations: oauthState_authRelations,
-  schemaVersion: 33
+  schemaVersion: 34
 }
 
 // ============================================================================

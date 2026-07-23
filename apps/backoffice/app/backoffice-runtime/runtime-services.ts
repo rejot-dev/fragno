@@ -9,11 +9,16 @@ import {
 } from "./database-adapters";
 import type { BackofficeObjectRegistry } from "./object-registry";
 
+export type AuthEmailVerificationRuntimeConfig =
+  | { enabled: false }
+  | {
+      enabled: true;
+      publicBaseUrl: string;
+    };
+
 export type BackofficeRuntimeConfig = {
   docsPublicBaseUrl?: string;
-  transactionalEmails: {
-    enabled: boolean;
-  };
+  authEmailVerification: AuthEmailVerificationRuntimeConfig;
   bindings: {
     api: boolean;
     auth: boolean;
@@ -58,13 +63,48 @@ export const parseBooleanEnv = (name: string, value: string | undefined): boolea
   throw new Error(`${name} must be one of: true, false, 1, 0.`);
 };
 
+const parsePublicHttpUrl = (name: string, value: string | undefined): string => {
+  const configuredValue = value?.trim();
+  if (!configuredValue) {
+    throw new Error(`${name} must be configured as an absolute http or https URL.`);
+  }
+
+  let url: URL;
+  try {
+    url = new URL(configuredValue);
+  } catch (cause) {
+    throw new Error(`${name} must be configured as an absolute http or https URL.`, { cause });
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`${name} must be configured as an absolute http or https URL.`);
+  }
+
+  return url.toString();
+};
+
+export const parseAuthEmailVerificationRuntimeConfig = (input: {
+  enabled: string | undefined;
+  publicBaseUrl: string | undefined;
+}): AuthEmailVerificationRuntimeConfig => {
+  if (!parseBooleanEnv("AUTH_EMAIL_VERIFICATION_ENABLED", input.enabled)) {
+    return { enabled: false };
+  }
+
+  return {
+    enabled: true,
+    publicBaseUrl: parsePublicHttpUrl("DOCS_PUBLIC_BASE_URL", input.publicBaseUrl),
+  };
+};
+
 const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): BackofficeRuntimeConfig => ({
   ...(env.DOCS_PUBLIC_BASE_URL?.trim()
     ? { docsPublicBaseUrl: env.DOCS_PUBLIC_BASE_URL.trim() }
     : {}),
-  transactionalEmails: {
-    enabled: parseBooleanEnv("TRANSACTIONAL_EMAILS_ENABLED", env.TRANSACTIONAL_EMAILS_ENABLED),
-  },
+  authEmailVerification: parseAuthEmailVerificationRuntimeConfig({
+    enabled: env.AUTH_EMAIL_VERIFICATION_ENABLED,
+    publicBaseUrl: env.DOCS_PUBLIC_BASE_URL,
+  }),
   bindings: {
     api: Boolean(env.API),
     auth: Boolean(env.AUTH),
@@ -88,12 +128,13 @@ const createOverriddenBackofficeRuntimeServices = (
   overrides: BackofficeRuntimeServiceOverrides,
   options: CreateCloudflareBackofficeRuntimeServicesOptions = {},
 ): BackofficeRuntimeServices => {
+  const config = overrides.config ?? createCloudflareBackofficeRuntimeConfig(env);
   const adapters = overrides.adapters ?? cloudflareDatabaseAdapters();
 
   return {
     objects: overrides.objects ?? createCloudflareBackofficeObjectRegistry(env),
     adapters: options.databaseScope ? adapters.forScope(options.databaseScope) : adapters,
-    config: overrides.config ?? createCloudflareBackofficeRuntimeConfig(env),
+    config,
   };
 };
 

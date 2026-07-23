@@ -25,7 +25,7 @@ export default defineConfig([
   {
     fixedExtension: false,
     ignoreWatch: ["./dist/node/**", "./turbo/**"],
-    entry: "./src/index.ts",
+    entry: ["./src/index.ts", "./src/email-verification.ts"],
     dts: {
       sourcemap: true,
     },

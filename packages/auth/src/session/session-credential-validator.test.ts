@@ -23,7 +23,7 @@ describe("validateSessionCredentialOwner", () => {
   it("returns the canonical user summary for an eligible owner", () => {
     const owner = createOwner({ emailVerifiedAt: new Date("2026-07-22T12:00:00.000Z") });
 
-    expect(validateSessionCredentialOwner(owner, { required: true })).toEqual({
+    expect(validateSessionCredentialOwner(owner, {})).toEqual({
       ok: true,
       owner,
       user: {
@@ -36,7 +36,7 @@ describe("validateSessionCredentialOwner", () => {
   });
 
   it("collapses account-policy failures into an invalid credential", () => {
-    expect(validateSessionCredentialOwner(createOwner(), { required: true })).toEqual({
+    expect(validateSessionCredentialOwner(createOwner(), {})).toEqual({
       ok: false,
       code: "credential_invalid",
     });
@@ -44,9 +44,7 @@ describe("validateSessionCredentialOwner", () => {
     expect(
       validateSessionCredentialOwner(
         createOwner({ bannedAt: new Date("2026-07-22T12:00:00.000Z") }),
-        {
-          required: false,
-        },
+        undefined,
       ),
     ).toEqual({
       ok: false,

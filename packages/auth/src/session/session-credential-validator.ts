@@ -3,7 +3,7 @@ import type { FragnoId } from "@fragno-dev/db/schema";
 import {
   evaluateCredentialEligibility,
   type AuthEmailVerificationConfig,
-} from "../email-verification-policy";
+} from "../email-verification";
 import type { UserSummary } from "../types";
 import { mapUserSummary } from "../user/summary";
 
