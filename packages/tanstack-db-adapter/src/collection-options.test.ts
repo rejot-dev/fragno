@@ -2,9 +2,9 @@ import { assert, describe, expect, it } from "vitest";
 
 import { column, idColumn, schema } from "@fragno-dev/db/schema";
 
-import { BTreeIndex, createCollection, createLiveQueryCollection } from "@tanstack/db";
+import { BTreeIndex, createLiveQueryCollection } from "@tanstack/db";
 
-import { fragnoCollectionOptions } from "./collection-options";
+import { createFragnoCollection, fragnoCollectionOptions } from "./collection-options";
 import { createFragnoOutboxCoordinator } from "./coordinator";
 import type { FragnoOutboxStreamingTransport } from "./streaming-transport";
 
@@ -62,13 +62,11 @@ describe("Fragno collection synchronization state", () => {
         },
       },
     });
-    const collection = createCollection(
-      fragnoCollectionOptions({
-        id: "users",
-        coordinator,
-        target: { schema: appSchema, table: "users" },
-      }),
-    );
+    const collection = createFragnoCollection({
+      id: "users",
+      coordinator,
+      target: { schema: appSchema, table: "users" },
+    });
 
     assert(collection.utils.getSyncStatus() === "idle");
     const preload = collection.preload();
@@ -117,13 +115,11 @@ describe("Fragno collection synchronization state", () => {
       internalUrl: "https://example.com/_internal",
       transport,
     });
-    const collection = createCollection(
-      fragnoCollectionOptions({
-        id: "users",
-        coordinator,
-        target: { schema: appSchema, table: "users" },
-      }),
-    );
+    const collection = createFragnoCollection({
+      id: "users",
+      coordinator,
+      target: { schema: appSchema, table: "users" },
+    });
     const users = createLiveQueryCollection((query) => query.from({ user: collection }));
 
     await Promise.all([users.preload(), streamStarted]);
@@ -153,13 +149,11 @@ describe("Fragno collection synchronization state", () => {
         },
       },
     });
-    const collection = createCollection(
-      fragnoCollectionOptions({
-        id: "users",
-        coordinator,
-        target: { schema: appSchema, table: "users" },
-      }),
-    );
+    const collection = createFragnoCollection({
+      id: "users",
+      coordinator,
+      target: { schema: appSchema, table: "users" },
+    });
 
     const preload = collection.preload();
     await expect(collection.utils.initialSync()).rejects.toBe(failure);
