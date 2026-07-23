@@ -2,6 +2,8 @@ import type { StandardSchemaV1 } from "@fragno-dev/core/api";
 import type { InstanceStatus, WorkflowRegistryEntry } from "@fragno-dev/workflows/workflow";
 import type { Static, TSchema as TypeBoxSchema } from "typebox";
 
+import type { HookContext } from "@fragno-dev/db";
+
 import type { AgentMessage, AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 
@@ -128,7 +130,7 @@ export interface PiFragmentConfig {
    */
   onOperationCompleted?: (
     payload: PiOperationCompletedHookPayload,
-    context: { idempotencyKey: string; hookId: string },
+    context: HookContext,
   ) => Promise<void> | void;
   /**
    * Optional logging config for internal pi-harness diagnostics.

@@ -417,10 +417,10 @@ describe("pi-harness routes", () => {
         ],
         usage,
       },
-      {
+      expect.objectContaining({
         idempotencyKey: expect.any(String),
-        hookId: expect.any(String),
-      },
+        hookId: expect.any(Object),
+      }),
     );
 
     await runSessionUntilIdle(created.data.id);

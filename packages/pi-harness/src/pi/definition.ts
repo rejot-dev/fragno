@@ -75,10 +75,7 @@ export const piHarnessDefinition = defineFragment<PiFragmentConfig>("pi-harness"
   .usesService<"workflows", WorkflowsFragmentServices>("workflows")
   .provideHooks<PiHarnessHooksMap>(({ defineHook, config }) => ({
     onOperationCompleted: defineHook<PiOperationCompletedHookPayload>(async function (payload) {
-      await config.onOperationCompleted?.(payload, {
-        idempotencyKey: this.idempotencyKey,
-        hookId: this.hookId.toString(),
-      });
+      await config.onOperationCompleted?.(payload, this);
     }),
   }))
   .providesBaseService(({ defineService, serviceDeps }) =>
