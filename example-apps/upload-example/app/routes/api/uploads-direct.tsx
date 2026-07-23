@@ -1,8 +1,8 @@
 import { getUploadServers } from "~/uploads/upload-fragment.server";
 
-import type { Route } from "./+types/uploads-direct";
+type RequestHandlerArgs = { request: Request };
 
-export async function loader(args: Route.LoaderArgs) {
+export async function loader({ request }: RequestHandlerArgs) {
   const servers = await getUploadServers();
   if (!servers.direct) {
     return new Response(
@@ -16,10 +16,10 @@ export async function loader(args: Route.LoaderArgs) {
       },
     );
   }
-  return servers.direct.handlersFor("react-router").loader(args);
+  return servers.direct.handlersFor("react-router").loader({ request });
 }
 
-export async function action(args: Route.ActionArgs) {
+export async function action({ request }: RequestHandlerArgs) {
   const servers = await getUploadServers();
   if (!servers.direct) {
     return new Response(
@@ -33,5 +33,5 @@ export async function action(args: Route.ActionArgs) {
       },
     );
   }
-  return servers.direct.handlersFor("react-router").action(args);
+  return servers.direct.handlersFor("react-router").action({ request });
 }
