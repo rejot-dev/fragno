@@ -1020,6 +1020,99 @@ describe("fragment-instantiator", () => {
       expect(contextCreationSpy).toHaveBeenCalledTimes(2);
     });
 
+    it("should store W3C propagation headers in request storage", async () => {
+      const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+      const definition = defineFragment("test-fragment")
+        .withRequestStorage(() => ({}))
+        .withThisContext(({ storage }) => {
+          const ctx = {
+            get propagationContext() {
+              return storage.getPropagationContext();
+            },
+          };
+          return { serviceContext: ctx, handlerContext: ctx };
+        })
+        .build();
+
+      const routes = defineRoutes(definition).create(({ defineRoute }) => [
+        defineRoute({
+          method: "GET",
+          path: "/test",
+          handler: async function (_input, { json }) {
+            return json({ propagationContext: this.propagationContext });
+          },
+        }),
+      ]);
+
+      const fragment = instantiate(definition)
+        .withRoutes([routes])
+        .withOptions({ mountRoute: "/api" })
+        .build();
+      const response = await fragment.handler(
+        new Request("http://localhost/api/test", {
+          headers: {
+            traceparent,
+            tracestate: "vendor=value",
+          },
+        }),
+      );
+
+      expect(await response.json()).toEqual({
+        propagationContext: {
+          traceparent,
+          tracestate: "vendor=value",
+        },
+      });
+
+      const suppressedResponse = await fragment.handler(
+        new Request("http://localhost/api/test", { headers: { traceparent } }),
+        { propagationContext: null },
+      );
+      expect(await suppressedResponse.json()).toEqual({ propagationContext: null });
+    });
+
+    it("should seed explicit propagation context for inContext", () => {
+      const definition = defineFragment("test-fragment")
+        .withRequestStorage(() => ({}))
+        .withThisContext(({ storage }) => {
+          const ctx = {
+            get propagationContext() {
+              return storage.getPropagationContext();
+            },
+          };
+          return { serviceContext: ctx, handlerContext: ctx };
+        })
+        .build();
+      const fragment = instantiate(definition).withOptions({}).build();
+      const propagationContext = {
+        traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-1111111111111111-01",
+      };
+
+      const captured = fragment.inContext(
+        function () {
+          return this.propagationContext;
+        },
+        { propagationContext },
+      );
+      const inherited = fragment.inContext(
+        () =>
+          fragment.inContext(function () {
+            return this.propagationContext;
+          }),
+        { propagationContext },
+      );
+      const suppressed = fragment.inContext(
+        function () {
+          return this.propagationContext;
+        },
+        { propagationContext: null },
+      );
+
+      expect(captured).toEqual(propagationContext);
+      expect(inherited).toEqual(propagationContext);
+      expect(suppressed).toBeNull();
+    });
+
     it("should store lifecycle waitUntil in request storage", async () => {
       const requestWaitUntilSymbol = Symbol.for("fragno-request-wait-until");
       const waitUntil = vi.fn();

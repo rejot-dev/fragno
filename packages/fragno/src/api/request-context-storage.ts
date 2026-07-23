@@ -1,5 +1,29 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
+export type RequestPropagationContext = Readonly<Record<string, string>>;
+
+export function extractW3CRequestPropagationContext(
+  headers: Headers,
+): RequestPropagationContext | null {
+  const traceparent = headers.get("traceparent");
+  if (!traceparent) {
+    return null;
+  }
+
+  const tracestate = headers.get("tracestate");
+  return tracestate ? { traceparent, tracestate } : { traceparent };
+}
+
+type RequestContext<TRequestStorage> = {
+  storage: TRequestStorage;
+  propagationContext: RequestPropagationContext | null;
+};
+
+type RunOptions = {
+  /** Omit to inherit the active carrier. Use `null` to suppress propagation. */
+  propagationContext?: RequestPropagationContext | null;
+};
+
 /**
  * Typed wrapper around AsyncLocalStorage for managing per-request data storage.
  * Each fragment instance has its own storage to ensure proper isolation.
@@ -12,25 +36,22 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * @internal - Used by @fragno-dev/db, not part of public API
  */
 export class RequestContextStorage<TRequestStorage> {
-  readonly #storage: AsyncLocalStorage<TRequestStorage>;
-
-  constructor() {
-    this.#storage = new AsyncLocalStorage<TRequestStorage>();
-  }
+  readonly #storage = new AsyncLocalStorage<RequestContext<TRequestStorage>>();
 
   /**
    * Run a callback with the given data available via getStore().
    * This establishes the async context for the duration of the callback.
    */
-  run<T>(data: TRequestStorage, callback: () => T): T;
-  run<T>(data: TRequestStorage, callback: () => Promise<T>): Promise<T>;
-  run<T>(data: TRequestStorage, callback: () => T | Promise<T>): T | Promise<T> {
-    return this.#storage.run(data, callback);
+  run<T>(data: TRequestStorage, callback: () => T, options: RunOptions = {}): T {
+    const propagationContext =
+      options.propagationContext === undefined
+        ? (this.#storage.getStore()?.propagationContext ?? null)
+        : options.propagationContext;
+
+    return this.#storage.run({ storage: data, propagationContext }, callback);
   }
 
-  /**
-   * Check whether a store is currently active.
-   */
+  /** Check whether a store is currently active. */
   hasStore(): boolean {
     return this.#storage.getStore() !== undefined;
   }
@@ -43,29 +64,30 @@ export class RequestContextStorage<TRequestStorage> {
    * running within the same async context.
    */
   getStore(): TRequestStorage {
-    const store = this.#storage.getStore();
-    if (!store) {
+    return this.#getContext().storage;
+  }
+
+  /** Get the propagation carrier associated with the current execution. */
+  getPropagationContext(): RequestPropagationContext | null {
+    return this.#getContext().propagationContext;
+  }
+
+  /** Enter a new async context with freshly initialized storage. */
+  runWithInitializer<T>(
+    initializer: () => TRequestStorage,
+    callback: () => T,
+    options?: RunOptions,
+  ): T {
+    return this.run(initializer(), callback, options);
+  }
+
+  #getContext(): RequestContext<TRequestStorage> {
+    const context = this.#storage.getStore();
+    if (!context) {
       throw new Error(
         "No storage found in RequestContextStorage. Service must be called within a route handler OR using `inContext`.",
       );
     }
-    return store;
-  }
-
-  /**
-   * Enter a new async context with fresh storage.
-   * This is typically called at the start of a request handler.
-   *
-   * @param initializer Function that returns the initial storage data
-   * @param callback The request handler to execute with the storage
-   */
-  runWithInitializer<T>(initializer: () => TRequestStorage, callback: () => T): T;
-  runWithInitializer<T>(initializer: () => TRequestStorage, callback: () => Promise<T>): Promise<T>;
-  runWithInitializer<T>(
-    initializer: () => TRequestStorage,
-    callback: () => T | Promise<T>,
-  ): T | Promise<T> {
-    const data = initializer();
-    return this.#storage.run(data, callback);
+    return context;
   }
 }
