@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { getUploadDurableObject } from "@/worker-runtime/durable-objects";
 
 const forwardToUpload = async (
@@ -10,6 +11,8 @@ const forwardToUpload = async (
   if (!orgId) {
     return new Response("Missing organisation id", { status: 400 });
   }
+
+  await requireBackofficeContext(request, context, { kind: "org", orgId });
 
   const uploadDo = getUploadDurableObject(context, orgId);
   const url = new URL(request.url);
@@ -25,8 +28,8 @@ const forwardToUpload = async (
 };
 
 /**
- * Catch-all route that forwards all /api/upload/:orgId/* requests to the Upload Durable Object.
- * The org-specific prefix is stripped before the request reaches the fragment.
+ * Authenticated catch-all route that forwards /api/upload/:orgId/* requests to the organisation's
+ * Upload Durable Object. The org-specific prefix is stripped before the request reaches the fragment.
  */
 export async function loader({ request, context, params }: LoaderFunctionArgs) {
   return forwardToUpload(request, context, params.orgId);
