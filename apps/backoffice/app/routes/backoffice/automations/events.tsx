@@ -8,7 +8,7 @@ import type { AutomationEventActor } from "@/fragno/automation/contracts";
 
 import type { Route } from "./+types/events";
 import { formatTimestamp } from "./formatting";
-import type { AutomationLayoutContext } from "./shared";
+import type { AutomationLayoutContext } from "./layout-context";
 
 const actorIdentity = (actor: AutomationEventActor) =>
   `${actor.scope}:${actor.source ?? ""}:${actor.type}:${actor.id}`;

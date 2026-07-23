@@ -10,13 +10,13 @@ import {
 import { runBackofficeTerminalAction } from "../terminal.server";
 import type { Route } from "./+types/terminal";
 import { fetchAutomationProjects } from "./data.server";
+import type { AutomationLayoutContext } from "./layout-context";
 import {
   automationScopeBasePath,
   automationScopeFromRouteParams,
   resolveAutomationUiScope,
   toBackofficeScope,
 } from "./scope";
-import type { AutomationLayoutContext } from "./shared";
 
 export async function action({ request, context, params }: Route.ActionArgs) {
   const me = await getAuthMe(request, context);

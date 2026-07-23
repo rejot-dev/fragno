@@ -7,9 +7,6 @@ import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createBackofficeFileSystem } from "@/files";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import {
-  AUTOMATION_STATIC_ROOT,
-  AUTOMATION_SYSTEM_ROOT,
-  AUTOMATION_WORKSPACE_ROOT,
   getAutomationLayerForPath,
   listAutomationWorkspaceScripts,
   readAutomationWorkspaceScript,
@@ -28,10 +25,13 @@ import type {
   AutomationScriptRecord,
   AutomationScriptSourceRecord,
 } from "./data";
+import {
+  buildAutomationScriptRecord,
+  fromAutomationScriptId,
+  isAutomationScriptLayerVisibleInScope,
+} from "./script-records";
 
 type AutomationFragment = ReturnType<typeof createAutomationFragment>;
-
-const AUTOMATION_SCRIPT_ID_PREFIX = "automation-script:";
 
 const formatErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
@@ -134,95 +134,6 @@ const createBackofficeAutomationFileSystem = async ({
   });
 };
 
-const normalizeAutomationScriptPath = (value: string) => {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return "";
-  }
-
-  for (const root of [AUTOMATION_STATIC_ROOT, AUTOMATION_SYSTEM_ROOT, AUTOMATION_WORKSPACE_ROOT]) {
-    const prefix = `${root}/`;
-    if (trimmed.startsWith(prefix)) {
-      return trimmed.slice(prefix.length);
-    }
-  }
-
-  return trimmed.replace(/^\/+/, "");
-};
-
-const buildAutomationScriptKey = (path: string) => {
-  const normalizedPath = normalizeAutomationScriptPath(path);
-  const withoutScriptsRoot = normalizedPath.replace(/^scripts\//, "");
-  const withoutExtension = withoutScriptsRoot.replace(/\.[^.]+$/, "");
-  return withoutExtension || normalizedPath;
-};
-
-const buildAutomationScriptName = (path: string) => {
-  const key = buildAutomationScriptKey(path);
-  const segments = key
-    .split(/[/._-]+/)
-    .filter(Boolean)
-    .map((segment) => `${segment.slice(0, 1).toUpperCase()}${segment.slice(1)}`);
-
-  return segments.join(" ") || path;
-};
-
-const isAutomationScriptLayerVisibleInScope = (
-  layer: AutomationWorkspaceScriptEntry["layer"],
-  scope: BackofficeContextScope,
-) => {
-  if (scope.kind === "system") {
-    return layer === "system";
-  }
-  if (layer === "static") {
-    return scope.kind === "org";
-  }
-  return layer === "workspace";
-};
-
-const buildWorkspaceScriptRecord = (
-  script: AutomationWorkspaceScriptEntry,
-): AutomationScriptRecord => ({
-  id: toAutomationScriptId(script),
-  layer: script.layer,
-  readOnly: script.layer === "static" || script.layer === "system",
-  key: buildAutomationScriptKey(script.path),
-  name: buildAutomationScriptName(script.path),
-  engine: script.engine,
-  path: script.path,
-  absolutePath: script.absolutePath,
-  version: null,
-  scriptLoadError: null,
-  enabled: script.kind === "script",
-});
-
-const toAutomationScriptId = (
-  script: Pick<AutomationWorkspaceScriptEntry, "layer" | "path">,
-): string =>
-  `${AUTOMATION_SCRIPT_ID_PREFIX}${script.layer}:${normalizeAutomationScriptPath(script.path)}`;
-
-const fromAutomationScriptId = (value: string): string => {
-  const normalized = value.startsWith(AUTOMATION_SCRIPT_ID_PREFIX)
-    ? value.slice(AUTOMATION_SCRIPT_ID_PREFIX.length)
-    : value;
-  const [layer, ...pathParts] = normalized.split(":");
-  const path = normalizeAutomationScriptPath(
-    pathParts.length > 0 ? pathParts.join(":") : normalized,
-  );
-
-  if (layer === "static") {
-    return `${AUTOMATION_STATIC_ROOT}/${path}`;
-  }
-  if (layer === "system") {
-    return `${AUTOMATION_SYSTEM_ROOT}/${path}`;
-  }
-  if (layer === "workspace") {
-    return `${AUTOMATION_WORKSPACE_ROOT}/${path}`;
-  }
-
-  return path;
-};
-
 export { toExternalId } from "./data";
 
 export async function loadAutomationWorkspaceData({
@@ -230,11 +141,13 @@ export async function loadAutomationWorkspaceData({
   context,
   scope,
   orgId,
+  layers,
 }: {
   request: Request;
   context: Readonly<RouterContextProvider>;
   scope?: BackofficeContextScope;
   orgId?: string;
+  layers?: readonly AutomationWorkspaceScriptEntry["layer"][];
 }): Promise<{
   scripts: AutomationScriptRecord[];
   scriptsError: string | null;
@@ -243,6 +156,10 @@ export async function loadAutomationWorkspaceData({
   if (!resolvedScope) {
     throw new Error("Automation scope is required.");
   }
+  if (layers?.length === 0) {
+    return { scripts: [], scriptsError: null };
+  }
+
   const fileSystem = await createBackofficeAutomationFileSystem({
     request,
     context,
@@ -252,21 +169,26 @@ export async function loadAutomationWorkspaceData({
   let workspaceScripts: AutomationWorkspaceScriptEntry[] = [];
   let workspaceScriptsError: string | null = null;
   try {
-    workspaceScripts = await listAutomationWorkspaceScripts(fileSystem);
+    workspaceScripts = await listAutomationWorkspaceScripts(fileSystem, { layers });
   } catch (error) {
     workspaceScriptsError = formatErrorMessage(error, "Failed to list automation scripts.");
   }
 
+  const scripts: AutomationScriptRecord[] = [];
+  for (const workspaceScript of workspaceScripts) {
+    if (isAutomationScriptLayerVisibleInScope(workspaceScript.layer, resolvedScope)) {
+      scripts.push(buildAutomationScriptRecord(workspaceScript));
+    }
+  }
+  scripts.sort(
+    (left, right) =>
+      left.layer.localeCompare(right.layer) ||
+      left.name.localeCompare(right.name) ||
+      left.path.localeCompare(right.path),
+  );
+
   return {
-    scripts: workspaceScripts
-      .filter((script) => isAutomationScriptLayerVisibleInScope(script.layer, resolvedScope))
-      .map(buildWorkspaceScriptRecord)
-      .sort(
-        (left, right) =>
-          left.layer.localeCompare(right.layer) ||
-          left.name.localeCompare(right.name) ||
-          left.path.localeCompare(right.path),
-      ),
+    scripts,
     scriptsError: workspaceScriptsError,
   };
 }

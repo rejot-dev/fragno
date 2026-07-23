@@ -27,8 +27,8 @@ import { getScopedSandboxRuntime } from "@/worker-runtime/sandbox-manager";
 
 import type { Route } from "./+types/sandboxes";
 import { fetchAutomationProjects, toExternalId } from "./data.server";
+import type { AutomationLayoutContext } from "./layout-context";
 import { automationScopeFromRouteParams, automationScopeTabPath } from "./scope";
-import type { AutomationLayoutContext } from "./shared";
 
 type SandboxView = "new" | "detail";
 

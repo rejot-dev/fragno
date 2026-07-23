@@ -3,7 +3,7 @@ import { Link, useOutletContext } from "react-router";
 import { backofficeConnectionCatalog } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 
 import { integrationBasePath } from "../integrations/scope";
-import type { AutomationLayoutContext } from "./shared";
+import type { AutomationLayoutContext } from "./layout-context";
 
 const SCOPED_INTEGRATION_IDS = ["telegram", "resend", "github"] as const;
 

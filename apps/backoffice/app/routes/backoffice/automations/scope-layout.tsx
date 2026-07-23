@@ -15,6 +15,8 @@ import {
   describeAutomationCollectionSource,
   getAutomationBrowserDatabase,
 } from "@/fragno/automation/tanstack/browser-database";
+import type { UploadCollectionSource } from "@/fragno/upload/tanstack/browser-database";
+import { fetchUploadAdapterIdentity } from "@/fragno/upload/tanstack/server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/scope-layout";
@@ -25,6 +27,7 @@ import {
   loadAutomationWorkspaceData,
   toExternalId,
 } from "./data.server";
+import type { AutomationLayoutContext, AutomationTab } from "./layout-context";
 import {
   automationScopeBasePath,
   automationScopeFromRouteParams,
@@ -33,41 +36,12 @@ import {
   resolveAutomationUiScope,
   toBackofficeScope,
 } from "./scope";
-import type { AutomationScriptItem } from "./shared";
 import {
   AutomationErrorBoundary,
   AutomationHeader,
   AutomationScopePicker,
   AutomationTabs,
-  type AutomationLayoutContext,
-  type AutomationTab,
 } from "./shared";
-
-const normalizeScripts = (
-  scripts: Awaited<ReturnType<typeof loadAutomationWorkspaceData>>["scripts"],
-): AutomationScriptItem[] => {
-  return scripts
-    .map((script) => ({
-      id: script.id,
-      key: script.key,
-      name: script.name,
-      engine: script.engine,
-      layer: script.layer,
-      readOnly: script.readOnly,
-      script: null,
-      path: script.path,
-      absolutePath: script.absolutePath,
-      version: script.version,
-      scriptLoadError: script.scriptLoadError ?? null,
-      enabled: script.enabled,
-    }))
-    .sort(
-      (left, right) =>
-        left.layer.localeCompare(right.layer) ||
-        left.name.localeCompare(right.name) ||
-        left.path.localeCompare(right.path),
-    );
-};
 
 type ProjectActionData = { ok: false; message: string };
 
@@ -161,13 +135,43 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   });
   const backofficeScope = toBackofficeScope(selectedScope);
   const currentTab = currentTabFromPath(url.pathname);
-  const [workspaceResult, adapterIdentity] = await Promise.all([
+  const serverScriptLayers =
+    selectedScope.kind === "org"
+      ? (["static"] as const)
+      : selectedScope.kind === "system"
+        ? (["system"] as const)
+        : undefined;
+  const uploadCollectionStatePromise =
+    selectedScope.kind === "org" && currentTab === "scripts"
+      ? fetchUploadAdapterIdentity(request, context, selectedScope.orgId)
+          .then(
+            (
+              adapterIdentity,
+            ): {
+              source: UploadCollectionSource;
+              error: null;
+            } => ({
+              source: { orgId: selectedScope.orgId, adapterIdentity },
+              error: null,
+            }),
+          )
+          .catch((error: unknown) => ({
+            source: null,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Local workspace script metadata is unavailable.",
+          }))
+      : Promise.resolve({ source: null, error: null });
+  const [workspaceResult, adapterIdentity, uploadCollectionState] = await Promise.all([
     loadAutomationWorkspaceData({
       request,
       context,
       scope: backofficeScope,
+      layers: serverScriptLayers,
     }),
     fetchAutomationAdapterIdentity(request, context, backofficeScope),
+    uploadCollectionStatePromise,
   ]);
 
   return {
@@ -180,8 +184,10 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
       currentTab,
       projectOrgId: activeOrgId,
     }),
-    scripts: normalizeScripts(workspaceResult.scripts),
+    scripts: workspaceResult.scripts,
     scriptsError: workspaceResult.scriptsError,
+    uploadCollectionSource: uploadCollectionState.source,
+    uploadCollectionError: uploadCollectionState.error,
     projectsError: projectsResult.projectsError,
   };
 }
@@ -359,6 +365,8 @@ function AutomationClientOutlet({
     scripts: loaderData.scripts,
     scriptsError: loaderData.scriptsError,
     collections,
+    uploadCollectionSource: loaderData.uploadCollectionSource,
+    uploadCollectionError: loaderData.uploadCollectionError,
   } satisfies AutomationLayoutContext;
 
   return <Outlet key={outletKey} context={outletContext} />;
