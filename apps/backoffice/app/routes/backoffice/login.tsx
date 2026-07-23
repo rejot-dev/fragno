@@ -2,10 +2,12 @@ import "../../backoffice.css";
 
 import { useEffect, useState } from "react";
 import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
+import { z } from "zod";
 
 import { FormContainer, FormField } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth/auth-client";
 import { createAuthRouteCaller, getAuthMe } from "@/fragno/auth/auth-server";
+import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
 
 import type { Route } from "./+types/login";
 import {
@@ -21,10 +23,30 @@ type BackofficeLoginLoaderData = {
   bootstrapError: string | null;
 };
 
-type BackofficeLoginActionData = {
-  ok: false;
-  message: string;
-};
+type BackofficeLoginActionData =
+  | {
+      state: "error";
+      message: string;
+    }
+  | {
+      state: "verification_required";
+      email: string;
+      resend: "available" | "accepted";
+      message: string;
+    };
+
+const loginActionInputSchema = z.discriminatedUnion("intent", [
+  z.object({
+    intent: z.literal("sign_in"),
+    email: z.string().trim().toLowerCase().pipe(z.email().max(191)),
+    password: z.string().min(1),
+    activeOrganizationId: z.string().trim().optional(),
+  }),
+  z.object({
+    intent: z.literal("resend"),
+    email: z.string().trim().toLowerCase().pipe(z.email().max(191)),
+  }),
+]);
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
   if (import.meta.env.MODE !== "development") {
@@ -105,37 +127,59 @@ export async function action({ request, context, url }: Route.ActionArgs) {
 
   const formData = await request.formData();
   const returnTo = readBackofficeReturnTo(url);
-  const email = String(formData.get("email") ?? "").trim();
-  const password = String(formData.get("password") ?? "");
-  const activeOrganizationId = String(formData.get("activeOrganizationId") ?? "").trim();
-
-  if (!email || !password) {
+  const input = loginActionInputSchema.safeParse(Object.fromEntries(formData));
+  if (!input.success) {
     return {
-      ok: false,
-      message: "Enter your email and password to continue.",
+      state: "error",
+      message: "Enter a valid email address and password to continue.",
     } satisfies BackofficeLoginActionData;
+  }
+
+  if (input.data.intent === "resend") {
+    const resend = await requestEmailVerificationResend({
+      request,
+      context,
+      email: input.data.email,
+    });
+    return resend.status === "accepted"
+      ? ({
+          state: "verification_required",
+          email: resend.email,
+          resend: "accepted",
+          message: "If this unverified account exists, a new email will be sent.",
+        } satisfies BackofficeLoginActionData)
+      : ({ state: "error", message: resend.message } satisfies BackofficeLoginActionData);
   }
 
   try {
     const callAuthRoute = createAuthRouteCaller(request, context);
     const response = await callAuthRoute("POST", "/sign-in", {
       body: {
-        email,
-        password,
-        auth: activeOrganizationId ? { activeOrganizationId } : undefined,
+        email: input.data.email,
+        password: input.data.password,
+        auth: input.data.activeOrganizationId
+          ? { activeOrganizationId: input.data.activeOrganizationId }
+          : undefined,
       },
     });
 
     if (response.type === "error") {
-      return {
-        ok: false,
-        message: response.error.message || "Unable to sign in.",
-      } satisfies BackofficeLoginActionData;
+      return response.error.code === "email_verification_required"
+        ? ({
+            state: "verification_required",
+            email: input.data.email,
+            resend: "available",
+            message: response.error.message || "Verify your email before signing in.",
+          } satisfies BackofficeLoginActionData)
+        : ({
+            state: "error",
+            message: response.error.message || "Unable to sign in.",
+          } satisfies BackofficeLoginActionData);
     }
 
     if (response.type !== "json" && response.type !== "empty") {
       return {
-        ok: false,
+        state: "error",
         message: "Unable to sign in.",
       } satisfies BackofficeLoginActionData;
     }
@@ -143,7 +187,7 @@ export async function action({ request, context, url }: Route.ActionArgs) {
     return redirect(returnTo || BACKOFFICE_HOME_PATH, { headers: response.headers });
   } catch (error) {
     return {
-      ok: false,
+      state: "error",
       message: error instanceof Error ? error.message : "Unable to sign in.",
     } satisfies BackofficeLoginActionData;
   }
@@ -169,7 +213,10 @@ export default function BackofficeLogin() {
   const actionData = useActionData<BackofficeLoginActionData>();
   const navigation = useNavigation();
   const passwordError = actionData?.message ?? null;
-  const passwordPending = navigation.state === "submitting";
+  const verificationRequired = actionData?.state === "verification_required" ? actionData : null;
+  const submittedIntent = navigation.formData?.get("intent");
+  const passwordPending = navigation.state === "submitting" && submittedIntent !== "resend";
+  const resendPending = navigation.state === "submitting" && submittedIntent === "resend";
 
   useEffect(() => {
     if (authenticated) {
@@ -277,6 +324,7 @@ export default function BackofficeLogin() {
                     type="email"
                     name="email"
                     autoComplete="username"
+                    defaultValue={verificationRequired?.email ?? ""}
                     required
                     placeholder="team@fragno.dev"
                     className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
@@ -293,15 +341,37 @@ export default function BackofficeLogin() {
                   />
                 </FormField>
                 {passwordError ? (
-                  <p className="text-xs text-red-400">{passwordError}</p>
+                  <p
+                    className={
+                      verificationRequired
+                        ? "text-xs text-[var(--bo-accent)]"
+                        : "text-xs text-red-400"
+                    }
+                  >
+                    {passwordError}
+                  </p>
                 ) : (
                   <p className="text-xs text-[var(--bo-muted-2)]">
                     Password sign-in is enabled for local development.
                   </p>
                 )}
+                {verificationRequired?.email ? (
+                  <button
+                    type="submit"
+                    name="intent"
+                    value="resend"
+                    formNoValidate
+                    disabled={resendPending}
+                    className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+                  >
+                    {resendPending ? "Requesting…" : "Resend verification email"}
+                  </button>
+                ) : null}
                 <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
                   <button
                     type="submit"
+                    name="intent"
+                    value="sign_in"
                     disabled={passwordPending}
                     className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
                   >
