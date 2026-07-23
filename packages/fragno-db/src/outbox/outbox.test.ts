@@ -63,8 +63,8 @@ const outboxFragmentDef = defineFragment(outboxFragmentName)
   .build();
 
 type OutboxAdapterConfig =
-  | { type: "kysely-sqlite"; outboxEnabled?: boolean }
-  | { type: "kysely-pglite"; outboxEnabled?: boolean };
+  | { type: "kysely-sqlite"; outboxEnabled?: boolean; outboxTables?: readonly string[] }
+  | { type: "kysely-pglite"; outboxEnabled?: boolean; outboxTables?: readonly string[] };
 
 type OutboxTestContext = {
   fragment: AnyFragnoInstantiatedDatabaseFragment;
@@ -128,7 +128,12 @@ async function buildOutboxTest(adapterConfig: OutboxAdapterConfig): Promise<Outb
     .withRoutes([])
     .withOptions({
       databaseAdapter: adapter,
-      outbox: adapterConfig.outboxEnabled ? { enabled: true } : undefined,
+      outbox: adapterConfig.outboxEnabled
+        ? {
+            enabled: true,
+            ...(adapterConfig.outboxTables ? { tables: adapterConfig.outboxTables } : {}),
+          }
+        : undefined,
     })
     .build();
 
@@ -250,6 +255,36 @@ describe("Fragno DB Outbox", () => {
     expect(entries).toHaveLength(0);
     const mutations = await listOutboxMutations(internalFragment);
     expect(mutations).toHaveLength(0);
+
+    await cleanup();
+  });
+
+  it("writes only mutations from the configured tables", async () => {
+    const { fragment, internalFragment, cleanup } = await buildOutboxTest({
+      type: "kysely-sqlite",
+      outboxEnabled: true,
+      outboxTables: ["posts"],
+    });
+
+    const userId = await createUser(fragment, "selected-tables@example.com");
+    expect(await listOutbox(internalFragment)).toHaveLength(0);
+
+    await createPost(fragment, "Included", FragnoReference.fromInternal(userId.internalId!));
+
+    const entries = await listOutbox(internalFragment);
+    expect(entries).toHaveLength(1);
+    const payload = superjson.deserialize(entries[0].payload as SuperJSONResult) as OutboxPayload;
+    expect(payload.mutations).toEqual([
+      expect.objectContaining({
+        op: "create",
+        table: "posts",
+        values: expect.objectContaining({ title: "Included" }),
+      }),
+    ]);
+    expect(entries[0].refMap).toEqual({ "0.authorId": userId.externalId });
+    expect(await listOutboxMutations(internalFragment)).toEqual([
+      expect.objectContaining({ table: "posts", externalId: payload.mutations[0].externalId }),
+    ]);
 
     await cleanup();
   });

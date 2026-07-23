@@ -12,28 +12,34 @@ import {
   createInternalFragmentSyncRoutes,
 } from "../fragments/internal-fragment.routes";
 import type { SyncCommandDefinition, SyncCommandTargetRegistration } from "../sync/types";
-import { getOutboxStateForAdapter, type OutboxState } from "./outbox-state";
+import { enableOutboxForSchema, getOutboxStateForAdapter, type OutboxState } from "./outbox-state";
 
-export type SchemaInfo = {
+type SchemaInfo = {
   name: string;
   namespace: string | null;
   version: number;
   tables: string[];
 };
 
-export type FragmentMeta = {
+type FragmentMeta = {
   name: string;
   mountRoute: string;
 };
 
-export type SyncCommandTarget = {
+type SyncCommandTarget = {
   fragmentName: string;
   schemaName: string;
   namespace: string | null;
   commands: Map<string, SyncCommandDefinition>;
 };
 
-export type AdapterRegistry = {
+type SchemaRegistrationOptions = {
+  outbox?: {
+    tables?: readonly string[];
+  };
+};
+
+type AdapterRegistry = {
   internalFragment: InternalFragmentInstance;
   schemas: Map<string, SchemaInfo>;
   fragments: Map<string, FragmentMeta>;
@@ -42,7 +48,7 @@ export type AdapterRegistry = {
   registerSchema: (
     schema: SchemaInfo,
     fragment: FragmentMeta,
-    options?: { outboxEnabled?: boolean },
+    options?: SchemaRegistrationOptions,
   ) => void;
   registerSyncCommands: (registration: SyncCommandTargetRegistration) => void;
   resolveSyncTarget: (fragmentName: string, schemaName: string) => SyncCommandTarget | undefined;
@@ -86,6 +92,41 @@ const sortSchemas = (schemas: SchemaInfo[]): SchemaInfo[] =>
 const sortFragments = (fragments: FragmentMeta[]): FragmentMeta[] =>
   fragments.sort((a, b) => a.name.localeCompare(b.name));
 
+const resolveOutboxTables = (
+  schema: SchemaInfo,
+  configuredTables: readonly string[] | undefined,
+): readonly string[] | undefined => {
+  if (configuredTables === undefined) {
+    return undefined;
+  }
+
+  const schemaTables = new Set(schema.tables);
+  const selectedTables = [...new Set(configuredTables)];
+  const unknownTables = selectedTables.filter((table) => !schemaTables.has(table));
+  if (unknownTables.length > 0) {
+    throw new Error(
+      `Cannot enable outbox for unknown table(s) in schema '${schema.name}': ${unknownTables.join(", ")}.`,
+    );
+  }
+
+  return selectedTables;
+};
+
+const registerSchemaOutbox = (
+  outboxState: OutboxState,
+  schema: SchemaInfo,
+  fragment: FragmentMeta,
+  enabled: boolean,
+  tables: readonly string[] | undefined,
+): void => {
+  if (!enabled) {
+    return;
+  }
+
+  enableOutboxForSchema(outboxState, getNamespaceKey(schema), tables);
+  outboxState.enabledFragments.add(fragment.name);
+};
+
 const buildInternalFragment = (
   adapter: DatabaseAdapter<unknown>,
   registry: AdapterRegistry,
@@ -126,6 +167,11 @@ const createRegistry = (adapter: DatabaseAdapter<unknown>): AdapterRegistry => {
           attempted: { name: schema.name, namespace: schema.namespace },
         });
       }
+
+      const outboxEnabled = options?.outbox !== undefined;
+      const outboxTables = outboxEnabled
+        ? resolveOutboxTables(schema, options.outbox?.tables)
+        : undefined;
       const schemaCopy = { ...schema, tables: [...schema.tables] };
       if (
         existing &&
@@ -136,20 +182,12 @@ const createRegistry = (adapter: DatabaseAdapter<unknown>): AdapterRegistry => {
         existing.tables.every((table, index) => table === schemaCopy.tables[index])
       ) {
         fragments.set(fragment.name, { ...fragment });
-        if (options?.outboxEnabled) {
-          outboxState.enabledSchemaKeys.add(namespaceKey);
-          outboxState.enabledFragments.add(fragment.name);
-          outboxState.config.enabled = true;
-        }
+        registerSchemaOutbox(outboxState, schemaCopy, fragment, outboxEnabled, outboxTables);
         return;
       }
       schemas.set(namespaceKey, schemaCopy);
       fragments.set(fragment.name, { ...fragment });
-      if (options?.outboxEnabled) {
-        outboxState.enabledSchemaKeys.add(namespaceKey);
-        outboxState.enabledFragments.add(fragment.name);
-        outboxState.config.enabled = true;
-      }
+      registerSchemaOutbox(outboxState, schemaCopy, fragment, outboxEnabled, outboxTables);
     },
     registerSyncCommands: (registration) => {
       const key = getSyncTargetKey(registration.fragmentName, registration.schemaName);

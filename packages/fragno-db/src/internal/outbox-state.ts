@@ -6,6 +6,7 @@ import type { AnySchema } from "../schema/create";
 export type OutboxState = {
   config: OutboxConfig;
   enabledSchemaKeys: Set<string>;
+  enabledTablesBySchemaKey: Map<string, Set<string>>;
   enabledFragments: Set<string>;
 };
 
@@ -18,13 +19,48 @@ const getOperationNamespaceKey = (operation: MutationOperation<AnySchema>): stri
 
 const createOutboxState = (): OutboxState => {
   const enabledSchemaKeys = new Set<string>();
+  const enabledTablesBySchemaKey = new Map<string, Set<string>>();
   const enabledFragments = new Set<string>();
   const config: OutboxConfig = {
     enabled: false,
-    shouldInclude: (operation) => enabledSchemaKeys.has(getOperationNamespaceKey(operation)),
+    shouldInclude: (operation) => {
+      const schemaKey = getOperationNamespaceKey(operation);
+      if (!enabledSchemaKeys.has(schemaKey)) {
+        return false;
+      }
+
+      const enabledTables = enabledTablesBySchemaKey.get(schemaKey);
+      return enabledTables === undefined || enabledTables.has(operation.table);
+    },
   };
 
-  return { config, enabledSchemaKeys, enabledFragments };
+  return { config, enabledSchemaKeys, enabledTablesBySchemaKey, enabledFragments };
+};
+
+export const enableOutboxForSchema = (
+  state: OutboxState,
+  schemaKey: string,
+  tables: readonly string[] | undefined,
+): void => {
+  const wasAlreadyEnabled = state.enabledSchemaKeys.has(schemaKey);
+  const existingTables = state.enabledTablesBySchemaKey.get(schemaKey);
+  state.enabledSchemaKeys.add(schemaKey);
+  state.config.enabled = true;
+
+  if (tables === undefined) {
+    state.enabledTablesBySchemaKey.delete(schemaKey);
+    return;
+  }
+
+  if (wasAlreadyEnabled && existingTables === undefined) {
+    return;
+  }
+
+  const enabledTables = existingTables ?? new Set<string>();
+  for (const table of tables) {
+    enabledTables.add(table);
+  }
+  state.enabledTablesBySchemaKey.set(schemaKey, enabledTables);
 };
 
 export const getOutboxStateForAdapter = (adapter: AdapterKey): OutboxState => {

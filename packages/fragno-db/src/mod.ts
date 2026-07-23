@@ -49,6 +49,7 @@ export const fragnoDatabaseLibraryVersion = "0.1" as const;
 export {
   DatabaseFragmentDefinitionBuilder,
   type DbRoundtripGuardConfig,
+  type FragmentOutboxOptions,
   type FragnoPublicConfigWithDatabase,
   type DatabaseFragmentContext,
   type DatabaseServiceContext,
