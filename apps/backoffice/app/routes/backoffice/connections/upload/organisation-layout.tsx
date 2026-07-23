@@ -2,16 +2,14 @@ import { useEffect, useState } from "react";
 import { Outlet, redirect, useLoaderData, useMatches, type LoaderFunctionArgs } from "react-router";
 
 import { getAuthMe } from "@/fragno/auth/auth-server";
+import type { UploadAdminConfigResponse } from "@/fragno/upload";
+import { fetchUploadAdapterIdentity } from "@/fragno/upload/tanstack/server";
 
 import { throwOrganisationNotFound } from "../../route-errors";
 import { fetchUploadConfig } from "./data";
+import type { UploadLayoutContext } from "./layout-context";
 import { resolveUploadWorkspaceTab } from "./organisation-layout-state";
-import {
-  UploadErrorBoundary,
-  UploadHeader,
-  UploadWorkspaceTabs,
-  type UploadConfigState,
-} from "./shared";
+import { UploadErrorBoundary, UploadHeader, UploadWorkspaceTabs } from "./shared";
 
 export async function loader({ request, params, context, url }: LoaderFunctionArgs) {
   const orgId = params.orgId;
@@ -31,6 +29,17 @@ export async function loader({ request, params, context, url }: LoaderFunctionAr
   }
 
   const { configState, configError } = await fetchUploadConfig(context, orgId);
+  let persistenceSource: UploadLayoutContext["persistenceSource"] = null;
+  let persistenceError: string | null = null;
+  if (configState?.configured) {
+    try {
+      const adapterIdentity = await fetchUploadAdapterIdentity(request, context, orgId);
+      persistenceSource = { orgId, adapterIdentity };
+    } catch (error) {
+      persistenceError =
+        error instanceof Error ? error.message : "Failed to load Upload file persistence.";
+    }
+  }
 
   const currentPath = url.pathname.replace(/\/+$/, "");
   const basePath = `/backoffice/connections/upload/${orgId}`;
@@ -45,6 +54,8 @@ export async function loader({ request, params, context, url }: LoaderFunctionAr
     organisation,
     configState,
     configError,
+    persistenceSource,
+    persistenceError,
   };
 }
 
@@ -64,9 +75,13 @@ export default function BackofficeOrganisationUploadLayout() {
     organisation,
     configState: initialConfigState,
     configError: initialConfigError,
+    persistenceSource,
+    persistenceError,
   } = useLoaderData<typeof loader>();
 
-  const [configState, setConfigState] = useState<UploadConfigState | null>(initialConfigState);
+  const [configState, setConfigState] = useState<UploadAdminConfigResponse | null>(
+    initialConfigState,
+  );
   const [configError, setConfigError] = useState<string | null>(initialConfigError);
   const configLoading = false;
 
@@ -96,6 +111,8 @@ export default function BackofficeOrganisationUploadLayout() {
           configState,
           configLoading,
           configError,
+          persistenceSource,
+          persistenceError,
           setConfigState,
           setConfigError,
         }}

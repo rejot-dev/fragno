@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi, assert } from "vitest";
 
-import { fetchUploadConfig, fetchUploadFiles } from "./data";
-import { loader, shouldAutoStartUploads } from "./files";
+import { fetchUploadConfig } from "./data";
+import { loader } from "./files";
+import { shouldAutoStartUploads } from "./upload-queue";
 
 vi.mock("@base-ui/react", () => ({
   Collapsible: {},
@@ -21,8 +22,6 @@ vi.mock("@/fragno/upload-client", () => ({
 vi.mock("./data", () => ({
   fetchUploadConfig: vi.fn(),
   fetchUploadDownloadUrl: vi.fn(),
-  fetchUploadFile: vi.fn(),
-  fetchUploadFiles: vi.fn(),
   deleteUploadFile: vi.fn(),
 }));
 
@@ -72,12 +71,6 @@ describe("upload files loader", () => {
       configState,
       configError: null,
     });
-    vi.mocked(fetchUploadFiles).mockResolvedValue({
-      files: [],
-      hasNextPage: false,
-      filesError: null,
-    });
-
     const result = await loader(
       createLoaderArgs("https://example.com/backoffice/connections/upload/org_123/files"),
     );
@@ -86,13 +79,12 @@ describe("upload files loader", () => {
     expect(result).toMatchObject({
       configState,
       configError: null,
-      files: [],
       selectedNodeKind: "root",
       selectedPrefix: "",
     });
   });
 
-  it("returns the same failed config source without fetching files", async () => {
+  it("returns the failed config source without loading file metadata", async () => {
     vi.mocked(fetchUploadConfig).mockResolvedValue({
       configState: null,
       configError: "Failed to load configuration.",
@@ -106,10 +98,8 @@ describe("upload files loader", () => {
     expect(result).toMatchObject({
       configState: null,
       configError: "Failed to load configuration.",
-      files: [],
       selectedNodeKind: "root",
       selectedPrefix: "",
     });
-    expect(fetchUploadFiles).not.toHaveBeenCalled();
   });
 });

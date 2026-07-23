@@ -10,7 +10,7 @@ import * as files from "@/files";
 import { EMPTY_BASH_HOST_CONTEXT } from "@/fragno/runtime-tools/bash-host.test-utils";
 import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
 import { UPLOAD_PROVIDER_DATABASE, type UploadAdminConfigResponse } from "@/fragno/upload";
-import type { UploadFileRecord } from "@/routes/backoffice/connections/upload/data";
+import type { UploadFileRecord } from "@/fragno/upload/file-record";
 
 import { createTestMasterFileSystem } from "../automation/engine/test-master-file-system.test-utils";
 import {

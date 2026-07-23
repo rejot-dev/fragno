@@ -1,4 +1,4 @@
-import type { UploadTab } from "./shared";
+import type { UploadTab } from "./layout-context";
 
 export const resolveUploadWorkspaceTab = (pathSegments: readonly string[]): UploadTab => {
   const uploadIndex = pathSegments.lastIndexOf("upload");
