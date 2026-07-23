@@ -13,7 +13,7 @@ import type {
   VerifyUserEmailInput,
   VerifyUserEmailResult,
 } from "@fragno-dev/auth";
-import { migrate } from "@fragno-dev/db";
+import { migrate, type HookContext } from "@fragno-dev/db";
 
 import type { AuthObject } from "@/backoffice-runtime/object-registry";
 import {
@@ -31,6 +31,7 @@ import { createDurableHookRepository } from "@/fragno/durable-hooks";
 import { buildUserEmailVerificationEmail } from "@/transactional-emails/user-email-verification";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
+import { cloudflareDurableHooksInstrumentation } from "./lib/cloudflare-durable-hooks-instrumentation";
 
 type AuthOrganizationAutomationEventType =
   | typeof AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED
@@ -70,7 +71,7 @@ const dispatchOrganizationEvent = async (
   runtime: BackofficeRuntimeServices,
   eventType: AuthOrganizationAutomationEventType,
   payload: OrganizationHookPayload,
-  hookId: string,
+  context: HookContext,
 ) => {
   const { organization } = payload;
   const occurredAt = toIsoString(
@@ -80,7 +81,7 @@ const dispatchOrganizationEvent = async (
   );
 
   const event = {
-    id: hookId,
+    id: context.hookId.toString(),
     scope: { kind: "system" } as const,
     source: AUTH_AUTOMATION_SOURCE,
     eventType,
@@ -91,7 +92,9 @@ const dispatchOrganizationEvent = async (
     subject: { orgId: organization.id },
   };
 
-  await runtime.objects.automations.singleton().ingestEvent(event);
+  await runtime.objects.automations.singleton().ingestEvent(event, {
+    propagationContext: context.capturePropagationContext(),
+  });
 };
 
 const createDevRejotAdminHook = (): BeforeCreateUserHook | undefined => {
@@ -106,7 +109,7 @@ const createDevRejotAdminHook = (): BeforeCreateUserHook | undefined => {
 const isDevelopmentAdminEmailVerificationExempt = (user: Pick<UserSummary, "role">): boolean =>
   import.meta.env.MODE === "development" && user.role === "admin";
 
-const createOrganizationAutomationHooks = (
+export const createOrganizationAutomationHooks = (
   runtime: BackofficeRuntimeServices,
 ): OrganizationHooks => ({
   onOrganizationCreated: async (payload, context) => {
@@ -114,7 +117,7 @@ const createOrganizationAutomationHooks = (
       runtime,
       AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED,
       payload,
-      context.hookId,
+      context,
     );
   },
   onOrganizationUpdated: async (payload, context) => {
@@ -122,7 +125,7 @@ const createOrganizationAutomationHooks = (
       runtime,
       AUTH_AUTOMATION_EVENT_ORGANIZATION_UPDATED,
       payload,
-      context.hookId,
+      context,
     );
   },
 });
@@ -205,7 +208,7 @@ export class InMemoryAuthObject implements AuthObject {
               userId: payload.user.id,
               email: payload.user.email,
               publicBaseUrl: emailVerification.publicBaseUrl,
-              requestId: context.hookId,
+              requestId: context.hookId.toString(),
             });
 
             if (!verification.deliverable) {
@@ -219,12 +222,13 @@ export class InMemoryAuthObject implements AuthObject {
                 expiresInHours: verification.expiresInHours,
               }),
               {
-                idempotencyKey: `auth:email-verification:${context.hookId}`,
+                idempotencyKey: `auth:email-verification:${context.hookId.toString()}`,
               },
             );
           },
         },
         organizationHooks: createOrganizationAutomationHooks(this.#runtimeServices),
+        durableHooks: { instrumentation: cloudflareDurableHooksInstrumentation },
       },
     );
   }

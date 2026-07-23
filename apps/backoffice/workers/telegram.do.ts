@@ -330,7 +330,10 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
                 const { scope } = runtime.stored;
                 await this.#runtime.objects.automations
                   .for(scope)
-                  .triggerIngestEvent(buildTelegramAutomationEvent(scope, payload, context.hookId));
+                  .triggerIngestEvent(
+                    buildTelegramAutomationEvent(scope, payload, context.hookId.toString()),
+                    { propagationContext: context.capturePropagationContext() },
+                  );
               },
             },
           },

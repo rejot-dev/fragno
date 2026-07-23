@@ -122,31 +122,37 @@ export class InMemoryMcpObject implements McpObject {
         }),
         onServerConfigurationChanged: async (payload, context) => {
           const scope = stored.scope;
-          await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
-            id: context.hookId,
-            scope,
-            source: "mcp",
-            eventType: "server.configuration.changed",
-            occurredAt: new Date().toISOString(),
-            payload: { ...payload },
-            actor: AUTOMATION_SYSTEM_ACTOR,
-            actors: [AUTOMATION_SYSTEM_ACTOR],
-            subject: scopeSubject(scope, payload.serverId),
-          });
+          await this.#runtimeServices.objects.automations.for(scope).ingestEvent(
+            {
+              id: context.hookId.toString(),
+              scope,
+              source: "mcp",
+              eventType: "server.configuration.changed",
+              occurredAt: new Date().toISOString(),
+              payload: { ...payload },
+              actor: AUTOMATION_SYSTEM_ACTOR,
+              actors: [AUTOMATION_SYSTEM_ACTOR],
+              subject: scopeSubject(scope, payload.serverId),
+            },
+            { propagationContext: context.capturePropagationContext() },
+          );
         },
         onServerConfigurationDeleted: async (payload, context) => {
           const scope = stored.scope;
-          await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
-            id: context.hookId,
-            scope,
-            source: "mcp",
-            eventType: "server.configuration.deleted",
-            occurredAt: new Date().toISOString(),
-            payload: { ...payload },
-            actor: AUTOMATION_SYSTEM_ACTOR,
-            actors: [AUTOMATION_SYSTEM_ACTOR],
-            subject: scopeSubject(scope, payload.serverId),
-          });
+          await this.#runtimeServices.objects.automations.for(scope).ingestEvent(
+            {
+              id: context.hookId.toString(),
+              scope,
+              source: "mcp",
+              eventType: "server.configuration.deleted",
+              occurredAt: new Date().toISOString(),
+              payload: { ...payload },
+              actor: AUTOMATION_SYSTEM_ACTOR,
+              actors: [AUTOMATION_SYSTEM_ACTOR],
+              subject: scopeSubject(scope, payload.serverId),
+            },
+            { propagationContext: context.capturePropagationContext() },
+          );
         },
       }),
       createRuntime: (config) =>
