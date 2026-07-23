@@ -1,4 +1,5 @@
 import { FragnoApiError } from "@fragno-dev/core/api";
+import type { RequestContextStorage } from "@fragno-dev/core/internal/request-context-storage";
 
 import type {
   RequestThisContext,
@@ -30,6 +31,7 @@ import {
   type HookProcessorConfig,
   type HookNotifier,
   type HookNotifyContext,
+  type DurableHooksInstrumentation,
   type DurableHooksProcessingOptions,
   createDurableHooksRunner,
 } from "./hooks/hooks";
@@ -285,6 +287,32 @@ function createDatabaseContext<TSchema extends AnySchema>(
       uow.registerSchema(schema, namespace);
       return uow;
     },
+  };
+}
+
+function createDurableHooksRequestContextInstrumentation(config: {
+  contextStorage: RequestContextStorage<DatabaseContextStorage>;
+  createBaseUnitOfWork: () => IUnitOfWork;
+  instrumentation?: DurableHooksInstrumentation;
+}): DurableHooksInstrumentation {
+  return {
+    captureContext: (info) => config.instrumentation?.captureContext(info) ?? null,
+    runAttempt: (attempt, execute) =>
+      config.contextStorage.runWithInitializer(
+        () => {
+          const parentStorage = config.contextStorage.hasStore()
+            ? config.contextStorage.getStore()
+            : undefined;
+          return {
+            ...parentStorage,
+            uow: config.createBaseUnitOfWork(),
+            activeHandlerTxDepth: 0,
+          };
+        },
+        () =>
+          config.instrumentation ? config.instrumentation.runAttempt(attempt, execute) : execute(),
+        { propagationContext: attempt.propagationContext },
+      ),
   };
 }
 
@@ -1198,6 +1226,11 @@ export class DatabaseFragmentDefinitionBuilder<
       }
       const dbContextForHooks = createDatabaseContext(hookOptions, this.#schema);
       const hookContextStorage = dbContextForHooks.databaseAdapter.contextStorage;
+      const instrumentation = createDurableHooksRequestContextInstrumentation({
+        contextStorage: hookContextStorage,
+        createBaseUnitOfWork: dbContextForHooks.createBaseUnitOfWork,
+        instrumentation: durableHooksOptions?.instrumentation,
+      });
       const hooksConfig: HookProcessorConfig<THooks> = {
         hooks: context.services
           ? this.#hooksFactory({
@@ -1211,6 +1244,7 @@ export class DatabaseFragmentDefinitionBuilder<
         namespace: namespaceKey,
         internalFragment: registryResolver.getInternalFragment(hookAdapter),
         autoSchedule,
+        instrumentation,
         handlerTx: (execOptions?: Omit<ExecuteTxOptions, "createUnitOfWork">) => {
           const userOnBeforeMutate = execOptions?.onBeforeMutate;
           const userOnAfterMutate = execOptions?.onAfterMutate;
@@ -1226,6 +1260,8 @@ export class DatabaseFragmentDefinitionBuilder<
               }
             )[requestWaitUntilSymbol];
           };
+          const getHookPropagationContext = () =>
+            hookContextStorage.hasStore() ? hookContextStorage.getPropagationContext() : null;
           return createHandlerTxBuilder<THooks>(
             {
               ...execOptions,
@@ -1246,6 +1282,8 @@ export class DatabaseFragmentDefinitionBuilder<
                     uow,
                     hooksConfig.internalFragment,
                     hooksConfig.defaultRetryPolicy,
+                    hooksConfig.instrumentation,
+                    getHookPropagationContext(),
                   );
                 }
                 if (userOnBeforeMutate) {
@@ -1348,6 +1386,8 @@ export class DatabaseFragmentDefinitionBuilder<
         const userOnAfterMutate = execOptions?.onAfterMutate;
         const userOnAfterRetrieve = execOptions?.onAfterRetrieve;
         const planMode = execOptions?.planMode ?? false;
+        const ambientPropagationContext =
+          internalFragment && !planMode ? storage.getPropagationContext() : null;
         const routeInfo = (
           currentStorage as DatabaseContextStorage & {
             [requestRouteSymbol]?: { method?: string; path?: string };
@@ -1473,7 +1513,13 @@ export class DatabaseFragmentDefinitionBuilder<
             },
             onBeforeMutate: (uow) => {
               if (internalFragment && !planMode) {
-                prepareHookMutations(uow, internalFragment, hooksConfig?.defaultRetryPolicy);
+                prepareHookMutations(
+                  uow,
+                  internalFragment,
+                  hooksConfig?.defaultRetryPolicy,
+                  hooksConfig?.instrumentation,
+                  ambientPropagationContext,
+                );
               }
               if (userOnBeforeMutate) {
                 userOnBeforeMutate(uow);

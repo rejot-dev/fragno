@@ -9,7 +9,7 @@ import {
   type FragnoPublicConfigWithDatabase,
   type ImplicitDatabaseDependencies,
 } from "../db-fragment-definition-builder";
-import { isHookStatus, type HookStatus } from "../hooks/hooks";
+import { isHookStatus, type DurableHookPropagationContext, type HookStatus } from "../hooks/hooks";
 import type { Cursor } from "../query/cursor";
 import { dbNow, type DbNow } from "../query/db-now";
 import type { RetryPolicy } from "../query/unit-of-work/retry-policy";
@@ -82,6 +82,16 @@ const coerceHookStatus = (status: string, context: string): HookStatus => {
   }
   throw new Error(`Invalid hook status from database (${context}): ${status}`);
 };
+
+const mapHookRecord = <
+  TEvent extends { id: FragnoId; hookName: string; status: string; propagationContext: unknown },
+>(
+  event: TEvent,
+) => ({
+  ...event,
+  status: coerceHookStatus(event.status, describeHookStatusSource(event)),
+  propagationContext: event.propagationContext as DurableHookPropagationContext | null,
+});
 
 const DEFAULT_HOOKS_PAGE_SIZE = 50;
 
@@ -243,6 +253,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               nextRetryAt: event.nextRetryAt,
               createdAt: event.createdAt,
               idempotencyKey: event.nonce,
+              propagationContext: event.propagationContext as DurableHookPropagationContext | null,
             }));
           })
           .build();
@@ -278,6 +289,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               nextRetryAt: event.nextRetryAt,
               createdAt: event.createdAt,
               idempotencyKey: event.nonce,
+              propagationContext: event.propagationContext as DurableHookPropagationContext | null,
             }));
           })
           .mutate(({ uow, retrieveResult }) => {
@@ -332,6 +344,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               attempts: event.attempts,
               maxAttempts: event.maxAttempts,
               idempotencyKey: event.nonce,
+              propagationContext: event.propagationContext as DurableHookPropagationContext | null,
               lastAttemptAt: event.lastAttemptAt,
               nextRetryAt: event.nextRetryAt,
               createdAt: event.createdAt,
@@ -533,14 +546,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               b.whereIndex("primary", (eb) => eb("id", "=", eventId)),
             ),
           )
-          .transformRetrieve(([result]) =>
-            result
-              ? {
-                  ...result,
-                  status: coerceHookStatus(result.status, describeHookStatusSource(result)),
-                }
-              : undefined,
-          )
+          .transformRetrieve(([result]) => (result ? mapHookRecord(result) : undefined))
           .build();
       },
 
@@ -565,10 +571,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
             }),
           )
           .transformRetrieve(([page]) => ({
-            items: page.items.map((event) => ({
-              ...event,
-              status: coerceHookStatus(event.status, describeHookStatusSource(event)),
-            })),
+            items: page.items.map(mapHookRecord),
             cursor: page.cursor,
             hasNextPage: page.hasNextPage,
           }))
@@ -585,12 +588,7 @@ export const internalFragmentDef = new DatabaseFragmentDefinitionBuilder(
               b.whereIndex("idx_namespace_status_retry", (eb) => eb("namespace", "=", namespace)),
             ),
           )
-          .transformRetrieve(([events]) =>
-            events.map((event) => ({
-              ...event,
-              status: coerceHookStatus(event.status, describeHookStatusSource(event)),
-            })),
-          )
+          .transformRetrieve(([events]) => events.map(mapHookRecord))
           .build();
       },
     });

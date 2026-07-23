@@ -31,7 +31,8 @@ export const fragno_hooks = sqliteTable("fragno_hooks", {
   createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   nonce: text("nonce").notNull(),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
-  _version: integer("_version").notNull().default(0)
+  _version: integer("_version").notNull().default(0),
+  propagationContext: text("propagationContext", { mode: "json" })
 }, (table) => [
   index("idx_fragno_hooks_idx_namespace_status_retry_b66b1168").on(table.namespace, table.status, table.nextRetryAt),
   index("idx_fragno_hooks_idx_nonce_90c97cf1").on(table.nonce),

@@ -21,6 +21,9 @@ import {
   type HooksMap,
   type HookContext,
   type HookHandlerTx,
+  type DurableHookPropagationContext,
+  type DurableHookAttempt,
+  type DurableHooksInstrumentation,
 } from "./hooks";
 
 const TEST_NS = "test";
@@ -127,6 +130,134 @@ describe("Hook System", () => {
         attempts: 0,
         maxAttempts: 5,
       });
+    });
+
+    it("should persist context captured by durable hooks instrumentation", async () => {
+      const propagationContext = {
+        traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        tracestate: "vendor=value",
+      };
+      const instrumentation: DurableHooksInstrumentation = {
+        captureContext: vi.fn(() => propagationContext),
+        runAttempt: async (_attempt, execute) => await execute(),
+      };
+      const hooks: HooksMap = {
+        onTraced: vi.fn(),
+      };
+
+      await internalFragment.inContext(async function () {
+        await this.handlerTx()
+          .mutate(({ forSchema }) => {
+            const uow = forSchema(internalSchema, hooks);
+            uow.triggerHook("onTraced", { data: "test" });
+            prepareHookMutations(
+              uow,
+              internalFragment,
+              new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
+              instrumentation,
+            );
+          })
+          .execute();
+      });
+
+      const events = await internalFragment.inContext(async function () {
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHooksByNamespace(TEST_NS)] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+      });
+
+      expect(instrumentation.captureContext).toHaveBeenCalledWith({
+        namespace: TEST_NS,
+        hookName: "onTraced",
+        idempotencyKey: expect.any(String),
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]?.propagationContext).toEqual(propagationContext);
+    });
+
+    it("should fail the transaction when instrumentation cannot capture context", async () => {
+      const captureFailure = new Error("context capture failed");
+      const instrumentation: DurableHooksInstrumentation = {
+        captureContext: vi.fn(() => {
+          throw captureFailure;
+        }),
+        runAttempt: async (_attempt, execute) => await execute(),
+      };
+      const hooks: HooksMap = {
+        onTraced: vi.fn(),
+      };
+
+      await expect(
+        internalFragment.inContext(async function () {
+          await this.handlerTx()
+            .mutate(({ forSchema }) => {
+              const uow = forSchema(internalSchema, hooks);
+              uow.triggerHook("onTraced", { data: "test" });
+              prepareHookMutations(
+                uow,
+                internalFragment,
+                new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
+                instrumentation,
+              );
+            })
+            .execute();
+        }),
+      ).rejects.toBe(captureFailure);
+
+      const events = await internalFragment.inContext(async function () {
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHooksByNamespace(TEST_NS)] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+      });
+      expect(events).toEqual([]);
+    });
+
+    it("should let a hook override ambient propagation context", async () => {
+      const explicitContext = { custom: "hook-context" };
+      const instrumentation: DurableHooksInstrumentation = {
+        captureContext: vi.fn(() => ({ custom: "ambient-context" })),
+        runAttempt: async (_attempt, execute) => await execute(),
+      };
+      const hooks: HooksMap = {
+        onExplicitContext: vi.fn(),
+      };
+
+      await internalFragment.inContext(async function () {
+        await this.handlerTx()
+          .mutate(({ forSchema }) => {
+            const uow = forSchema(internalSchema, hooks);
+            uow.triggerHook(
+              "onExplicitContext",
+              { data: "test" },
+              { propagationContext: explicitContext },
+            );
+            prepareHookMutations(
+              uow,
+              internalFragment,
+              new ExponentialBackoffRetryPolicy({ maxRetries: 5 }),
+              instrumentation,
+            );
+          })
+          .execute();
+      });
+
+      const events = await internalFragment.inContext(async function () {
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHooksByNamespace(TEST_NS)] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+      });
+
+      expect(instrumentation.captureContext).not.toHaveBeenCalled();
+      expect(events[0]?.propagationContext).toEqual(explicitContext);
     });
 
     it("should store a provided hook id", async () => {
@@ -410,11 +541,56 @@ describe("Hook System", () => {
   });
 
   describe("processHooks", () => {
+    const createPendingHook = async (namespace: string, hookName: string) =>
+      await internalFragment.inContext(async function () {
+        return await this.handlerTx()
+          .mutate(({ forSchema }) => {
+            const uow = forSchema(internalSchema);
+            return uow.create("fragno_hooks", {
+              namespace,
+              hookName,
+              payload: { email: "test@example.com" },
+              status: "pending",
+              attempts: 0,
+              maxAttempts: 1,
+              lastAttemptAt: null,
+              nextRetryAt: null,
+              error: null,
+              nonce: "test-nonce",
+              propagationContext: null,
+            });
+          })
+          .execute();
+      });
+
+    const getHook = async (eventId: FragnoId) =>
+      await internalFragment.inContext(async function () {
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHookById(eventId)] as const,
+          )
+          .transform(({ serviceResult: [event] }) => event)
+          .execute();
+      });
+
     it("should execute hooks and mark them as completed", async () => {
       const namespace = "test-success";
-      const hookFn = vi.fn();
+      let capturedActiveContext: DurableHookPropagationContext | null = null;
+      const hookFn = vi.fn(function (this: HookContext) {
+        capturedActiveContext = this.capturePropagationContext();
+      });
       const hooks: HooksMap = {
         onSuccess: hookFn,
+      };
+      const propagationContext = {
+        traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+      };
+      const activePropagationContext = {
+        traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-1111111111111111-01",
+      };
+      const instrumentation: DurableHooksInstrumentation = {
+        captureContext: vi.fn(() => activePropagationContext),
+        runAttempt: vi.fn(async (_attempt, execute) => await execute()),
       };
 
       let eventId: FragnoId;
@@ -435,6 +611,7 @@ describe("Hook System", () => {
               nextRetryAt: null,
               error: null,
               nonce: "test-nonce",
+              propagationContext,
             });
           })
           .execute();
@@ -448,7 +625,19 @@ describe("Hook System", () => {
         internalFragment,
         handlerTx,
         defaultRetryPolicy: new ExponentialBackoffRetryPolicy({ maxRetries: 3 }),
+        instrumentation,
       });
+
+      expect(instrumentation.runAttempt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          namespace,
+          hookName: "onSuccess",
+          attempt: 1,
+          maxAttempts: 5,
+          propagationContext,
+        }),
+        expect.any(Function),
+      );
 
       // Verify hook was called
       expect(hookFn).toHaveBeenCalledOnce();
@@ -457,6 +646,13 @@ describe("Hook System", () => {
       // Verify hook context (this)
       const hookContext = hookFn.mock.contexts[0] as HookContext;
       assert(hookContext.idempotencyKey === "test-nonce");
+      expect(hookContext.propagationContext).toEqual(propagationContext);
+      expect(capturedActiveContext).toEqual(activePropagationContext);
+      expect(instrumentation.captureContext).toHaveBeenCalledWith({
+        namespace,
+        hookName: "onSuccess",
+        idempotencyKey: "test-nonce",
+      });
 
       // Verify event was marked as completed
       const result = await internalFragment.inContext(async function () {
@@ -470,6 +666,151 @@ describe("Hook System", () => {
 
       assert(result?.status === "completed");
       expect(result?.lastAttemptAt).toBeInstanceOf(Date);
+    });
+
+    it.each(["resolves", "rejects"] as const)(
+      "should fail an attempt when instrumentation %s without calling execute",
+      async (outcome) => {
+        const namespace = `test-instrumentation-skips-execute-${outcome}`;
+        const hookFn = vi.fn();
+        const eventId = await createPendingHook(namespace, "onSkipped");
+        const instrumentation: DurableHooksInstrumentation = {
+          captureContext: () => null,
+          async runAttempt<T>() {
+            if (outcome === "rejects") {
+              throw new Error("instrumentation failed before execution");
+            }
+            return undefined as T;
+          },
+        };
+
+        await processHooks({
+          hooks: { onSkipped: hookFn },
+          namespace,
+          internalFragment,
+          handlerTx,
+          defaultRetryPolicy: new NoRetryPolicy(),
+          instrumentation,
+        });
+
+        const event = await getHook(eventId);
+        expect(hookFn).not.toHaveBeenCalled();
+        expect(event).toMatchObject({
+          status: "failed",
+          attempts: 1,
+          error: expect.stringContaining("did not call execute()"),
+        });
+      },
+    );
+
+    it("should execute a hook once and fail the attempt when instrumentation calls execute twice", async () => {
+      const namespace = "test-instrumentation-repeats-execute";
+      const hookFn = vi.fn();
+      const eventId = await createPendingHook(namespace, "onRepeated");
+      const instrumentation: DurableHooksInstrumentation = {
+        captureContext: () => null,
+        async runAttempt<T>(_attempt: DurableHookAttempt, execute: () => Promise<T>): Promise<T> {
+          const result = await execute();
+          try {
+            await execute();
+          } catch {
+            // The processor must still reject the attempt when instrumentation swallows this error.
+          }
+          return result;
+        },
+      };
+
+      await processHooks({
+        hooks: { onRepeated: hookFn },
+        namespace,
+        internalFragment,
+        handlerTx,
+        defaultRetryPolicy: new NoRetryPolicy(),
+        instrumentation,
+      });
+
+      const event = await getHook(eventId);
+      expect(hookFn).toHaveBeenCalledOnce();
+      expect(event).toMatchObject({
+        status: "failed",
+        attempts: 1,
+        error: expect.stringContaining("called execute() more than once"),
+      });
+    });
+
+    it("should preserve a hook error swallowed by instrumentation", async () => {
+      const namespace = "test-instrumentation-swallows-hook-error";
+      const hookFn = vi.fn(() => {
+        throw new Error("hook execution failed");
+      });
+      const eventId = await createPendingHook(namespace, "onFailure");
+      const instrumentation: DurableHooksInstrumentation = {
+        captureContext: () => null,
+        async runAttempt<T>(_attempt: DurableHookAttempt, execute: () => Promise<T>): Promise<T> {
+          try {
+            await execute();
+          } catch {
+            return undefined as T;
+          }
+          return undefined as T;
+        },
+      };
+
+      await processHooks({
+        hooks: { onFailure: hookFn },
+        namespace,
+        internalFragment,
+        handlerTx,
+        defaultRetryPolicy: new NoRetryPolicy(),
+        instrumentation,
+      });
+
+      const event = await getHook(eventId);
+      expect(hookFn).toHaveBeenCalledOnce();
+      expect(event).toMatchObject({
+        status: "failed",
+        attempts: 1,
+        error: "hook execution failed",
+      });
+    });
+
+    it("should wait for execute when instrumentation returns before the hook settles", async () => {
+      const namespace = "test-instrumentation-returns-before-execute";
+      const hookStarted = Promise.withResolvers<void>();
+      const releaseHook = Promise.withResolvers<void>();
+      const hookFn = vi.fn(async () => {
+        hookStarted.resolve();
+        await releaseHook.promise;
+      });
+      const eventId = await createPendingHook(namespace, "onDeferred");
+      const instrumentation: DurableHooksInstrumentation = {
+        captureContext: () => null,
+        async runAttempt<T>(_attempt: DurableHookAttempt, execute: () => Promise<T>): Promise<T> {
+          void execute();
+          return undefined as T;
+        },
+      };
+
+      let processingSettled = false;
+      const processing = processHooks({
+        hooks: { onDeferred: hookFn },
+        namespace,
+        internalFragment,
+        handlerTx,
+        defaultRetryPolicy: new NoRetryPolicy(),
+        instrumentation,
+      }).finally(() => {
+        processingSettled = true;
+      });
+
+      await hookStarted.promise;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert(!processingSettled);
+
+      releaseHook.resolve();
+      await processing;
+
+      expect(await getHook(eventId)).toMatchObject({ status: "completed" });
     });
 
     it("should surface conflicts when a hook mutates its own record", async () => {

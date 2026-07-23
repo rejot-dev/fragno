@@ -30,7 +30,8 @@ export const fragno_hooks = pgTable("fragno_hooks", {
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   nonce: varchar("nonce", { length: 191 }).notNull(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-  _version: integer("_version").notNull().default(0)
+  _version: integer("_version").notNull().default(0),
+  propagationContext: json("propagationContext")
 }, (table) => [
   index("idx_namespace_status_retry").on(table.namespace, table.status, table.nextRetryAt),
   index("idx_nonce").on(table.nonce),

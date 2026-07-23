@@ -30,7 +30,8 @@ export const fragno_hooks = mysqlTable("fragno_hooks", {
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   nonce: varchar("nonce", { length: 191 }).notNull(),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-  _version: int("_version").notNull().default(0)
+  _version: int("_version").notNull().default(0),
+  propagationContext: json("propagationContext")
 }, (table) => [
   index("idx_fragno_hooks_idx_namespace_status_retry_b66b1168").on(table.namespace, table.status, table.nextRetryAt),
   index("idx_fragno_hooks_idx_nonce_90c97cf1").on(table.nonce),

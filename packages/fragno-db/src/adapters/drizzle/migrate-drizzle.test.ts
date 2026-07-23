@@ -146,6 +146,7 @@ describe("generateSchema and migrate", () => {
       	"nonce" varchar(191) NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
+      \t"propagationContext" json,
       	CONSTRAINT "fragno_hooks_id_unique" UNIQUE("id")
       );
 

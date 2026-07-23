@@ -2,7 +2,7 @@ import type { DatabaseAdapter } from "./adapters/adapters";
 import type { InternalFragmentInstance } from "./fragments/internal-fragment";
 import { getDurableHooksToken } from "./hooks/durable-hooks-fragment";
 import { getDurableHooksRuntimeByToken } from "./hooks/durable-hooks-runtime";
-import type { HookStatus } from "./hooks/hooks";
+import type { DurableHookPropagationContext, HookStatus } from "./hooks/hooks";
 import { getInternalFragment } from "./internal/adapter-registry";
 import type { AnyFragnoInstantiatedDatabaseFragment } from "./mod";
 import type { FragnoId } from "./schema/create";
@@ -10,6 +10,12 @@ import type { FragnoId } from "./schema/create";
 export type { AnyFragnoInstantiatedDatabaseFragment };
 
 export type DurableHookStatus = HookStatus;
+export type {
+  DurableHookAttempt,
+  DurableHookEnqueueInfo,
+  DurableHookPropagationContext,
+  DurableHooksInstrumentation,
+} from "./hooks/hooks";
 
 export type DurableHookRecord = {
   id: FragnoId;
@@ -24,6 +30,7 @@ export type DurableHookRecord = {
   createdAt: Date;
   error: string | null;
   nonce: string;
+  propagationContext: DurableHookPropagationContext | null;
 };
 
 export type DurableHooksService = InternalFragmentInstance["services"]["hookService"];
