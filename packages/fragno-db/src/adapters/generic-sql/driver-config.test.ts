@@ -28,6 +28,22 @@ describe("DriverConfig.normalizeError", () => {
     expect(normalized).toMatchObject({ kind: "unique", table: "users", columns: ["email"] });
   });
 
+  it("extracts columns from prefixed sqlite-wasm unique errors", () => {
+    const config = new SQLocalDriverConfig();
+    const normalized = config.normalizeError(
+      withProps(
+        "SQLITE_CONSTRAINT_UNIQUE: sqlite3 result code 2067: UNIQUE constraint failed: user_auth.email",
+        { resultCode: 2067 },
+      ),
+    );
+
+    expect(normalized).toMatchObject({
+      kind: "unique",
+      table: "user_auth",
+      columns: ["email"],
+    });
+  });
+
   it.each([
     [new BetterSQLite3DriverConfig(), "better-sqlite3"],
     [new SQLocalDriverConfig(), "sqlocal"],

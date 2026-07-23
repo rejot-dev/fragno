@@ -58,7 +58,7 @@ export abstract class DriverConfig {
 }
 
 function parseSqliteUniqueColumns(message: string): { table?: string; columns?: string[] } {
-  const match = /^UNIQUE constraint failed: (.+)$/.exec(message);
+  const match = /(?:^|:\s)UNIQUE constraint failed: (.+)$/.exec(message);
   if (!match) {
     return {};
   }
