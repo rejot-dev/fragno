@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { HookFn, HookHandlerTx } from "@fragno-dev/db";
+import type { HookContext, HookFn, HookHandlerTx } from "@fragno-dev/db";
 
 export const telegramChatTypeSchema = z.enum(["private", "group", "supergroup", "channel"]);
 export type TelegramChatType = z.infer<typeof telegramChatTypeSchema>;
@@ -417,23 +417,18 @@ export type TelegramOutgoingHookPayload = {
   payload: Record<string, unknown>;
 };
 
-export type TelegramHookContext = {
-  idempotencyKey: string;
-  hookId: string;
-};
-
 export type TelegramHooks = {
   onMessageReceived?: (
     payload: TelegramMessageHookPayload,
-    context: TelegramHookContext,
+    context: HookContext,
   ) => Promise<void> | void;
   onCommandMatched?: (
     payload: TelegramCommandHookPayload,
-    context: TelegramHookContext,
+    context: HookContext,
   ) => Promise<void> | void;
   onChatMemberUpdated?: (
     payload: TelegramChatMemberHookPayload,
-    context: TelegramHookContext,
+    context: HookContext,
   ) => Promise<void> | void;
 };
 

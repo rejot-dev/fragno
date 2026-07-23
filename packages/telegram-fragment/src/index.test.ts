@@ -191,7 +191,7 @@ describe("telegram-fragment", async () => {
           },
         ],
       }),
-      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(Object) }),
     );
     expect(commandHandler).toHaveBeenCalledWith("ping");
   });
@@ -242,7 +242,7 @@ describe("telegram-fragment", async () => {
           },
         ],
       }),
-      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(Object) }),
     );
 
     const messages = await fragment.callRoute("GET", "/chats/:chatId/messages", {
@@ -407,7 +407,7 @@ describe("telegram-fragment", async () => {
           },
         ],
       }),
-      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(Object) }),
     );
 
     const messages = await fragment.callRoute("GET", "/chats/:chatId/messages", {
