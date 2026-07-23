@@ -10,12 +10,24 @@ import {
 import { useLiveQuery } from "@tanstack/react-db";
 
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
+import type { AutomationEventActor } from "@/fragno/automation/contracts";
 
 import type { Route } from "./+types/store";
 import { deleteAutomationStoreEntry } from "./data.server";
 import { formatTimestamp } from "./formatting";
+import type { AutomationLayoutContext } from "./layout-context";
 import { automationScopeFromRouteParams } from "./scope";
-import type { AutomationLayoutContext, AutomationStoreItem } from "./shared";
+
+type AutomationStoreEntry = {
+  id: string;
+  key: string;
+  value: string;
+  description?: string | null;
+  category: string[];
+  actor: AutomationEventActor | null;
+  createdAt?: string | Date | null;
+  updatedAt?: string | Date | null;
+};
 
 type StoreActionData = {
   ok: boolean;
@@ -62,7 +74,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   } satisfies StoreActionData;
 }
 
-const formatActor = (actor: AutomationStoreItem["actor"]) => {
+const formatActor = (actor: AutomationStoreEntry["actor"]) => {
   if (!actor) {
     return "—";
   }

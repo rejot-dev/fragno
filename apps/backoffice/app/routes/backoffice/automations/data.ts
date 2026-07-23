@@ -1,5 +1,4 @@
-import type { AutomationScriptLayer } from "@/fragno/automation";
-import type { AutomationScriptEngine } from "@/fragno/automation/catalog";
+import type { AutomationScriptEngine, AutomationScriptLayer } from "@/fragno/automation/catalog";
 
 type AutomationIdLike =
   | string
@@ -20,7 +19,7 @@ export type AutomationScriptRecord = {
   path: string;
   absolutePath: string;
   version: number | null;
-  scriptLoadError?: string | null;
+  scriptLoadError: string | null;
   enabled: boolean;
 };
 

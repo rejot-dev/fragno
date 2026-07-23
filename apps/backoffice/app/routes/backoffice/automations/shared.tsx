@@ -2,63 +2,14 @@ import { Fragment, type ReactNode } from "react";
 import { Link, isRouteErrorResponse } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
-import type { AutomationRouteDefinition, AutomationScriptLayer } from "@/fragno/automation";
-import type { AutomationEventActor } from "@/fragno/automation/contracts";
-import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "../route-errors";
+import type { AutomationTab } from "./layout-context";
 import {
   automationScopeTabPath,
   type AutomationScopeOption,
   type AutomationUiScope,
 } from "./scope";
-
-export type AutomationScriptItem = {
-  id: string;
-  key: string;
-  name: string;
-  engine: string;
-  layer: AutomationScriptLayer;
-  readOnly: boolean;
-  script: string | null;
-  path: string;
-  absolutePath: string;
-  version: number | null;
-  scriptLoadError?: string | null;
-  enabled: boolean;
-};
-
-export type AutomationRouteItem = AutomationRouteDefinition;
-
-export type AutomationStoreItem = {
-  id: string;
-  key: string;
-  value: string;
-  description?: string | null;
-  category: string[];
-  actor: AutomationEventActor | null;
-  createdAt?: string | Date | null;
-  updatedAt?: string | Date | null;
-};
-
-export type AutomationLayoutContext = {
-  selectedScope: AutomationUiScope;
-  scripts: AutomationScriptItem[];
-  scriptsError: string | null;
-  collections: AutomationCollections;
-};
-
-export type AutomationTab =
-  | "terminal"
-  | "scripts"
-  | "router"
-  | "store"
-  | "api"
-  | "events"
-  | "events-catalog"
-  | "integrations"
-  | "mcp"
-  | "sandboxes";
 
 export function AutomationHeader({ selectedScope }: { selectedScope: AutomationUiScope }) {
   const scopeLabel = selectedScope.label;

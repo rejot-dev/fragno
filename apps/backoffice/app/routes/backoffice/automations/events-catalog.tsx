@@ -6,7 +6,7 @@ import { useLiveQuery } from "@tanstack/react-db";
 import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import { jsonSchemaToTypeScript } from "@/lib/zod/zod-formatter";
 
-import type { AutomationLayoutContext } from "./shared";
+import type { AutomationLayoutContext } from "./layout-context";
 
 const formatPayloadType = (schema: unknown) =>
   jsonSchemaToTypeScript(schema as Parameters<typeof jsonSchemaToTypeScript>[0]);

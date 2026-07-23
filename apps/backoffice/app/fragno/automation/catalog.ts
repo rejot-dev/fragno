@@ -12,20 +12,21 @@ export const AUTOMATION_STATIC_ROOT = "/static/automations";
 export const AUTOMATION_SYSTEM_ROOT = "/system/automations";
 export const AUTOMATION_WORKSPACE_ROOT = "/workspace/automations";
 export const AUTOMATION_SCRIPTS_ROOT = AUTOMATION_WORKSPACE_ROOT;
-const AUTOMATION_ROOTS = [
-  AUTOMATION_STATIC_ROOT,
-  AUTOMATION_SYSTEM_ROOT,
-  AUTOMATION_WORKSPACE_ROOT,
-] as const;
+const AUTOMATION_ROOT_BY_LAYER = {
+  static: AUTOMATION_STATIC_ROOT,
+  system: AUTOMATION_SYSTEM_ROOT,
+  workspace: AUTOMATION_WORKSPACE_ROOT,
+} as const;
+const AUTOMATION_ROOTS = Object.values(AUTOMATION_ROOT_BY_LAYER);
 
-export type AutomationFileSystemResolvePurpose = "route" | "runtime";
+type AutomationFileSystemResolvePurpose = "route" | "runtime";
 
-export type AutomationFileSystemResolverInput = {
+type AutomationFileSystemResolverInput = {
   execution: BackofficeExecutionContext;
   purpose: AutomationFileSystemResolvePurpose;
 };
 
-export type AutomationFileSystemResolver = (
+type AutomationFileSystemResolver = (
   input: AutomationFileSystemResolverInput,
 ) => Promise<IFileSystem> | IFileSystem;
 
@@ -55,15 +56,13 @@ type AutomationScriptSource = {
   scriptLoadError?: string | null;
 };
 
-export type AutomationScriptCatalogEntry = AutomationScriptMetadata &
+type AutomationScriptCatalogEntry = AutomationScriptMetadata &
   AutomationScriptSource &
   AutomationScriptRuntimeState;
 
-export type AutomationBindingCatalogEntry = never;
-
 export type AutomationCatalog = {
   version: 1;
-  bindings: AutomationBindingCatalogEntry[];
+  bindings: never[];
   scripts: AutomationScriptCatalogEntry[];
 };
 
@@ -328,11 +327,13 @@ const toScriptCatalogEntry = async (
 
 export const listAutomationWorkspaceScripts = async (
   fileSystem: IFileSystem,
+  options: { layers?: readonly AutomationScriptLayer[] } = {},
 ): Promise<AutomationWorkspaceScriptEntry[]> => {
+  const roots = options.layers
+    ? options.layers.map((layer) => AUTOMATION_ROOT_BY_LAYER[layer])
+    : AUTOMATION_ROOTS;
   const absolutePaths = (
-    await Promise.all(
-      AUTOMATION_ROOTS.map((root) => listAutomationWorkspaceFilePaths(fileSystem, root)),
-    )
+    await Promise.all(roots.map((root) => listAutomationWorkspaceFilePaths(fileSystem, root)))
   ).flat();
 
   return absolutePaths

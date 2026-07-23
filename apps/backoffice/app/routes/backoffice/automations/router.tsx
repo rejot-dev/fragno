@@ -2,16 +2,19 @@ import { Link, useOutletContext, useSearchParams } from "react-router";
 
 import { eq, useLiveQuery } from "@tanstack/react-db";
 
+import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
+
 import { formatTimestamp, formatTimestampInTimeZone } from "./formatting";
+import type { AutomationLayoutContext } from "./layout-context";
 import { automationScopeTabPath } from "./scope";
-import { AutomationNotice, type AutomationLayoutContext, type AutomationRouteItem } from "./shared";
+import { AutomationNotice } from "./shared";
 
 const buildRouteLink = ({ basePath, routeId }: { basePath: string; routeId: string }) => {
   const params = new URLSearchParams({ route: routeId });
   return `${basePath}?${params.toString()}`;
 };
 
-const routeMatcherLabel = (route: AutomationRouteItem) => {
+const routeMatcherLabel = (route: AutomationRouteDefinition) => {
   if (route.trigger.kind !== "event") {
     return "";
   }
@@ -20,7 +23,7 @@ const routeMatcherLabel = (route: AutomationRouteItem) => {
     : "All events matching source/type.";
 };
 
-const routeListTriggerLabel = (route: AutomationRouteItem) => {
+const routeListTriggerLabel = (route: AutomationRouteDefinition) => {
   if (route.trigger.kind === "event") {
     return `${route.trigger.source}/${route.trigger.eventType}`;
   }
@@ -30,7 +33,7 @@ const routeListTriggerLabel = (route: AutomationRouteItem) => {
   return `cron ${route.trigger.cadence.expression} · ${route.trigger.cadence.timeZone}`;
 };
 
-const routeWorkflowName = (route: AutomationRouteItem) => {
+const routeWorkflowName = (route: AutomationRouteDefinition) => {
   const action = route.action;
   if (action.kind === "forward_event") {
     return null;
@@ -46,7 +49,7 @@ const routeWorkflowName = (route: AutomationRouteItem) => {
   return scriptName?.replace(/\.workflow\.js$/u, "") || action.workflowName;
 };
 
-const routeWorkflowLink = (route: AutomationRouteItem) => {
+const routeWorkflowLink = (route: AutomationRouteDefinition) => {
   const workflowName = routeWorkflowName(route);
   if (!workflowName) {
     return null;
@@ -54,7 +57,7 @@ const routeWorkflowLink = (route: AutomationRouteItem) => {
   return `/workflows?${new URLSearchParams({ workflow: workflowName }).toString()}`;
 };
 
-const routeActionLabel = (route: AutomationRouteItem) => {
+const routeActionLabel = (route: AutomationRouteDefinition) => {
   switch (route.action.kind) {
     case "start_workflow":
       return "Start workflow";
@@ -67,7 +70,7 @@ const routeActionLabel = (route: AutomationRouteItem) => {
   throw new Error("Unsupported automation route action kind.");
 };
 
-const routeActionDetail = (route: AutomationRouteItem) => {
+const routeActionDetail = (route: AutomationRouteDefinition) => {
   const action = route.action;
   switch (action.kind) {
     case "start_workflow":
@@ -95,7 +98,7 @@ const routeActionDetail = (route: AutomationRouteItem) => {
   throw new Error("Unsupported automation route action kind.");
 };
 
-const routeSections = (routes: AutomationRouteItem[]) => [
+const routeSections = (routes: AutomationRouteDefinition[]) => [
   {
     id: "system" as const,
     label: "System",
@@ -134,7 +137,7 @@ export default function BackofficeAutomationRouter() {
         })),
     [collections.routeScheduleStates, collections.routes],
   );
-  const routes: AutomationRouteItem[] = (routesQuery.data ?? []).map((route) => ({
+  const routes: AutomationRouteDefinition[] = (routesQuery.data ?? []).map((route) => ({
     ...route,
     nextOccurrenceAt: route.nextOccurrenceAt?.toISOString() ?? null,
   }));

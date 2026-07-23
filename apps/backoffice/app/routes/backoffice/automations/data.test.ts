@@ -102,6 +102,28 @@ describe("automation backoffice workspace data", () => {
     expect(fileSystem.readFileCalls).toEqual([]);
   });
 
+  test("can load static scripts without traversing upload-backed workspace metadata", async () => {
+    const fileSystem = createStubAutomationFileSystem({
+      "/static/automations/project-files-configure.workflow.js": "configure",
+      "/workspace/automations/local.cm.js": "async () => true",
+    });
+    createBackofficeFileSystemMock.mockResolvedValue(fileSystem.fs);
+
+    const result = await loadAutomationWorkspaceData({
+      request,
+      context: mockContext,
+      orgId: "acme-org",
+      layers: ["static"],
+    });
+
+    expect(result.scripts).toEqual([
+      expect.objectContaining({
+        id: "automation-script:static:project-files-configure.workflow.js",
+      }),
+    ]);
+    expect(fileSystem.readdirCalls).not.toContain("/workspace/automations");
+  });
+
   test("shows project workspace scripts without org static scripts in project scope", async () => {
     const fileSystem = createStubAutomationFileSystem({
       "/static/automations/project-files-configure.workflow.js":
@@ -259,6 +281,7 @@ function createStubAutomationFileSystem(files: Record<string, string>) {
   }
 
   const readFileCalls: string[] = [];
+  const readdirCalls: string[] = [];
   const fs = {
     async readFile(path: string) {
       readFileCalls.push(path);
@@ -272,6 +295,7 @@ function createStubAutomationFileSystem(files: Record<string, string>) {
       return new TextEncoder().encode(await this.readFile(path));
     },
     async readdir(path: string) {
+      readdirCalls.push(path);
       const prefix = path.endsWith("/") ? path : `${path}/`;
       const names = new Set<string>();
 
@@ -315,5 +339,5 @@ function createStubAutomationFileSystem(files: Record<string, string>) {
     },
   };
 
-  return { fs, readFileCalls };
+  return { fs, readFileCalls, readdirCalls };
 }

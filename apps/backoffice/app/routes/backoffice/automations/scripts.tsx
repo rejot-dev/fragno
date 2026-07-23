@@ -1,9 +1,20 @@
+import { use, useMemo } from "react";
 import { Link, useLoaderData, useOutletContext, useSearchParams } from "react-router";
 
+import { and, eq, useLiveQuery } from "@tanstack/react-db";
+
+import { toUploadFileRecord } from "@/fragno/upload/file-record";
+import {
+  getUploadBrowserDatabase,
+  type UploadCollectionSource,
+} from "@/fragno/upload/tanstack/browser-database";
+
 import type { Route } from "./+types/scripts";
+import type { AutomationScriptRecord } from "./data";
 import { loadAutomationScriptSource } from "./data.server";
+import type { AutomationLayoutContext } from "./layout-context";
 import { automationScopeFromRouteParams, automationScopeTabPath } from "./scope";
-import type { AutomationLayoutContext } from "./shared";
+import { buildUploadWorkspaceScriptRecords } from "./script-records";
 import { AutomationNotice } from "./shared";
 
 const buildScriptLink = ({ basePath, scriptId }: { basePath: string; scriptId: string }) => {
@@ -74,7 +85,81 @@ function ScriptSourcePanel({
 }
 
 export default function BackofficeOrganisationAutomationScripts() {
-  const { selectedScope, scripts, scriptsError } = useOutletContext<AutomationLayoutContext>();
+  const context = useOutletContext<AutomationLayoutContext>();
+
+  if (!context.uploadCollectionSource) {
+    return (
+      <AutomationScriptsView
+        selectedScope={context.selectedScope}
+        scripts={context.scripts}
+        scriptsError={context.scriptsError ?? context.uploadCollectionError}
+        workspaceScriptsReady
+      />
+    );
+  }
+
+  return (
+    <SynchronizedAutomationScripts context={context} source={context.uploadCollectionSource} />
+  );
+}
+
+function SynchronizedAutomationScripts({
+  context,
+  source,
+}: {
+  context: AutomationLayoutContext;
+  source: UploadCollectionSource;
+}) {
+  const database = use(getUploadBrowserDatabase());
+  const files = database.collectionsFor(source).files;
+  const filesQuery = useLiveQuery(
+    (query) =>
+      query
+        .from({ file: files })
+        .where(({ file }) => and(eq(file.provider, "database"), eq(file.status, "ready"))),
+    [files],
+  );
+  const workspaceScripts = useMemo(
+    () => buildUploadWorkspaceScriptRecords((filesQuery.data ?? []).map(toUploadFileRecord)),
+    [filesQuery.data],
+  );
+  const scripts = useMemo(
+    () =>
+      [...context.scripts, ...workspaceScripts].sort(
+        (left, right) => left.layer.localeCompare(right.layer) || compareScriptsByName(left, right),
+      ),
+    [context.scripts, workspaceScripts],
+  );
+  const sourceError = filesQuery.isError ? files.utils.getLastError() : undefined;
+  const scriptsError =
+    context.scriptsError ??
+    (sourceError instanceof Error
+      ? sourceError.message
+      : filesQuery.isError
+        ? "Workspace script metadata synchronization failed."
+        : null);
+
+  return (
+    <AutomationScriptsView
+      selectedScope={context.selectedScope}
+      scripts={scripts}
+      scriptsError={scriptsError}
+      workspaceScriptsReady={filesQuery.isReady}
+    />
+  );
+}
+
+function AutomationScriptsView({
+  selectedScope,
+  scripts,
+  scriptsError,
+  workspaceScriptsReady,
+}: {
+  selectedScope: AutomationLayoutContext["selectedScope"];
+  scripts: AutomationScriptRecord[];
+  scriptsError: string | null;
+  workspaceScriptsReady: boolean;
+}) {
   const loaderData = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
   const selectedScriptId = searchParams.get("script")?.trim() ?? "";
@@ -100,6 +185,14 @@ export default function BackofficeOrganisationAutomationScripts() {
     );
   }
 
+  if (!workspaceScriptsReady && scripts.length === 0) {
+    return (
+      <div className="w-full max-w-7xl border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
+        Loading local workspace scripts…
+      </div>
+    );
+  }
+
   if (scripts.length === 0) {
     return (
       <div className="w-full max-w-7xl border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
@@ -110,6 +203,12 @@ export default function BackofficeOrganisationAutomationScripts() {
 
   return (
     <section className="w-full max-w-7xl space-y-4">
+      {!workspaceScriptsReady ? (
+        <AutomationNotice tone="info">
+          <p className="text-[10px] tracking-[0.22em] uppercase">Loading local workspace scripts</p>
+        </AutomationNotice>
+      ) : null}
+
       {hasScriptLoadError ? (
         <AutomationNotice tone="error">
           <p className="text-[10px] tracking-[0.22em] uppercase">Could not load all scripts</p>
