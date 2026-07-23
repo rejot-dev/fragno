@@ -1,5 +1,7 @@
 import { assert, describe, test, vi } from "vitest";
 
+import { eq, queryOnce } from "@tanstack/react-db";
+
 import type { AutomationEvent } from "./contracts";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
@@ -20,7 +22,6 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
-import { automationFragmentSchema } from "./schema";
 
 const customAutomationEvent = ({
   id,
@@ -77,24 +78,40 @@ const telegramMessageEvent = ({
 };
 
 describe("starter automation router scenarios", () => {
-  test("scenario Lofi helper drains and queries frontend-visible data", async () => {
+  test("scenario TanStack DB helper drains and queries frontend-visible data", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
-        name: "scenario lofi helper drains and queries frontend-visible data",
+        name: "scenario TanStack DB helper drains and queries frontend-visible data",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, when }) => [
           when.automation.ingestEvent(
-            customAutomationEvent({ id: "lofi-event-1", payload: { ok: true } }),
+            customAutomationEvent({ id: "tanstack-event-1", payload: { ok: true } }),
           ),
-          then.assert("assert event is visible through Lofi", async (ctx) => {
-            const lofi = ctx.lofi.forOrg("org-1");
-            await lofi.drain();
-            const query = lofi.query(automationFragmentSchema);
-            const event = await query.findFirst("automation_event", (b) =>
-              b.whereIndex("primary", (eb) => eb("id", "=", "lofi-event-1")),
+          then.assert("assert event is visible through TanStack DB", async (ctx) => {
+            const database = ctx.tanstack.automations.forOrg("org-1");
+            await database.drain();
+            const event = await queryOnce((query) =>
+              query
+                .from({ event: database.collections.events })
+                .where(({ event }) => eq(event.id, "tanstack-event-1"))
+                .findOne(),
             );
             assert.equal(event?.source, "custom");
             assert.equal(event?.eventType, "thing.happened");
+          }),
+          when.automation.ingestEvent(
+            customAutomationEvent({ id: "tanstack-event-2", payload: { updated: true } }),
+          ),
+          then.assert("assert a started TanStack DB scope catches up", async (ctx) => {
+            const database = ctx.tanstack.automations.forOrg("org-1");
+            await database.drain();
+            const event = await queryOnce((query) =>
+              query
+                .from({ event: database.collections.events })
+                .where(({ event }) => eq(event.id, "tanstack-event-2"))
+                .findOne(),
+            );
+            assert.deepEqual(event?.payload, { updated: true });
           }),
         ],
       }),
@@ -151,19 +168,19 @@ describe("starter automation router scenarios", () => {
             priority: 120,
             trigger: { kind: "event" },
           }),
-          then.assert("assert starter routes are visible through Lofi", async (ctx) => {
-            const lofi = ctx.lofi.forOrg("org-1");
-            await lofi.drain();
-            const routes = await lofi
-              .query(automationFragmentSchema)
-              .find("automation_route", (b) => b.whereIndex("primary"));
+          then.assert("assert starter routes are visible through TanStack DB", async (ctx) => {
+            const database = ctx.tanstack.automations.forOrg("org-1");
+            await database.drain();
+            const routes = await queryOnce((query) =>
+              query.from({ route: database.collections.routes }),
+            );
             const expectedIds = [
               "telegram-test-command",
               "telegram-identity-claim-completed",
               "pi-default-agent-configure",
             ];
             const missing = expectedIds.filter(
-              (expectedId) => !routes.some((route) => route.id.externalId === expectedId),
+              (expectedId) => !routes.some((route) => route.id === expectedId),
             );
             assert.equal(missing.length, 0);
           }),
@@ -319,15 +336,20 @@ describe("starter automation router scenarios", () => {
             customAutomationEvent({ id: "beta-1", payload: { kind: "beta" } }),
           ),
 
-          then.assert("assert automation events are visible through Lofi", async (ctx) => {
-            const lofi = ctx.lofi.forOrg("org-1");
-            await lofi.drain();
-            const query = lofi.query(automationFragmentSchema);
-            const alphaEvent = await query.findFirst("automation_event", (b) =>
-              b.whereIndex("primary", (eb) => eb("id", "=", "alpha-1")),
+          then.assert("assert automation events are visible through TanStack DB", async (ctx) => {
+            const database = ctx.tanstack.automations.forOrg("org-1");
+            await database.drain();
+            const alphaEvent = await queryOnce((query) =>
+              query
+                .from({ event: database.collections.events })
+                .where(({ event }) => eq(event.id, "alpha-1"))
+                .findOne(),
             );
-            const betaEvent = await query.findFirst("automation_event", (b) =>
-              b.whereIndex("primary", (eb) => eb("id", "=", "beta-1")),
+            const betaEvent = await queryOnce((query) =>
+              query
+                .from({ event: database.collections.events })
+                .where(({ event }) => eq(event.id, "beta-1"))
+                .findOne(),
             );
             assert.deepEqual(alphaEvent?.payload, { kind: "alpha" });
             assert.deepEqual(betaEvent?.payload, { kind: "beta" });
@@ -345,15 +367,16 @@ describe("starter automation router scenarios", () => {
           }),
           then.store.entry({ orgId: "org-1", key: "custom/alpha-1", value: "alpha" }),
           then.assert(
-            "assert custom workflow store output is visible through Lofi",
+            "assert custom workflow store output is visible through TanStack DB",
             async (ctx) => {
-              const lofi = ctx.lofi.forOrg("org-1");
-              await lofi.drain();
-              const [entry] = await lofi
-                .query(automationFragmentSchema)
-                .find("kv_store", (b) =>
-                  b.whereIndex("idx_kv_store_key", (eb) => eb("key", "=", "custom/alpha-1")),
-                );
+              const database = ctx.tanstack.automations.forOrg("org-1");
+              await database.drain();
+              const entry = await queryOnce((query) =>
+                query
+                  .from({ entry: database.collections.kvStore })
+                  .where(({ entry }) => eq(entry.key, "custom/alpha-1"))
+                  .findOne(),
+              );
               assert.equal(entry?.value, "alpha");
             },
           ),
@@ -541,14 +564,15 @@ describe("starter automation router scenarios", () => {
             key: "pi/pi-default-agent",
             value: "default::openai::gpt-5-mini",
           }),
-          then.assert("assert default Pi agent is visible through Lofi", async (ctx) => {
-            const lofi = ctx.lofi.forOrg("org-1");
-            await lofi.drain();
-            const [entry] = await lofi
-              .query(automationFragmentSchema)
-              .find("kv_store", (b) =>
-                b.whereIndex("idx_kv_store_key", (eb) => eb("key", "=", "pi/pi-default-agent")),
-              );
+          then.assert("assert default Pi agent is visible through TanStack DB", async (ctx) => {
+            const database = ctx.tanstack.automations.forOrg("org-1");
+            await database.drain();
+            const entry = await queryOnce((query) =>
+              query
+                .from({ entry: database.collections.kvStore })
+                .where(({ entry }) => eq(entry.key, "pi/pi-default-agent"))
+                .findOne(),
+            );
             assert.equal(entry?.value, "default::openai::gpt-5-mini");
           }),
           then.workflow.noErrored({ orgId: "org-1" }),

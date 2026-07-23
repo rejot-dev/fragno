@@ -1,14 +1,6 @@
-import type { AnySchema } from "@fragno-dev/db/schema";
-import { workflowsSchema } from "@fragno-dev/workflows/schema";
+import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
 
-import {
-  createLofiRuntime,
-  InMemoryLofiAdapter,
-  type LofiQueryEngineOptions,
-  type LofiQueryInterface,
-  type LofiRuntime,
-  type LofiRuntimeSyncResult,
-} from "@fragno-dev/lofi";
+import { createFragnoCollection } from "@fragno-dev/tanstack-db-adapter";
 import type { TelegramApi, TelegramMessage } from "@fragno-dev/telegram-fragment";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
@@ -31,14 +23,27 @@ import {
 } from "@/files";
 import type { MasterFileSystem } from "@/files";
 import {
+  createAutomationCollections,
+  type AutomationCollections,
+} from "@/fragno/automation/tanstack/collections";
+import {
   runBackofficeCodemode,
   type BackofficeCodemodeExecuteResult,
 } from "@/fragno/codemode/execute";
+import { createPiCollections, type PiCollections } from "@/fragno/pi/tanstack/collections";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
+import {
+  appendBackofficeScopeQuery,
+  scopedPublicMountPath,
+} from "@/fragno/scoped-public-fragment-routes";
+import {
+  createScenarioCollectionDatabase,
+  type ScenarioCollectionDatabase,
+} from "@/fragno/tanstack/scenario-collection-database";
 
 import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { listHookScopes } from "../backoffice-capabilities/backoffice-capabilities";
@@ -49,7 +54,6 @@ import { createTestMasterFileSystem } from "./engine/test-master-file-system.tes
 import type { AutomationRouteDefinition } from "./routing";
 import { createRouteBackedAutomationRouterRuntime } from "./routing-route-runtime";
 import type { AutomationRouteCreateInput, AutomationRouteUpdateInput } from "./routing-schemas";
-import { automationFragmentSchema } from "./schema";
 import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
 
 type ScenarioVars = Record<string, unknown>;
@@ -259,20 +263,11 @@ export type BackofficeScenarioFileSystems = {
   diff(orgId?: string): Promise<FileDiffEntry[]>;
 };
 
-export type BackofficeScenarioLofiScope = {
-  runtime: LofiRuntime;
-  adapter: InMemoryLofiAdapter;
-  query<const TSchema extends AnySchema>(
-    schema: TSchema,
-    options?: LofiQueryEngineOptions,
-  ): LofiQueryInterface<TSchema>;
-  drain(): Promise<LofiRuntimeSyncResult>;
-};
-
-export type BackofficeScenarioLofi = {
-  forScope(scope: BackofficeContextScope): BackofficeScenarioLofiScope;
-  forOrg(orgId: string): BackofficeScenarioLofiScope;
+export type BackofficeScenarioTanStack = {
+  automations: ScenarioCollectionDatabase<AutomationCollections>;
+  pi: ScenarioCollectionDatabase<PiCollections>;
   drainAll(): Promise<void>;
+  cleanup(): Promise<void>;
 };
 
 export type BackofficeScenarioContext<TVars extends ScenarioVars = ScenarioVars> = {
@@ -281,7 +276,7 @@ export type BackofficeScenarioContext<TVars extends ScenarioVars = ScenarioVars>
   files: BackofficeScenarioFileSystems;
   vars: TVars;
   fakes: ScenarioFakes;
-  lofi: BackofficeScenarioLofi;
+  tanstack: BackofficeScenarioTanStack;
   codemodeRuns: ScenarioCodemodeRun[];
   journal: ScenarioJournal;
   drain(): Promise<void>;
@@ -384,6 +379,23 @@ type StoreEntriesInput = {
 type PiDefaultAgentInput = {
   orgId: string;
   value: string;
+};
+
+type PiConfiguredInput = {
+  orgId: string;
+  apiKeys?: {
+    openai?: string;
+    anthropic?: string;
+    gemini?: string;
+  };
+};
+
+type PiCreateStoredSessionInput = {
+  orgId: string;
+  workflowName?: string;
+  harnessName?: string;
+  name?: string;
+  captureSessionIdAs?: string;
 };
 
 type ConnectionConfiguredInput = {
@@ -572,6 +584,7 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
       configured(input: TelegramConfiguredInput): BackofficeScenarioStep;
     };
     pi: {
+      configured(input: PiConfiguredInput): BackofficeScenarioStep;
       defaultAgent(input: PiDefaultAgentInput): BackofficeScenarioStep;
     };
     store: {
@@ -606,6 +619,9 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
     };
     automation: {
       ingestEvent(input: AutomationEvent): BackofficeScenarioStep;
+    };
+    pi: {
+      createSession(input: PiCreateStoredSessionInput): BackofficeScenarioStep;
     };
     router: {
       seedStarter(input: RouterSeedStarterInput): BackofficeScenarioStep;
@@ -1307,8 +1323,6 @@ const getHooks = (ctx: BackofficeScenarioContext, orgId: string) =>
     orgId,
   });
 
-const AUTOMATIONS_LOFI_ENDPOINT = "automations-bindings";
-
 const applyAutomationScopeQuery = (url: URL, scope: BackofficeContextScope) => {
   url.searchParams.set("scopeKind", scope.kind);
 
@@ -1323,25 +1337,31 @@ const applyAutomationScopeQuery = (url: URL, scope: BackofficeContextScope) => {
   }
 };
 
-const automationScopedOutboxUrl = (scope: BackofficeContextScope) => {
+const automationScopedInternalUrl = (scope: BackofficeContextScope) => {
   const scopeId = encodeURIComponent(backofficeContextScopeSinglePathSegment(scope));
-  return `http://scenario.local/api/automations-scoped/${scope.kind}/${scopeId}/_internal/outbox`;
+  return `http://scenario.local/api/automations-scoped/${scope.kind}/${scopeId}/_internal`;
 };
 
-const automationLofiScopeKey = (scope: BackofficeContextScope) =>
-  scope.kind === "system" ? "system:system" : backofficeContextScopeSinglePathSegment(scope);
+const piScopedInternalUrl = (scope: BackofficeContextScope) =>
+  `http://scenario.local${scopedPublicMountPath({ publicPrefix: "/api/pi", scope })}/_internal`;
 
-const createScenarioLofiFetch = (
+const internalRouteSuffix = (requestUrl: URL) => {
+  const internalPathIndex = requestUrl.pathname.indexOf("/_internal");
+  return internalPathIndex >= 0
+    ? requestUrl.pathname.slice(internalPathIndex)
+    : requestUrl.pathname;
+};
+
+const createScenarioAutomationTanStackFetch = (
   runtime: InMemoryBackofficeRuntime,
   scope: BackofficeContextScope,
 ): typeof fetch => {
   return async (input, init) => {
     const request = new Request(input, init);
     const requestUrl = new URL(request.url);
-    const internalPathIndex = requestUrl.pathname.indexOf("/_internal/");
-    const suffix =
-      internalPathIndex >= 0 ? requestUrl.pathname.slice(internalPathIndex) : requestUrl.pathname;
-    const forwardedUrl = new URL(`http://scenario.local/api/automations${suffix}`);
+    const forwardedUrl = new URL(
+      `http://scenario.local/api/automations${internalRouteSuffix(requestUrl)}`,
+    );
     forwardedUrl.search = requestUrl.search;
     applyAutomationScopeQuery(forwardedUrl, scope);
 
@@ -1351,68 +1371,59 @@ const createScenarioLofiFetch = (
   };
 };
 
-const createScenarioLofi = (runtime: InMemoryBackofficeRuntime): BackofficeScenarioLofi => {
-  const scopes = new Map<string, BackofficeScenarioLofiScope>();
+const createScenarioPiTanStackFetch = (
+  runtime: InMemoryBackofficeRuntime,
+  scope: BackofficeContextScope,
+): typeof fetch => {
+  return async (input, init) => {
+    const request = new Request(input, init);
+    const requestUrl = new URL(request.url);
+    const forwardedUrl = new URL(`http://scenario.local/api/pi${internalRouteSuffix(requestUrl)}`);
+    forwardedUrl.search = requestUrl.search;
+    appendBackofficeScopeQuery(forwardedUrl, scope);
 
-  const drainScope = async (scopeRuntime: BackofficeScenarioLofiScope) => {
-    await scopeRuntime.runtime.bootstrap();
-
-    let latest: LofiRuntimeSyncResult = { appliedEntries: 0, sources: {} };
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      await runtime.drain();
-      latest = await scopeRuntime.runtime.syncOnce();
-      if (latest.appliedEntries === 0) {
-        return latest;
-      }
-    }
-
-    throw new Error("Timed out waiting for scenario Lofi runtime to drain.");
+    const kernel = new BackofficeKernel({ objects: runtime.objects });
+    const pi = kernel.scoped("PI", scope, runtime.objects.pi);
+    return await pi.fetch(new Request(forwardedUrl.toString(), request));
   };
+};
 
-  const forScope = (scope: BackofficeContextScope): BackofficeScenarioLofiScope => {
-    const scopeKey = automationLofiScopeKey(scope);
-    const existing = scopes.get(scopeKey);
-    if (existing) {
-      return existing;
-    }
-
-    const adapter = new InMemoryLofiAdapter({
-      endpointName: AUTOMATIONS_LOFI_ENDPOINT,
-      schemas: [automationFragmentSchema, workflowsSchema],
-    });
-    const lofiRuntime = createLofiRuntime({
-      endpointName: AUTOMATIONS_LOFI_ENDPOINT,
-      adapter,
-      sources: [
-        {
-          id: scopeKey,
-          outboxUrl: automationScopedOutboxUrl(scope),
-          outboxTransport: "poll",
-        },
-      ],
-      fetch: createScenarioLofiFetch(runtime, scope),
-      outboxTransport: "poll",
-      autoStart: false,
-      keepAlive: false,
-    });
-    const scopeRuntime: BackofficeScenarioLofiScope = {
-      runtime: lofiRuntime,
-      adapter,
-      query: (schema, options) => adapter.createQueryEngine(schema, options),
-      drain: () => drainScope(scopeRuntime),
-    };
-
-    scopes.set(scopeKey, scopeRuntime);
-    return scopeRuntime;
-  };
+const createScenarioTanStack = (runtime: InMemoryBackofficeRuntime): BackofficeScenarioTanStack => {
+  const automations = createScenarioCollectionDatabase({
+    name: "Automation collections",
+    drainRuntime: () => runtime.drain(),
+    internalUrl: automationScopedInternalUrl,
+    createFetch: (scope) => createScenarioAutomationTanStackFetch(runtime, scope),
+    createCollections: ({ coordinator, scopeKey }) =>
+      createAutomationCollections({
+        coordinator,
+        collectionId: (table) => `backoffice-scenario.automations.${scopeKey}.${table}`,
+        createCollection: createFragnoCollection,
+      }),
+  });
+  const pi = createScenarioCollectionDatabase({
+    name: "Pi collections",
+    drainRuntime: () => runtime.drain(),
+    internalUrl: piScopedInternalUrl,
+    createFetch: (scope) => createScenarioPiTanStackFetch(runtime, scope),
+    createCollections: ({ coordinator, scopeKey }) =>
+      createPiCollections({
+        coordinator,
+        collectionId: (target) => `backoffice-scenario.pi.${scopeKey}.${target}`,
+        createCollection: createFragnoCollection,
+      }),
+  });
 
   return {
-    forScope,
-    forOrg: (orgId) => forScope({ kind: "org", orgId }),
+    automations,
+    pi,
     drainAll: async () => {
-      for (const scopeRuntime of scopes.values()) {
-        await drainScope(scopeRuntime);
-      }
+      await runtime.drain();
+      await automations.syncAll();
+      await pi.syncAll();
+    },
+    cleanup: async () => {
+      await Promise.all([automations.cleanup(), pi.cleanup()]);
     },
   };
 };
@@ -2019,6 +2030,23 @@ const buildStepBuilders = <
         ),
     },
     pi: {
+      configured: (input) =>
+        createStep(
+          "given",
+          "pi.configured",
+          `configure persisted Pi runtime for ${input.orgId}`,
+          async (ctx) => {
+            if (ctx.fakes.pi) {
+              throw new Error("Persisted Pi scenarios cannot use fake.pi().");
+            }
+            ctx.rememberOrg(input.orgId);
+            const scope = { kind: "org" as const, orgId: input.orgId };
+            await ctx.runtime.objects.pi.forOrg(input.orgId).setAdminConfig({
+              scope,
+              apiKeys: input.apiKeys ?? { openai: "scenario-openai-key" },
+            });
+          },
+        ),
       defaultAgent: (input) =>
         createStep(
           "given",
@@ -2234,6 +2262,47 @@ const buildStepBuilders = <
           "automation.ingestEvent",
           `ingest automation event ${input.source}/${input.eventType}`,
           (ctx) => ingestAutomationEvent(ctx, input),
+        ),
+    },
+    pi: {
+      createSession: (input) =>
+        createStep(
+          "when",
+          "pi.createSession",
+          `create persisted Pi session for ${input.orgId}`,
+          async (ctx) => {
+            if (ctx.fakes.pi) {
+              throw new Error("Persisted Pi scenarios cannot use fake.pi().");
+            }
+            ctx.rememberOrg(input.orgId);
+            const scope = { kind: "org" as const, orgId: input.orgId };
+            const workflowName = input.workflowName ?? INTERACTIVE_CHAT_WORKFLOW_NAME;
+            const url = new URL(
+              `http://scenario.local/api/pi/workflows/${encodeURIComponent(workflowName)}/sessions`,
+            );
+            appendBackofficeScopeQuery(url, scope);
+            const response = await ctx.runtime.objects.pi.forOrg(input.orgId).fetch(
+              new Request(url, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                  name: input.name,
+                  input: {
+                    harnessName: input.harnessName ?? "default::openai::gpt-5.6-luna",
+                  },
+                }),
+              }),
+            );
+            if (!response.ok) {
+              throw new Error(
+                `Pi session creation failed (${response.status}): ${await response.text()}`,
+              );
+            }
+            const session = (await response.json()) as { id: string };
+            if (input.captureSessionIdAs) {
+              ctx.vars[input.captureSessionIdAs] = session.id;
+            }
+          },
         ),
     },
     router: {
@@ -3453,7 +3522,7 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
   });
   const journal: ScenarioJournal = { entries: [] };
   const vars = scenario.vars?.() ?? ({} as TVars);
-  const lofi = createScenarioLofi(runtime);
+  const tanstack = createScenarioTanStack(runtime);
 
   let ctx: BackofficeScenarioContext<TVars>;
   ctx = {
@@ -3462,15 +3531,18 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
     files,
     vars,
     fakes,
-    lofi,
+    tanstack,
     codemodeRuns: [],
     journal,
-    drain: async () => {
-      await runtime.drain();
-      await lofi.drainAll();
-    },
+    drain: () => tanstack.drainAll(),
     runCodemode: (input) => runScenarioCodemode(ctx, input),
-    cleanup: () => runtime.cleanup(),
+    cleanup: async () => {
+      try {
+        await tanstack.cleanup();
+      } finally {
+        await runtime.cleanup();
+      }
+    },
     rememberOrg: (orgId) => {
       orgIds.add(orgId);
     },
