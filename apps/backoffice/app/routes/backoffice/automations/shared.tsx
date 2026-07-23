@@ -2,15 +2,8 @@ import { Fragment, type ReactNode } from "react";
 import { Link, isRouteErrorResponse } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
-import type { AuthMeData } from "@/fragno/auth/auth-client";
-import type {
-  AutomationEventDefinition,
-  AutomationEventRecord,
-  AutomationRouteDefinition,
-  AutomationScriptLayer,
-} from "@/fragno/automation";
+import type { AutomationRouteDefinition, AutomationScriptLayer } from "@/fragno/automation";
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
-import type { SandboxInstanceSummary } from "@/sandbox/contracts";
 
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "../route-errors";
 import {
@@ -18,8 +11,7 @@ import {
   type AutomationScopeOption,
   type AutomationUiScope,
 } from "./scope";
-
-type BackofficeOrganisation = AuthMeData["organizations"][number]["organization"];
+import type { AutomationTanStackCollections } from "./tanstack/database";
 
 export type AutomationScriptItem = {
   id: string;
@@ -38,8 +30,6 @@ export type AutomationScriptItem = {
 
 export type AutomationRouteItem = AutomationRouteDefinition;
 
-export type AutomationEventItem = AutomationEventRecord;
-
 export type AutomationStoreItem = {
   id: string;
   key: string;
@@ -51,100 +41,11 @@ export type AutomationStoreItem = {
   updatedAt?: string | Date | null;
 };
 
-type AutomationLocalRoutesState = {
-  routes: AutomationRouteItem[];
-  synced: boolean;
-  error: string | null;
-};
-
-type AutomationLocalEventsState = {
-  events: AutomationEventItem[];
-  synced: boolean;
-  error: string | null;
-};
-
-type AutomationLocalEventDefinitionsState = {
-  eventDefinitions: AutomationEventDefinition[];
-  synced: boolean;
-  error: string | null;
-};
-
-type AutomationLocalSandboxesState = {
-  sandboxes: SandboxInstanceSummary[];
-  synced: boolean;
-  error: string | null;
-};
-
-export type AutomationLocalScopeState = {
-  routes: AutomationLocalRoutesState;
-  events: AutomationLocalEventsState;
-  eventDefinitions: AutomationLocalEventDefinitionsState;
-  sandboxes: AutomationLocalSandboxesState;
-};
-
-type AutomationServerLofiDataState<TData> = {
-  data: TData;
-  source: "server" | "lofi";
-  synced: boolean;
-  serverError: string | null;
-  syncError: string | null;
-  blockingError: string | null;
-};
-
-export const resolveAutomationServerLofiData = <TData,>({
-  serverData,
-  serverError,
-  lofiData,
-  lofiSynced,
-  lofiError,
-  isEmpty,
-}: {
-  serverData: TData;
-  serverError: string | null;
-  lofiData: TData;
-  lofiSynced: boolean;
-  lofiError: string | null;
-  isEmpty?: (data: TData) => boolean;
-}): AutomationServerLofiDataState<TData> => {
-  const data = lofiSynced ? lofiData : serverData;
-  const normalizedServerError = serverError?.trim() || null;
-
-  return {
-    data,
-    source: lofiSynced ? "lofi" : "server",
-    synced: lofiSynced,
-    serverError: normalizedServerError,
-    syncError: lofiError?.trim() || null,
-    blockingError: normalizedServerError && isEmpty?.(data) ? normalizedServerError : null,
-  };
-};
-
 export type AutomationLayoutContext = {
-  orgId: string;
-  organisation: BackofficeOrganisation;
   selectedScope: AutomationUiScope;
-  adapterIdentity: string;
-  scopeOptions: AutomationScopeOption[];
-  projectsError: string | null;
   scripts: AutomationScriptItem[];
-  routes: AutomationRouteItem[];
-  events: AutomationEventItem[];
-  eventDefinitions: AutomationEventDefinition[];
-  eventsCursor?: string;
-  eventsHasNextPage: boolean;
-  eventsCurrentCursor: string | null;
-  eventsPageSize: number;
-  routesData: AutomationServerLofiDataState<AutomationRouteItem[]>;
-  eventsData: AutomationServerLofiDataState<AutomationEventItem[]>;
-  eventDefinitionsData: AutomationServerLofiDataState<AutomationEventDefinition[]>;
-  lofiRoutes: AutomationLocalRoutesState;
-  lofiEvents: AutomationLocalEventsState;
-  lofiEventDefinitions: AutomationLocalEventDefinitionsState;
-  lofiSandboxes: AutomationLocalSandboxesState;
   scriptsError: string | null;
-  routesError: string | null;
-  eventsError: string | null;
-  eventDefinitionsError: string | null;
+  collections: AutomationTanStackCollections;
 };
 
 export type AutomationTab =

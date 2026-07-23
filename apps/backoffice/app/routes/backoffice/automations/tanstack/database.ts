@@ -2,36 +2,99 @@ import { createFragnoOutboxCoordinator } from "@fragno-dev/tanstack-db-adapter/c
 import { createPersistedFragnoCollectionFactory } from "@fragno-dev/tanstack-db-adapter/persistence";
 import { createFetchFragnoOutboxStreamingTransport } from "@fragno-dev/tanstack-db-adapter/streaming-transport";
 
+import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { automationFragmentSchema } from "@/fragno/automation/schema";
+
+import { automationScopeRouteId, toBackofficeScope, type AutomationUiScope } from "../scope";
 
 const AUTOMATION_DATABASE_NAME = "fragno-backoffice-automations.sqlite";
 const AUTOMATION_DATABASE_COORDINATOR_NAME = "fragno-backoffice-automations";
-const AUTOMATION_COLLECTION_SCHEMA_VERSION = 1;
+const AUTOMATION_COLLECTION_SCHEMA_VERSION = 2;
 
-type CreatePersistedCollection = ReturnType<typeof createPersistedFragnoCollectionFactory>;
-
-type AutomationCollectionSource = {
-  scopeKey: string;
-  internalUrl: string;
+type AutomationPersistenceSource = {
+  scope: AutomationUiScope;
   adapterIdentity: string;
 };
 
+type AutomationPersistenceSourceDescription = {
+  resourceKey: string;
+  internalUrl: string;
+  collectionId(target: string): string;
+};
+
+type CreatePersistedCollection = ReturnType<typeof createPersistedFragnoCollectionFactory>;
+
+export function describeAutomationPersistenceSource(
+  source: AutomationPersistenceSource,
+): AutomationPersistenceSourceDescription {
+  const scopeKey = backofficeContextScopeSinglePathSegment(toBackofficeScope(source.scope));
+  const internalUrl = `/api/automations-scoped/${source.scope.kind}/${encodeURIComponent(automationScopeRouteId(source.scope))}/_internal`;
+
+  return {
+    resourceKey: JSON.stringify([scopeKey, source.adapterIdentity]),
+    internalUrl,
+    collectionId: (target) =>
+      JSON.stringify(["backoffice", "automations", scopeKey, source.adapterIdentity, target]),
+  };
+}
+
 function createAutomationCollectionResource(
-  source: AutomationCollectionSource,
+  source: AutomationPersistenceSource,
   createPersistedCollection: CreatePersistedCollection,
 ) {
+  const description = describeAutomationPersistenceSource(source);
   const coordinator = createFragnoOutboxCoordinator({
-    internalUrl: source.internalUrl,
+    internalUrl: description.internalUrl,
     bootstrap: { adapterIdentity: source.adapterIdentity },
-    transport: createFetchFragnoOutboxStreamingTransport({ internalUrl: source.internalUrl }),
+    transport: createFetchFragnoOutboxStreamingTransport({ internalUrl: description.internalUrl }),
   });
   const collections = {
     kvStore: createPersistedCollection({
-      id: `backoffice.automations.${source.scopeKey}.${source.adapterIdentity}.kv_store`,
+      id: description.collectionId("kv_store"),
       coordinator,
       target: {
         schema: automationFragmentSchema,
         table: "kv_store",
+      },
+    }),
+    sandboxInstances: createPersistedCollection({
+      id: description.collectionId("sandbox_instance"),
+      coordinator,
+      target: {
+        schema: automationFragmentSchema,
+        table: "sandbox_instance",
+      },
+    }),
+    routes: createPersistedCollection({
+      id: description.collectionId("automation_route"),
+      coordinator,
+      target: {
+        schema: automationFragmentSchema,
+        table: "automation_route",
+      },
+    }),
+    routeScheduleStates: createPersistedCollection({
+      id: description.collectionId("automation_route_schedule_state"),
+      coordinator,
+      target: {
+        schema: automationFragmentSchema,
+        table: "automation_route_schedule_state",
+      },
+    }),
+    events: createPersistedCollection({
+      id: description.collectionId("automation_event"),
+      coordinator,
+      target: {
+        schema: automationFragmentSchema,
+        table: "automation_event",
+      },
+    }),
+    eventDefinitions: createPersistedCollection({
+      id: description.collectionId("automation_event_definition"),
+      coordinator,
+      target: {
+        schema: automationFragmentSchema,
+        table: "automation_event_definition",
       },
     }),
   };
@@ -46,7 +109,7 @@ export type AutomationTanStackCollections = ReturnType<
 type AutomationCollectionResource = ReturnType<typeof createAutomationCollectionResource>;
 
 type AutomationTanStackDatabase = {
-  collectionsFor(source: AutomationCollectionSource): AutomationTanStackCollections;
+  collectionsFor(source: AutomationPersistenceSource): AutomationTanStackCollections;
 };
 
 async function openAutomationTanStackDatabase(): Promise<AutomationTanStackDatabase> {
@@ -73,11 +136,7 @@ async function openAutomationTanStackDatabase(): Promise<AutomationTanStackDatab
 
   return {
     collectionsFor(source) {
-      const resourceKey = JSON.stringify([
-        source.scopeKey,
-        source.internalUrl,
-        source.adapterIdentity,
-      ]);
+      const resourceKey = describeAutomationPersistenceSource(source).resourceKey;
       const existing = resources.get(resourceKey);
       if (existing) {
         return existing.collections;

@@ -1,25 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLoaderData, useOutletContext } from "react-router";
+import { useOutletContext } from "react-router";
 
-import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
+import { useLiveQuery } from "@tanstack/react-db";
+
 import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import { jsonSchemaToTypeScript } from "@/lib/zod/zod-formatter";
 
-import type { Route } from "./+types/events-catalog";
-import { automationScopeFromRouteParams } from "./scope";
 import type { AutomationLayoutContext } from "./shared";
-
-export async function loader({ request, params, context }: Route.LoaderArgs) {
-  const scope = automationScopeFromRouteParams(params);
-  await requireBackofficeContext(request, context, scope);
-
-  return {
-    staticEvents: listAutomationEventDescriptors().sort(
-      (left, right) =>
-        left.source.localeCompare(right.source) || left.eventType.localeCompare(right.eventType),
-    ),
-  };
-}
 
 const formatPayloadType = (schema: unknown) =>
   jsonSchemaToTypeScript(schema as Parameters<typeof jsonSchemaToTypeScript>[0]);
@@ -50,8 +37,47 @@ const searchableText = (event: {
     .toLowerCase();
 
 export default function BackofficeAutomationEventsCatalog() {
-  const { staticEvents } = useLoaderData<typeof loader>();
-  const { eventDefinitions } = useOutletContext<AutomationLayoutContext>();
+  const { collections } = useOutletContext<AutomationLayoutContext>();
+  const staticEvents = useMemo(
+    () =>
+      listAutomationEventDescriptors().sort(
+        (left, right) =>
+          left.source.localeCompare(right.source) || left.eventType.localeCompare(right.eventType),
+      ),
+    [],
+  );
+  const eventDefinitionsQuery = useLiveQuery(
+    (query) =>
+      query
+        .from({ definition: collections.eventDefinitions })
+        .orderBy(({ definition }) => definition.source, "asc")
+        .orderBy(({ definition }) => definition.eventType, "asc")
+        .select(({ definition }) => ({
+          id: definition.id,
+          source: definition.source,
+          eventType: definition.eventType,
+          label: definition.label,
+          description: definition.description,
+          payloadSchema: definition.payloadSchema,
+          actorSchema: definition.actorSchema,
+          subjectSchema: definition.subjectSchema,
+          example: definition.example,
+          enabled: definition.enabled,
+        })),
+    [collections.eventDefinitions],
+  );
+  const eventDefinitions = (eventDefinitionsQuery.data ?? []).map((definition) => ({
+    ...definition,
+    capabilityId: "dynamic",
+  }));
+  const eventDefinitionsError = eventDefinitionsQuery.isError
+    ? collections.eventDefinitions.utils.getLastError()
+    : null;
+  const eventDefinitionsErrorMessage = eventDefinitionsError
+    ? eventDefinitionsError instanceof Error
+      ? eventDefinitionsError.message
+      : "Automation event definition synchronization failed."
+    : null;
   const [payloadFormat, setPayloadFormat] = useState<"typescript" | "jsonschema">("typescript");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -99,6 +125,16 @@ export default function BackofficeAutomationEventsCatalog() {
 
   return (
     <section className="w-full max-w-7xl space-y-3">
+      {eventDefinitionsQuery.isLoading && eventDefinitions.length === 0 ? (
+        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3 text-sm text-[var(--bo-muted)]">
+          Loading dynamic event definitions…
+        </div>
+      ) : null}
+      {eventDefinitionsErrorMessage ? (
+        <div className="border border-amber-400/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-200">
+          Could not synchronize dynamic event definitions: {eventDefinitionsErrorMessage}
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <label className="flex min-w-72 flex-1 flex-col gap-1 text-xs text-[var(--bo-muted)]">
           <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { Suspense, use } from "react";
 import {
   Form,
   Link,
@@ -9,6 +9,7 @@ import {
   useSearchParams,
 } from "react-router";
 
+import { ClientOnly } from "@/components/client-only";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
@@ -16,14 +17,10 @@ import type { Route } from "./+types/scope-layout";
 import {
   createAutomationProject,
   fetchAutomationAdapterIdentity,
-  fetchAutomationEventDefinitions,
-  fetchAutomationEvents,
   fetchAutomationProjects,
-  fetchAutomationRoutes,
   loadAutomationWorkspaceData,
   toExternalId,
 } from "./data.server";
-import { useLofiAutomationScopeData } from "./lofi-store";
 import {
   automationScopeBasePath,
   automationScopeFromRouteParams,
@@ -32,31 +29,19 @@ import {
   resolveAutomationUiScope,
   toBackofficeScope,
 } from "./scope";
-import type { AutomationEventItem, AutomationRouteItem, AutomationScriptItem } from "./shared";
+import type { AutomationScriptItem } from "./shared";
 import {
   AutomationErrorBoundary,
   AutomationHeader,
   AutomationScopePicker,
   AutomationTabs,
-  resolveAutomationServerLofiData,
+  type AutomationLayoutContext,
   type AutomationTab,
 } from "./shared";
-
-const DEFAULT_EVENTS_PAGE_SIZE = 10;
-const MAX_EVENTS_PAGE_SIZE = 10;
-
-const parseEventsPageSize = (value: string | null) => {
-  if (!value) {
-    return DEFAULT_EVENTS_PAGE_SIZE;
-  }
-
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) {
-    return DEFAULT_EVENTS_PAGE_SIZE;
-  }
-
-  return Math.min(MAX_EVENTS_PAGE_SIZE, Math.max(1, parsed));
-};
+import {
+  describeAutomationPersistenceSource,
+  getAutomationTanStackDatabase,
+} from "./tanstack/database";
 
 const normalizeScripts = (
   scripts: Awaited<ReturnType<typeof loadAutomationWorkspaceData>>["scripts"],
@@ -83,42 +68,6 @@ const normalizeScripts = (
         left.path.localeCompare(right.path),
     );
 };
-
-const normalizeRoutes = (
-  routes: Awaited<ReturnType<typeof fetchAutomationRoutes>>["routes"],
-): AutomationRouteItem[] =>
-  [...routes].sort(
-    (left, right) => left.priority - right.priority || left.id.localeCompare(right.id),
-  );
-
-const normalizeEventDefinitions = (
-  definitions: Awaited<ReturnType<typeof fetchAutomationEventDefinitions>>["eventDefinitions"],
-) =>
-  [...definitions].sort(
-    (left, right) =>
-      left.source.localeCompare(right.source) || left.eventType.localeCompare(right.eventType),
-  );
-
-const normalizeEvents = (
-  events: Awaited<ReturnType<typeof fetchAutomationEvents>>["events"],
-): AutomationEventItem[] =>
-  events
-    .map((event) => ({
-      id: toExternalId(event.id),
-      scope: event.scope,
-      source: event.source,
-      eventType: event.eventType,
-      occurredAt: event.occurredAt,
-      payload: event.payload,
-      actor: event.actor,
-      actors: Array.isArray(event.actors) ? event.actors : [],
-      subject: event.subject ?? null,
-      createdAt: event.createdAt,
-    }))
-    .sort((left, right) => {
-      const occurred = (right.occurredAt ?? "").localeCompare(left.occurredAt ?? "");
-      return occurred || right.id.localeCompare(left.id);
-    });
 
 type ProjectActionData = { ok: false; message: string };
 
@@ -212,29 +161,16 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   });
   const backofficeScope = toBackofficeScope(selectedScope);
   const currentTab = currentTabFromPath(url.pathname);
-  const eventsCursor = url.searchParams.get("cursor")?.trim() || undefined;
-  const eventsPageSize = parseEventsPageSize(url.searchParams.get("pageSize"));
-
-  const [workspaceResult, routesResult, eventsResult, eventDefinitionsResult, adapterIdentity] =
-    await Promise.all([
-      loadAutomationWorkspaceData({ request, context, scope: backofficeScope }),
-      fetchAutomationRoutes(request, context, backofficeScope),
-      fetchAutomationEvents(request, context, backofficeScope, {
-        cursor: eventsCursor,
-        limit: eventsPageSize,
-      }),
-      fetchAutomationEventDefinitions(request, context, backofficeScope),
-      fetchAutomationAdapterIdentity(request, context, backofficeScope),
-    ]);
+  const [workspaceResult, adapterIdentity] = await Promise.all([
+    loadAutomationWorkspaceData({
+      request,
+      context,
+      scope: backofficeScope,
+    }),
+    fetchAutomationAdapterIdentity(request, context, backofficeScope),
+  ]);
 
   return {
-    orgId:
-      selectedScope.kind === "org" || selectedScope.kind === "project"
-        ? selectedScope.orgId
-        : activeOrgId,
-    organisation:
-      organisations.find((organisation) => organisation.id === activeOrgId) ?? organisations[0],
-    user: me.user,
     selectedScope,
     adapterIdentity,
     scopeOptions: createAutomationScopeOptions({
@@ -245,17 +181,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
       projectOrgId: activeOrgId,
     }),
     scripts: normalizeScripts(workspaceResult.scripts),
-    routes: normalizeRoutes(routesResult.routes),
-    events: normalizeEvents(eventsResult.events),
-    eventDefinitions: normalizeEventDefinitions(eventDefinitionsResult.eventDefinitions),
-    eventsCursor: eventsResult.cursor,
-    eventsHasNextPage: eventsResult.hasNextPage,
-    eventsCurrentCursor: eventsCursor ?? null,
-    eventsPageSize,
     scriptsError: workspaceResult.scriptsError,
-    routesError: routesResult.routesError,
-    eventsError: eventsResult.eventsError,
-    eventDefinitionsError: eventDefinitionsResult.eventDefinitionsError,
     projectsError: projectsResult.projectsError,
   };
 }
@@ -403,6 +329,41 @@ function CreateProjectPanel({
   );
 }
 
+function AutomationClientLoading() {
+  return (
+    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
+      Loading local automation data…
+      <noscript>
+        <span className="mt-2 block text-red-700 dark:text-red-200">
+          JavaScript is required to open scoped automations.
+        </span>
+      </noscript>
+    </div>
+  );
+}
+
+function AutomationClientOutlet({
+  loaderData,
+}: {
+  loaderData: Route.ComponentProps["loaderData"];
+}) {
+  const database = use(getAutomationTanStackDatabase());
+  const persistenceSource = {
+    scope: loaderData.selectedScope,
+    adapterIdentity: loaderData.adapterIdentity,
+  };
+  const collections = database.collectionsFor(persistenceSource);
+  const outletKey = describeAutomationPersistenceSource(persistenceSource).resourceKey;
+  const outletContext = {
+    selectedScope: loaderData.selectedScope,
+    scripts: loaderData.scripts,
+    scriptsError: loaderData.scriptsError,
+    collections,
+  } satisfies AutomationLayoutContext;
+
+  return <Outlet key={outletKey} context={outletContext} />;
+}
+
 export default function BackofficeAutomationScopeLayout({
   loaderData,
   matches,
@@ -412,56 +373,6 @@ export default function BackofficeAutomationScopeLayout({
   const [searchParams] = useSearchParams();
   const isCreatingProject = searchParams.get("createProject") === "1";
   const scopeBasePath = automationScopeBasePath(loaderData.selectedScope);
-  const lofi = useLofiAutomationScopeData({
-    scope: loaderData.selectedScope,
-    initialRoutes: loaderData.routes,
-    initialEvents: loaderData.events,
-    initialEventDefinitions: loaderData.eventDefinitions,
-  });
-  const outletContext = useMemo(() => {
-    const routesData = resolveAutomationServerLofiData({
-      serverData: loaderData.routes,
-      serverError: loaderData.routesError,
-      lofiData: lofi.routes.routes,
-      lofiSynced: lofi.routes.synced,
-      lofiError: lofi.routes.error,
-      isEmpty: (routes) => routes.length === 0,
-    });
-    const eventsData = resolveAutomationServerLofiData({
-      serverData: loaderData.events,
-      serverError: loaderData.eventsError,
-      lofiData: lofi.events.events.slice(0, loaderData.eventsPageSize),
-      lofiSynced: !loaderData.eventsCurrentCursor && lofi.events.synced,
-      lofiError: lofi.events.error,
-      isEmpty: (events) => events.length === 0,
-    });
-    const eventDefinitionsData = resolveAutomationServerLofiData({
-      serverData: loaderData.eventDefinitions,
-      serverError: loaderData.eventDefinitionsError,
-      lofiData: lofi.eventDefinitions.eventDefinitions,
-      lofiSynced: lofi.eventDefinitions.synced,
-      lofiError: lofi.eventDefinitions.error,
-      isEmpty: (definitions) => definitions.length === 0,
-    });
-
-    return {
-      ...loaderData,
-      routes: routesData.data,
-      events: eventsData.data,
-      eventDefinitions: eventDefinitionsData.data,
-      routesData,
-      eventsData,
-      eventDefinitionsData,
-      lofiRoutes: { ...lofi.routes, routes: routesData.data, error: routesData.syncError },
-      lofiEvents: { ...lofi.events, events: eventsData.data, error: eventsData.syncError },
-      lofiEventDefinitions: {
-        ...lofi.eventDefinitions,
-        eventDefinitions: eventDefinitionsData.data,
-        error: eventDefinitionsData.syncError,
-      },
-      lofiSandboxes: lofi.sandboxes,
-    };
-  }, [loaderData, lofi]);
 
   return (
     <div className="space-y-4">
@@ -481,7 +392,11 @@ export default function BackofficeAutomationScopeLayout({
       {isCreatingProject ? (
         <CreateProjectPanel actionPath={scopeBasePath} cancelPath={currentPath} />
       ) : (
-        <Outlet context={outletContext} />
+        <ClientOnly fallback={<AutomationClientLoading />}>
+          <Suspense fallback={<AutomationClientLoading />}>
+            <AutomationClientOutlet loaderData={loaderData} />
+          </Suspense>
+        </ClientOnly>
       )}
     </div>
   );
