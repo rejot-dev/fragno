@@ -34,13 +34,13 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const me = await getAuthMe(request, context);
   const activeOrg = me?.activeOrganization?.organization ?? null;
   if (!me?.user || !activeOrg) {
-    return { history: [] as ComposeHistorySession[], piPersistenceSource: null };
+    return { history: [] as ComposeHistorySession[], piCollectionSource: null };
   }
 
   const scope = { kind: "org" as const, orgId: activeOrg.id };
   const { configState, configError } = await fetchPiConfig(context, scope);
   if (configError || !configState?.configured) {
-    return { history: [] as ComposeHistorySession[], piPersistenceSource: null };
+    return { history: [] as ComposeHistorySession[], piCollectionSource: null };
   }
 
   const [adapterIdentity, { sessions }] = await Promise.all([
@@ -59,7 +59,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   }
 
   return {
-    piPersistenceSource: { scope, adapterIdentity },
+    piCollectionSource: { scope, adapterIdentity },
     history: sessions.map((session, index): ComposeHistorySession => {
       const status = detailResults[index]?.session?.workflow.status ?? "unknown";
       return {
@@ -110,14 +110,14 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 export default function ExecPage() {
   const { me } = useOutletContext<CadenceLayoutContext>();
-  const { history, piPersistenceSource } = useLoaderData<typeof loader>();
+  const { history, piCollectionSource } = useLoaderData<typeof loader>();
   const activeOrg = me?.activeOrganization?.organization ?? null;
 
   return (
     <PromptProvider
       organizationId={activeOrg?.id}
       organizationName={activeOrg?.name}
-      piPersistenceSource={piPersistenceSource}
+      piCollectionSource={piCollectionSource}
       history={history}
     >
       <ExecWorkspace />

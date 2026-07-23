@@ -33,7 +33,7 @@ import { useFetcher } from "react-router";
 
 import type { WorkflowGraph as CodemodeWorkflowGraph } from "@fragno-dev/workflow-visualizer";
 
-import type { PiPersistenceSource } from "@/fragno/pi/tanstack/database";
+import type { PiCollectionSource } from "@/fragno/pi/tanstack/browser-database";
 import {
   type DashboardCommandResult,
   type DashboardPathAutocompleteRequest,
@@ -136,8 +136,8 @@ type PromptContextValue = {
   organizationId?: string | null;
   /** The active org's name, for greetings and labels. */
   organizationName?: string | null;
-  /** The scoped Pi source used to isolate and synchronize persisted transcript rows. */
-  piPersistenceSource?: PiPersistenceSource | null;
+  /** The scoped Pi source used to isolate and synchronize transcript collections. */
+  piCollectionSource?: PiCollectionSource | null;
   /** The live dev terminal session (history, autocomplete, cwd, key handlers). */
   terminal: DevTerminal;
   /** Fetcher whose `Form` the dev input submits commands through. */
@@ -191,14 +191,14 @@ const PromptContext = createContext<PromptContextValue | null>(null);
 export function PromptProvider({
   organizationId,
   organizationName,
-  piPersistenceSource,
+  piCollectionSource,
   history = [],
   onConduct,
   children,
 }: {
   organizationId?: string | null;
   organizationName?: string | null;
-  piPersistenceSource?: PiPersistenceSource | null;
+  piCollectionSource?: PiCollectionSource | null;
   /** Past sessions for the active org (loaded by the route), newest first. */
   history?: ComposeHistorySession[];
   onConduct?: (text: string) => void;
@@ -416,7 +416,7 @@ export function PromptProvider({
       consumeDevFocus,
       organizationId,
       organizationName,
-      piPersistenceSource,
+      piCollectionSource,
       terminal,
       commandFetcher,
       isSubmitting,
@@ -444,7 +444,7 @@ export function PromptProvider({
       consumeDevFocus,
       organizationId,
       organizationName,
-      piPersistenceSource,
+      piCollectionSource,
       terminal,
       commandFetcher,
       isSubmitting,

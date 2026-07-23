@@ -19,7 +19,7 @@ import { Streamdown } from "streamdown";
 import type { WorkflowGraph as CodemodeWorkflowGraph } from "@fragno-dev/workflow-visualizer";
 
 import { ClientOnly } from "@/components/client-only";
-import type { PiPersistenceSource } from "@/fragno/pi/tanstack/database";
+import type { PiCollectionSource } from "@/fragno/pi/tanstack/browser-database";
 import { usePiSessionProjection } from "@/fragno/pi/tanstack/use-session-projection";
 import type { ComposeSessionRef } from "@/routes/cadence/compose-action";
 
@@ -210,7 +210,7 @@ function toRows(
 }
 
 type ComposeTranscriptProps = {
-  source: PiPersistenceSource;
+  source: PiCollectionSource;
   session: ComposeSessionRef;
   prompt?: string;
   /** Called when the agent issues a `showWorkflow` tool call (name + mode). */

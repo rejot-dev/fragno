@@ -1,11 +1,11 @@
 import { assert, describe, test } from "vitest";
 
-import { describeAutomationPersistenceSource } from "./database";
+import { describeAutomationCollectionSource } from "./browser-database";
 
-describe("automation TanStack persistence sources", () => {
+describe("Automation collection sources", () => {
   test("describes an organization-scoped outbox and stable collection ids", () => {
-    const description = describeAutomationPersistenceSource({
-      scope: { kind: "org", orgId: "org-1", label: "Ada Labs" },
+    const description = describeAutomationCollectionSource({
+      scope: { kind: "org", orgId: "org-1" },
       adapterIdentity: "adapter-1",
     });
 
@@ -17,12 +17,11 @@ describe("automation TanStack persistence sources", () => {
   });
 
   test("uses the encoded route id for project-scoped outboxes", () => {
-    const description = describeAutomationPersistenceSource({
+    const description = describeAutomationCollectionSource({
       scope: {
         kind: "project",
         orgId: "org-1",
         projectId: "project/one",
-        label: "Project One",
       },
       adapterIdentity: "adapter-1",
     });
@@ -34,9 +33,9 @@ describe("automation TanStack persistence sources", () => {
   });
 
   test("isolates persisted data when the adapter identity changes", () => {
-    const scope = { kind: "org", orgId: "org-1", label: "Ada Labs" } as const;
-    const first = describeAutomationPersistenceSource({ scope, adapterIdentity: "adapter-1" });
-    const second = describeAutomationPersistenceSource({ scope, adapterIdentity: "adapter-2" });
+    const scope = { kind: "org", orgId: "org-1" } as const;
+    const first = describeAutomationCollectionSource({ scope, adapterIdentity: "adapter-1" });
+    const second = describeAutomationCollectionSource({ scope, adapterIdentity: "adapter-2" });
 
     assert.notEqual(first.resourceKey, second.resourceKey);
     assert.notEqual(
