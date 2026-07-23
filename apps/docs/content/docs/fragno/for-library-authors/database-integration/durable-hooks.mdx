@@ -42,6 +42,24 @@ export const fragmentDef = defineFragment<Config>("my-fragment")
 Hook functions receive a `this` context that includes:
 
 - `idempotencyKey`: a unique idempotency key for the originating transaction (use for idempotency)
+- `hookId`: the persisted hook event identifier
+- `attempts` and `maxAttempts`: retry information for the event
+- `propagationContext`: the propagation carrier captured when the hook was enqueued
+- `capturePropagationContext()`: captures the currently active attempt context for an outbound call
+- `handlerTx()`: starts a transaction from the hook handler
+
+When a Fragment exposes its own hook callback configuration, pass the complete context through
+rather than projecting a smaller context type:
+
+```ts
+onSubscribe: defineHook(async function (payload) {
+  await config.onSubscribe?.(payload, this);
+});
+```
+
+This keeps retry metadata, transaction access, and future hook capabilities available without
+requiring every Fragment to maintain a parallel context type. Convert values such as `hookId` to
+strings only at serialization or transport boundaries.
 
 ## Triggering hooks from services
 
@@ -97,6 +115,172 @@ defineRoute({
   },
 });
 ```
+
+## Propagating trace context
+
+Durable hooks preserve tracing context across the database boundary, background processing, and
+retries. Fragno treats the context as an opaque text-map carrier, following the same propagation
+model used by OpenTelemetry.
+
+For an HTTP route, the flow is:
+
+```text
+HTTP request
+  → request context
+  → handlerTx
+  → persisted hook carrier
+  → hook attempt
+  → nested handlerTx
+  → child hook carrier
+```
+
+### Automatic W3C context capture
+
+When `fragment.handler(request)` handles an HTTP request, Fragno copies the W3C `traceparent` header
+and, when present, `tracestate` into the request context. Only these tracing headers are captured
+automatically; baggage is not copied.
+
+When `handlerTx()` persists a triggered hook, it resolves the carrier in this order:
+
+1. `triggerHook(..., { propagationContext })`, including explicit `null` suppression.
+2. The configured durable-hooks instrumentation's `captureContext()` result.
+3. The carrier inherited from the current request or hook attempt.
+
+The resulting carrier is stored with the hook in the same transaction as the application mutation.
+
+### Hook attempts and child hooks
+
+Before a persisted hook runs, Fragno restores its carrier into the same request-context mechanism
+used by routes. It then invokes `instrumentation.runAttempt()` around the hook implementation.
+
+If the instrumentation creates and activates a span for the attempt, its `captureContext()` method
+must also export that active span into a carrier for child hooks to use it. A nested `handlerTx()`
+asks `captureContext()` for the current carrier when it persists each child hook. When that method
+returns the attempt span's carrier, propagation produces a chain such as:
+
+```text
+request span
+  → hook A attempt span
+    → hook B attempt span
+```
+
+If `captureContext()` returns `null`, Fragno falls back to the ambient carrier restored for the
+attempt. This is normally the hook's original persisted carrier: the child hook remains connected to
+the originating trace, but it is not parented to the active attempt span.
+
+Each retry invokes `runAttempt()` separately with the hook's original persisted carrier. An
+instrumentation can therefore create one attempt span per retry without changing the stored hook
+context.
+
+When a hook calls another process, Durable Object, queue, or fragment that does not share its
+request storage, capture the active carrier at the outbound boundary:
+
+```ts
+await remoteObject.ingestEvent(event, {
+  propagationContext: this.capturePropagationContext(),
+});
+```
+
+`capturePropagationContext()` asks the configured instrumentation's `captureContext()` method to
+export its currently active carrier. If `captureContext()` returns `null`, it falls back to the
+carrier persisted with the hook. This means integrations preserve the exact attempt parent only when
+the instrumentation exports it, while still preserving the originating trace otherwise.
+
+On the receiving side, seed the carrier through `callServices()` or `inContext()`:
+
+```ts
+await fragment.callServices(() => fragment.services.ingestEvent(event), {
+  propagationContext: rpcContext.propagationContext,
+});
+```
+
+Both methods also accept `{ propagationContext: null }` for explicit suppression. Transporting the
+carrier is host-owned: HTTP integrations use headers, RPC integrations use a serializable argument,
+and queues use message metadata or payload fields.
+
+### Supplying or suppressing request context
+
+W3C headers are captured automatically, but adapters can provide a carrier explicitly through the
+request lifecycle context:
+
+```ts
+await fragment.handler(request, {
+  propagationContext: {
+    traceparent: incomingTraceparent,
+    tracestate: incomingTracestate,
+  },
+});
+```
+
+Use `null` to prevent the request headers from being propagated:
+
+```ts
+await fragment.handler(request, {
+  propagationContext: null,
+});
+```
+
+A specific hook can also override or suppress the current context:
+
+```ts
+uow.triggerHook(
+  "onSubscribe",
+  { email },
+  {
+    propagationContext: { traceparent },
+  },
+);
+
+uow.triggerHook(
+  "onUntracedCleanup",
+  {},
+  {
+    propagationContext: null,
+  },
+);
+```
+
+### Instrumenting hook attempts
+
+Fragno does not depend on an observability SDK. It provides the propagation and attempt boundaries;
+the host application connects those boundaries to OpenTelemetry or another tracing system.
+
+Configure instrumentation when instantiating the fragment:
+
+```ts
+import type { DurableHooksInstrumentation } from "@fragno-dev/db/durable-hooks";
+
+const instrumentation: DurableHooksInstrumentation = {
+  captureContext(info) {
+    // Inject the current tracing context into a string-to-string carrier.
+    return captureActiveTraceCarrier(info);
+  },
+
+  async runAttempt(attempt, execute) {
+    // Extract attempt.propagationContext, activate an attempt span, and run the hook.
+    return runWithHookAttemptSpan(attempt, execute);
+  },
+};
+
+const fragment = instantiate(fragmentDef)
+  .withConfig(config)
+  .withOptions({
+    databaseAdapter,
+    durableHooks: { instrumentation },
+  })
+  .build();
+```
+
+`runAttempt()` must call `execute()` exactly once and preserve its result or error. Fragno enforces
+this contract: skipping or repeatedly calling `execute()` fails the attempt through its normal retry
+policy. A typical OpenTelemetry adapter extracts `attempt.propagationContext`, starts a consumer
+span, makes that span active while `execute()` runs, records failures, and ends the span.
+
+<Callout type="info">
+  Propagation context is telemetry metadata, not an idempotency or authorization mechanism. Continue
+  using `this.idempotencyKey` for idempotency and validate any application-specific values received
+  from clients.
+</Callout>
 
 ## Dispatching hooks outside requests
 
