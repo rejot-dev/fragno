@@ -1,9 +1,10 @@
 import { use } from "react";
 
-import { eq, useLiveQuery } from "@tanstack/react-db";
+import { useLiveQuery } from "@tanstack/react-db";
 
 import { getPiBrowserDatabase, type PiCollectionSource } from "./browser-database";
 import {
+  buildPiSessionListingQuery,
   projectPiSessionListingRows,
   resolvePiSessionListingState,
   type PiSessionListingSnapshot,
@@ -21,25 +22,7 @@ export function usePiSessionListing({
   const database = use(getPiBrowserDatabase());
   const collections = database.collectionsFor(source);
   const listingQuery = useLiveQuery(
-    (query) =>
-      query
-        .from({ session: collections.sessions })
-        .leftJoin({ workflow: collections.workflowInstances }, ({ session, workflow }) =>
-          eq(session.id, workflow.id),
-        )
-        .where(({ session }) => eq(session.workflowName, workflowName))
-        .orderBy(({ session }) => session.createdAt, "desc")
-        .orderBy(({ session }) => session.id, "desc")
-        .limit(limit)
-        .select(({ session, workflow }) => ({
-          sessionId: session.sessionId,
-          name: session.name,
-          agent: session.agent,
-          workflowName: session.workflowName,
-          createdAt: session.createdAt,
-          updatedAt: session.updatedAt,
-          workflowStatus: workflow?.status,
-        })),
+    (query) => buildPiSessionListingQuery(query, { collections, workflowName, limit }),
     [collections.sessions, collections.workflowInstances, limit, workflowName],
   );
   const snapshot: PiSessionListingSnapshot = projectPiSessionListingRows(listingQuery.data ?? []);

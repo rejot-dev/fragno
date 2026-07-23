@@ -1,5 +1,9 @@
 import type { PiSession, PiWorkflowStatus } from "@fragno-dev/pi-harness/types";
 
+import { eq, type InitialQueryBuilder } from "@tanstack/react-db";
+
+import type { PiCollections } from "./collections";
+
 const PI_WORKFLOW_STATUSES = new Set<string>([
   "active",
   "waiting",
@@ -31,6 +35,38 @@ export type PiSessionListingState =
 
 const toPiWorkflowStatus = (status: string | null | undefined): PiWorkflowStatus | null =>
   status && PI_WORKFLOW_STATUSES.has(status) ? (status as PiWorkflowStatus) : null;
+
+export function buildPiSessionListingQuery(
+  query: InitialQueryBuilder,
+  {
+    collections,
+    workflowName,
+    limit,
+  }: {
+    collections: Pick<PiCollections, "sessions" | "workflowInstances">;
+    workflowName: string;
+    limit: number;
+  },
+) {
+  return query
+    .from({ session: collections.sessions })
+    .leftJoin({ workflow: collections.workflowInstances }, ({ session, workflow }) =>
+      eq(session.id, workflow.id),
+    )
+    .where(({ session }) => eq(session.workflowName, workflowName))
+    .orderBy(({ session }) => session.createdAt, "desc")
+    .orderBy(({ session }) => session.id, "desc")
+    .limit(limit)
+    .select(({ session, workflow }) => ({
+      sessionId: session.sessionId,
+      name: session.name,
+      agent: session.agent,
+      workflowName: session.workflowName,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+      workflowStatus: workflow?.status,
+    }));
+}
 
 export function projectPiSessionListingRows(
   rows: readonly PiSessionListingRow[],

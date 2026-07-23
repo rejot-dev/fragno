@@ -67,7 +67,6 @@
     "@cloudflare/vite-plugin": "^1.35.0",
     "@cloudflare/vitest-pool-workers": "^0.15.2",
     "@cloudflare/workers-types": "^4.20260504.1",
-    "@fragno-dev/lofi": "workspace:*",
     "@fragno-dev/test": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
     "@react-router/dev": "^8.2.0",
