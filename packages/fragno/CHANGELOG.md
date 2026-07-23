@@ -1,5 +1,19 @@
 # @fragno-dev/core
 
+## 0.2.3
+
+### Patch Changes
+
+- 0186a7a: fix: expose stream response controllers for lifecycle event routes.
+- 03d5a5c: refactor: remove internal trace-context and model-checker test utilities.
+- 6cc8f36: fix: preserve request context while executing jsonStream callbacks
+- 4944ecf: fix: preserve NDJSON lines that arrive with the first streamed item
+- ff3673f: feat: expose id-based workflow status, history, events, and reusable param validation.
+- 2e7263b: fix: make React client hooks safe across SSR, rerenders, and store disposal.
+- 3328fe3: fix: support server fetchers and shared NDJSON stream stores
+- e2cad8d: feat: add explicit propagation contexts to request and service execution.
+- 5e0cfe8: feat: add API fragment webhook receiver endpoints.
+
 ## 0.2.2
 
 ### Patch Changes

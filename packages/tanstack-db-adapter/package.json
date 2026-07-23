@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/tanstack-db-adapter",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Ingest Fragno database outboxes into TanStack DB collections",
   "homepage": "https://fragno.dev",
   "license": "MIT",
@@ -79,8 +79,8 @@
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "@fragno-dev/core": "^0.2.2",
-    "@fragno-dev/test": "^2.0.0",
+    "@fragno-dev/core": "^0.2.3",
+    "@fragno-dev/test": "^2.0.3",
     "@tanstack/db": "^0.6.16",
     "@tanstack/node-db-sqlite-persistence": "^0.2.8",
     "better-sqlite3": "^12.6.2"
