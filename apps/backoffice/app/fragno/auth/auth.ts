@@ -10,6 +10,7 @@ import {
   type BeforeCreateUserHook,
   type OrganizationHooks,
 } from "@fragno-dev/auth";
+import type { DurableHooksProcessingOptions } from "@fragno-dev/db";
 
 import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
 
@@ -29,6 +30,7 @@ type AuthServerOptions = {
   emailVerification?: AuthEmailVerificationConfig;
   authHooks?: AuthHooks;
   organizationHooks?: OrganizationHooks;
+  durableHooks?: DurableHooksProcessingOptions;
 };
 
 export type AuthFragment = ReturnType<typeof createAuthFragment>;
@@ -147,6 +149,7 @@ export function createAuthServer(init: AuthInit, options: AuthServerOptions = {}
               kind: "auth",
             })
           : new InMemoryAdapter(),
+      durableHooks: options.durableHooks,
     },
   );
 }

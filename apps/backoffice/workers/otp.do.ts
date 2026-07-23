@@ -5,6 +5,7 @@ import {
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
+import type { HookContext } from "@fragno-dev/db";
 import type { OtpConfirmedHookPayload } from "@fragno-dev/otp-fragment";
 
 import type { OtpObject } from "@/backoffice-runtime/object-registry";
@@ -172,7 +173,7 @@ export const handleEmailVerificationConfirmed = async (
 const handleIdentityClaimConfirmed = async (
   runtime: BackofficeRuntimeServices,
   payload: OtpConfirmedHookPayload,
-  hookId: string,
+  context: HookContext,
 ) => {
   const claimResult = identityClaimPayloadSchema.safeParse(payload.payload);
   if (!claimResult.success) {
@@ -205,8 +206,9 @@ const handleIdentityClaimConfirmed = async (
       userId: confirmation.subjectUserId,
       otp: payload,
       claim,
-      eventId: hookId,
+      eventId: context.hookId.toString(),
     }),
+    { propagationContext: context.capturePropagationContext() },
   );
 };
 
@@ -255,14 +257,14 @@ export class InMemoryOtpObject implements OtpObject {
     });
   }
 
-  async #handleOtpConfirmed(payload: OtpConfirmedHookPayload, context: { hookId: string }) {
+  async #handleOtpConfirmed(payload: OtpConfirmedHookPayload, context: HookContext) {
     switch (payload.type) {
       case EMAIL_VERIFICATION_TYPE: {
         await handleEmailVerificationConfirmed(this.#runtime, payload);
         return;
       }
       case IDENTITY_LINK_TYPE: {
-        await handleIdentityClaimConfirmed(this.#runtime, payload, context.hookId);
+        await handleIdentityClaimConfirmed(this.#runtime, payload, context);
         return;
       }
     }

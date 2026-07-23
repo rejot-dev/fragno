@@ -9,7 +9,7 @@ import {
   type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel, type BackofficeScopeOperation } from "@/backoffice-runtime/kernel";
-import type { BillingObject } from "@/backoffice-runtime/object-registry";
+import type { BackofficeRpcContext, BillingObject } from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
@@ -101,10 +101,13 @@ export class InMemoryBillingObject extends RpcTarget implements BillingObject {
     });
   }
 
-  async recordEvent(input: BillingEventInput): Promise<BillingRecordEventResult> {
+  async recordEvent(
+    input: BillingEventInput,
+    context?: BackofficeRpcContext,
+  ): Promise<BillingRecordEventResult> {
     await this.#assertScopeAllowed(input.scope, "billing.record-event");
     const fragment = this.#getFragment();
-    return await fragment.callServices(() => fragment.services.recordEvent(input));
+    return await fragment.callServices(() => fragment.services.recordEvent(input), context);
   }
 
   async getTrackers(input: BillingTrackerPageInput): Promise<BillingTrackerPage> {

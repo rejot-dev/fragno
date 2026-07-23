@@ -10,6 +10,10 @@
   "main": "./workers/app.ts",
   "observability": {
     "enabled": true,
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+    },
   },
   "preview_urls": true,
   "containers": [

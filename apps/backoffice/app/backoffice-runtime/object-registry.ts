@@ -10,6 +10,7 @@ import type { TelegramAdminConfigResponse } from "workers/telegram.do";
 import type { Upload } from "workers/upload.do";
 
 import type { Organization, VerifyUserEmailInput, VerifyUserEmailResult } from "@fragno-dev/auth";
+import type { FragnoExecutionContext } from "@fragno-dev/core";
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
 import type {
@@ -36,6 +37,8 @@ import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/fami
 import type { SandboxInstanceStatus } from "@/sandbox/contracts";
 
 import type { BackofficeContextScope } from "./context";
+
+export type BackofficeRpcContext = Pick<FragnoExecutionContext, "propagationContext">;
 
 export type FetchObject = {
   fetch(request: Request): Promise<Response>;
@@ -101,15 +104,24 @@ export type ApiObject = FetchObject &
 
 export type BillingObject = FetchObject &
   AlarmableObject & {
-    recordEvent(input: BillingEventInput): Promise<BillingRecordEventResult>;
+    recordEvent(
+      input: BillingEventInput,
+      context?: BackofficeRpcContext,
+    ): Promise<BillingRecordEventResult>;
     getTrackers(input: BillingTrackerPageInput): Promise<BillingTrackerPage>;
   };
 
 export type AutomationsObject = FetchObject &
   AlarmableObject &
   DurableHookObject & {
-    triggerIngestEvent(event: AutomationEvent): Promise<AutomationIngestResult>;
-    ingestEvent(event: AutomationEvent): Promise<AutomationIngestResult>;
+    triggerIngestEvent(
+      event: AutomationEvent,
+      context?: BackofficeRpcContext,
+    ): Promise<AutomationIngestResult>;
+    ingestEvent(
+      event: AutomationEvent,
+      context?: BackofficeRpcContext,
+    ): Promise<AutomationIngestResult>;
     seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult>;
     listEventDefinitions(): Promise<AutomationEventDefinition[]>;
     getEventDefinition(input: {

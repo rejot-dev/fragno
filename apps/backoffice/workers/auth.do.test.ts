@@ -1,6 +1,11 @@
 import { afterEach, assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
+import { FragnoId } from "@fragno-dev/db/schema";
+
+import type { OrganizationHookPayload } from "@fragno-dev/auth";
+import type { HookContext } from "@fragno-dev/db";
+
+const { DurableObject, RpcTarget, WorkerEntrypoint, tracing } = vi.hoisted(() => {
   class MockDurableObject {
     constructor(_state: unknown, _env: unknown) {}
   }
@@ -12,15 +17,23 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
     DurableObject: MockDurableObject,
     RpcTarget: MockRpcTarget,
     WorkerEntrypoint: MockWorkerEntrypoint,
+    tracing: {
+      enterSpan: vi.fn((_name: string, callback: (span: unknown) => unknown) =>
+        callback({ isTraced: true, setAttribute: vi.fn() }),
+      ),
+    },
   };
 });
 
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
+vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint, tracing }));
 
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import { AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED } from "@/fragno/backoffice-capabilities/capabilities/auth";
 
+import { createOrganizationAutomationHooks } from "./auth.do";
 import {
   InMemoryOtpObject,
   type IssueEmailVerificationInput,
@@ -191,5 +204,51 @@ describe("Auth Durable Object email verification delivery", () => {
     expect(resend.attempts).toHaveLength(2);
     assert.equal(new Set(resend.attempts.map((attempt) => attempt.idempotencyKey)).size, 1);
     assert.equal(resend.queuedEmails.size, 1);
+  });
+});
+
+describe("Auth organization automation hooks", () => {
+  test("forwards the active hook propagation context to Automations RPC", async () => {
+    const ingestEvent = vi.fn().mockResolvedValue({ accepted: true });
+    const runtime = {
+      objects: {
+        automations: {
+          singleton: () => ({ ingestEvent }),
+        },
+      },
+    } as unknown as BackofficeRuntimeServices;
+    const hooks = createOrganizationAutomationHooks(runtime);
+    const payload: OrganizationHookPayload = {
+      organization: {
+        id: "org-1",
+        name: "Example",
+        slug: "example",
+        createdBy: "user-1",
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        updatedAt: new Date("2026-01-02T00:00:00.000Z"),
+      },
+      actor: null,
+    };
+    const propagationContext = {
+      traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-1111111111111111-01",
+      tracestate: "vendor=value",
+    };
+
+    const hookContext = {
+      hookId: FragnoId.fromExternal("hook-1", 0),
+      idempotencyKey: "nonce-1",
+      capturePropagationContext: vi.fn(() => propagationContext),
+    } as unknown as HookContext;
+
+    await hooks.onOrganizationCreated?.(payload, hookContext);
+
+    expect(ingestEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "hook-1",
+        eventType: AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED,
+      }),
+      { propagationContext },
+    );
+    expect(hookContext.capturePropagationContext).toHaveBeenCalledOnce();
   });
 });

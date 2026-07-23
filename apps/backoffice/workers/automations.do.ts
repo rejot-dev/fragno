@@ -9,6 +9,7 @@ import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type {
   AutomationsObject,
   BackofficeObjectRegistry,
+  BackofficeRpcContext,
 } from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
@@ -343,19 +344,26 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     );
   }
 
-  async triggerIngestEvent(event: AutomationEvent): Promise<AutomationIngestResult> {
+  async triggerIngestEvent(
+    event: AutomationEvent,
+    context?: BackofficeRpcContext,
+  ): Promise<AutomationIngestResult> {
     const scope = this.#requireScope();
     assertAutomationObjectScope(scope, event.scope);
     await this.#ensureConfigured({ scope });
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
 
-    return await runtime.automationFragment.callServices(() =>
-      runtime.automationFragment.services.ingestEvent(event),
+    return await runtime.automationFragment.callServices(
+      () => runtime.automationFragment.services.ingestEvent(event),
+      context,
     );
   }
 
-  async ingestEvent(event: AutomationEvent): Promise<AutomationIngestResult> {
-    return await this.triggerIngestEvent(event);
+  async ingestEvent(
+    event: AutomationEvent,
+    context?: BackofficeRpcContext,
+  ): Promise<AutomationIngestResult> {
+    return await this.triggerIngestEvent(event, context);
   }
 
   async listEventDefinitions(): Promise<AutomationEventDefinition[]> {

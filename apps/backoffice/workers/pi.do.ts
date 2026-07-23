@@ -332,7 +332,7 @@ export class InMemoryPiObject implements PiObject {
           event = createPiOperationBillingEvent({
             scope: config.scope,
             payload,
-            hookId: context.hookId,
+            hookId: context.hookId.toString(),
             idempotencyKey: context.idempotencyKey,
           });
         } catch (error) {
@@ -344,7 +344,9 @@ export class InMemoryPiObject implements PiObject {
 
         // Billing objects are organisation-owned, so only scopes with an owning organisation emit usage events.
         if (scope.kind === "org" || scope.kind === "project") {
-          await this.#runtimeServices.objects.billing.forOrg(scope.orgId).recordEvent(event);
+          await this.#runtimeServices.objects.billing.forOrg(scope.orgId).recordEvent(event, {
+            propagationContext: context.capturePropagationContext(),
+          });
         }
       },
     });

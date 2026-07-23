@@ -122,62 +122,74 @@ export class InMemoryApiObject implements ApiObject {
         }),
         onConnectionChanged: async (payload, context) => {
           const scope = stored.scope;
-          await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
-            id: context.hookId,
-            scope,
-            source: "api",
-            eventType: "connection.changed",
-            occurredAt: new Date().toISOString(),
-            payload: { ...payload },
-            actor: AUTOMATION_SYSTEM_ACTOR,
-            actors: [AUTOMATION_SYSTEM_ACTOR],
-            subject: scopeSubject(scope, { connectionId: payload.connectionId }),
-          });
+          await this.#runtimeServices.objects.automations.for(scope).ingestEvent(
+            {
+              id: context.hookId.toString(),
+              scope,
+              source: "api",
+              eventType: "connection.changed",
+              occurredAt: new Date().toISOString(),
+              payload: { ...payload },
+              actor: AUTOMATION_SYSTEM_ACTOR,
+              actors: [AUTOMATION_SYSTEM_ACTOR],
+              subject: scopeSubject(scope, { connectionId: payload.connectionId }),
+            },
+            { propagationContext: context.capturePropagationContext() },
+          );
         },
         onConnectionDeleted: async (payload, context) => {
           const scope = stored.scope;
-          await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
-            id: context.hookId,
-            scope,
-            source: "api",
-            eventType: "connection.deleted",
-            occurredAt: new Date().toISOString(),
-            payload: { ...payload },
-            actor: AUTOMATION_SYSTEM_ACTOR,
-            actors: [AUTOMATION_SYSTEM_ACTOR],
-            subject: scopeSubject(scope, { connectionId: payload.connectionId }),
-          });
+          await this.#runtimeServices.objects.automations.for(scope).ingestEvent(
+            {
+              id: context.hookId.toString(),
+              scope,
+              source: "api",
+              eventType: "connection.deleted",
+              occurredAt: new Date().toISOString(),
+              payload: { ...payload },
+              actor: AUTOMATION_SYSTEM_ACTOR,
+              actors: [AUTOMATION_SYSTEM_ACTOR],
+              subject: scopeSubject(scope, { connectionId: payload.connectionId }),
+            },
+            { propagationContext: context.capturePropagationContext() },
+          );
         },
         onConnectionAvailable: async (payload, context) => {
           const scope = stored.scope;
-          await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
-            id: context.hookId,
-            scope,
-            source: "api",
-            eventType: "connection.available",
-            occurredAt: new Date().toISOString(),
-            payload: { ...payload },
-            actor: AUTOMATION_SYSTEM_ACTOR,
-            actors: [AUTOMATION_SYSTEM_ACTOR],
-            subject: scopeSubject(scope, { connectionId: payload.connectionId }),
-          });
+          await this.#runtimeServices.objects.automations.for(scope).ingestEvent(
+            {
+              id: context.hookId.toString(),
+              scope,
+              source: "api",
+              eventType: "connection.available",
+              occurredAt: new Date().toISOString(),
+              payload: { ...payload },
+              actor: AUTOMATION_SYSTEM_ACTOR,
+              actors: [AUTOMATION_SYSTEM_ACTOR],
+              subject: scopeSubject(scope, { connectionId: payload.connectionId }),
+            },
+            { propagationContext: context.capturePropagationContext() },
+          );
         },
-        onWebhookReceived: async (payload) => {
+        onWebhookReceived: async (payload, context) => {
           const scope = stored.scope;
-          await this.#runtimeServices.objects.automations.for(scope).ingestEvent({
-            id: payload.hookId,
-            scope,
-            source: "api",
-            eventType: "webhook.received",
-            occurredAt: payload.receivedAt,
-            payload: { ...payload },
-            actor: AUTOMATION_SYSTEM_ACTOR,
-            actors: [AUTOMATION_SYSTEM_ACTOR],
-            subject: scopeSubject(scope, {
-              endpointId: payload.endpointId,
-              deliveryId: payload.deliveryId,
-            }),
-          });
+          await this.#runtimeServices.objects.automations.for(scope).ingestEvent(
+            {
+              id: payload.hookId,
+              scope,
+              source: "api",
+              eventType: "webhook.received",
+              occurredAt: payload.receivedAt,
+              payload: { ...payload },
+              actor: AUTOMATION_SYSTEM_ACTOR,
+              actors: [AUTOMATION_SYSTEM_ACTOR],
+              subject: scopeSubject(scope, {
+                endpointId: payload.endpointId,
+                deliveryId: payload.deliveryId,
+              }),
+            },
+            { propagationContext: context.capturePropagationContext() },
+          );
         },
       }),
       createRuntime: (config) =>
