@@ -231,45 +231,47 @@ export default [
       route("files/:orgId", "routes/backoffice/files/organisation-layout.tsx", [
         index("routes/backoffice/files/explorer.tsx"),
       ]),
-      route("internals", "routes/backoffice/internals/index.tsx"),
-      route("internals/github", "routes/backoffice/internals/github.tsx"),
-      route("internals/durable-hooks", "routes/backoffice/internals/durable-hooks.tsx"),
-      route("internals/workflows", "routes/backoffice/internals/workflows.tsx"),
-      route(
-        "internals/durable-hooks/singletons",
-        "routes/backoffice/internals/durable-hooks-singletons.tsx",
-        [
-          index("routes/backoffice/internals/durable-hooks-singletons-index.tsx"),
-          route(":hookId", "routes/backoffice/internals/durable-hooks-singletons-detail.tsx"),
-        ],
-      ),
-      route(
-        "internals/durable-hooks/:orgId",
-        "routes/backoffice/internals/durable-hooks-organisation-redirect.tsx",
-      ),
-      route(
-        "internals/durable-hooks/:orgId/:fragment",
-        "routes/backoffice/internals/durable-hooks-organisation.tsx",
-        [
-          index("routes/backoffice/internals/durable-hooks-organisation-index.tsx"),
-          route(":hookId", "routes/backoffice/internals/durable-hooks-organisation-detail.tsx"),
-        ],
-      ),
-      route(
-        "internals/workflows/:orgId",
-        "routes/backoffice/internals/workflows-organisation-redirect.tsx",
-      ),
-      route(
-        "internals/workflows/:orgId/:fragment",
-        "routes/backoffice/internals/workflows-organisation.tsx",
-        [
-          index("routes/backoffice/internals/workflows-organisation-index.tsx"),
-          route(
-            ":workflowName/:instanceId",
-            "routes/backoffice/internals/workflows-organisation-detail.tsx",
-          ),
-        ],
-      ),
+      route("internals", "routes/backoffice/internals/layout.tsx", [
+        index("routes/backoffice/internals/index.tsx"),
+        route("github", "routes/backoffice/internals/github.tsx"),
+        route("durable-hooks", "routes/backoffice/internals/durable-hooks.tsx"),
+        route("workflows", "routes/backoffice/internals/workflows.tsx"),
+        route(
+          "durable-hooks/singletons",
+          "routes/backoffice/internals/durable-hooks-singletons.tsx",
+          [
+            index("routes/backoffice/internals/durable-hooks-singletons-index.tsx"),
+            route(":hookId", "routes/backoffice/internals/durable-hooks-singletons-detail.tsx"),
+          ],
+        ),
+        route(
+          "durable-hooks/:orgId",
+          "routes/backoffice/internals/durable-hooks-organisation-redirect.tsx",
+        ),
+        route(
+          "durable-hooks/:orgId/:fragment",
+          "routes/backoffice/internals/durable-hooks-organisation.tsx",
+          [
+            index("routes/backoffice/internals/durable-hooks-organisation-index.tsx"),
+            route(":hookId", "routes/backoffice/internals/durable-hooks-organisation-detail.tsx"),
+          ],
+        ),
+        route(
+          "workflows/:orgId",
+          "routes/backoffice/internals/workflows-organisation-redirect.tsx",
+        ),
+        route(
+          "workflows/:orgId/:fragment",
+          "routes/backoffice/internals/workflows-organisation.tsx",
+          [
+            index("routes/backoffice/internals/workflows-organisation-index.tsx"),
+            route(
+              ":workflowName/:instanceId",
+              "routes/backoffice/internals/workflows-organisation-detail.tsx",
+            ),
+          ],
+        ),
+      ]),
       route("users", "routes/backoffice/users.tsx"),
       route("settings", "routes/backoffice/settings.tsx"),
       route("*", "routes/backoffice/not-found.tsx"),
