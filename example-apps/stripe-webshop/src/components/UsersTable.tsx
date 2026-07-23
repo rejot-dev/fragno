@@ -52,7 +52,7 @@ export function UsersTable() {
       });
 
       if (error) {
-        throw new Error(error.message, { cause: error });
+        throw new Error("Failed to list users.", { cause: error });
       }
 
       return data.users as UserWithSubscription[];

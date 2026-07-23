@@ -1,23 +1,20 @@
-export const formatDate = (date: Date | number | string | null | undefined) => {
-  if (!date) {
+export const formatDate = (value: unknown) => {
+  if (value === null || value === undefined || value === "") {
     return "N/A";
   }
 
-  let dateObj: Date;
-  if (typeof date === "number") {
-    dateObj = new Date(date);
-  } else if (typeof date === "string") {
-    dateObj = new Date(date);
-  } else {
-    dateObj = date;
-  }
+  const date =
+    value instanceof Date
+      ? value
+      : typeof value === "number" || typeof value === "string"
+        ? new Date(value)
+        : null;
 
-  // Check if the date is valid
-  if (isNaN(dateObj.getTime())) {
+  if (!date || Number.isNaN(date.getTime())) {
     return "Invalid Date";
   }
 
-  return dateObj.toLocaleDateString("en-US", {
+  return date.toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
     day: "numeric",
