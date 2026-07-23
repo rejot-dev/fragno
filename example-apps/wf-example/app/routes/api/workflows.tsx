@@ -1,15 +1,15 @@
 import { getWorkflowsServer } from "~/workflows/workflows-fragment.server";
 
-import type { Route } from "./+types/workflows";
+type RequestHandlerArgs = { request: Request };
 
-export async function loader(args: Route.LoaderArgs) {
+export async function loader({ request }: RequestHandlerArgs) {
   const { fragment } = await getWorkflowsServer();
   const handlers = fragment.handlersFor("react-router");
-  return handlers.loader(args);
+  return handlers.loader({ request });
 }
 
-export async function action(args: Route.ActionArgs) {
+export async function action({ request }: RequestHandlerArgs) {
   const { fragment } = await getWorkflowsServer();
   const handlers = fragment.handlersFor("react-router");
-  return handlers.action(args);
+  return handlers.action({ request });
 }
