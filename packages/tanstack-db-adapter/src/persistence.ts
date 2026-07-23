@@ -1,13 +1,7 @@
 import type { AnySchema } from "@fragno-dev/db/schema";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import {
-  createCollection,
-  type Collection,
-  type CollectionConfig,
-  type InferSchemaInput,
-  type UtilsRecord,
-} from "@tanstack/db";
+import { createCollection, type CollectionConfig, type UtilsRecord } from "@tanstack/db";
 import {
   persistedCollectionOptions,
   type PersistedCollectionPersistence,
@@ -15,18 +9,13 @@ import {
 
 import {
   fragnoCollectionOptions,
+  type FragnoCollection,
+  type FragnoCollectionFactory,
   type FragnoCollectionOptions,
   type FragnoCollectionUtils,
+  type FragnoTableName,
 } from "./collection-options";
 import type { FragnoCollectionRow } from "./protocol";
-
-type FragnoTableName<TSchema extends AnySchema> = keyof TSchema["tables"] & string;
-
-type FragnoCollectionInput<TRow extends object, TStandardSchema extends StandardSchemaV1> = [
-  TStandardSchema,
-] extends [never]
-  ? TRow
-  : InferSchemaInput<TStandardSchema>;
 
 export type PersistedFragnoCollectionFactoryOptions = {
   persistence: PersistedCollectionPersistence;
@@ -35,7 +24,7 @@ export type PersistedFragnoCollectionFactoryOptions = {
 
 export function createPersistedFragnoCollectionFactory(
   factoryOptions: PersistedFragnoCollectionFactoryOptions,
-) {
+): FragnoCollectionFactory {
   return function createPersistedFragnoCollection<
     TSchema extends AnySchema,
     TTableName extends FragnoTableName<TSchema>,
@@ -43,13 +32,7 @@ export function createPersistedFragnoCollectionFactory(
     TUtils extends UtilsRecord = UtilsRecord,
   >(
     options: FragnoCollectionOptions<TSchema, TTableName, TStandardSchema, TUtils>,
-  ): Collection<
-    FragnoCollectionRow<TSchema["tables"][TTableName]>,
-    string,
-    TUtils & FragnoCollectionUtils,
-    TStandardSchema,
-    FragnoCollectionInput<FragnoCollectionRow<TSchema["tables"][TTableName]>, TStandardSchema>
-  > {
+  ): FragnoCollection<TSchema, TTableName, TStandardSchema, TUtils> {
     type Row = FragnoCollectionRow<TSchema["tables"][TTableName]>;
     type CollectionUtils = TUtils & FragnoCollectionUtils;
 
@@ -75,12 +58,11 @@ export function createPersistedFragnoCollectionFactory(
       CollectionUtils
     >;
 
-    return createCollection(collectionOptions) as Collection<
-      Row,
-      string,
-      CollectionUtils,
+    return createCollection(collectionOptions) as FragnoCollection<
+      TSchema,
+      TTableName,
       TStandardSchema,
-      FragnoCollectionInput<Row, TStandardSchema>
+      TUtils
     >;
   };
 }

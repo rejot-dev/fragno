@@ -4,8 +4,11 @@ import type { AnySchema } from "@fragno-dev/db/schema";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import {
   BTreeIndex,
+  createCollection,
   type BaseCollectionConfig,
+  type Collection,
   type CollectionConfig,
+  type InferSchemaInput,
   type UtilsRecord,
 } from "@tanstack/db";
 
@@ -31,7 +34,7 @@ export type FragnoCollectionUtils = {
   getCheckpoint(): FragnoOutboxCheckpoint | undefined;
 };
 
-type FragnoTableName<TSchema extends AnySchema> = keyof TSchema["tables"] & string;
+export type FragnoTableName<TSchema extends AnySchema> = keyof TSchema["tables"] & string;
 
 type FragnoCollectionBehavior<
   TRow extends object,
@@ -60,6 +63,34 @@ export type FragnoCollectionOptions<
   utils?: TUtils;
 };
 
+type FragnoCollectionInput<TRow extends object, TStandardSchema extends StandardSchemaV1> = [
+  TStandardSchema,
+] extends [never]
+  ? TRow
+  : InferSchemaInput<TStandardSchema>;
+
+export type FragnoCollection<
+  TSchema extends AnySchema,
+  TTableName extends FragnoTableName<TSchema>,
+  TStandardSchema extends StandardSchemaV1 = never,
+  TUtils extends UtilsRecord = UtilsRecord,
+> = Collection<
+  FragnoCollectionRow<TSchema["tables"][TTableName]>,
+  string,
+  TUtils & FragnoCollectionUtils,
+  TStandardSchema,
+  FragnoCollectionInput<FragnoCollectionRow<TSchema["tables"][TTableName]>, TStandardSchema>
+>;
+
+export type FragnoCollectionFactory = <
+  TSchema extends AnySchema,
+  TTableName extends FragnoTableName<TSchema>,
+  TStandardSchema extends StandardSchemaV1 = never,
+  TUtils extends UtilsRecord = UtilsRecord,
+>(
+  options: FragnoCollectionOptions<TSchema, TTableName, TStandardSchema, TUtils>,
+) => FragnoCollection<TSchema, TTableName, TStandardSchema, TUtils>;
+
 export type FragnoCollectionConfig<
   TSchema extends AnySchema,
   TTableName extends FragnoTableName<TSchema>,
@@ -71,6 +102,35 @@ export type FragnoCollectionConfig<
   TStandardSchema,
   TUtils & FragnoCollectionUtils
 >;
+
+export function createFragnoCollection<
+  TSchema extends AnySchema,
+  TTableName extends FragnoTableName<TSchema>,
+  TStandardSchema extends StandardSchemaV1 = never,
+  TUtils extends UtilsRecord = UtilsRecord,
+>(
+  options: FragnoCollectionOptions<TSchema, TTableName, TStandardSchema, TUtils>,
+): FragnoCollection<TSchema, TTableName, TStandardSchema, TUtils> {
+  type Row = FragnoCollectionRow<TSchema["tables"][TTableName]>;
+  type CollectionUtils = TUtils & FragnoCollectionUtils;
+
+  const sourceOptions = fragnoCollectionOptions(options);
+  // TanStack's createCollection overload widens a generic Standard Schema. The source options
+  // preserve the row, schema, and utility contracts, so establish them once at this adapter boundary.
+  const collectionOptions = sourceOptions as unknown as CollectionConfig<
+    Row,
+    string,
+    never,
+    CollectionUtils
+  >;
+
+  return createCollection(collectionOptions) as FragnoCollection<
+    TSchema,
+    TTableName,
+    TStandardSchema,
+    TUtils
+  >;
+}
 
 export function fragnoCollectionOptions<
   TSchema extends AnySchema,
