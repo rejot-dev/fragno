@@ -1,10 +1,10 @@
-import type { FileSystemArtifact } from "../types";
+import type { FileContent } from "../interface";
 
 export const SYSTEM_AUTOMATION_SCRIPT_PATHS = {
   workspaceFileInitialization: "automations/workspace-file-initialization.workflow.js",
 } as const;
 
-export const SYSTEM_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
+export const SYSTEM_AUTOMATION_CONTENT: Record<string, FileContent> = {
   "automations/workspace-file-initialization.workflow.js": `defineWorkflow(
   { name: "workspace-file-initialization" },
   async (event, step) => {

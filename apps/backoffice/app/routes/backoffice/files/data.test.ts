@@ -79,6 +79,72 @@ describe("files explorer route data", () => {
     assert(result.loadError === "Path '/missing' could not be found.");
   });
 
+  test("loads upload-backed text content without reading upload metadata on the server", async () => {
+    const metadataRead = vi.fn();
+    registerFileContributor({
+      id: "workspace",
+      kind: "upload",
+      mountPoint: "/workspace",
+      title: "Workspace",
+      readOnly: false,
+      persistence: "persistent",
+      uploadProvider: "database",
+      ...createUnsupportedFileSystem((operation, path) => new Error(`${operation} ${path}`)),
+      async readFile(path) {
+        expect(path).toBe("/workspace/automations/example.workflow.js");
+        return "export default {};";
+      },
+      async readdir() {
+        metadataRead();
+        return [];
+      },
+      async stat() {
+        metadataRead();
+        throw new Error("Upload metadata must come from TanStack DB.");
+      },
+    });
+
+    const result = await loadFilesExplorerData({
+      request: new Request(
+        "https://docs.example.test/backoffice/files?path=/workspace/automations/example.workflow.js",
+      ),
+      context: mockContext,
+      orgId: "acme-org",
+    });
+
+    expect(result.tree.map((root) => root.path)).not.toContain("/workspace");
+    assert(result.selectedPath === "/workspace/automations/example.workflow.js");
+    assert(result.selectedDetail === null);
+    assert(result.selectedUploadTextContent === "export default {};");
+    expect(metadataRead).not.toHaveBeenCalled();
+  });
+
+  test("propagates upload-backed text content read failures", async () => {
+    registerFileContributor({
+      id: "workspace",
+      kind: "upload",
+      mountPoint: "/workspace",
+      title: "Workspace",
+      readOnly: false,
+      persistence: "persistent",
+      uploadProvider: "database",
+      ...createUnsupportedFileSystem((operation, path) => new Error(`${operation} ${path}`)),
+      async readFile() {
+        throw new Error("Upload content unavailable.");
+      },
+    });
+
+    await expect(
+      loadFilesExplorerData({
+        request: new Request(
+          "https://docs.example.test/backoffice/files?path=/workspace/automations/example.workflow.js",
+        ),
+        context: mockContext,
+        orgId: "acme-org",
+      }),
+    ).rejects.toThrow("Upload content unavailable.");
+  });
+
   test("rejects unknown action intents before dispatching to the files domain", async () => {
     const formData = new FormData();
     formData.set("intent", "rename");

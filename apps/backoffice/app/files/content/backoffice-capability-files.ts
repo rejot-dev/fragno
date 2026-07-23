@@ -1,9 +1,9 @@
 import { backofficeCapabilities } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 
-import type { FileSystemArtifact } from "../types";
+import type { FileContent } from "../interface";
 
-const collectBackofficeCapabilityFiles = (): Record<string, FileSystemArtifact> => {
-  const files: Record<string, FileSystemArtifact> = {};
+const collectBackofficeCapabilityFiles = (): Record<string, FileContent> => {
+  const files: Record<string, FileContent> = {};
 
   for (const capability of backofficeCapabilities) {
     for (const [path, content] of Object.entries(capability.files ?? {})) {

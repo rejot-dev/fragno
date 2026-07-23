@@ -11,6 +11,7 @@ import {
 } from "@/fragno/upload";
 import type { UploadFileRecord } from "@/fragno/upload/file-record";
 
+import { compareFileEntries, sortFileEntryTree } from "../entry-order";
 import {
   createInvalidArgumentFileSystemError,
   createPathNotFoundFileSystemError,
@@ -208,7 +209,7 @@ export const uploadR2BindingFileContributor =
 export const uploadR2RemoteFileContributor =
   createUploadProviderContributor(uploadR2RemoteFileMount);
 
-export type CreateUploadFileSystemOptions = {
+type CreateUploadFileSystemOptions = {
   mountPoint?: string;
   provider: UploadProvider;
 };
@@ -687,7 +688,7 @@ export const createUploadFileSystem = (
   return fs;
 };
 
-export type ResolveUploadFileMountOptions = {
+type ResolveUploadFileMountOptions = {
   mountPoint?: string;
   provider?: UploadProvider | null;
 };
@@ -990,15 +991,7 @@ const listUploadDirectoryEntries = async (
     cursor = payload.cursor;
   }
 
-  return Array.from(entries.values()).sort((left, right) => {
-    const leftOrder = left.kind === "folder" ? 0 : 1;
-    const rightOrder = right.kind === "folder" ? 0 : 1;
-    if (leftOrder !== rightOrder) {
-      return leftOrder - rightOrder;
-    }
-
-    return (left.title ?? left.path).localeCompare(right.title ?? right.path);
-  });
+  return Array.from(entries.values()).sort(compareFileEntries);
 };
 
 const fetchUploadDirectoryMarker = async (
@@ -1398,7 +1391,7 @@ const buildUploadTree = (mountPoint: string, files: UploadFileRecord[]): FileEnt
     );
   }
 
-  return sortTree(roots);
+  return sortFileEntryTree(roots);
 };
 
 const toFileDescriptor = (
@@ -1461,22 +1454,6 @@ const findEntry = (entries: FileEntryDescriptor[], path: string): FileEntryDescr
   }
 
   return null;
-};
-
-const sortTree = (entries: FileEntryDescriptor[]): FileEntryDescriptor[] => {
-  return entries
-    .map((entry) => ({
-      ...entry,
-      children: entry.children ? sortTree(entry.children) : undefined,
-    }))
-    .sort((left, right) => {
-      const leftOrder = left.kind === "folder" ? 0 : 1;
-      const rightOrder = right.kind === "folder" ? 0 : 1;
-      if (leftOrder !== rightOrder) {
-        return leftOrder - rightOrder;
-      }
-      return (left.title ?? left.path).localeCompare(right.title ?? right.path);
-    });
 };
 
 const getUploadObject = (ctx: FilesContext) => {

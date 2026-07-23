@@ -1,4 +1,4 @@
-import type { FileSystemArtifact } from "../types";
+import type { FileContent } from "../interface";
 import { BACKOFFICE_CAPABILITY_FILE_CONTENT } from "./backoffice-capability-files";
 import { GENERAL_SKILL_CONTENT } from "./skills";
 import { STATIC_AUTOMATION_CONTENT } from "./static-automations";
@@ -16,7 +16,7 @@ export const renderStaticGuidance = ({
     .replace("__BACKOFFICE_CODEMODE_STATE_DTS__", stateDts.trimEnd())
     .replace("__BACKOFFICE_CODEMODE_WORKFLOW_AUTHORING_DTS__", workflowAuthoringDts.trimEnd());
 
-export const STATIC_GUIDANCE_MD = `# Backoffice System Guidance
+const STATIC_GUIDANCE_MD = `# Backoffice System Guidance
 
 You are an assistant inside The Backoffice, built by ReJot. The user sees your messages in an IM interface, so be concise and direct.
 
@@ -119,4 +119,4 @@ export const STATIC_FILE_CONTENT = {
   ...STATIC_AUTOMATION_CONTENT,
   ...BACKOFFICE_CAPABILITY_FILE_CONTENT,
   ...GENERAL_SKILL_CONTENT,
-} satisfies Record<string, FileSystemArtifact>;
+} satisfies Record<string, FileContent>;

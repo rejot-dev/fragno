@@ -1,4 +1,4 @@
-import type { FileSystemArtifact } from "../types";
+import type { FileContent } from "../interface";
 
 export const STARTER_AUTOMATION_SCRIPT_PATHS = {
   telegramUserLinking: "automations/telegram-user-linking.workflow.js",
@@ -7,7 +7,7 @@ export const STARTER_AUTOMATION_SCRIPT_PATHS = {
   piDefaultAgentConfigure: "automations/pi-default-agent-configure.workflow.js",
 } as const;
 
-export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
+export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> = {
   "automations/telegram-user-linking.workflow.js": `defineWorkflow(
   { name: "telegram-user-linking" },
   async (event, step) => {
