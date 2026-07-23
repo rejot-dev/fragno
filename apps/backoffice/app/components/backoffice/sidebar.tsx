@@ -52,7 +52,10 @@ const isAutomationTabPath = (
   };
 };
 
-function createNavItems(activeOrganizationId?: string | null): NavItem[] {
+function createNavItems(
+  activeOrganizationId: string | null | undefined,
+  isAdmin: boolean,
+): NavItem[] {
   const automationBasePath = activeOrganizationId
     ? `/backoffice/automations/org/${activeOrganizationId}`
     : "/backoffice/automations";
@@ -123,29 +126,35 @@ function createNavItems(activeOrganizationId?: string | null): NavItem[] {
     },
     { label: "Sessions", to: "/backoffice/sessions" },
     { label: "Files", to: "/backoffice/files" },
-    {
-      label: "Internals",
-      to: "/backoffice/internals",
-      children: [
-        { label: "GitHub", to: "/backoffice/internals/github" },
-        {
-          label: "Upload",
-          to: activeOrganizationId
-            ? `/backoffice/connections/upload/${activeOrganizationId}`
-            : "/backoffice/connections/upload",
-          isActive: (pathname) => pathname.startsWith("/backoffice/connections/upload"),
-        },
-        {
-          label: "Reson8",
-          to: activeOrganizationId
-            ? `/backoffice/connections/reson8/${activeOrganizationId}`
-            : "/backoffice/connections/reson8",
-          isActive: (pathname) => pathname.startsWith("/backoffice/connections/reson8"),
-        },
-        { label: "Durable hooks", to: "/backoffice/internals/durable-hooks" },
-        { label: "Workflows", to: "/backoffice/internals/workflows" },
-      ],
-    },
+    ...(isAdmin
+      ? [
+          {
+            label: "Internals",
+            to: "/backoffice/internals",
+            children: [
+              { label: "GitHub", to: "/backoffice/internals/github" },
+              {
+                label: "Upload",
+                to: activeOrganizationId
+                  ? `/backoffice/connections/upload/${activeOrganizationId}`
+                  : "/backoffice/connections/upload",
+                isActive: (pathname: string) =>
+                  pathname.startsWith("/backoffice/connections/upload"),
+              },
+              {
+                label: "Reson8",
+                to: activeOrganizationId
+                  ? `/backoffice/connections/reson8/${activeOrganizationId}`
+                  : "/backoffice/connections/reson8",
+                isActive: (pathname: string) =>
+                  pathname.startsWith("/backoffice/connections/reson8"),
+              },
+              { label: "Durable hooks", to: "/backoffice/internals/durable-hooks" },
+              { label: "Workflows", to: "/backoffice/internals/workflows" },
+            ],
+          },
+        ]
+      : []),
   ];
 }
 
@@ -204,7 +213,7 @@ function BackofficeSidebarContent({
   const { data: meData, loading: meLoading } = authClient.useMe();
   const effectiveMe = meData ?? me ?? null;
   const activeOrganization = effectiveMe?.activeOrganization?.organization ?? null;
-  const navItems = createNavItems(activeOrganization?.id);
+  const navItems = createNavItems(activeOrganization?.id, effectiveMe?.user.role === "admin");
   const sessionLoading = isLoading || (!effectiveMe && meLoading);
 
   return (
