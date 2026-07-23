@@ -26,6 +26,7 @@ import {
   action as submitEmailVerificationAction,
   loader as loadEmailVerification,
 } from "@/routes/backoffice/verify-email";
+import { getSetCookieHeaders } from "@/worker-runtime/http-headers";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import {
@@ -87,6 +88,9 @@ const requestEmailVerificationResendFromPage = async (
   } as unknown as Parameters<typeof submitEmailVerificationAction>[0]);
 };
 
+const buildCookieHeader = (setCookieHeaders: string[]): string =>
+  setCookieHeaders.map((header) => header.split(";", 1)[0]).join("; ");
+
 const submitEmailVerificationUrl = async (ctx: BackofficeScenarioContext, verificationUrl: URL) => {
   const context = createScenarioRouterContext(ctx);
   const page = loadEmailVerification({
@@ -97,7 +101,7 @@ const submitEmailVerificationUrl = async (ctx: BackofficeScenarioContext, verifi
   } as unknown as Parameters<typeof loadEmailVerification>[0]);
   assert(page.state === "ready");
 
-  return await submitEmailVerificationAction({
+  const result = await submitEmailVerificationAction({
     request: new Request(new URL("/backoffice/verify-email.data", verificationUrl), {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded;charset=UTF-8" },
@@ -110,6 +114,39 @@ const submitEmailVerificationUrl = async (ctx: BackofficeScenarioContext, verifi
     context,
     params: {},
   } as unknown as Parameters<typeof submitEmailVerificationAction>[0]);
+
+  if (!(result instanceof Response)) {
+    return { data: result, cookie: "", setCookieHeaders: [] };
+  }
+
+  const setCookieHeaders = getSetCookieHeaders(result.headers);
+  return {
+    data: (await result.json()) as { state: "result"; result: string },
+    cookie: buildCookieHeader(setCookieHeaders),
+    setCookieHeaders,
+  };
+};
+
+const completeEmailVerificationLogin = async (ctx: BackofficeScenarioContext, cookie: string) => {
+  const context = createScenarioRouterContext(ctx);
+  const response = await submitEmailVerificationAction({
+    request: new Request("https://backoffice.example/backoffice/verify-email.data", {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
+        cookie,
+      },
+      body: new URLSearchParams({ intent: "complete_login" }),
+    }),
+    context,
+    params: {},
+  } as unknown as Parameters<typeof submitEmailVerificationAction>[0]);
+  assert(response instanceof Response);
+
+  return {
+    data: (await response.json()) as { state: "login"; status: string },
+    cookie: buildCookieHeader(getSetCookieHeaders(response.headers)),
+  };
 };
 
 const signInWithPassword = (ctx: BackofficeScenarioContext, email: string) =>
@@ -183,12 +220,37 @@ describe("Auth email verification scenarios", () => {
             label: "open and submit the queued signup verification link",
             async run(ctx) {
               const verificationUrl = getQueuedEmailVerificationUrl(ctx);
-              expect(await submitEmailVerificationUrl(ctx, verificationUrl)).toEqual({
+              const confirmation = await submitEmailVerificationUrl(ctx, verificationUrl);
+              expect(confirmation.data).toEqual({
                 state: "result",
                 result: "confirmation_recorded",
               });
+              assert(confirmation.cookie);
+              expect(confirmation.setCookieHeaders).toEqual([
+                expect.stringContaining("Path=/backoffice;"),
+              ]);
+
+              const pendingLogin = await completeEmailVerificationLogin(ctx, confirmation.cookie);
+              expect(pendingLogin.data).toEqual({ state: "login", status: "pending" });
 
               await ctx.runtime.drain();
+              const authenticatedLogin = await completeEmailVerificationLogin(
+                ctx,
+                confirmation.cookie,
+              );
+              expect(authenticatedLogin.data).toEqual({
+                state: "login",
+                status: "authenticated",
+              });
+              assert(authenticatedLogin.cookie);
+
+              const meResponse = await ctx.runtime.objects.auth.singleton().fetch(
+                new Request("https://backoffice.example/api/auth/me", {
+                  headers: { cookie: authenticatedLogin.cookie },
+                }),
+              );
+              assert(meResponse.ok);
+
               const context = createScenarioRouterContext(ctx);
               const actionUrl = new URL("/backoffice/verify-email", verificationUrl);
               expect(
@@ -255,11 +317,11 @@ describe("Auth email verification scenarios", () => {
                 .size === 2,
             );
 
-            expect(await submitEmailVerificationUrl(ctx, firstUrl)).toEqual({
+            expect((await submitEmailVerificationUrl(ctx, firstUrl)).data).toEqual({
               state: "result",
               result: "invalid",
             });
-            expect(await submitEmailVerificationUrl(ctx, secondUrl)).toEqual({
+            expect((await submitEmailVerificationUrl(ctx, secondUrl)).data).toEqual({
               state: "result",
               result: "confirmation_recorded",
             });
@@ -284,7 +346,7 @@ describe("Auth email verification scenarios", () => {
             const elapsedMs = 24 * 60 * 60 * 1_000 + 1;
             ctx.runtime.advanceTime(elapsedMs);
 
-            expect(await submitEmailVerificationUrl(ctx, expiredUrl)).toEqual({
+            expect((await submitEmailVerificationUrl(ctx, expiredUrl)).data).toEqual({
               state: "result",
               result: "expired",
             });
@@ -297,7 +359,7 @@ describe("Auth email verification scenarios", () => {
             await ctx.runtime.drain();
 
             const replacementUrl = getQueuedEmailVerificationUrl(ctx, 1);
-            expect(await submitEmailVerificationUrl(ctx, replacementUrl)).toEqual({
+            expect((await submitEmailVerificationUrl(ctx, replacementUrl)).data).toEqual({
               state: "result",
               result: "confirmation_recorded",
             });

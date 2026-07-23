@@ -76,6 +76,13 @@ export type AuthObject = FetchObject &
   AlarmableObject &
   DurableHookObject & {
     verifyUserEmail(input: VerifyUserEmailInput): Promise<VerifyUserEmailResult>;
+    issueVerifiedEmailCredential(input: {
+      userId: string;
+    }): Promise<
+      | { status: "pending" }
+      | { status: "issued"; credentialToken: string }
+      | { status: "rejected"; reason: "user_not_found" | "user_banned" }
+    >;
     getAllOrganizations(): Promise<Organization[]>;
     getDevOrganizations(): Promise<
       Array<

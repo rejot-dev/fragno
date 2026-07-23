@@ -11,6 +11,7 @@ import {
   type BackofficeAccessTokenContext,
 } from "@/fragno/auth/auth";
 import { getAuthDurableObject } from "@/worker-runtime/durable-objects";
+import { getSetCookieHeaders } from "@/worker-runtime/http-headers";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 const parseBackofficeAccessTokenContext = (value: unknown): BackofficeAccessTokenContext | null => {
@@ -43,10 +44,6 @@ const getBackofficeAccessTokenMethods = (context: Readonly<RouterContextProvider
     },
   });
 };
-
-const getSetCookieHeaders = (headers: Headers): string[] =>
-  (headers as Headers & { getSetCookie?: () => string[] }).getSetCookie?.() ??
-  (headers.get("Set-Cookie") ? [headers.get("Set-Cookie")!] : []);
 
 const refreshAccessTokenForRequest = async (
   request: Request,
