@@ -1,4 +1,4 @@
-import type { DbNow, HookFn } from "@fragno-dev/db";
+import type { DbNow, HookContext, HookFn } from "@fragno-dev/db";
 
 import type {
   Organization,
@@ -77,36 +77,25 @@ export interface DurableOrganizationMemberAddedHookPayload<
 // Synchronous to ensure checks run before mutations are committed.
 export type BeforeCreateUserHook = (payload: BeforeCreateUserPayload) => BeforeCreateUserResult;
 
-export interface AuthHookContext {
-  idempotencyKey: string;
-  hookId: string;
-}
-
 export interface AuthHooks {
-  onUserCreated?: (
-    payload: UserCreatedHookPayload,
-    context: AuthHookContext,
-  ) => Promise<void> | void;
+  onUserCreated?: (payload: UserCreatedHookPayload, context: HookContext) => Promise<void> | void;
   onUserEmailVerified?: (
     payload: UserEmailVerifiedHookPayload,
-    context: AuthHookContext,
+    context: HookContext,
   ) => Promise<void> | void;
   onUserEmailVerificationRequested?: (
     payload: UserEmailVerificationRequestedHookPayload,
-    context: AuthHookContext,
+    context: HookContext,
   ) => Promise<void> | void;
-  onUserRoleUpdated?: (payload: UserHookPayload, context: AuthHookContext) => Promise<void> | void;
-  onUserPasswordChanged?: (
-    payload: UserHookPayload,
-    context: AuthHookContext,
-  ) => Promise<void> | void;
+  onUserRoleUpdated?: (payload: UserHookPayload, context: HookContext) => Promise<void> | void;
+  onUserPasswordChanged?: (payload: UserHookPayload, context: HookContext) => Promise<void> | void;
   onCredentialIssued?: (
     payload: CredentialHookPayload,
-    context: AuthHookContext,
+    context: HookContext,
   ) => Promise<void> | void;
   onCredentialInvalidated?: (
     payload: CredentialHookPayload,
-    context: AuthHookContext,
+    context: HookContext,
   ) => Promise<void> | void;
 }
 
