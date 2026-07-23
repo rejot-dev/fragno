@@ -9,7 +9,7 @@
 import { Menu } from "@base-ui/react/menu";
 import { Check, History, Plus } from "lucide-react";
 
-import { formatTimestamp } from "@/routes/backoffice/sessions/shared";
+import { formatTimestamp } from "@/routes/backoffice/sessions/formatting";
 
 import type { ComposeHistorySession } from "../prompt-context";
 

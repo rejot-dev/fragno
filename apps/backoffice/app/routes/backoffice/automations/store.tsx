@@ -16,7 +16,6 @@ import { deleteAutomationStoreEntry } from "./data.server";
 import { formatTimestamp } from "./formatting";
 import { automationScopeFromRouteParams } from "./scope";
 import type { AutomationLayoutContext, AutomationStoreItem } from "./shared";
-import { formatTimestamp } from "./shared";
 
 type StoreActionData = {
   ok: boolean;
