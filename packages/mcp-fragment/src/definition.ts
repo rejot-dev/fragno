@@ -1,5 +1,5 @@
 import { defineFragment } from "@fragno-dev/core";
-import { withDatabase, type HookFn } from "@fragno-dev/db";
+import { withDatabase, type HookContext, type HookFn } from "@fragno-dev/db";
 
 import { listMcpTools } from "./mcp-api";
 import type { McpFragmentConfig as BaseMcpFragmentConfig } from "./mcp-types";
@@ -25,19 +25,14 @@ export interface McpServerConfigurationDeletedPayload {
   serverId: string;
 }
 
-export interface McpHookContext {
-  idempotencyKey: string;
-  hookId: string;
-}
-
 export interface McpFragmentHooksConfig {
   onServerConfigurationChanged?: (
     payload: McpServerConfigurationChangedPayload,
-    context: McpHookContext,
+    context: HookContext,
   ) => Promise<void> | void;
   onServerConfigurationDeleted?: (
     payload: McpServerConfigurationDeletedPayload,
-    context: McpHookContext,
+    context: HookContext,
   ) => Promise<void> | void;
 }
 
@@ -182,16 +177,10 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
       }
     }),
     onServerConfigurationChanged: defineHook(async function (payload) {
-      await config.onServerConfigurationChanged?.(payload, {
-        idempotencyKey: this.idempotencyKey,
-        hookId: this.hookId.toString(),
-      });
+      await config.onServerConfigurationChanged?.(payload, this);
     }),
     onServerConfigurationDeleted: defineHook(async function (payload) {
-      await config.onServerConfigurationDeleted?.(payload, {
-        idempotencyKey: this.idempotencyKey,
-        hookId: this.hookId.toString(),
-      });
+      await config.onServerConfigurationDeleted?.(payload, this);
     }),
   }))
   .providesBaseService(({ defineService, config }) =>

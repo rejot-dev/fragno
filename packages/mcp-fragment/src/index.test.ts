@@ -491,7 +491,7 @@ describe("mcp-fragment", () => {
         serverId: "diagnostics-refresh-cache",
         current: { tools: [expect.objectContaining({ name: "echo" })] },
       },
-      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(Object) }),
     );
   });
 
@@ -573,7 +573,7 @@ describe("mcp-fragment", () => {
         serverId: "auto-refresh-tools",
         current: { tools: [expect.objectContaining({ name: "echo" })] },
       },
-      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(Object) }),
     );
   });
 
@@ -632,7 +632,7 @@ describe("mcp-fragment", () => {
         serverId: "oauth-refresh-after-callback",
         current: { tools: [expect.objectContaining({ name: "echo" })] },
       },
-      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(Object) }),
     );
   });
 
@@ -683,7 +683,7 @@ describe("mcp-fragment", () => {
         serverId: slug,
         current: { tools: [expect.objectContaining({ name: "echo" })] },
       },
-      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(Object) }),
     );
   });
 
@@ -703,7 +703,7 @@ describe("mcp-fragment", () => {
         serverId: "new-tools",
         current: { tools: refreshed.data.tools },
       },
-      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(Object) }),
     );
   });
 
@@ -739,7 +739,7 @@ describe("mcp-fragment", () => {
         serverId: "changed-tools",
         current: { tools: refreshed.data.tools },
       },
-      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(Object) }),
     );
   });
 
@@ -1159,7 +1159,7 @@ describe("mcp-fragment", () => {
     expect(onServerConfigurationDeleted).toHaveBeenCalledTimes(1);
     expect(onServerConfigurationDeleted).toHaveBeenCalledWith(
       { serverId: "delete-me" },
-      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(Object) }),
     );
 
     const read = await fragment.callRoute("GET", "/servers/:slug", {
