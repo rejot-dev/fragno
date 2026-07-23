@@ -3,7 +3,8 @@ import { describe, expect, test } from "vitest";
 import { createElement, createRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { formatToolArgumentsDisplayText, SessionConversationPanel } from "./components";
+import { SessionConversationPanel } from "./components";
+import { formatToolArgumentsDisplayText } from "./tool-arguments";
 
 describe("formatToolArgumentsDisplayText", () => {
   test("renders streaming execCodeMode code input before the JSON argument is complete", () => {

@@ -1,6 +1,6 @@
 import { describe, test, assert } from "vitest";
 
-import { formatTimestampInTimeZone } from "./shared";
+import { formatTimestampInTimeZone } from "./formatting";
 
 describe("automation timestamp formatting", () => {
   test("formats schedule occurrences in the configured IANA time zone", () => {
