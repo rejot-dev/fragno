@@ -237,23 +237,15 @@ export default [
         route("durable-hooks", "routes/backoffice/internals/durable-hooks.tsx"),
         route("workflows", "routes/backoffice/internals/workflows.tsx"),
         route(
-          "durable-hooks/singletons",
-          "routes/backoffice/internals/durable-hooks-singletons.tsx",
-          [
-            index("routes/backoffice/internals/durable-hooks-singletons-index.tsx"),
-            route(":hookId", "routes/backoffice/internals/durable-hooks-singletons-detail.tsx"),
-          ],
+          "durable-hooks/:scopeId",
+          "routes/backoffice/internals/durable-hooks-scope-redirect.tsx",
         ),
         route(
-          "durable-hooks/:orgId",
-          "routes/backoffice/internals/durable-hooks-organisation-redirect.tsx",
-        ),
-        route(
-          "durable-hooks/:orgId/:fragment",
-          "routes/backoffice/internals/durable-hooks-organisation.tsx",
+          "durable-hooks/:scopeId/:objectId",
+          "routes/backoffice/internals/durable-hooks-scope-layout.tsx",
           [
-            index("routes/backoffice/internals/durable-hooks-organisation-index.tsx"),
-            route(":hookId", "routes/backoffice/internals/durable-hooks-organisation-detail.tsx"),
+            index("routes/backoffice/internals/durable-hooks-scope-index.tsx"),
+            route(":hookId", "routes/backoffice/internals/durable-hooks-scope-detail.tsx"),
           ],
         ),
         route(

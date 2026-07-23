@@ -37,7 +37,7 @@ export const WORKFLOW_FRAGMENT_META: Record<
   },
   automations: {
     label: "Automations",
-    configurePath: (orgId) => `/backoffice/internals/durable-hooks/${orgId}`,
+    configurePath: (orgId) => `/backoffice/internals/durable-hooks/${orgId}/api`,
   },
 };
 

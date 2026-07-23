@@ -21,7 +21,7 @@ import { BackofficeWorkerContext } from "./router-context";
 
 export const BACKOFFICE_ADMIN_OBJECT_NAME = "admin" as const;
 
-const getBackofficeObjects = (context: Readonly<RouterContextProvider>) =>
+export const getBackofficeObjects = (context: Readonly<RouterContextProvider>) =>
   context.get(BackofficeWorkerContext).runtime.objects;
 
 export const getApiDurableObject = (

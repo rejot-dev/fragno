@@ -1,20 +1,18 @@
 import type { ReactNode } from "react";
-import { Link, useLocation, useOutletContext, useParams } from "react-router";
+import { Link, useLocation, useOutletContext } from "react-router";
 
 import type { DurableHookQueueEntry } from "@/fragno/durable-hooks";
 
-import type { DurableHooksOrgOutletContext } from "./durable-hooks-organisation";
+import type { Route } from "./+types/durable-hooks-scope-detail";
+import type { DurableHooksScopeOutletContext } from "./durable-hooks-scope-layout";
 import { formatPayload, formatTimestamp, getStatusBadgeClasses } from "./durable-hooks-shared";
 
-export default function BackofficeDurableHooksOrganisationDetailRoute() {
-  const { hooks } = useOutletContext<DurableHooksOrgOutletContext>();
-  const params = useParams();
+export default function BackofficeDurableHooksScopeDetail({ params }: Route.ComponentProps) {
+  const { hooks, objectBasePath } = useOutletContext<DurableHooksScopeOutletContext>();
   const location = useLocation();
-  const selectedHookId = params.hookId ?? null;
+  const hook = hooks.find((item) => item.id === params.hookId) ?? null;
 
-  const hook = hooks.find((item) => item.id === selectedHookId) ?? null;
-
-  if (!hook || !params.orgId || !params.fragment) {
+  if (!hook) {
     return (
       <div className="text-sm text-[var(--bo-muted)]">
         Select a durable hook to review its payload and error details.
@@ -22,28 +20,17 @@ export default function BackofficeDurableHooksOrganisationDetailRoute() {
     );
   }
 
-  const basePath = `/backoffice/internals/durable-hooks/${params.orgId}/${params.fragment}`;
-  const backToListHref = `${basePath}${location.search}`;
-
-  return <DurableHookDetailView hook={hook} onBackHref={backToListHref} />;
+  return (
+    <DurableHookDetailPanel hook={hook} backToListHref={`${objectBasePath}${location.search}`} />
+  );
 }
 
-export function DurableHookDetailPanel({
+function DurableHookDetailPanel({
   hook,
   backToListHref,
 }: {
   hook: DurableHookQueueEntry;
-  backToListHref?: string;
-}) {
-  return <DurableHookDetailView hook={hook} onBackHref={backToListHref} />;
-}
-
-function DurableHookDetailView({
-  hook,
-  onBackHref,
-}: {
-  hook: DurableHookQueueEntry;
-  onBackHref?: string;
+  backToListHref: string;
 }) {
   const payloadText = formatPayload(hook.payload);
 
@@ -57,14 +44,12 @@ function DurableHookDetailView({
           <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">{hook.hookName}</h3>
           <p className="text-xs text-[var(--bo-muted-2)]">Hook ID: {hook.id}</p>
         </div>
-        {onBackHref ? (
-          <Link
-            to={onBackHref}
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] lg:hidden"
-          >
-            Back to queue
-          </Link>
-        ) : null}
+        <Link
+          to={backToListHref}
+          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] lg:hidden"
+        >
+          Back to queue
+        </Link>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
