@@ -12,7 +12,11 @@ import { type FragnoResponse, parseFragnoResponse } from "./fragno-response";
 import type { ExtractPathParams } from "./internal/path";
 import { getMountRoute } from "./internal/route";
 import { MutableRequestState } from "./mutable-request-state";
-import { RequestContextStorage } from "./request-context-storage";
+import {
+  extractW3CRequestPropagationContext,
+  RequestContextStorage,
+  type RequestPropagationContext,
+} from "./request-context-storage";
 import { RequestInputContext, type RequestBodyType } from "./request-input-context";
 import {
   RequestMiddlewareInputContext,
@@ -58,7 +62,15 @@ type RequestRouteInfo = {
 };
 type RequestSource = "route" | "context" | "stream";
 
-export type FragnoRequestLifecycleContext = {
+export type FragnoExecutionContext = {
+  /**
+   * Propagation carrier made available throughout this execution.
+   * Use `null` to explicitly suppress propagation.
+   */
+  propagationContext?: RequestPropagationContext | null;
+};
+
+export type FragnoRequestLifecycleContext = FragnoExecutionContext & {
   waitUntil?: (promise: Promise<unknown>) => void;
 };
 
@@ -389,7 +401,9 @@ export class FragnoInstantiatedFragment<
         metadataTarget[requestWaitUntilSymbol] = lifecycleContext.waitUntil;
       }
     }
-    return this.#contextStorage.run(storageData, callback);
+    return this.#contextStorage.run(storageData, callback, {
+      propagationContext: lifecycleContext?.propagationContext,
+    });
   }
 
   /**
@@ -400,6 +414,7 @@ export class FragnoInstantiatedFragment<
    * Useful for calling services outside of route handlers (e.g., in tests, background jobs).
    *
    * @param callback - The callback to run within the context
+   * @param executionContext - Optional propagation context for this execution
    *
    * @example
    * ```typescript
@@ -410,15 +425,24 @@ export class FragnoInstantiatedFragment<
    * });
    * ```
    */
-  inContext<T>(callback: (this: THandlerThisContext) => T): T;
-  inContext<T>(callback: (this: THandlerThisContext) => Promise<T>): Promise<T>;
-  inContext<T>(callback: (this: THandlerThisContext) => T | Promise<T>): T | Promise<T> {
+  inContext<T>(
+    callback: (this: THandlerThisContext) => T,
+    executionContext?: FragnoExecutionContext,
+  ): T;
+  inContext<T>(
+    callback: (this: THandlerThisContext) => Promise<T>,
+    executionContext?: FragnoExecutionContext,
+  ): Promise<T>;
+  inContext<T>(
+    callback: (this: THandlerThisContext) => T | Promise<T>,
+    executionContext?: FragnoExecutionContext,
+  ): T | Promise<T> {
     // Always use handler context for inContext - it has full capabilities
     if (this.#handlerThisContext) {
       const boundCallback = callback.bind(this.#handlerThisContext);
-      return this.#withRequestStorage(boundCallback, "context");
+      return this.#withRequestStorage(boundCallback, "context", undefined, executionContext);
     }
-    return this.#withRequestStorage(callback, "context");
+    return this.#withRequestStorage(callback, "context", undefined, executionContext);
   }
 
   /**
@@ -429,6 +453,7 @@ export class FragnoInstantiatedFragment<
    */
   async callServices<TServiceCalls>(
     serviceCalls: () => TServiceCalls,
+    executionContext?: FragnoExecutionContext,
   ): Promise<ExtractServiceCallResultsOrSingle<TServiceCalls>> {
     const handlerContext = this.#handlerThisContext as
       | {
@@ -455,9 +480,10 @@ export class FragnoInstantiatedFragment<
         .execute();
     };
 
-    const result = this.#contextStorage.hasStore()
-      ? await execute()
-      : await this.#withRequestStorage(execute, "context");
+    const result =
+      executionContext === undefined && this.#contextStorage.hasStore()
+        ? await execute()
+        : await this.#withRequestStorage(execute, "context", undefined, executionContext);
 
     if (callWasArray) {
       return result as ExtractServiceCallResultsOrSingle<TServiceCalls>;
@@ -662,6 +688,13 @@ export class FragnoInstantiatedFragment<
       mountRoute: this.#mountRoute,
       fullPath: fullRoutePath,
     };
+    const requestLifecycleContext: FragnoRequestLifecycleContext = {
+      ...lifecycleContext,
+      propagationContext:
+        lifecycleContext?.propagationContext === undefined
+          ? extractW3CRequestPropagationContext(req.headers)
+          : lifecycleContext.propagationContext,
+    };
 
     // Execute middleware and handler
     const executeRequest = async (): Promise<Response> => {
@@ -672,11 +705,11 @@ export class FragnoInstantiatedFragment<
       }
 
       // Handler execution
-      return this.#executeHandler(req, route, requestState, rawBody, lifecycleContext);
+      return this.#executeHandler(req, route, requestState, rawBody, requestLifecycleContext);
     };
 
     // Wrap with request storage context if provided
-    return this.#withRequestStorage(executeRequest, "route", routeInfo, lifecycleContext);
+    return this.#withRequestStorage(executeRequest, "route", routeInfo, requestLifecycleContext);
   }
 
   /**
@@ -737,6 +770,9 @@ export class FragnoInstantiatedFragment<
 
     const requestHeaders =
       headers instanceof Headers ? headers : headers ? new Headers(headers) : new Headers();
+    const lifecycleContext: FragnoRequestLifecycleContext = {
+      propagationContext: extractW3CRequestPropagationContext(requestHeaders),
+    };
 
     // Construct RequestInputContext
     const inputContext = new RequestInputContext({
@@ -763,7 +799,8 @@ export class FragnoInstantiatedFragment<
 
     // Construct RequestOutputContext
     const outputContext = new RequestOutputContext(route.outputSchema, {
-      runJsonStreamCallback: (callback) => this.#withRequestStorage(callback, "stream", routeInfo),
+      runJsonStreamCallback: (callback) =>
+        this.#withRequestStorage(callback, "stream", routeInfo, lifecycleContext),
     });
 
     // Execute handler
@@ -787,7 +824,7 @@ export class FragnoInstantiatedFragment<
     };
 
     // Wrap with request storage context if provided
-    return this.#withRequestStorage(executeHandler, "route", routeInfo);
+    return this.#withRequestStorage(executeHandler, "route", routeInfo, lifecycleContext);
   }
 
   /**
@@ -1280,11 +1317,11 @@ interface IFragnoInstantiatedFragment {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   withMiddleware(handler: any): this;
 
-  inContext<T>(callback: () => T): T;
-  inContext<T>(callback: () => Promise<T>): Promise<T>;
+  inContext<T>(callback: () => T, executionContext?: FragnoExecutionContext): T;
+  inContext<T>(callback: () => Promise<T>, executionContext?: FragnoExecutionContext): Promise<T>;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  callServices(serviceCalls: () => any): Promise<any>;
+  callServices(serviceCalls: () => any, executionContext?: FragnoExecutionContext): Promise<any>;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handlersFor(framework: FullstackFrameworks): any;

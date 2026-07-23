@@ -20,7 +20,10 @@ export type {
   FragnoInstantiatedFragment,
   BoundServices,
   InstantiatedFragmentFromDefinition,
+  FragnoExecutionContext,
+  FragnoRequestLifecycleContext,
 } from "./api/fragment-instantiator";
+export type { RequestPropagationContext } from "./api/request-context-storage";
 
 import type {
   IFragmentInstantiationBuilder,
@@ -86,8 +89,8 @@ export function instantiate(_definition: unknown) {
       };
     },
     withMiddleware: () => fragmentStub,
-    inContext: <T>(callback: () => T) => callback(),
-    callServices: async (_serviceCalls: () => unknown) => [],
+    inContext: <T>(callback: () => T, _executionContext?: unknown) => callback(),
+    callServices: async (_serviceCalls: () => unknown, _executionContext?: unknown) => [],
     handlersFor: () => ({}),
     handler: async () => new Response(),
     callRoute: async () => ({ ok: true, data: undefined, error: undefined }),

@@ -16,8 +16,10 @@ export {
   type AnyFragnoInstantiatedFragment,
   type BoundServices,
   type InstantiatedFragmentFromDefinition,
+  type FragnoExecutionContext,
   type FragnoRequestLifecycleContext,
 } from "./api/fragment-instantiator";
+export type { RequestPropagationContext } from "./api/request-context-storage";
 
 // ============================================================================
 // Core Configuration
