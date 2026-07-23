@@ -4,7 +4,7 @@ import { Link, isRouteErrorResponse } from "react-router";
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { PiConfigState } from "@/fragno/pi/pi-shared";
-import type { PiPersistenceSource } from "@/fragno/pi/tanstack/database";
+import type { PiCollectionSource } from "@/fragno/pi/tanstack/browser-database";
 
 import {
   getRouteErrorDebugDetails,
@@ -14,7 +14,7 @@ import {
 
 export type PiLayoutContext = {
   scope: Extract<BackofficeContextScope, { kind: "org" }>;
-  persistenceSource: PiPersistenceSource | null;
+  persistenceSource: PiCollectionSource | null;
   persistenceError: string | null;
   configState: PiConfigState | null;
   configError: string | null;
@@ -23,17 +23,6 @@ export type PiLayoutContext = {
 };
 
 export type PiTab = "sessions" | "harnesses" | "configuration";
-
-export const formatTimestamp = (value?: string | Date | null) => {
-  if (!value) {
-    return "";
-  }
-  const date = value instanceof Date ? value : new Date(value);
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-};
 
 export function PiHeader({
   orgId,

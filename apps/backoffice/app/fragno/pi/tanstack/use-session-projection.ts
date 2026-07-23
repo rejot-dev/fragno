@@ -3,7 +3,7 @@ import { use } from "react";
 
 import { and, eq, toArray, useLiveQuery } from "@tanstack/react-db";
 
-import { getPiTanStackDatabase, type PiPersistenceSource } from "./database";
+import { getPiBrowserDatabase, type PiCollectionSource } from "./browser-database";
 import { projectPiSessionCollectionRows } from "./session-projection";
 
 export function usePiSessionProjection({
@@ -11,11 +11,11 @@ export function usePiSessionProjection({
   workflowName,
   sessionId,
 }: {
-  source: PiPersistenceSource;
+  source: PiCollectionSource;
   workflowName: string;
   sessionId: string;
 }) {
-  const database = use(getPiTanStackDatabase());
+  const database = use(getPiBrowserDatabase());
   const collections = database.collectionsFor(source);
   const sessionQuery = useLiveQuery(
     (query) =>

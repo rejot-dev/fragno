@@ -4,6 +4,7 @@ import { Link, isRouteErrorResponse } from "react-router";
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { AutomationRouteDefinition, AutomationScriptLayer } from "@/fragno/automation";
 import type { AutomationEventActor } from "@/fragno/automation/contracts";
+import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "../route-errors";
 import {
@@ -11,7 +12,6 @@ import {
   type AutomationScopeOption,
   type AutomationUiScope,
 } from "./scope";
-import type { AutomationTanStackCollections } from "./tanstack/database";
 
 export type AutomationScriptItem = {
   id: string;
@@ -45,7 +45,7 @@ export type AutomationLayoutContext = {
   selectedScope: AutomationUiScope;
   scripts: AutomationScriptItem[];
   scriptsError: string | null;
-  collections: AutomationTanStackCollections;
+  collections: AutomationCollections;
 };
 
 export type AutomationTab =

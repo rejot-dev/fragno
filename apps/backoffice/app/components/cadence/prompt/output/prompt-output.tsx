@@ -24,7 +24,7 @@ import { SessionHistory } from "./session-history";
 export function PromptOutput({ className }: { className?: string }) {
   const {
     mode,
-    piPersistenceSource,
+    piCollectionSource,
     terminal,
     compose,
     history,
@@ -71,9 +71,9 @@ export function PromptOutput({ className }: { className?: string }) {
             <EmptyState />
           ) : compose.status === "error" ? (
             <ErrorState error={compose.error} />
-          ) : compose.session && piPersistenceSource ? (
+          ) : compose.session && piCollectionSource ? (
             <ComposeTranscript
-              source={piPersistenceSource}
+              source={piCollectionSource}
               session={compose.session}
               prompt={compose.prompt ?? undefined}
               onShowWorkflow={openWorkflow}

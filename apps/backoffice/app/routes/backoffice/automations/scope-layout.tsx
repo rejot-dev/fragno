@@ -11,6 +11,10 @@ import {
 
 import { ClientOnly } from "@/components/client-only";
 import { getAuthMe } from "@/fragno/auth/auth-server";
+import {
+  describeAutomationCollectionSource,
+  getAutomationBrowserDatabase,
+} from "@/fragno/automation/tanstack/browser-database";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/scope-layout";
@@ -38,10 +42,6 @@ import {
   type AutomationLayoutContext,
   type AutomationTab,
 } from "./shared";
-import {
-  describeAutomationPersistenceSource,
-  getAutomationTanStackDatabase,
-} from "./tanstack/database";
 
 const normalizeScripts = (
   scripts: Awaited<ReturnType<typeof loadAutomationWorkspaceData>>["scripts"],
@@ -347,13 +347,13 @@ function AutomationClientOutlet({
 }: {
   loaderData: Route.ComponentProps["loaderData"];
 }) {
-  const database = use(getAutomationTanStackDatabase());
-  const persistenceSource = {
-    scope: loaderData.selectedScope,
+  const database = use(getAutomationBrowserDatabase());
+  const collectionSource = {
+    scope: toBackofficeScope(loaderData.selectedScope),
     adapterIdentity: loaderData.adapterIdentity,
   };
-  const collections = database.collectionsFor(persistenceSource);
-  const outletKey = describeAutomationPersistenceSource(persistenceSource).resourceKey;
+  const collections = database.collectionsFor(collectionSource);
+  const outletKey = describeAutomationCollectionSource(collectionSource).resourceKey;
   const outletContext = {
     selectedScope: loaderData.selectedScope,
     scripts: loaderData.scripts,

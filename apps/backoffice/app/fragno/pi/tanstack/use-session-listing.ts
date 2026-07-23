@@ -2,7 +2,7 @@ import { use } from "react";
 
 import { eq, useLiveQuery } from "@tanstack/react-db";
 
-import { getPiTanStackDatabase, type PiPersistenceSource } from "./database";
+import { getPiBrowserDatabase, type PiCollectionSource } from "./browser-database";
 import {
   projectPiSessionListingRows,
   resolvePiSessionListingState,
@@ -14,11 +14,11 @@ export function usePiSessionListing({
   workflowName,
   limit = 50,
 }: {
-  source: PiPersistenceSource;
+  source: PiCollectionSource;
   workflowName: string;
   limit?: number;
 }) {
-  const database = use(getPiTanStackDatabase());
+  const database = use(getPiBrowserDatabase());
   const collections = database.collectionsFor(source);
   const listingQuery = useLiveQuery(
     (query) =>
