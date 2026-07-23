@@ -99,11 +99,15 @@ export const user_auth = schema_auth.table("user", {
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
   _version: integer("_version").notNull().default(0),
-  bannedAt: timestamp("bannedAt")
+  bannedAt: timestamp("bannedAt"),
+  emailVerifiedAt: timestamp("emailVerifiedAt"),
+  emailVerificationRequestedAt: timestamp("emailVerificationRequestedAt")
 }, (table) => [
-  index("idx_user_email").on(table.email),
+  uniqueIndex("idx_user_email").on(table.email),
   uniqueIndex("idx_user_id").on(table.id),
-  index("idx_user_createdAt").on(table.createdAt)
+  index("idx_user_createdAt").on(table.createdAt),
+  index("idx_user_email_verification_request").on(table.email, table.emailVerificationRequestedAt),
+  index("idx_user_id_email_verification_request").on(table.id, table.emailVerificationRequestedAt)
 ])
 
 export const session_auth = schema_auth.table("session", {
@@ -274,7 +278,8 @@ export const oauthState_auth = schema_auth.table("oauthState", {
   }),
   uniqueIndex("idx_oauth_state_state").on(table.state),
   index("idx_oauth_state_provider").on(table.provider),
-  index("idx_oauth_state_expiresAt").on(table.expiresAt)
+  index("idx_oauth_state_expiresAt").on(table.expiresAt),
+  index("idx_oauth_state_state_expires_at").on(table.state, table.expiresAt)
 ])
 
 export const user_authRelations = relations(user_auth, ({ many }) => ({
@@ -414,7 +419,7 @@ export const auth_schema = {
   oauthState_authRelations: oauthState_authRelations,
   oauthState: oauthState_auth,
   oauthStateRelations: oauthState_authRelations,
-  schemaVersion: 33
+  schemaVersion: 34
 }
 
 // ============================================================================

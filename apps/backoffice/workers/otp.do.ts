@@ -5,7 +5,7 @@ import {
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
-import type { ResolvedOtpConfirmedHookPayload } from "@fragno-dev/otp-fragment";
+import type { OtpConfirmedHookPayload } from "@fragno-dev/otp-fragment";
 
 import type { OtpObject } from "@/backoffice-runtime/object-registry";
 import {
@@ -35,31 +35,40 @@ export type IssueEmailVerificationInput = {
   userId: string;
   email: string;
   publicBaseUrl: string;
-  otpId: string;
+  requestId: string;
 };
 
-export type IssueEmailVerificationResult = {
-  ok: true;
-  otpId: string;
-  userId: string;
-  url: string;
-  expiresInHours: number;
-  type: typeof EMAIL_VERIFICATION_TYPE;
-};
+export type IssueEmailVerificationResult =
+  | {
+      deliverable: true;
+      requestId: string;
+      userId: string;
+      url: string;
+      expiresInHours: number;
+      type: typeof EMAIL_VERIFICATION_TYPE;
+    }
+  | {
+      deliverable: false;
+      reason: "expired" | "superseded" | "already_confirmed";
+    };
 
-export type ConfirmEmailVerificationInput = {
+export type ConfirmEmailVerificationChallengeInput = {
   userId: string;
   code: string;
 };
 
-export type ConfirmEmailVerificationResult =
+export type ConfirmEmailVerificationChallengeResult =
   | {
-      ok: true;
+      status: "confirmation_recorded";
+      requestId: string;
       userId: string;
     }
   | {
-      ok: false;
-      error: "INVALID_INPUT" | "OTP_INVALID" | "OTP_EXPIRED";
+      status: "already_confirmed";
+    }
+  | {
+      status: "rejected";
+      reason: "invalid_input" | "invalid" | "expired";
     };
 
 export type IssueIdentityClaimInput = {
@@ -108,10 +117,10 @@ const issueEmailVerificationInputSchema = z.object({
   userId: z.string().trim().min(1),
   email: z.email(),
   publicBaseUrl: publicHttpUrlSchema,
-  otpId: z.string().trim().min(1),
+  requestId: z.string().trim().min(1),
 });
 
-const confirmEmailVerificationInputSchema = z.object({
+const confirmEmailVerificationChallengeInputSchema = z.object({
   userId: z.string().trim().min(1),
   code: z.string().trim().min(1),
 });
@@ -141,7 +150,7 @@ const confirmIdentityClaimInputSchema = z.object({
 
 export const handleEmailVerificationConfirmed = async (
   runtime: BackofficeRuntimeServices,
-  payload: ResolvedOtpConfirmedHookPayload,
+  payload: OtpConfirmedHookPayload,
 ) => {
   const verification = emailVerificationPayloadSchema.parse(payload.payload);
 
@@ -162,7 +171,7 @@ export const handleEmailVerificationConfirmed = async (
 
 const handleIdentityClaimConfirmed = async (
   runtime: BackofficeRuntimeServices,
-  payload: ResolvedOtpConfirmedHookPayload,
+  payload: OtpConfirmedHookPayload,
   hookId: string,
 ) => {
   const claimResult = identityClaimPayloadSchema.safeParse(payload.payload);
@@ -246,12 +255,16 @@ export class InMemoryOtpObject implements OtpObject {
     });
   }
 
-  async #handleOtpConfirmed(payload: ResolvedOtpConfirmedHookPayload, context: { hookId: string }) {
+  async #handleOtpConfirmed(payload: OtpConfirmedHookPayload, context: { hookId: string }) {
     switch (payload.type) {
-      case EMAIL_VERIFICATION_TYPE:
-        return await handleEmailVerificationConfirmed(this.#runtime, payload);
-      case IDENTITY_LINK_TYPE:
-        return await handleIdentityClaimConfirmed(this.#runtime, payload, context.hookId);
+      case EMAIL_VERIFICATION_TYPE: {
+        await handleEmailVerificationConfirmed(this.#runtime, payload);
+        return;
+      }
+      case IDENTITY_LINK_TYPE: {
+        await handleIdentityClaimConfirmed(this.#runtime, payload, context.hookId);
+        return;
+      }
     }
   }
 
@@ -273,13 +286,13 @@ export class InMemoryOtpObject implements OtpObject {
     };
     const fragment = this.#getFragment();
     const issued = await fragment.callServices(() =>
-      fragment.services.otp.issueOtp(
-        parsed.userId,
-        EMAIL_VERIFICATION_TYPE,
-        EMAIL_VERIFICATION_EXPIRY_MINUTES,
-        requestedPayload,
-        parsed.otpId,
-      ),
+      fragment.services.otp.issueOtp({
+        externalId: parsed.userId,
+        type: EMAIL_VERIFICATION_TYPE,
+        durationMinutes: EMAIL_VERIFICATION_EXPIRY_MINUTES,
+        payload: requestedPayload,
+        requestId: parsed.requestId,
+      }),
     );
     const persistedPayload = emailVerificationPayloadSchema.parse(issued.payload);
 
@@ -288,29 +301,42 @@ export class InMemoryOtpObject implements OtpObject {
       persistedPayload.publicBaseUrl !== requestedPayload.publicBaseUrl ||
       persistedPayload.expiresInHours !== requestedPayload.expiresInHours
     ) {
-      throw new Error("Email verification OTP id cannot be reused with different delivery input.");
+      throw new Error(
+        "Email verification request id cannot be reused with different delivery input.",
+      );
     }
 
-    return {
-      ok: true,
-      otpId: issued.id,
-      userId: issued.externalId,
-      url: buildEmailVerificationUrl(
-        persistedPayload.publicBaseUrl,
-        issued.externalId,
-        issued.code,
-      ),
-      expiresInHours: persistedPayload.expiresInHours,
-      type: EMAIL_VERIFICATION_TYPE,
-    };
+    switch (issued.status) {
+      case "expired":
+        return { deliverable: false, reason: "expired" };
+      case "invalidated":
+        return { deliverable: false, reason: "superseded" };
+      case "confirmed":
+        return { deliverable: false, reason: "already_confirmed" };
+      case "pending":
+        return {
+          deliverable: true,
+          requestId: issued.id,
+          userId: issued.externalId,
+          url: buildEmailVerificationUrl(
+            persistedPayload.publicBaseUrl,
+            issued.externalId,
+            issued.code,
+          ),
+          expiresInHours: persistedPayload.expiresInHours,
+          type: EMAIL_VERIFICATION_TYPE,
+        };
+      default:
+        throw new Error("Unsupported OTP status.");
+    }
   }
 
-  async confirmEmailVerification(
-    input: ConfirmEmailVerificationInput,
-  ): Promise<ConfirmEmailVerificationResult> {
-    const parsed = confirmEmailVerificationInputSchema.safeParse(input);
+  async confirmEmailVerificationChallenge(
+    input: ConfirmEmailVerificationChallengeInput,
+  ): Promise<ConfirmEmailVerificationChallengeResult> {
+    const parsed = confirmEmailVerificationChallengeInputSchema.safeParse(input);
     if (!parsed.success) {
-      return { ok: false, error: "INVALID_INPUT" };
+      return { status: "rejected", reason: "invalid_input" };
     }
 
     const { userId, code } = parsed.data;
@@ -320,12 +346,40 @@ export class InMemoryOtpObject implements OtpObject {
     );
 
     if (!confirmation.confirmed) {
-      return { ok: false, error: confirmation.error ?? "OTP_INVALID" };
+      return {
+        status: "rejected",
+        reason: confirmation.error === "OTP_EXPIRED" ? "expired" : "invalid",
+      };
     }
 
+    return confirmation.status === "confirmation_recorded"
+      ? {
+          status: "confirmation_recorded",
+          requestId: confirmation.requestId,
+          userId,
+        }
+      : { status: "already_confirmed" };
+  }
+
+  async confirmEmailVerification(input: {
+    userId: string;
+    code: string;
+  }): Promise<
+    | { ok: true; userId: string }
+    | { ok: false; error: "INVALID_INPUT" | "OTP_INVALID" | "OTP_EXPIRED" }
+  > {
+    const result = await this.confirmEmailVerificationChallenge(input);
+    if (result.status !== "rejected") {
+      return { ok: true, userId: input.userId };
+    }
     return {
-      ok: true,
-      userId,
+      ok: false,
+      error:
+        result.reason === "invalid_input"
+          ? "INVALID_INPUT"
+          : result.reason === "expired"
+            ? "OTP_EXPIRED"
+            : "OTP_INVALID",
     };
   }
 
@@ -338,9 +392,14 @@ export class InMemoryOtpObject implements OtpObject {
         : DEFAULT_IDENTITY_LINK_EXPIRY_MINUTES;
 
     const issued = await fragment.callServices(() =>
-      fragment.services.otp.issueOtp(parsed.actor.id, IDENTITY_LINK_TYPE, expiresInMinutes, {
-        orgId: parsed.orgId,
-        actor: parsed.actor,
+      fragment.services.otp.issueOtp({
+        externalId: parsed.actor.id,
+        type: IDENTITY_LINK_TYPE,
+        durationMinutes: expiresInMinutes,
+        payload: {
+          orgId: parsed.orgId,
+          actor: parsed.actor,
+        },
       }),
     );
 
@@ -376,7 +435,7 @@ export class InMemoryOtpObject implements OtpObject {
     );
 
     if (!confirmation.confirmed) {
-      return { ok: false, error: confirmation.error ?? "OTP_INVALID" };
+      return { ok: false, error: confirmation.error };
     }
 
     return {
@@ -418,9 +477,13 @@ export class Otp extends DurableObject<CloudflareEnv> implements OtpObject {
     return await this.#object.issueEmailVerification(input);
   }
 
-  async confirmEmailVerification(
-    input: ConfirmEmailVerificationInput,
-  ): Promise<ConfirmEmailVerificationResult> {
+  async confirmEmailVerificationChallenge(
+    input: ConfirmEmailVerificationChallengeInput,
+  ): Promise<ConfirmEmailVerificationChallengeResult> {
+    return await this.#object.confirmEmailVerificationChallenge(input);
+  }
+
+  async confirmEmailVerification(input: { userId: string; code: string }) {
     return await this.#object.confirmEmailVerification(input);
   }
 

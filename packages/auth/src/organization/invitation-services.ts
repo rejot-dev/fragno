@@ -1,7 +1,7 @@
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import type { AuthActor } from "../auth/types";
-import type { AuthEmailVerificationConfig } from "../email-verification-policy";
+import type { AuthEmailVerificationConfig } from "../email-verification";
 import type { AuthHooksMap } from "../hooks";
 import { authSchema } from "../schema";
 import {
@@ -9,6 +9,7 @@ import {
   validateSessionCredentialOwner,
 } from "../session/session-credential-validator";
 import type { Role } from "../types";
+import { normalizeAuthEmail as normalizeEmail } from "../user/email";
 import { mapUserSummary } from "../user/summary";
 import { bytesToHex, randomBytes } from "../utils/crypto";
 import { canManageOrganization, isGlobalAdmin } from "./permissions";
@@ -189,8 +190,6 @@ const buildExpiresAt = (input: CreateInvitationInput): Date => {
   return expiresAt;
 };
 
-const normalizeEmail = (value: string) => value.trim().toLowerCase();
-
 const filterRolesForMemberId = (
   roles: {
     role: string;
@@ -355,7 +354,7 @@ export function createOrganizationInvitationServices(
               b
                 .set({
                   organizationId: input.organizationId,
-                  email: input.email,
+                  email: normalizedEmail,
                   roles,
                   status: "pending",
                   token,
@@ -376,7 +375,7 @@ export function createOrganizationInvitationServices(
             const invitation = mapInvitation({
               id: existingInvitation.id,
               organizationId: input.organizationId,
-              email: input.email,
+              email: normalizedEmail,
               roles,
               status: "pending",
               token,
@@ -409,7 +408,7 @@ export function createOrganizationInvitationServices(
 
           const invitationId = uow.create("organizationInvitation", {
             organizationId: input.organizationId,
-            email: input.email,
+            email: normalizedEmail,
             roles,
             status: "pending",
             token,
@@ -428,7 +427,7 @@ export function createOrganizationInvitationServices(
           const invitation = mapInvitation({
             id: invitationId,
             organizationId: input.organizationId,
-            email: input.email,
+            email: normalizedEmail,
             roles,
             status: "pending",
             token,
@@ -487,7 +486,8 @@ export function createOrganizationInvitationServices(
       this: AuthServiceContext,
       params: { email: string; status?: OrganizationInvitationStatus },
     ) {
-      const { email, status } = params;
+      const email = normalizeEmail(params.email);
+      const status = params.status;
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
           uow.find("organizationInvitation", (b) =>
@@ -1258,8 +1258,6 @@ export function createOrganizationInvitationServices(
                   organizationId: toExternalId(invitation.organizationId),
                   userId: toExternalId(sessionOwner.id),
                   roles: invitationRoles,
-                  createdAt: now,
-                  updatedAt: now,
                 },
                 actor: actorSummary,
               });
@@ -1478,7 +1476,7 @@ export function createOrganizationInvitationServices(
           const token = bytesToHex(randomBytes(32));
           const expiresAt = buildExpiresAt({
             organizationId: params.organizationId,
-            email: params.email,
+            email: normalizedEmail,
             roles,
             inviterId: validation.user.id,
             actor: {
@@ -1501,7 +1499,7 @@ export function createOrganizationInvitationServices(
               b
                 .set({
                   organizationId: params.organizationId,
-                  email: params.email,
+                  email: normalizedEmail,
                   roles,
                   status: "pending",
                   token,
@@ -1522,7 +1520,7 @@ export function createOrganizationInvitationServices(
             const invitation = mapInvitationRow({
               id: existingInvitation.id,
               organizationId: params.organizationId,
-              email: params.email,
+              email: normalizedEmail,
               roles,
               status: "pending",
               token,
@@ -1553,7 +1551,7 @@ export function createOrganizationInvitationServices(
 
           const invitationId = uow.create("organizationInvitation", {
             organizationId: params.organizationId,
-            email: params.email,
+            email: normalizedEmail,
             roles,
             status: "pending",
             token,
@@ -1572,7 +1570,7 @@ export function createOrganizationInvitationServices(
           const invitation = mapInvitationRow({
             id: invitationId,
             organizationId: params.organizationId,
-            email: params.email,
+            email: normalizedEmail,
             roles,
             status: "pending",
             token,

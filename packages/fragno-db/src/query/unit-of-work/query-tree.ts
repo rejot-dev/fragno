@@ -1,6 +1,7 @@
 import type { AnyColumn, AnySchema, AnyTable, IdColumn, Index } from "../../schema/create";
 import { createIndexedBuilder, type Condition, type ConditionBuilder } from "../condition-builder";
 import { getCursorMetadata, type Cursor } from "../cursor";
+import type { DbInterval, DbIntervalInput, DbNow } from "../db-now";
 import type { AnySelectClause, SelectClause, SelectResult } from "../mod";
 
 /**
@@ -92,6 +93,8 @@ export type CorrelatedIndexSpecificConditionBuilder<
   not: (v: Condition | boolean) => Condition | boolean;
   isNull: (a: keyof ColumnsForIndex<TChildTable, TIndexName>) => Condition;
   isNotNull: (a: keyof ColumnsForIndex<TChildTable, TIndexName>) => Condition;
+  now: () => DbNow;
+  interval: (input: DbIntervalInput) => DbInterval;
   parent: <ColName extends keyof TParentTable["columns"]>(
     name: ColName,
   ) => ParentColumnRef<TParentTable["columns"][ColName]>;

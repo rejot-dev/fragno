@@ -18,7 +18,7 @@ import type { ValidatedCredential } from "../auth/types";
 import {
   evaluateCredentialEligibility,
   type AuthEmailVerificationConfig,
-} from "../email-verification-policy";
+} from "../email-verification";
 import type { AuthHooksMap } from "../hooks";
 import { invitationSummarySchema, memberSchema, organizationSchema } from "../organization/schemas";
 import {
@@ -331,20 +331,28 @@ export function createSessionServices(
       return buildSetCookieHeader(credentialToken, cookieOptions);
     },
     /**
-     * Issue a session-backed credential for a user, rejecting banned or missing users.
+     * Issue a new session-backed credential for a user, rejecting banned or missing users.
      *
-     * When `options.activeOrganizationId` is provided, it is written into the stored session row
-     * as-is. This function does not verify that the user is a member of that organization;
-     * callers must validate membership before passing the id.
+     * Each successful call creates a fresh session. A retry after a lost response may leave an
+     * unused session that remains valid until its normal expiration.
+     *
+     * When `activeOrganizationId` is provided, it is written into the stored session row as-is.
+     * This function does not verify that the user is a member of that organization; callers must
+     * validate membership before passing the id.
      */
     issueCredential: function (
       this: AuthServiceContext,
       userId: string,
       options?: { activeOrganizationId?: string | null },
     ) {
+      const externalUserId = toExternalId(userId);
+      const activeOrganizationId = options?.activeOrganizationId ?? null;
+
       return this.serviceTx(authSchema)
         .retrieve((uow) =>
-          uow.findFirst("user", (b) => b.whereIndex("primary", (eb) => eb("id", "=", userId))),
+          uow.findFirst("user", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", externalUserId)),
+          ),
         )
         .mutate(({ uow, retrieveResult: [user] }) => {
           if (!user) {
@@ -364,8 +372,8 @@ export function createSessionServices(
 
           const expiresAt = uow.now().plus({ days: 30 });
           const id = uow.create("session", {
-            userId,
-            activeOrganizationId: options?.activeOrganizationId ?? null,
+            userId: externalUserId,
+            activeOrganizationId,
             expiresAt,
           });
 
@@ -374,7 +382,7 @@ export function createSessionServices(
               id: id.valueOf(),
               user: userSummary,
               expiresAt,
-              activeOrganizationId: options?.activeOrganizationId ?? null,
+              activeOrganizationId,
             },
             actor: userSummary,
           });
@@ -383,9 +391,9 @@ export function createSessionServices(
             ok: true as const,
             credential: {
               id: id.valueOf(),
-              userId,
+              userId: externalUserId,
               expiresAt,
-              activeOrganizationId: options?.activeOrganizationId ?? null,
+              activeOrganizationId,
             },
           };
         })

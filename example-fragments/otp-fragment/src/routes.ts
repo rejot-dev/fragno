@@ -2,30 +2,23 @@ import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 
-import { otpFragmentDefinition } from "./definition";
-import { otpTypeSchema } from "./types";
-
-const dbNowSchema = z.object({
-  tag: z.literal("db-now"),
-  offsetMs: z.number().optional(),
-});
-
-const otpTimestampSchema = z.union([z.date(), dbNowSchema]);
+import { MAX_OTP_REQUEST_ID_LENGTH, otpFragmentDefinition } from "./definition";
+import { otpStatusSchema, otpTypeSchema } from "./types";
 
 export const otpIssueInputSchema = z.object({
   externalId: z.string().min(1),
   type: otpTypeSchema,
   payload: z.record(z.string(), z.unknown()).optional(),
   durationMinutes: z.coerce.number().positive().optional(),
+  requestId: z.string().trim().min(1).max(MAX_OTP_REQUEST_ID_LENGTH).optional(),
 });
 
 export const otpIssueOutputSchema = z.object({
   id: z.string(),
   externalId: z.string(),
   type: otpTypeSchema,
+  status: otpStatusSchema,
   code: z.string(),
-  expiresAt: otpTimestampSchema,
-  createdAt: otpTimestampSchema,
 });
 
 export const otpConfirmInputSchema = z.object({
@@ -36,8 +29,8 @@ export const otpConfirmInputSchema = z.object({
 });
 
 export const otpConfirmOutputSchema = z.object({
-  confirmed: z.boolean(),
-  confirmedAt: otpTimestampSchema.nullable(),
+  confirmed: z.literal(true),
+  status: z.enum(["confirmation_recorded", "already_confirmed"]),
 });
 
 export const otpInvalidateInputSchema = z.object({
@@ -65,11 +58,20 @@ export const otpRoutesFactory = defineRoutes(otpFragmentDefinition).create(
         inputSchema: otpIssueInputSchema,
         outputSchema: otpIssueOutputSchema,
         handler: async function ({ input }, { json }) {
-          const { externalId, type, payload, durationMinutes } = await input.valid();
+          const { externalId, type, payload, durationMinutes, requestId } = await input.valid();
 
           const [issuedOtp] = await this.handlerTx()
             .withServiceCalls(
-              () => [services.otp.issueOtp(externalId, type, durationMinutes, payload)] as const,
+              () =>
+                [
+                  services.otp.issueOtp({
+                    externalId,
+                    type,
+                    durationMinutes,
+                    payload,
+                    requestId,
+                  }),
+                ] as const,
             )
             .execute();
 
@@ -102,10 +104,7 @@ export const otpRoutesFactory = defineRoutes(otpFragmentDefinition).create(
             return error({ message: "OTP is invalid.", code: "OTP_INVALID" }, 401);
           }
 
-          return json({
-            confirmed: true,
-            confirmedAt: result.confirmedAt ?? null,
-          });
+          return json({ confirmed: true, status: result.status });
         },
       }),
       defineRoute({

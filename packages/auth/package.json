@@ -27,6 +27,10 @@
       "types": "./dist/node/index.d.ts",
       "default": "./dist/node/index.js"
     },
+    "./email-verification": {
+      "types": "./dist/node/email-verification.d.ts",
+      "default": "./dist/node/email-verification.js"
+    },
     "./react": {
       "types": "./dist/browser/client/react.d.ts",
       "default": "./dist/browser/client/react.js"

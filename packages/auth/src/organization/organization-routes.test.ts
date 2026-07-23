@@ -832,13 +832,14 @@ describe("organization routes", async () => {
       {
         pathParams: { organizationId: created.organization.id },
         headers: authHeaders(ownerCredentialToken),
-        body: { email: invitedUser.email, roles: ["admin"] },
+        body: { email: invitedUser.email.toUpperCase(), roles: ["admin"] },
       },
     );
 
     assert(secondInvite.type === "json");
     expect(secondInvite.data.invitation.id).toBe(firstInvite.data.invitation.id);
     expect(secondInvite.data.invitation.token).not.toBe(firstInvite.data.invitation.token);
+    expect(secondInvite.data.invitation.email).toBe(invitedUser.email);
     expect(secondInvite.data.invitation.roles).toEqual(["admin"]);
 
     const listOrgInvites = await fragment.callRoute(

@@ -2,8 +2,8 @@ import { z } from "zod";
 
 import {
   createOtpFragment,
+  type OtpConfirmedHookPayload,
   type OtpFragmentConfig,
-  type ResolvedOtpConfirmedHookPayload,
 } from "@fragno-dev/otp-fragment";
 
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
@@ -64,30 +64,12 @@ export const buildIdentityClaimCompletionUrl = (
   return url.toString();
 };
 
-type SerializableResolvedOtpConfirmedPayload = Pick<
-  ResolvedOtpConfirmedHookPayload,
-  "id" | "type"
-> & {
-  confirmedAt: Date | string;
-};
-
-const toIsoString = (value: Date | string, fieldName: string) => {
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    throw new Error(`Invalid OTP hook date for ${fieldName}`);
-  }
-
-  return parsed.toISOString();
-};
+type ConfirmedIdentityClaimOtp = Pick<OtpConfirmedHookPayload, "id" | "type" | "confirmedAt">;
 
 export const buildIdentityClaimCompletedAutomationEvent = (input: {
   orgId: string;
   userId: string;
-  otp: SerializableResolvedOtpConfirmedPayload;
+  otp: ConfirmedIdentityClaimOtp;
   claim: IdentityClaimPayload;
   eventId?: string;
 }): AutomationKnownEvent<typeof AUTOMATION_SOURCES.otp> => ({
@@ -95,7 +77,7 @@ export const buildIdentityClaimCompletedAutomationEvent = (input: {
   scope: { kind: "org", orgId: input.orgId },
   source: AUTOMATION_SOURCES.otp,
   eventType: AUTOMATION_SOURCE_EVENT_TYPES.otp.identityClaimCompleted,
-  occurredAt: toIsoString(input.otp.confirmedAt, "confirmedAt"),
+  occurredAt: input.otp.confirmedAt.toISOString(),
   payload: {
     otpId: input.otp.id,
     claimType: input.otp.type,
@@ -137,6 +119,7 @@ export function createOtpServer(
           403,
         );
       }
+      return undefined;
     });
     if (issueResult) {
       return issueResult;
@@ -153,6 +136,7 @@ export function createOtpServer(
           403,
         );
       }
+      return undefined;
     });
     if (confirmResult) {
       return confirmResult;
@@ -169,6 +153,7 @@ export function createOtpServer(
           403,
         );
       }
+      return undefined;
     });
   });
 }

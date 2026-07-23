@@ -201,6 +201,7 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
           "email_required",
           "signup_disabled",
           "signup_required",
+          "email_already_exists",
           "user_banned",
           "email_verification_required",
         ],
@@ -280,17 +281,21 @@ export const oauthRoutesFactory = defineRoutes<typeof authFragmentDefinition>().
                     ? 403
                     : result.code === "signup_required"
                       ? 403
-                      : result.code === "user_banned"
-                        ? 403
-                        : result.code === "email_verification_required"
+                      : result.code === "email_already_exists"
+                        ? 409
+                        : result.code === "user_banned"
                           ? 403
-                          : 400;
+                          : result.code === "email_verification_required"
+                            ? 403
+                            : 400;
             return error(
               {
                 message:
                   result.code === "email_verification_required"
                     ? "Verify your email before signing in."
-                    : "OAuth failed",
+                    : result.code === "email_already_exists"
+                      ? "An account already exists for this email address."
+                      : "OAuth failed",
                 code: result.code,
               },
               status,

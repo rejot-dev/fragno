@@ -141,23 +141,4 @@ describe("otp identity claim helpers", () => {
       },
     });
   });
-
-  it("accepts serialized confirmedAt timestamps from durable hook delivery", () => {
-    expect(
-      buildIdentityClaimCompletedAutomationEvent({
-        orgId: "org_123",
-        userId: "user_123",
-        claim: {
-          actor: telegramChatActor,
-        },
-        otp: {
-          id: "otp_123",
-          type: IDENTITY_LINK_TYPE,
-          confirmedAt: "2026-03-17T12:05:00.000Z",
-        },
-      }),
-    ).toMatchObject({
-      occurredAt: "2026-03-17T12:05:00.000Z",
-    });
-  });
 });

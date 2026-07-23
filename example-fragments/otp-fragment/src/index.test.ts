@@ -3,23 +3,10 @@ import { afterAll, beforeEach, describe, expect, it, vi, assert } from "vitest";
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
-import { MAX_OTP_ID_LENGTH, otpFragmentDefinition } from "./definition";
+import { MAX_OTP_REQUEST_ID_LENGTH, otpFragmentDefinition } from "./definition";
 import { OtpIssueError, type OtpIssueErrorCode } from "./errors";
 import { otpRoutes } from "./index";
 import { otpSchema } from "./schema";
-
-const isDbNowMarker = (value: unknown): value is { tag: "db-now"; offsetMs?: number } => {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "tag" in value &&
-    (value as { tag?: unknown }).tag === "db-now"
-  );
-};
-
-const expectOtpTimestamp = (value: unknown) => {
-  assert(value instanceof Date || isDbNowMarker(value));
-};
 
 const expectOtpIssueError = async (
   promise: Promise<unknown>,
@@ -105,14 +92,12 @@ describe("otp fragment", async () => {
     });
     assert(secondResponse.type === "json");
 
+    assert(firstResponse.data.status === "pending");
+    assert(secondResponse.data.status === "pending");
     expect(firstResponse.data.code).toMatch(/^[A-Z0-9]{8}$/);
     expect(secondResponse.data.code).toMatch(/^[A-Z0-9]{8}$/);
     expect(secondResponse.data.id).not.toBe(firstResponse.data.id);
     expect(secondResponse.data.code).not.toBe(firstResponse.data.code);
-    expectOtpTimestamp(firstResponse.data.createdAt);
-    expectOtpTimestamp(firstResponse.data.expiresAt);
-    expectOtpTimestamp(secondResponse.data.createdAt);
-    expectOtpTimestamp(secondResponse.data.expiresAt);
 
     const otpRows = await (async () => {
       const uow = fragments.otp.db
@@ -132,45 +117,65 @@ describe("otp fragment", async () => {
     expect(otpRows.filter((otp) => otp.status === "invalidated")).toHaveLength(1);
   });
 
-  it("reuses an issued OTP when concurrent calls use the same caller-provided ID", async () => {
+  it("reuses an issued OTP when the public route retries a request ID", async () => {
+    const body = {
+      externalId: "user-route-idempotent-issue",
+      type: "email_verification" as const,
+      durationMinutes: 30,
+      payload: { email: "route-user@example.com" },
+      requestId: "auth:email-verification:route-user-1",
+    };
+
+    const first = await fragments.otp.callRoute("POST", "/otp/issue", { body });
+    const retried = await fragments.otp.callRoute("POST", "/otp/issue", { body });
+
+    assert(first.type === "json");
+    assert(retried.type === "json");
+    expect(retried.data).toMatchObject({
+      id: first.data.id,
+      externalId: first.data.externalId,
+      type: first.data.type,
+      status: first.data.status,
+      code: first.data.code,
+    });
+  });
+
+  it("reuses an issued OTP when concurrent calls use the same request ID", async () => {
     const issueOtp = () =>
       fragments.otp.fragment.callServices(() =>
-        fragments.otp.services.otp.issueOtp(
-          "user-idempotent-issue",
-          "email_verification",
-          30,
-          { email: "user@example.com" },
-          "auth:user-created:user-1",
-        ),
+        fragments.otp.services.otp.issueOtp({
+          externalId: "user-idempotent-issue",
+          type: "email_verification",
+          durationMinutes: 30,
+          payload: { email: "user@example.com" },
+          requestId: "auth:email-verification:user-1",
+        }),
       );
 
     const [firstIssuedOtp, retriedIssuedOtp] = await Promise.all([issueOtp(), issueOtp()]);
 
     expect(retriedIssuedOtp).toMatchObject({
+      status: "pending",
       id: firstIssuedOtp.id,
       externalId: firstIssuedOtp.externalId,
       type: firstIssuedOtp.type,
       code: firstIssuedOtp.code,
       payload: firstIssuedOtp.payload,
     });
-    expectOtpTimestamp(firstIssuedOtp.createdAt);
-    expectOtpTimestamp(firstIssuedOtp.expiresAt);
-    expectOtpTimestamp(retriedIssuedOtp.createdAt);
-    expectOtpTimestamp(retriedIssuedOtp.expiresAt);
 
     const otpRows = await (async () => {
       const uow = fragments.otp.db
         .createUnitOfWork("read")
         .forSchema(otpSchema)
         .find("otp", (b) =>
-          b.whereIndex("primary", (eb) => eb("id", "=", "auth:user-created:user-1")),
+          b.whereIndex("primary", (eb) => eb("id", "=", "auth:email-verification:user-1")),
         );
       await uow.executeRetrieve();
       return (await uow.retrievalPhase)[0];
     })();
 
     expect(otpRows).toHaveLength(1);
-    assert(otpRows[0]?.id.valueOf() === "auth:user-created:user-1");
+    assert(otpRows[0]?.id.valueOf() === "auth:email-verification:user-1");
     expect(otpRows[0]).toMatchObject({
       externalId: "user-idempotent-issue",
       type: "email_verification",
@@ -182,65 +187,133 @@ describe("otp fragment", async () => {
     expect(onOtpIssued).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects invalid or conflicting caller-provided OTP IDs", async () => {
+  it("returns the terminal status when a requested OTP was superseded", async () => {
+    const first = await fragments.otp.fragment.callServices(() =>
+      fragments.otp.services.otp.issueOtp({
+        externalId: "user-superseded",
+        type: "email_verification",
+        durationMinutes: 30,
+        requestId: "verification-request-1",
+      }),
+    );
+    await fragments.otp.fragment.callServices(() =>
+      fragments.otp.services.otp.issueOtp({
+        externalId: "user-superseded",
+        type: "email_verification",
+        durationMinutes: 30,
+        requestId: "verification-request-2",
+      }),
+    );
+
+    const repeated = await fragments.otp.fragment.callServices(() =>
+      fragments.otp.services.otp.issueOtp({
+        externalId: "user-superseded",
+        type: "email_verification",
+        durationMinutes: 30,
+        requestId: "verification-request-1",
+      }),
+    );
+
+    expect(repeated).toMatchObject({
+      id: first.id,
+      code: first.code,
+      status: "invalidated",
+    });
+  });
+
+  it("expires rather than revives an elapsed requested OTP", async () => {
+    const { test: expiringTest, fragments: expiringFragments } = await buildDatabaseFragmentsTest()
+      .withTestAdapter({ type: "kysely-sqlite" })
+      .withFragment(
+        "otp",
+        instantiate(otpFragmentDefinition)
+          .withConfig({ defaultExpiryMinutes: 0, hooks: { onOtpExpired } })
+          .withRoutes(otpRoutes),
+      )
+      .build();
+
+    try {
+      const issueExpiredRequest = () =>
+        expiringFragments.otp.services.otp.issueOtp({
+          externalId: "user-expired-request",
+          type: "email_verification",
+          requestId: "verification-request-expired",
+        });
+      const first = await expiringFragments.otp.fragment.callServices(issueExpiredRequest);
+      const repeated = await expiringFragments.otp.fragment.callServices(issueExpiredRequest);
+
+      expect(repeated).toMatchObject({
+        id: first.id,
+        code: first.code,
+        status: "expired",
+      });
+      await drainDurableHooks(expiringFragments.otp.fragment);
+      expect(onOtpExpired).toHaveBeenCalledTimes(1);
+    } finally {
+      await expiringTest.cleanup();
+    }
+  });
+
+  it("rejects invalid or conflicting caller-provided OTP request IDs", async () => {
     await expectOtpIssueError(
       fragments.otp.fragment.callServices(() =>
-        fragments.otp.services.otp.issueOtp("user-1", "email_verification", 30, undefined, "  "),
+        fragments.otp.services.otp.issueOtp({
+          externalId: "user-1",
+          type: "email_verification",
+          durationMinutes: 30,
+          requestId: "  ",
+        }),
       ),
-      "OTP_ID_EMPTY",
+      "OTP_REQUEST_ID_EMPTY",
     );
 
     await expectOtpIssueError(
       fragments.otp.fragment.callServices(() =>
-        fragments.otp.services.otp.issueOtp(
-          "user-1",
-          "email_verification",
-          30,
-          undefined,
-          "x".repeat(MAX_OTP_ID_LENGTH + 1),
-        ),
+        fragments.otp.services.otp.issueOtp({
+          externalId: "user-1",
+          type: "email_verification",
+          durationMinutes: 30,
+          requestId: "x".repeat(MAX_OTP_REQUEST_ID_LENGTH + 1),
+        }),
       ),
-      "OTP_ID_TOO_LONG",
+      "OTP_REQUEST_ID_TOO_LONG",
     );
 
     await fragments.otp.fragment.callServices(() =>
-      fragments.otp.services.otp.issueOtp(
-        "user-1",
-        "email_verification",
-        30,
-        undefined,
-        "shared-issuance-id",
-      ),
+      fragments.otp.services.otp.issueOtp({
+        externalId: "user-1",
+        type: "email_verification",
+        durationMinutes: 30,
+        requestId: "shared-issuance-id",
+      }),
     );
 
     await expectOtpIssueError(
       fragments.otp.fragment.callServices(() =>
-        fragments.otp.services.otp.issueOtp(
-          "user-2",
-          "email_verification",
-          30,
-          undefined,
-          "shared-issuance-id",
-        ),
+        fragments.otp.services.otp.issueOtp({
+          externalId: "user-2",
+          type: "email_verification",
+          durationMinutes: 30,
+          requestId: "shared-issuance-id",
+        }),
       ),
-      "OTP_ID_CONFLICT",
+      "OTP_REQUEST_ID_CONFLICT",
     );
 
     await expectOtpIssueError(
       fragments.otp.fragment.callServices(() =>
-        fragments.otp.services.otp.issueOtp(
-          "user-1",
-          "password_reset",
-          30,
-          undefined,
-          "shared-issuance-id",
-        ),
+        fragments.otp.services.otp.issueOtp({
+          externalId: "user-1",
+          type: "password_reset",
+          durationMinutes: 30,
+          requestId: "shared-issuance-id",
+        }),
       ),
-      "OTP_ID_CONFLICT",
+      "OTP_REQUEST_ID_CONFLICT",
     );
   });
 
-  it("confirms an OTP, persists confirmation payload, and resolves hook dates", async () => {
+  it("confirms an OTP, persists its payload, and timestamps hooks at creation", async () => {
     const payload = { event: "confirm-flow", traceId: "trace-1" };
     const confirmationPayload = {
       subjectUserId: "user_auth_1",
@@ -261,8 +334,10 @@ describe("otp fragment", async () => {
     });
     assert(confirmResponse.type === "json");
 
-    assert(confirmResponse.data.confirmed);
-    expectOtpTimestamp(confirmResponse.data.confirmedAt);
+    expect(confirmResponse.data).toEqual({
+      confirmed: true,
+      status: "confirmation_recorded",
+    });
 
     await drainDurableHooks(fragments.otp.fragment);
 
@@ -274,7 +349,6 @@ describe("otp fragment", async () => {
         payload,
         code: issueResponse.data.code,
         createdAt: expect.any(Date),
-        expiresAt: expect.any(Date),
       }),
       expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
     );
@@ -287,8 +361,6 @@ describe("otp fragment", async () => {
         payload,
         confirmationPayload,
         code: issueResponse.data.code,
-        createdAt: expect.any(Date),
-        expiresAt: expect.any(Date),
         confirmedAt: expect.any(Date),
       }),
       expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
@@ -324,6 +396,10 @@ describe("otp fragment", async () => {
       },
     });
     assert(firstConfirmResponse.type === "json");
+    expect(firstConfirmResponse.data).toEqual({
+      confirmed: true,
+      status: "confirmation_recorded",
+    });
 
     const repeatedConfirmResponse = await fragments.otp.callRoute("POST", "/otp/confirm", {
       body: {
@@ -334,9 +410,10 @@ describe("otp fragment", async () => {
       },
     });
     assert(repeatedConfirmResponse.type === "json");
-
-    assert(repeatedConfirmResponse.data.confirmed);
-    expect(repeatedConfirmResponse.data.confirmedAt).toBeTruthy();
+    expect(repeatedConfirmResponse.data).toEqual({
+      confirmed: true,
+      status: "already_confirmed",
+    });
 
     await drainDurableHooks(fragments.otp.fragment);
     expect(onOtpConfirmed).toHaveBeenCalledTimes(1);
@@ -414,7 +491,7 @@ describe("otp fragment", async () => {
     }
   });
 
-  it("returns OTP_EXPIRED for expired OTPs and resolves expiry hook dates", async () => {
+  it("returns OTP_EXPIRED for expired OTPs and timestamps the expiry hook at creation", async () => {
     const { test: expiringTest, fragments: expiringFragments } = await buildDatabaseFragmentsTest()
       .withTestAdapter({ type: "kysely-sqlite" })
       .withFragment(
@@ -458,8 +535,6 @@ describe("otp fragment", async () => {
           payload,
           type: "passwordless_login",
           code: issueResponse.data.code,
-          createdAt: expect.any(Date),
-          expiresAt: expect.any(Date),
           expiredAt: expect.any(Date),
         }),
         expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(String) }),
@@ -513,7 +588,6 @@ describe("otp fragment", async () => {
       });
       assert(confirmResponse.type === "json");
       assert(confirmResponse.data.confirmed);
-      expectOtpTimestamp(confirmResponse.data.confirmedAt);
     } finally {
       await lowercaseTest.cleanup();
     }
@@ -567,7 +641,6 @@ describe("otp fragment", async () => {
       });
       assert(exactMatchResponse.type === "json");
       assert(exactMatchResponse.data.confirmed);
-      expectOtpTimestamp(exactMatchResponse.data.confirmedAt);
     } finally {
       await mixedCaseTest.cleanup();
     }

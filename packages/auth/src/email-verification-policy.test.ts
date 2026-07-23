@@ -3,7 +3,7 @@ import { afterAll, assert, describe, expect, it } from "vitest";
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
-import { authFragmentDefinition } from ".";
+import { authFragmentDefinition } from "./index";
 import { organizationRoutesFactory } from "./organization/routes";
 import { authSchema } from "./schema";
 import { sessionRoutesFactory } from "./session/session";
@@ -20,8 +20,10 @@ describe("auth email verification policy", async () => {
       instantiate(authFragmentDefinition)
         .withConfig({
           emailVerification: {
-            required: true,
             isExempt: ({ user }) => user.role === "admin",
+          },
+          hooks: {
+            onUserEmailVerificationRequested() {},
           },
           beforeCreateUser: ({ email }) =>
             email === "admin@test.com" ? { role: "admin" } : undefined,
@@ -77,6 +79,48 @@ describe("auth email verification policy", async () => {
     });
     assert(signInAfterVerification.type === "json");
     expect(signInAfterVerification.data.auth.token).toEqual(expect.any(String));
+  });
+
+  it("issues a fresh credential for each successful call", async () => {
+    const passwordHash = await hashPassword("password123");
+    const [user] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.createUserUnvalidated("repeated-login@test.com", passwordHash),
+        ])
+        .execute();
+    });
+    const [verified] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [
+          fragment.services.verifyUserEmail({
+            userId: user.id,
+            expectedEmail: user.email,
+            verifiedAt: new Date("2026-07-22T12:00:00.000Z"),
+          }),
+        ])
+        .execute();
+    });
+    assert(verified.ok);
+
+    const [first] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [fragment.services.issueCredential(user.id)])
+        .execute();
+    });
+    const [repeated] = await test.inContext(function () {
+      return this.handlerTx()
+        .withServiceCalls(() => [fragment.services.issueCredential(user.id)])
+        .execute();
+    });
+
+    assert(first.ok);
+    assert(repeated.ok);
+    expect(repeated.credential).toMatchObject({
+      userId: first.credential.userId,
+      activeOrganizationId: first.credential.activeOrganizationId,
+    });
+    expect(repeated.credential.id).not.toBe(first.credential.id);
   });
 
   it("allows exempt admins to authenticate before verification", async () => {

@@ -853,7 +853,7 @@ const createScopedMcpRuntimeServices = (
     objects,
     adapters: {} as BackofficeRuntimeServices["adapters"],
     config: {
-      transactionalEmails: { enabled: false },
+      authEmailVerification: { enabled: false },
       bindings: {
         api: false,
         auth: false,

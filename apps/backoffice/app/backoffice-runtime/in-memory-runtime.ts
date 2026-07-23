@@ -42,14 +42,6 @@ export type CreateInMemoryBackofficeRuntimeOptions = {
 export const createInMemoryBackofficeRuntime = async (
   options: CreateInMemoryBackofficeRuntimeOptions = {},
 ): Promise<InMemoryBackofficeRuntime> => {
-  let runtimeNow = () => Date.now();
-  const adapters = createInMemoryBackofficeDatabaseAdapters({
-    adapterOptions: {
-      clock: {
-        now: () => new Date(runtimeNow()),
-      },
-    },
-  });
   let runtimeServices: BackofficeRuntimeServices;
   const getRuntimeServices = () => runtimeServices;
   const objectFactory = new InMemoryObjectFactory({
@@ -58,13 +50,20 @@ export const createInMemoryBackofficeRuntime = async (
     getAutomationFileSystem: options.getAutomationFileSystem,
     objectFactories: options.objectFactories,
   });
-  runtimeNow = () => objectFactory.now();
+  const config = objectFactory.createRuntimeConfig();
+  const adapters = createInMemoryBackofficeDatabaseAdapters({
+    adapterOptions: {
+      clock: {
+        now: () => new Date(objectFactory.now()),
+      },
+    },
+  });
   const objects = createBackofficeObjectRegistry(objectFactory);
 
   runtimeServices = {
     objects,
     adapters,
-    config: objectFactory.createRuntimeConfig(),
+    config,
     fragnoRuntime: {
       ...defaultFragnoRuntime,
       time: {

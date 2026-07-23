@@ -1,7 +1,7 @@
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import type { AuthPrincipal } from "../auth/types";
-import type { AuthEmailVerificationConfig } from "../email-verification-policy";
+import type { AuthEmailVerificationConfig } from "../email-verification";
 import type { AuthHooksMap } from "../hooks";
 import { authSchema } from "../schema";
 import {
