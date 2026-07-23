@@ -299,12 +299,18 @@ export const backofficeObjectScopePolicy = {
   SANDBOX: ["named"],
 } satisfies Record<BackofficeObjectBindingName, readonly BackofficeObjectScopeKind[]>;
 
+export const isBackofficeObjectScopeAllowed = (
+  binding: BackofficeObjectBindingName,
+  scopeKind: BackofficeObjectScopeKind,
+) => {
+  const allowedScopes: readonly BackofficeObjectScopeKind[] = backofficeObjectScopePolicy[binding];
+  return allowedScopes.includes(scopeKind);
+};
+
 export const assertBackofficeObjectAddressAllowed = (address: BackofficeObjectAddress) => {
-  const allowedScopes: readonly BackofficeObjectScopeKind[] =
-    backofficeObjectScopePolicy[address.binding];
-  if (!allowedScopes.includes(address.scope.kind)) {
+  if (!isBackofficeObjectScopeAllowed(address.binding, address.scope.kind)) {
     throw new Error(
-      `Backoffice object ${address.binding} cannot be instantiated with ${address.scope.kind} scope. Allowed scopes: ${allowedScopes.join(", ")}.`,
+      `Backoffice object ${address.binding} cannot be instantiated with ${address.scope.kind} scope. Allowed scopes: ${backofficeObjectScopePolicy[address.binding].join(", ")}.`,
     );
   }
 };
