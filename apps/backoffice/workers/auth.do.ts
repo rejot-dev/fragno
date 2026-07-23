@@ -286,6 +286,27 @@ export class InMemoryAuthObject implements AuthObject {
     return await fragment.callServices(() => fragment.services.verifyUserEmail(input));
   }
 
+  async issueVerifiedEmailCredential(input: {
+    userId: string;
+  }): Promise<
+    | { status: "pending" }
+    | { status: "issued"; credentialToken: string }
+    | { status: "rejected"; reason: "user_not_found" | "user_banned" }
+  > {
+    const fragment = this.#ensureFragment();
+    const result = await fragment.callServices(() =>
+      fragment.services.issueCredential(input.userId),
+    );
+
+    if (result.ok) {
+      return { status: "issued", credentialToken: result.credential.id };
+    }
+    if (result.code === "email_verification_required") {
+      return { status: "pending" };
+    }
+    return { status: "rejected", reason: result.code };
+  }
+
   async getAllOrganizations(): Promise<Organization[]> {
     const fragment = this.#ensureFragment();
     return await fragment.inContext(function () {
@@ -347,6 +368,10 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
 
   async verifyUserEmail(input: VerifyUserEmailInput): Promise<VerifyUserEmailResult> {
     return await this.#object.verifyUserEmail(input);
+  }
+
+  async issueVerifiedEmailCredential(input: { userId: string }) {
+    return await this.#object.issueVerifiedEmailCredential(input);
   }
 
   async getAllOrganizations(): Promise<Organization[]> {
