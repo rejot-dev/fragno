@@ -1,5 +1,5 @@
 import { defineFragment } from "@fragno-dev/core";
-import { withDatabase, type HookFn } from "@fragno-dev/db";
+import { withDatabase, type HookContext, type HookFn } from "@fragno-dev/db";
 
 import type { ApiFragmentConfig as BaseApiFragmentConfig } from "./api-types";
 import type { ApiRequestInput } from "./api-types";
@@ -60,25 +60,23 @@ export interface WebhookReceivedPayload {
   contentType: string | null;
 }
 
-export interface ApiHookContext {
-  idempotencyKey: string;
-  hookId: string;
-}
-
 export interface ApiFragmentHooksConfig {
   onConnectionChanged?: (
     payload: ApiConnectionChangedPayload,
-    context: ApiHookContext,
+    context: HookContext,
   ) => Promise<void> | void;
   onConnectionDeleted?: (
     payload: ApiConnectionDeletedPayload,
-    context: ApiHookContext,
+    context: HookContext,
   ) => Promise<void> | void;
   onConnectionAvailable?: (
     payload: ApiConnectionAvailablePayload,
-    context: ApiHookContext,
+    context: HookContext,
   ) => Promise<void> | void;
-  onWebhookReceived?: (payload: WebhookReceivedPayload) => Promise<void> | void;
+  onWebhookReceived?: (
+    payload: WebhookReceivedPayload,
+    context: HookContext,
+  ) => Promise<void> | void;
 }
 
 export type ApiFragmentConfig = BaseApiFragmentConfig & ApiFragmentHooksConfig;
@@ -110,34 +108,28 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
   .extend(withDatabase(apiSchema))
   .provideHooks<ApiHooksMap>(({ defineHook, config }) => ({
     onConnectionChanged: defineHook(async function (payload) {
-      await config.onConnectionChanged?.(payload, {
-        idempotencyKey: this.idempotencyKey,
-        hookId: this.hookId.toString(),
-      });
+      await config.onConnectionChanged?.(payload, this);
     }),
     onConnectionDeleted: defineHook(async function (payload) {
-      await config.onConnectionDeleted?.(payload, {
-        idempotencyKey: this.idempotencyKey,
-        hookId: this.hookId.toString(),
-      });
+      await config.onConnectionDeleted?.(payload, this);
     }),
     onConnectionAvailable: defineHook(async function (payload) {
-      await config.onConnectionAvailable?.(payload, {
-        idempotencyKey: this.idempotencyKey,
-        hookId: this.hookId.toString(),
-      });
+      await config.onConnectionAvailable?.(payload, this);
     }),
     onWebhookReceived: defineHook(async function (payload) {
-      await config.onWebhookReceived?.({
-        endpointId: payload.endpointId,
-        deliveryId: payload.deliveryId,
-        hookId: payload.hookId,
-        receivedAt: payload.receivedAt,
-        headers: payload.headers,
-        query: payload.query,
-        body: payload.body,
-        contentType: payload.contentType,
-      });
+      await config.onWebhookReceived?.(
+        {
+          endpointId: payload.endpointId,
+          deliveryId: payload.deliveryId,
+          hookId: payload.hookId,
+          receivedAt: payload.receivedAt,
+          headers: payload.headers,
+          query: payload.query,
+          body: payload.body,
+          contentType: payload.contentType,
+        },
+        this,
+      );
     }),
   }))
   .providesBaseService(({ defineService, config }) =>

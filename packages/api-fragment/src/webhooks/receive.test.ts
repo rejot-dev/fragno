@@ -61,11 +61,16 @@ describe("webhook receiving", () => {
   test("receives webhooks through a durable hook using a header delivery ID", async () => {
     const setup = await buildApiTest();
     await createNoneWebhookEndpoint(setup, "incoming");
+    const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
 
     const response = await setup.fragments.api.fragment.handler(
       webhookRequest("incoming", {
         method: "POST",
-        headers: { "content-type": "application/json", "x-event-id": "evt_1" },
+        headers: {
+          "content-type": "application/json",
+          "x-event-id": "evt_1",
+          traceparent,
+        },
         body: JSON.stringify({ ok: true }),
       }),
     );
@@ -88,6 +93,11 @@ describe("webhook receiving", () => {
         body: { ok: true },
         contentType: "application/json",
       }) satisfies Partial<WebhookReceivedPayload>,
+      expect.objectContaining({
+        idempotencyKey: expect.any(String),
+        hookId: expect.any(Object),
+        propagationContext: { traceparent },
+      }),
     );
 
     await setup.test.cleanup();
@@ -118,6 +128,7 @@ describe("webhook receiving", () => {
         deliveryId: "evt_query",
         query: { event_id: "evt_query" },
       }),
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(Object) }),
     );
 
     await setup.test.cleanup();
@@ -170,6 +181,7 @@ describe("webhook receiving", () => {
         headers: expect.objectContaining({ "x-signature": "[redacted]" }),
         body: { event: { id: "evt_json" }, type: "signed" },
       }),
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(Object) }),
     );
 
     await setup.test.cleanup();
@@ -323,6 +335,7 @@ describe("webhook receiving", () => {
         deliveryId: "evt_same",
         body: { eventId: "evt_same" },
       }),
+      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(Object) }),
     );
 
     await setup.test.cleanup();
