@@ -330,6 +330,40 @@ describe("db-fragment-instantiator", () => {
       assert(result);
     });
 
+    it("should seed explicit propagation context for callServices", async () => {
+      const mockAdapter = createMockAdapter();
+      const definition = defineFragment("test-db-fragment")
+        .extend(withDatabase(testSchema))
+        .providesBaseService(({ defineService }) =>
+          defineService({
+            readPropagationContext: function () {
+              return this.serviceTx(testSchema)
+                .mutate(() => mockAdapter.contextStorage.getPropagationContext())
+                .build();
+            },
+          }),
+        )
+        .build();
+      const fragment = instantiate(definition)
+        .withOptions({ databaseAdapter: mockAdapter })
+        .build();
+      const propagationContext = {
+        traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-1111111111111111-01",
+      };
+
+      const captured = await fragment.callServices(
+        () => fragment.services.readPropagationContext(),
+        { propagationContext },
+      );
+      const suppressed = await fragment.callServices(
+        () => fragment.services.readPropagationContext(),
+        { propagationContext: null },
+      );
+
+      expect(captured).toEqual(propagationContext);
+      expect(suppressed).toBeNull();
+    });
+
     it("should allow calling multiple services at once via callServices", async () => {
       const definition = defineFragment("test-db-fragment")
         .extend(withDatabase(testSchema))

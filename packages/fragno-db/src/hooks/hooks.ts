@@ -42,6 +42,15 @@ export interface HookContext {
    */
   maxAttempts: number;
   /**
+   * Propagation context captured when the hook was enqueued.
+   */
+  readonly propagationContext: DurableHookPropagationContext | null;
+  /**
+   * Capture the currently active attempt context for an outbound call.
+   * Falls back to `propagationContext` when instrumentation has no active context.
+   */
+  capturePropagationContext(): DurableHookPropagationContext | null;
+  /**
    * Timestamp of the last attempt (if any).
    */
   lastAttemptAt: Date | null;
@@ -92,6 +101,42 @@ export type HooksMap = Record<string, HookFn<any>>;
 export type HookPayload<T> = T extends HookFn<infer P> ? P : never;
 
 /**
+ * Opaque text-map carrier persisted with a durable hook.
+ * Integrations can use this to propagate tracing or other execution context.
+ */
+export type DurableHookPropagationContext = Readonly<Record<string, string>>;
+
+export type DurableHookEnqueueInfo = {
+  namespace: string;
+  hookName: string;
+  idempotencyKey: string;
+};
+
+export type DurableHookAttempt = {
+  namespace: string;
+  hookId: FragnoId;
+  hookName: string;
+  idempotencyKey: string;
+  attempt: number;
+  maxAttempts: number;
+  createdAt: Date;
+  propagationContext: DurableHookPropagationContext | null;
+};
+
+/**
+ * Optional integration boundary for durable-hook context propagation and attempt instrumentation.
+ */
+export interface DurableHooksInstrumentation {
+  /** Capture the current ambient context without producing side effects. */
+  captureContext(info: DurableHookEnqueueInfo): DurableHookPropagationContext | null;
+  /**
+   * Run one hook attempt with its persisted context restored.
+   * Implementations must call `execute` exactly once and preserve its result or error.
+   */
+  runAttempt<T>(attempt: DurableHookAttempt, execute: () => Promise<T>): Promise<T>;
+}
+
+/**
  * Options for triggering a hook.
  */
 export interface TriggerHookOptions {
@@ -110,6 +155,14 @@ export interface TriggerHookOptions {
    * scheduled for that time; if in the past, it runs immediately.
    */
   processAt?: Date | DbNow;
+  /**
+   * Propagation context for this hook event.
+   *
+   * - `undefined`: capture ambient context from the configured instrumentation.
+   * - `null`: suppress context propagation.
+   * - object: persist exactly this context.
+   */
+  propagationContext?: DurableHookPropagationContext | null;
 }
 
 /**
@@ -162,6 +215,10 @@ export interface HookProcessorConfig<THooks extends HooksMap = HooksMap> {
    */
   notifier?: HookNotifier;
   defaultRetryPolicy?: RetryPolicy;
+  /**
+   * Optional durable-hook context propagation and attempt instrumentation.
+   */
+  instrumentation?: DurableHooksInstrumentation;
   /**
    * Re-queue hooks that have been in `processing` for at least this many minutes.
    * Use `false` to disable stuck-processing recovery entirely.
@@ -218,6 +275,10 @@ export type DurableHooksProcessingOptions = {
    * Defaults: enabled=true, level="warn" (level="error" during test execution).
    */
   logging?: DurableHooksLoggerConfig;
+  /**
+   * Optional durable-hook context propagation and attempt instrumentation.
+   */
+  instrumentation?: DurableHooksInstrumentation;
 };
 
 export type HookHandlerTx = (
@@ -238,6 +299,115 @@ function resolveStuckProcessingTimeoutMinutes(
   return DEFAULT_STUCK_PROCESSING_TIMEOUT_MINUTES;
 }
 
+function captureInstrumentedPropagationContext(
+  info: DurableHookEnqueueInfo,
+  instrumentation: DurableHooksInstrumentation | undefined,
+  fallbackContext: DurableHookPropagationContext | null,
+): DurableHookPropagationContext | null {
+  if (!instrumentation) {
+    return fallbackContext;
+  }
+
+  return instrumentation.captureContext(info) ?? fallbackContext;
+}
+
+async function runInstrumentedHookAttempt<T>(
+  instrumentation: DurableHooksInstrumentation,
+  attempt: DurableHookAttempt,
+  execute: () => Promise<T>,
+): Promise<T> {
+  let executeCalls = 0;
+  let execution: Promise<T> | undefined;
+  let repeatedExecutionError: Error | undefined;
+  let instrumentationSettled = false;
+
+  const rejectExecution = (error: Error): Promise<T> => {
+    const rejection = Promise.reject<T>(error);
+    void rejection.catch(() => undefined);
+    return rejection;
+  };
+  const executeOnce = (): Promise<T> => {
+    if (instrumentationSettled) {
+      return rejectExecution(
+        new Error(
+          `Durable hooks instrumentation called execute() after runAttempt() settled for hook '${attempt.hookName}' attempt ${attempt.attempt}.`,
+        ),
+      );
+    }
+
+    executeCalls += 1;
+    if (executeCalls > 1) {
+      repeatedExecutionError ??= new Error(
+        `Durable hooks instrumentation called execute() more than once for hook '${attempt.hookName}' attempt ${attempt.attempt}.`,
+      );
+      return rejectExecution(repeatedExecutionError);
+    }
+
+    execution = Promise.resolve().then(execute);
+    return execution;
+  };
+
+  let instrumentationRejected = false;
+  let instrumentationError: unknown;
+  try {
+    await instrumentation.runAttempt(attempt, executeOnce);
+  } catch (error) {
+    instrumentationRejected = true;
+    instrumentationError = error;
+  } finally {
+    instrumentationSettled = true;
+  }
+
+  if (!execution) {
+    throw new Error(
+      `Durable hooks instrumentation did not call execute() for hook '${attempt.hookName}' attempt ${attempt.attempt}.`,
+      instrumentationRejected ? { cause: instrumentationError } : undefined,
+    );
+  }
+
+  const executionResult = await execution.then(
+    (value) => ({ status: "fulfilled" as const, value }),
+    (reason: unknown) => ({ status: "rejected" as const, reason }),
+  );
+
+  if (executeCalls !== 1) {
+    throw (
+      repeatedExecutionError ??
+      new Error(
+        `Durable hooks instrumentation violated the execute() contract for hook '${attempt.hookName}' attempt ${attempt.attempt}.`,
+      )
+    );
+  }
+  if (executionResult.status === "rejected") {
+    throw executionResult.reason;
+  }
+  if (instrumentationRejected) {
+    throw instrumentationError;
+  }
+  return executionResult.value;
+}
+
+function captureDurableHookPropagationContext(
+  hook: TriggeredHook,
+  idempotencyKey: string,
+  instrumentation: DurableHooksInstrumentation | undefined,
+  ambientContext: DurableHookPropagationContext | null,
+): DurableHookPropagationContext | null {
+  if (hook.options?.propagationContext !== undefined) {
+    return hook.options.propagationContext;
+  }
+
+  return captureInstrumentedPropagationContext(
+    {
+      namespace: hook.namespace,
+      hookName: hook.hookName,
+      idempotencyKey,
+    },
+    instrumentation,
+    ambientContext,
+  );
+}
+
 /**
  * Add hook events as mutation operations to the UOW.
  * This should be called before executeMutations() so hook records are created
@@ -251,6 +421,8 @@ export function prepareHookMutations(
   uow: Pick<IUnitOfWork, "getTriggeredHooks" | "forSchema" | "idempotencyKey">,
   _internalFragment: InternalFragmentInstance,
   defaultRetryPolicy?: RetryPolicy,
+  instrumentation?: DurableHooksInstrumentation,
+  ambientContext: DurableHookPropagationContext | null = null,
 ): void {
   const retryPolicy = defaultRetryPolicy ?? new ExponentialBackoffRetryPolicy({ maxRetries: 5 });
 
@@ -295,6 +467,12 @@ export function prepareHookMutations(
     const processAt: Date | DbNow | null =
       rawProcessAt === null ? null : isDbNow(rawProcessAt) ? rawProcessAt : new Date(rawProcessAt);
     const nextRetryAt = processAt ?? null;
+    const propagationContext = captureDurableHookPropagationContext(
+      hook,
+      uow.idempotencyKey,
+      instrumentation,
+      ambientContext,
+    );
     const hookValues = {
       ...(hook.options?.id !== undefined ? { id: hook.options.id } : {}),
       namespace: hook.namespace,
@@ -307,6 +485,7 @@ export function prepareHookMutations(
       nextRetryAt,
       error: null,
       nonce: uow.idempotencyKey,
+      propagationContext,
     };
 
     internalUow.create("fragno_hooks", hookValues);
@@ -340,6 +519,7 @@ export async function processHooks<THooks extends HooksMap>(
     attempts: number;
     maxAttempts: number;
     idempotencyKey: string;
+    propagationContext: DurableHookPropagationContext | null;
     lastAttemptAt: Date | null;
     nextRetryAt: Date | null;
     createdAt: Date;
@@ -416,77 +596,106 @@ export async function processHooks<THooks extends HooksMap>(
   const processedEvents = await Promise.allSettled(
     claimedEvents.map(async (event) => {
       const hookFn = hooks[event.hookName];
-      if (!hookFn) {
-        DurableHooksLogger.error("Hook missing", {
-          namespace,
-          fields: {
-            eventId: event.id,
-            hookName: event.hookName,
-            attempts: event.attempts,
-            maxAttempts: event.maxAttempts,
-            createdAt: event.createdAt.toISOString(),
-          },
-        });
-        return {
-          eventId: event.id,
-          status: "failed" as const,
-          error: `Hook '${event.hookName}' not found in hooks map`,
-          attempts: event.attempts,
-          maxAttempts: event.maxAttempts,
-        };
-      }
+      const missingHookError = `Hook '${event.hookName}' not found in hooks map`;
 
       try {
-        const startedAt = Date.now();
-        DurableHooksLogger.debug("Hook start", {
+        const attempt: DurableHookAttempt = {
           namespace,
-          fields: {
-            eventId: event.id,
+          hookId: event.id,
+          hookName: event.hookName,
+          idempotencyKey: event.idempotencyKey,
+          attempt: event.attempts + 1,
+          maxAttempts: event.maxAttempts,
+          createdAt: event.createdAt,
+          propagationContext: event.propagationContext,
+        };
+        const executeHook = async () => {
+          if (!hookFn) {
+            throw new Error(missingHookError);
+          }
+
+          const startedAt = Date.now();
+          DurableHooksLogger.debug("Hook start", {
+            namespace,
+            fields: {
+              eventId: event.id,
+              hookName: event.hookName,
+              status: event.status,
+              attempts: event.attempts,
+              maxAttempts: event.maxAttempts,
+              createdAt: event.createdAt.toISOString(),
+              nextRetryAt: event.nextRetryAt ? event.nextRetryAt.toISOString() : null,
+              lastAttemptAt: event.lastAttemptAt ? event.lastAttemptAt.toISOString() : null,
+            },
+          });
+          const hookContext: HookContext = {
+            idempotencyKey: event.idempotencyKey,
+            hookId: event.id,
             hookName: event.hookName,
             status: event.status,
             attempts: event.attempts,
             maxAttempts: event.maxAttempts,
-            createdAt: event.createdAt.toISOString(),
-            nextRetryAt: event.nextRetryAt ? event.nextRetryAt.toISOString() : null,
-            lastAttemptAt: event.lastAttemptAt ? event.lastAttemptAt.toISOString() : null,
-          },
-        });
-        const hookContext: HookContext = {
-          idempotencyKey: event.idempotencyKey,
-          hookId: event.id,
-          hookName: event.hookName,
-          status: event.status,
-          attempts: event.attempts,
-          maxAttempts: event.maxAttempts,
-          lastAttemptAt: event.lastAttemptAt,
-          nextRetryAt: event.nextRetryAt,
-          createdAt: event.createdAt,
-          handlerTx: config.handlerTx,
+            propagationContext: event.propagationContext,
+            capturePropagationContext: () =>
+              captureInstrumentedPropagationContext(
+                {
+                  namespace,
+                  hookName: event.hookName,
+                  idempotencyKey: event.idempotencyKey,
+                },
+                config.instrumentation,
+                event.propagationContext,
+              ),
+            lastAttemptAt: event.lastAttemptAt,
+            nextRetryAt: event.nextRetryAt,
+            createdAt: event.createdAt,
+            handlerTx: config.handlerTx,
+          };
+          await hookFn.call(hookContext, event.payload);
+          DurableHooksLogger.debug("Hook completed", {
+            namespace,
+            fields: {
+              eventId: event.id,
+              hookName: event.hookName,
+              ms: Date.now() - startedAt,
+            },
+          });
         };
-        await hookFn.call(hookContext, event.payload);
-        DurableHooksLogger.debug("Hook completed", {
-          namespace,
-          fields: {
-            eventId: event.id,
-            hookName: event.hookName,
-            ms: Date.now() - startedAt,
-          },
-        });
+
+        if (config.instrumentation) {
+          await runInstrumentedHookAttempt(config.instrumentation, attempt, executeHook);
+        } else {
+          await executeHook();
+        }
+
         return {
           eventId: event.id,
           status: "completed" as const,
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        DurableHooksLogger.error("Hook failed", {
-          namespace,
-          fields: {
-            eventId: event.id.toJSON(),
-            hookName: event.hookName,
-            error: errorMessage,
-            idempotencyKey: event.idempotencyKey,
-          },
-        });
+        if (!hookFn) {
+          DurableHooksLogger.error("Hook missing", {
+            namespace,
+            fields: {
+              eventId: event.id,
+              hookName: event.hookName,
+              attempts: event.attempts,
+              maxAttempts: event.maxAttempts,
+              createdAt: event.createdAt.toISOString(),
+            },
+          });
+        } else {
+          DurableHooksLogger.error("Hook failed", {
+            namespace,
+            fields: {
+              eventId: event.id.toJSON(),
+              hookName: event.hookName,
+              error: errorMessage,
+              idempotencyKey: event.idempotencyKey,
+            },
+          });
+        }
         return {
           eventId: event.id,
           status: "failed" as const,

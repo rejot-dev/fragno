@@ -8,7 +8,7 @@ import { RequestContextStorage } from "@fragno-dev/core/internal/request-context
 import SQLite from "better-sqlite3";
 import { SqliteDialect } from "kysely";
 
-import { defineFragment, instantiate } from "@fragno-dev/core";
+import { defineFragment, defineRoutes, instantiate } from "@fragno-dev/core";
 
 import type { DatabaseAdapter, DatabaseContextStorage } from "./adapters/adapters";
 import { BetterSQLite3DriverConfig } from "./adapters/generic-sql/driver-config";
@@ -20,7 +20,11 @@ import {
 } from "./db-fragment-definition-builder";
 import { internalSchema } from "./fragments/internal-fragment";
 import { getDurableHooksRuntimeByToken } from "./hooks/durable-hooks-runtime";
-import type { HookFn } from "./hooks/hooks";
+import type {
+  DurableHookPropagationContext,
+  DurableHooksInstrumentation,
+  HookFn,
+} from "./hooks/hooks";
 import * as hooks from "./hooks/hooks";
 import { getInternalFragment, getRegistryForAdapterSync } from "./internal/adapter-registry";
 import { suffixNamingStrategy } from "./naming/sql-naming";
@@ -1143,6 +1147,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
           [requestRouteSymbol]: { method: "POST", path: "/users" },
           [requestWaitUntilSymbol]: waitUntilSpy,
         }),
+        getPropagationContext: () => null,
       } as unknown as RequestContextStorage<DatabaseContextStorage>;
 
       const contexts = definition.createThisContext!({
@@ -1266,8 +1271,91 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
     });
   });
 
+  describe("durable hook propagation", () => {
+    it("should persist W3C request context on hooks triggered by a route", async () => {
+      const sqlite = new SQLite(":memory:");
+      const adapter = new SqlAdapter({
+        dialect: new SqliteDialect({ database: sqlite }),
+        driverConfig: new BetterSQLite3DriverConfig(),
+      });
+      type TraceHooks = {
+        onTrace: (payload: Record<string, never>) => void | Promise<void>;
+      };
+      let executeEnqueue: (() => Promise<unknown>) | undefined;
+      const definition = defineFragment("request-hook-propagation")
+        .extend(withDatabase(testSchema))
+        .provideHooks<TraceHooks>(({ defineHook }) => ({
+          onTrace: defineHook(async function () {
+            // no-op
+          }),
+        }))
+        .build();
+      const routes = defineRoutes(definition).create(({ defineRoute }) => [
+        defineRoute({
+          method: "POST",
+          path: "/enqueue",
+          handler: async function (_input, { json }) {
+            const transaction = this.handlerTx().mutate(({ forSchema }) => {
+              forSchema(testSchema).triggerHook("onTrace", {});
+            });
+            executeEnqueue = () => transaction.execute();
+            return json({ queued: true });
+          },
+        }),
+      ]);
+      const namespace = sanitizeNamespace(testSchema.name);
+      const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+
+      try {
+        await adapter.prepareMigrations(internalSchema, null).executeWithDriver(adapter.driver, 0);
+        await adapter.prepareMigrations(testSchema, namespace).executeWithDriver(adapter.driver, 0);
+
+        const fragment = instantiate(definition)
+          .withRoutes([routes])
+          .withOptions({
+            mountRoute: "/api/request-hook-propagation",
+            databaseAdapter: adapter,
+            durableHooks: { autoSchedule: false },
+          })
+          .build();
+        const response = await fragment.handler(
+          new Request("http://localhost/api/request-hook-propagation/enqueue", {
+            method: "POST",
+            headers: {
+              traceparent,
+              tracestate: "vendor=value",
+            },
+          }),
+        );
+
+        assert(response.status === 200);
+        assert(executeEnqueue);
+        await executeEnqueue();
+
+        const internalFragment = getInternalFragment(adapter);
+        const queuedHooks = await internalFragment.inContext(async function () {
+          return await this.handlerTx()
+            .withServiceCalls(
+              () => [internalFragment.services.hookService.getHooksByNamespace(namespace)] as const,
+            )
+            .transform(({ serviceResult: [result] }) => result)
+            .execute();
+        });
+
+        const hook = queuedHooks.find((event) => event.hookName === "onTrace");
+        expect(hook?.propagationContext).toEqual({
+          traceparent,
+          tracestate: "vendor=value",
+        });
+      } finally {
+        await adapter.close();
+        sqlite.close();
+      }
+    });
+  });
+
   describe("durable hooks cross-namespace scheduling", () => {
-    it("should schedule hooks triggered in another namespace when mutation runs inside a hook", async () => {
+    it("should propagate an active hook attempt through callServices to another fragment", async () => {
       const sqlite = new SQLite(":memory:");
       const adapter = new SqlAdapter({
         dialect: new SqliteDialect({ database: sqlite }),
@@ -1292,33 +1380,37 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         onBeta: (payload: { value: string }) => void | Promise<void>;
       };
 
-      const hooksB: HooksB = {
-        onBeta: () => Promise.resolve(),
-      };
-
       const namespaceA = sanitizeNamespace(schemaA.name);
       const namespaceB = sanitizeNamespace(schemaB.name);
+      let callFragmentB:
+        | ((propagationContext: DurableHookPropagationContext | null) => Promise<unknown>)
+        | undefined;
 
       const fragmentADef = defineFragment("frag-hooks-a")
         .extend(withDatabase(schemaA))
         .provideHooks<HooksA>(({ defineHook }) => ({
           onAlpha: defineHook(async function () {
-            await this.handlerTx({
-              onBeforeMutate: (uow) => {
-                uow.registerSchema(schemaB, namespaceB);
-              },
-            })
-              .mutate(({ forSchema }) => {
-                const other = forSchema(schemaB, hooksB);
-                other.triggerHook("onBeta", { value: "beta" });
-              })
-              .execute();
+            if (!callFragmentB) {
+              throw new Error("Fragment B call is not configured");
+            }
+            await callFragmentB(this.capturePropagationContext());
           }),
         }))
         .build();
 
       const fragmentBDef = defineFragment("frag-hooks-b")
         .extend(withDatabase(schemaB))
+        .providesBaseService(({ defineService }) =>
+          defineService({
+            queueBeta: function () {
+              return this.serviceTx(schemaB)
+                .mutate(({ uow }) => {
+                  uow.triggerHook("onBeta", { value: "beta" });
+                })
+                .build();
+            },
+          }),
+        )
         .provideHooks<HooksB>(({ defineHook }) => ({
           onBeta: defineHook(async function () {
             // no-op
@@ -1336,14 +1428,27 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         const migrationsB = adapter.prepareMigrations(schemaB, namespaceB);
         await migrationsB.executeWithDriver(adapter.driver, 0);
 
+        const attemptPropagationContext = {
+          traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-1111111111111111-01",
+          tracestate: "vendor=value",
+        };
+        const attemptContextStorage = new RequestContextStorage<typeof attemptPropagationContext>();
+        const instrumentation: DurableHooksInstrumentation = {
+          captureContext: () =>
+            attemptContextStorage.hasStore() ? attemptContextStorage.getStore() : null,
+          runAttempt: (_attempt, execute) =>
+            attemptContextStorage.run(attemptPropagationContext, execute),
+        };
         const fragmentA = instantiate(fragmentADef)
           .withConfig({})
-          .withOptions({ databaseAdapter: adapter })
+          .withOptions({ databaseAdapter: adapter, durableHooks: { instrumentation } })
           .build();
         const fragmentB = instantiate(fragmentBDef)
           .withConfig({})
           .withOptions({ databaseAdapter: adapter })
           .build();
+        callFragmentB = (propagationContext) =>
+          fragmentB.callServices(() => fragmentB.services.queueBeta(), { propagationContext });
 
         const tokenA = (fragmentA.$internal as { durableHooksToken?: object }).durableHooksToken;
         const tokenB = (fragmentB.$internal as { durableHooksToken?: object }).durableHooksToken;
@@ -1364,6 +1469,10 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         };
 
         const internalFragment = getInternalFragment(adapter);
+        const propagationContext = {
+          traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+          tracestate: "vendor=value",
+        };
         await internalFragment.inContext(async function () {
           await this.handlerTx()
             .mutate(({ forSchema }) => {
@@ -1379,6 +1488,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
                 nextRetryAt: null,
                 error: null,
                 nonce: "test-nonce",
+                propagationContext,
               });
             })
             .execute();
@@ -1389,6 +1499,18 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         await runnerA.processDue();
 
         expect(notifySpy).toHaveBeenCalled();
+
+        const queuedHooks = await internalFragment.inContext(async function () {
+          return await this.handlerTx()
+            .withServiceCalls(
+              () =>
+                [internalFragment.services.hookService.getHooksByNamespace(namespaceB)] as const,
+            )
+            .transform(({ serviceResult: [result] }) => result)
+            .execute();
+        });
+        const betaHook = queuedHooks.find((hook) => hook.hookName === "onBeta");
+        expect(betaHook?.propagationContext).toEqual(attemptPropagationContext);
       } finally {
         await adapter.close();
         sqlite.close();
