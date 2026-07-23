@@ -1,15 +1,33 @@
 import { Download, File as FileIcon, Folder, HardDrive, RefreshCcw } from "lucide-react";
-import { useMemo, type ReactNode } from "react";
+import { Suspense, use, useMemo, type ReactNode } from "react";
 import { Link, useLoaderData, useOutletContext, useRevalidator } from "react-router";
 
+import { eq, useLiveQuery } from "@tanstack/react-db";
+
 import { formatBytes } from "@/components/backoffice";
+import { ClientOnly } from "@/components/client-only";
 import type { FilesExplorerTreeNode } from "@/files";
+import { toUploadFileRecord, type UploadFileRecord } from "@/fragno/upload/file-record";
+import {
+  describeUploadCollectionSource,
+  getUploadBrowserDatabase,
+  type UploadCollectionSource,
+} from "@/fragno/upload/tanstack/browser-database";
 
 import type { Route } from "./+types/explorer";
 import { resolveFilesContentRenderer } from "./content-renderers";
 import { handleFilesExplorerAction, loadFilesExplorerData } from "./data";
-import type { FilesLayoutContext } from "./shared";
-import { formatFileRootKind, formatFileRootMutability, formatFileRootPersistence } from "./shared";
+import {
+  formatFileRootKind,
+  formatFileRootMutability,
+  formatFileRootPersistence,
+} from "./formatting";
+import type { FilesLayoutContext } from "./layout-context";
+import {
+  buildLocalUploadExplorer,
+  getLocalUploadDetail,
+  isUploadExplorerMount,
+} from "./upload-local-tree";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.orgId) {
@@ -32,10 +50,134 @@ export function meta({ loaderData }: Route.MetaArgs) {
   return [{ title: selectedTitle ? `Files · ${selectedTitle}` : "Files Explorer" }];
 }
 
+const FILES_EXPLORER_LOADING = <FilesExplorerLoading />;
+
 export default function BackofficeFilesExplorer() {
-  const { tree, selectedPath, selectedDetail, loadError } = useLoaderData<typeof loader>();
-  const { orgId } = useOutletContext<FilesLayoutContext>();
+  const layoutContext = useOutletContext<FilesLayoutContext>();
+  const uploadMounts = layoutContext.mounts.filter(isUploadExplorerMount);
+
+  if (uploadMounts.length === 0) {
+    return <FilesExplorerView uploadFiles={[]} uploadFilesReady uploadFilesError={null} />;
+  }
+
+  if (!layoutContext.uploadCollectionSource) {
+    return (
+      <FilesExplorerView
+        uploadFiles={[]}
+        uploadFilesReady
+        uploadFilesError={
+          layoutContext.uploadCollectionError ?? "Local Upload file metadata is unavailable."
+        }
+      />
+    );
+  }
+
+  return (
+    <ClientOnly fallback={FILES_EXPLORER_LOADING}>
+      <Suspense fallback={FILES_EXPLORER_LOADING}>
+        <SynchronizedFilesExplorer
+          key={describeUploadCollectionSource(layoutContext.uploadCollectionSource).resourceKey}
+          source={layoutContext.uploadCollectionSource}
+        />
+      </Suspense>
+    </ClientOnly>
+  );
+}
+
+function FilesExplorerLoading() {
+  return (
+    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
+      Loading local file metadata…
+      <noscript>
+        <span className="mt-2 block text-red-700 dark:text-red-200">
+          JavaScript is required to open synchronized files.
+        </span>
+      </noscript>
+    </div>
+  );
+}
+
+function SynchronizedFilesExplorer({ source }: { source: UploadCollectionSource }) {
+  const database = use(getUploadBrowserDatabase());
+  const collections = database.collectionsFor(source);
+  const filesQuery = useLiveQuery(
+    (query) =>
+      query.from({ file: collections.files }).where(({ file }) => eq(file.status, "ready")),
+    [collections.files],
+  );
+  const files = useMemo<UploadFileRecord[]>(
+    () => (filesQuery.data ?? []).map(toUploadFileRecord),
+    [filesQuery.data],
+  );
+  const sourceError = filesQuery.isError ? collections.files.utils.getLastError() : undefined;
+  const filesError =
+    sourceError instanceof Error
+      ? sourceError.message
+      : filesQuery.isError
+        ? "Upload file metadata synchronization failed."
+        : null;
+
+  if (!filesQuery.isReady && files.length === 0) {
+    return <FilesExplorerLoading />;
+  }
+
+  return (
+    <FilesExplorerView
+      uploadFiles={files}
+      uploadFilesReady={filesQuery.isReady}
+      uploadFilesError={filesError}
+    />
+  );
+}
+
+function FilesExplorerView({
+  uploadFiles,
+  uploadFilesReady,
+  uploadFilesError,
+}: {
+  uploadFiles: UploadFileRecord[];
+  uploadFilesReady: boolean;
+  uploadFilesError: string | null;
+}) {
+  const {
+    tree: serverTree,
+    selectedPath,
+    selectedDetail: serverSelectedDetail,
+    selectedUploadTextContent,
+    loadError: serverLoadError,
+  } = useLoaderData<typeof loader>();
+  const { orgId, mounts } = useOutletContext<FilesLayoutContext>();
   const revalidator = useRevalidator();
+  const uploadMounts = useMemo(() => mounts.filter(isUploadExplorerMount), [mounts]);
+  const localUploadExplorer = useMemo(
+    () => buildLocalUploadExplorer(uploadMounts, uploadFiles, orgId),
+    [orgId, uploadFiles, uploadMounts],
+  );
+  const tree = useMemo(() => {
+    const rootByMountPoint = new Map(
+      [...serverTree, ...localUploadExplorer.roots].map((root) => [root.mountPoint, root]),
+    );
+    return mounts.flatMap((mount) => {
+      const root = rootByMountPoint.get(mount.mountPoint);
+      return root ? [root] : [];
+    });
+  }, [localUploadExplorer.roots, mounts, serverTree]);
+  const localSelectedDetail = selectedPath
+    ? getLocalUploadDetail(localUploadExplorer, selectedPath, selectedUploadTextContent)
+    : null;
+  const selectedDetail = serverSelectedDetail ?? localSelectedDetail;
+  const selectedUploadMount = selectedPath
+    ? uploadMounts.find(
+        (mount) =>
+          selectedPath === mount.mountPoint || selectedPath.startsWith(`${mount.mountPoint}/`),
+      )
+    : undefined;
+  const loadError =
+    serverLoadError ??
+    uploadFilesError ??
+    (uploadFilesReady && selectedPath && selectedUploadMount && !selectedDetail
+      ? `Path '${selectedPath}' could not be found.`
+      : null);
 
   const stats = useMemo(
     () => ({
@@ -72,7 +214,8 @@ export default function BackofficeFilesExplorer() {
                   File tree
                 </p>
                 <p className="mt-2 text-sm text-[var(--bo-muted)]">
-                  Browse the combined filesystem directly. Select any node to inspect it.
+                  Browse the combined filesystem directly. Upload-backed metadata updates
+                  automatically.
                 </p>
               </div>
               <button
@@ -81,7 +224,7 @@ export default function BackofficeFilesExplorer() {
                 className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
               >
                 <RefreshCcw className="h-3.5 w-3.5" />
-                Refresh
+                Refresh other mounts
               </button>
             </div>
 

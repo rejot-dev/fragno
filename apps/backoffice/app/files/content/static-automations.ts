@@ -1,10 +1,10 @@
-import type { FileSystemArtifact } from "../types";
+import type { FileContent } from "../interface";
 
 export const STATIC_AUTOMATION_SCRIPT_PATHS = {
   projectFilesConfigure: "automations/project-files-configure.workflow.js",
 } as const;
 
-export const STATIC_AUTOMATION_CONTENT: Record<string, FileSystemArtifact> = {
+export const STATIC_AUTOMATION_CONTENT: Record<string, FileContent> = {
   "automations/project-files-configure.workflow.js": `defineWorkflow(
   { name: "project-files-configure" },
   async (event, step) => {

@@ -1,3 +1,4 @@
+import { compareFileEntries } from "./entry-order";
 import {
   type FilesExplorerNode,
   type FilesExplorerTreeNode,
@@ -9,11 +10,10 @@ import type { MasterFileSystem } from "./master-file-system";
 import { ensureFolderPath, normalizeAbsolutePath, stripTrailingSlash } from "./normalize-path";
 import type { FileEntryDescriptor, ResolvedFileMount } from "./types";
 
-const NODE_SORTER = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 const TEXT_ENCODER = new TextEncoder();
 const UNKNOWN_MTIME = new Date(0);
 
-export type ResolvedFilesTarget = {
+type ResolvedFilesTarget = {
   master: MasterFileSystem;
   mount: ResolvedFileMount;
   normalizedPath: string;
@@ -127,7 +127,7 @@ const describeDirectoryEntries = async (
     const described = await Promise.all(
       entries.map((entry) => describeDirentEntry(master, mount, path, entry)),
     );
-    return described.filter(isDefined).sort(compareEntries);
+    return described.filter(isDefined).sort(compareFileEntries);
   } catch {
     return [];
   }
@@ -288,16 +288,6 @@ const readTextContent = async (target: ResolvedFilesTarget): Promise<string | nu
   } catch {
     return null;
   }
-};
-
-const compareEntries = (left: FileEntryDescriptor, right: FileEntryDescriptor): number => {
-  const leftOrder = left.kind === "folder" ? 0 : 1;
-  const rightOrder = right.kind === "folder" ? 0 : 1;
-  if (leftOrder !== rightOrder) {
-    return leftOrder - rightOrder;
-  }
-
-  return NODE_SORTER.compare(left.title ?? left.path, right.title ?? right.path);
 };
 
 const countChildren = (

@@ -2,10 +2,10 @@ import { describe, expect, test } from "vitest";
 
 import { backofficeCapabilities } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 
-import type { FileSystemArtifact } from "../types";
+import type { FileContent } from "../interface";
 import { STATIC_FILE_CONTENT } from "./static";
 
-const STATIC_CONTENT = STATIC_FILE_CONTENT as Record<string, FileSystemArtifact>;
+const STATIC_CONTENT = STATIC_FILE_CONTENT as Record<string, FileContent>;
 
 const skillNamePattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 

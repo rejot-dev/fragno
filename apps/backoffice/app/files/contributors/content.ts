@@ -1,10 +1,11 @@
+import { sortFileEntryTree } from "../entry-order";
 import {
   createInvalidArgumentFileSystemError,
   createPathNotFoundFileSystemError,
   createReadOnlyFileSystemError,
   createUnsupportedOperationFileSystemError,
 } from "../fs-errors";
-import type { CpOptions, DirentEntry, FsStat, IFileSystem } from "../interface";
+import type { CpOptions, DirentEntry, FileContent, FsStat, IFileSystem } from "../interface";
 import {
   ensureFolderPath,
   normalizeMountPoint,
@@ -12,25 +13,24 @@ import {
   resolvePath,
   stripTrailingSlash,
 } from "../normalize-path";
-import type { FileEntryDescriptor, FileSystemArtifact } from "../types";
+import type { FileEntryDescriptor } from "../types";
 
 const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
-const ENTRY_SORTER = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 const UNKNOWN_MTIME = new Date(0);
 
 type LazyContentArtifacts = {
   pathPrefix: string;
-  load(): Promise<Record<string, FileSystemArtifact>> | Record<string, FileSystemArtifact>;
+  load(): Promise<Record<string, FileContent>> | Record<string, FileContent>;
 };
 
-export type ReadOnlyContentFileSystemOptions = {
+type ReadOnlyContentFileSystemOptions = {
   lazyArtifacts?: readonly LazyContentArtifacts[];
 };
 
 export const createReadOnlyContentFileSystem = (
   mountPoint: string,
-  artifacts: Record<string, FileSystemArtifact>,
+  artifacts: Record<string, FileContent>,
   options: ReadOnlyContentFileSystemOptions = {},
 ): IFileSystem => ({
   async readFile(path) {
@@ -216,7 +216,7 @@ const lazyArtifactsAffectDirectory = (
 const loadMatchingLazyArtifacts = async (
   lazyArtifacts: readonly NormalizedLazyContentArtifacts[],
   matches: (entry: NormalizedLazyContentArtifacts) => boolean,
-): Promise<Record<string, FileSystemArtifact>> => {
+): Promise<Record<string, FileContent>> => {
   const entries = await Promise.all(
     lazyArtifacts.filter(matches).map(async (entry) => Object.entries(await entry.load())),
   );
@@ -224,9 +224,9 @@ const loadMatchingLazyArtifacts = async (
 };
 
 const withLazyRootPlaceholders = (
-  artifacts: Record<string, FileSystemArtifact>,
+  artifacts: Record<string, FileContent>,
   lazyArtifacts: readonly NormalizedLazyContentArtifacts[],
-): Record<string, FileSystemArtifact> => {
+): Record<string, FileContent> => {
   const placeholders = Object.fromEntries(
     lazyArtifacts.map((entry) => [`${entry.pathPrefix}/.lazy-artifacts-placeholder`, ""]),
   );
@@ -235,10 +235,10 @@ const withLazyRootPlaceholders = (
 
 const resolveContentArtifactsForPath = async (
   mountPoint: string,
-  artifacts: Record<string, FileSystemArtifact>,
+  artifacts: Record<string, FileContent>,
   rawLazyArtifacts: readonly LazyContentArtifacts[],
   path: string,
-): Promise<Record<string, FileSystemArtifact>> => {
+): Promise<Record<string, FileContent>> => {
   const lazyArtifacts = normalizeLazyContentArtifacts(rawLazyArtifacts);
   const relativePath = relativeLookupPath(mountPoint, path);
   if (relativePath === null) {
@@ -257,10 +257,10 @@ const resolveContentArtifactsForPath = async (
 
 const resolveContentArtifactsForDirectory = async (
   mountPoint: string,
-  artifacts: Record<string, FileSystemArtifact>,
+  artifacts: Record<string, FileContent>,
   rawLazyArtifacts: readonly LazyContentArtifacts[],
   path: string,
-): Promise<Record<string, FileSystemArtifact>> => {
+): Promise<Record<string, FileContent>> => {
   const lazyArtifacts = normalizeLazyContentArtifacts(rawLazyArtifacts);
   const relativePath = relativeLookupPath(mountPoint, path);
   if (relativePath === null) {
@@ -279,7 +279,7 @@ const resolveContentArtifactsForDirectory = async (
 
 const buildContentTree = (
   mountPoint: string,
-  artifacts: Record<string, FileSystemArtifact>,
+  artifacts: Record<string, FileContent>,
 ): FileEntryDescriptor[] => {
   const normalizedMountPoint = normalizeMountPoint(mountPoint);
   const folderMap = new Map<string, MutableFolderEntry>();
@@ -339,12 +339,12 @@ const buildContentTree = (
     ensureFolder(parentPath).children.push(descriptor);
   }
 
-  return roots.slice().sort(compareEntries).map(sortEntryChildren);
+  return sortFileEntryTree(roots);
 };
 
 const listContentChildren = (
   mountPoint: string,
-  artifacts: Record<string, FileSystemArtifact>,
+  artifacts: Record<string, FileContent>,
   path: string,
 ): FileEntryDescriptor[] => {
   const tree = buildContentTree(mountPoint, artifacts);
@@ -364,7 +364,7 @@ const listContentChildren = (
 
 const listContentChildNames = (
   mountPoint: string,
-  artifacts: Record<string, FileSystemArtifact>,
+  artifacts: Record<string, FileContent>,
   path: string,
 ): string[] => {
   return listContentChildren(mountPoint, artifacts, path).map((entry) =>
@@ -374,7 +374,7 @@ const listContentChildNames = (
 
 const listContentDirents = (
   mountPoint: string,
-  artifacts: Record<string, FileSystemArtifact>,
+  artifacts: Record<string, FileContent>,
   path: string,
 ): DirentEntry[] => {
   return listContentChildren(mountPoint, artifacts, path).map((entry) => ({
@@ -387,7 +387,7 @@ const listContentDirents = (
 
 const findContentEntry = (
   mountPoint: string,
-  artifacts: Record<string, FileSystemArtifact>,
+  artifacts: Record<string, FileContent>,
   path: string,
 ): FileEntryDescriptor | null => {
   const tree = buildContentTree(mountPoint, artifacts);
@@ -396,7 +396,7 @@ const findContentEntry = (
 
 const statContentEntry = (
   mountPoint: string,
-  artifacts: Record<string, FileSystemArtifact>,
+  artifacts: Record<string, FileContent>,
   path: string,
   readOnly: boolean,
 ): FsStat | null => {
@@ -433,9 +433,9 @@ const statContentEntry = (
 
 const readContentArtifact = (
   mountPoint: string,
-  artifacts: Record<string, FileSystemArtifact>,
+  artifacts: Record<string, FileContent>,
   path: string,
-): FileSystemArtifact | null => {
+): FileContent | null => {
   const relativePath = toRelativeArtifactPath(mountPoint, path);
   if (!relativePath) {
     return null;
@@ -446,7 +446,7 @@ const readContentArtifact = (
 
 const readContentText = (
   mountPoint: string,
-  artifacts: Record<string, FileSystemArtifact>,
+  artifacts: Record<string, FileContent>,
   path: string,
 ): string | null => {
   const artifact = readContentArtifact(mountPoint, artifacts, path);
@@ -463,7 +463,7 @@ const readContentText = (
 
 const readContentBuffer = (
   mountPoint: string,
-  artifacts: Record<string, FileSystemArtifact>,
+  artifacts: Record<string, FileContent>,
   path: string,
 ): Uint8Array | null => {
   const artifact = readContentArtifact(mountPoint, artifacts, path);
@@ -516,21 +516,6 @@ const normalizeDirectoryLookupPath = (path: string): string => {
   return normalizeMountPoint(path);
 };
 
-const compareEntries = (left: FileEntryDescriptor, right: FileEntryDescriptor): number => {
-  const leftRank = left.kind === "folder" ? 0 : 1;
-  const rightRank = right.kind === "folder" ? 0 : 1;
-  if (leftRank !== rightRank) {
-    return leftRank - rightRank;
-  }
-
-  return ENTRY_SORTER.compare(left.title ?? left.path, right.title ?? right.path);
-};
-
-const sortEntryChildren = (entry: FileEntryDescriptor): FileEntryDescriptor => ({
-  ...entry,
-  children: entry.children?.slice().sort(compareEntries).map(sortEntryChildren),
-});
-
 const getParentFolderPath = (path: string, mountPoint: string): string | null => {
   const normalizedPath = stripTrailingSlash(path);
   if (normalizedPath === mountPoint) {
@@ -550,7 +535,7 @@ const getLeafSegment = (path: string): string => {
   return path.split("/").filter(Boolean).at(-1) ?? path;
 };
 
-const getArtifactSize = (artifact: FileSystemArtifact): number => {
+const getArtifactSize = (artifact: FileContent): number => {
   if (typeof artifact === "string") {
     return TEXT_ENCODER.encode(artifact).byteLength;
   }

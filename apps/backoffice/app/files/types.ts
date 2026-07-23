@@ -17,13 +17,11 @@ const FILE_BACKEND = ["backoffice", "pi", "sandbox"] as const;
 export type FilesBackend = (typeof FILE_BACKEND)[number];
 
 const FILE_ENTRY_KINDS = ["file", "folder"] as const;
-export type FileEntryKind = (typeof FILE_ENTRY_KINDS)[number];
-
-export type FileSystemArtifact = FileContent;
+type FileEntryKind = (typeof FILE_ENTRY_KINDS)[number];
 
 export type StaticFileArtifactsResolver = () =>
-  | Promise<Record<string, FileSystemArtifact>>
-  | Record<string, FileSystemArtifact>;
+  | Promise<Record<string, FileContent>>
+  | Record<string, FileContent>;
 
 export const emptyStaticFileArtifacts: StaticFileArtifactsResolver = () => ({});
 

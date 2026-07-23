@@ -1,4 +1,4 @@
-import type { FileSystemArtifact } from "../types";
+import type { FileContent } from "../interface";
 
 const starterSkill = ({
   name,
@@ -10,7 +10,7 @@ const starterSkill = ({
   title: string;
   description: string;
   body: string;
-}): Record<string, FileSystemArtifact> => ({
+}): Record<string, FileContent> => ({
   [`skills/${name}/SKILL.md`]: `---
 name: ${name}
 description: ${JSON.stringify(description)}
@@ -22,7 +22,7 @@ ${body.trim()}
 `,
 });
 
-export const GENERAL_SKILL_CONTENT: Record<string, FileSystemArtifact> = {
+export const GENERAL_SKILL_CONTENT: Record<string, FileContent> = {
   ...starterSkill({
     name: "building-automations",
     title: "Building Automations",

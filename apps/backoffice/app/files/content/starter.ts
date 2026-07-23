@@ -1,7 +1,7 @@
-import type { FileSystemArtifact } from "../types";
+import type { FileContent } from "../interface";
 import { WORKSPACE_STARTER_AUTOMATION_CONTENT } from "./starter-automations";
 
-export const WORKSPACE_STARTER_CONTENT: Record<string, FileSystemArtifact> = {
+export const WORKSPACE_STARTER_CONTENT: Record<string, FileContent> = {
   "AGENTS.md": `# Workspace guidance
 
 This is the editable organisation workspace. User-owned automations live in \`/workspace/automations/\` and may be changed freely.

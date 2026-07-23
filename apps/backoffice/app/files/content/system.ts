@@ -1,7 +1,7 @@
-import type { FileSystemArtifact } from "../types";
+import type { FileContent } from "../interface";
 import { SYSTEM_AUTOMATION_CONTENT } from "./system-automations";
 
-export const SYSTEM_README = `# Backoffice System Filesystem
+const SYSTEM_README = `# Backoffice System Filesystem
 
 This is the admin-only system-scope filesystem.
 
@@ -16,4 +16,4 @@ guidance, or codemode declarations here; those belong in \`/static\`.
 export const SYSTEM_FILE_CONTENT = {
   "README.md": SYSTEM_README,
   ...SYSTEM_AUTOMATION_CONTENT,
-} satisfies Record<string, FileSystemArtifact>;
+} satisfies Record<string, FileContent>;

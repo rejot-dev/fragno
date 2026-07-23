@@ -12,20 +12,21 @@ import {
   stripTrailingSlash,
   type FilesActionResult,
   type FilesExplorerTreeNode,
+  MasterFileSystem,
   type FilesNodeDetail,
-  type MasterFileSystem,
 } from "@/files";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-export type FilesExplorerLoaderData = {
+type FilesExplorerLoaderData = {
   tree: FilesExplorerTreeNode[];
   selectedPath: string | null;
   selectedDetail: FilesNodeDetail | null;
+  selectedUploadTextContent: string | null;
   loadError: string | null;
 };
 
-export type FilesExplorerActionResult =
+type FilesExplorerActionResult =
   | FilesActionResult
   | {
       ok: false;
@@ -63,40 +64,67 @@ export async function loadFilesExplorerData({
   orgId: string;
 }): Promise<FilesExplorerLoaderData> {
   const fileSystem = await createBackofficeFilesFileSystem({ request, context, orgId });
-  const initialTree = await listFilesTree(fileSystem);
+  const serverMetadataFileSystem = new MasterFileSystem({
+    mounts: fileSystem.mounts.filter((mount) => mount.kind !== "upload"),
+  });
+  const initialTree = await listFilesTree(serverMetadataFileSystem);
+  const requestUrl = new URL(request.url);
+  const requestedPath = requestUrl.searchParams.get("path")?.trim() ?? null;
+  let selectedPath = requestedPath || fileSystem.mounts[0]?.mountPoint || null;
+  const selectedTarget = selectedPath ? await resolveFilesTarget(fileSystem, selectedPath) : null;
 
-  if (initialTree.length === 0) {
+  if (selectedTarget?.mount.kind === "upload") {
     return {
       tree: initialTree,
-      selectedPath: null,
+      selectedPath,
       selectedDetail: null,
+      selectedUploadTextContent: await readSelectedUploadTextContent(
+        fileSystem,
+        selectedTarget.normalizedPath,
+      ),
       loadError: null,
     };
   }
 
-  const requestUrl = new URL(request.url);
-  const requestedPath = requestUrl.searchParams.get("path")?.trim() ?? null;
-  let selectedPath = requestedPath || initialTree[0]?.path || null;
-  let selectedDetail = selectedPath ? await getFilesNodeDetail(fileSystem, selectedPath) : null;
+  let selectedDetail = selectedPath
+    ? await getFilesNodeDetail(serverMetadataFileSystem, selectedPath)
+    : null;
   let loadError: string | null = null;
 
   if (selectedPath && !selectedDetail) {
     loadError = `Path '${selectedPath}' could not be found.`;
     selectedPath = initialTree[0]?.path || null;
-    selectedDetail = selectedPath ? await getFilesNodeDetail(fileSystem, selectedPath) : null;
+    selectedDetail = selectedPath
+      ? await getFilesNodeDetail(serverMetadataFileSystem, selectedPath)
+      : null;
   }
 
   const tree = selectedPath
-    ? await expandTreeAlongSelection(fileSystem, initialTree, selectedPath)
+    ? await expandTreeAlongSelection(serverMetadataFileSystem, initialTree, selectedPath)
     : initialTree;
 
   return {
     tree,
     selectedPath,
     selectedDetail,
+    selectedUploadTextContent: null,
     loadError,
   };
 }
+
+const TEXT_FILE_EXTENSION =
+  /\.(md|mdx|txt|log|json|js|jsx|ts|tsx|css|html|xml|yml|yaml|toml|ini|sh)$/i;
+
+const readSelectedUploadTextContent = async (
+  fileSystem: MasterFileSystem,
+  path: string,
+): Promise<string | null> => {
+  if (!TEXT_FILE_EXTENSION.test(path)) {
+    return null;
+  }
+
+  return await fileSystem.readFile(path, { encoding: "utf-8" });
+};
 
 export async function handleFilesExplorerAction({
   request,

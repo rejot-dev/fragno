@@ -1,9 +1,10 @@
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
-import { createSystemFilesContext, type FileGroup, type FileSubject } from "@/files";
 import { WORKSPACE_STARTER_CONTENT } from "@/files/content/starter";
 import { createUploadFileSystem } from "@/files/contributors/upload";
 import { FileSystemError } from "@/files/fs-errors";
 import type { IFileSystem } from "@/files/interface";
+import type { FileGroup, FileSubject } from "@/files/permissions";
+import { createSystemFilesContext } from "@/files/system-context";
 
 const WORKSPACE_ROOT = "/workspace";
 const WORKSPACE_STARTER_FILE_MODE = 0o664;
