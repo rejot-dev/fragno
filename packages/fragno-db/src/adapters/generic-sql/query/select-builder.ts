@@ -25,7 +25,9 @@ export function mapSelectColumns(
 ): MappedSelectColumn[] {
   const { relation, tableName = table.name } = options;
   const out: MappedSelectColumn[] = [];
-  const keys = Array.isArray(select) ? select : Object.keys(table.columns);
+  const keys: readonly string[] = Array.isArray(select)
+    ? (select as readonly string[])
+    : Object.keys(table.columns);
 
   const addColumn = (key: string, column: AnyColumn): void => {
     const alias = relation ? `${relation}:${key}` : key;

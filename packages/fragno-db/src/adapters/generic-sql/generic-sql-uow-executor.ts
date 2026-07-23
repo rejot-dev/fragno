@@ -334,6 +334,8 @@ export function compileOutboxVersionReservationPlan(
         resultQuery: resultQuery.compile(dialect),
       };
     }
+    default:
+      throw new Error("Unsupported outbox versionstamp strategy.");
   }
 }
 
@@ -350,7 +352,7 @@ async function reserveOutboxVersion(
 
   if (
     driverConfig.outboxVersionstampStrategy === "update-returning" &&
-    (!reservationResult.rows[0] || reservationResult.rows[0]["value"] === undefined)
+    reservationResult.rows[0]?.["value"] === undefined
   ) {
     throw new Error("Outbox version row was not found for update-returning strategy.");
   }
