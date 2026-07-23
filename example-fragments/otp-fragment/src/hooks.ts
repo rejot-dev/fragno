@@ -1,4 +1,4 @@
-import type { HookFn } from "@fragno-dev/db";
+import type { HookContext, HookFn } from "@fragno-dev/db";
 
 import type { OtpPayload, OtpType } from "./types";
 
@@ -23,18 +23,10 @@ export interface OtpExpiredHookPayload extends OtpHookPayload {
   expiredAt: Date;
 }
 
-export interface OtpHookContext {
-  idempotencyKey: string;
-  hookId: string;
-}
-
 export interface OtpHooks {
-  onOtpIssued?: (payload: OtpIssuedHookPayload, context: OtpHookContext) => Promise<void> | void;
-  onOtpConfirmed?: (
-    payload: OtpConfirmedHookPayload,
-    context: OtpHookContext,
-  ) => Promise<void> | void;
-  onOtpExpired?: (payload: OtpExpiredHookPayload, context: OtpHookContext) => Promise<void> | void;
+  onOtpIssued?: (payload: OtpIssuedHookPayload, context: HookContext) => Promise<void> | void;
+  onOtpConfirmed?: (payload: OtpConfirmedHookPayload, context: HookContext) => Promise<void> | void;
+  onOtpExpired?: (payload: OtpExpiredHookPayload, context: HookContext) => Promise<void> | void;
 }
 
 type DurableOtpIssuedHookPayload = Omit<OtpIssuedHookPayload, "createdAt">;

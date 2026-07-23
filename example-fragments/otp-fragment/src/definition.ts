@@ -98,29 +98,15 @@ export const otpFragmentDefinition = defineFragment<OtpFragmentConfig>("otp")
     return {};
   })
   .provideHooks<OtpHooksMap>(({ defineHook, config }) => {
-    const hookContext = (context: { idempotencyKey: string; hookId: { toString(): string } }) => ({
-      idempotencyKey: context.idempotencyKey,
-      hookId: context.hookId.toString(),
-    });
-
     return {
       onOtpIssued: defineHook(async function (payload) {
-        await config.hooks?.onOtpIssued?.(
-          { ...payload, createdAt: this.createdAt },
-          hookContext(this),
-        );
+        await config.hooks?.onOtpIssued?.({ ...payload, createdAt: this.createdAt }, this);
       }),
       onOtpConfirmed: defineHook(async function (payload) {
-        await config.hooks?.onOtpConfirmed?.(
-          { ...payload, confirmedAt: this.createdAt },
-          hookContext(this),
-        );
+        await config.hooks?.onOtpConfirmed?.({ ...payload, confirmedAt: this.createdAt }, this);
       }),
       onOtpExpired: defineHook(async function (payload) {
-        await config.hooks?.onOtpExpired?.(
-          { ...payload, expiredAt: this.createdAt },
-          hookContext(this),
-        );
+        await config.hooks?.onOtpExpired?.({ ...payload, expiredAt: this.createdAt }, this);
       }),
       expireOtp: defineHook(async function ({ otpId }) {
         await this.handlerTx()
