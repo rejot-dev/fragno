@@ -24,7 +24,7 @@ import {
   UPLOAD_PROVIDER_R2_BINDING,
   type UploadAdminConfigResponse,
 } from "@/fragno/upload";
-import type { UploadFileRecord } from "@/routes/backoffice/connections/upload/data";
+import type { UploadFileRecord } from "@/fragno/upload/file-record";
 
 const createUploadConfig = (
   overrides: Partial<UploadAdminConfigResponse> = {},

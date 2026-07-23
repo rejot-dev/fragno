@@ -4,7 +4,7 @@ import { BackofficePageHeader } from "@/components/backoffice";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
-import { formatTimestamp } from "./shared";
+import { formatUploadTimestamp } from "./formatting";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const me = await getAuthMe(request, context);
@@ -92,7 +92,7 @@ export default function BackofficeConnectionsUpload() {
                   <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                     Created
                   </span>
-                  <span>{formatTimestamp(organization.createdAt)}</span>
+                  <span>{formatUploadTimestamp(organization.createdAt)}</span>
                 </p>
               </div>
 

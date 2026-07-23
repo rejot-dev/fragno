@@ -181,6 +181,7 @@ export function createUploadServerForProvider(
     {
       databaseAdapter,
       mountRoute: "/api/upload",
+      outbox: { enabled: true, tables: ["file"] },
     },
   );
 }

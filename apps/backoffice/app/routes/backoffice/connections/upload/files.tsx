@@ -9,6 +9,8 @@ import {
   Upload,
 } from "lucide-react";
 import {
+  Suspense,
+  use,
   useCallback,
   useEffect,
   useId,
@@ -27,49 +29,48 @@ import {
   useNavigation,
   useNavigate,
   useOutletContext,
-  useRevalidator,
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
 } from "react-router";
 
 import { Collapsible, Progress } from "@base-ui/react";
+import { eq, useLiveQuery } from "@tanstack/react-db";
 
 import { formatBytes } from "@/components/backoffice";
+import { ClientOnly } from "@/components/client-only";
+import { isUploadDirectoryMarker } from "@/files/contributors/upload-markers";
 import {
   UPLOAD_PROVIDER_DATABASE,
   UPLOAD_PROVIDER_R2,
   UPLOAD_PROVIDER_R2_BINDING,
+  type UploadAdminConfigResponse,
   type UploadProvider,
 } from "@/fragno/upload";
 import { createUploadClient } from "@/fragno/upload-client";
-
+import { toUploadFileRecord, type UploadFileRecord } from "@/fragno/upload/file-record";
 import {
-  deleteUploadFile,
-  fetchUploadConfig,
-  fetchUploadDownloadUrl,
-  fetchUploadFile,
-  fetchUploadFiles,
-  type UploadFileRecord,
-} from "./data";
-import { DELETED_SELECTED_FILE_MESSAGE, getVisibleSelectedFileError } from "./files-view-state";
-import { formatTimestamp, type UploadConfigState, type UploadLayoutContext } from "./shared";
+  describeUploadCollectionSource,
+  getUploadBrowserDatabase,
+  type UploadCollectionSource,
+} from "@/fragno/upload/tanstack/browser-database";
+
+import { deleteUploadFile, fetchUploadConfig, fetchUploadDownloadUrl } from "./data";
+import { formatUploadTimestamp } from "./formatting";
+import type { UploadLayoutContext } from "./layout-context";
+import { shouldAutoStartUploads } from "./upload-queue";
 
 type ExplorerSelectionKind = "root" | "folder" | "file";
 
 type FilesLoaderData = {
-  configState: UploadConfigState | null;
+  configState: UploadAdminConfigResponse | null;
   configError: string | null;
-  filesError: string | null;
-  files: UploadFileRecord[];
-  selectedFile: UploadFileRecord | null;
-  selectedFileError: string | null;
   selectedFileProvider: string | null;
   selectedFileKey: string | null;
   selectedNodeKind: ExplorerSelectionKind;
   selectedPrefix: string;
 };
 
-type FilesActionIntent = "inspect-file" | "download-url" | "delete-file";
+type FilesActionIntent = "download-url" | "delete-file";
 
 type FilesActionData = {
   ok: boolean;
@@ -77,7 +78,6 @@ type FilesActionData = {
   intent?: FilesActionIntent;
   provider?: string;
   fileKey?: string;
-  selectedFile?: UploadFileRecord | null;
   downloadUrl?: {
     url: string;
     expiresAt: string | Date;
@@ -127,7 +127,6 @@ type MutableUploadTreeFolderNode = {
   files: UploadFileRecord[];
 };
 
-const FILE_PAGE_SIZE = 200;
 const SORT_COLLATOR = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 const UPLOAD_PROVIDER_ORDER: readonly UploadProvider[] = [
   UPLOAD_PROVIDER_DATABASE,
@@ -149,12 +148,12 @@ const toProviderLabel = (provider: string) => {
 };
 
 const getConfiguredUploadProviders = (
-  configState: UploadConfigState | null | undefined,
+  configState: UploadAdminConfigResponse | null | undefined,
 ): UploadProvider[] =>
   UPLOAD_PROVIDER_ORDER.filter((provider) => configState?.providers[provider]?.configured);
 
 const isConfiguredUploadProvider = (
-  configState: UploadConfigState | null | undefined,
+  configState: UploadAdminConfigResponse | null | undefined,
   provider: string | null,
 ): provider is UploadProvider =>
   Boolean(provider && UPLOAD_PROVIDER_ORDER.includes(provider as UploadProvider)) &&
@@ -340,12 +339,14 @@ const toStatusLabel = (status: UploadQueueStatus) => {
   return "Failed";
 };
 
-export const shouldAutoStartUploads = (input: {
-  uploadingFiles: boolean;
-  defaultProvider: string | null | undefined;
-  nextQueuedUploadPrefix: string | null;
-}) =>
-  !input.uploadingFiles && Boolean(input.defaultProvider) && input.nextQueuedUploadPrefix !== null;
+const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+  if (!event.dataTransfer.types.includes("Files")) {
+    return;
+  }
+
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "copy";
+};
 
 const toProgressPercent = (item: UploadQueueItem) => {
   if (item.totalBytes <= 0) {
@@ -539,21 +540,16 @@ const createSyntheticFolderNode = (prefix: string): UploadTreeFolderNode => ({
   providers: [],
 });
 
-export async function loader({ request, params, context, url }: LoaderFunctionArgs) {
+export async function loader({ params, context, url }: LoaderFunctionArgs) {
   if (!params.orgId) {
     throw new Response("Not Found", { status: 404 });
   }
-  const orgId = params.orgId;
 
-  const { configState, configError } = await fetchUploadConfig(context, orgId);
+  const { configState, configError } = await fetchUploadConfig(context, params.orgId);
   if (configError) {
     return {
       configState,
       configError,
-      filesError: null,
-      files: [],
-      selectedFile: null,
-      selectedFileError: null,
       selectedFileProvider: null,
       selectedFileKey: null,
       selectedNodeKind: "root",
@@ -574,85 +570,24 @@ export async function loader({ request, params, context, url }: LoaderFunctionAr
     : null;
 
   if (selectedNodeKind === "folder" && (!selectedPrefix || !selectedProvider)) {
-    selectedNodeKind = selectedProvider ? "root" : "root";
+    selectedNodeKind = "root";
+    selectedPrefix = "";
   }
 
   if (selectedNodeKind === "file" && !requestedFileKey) {
-    selectedNodeKind = selectedPrefix ? "folder" : "root";
+    selectedNodeKind = selectedProvider && selectedPrefix ? "folder" : "root";
   }
-
-  const configuredProviders = getConfiguredUploadProviders(configState);
-  const filesResults = await Promise.all(
-    configuredProviders.map((provider) =>
-      fetchUploadFiles(request, context, orgId, {
-        pageSize: FILE_PAGE_SIZE,
-        status: "ready",
-        provider,
-      }),
-    ),
-  );
-  const filesResult = {
-    files: filesResults.flatMap((result) => result.files),
-    filesError: filesResults.find((result) => result.filesError)?.filesError ?? null,
-  };
-
-  if (selectedNodeKind !== "file" || !requestedFileKey) {
-    return {
-      configState,
-      configError: null,
-      filesError: filesResult.filesError,
-      files: filesResult.files,
-      selectedFile: null,
-      selectedFileError: null,
-      selectedFileProvider: selectedProvider,
-      selectedFileKey: null,
-      selectedNodeKind,
-      selectedPrefix,
-    } satisfies FilesLoaderData;
-  }
-
-  const providerForSelection =
-    selectedProvider ??
-    filesResult.files.find((file) => file.fileKey === requestedFileKey)?.provider ??
-    null;
-
-  if (!providerForSelection) {
-    return {
-      configState,
-      configError: null,
-      filesError: filesResult.filesError,
-      files: filesResult.files,
-      selectedFile: null,
-      selectedFileError: "Provider is required to inspect a file by key.",
-      selectedFileProvider: null,
-      selectedFileKey: requestedFileKey,
-      selectedNodeKind: "file",
-      selectedPrefix: getParentPrefix(requestedFileKey),
-    } satisfies FilesLoaderData;
-  }
-
-  const selected = await fetchUploadFile(
-    request,
-    context,
-    orgId,
-    providerForSelection,
-    requestedFileKey,
-  );
-  const selectedFile = selected.file?.status === "deleted" ? null : selected.file;
-  const selectedFileError =
-    selected.file?.status === "deleted" ? DELETED_SELECTED_FILE_MESSAGE : selected.error;
 
   return {
     configState,
     configError: null,
-    filesError: filesResult.filesError,
-    files: filesResult.files,
-    selectedFile,
-    selectedFileError,
-    selectedFileProvider: providerForSelection,
-    selectedFileKey: requestedFileKey,
-    selectedNodeKind: "file",
-    selectedPrefix: getParentPrefix(requestedFileKey),
+    selectedFileProvider: selectedProvider,
+    selectedFileKey: selectedNodeKind === "file" ? requestedFileKey : null,
+    selectedNodeKind,
+    selectedPrefix:
+      selectedNodeKind === "file" && requestedFileKey
+        ? getParentPrefix(requestedFileKey)
+        : selectedPrefix,
   } satisfies FilesLoaderData;
 }
 
@@ -682,25 +617,6 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     } satisfies FilesActionData;
   }
 
-  if (intent === "inspect-file") {
-    const result = await fetchUploadFile(request, context, params.orgId, provider, fileKey);
-    if (result.error || !result.file) {
-      return {
-        ok: false,
-        message: result.error ?? "Unable to load file.",
-      } satisfies FilesActionData;
-    }
-
-    return {
-      ok: true,
-      message: "Loaded file details.",
-      intent: "inspect-file",
-      provider,
-      fileKey,
-      selectedFile: result.file,
-    } satisfies FilesActionData;
-  }
-
   if (intent === "download-url") {
     const result = await fetchUploadDownloadUrl(request, context, params.orgId, provider, fileKey);
     if (result.error || !result.result) {
@@ -710,15 +626,12 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       } satisfies FilesActionData;
     }
 
-    const selected = await fetchUploadFile(request, context, params.orgId, provider, fileKey);
-
     return {
       ok: true,
       message: "Download URL generated.",
       intent: "download-url",
       provider,
       fileKey,
-      selectedFile: selected.file,
       downloadUrl: result.result,
     } satisfies FilesActionData;
   }
@@ -738,7 +651,6 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       intent: "delete-file",
       provider,
       fileKey,
-      selectedFile: null,
       downloadUrl: null,
     } satisfies FilesActionData;
   }
@@ -749,14 +661,166 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   } satisfies FilesActionData;
 }
 
+const UPLOAD_FILES_LOADING = <UploadFilesLoading />;
+
 export default function BackofficeOrganisationUploadFiles() {
+  const layoutContext = useOutletContext<UploadLayoutContext>();
+
+  if (!layoutContext.persistenceSource) {
+    const message =
+      layoutContext.configError ??
+      layoutContext.persistenceError ??
+      (layoutContext.configState?.configured
+        ? "Local Upload file persistence is unavailable."
+        : "Configure Upload before opening files.");
+
+    return (
+      <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
+        {message}
+      </div>
+    );
+  }
+
+  return (
+    <ClientOnly fallback={UPLOAD_FILES_LOADING}>
+      <Suspense fallback={UPLOAD_FILES_LOADING}>
+        <SynchronizedUploadFiles
+          key={describeUploadCollectionSource(layoutContext.persistenceSource).resourceKey}
+          source={layoutContext.persistenceSource}
+        />
+      </Suspense>
+    </ClientOnly>
+  );
+}
+
+function UploadFilesLoading() {
+  return (
+    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
+      Loading local Upload file metadata…
+      <noscript>
+        <span className="mt-2 block text-red-700 dark:text-red-200">
+          JavaScript is required to open Upload files.
+        </span>
+      </noscript>
+    </div>
+  );
+}
+
+function SynchronizedUploadFiles({ source }: { source: UploadCollectionSource }) {
+  const database = use(getUploadBrowserDatabase());
+  const collections = database.collectionsFor(source);
+  const filesQuery = useLiveQuery(
+    (query) =>
+      query.from({ file: collections.files }).where(({ file }) => eq(file.status, "ready")),
+    [collections.files],
+  );
+  const files = useMemo<UploadFileRecord[]>(() => {
+    const synchronizedFiles: UploadFileRecord[] = [];
+
+    for (const file of filesQuery.data ?? []) {
+      const synchronizedFile = toUploadFileRecord(file);
+      if (!isUploadDirectoryMarker(synchronizedFile)) {
+        synchronizedFiles.push(synchronizedFile);
+      }
+    }
+
+    return synchronizedFiles;
+  }, [filesQuery.data]);
+  const sourceError = filesQuery.isError ? collections.files.utils.getLastError() : undefined;
+  const filesError =
+    sourceError instanceof Error
+      ? sourceError.message
+      : filesQuery.isError
+        ? "Upload file metadata synchronization failed."
+        : null;
+  if (!filesQuery.isReady && files.length === 0) {
+    return <UploadFilesLoading />;
+  }
+
+  return <UploadFilesView files={files} filesError={filesError} />;
+}
+
+function CreateFolderForm({
+  parentPrefix,
+  enabled,
+  onCreate,
+}: {
+  parentPrefix: string;
+  enabled: boolean;
+  onCreate: (folderName: string) => string | null;
+}) {
+  const [folderName, setFolderName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        const createError = onCreate(folderName);
+        setError(createError);
+        if (!createError) {
+          setFolderName("");
+        }
+      }}
+      className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+            Create folder
+          </p>
+          <p className="mt-2 text-sm text-[var(--bo-muted)]">
+            Add a child folder under{" "}
+            <span className="font-semibold text-[var(--bo-fg)]">
+              {formatPrefixLabel(parentPrefix)}
+            </span>
+            . It stays local until a file is uploaded into it.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+        <input
+          type="text"
+          value={folderName}
+          onChange={(event) => {
+            setFolderName(event.target.value);
+            setError(null);
+          }}
+          placeholder={parentPrefix ? "nested/reports" : "assets/images"}
+          className="min-w-0 flex-1 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)] transition-colors outline-none placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)]"
+        />
+        <button
+          type="submit"
+          disabled={!enabled || !folderName.trim()}
+          className="inline-flex items-center justify-center gap-2 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+        >
+          <Folder className="h-3.5 w-3.5" />
+          Create folder
+        </button>
+      </div>
+
+      {error ? (
+        <p className="mt-3 text-xs text-red-500">{error}</p>
+      ) : (
+        <p className="mt-3 text-xs text-[var(--bo-muted-2)]">
+          Use slash-delimited names like `reports/2026/march`.
+        </p>
+      )}
+    </form>
+  );
+}
+
+function UploadFilesView({
+  files,
+  filesError,
+}: {
+  files: UploadFileRecord[];
+  filesError: string | null;
+}) {
   const {
     configState,
     configError,
-    filesError,
-    files,
-    selectedFile: loaderSelectedFile,
-    selectedFileError,
     selectedFileProvider,
     selectedFileKey,
     selectedNodeKind,
@@ -765,7 +829,6 @@ export default function BackofficeOrganisationUploadFiles() {
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const navigate = useNavigate();
-  const revalidator = useRevalidator();
   const { orgId } = useOutletContext<UploadLayoutContext>();
   const uploadClient = useMemo(() => createUploadClient(orgId), [orgId]);
   const uploadHelpers = uploadClient.useUploadHelpers();
@@ -777,27 +840,23 @@ export default function BackofficeOrganisationUploadFiles() {
   const [downloadingFile, setDownloadingFile] = useState(false);
   const [dragDepth, setDragDepth] = useState(0);
   const [virtualFolders, setVirtualFolders] = useState<Set<string>>(() => new Set());
-  const [pendingFolderName, setPendingFolderName] = useState("");
-  const [folderCreateError, setFolderCreateError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileInputId = useId();
 
   const actionError = actionData && !actionData.ok ? actionData.message : null;
   const actionSuccess = actionData?.ok ? actionData.message : null;
-  const actionSelectedFile =
-    actionData && Object.prototype.hasOwnProperty.call(actionData, "selectedFile")
-      ? (actionData.selectedFile ?? null)
-      : undefined;
-  const selectedFile = actionSelectedFile === undefined ? loaderSelectedFile : actionSelectedFile;
-  const visibleSelectedFileError = getVisibleSelectedFileError({
-    selectedFileError,
-    actionOk: actionData?.ok ?? false,
-    actionIntent: actionData?.intent,
-    actionFileKey: actionData?.fileKey,
-    actionProvider: actionData?.provider,
-    selectedFileKey,
-    selectedFileProvider,
-  });
+  const deletedByAction =
+    actionData?.ok === true &&
+    actionData.intent === "delete-file" &&
+    actionData.fileKey === selectedFileKey &&
+    (!selectedFileProvider || actionData.provider === selectedFileProvider);
+  const selectedFile = deletedByAction
+    ? null
+    : (files.find(
+        (file) =>
+          file.fileKey === selectedFileKey &&
+          (!selectedFileProvider || file.provider === selectedFileProvider),
+      ) ?? null);
   const selectedProvider = selectedFile?.provider ?? selectedFileProvider ?? null;
   const supportsSignedDownload = selectedProvider === UPLOAD_PROVIDER_R2;
   const configuredProviders = useMemo(
@@ -805,7 +864,6 @@ export default function BackofficeOrganisationUploadFiles() {
     [configState],
   );
   const actionBusy = navigation.state === "submitting";
-  const refreshing = revalidator.state === "loading";
   const selectedExplorerPrefix =
     selectedNodeKind === "file"
       ? getParentPrefix(selectedFile?.fileKey ?? selectedFileKey ?? "")
@@ -851,7 +909,7 @@ export default function BackofficeOrganisationUploadFiles() {
   const knownFolderPrefixesRef = useRef<Set<string>>(new Set(allFolderPrefixes));
   const selectedNodeKey =
     selectedNodeKind === "file" && selectedFileKey
-      ? `file:${selectedFileProvider ?? "unknown"}:${selectedFileKey}`
+      ? `file:${selectedProvider ?? "unknown"}:${selectedFileKey}`
       : selectedNodeKind === "folder" && selectedProvider
         ? `folder:${selectedProvider}:${selectedPrefix}`
         : selectedNodeKind === "root" && selectedProvider
@@ -896,8 +954,8 @@ export default function BackofficeOrganisationUploadFiles() {
   const downloadUrl =
     actionData?.downloadUrl &&
     selectedFile &&
-    actionData.selectedFile?.fileKey === selectedFile.fileKey &&
-    actionData.selectedFile?.provider === selectedFile.provider
+    actionData.fileKey === selectedFile.fileKey &&
+    actionData.provider === selectedFile.provider
       ? actionData.downloadUrl
       : null;
   const missingFileParentHref = buildSelectionHref(
@@ -1004,10 +1062,9 @@ export default function BackofficeOrganisationUploadFiles() {
       } finally {
         setUploadingFiles(false);
         setActiveUploadPrefix(null);
-        await revalidator.revalidate();
       }
     },
-    [revalidator, uploadHelpers, uploadingFiles, uploadQueue],
+    [uploadHelpers, uploadingFiles, uploadQueue],
   );
 
   useEffect(() => {
@@ -1040,11 +1097,6 @@ export default function BackofficeOrganisationUploadFiles() {
     });
     knownFolderPrefixesRef.current = new Set(allFolderPrefixes);
   }, [allFolderPrefixes]);
-
-  useEffect(() => {
-    setPendingFolderName("");
-    setFolderCreateError(null);
-  }, [uploadTargetPrefix]);
 
   useEffect(() => {
     setDragDepth(0);
@@ -1135,15 +1187,6 @@ export default function BackofficeOrganisationUploadFiles() {
     setDragDepth((current) => current + 1);
   };
 
-  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
-    if (!event.dataTransfer.types.includes("Files")) {
-      return;
-    }
-
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-  };
-
   const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
     if (!event.dataTransfer.types.includes("Files")) {
       return;
@@ -1164,20 +1207,16 @@ export default function BackofficeOrganisationUploadFiles() {
     );
   };
 
-  const createFolder = () => {
+  const createFolder = (folderName: string): string | null => {
     if (!uploadTargetProvider || uploadTargetPrefix === null) {
-      return;
+      return "Select a writable folder before creating a child folder.";
     }
 
-    const result = resolveFolderPrefix(uploadTargetPrefix, pendingFolderName);
+    const result = resolveFolderPrefix(uploadTargetPrefix, folderName);
     if (!result.prefix) {
-      setFolderCreateError(result.error);
-      return;
+      return result.error;
     }
     const nextPrefix = result.prefix;
-
-    setFolderCreateError(null);
-    setPendingFolderName("");
 
     if (!selectedProviderTree?.foldersByPrefix.has(nextPrefix)) {
       setVirtualFolders((previous) => {
@@ -1199,6 +1238,7 @@ export default function BackofficeOrganisationUploadFiles() {
         prefix: nextPrefix,
       }),
     );
+    return null;
   };
 
   const setFolderOpen = (provider: string, prefix: string, open: boolean) => {
@@ -1241,9 +1281,6 @@ export default function BackofficeOrganisationUploadFiles() {
   return (
     <div className="space-y-4">
       {filesError ? <p className="text-xs text-red-500">{filesError}</p> : null}
-      {visibleSelectedFileError ? (
-        <p className="text-xs text-red-500">{visibleSelectedFileError}</p>
-      ) : null}
       {actionError ? <p className="text-xs text-red-500">{actionError}</p> : null}
       {actionSuccess ? <p className="text-xs text-green-500">{actionSuccess}</p> : null}
       {uploadError ? <p className="text-xs text-red-500">{uploadError}</p> : null}
@@ -1343,11 +1380,11 @@ export default function BackofficeOrganisationUploadFiles() {
                     <DetailStat label="Content type" value={selectedFile.contentType} />
                     <DetailStat
                       label="Created"
-                      value={formatTimestamp(selectedFile.createdAt) || "Unknown"}
+                      value={formatUploadTimestamp(selectedFile.createdAt) || "Unknown"}
                     />
                     <DetailStat
                       label="Updated"
-                      value={formatTimestamp(selectedFile.updatedAt) || "Unknown"}
+                      value={formatUploadTimestamp(selectedFile.updatedAt) || "Unknown"}
                     />
                   </div>
                 </div>
@@ -1359,22 +1396,12 @@ export default function BackofficeOrganisationUploadFiles() {
                     </p>
                     <p className="mt-2 break-all text-[var(--bo-fg)]">{downloadUrl.url}</p>
                     <p className="mt-1 text-xs text-[var(--bo-muted-2)]">
-                      Expires: {formatTimestamp(downloadUrl.expiresAt)}
+                      Expires: {formatUploadTimestamp(downloadUrl.expiresAt)}
                     </p>
                   </div>
                 ) : null}
 
                 <div className="grid gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void revalidator.revalidate()}
-                    disabled={refreshing}
-                    className="inline-flex w-full items-center justify-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
-                  >
-                    <RefreshCcw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-                    {refreshing ? "Refreshing…" : "Refresh detail"}
-                  </button>
-
                   {supportsSignedDownload ? (
                     <Form method="post">
                       <input type="hidden" name="intent" value="download-url" />
@@ -1499,59 +1526,12 @@ export default function BackofficeOrganisationUploadFiles() {
                 ) : null}
               </div>
 
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  createFolder();
-                }}
-                className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                      Create folder
-                    </p>
-                    <p className="mt-2 text-sm text-[var(--bo-muted)]">
-                      Add a child folder under{" "}
-                      <span className="font-semibold text-[var(--bo-fg)]">
-                        {formatPrefixLabel(uploadTargetPrefix ?? "")}
-                      </span>
-                      . It stays local until a file is uploaded into it.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                  <input
-                    type="text"
-                    value={pendingFolderName}
-                    onChange={(event) => {
-                      setPendingFolderName(event.target.value);
-                      if (folderCreateError) {
-                        setFolderCreateError(null);
-                      }
-                    }}
-                    placeholder={uploadTargetPrefix ? "nested/reports" : "assets/images"}
-                    className="min-w-0 flex-1 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)] transition-colors outline-none placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)]"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!uploadTargetProvider || !pendingFolderName.trim()}
-                    className="inline-flex items-center justify-center gap-2 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
-                  >
-                    <Folder className="h-3.5 w-3.5" />
-                    Create folder
-                  </button>
-                </div>
-
-                {folderCreateError ? (
-                  <p className="mt-3 text-xs text-red-500">{folderCreateError}</p>
-                ) : (
-                  <p className="mt-3 text-xs text-[var(--bo-muted-2)]">
-                    Use slash-delimited names like `reports/2026/march`.
-                  </p>
-                )}
-              </form>
+              <CreateFolderForm
+                key={`${uploadTargetProvider ?? "none"}:${uploadTargetPrefix ?? "none"}`}
+                parentPrefix={uploadTargetPrefix ?? ""}
+                enabled={Boolean(uploadTargetProvider)}
+                onCreate={createFolder}
+              />
 
               <div
                 className={

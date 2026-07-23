@@ -9,7 +9,7 @@ import {
   type UploadAdminConfigResponse,
   type UploadProvider,
 } from "@/fragno/upload";
-import type { UploadFileRecord } from "@/routes/backoffice/connections/upload/data";
+import type { UploadFileRecord } from "@/fragno/upload/file-record";
 
 import {
   createInvalidArgumentFileSystemError,

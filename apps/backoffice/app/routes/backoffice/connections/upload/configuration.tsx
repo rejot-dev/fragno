@@ -11,22 +11,19 @@ import { ByteUnitField, FormContainer, FormField, TimeUnitField } from "@/compon
 import {
   UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
   UPLOAD_R2_DEFAULT_BINDING_NAME,
+  type UploadAdminConfigResponse,
   type UploadAdminSetConfigPayload,
 } from "@/fragno/upload";
 import { getUploadDurableObject } from "@/worker-runtime/durable-objects";
 
-import {
-  UploadProviderTabs,
-  formatTimestamp,
-  type UploadConfigState,
-  type UploadConfigurableProvider,
-  type UploadLayoutContext,
-} from "./shared";
+import { formatUploadTimestamp } from "./formatting";
+import type { UploadConfigurableProvider, UploadLayoutContext } from "./layout-context";
+import { UploadProviderTabs } from "./shared";
 
 type UploadConfigActionData = {
   ok: boolean;
   message: string;
-  configState?: UploadConfigState;
+  configState?: UploadAdminConfigResponse;
 };
 
 type UploadLimitPayloadField =
@@ -161,7 +158,7 @@ const toInputValue = (value?: number, fallback = "") =>
   typeof value === "number" ? String(value) : fallback;
 
 const getProviderFormValues = (
-  configState: UploadConfigState | null,
+  configState: UploadAdminConfigResponse | null,
   provider: UploadConfigurableProvider,
 ): Partial<UploadConfigForm> => {
   if (provider === "database") {
@@ -631,7 +628,7 @@ export default function BackofficeOrganisationUploadConfiguration() {
                 <p>
                   Last updated:{" "}
                   <span className="text-[var(--bo-fg)]">
-                    {formatTimestamp(activeProviderConfig?.updatedAt)}
+                    {formatUploadTimestamp(activeProviderConfig?.updatedAt)}
                   </span>
                 </p>
                 {r2Config?.accessKeyIdPreview ? (

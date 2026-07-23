@@ -1,42 +1,11 @@
-import type { Dispatch, SetStateAction } from "react";
 import { Link, isRouteErrorResponse } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
-import type { AuthMeData } from "@/fragno/auth/auth-client";
-import type { UploadAdminConfigResponse } from "@/fragno/upload";
 
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "../../route-errors";
+import type { UploadConfigurableProvider, UploadTab } from "./layout-context";
 
-type BackofficeOrganisation = AuthMeData["organizations"][number]["organization"];
-
-export type UploadConfigState = UploadAdminConfigResponse;
-
-export type UploadLayoutContext = {
-  orgId: string;
-  origin: string;
-  organisation: BackofficeOrganisation;
-  configState: UploadConfigState | null;
-  configLoading: boolean;
-  configError: string | null;
-  setConfigState: Dispatch<SetStateAction<UploadConfigState | null>>;
-  setConfigError: Dispatch<SetStateAction<string | null>>;
-};
-
-export type UploadProviderTab = "database" | "r2-binding" | "r2" | "s3" | "direct";
-export type UploadTab = "files" | "configuration";
-export type UploadConfigurableProvider = "database" | "r2-binding" | "r2";
-
-export const formatTimestamp = (value?: string | Date | null) => {
-  if (!value) {
-    return "";
-  }
-
-  const date = value instanceof Date ? value : new Date(value);
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-};
+type UploadProviderTab = UploadConfigurableProvider | "s3" | "direct";
 
 export function UploadHeader({
   orgId,
