@@ -39,6 +39,10 @@
       "types": "./dist/node/storage/db.d.ts",
       "default": "./dist/node/storage/db.js"
     },
+    "./schema": {
+      "types": "./dist/node/schema.d.ts",
+      "default": "./dist/node/schema.js"
+    },
     "./react": {
       "types": "./dist/browser/client/react.d.ts",
       "default": "./dist/browser/client/react.js"
