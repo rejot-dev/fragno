@@ -1,22 +1,37 @@
 import "../../backoffice.css";
 
 import { Form, Link, redirect, useActionData, useNavigation } from "react-router";
+import { z } from "zod";
 
 import { FormContainer, FormField } from "@/components/backoffice";
 import { createAuthRouteCaller, getAuthMe } from "@/fragno/auth/auth-server";
+import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
 
 import type { Route } from "./+types/sign-up";
 
 type BackofficeSignUpActionData =
   | {
-      ok: false;
+      state: "error";
       message: string;
     }
   | {
-      ok: true;
-      status: "email_verification_required";
+      state: "verification_required";
       email: string;
+      resend: "available" | "accepted";
     };
+
+const signUpActionInputSchema = z.discriminatedUnion("intent", [
+  z.object({
+    intent: z.literal("sign_up"),
+    email: z.string().trim().toLowerCase().pipe(z.email().max(191)),
+    password: z.string().min(8).max(100),
+    confirmPassword: z.string().min(1),
+  }),
+  z.object({
+    intent: z.literal("resend"),
+    email: z.string().trim().toLowerCase().pipe(z.email().max(191)),
+  }),
+]);
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   if (import.meta.env.MODE !== "development") {
@@ -37,56 +52,67 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   const formData = await request.formData();
-  const email = String(formData.get("signUpEmail") ?? "").trim();
-  const password = String(formData.get("signUpPassword") ?? "");
-  const confirmPassword = String(formData.get("signUpPasswordConfirm") ?? "");
-
-  if (!email || !password || !confirmPassword) {
+  const input = signUpActionInputSchema.safeParse(Object.fromEntries(formData));
+  if (!input.success) {
     return {
-      ok: false,
-      message: "Fill out email and password to create an account.",
+      state: "error",
+      message: "Enter a valid email and a password with at least 8 characters.",
     } satisfies BackofficeSignUpActionData;
   }
 
-  if (password !== confirmPassword) {
+  if (input.data.intent === "resend") {
+    const resend = await requestEmailVerificationResend({
+      request,
+      context,
+      email: input.data.email,
+    });
+    return resend.status === "accepted"
+      ? ({
+          state: "verification_required",
+          email: resend.email,
+          resend: "accepted",
+        } satisfies BackofficeSignUpActionData)
+      : ({ state: "error", message: resend.message } satisfies BackofficeSignUpActionData);
+  }
+
+  if (input.data.password !== input.data.confirmPassword) {
     return {
-      ok: false,
+      state: "error",
       message: "Passwords do not match.",
     } satisfies BackofficeSignUpActionData;
   }
 
   try {
-    const callAuthRoute = createAuthRouteCaller(request, context);
-    const response = await callAuthRoute("POST", "/sign-up", {
-      body: { email, password },
+    const response = await createAuthRouteCaller(request, context)("POST", "/sign-up", {
+      body: { email: input.data.email, password: input.data.password },
     });
 
     if (response.type === "error") {
       return {
-        ok: false,
+        state: "error",
         message: response.error.message || "Unable to create an account.",
       } satisfies BackofficeSignUpActionData;
     }
 
     if (response.type !== "json") {
       return {
-        ok: false,
+        state: "error",
         message: "Unable to create an account.",
       } satisfies BackofficeSignUpActionData;
     }
 
     if (response.data.status === "email_verification_required") {
       return {
-        ok: true,
-        status: response.data.status,
+        state: "verification_required",
         email: response.data.email,
+        resend: "available",
       } satisfies BackofficeSignUpActionData;
     }
 
     return redirect("/backoffice", { headers: response.headers });
   } catch (error) {
     return {
-      ok: false,
+      state: "error",
       message: error instanceof Error ? error.message : "Unable to create an account.",
     } satisfies BackofficeSignUpActionData;
   }
@@ -102,9 +128,11 @@ export function meta() {
 export default function BackofficeSignUp() {
   const actionData = useActionData<BackofficeSignUpActionData>();
   const navigation = useNavigation();
-  const verificationRequired = actionData?.ok ? actionData : null;
-  const signUpError = actionData && !actionData.ok ? actionData.message : null;
-  const signUpPending = navigation.state === "submitting";
+  const verificationRequired = actionData?.state === "verification_required" ? actionData : null;
+  const signUpError = actionData?.state === "error" ? actionData.message : null;
+  const submittedIntent = navigation.formData?.get("intent");
+  const signUpPending = navigation.state === "submitting" && submittedIntent !== "resend";
+  const resendPending = navigation.state === "submitting" && submittedIntent === "resend";
 
   return (
     <div
@@ -155,6 +183,22 @@ export default function BackofficeSignUp() {
                   Open the link in the email before signing in. Delivery is retried automatically if
                   the email provider is temporarily unavailable.
                 </p>
+                {verificationRequired.resend === "accepted" ? (
+                  <p className="text-xs text-[var(--bo-accent)]">
+                    If this unverified account exists, a new email will be sent.
+                  </p>
+                ) : null}
+                <Form method="post">
+                  <input type="hidden" name="intent" value="resend" />
+                  <input type="hidden" name="email" value={verificationRequired.email} />
+                  <button
+                    type="submit"
+                    disabled={resendPending}
+                    className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+                  >
+                    {resendPending ? "Requesting…" : "Resend verification email"}
+                  </button>
+                </Form>
                 <Link
                   to="/backoffice/login"
                   className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
@@ -167,7 +211,7 @@ export default function BackofficeSignUp() {
                 <FormField label="Work email" hint="Use the email tied to your team access.">
                   <input
                     type="email"
-                    name="signUpEmail"
+                    name="email"
                     autoComplete="username"
                     required
                     placeholder="team@fragno.dev"
@@ -177,7 +221,7 @@ export default function BackofficeSignUp() {
                 <FormField label="Create password" hint="At least 8 characters.">
                   <input
                     type="password"
-                    name="signUpPassword"
+                    name="password"
                     autoComplete="new-password"
                     required
                     placeholder="••••••••"
@@ -187,7 +231,7 @@ export default function BackofficeSignUp() {
                 <FormField label="Confirm password" hint="Re-type to confirm.">
                   <input
                     type="password"
-                    name="signUpPasswordConfirm"
+                    name="confirmPassword"
                     autoComplete="new-password"
                     required
                     placeholder="••••••••"
@@ -204,6 +248,8 @@ export default function BackofficeSignUp() {
                 <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
                   <button
                     type="submit"
+                    name="intent"
+                    value="sign_up"
                     disabled={signUpPending}
                     className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
                   >

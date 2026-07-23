@@ -361,28 +361,6 @@ export class InMemoryOtpObject implements OtpObject {
       : { status: "already_confirmed" };
   }
 
-  async confirmEmailVerification(input: {
-    userId: string;
-    code: string;
-  }): Promise<
-    | { ok: true; userId: string }
-    | { ok: false; error: "INVALID_INPUT" | "OTP_INVALID" | "OTP_EXPIRED" }
-  > {
-    const result = await this.confirmEmailVerificationChallenge(input);
-    if (result.status !== "rejected") {
-      return { ok: true, userId: input.userId };
-    }
-    return {
-      ok: false,
-      error:
-        result.reason === "invalid_input"
-          ? "INVALID_INPUT"
-          : result.reason === "expired"
-            ? "OTP_EXPIRED"
-            : "OTP_INVALID",
-    };
-  }
-
   async issueIdentityClaim(input: IssueIdentityClaimInput): Promise<IssueIdentityClaimResult> {
     const parsed = issueIdentityClaimInputSchema.parse(input);
     const fragment = this.#getFragment();
@@ -481,10 +459,6 @@ export class Otp extends DurableObject<CloudflareEnv> implements OtpObject {
     input: ConfirmEmailVerificationChallengeInput,
   ): Promise<ConfirmEmailVerificationChallengeResult> {
     return await this.#object.confirmEmailVerificationChallenge(input);
-  }
-
-  async confirmEmailVerification(input: { userId: string; code: string }) {
-    return await this.#object.confirmEmailVerification(input);
   }
 
   async issueIdentityClaim(input: IssueIdentityClaimInput): Promise<IssueIdentityClaimResult> {

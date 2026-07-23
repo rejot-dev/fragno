@@ -1,6 +1,7 @@
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 
 import { createAuthRouteCaller } from "@/fragno/auth/auth-server";
+import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
 
 import { action } from "./sign-up";
 
@@ -9,12 +10,16 @@ vi.mock("@/fragno/auth/auth-server", () => ({
   getAuthMe: vi.fn(),
 }));
 
+vi.mock("@/fragno/auth/email-verification.server", () => ({
+  requestEmailVerificationResend: vi.fn(),
+}));
+
 const createActionArgs = (body: Record<string, string>) =>
   ({
     request: new Request("https://example.com/backoffice/sign-up", {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded;charset=UTF-8" },
-      body: new URLSearchParams(body),
+      body: new URLSearchParams({ intent: "sign_up", ...body }),
     }),
     url: new URL("https://example.com/backoffice/sign-up"),
     context: {} as never,
@@ -22,9 +27,9 @@ const createActionArgs = (body: Record<string, string>) =>
   }) as unknown as Parameters<typeof action>[0];
 
 const validSignUpForm = {
-  signUpEmail: "new-user@example.com",
-  signUpPassword: "password123",
-  signUpPasswordConfirm: "password123",
+  email: "new-user@example.com",
+  password: "password123",
+  confirmPassword: "password123",
 };
 
 describe("backoffice sign-up route", () => {
@@ -50,8 +55,34 @@ describe("backoffice sign-up route", () => {
     );
 
     expect(await action(createActionArgs(validSignUpForm))).toEqual({
-      ok: true,
-      status: "email_verification_required",
+      state: "verification_required",
+      email: "new-user@example.com",
+      resend: "available",
+    });
+  });
+
+  it("requests another verification email without exposing account state", async () => {
+    vi.stubEnv("MODE", "development");
+    vi.mocked(requestEmailVerificationResend).mockResolvedValue({
+      status: "accepted",
+      email: "new-user@example.com",
+    });
+
+    await expect(
+      action(
+        createActionArgs({
+          intent: "resend",
+          email: "new-user@example.com",
+        }),
+      ),
+    ).resolves.toEqual({
+      state: "verification_required",
+      email: "new-user@example.com",
+      resend: "accepted",
+    });
+    expect(requestEmailVerificationResend).toHaveBeenCalledWith({
+      request: expect.any(Request),
+      context: expect.anything(),
       email: "new-user@example.com",
     });
   });
@@ -81,7 +112,7 @@ describe("backoffice sign-up route", () => {
     const result = await action(
       createActionArgs({
         ...validSignUpForm,
-        signUpEmail: "admin@rejot.dev",
+        email: "admin@rejot.dev",
       }),
     );
     assert(result instanceof Response);

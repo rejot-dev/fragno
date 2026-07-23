@@ -3,7 +3,8 @@ import "../../backoffice.css";
 import { Form, Link, useActionData, useLoaderData, useNavigation } from "react-router";
 import { z } from "zod";
 
-import { FormContainer } from "@/components/backoffice";
+import { FormContainer, FormField } from "@/components/backoffice";
+import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
 import { getSystemOtpDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { Route } from "./+types/verify-email";
@@ -13,7 +14,27 @@ const verificationInputSchema = z.object({
   code: z.string().trim().min(1),
 });
 
-const verificationResultSchema = z.enum(["verified", "expired", "invalid", "incomplete"]);
+const verificationActionSchema = z.discriminatedUnion("intent", [
+  z.object({
+    intent: z.literal("confirm"),
+    userId: z.string().trim().min(1),
+    code: z.string().trim().min(1),
+  }),
+  z.object({
+    intent: z.literal("resend"),
+    email: z.string().trim().toLowerCase().pipe(z.email().max(191)),
+  }),
+]);
+
+const verificationResultSchema = z.enum([
+  "confirmation_recorded",
+  "already_confirmed",
+  "expired",
+  "invalid",
+  "incomplete",
+  "resent",
+  "resend_failed",
+]);
 
 type VerificationPageData =
   | {
@@ -49,24 +70,37 @@ export async function action({
   context,
 }: Route.ActionArgs): Promise<VerificationActionData> {
   const formData = await request.formData();
-  const input = verificationInputSchema.safeParse({
-    userId: formData.get("userId"),
-    code: formData.get("code"),
-  });
+  const input = verificationActionSchema.safeParse(Object.fromEntries(formData));
   if (!input.success) {
     return { state: "result", result: "incomplete" };
   }
 
-  const confirmation = await getSystemOtpDurableObject(context).confirmEmailVerification(
-    input.data,
-  );
-  if (confirmation.ok) {
-    return { state: "result", result: "verified" };
+  if (input.data.intent === "resend") {
+    const resend = await requestEmailVerificationResend({
+      request,
+      context,
+      email: input.data.email,
+    });
+    return {
+      state: "result",
+      result: resend.status === "accepted" ? "resent" : "resend_failed",
+    };
+  }
+
+  const confirmation = await getSystemOtpDurableObject(context).confirmEmailVerificationChallenge({
+    userId: input.data.userId,
+    code: input.data.code,
+  });
+  if (confirmation.status === "confirmation_recorded") {
+    return { state: "result", result: "confirmation_recorded" };
+  }
+  if (confirmation.status === "already_confirmed") {
+    return { state: "result", result: "already_confirmed" };
   }
 
   return {
     state: "result",
-    result: confirmation.error === "OTP_EXPIRED" ? "expired" : "invalid",
+    result: confirmation.reason === "expired" ? "expired" : "invalid",
   };
 }
 
@@ -78,15 +112,20 @@ export function meta() {
 }
 
 const resultContent = {
-  verified: {
+  confirmation_recorded: {
     eyebrow: "Confirmation received",
-    title: "Your verification was accepted.",
-    description: "The email confirmation is recorded and your account is ready to use.",
+    title: "Your email is verified.",
+    description: "Continue to sign in to your Fragno Backoffice account.",
+  },
+  already_confirmed: {
+    eyebrow: "Already confirmed",
+    title: "This email was already verified.",
+    description: "This verification link was already submitted. Continue to sign in.",
   },
   expired: {
     eyebrow: "Link expired",
     title: "This verification link has expired.",
-    description: "The link is no longer active. You can still continue to your account.",
+    description: "The link is no longer active. Request a new verification email to continue.",
   },
   invalid: {
     eyebrow: "Link unavailable",
@@ -96,7 +135,17 @@ const resultContent = {
   incomplete: {
     eyebrow: "Link incomplete",
     title: "This verification link is incomplete.",
-    description: "Open the complete link from your Fragno Backoffice signup email.",
+    description: "Open the complete link from your Fragno Backoffice verification email.",
+  },
+  resent: {
+    eyebrow: "Request accepted",
+    title: "Check your email.",
+    description: "If this unverified account exists, a new email will be sent.",
+  },
+  resend_failed: {
+    eyebrow: "Request unavailable",
+    title: "We could not request another email.",
+    description: "Check the email address and try again.",
   },
 } satisfies Record<
   z.infer<typeof verificationResultSchema>,
@@ -106,16 +155,15 @@ const resultContent = {
 export default function VerifyEmail() {
   const loaderData = useLoaderData<VerificationPageData>();
   const actionData = useActionData<VerificationActionData>();
-  const data = actionData ?? loaderData;
   const navigation = useNavigation();
-  const confirmationPending = navigation.state === "submitting";
+  const data = actionData ?? loaderData;
+  const submissionPending = navigation.state === "submitting";
   const content =
     data.state === "ready"
       ? {
           eyebrow: "One final step",
           title: "Verify your email address.",
-          description:
-            "Confirm that you opened this link to finish setting up your Fragno Backoffice account.",
+          description: "Confirm that you opened this link to verify your Backoffice account.",
         }
       : resultContent[data.result];
 
@@ -134,6 +182,7 @@ export default function VerifyEmail() {
           >
             {data.state === "ready" ? (
               <Form method="post" action="/backoffice/verify-email" className="space-y-4">
+                <input type="hidden" name="intent" value="confirm" />
                 <input type="hidden" name="userId" value={data.userId} />
                 <input type="hidden" name="code" value={data.code} />
                 <p className="text-sm leading-6 text-[var(--bo-muted)]">
@@ -142,26 +191,52 @@ export default function VerifyEmail() {
                 </p>
                 <button
                   type="submit"
-                  disabled={confirmationPending}
+                  disabled={submissionPending}
                   className="min-h-10 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-transform active:scale-[0.96] disabled:opacity-60"
                 >
-                  {confirmationPending ? "Verifying…" : "Verify email"}
+                  {submissionPending ? "Verifying…" : "Verify email"}
                 </button>
               </Form>
             ) : (
-              <div className="flex flex-wrap gap-2">
-                <Link
-                  to="/backoffice/login"
-                  className="inline-flex min-h-10 items-center border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-transform active:scale-[0.96]"
-                >
-                  Continue to sign in
-                </Link>
-                <Link
-                  to="/docs"
-                  className="inline-flex min-h-10 items-center border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                >
-                  Return to docs
-                </Link>
+              <div className="space-y-4">
+                {data.result !== "confirmation_recorded" && data.result !== "already_confirmed" ? (
+                  <Form method="post" action="/backoffice/verify-email" className="space-y-3">
+                    <input type="hidden" name="intent" value="resend" />
+                    <FormField
+                      label="Email address"
+                      hint="Enter the address used for this account."
+                    >
+                      <input
+                        type="email"
+                        name="email"
+                        autoComplete="email"
+                        required
+                        className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                      />
+                    </FormField>
+                    <button
+                      type="submit"
+                      disabled={submissionPending}
+                      className="min-h-10 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-transform active:scale-[0.96] disabled:opacity-60"
+                    >
+                      {submissionPending ? "Requesting…" : "Send a new verification email"}
+                    </button>
+                  </Form>
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    to="/backoffice/login"
+                    className="inline-flex min-h-10 items-center border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-transform active:scale-[0.96]"
+                  >
+                    Continue to sign in
+                  </Link>
+                  <Link
+                    to="/docs"
+                    className="inline-flex min-h-10 items-center border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                  >
+                    Return to docs
+                  </Link>
+                </div>
               </div>
             )}
           </FormContainer>

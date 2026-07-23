@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi, assert } from "vitest";
 
 import { createAuthRouteCaller, getAuthMe } from "@/fragno/auth/auth-server";
+import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
 
 import { BACKOFFICE_HOME_PATH } from "./auth-navigation";
 import { action, loader } from "./login";
@@ -8,6 +9,10 @@ import { action, loader } from "./login";
 vi.mock("@/fragno/auth/auth-server", () => ({
   createAuthRouteCaller: vi.fn(),
   getAuthMe: vi.fn(),
+}));
+
+vi.mock("@/fragno/auth/email-verification.server", () => ({
+  requestEmailVerificationResend: vi.fn(),
 }));
 
 describe("backoffice login route", () => {
@@ -31,7 +36,7 @@ describe("backoffice login route", () => {
         headers: {
           "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
         },
-        body: new URLSearchParams(body),
+        body: new URLSearchParams({ intent: "sign_in", ...body }),
       }),
       url: new URL(url),
       context: {} as never,
@@ -170,6 +175,61 @@ describe("backoffice login route", () => {
         password: "password123",
         auth: { activeOrganizationId: "org_123" },
       },
+    });
+  });
+
+  it("preserves the verification-required code and email", async () => {
+    vi.stubEnv("MODE", "development");
+    vi.mocked(createAuthRouteCaller).mockReturnValue(
+      vi.fn().mockResolvedValue({
+        type: "error",
+        status: 403,
+        error: {
+          code: "email_verification_required",
+          message: "Verify your email before signing in.",
+        },
+      }) as never,
+    );
+
+    await expect(
+      action(
+        createActionArgs("https://example.com/backoffice/login", {
+          email: "dev@fragno.test",
+          password: "password123",
+        }),
+      ),
+    ).resolves.toEqual({
+      state: "verification_required",
+      email: "dev@fragno.test",
+      resend: "available",
+      message: "Verify your email before signing in.",
+    });
+  });
+
+  it("requests another verification email from the login form", async () => {
+    vi.stubEnv("MODE", "development");
+    vi.mocked(requestEmailVerificationResend).mockResolvedValue({
+      status: "accepted",
+      email: "dev@fragno.test",
+    });
+
+    await expect(
+      action(
+        createActionArgs("https://example.com/backoffice/login", {
+          intent: "resend",
+          email: "dev@fragno.test",
+        }),
+      ),
+    ).resolves.toEqual({
+      state: "verification_required",
+      email: "dev@fragno.test",
+      resend: "accepted",
+      message: "If this unverified account exists, a new email will be sent.",
+    });
+    expect(requestEmailVerificationResend).toHaveBeenCalledWith({
+      request: expect.any(Request),
+      context: expect.anything(),
+      email: "dev@fragno.test",
     });
   });
 

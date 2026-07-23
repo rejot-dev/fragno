@@ -1,8 +1,13 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
 import { getSystemOtpDurableObject } from "@/worker-runtime/durable-objects";
 
 import { action, loader } from "./verify-email";
+
+vi.mock("@/fragno/auth/email-verification.server", () => ({
+  requestEmailVerificationResend: vi.fn(),
+}));
 
 vi.mock("@/worker-runtime/durable-objects", () => ({
   getSystemOtpDurableObject: vi.fn(),
@@ -32,7 +37,7 @@ describe("backoffice email verification route", () => {
     vi.clearAllMocks();
   });
 
-  test("loads a scanner-safe confirmation form from a complete link", () => {
+  test("loads confirmation input without mutating during the GET request", () => {
     expect(
       loader(
         createLoaderArgs(
@@ -49,7 +54,7 @@ describe("backoffice email verification route", () => {
 
   test.each([
     "https://example.com/backoffice/verify-email",
-    "https://example.com/backoffice/verify-email?result=verified",
+    "https://example.com/backoffice/verify-email?result=confirmation_recorded",
   ])("shows an incomplete result for an untrusted result URL: %s", (url) => {
     expect(loader(createLoaderArgs(url))).toEqual({
       state: "result",
@@ -57,35 +62,74 @@ describe("backoffice email verification route", () => {
     });
   });
 
-  test("confirms through the singleton OTP object and returns the result directly", async () => {
-    const confirmEmailVerification = vi.fn().mockResolvedValue({ ok: true, userId: "user_123" });
-    vi.mocked(getSystemOtpDurableObject).mockReturnValue({ confirmEmailVerification } as never);
+  test("records confirmation through the singleton OTP object", async () => {
+    const confirmEmailVerificationChallenge = vi.fn().mockResolvedValue({
+      status: "confirmation_recorded",
+      requestId: "verification_request_123",
+      userId: "user_123",
+    });
+    vi.mocked(getSystemOtpDurableObject).mockReturnValue({
+      confirmEmailVerificationChallenge,
+    } as never);
 
     await expect(
-      action(createActionArgs({ userId: "user_123", code: "ABC12345" })),
-    ).resolves.toEqual({ state: "result", result: "verified" });
-    expect(confirmEmailVerification).toHaveBeenCalledWith({
+      action(createActionArgs({ intent: "confirm", userId: "user_123", code: "ABC12345" })),
+    ).resolves.toEqual({ state: "result", result: "confirmation_recorded" });
+    expect(confirmEmailVerificationChallenge).toHaveBeenCalledWith({
       userId: "user_123",
       code: "ABC12345",
     });
   });
 
-  test.each([
-    ["OTP_EXPIRED", "expired"],
-    ["OTP_INVALID", "invalid"],
-    ["INVALID_INPUT", "invalid"],
-  ] as const)("maps %s to the %s result page", async (error, result) => {
+  test("returns an already-confirmed result without recording again", async () => {
     vi.mocked(getSystemOtpDurableObject).mockReturnValue({
-      confirmEmailVerification: vi.fn().mockResolvedValue({ ok: false, error }),
+      confirmEmailVerificationChallenge: vi.fn().mockResolvedValue({
+        status: "already_confirmed",
+      }),
     } as never);
 
     await expect(
-      action(createActionArgs({ userId: "user_123", code: "ABC12345" })),
+      action(createActionArgs({ intent: "confirm", userId: "user_123", code: "ABC12345" })),
+    ).resolves.toEqual({ state: "result", result: "already_confirmed" });
+  });
+
+  test.each([
+    ["expired", "expired"],
+    ["invalid", "invalid"],
+    ["invalid_input", "invalid"],
+  ] as const)("maps %s to the %s result page", async (reason, result) => {
+    vi.mocked(getSystemOtpDurableObject).mockReturnValue({
+      confirmEmailVerificationChallenge: vi.fn().mockResolvedValue({
+        status: "rejected",
+        reason,
+      }),
+    } as never);
+
+    await expect(
+      action(createActionArgs({ intent: "confirm", userId: "user_123", code: "ABC12345" })),
     ).resolves.toEqual({ state: "result", result });
   });
 
+  test("requests a replacement email through Auth", async () => {
+    vi.mocked(requestEmailVerificationResend).mockResolvedValue({
+      status: "accepted",
+      email: "user@example.com",
+    });
+    const args = createActionArgs({ intent: "resend", email: "USER@example.com" });
+
+    await expect(action(args)).resolves.toEqual({ state: "result", result: "resent" });
+    expect(requestEmailVerificationResend).toHaveBeenCalledWith({
+      request: args.request,
+      context: args.context,
+      email: "user@example.com",
+    });
+    expect(getSystemOtpDurableObject).not.toHaveBeenCalled();
+  });
+
   test("rejects malformed form submissions before acquiring the OTP object", async () => {
-    await expect(action(createActionArgs({ userId: "", code: "" }))).resolves.toEqual({
+    await expect(
+      action(createActionArgs({ intent: "confirm", userId: "", code: "" })),
+    ).resolves.toEqual({
       state: "result",
       result: "incomplete",
     });
