@@ -1,8 +1,10 @@
 import { Link, useOutletContext, useSearchParams } from "react-router";
 
+import { eq, useLiveQuery } from "@tanstack/react-db";
+
+import { formatTimestamp, formatTimestampInTimeZone } from "./formatting";
 import { automationScopeTabPath } from "./scope";
-import type { AutomationLayoutContext, AutomationRouteItem } from "./shared";
-import { AutomationNotice, formatTimestamp, formatTimestampInTimeZone } from "./shared";
+import { AutomationNotice, type AutomationLayoutContext, type AutomationRouteItem } from "./shared";
 
 const buildRouteLink = ({ basePath, routeId }: { basePath: string; routeId: string }) => {
   const params = new URLSearchParams({ route: routeId });
@@ -106,9 +108,42 @@ const routeSections = (routes: AutomationRouteItem[]) => [
   },
 ];
 
+const toErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : "Automation route synchronization failed.";
+
 export default function BackofficeAutomationRouter() {
-  const { selectedScope, routesData } = useOutletContext<AutomationLayoutContext>();
-  const routes = routesData.data;
+  const { selectedScope, collections } = useOutletContext<AutomationLayoutContext>();
+  const routesQuery = useLiveQuery(
+    (query) =>
+      query
+        .from({ route: collections.routes })
+        .leftJoin({ schedule: collections.routeScheduleStates }, ({ route, schedule }) =>
+          eq(route.id, schedule.id),
+        )
+        .orderBy(({ route }) => route.priority, "asc")
+        .orderBy(({ route }) => route.id, "asc")
+        .select(({ route, schedule }) => ({
+          id: route.id,
+          name: route.name,
+          enabled: route.enabled,
+          priority: route.priority,
+          trigger: route.trigger,
+          action: route.action,
+          description: route.description,
+          nextOccurrenceAt: schedule?.nextOccurrenceAt,
+        })),
+    [collections.routeScheduleStates, collections.routes],
+  );
+  const routes: AutomationRouteItem[] = (routesQuery.data ?? []).map((route) => ({
+    ...route,
+    nextOccurrenceAt: route.nextOccurrenceAt?.toISOString() ?? null,
+  }));
+  const routeError = routesQuery.isError
+    ? toErrorMessage(
+        collections.routes.utils.getLastError() ??
+          collections.routeScheduleStates.utils.getLastError(),
+      )
+    : null;
   const [searchParams] = useSearchParams();
   const selectedRouteId = searchParams.get("route")?.trim() ?? "";
   const selectedRoute = routes.find((route) => route.id === selectedRouteId) ?? null;
@@ -118,43 +153,41 @@ export default function BackofficeAutomationRouter() {
   const enabledRoutes = routes.filter((route) => route.enabled).length;
   const sections = routeSections(routes).filter((section) => section.routes.length > 0);
 
-  if (routesData.blockingError) {
+  if (routesQuery.isLoading && routes.length === 0) {
+    return (
+      <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
+        Loading automation routes…
+      </div>
+    );
+  }
+
+  if (routeError && routes.length === 0) {
     return (
       <AutomationNotice tone="error">
-        <p className="text-[10px] tracking-[0.22em] uppercase">Could not load automation routes</p>
-        <p className="mt-2 text-sm">{routesData.blockingError}</p>
+        <p className="text-[10px] tracking-[0.22em] uppercase">
+          Could not synchronize automation routes
+        </p>
+        <p className="mt-2 text-sm">{routeError}</p>
       </AutomationNotice>
     );
   }
 
   if (routes.length === 0) {
     return (
-      <section className="w-full max-w-7xl space-y-4">
-        {routesData.syncError ? (
-          <AutomationNotice tone="error">
-            <p className="text-[10px] tracking-[0.22em] uppercase">
-              Could not sync local route updates
-            </p>
-            <p className="mt-2 text-sm">{routesData.syncError}</p>
-          </AutomationNotice>
-        ) : null}
-        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-          No automation routes are defined for this scope.
-        </div>
-      </section>
+      <div className="w-full max-w-7xl border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
+        No automation routes are defined for this scope.
+      </div>
     );
   }
 
   return (
     <section className="w-full max-w-7xl space-y-4">
-      {routesData.serverError || routesData.syncError ? (
+      {routeError ? (
         <AutomationNotice tone="error">
           <p className="text-[10px] tracking-[0.22em] uppercase">
-            {routesData.serverError
-              ? "Could not load all routes"
-              : "Could not sync local route updates"}
+            Could not synchronize all automation routes
           </p>
-          <p className="mt-2 text-sm">{routesData.serverError ?? routesData.syncError}</p>
+          <p className="mt-2 text-sm">{routeError}</p>
         </AutomationNotice>
       ) : null}
 

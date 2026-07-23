@@ -1,4 +1,5 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
+import { createFetchFragnoOutboxTransport } from "@fragno-dev/tanstack-db-adapter/transport";
 import type { RouterContextProvider } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
@@ -12,7 +13,6 @@ import {
   getAutomationLayerForPath,
   listAutomationWorkspaceScripts,
   readAutomationWorkspaceScript,
-  type AutomationEventDefinition,
   type AutomationWorkspaceScriptEntry,
   type createAutomationFragment,
 } from "@/fragno/automation";
@@ -24,28 +24,14 @@ import {
   booleanActionResultFromRouteResponse,
 } from "../action-result";
 import type {
-  AutomationEventRecord,
   AutomationProjectRecord,
-  AutomationRouteRecord,
   AutomationScriptRecord,
   AutomationScriptSourceRecord,
-  AutomationStoreEntryRecord,
 } from "./data";
 
 type AutomationFragment = ReturnType<typeof createAutomationFragment>;
 
 const AUTOMATION_SCRIPT_ID_PREFIX = "automation-script:";
-export type AutomationEventsResult = {
-  events: AutomationEventRecord[];
-  cursor?: string;
-  hasNextPage: boolean;
-  eventsError: string | null;
-};
-
-export type AutomationEventDefinitionsResult = {
-  eventDefinitions: AutomationEventDefinition[];
-  eventDefinitionsError: string | null;
-};
 
 const formatErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
@@ -111,29 +97,13 @@ export async function fetchAutomationAdapterIdentity(
   url.search = "";
   applyAutomationScopeQuery(url, scope);
 
-  const response = await automationsDo.fetch(
-    new Request(url, {
-      method: "GET",
-      headers: request.headers,
-    }),
-  );
-  if (!response.ok) {
-    throw new Error(
-      `Failed to load automation adapter identity (${response.status} ${response.statusText}).`,
-    );
-  }
+  const transport = createFetchFragnoOutboxTransport({
+    internalUrl: url,
+    fetch: (input, init) =>
+      automationsDo.fetch(new Request(input, { ...init, headers: request.headers })),
+  });
 
-  const description: unknown = await response.json();
-  if (
-    typeof description !== "object" ||
-    description === null ||
-    !("adapterIdentity" in description) ||
-    typeof description.adapterIdentity !== "string"
-  ) {
-    throw new Error("Automation internal description did not include an adapter identity.");
-  }
-
-  return description.adapterIdentity;
+  return transport.getAdapterIdentity({ signal: request.signal });
 }
 
 const toRecordArray = <T extends Record<string, unknown>>(value: unknown): T[] => {
@@ -380,175 +350,6 @@ export async function loadAutomationScriptSource({
   }
 }
 
-export async function fetchAutomationRoutes(
-  request: Request,
-  context: Readonly<RouterContextProvider>,
-  scope: BackofficeContextScope,
-): Promise<{
-  routes: AutomationRouteRecord[];
-  routesError: string | null;
-}> {
-  try {
-    const callRoute = createAutomationsRouteCaller(request, context, scope);
-    const response = await callRoute("GET", "/routes");
-
-    if (response.type === "json" && isSuccessStatus(response.status)) {
-      return {
-        routes: toRecordArray<AutomationRouteRecord>(response.data),
-        routesError: null,
-      };
-    }
-
-    if (response.type === "error") {
-      return {
-        routes: [],
-        routesError: response.error.message,
-      };
-    }
-
-    return {
-      routes: [],
-      routesError: `Failed to fetch automation routes (${response.status}).`,
-    };
-  } catch (error) {
-    return {
-      routes: [],
-      routesError: formatErrorMessage(error, "Failed to load automation routes."),
-    };
-  }
-}
-
-export async function fetchAutomationStoreEntries(
-  request: Request,
-  context: Readonly<RouterContextProvider>,
-  scope: BackofficeContextScope,
-): Promise<{
-  storeEntries: AutomationStoreEntryRecord[];
-  storeEntriesError: string | null;
-}> {
-  try {
-    const callRoute = createAutomationsRouteCaller(request, context, scope);
-    const requestUrl = new URL(request.url);
-    const prefix = requestUrl.searchParams.get("prefix") ?? undefined;
-    const response = await callRoute("GET", "/store", {
-      query: typeof prefix === "string" ? { prefix } : {},
-    });
-
-    if (response.type === "json" && isSuccessStatus(response.status)) {
-      return {
-        storeEntries: toRecordArray<AutomationStoreEntryRecord>(response.data),
-        storeEntriesError: null,
-      };
-    }
-
-    if (response.type === "error") {
-      return {
-        storeEntries: [],
-        storeEntriesError: response.error.message,
-      };
-    }
-
-    return {
-      storeEntries: [],
-      storeEntriesError: `Failed to fetch automation store entries (${response.status}).`,
-    };
-  } catch (error) {
-    return {
-      storeEntries: [],
-      storeEntriesError: formatErrorMessage(error, "Failed to load automation store entries."),
-    };
-  }
-}
-
-export async function fetchAutomationEventDefinitions(
-  request: Request,
-  context: Readonly<RouterContextProvider>,
-  scope: BackofficeContextScope,
-): Promise<AutomationEventDefinitionsResult> {
-  try {
-    const callRoute = createAutomationsRouteCaller(request, context, scope);
-    const response = await callRoute("GET", "/event-definitions");
-
-    if (response.type === "json" && isSuccessStatus(response.status)) {
-      return {
-        eventDefinitions: toRecordArray<AutomationEventDefinition>(response.data),
-        eventDefinitionsError: null,
-      };
-    }
-
-    if (response.type === "error") {
-      return {
-        eventDefinitions: [],
-        eventDefinitionsError: response.error.message,
-      };
-    }
-
-    return {
-      eventDefinitions: [],
-      eventDefinitionsError: `Failed to fetch automation event definitions (${response.status}).`,
-    };
-  } catch (error) {
-    return {
-      eventDefinitions: [],
-      eventDefinitionsError: formatErrorMessage(
-        error,
-        "Failed to load automation event definitions.",
-      ),
-    };
-  }
-}
-
-export async function fetchAutomationEvents(
-  request: Request,
-  context: Readonly<RouterContextProvider>,
-  scope: BackofficeContextScope,
-  options: { limit?: number; cursor?: string } = {},
-): Promise<AutomationEventsResult> {
-  try {
-    const callRoute = createAutomationsRouteCaller(request, context, scope);
-    const response = await callRoute("GET", "/events", {
-      query: {
-        ...(typeof options.limit === "number" ? { limit: String(options.limit) } : {}),
-        ...(options.cursor ? { cursor: options.cursor } : {}),
-      },
-    });
-
-    if (response.type === "json" && isSuccessStatus(response.status)) {
-      const data = response.data as {
-        events?: unknown;
-        nextCursor?: unknown;
-        hasNextPage?: unknown;
-      };
-      return {
-        events: toRecordArray<AutomationEventRecord>(data.events),
-        cursor: typeof data.nextCursor === "string" ? data.nextCursor : undefined,
-        hasNextPage: data.hasNextPage === true,
-        eventsError: null,
-      };
-    }
-
-    if (response.type === "error") {
-      return {
-        events: [],
-        hasNextPage: false,
-        eventsError: response.error.message,
-      };
-    }
-
-    return {
-      events: [],
-      hasNextPage: false,
-      eventsError: `Failed to fetch automation events (${response.status}).`,
-    };
-  } catch (error) {
-    return {
-      events: [],
-      hasNextPage: false,
-      eventsError: formatErrorMessage(error, "Failed to load automation events."),
-    };
-  }
-}
-
 export async function fetchAutomationProjects(
   request: Request,
   context: Readonly<RouterContextProvider>,
@@ -615,70 +416,6 @@ export async function createAutomationProject(
     return {
       project: null,
       error: formatErrorMessage(error, "Failed to create automation project."),
-    };
-  }
-}
-
-export async function updateAutomationProject(
-  request: Request,
-  context: Readonly<RouterContextProvider>,
-  orgId: string,
-  projectId: string,
-  input: {
-    name?: string;
-    slug?: string;
-    description?: string | null;
-  },
-): Promise<{ project: AutomationProjectRecord | null; error: string | null }> {
-  try {
-    const callRoute = createAutomationsRouteCaller(request, context, { kind: "org", orgId });
-    const response = await callRoute("PATCH", "/projects/:projectId", {
-      pathParams: { projectId },
-      body: input,
-    });
-
-    if (response.type === "json" && isSuccessStatus(response.status)) {
-      return { project: response.data as AutomationProjectRecord, error: null };
-    }
-
-    if (response.type === "error") {
-      return { project: null, error: response.error.message };
-    }
-
-    return { project: null, error: `Failed to update automation project (${response.status}).` };
-  } catch (error) {
-    return {
-      project: null,
-      error: formatErrorMessage(error, "Failed to update automation project."),
-    };
-  }
-}
-
-export async function archiveAutomationProject(
-  request: Request,
-  context: Readonly<RouterContextProvider>,
-  orgId: string,
-  projectId: string,
-): Promise<{ project: AutomationProjectRecord | null; error: string | null }> {
-  try {
-    const callRoute = createAutomationsRouteCaller(request, context, { kind: "org", orgId });
-    const response = await callRoute("DELETE", "/projects/:projectId", {
-      pathParams: { projectId },
-    });
-
-    if (response.type === "json" && isSuccessStatus(response.status)) {
-      return { project: response.data as AutomationProjectRecord, error: null };
-    }
-
-    if (response.type === "error") {
-      return { project: null, error: response.error.message };
-    }
-
-    return { project: null, error: `Failed to archive automation project (${response.status}).` };
-  } catch (error) {
-    return {
-      project: null,
-      error: formatErrorMessage(error, "Failed to archive automation project."),
     };
   }
 }

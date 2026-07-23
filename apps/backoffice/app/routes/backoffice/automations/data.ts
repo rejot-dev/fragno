@@ -1,10 +1,5 @@
-import type {
-  AutomationEventRecord as FragmentAutomationEventRecord,
-  AutomationRouteDefinition,
-  AutomationScriptLayer,
-} from "@/fragno/automation";
+import type { AutomationScriptLayer } from "@/fragno/automation";
 import type { AutomationScriptEngine } from "@/fragno/automation/catalog";
-import type { AutomationEventActor } from "@/fragno/automation/contracts";
 
 type AutomationIdLike =
   | string
@@ -29,17 +24,6 @@ export type AutomationScriptRecord = {
   enabled: boolean;
 };
 
-export type AutomationStoreEntryRecord = {
-  id?: AutomationIdLike;
-  key?: string | null;
-  value?: string | null;
-  description?: string | null;
-  category?: string[] | null;
-  actor: AutomationEventActor;
-  createdAt?: string | Date | null;
-  updatedAt?: string | Date | null;
-};
-
 export type AutomationProjectRecord = {
   id?: AutomationIdLike;
   slug?: string | null;
@@ -50,10 +34,6 @@ export type AutomationProjectRecord = {
   createdAt?: string | Date | null;
   updatedAt?: string | Date | null;
 };
-
-export type AutomationRouteRecord = AutomationRouteDefinition;
-
-export type AutomationEventRecord = FragmentAutomationEventRecord;
 
 export type AutomationScriptSourceRecord = {
   script: string | null;

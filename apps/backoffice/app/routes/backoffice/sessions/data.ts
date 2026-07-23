@@ -2,6 +2,7 @@ import { createRouteCaller } from "@fragno-dev/core/api";
 import type { createPiHarness } from "@fragno-dev/pi-harness/factory";
 import type { PiSession, PiSessionDetail, PiWorkflowStatus } from "@fragno-dev/pi-harness/types";
 import { INTERACTIVE_CHAT_WORKFLOW_NAME } from "@fragno-dev/pi-harness/workflows/interactive-chat-workflow";
+import { createFetchFragnoOutboxTransport } from "@fragno-dev/tanstack-db-adapter/transport";
 import type { RouterContextProvider } from "react-router";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
@@ -67,29 +68,12 @@ export async function fetchPiAdapterIdentity(
   url.search = "";
   url.searchParams.set("scope", backofficeContextScopeSinglePathSegment(scope));
 
-  const response = await piDo.fetch(
-    new Request(url, {
-      method: "GET",
-      headers: request.headers,
-    }),
-  );
-  if (!response.ok) {
-    throw new Error(
-      `Failed to load Pi adapter identity (${response.status} ${response.statusText}).`,
-    );
-  }
+  const transport = createFetchFragnoOutboxTransport({
+    internalUrl: url,
+    fetch: (input, init) => piDo.fetch(new Request(input, { ...init, headers: request.headers })),
+  });
 
-  const description: unknown = await response.json();
-  if (
-    typeof description !== "object" ||
-    description === null ||
-    !("adapterIdentity" in description) ||
-    typeof description.adapterIdentity !== "string"
-  ) {
-    throw new Error("Pi internal description did not include an adapter identity.");
-  }
-
-  return description.adapterIdentity;
+  return transport.getAdapterIdentity({ signal: request.signal });
 }
 
 export async function fetchPiConfig(

@@ -1,4 +1,4 @@
-import { Suspense, use, useState } from "react";
+import { useState } from "react";
 import {
   Form,
   useActionData,
@@ -9,16 +9,14 @@ import {
 
 import { useLiveQuery } from "@tanstack/react-db";
 
-import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
-import { ClientOnly } from "@/components/client-only";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 
 import type { Route } from "./+types/store";
 import { deleteAutomationStoreEntry } from "./data.server";
-import { automationScopeFromRouteParams, automationScopeRouteId, toBackofficeScope } from "./scope";
+import { formatTimestamp } from "./formatting";
+import { automationScopeFromRouteParams } from "./scope";
 import type { AutomationLayoutContext, AutomationStoreItem } from "./shared";
 import { formatTimestamp } from "./shared";
-import { getAutomationTanStackDatabase } from "./tanstack/database";
 
 type StoreActionData = {
   ok: boolean;
@@ -75,7 +73,7 @@ const formatActor = (actor: AutomationStoreItem["actor"]) => {
 };
 
 export default function BackofficeOrganisationAutomationStore() {
-  const { selectedScope, adapterIdentity } = useOutletContext<AutomationLayoutContext>();
+  const { collections } = useOutletContext<AutomationLayoutContext>();
   const [searchParams] = useSearchParams();
   const [storePrefix, setStorePrefix] = useState(() => searchParams.get("prefix") ?? "");
   const actionData = useActionData<typeof action>();
@@ -113,16 +111,11 @@ export default function BackofficeOrganisationAutomationStore() {
         </label>
       </div>
 
-      <ClientOnly fallback={<AutomationStoreLoading />}>
-        <Suspense fallback={<AutomationStoreLoading />}>
-          <AutomationKvStoreTable
-            scope={selectedScope}
-            adapterIdentity={adapterIdentity}
-            prefix={storePrefix}
-            pendingKey={pendingKey}
-          />
-        </Suspense>
-      </ClientOnly>
+      <AutomationKvStoreTable
+        collections={collections}
+        prefix={storePrefix}
+        pendingKey={pendingKey}
+      />
     </div>
   );
 }
@@ -141,21 +134,14 @@ function AutomationStoreLoading() {
 }
 
 function AutomationKvStoreTable({
-  scope,
-  adapterIdentity,
+  collections,
   prefix,
   pendingKey,
 }: {
-  scope: AutomationLayoutContext["selectedScope"];
-  adapterIdentity: string;
+  collections: AutomationLayoutContext["collections"];
   prefix: string;
   pendingKey: string;
 }) {
-  const database = use(getAutomationTanStackDatabase());
-  const scopeKey = backofficeContextScopeSinglePathSegment(toBackofficeScope(scope));
-  const routeId = automationScopeRouteId(scope);
-  const internalUrl = `/api/automations-scoped/${scope.kind}/${encodeURIComponent(routeId)}/_internal`;
-  const collections = database.collectionsFor({ scopeKey, internalUrl, adapterIdentity });
   const store = useLiveQuery(
     (builder) => {
       const query = builder.from({ entry: collections.kvStore });

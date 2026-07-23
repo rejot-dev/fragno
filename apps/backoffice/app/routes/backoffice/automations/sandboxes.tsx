@@ -3,19 +3,24 @@ import {
   Link,
   redirect,
   useActionData,
-  useLoaderData,
   useNavigation,
   useOutletContext,
   useSearchParams,
 } from "react-router";
 
-import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
+import { and, eq, like, useLiveQuery } from "@tanstack/react-db";
+
+import {
+  backofficeScopeSinglePathSegment,
+  type BackofficeRoutableScope,
+} from "@/backoffice-runtime/scope-codec";
 import { getAuthMe } from "@/fragno/auth/auth-server";
-import type {
-  SandboxCommandResult,
-  SandboxInstanceStatus,
-  SandboxInstanceSummary,
-  StartSandboxOptions,
+import {
+  CLOUDFLARE_SANDBOX_PROVIDER,
+  type SandboxCommandResult,
+  type SandboxInstanceStatus,
+  type SandboxInstanceSummary,
+  type StartSandboxOptions,
 } from "@/sandbox/contracts";
 import { parseSleepAfterInput } from "@/sandbox/sleep-after";
 import { getScopedSandboxRuntime } from "@/worker-runtime/sandbox-manager";
@@ -23,17 +28,9 @@ import { getScopedSandboxRuntime } from "@/worker-runtime/sandbox-manager";
 import type { Route } from "./+types/sandboxes";
 import { fetchAutomationProjects, toExternalId } from "./data.server";
 import { automationScopeFromRouteParams, automationScopeTabPath } from "./scope";
-import { resolveAutomationServerLofiData, type AutomationLayoutContext } from "./shared";
+import type { AutomationLayoutContext } from "./shared";
 
 type SandboxView = "new" | "detail";
-
-type ScopedSandboxLoaderData = {
-  sandboxes: SandboxInstanceSummary[];
-  selectedSandbox: SandboxInstanceSummary | null;
-  selectedSandboxId: string | null;
-  view: SandboxView;
-  loadError: string | null;
-};
 
 type NewSandboxFormValues = {
   id: string;
@@ -105,56 +102,6 @@ export function meta() {
       content: "Manage Cloudflare sandboxes for the selected automation scope.",
     },
   ];
-}
-
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const searchParams = url.searchParams;
-  const requestedView = searchParams.get("view") === "new" ? "new" : "detail";
-  const requestedSandboxId = readText(searchParams.get("sandbox"));
-  const scope = await requireSandboxScopeAccess({ request, params, context });
-  const sandboxRuntime = getScopedSandboxRuntime(context, scope);
-
-  try {
-    const sandboxes = await sandboxRuntime.listSandboxes();
-
-    if (requestedView === "new") {
-      return {
-        sandboxes,
-        selectedSandbox: null,
-        selectedSandboxId: null,
-        view: "new",
-        loadError: null,
-      } satisfies ScopedSandboxLoaderData;
-    }
-
-    if (requestedSandboxId) {
-      return {
-        sandboxes,
-        selectedSandbox: sandboxes.find((instance) => instance.id === requestedSandboxId) ?? null,
-        selectedSandboxId: requestedSandboxId,
-        view: "detail",
-        loadError: null,
-      } satisfies ScopedSandboxLoaderData;
-    }
-
-    const fallback =
-      sandboxes.find((instance) => instance.status !== "stopped") ?? sandboxes[0] ?? null;
-    return {
-      sandboxes,
-      selectedSandbox: fallback,
-      selectedSandboxId: fallback?.id ?? null,
-      view: fallback ? "detail" : "new",
-      loadError: null,
-    } satisfies ScopedSandboxLoaderData;
-  } catch (error) {
-    return {
-      sandboxes: [],
-      selectedSandbox: null,
-      selectedSandboxId: null,
-      view: "new",
-      loadError: toErrorMessage(error),
-    } satisfies ScopedSandboxLoaderData;
-  }
 }
 
 export async function action({ request, params, context, url }: Route.ActionArgs) {
@@ -298,15 +245,57 @@ export async function action({ request, params, context, url }: Route.ActionArgs
   throw new Response("Unsupported sandbox action", { status: 400 });
 }
 
+const isSandboxStatus = (status: string): status is SandboxInstanceStatus =>
+  status === "requested" ||
+  status === "starting" ||
+  status === "running" ||
+  status === "stopping" ||
+  status === "stopped" ||
+  status === "error";
+
+const sandboxScopeId = (scope: AutomationLayoutContext["selectedScope"]): string => {
+  switch (scope.kind) {
+    case "system":
+      return "system";
+    case "org":
+      return scope.orgId;
+    case "project":
+      return backofficeScopeSinglePathSegment({
+        kind: "project",
+        orgId: scope.orgId,
+        projectId: scope.projectId,
+      });
+    case "user":
+      return backofficeScopeSinglePathSegment({ kind: "user", userId: scope.userId });
+  }
+
+  throw new Error("Unsupported automation sandbox scope.");
+};
+
 export default function BackofficeAutomationSandboxes() {
-  const { selectedScope, lofiSandboxes } = useOutletContext<AutomationLayoutContext>();
-  const {
-    sandboxes: initialSandboxes,
-    selectedSandbox: initialSelectedSandbox,
-    selectedSandboxId: initialSelectedSandboxId,
-    view: initialView,
-    loadError,
-  } = useLoaderData<typeof loader>();
+  const { selectedScope, collections } = useOutletContext<AutomationLayoutContext>();
+  const sandboxPrefix = `${sandboxScopeId(selectedScope)}::`;
+  const sandboxesQuery = useLiveQuery(
+    (query) =>
+      query
+        .from({ instance: collections.sandboxInstances })
+        .where(({ instance }) =>
+          and(
+            eq(instance.provider, CLOUDFLARE_SANDBOX_PROVIDER),
+            like(instance.id, `${sandboxPrefix}%`),
+          ),
+        )
+        .orderBy(({ instance }) => instance.id, "asc")
+        .select(({ instance }) => ({ id: instance.id, status: instance.status })),
+    [collections.sandboxInstances, sandboxPrefix],
+  );
+  const sandboxes: SandboxInstanceSummary[] = (sandboxesQuery.data ?? []).flatMap((instance) => {
+    const id = instance.id.slice(sandboxPrefix.length);
+    return id && isSandboxStatus(instance.status) ? [{ id, status: instance.status }] : [];
+  });
+  const sandboxesError = sandboxesQuery.isError
+    ? toErrorMessage(collections.sandboxInstances.utils.getLastError())
+    : null;
   const [searchParams] = useSearchParams();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
@@ -315,31 +304,17 @@ export default function BackofficeAutomationSandboxes() {
   const isExecuting = navigation.state === "submitting" && activeIntent === "exec";
   const isKilling = navigation.state === "submitting" && activeIntent === "kill";
   const basePath = automationScopeTabPath(selectedScope, "sandboxes");
-  const sandboxData = resolveAutomationServerLofiData({
-    serverData: initialSandboxes,
-    serverError: loadError,
-    lofiData: lofiSandboxes.sandboxes,
-    lofiSynced: lofiSandboxes.synced,
-    lofiError: lofiSandboxes.error,
-    isEmpty: (instances) => instances.length === 0,
-  });
-  const sandboxes = sandboxData.data;
   const requestedView = searchParams.get("view") === "new" ? "new" : "detail";
   const requestedSandboxId = readText(searchParams.get("sandbox"));
   const fallbackSandbox =
     sandboxes.find((instance) => instance.status !== "stopped") ?? sandboxes[0] ?? null;
-  const view = requestedView === "new" ? "new" : fallbackSandbox ? "detail" : initialView;
+  const view: SandboxView = requestedView === "new" ? "new" : fallbackSandbox ? "detail" : "new";
   const selectedSandboxId =
-    view === "detail"
-      ? requestedSandboxId || fallbackSandbox?.id || initialSelectedSandboxId
-      : null;
+    view === "detail" ? requestedSandboxId || fallbackSandbox?.id || null : null;
   const selectedSandbox = selectedSandboxId
-    ? (sandboxes.find((instance) => instance.id === selectedSandboxId) ??
-      (lofiSandboxes.synced ? null : initialSelectedSandbox))
+    ? (sandboxes.find((instance) => instance.id === selectedSandboxId) ?? null)
     : null;
-  const serverWarning = sandboxData.serverError;
-  const syncError = sandboxData.syncError;
-  const effectiveLoadError = sandboxData.blockingError;
+  const effectiveLoadError = sandboxesError && sandboxes.length === 0 ? sandboxesError : null;
 
   const startError = actionData?.intent === "start" && !actionData.ok ? actionData.message : null;
   const startValues =
@@ -391,7 +366,11 @@ export default function BackofficeAutomationSandboxes() {
             </div>
           </Link>
 
-          {!effectiveLoadError && sandboxes.length === 0 ? (
+          {sandboxesQuery.isLoading && sandboxes.length === 0 ? (
+            <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3 text-xs text-[var(--bo-muted)]">
+              Loading sandbox instances…
+            </div>
+          ) : !effectiveLoadError && sandboxes.length === 0 ? (
             <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3 text-xs text-[var(--bo-muted)]">
               No sandbox instances yet.
             </div>
@@ -435,14 +414,9 @@ export default function BackofficeAutomationSandboxes() {
           </div>
         ) : (
           <>
-            {serverWarning ? (
+            {sandboxesError ? (
               <div className="mb-4 border border-red-300 bg-red-100 p-3 text-sm text-red-700">
-                Could not load sandbox instances from the automations service: {serverWarning}
-              </div>
-            ) : null}
-            {syncError ? (
-              <div className="mb-4 border border-red-300 bg-red-100 p-3 text-sm text-red-700">
-                Could not sync local sandbox updates: {syncError}
+                Could not synchronize all sandbox updates: {sandboxesError}
               </div>
             ) : null}
             {view === "new" ? (

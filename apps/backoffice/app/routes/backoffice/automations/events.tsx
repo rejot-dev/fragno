@@ -1,16 +1,20 @@
 import { Fragment, useState } from "react";
-import { Link, useLocation, useOutletContext } from "react-router";
+import { useOutletContext } from "react-router";
+
+import { and, eq, lt, or, useLiveQuery } from "@tanstack/react-db";
+
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import type { AutomationEventActor } from "@/fragno/automation/contracts";
 
 import type { Route } from "./+types/events";
-import { automationScopeTabPath } from "./scope";
-import type { AutomationEventItem, AutomationLayoutContext } from "./shared";
-import { formatTimestamp } from "./shared";
+import { formatTimestamp } from "./formatting";
+import type { AutomationLayoutContext } from "./shared";
 
-const actorIdentity = (actor: AutomationEventItem["actor"]) =>
+const actorIdentity = (actor: AutomationEventActor) =>
   `${actor.scope}:${actor.source ?? ""}:${actor.type}:${actor.id}`;
 
-const collectActors = (event: AutomationEventItem) => {
-  const actorsByIdentity = new Map<string, AutomationEventItem["actor"]>();
+const collectActors = (event: { actor: AutomationEventActor; actors: AutomationEventActor[] }) => {
+  const actorsByIdentity = new Map<string, AutomationEventActor>();
 
   actorsByIdentity.set(actorIdentity(event.actor), event.actor);
   for (const actor of event.actors) {
@@ -20,7 +24,7 @@ const collectActors = (event: AutomationEventItem) => {
   return [...actorsByIdentity.values()];
 };
 
-const formatActor = (actor: AutomationEventItem["actor"] | null) => {
+const formatActor = (actor: AutomationEventActor | null) => {
   if (!actor) {
     return "—";
   }
@@ -29,7 +33,7 @@ const formatActor = (actor: AutomationEventItem["actor"] | null) => {
   return `${actor.scope}:${source}${actor.type}:${actor.id}`;
 };
 
-const formatScope = (scope: AutomationEventItem["scope"] | null) => {
+const formatScope = (scope: BackofficeContextScope | null) => {
   if (!scope) {
     return "—";
   }
@@ -60,31 +64,62 @@ const jsonPreview = (value: unknown) => {
   }
 };
 
-export default function BackofficeAutomationEvents() {
-  const {
-    events,
-    eventsCursor,
-    eventsHasNextPage,
-    eventsCurrentCursor,
-    eventsPageSize,
-    eventsData,
-    selectedScope,
-  } = useOutletContext<AutomationLayoutContext>();
-  const location = useLocation();
-  const [expandedEventIds, setExpandedEventIds] = useState(() => new Set<string>());
+const EVENTS_PAGE_SIZE = 10;
 
-  const pageHref = (nextCursor: string | null) => {
-    const params = new URLSearchParams(location.search);
-    if (nextCursor) {
-      params.set("cursor", nextCursor);
-    } else {
-      params.delete("cursor");
-    }
-    params.set("pageSize", String(eventsPageSize));
-    const search = params.toString();
-    const basePath = automationScopeTabPath(selectedScope, "events");
-    return search ? `${basePath}?${search}` : basePath;
-  };
+type AutomationEventCursor = {
+  occurredAt: Date;
+  id: string;
+};
+
+const toErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : "Automation event synchronization failed.";
+
+export default function BackofficeAutomationEvents() {
+  const { collections } = useOutletContext<AutomationLayoutContext>();
+  const [pageCursors, setPageCursors] = useState<AutomationEventCursor[]>([]);
+  const [expandedEventIds, setExpandedEventIds] = useState(() => new Set<string>());
+  const pageCursor = pageCursors.at(-1);
+  const page = pageCursors.length + 1;
+  const eventsQuery = useLiveQuery(
+    (query) => {
+      const events = query.from({ event: collections.events });
+      const cursorPage = pageCursor
+        ? events.where(({ event }) =>
+            or(
+              lt(event.occurredAt, pageCursor.occurredAt),
+              and(eq(event.occurredAt, pageCursor.occurredAt), lt(event.id, pageCursor.id)),
+            ),
+          )
+        : events;
+
+      return cursorPage
+        .orderBy(({ event }) => event.occurredAt, "desc")
+        .orderBy(({ event }) => event.id, "desc")
+        .limit(EVENTS_PAGE_SIZE + 1)
+        .select(({ event }) => ({
+          id: event.id,
+          scope: event.scope,
+          source: event.source,
+          eventType: event.eventType,
+          occurredAt: event.occurredAt,
+          payload: event.payload,
+          actor: event.actor,
+          actors: event.actors,
+          createdAt: event.createdAt,
+        }));
+    },
+    [collections.events, pageCursor],
+  );
+  const pageRows = eventsQuery.data ?? [];
+  const hasNextPage = pageRows.length > EVENTS_PAGE_SIZE;
+  const nextPageBoundary = hasNextPage ? pageRows[EVENTS_PAGE_SIZE - 1] : undefined;
+  const nextPageCursor = nextPageBoundary
+    ? { occurredAt: nextPageBoundary.occurredAt, id: nextPageBoundary.id }
+    : null;
+  const events = pageRows.slice(0, EVENTS_PAGE_SIZE);
+  const eventsError = eventsQuery.isError
+    ? toErrorMessage(collections.events.utils.getLastError())
+    : null;
 
   const togglePayload = (eventId: string) => {
     setExpandedEventIds((current) => {
@@ -100,19 +135,25 @@ export default function BackofficeAutomationEvents() {
 
   return (
     <section className="space-y-4">
-      {eventsData.blockingError ? (
+      {eventsQuery.isLoading && events.length === 0 ? (
+        <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
+          Loading automation events…
+        </div>
+      ) : eventsError && events.length === 0 ? (
         <div className="border border-red-400/40 bg-red-500/8 p-4 text-sm text-red-700 dark:text-red-200">
-          Could not load automation events: {eventsData.blockingError}
+          Could not synchronize automation events: {eventsError}
         </div>
       ) : events.length === 0 ? (
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-          No automation events have been recorded for this scope yet.
+          {pageCursors.length > 0
+            ? "No automation events remain on this page."
+            : "No automation events have been recorded for this scope yet."}
         </div>
       ) : (
         <div className="w-full max-w-7xl space-y-3">
-          {eventsData.syncError ? (
+          {eventsError ? (
             <div className="border border-amber-400/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-200">
-              Showing {eventsData.source} events. Local sync warning: {eventsData.syncError}
+              Could not synchronize all automation events: {eventsError}
             </div>
           ) : null}
           <div className="backoffice-scroll w-full [scrollbar-gutter:stable] overflow-x-auto border border-[color:var(--bo-border)]">
@@ -240,33 +281,40 @@ export default function BackofficeAutomationEvents() {
               </tbody>
             </table>
           </div>
-
-          <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--bo-muted-2)]">
-            <div className="flex items-center gap-2">
-              {eventsCurrentCursor ? (
-                <Link
-                  to={pageHref(null)}
-                  className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                >
-                  Newest
-                </Link>
-              ) : null}
-              {eventsHasNextPage && eventsCursor ? (
-                <Link
-                  to={pageHref(eventsCursor)}
-                  className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                >
-                  Next page
-                </Link>
-              ) : null}
-            </div>
-            <span>
-              {events.length} event{events.length === 1 ? "" : "s"} shown · Page size{" "}
-              {eventsPageSize} · Source: {eventsData.source}
-            </span>
-          </div>
         </div>
       )}
+
+      {events.length > 0 || pageCursors.length > 0 ? (
+        <div className="flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 text-xs text-[var(--bo-muted-2)]">
+          <span>
+            {events.length} event{events.length === 1 ? "" : "s"} shown · Page {page}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={pageCursors.length === 0}
+              onClick={() => {
+                setPageCursors((current) => current.slice(0, -1));
+              }}
+              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[9px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              disabled={!nextPageCursor}
+              onClick={() => {
+                if (nextPageCursor) {
+                  setPageCursors((current) => [...current, nextPageCursor]);
+                }
+              }}
+              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[9px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

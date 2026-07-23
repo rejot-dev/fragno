@@ -183,10 +183,12 @@ export const createRouteBackedRuntimeContext = ({
         : createUnavailableOtpRuntime(unavailableMessage("OTP", execution)),
     },
     pi: pi ?? {
-      runtime: createPiRouteRuntime({
-        object: kernel.scoped("PI", execution.scope, runtime.objects.pi),
-        scope: execution.scope,
-      }),
+      runtime: selectedOrg
+        ? createPiRouteRuntime({
+            object: kernel.scoped("PI", execution.scope, runtime.objects.pi),
+            scope: execution.scope,
+          })
+        : unavailableRuntime<PiRuntime>(unavailableMessage("PI", execution)),
     },
     reson8: {
       runtime: selectedOrg
