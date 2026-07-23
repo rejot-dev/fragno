@@ -1,5 +1,100 @@
 # @fragno-dev/pi-fragment
 
+## 1.0.0
+
+### Major Changes
+
+- 81542e7: refactor: remove pi tool replay and side-effect reducer APIs
+
+### Patch Changes
+
+- f984a61: feat: add command-based sessions with restored turns and Pi JSONL export.
+- 06428f8: fix: update Mario Zechner pi dependencies and preserve replay behavior.
+- 916eb6d: feat: support dynamically resolved Pi skill registries
+- 0e9acb4: fix: reconnect Pi session event streams after clean EOF.
+- fb2d7f7: feat: add custom Pi workflow sessions, typed workflow DSL helpers, and replayable agent steps.
+- 662e7d6: fix: await async workflow previousEmissions
+- 50e0cff: feat: export Pi route schemas from a public subpath.
+- 60dc522: feat: add Pi lifecycle event routes and live session clients.
+- a64773f: fix: persist Pi skill resolution failures on agent steps
+- b182389: refactor: migrate Pi tests to shared workflow scenario harness
+- 073f89b: feat: scope Pi session routes and clients by workflow name.
+- 4b21047: feat: support resolving Pi system prompts before appending skill catalogs
+- b48b27d: feat: add skill-aware agent steps to the Pi workflow DSL.
+- fa21507: fix: restore interrupted Pi agent turns from live step emissions and publish commit markers.
+- 6c10a63: fix: filter stale live step emissions after a competing epoch commits.
+- f856070: Ensure all non-private packages include repository metadata in their `package.json` entries.
+- b41824f: feat: add waitForEvent onConsume hooks for event consumption side effects
+- Updated dependencies [0d4cbe8]
+- Updated dependencies [fcecfed]
+- Updated dependencies [cff3b99]
+- Updated dependencies [27b7db5]
+- Updated dependencies [9419f78]
+- Updated dependencies [eb6ea3e]
+- Updated dependencies [0186a7a]
+- Updated dependencies [17e5ab9]
+- Updated dependencies [3f9d1bb]
+- Updated dependencies [d9a5ffe]
+- Updated dependencies [d92f4ce]
+- Updated dependencies [1d2125e]
+- Updated dependencies [20324e7]
+- Updated dependencies [8a60280]
+- Updated dependencies [bceb49b]
+- Updated dependencies [aff91d1]
+- Updated dependencies [03d5a5c]
+- Updated dependencies [a28094e]
+- Updated dependencies [5f98d46]
+- Updated dependencies [6cc8f36]
+- Updated dependencies [d961df2]
+- Updated dependencies [f42c8c6]
+- Updated dependencies [9cd79f3]
+- Updated dependencies [49ca4fb]
+- Updated dependencies [0e63275]
+- Updated dependencies [26f85f9]
+- Updated dependencies [4944ecf]
+- Updated dependencies [4e5d611]
+- Updated dependencies [b40a129]
+- Updated dependencies [f297b5d]
+- Updated dependencies [caf581b]
+- Updated dependencies [7de0078]
+- Updated dependencies [ff3673f]
+- Updated dependencies [fda1ff9]
+- Updated dependencies [1e1088b]
+- Updated dependencies [9e2ee05]
+- Updated dependencies [3734573]
+- Updated dependencies [2e7263b]
+- Updated dependencies [662e7d6]
+- Updated dependencies [48c0094]
+- Updated dependencies [85be413]
+- Updated dependencies [fa21507]
+- Updated dependencies [42353ac]
+- Updated dependencies [79055dd]
+- Updated dependencies [e7b36e1]
+- Updated dependencies [3328fe3]
+- Updated dependencies [6c10a63]
+- Updated dependencies [a64dc64]
+- Updated dependencies [f856070]
+- Updated dependencies [ea8ea88]
+- Updated dependencies [5599183]
+- Updated dependencies [e2cad8d]
+- Updated dependencies [b41824f]
+- Updated dependencies [5e0cfe8]
+- Updated dependencies [9919fdd]
+- Updated dependencies [6edb80b]
+- Updated dependencies [7507d49]
+- Updated dependencies [397aba2]
+- Updated dependencies [073f89b]
+- Updated dependencies [89a4489]
+- Updated dependencies [102238e]
+- Updated dependencies [68c03ce]
+- Updated dependencies [eea94c2]
+- Updated dependencies [3712e27]
+- Updated dependencies [28974f4]
+- Updated dependencies [e8845d1]
+  - @fragno-dev/db@0.4.2
+  - @fragno-dev/core@0.2.3
+  - @fragno-dev/workflows@1.0.0
+
 ## 0.0.3
 
 ### Patch Changes

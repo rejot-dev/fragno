@@ -1,17 +1,13 @@
-# @fragno-dev/mcp-fragment
+# @fragno-dev/tanstack-db-adapter
 
-## 1.0.0
-
-### Major Changes
-
-- 4579483: feat: refresh MCP server configuration through durable hooks
+## 0.0.1
 
 ### Patch Changes
 
-- 3e7adf5: feat: cache MCP server metadata and discovered tools.
-- d1bb877: feat: replace tool list hook with MCP server refresh diagnostics.
-- 67e494a: feat: expose durable hook context objects to API and MCP callbacks.
-- 8e2aea9: feat: expose durable hook propagation context to MCP callbacks.
+- 3845784: feat: add outbox streaming and offline recovery for persisted TanStack DB collections.
+- 4d314a9: perf: Enable eager TanStack DB auto-indexing with BTreeIndex by default.
+- 85be413: fix: Resolve default outbox targets through Fragno's sanitized physical database namespace.
+- 6be76b7: feat: Add a typed factory for creating Fragno-backed TanStack DB collections.
 - Updated dependencies [0d4cbe8]
 - Updated dependencies [fcecfed]
 - Updated dependencies [cff3b99]
@@ -56,10 +52,8 @@
 - Updated dependencies [e2cad8d]
 - Updated dependencies [5e0cfe8]
 - Updated dependencies [9919fdd]
+- Updated dependencies [7507d49]
+- Updated dependencies [28974f4]
   - @fragno-dev/db@0.4.2
+  - @fragno-dev/test@2.0.3
   - @fragno-dev/core@0.2.3
-  - @fragno-dev/node@0.0.9
-
-## Unreleased
-
-- Initial scaffold copy prepared for MCP fragment development.

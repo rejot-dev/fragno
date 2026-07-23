@@ -1,5 +1,93 @@
 # @fragno-dev/workflows
 
+## 1.0.0
+
+### Major Changes
+
+- 662e7d6: feat: add remote workflow step hosts and make previousEmissions async
+
+### Patch Changes
+
+- 17e5ab9: feat: expose current step emission streams for workflow instances
+- bceb49b: fix: cap retry execution at max attempts and stabilize status pagination
+- 5f98d46: feat: make workflow event sends idempotent with optional event ids.
+- d961df2: feat add reactive Lofi runtimes and query stores, and export the workflow schema entrypoint.
+- 26f85f9: feat: support named remote workflow instances
+- ff3673f: feat: expose id-based workflow status, history, events, and reusable param validation.
+- fda1ff9: fix: enqueue workflow ticks for all non-terminal events and add runner-scoped scenario APIs.
+- 3734573: fix: treat same-process buffered pump scope collisions as workflow runner contention
+- fa21507: fix: restore interrupted Pi agent turns from live step emissions and publish commit markers.
+- 42353ac: feat: add workflowServiceCalls for creating workflow instances from step transactions
+- 6c10a63: fix: filter stale live step emissions after a competing epoch commits.
+- f856070: Ensure all non-private packages include repository metadata in their `package.json` entries.
+- b41824f: feat: add waitForEvent onConsume hooks for event consumption side effects
+- 6edb80b: fix: make public workflow instance creation idempotent by instance id.
+- 7507d49: feat: add typed workflow hooks and fragment-aware durable hook test helpers.
+- 397aba2: fix: allow workflow instances to be created without a read phase.
+- 073f89b: feat: scope workflow instance ids by workflow name.
+- 89a4489: feat: add Lofi-backed workflow scenario and step recording test helpers.
+- 102238e: fix: return nextCursor for instance pagination and reject terminal management actions.
+- 68c03ce: feat: add a workflow instance retry management API.
+- eea94c2: fix: persist workflow step emissions with database timestamps.
+- 3712e27: feat: persist and stream workflow step emissions.
+- 28974f4: feat: add workflow step live state support and richer workflow test helpers
+- e8845d1: feat: emit hooks when workflow instances reach terminal states.
+- Updated dependencies [0d4cbe8]
+- Updated dependencies [fcecfed]
+- Updated dependencies [cff3b99]
+- Updated dependencies [9c894a8]
+- Updated dependencies [27b7db5]
+- Updated dependencies [9419f78]
+- Updated dependencies [eb6ea3e]
+- Updated dependencies [0186a7a]
+- Updated dependencies [3f9d1bb]
+- Updated dependencies [d9a5ffe]
+- Updated dependencies [d92f4ce]
+- Updated dependencies [1d2125e]
+- Updated dependencies [20324e7]
+- Updated dependencies [8a60280]
+- Updated dependencies [aff91d1]
+- Updated dependencies [03d5a5c]
+- Updated dependencies [20380f5]
+- Updated dependencies [a28094e]
+- Updated dependencies [6cc8f36]
+- Updated dependencies [cd7cfc9]
+- Updated dependencies [dfeb582]
+- Updated dependencies [d961df2]
+- Updated dependencies [83e7876]
+- Updated dependencies [54cbdca]
+- Updated dependencies [f42c8c6]
+- Updated dependencies [9cd79f3]
+- Updated dependencies [49ca4fb]
+- Updated dependencies [0e63275]
+- Updated dependencies [4944ecf]
+- Updated dependencies [4e5d611]
+- Updated dependencies [b40a129]
+- Updated dependencies [f297b5d]
+- Updated dependencies [caf581b]
+- Updated dependencies [7de0078]
+- Updated dependencies [ff3673f]
+- Updated dependencies [1e1088b]
+- Updated dependencies [9e2ee05]
+- Updated dependencies [3734573]
+- Updated dependencies [2e7263b]
+- Updated dependencies [8e31918]
+- Updated dependencies [48c0094]
+- Updated dependencies [85be413]
+- Updated dependencies [fa21507]
+- Updated dependencies [79055dd]
+- Updated dependencies [e7b36e1]
+- Updated dependencies [3328fe3]
+- Updated dependencies [a64dc64]
+- Updated dependencies [ea8ea88]
+- Updated dependencies [5599183]
+- Updated dependencies [e2cad8d]
+- Updated dependencies [5e0cfe8]
+- Updated dependencies [9919fdd]
+  - @fragno-dev/db@0.4.2
+  - @fragno-dev/lofi@0.0.4
+  - @fragno-dev/core@0.2.3
+
 ## 0.0.3
 
 ### Patch Changes
