@@ -1,7 +1,7 @@
-import { skillFiles } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createCapabilitySkillFiles } from "@/fragno/backoffice-capabilities/capability-skill-files";
 
 export const createReson8CapabilityFiles = () =>
-  skillFiles({
+  createCapabilitySkillFiles({
     name: "reson8-connection",
     title: "Reson8 Connection",
     description:

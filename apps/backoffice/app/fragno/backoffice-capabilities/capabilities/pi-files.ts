@@ -1,7 +1,7 @@
-import { skillFiles } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createCapabilitySkillFiles } from "@/fragno/backoffice-capabilities/capability-skill-files";
 
 export const createPiCapabilityFiles = () =>
-  skillFiles({
+  createCapabilitySkillFiles({
     name: "pi-connection",
     title: "Pi Connection",
     description:

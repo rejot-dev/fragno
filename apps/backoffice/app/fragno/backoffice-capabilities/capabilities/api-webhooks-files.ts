@@ -1,7 +1,7 @@
-import { skillFiles } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createCapabilitySkillFiles } from "@/fragno/backoffice-capabilities/capability-skill-files";
 
 export const createApiWebhooksCapabilityFiles = () =>
-  skillFiles({
+  createCapabilitySkillFiles({
     name: "api-webhooks",
     title: "API Webhooks",
     description:
