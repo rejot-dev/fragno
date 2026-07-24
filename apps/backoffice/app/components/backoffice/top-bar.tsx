@@ -29,12 +29,18 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
   },
   {
     index: "02",
+    label: "Marketplace",
+    to: "/backoffice/marketplace",
+    isActive: (pathname) => pathname.startsWith("/backoffice/marketplace"),
+  },
+  {
+    index: "03",
     label: "Sessions",
     to: "/backoffice/sessions",
     isActive: (pathname) => pathname.startsWith("/backoffice/sessions"),
   },
   {
-    index: "03",
+    index: "04",
     label: "Files",
     to: "/backoffice/files",
     isActive: (pathname) => pathname.startsWith("/backoffice/files"),
@@ -45,7 +51,7 @@ function PrimaryNavigation({ mobile = false }: { mobile?: boolean }) {
   const location = useLocation();
 
   return (
-    <nav aria-label="Backoffice" className={mobile ? "grid grid-cols-3" : "flex h-full min-w-0"}>
+    <nav aria-label="Backoffice" className={mobile ? "grid grid-cols-4" : "flex h-full min-w-0"}>
       {PRIMARY_NAVIGATION.map((item) => (
         <NavLink
           key={item.to}
