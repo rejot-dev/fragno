@@ -10,7 +10,9 @@ import type {
   ParallelNode,
   ParallelStrategy,
   SemanticPredicate,
+  SemanticReference,
   SourceRange,
+  StepInvocation,
   StepMeta,
   StepNode,
   StepType,
@@ -24,7 +26,12 @@ import type {
   WorkflowChildNode,
 } from "./model.ts";
 import { analyzeWorkflowConditions } from "./semantics.ts";
-import { cloneSourceRange, sourceRangeAtOffset, sourceRangeFromToken } from "./source-location.ts";
+import {
+  cloneSourceRange,
+  extendSourceRangeToToken,
+  sourceRangeAtOffset,
+  sourceRangeFromToken,
+} from "./source-location.ts";
 import {
   type PositionedWorkflowToken,
   type TokenMachineContext,
@@ -51,6 +58,11 @@ import type { WorkflowToken } from "./tokenizer.ts";
 import { isTriviaToken, tokenIsOpen } from "./tokenizer.ts";
 
 const STEP_METHODS = new Set<StepType>(["do", "sleep", "sleepUntil", "waitForEvent"]);
+
+interface ActiveStepInvocation {
+  invocation: StepInvocation;
+  openParentheses: number;
+}
 
 export interface CreateWorkflowTokenMachineOptions {
   path: string;
@@ -91,6 +103,7 @@ export function createWorkflowTokenMachine({
   const workflows: WorkflowBuilder[] = [];
   const lexicalDiagnostics: Diagnostic[] = [];
   const functionScopesByWorkflowId = new Map<string, WorkflowFunctionScopeTracker>();
+  const activeStepInvocations: ActiveStepInvocation[] = [];
   const runtime = new TokenSubmachineRuntime();
   const listeners = new Set<(patch: GraphPatch) => void>();
 
@@ -160,6 +173,7 @@ export function createWorkflowTokenMachine({
 
   function processSignificantToken(positioned: PositionedWorkflowToken): void {
     const context = machineContext();
+    consumeActiveStepInvocations(positioned, context);
     runtime.consume(positioned, context);
 
     const workflowMachine = activeWorkflowMachine(context);
@@ -181,6 +195,13 @@ export function createWorkflowTokenMachine({
     ) {
       discoverParenthesizedConstruct(positioned, context, functionScopes);
     }
+    if (positioned.token.value === "(" && functionScopes) {
+      const contextProviderBinding = directContextProviderDeclarationBinding(significantTokens);
+      if (contextProviderBinding && !functionScopes.shadows("context")) {
+        functionScopes.markContextProviderBinding(contextProviderBinding);
+      }
+      discoverStepInvocation(positioned, context, workflowMachine, functionScopes);
+    }
 
     functionScopes?.afterToken({
       positioned,
@@ -189,6 +210,68 @@ export function createWorkflowTokenMachine({
       activeStepCallId: runtime.findLast(isStepCallMachine)?.id,
     });
     updateDelimiterDepth(positioned.token.value);
+  }
+
+  function consumeActiveStepInvocations(
+    positioned: PositionedWorkflowToken,
+    context: TokenMachineContext,
+  ): void {
+    for (let index = activeStepInvocations.length - 1; index >= 0; index -= 1) {
+      const activeInvocation = activeStepInvocations[index];
+      if (!activeInvocation) {
+        continue;
+      }
+      extendSourceRangeToToken(activeInvocation.invocation.source, positioned);
+      if (
+        positioned.token.value === ")" &&
+        context.depth.parentheses === activeInvocation.openParentheses
+      ) {
+        activeInvocation.invocation.construction = { status: "complete", phase: "complete" };
+        activeStepInvocations.splice(index, 1);
+      }
+    }
+  }
+
+  function discoverStepInvocation(
+    openingParenthesis: PositionedWorkflowToken,
+    context: TokenMachineContext,
+    workflowMachine: WorkflowDefinitionMachine | undefined,
+    functionScopes: WorkflowFunctionScopeTracker,
+  ): void {
+    const stepId = functionScopes.directDurableStepCallId();
+    if (!stepId || !workflowMachine) {
+      return;
+    }
+
+    const call = directStaticMemberCall(significantTokens);
+    if (
+      !call ||
+      functionScopes.shadows(call.reference.root) ||
+      isWorkflowRuntimeCall(call.reference, workflowMachine.stepParameter)
+    ) {
+      return;
+    }
+
+    const step = workflowMachine.workflow.children.find(
+      (node): node is StepNode => node.kind === "step" && node.id === stepId,
+    );
+    if (!step) {
+      return;
+    }
+
+    const invocation: StepInvocation = {
+      kind: "call",
+      execution: "direct",
+      callee: call.reference,
+      source: sourceRangeFromToken(path, call.rootToken),
+      construction: { status: "partial", phase: "arguments" },
+    };
+    extendSourceRangeToToken(invocation.source, openingParenthesis);
+    step.analysis.invocations.push(invocation);
+    activeStepInvocations.push({
+      invocation,
+      openParentheses: context.depth.parentheses + 1,
+    });
   }
 
   function discoverReturn(positioned: PositionedWorkflowToken, context: TokenMachineContext): void {
@@ -532,6 +615,7 @@ export function createWorkflowTokenMachine({
       parentId,
       source,
       meta,
+      analysis: { status: "partial", invocations: [] },
       construction: { status: "partial", phase },
     };
     workflow.children.push(step);
@@ -744,7 +828,7 @@ export function createWorkflowTokenMachine({
     }
 
     return {
-      version: 2,
+      version: 3,
       nodes,
       edges,
       diagnostics: materializeDiagnostics(),
@@ -889,6 +973,83 @@ export function createWorkflowTokenMachine({
   };
 }
 
+function directStaticMemberCall(
+  significantTokens: PositionedWorkflowToken[],
+): { reference: SemanticReference; rootToken: PositionedWorkflowToken } | undefined {
+  let propertyIndex = significantTokens.length - 1;
+  if (/^>+$/u.test(significantTokens[propertyIndex]?.token.value ?? "")) {
+    propertyIndex = tokenBeforeTypeArguments(significantTokens, propertyIndex);
+  }
+
+  const property = significantTokens[propertyIndex];
+  if (property?.token.type !== "IdentifierName") {
+    return undefined;
+  }
+
+  const memberTokens = [property];
+  let cursor = propertyIndex - 1;
+  while (
+    (significantTokens[cursor]?.token.value === "." ||
+      significantTokens[cursor]?.token.value === "?.") &&
+    significantTokens[cursor - 1]?.token.type === "IdentifierName"
+  ) {
+    const member = significantTokens[cursor - 1];
+    if (!member) {
+      break;
+    }
+    memberTokens.unshift(member);
+    cursor -= 2;
+  }
+
+  const rootToken = memberTokens[0];
+  if (!rootToken || memberTokens.length < 2) {
+    return undefined;
+  }
+
+  return {
+    reference: {
+      kind: "reference",
+      root: rootToken.token.value,
+      path: memberTokens.slice(1).map((token) => token.token.value),
+    },
+    rootToken,
+  };
+}
+
+function directContextProviderDeclarationBinding(
+  significantTokens: PositionedWorkflowToken[],
+): string | undefined {
+  const call = directStaticMemberCall(significantTokens);
+  if (call?.reference.root !== "context" || call.reference.path.length !== 1) {
+    return undefined;
+  }
+
+  const contextIndex = significantTokens.indexOf(call.rootToken);
+  const declaration = significantTokens[contextIndex - 3];
+  const binding = significantTokens[contextIndex - 2];
+  const assignment = significantTokens[contextIndex - 1];
+  const providerName = call.reference.path[0];
+  if (
+    declaration?.token.value !== "const" ||
+    binding?.token.type !== "IdentifierName" ||
+    assignment?.token.value !== "=" ||
+    binding.token.value !== providerName
+  ) {
+    return undefined;
+  }
+  return binding.token.value;
+}
+
+function isWorkflowRuntimeCall(reference: SemanticReference, stepParameter: string): boolean {
+  if (reference.root === stepParameter && STEP_METHODS.has(reference.path[0] as StepType)) {
+    return true;
+  }
+  return (
+    reference.root === "Promise" &&
+    (reference.path[0] === "all" || reference.path[0] === "race" || reference.path[0] === "any")
+  );
+}
+
 function directWorkflowDefinitionKind(
   significantTokens: PositionedWorkflowToken[],
 ): "local" | "remote" | undefined {
@@ -1013,7 +1174,7 @@ function positionAfterText(
 }
 
 function emptyGraph(): WorkflowGraph {
-  return { version: 2, nodes: [], edges: [], diagnostics: [] };
+  return { version: 3, nodes: [], edges: [], diagnostics: [] };
 }
 
 function cloneNode<T extends WorkflowNode | WorkflowChildNode>(node: T): T {
@@ -1022,6 +1183,15 @@ function cloneNode<T extends WorkflowNode | WorkflowChildNode>(node: T): T {
       ...node,
       source: cloneSourceRange(node.source),
       meta: { ...node.meta },
+      analysis: {
+        status: node.analysis.status,
+        invocations: node.analysis.invocations.map((invocation) => ({
+          ...invocation,
+          callee: { ...invocation.callee, path: [...invocation.callee.path] },
+          source: cloneSourceRange(invocation.source),
+          construction: { ...invocation.construction },
+        })),
+      },
       construction: { ...node.construction },
     } as T;
   }
@@ -1085,7 +1255,7 @@ function cloneDiagnostic(diagnostic: Diagnostic): Diagnostic {
 
 function cloneGraph(graph: WorkflowGraph): WorkflowGraph {
   return {
-    version: 2,
+    version: 3,
     nodes: graph.nodes.map(cloneNode),
     edges: graph.edges.map((edge) => ({ ...edge })),
     diagnostics: graph.diagnostics.map(cloneDiagnostic),

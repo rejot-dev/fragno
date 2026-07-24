@@ -1,6 +1,8 @@
 import type { DelimiterDepth } from "./model.ts";
 import type { PositionedWorkflowToken, TokenMachineContext } from "./state-machine.ts";
 
+type BindingKind = "local" | "context-provider";
+
 interface FunctionScopeRole {
   durableStepCallId?: string;
 }
@@ -8,13 +10,13 @@ interface FunctionScopeRole {
 interface BlockFunctionScope extends FunctionScopeRole {
   boundary: "block";
   bodyBraces: number;
-  shadowedBindings: Set<string>;
+  bindings: Map<string, BindingKind>;
 }
 
 interface ExpressionFunctionScope extends FunctionScopeRole {
   boundary: "expression";
   baseDepth: DelimiterDepth;
-  shadowedBindings: Set<string>;
+  bindings: Map<string, BindingKind>;
 }
 
 type ActiveFunctionScope = BlockFunctionScope | ExpressionFunctionScope;
@@ -22,18 +24,19 @@ type ActiveFunctionScope = BlockFunctionScope | ExpressionFunctionScope;
 interface PendingFunctionScope extends FunctionScopeRole {
   parameterParentheses?: number;
   parametersComplete: boolean;
-  shadowedBindings: Set<string>;
+  bindings: Map<string, BindingKind>;
 }
 
 interface PendingArrowScope extends FunctionScopeRole {
   baseDepth: DelimiterDepth;
-  shadowedBindings: Set<string>;
+  bindings: Map<string, BindingKind>;
 }
 
 /** Tracks which tokens execute in the workflow callback or an explicitly durable step callback. */
 export class WorkflowFunctionScopeTracker {
   readonly #activeScopes: ActiveFunctionScope[] = [];
   readonly #pendingFunctions: PendingFunctionScope[] = [];
+  readonly #workflowBindings = new Map<string, BindingKind>();
   #pendingArrow: PendingArrowScope | undefined;
 
   beforeToken(positioned: PositionedWorkflowToken, context: TokenMachineContext): void {
@@ -85,7 +88,7 @@ export class WorkflowFunctionScopeTracker {
       this.#pendingFunctions.push({
         ...this.scopeRole(activeStepCallId),
         parametersComplete: false,
-        shadowedBindings: new Set(),
+        bindings: new Map(),
       });
       return;
     }
@@ -96,7 +99,7 @@ export class WorkflowFunctionScopeTracker {
       this.#pendingArrow = {
         ...this.scopeRole(activeStepCallId),
         baseDepth: { ...context.depth },
-        shadowedBindings: possibleArrowParameterBindings(previousTokens),
+        bindings: possibleArrowParameterBindings(previousTokens),
       };
       return;
     }
@@ -116,8 +119,26 @@ export class WorkflowFunctionScopeTracker {
     return this.allFunctionScopes().every((scope) => scope.durableStepCallId !== undefined);
   }
 
+  directDurableStepCallId(): string | undefined {
+    return this.allFunctionScopes().at(-1)?.durableStepCallId;
+  }
+
   shadows(binding: string): boolean {
-    return this.allFunctionScopes().some((scope) => scope.shadowedBindings.has(binding));
+    return this.bindingKind(binding) === "local";
+  }
+
+  markContextProviderBinding(binding: string): void {
+    const scopes = this.allFunctionScopes();
+    for (let index = scopes.length - 1; index >= 0; index -= 1) {
+      const scope = scopes[index];
+      if (scope?.bindings.has(binding)) {
+        scope.bindings.set(binding, "context-provider");
+        return;
+      }
+    }
+    if (this.#workflowBindings.has(binding)) {
+      this.#workflowBindings.set(binding, "context-provider");
+    }
   }
 
   private completeConciseScopesBefore(
@@ -172,7 +193,7 @@ export class WorkflowFunctionScopeTracker {
     }
 
     if (depth.parentheses >= pending.parameterParentheses) {
-      rememberPossibleBinding(pending.shadowedBindings, positioned);
+      rememberPossibleBinding(pending.bindings, positioned);
     }
   }
 
@@ -188,7 +209,23 @@ export class WorkflowFunctionScopeTracker {
     ) {
       return;
     }
-    this.#activeScopes.at(-1)?.shadowedBindings.add(positioned.token.value);
+    const activeScope = this.#activeScopes.at(-1);
+    if (activeScope) {
+      activeScope.bindings.set(positioned.token.value, "local");
+    } else {
+      this.#workflowBindings.set(positioned.token.value, "local");
+    }
+  }
+
+  private bindingKind(binding: string): BindingKind | undefined {
+    const scopes = this.allFunctionScopes();
+    for (let index = scopes.length - 1; index >= 0; index -= 1) {
+      const bindingKind = scopes[index]?.bindings.get(binding);
+      if (bindingKind) {
+        return bindingKind;
+      }
+    }
+    return this.#workflowBindings.get(binding);
   }
 
   private scopeRole(activeStepCallId: string | undefined): FunctionScopeRole {
@@ -259,16 +296,18 @@ function sameDepth(left: DelimiterDepth, right: DelimiterDepth): boolean {
   );
 }
 
-function possibleArrowParameterBindings(previousTokens: PositionedWorkflowToken[]): Set<string> {
+function possibleArrowParameterBindings(
+  previousTokens: PositionedWorkflowToken[],
+): Map<string, BindingKind> {
   const previous = previousTokens.at(-1);
   if (!previous) {
-    return new Set();
+    return new Map();
   }
   if (previous.token.type === "IdentifierName") {
-    return new Set([previous.token.value]);
+    return new Map([[previous.token.value, "local"]]);
   }
   if (previous.token.value !== ")") {
-    return new Set();
+    return new Map();
   }
 
   let parentheses = 1;
@@ -291,15 +330,18 @@ function possibleArrowParameterBindings(previousTokens: PositionedWorkflowToken[
     }
   }
 
-  const bindings = new Set<string>();
+  const bindings = new Map<string, BindingKind>();
   for (const token of parameterTokens) {
     rememberPossibleBinding(bindings, token);
   }
   return bindings;
 }
 
-function rememberPossibleBinding(bindings: Set<string>, positioned: PositionedWorkflowToken): void {
+function rememberPossibleBinding(
+  bindings: Map<string, BindingKind>,
+  positioned: PositionedWorkflowToken,
+): void {
   if (positioned.token.type === "IdentifierName") {
-    bindings.add(positioned.token.value);
+    bindings.set(positioned.token.value, "local");
   }
 }

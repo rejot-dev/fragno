@@ -68,7 +68,7 @@ describe("workflow token state machine", () => {
 
     for (const token of tokenizeWorkflowSource(source)) {
       const update = machine.push(token);
-      assert(update.graph.version === 2);
+      assert(update.graph.version === 3);
       assert(update.state.sourceLength === machine.source().length);
       assertUsableGraph(update.graph.nodes, update.graph.edges);
     }
@@ -794,6 +794,101 @@ describe("workflow token state machine", () => {
     expect(snapshot.graph.nodes.filter((node) => node.kind === "terminal")).toEqual([]);
   });
 
+  it("records direct call references in the durable step that executes them", () => {
+    const source = `defineWorkflow({ name: "step-invocations" }, async (event, step) => {
+      await step.do("outer", async () => {
+        await store.get({ key: "before" });
+        event.payload.items.map(() => telegram.sendMessage({ text: "not direct" }));
+        await step.do("inner", async () => {
+          await internal.projectFilesConfigure({ projectId: event.payload.projectId });
+        });
+        await pi.runTurn({ prompt: "finish" });
+      });
+    });`;
+    const snapshot = visualizeWorkflowSource("automations/step-invocations.workflow.js", source);
+    const outer = stepByLabel(snapshot.graph, "outer");
+    const inner = stepByLabel(snapshot.graph, "inner");
+
+    expect(invocationLabels(outer)).toEqual(["store.get", "event.payload.items.map", "pi.runTurn"]);
+    expect(invocationLabels(inner)).toEqual(["internal.projectFilesConfigure"]);
+    expect(
+      outer.analysis.invocations.map((invocation) =>
+        source.slice(invocation.source.start.offset, invocation.source.end.offset),
+      ),
+    ).toEqual([
+      'store.get({ key: "before" })',
+      'event.payload.items.map(() => telegram.sendMessage({ text: "not direct" }))',
+      'pi.runTurn({ prompt: "finish" })',
+    ]);
+    assert(outer.analysis.status === "complete");
+    assert(
+      outer.analysis.invocations.every(
+        (invocation) => invocation.construction.status === "complete",
+      ),
+    );
+  });
+
+  it("does not attribute calls through ordinary nested functions or shadowed providers", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/step-invocation-boundaries.workflow.js",
+      `defineWorkflow({ name: "step-invocation-boundaries" }, async (event, step) => {
+        const internal = event.payload.internal;
+        const org = event.payload.org;
+        await step.do("boundaries", async () => {
+          await internal.projectFilesConfigure({ projectId: "shadowed" });
+          await org.internal.filesSeedExecute({});
+          const helper = async () => telegram.sendMessage({ text: "nested" });
+          return helper;
+        });
+      });`,
+    );
+
+    expect(invocationLabels(stepByLabel(snapshot.graph, "boundaries"))).toEqual([]);
+  });
+
+  it("keeps canonical context-derived provider bindings linkable", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/context-provider-invocations.workflow.js",
+      `defineWorkflow({ name: "context-provider-invocations" }, async (event, step) => {
+        const org = context.org(event.payload.orgId);
+        const project = context.project(event.payload.projectId);
+        const user = context.user(event.payload.userId);
+        await step.do("scoped providers", async () => {
+          await org.internal.filesSeedExecute({});
+          await project.internal.projectFilesConfigure({ projectId: event.payload.projectId });
+          await user.internal.automationsRoutesSeedStarter({});
+        });
+      });`,
+    );
+
+    expect(invocationLabels(stepByLabel(snapshot.graph, "scoped providers"))).toEqual([
+      "org.internal.filesSeedExecute",
+      "project.internal.projectFilesConfigure",
+      "user.internal.automationsRoutesSeedStarter",
+    ]);
+  });
+
+  it("keeps an unfinished call reference observable", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/partial-invocation.workflow.js",
+      `defineWorkflow({ name: "partial-invocation" }, async (event, step) => {
+        await step.do("configure", async () => {
+          await internal.projectFilesConfigure({ projectId: event.payload.projectId`,
+      { finish: false },
+    );
+    const step = stepByLabel(snapshot.graph, "configure");
+
+    expect(step.analysis).toMatchObject({
+      status: "partial",
+      invocations: [
+        {
+          callee: { root: "internal", path: ["projectFilesConfigure"] },
+          construction: { status: "partial", phase: "arguments" },
+        },
+      ],
+    });
+  });
+
   it.each([
     ["empty source", ""],
     ["literal expression", `({ ready: true, attempts: 2 });`],
@@ -873,7 +968,7 @@ describe("workflow token state machine", () => {
     }
 
     const snapshot = machine.finish();
-    expect(snapshot.graph).toEqual({ version: 2, nodes: [], edges: [], diagnostics: [] });
+    expect(snapshot.graph).toEqual({ version: 3, nodes: [], edges: [], diagnostics: [] });
     expect(snapshot.state).toMatchObject({ status: "finished", activeConstructs: [] });
     assert(renderWorkflowVisualizationText(snapshot) === "(no workflows)");
   });
@@ -931,6 +1026,12 @@ function stepByLabel(graph: WorkflowGraph, label: string): StepNode {
   );
   assert(step);
   return step;
+}
+
+function invocationLabels(step: StepNode): string[] {
+  return step.analysis.invocations.map((invocation) =>
+    [invocation.callee.root, ...invocation.callee.path].join("."),
+  );
 }
 
 function ancestorLabels(graph: WorkflowGraph, node: GraphNode): string[] {
