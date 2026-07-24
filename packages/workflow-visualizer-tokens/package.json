@@ -1,0 +1,36 @@
+{
+  "name": "@fragno-dev/workflow-visualizer-tokens",
+  "version": "0.0.1",
+  "description": "Incremental token-state-machine workflow visualizer for incomplete automation source.",
+  "homepage": "https://fragno.dev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/workflow-visualizer-tokens"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
+    "types:check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest --watch"
+  },
+  "dependencies": {
+    "js-tokens": "^10.0.0"
+  },
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@types/node": "^22.19.7",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
