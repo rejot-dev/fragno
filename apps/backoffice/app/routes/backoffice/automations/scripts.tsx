@@ -1,5 +1,6 @@
 import { use, useMemo } from "react";
 import { Link, useLoaderData, useOutletContext, useSearchParams } from "react-router";
+import type { ShouldRevalidateFunctionArgs } from "react-router";
 
 import { and, eq, useLiveQuery } from "@tanstack/react-db";
 
@@ -15,10 +16,38 @@ import { loadAutomationScriptSource } from "./data.server";
 import type { AutomationLayoutContext } from "./layout-context";
 import { automationScopeFromRouteParams, automationScopeTabPath } from "./scope";
 import { buildUploadWorkspaceScriptRecords } from "./script-records";
-import { AutomationNotice } from "./shared";
+import { ScriptSourcePanel } from "./script-view/script-source-panel";
+import {
+  SCRIPT_VIEW_MODE_SEARCH_PARAM,
+  shouldRevalidateScriptSource,
+  type ScriptViewMode,
+} from "./script-view/script-view-mode";
+import { AutomationNotice, useScriptViewMode } from "./shared";
 
-const buildScriptLink = ({ basePath, scriptId }: { basePath: string; scriptId: string }) => {
-  const params = new URLSearchParams({ script: scriptId });
+const buildScriptLink = ({
+  basePath,
+  scriptId,
+  viewMode,
+}: {
+  basePath: string;
+  scriptId: string;
+  viewMode: ScriptViewMode;
+}) => {
+  const params = new URLSearchParams({
+    script: scriptId,
+    [SCRIPT_VIEW_MODE_SEARCH_PARAM]: viewMode,
+  });
+  return `${basePath}?${params.toString()}`;
+};
+
+const buildScriptListLink = ({
+  basePath,
+  viewMode,
+}: {
+  basePath: string;
+  viewMode: ScriptViewMode;
+}) => {
+  const params = new URLSearchParams({ [SCRIPT_VIEW_MODE_SEARCH_PARAM]: viewMode });
   return `${basePath}?${params.toString()}`;
 };
 
@@ -42,6 +71,14 @@ const visibleScriptSectionDefinitions = (
   return [{ id: "workspace" as const, label: "Workspace", emptyLabel: "No workspace scripts." }];
 };
 
+export function shouldRevalidate({
+  currentUrl,
+  nextUrl,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs): boolean {
+  return shouldRevalidateScriptSource({ currentUrl, nextUrl, defaultShouldRevalidate });
+}
+
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const selectedScriptId = url.searchParams.get("script")?.trim() ?? "";
 
@@ -59,29 +96,6 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
       scriptId: selectedScriptId,
     }),
   };
-}
-
-function ScriptSourcePanel({
-  absolutePath,
-  source,
-}: {
-  absolutePath: string;
-  source: { script: string | null; scriptError: string | null };
-}) {
-  if (source.scriptError) {
-    return null;
-  }
-
-  return (
-    <div className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-      <div className="border-b border-[color:var(--bo-border)] px-4 py-3">
-        <p className="font-mono text-[11px] break-all text-[var(--bo-muted-2)]">{absolutePath}</p>
-      </div>
-      <pre className="backoffice-scroll max-h-[42rem] overflow-auto px-4 py-4 font-mono text-xs break-words whitespace-pre-wrap text-[var(--bo-fg)]">
-        <code>{source.script || "# Empty script"}</code>
-      </pre>
-    </div>
-  );
 }
 
 export default function BackofficeOrganisationAutomationScripts() {
@@ -163,6 +177,7 @@ function AutomationScriptsView({
   const loaderData = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
   const selectedScriptId = searchParams.get("script")?.trim() ?? "";
+  const scriptViewMode = useScriptViewMode();
   const selectedScript = scripts.find((script) => script.id === selectedScriptId) ?? null;
   const isDetailVisible = Boolean(selectedScript);
   const basePath = automationScopeTabPath(selectedScope, "scripts");
@@ -174,7 +189,7 @@ function AutomationScriptsView({
 
   if (hasScriptLoadError && scripts.length === 0) {
     return (
-      <div className="w-full max-w-7xl">
+      <div className="w-full max-w-[120rem]">
         <AutomationNotice tone="error">
           <p className="text-[10px] tracking-[0.22em] uppercase">
             Could not load automation scripts
@@ -187,7 +202,7 @@ function AutomationScriptsView({
 
   if (!workspaceScriptsReady && scripts.length === 0) {
     return (
-      <div className="w-full max-w-7xl border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
+      <div className="w-full max-w-[120rem] border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
         Loading local workspace scripts…
       </div>
     );
@@ -195,14 +210,14 @@ function AutomationScriptsView({
 
   if (scripts.length === 0) {
     return (
-      <div className="w-full max-w-7xl border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
+      <div className="w-full max-w-[120rem] border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
         No automation scripts are defined for this organisation.
       </div>
     );
   }
 
   return (
-    <section className="w-full max-w-7xl space-y-4">
+    <section className="w-full max-w-[120rem] space-y-4">
       {!workspaceScriptsReady ? (
         <AutomationNotice tone="info">
           <p className="text-[10px] tracking-[0.22em] uppercase">Loading local workspace scripts</p>
@@ -250,7 +265,11 @@ function AutomationScriptsView({
                       return (
                         <Link
                           key={script.id}
-                          to={buildScriptLink({ basePath, scriptId: script.id })}
+                          to={buildScriptLink({
+                            basePath,
+                            scriptId: script.id,
+                            viewMode: scriptViewMode,
+                          })}
                           preventScrollReset
                           aria-current={isSelected ? "page" : undefined}
                           className={
@@ -288,7 +307,7 @@ function AutomationScriptsView({
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2 lg:hidden">
                     <Link
-                      to={basePath}
+                      to={buildScriptListLink({ basePath, viewMode: scriptViewMode })}
                       className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Back to list
@@ -314,6 +333,7 @@ function AutomationScriptsView({
               ) : null}
 
               <ScriptSourcePanel
+                key={selectedScript.absolutePath}
                 absolutePath={selectedScript.absolutePath}
                 source={loaderData.selectedScriptSource}
               />

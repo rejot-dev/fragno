@@ -160,6 +160,9 @@ importers:
       '@fragno-dev/workflow-visualizer':
         specifier: workspace:*
         version: link:../../packages/workflow-visualizer
+      '@fragno-dev/workflow-visualizer-tokens':
+        specifier: workspace:*
+        version: link:../../packages/workflow-visualizer-tokens
       '@fragno-dev/workflows':
         specifier: workspace:*
         version: link:../../packages/fragment-workflows

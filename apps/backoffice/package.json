@@ -38,6 +38,7 @@
     "@fragno-dev/telegram-fragment": "workspace:*",
     "@fragno-dev/upload": "workspace:*",
     "@fragno-dev/workflow-visualizer": "workspace:*",
+    "@fragno-dev/workflow-visualizer-tokens": "workspace:*",
     "@fragno-dev/workflows": "workspace:*",
     "@journeyapps/wa-sqlite": "^1.4.1",
     "@monaco-editor/react": "^4.7.0",
