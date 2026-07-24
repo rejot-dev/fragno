@@ -4,32 +4,21 @@ import { useOutletContext } from "react-router";
 import { and, eq, lt, or, useLiveQuery } from "@tanstack/react-db";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import type { AutomationEventActor } from "@/fragno/automation/contracts";
+import type { AutomationActor } from "@/fragno/automation/actors";
 
 import { formatTimestamp } from "./formatting";
 import type { AutomationLayoutContext } from "./layout-context";
 
-const actorIdentity = (actor: AutomationEventActor) =>
+const actorIdentity = (actor: AutomationActor) =>
   `${actor.scope}:${actor.source ?? ""}:${actor.type}:${actor.id}`;
 
-const collectActors = (event: { actor: AutomationEventActor; actors: AutomationEventActor[] }) => {
-  const actorsByIdentity = new Map<string, AutomationEventActor>();
-
-  actorsByIdentity.set(actorIdentity(event.actor), event.actor);
-  for (const actor of event.actors) {
-    actorsByIdentity.set(actorIdentity(actor), actor);
-  }
-
-  return [...actorsByIdentity.values()];
-};
-
-const formatActor = (actor: AutomationEventActor | null) => {
+const formatActor = (actor: AutomationActor | null) => {
   if (!actor) {
     return "—";
   }
 
   const source = actor.source ? `${actor.source}/` : "";
-  return `${actor.scope}:${source}${actor.type}:${actor.id}`;
+  return `${actor.role} · ${actor.scope}:${source}${actor.type}:${actor.id}`;
 };
 
 const formatScope = (scope: BackofficeContextScope | null) => {
@@ -102,7 +91,6 @@ export default function BackofficeAutomationEvents() {
           eventType: event.eventType,
           occurredAt: event.occurredAt,
           payload: event.payload,
-          actor: event.actor,
           actors: event.actors,
           createdAt: event.createdAt,
         }));
@@ -173,7 +161,7 @@ export default function BackofficeAutomationEvents() {
                     Event
                   </th>
                   <th scope="col" className="px-3 py-2">
-                    Actor
+                    Actors
                   </th>
                   <th scope="col" className="px-3 py-2">
                     Scope
@@ -186,7 +174,11 @@ export default function BackofficeAutomationEvents() {
               <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">
                 {events.map((event) => {
                   const isExpanded = expandedEventIds.has(event.id);
-                  const actors = collectActors(event);
+                  const actors = [
+                    event.actors.initiator,
+                    ...(event.actors.principal ? [event.actors.principal] : []),
+                    ...event.actors.delegation,
+                  ];
 
                   return (
                     <Fragment key={event.id}>

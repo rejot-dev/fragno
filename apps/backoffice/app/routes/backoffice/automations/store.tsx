@@ -10,7 +10,7 @@ import {
 import { useLiveQuery } from "@tanstack/react-db";
 
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
-import type { AutomationEventActor } from "@/fragno/automation/contracts";
+import type { AutomationEntityRef } from "@/fragno/automation/actors";
 
 import type { Route } from "./+types/store";
 import { deleteAutomationStoreEntry } from "./data.server";
@@ -24,7 +24,7 @@ type AutomationStoreEntry = {
   value: string;
   description?: string | null;
   category: string[];
-  actor: AutomationEventActor | null;
+  actor: AutomationEntityRef | null;
   createdAt?: string | Date | null;
   updatedAt?: string | Date | null;
 };

@@ -10,7 +10,7 @@ import {
   assertSameBackofficeRoutableScope,
   type BackofficeRoutableScope,
 } from "@/backoffice-runtime/scope-codec";
-import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
+import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { mcpConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/mcp";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import { createMcpServer, type McpConfig, type McpFragment } from "@/fragno/mcp";
@@ -130,8 +130,11 @@ export class InMemoryMcpObject implements McpObject {
               eventType: "server.configuration.changed",
               occurredAt: new Date().toISOString(),
               payload: { ...payload },
-              actor: AUTOMATION_SYSTEM_ACTOR,
-              actors: [AUTOMATION_SYSTEM_ACTOR],
+              actors: {
+                initiator: AUTOMATION_SYSTEM_INITIATOR,
+                principal: null,
+                delegation: [],
+              },
               subject: scopeSubject(scope, payload.serverId),
             },
             { propagationContext: context.capturePropagationContext() },
@@ -147,8 +150,11 @@ export class InMemoryMcpObject implements McpObject {
               eventType: "server.configuration.deleted",
               occurredAt: new Date().toISOString(),
               payload: { ...payload },
-              actor: AUTOMATION_SYSTEM_ACTOR,
-              actors: [AUTOMATION_SYSTEM_ACTOR],
+              actors: {
+                initiator: AUTOMATION_SYSTEM_INITIATOR,
+                principal: null,
+                delegation: [],
+              },
               subject: scopeSubject(scope, payload.serverId),
             },
             { propagationContext: context.capturePropagationContext() },
@@ -176,8 +182,11 @@ export class InMemoryMcpObject implements McpObject {
               capabilityId: "mcp",
               capabilityLabel: "MCP",
             },
-            actor: AUTOMATION_SYSTEM_ACTOR,
-            actors: [AUTOMATION_SYSTEM_ACTOR],
+            actors: {
+              initiator: AUTOMATION_SYSTEM_INITIATOR,
+              principal: null,
+              delegation: [],
+            },
             subject: {
               ...scopeSubject(scope),
               capabilityId: "mcp",

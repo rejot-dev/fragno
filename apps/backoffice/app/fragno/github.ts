@@ -6,7 +6,8 @@ import {
 
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 
-import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "./automation/contracts";
+import { AUTOMATION_SYSTEM_INITIATOR } from "./automation/actors";
+import type { AutomationEvent } from "./automation/contracts";
 
 export type GitHubConfig = Pick<
   GitHubAppFragmentConfig,
@@ -65,8 +66,7 @@ const githubActor = (payload: Record<string, unknown>, installationId: string) =
       source: "github",
       type: "user",
       id: senderId,
-      login: toStringValue(sender.login) || undefined,
-      role: "initiator",
+      role: "initiator" as const,
     };
   }
 
@@ -76,11 +76,11 @@ const githubActor = (payload: Record<string, unknown>, installationId: string) =
       source: "github",
       type: "installation",
       id: installationId,
-      role: "initiator",
+      role: "initiator" as const,
     };
   }
 
-  return AUTOMATION_SYSTEM_ACTOR;
+  return AUTOMATION_SYSTEM_INITIATOR;
 };
 
 const githubSubject = (
@@ -144,8 +144,11 @@ export const buildGitHubAutomationEvent = ({
       pullRequest: payload.pull_request ?? null,
       raw: payload,
     },
-    actor,
-    actors: [actor],
+    actors: {
+      initiator: actor,
+      principal: null,
+      delegation: [],
+    },
     subject: githubSubject(orgId, payload, meta),
   };
 };

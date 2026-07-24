@@ -9,6 +9,7 @@ const actor = {
   scope: "internal" as const,
   type: "user",
   id: "user-1",
+  role: "initiator" as const,
 };
 
 const invalidTimestamps = [
@@ -53,8 +54,11 @@ describe("automation public timestamp contracts", () => {
         eventType: "example",
         occurredAt: { tag: "db-now" },
         payload: {},
-        actor,
-        actors: [actor],
+        actors: {
+          initiator: actor,
+          principal: null,
+          delegation: [],
+        },
         subject: null,
       }),
     ).toThrow();

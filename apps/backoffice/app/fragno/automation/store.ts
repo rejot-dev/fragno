@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { Validator, type Schema } from "@cfworker/json-schema";
 
-import type { AutomationEventActor } from "./contracts";
+import type { AutomationEntityRef } from "./actors";
 
 const idSchema = z.preprocess((value) => {
   if (typeof value === "string") {
@@ -32,7 +32,7 @@ const normalizeStringList = (value: unknown) => {
   ];
 };
 
-export const automationStoreActorSchema: z.ZodType<AutomationEventActor> = z
+export const automationStoreActorSchema: z.ZodType<AutomationEntityRef> = z
   .object({
     scope: z.enum(["internal", "external"]),
     type: z.string().trim().min(1),

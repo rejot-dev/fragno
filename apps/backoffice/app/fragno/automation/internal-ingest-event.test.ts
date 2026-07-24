@@ -35,6 +35,7 @@ const telegramMessageEvent = ({
     source: "telegram",
     type: "chat",
     id: chatId,
+    role: "initiator" as const,
   };
 
   return {
@@ -47,8 +48,11 @@ const telegramMessageEvent = ({
       chatId,
       text,
     },
-    actor,
-    actors: [actor],
+    actors: {
+      initiator: actor,
+      principal: null,
+      delegation: [],
+    },
     subject: { orgId: "org-1" },
   };
 };

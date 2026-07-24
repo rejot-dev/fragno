@@ -1,7 +1,8 @@
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { SandboxRuntimeProvider } from "@/sandbox/contracts";
 
-import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "./contracts";
+import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
+import type { AutomationEvent } from "./contracts";
 import type { AutomationWorkflowsService } from "./definition";
 import type { AutomationHookServiceContext, AutomationHookUnitOfWork } from "./internal-hooks";
 import { reconcileSandboxStopped } from "./sandbox-lifecycle-workflow";
@@ -177,8 +178,11 @@ export const createAutomationSandboxServices = (
             eventType: "instance.stopped",
             occurredAt: new Date().toISOString(),
             payload: sandboxPayload(sandbox, { reason: "workflow_terminal" }),
-            actor: AUTOMATION_SYSTEM_ACTOR,
-            actors: [AUTOMATION_SYSTEM_ACTOR],
+            actors: {
+              initiator: AUTOMATION_SYSTEM_INITIATOR,
+              principal: null,
+              delegation: [],
+            },
             subject: sandboxScopeSubject(options.ownerScope, sandbox.id),
           };
           options.ingestEvent(uow, event);
@@ -326,8 +330,11 @@ export const createAutomationSandboxServices = (
               eventType: "instance.stopped",
               occurredAt: new Date().toISOString(),
               payload: sandboxPayload(sandbox, { reason: "stop_requested" }),
-              actor: AUTOMATION_SYSTEM_ACTOR,
-              actors: [AUTOMATION_SYSTEM_ACTOR],
+              actors: {
+                initiator: AUTOMATION_SYSTEM_INITIATOR,
+                principal: null,
+                delegation: [],
+              },
               subject: sandboxScopeSubject(options.ownerScope, sandbox.id),
             };
             options.ingestEvent(uow, event);
@@ -380,8 +387,11 @@ export const createAutomationSandboxServices = (
             eventType: "instance.ready",
             occurredAt: new Date().toISOString(),
             payload: sandboxPayload(sandbox),
-            actor: AUTOMATION_SYSTEM_ACTOR,
-            actors: [AUTOMATION_SYSTEM_ACTOR],
+            actors: {
+              initiator: AUTOMATION_SYSTEM_INITIATOR,
+              principal: null,
+              delegation: [],
+            },
             subject: sandboxScopeSubject(options.ownerScope, sandbox.id),
           };
           options.ingestEvent(uow, event);
@@ -425,8 +435,11 @@ export const createAutomationSandboxServices = (
             eventType: "instance.stopped",
             occurredAt: new Date().toISOString(),
             payload: sandboxPayload(sandbox),
-            actor: AUTOMATION_SYSTEM_ACTOR,
-            actors: [AUTOMATION_SYSTEM_ACTOR],
+            actors: {
+              initiator: AUTOMATION_SYSTEM_INITIATOR,
+              principal: null,
+              delegation: [],
+            },
             subject: sandboxScopeSubject(options.ownerScope, sandbox.id),
           };
           options.ingestEvent(uow, event);
@@ -458,8 +471,11 @@ export const createAutomationSandboxServices = (
             eventType: "instance.failed",
             occurredAt: new Date().toISOString(),
             payload: sandboxPayload(sandbox, { reason: "error", errorMessage: input.lastError }),
-            actor: AUTOMATION_SYSTEM_ACTOR,
-            actors: [AUTOMATION_SYSTEM_ACTOR],
+            actors: {
+              initiator: AUTOMATION_SYSTEM_INITIATOR,
+              principal: null,
+              delegation: [],
+            },
             subject: sandboxScopeSubject(options.ownerScope, sandbox.id),
           };
           options.ingestEvent(uow, event);

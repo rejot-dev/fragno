@@ -20,13 +20,20 @@ const authOrganizationPayloadSchema = z.object({
   }),
 });
 
-const authOrganizationActorSchema = z.object({
-  scope: z.literal("internal"),
-  type: z.literal("user"),
-  id: z.string().trim().min(1),
-  email: z.email(),
-  role: z.enum(["user", "admin"]),
-});
+const authOrganizationActorSchema = z.union([
+  z.object({
+    scope: z.literal("internal"),
+    type: z.literal("user"),
+    id: z.string().trim().min(1),
+    role: z.literal("initiator"),
+  }),
+  z.object({
+    scope: z.literal("internal"),
+    type: z.literal("system"),
+    id: z.string().trim().min(1),
+    role: z.literal("initiator"),
+  }),
+]);
 
 const authOrganizationSubjectSchema = z.object({
   orgId: z.string().trim().min(1),

@@ -32,22 +32,17 @@ describe("buildTelegramAutomationEvent", () => {
         fromUserId: "user-1",
         text: "/start",
       },
-      actor: {
-        scope: "external",
-        source: "telegram",
-        type: "chat",
-        id: "chat-1",
-        role: "initiator",
-      },
-      actors: [
-        {
+      actors: {
+        initiator: {
           scope: "external",
           source: "telegram",
           type: "chat",
           id: "chat-1",
           role: "initiator",
         },
-      ],
+        principal: null,
+        delegation: [],
+      },
     });
   });
 

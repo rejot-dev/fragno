@@ -41,6 +41,7 @@ const telegramMessageEvent = ({
     source: "telegram",
     type: "chat",
     id: chatId,
+    role: "initiator" as const,
   };
 
   return {
@@ -53,8 +54,11 @@ const telegramMessageEvent = ({
       chatId,
       text,
     },
-    actor,
-    actors: [actor],
+    actors: {
+      initiator: actor,
+      principal: null,
+      delegation: [],
+    },
     subject: { orgId: "org-1" },
   };
 };
@@ -77,6 +81,7 @@ const identityClaimCompletedEvent = ({
     source: actorSource,
     type: actorType,
     id: actorId,
+    role: "initiator" as const,
   };
 
   return {
@@ -89,8 +94,11 @@ const identityClaimCompletedEvent = ({
       otpId,
       claimType: "identity_link",
     },
-    actor,
-    actors: [actor],
+    actors: {
+      initiator: actor,
+      principal: null,
+      delegation: [],
+    },
     subject: { userId: subjectUserId },
   };
 };

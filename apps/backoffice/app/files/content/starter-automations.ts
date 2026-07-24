@@ -59,7 +59,7 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
       await store.set({
         key: "telegram/claim-workflow/" + claim.otpId,
         value: workflowInstanceId,
-        actor: automationEvent.actor,
+        actor: automationEvent.actors.initiator,
         description: "Workflow waiting for Telegram identity claim " + claim.otpId,
         category: ["system", "telegram", "otp"],
       });
@@ -80,7 +80,7 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
     });
     const completedEvent = completed.payload;
     const completedOtpId = completedEvent.payload.otpId;
-    const completedActor = completedEvent.actor;
+    const completedActor = completedEvent.actors.initiator;
     const completedActorId = completedActor.id;
     const subjectUserId = completedEvent.subject.userId;
 
@@ -121,7 +121,7 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
 
     const text = automationEvent.payload.text ?? "";
     const chatId = automationEvent.payload.chatId;
-    const automationActorId = automationEvent.actor.id;
+    const automationActorId = automationEvent.actors.initiator.id;
 
     if (
       automationEvent.source !== "telegram" ||
@@ -207,7 +207,7 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
         await store.set({
           key: "telegram-pi-session/" + linkedUser,
           value: session.id,
-          actor: automationEvent.actor,
+          actor: automationEvent.actors.initiator,
           description: "Pi session for Telegram chat " + automationActorId,
           category: ["telegram", "pi"],
         });
@@ -297,7 +297,7 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
       await store.set({
         key: "pi/pi-default-agent",
         value,
-        actor: automationEvent.actor,
+        actor: automationEvent.actors.initiator,
         description: "Default Pi agent for automation-created sessions.",
         category: ["pi"],
       });

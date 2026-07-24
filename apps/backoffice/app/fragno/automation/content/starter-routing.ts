@@ -190,7 +190,13 @@ export const STARTER_AUTOMATION_ROUTES: readonly AutomationRouteCreateInput[] = 
       kind: "event",
       source: "otp",
       eventType: "identity.claim.completed",
-      matcher: { path: "$.actor.source", op: "eq", value: "telegram" },
+      matcher: {
+        actor: {
+          participation: "initiator",
+          scope: "external",
+          source: "telegram",
+        },
+      },
     },
     priority: 90,
     action: sendWorkflowEventAction({

@@ -7,10 +7,12 @@ import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 
 import {
-  AUTOMATION_SYSTEM_ACTOR,
-  type AutomationEvent,
-  type AutomationEventActor,
-} from "../../automation/contracts";
+  AUTOMATION_SYSTEM_INITIATOR,
+  automationActorsSchema,
+  type AutomationActors,
+  type AutomationInitiatorActor,
+} from "../../automation/actors";
+import type { AutomationEvent } from "../../automation/contracts";
 import type { EventRuntime } from "./event";
 
 export type { EventRuntime };
@@ -22,9 +24,9 @@ export type CreateEventRuntimeOptions = {
   execution: BackofficeExecutionContext;
 };
 
-const automationActorFromPrincipal = (actor: BackofficePrincipal): AutomationEventActor => {
+const automationInitiatorFromPrincipal = (actor: BackofficePrincipal): AutomationInitiatorActor => {
   if (actor.type === "system") {
-    return AUTOMATION_SYSTEM_ACTOR;
+    return AUTOMATION_SYSTEM_INITIATOR;
   }
 
   if (actor.type === "user") {
@@ -32,7 +34,7 @@ const automationActorFromPrincipal = (actor: BackofficePrincipal): AutomationEve
       scope: "internal",
       type: "user",
       id: actor.userId,
-      role: "principal",
+      role: "initiator",
     };
   }
 
@@ -40,7 +42,7 @@ const automationActorFromPrincipal = (actor: BackofficePrincipal): AutomationEve
     scope: "internal",
     type: actor.type,
     id: actor.id,
-    role: actor.type === "object" ? "delegate" : "principal",
+    role: "initiator",
   };
 };
 
@@ -95,21 +97,33 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
       throw new Error("events.fire source is required without a parent automation event.");
     }
 
-    const baseActor = parentEvent?.actor ?? automationActorFromPrincipal(options.execution.actor);
-    const baseActors = parentEvent?.actors ?? [baseActor];
-    const nextActor = externalActorId
+    const baseActors =
+      parentEvent?.actors ??
+      ({
+        initiator: automationInitiatorFromPrincipal(options.execution.actor),
+        principal: null,
+        delegation: [],
+      } satisfies AutomationActors);
+    const actors = externalActorId
       ? (() => {
           if (!actorType) {
             throw new Error("events.fire actorType is required when externalActorId is provided.");
           }
-          return {
-            scope: "external" as const,
-            source: nextSource,
-            type: actorType,
-            id: externalActorId,
-          };
+          return automationActorsSchema.parse({
+            ...baseActors,
+            delegation: [
+              ...baseActors.delegation,
+              {
+                scope: "external",
+                source: nextSource,
+                type: actorType,
+                id: externalActorId,
+                role: "delegate",
+              },
+            ],
+          });
         })()
-      : baseActor;
+      : baseActors;
     const nextEvent: AutomationEvent = {
       id: crypto.randomUUID(),
       scope: resolvedTargetScope,
@@ -117,8 +131,7 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
       eventType,
       occurredAt: new Date().toISOString(),
       payload: normalizeEventPayload(payload),
-      actor: nextActor,
-      actors: externalActorId ? [...baseActors, nextActor] : baseActors,
+      actors,
       subject:
         resolvedTargetScope.kind === "project"
           ? {

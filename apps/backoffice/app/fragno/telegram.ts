@@ -75,22 +75,17 @@ export const buildTelegramAutomationEvent = (
     text: payload.text,
     ...(payload.attachments.length > 0 ? { attachments: payload.attachments } : {}),
   },
-  actor: {
-    scope: "external",
-    source: AUTOMATION_SOURCES.telegram,
-    type: "chat",
-    id: payload.chatId,
-    role: "initiator",
-  },
-  actors: [
-    {
+  actors: {
+    initiator: {
       scope: "external",
       source: AUTOMATION_SOURCES.telegram,
       type: "chat",
       id: payload.chatId,
       role: "initiator",
     },
-  ],
+    principal: null,
+    delegation: [],
+  },
 });
 
 export function createTelegramServer(

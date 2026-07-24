@@ -66,11 +66,24 @@ describe("automation runtime tools", () => {
         label: "Organization created",
         capabilityId: "auth",
         actorSchema: {
-          properties: {
-            scope: { const: "internal" },
-            type: { const: "user" },
-            id: { type: "string" },
-          },
+          anyOf: [
+            {
+              properties: {
+                scope: { const: "internal" },
+                type: { const: "user" },
+                id: { type: "string" },
+                role: { const: "initiator" },
+              },
+            },
+            {
+              properties: {
+                scope: { const: "internal" },
+                type: { const: "system" },
+                id: { type: "string" },
+                role: { const: "initiator" },
+              },
+            },
+          ],
         },
         subjectSchema: {
           properties: {

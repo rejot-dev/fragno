@@ -49,7 +49,7 @@ const buildScheduledRouteEvent = ({
     scope: "internal" as const,
     type: "schedule",
     id: route.id,
-    role: "initiator",
+    role: "initiator" as const,
   };
   return {
     id: `schedule:${route.id}:${scheduledFor.getTime()}`,
@@ -62,8 +62,11 @@ const buildScheduledRouteEvent = ({
       name: route.name,
       cadence: route.trigger.cadence,
     },
-    actor,
-    actors: [actor],
+    actors: {
+      initiator: actor,
+      principal: null,
+      delegation: [],
+    },
     subject:
       scope.kind === "org" || scope.kind === "project"
         ? {

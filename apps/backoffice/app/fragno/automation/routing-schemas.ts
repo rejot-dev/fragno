@@ -2,7 +2,9 @@ import { z } from "zod";
 
 import { AUTOMATION_CODEMODE_WORKFLOW } from "./engine/workflow-start";
 import { automationScheduleCadenceSchema } from "./route-triggers";
+import { isAutomationActorProvenancePath } from "./routing";
 import type {
+  AutomationActorMatcher,
   AutomationEventMatcher,
   AutomationRouteDefinition,
   AutomationForwardEventAction,
@@ -14,12 +16,74 @@ import type {
   AutomationWorkflowEventTarget,
 } from "./routing";
 
+const automationActorMatcherSchema: z.ZodType<AutomationActorMatcher> = z.discriminatedUnion(
+  "participation",
+  [
+    z.discriminatedUnion("scope", [
+      z.strictObject({
+        participation: z.literal("initiator"),
+        scope: z.literal("internal"),
+        type: z.string().trim().min(1).optional(),
+        id: z.string().trim().min(1).optional(),
+      }),
+      z.strictObject({
+        participation: z.literal("initiator"),
+        scope: z.literal("external"),
+        source: z.string().trim().min(1).optional(),
+        type: z.string().trim().min(1).optional(),
+        id: z.string().trim().min(1).optional(),
+      }),
+    ]),
+    z.discriminatedUnion("scope", [
+      z.strictObject({
+        participation: z.literal("principal"),
+        scope: z.literal("internal"),
+        type: z.string().trim().min(1).optional(),
+        id: z.string().trim().min(1).optional(),
+      }),
+      z.strictObject({
+        participation: z.literal("principal"),
+        scope: z.literal("external"),
+        source: z.string().trim().min(1).optional(),
+        type: z.string().trim().min(1).optional(),
+        id: z.string().trim().min(1).optional(),
+      }),
+    ]),
+    z.discriminatedUnion("scope", [
+      z.strictObject({
+        participation: z.literal("delegation"),
+        scope: z.literal("internal"),
+        type: z.string().trim().min(1).optional(),
+        id: z.string().trim().min(1).optional(),
+        role: z.enum(["delegate", "assistant"]).optional(),
+      }),
+      z.strictObject({
+        participation: z.literal("delegation"),
+        scope: z.literal("external"),
+        source: z.string().trim().min(1).optional(),
+        type: z.string().trim().min(1).optional(),
+        id: z.string().trim().min(1).optional(),
+        role: z.enum(["delegate", "assistant"]).optional(),
+      }),
+    ]),
+  ],
+);
+
+const automationEventPathSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .refine((path) => !isAutomationActorProvenancePath(path), {
+    message: "Actor routing must use the structural actor matcher.",
+  });
+
 const automationEventMatcherSchema: z.ZodType<AutomationEventMatcher> = z
   .lazy(() =>
     z.union([
-      z.object({ path: z.string().trim().min(1), op: z.literal("exists") }),
+      z.strictObject({ actor: automationActorMatcherSchema }),
+      z.object({ path: automationEventPathSchema, op: z.literal("exists") }),
       z.object({
-        path: z.string().trim().min(1),
+        path: automationEventPathSchema,
         op: z.union([
           z.literal("eq"),
           z.literal("neq"),
@@ -36,7 +100,7 @@ const automationEventMatcherSchema: z.ZodType<AutomationEventMatcher> = z
   .meta({ id: "AutomationEventMatcher" });
 
 const automationRouteScopeTemplateSchema: z.ZodType<AutomationRouteScopeTemplate> = z
-  .union([
+  .discriminatedUnion("kind", [
     z.object({ kind: z.literal("system") }),
     z.object({ kind: z.literal("org"), orgIdTemplate: z.string().trim().min(1) }),
     z.object({
@@ -48,7 +112,7 @@ const automationRouteScopeTemplateSchema: z.ZodType<AutomationRouteScopeTemplate
   ])
   .meta({ id: "AutomationRouteScopeTemplate" });
 
-const automationStartWorkflowActionSchema: z.ZodType<AutomationStartWorkflowAction> = z
+const automationStartWorkflowActionSchema = z
   .object({
     kind: z.literal("start_workflow"),
     remoteWorkflowName: z.string().trim().min(1).optional(),
@@ -58,10 +122,10 @@ const automationStartWorkflowActionSchema: z.ZodType<AutomationStartWorkflowActi
   .meta({
     id: "AutomationStartWorkflowAction",
     codemodeInputId: "AutomationStartWorkflowActionInput",
-  });
+  }) satisfies z.ZodType<AutomationStartWorkflowAction>;
 
 const automationWorkflowEventTargetSchema: z.ZodType<AutomationWorkflowEventTarget> = z
-  .union([
+  .discriminatedUnion("kind", [
     z.object({ kind: z.literal("instance_id"), template: z.string().trim().min(1) }).meta({
       id: "AutomationWorkflowEventInstanceIdTarget",
     }),
@@ -73,7 +137,7 @@ const automationWorkflowEventTargetSchema: z.ZodType<AutomationWorkflowEventTarg
   ])
   .meta({ id: "AutomationWorkflowEventTarget" });
 
-const automationSendWorkflowEventActionSchema: z.ZodType<AutomationSendWorkflowEventAction> = z
+const automationSendWorkflowEventActionSchema = z
   .object({
     kind: z.literal("send_workflow_event"),
     workflowName: z.string().trim().min(1).default(AUTOMATION_CODEMODE_WORKFLOW),
@@ -85,9 +149,9 @@ const automationSendWorkflowEventActionSchema: z.ZodType<AutomationSendWorkflowE
   .meta({
     id: "AutomationSendWorkflowEventAction",
     codemodeInputId: "AutomationSendWorkflowEventActionInput",
-  });
+  }) satisfies z.ZodType<AutomationSendWorkflowEventAction>;
 
-const automationForwardEventActionSchema: z.ZodType<AutomationForwardEventAction> = z
+const automationForwardEventActionSchema = z
   .object({
     kind: z.literal("forward_event"),
     targetScope: automationRouteScopeTemplateSchema,
@@ -96,15 +160,18 @@ const automationForwardEventActionSchema: z.ZodType<AutomationForwardEventAction
   .meta({
     id: "AutomationForwardEventAction",
     codemodeInputId: "AutomationForwardEventActionInput",
-  });
+  }) satisfies z.ZodType<AutomationForwardEventAction>;
 
-export const automationRouteActionSchema: z.ZodType<AutomationRouteAction> = z
-  .union([
+export const automationRouteActionSchema = z
+  .discriminatedUnion("kind", [
     automationStartWorkflowActionSchema,
     automationSendWorkflowEventActionSchema,
     automationForwardEventActionSchema,
   ])
-  .meta({ id: "AutomationRouteAction", codemodeInputId: "AutomationRouteActionInput" });
+  .meta({
+    id: "AutomationRouteAction",
+    codemodeInputId: "AutomationRouteActionInput",
+  }) satisfies z.ZodType<AutomationRouteAction>;
 
 const automationRouteTriggerSchema: z.ZodType<AutomationRouteTrigger> = z
   .discriminatedUnion("kind", [
@@ -121,37 +188,37 @@ const automationRouteTriggerSchema: z.ZodType<AutomationRouteTrigger> = z
   ])
   .meta({ id: "AutomationRouteTrigger", codemodeInputId: "AutomationRouteTriggerInput" });
 
-const automationRouteInputShape = {
-  id: z.string().trim().min(1),
-  name: z.string().trim().min(1),
-  enabled: z.boolean(),
-  priority: z.number().int(),
-  trigger: automationRouteTriggerSchema,
-  action: automationRouteActionSchema,
-  description: z.string().nullable().optional(),
-};
-
 export const automationRouteSchema: z.ZodType<AutomationRouteDefinition> = z
   .object({
-    ...automationRouteInputShape,
+    id: z.string().trim().min(1),
+    name: z.string().trim().min(1),
+    enabled: z.boolean(),
+    priority: z.number().int(),
+    trigger: automationRouteTriggerSchema,
+    action: automationRouteActionSchema,
+    description: z.string().nullable().optional(),
     nextOccurrenceAt: z.iso.datetime().nullable(),
   })
   .meta({ id: "AutomationRoute" });
 
 export const automationRouteCreateInputSchema = z.object({
-  ...automationRouteInputShape,
-  enabled: automationRouteInputShape.enabled.default(true),
-  priority: automationRouteInputShape.priority.default(1000),
+  id: z.string().trim().min(1),
+  name: z.string().trim().min(1),
+  enabled: z.boolean().default(true),
+  priority: z.number().int().default(1000),
+  trigger: automationRouteTriggerSchema,
+  action: automationRouteActionSchema,
+  description: z.string().nullable().optional(),
 });
 
 const automationRouteUpdateObjectSchema = z.object({
-  id: automationRouteInputShape.id,
-  name: automationRouteInputShape.name.optional(),
-  enabled: automationRouteInputShape.enabled.optional(),
-  priority: automationRouteInputShape.priority.optional(),
-  trigger: automationRouteInputShape.trigger.optional(),
-  action: automationRouteInputShape.action.optional(),
-  description: automationRouteInputShape.description,
+  id: z.string().trim().min(1),
+  name: z.string().trim().min(1).optional(),
+  enabled: z.boolean().optional(),
+  priority: z.number().int().optional(),
+  trigger: automationRouteTriggerSchema.optional(),
+  action: automationRouteActionSchema.optional(),
+  description: z.string().nullable().optional(),
 });
 
 export const automationRouteUpdatePayloadSchema = automationRouteUpdateObjectSchema

@@ -5,7 +5,8 @@ import type { InstantiatedFragmentFromDefinition } from "@fragno-dev/core";
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { SandboxRuntimeHandle, SandboxRuntimeProvider } from "@/sandbox/contracts";
 
-import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "./contracts";
+import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
+import type { AutomationEvent } from "./contracts";
 import type { AutomationFragmentConfig, automationFragmentDefinition } from "./definition";
 import type { SandboxLifecycleWorkflowParams } from "./sandboxes-storage-runtime";
 import { automationFragmentSchema } from "./schema";
@@ -49,8 +50,11 @@ const buildSandboxFailedEvent = ({
       reason: "terminal_error",
       error: { message: errorMessage },
     },
-    actor: AUTOMATION_SYSTEM_ACTOR,
-    actors: [AUTOMATION_SYSTEM_ACTOR],
+    actors: {
+      initiator: AUTOMATION_SYSTEM_INITIATOR,
+      principal: null,
+      delegation: [],
+    },
     subject: sandboxScopeSubject(config.ownerScope, params.id),
   };
 };

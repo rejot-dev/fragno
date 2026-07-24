@@ -1,6 +1,7 @@
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
-import type { AutomationEvent, AutomationEventActor } from "./contracts";
+import type { AutomationEntityRef } from "./actors";
+import type { AutomationEvent } from "./contracts";
 import type { AutomationEventDefinition } from "./event-definitions";
 import type { AutomationRouteAction, AutomationRouteTrigger } from "./routing";
 
@@ -15,7 +16,7 @@ export const automationFragmentSchema = schema("automations", (s) => {
         .addColumn("value", column("string"))
         .addColumn("description", column("string").nullable())
         .addColumn("category", jsonColumn<string[]>().nullable())
-        .addColumn("actor", jsonColumn<AutomationEventActor>().nullable())
+        .addColumn("actor", jsonColumn<AutomationEntityRef>().nullable())
         .addColumn(
           "createdAt",
           column("timestamp").defaultTo((b) => b.now()),
@@ -109,7 +110,6 @@ export const automationFragmentSchema = schema("automations", (s) => {
         .addColumn("eventType", column("string"))
         .addColumn("occurredAt", column("timestamp"))
         .addColumn("payload", jsonColumn<AutomationEvent["payload"]>())
-        .addColumn("actor", jsonColumn<AutomationEvent["actor"]>())
         .addColumn("actors", jsonColumn<AutomationEvent["actors"]>())
         .addColumn("subject", jsonColumn<AutomationEvent["subject"]>().nullable())
         .addColumn(

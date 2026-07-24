@@ -1,8 +1,5 @@
-import {
-  AUTOMATION_SYSTEM_ACTOR,
-  type AutomationEvent,
-  type AutomationEventPayload,
-} from "../contracts";
+import { AUTOMATION_SYSTEM_INITIATOR } from "../actors";
+import type { AutomationEvent, AutomationEventPayload } from "../contracts";
 import type { AutomationCodemodeWorkflowParams } from "./workflow";
 
 export const AUTOMATION_CODEMODE_WORKFLOW = "automation-codemode-script";
@@ -30,8 +27,11 @@ export const createManualAutomationEvent = ({
   eventType,
   occurredAt: new Date().toISOString(),
   payload,
-  actor: AUTOMATION_SYSTEM_ACTOR,
-  actors: [AUTOMATION_SYSTEM_ACTOR],
+  actors: {
+    initiator: AUTOMATION_SYSTEM_INITIATOR,
+    principal: null,
+    delegation: [],
+  },
   subject: { orgId },
 });
 

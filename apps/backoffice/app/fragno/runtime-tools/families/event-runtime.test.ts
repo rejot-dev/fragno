@@ -16,13 +16,17 @@ const createEvent = (overrides: Partial<AutomationEvent> = {}): AutomationEvent 
   eventType: "message.received",
   occurredAt: "2026-01-01T00:00:00.000Z",
   payload: {},
-  actor: {
-    scope: "external",
-    source: "telegram",
-    type: "chat",
-    id: "chat-1",
+  actors: {
+    initiator: {
+      scope: "external",
+      source: "telegram",
+      type: "chat",
+      id: "chat-1",
+      role: "initiator",
+    },
+    principal: null,
+    delegation: [],
   },
-  actors: [{ scope: "external", source: "telegram", type: "chat", id: "chat-1" }],
   subject: null,
   ...overrides,
 });
@@ -83,20 +87,16 @@ describe("createEventRuntime.emitEvent", () => {
         id: expect.stringMatching(
           /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
         ),
-        actor: {
-          scope: "internal",
-          type: "user",
-          id: "user-1",
-          role: "principal",
-        },
-        actors: [
-          {
+        actors: {
+          initiator: {
             scope: "internal",
             type: "user",
             id: "user-1",
-            role: "principal",
+            role: "initiator",
           },
-        ],
+          principal: null,
+          delegation: [],
+        },
         payload: { ok: true },
       }),
     );
@@ -179,6 +179,61 @@ describe("createEventRuntime.emitEvent", () => {
       expect.objectContaining({
         payload: {},
       }),
+    );
+  });
+
+  it("preserves initiator, principal, and ordered delegation on child events", async () => {
+    const triggerIngestEvent = vi.fn(async () => undefined);
+    const objects = {
+      automations: {
+        forOrg: vi.fn(() => ({ triggerIngestEvent })),
+      },
+    } as unknown as BackofficeObjectRegistry;
+    const parentEvent = createEvent({
+      actors: {
+        initiator: {
+          scope: "external",
+          source: "telegram",
+          type: "chat",
+          id: "chat-1",
+          role: "initiator",
+        },
+        principal: {
+          scope: "internal",
+          type: "user",
+          id: "user-1",
+          role: "principal",
+        },
+        delegation: [
+          {
+            scope: "internal",
+            type: "automation",
+            id: "automation:event-1",
+            role: "delegate",
+          },
+          {
+            scope: "internal",
+            type: "agent",
+            id: "agent-1",
+            role: "assistant",
+          },
+        ],
+      },
+    });
+    const runtime = createEventRuntime({
+      objects,
+      kernel: new BackofficeKernel({ objects }),
+      execution: {
+        actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
+        scope: parentEvent.scope,
+      },
+      parentEvent,
+    });
+
+    await runtime.emitEvent({ eventType: "child.created", payload: { ok: true } });
+
+    expect(triggerIngestEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ actors: parentEvent.actors, payload: { ok: true } }),
     );
   });
 

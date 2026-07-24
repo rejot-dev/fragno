@@ -6,7 +6,8 @@ import { MasterFileSystem } from "@/files/master-file-system";
 import { executeBashAutomation } from "@/fragno/runtime-tools/automation-host";
 import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
 
-import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "../contracts";
+import { AUTOMATION_SYSTEM_INITIATOR } from "../actors";
+import type { AutomationEvent } from "../contracts";
 import {
   createAutomationExecutionContext as createRuntimeAutomationExecutionContext,
   createAutomationRuntime as createRouteBackedAutomationRuntime,
@@ -49,17 +50,17 @@ const createAutomationRuntime = (
 });
 
 const createTestEvent = (
-  event: Omit<AutomationEvent, "actor" | "actors" | "scope"> &
-    Partial<Pick<AutomationEvent, "actor" | "actors" | "scope">>,
-): AutomationEvent => {
-  const actor = event.actor ?? AUTOMATION_SYSTEM_ACTOR;
-  return {
-    ...event,
-    scope: event.scope ?? { kind: "org", orgId: "org-1" },
-    actor,
-    actors: event.actors ?? [actor],
-  };
-};
+  event: Omit<AutomationEvent, "actors" | "scope"> &
+    Partial<Pick<AutomationEvent, "actors" | "scope">>,
+): AutomationEvent => ({
+  ...event,
+  scope: event.scope ?? { kind: "org", orgId: "org-1" },
+  actors: event.actors ?? {
+    initiator: AUTOMATION_SYSTEM_INITIATOR,
+    principal: null,
+    delegation: [],
+  },
+});
 
 const createDeferred = <T = void>() => {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -105,13 +106,17 @@ describe("bash command runner", () => {
         fromUserId: "from-1",
         text: "/start",
       },
-      actor: {
-        scope: "external",
-        source: "telegram",
-        type: "chat",
-        id: "chat-1",
+      actors: {
+        initiator: {
+          scope: "external",
+          source: "telegram",
+          type: "chat",
+          id: "chat-1",
+          role: "initiator",
+        },
+        principal: null,
+        delegation: [],
       },
-      actors: [{ scope: "external", source: "telegram", type: "chat", id: "chat-1" }],
       subject: {
         userId: "user-1",
       },
@@ -139,10 +144,7 @@ describe("bash command runner", () => {
     });
 
     assert(result.exitCode === 0);
-    assert(
-      result.stdout.trim() ===
-        'event={"id":"event-123","scope":{"kind":"org","orgId":"org-1"},"source":"telegram","eventType":"message.received","occurredAt":"2026-01-01T00:00:00.000Z","payload":{"messageId":"message-1","chatId":"chat-1","fromUserId":"from-1","text":"/start"},"actor":{"scope":"external","source":"telegram","type":"chat","id":"chat-1"},"actors":[{"scope":"external","source":"telegram","type":"chat","id":"chat-1"}],"subject":{"userId":"user-1"}}',
-    );
+    expect(JSON.parse(result.stdout.trim().slice("event=".length))).toEqual(event);
   });
 
   it("mounts /dev/null so scripts can discard output", async () => {

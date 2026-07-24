@@ -1,10 +1,7 @@
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 
-import type {
-  AutomationEvent,
-  AutomationEventActor,
-  AutomationExternalEntityRef,
-} from "../automation/contracts";
+import type { AutomationEntityRef, AutomationExternalEntityRef } from "../automation/actors";
+import type { AutomationEvent } from "../automation/contracts";
 import type { AutomationCommandCallResult } from "../automation/run-result";
 
 export type AutomationCommandFormat = "text" | "json";
@@ -39,7 +36,7 @@ export type StoreVerification = {
 export type StoreSetArgs = {
   key: string;
   value: string;
-  actor: AutomationEventActor | null;
+  actor: AutomationEntityRef | null;
   description?: string | null;
   category?: string[];
   verification?: StoreVerification[];

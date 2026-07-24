@@ -72,6 +72,7 @@ const telegramMessageReceivedActorSchema = z.object({
   source: z.literal(AUTOMATION_SOURCE),
   type: z.literal("chat"),
   id: z.string().min(1),
+  role: z.literal("initiator"),
 });
 
 const telegramCapabilityConfiguredPayloadSchema = z.object({

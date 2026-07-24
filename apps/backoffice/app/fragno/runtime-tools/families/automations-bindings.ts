@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { AutomationEventActor } from "@/fragno/automation/contracts";
+import type { AutomationEntityRef } from "@/fragno/automation/actors";
 import {
   automationStoreActorSchema,
   automationStoreDeleteResultSchema,
@@ -44,7 +44,7 @@ export type AutomationStoreRuntime = {
 
 type AutomationStoreToolContext = BackofficeToolContext<
   { automations?: AutomationStoreRuntime },
-  { actor?: AutomationEventActor | null }
+  { actor?: AutomationEntityRef | null }
 >;
 
 const readJsonValueOption = (

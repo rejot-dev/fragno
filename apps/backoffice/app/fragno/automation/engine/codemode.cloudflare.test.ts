@@ -7,7 +7,8 @@ import { env } from "cloudflare:workers";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 import type { AutomationRuntimeHostContext, AutomationRuntime } from "@/fragno/automation";
-import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "@/fragno/automation/contracts";
+import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
+import type { AutomationEvent } from "@/fragno/automation/contracts";
 import { executeBashAutomation } from "@/fragno/runtime-tools/automation-host";
 import { EMPTY_BASH_HOST_CONTEXT } from "@/fragno/runtime-tools/bash-host.test-utils";
 import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
@@ -26,8 +27,11 @@ describe("executeCodemodeAutomation", () => {
       eventType: "message.received",
       occurredAt: "2026-06-03T00:00:00.000Z",
       payload: { text: "hello" },
-      actor: AUTOMATION_SYSTEM_ACTOR,
-      actors: [AUTOMATION_SYSTEM_ACTOR],
+      actors: {
+        initiator: AUTOMATION_SYSTEM_INITIATOR,
+        principal: null,
+        delegation: [],
+      },
     };
 
     const result = await executeCodemodeAutomation({
@@ -71,8 +75,11 @@ describe("executeCodemodeAutomation", () => {
       eventType: "message.received",
       occurredAt: "2026-06-03T00:00:00.000Z",
       payload: { chatId: "chat-123" },
-      actor: AUTOMATION_SYSTEM_ACTOR,
-      actors: [AUTOMATION_SYSTEM_ACTOR],
+      actors: {
+        initiator: AUTOMATION_SYSTEM_INITIATOR,
+        principal: null,
+        delegation: [],
+      },
     };
 
     const result = await executeCodemodeAutomation({
@@ -133,8 +140,11 @@ describe("executeCodemodeAutomation", () => {
       eventType: "organization.created",
       occurredAt: "2026-06-12T00:00:00.000Z",
       payload: { id: "org-1", name: "Org 1", slug: "org-1" },
-      actor: AUTOMATION_SYSTEM_ACTOR,
-      actors: [AUTOMATION_SYSTEM_ACTOR],
+      actors: {
+        initiator: AUTOMATION_SYSTEM_INITIATOR,
+        principal: null,
+        delegation: [],
+      },
     };
 
     const result = await executeCodemodeAutomation({
@@ -184,8 +194,11 @@ describe("executeCodemodeAutomation", () => {
       eventType: "organization.created",
       occurredAt: "2026-06-12T00:00:00.000Z",
       payload: { id: "org-1", name: "Org 1", slug: "org-1" },
-      actor: AUTOMATION_SYSTEM_ACTOR,
-      actors: [AUTOMATION_SYSTEM_ACTOR],
+      actors: {
+        initiator: AUTOMATION_SYSTEM_INITIATOR,
+        principal: null,
+        delegation: [],
+      },
     };
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-workflow-connections-test" },
@@ -255,8 +268,11 @@ describe("executeCodemodeAutomation", () => {
       eventType: "message.received",
       occurredAt: "2026-06-03T00:00:00.000Z",
       payload: { plan: "basic" },
-      actor: AUTOMATION_SYSTEM_ACTOR,
-      actors: [AUTOMATION_SYSTEM_ACTOR],
+      actors: {
+        initiator: AUTOMATION_SYSTEM_INITIATOR,
+        principal: null,
+        delegation: [],
+      },
     };
 
     const result = await executeCodemodeAutomation({
@@ -311,8 +327,11 @@ describe("executeCodemodeAutomation", () => {
       eventType: "message.received",
       occurredAt: "2026-06-03T00:00:00.000Z",
       payload: {},
-      actor: AUTOMATION_SYSTEM_ACTOR,
-      actors: [AUTOMATION_SYSTEM_ACTOR],
+      actors: {
+        initiator: AUTOMATION_SYSTEM_INITIATOR,
+        principal: null,
+        delegation: [],
+      },
     };
     const context = createAutomationContext(event, runtime);
 
@@ -376,8 +395,11 @@ describe("executeCodemodeAutomation", () => {
       eventType: "message.received",
       occurredAt: "2026-06-03T00:00:00.000Z",
       payload: {},
-      actor: AUTOMATION_SYSTEM_ACTOR,
-      actors: [AUTOMATION_SYSTEM_ACTOR],
+      actors: {
+        initiator: AUTOMATION_SYSTEM_INITIATOR,
+        principal: null,
+        delegation: [],
+      },
     };
 
     const result = await executeCodemodeAutomation({

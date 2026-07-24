@@ -42,6 +42,126 @@ describe("automation routing schemas", () => {
     );
   });
 
+  test("accepts structural actor matchers and rejects invalid delegation roles", () => {
+    expect(
+      automationRouteCreateInputSchema.parse({
+        id: "telegram-route",
+        name: "Telegram route",
+        trigger: {
+          kind: "event",
+          source: "telegram",
+          eventType: "message.received",
+          matcher: {
+            actor: {
+              participation: "initiator",
+              scope: "external",
+              source: "telegram",
+              type: "chat",
+            },
+          },
+        },
+        action: {
+          kind: "start_workflow",
+          workflowScriptPath: "/workspace/automations/telegram.workflow.js",
+          instanceIdTemplate: "telegram-${event.id}",
+        },
+      }).trigger,
+    ).toMatchObject({
+      matcher: {
+        actor: {
+          participation: "initiator",
+          scope: "external",
+          source: "telegram",
+          type: "chat",
+        },
+      },
+    });
+
+    expect(() =>
+      automationRouteCreateInputSchema.parse({
+        id: "invalid-internal-actor-source",
+        name: "Invalid internal actor source",
+        trigger: {
+          kind: "event",
+          source: "telegram",
+          eventType: "message.received",
+          matcher: {
+            actor: {
+              participation: "initiator",
+              scope: "internal",
+              source: "telegram",
+            },
+          },
+        },
+        action: {
+          kind: "start_workflow",
+          workflowScriptPath: "/workspace/automations/telegram.workflow.js",
+          instanceIdTemplate: "telegram-${event.id}",
+        },
+      }),
+    ).toThrow();
+
+    expect(() =>
+      automationRouteCreateInputSchema.parse({
+        id: "invalid-actor-path",
+        name: "Invalid actor path",
+        trigger: {
+          kind: "event",
+          source: "telegram",
+          eventType: "message.received",
+          matcher: { path: "$.actors.initiator.source", op: "eq", value: "telegram" },
+        },
+        action: {
+          kind: "start_workflow",
+          workflowScriptPath: "/workspace/automations/telegram.workflow.js",
+          instanceIdTemplate: "telegram-${event.id}",
+        },
+      }),
+    ).toThrow("Actor routing must use the structural actor matcher");
+
+    expect(() =>
+      automationRouteCreateInputSchema.parse({
+        id: "invalid-legacy-actor-path",
+        name: "Invalid legacy actor path",
+        trigger: {
+          kind: "event",
+          source: "telegram",
+          eventType: "message.received",
+          matcher: { path: "$.actor.source", op: "eq", value: "telegram" },
+        },
+        action: {
+          kind: "start_workflow",
+          workflowScriptPath: "/workspace/automations/telegram.workflow.js",
+          instanceIdTemplate: "telegram-${event.id}",
+        },
+      }),
+    ).toThrow("Actor routing must use the structural actor matcher");
+
+    expect(() =>
+      automationRouteCreateInputSchema.parse({
+        id: "invalid-principal-delegation",
+        name: "Invalid principal delegation",
+        trigger: {
+          kind: "event",
+          source: "telegram",
+          eventType: "message.received",
+          matcher: {
+            actor: {
+              participation: "delegation",
+              scope: "internal",
+              role: "principal",
+            },
+          },
+        },
+        action: {
+          kind: "start_workflow",
+          workflowScriptPath: "/workspace/automations/telegram.workflow.js",
+          instanceIdTemplate: "telegram-${event.id}",
+        },
+      }),
+    ).toThrow();
+  });
+
   test("send_workflow_event actions target an instance id directly or through the store", () => {
     expect(
       automationRouteActionSchema.parse({

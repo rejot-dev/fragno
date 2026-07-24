@@ -46,14 +46,21 @@ const githubPullRequestSchema = z.looseObject({
   base: githubPullRequestRefSchema.optional(),
 });
 
-const githubActorSchema = z.object({
-  scope: z.literal("external"),
-  source: z.literal("github"),
-  type: z.string().min(1),
-  id: z.string().min(1),
-  login: z.string().optional(),
-  role: z.string().optional(),
-});
+const githubActorSchema = z.union([
+  z.object({
+    scope: z.literal("external"),
+    source: z.literal("github"),
+    type: z.string().min(1),
+    id: z.string().min(1),
+    role: z.literal("initiator"),
+  }),
+  z.object({
+    scope: z.literal("internal"),
+    type: z.literal("system"),
+    id: z.string().min(1),
+    role: z.literal("initiator"),
+  }),
+]);
 
 const githubSubjectSchema = z.object({
   orgId: z.string().min(1),

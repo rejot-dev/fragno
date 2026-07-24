@@ -7,7 +7,7 @@ import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
-import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
+import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { reson8ConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/reson8";
 import { createReson8Server, type Reson8Fragment } from "@/fragno/reson8";
 
@@ -140,8 +140,11 @@ export class InMemoryReson8Object implements Reson8Object {
               capabilityId: "reson8",
               capabilityLabel: "Reson8",
             },
-            actor: AUTOMATION_SYSTEM_ACTOR,
-            actors: [AUTOMATION_SYSTEM_ACTOR],
+            actors: {
+              initiator: AUTOMATION_SYSTEM_INITIATOR,
+              principal: null,
+              delegation: [],
+            },
             subject: {
               orgId: scope.orgId,
               capabilityId: "reson8",
