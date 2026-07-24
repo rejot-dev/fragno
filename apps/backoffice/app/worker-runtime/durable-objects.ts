@@ -7,6 +7,7 @@ import type {
   AutomationsObject,
   GitHubObject,
   GitHubWebhookRouterObject,
+  MarketplaceObject,
   McpObject,
   OtpObject,
   PiObject,
@@ -37,6 +38,10 @@ export const getAutomationsDurableObject = (
   orgId: string,
 ): BackofficeRpcObject<AutomationsObject> =>
   getBackofficeObjects(context).automations.forOrg(orgId);
+
+export const getMarketplaceDurableObject = (
+  context: Readonly<RouterContextProvider>,
+): MarketplaceObject => getBackofficeObjects(context).marketplace.singleton();
 
 export const getTelegramDurableObject = (
   context: Readonly<RouterContextProvider>,

@@ -24,6 +24,7 @@ export type BackofficeRuntimeConfig = {
     auth: boolean;
     automations: boolean;
     billing: boolean;
+    marketplace: boolean;
     telegram: boolean;
     otp: boolean;
     pi: boolean;
@@ -110,6 +111,7 @@ const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): Backoffice
     auth: Boolean(env.AUTH),
     automations: Boolean(env.AUTOMATIONS),
     billing: Boolean(env.BILLING),
+    marketplace: Boolean(env.MARKETPLACE),
     telegram: Boolean(env.TELEGRAM),
     otp: Boolean(env.OTP),
     pi: Boolean(env.PI),

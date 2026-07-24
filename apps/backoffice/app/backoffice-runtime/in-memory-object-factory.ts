@@ -7,6 +7,7 @@ import { InMemoryAutomationsObject } from "../../workers/automations.do";
 import { InMemoryBillingObject } from "../../workers/billing.do";
 import { InMemoryGitHubWebhookRouterObject } from "../../workers/github-webhook-router.do";
 import { InMemoryGitHubObject } from "../../workers/github.do";
+import { InMemoryMarketplaceObject } from "../../workers/marketplace.do";
 import { InMemoryMcpObject } from "../../workers/mcp.do";
 import { InMemoryOtpObject } from "../../workers/otp.do";
 import { InMemoryPiObject } from "../../workers/pi.do";
@@ -225,6 +226,12 @@ const inMemoryObjectFactories = {
       env,
       runtime,
     }),
+  MARKETPLACE: ({ state, env, runtime }) =>
+    new InMemoryMarketplaceObject({
+      state,
+      env,
+      runtime,
+    }),
 } satisfies Record<BackofficeObjectBindingName, InMemoryBackofficeObjectFactory<unknown>>;
 
 export class InMemoryObjectFactory implements BackofficeObjectFactory {
@@ -328,6 +335,7 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
         auth: this.#hasNamespace("AUTH"),
         automations: this.#hasNamespace("AUTOMATIONS"),
         billing: this.#hasNamespace("BILLING"),
+        marketplace: this.#hasNamespace("MARKETPLACE"),
         telegram: this.#hasNamespace("TELEGRAM"),
         otp: this.#hasNamespace("OTP"),
         pi: this.#hasNamespace("PI"),

@@ -40,6 +40,11 @@ export default [
         "routes/backoffice/connections/github/oauth-callback.tsx",
       ),
       route("connections/upload", "routes/backoffice/connections/upload/index.tsx"),
+      route("marketplace", "routes/backoffice/marketplace/index.tsx"),
+      route("marketplace/publish", "routes/backoffice/marketplace/publish.tsx"),
+      route("marketplace/mine", "routes/backoffice/marketplace/mine.tsx"),
+      route("marketplace/:slug/manage", "routes/backoffice/marketplace/manage.tsx"),
+      route("marketplace/:slug", "routes/backoffice/marketplace/detail.tsx"),
       route("automations", "routes/backoffice/automations/index.tsx"),
       route(
         "automations/:orgId/claims/complete",
@@ -295,5 +300,6 @@ export default [
     route("automations-scoped/:scopeKind/:scopeId/*", "routes/api/automations-scoped.ts"),
     route("automations/:orgId/*", "routes/api/automations.ts"),
     route("automations-workflows/:orgId/*", "routes/api/automations-workflows.ts"),
+    route("marketplace/*", "routes/api/marketplace.ts"),
   ]),
 ] satisfies RouteConfig;

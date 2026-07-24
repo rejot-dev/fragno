@@ -33,6 +33,28 @@ import type {
   BillingTrackerPageInput,
 } from "@/fragno/billing";
 import type { DurableHookQueueOptions, DurableHookRepository } from "@/fragno/durable-hooks";
+import type {
+  MarketplaceAddDraftVersionInput,
+  MarketplaceArchiveListingInput,
+  MarketplaceArchiveResult,
+  MarketplaceCreateDraftListingInput,
+  MarketplaceDraftResult,
+  MarketplaceFindListingOwnerInput,
+  MarketplaceListingDetail,
+  MarketplaceListingPage,
+  MarketplaceListingPageInput,
+  MarketplaceListingUpdateResult,
+  MarketplaceOwnedListingDetail,
+  MarketplaceOwnedListingInput,
+  MarketplaceOwnedListingPage,
+  MarketplaceOwnedListingPageInput,
+  MarketplaceOperationResult,
+  MarketplaceOwnerScope,
+  MarketplacePublishedListingInput,
+  MarketplacePublishVersionInput,
+  MarketplacePublishVersionResult,
+  MarketplaceUpdateListingInput,
+} from "@/fragno/marketplace/contracts";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import type { SandboxInstanceStatus } from "@/sandbox/contracts";
 
@@ -109,6 +131,38 @@ export type BillingObject = FetchObject &
       context?: BackofficeRpcContext,
     ): Promise<BillingRecordEventResult>;
     getTrackers(input: BillingTrackerPageInput): Promise<BillingTrackerPage>;
+  };
+
+export type MarketplaceObject = FetchObject &
+  AlarmableObject & {
+    listPublishedListings(input?: MarketplaceListingPageInput): Promise<MarketplaceListingPage>;
+    getPublishedListing(
+      input: MarketplacePublishedListingInput,
+    ): Promise<MarketplaceListingDetail | null>;
+    listOwnedListings(
+      input: MarketplaceOwnedListingPageInput,
+    ): Promise<MarketplaceOwnedListingPage>;
+    findListingOwner(
+      input: MarketplaceFindListingOwnerInput,
+    ): Promise<MarketplaceOwnerScope | null>;
+    getOwnedListing(
+      input: MarketplaceOwnedListingInput,
+    ): Promise<MarketplaceOwnedListingDetail | null>;
+    createDraftListing(
+      input: MarketplaceCreateDraftListingInput,
+    ): Promise<MarketplaceOperationResult<MarketplaceDraftResult>>;
+    addDraftVersion(
+      input: MarketplaceAddDraftVersionInput,
+    ): Promise<MarketplaceOperationResult<MarketplaceDraftResult>>;
+    updateListing(
+      input: MarketplaceUpdateListingInput,
+    ): Promise<MarketplaceOperationResult<MarketplaceListingUpdateResult>>;
+    publishVersion(
+      input: MarketplacePublishVersionInput,
+    ): Promise<MarketplaceOperationResult<MarketplacePublishVersionResult>>;
+    archiveListing(
+      input: MarketplaceArchiveListingInput,
+    ): Promise<MarketplaceOperationResult<MarketplaceArchiveResult>>;
   };
 
 export type AutomationsObject = FetchObject &
@@ -260,6 +314,7 @@ export type BackofficeObjectBindingName =
   | "AUTH"
   | "AUTOMATIONS"
   | "BILLING"
+  | "MARKETPLACE"
   | "TELEGRAM"
   | "OTP"
   | "PI"
@@ -295,6 +350,7 @@ export const backofficeObjectScopePolicy = {
 
   AUTOMATIONS: ["singleton", "org", "user", "project"],
   BILLING: ["org"],
+  MARKETPLACE: ["singleton"],
 
   TELEGRAM: ["singleton", "org", "user", "project"],
   OTP: ["singleton", "org"],
@@ -628,6 +684,7 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
 
   automations: scopedInitialized(factory, initializedBinding<AutomationsObject>("AUTOMATIONS")),
   billing: scopedInitialized(factory, initializedBinding<BillingObject>("BILLING")),
+  marketplace: scoped(factory, binding<MarketplaceObject>("MARKETPLACE")),
   telegram: scopedInitialized(factory, initializedBinding<TelegramObject>("TELEGRAM")),
   otp: scoped(factory, binding<OtpObject>("OTP")),
   pi: scoped(factory, binding<PiObject>("PI")),

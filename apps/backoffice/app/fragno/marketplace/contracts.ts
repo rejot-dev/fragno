@@ -1,0 +1,307 @@
+import { z } from "zod";
+
+export const MARKETPLACE_DEFAULT_PAGE_SIZE = 18;
+export const MARKETPLACE_MAX_PAGE_SIZE = 60;
+
+export const marketplaceSlugSchema = z
+  .string()
+  .trim()
+  .min(3)
+  .max(80)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u, "Use lowercase words separated by hyphens.");
+
+export const marketplaceVersionSchema = z
+  .string()
+  .trim()
+  .max(40)
+  .regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u, "Use a semantic version such as 1.0.0.");
+
+export const MARKETPLACE_CATEGORIES = [
+  "communication",
+  "developer-tools",
+  "operations",
+  "productivity",
+  "reporting",
+] as const;
+
+export const marketplaceCategorySchema = z.enum(MARKETPLACE_CATEGORIES);
+export type MarketplaceCategory = z.infer<typeof marketplaceCategorySchema>;
+
+const marketplaceTagSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(32)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u, "Tags use lowercase words separated by hyphens.");
+
+export const marketplaceListingContentSchema = z.object({
+  name: z.string().trim().min(3).max(120),
+  summary: z.string().trim().min(10).max(240),
+  description: z.string().trim().min(20).max(10_000),
+  tags: z.array(marketplaceTagSchema).max(12).default([]),
+});
+
+export type MarketplaceListingContent = z.infer<typeof marketplaceListingContentSchema>;
+
+export const marketplaceListingMetadataSchema = marketplaceListingContentSchema.extend({
+  category: marketplaceCategorySchema,
+});
+
+export type MarketplaceListingMetadata = z.infer<typeof marketplaceListingMetadataSchema>;
+
+const marketplaceOwnerIdSchema = z.string().trim().min(1).max(191);
+
+export const marketplaceOwnerScopeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("system") }),
+  z.object({ kind: z.literal("org"), orgId: marketplaceOwnerIdSchema }),
+  z.object({ kind: z.literal("user"), userId: marketplaceOwnerIdSchema }),
+  z.object({
+    kind: z.literal("project"),
+    orgId: marketplaceOwnerIdSchema,
+    projectId: marketplaceOwnerIdSchema,
+  }),
+]);
+
+export type MarketplaceOwnerScope = z.infer<typeof marketplaceOwnerScopeSchema>;
+
+export const marketplaceOwnerSchema = z.object({
+  scope: marketplaceOwnerScopeSchema,
+  publisherName: z.string().trim().min(1).max(191),
+});
+
+export type MarketplaceOwner = z.infer<typeof marketplaceOwnerSchema>;
+
+export const marketplaceListingStatusSchema = z.enum(["draft", "published", "archived"]);
+export type MarketplaceListingStatus = z.infer<typeof marketplaceListingStatusSchema>;
+
+export const marketplaceVersionStatusSchema = z.enum(["draft", "published"]);
+export type MarketplaceVersionStatus = z.infer<typeof marketplaceVersionStatusSchema>;
+
+export const marketplaceCreateDraftListingInputSchema = z.object({
+  owner: marketplaceOwnerSchema,
+  slug: marketplaceSlugSchema,
+  version: marketplaceVersionSchema,
+  metadata: marketplaceListingMetadataSchema,
+});
+
+export type MarketplaceCreateDraftListingInput = z.infer<
+  typeof marketplaceCreateDraftListingInputSchema
+>;
+
+export const marketplaceAddDraftVersionInputSchema = z.object({
+  owner: marketplaceOwnerSchema,
+  listingSlug: marketplaceSlugSchema,
+  version: marketplaceVersionSchema,
+});
+
+export type MarketplaceAddDraftVersionInput = z.infer<typeof marketplaceAddDraftVersionInputSchema>;
+
+export const marketplaceUpdateListingInputSchema = z.object({
+  owner: marketplaceOwnerSchema,
+  slug: marketplaceSlugSchema,
+  metadata: marketplaceListingMetadataSchema,
+});
+
+export type MarketplaceUpdateListingInput = z.infer<typeof marketplaceUpdateListingInputSchema>;
+
+export const marketplacePublishVersionInputSchema = z.object({
+  owner: marketplaceOwnerSchema,
+  slug: marketplaceSlugSchema,
+  version: marketplaceVersionSchema,
+});
+
+export type MarketplacePublishVersionInput = z.infer<typeof marketplacePublishVersionInputSchema>;
+
+export const marketplaceArchiveListingInputSchema = z.object({
+  owner: marketplaceOwnerSchema,
+  slug: marketplaceSlugSchema,
+});
+
+export type MarketplaceArchiveListingInput = z.infer<typeof marketplaceArchiveListingInputSchema>;
+
+export const marketplaceListingPageInputSchema = z.object({
+  category: marketplaceCategorySchema.optional(),
+  pageSize: z
+    .number()
+    .int()
+    .min(1)
+    .max(MARKETPLACE_MAX_PAGE_SIZE)
+    .default(MARKETPLACE_DEFAULT_PAGE_SIZE),
+  cursor: z.string().trim().min(1).optional(),
+});
+
+export type MarketplaceListingPageInput = z.input<typeof marketplaceListingPageInputSchema>;
+
+export const marketplaceOwnedListingPageInputSchema = z.object({
+  ownerScope: marketplaceOwnerScopeSchema,
+  status: marketplaceListingStatusSchema.optional(),
+  pageSize: z
+    .number()
+    .int()
+    .min(1)
+    .max(MARKETPLACE_MAX_PAGE_SIZE)
+    .default(MARKETPLACE_DEFAULT_PAGE_SIZE),
+  cursor: z.string().trim().min(1).optional(),
+});
+
+export type MarketplaceOwnedListingPageInput = z.input<
+  typeof marketplaceOwnedListingPageInputSchema
+>;
+
+const marketplaceVersionPageFields = {
+  versionPageSize: z
+    .number()
+    .int()
+    .min(1)
+    .max(MARKETPLACE_MAX_PAGE_SIZE)
+    .default(MARKETPLACE_DEFAULT_PAGE_SIZE),
+  versionCursor: z.string().trim().min(1).optional(),
+};
+
+export const marketplacePublishedListingInputSchema = z.object({
+  slug: marketplaceSlugSchema,
+  ...marketplaceVersionPageFields,
+});
+
+export type MarketplacePublishedListingInput = z.input<
+  typeof marketplacePublishedListingInputSchema
+>;
+
+export const marketplaceOwnedListingInputSchema = z.object({
+  slug: marketplaceSlugSchema,
+  ownerScope: marketplaceOwnerScopeSchema,
+  ...marketplaceVersionPageFields,
+});
+
+export type MarketplaceOwnedListingInput = z.input<typeof marketplaceOwnedListingInputSchema>;
+
+export const marketplaceFindListingOwnerInputSchema = z.object({
+  slug: marketplaceSlugSchema,
+  candidateScopes: z.array(marketplaceOwnerScopeSchema).min(1),
+});
+
+export type MarketplaceFindListingOwnerInput = z.infer<
+  typeof marketplaceFindListingOwnerInputSchema
+>;
+
+export const marketplacePublicListingSchema = marketplaceListingMetadataSchema.extend({
+  slug: marketplaceSlugSchema,
+  publisherName: z.string(),
+  status: z.literal("published"),
+  latestVersion: marketplaceVersionSchema,
+  publishedAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export type MarketplaceListing = z.infer<typeof marketplacePublicListingSchema>;
+
+export const marketplaceOwnedListingSchema = marketplaceListingMetadataSchema.extend({
+  slug: marketplaceSlugSchema,
+  publisherName: z.string(),
+  status: marketplaceListingStatusSchema,
+  latestPublishedVersion: marketplaceVersionSchema.nullable(),
+  publishedAt: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export type MarketplaceOwnedListing = z.infer<typeof marketplaceOwnedListingSchema>;
+
+export const marketplaceVersionSchemaPublic = z.object({
+  version: marketplaceVersionSchema,
+  publishedAt: z.string(),
+});
+
+export type MarketplaceVersion = z.infer<typeof marketplaceVersionSchemaPublic>;
+
+export const marketplaceOwnedVersionSchema = z.object({
+  version: marketplaceVersionSchema,
+  status: marketplaceVersionStatusSchema,
+  createdAt: z.string(),
+  publishedAt: z.string().nullable(),
+});
+
+export type MarketplaceOwnedVersion = z.infer<typeof marketplaceOwnedVersionSchema>;
+
+export const marketplaceListingDetailSchema = z.object({
+  listing: marketplacePublicListingSchema,
+  versions: z.array(marketplaceVersionSchemaPublic),
+  nextVersionCursor: z.string().optional(),
+  hasNextVersionPage: z.boolean(),
+});
+
+export type MarketplaceListingDetail = z.infer<typeof marketplaceListingDetailSchema>;
+
+export const marketplaceOwnedListingDetailSchema = z.object({
+  listing: marketplaceOwnedListingSchema,
+  versions: z.array(marketplaceOwnedVersionSchema),
+  nextVersionCursor: z.string().optional(),
+  hasNextVersionPage: z.boolean(),
+});
+
+export type MarketplaceOwnedListingDetail = z.infer<typeof marketplaceOwnedListingDetailSchema>;
+
+export const marketplaceListingPageSchema = z.object({
+  listings: z.array(marketplacePublicListingSchema),
+  nextCursor: z.string().optional(),
+  hasNextPage: z.boolean(),
+});
+
+export type MarketplaceListingPage = z.infer<typeof marketplaceListingPageSchema>;
+
+export const marketplaceOwnedListingPageSchema = z.object({
+  listings: z.array(marketplaceOwnedListingSchema),
+  nextCursor: z.string().optional(),
+  hasNextPage: z.boolean(),
+});
+
+export type MarketplaceOwnedListingPage = z.infer<typeof marketplaceOwnedListingPageSchema>;
+
+export const marketplaceDraftResultSchema = z.object({
+  slug: marketplaceSlugSchema,
+  version: marketplaceVersionSchema,
+  created: z.boolean(),
+});
+
+export type MarketplaceDraftResult = z.infer<typeof marketplaceDraftResultSchema>;
+
+export const marketplaceListingUpdateResultSchema = marketplaceListingMetadataSchema.extend({
+  slug: marketplaceSlugSchema,
+});
+
+export type MarketplaceListingUpdateResult = z.infer<typeof marketplaceListingUpdateResultSchema>;
+
+export const marketplacePublishVersionResultSchema = z.object({
+  slug: marketplaceSlugSchema,
+  version: marketplaceVersionSchema,
+  published: z.boolean(),
+});
+
+export type MarketplacePublishVersionResult = z.infer<typeof marketplacePublishVersionResultSchema>;
+
+export const marketplaceArchiveResultSchema = z.object({
+  slug: marketplaceSlugSchema,
+  archived: z.boolean(),
+});
+
+export type MarketplaceArchiveResult = z.infer<typeof marketplaceArchiveResultSchema>;
+
+export const MARKETPLACE_OPERATION_ERROR_CODES = [
+  "MARKETPLACE_OWNER_CONFLICT",
+  "MARKETPLACE_LISTING_CONFLICT",
+  "MARKETPLACE_LISTING_NOT_FOUND",
+  "MARKETPLACE_VERSION_NOT_FOUND",
+  "MARKETPLACE_VERSION_TRANSITION_INVALID",
+] as const;
+
+export type MarketplaceOperationErrorCode = (typeof MARKETPLACE_OPERATION_ERROR_CODES)[number];
+
+export type MarketplaceOperationResult<TResult> =
+  | { ok: true; value: TResult }
+  | {
+      ok: false;
+      error: {
+        code: MarketplaceOperationErrorCode;
+        message: string;
+      };
+    };

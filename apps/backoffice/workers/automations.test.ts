@@ -35,6 +35,7 @@ const config: BackofficeRuntimeConfig = {
     auth: false,
     automations: false,
     billing: false,
+    marketplace: false,
     telegram: false,
     otp: false,
     pi: false,

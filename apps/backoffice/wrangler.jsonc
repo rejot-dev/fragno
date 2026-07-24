@@ -143,6 +143,10 @@
         "name": "BILLING",
         "class_name": "Billing",
       },
+      {
+        "name": "MARKETPLACE",
+        "class_name": "Marketplace",
+      },
     ],
   },
   /**
@@ -221,6 +225,10 @@
     {
       "tag": "v20",
       "new_sqlite_classes": ["Billing"],
+    },
+    {
+      "tag": "v21",
+      "new_sqlite_classes": ["Marketplace"],
     },
   ],
 }
