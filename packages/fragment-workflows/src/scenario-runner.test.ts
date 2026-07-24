@@ -189,6 +189,95 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
+  test("runs durable steps inside a for loop", async () => {
+    const ForLoopWorkflow = defineWorkflow({ name: "for-loop-workflow" }, async (_event, step) => {
+      const values: number[] = [];
+      for (let index = 0; index < 3; index += 1) {
+        values.push(await step.do("for iteration", () => index + 1));
+      }
+      return { values };
+    });
+
+    const workflows = { FOR_LOOP: ForLoopWorkflow };
+
+    const scenario = defineScenario({
+      name: "for-loop-steps",
+      workflows,
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "FOR_LOOP", id: "for-loop-1" }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("FOR_LOOP", "for-loop-1"),
+          assert: (status) => {
+            expect(status).toMatchObject({
+              status: "complete",
+              output: { values: [1, 2, 3] },
+            });
+          },
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getSteps("FOR_LOOP", "for-loop-1"),
+          assert: (steps) => {
+            expect(steps).toHaveLength(3);
+            expect(steps.map((step) => step.stepKey)).toEqual([
+              "do:for iteration",
+              "do:for iteration#1",
+              "do:for iteration#2",
+            ]);
+          },
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
+  test("runs durable steps inside a while loop", async () => {
+    const WhileLoopWorkflow = defineWorkflow(
+      { name: "while-loop-workflow" },
+      async (_event, step) => {
+        let index = 0;
+        let total = 0;
+        while (index < 3) {
+          total += await step.do("while iteration", () => index + 1);
+          index += 1;
+        }
+        return { total };
+      },
+    );
+
+    const workflows = { WHILE_LOOP: WhileLoopWorkflow };
+
+    const scenario = defineScenario({
+      name: "while-loop-steps",
+      workflows,
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({ workflow: "WHILE_LOOP", id: "while-loop-1" }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("WHILE_LOOP", "while-loop-1"),
+          assert: (status) => {
+            expect(status).toMatchObject({
+              status: "complete",
+              output: { total: 6 },
+            });
+          },
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getSteps("WHILE_LOOP", "while-loop-1"),
+          assert: (steps) => {
+            expect(steps).toHaveLength(3);
+            expect(steps.map((step) => step.stepKey)).toEqual([
+              "do:while iteration",
+              "do:while iteration#1",
+              "do:while iteration#2",
+            ]);
+          },
+        }),
+      ],
+    });
+
+    await runScenario(scenario);
+  });
+
   test("runs parallel steps and records both results", async () => {
     const ParallelWorkflow = defineWorkflow({ name: "parallel-workflow" }, async (_event, step) => {
       const [alpha, beta] = await Promise.all([
