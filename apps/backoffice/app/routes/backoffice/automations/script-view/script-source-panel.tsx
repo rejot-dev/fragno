@@ -9,6 +9,7 @@ import {
   type RuntimeToolWorkflowDescriptor,
 } from "@/fragno/runtime-tools/workflow-catalog";
 
+import { useLinkedScrollViewports, type LinkedScrollViewport } from "./linked-scroll";
 import {
   SCRIPT_VIEW_MODE_SEARCH_PARAM,
   WORKFLOW_GRAPH_DETAIL_MODE_SEARCH_PARAM,
@@ -56,6 +57,9 @@ export function ScriptSourcePanel({
     () => resolveWorkflowRuntimeToolCalls({ visualization, catalog: runtimeToolCatalog }),
     [runtimeToolCatalog, visualization],
   );
+  const { codeViewport, graphViewport, suspendCodeScrollLink } = useLinkedScrollViewports(
+    viewMode === "split",
+  );
 
   if (source.scriptError) {
     return null;
@@ -101,6 +105,8 @@ export function ScriptSourcePanel({
             script={script}
             split={viewMode === "split"}
             selectedSource={currentSourceSelection}
+            scrollViewport={codeViewport}
+            onSourceReveal={suspendCodeScrollLink}
           />
         ) : null}
         {showGraph ? (
@@ -108,6 +114,7 @@ export function ScriptSourcePanel({
             visualization={visualization}
             detailMode={graphDetailMode}
             runtimeToolCallsByStepId={runtimeToolCallsByStepId}
+            scrollViewport={graphViewport}
             onSourceSelect={(selectedRange) => {
               setSelectedSource(selectedRange);
               if (viewMode === "graph") {
@@ -198,10 +205,14 @@ function ScriptCodeView({
   script,
   split,
   selectedSource,
+  scrollViewport,
+  onSourceReveal,
 }: {
   script: string;
   split: boolean;
   selectedSource?: SourceRange;
+  scrollViewport: LinkedScrollViewport;
+  onSourceReveal: () => void;
 }) {
   const selectionRef = useRef<HTMLElement>(null);
   const selectionStart = Math.max(0, Math.min(script.length, selectedSource?.start.offset ?? 0));
@@ -213,34 +224,40 @@ function ScriptCodeView({
 
   useEffect(() => {
     if (hasSelection) {
+      onSourceReveal();
       selectionRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
     }
-  }, [hasSelection, selectionStart, selectionEnd]);
+  }, [hasSelection, onSourceReveal, selectionStart, selectionEnd]);
 
   return (
-    <pre
-      className={`backoffice-scroll max-h-[calc(100vh-10rem)] min-h-[36rem] overflow-auto px-4 py-4 font-mono text-xs break-words whitespace-pre-wrap text-[var(--bo-fg)] ${split ? "border-b border-[color:var(--bo-border)] lg:border-r lg:border-b-0" : ""}`}
+    <div
+      {...scrollViewport}
+      tabIndex={0}
+      aria-label="Script source"
+      className={`backoffice-scroll max-h-[calc(100vh-10rem)] min-h-[36rem] overflow-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--bo-accent)] ${split ? "border-b border-[color:var(--bo-border)] lg:border-r lg:border-b-0" : ""}`}
     >
-      <code>
-        {script ? (
-          hasSelection ? (
-            <>
-              {script.slice(0, selectionStart)}
-              <mark
-                ref={selectionRef}
-                className="bg-amber-300/35 text-inherit outline outline-1 outline-amber-500/50 dark:bg-amber-300/20"
-              >
-                {script.slice(selectionStart, selectionEnd)}
-              </mark>
-              {script.slice(selectionEnd)}
-            </>
+      <pre className="min-h-full px-4 py-4 font-mono text-xs break-words whitespace-pre-wrap text-[var(--bo-fg)]">
+        <code>
+          {script ? (
+            hasSelection ? (
+              <>
+                {script.slice(0, selectionStart)}
+                <mark
+                  ref={selectionRef}
+                  className="bg-amber-300/35 text-inherit outline outline-1 outline-amber-500/50 dark:bg-amber-300/20"
+                >
+                  {script.slice(selectionStart, selectionEnd)}
+                </mark>
+                {script.slice(selectionEnd)}
+              </>
+            ) : (
+              script
+            )
           ) : (
-            script
-          )
-        ) : (
-          "# Empty script"
-        )}
-      </code>
-    </pre>
+            "# Empty script"
+          )}
+        </code>
+      </pre>
+    </div>
   );
 }
