@@ -5,7 +5,7 @@ import {
   type BackofficeObjectScope,
 } from "./object-registry";
 
-const scopedAddress = (binding: "OTP" | "PI", scope: BackofficeObjectScope) => ({
+const scopedAddress = (binding: "OTP" | "PI" | "UPLOAD", scope: BackofficeObjectScope) => ({
   binding,
   scope,
 });
@@ -25,6 +25,16 @@ describe("PI object scope policy", () => {
     expect(() => assertBackofficeObjectAddressAllowed(scopedAddress("PI", scope))).toThrow(
       `PI cannot be instantiated with ${scope.kind} scope`,
     );
+  });
+});
+
+describe("Upload object scope policy", () => {
+  it("allows arbitrary named instances", () => {
+    expect(() =>
+      assertBackofficeObjectAddressAllowed(
+        scopedAddress("UPLOAD", { kind: "named", name: "marketplace/telegram-test-command" }),
+      ),
+    ).not.toThrow();
   });
 });
 

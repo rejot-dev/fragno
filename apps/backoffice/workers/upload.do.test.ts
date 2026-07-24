@@ -44,10 +44,12 @@ vi.mock("@/fragno/upload-server", () => ({
   createUploadServerForProvider: createUploadServerForProviderMock,
 }));
 
+import { UPLOAD_ADMIN_CONFIG_KEY } from "@/fragno/upload";
+
 import type { BackofficeDurableHookDependencies } from "./lib/backoffice-fragment-durable-object";
 import { Upload } from "./upload.do";
 
-const createState = () => {
+const createState = (durableObjectName?: string) => {
   const store = new Map<string, unknown>();
   let alarm: number | null = null;
   const storage = {
@@ -66,7 +68,10 @@ const createState = () => {
   });
 
   return {
-    id: { toString: () => "upload:test" },
+    id: {
+      ...(durableObjectName ? { name: durableObjectName } : {}),
+      toString: () => `upload:${durableObjectName ?? "test"}`,
+    },
     storage,
     waitUntil,
     blockConcurrencyWhile,
@@ -146,6 +151,46 @@ describe("Upload Durable Object", () => {
     await expect(response.json()).resolves.toMatchObject({
       code: "NOT_CONFIGURED",
     });
+  });
+
+  test("fails initialization instead of replacing invalid named configuration", async () => {
+    const state = createState("v1:named:marketplace%2Finvalid-config");
+    const invalidConfig = { namespace: { kind: "named" } };
+    await state.storage.put(UPLOAD_ADMIN_CONFIG_KEY, invalidConfig);
+    const upload = new Upload(state, {} as CloudflareEnv);
+
+    const initialization = vi.mocked(state.blockConcurrencyWhile).mock.results[0]?.value;
+    await expect(initialization).rejects.toThrow("Stored Upload configuration is invalid.");
+    await expect(state.storage.get(UPLOAD_ADMIN_CONFIG_KEY)).resolves.toEqual(invalidConfig);
+    await expect(upload.getAdminConfig()).rejects.toThrow(
+      "Stored Upload configuration is invalid.",
+    );
+  });
+
+  test("automatically configures named instances with database storage", async () => {
+    const state = createState("v1:named:marketplace%2Ftelegram-test-command");
+    const upload = new Upload(state, {} as CloudflareEnv);
+
+    await vi.waitFor(async () => {
+      await expect(upload.getAdminConfig()).resolves.toMatchObject({
+        configured: true,
+        defaultProvider: "database",
+        providers: {
+          database: {
+            configured: true,
+            config: {
+              storageKeyPrefix: "named/marketplace/telegram-test-command",
+            },
+          },
+        },
+      });
+    });
+
+    const response = await upload.fetch(new Request("https://example.com/api/upload/files"));
+    await expect(response.text()).resolves.toBe("fragment-database");
+    await expect(upload.setAdminConfig(VALID_R2_PAYLOAD, "acme")).rejects.toThrow(
+      "Named upload instances use fixed database storage.",
+    );
   });
 
   test("stores multi-provider config and routes requests by provider", async () => {

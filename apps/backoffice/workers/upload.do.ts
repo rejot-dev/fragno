@@ -1,7 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
-import type { UploadObject } from "@/backoffice-runtime/object-registry";
+import {
+  decodeBackofficeObjectScope,
+  type UploadObject,
+} from "@/backoffice-runtime/object-registry";
 import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
@@ -15,6 +18,7 @@ import {
   UPLOAD_PROVIDER_R2,
   UPLOAD_PROVIDER_R2_BINDING,
   buildUploadAdminConfigResponse,
+  createNamedDatabaseUploadConfig,
   normalizeStoredUploadAdminConfig,
   resolveUploadAdminConfigInput,
   type StoredUploadAdminConfig,
@@ -123,7 +127,11 @@ type UploadRuntime = {
 };
 
 export class InMemoryUploadObject implements UploadObject {
-  readonly #state: BackofficeObjectState;
+  readonly #state: BackofficeObjectState & Pick<DurableObjectState, "id">;
+  readonly #namedScope: Extract<
+    ReturnType<typeof decodeBackofficeObjectScope>,
+    { kind: "named" }
+  > | null;
   readonly #env: Parameters<typeof createUploadServerForProvider>[3];
   readonly #runtimeServices: BackofficeRuntimeServices;
   readonly #host: BackofficeFragmentDurableObject<
@@ -138,12 +146,15 @@ export class InMemoryUploadObject implements UploadObject {
     runtime,
     durableHooks,
   }: {
-    state: BackofficeObjectState;
+    state: BackofficeObjectState & Pick<DurableObjectState, "id">;
     env: Parameters<typeof createUploadServerForProvider>[3];
     runtime: BackofficeRuntimeServices;
     durableHooks?: BackofficeDurableHookDependencies;
   }) {
     this.#state = state;
+    const durableObjectName = (state.id as DurableObjectId & { name?: string }).name;
+    const objectScope = durableObjectName ? decodeBackofficeObjectScope(durableObjectName) : null;
+    this.#namedScope = objectScope?.kind === "named" ? objectScope : null;
     this.#env = env;
     this.#runtimeServices = runtime;
     this.#host = createBackofficeFragmentDurableObject({
@@ -159,7 +170,10 @@ export class InMemoryUploadObject implements UploadObject {
         }
         return configuredProvidersFromResponse(buildUploadAdminConfigResponse(stored)).length > 0;
       },
-      getStoredScope: (stored) => ({ kind: "org", orgId: stored.namespace.orgId }),
+      getStoredScope: (stored) =>
+        stored.namespace.kind === "org"
+          ? { kind: "org", orgId: stored.namespace.orgId }
+          : { kind: "system" },
       durableHooks,
       createRuntime: (stored) => this.#createRuntime(stored),
       getMigrationFragments: (runtime) => [...runtime.fragmentsByProvider.values()],
@@ -175,7 +189,7 @@ export class InMemoryUploadObject implements UploadObject {
       }),
       outbox: {
         dispatch: async (item, { stored }) => {
-          if (item.type !== "capability.configured") {
+          if (item.type !== "capability.configured" || stored.namespace.kind !== "org") {
             return;
           }
 
@@ -203,19 +217,33 @@ export class InMemoryUploadObject implements UploadObject {
     });
 
     void state.blockConcurrencyWhile(async () => {
-      await this.#host.initializeFromStored(await this.#loadConfig());
+      const stored = await this.#loadConfig();
+      if (!this.#namedScope) {
+        await this.#host.initializeFromStored(stored);
+        return;
+      }
+
+      if (stored) {
+        if (stored.namespace.kind !== "named" || stored.namespace.name !== this.#namedScope.name) {
+          throw new Error("Named Upload Durable Object is bound to a different namespace.");
+        }
+        await this.#host.initializeFromStored(stored);
+        return;
+      }
+
+      await this.#host.storeAndInitialize(createNamedDatabaseUploadConfig(this.#namedScope.name));
     });
   }
 
   async #loadConfig() {
     const raw = await this.#state.storage.get(UPLOAD_ADMIN_CONFIG_KEY);
-    if (!raw) {
+    if (raw === undefined || raw === null) {
       return null;
     }
 
     const normalized = normalizeStoredUploadAdminConfig(raw);
     if (!normalized) {
-      return null;
+      throw new Error("Stored Upload configuration is invalid.");
     }
 
     const needsMigration =
@@ -332,6 +360,10 @@ export class InMemoryUploadObject implements UploadObject {
   }
 
   async resetAdminConfig(): Promise<UploadAdminConfigResponse> {
+    if (this.#namedScope) {
+      throw new Error("Named upload instances use fixed database storage.");
+    }
+
     await this.#state.blockConcurrencyWhile(async () => {
       await this.#host.clearConfig();
     });
@@ -343,6 +375,10 @@ export class InMemoryUploadObject implements UploadObject {
     orgId: string,
     _origin?: string,
   ): Promise<UploadAdminConfigResponse> {
+    if (this.#namedScope) {
+      throw new Error("Named upload instances use fixed database storage.");
+    }
+
     const args = setAdminConfigArgsSchema.parse({ orgId });
     const parsedPayload = uploadConfigureInputSchema.safeParse(payload);
     if (!parsedPayload.success) {
