@@ -26,6 +26,7 @@ import type {
 import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 
 import { GraphBadge } from "./graph-badge";
+import type { LinkedScrollViewport } from "./linked-scroll";
 import type { WorkflowGraphDetailMode } from "./script-view-mode";
 import { SourceLocationButton } from "./source-location-button";
 import {
@@ -40,18 +41,25 @@ export function ScriptWorkflowGraph({
   visualization,
   detailMode,
   runtimeToolCallsByStepId,
+  scrollViewport,
   onSourceSelect,
 }: {
   visualization: WorkflowVisualizationSnapshot;
   detailMode: WorkflowGraphDetailMode;
   runtimeToolCallsByStepId: ReadonlyMap<string, readonly ResolvedWorkflowRuntimeToolCall[]>;
+  scrollViewport: LinkedScrollViewport;
   onSourceSelect?: (source: SourceRange) => void;
 }) {
   const workflows = visualization.graph.nodes.filter((node) => node.kind === "workflow");
   const presentation = createWorkflowGraphPresentation(visualization);
 
   return (
-    <div className="backoffice-scroll max-h-[calc(100vh-10rem)] min-h-[36rem] overflow-auto bg-[var(--bo-panel-2)] p-4">
+    <div
+      {...scrollViewport}
+      tabIndex={0}
+      aria-label="Workflow graph"
+      className="backoffice-scroll max-h-[calc(100vh-10rem)] min-h-[36rem] overflow-auto bg-[var(--bo-panel-2)] p-4 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--bo-accent)]"
+    >
       {workflows.length === 0 ? (
         <NonWorkflowMessage />
       ) : (
