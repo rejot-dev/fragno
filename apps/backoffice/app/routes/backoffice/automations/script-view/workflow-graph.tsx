@@ -23,20 +23,28 @@ import type {
   WorkflowVisualizationSnapshot,
 } from "@fragno-dev/workflow-visualizer-tokens";
 
+import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
+
 import { GraphBadge } from "./graph-badge";
+import type { WorkflowGraphDetailMode } from "./script-view-mode";
 import { SourceLocationButton } from "./source-location-button";
 import {
   countRenderedWorkflowSteps,
   createWorkflowGraphPresentation,
+  workflowTerminalDetails,
   type WorkflowEventGuardPresentation,
 } from "./workflow-graph-presentation";
 import { WorkflowStepCard } from "./workflow-step-card";
 
 export function ScriptWorkflowGraph({
   visualization,
+  detailMode,
+  runtimeToolCallsByStepId,
   onSourceSelect,
 }: {
   visualization: WorkflowVisualizationSnapshot;
+  detailMode: WorkflowGraphDetailMode;
+  runtimeToolCallsByStepId: ReadonlyMap<string, readonly ResolvedWorkflowRuntimeToolCall[]>;
   onSourceSelect?: (source: SourceRange) => void;
 }) {
   const workflows = visualization.graph.nodes.filter((node) => node.kind === "workflow");
@@ -87,6 +95,8 @@ export function ScriptWorkflowGraph({
                 <WorkflowChildTree
                   parentId={workflow.id}
                   childrenByParent={presentation.childrenByParent}
+                  detailMode={detailMode}
+                  runtimeToolCallsByStepId={runtimeToolCallsByStepId}
                   onSourceSelect={onSourceSelect}
                 />
               </section>
@@ -128,10 +138,14 @@ function WorkflowEventGuard({
 function WorkflowChildTree({
   parentId,
   childrenByParent,
+  detailMode,
+  runtimeToolCallsByStepId,
   onSourceSelect,
 }: {
   parentId: string;
   childrenByParent: Map<string, WorkflowChildNode[]>;
+  detailMode: WorkflowGraphDetailMode;
+  runtimeToolCallsByStepId: ReadonlyMap<string, readonly ResolvedWorkflowRuntimeToolCall[]>;
   onSourceSelect?: (source: SourceRange) => void;
 }) {
   const children = childrenByParent.get(parentId) ?? [];
@@ -146,10 +160,17 @@ function WorkflowChildTree({
           <span className="absolute top-7 -left-[1.65rem] flex h-5 w-5 items-center justify-center border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] font-mono text-[9px] font-semibold text-[var(--bo-muted)] tabular-nums">
             {child.kind === "branch" ? child.index + 1 : child.order}
           </span>
-          <WorkflowChildCard child={child} onSourceSelect={onSourceSelect} />
+          <WorkflowChildCard
+            child={child}
+            detailMode={detailMode}
+            runtimeToolCalls={runtimeToolCallsByStepId.get(child.id)}
+            onSourceSelect={onSourceSelect}
+          />
           <WorkflowChildTree
             parentId={child.id}
             childrenByParent={childrenByParent}
+            detailMode={detailMode}
+            runtimeToolCallsByStepId={runtimeToolCallsByStepId}
             onSourceSelect={onSourceSelect}
           />
         </li>
@@ -160,14 +181,24 @@ function WorkflowChildTree({
 
 function WorkflowChildCard({
   child,
+  detailMode,
+  runtimeToolCalls,
   onSourceSelect,
 }: {
   child: WorkflowChildNode;
+  detailMode: WorkflowGraphDetailMode;
+  runtimeToolCalls?: readonly ResolvedWorkflowRuntimeToolCall[];
   onSourceSelect?: (source: SourceRange) => void;
 }) {
   switch (child.kind) {
     case "step":
-      return <WorkflowStepCard step={child} onSourceSelect={onSourceSelect} />;
+      return (
+        <WorkflowStepCard
+          step={child}
+          runtimeToolCalls={detailMode === "verbose" ? runtimeToolCalls : undefined}
+          onSourceSelect={onSourceSelect}
+        />
+      );
     case "condition":
       return <ConditionCard condition={child} onSourceSelect={onSourceSelect} />;
     case "loop":
@@ -177,7 +208,9 @@ function WorkflowChildCard({
     case "branch":
       return <BranchCard branch={child} onSourceSelect={onSourceSelect} />;
     case "terminal":
-      return <TerminalCard terminal={child} onSourceSelect={onSourceSelect} />;
+      return (
+        <TerminalCard terminal={child} detailMode={detailMode} onSourceSelect={onSourceSelect} />
+      );
   }
   return null;
 }
@@ -312,12 +345,15 @@ function ParallelCard({
 
 function TerminalCard({
   terminal,
+  detailMode,
   onSourceSelect,
 }: {
   terminal: TerminalNode;
+  detailMode: WorkflowGraphDetailMode;
   onSourceSelect?: (source: SourceRange) => void;
 }) {
   const presentation = terminalPresentation(terminal);
+  const details = workflowTerminalDetails(terminal, detailMode);
   const Icon = presentation.icon;
 
   return (
@@ -330,12 +366,12 @@ function TerminalCard({
             <Icon className="h-3.5 w-3.5" />
             {presentation.label}
           </div>
-          {!isDefaultTerminalLabel(terminal) ? (
-            <p className="mt-1.5 text-sm font-medium text-[var(--bo-fg)]">{terminal.label}</p>
+          {details.label ? (
+            <p className="mt-1.5 text-sm font-medium text-[var(--bo-fg)]">{details.label}</p>
           ) : null}
-          {terminal.value ? (
+          {details.value ? (
             <code className="mt-2 block font-mono text-[11px] leading-5 break-all text-[var(--bo-muted)]">
-              {terminal.value}
+              {details.value}
             </code>
           ) : null}
         </div>
@@ -347,12 +383,6 @@ function TerminalCard({
         </div>
       </div>
     </div>
-  );
-}
-
-function isDefaultTerminalLabel(terminal: TerminalNode): boolean {
-  return (
-    terminal.label === "return" || terminal.label === "early return" || terminal.label === "error"
   );
 }
 

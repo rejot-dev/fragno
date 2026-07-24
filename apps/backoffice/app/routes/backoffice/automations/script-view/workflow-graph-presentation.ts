@@ -4,9 +4,12 @@ import type {
   SemanticReference,
   SourceRange,
   SpecificEventGuardAnnotation,
+  TerminalNode,
   WorkflowChildNode,
   WorkflowVisualizationSnapshot,
 } from "@fragno-dev/workflow-visualizer-tokens";
+
+import type { WorkflowGraphDetailMode } from "./script-view-mode";
 
 export interface WorkflowEventGuardPresentation {
   workflowId: string;
@@ -20,6 +23,32 @@ export interface WorkflowEventGuardPresentation {
 export interface WorkflowGraphPresentation {
   childrenByParent: Map<string, WorkflowChildNode[]>;
   eventGuardByWorkflowId: Map<string, WorkflowEventGuardPresentation>;
+}
+
+export interface WorkflowTerminalDetails {
+  label?: string;
+  value?: string;
+}
+
+export function workflowTerminalDetails(
+  terminal: TerminalNode,
+  detailMode: WorkflowGraphDetailMode,
+): WorkflowTerminalDetails {
+  const label = !isDefaultTerminalLabel(terminal) ? terminal.label : undefined;
+  if (detailMode === "simple") {
+    return terminal.terminalType !== "final-return" && label ? { label } : {};
+  }
+
+  return {
+    ...(label ? { label } : {}),
+    ...(terminal.value ? { value: terminal.value } : {}),
+  };
+}
+
+function isDefaultTerminalLabel(terminal: TerminalNode): boolean {
+  return (
+    terminal.label === "return" || terminal.label === "early return" || terminal.label === "error"
+  );
 }
 
 export function countRenderedWorkflowSteps(

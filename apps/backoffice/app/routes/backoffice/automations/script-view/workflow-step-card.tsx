@@ -1,13 +1,17 @@
 import type { SourceRange, StepNode } from "@fragno-dev/workflow-visualizer-tokens";
 
+import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
+
 import { GraphBadge } from "./graph-badge";
 import { SourceLocationButton } from "./source-location-button";
 
 export function WorkflowStepCard({
   step,
+  runtimeToolCalls = [],
   onSourceSelect,
 }: {
   step: StepNode;
+  runtimeToolCalls?: readonly ResolvedWorkflowRuntimeToolCall[];
   onSourceSelect?: (source: SourceRange) => void;
 }) {
   const details = workflowStepDetails(step);
@@ -28,20 +32,61 @@ export function WorkflowStepCard({
         </div>
       </div>
 
-      {details.length > 0 ? (
-        <dl className="mt-3 grid gap-x-3 gap-y-2 border-t border-[color:var(--bo-border)] pt-3 sm:grid-cols-[5rem_minmax(0,1fr)]">
-          {details.map(([label, value]) => (
-            <div key={label} className="grid grid-cols-[5rem_minmax(0,1fr)] gap-3 sm:contents">
-              <dt className="text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
-                {label}
-              </dt>
-              <dd className="font-mono text-[11px] break-all text-[var(--bo-muted)]">{value}</dd>
-            </div>
+      <WorkflowCardDetails details={details} />
+
+      {runtimeToolCalls.length > 0 ? (
+        <div className="mt-3 space-y-3 border-t border-[color:var(--bo-border)] pt-3">
+          {runtimeToolCalls.map((runtimeToolCall) => (
+            <WorkflowCardDetails
+              key={`${runtimeToolCall.invocation.source.start.offset}:${runtimeToolCall.tool.id}`}
+              details={runtimeToolDetails(runtimeToolCall)}
+              separated={false}
+            />
           ))}
-        </dl>
+        </div>
       ) : null}
     </div>
   );
+}
+
+function WorkflowCardDetails({
+  details,
+  separated = true,
+}: {
+  details: ReadonlyArray<readonly [string, string]>;
+  separated?: boolean;
+}) {
+  if (details.length === 0) {
+    return null;
+  }
+
+  return (
+    <dl
+      className={`grid gap-x-3 gap-y-2 sm:grid-cols-[5rem_minmax(0,1fr)] ${separated ? "mt-3 border-t border-[color:var(--bo-border)] pt-3" : ""}`}
+    >
+      {details.map(([label, value]) => (
+        <div key={label} className="grid grid-cols-[5rem_minmax(0,1fr)] gap-3 sm:contents">
+          <dt className="text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
+            {label}
+          </dt>
+          <dd className="font-mono text-[11px] leading-4 break-all text-[var(--bo-muted)]">
+            {value}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function runtimeToolDetails({
+  tool,
+  scope,
+}: ResolvedWorkflowRuntimeToolCall): Array<[string, string]> {
+  return [
+    ["tool", tool.qualifiedName],
+    ["scope", scope],
+    ["description", tool.description ?? tool.summary],
+  ];
 }
 
 function workflowStepDetails(step: StepNode): Array<[string, string]> {

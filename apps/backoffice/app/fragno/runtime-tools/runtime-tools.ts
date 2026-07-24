@@ -116,6 +116,10 @@ export type BackofficeRuntimeToolReferenceHints = {
     inputTypeName?: string;
     outputTypeName?: string;
   };
+  workflow?: {
+    summary?: string;
+    description?: string;
+  };
 };
 
 export type BackofficeRuntimeTool<

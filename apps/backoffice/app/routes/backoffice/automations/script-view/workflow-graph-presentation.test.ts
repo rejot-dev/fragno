@@ -5,6 +5,7 @@ import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens"
 import {
   countRenderedWorkflowSteps,
   createWorkflowGraphPresentation,
+  workflowTerminalDetails,
 } from "./workflow-graph-presentation";
 
 describe("workflow graph presentation", () => {
@@ -85,6 +86,34 @@ describe("workflow graph presentation", () => {
     const presentation = createWorkflowGraphPresentation(visualization);
 
     assert.equal(countRenderedWorkflowSteps(workflow.id, presentation.childrenByParent), 2);
+  });
+
+  it("hides terminal values and errors in simple mode", () => {
+    const visualization = visualizeWorkflowSource(
+      "automations/detail-mode.workflow.js",
+      `defineWorkflow({ name: "detail-mode" }, async (event, step) => {
+        if (event.payload.skip) {
+          return { skipped: true, reason: "not-ready" };
+        }
+        if (event.payload.fail) {
+          throw new Error("failed");
+        }
+        await step.do("finish", async () => {});
+        return { finished: true };
+      });`,
+    );
+    const terminals = visualization.graph.nodes.filter((node) => node.kind === "terminal");
+
+    expect(terminals.map((terminal) => workflowTerminalDetails(terminal, "simple"))).toEqual([
+      { label: "not-ready" },
+      { label: "failed" },
+      {},
+    ]);
+    expect(terminals.map((terminal) => workflowTerminalDetails(terminal, "verbose"))).toEqual([
+      { label: "not-ready", value: '{ skipped: true, reason: "not-ready" }' },
+      { label: "failed", value: 'new Error("failed")' },
+      { value: "{ finished: true }" },
+    ]);
   });
 
   it("keeps additional event requirements visible", () => {

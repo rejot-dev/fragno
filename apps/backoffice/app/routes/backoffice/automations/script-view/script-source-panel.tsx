@@ -5,10 +5,19 @@ import { useSearchParams } from "react-router";
 import { visualizeWorkflowSource, type SourceRange } from "@fragno-dev/workflow-visualizer-tokens";
 
 import {
+  resolveWorkflowRuntimeToolCalls,
+  type RuntimeToolWorkflowDescriptor,
+} from "@/fragno/runtime-tools/workflow-catalog";
+
+import {
   SCRIPT_VIEW_MODE_SEARCH_PARAM,
+  WORKFLOW_GRAPH_DETAIL_MODE_SEARCH_PARAM,
   scriptViewModeFromSearchParam,
   searchParamsWithScriptViewMode,
+  searchParamsWithWorkflowGraphDetailMode,
+  workflowGraphDetailModeFromSearchParam,
   type ScriptViewMode,
+  type WorkflowGraphDetailMode,
 } from "./script-view-mode";
 import { ScriptWorkflowGraph } from "./workflow-graph";
 
@@ -25,18 +34,27 @@ const SCRIPT_VIEW_OPTIONS: Array<{
 export function ScriptSourcePanel({
   absolutePath,
   source,
+  runtimeToolCatalog,
 }: {
   absolutePath: string;
   source: { script: string | null; scriptError: string | null };
+  runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const viewMode = scriptViewModeFromSearchParam(searchParams.get(SCRIPT_VIEW_MODE_SEARCH_PARAM));
+  const graphDetailMode = workflowGraphDetailModeFromSearchParam(
+    searchParams.get(WORKFLOW_GRAPH_DETAIL_MODE_SEARCH_PARAM),
+  );
   const script = source.script ?? "";
   const [selectedSource, setSelectedSource] = useState<SourceRange>();
   const currentSourceSelection = selectedSource?.path === absolutePath ? selectedSource : undefined;
   const visualization = useMemo(
     () => visualizeWorkflowSource(absolutePath, script),
     [absolutePath, script],
+  );
+  const runtimeToolCallsByStepId = useMemo(
+    () => resolveWorkflowRuntimeToolCalls({ visualization, catalog: runtimeToolCatalog }),
+    [runtimeToolCatalog, visualization],
   );
 
   if (source.scriptError) {
@@ -52,15 +70,29 @@ export function ScriptSourcePanel({
         <p className="min-w-0 flex-1 font-mono text-[11px] break-all text-[var(--bo-muted-2)]">
           {absolutePath}
         </p>
-        <ScriptViewToggle
-          viewMode={viewMode}
-          onViewModeChange={(mode) => {
-            setSearchParams(
-              (currentSearchParams) => searchParamsWithScriptViewMode(currentSearchParams, mode),
-              { preventScrollReset: true, replace: true },
-            );
-          }}
-        />
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {showGraph ? (
+            <WorkflowGraphDetailToggle
+              detailMode={graphDetailMode}
+              onDetailModeChange={(mode) => {
+                setSearchParams(
+                  (currentSearchParams) =>
+                    searchParamsWithWorkflowGraphDetailMode(currentSearchParams, mode),
+                  { preventScrollReset: true, replace: true },
+                );
+              }}
+            />
+          ) : null}
+          <ScriptViewToggle
+            viewMode={viewMode}
+            onViewModeChange={(mode) => {
+              setSearchParams(
+                (currentSearchParams) => searchParamsWithScriptViewMode(currentSearchParams, mode),
+                { preventScrollReset: true, replace: true },
+              );
+            }}
+          />
+        </div>
       </div>
 
       <div className={viewMode === "split" ? "grid min-h-0 lg:grid-cols-2" : "min-h-0"}>
@@ -74,6 +106,8 @@ export function ScriptSourcePanel({
         {showGraph ? (
           <ScriptWorkflowGraph
             visualization={visualization}
+            detailMode={graphDetailMode}
+            runtimeToolCallsByStepId={runtimeToolCallsByStepId}
             onSourceSelect={(selectedRange) => {
               setSelectedSource(selectedRange);
               if (viewMode === "graph") {
@@ -112,11 +146,7 @@ function ScriptViewToggle({
           onClick={() => {
             onViewModeChange(mode);
           }}
-          className={
-            viewMode === mode
-              ? "flex items-center gap-1.5 bg-[var(--bo-panel)] px-2.5 py-1.5 text-[10px] font-semibold tracking-[0.12em] text-[var(--bo-fg)] uppercase shadow-sm"
-              : "flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-semibold tracking-[0.12em] text-[var(--bo-muted-2)] uppercase transition-colors hover:text-[var(--bo-fg)]"
-          }
+          className={`${segmentedToggleButtonClass(viewMode === mode)} gap-1.5`}
         >
           <Icon className="h-3.5 w-3.5" />
           {label}
@@ -124,6 +154,44 @@ function ScriptViewToggle({
       ))}
     </div>
   );
+}
+
+function WorkflowGraphDetailToggle({
+  detailMode,
+  onDetailModeChange,
+}: {
+  detailMode: WorkflowGraphDetailMode;
+  onDetailModeChange: (mode: WorkflowGraphDetailMode) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Workflow graph detail"
+      className="flex shrink-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-0.5"
+    >
+      {(["simple", "verbose"] as const).map((mode) => (
+        <button
+          key={mode}
+          type="button"
+          aria-pressed={detailMode === mode}
+          onClick={() => {
+            onDetailModeChange(mode);
+          }}
+          className={segmentedToggleButtonClass(detailMode === mode)}
+        >
+          {mode}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function segmentedToggleButtonClass(isSelected: boolean): string {
+  const interaction =
+    "flex min-h-10 items-center px-2.5 text-[10px] font-semibold tracking-[0.12em] uppercase transition-[color,background-color,box-shadow,transform] active:scale-[0.96]";
+  return isSelected
+    ? `${interaction} bg-[var(--bo-panel)] text-[var(--bo-fg)] shadow-sm`
+    : `${interaction} text-[var(--bo-muted-2)] hover:text-[var(--bo-fg)]`;
 }
 
 function ScriptCodeView({
