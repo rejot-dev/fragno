@@ -301,7 +301,7 @@ export const backofficeObjectScopePolicy = {
   RESEND: ["singleton", "org"],
   RESON8: ["org"],
   MCP: ["org", "user", "project"],
-  UPLOAD: ["org", "user", "project"],
+  UPLOAD: ["org", "named", "user", "project"],
   GITHUB: ["org"],
 
   PI: ["org"],
@@ -377,6 +377,39 @@ export const project = (input: { orgId: string; projectId: string }): Backoffice
 
 // Operator note: this v1 encoder is a full Durable Object identity reset. Existing
 // state stored under legacy raw names is intentionally not discovered by this model.
+export const decodeBackofficeObjectScope = (encodedName: string): BackofficeObjectScope | null => {
+  const [version, kind, ...encodedValues] = encodedName.split(":");
+  if (version !== "v1") {
+    return null;
+  }
+
+  try {
+    switch (kind) {
+      case "singleton":
+        return encodedValues.length === 0 ? singleton() : null;
+      case "org":
+        return encodedValues.length === 1 ? org(decodeURIComponent(encodedValues[0])) : null;
+      case "named":
+        return encodedValues.length === 1 ? named(decodeURIComponent(encodedValues[0])) : null;
+      case "user":
+        return encodedValues.length === 1
+          ? user({ userId: decodeURIComponent(encodedValues[0]) })
+          : null;
+      case "project":
+        return encodedValues.length === 2
+          ? project({
+              orgId: decodeURIComponent(encodedValues[0]),
+              projectId: decodeURIComponent(encodedValues[1]),
+            })
+          : null;
+      default:
+        return null;
+    }
+  } catch {
+    return null;
+  }
+};
+
 export const encodeBackofficeObjectAddress = (address: BackofficeObjectAddress): string => {
   switch (address.scope.kind) {
     case "singleton":

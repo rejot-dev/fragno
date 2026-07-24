@@ -3,7 +3,9 @@ import { describe, expect, test, assert } from "vitest";
 import {
   UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
   buildUploadAdminConfigResponse,
+  createNamedDatabaseUploadConfig,
   normalizeStoredUploadAdminConfig,
+  resolveNamedUploadStorageKeyPrefix,
   resolveUploadAdminConfigInput,
   resolveUploadStorageKeyPrefix,
 } from "./upload";
@@ -15,6 +17,39 @@ describe("upload admin contract", () => {
   test("enforces organisation-prefixed storage key namespace", () => {
     const prefix = resolveUploadStorageKeyPrefix("org_ABC", "team/uploads");
     expect(prefix).toBe("org/org_ABC/team/uploads");
+  });
+
+  test("creates a database-backed named namespace", () => {
+    assert(
+      resolveNamedUploadStorageKeyPrefix("marketplace/telegram-test-command") ===
+        "named/marketplace/telegram-test-command",
+    );
+
+    const config = createNamedDatabaseUploadConfig(
+      "marketplace/telegram-test-command",
+      "2026-07-24T10:00:00.000Z",
+    );
+    expect(config).toMatchObject({
+      namespace: {
+        kind: "named",
+        name: "marketplace/telegram-test-command",
+        storageKeyPrefix: "named/marketplace/telegram-test-command",
+      },
+      defaultProvider: "database",
+      providers: {
+        database: { provider: "database" },
+      },
+    });
+    expect(buildUploadAdminConfigResponse(config)).toMatchObject({
+      configured: true,
+      defaultProvider: "database",
+      providers: {
+        database: {
+          configured: true,
+          config: { storageKeyPrefix: "named/marketplace/telegram-test-command" },
+        },
+      },
+    });
   });
 
   test("resolves a valid r2 config payload with explicit default provider", () => {
@@ -38,7 +73,7 @@ describe("upload admin contract", () => {
     assert(result.ok);
 
     assert(result.config.defaultProvider === "r2");
-    assert(result.config.namespace.orgPrefix === "org/acme-dev");
+    assert(result.config.namespace.storageKeyPrefix === "org/acme-dev");
     assert(result.config.providers.r2?.provider === "r2");
     assert(result.config.providers.r2?.r2.endpoint === "https://123456.r2.cloudflarestorage.com");
     assert(result.config.providers.r2?.r2.limits?.maxMetadataBytes === 0);
