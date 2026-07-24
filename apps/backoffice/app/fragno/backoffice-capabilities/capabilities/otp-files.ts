@@ -1,7 +1,7 @@
-import { skillFiles } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createCapabilitySkillFiles } from "@/fragno/backoffice-capabilities/capability-skill-files";
 
 export const createOtpCapabilityFiles = () =>
-  skillFiles({
+  createCapabilitySkillFiles({
     name: "otp-system",
     title: "OTP System",
     description:

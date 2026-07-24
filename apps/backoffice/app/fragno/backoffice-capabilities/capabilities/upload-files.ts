@@ -1,7 +1,7 @@
-import { skillFiles } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { createCapabilitySkillFiles } from "@/fragno/backoffice-capabilities/capability-skill-files";
 
 export const createUploadCapabilityFiles = () =>
-  skillFiles({
+  createCapabilitySkillFiles({
     name: "upload-connection",
     title: "Upload Connection",
     description:
