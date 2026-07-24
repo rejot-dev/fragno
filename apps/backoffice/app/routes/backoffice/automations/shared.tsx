@@ -1,5 +1,5 @@
 import { Fragment, type ReactNode } from "react";
-import { Link, isRouteErrorResponse } from "react-router";
+import { Link, isRouteErrorResponse, useSearchParams } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
 
@@ -10,6 +10,16 @@ import {
   type AutomationScopeOption,
   type AutomationUiScope,
 } from "./scope";
+import {
+  SCRIPT_VIEW_MODE_SEARCH_PARAM,
+  pathWithScriptViewMode,
+  scriptViewModeFromSearchParam,
+} from "./script-view/script-view-mode";
+
+export function useScriptViewMode() {
+  const [searchParams] = useSearchParams();
+  return scriptViewModeFromSearchParam(searchParams.get(SCRIPT_VIEW_MODE_SEARCH_PARAM));
+}
 
 export function AutomationHeader({ selectedScope }: { selectedScope: AutomationUiScope }) {
   const scopeLabel = selectedScope.label;
@@ -53,6 +63,7 @@ export function AutomationScopePicker({
   createProjectPath?: string;
   isCreatingProject?: boolean;
 }) {
+  const scriptViewMode = useScriptViewMode();
   const selectedId =
     selectedScope.kind === "system"
       ? "system:system"
@@ -81,7 +92,7 @@ export function AutomationScopePicker({
           return (
             <Link
               key={option.id}
-              to={option.to}
+              to={pathWithScriptViewMode(option.to, scriptViewMode)}
               className={
                 isActive
                   ? "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-left text-[var(--bo-accent-fg)]"
@@ -134,6 +145,7 @@ export function AutomationTabs({
   activeTab: AutomationTab;
   disabled?: boolean;
 }) {
+  const scriptViewMode = useScriptViewMode();
   const tabs = [
     {
       id: "terminal" as const,
@@ -218,7 +230,12 @@ export function AutomationTabs({
                 {tab.label}
               </span>
             ) : (
-              <Link to={tab.to} role="tab" aria-selected={isActive} className={className}>
+              <Link
+                to={pathWithScriptViewMode(tab.to, scriptViewMode)}
+                role="tab"
+                aria-selected={isActive}
+                className={className}
+              >
                 {tab.label}
               </Link>
             )}
