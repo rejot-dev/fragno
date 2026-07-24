@@ -13,10 +13,8 @@ import {
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
-import {
-  AUTOMATION_SYSTEM_ACTOR,
-  type AutomationEventSubject,
-} from "@/fragno/automation/contracts";
+import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
+import type { AutomationEventSubject } from "@/fragno/automation/contracts";
 import { telegramConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/telegram";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
@@ -355,8 +353,11 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
               capabilityId: "telegram",
               capabilityLabel: "Telegram",
             },
-            actor: AUTOMATION_SYSTEM_ACTOR,
-            actors: [AUTOMATION_SYSTEM_ACTOR],
+            actors: {
+              initiator: AUTOMATION_SYSTEM_INITIATOR,
+              principal: null,
+              delegation: [],
+            },
             subject: telegramCapabilityConfiguredSubject(scope),
           });
         },

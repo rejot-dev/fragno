@@ -17,12 +17,16 @@ const event = (input: Partial<AutomationEvent> = {}): AutomationEvent => ({
   eventType: "test.event",
   occurredAt: "2026-01-01T00:00:00.000Z",
   payload: {},
-  actor: {
-    scope: "internal",
-    type: "user",
-    id: "actor-1",
+  actors: {
+    initiator: {
+      scope: "internal",
+      type: "user",
+      id: "actor-1",
+      role: "initiator",
+    },
+    principal: null,
+    delegation: [],
   },
-  actors: [],
   ...input,
 });
 

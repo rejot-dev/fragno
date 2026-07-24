@@ -11,7 +11,7 @@ import {
 } from "@/backoffice-runtime/runtime-services";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import type { MasterFileSystem } from "@/files";
-import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
+import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import { piConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/pi";
 import {
@@ -268,8 +268,11 @@ export class InMemoryPiObject implements PiObject {
             eventType: "capability.configured",
             occurredAt: item.createdAt,
             payload: buildCapabilityConfiguredPayload(stored),
-            actor: AUTOMATION_SYSTEM_ACTOR,
-            actors: [AUTOMATION_SYSTEM_ACTOR],
+            actors: {
+              initiator: AUTOMATION_SYSTEM_INITIATOR,
+              principal: null,
+              delegation: [],
+            },
             subject: {
               orgId: scope.orgId,
               capabilityId: "pi",

@@ -75,7 +75,6 @@ export const automationEventRoutes = defineRoutes(automationFragmentDefinition).
             eventType: event.eventType,
             occurredAt: event.occurredAt.toISOString(),
             payload: event.payload,
-            actor: event.actor,
             actors: event.actors,
             subject: event.subject ?? null,
             createdAt: event.createdAt.toISOString(),

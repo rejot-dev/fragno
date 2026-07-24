@@ -2,7 +2,8 @@ import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 
-import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "./contracts";
+import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
+import type { AutomationEvent } from "./contracts";
 import type { AutomationEventIngestionPayload, AutomationInternalHooks } from "./internal-hooks";
 import {
   automationProjectArchiveInputSchema,
@@ -89,8 +90,11 @@ const triggerProjectEvent = ({
     eventType,
     occurredAt,
     payload: buildProjectPayload(project, timestamps),
-    actor: AUTOMATION_SYSTEM_ACTOR,
-    actors: [AUTOMATION_SYSTEM_ACTOR],
+    actors: {
+      initiator: AUTOMATION_SYSTEM_INITIATOR,
+      principal: null,
+      delegation: [],
+    },
     subject: {
       orgId: ownerScope.orgId,
       projectId,

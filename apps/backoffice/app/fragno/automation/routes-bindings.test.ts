@@ -78,6 +78,7 @@ const actor = {
   source: "telegram",
   type: "chat",
   id: "chat-123",
+  role: "initiator",
 } as const;
 
 let fragment: Awaited<ReturnType<typeof createAutomation>>;
@@ -255,8 +256,11 @@ describe("automation routes /routes", () => {
       eventType: "ready",
       occurredAt: "2026-01-01T00:00:00.000Z",
       payload: { organization: { id: "org_123" } },
-      actor,
-      actors: [actor],
+      actors: {
+        initiator: actor,
+        principal: null,
+        delegation: [],
+      },
       subject: { orgId: "org_123" },
     };
 
@@ -317,8 +321,11 @@ describe("automation routes /routes", () => {
         eventType: "ready",
         occurredAt: "2026-01-01T00:00:00.000Z",
         payload: {},
-        actor,
-        actors: [actor],
+        actors: {
+          initiator: actor,
+          principal: null,
+          delegation: [],
+        },
         subject: { orgId: "org_123" },
       }),
     );
@@ -386,8 +393,11 @@ describe("automation routes /routes", () => {
         eventType: "ready",
         occurredAt: "2026-01-01T00:00:00.000Z",
         payload: {},
-        actor,
-        actors: [actor],
+        actors: {
+          initiator: actor,
+          principal: null,
+          delegation: [],
+        },
         subject: null,
       }),
     );
@@ -535,8 +545,11 @@ describe("automation routes /routes", () => {
       eventType: "signal.received",
       occurredAt: "2026-01-01T00:00:00.000Z",
       payload: { key: "alpha" },
-      actor,
-      actors: [actor],
+      actors: {
+        initiator: actor,
+        principal: null,
+        delegation: [],
+      },
       subject: { orgId: "org_123" },
     };
 
@@ -566,8 +579,11 @@ describe("automation routes /events", () => {
         eventType: "ready",
         occurredAt: "2026-01-01T00:00:00.000Z",
         payload: { ok: true },
-        actor,
-        actors: [actor],
+        actors: {
+          initiator: actor,
+          principal: null,
+          delegation: [],
+        },
         subject: { orgId: "org_123" },
       }),
     );
@@ -584,8 +600,11 @@ describe("automation routes /events", () => {
             eventType: "ready",
             occurredAt: "2026-01-01T00:00:00.000Z",
             payload: { ok: true },
-            actor,
-            actors: [actor],
+            actors: {
+              initiator: actor,
+              principal: null,
+              delegation: [],
+            },
             scope: { kind: "org", orgId: "org_123" },
             subject: { orgId: "org_123" },
           }),
@@ -605,8 +624,11 @@ describe("automation routes /events", () => {
           eventType: "ready",
           occurredAt: `2026-01-01T00:00:0${id.slice(-1)}.000Z`,
           payload: { id },
-          actor,
-          actors: [actor],
+          actors: {
+            initiator: actor,
+            principal: null,
+            delegation: [],
+          },
           subject: { orgId: "org_123" },
         }),
       );
@@ -649,8 +671,11 @@ describe("automation routes /events", () => {
           eventType: "ready",
           occurredAt: "not-a-timestamp",
           payload: {},
-          actor,
-          actors: [actor],
+          actors: {
+            initiator: actor,
+            principal: null,
+            delegation: [],
+          },
           subject: { orgId: "org_123" },
         }),
       ),

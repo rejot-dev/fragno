@@ -21,7 +21,7 @@ import {
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
 import { createAuthServer, type AuthFragment } from "@/fragno/auth/auth";
-import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
+import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import {
   AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED,
   AUTH_AUTOMATION_EVENT_ORGANIZATION_UPDATED,
@@ -54,16 +54,15 @@ const buildOrganizationPayload = (organization: Organization) => ({
   },
 });
 
-const buildAuthActor = (actor: UserSummary | null) =>
+const buildAuthInitiator = (actor: UserSummary | null) =>
   actor
     ? {
         scope: "internal" as const,
         type: "user" as const,
         id: actor.id,
-        email: actor.email,
-        role: actor.role,
+        role: "initiator" as const,
       }
-    : AUTOMATION_SYSTEM_ACTOR;
+    : AUTOMATION_SYSTEM_INITIATOR;
 
 type AuthLiveEnv = Extract<Parameters<typeof createAuthServer>[0], { type: "live" }>["env"];
 
@@ -80,6 +79,7 @@ const dispatchOrganizationEvent = async (
       : organization.updatedAt,
   );
 
+  const initiator = buildAuthInitiator(payload.actor);
   const event = {
     id: context.hookId.toString(),
     scope: { kind: "system" } as const,
@@ -87,8 +87,11 @@ const dispatchOrganizationEvent = async (
     eventType,
     occurredAt,
     payload: buildOrganizationPayload(organization),
-    actor: buildAuthActor(payload.actor),
-    actors: [buildAuthActor(payload.actor)],
+    actors: {
+      initiator,
+      principal: null,
+      delegation: [],
+    },
     subject: { orgId: organization.id },
   };
 

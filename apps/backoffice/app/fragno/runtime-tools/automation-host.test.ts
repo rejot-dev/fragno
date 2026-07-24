@@ -301,8 +301,17 @@ const createAutomationContext = () => ({
     eventType: "message.received",
     occurredAt: "2026-01-01T00:00:00.000Z",
     payload: {},
-    actor: { scope: "external" as const, source: "telegram", type: "chat", id: "chat-1" },
-    actors: [{ scope: "external" as const, source: "telegram", type: "chat", id: "chat-1" }],
+    actors: {
+      initiator: {
+        scope: "external" as const,
+        source: "telegram",
+        type: "chat",
+        id: "chat-1",
+        role: "initiator" as const,
+      },
+      principal: null,
+      delegation: [],
+    },
   },
   orgId: "org-1",
   binding: {

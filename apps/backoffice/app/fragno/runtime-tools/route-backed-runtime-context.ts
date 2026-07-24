@@ -2,8 +2,8 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { BackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
+import type { AutomationEntityRef } from "@/fragno/automation/actors";
 import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
-import type { AutomationEventActor } from "@/fragno/automation/contracts";
 import { createRouteBackedDurableHooksRuntime } from "@/fragno/automation/durable-hooks-route-runtime";
 import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
@@ -40,7 +40,7 @@ export type RouteBackedRuntimeContextOptions = {
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
   pi?: { runtime: PiRuntime } | null;
-  defaultActor?: AutomationEventActor | null;
+  defaultActor?: AutomationEntityRef | null;
 };
 
 const unavailableMessage = (family: string, execution: BackofficeExecutionContext) =>

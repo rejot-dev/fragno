@@ -1,4 +1,4 @@
-import type { AutomationEventActor } from "@/fragno/automation/contracts";
+import type { AutomationEntityRef } from "@/fragno/automation/actors";
 
 import { apiToolFamily, type ApiRuntime } from "./families/api";
 import {
@@ -54,7 +54,7 @@ export type CoreBackofficeRuntimeMap = {
 
 export type CoreBackofficeToolContext = BackofficeToolContext<
   CoreBackofficeRuntimeMap,
-  { actor?: AutomationEventActor | null }
+  { actor?: AutomationEntityRef | null }
 >;
 
 export const runtimeToolFamilies = [

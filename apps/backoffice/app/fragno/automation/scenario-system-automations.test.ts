@@ -49,20 +49,17 @@ const systemUnrelatedEvent = {
   payload: {
     issueId: "issue-1",
   },
-  actor: {
-    scope: "external",
-    source: "github",
-    type: "user",
-    id: "octocat",
-  },
-  actors: [
-    {
+  actors: {
+    initiator: {
       scope: "external",
       source: "github",
       type: "user",
       id: "octocat",
+      role: "initiator",
     },
-  ],
+    principal: null,
+    delegation: [],
+  },
   subject: { orgId: "org-1" },
 } satisfies AutomationEvent;
 
@@ -106,22 +103,16 @@ describe("system automation scenarios", () => {
             deletedAt: null,
           },
         },
-        actor: {
-          scope: "internal",
-          type: "user",
-          id: "user-1",
-          email: "ada@example.com",
-          role: "user",
-        },
-        actors: [
-          {
+        actors: {
+          initiator: {
             scope: "internal",
             type: "user",
             id: "user-1",
-            email: "ada@example.com",
-            role: "user",
+            role: "initiator",
           },
-        ],
+          principal: null,
+          delegation: [],
+        },
         subject: { orgId },
       } satisfies AutomationEvent);
 
@@ -448,22 +439,16 @@ describe("system automation scenarios", () => {
                     deletedAt: null,
                   },
                 },
-                actor: {
-                  scope: "internal",
-                  type: "user",
-                  id: "user-1",
-                  email: "ada@example.com",
-                  role: "user",
-                },
-                actors: [
-                  {
+                actors: {
+                  initiator: {
                     scope: "internal",
                     type: "user",
                     id: "user-1",
-                    email: "ada@example.com",
-                    role: "user",
+                    role: "initiator",
                   },
-                ],
+                  principal: null,
+                  delegation: [],
+                },
                 subject: { orgId: "org-1" },
               });
             },
@@ -491,22 +476,16 @@ describe("system automation scenarios", () => {
                   deletedAt: null,
                 },
               },
-              actor: {
-                scope: "internal",
-                type: "user",
-                id: "user-1",
-                email: "ada@example.com",
-                role: "user",
-              },
-              actors: [
-                {
+              actors: {
+                initiator: {
                   scope: "internal",
                   type: "user",
                   id: "user-1",
-                  email: "ada@example.com",
-                  role: "user",
+                  role: "initiator",
                 },
-              ],
+                principal: null,
+                delegation: [],
+              },
               subject: { orgId: "org-1" },
             });
           }),

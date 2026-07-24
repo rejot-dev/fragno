@@ -1,7 +1,31 @@
+import type { AutomationActor, AutomationActorRole } from "./actors";
 import type { AutomationEvent } from "./contracts";
 import type { AutomationScheduleCadence } from "./route-triggers";
 
+type AutomationActorIdentityMatcher =
+  | {
+      scope: "internal";
+      source?: never;
+      type?: string;
+      id?: string;
+    }
+  | {
+      scope: "external";
+      source?: string;
+      type?: string;
+      id?: string;
+    };
+
+export type AutomationActorMatcher =
+  | (AutomationActorIdentityMatcher & { participation: "initiator" })
+  | (AutomationActorIdentityMatcher & { participation: "principal" })
+  | (AutomationActorIdentityMatcher & {
+      participation: "delegation";
+      role?: Extract<AutomationActorRole, "delegate" | "assistant">;
+    });
+
 export type AutomationEventMatcher =
+  | { actor: AutomationActorMatcher }
   | { path: string; op: "exists" }
   | { path: string; op: "eq" | "neq" | "startsWith" | "includes"; value: unknown }
   | { all: AutomationEventMatcher[] }
@@ -81,6 +105,14 @@ export type StarterAutomationRoutesSeedResult = {
   skipped: string[];
 };
 
+export const isAutomationActorProvenancePath = (path: string) =>
+  path === "$.actor" ||
+  path.startsWith("$.actor.") ||
+  path.startsWith("$.actor[") ||
+  path === "$.actors" ||
+  path.startsWith("$.actors.") ||
+  path.startsWith("$.actors[");
+
 /**
  * Makes a rendered template segment safe for workflow instance ids.
  *
@@ -140,11 +172,35 @@ const readAutomationEventPath = (event: AutomationEvent, path: string): EventPat
   return current;
 };
 
+const automationActorMatches = (
+  actor: AutomationActor,
+  matcher: AutomationActorIdentityMatcher & { role?: "delegate" | "assistant" },
+) =>
+  actor.scope === matcher.scope &&
+  (matcher.source === undefined || actor.source === matcher.source) &&
+  (matcher.type === undefined || actor.type === matcher.type) &&
+  (matcher.id === undefined || actor.id === matcher.id) &&
+  (matcher.role === undefined || actor.role === matcher.role);
+
+const automationEventActorMatches = (event: AutomationEvent, matcher: AutomationActorMatcher) => {
+  switch (matcher.participation) {
+    case "initiator":
+      return automationActorMatches(event.actors.initiator, matcher);
+    case "principal":
+      return event.actors.principal
+        ? automationActorMatches(event.actors.principal, matcher)
+        : false;
+    case "delegation":
+      return event.actors.delegation.some((actor) => automationActorMatches(actor, matcher));
+  }
+};
+
 /**
  * Evaluates a route matcher against one event.
  *
  * `null` means "match everything". Composite matchers (`all`, `any`, `not`) recurse into the same
- * evaluator, while leaf matchers compare values read with `readAutomationEventPath`.
+ * evaluator. Actor matchers read the structural participation slots directly, while path matchers
+ * remain available for event payload and subject fields.
  */
 export const evaluateAutomationEventMatcher = (
   matcher: AutomationEventMatcher | null | undefined,
@@ -162,6 +218,12 @@ export const evaluateAutomationEventMatcher = (
   }
   if ("not" in matcher) {
     return !evaluateAutomationEventMatcher(matcher.not, event);
+  }
+  if ("actor" in matcher) {
+    return automationEventActorMatches(event, matcher.actor);
+  }
+  if (isAutomationActorProvenancePath(matcher.path)) {
+    return false;
   }
 
   const value = readAutomationEventPath(event, matcher.path);

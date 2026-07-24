@@ -8,7 +8,8 @@ import {
 
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 
-import type { AutomationExternalEntityRef, AutomationKnownEvent } from "./automation/contracts";
+import type { AutomationExternalEntityRef } from "./automation/actors";
+import type { AutomationKnownEvent } from "./automation/contracts";
 import { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES } from "./automation/contracts";
 
 export const IDENTITY_LINK_TYPE = "identity_link" as const;
@@ -82,8 +83,11 @@ export const buildIdentityClaimCompletedAutomationEvent = (input: {
     otpId: input.otp.id,
     claimType: input.otp.type,
   },
-  actor: { ...(input.claim.actor as AutomationExternalEntityRef), role: "initiator" },
-  actors: [{ ...(input.claim.actor as AutomationExternalEntityRef), role: "initiator" }],
+  actors: {
+    initiator: { ...(input.claim.actor as AutomationExternalEntityRef), role: "initiator" },
+    principal: null,
+    delegation: [],
+  },
   subject: {
     userId: input.userId,
   },

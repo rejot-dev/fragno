@@ -12,7 +12,7 @@ import {
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
-import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
+import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { resendConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/resend";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import { createResendServer, type ResendConfig, type ResendFragment } from "@/fragno/resend";
@@ -370,8 +370,11 @@ export class InMemoryResendObject implements ResendObject {
               capabilityId: "resend",
               capabilityLabel: "Resend",
             },
-            actor: AUTOMATION_SYSTEM_ACTOR,
-            actors: [AUTOMATION_SYSTEM_ACTOR],
+            actors: {
+              initiator: AUTOMATION_SYSTEM_INITIATOR,
+              principal: null,
+              delegation: [],
+            },
             subject: {
               orgId: scope.orgId,
               capabilityId: "resend",

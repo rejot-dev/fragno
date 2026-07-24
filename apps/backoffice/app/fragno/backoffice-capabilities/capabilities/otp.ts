@@ -16,6 +16,7 @@ const identityClaimCompletedActorSchema = z.object({
   source: z.string().trim().min(1),
   type: z.string().trim().min(1),
   id: z.string().trim().min(1),
+  role: z.literal("initiator"),
 });
 
 const identityClaimCompletedSubjectSchema = z.object({

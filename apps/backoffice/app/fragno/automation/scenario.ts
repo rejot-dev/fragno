@@ -1727,7 +1727,6 @@ const ingestAutomationEvent = async (ctx: BackofficeScenarioContext, event: Auto
 const buildOrganizationCreatedEvent = (input: OrganizationCreatedInput): AutomationEvent => {
   const now = "2026-01-01T00:00:00.000Z";
   const ownerUserId = input.ownerUserId ?? "user-1";
-  const ownerEmail = input.ownerEmail ?? "ada@example.com";
 
   return {
     id: input.eventId ?? `auth:organization.created:${input.id}`,
@@ -1748,22 +1747,16 @@ const buildOrganizationCreatedEvent = (input: OrganizationCreatedInput): Automat
         deletedAt: null,
       },
     },
-    actor: {
-      scope: "internal",
-      type: "user",
-      id: ownerUserId,
-      email: ownerEmail,
-      role: "user",
-    },
-    actors: [
-      {
+    actors: {
+      initiator: {
         scope: "internal",
         type: "user",
         id: ownerUserId,
-        email: ownerEmail,
-        role: "user",
+        role: "initiator",
       },
-    ],
+      principal: null,
+      delegation: [],
+    },
     subject: { orgId: input.id },
   };
 };
@@ -1779,20 +1772,16 @@ const buildCapabilityConfiguredEvent = (input: CapabilityConfiguredInput): Autom
     capabilityLabel: input.capabilityLabel ?? input.capabilityId,
     ...input.payload,
   },
-  actor: {
-    scope: "internal",
-    type: "capability",
-    id: input.capabilityId,
-    role: "system",
-  },
-  actors: [
-    {
+  actors: {
+    initiator: {
       scope: "internal",
       type: "capability",
       id: input.capabilityId,
-      role: "system",
+      role: "initiator",
     },
-  ],
+    principal: null,
+    delegation: [],
+  },
   subject: { orgId: input.orgId, capabilityId: input.capabilityId },
 });
 
@@ -1826,6 +1815,7 @@ const buildIdentityClaimCompletedEvent = (input: ConfirmClaimInput): AutomationE
     source: input.actor?.source ?? "telegram",
     type: input.actor?.type ?? "chat",
     id: input.actor?.id ?? "unknown",
+    role: "initiator" as const,
   };
 
   return {
@@ -1838,8 +1828,11 @@ const buildIdentityClaimCompletedEvent = (input: ConfirmClaimInput): AutomationE
       otpId: input.otpId,
       claimType: input.claimType ?? "identity_link",
     },
-    actor,
-    actors: [actor],
+    actors: {
+      initiator: actor,
+      principal: null,
+      delegation: [],
+    },
     subject: {
       userId: input.subjectUserId,
     },

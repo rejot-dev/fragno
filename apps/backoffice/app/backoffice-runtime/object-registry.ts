@@ -15,7 +15,6 @@ import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
 import type {
   AutomationEvent,
-  AutomationEventActor,
   AutomationEventDefinition,
   AutomationEventDefinitionCreateInput,
   AutomationEventDefinitionUpdateInput,
@@ -31,6 +30,7 @@ import type {
   SandboxProvider,
   StarterAutomationRoutesSeedResult,
 } from "@/fragno/automation";
+import type { AutomationActor } from "@/fragno/automation/actors";
 import type {
   BillingEventInput,
   BillingRecordEventResult,
@@ -518,7 +518,9 @@ export const encodeBackofficeObjectAddress = (address: BackofficeObjectAddress):
   throw new Error("Unsupported Backoffice object scope kind.");
 };
 
-export const objectAddressToActor = (address: BackofficeObjectAddress): AutomationEventActor => ({
+export const objectAddressToActor = (
+  address: BackofficeObjectAddress,
+): AutomationActor<"delegate"> => ({
   scope: "internal",
   type: "object",
   id: `${address.binding}/${encodeBackofficeObjectAddress(address)}`,

@@ -12,7 +12,8 @@ import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtim
 import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
-import { AUTOMATION_SYSTEM_ACTOR, type AutomationEvent } from "./contracts";
+import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
+import type { AutomationEvent } from "./contracts";
 import { createAutomationsRouteCaller } from "./route-callers";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
@@ -133,8 +134,11 @@ describe("project automation event routing", () => {
       eventType: "org.event",
       occurredAt: "2026-06-22T00:00:00.000Z",
       payload: {},
-      actor: AUTOMATION_SYSTEM_ACTOR,
-      actors: [AUTOMATION_SYSTEM_ACTOR],
+      actors: {
+        initiator: AUTOMATION_SYSTEM_INITIATOR,
+        principal: null,
+        delegation: [],
+      },
       subject: { orgId },
     };
 
@@ -293,8 +297,11 @@ describe("project automation event routing", () => {
       eventType: "org.event",
       occurredAt: "2026-06-22T00:00:00.000Z",
       payload: {},
-      actor: AUTOMATION_SYSTEM_ACTOR,
-      actors: [AUTOMATION_SYSTEM_ACTOR],
+      actors: {
+        initiator: AUTOMATION_SYSTEM_INITIATOR,
+        principal: null,
+        delegation: [],
+      },
       subject: { orgId },
     };
     const events = createEventRuntime({

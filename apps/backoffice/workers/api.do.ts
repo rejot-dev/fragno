@@ -11,7 +11,7 @@ import {
   type BackofficeRoutableScope,
 } from "@/backoffice-runtime/scope-codec";
 import { createApiServer, type ApiConfig, type ApiFragment } from "@/fragno/api";
-import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
+import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { apiConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/api";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import { API_PUBLIC_PREFIX, scopedPublicBaseUrl } from "@/fragno/scoped-public-fragment-routes";
@@ -130,8 +130,11 @@ export class InMemoryApiObject implements ApiObject {
               eventType: "connection.changed",
               occurredAt: new Date().toISOString(),
               payload: { ...payload },
-              actor: AUTOMATION_SYSTEM_ACTOR,
-              actors: [AUTOMATION_SYSTEM_ACTOR],
+              actors: {
+                initiator: AUTOMATION_SYSTEM_INITIATOR,
+                principal: null,
+                delegation: [],
+              },
               subject: scopeSubject(scope, { connectionId: payload.connectionId }),
             },
             { propagationContext: context.capturePropagationContext() },
@@ -147,8 +150,11 @@ export class InMemoryApiObject implements ApiObject {
               eventType: "connection.deleted",
               occurredAt: new Date().toISOString(),
               payload: { ...payload },
-              actor: AUTOMATION_SYSTEM_ACTOR,
-              actors: [AUTOMATION_SYSTEM_ACTOR],
+              actors: {
+                initiator: AUTOMATION_SYSTEM_INITIATOR,
+                principal: null,
+                delegation: [],
+              },
               subject: scopeSubject(scope, { connectionId: payload.connectionId }),
             },
             { propagationContext: context.capturePropagationContext() },
@@ -164,8 +170,11 @@ export class InMemoryApiObject implements ApiObject {
               eventType: "connection.available",
               occurredAt: new Date().toISOString(),
               payload: { ...payload },
-              actor: AUTOMATION_SYSTEM_ACTOR,
-              actors: [AUTOMATION_SYSTEM_ACTOR],
+              actors: {
+                initiator: AUTOMATION_SYSTEM_INITIATOR,
+                principal: null,
+                delegation: [],
+              },
               subject: scopeSubject(scope, { connectionId: payload.connectionId }),
             },
             { propagationContext: context.capturePropagationContext() },
@@ -181,8 +190,11 @@ export class InMemoryApiObject implements ApiObject {
               eventType: "webhook.received",
               occurredAt: payload.receivedAt,
               payload: { ...payload },
-              actor: AUTOMATION_SYSTEM_ACTOR,
-              actors: [AUTOMATION_SYSTEM_ACTOR],
+              actors: {
+                initiator: AUTOMATION_SYSTEM_INITIATOR,
+                principal: null,
+                delegation: [],
+              },
               subject: scopeSubject(scope, {
                 endpointId: payload.endpointId,
                 deliveryId: payload.deliveryId,
@@ -213,8 +225,11 @@ export class InMemoryApiObject implements ApiObject {
               capabilityId: "api",
               capabilityLabel: "API",
             },
-            actor: AUTOMATION_SYSTEM_ACTOR,
-            actors: [AUTOMATION_SYSTEM_ACTOR],
+            actors: {
+              initiator: AUTOMATION_SYSTEM_INITIATOR,
+              principal: null,
+              delegation: [],
+            },
             subject: scopeSubject(scope, { capabilityId: "api" }),
           });
         },

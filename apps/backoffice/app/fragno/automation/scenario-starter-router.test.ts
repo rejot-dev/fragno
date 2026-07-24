@@ -50,8 +50,16 @@ const customAutomationEvent = ({
   eventType,
   occurredAt: "2026-01-01T00:00:00.000Z",
   payload,
-  actor: { scope: "internal", type: "system", id: "scenario", role: "system" },
-  actors: [{ scope: "internal", type: "system", id: "scenario", role: "system" }],
+  actors: {
+    initiator: {
+      scope: "internal",
+      type: "system",
+      id: "scenario",
+      role: "initiator",
+    },
+    principal: null,
+    delegation: [],
+  },
   subject: { orgId: "org-1" },
 });
 
@@ -101,6 +109,7 @@ const telegramMessageEvent = ({
     source: "telegram",
     type: "chat",
     id: chatId,
+    role: "initiator" as const,
   };
 
   return {
@@ -113,8 +122,11 @@ const telegramMessageEvent = ({
       chatId,
       text,
     },
-    actor,
-    actors: [actor],
+    actors: {
+      initiator: actor,
+      principal: null,
+      delegation: [],
+    },
     subject: { orgId: "org-1" },
   };
 };
@@ -507,7 +519,7 @@ describe("starter automation router scenarios", () => {
       await store.set({
         key: "custom/" + automationEvent.id,
         value: automationEvent.payload.kind,
-        actor: automationEvent.actor,
+        actor: automationEvent.actors.initiator,
         category: ["test", "router"],
       });
     });
@@ -681,7 +693,7 @@ describe("starter automation router scenarios", () => {
       await store.set({
         key: "signal/" + signalEvent.payload.key,
         value: signalEvent.payload.value,
-        actor: signalEvent.actor,
+        actor: signalEvent.actors.initiator,
         category: ["test", "router"],
       });
     });

@@ -75,6 +75,15 @@ export type {
   SandboxInstanceRequestInput,
   SandboxProvider,
 };
-export type { AutomationEvent, AutomationEventActor, AutomationEventSubject } from "./contracts";
+export type {
+  AutomationActor,
+  AutomationActorRole,
+  AutomationActors,
+  AutomationDelegatedActor,
+  AutomationEntityRef,
+  AutomationInitiatorActor,
+  AutomationPrincipalActor,
+} from "./actors";
+export type { AutomationEvent, AutomationEventSubject } from "./contracts";
 
 export type { AutomationRuntimeHostContext, AutomationRuntime } from "./engine/runtime";

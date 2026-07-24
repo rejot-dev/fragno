@@ -76,20 +76,17 @@ const scopedEvent = (orgId: string): AutomationEvent => ({
   eventType: "issue.opened",
   occurredAt: "2026-01-01T00:00:00.000Z",
   payload: { issueId: "issue-1" },
-  actor: {
-    scope: "external",
-    source: "github",
-    type: "user",
-    id: "octocat",
-  },
-  actors: [
-    {
+  actors: {
+    initiator: {
       scope: "external",
       source: "github",
       type: "user",
       id: "octocat",
+      role: "initiator",
     },
-  ],
+    principal: null,
+    delegation: [],
+  },
   subject: { orgId },
 });
 

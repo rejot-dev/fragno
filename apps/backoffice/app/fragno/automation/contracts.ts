@@ -8,15 +8,15 @@ import type {
   AutomationSource,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 
+import type { AutomationActors, AutomationExternalEntityRef } from "./actors";
+
 export { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES };
 export type { AutomationEventTypeForSource, AutomationSource };
 
 export type AutomationEventPayload = Record<string, unknown>;
 
-export type AutomationEntityScope = "internal" | "external";
-
 export type AutomationEntityDefinition<
-  TScope extends AutomationEntityScope = AutomationEntityScope,
+  TScope extends "internal" | "external" = "internal" | "external",
   TType extends string = string,
 > = {
   scope: TScope;
@@ -32,45 +32,6 @@ export type AutomationExternalEntityDefinition<
   source: TSource;
 };
 
-export type AutomationEntityRef<
-  TScope extends AutomationEntityScope = AutomationEntityScope,
-  TType extends string = string,
-> = {
-  scope: TScope;
-  type: TType;
-  id: string;
-  source?: string;
-  [key: string]: unknown;
-};
-
-export type AutomationExternalEntityRef<
-  TSource extends string = string,
-  TType extends string = string,
-> = AutomationEntityRef<"external", TType> & {
-  source: TSource;
-};
-
-export type AutomationActorRole =
-  | "initiator"
-  | "principal"
-  | "delegate"
-  | "system"
-  | "user"
-  | "assistant"
-  | (string & Record<never, never>);
-
-export type AutomationEventActor = AutomationEntityRef & {
-  role?: AutomationActorRole;
-};
-export type AutomationEventActors = AutomationEventActor[];
-
-export const AUTOMATION_SYSTEM_ACTOR = {
-  scope: "internal",
-  type: "system",
-  id: "backoffice",
-  role: "system",
-} as const satisfies AutomationEventActor;
-
 export type AutomationEventSubject = {
   orgId?: string;
   userId?: string;
@@ -84,8 +45,7 @@ export type AutomationEvent = {
   eventType: string;
   occurredAt: string;
   payload: AutomationEventPayload;
-  actor: AutomationEventActor;
-  actors: AutomationEventActors;
+  actors: AutomationActors;
   subject?: AutomationEventSubject | null;
 };
 
@@ -99,7 +59,7 @@ export type AutomationKnownEvent<S extends AutomationSource = AutomationSource> 
 
 export type AutomationCreateIdentityClaimInput = {
   scope: BackofficeContextScope;
-  actor: AutomationEventActor;
+  actor: AutomationExternalEntityRef;
   ttlMinutes?: number;
   event: AutomationEvent;
   idempotencyKey: string;
@@ -109,7 +69,7 @@ export type AutomationCreateIdentityClaimResult = {
   url: string;
   externalId: string;
   code: string;
-  actor: AutomationEventActor;
+  actor: AutomationExternalEntityRef;
   type?: string;
   expiresAt?: string;
 };

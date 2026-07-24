@@ -9,7 +9,7 @@ import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
-import { AUTOMATION_SYSTEM_ACTOR } from "@/fragno/automation/contracts";
+import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { uploadConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/upload";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import {
@@ -210,8 +210,11 @@ export class InMemoryUploadObject implements UploadObject {
                 capabilityId: "upload",
                 capabilityLabel: "Upload",
               },
-              actor: AUTOMATION_SYSTEM_ACTOR,
-              actors: [AUTOMATION_SYSTEM_ACTOR],
+              actors: {
+                initiator: AUTOMATION_SYSTEM_INITIATOR,
+                principal: null,
+                delegation: [],
+              },
               subject: {
                 orgId: stored.namespace.orgId,
                 capabilityId: "upload",

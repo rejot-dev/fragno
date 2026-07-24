@@ -9,6 +9,7 @@ import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { SandboxRuntimeProvider } from "@/sandbox/contracts";
 
+import { automationActorsSchema } from "./actors";
 import { createAutomationStoreServices } from "./bindings-storage-runtime";
 import type { AutomationFileSystemConfig } from "./catalog";
 import {
@@ -98,25 +99,30 @@ const ingestAutomationEvent = (
   { route }: IngestAutomationEventOptions = {},
 ) => {
   const now = uow.now();
-  const occurredAt = new Date(event.occurredAt);
+  const actors = automationActorsSchema.parse(event.actors);
+  const validatedEvent = { ...event, actors } satisfies AutomationEvent;
+  const occurredAt = new Date(validatedEvent.occurredAt);
   if (Number.isNaN(occurredAt.getTime())) {
-    throw new Error(`Automation event ${event.id} has an invalid occurredAt timestamp.`);
+    throw new Error(`Automation event ${validatedEvent.id} has an invalid occurredAt timestamp.`);
   }
 
   uow.create("automation_event", {
-    id: event.id,
-    scope: event.scope,
-    source: event.source,
-    eventType: event.eventType,
+    id: validatedEvent.id,
+    scope: validatedEvent.scope,
+    source: validatedEvent.source,
+    eventType: validatedEvent.eventType,
     occurredAt,
-    payload: event.payload,
-    actor: event.actor,
-    actors: event.actors,
-    subject: event.subject ?? null,
+    payload: validatedEvent.payload,
+    actors: validatedEvent.actors,
+    subject: validatedEvent.subject ?? null,
     createdAt: now,
   });
 
-  uow.triggerHook("internalIngestEvent", { event, route }, { id: event.id });
+  uow.triggerHook(
+    "internalIngestEvent",
+    { event: validatedEvent, route },
+    { id: validatedEvent.id },
+  );
 };
 
 const toWorkflowIdentifier = (value: string) => value.replaceAll(":", "--");
