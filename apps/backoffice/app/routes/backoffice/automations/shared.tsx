@@ -12,13 +12,20 @@ import {
 } from "./scope";
 import {
   SCRIPT_VIEW_MODE_SEARCH_PARAM,
-  pathWithScriptViewMode,
+  WORKFLOW_GRAPH_DETAIL_MODE_SEARCH_PARAM,
+  pathWithScriptPresentation,
   scriptViewModeFromSearchParam,
+  workflowGraphDetailModeFromSearchParam,
 } from "./script-view/script-view-mode";
 
-export function useScriptViewMode() {
+export function useScriptPresentation() {
   const [searchParams] = useSearchParams();
-  return scriptViewModeFromSearchParam(searchParams.get(SCRIPT_VIEW_MODE_SEARCH_PARAM));
+  return {
+    viewMode: scriptViewModeFromSearchParam(searchParams.get(SCRIPT_VIEW_MODE_SEARCH_PARAM)),
+    graphDetailMode: workflowGraphDetailModeFromSearchParam(
+      searchParams.get(WORKFLOW_GRAPH_DETAIL_MODE_SEARCH_PARAM),
+    ),
+  };
 }
 
 export function AutomationHeader({ selectedScope }: { selectedScope: AutomationUiScope }) {
@@ -63,7 +70,7 @@ export function AutomationScopePicker({
   createProjectPath?: string;
   isCreatingProject?: boolean;
 }) {
-  const scriptViewMode = useScriptViewMode();
+  const scriptPresentation = useScriptPresentation();
   const selectedId =
     selectedScope.kind === "system"
       ? "system:system"
@@ -92,7 +99,7 @@ export function AutomationScopePicker({
           return (
             <Link
               key={option.id}
-              to={pathWithScriptViewMode(option.to, scriptViewMode)}
+              to={pathWithScriptPresentation(option.to, scriptPresentation)}
               className={
                 isActive
                   ? "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-left text-[var(--bo-accent-fg)]"
@@ -145,7 +152,7 @@ export function AutomationTabs({
   activeTab: AutomationTab;
   disabled?: boolean;
 }) {
-  const scriptViewMode = useScriptViewMode();
+  const scriptPresentation = useScriptPresentation();
   const tabs = [
     {
       id: "terminal" as const,
@@ -231,7 +238,7 @@ export function AutomationTabs({
               </span>
             ) : (
               <Link
-                to={pathWithScriptViewMode(tab.to, scriptViewMode)}
+                to={pathWithScriptPresentation(tab.to, scriptPresentation)}
                 role="tab"
                 aria-selected={isActive}
                 className={className}

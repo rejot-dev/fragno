@@ -4,6 +4,7 @@ import type { ShouldRevalidateFunctionArgs } from "react-router";
 
 import { and, eq, useLiveQuery } from "@tanstack/react-db";
 
+import { runtimeToolWorkflowCatalog } from "@/fragno/runtime-tools/workflow-catalog.server";
 import { toUploadFileRecord } from "@/fragno/upload/file-record";
 import {
   getUploadBrowserDatabase,
@@ -18,38 +19,34 @@ import { automationScopeFromRouteParams, automationScopeTabPath } from "./scope"
 import { buildUploadWorkspaceScriptRecords } from "./script-records";
 import { ScriptSourcePanel } from "./script-view/script-source-panel";
 import {
-  SCRIPT_VIEW_MODE_SEARCH_PARAM,
+  searchParamsWithScriptPresentation,
   shouldRevalidateScriptSource,
-  type ScriptViewMode,
+  type ScriptPresentation,
 } from "./script-view/script-view-mode";
-import { AutomationNotice, useScriptViewMode } from "./shared";
+import { AutomationNotice, useScriptPresentation } from "./shared";
 
 const buildScriptLink = ({
   basePath,
   scriptId,
-  viewMode,
+  presentation,
 }: {
   basePath: string;
   scriptId: string;
-  viewMode: ScriptViewMode;
+  presentation: ScriptPresentation;
 }) => {
-  const params = new URLSearchParams({
-    script: scriptId,
-    [SCRIPT_VIEW_MODE_SEARCH_PARAM]: viewMode,
-  });
+  const params = searchParamsWithScriptPresentation(new URLSearchParams(), presentation);
+  params.set("script", scriptId);
   return `${basePath}?${params.toString()}`;
 };
 
 const buildScriptListLink = ({
   basePath,
-  viewMode,
+  presentation,
 }: {
   basePath: string;
-  viewMode: ScriptViewMode;
-}) => {
-  const params = new URLSearchParams({ [SCRIPT_VIEW_MODE_SEARCH_PARAM]: viewMode });
-  return `${basePath}?${params.toString()}`;
-};
+  presentation: ScriptPresentation;
+}) =>
+  `${basePath}?${searchParamsWithScriptPresentation(new URLSearchParams(), presentation).toString()}`;
 
 const compareScriptsByName = <TScript extends { path: string; name: string }>(
   left: TScript,
@@ -85,6 +82,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   if (!selectedScriptId) {
     return {
       selectedScriptSource: { script: null, scriptError: null },
+      runtimeToolCatalog: runtimeToolWorkflowCatalog,
     };
   }
 
@@ -95,6 +93,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
       scope: automationScopeFromRouteParams(params),
       scriptId: selectedScriptId,
     }),
+    runtimeToolCatalog: runtimeToolWorkflowCatalog,
   };
 }
 
@@ -177,7 +176,7 @@ function AutomationScriptsView({
   const loaderData = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
   const selectedScriptId = searchParams.get("script")?.trim() ?? "";
-  const scriptViewMode = useScriptViewMode();
+  const scriptPresentation = useScriptPresentation();
   const selectedScript = scripts.find((script) => script.id === selectedScriptId) ?? null;
   const isDetailVisible = Boolean(selectedScript);
   const basePath = automationScopeTabPath(selectedScope, "scripts");
@@ -268,7 +267,7 @@ function AutomationScriptsView({
                           to={buildScriptLink({
                             basePath,
                             scriptId: script.id,
-                            viewMode: scriptViewMode,
+                            presentation: scriptPresentation,
                           })}
                           preventScrollReset
                           aria-current={isSelected ? "page" : undefined}
@@ -307,7 +306,7 @@ function AutomationScriptsView({
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2 lg:hidden">
                     <Link
-                      to={buildScriptListLink({ basePath, viewMode: scriptViewMode })}
+                      to={buildScriptListLink({ basePath, presentation: scriptPresentation })}
                       className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       Back to list
@@ -336,6 +335,7 @@ function AutomationScriptsView({
                 key={selectedScript.absolutePath}
                 absolutePath={selectedScript.absolutePath}
                 source={loaderData.selectedScriptSource}
+                runtimeToolCatalog={loaderData.runtimeToolCatalog}
               />
             </div>
           ) : (

@@ -217,6 +217,12 @@ const projectFilesConfigureTool = defineBackofficeRuntimeTool({
   namespace: "internal",
   name: "projectFilesConfigure",
   description: "Configure a project-scoped database-backed workspace filesystem.",
+  reference: {
+    workflow: {
+      description:
+        "Selects the database upload provider and initializes the project workspace README when it is missing.",
+    },
+  },
   requiredPermissions: ["manage"],
   inputSchema: z.object({ projectId: z.string().trim().min(1) }),
   outputSchema: projectDatabaseFileSystemConfigureOutputSchema,
