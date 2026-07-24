@@ -498,6 +498,10 @@ export class StepCallMachine implements TokenSubmachine {
 
     if (token.value === ")" && depth.parentheses === this.#openParentheses) {
       this.updateRawArgument(context.source, positioned.start);
+      this.#step.analysis = {
+        status: "complete",
+        invocations: this.#step.analysis.invocations,
+      };
       this.#step.construction = { status: "complete", phase: "complete" };
       return "complete";
     }

@@ -38,6 +38,19 @@ export interface WorkflowNode {
 
 export type StepType = "do" | "sleep" | "sleepUntil" | "waitForEvent";
 export type StepConstructionPhase = "discovered" | "labeled" | "complete";
+export type StepInvocationConstructionPhase = "arguments" | "complete";
+
+export interface StepInvocation {
+  kind: "call";
+  execution: "direct";
+  callee: SemanticReference;
+  source: SourceRange;
+  construction: ConstructionState<StepInvocationConstructionPhase>;
+}
+
+export type StepAnalysis =
+  | { status: "partial"; invocations: StepInvocation[] }
+  | { status: "complete"; invocations: StepInvocation[] };
 
 export interface StepMeta {
   duration?: string;
@@ -57,6 +70,7 @@ export interface StepNode {
   parentId: string;
   source: SourceRange;
   meta: StepMeta;
+  analysis: StepAnalysis;
   construction: ConstructionState<StepConstructionPhase>;
 }
 
@@ -227,7 +241,7 @@ export interface Diagnostic {
 }
 
 export interface WorkflowGraph {
-  version: 2;
+  version: 3;
   nodes: GraphNode[];
   edges: GraphEdge[];
   diagnostics: Diagnostic[];

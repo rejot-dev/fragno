@@ -21,6 +21,7 @@ patches.
 - `for (...)` and `while (...)` loop containers
 - `Promise.all(...)`, `Promise.race(...)`, and `Promise.any(...)` parallel branch containers
 - Durable steps nested inside other step callbacks
+- Exact static member calls made directly by durable step callbacks
 - Static step labels, durations, event types, timeouts, and guard reasons
 - Exact path, offset, line, and column ranges for every graph node
 - Local `const` reference aliases and equality predicates inside workflow conditions
@@ -57,7 +58,10 @@ The graph is a control-flow tree rather than a flat list with condition annotati
   branches;
 - every node has a `SourceRange` that selects the represented source construct;
 - completed conditions contain normalized semantic outcomes for their `then`, `else`, and
-  fallthrough paths.
+  fallthrough paths;
+- durable steps contain source-ranged call references in `step.analysis.invocations`, allowing a
+  separate application-specific linker to identify runtime tools without coupling this package to
+  those tool definitions.
 
 The semantic pass deliberately supports a small, exact expression language instead of pretending to
 be a JavaScript or TypeScript checker. It resolves local `const` aliases made from member references
@@ -69,9 +73,11 @@ receives a `specific-event-guard` annotation. Its accepted fallthrough predicate
 equality facts, and an alias such as `automationEvent` resolves back to
 `event.payload.automationEvent`.
 
-The state machine still ignores implementation details that do not contain durable workflow
-structure. For example, an `if` inside a step callback is removed when it contains no nested durable
-step.
+The state machine still excludes implementation details from the control-flow tree when they do not
+contain durable workflow structure. For example, an `if` inside a step callback is removed when it
+contains no nested durable step. Exact member calls made directly by the step callback remain as
+step annotations rather than becoming graph nodes. Calls inside deeper ordinary function callbacks
+are excluded, and a nested durable step owns its own calls.
 
 ## Token-at-a-time usage
 
