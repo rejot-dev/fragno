@@ -41,7 +41,7 @@ export const forwardToScopedAutomationsFragment = async ({
   await requireBackofficeContext(request, context, scope);
 
   const { runtime } = context.get(BackofficeWorkerContext);
-  const kernel = new BackofficeKernel({ objects: runtime.objects });
+  const kernel = new BackofficeKernel(runtime);
   const automationsDo = kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
 
   const url = new URL(request.url);

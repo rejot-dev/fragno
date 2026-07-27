@@ -3,6 +3,7 @@ import { defaultFragnoRuntime } from "@fragno-dev/core";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { MasterFileSystem } from "@/files";
 
+import { createBackofficeAuthorityResolver } from "./authority-resolver";
 import type { BackofficeDatabaseAdapterFactory } from "./database-adapters";
 import { createInMemoryBackofficeDatabaseAdapters } from "./in-memory-database-adapters";
 import {
@@ -10,6 +11,7 @@ import {
   type InMemoryObjectFactoryOverrides,
 } from "./in-memory-object-factory";
 import type { InMemoryBackofficeRuntimeEnv } from "./in-memory-runtime-env";
+import { noopBackofficeKernelObserver, type BackofficeKernelObserver } from "./kernel";
 import { createBackofficeObjectRegistry } from "./object-registry";
 import type { BackofficeObjectAddress, BackofficeObjectRegistry } from "./object-registry";
 import type { BackofficeRuntimeConfig, BackofficeRuntimeServices } from "./runtime-services";
@@ -37,6 +39,7 @@ export type CreateInMemoryBackofficeRuntimeOptions = {
     purpose?: string;
   }) => Promise<MasterFileSystem>;
   objectFactories?: InMemoryObjectFactoryOverrides;
+  kernelObserver?: BackofficeKernelObserver;
   maxDrainIterations?: number;
 };
 
@@ -65,6 +68,11 @@ export const createInMemoryBackofficeRuntime = async (
     objects,
     adapters,
     config,
+    authorityResolver: createBackofficeAuthorityResolver({
+      hasOrganizationMembership: async (input) =>
+        await objects.auth.singleton().hasOrganizationMembership(input),
+    }),
+    kernelObserver: options.kernelObserver ?? noopBackofficeKernelObserver,
     fragnoRuntime: {
       ...defaultFragnoRuntime,
       time: {

@@ -54,7 +54,7 @@ const createWorkflowAutomationContext = ({
   runtime: BackofficeRuntimeServices;
   params: AutomationCodemodeWorkflowParams;
 }): AutomationRuntimeHostContext => {
-  const kernel = new BackofficeKernel({ objects: runtime.objects });
+  const kernel = new BackofficeKernel(runtime);
   const execution = createWorkflowExecution(params.automationEvent);
   const runtimeContext = createRouteBackedRuntimeContext({
     runtime,

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+
 export type AutomationEntityScope = "internal" | "external";
 
 export type AutomationEntityRef<
@@ -35,6 +37,11 @@ export type AutomationActors = Readonly<{
   principal: AutomationPrincipalActor | null;
   delegation: readonly AutomationDelegatedActor[];
 }>;
+
+export type AutomationExecutionContext = {
+  scope: BackofficeContextScope;
+  actors: AutomationActors;
+};
 
 const createAutomationActorSchema = <TRole extends AutomationActorRole>(role: TRole) =>
   z.discriminatedUnion("scope", [

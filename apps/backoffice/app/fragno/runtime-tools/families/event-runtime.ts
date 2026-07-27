@@ -73,11 +73,9 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
         targetScope: resolvedTargetScope,
         operation: "automation.forward-event",
       });
-      options.kernel.assertAllowed({
+      options.kernel.assertContextAccess({
         actor: options.execution.actor,
         scope: resolvedTargetScope,
-        requiredPermissions: [{ namespace: "events", permission: "route" }],
-        resource: { sourceScope: currentScope, targetScope: resolvedTargetScope },
       });
     }
 

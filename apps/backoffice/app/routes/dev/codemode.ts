@@ -46,7 +46,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const body = devCodemodeBodySchema.parse(await request.json());
 
   const { env, runtime } = context.get(BackofficeWorkerContext);
-  const kernel = new BackofficeKernel({ objects: runtime.objects });
+  const kernel = new BackofficeKernel(runtime);
 
   const fs = await createBackofficeFileSystem({
     objects: runtime.objects,

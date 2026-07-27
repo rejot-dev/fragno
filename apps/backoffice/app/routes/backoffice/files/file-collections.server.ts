@@ -49,7 +49,7 @@ export async function createFilesOverviewCollections({
 }): Promise<FilesOverviewCollection[]> {
   const { runtime } = context.get(BackofficeWorkerContext);
   const execution = await requireBackofficeContext(request, context, scope);
-  const kernel = new BackofficeKernel({ objects: runtime.objects });
+  const kernel = new BackofficeKernel(runtime);
   const rootPaths = filesOverviewRootPathsForScope(execution.scope);
   const collections: FilesOverviewCollection[] = [];
 

@@ -1,5 +1,6 @@
+import { unrestrictedBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 
 import type { FilePrincipal } from "./permissions";
@@ -28,7 +29,10 @@ export const createSystemFilesContext = ({
   filePrincipal,
   ...filesContext
 }: CreateSystemFilesContextOptions): FilesContext => {
-  const kernel = new BackofficeKernel({ objects });
+  const kernel = new BackofficeKernel({
+    authorityResolver: unrestrictedBackofficeAuthorityResolver,
+    kernelObserver: noopBackofficeKernelObserver,
+  });
 
   return {
     ...filesContext,

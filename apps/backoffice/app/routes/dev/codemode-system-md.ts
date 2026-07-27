@@ -28,7 +28,7 @@ const readOrgSystemGuidance = async ({
   execution: Awaited<ReturnType<typeof requireBackofficeContext>>;
 }) => {
   const { runtime } = context.get(BackofficeWorkerContext);
-  const kernel = new BackofficeKernel({ objects: runtime.objects });
+  const kernel = new BackofficeKernel(runtime);
   const fs = await createBackofficeFileSystem({
     objects: runtime.objects,
     kernel,

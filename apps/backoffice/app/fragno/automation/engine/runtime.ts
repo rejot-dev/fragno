@@ -1,5 +1,10 @@
+import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
-import { BackofficeForbiddenError, BackofficeKernel } from "@/backoffice-runtime/kernel";
+import {
+  BackofficeForbiddenError,
+  BackofficeKernel,
+  noopBackofficeKernelObserver,
+} from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BashHostContext } from "@/fragno/runtime-tools/bash-host";
 import type { PiRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
@@ -65,7 +70,7 @@ export const createAutomationRuntime = ({
   };
 
   if (runtime) {
-    const kernel = new BackofficeKernel({ objects: runtime.objects });
+    const kernel = new BackofficeKernel(runtime);
     const execution: BackofficeExecutionContext = {
       actor: {
         type: "automation",
@@ -138,7 +143,7 @@ export const createAutomationExecutionContext = ({
   const routeBacked = runtimeServices
     ? createRouteBackedRuntimeContext({
         runtime: runtimeServices,
-        kernel: new BackofficeKernel({ objects: runtimeServices.objects }),
+        kernel: new BackofficeKernel(runtimeServices),
         execution,
         ...(pi ? { pi: { runtime: pi.runtime } } : {}),
       })
@@ -148,7 +153,10 @@ export const createAutomationExecutionContext = ({
     ...(routeBacked ?? {
       defaultActor: null,
       backofficeExecution: execution,
-      backofficeKernel: new BackofficeKernel({}),
+      backofficeKernel: new BackofficeKernel({
+        authorityResolver: unavailableBackofficeAuthorityResolver,
+        kernelObserver: noopBackofficeKernelObserver,
+      }),
       createBackofficeScopedContext: () => {
         throw new BackofficeForbiddenError("Backoffice runtime services are not configured.");
       },

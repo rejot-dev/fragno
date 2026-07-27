@@ -118,6 +118,7 @@ export type AuthObject = FetchObject &
       | { status: "issued"; credentialToken: string }
       | { status: "rejected"; reason: "user_not_found" | "user_banned" }
     >;
+    hasOrganizationMembership(input: { organizationId: string; userId: string }): Promise<boolean>;
     getAllOrganizations(): Promise<Organization[]>;
     hasOrganizationMember(input: { organizationId: string; userId: string }): Promise<boolean>;
     getDevOrganizations(): Promise<

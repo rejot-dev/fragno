@@ -165,7 +165,7 @@ const handlePathAutocomplete = async ({
 
   try {
     const { runtime } = context.get(BackofficeWorkerContext);
-    const kernel = new BackofficeKernel({ objects: runtime.objects });
+    const kernel = new BackofficeKernel(runtime);
     const execution = await requireBackofficeContext(request, context, {
       kind: "org",
       orgId: activeOrg.id,
@@ -230,7 +230,7 @@ const resolveHelpCommandSpecs = async ({
 
   try {
     const { runtime } = context.get(BackofficeWorkerContext);
-    const kernel = new BackofficeKernel({ objects: runtime.objects });
+    const kernel = new BackofficeKernel(runtime);
     const execution = await requireBackofficeContext(request, context, {
       kind: "org",
       orgId: activeOrg.id,
@@ -336,7 +336,7 @@ const handleRunCommand = async ({
 
   try {
     const { runtime } = context.get(BackofficeWorkerContext);
-    const kernel = new BackofficeKernel({ objects: runtime.objects });
+    const kernel = new BackofficeKernel(runtime);
     const execution = await requireBackofficeContext(request, context, {
       kind: "org",
       orgId: activeOrg.id,

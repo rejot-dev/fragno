@@ -104,6 +104,10 @@ class UnavailableInMemoryDurableObject {
     };
   }
 
+  async hasOrganizationMembership() {
+    return false;
+  }
+
   async getAllOrganizations() {
     return [];
   }

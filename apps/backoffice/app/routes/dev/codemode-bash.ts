@@ -81,7 +81,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const timeoutMs = body.timeout ?? DASHBOARD_COMMAND_TIMEOUT_MS;
 
   const { runtime } = context.get(BackofficeWorkerContext);
-  const kernel = new BackofficeKernel({ objects: runtime.objects });
+  const kernel = new BackofficeKernel(runtime);
   const execution = await requireBackofficeContext(request, context, { kind: "org", orgId });
   const fs = await createBackofficeFileSystem({
     objects: runtime.objects,

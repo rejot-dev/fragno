@@ -1,5 +1,9 @@
 import type { FragnoRuntime } from "@fragno-dev/core";
 
+import {
+  createBackofficeAuthorityResolver,
+  type BackofficeAuthorityResolver,
+} from "./authority-resolver";
 import { cloudflareDatabaseAdapters } from "./cloudflare-database-adapters";
 import { createCloudflareBackofficeObjectRegistry } from "./cloudflare-durable-object-factory";
 import {
@@ -7,6 +11,7 @@ import {
   type BackofficeDatabaseAdapterFactory,
   type BackofficeDatabaseAdapterScope,
 } from "./database-adapters";
+import { noopBackofficeKernelObserver, type BackofficeKernelObserver } from "./kernel";
 import type { BackofficeObjectRegistry } from "./object-registry";
 
 export type AuthEmailVerificationRuntimeConfig =
@@ -43,15 +48,14 @@ export type BackofficeRuntimeServices = {
   objects: BackofficeObjectRegistry;
   adapters: BackofficeDatabaseAdapterFactory;
   config: BackofficeRuntimeConfig;
+  authorityResolver: BackofficeAuthorityResolver;
+  kernelObserver: BackofficeKernelObserver;
   fragnoRuntime?: FragnoRuntime;
 };
 
-type BackofficeRuntimeServiceOverrides = Partial<
-  Pick<BackofficeRuntimeServices, "objects" | "adapters" | "config">
->;
-
 type CreateCloudflareBackofficeRuntimeServicesOptions = {
   databaseScope?: BackofficeDatabaseAdapterScope;
+  kernelObserver?: BackofficeKernelObserver;
 };
 
 export const parseBooleanEnv = (name: string, value: string | undefined): boolean => {
@@ -127,25 +131,24 @@ const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): Backoffice
   },
 });
 
-const createOverriddenBackofficeRuntimeServices = (
-  env: CloudflareEnv,
-  overrides: BackofficeRuntimeServiceOverrides,
-  options: CreateCloudflareBackofficeRuntimeServicesOptions = {},
-): BackofficeRuntimeServices => {
-  const config = overrides.config ?? createCloudflareBackofficeRuntimeConfig(env);
-  const adapters = overrides.adapters ?? cloudflareDatabaseAdapters();
-
-  return {
-    objects: overrides.objects ?? createCloudflareBackofficeObjectRegistry(env),
-    adapters: options.databaseScope ? adapters.forScope(options.databaseScope) : adapters,
-    config,
-  };
-};
-
 export const createCloudflareBackofficeRuntimeServices = (
   env: CloudflareEnv,
   options: CreateCloudflareBackofficeRuntimeServicesOptions = {},
-): BackofficeRuntimeServices => createOverriddenBackofficeRuntimeServices(env, {}, options);
+): BackofficeRuntimeServices => {
+  const adapters = cloudflareDatabaseAdapters();
+  const objects = createCloudflareBackofficeObjectRegistry(env);
+
+  return {
+    objects,
+    adapters: options.databaseScope ? adapters.forScope(options.databaseScope) : adapters,
+    config: createCloudflareBackofficeRuntimeConfig(env),
+    authorityResolver: createBackofficeAuthorityResolver({
+      hasOrganizationMembership: async (input) =>
+        await objects.auth.singleton().hasOrganizationMembership(input),
+    }),
+    kernelObserver: options.kernelObserver ?? noopBackofficeKernelObserver,
+  };
+};
 
 export const createCloudflareDurableObjectRuntimeServices = (
   env: CloudflareEnv,

@@ -1,0 +1,108 @@
+/**
+ * Every permission understood by the Backoffice authorization kernel.
+ *
+ * Each value is the canonical requirement used by actions, role grants, authority resolvers, and
+ * resource policy. Adding an entry expands the authorization vocabulary but does not grant the new
+ * permission to any role automatically.
+ */
+export const BACKOFFICE_PERMISSION = {
+  api: {
+    connectionsCreate: { namespace: "api", permission: "connections.create" },
+    connectionsDelete: { namespace: "api", permission: "connections.delete" },
+    connectionsRead: { namespace: "api", permission: "connections.read" },
+    requestsExecute: { namespace: "api", permission: "requests.execute" },
+    webhooksManage: { namespace: "api", permission: "webhooks.manage" },
+    webhooksRead: { namespace: "api", permission: "webhooks.read" },
+  },
+  capabilities: {
+    read: { namespace: "capabilities", permission: "read" },
+  },
+  connections: {
+    manage: { namespace: "connections", permission: "manage" },
+    read: { namespace: "connections", permission: "read" },
+  },
+  events: {
+    emit: { namespace: "events", permission: "emit" },
+    manage: { namespace: "events", permission: "manage" },
+    read: { namespace: "events", permission: "read" },
+    route: { namespace: "events", permission: "route" },
+  },
+  hooks: {
+    read: { namespace: "hooks", permission: "read" },
+  },
+  internal: {
+    manage: { namespace: "internal", permission: "manage" },
+    read: { namespace: "internal", permission: "read" },
+  },
+  mcp: {
+    serversCreate: { namespace: "mcp", permission: "servers.create" },
+    serversDelete: { namespace: "mcp", permission: "servers.delete" },
+    serversRead: { namespace: "mcp", permission: "servers.read" },
+    toolsCall: { namespace: "mcp", permission: "tools.call" },
+  },
+  otp: {
+    create: { namespace: "otp", permission: "create" },
+  },
+  pi: {
+    modify: { namespace: "pi", permission: "modify" },
+    read: { namespace: "pi", permission: "read" },
+  },
+  resend: {
+    read: { namespace: "resend", permission: "read" },
+    send: { namespace: "resend", permission: "send" },
+  },
+  reson8: {
+    use: { namespace: "reson8", permission: "use" },
+  },
+  router: {
+    modify: { namespace: "router", permission: "modify" },
+    read: { namespace: "router", permission: "read" },
+  },
+  sandbox: {
+    modify: { namespace: "sandbox", permission: "modify" },
+    read: { namespace: "sandbox", permission: "read" },
+  },
+  store: {
+    modify: { namespace: "store", permission: "modify" },
+    read: { namespace: "store", permission: "read" },
+  },
+  telegram: {
+    read: { namespace: "telegram", permission: "read" },
+    send: { namespace: "telegram", permission: "send" },
+  },
+  workflow: {
+    modify: { namespace: "workflow", permission: "modify" },
+    read: { namespace: "workflow", permission: "read" },
+  },
+} as const;
+
+type ValueOf<T> = T[keyof T];
+
+export type BackofficePermissionNamespace = keyof typeof BACKOFFICE_PERMISSION;
+
+/** A valid namespace-permission pair checked by the kernel. */
+export type BackofficePermissionRequirement = ValueOf<{
+  [TNamespace in BackofficePermissionNamespace]: ValueOf<
+    (typeof BACKOFFICE_PERMISSION)[TNamespace]
+  >;
+}>;
+
+export type BackofficePermission = BackofficePermissionRequirement["permission"];
+
+const backofficePermissionNamespaces = Object.values(BACKOFFICE_PERMISSION) as readonly Readonly<
+  Record<string, BackofficePermissionRequirement>
+>[];
+
+/** The complete finite permission set, reserved for explicitly unrestricted test/system contexts. */
+export const allBackofficePermissionRequirements = backofficePermissionNamespaces.flatMap(
+  (namespacePermissions) => Object.values(namespacePermissions),
+);
+
+export const isBackofficePermissionRequirement = (input: {
+  namespace: string;
+  permission: string;
+}): input is BackofficePermissionRequirement =>
+  allBackofficePermissionRequirements.some(
+    (requirement) =>
+      requirement.namespace === input.namespace && requirement.permission === input.permission,
+  );

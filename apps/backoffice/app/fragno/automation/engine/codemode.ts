@@ -145,7 +145,7 @@ export const executePiCodemodeWorkflow = async ({
 
   const runtimeContext = createRouteBackedRuntimeContext({
     runtime,
-    kernel: new BackofficeKernel({ objects: runtime.objects }),
+    kernel: new BackofficeKernel(runtime),
     execution: {
       actor,
       scope,

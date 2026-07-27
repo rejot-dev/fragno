@@ -1,10 +1,11 @@
 import { describe, expect, test, vi, assert } from "vitest";
 
+import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import {
   createInMemoryBackofficeRuntime,
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import {
   createBackofficeFileSystem,
   createMasterFileSystem,
@@ -139,7 +140,10 @@ describe("system automation scenarios", () => {
       };
       const fs = await createBackofficeFileSystem({
         objects: runtime.objects,
-        kernel: new BackofficeKernel({ objects: runtime.objects }),
+        kernel: new BackofficeKernel({
+          authorityResolver: unavailableBackofficeAuthorityResolver,
+          kernelObserver: noopBackofficeKernelObserver,
+        }),
         execution: systemExecution,
         config: runtime.config,
       });
@@ -360,7 +364,8 @@ describe("system automation scenarios", () => {
             async (ctx) => {
               const orgId = "org-1";
               const kernel = new BackofficeKernel({
-                objects: ctx.runtime.objects,
+                authorityResolver: unavailableBackofficeAuthorityResolver,
+                kernelObserver: noopBackofficeKernelObserver,
               });
               const execution = {
                 actor: {

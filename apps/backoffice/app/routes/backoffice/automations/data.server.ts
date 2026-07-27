@@ -64,7 +64,7 @@ const getScopedAutomationsObject = (
   scope: BackofficeContextScope,
 ) => {
   const { runtime } = context.get(BackofficeWorkerContext);
-  const kernel = new BackofficeKernel({ objects: runtime.objects });
+  const kernel = new BackofficeKernel(runtime);
   return kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
 };
 
@@ -124,7 +124,7 @@ const createBackofficeAutomationFileSystem = async ({
   scope: BackofficeContextScope;
 }) => {
   const { runtime } = context.get(BackofficeWorkerContext);
-  const kernel = new BackofficeKernel({ objects: runtime.objects });
+  const kernel = new BackofficeKernel(runtime);
   const execution = await requireBackofficeContext(request, context, scope);
   return createBackofficeFileSystem({
     objects: runtime.objects,

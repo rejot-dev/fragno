@@ -182,7 +182,10 @@ const automationActorMatches = (
   (matcher.id === undefined || actor.id === matcher.id) &&
   (matcher.role === undefined || actor.role === matcher.role);
 
-const automationEventActorMatches = (event: AutomationEvent, matcher: AutomationActorMatcher) => {
+const automationEventActorMatches = (
+  event: AutomationEvent,
+  matcher: AutomationActorMatcher,
+): boolean => {
   switch (matcher.participation) {
     case "initiator":
       return automationActorMatches(event.actors.initiator, matcher);
@@ -193,6 +196,8 @@ const automationEventActorMatches = (event: AutomationEvent, matcher: Automation
     case "delegation":
       return event.actors.delegation.some((actor) => automationActorMatches(actor, matcher));
   }
+
+  throw new Error("Unsupported automation actor participation.");
 };
 
 /**

@@ -1,8 +1,12 @@
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { unrestrictedBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
+import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 
 import type { BashHostContext } from "./bash-host";
 
-const EMPTY_BASH_HOST_KERNEL = new BackofficeKernel({});
+const EMPTY_BASH_HOST_KERNEL = new BackofficeKernel({
+  authorityResolver: unrestrictedBackofficeAuthorityResolver,
+  kernelObserver: noopBackofficeKernelObserver,
+});
 
 export const EMPTY_BASH_HOST_CONTEXT: BashHostContext = {
   defaultActor: null,

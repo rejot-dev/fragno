@@ -41,7 +41,7 @@ export async function forwardScopedPiRequest({
   await requireBackofficeContext(request, context, scope);
 
   const { runtime } = context.get(BackofficeWorkerContext);
-  const kernel = new BackofficeKernel({ objects: runtime.objects });
+  const kernel = new BackofficeKernel(runtime);
   const piObject = kernel.scoped("PI", scope, runtime.objects.pi);
   const suffix = params["*"] ? `/${params["*"]}` : "";
   const url = new URL(request.url);
