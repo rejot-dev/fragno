@@ -1,4 +1,5 @@
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
+import { isWorkflowStepCommittedControlPayload } from "@fragno-dev/workflows/step-emission-control";
 
 import type { LofiEphemeralTable } from "@fragno-dev/lofi";
 
@@ -29,7 +30,7 @@ const streamBoundary = (values: Record<string, unknown>): "start" | "item" | "en
     return "start";
   }
 
-  return payload["control"] === "step-committed" ? "end" : "item";
+  return isWorkflowStepCommittedControlPayload(payload) ? "end" : "item";
 };
 
 /** Recoverable Pi operation streams backed by workflow step commit boundaries. */
