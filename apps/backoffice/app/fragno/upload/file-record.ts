@@ -1,3 +1,5 @@
+import type { UploadChecksum } from "@fragno-dev/upload";
+
 export type UploadFileRecord = {
   provider: string;
   fileKey: string;
@@ -7,8 +9,7 @@ export type UploadFileRecord = {
   sizeBytes: number;
   filename: string;
   contentType: string;
-  checksumAlgo?: string | null;
-  checksumValue?: string | null;
+  checksum?: UploadChecksum | null;
   tags?: string[];
   metadata?: Record<string, unknown> | null;
   visibility?: string | null;
@@ -25,6 +26,7 @@ type SynchronizedUploadFileRow = {
   sizeBytes: number | bigint;
   filename: string;
   contentType: string;
+  checksum: unknown;
   tags: unknown;
   metadata: unknown;
   visibility: string;
@@ -41,6 +43,7 @@ export const toUploadFileRecord = (file: SynchronizedUploadFileRow): UploadFileR
   sizeBytes: Number(file.sizeBytes),
   filename: file.filename,
   contentType: file.contentType,
+  checksum: file.checksum as UploadChecksum | null,
   tags: (file.tags as string[] | null) ?? undefined,
   metadata: file.metadata as Record<string, unknown> | null,
   visibility: file.visibility,

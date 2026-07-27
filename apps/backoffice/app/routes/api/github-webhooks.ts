@@ -1,5 +1,6 @@
 import type { RouterContextProvider } from "react-router";
 
+import { bytesToHex } from "@/lib/crypto";
 import {
   getGitHubDurableObject,
   getGitHubWebhookRouterDurableObject,
@@ -33,9 +34,6 @@ const getWebhookLogContext = (request: Request) => ({
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
-
-const toHex = (bytes: Uint8Array) =>
-  bytes.reduce((acc, byte) => acc + byte.toString(16).padStart(2, "0"), "");
 
 const timingSafeEqual = (a: string, b: string) => {
   if (a.length !== b.length) {
@@ -89,7 +87,7 @@ const verifyWebhookSignature = async ({
         )
       : payloadBytes.slice().buffer;
   const expected = await crypto.subtle.sign("HMAC", hmacKey, payloadBuffer);
-  const expectedHex = toHex(new Uint8Array(expected));
+  const expectedHex = bytesToHex(new Uint8Array(expected));
 
   return timingSafeEqual(expectedHex, normalizedDigest);
 };
