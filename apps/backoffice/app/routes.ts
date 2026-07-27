@@ -43,8 +43,8 @@ export default [
       route("marketplace", "routes/backoffice/marketplace/index.tsx"),
       route("marketplace/publish", "routes/backoffice/marketplace/publish.tsx"),
       route("marketplace/mine", "routes/backoffice/marketplace/mine.tsx"),
-      route("marketplace/:slug/manage", "routes/backoffice/marketplace/manage.tsx"),
-      route("marketplace/:slug", "routes/backoffice/marketplace/detail.tsx"),
+      route("marketplace/:listingRef/manage", "routes/backoffice/marketplace/manage.tsx"),
+      route("marketplace/:listingRef", "routes/backoffice/marketplace/detail.tsx"),
       route("automations", "routes/backoffice/automations/index.tsx"),
       route(
         "automations/:orgId/claims/complete",

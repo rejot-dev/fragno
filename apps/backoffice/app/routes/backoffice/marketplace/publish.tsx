@@ -4,14 +4,13 @@ import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import {
   MARKETPLACE_CATEGORIES,
-  marketplaceListingMetadataSchema,
-  marketplaceSlugSchema,
-  marketplaceVersionSchema,
+  marketplaceCreateDraftListingInputSchema,
 } from "@/fragno/marketplace/contracts";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/publish";
+import { marketplaceListingManagePath } from "./navigation";
 import { marketplaceOwnerForOrganization } from "./publisher.server";
 
 type PublishActionData = { ok: false; message: string };
@@ -53,47 +52,44 @@ export async function action({ request, context, url }: Route.ActionArgs) {
     } satisfies PublishActionData;
   }
 
-  const slug = marketplaceSlugSchema.safeParse(formData.get("slug"));
-  const version = marketplaceVersionSchema.safeParse(formData.get("version"));
-  const metadata = marketplaceListingMetadataSchema.safeParse({
-    name: formData.get("name"),
-    summary: formData.get("summary"),
-    description: formData.get("description"),
-    category: formData.get("category"),
-    tags: String(formData.get("tags") ?? "")
-      .split(",")
-      .map((tag) => tag.trim())
-      .filter(Boolean),
+  const input = marketplaceCreateDraftListingInputSchema.safeParse({
+    owner,
+    slug: formData.get("slug"),
+    version: formData.get("version"),
+    metadata: {
+      name: formData.get("name"),
+      summary: formData.get("summary"),
+      description: formData.get("description"),
+      category: formData.get("category"),
+      tags: String(formData.get("tags") ?? "")
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    },
   });
-  const issue = slug.error?.issues[0] ?? version.error?.issues[0] ?? metadata.error?.issues[0];
-  if (!slug.success || !version.success || !metadata.success) {
+  if (!input.success) {
     return {
       ok: false,
-      message: issue?.message ?? "Marketplace metadata is invalid.",
+      message: input.error.issues[0]?.message ?? "Marketplace metadata is invalid.",
     } satisfies PublishActionData;
   }
 
   const marketplace = context.get(BackofficeWorkerContext).runtime.objects.marketplace.singleton();
-  const operation = await marketplace.createDraftListing({
-    owner,
-    slug: slug.data,
-    version: version.data,
-    metadata: metadata.data,
-  });
+  const operation = await marketplace.createDraftListing(input.data);
   if (!operation.ok) {
     return { ok: false, message: operation.error.message } satisfies PublishActionData;
   }
 
   const result = operation.value;
-  const search = new URLSearchParams({
-    organizationId: owner.scope.orgId,
-    created: result.version,
-  });
-  if (!result.created) {
-    search.set("reused", "1");
-  }
   return redirect(
-    `/backoffice/marketplace/${encodeURIComponent(result.slug)}/manage?${search.toString()}`,
+    marketplaceListingManagePath({
+      listingId: result.listingId,
+      organizationId: owner.scope.orgId,
+      result: {
+        created: result.version,
+        ...(result.created ? {} : { reused: "1" }),
+      },
+    }),
   );
 }
 

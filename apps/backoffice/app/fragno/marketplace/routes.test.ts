@@ -4,7 +4,13 @@ import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 import { marketplaceFragmentDefinition } from "./definition";
+import { marketplaceListingId } from "./owner";
 import { marketplaceRoutes } from "./routes";
+
+const listingId = marketplaceListingId({
+  ownerScope: { kind: "org", orgId: "org-1" },
+  slug: "daily-operations-brief",
+});
 
 const draftInput = {
   owner: {
@@ -42,7 +48,7 @@ describe("marketplace public routes", async () => {
     await fragment.callServices(() => fragment.services.createDraftListing(draftInput));
     await fragment.callServices(() =>
       fragment.services.publishVersion({
-        slug: draftInput.slug,
+        listingId,
         version: draftInput.version,
         owner: draftInput.owner,
       }),
@@ -57,12 +63,12 @@ describe("marketplace public routes", async () => {
       }),
     ]);
 
-    const detail = await fragment.callRoute("GET", "/listings/:slug", {
-      pathParams: { slug: "daily-operations-brief" },
+    const detail = await fragment.callRoute("GET", "/listings/:listingId", {
+      pathParams: { listingId },
     });
     assert(detail.type === "json");
     expect(detail.data).toMatchObject({
-      listing: { slug: "daily-operations-brief", latestVersion: "1.0.0" },
+      listing: { listingId, slug: "daily-operations-brief", latestVersion: "1.0.0" },
       versions: [{ version: "1.0.0" }],
     });
   });
@@ -75,15 +81,15 @@ describe("marketplace public routes", async () => {
     assert(invalidQuery.status === 400);
     expect(invalidQuery.error).toMatchObject({ code: "MARKETPLACE_INPUT_INVALID" });
 
-    const invalidSlug = await fragment.callRoute("GET", "/listings/:slug", {
-      pathParams: { slug: "INVALID SLUG" },
+    const invalidListingId = await fragment.callRoute("GET", "/listings/:listingId", {
+      pathParams: { listingId: "INVALID LISTING ID" },
     });
-    assert(invalidSlug.type === "error");
-    assert(invalidSlug.status === 400);
-    expect(invalidSlug.error).toMatchObject({ code: "MARKETPLACE_INPUT_INVALID" });
+    assert(invalidListingId.type === "error");
+    assert(invalidListingId.status === 400);
+    expect(invalidListingId.error).toMatchObject({ code: "MARKETPLACE_INPUT_INVALID" });
 
-    const missing = await fragment.callRoute("GET", "/listings/:slug", {
-      pathParams: { slug: "missing-listing" },
+    const missing = await fragment.callRoute("GET", "/listings/:listingId", {
+      pathParams: { listingId: "system#missing-listing" },
     });
     assert(missing.type === "error");
     assert(missing.status === 404);

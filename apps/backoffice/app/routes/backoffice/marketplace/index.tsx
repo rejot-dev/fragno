@@ -11,6 +11,7 @@ import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/index";
+import { marketplaceListingPath } from "./navigation";
 
 const marketplacePagePath = (input: { category?: string; cursor?: string }) => {
   const search = new URLSearchParams();
@@ -145,8 +146,8 @@ export default function BackofficeMarketplace({ loaderData }: Route.ComponentPro
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {listings.map((listing) => (
             <Link
-              key={listing.slug}
-              to={`/backoffice/marketplace/${encodeURIComponent(listing.slug)}`}
+              key={listing.listingId}
+              to={marketplaceListingPath(listing.listingId)}
               className="group flex min-h-56 flex-col border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-5 transition-[border-color,transform,background-color] hover:-translate-y-0.5 hover:border-[color:var(--bo-accent)] hover:bg-[var(--bo-panel-2)]"
             >
               <div className="flex items-start justify-between gap-4">

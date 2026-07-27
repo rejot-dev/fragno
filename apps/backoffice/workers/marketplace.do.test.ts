@@ -20,8 +20,14 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import type { MarketplaceCreateDraftListingInput } from "@/fragno/marketplace/contracts";
+import { marketplaceListingId } from "@/fragno/marketplace/owner";
 
 let runtime: InMemoryBackofficeRuntime | null = null;
+
+const listingId = marketplaceListingId({
+  ownerScope: { kind: "org", orgId: "org-1" },
+  slug: "daily-operations-brief",
+});
 
 const draftInput: MarketplaceCreateDraftListingInput = {
   owner: {
@@ -53,7 +59,7 @@ describe("Marketplace Durable Object", () => {
 
     await marketplace.createDraftListing(draftInput);
     await marketplace.publishVersion({
-      slug: draftInput.slug,
+      listingId,
       version: draftInput.version,
       owner: draftInput.owner,
     });
@@ -72,11 +78,11 @@ describe("Marketplace Durable Object", () => {
     });
 
     const detailResponse = await marketplace.fetch(
-      new Request("https://example.test/api/marketplace/listings/daily-operations-brief"),
+      new Request(`https://example.test/api/marketplace/listings/${encodeURIComponent(listingId)}`),
     );
     assert(detailResponse.status === 200);
     await expect(detailResponse.json()).resolves.toMatchObject({
-      listing: { slug: "daily-operations-brief", latestVersion: "1.0.0" },
+      listing: { listingId, slug: "daily-operations-brief", latestVersion: "1.0.0" },
       versions: [{ version: "1.0.0" }],
     });
   });
@@ -89,6 +95,7 @@ describe("Marketplace Durable Object", () => {
     await expect(marketplace.createDraftListing(draftInput)).resolves.toEqual({
       ok: true,
       value: {
+        listingId,
         slug: "daily-operations-brief",
         version: "1.0.0",
         created: true,
@@ -102,7 +109,7 @@ describe("Marketplace Durable Object", () => {
     });
 
     await marketplace.publishVersion({
-      slug: draftInput.slug,
+      listingId,
       version: draftInput.version,
       owner: draftInput.owner,
     });
@@ -118,10 +125,10 @@ describe("Marketplace Durable Object", () => {
     });
 
     await marketplace.archiveListing({
-      slug: draftInput.slug,
+      listingId,
       owner: draftInput.owner,
     });
-    await expect(marketplace.getPublishedListing({ slug: draftInput.slug })).resolves.toBeNull();
+    await expect(marketplace.getPublishedListing({ listingId })).resolves.toBeNull();
   });
 
   test("returns domain failures as RPC-safe results", async () => {
@@ -132,7 +139,7 @@ describe("Marketplace Durable Object", () => {
     await marketplace.createDraftListing(draftInput);
     await expect(
       marketplace.addDraftVersion({
-        listingSlug: draftInput.slug,
+        listingId,
         version: "2.0.0",
         owner: {
           scope: { kind: "org", orgId: "org-other" },

@@ -91,9 +91,9 @@ export const decodeMarketplaceOwnedListingCursor = (input: {
 type MarketplaceVersionCursorKind = "published" | "owned";
 
 type MarketplaceVersionCursorEnvelope = {
-  v: 1;
+  v: 2;
   kind: MarketplaceVersionCursorKind;
-  listingSlug: string;
+  listingId: string;
   databaseCursor: string;
 };
 
@@ -117,11 +117,11 @@ const decodeMarketplaceVersionCursorEnvelope = (
       typeof value !== "object" ||
       value === null ||
       !("v" in value) ||
-      value.v !== 1 ||
+      value.v !== 2 ||
       !("kind" in value) ||
       (value.kind !== "published" && value.kind !== "owned") ||
-      !("listingSlug" in value) ||
-      typeof value.listingSlug !== "string" ||
+      !("listingId" in value) ||
+      typeof value.listingId !== "string" ||
       !("databaseCursor" in value) ||
       typeof value.databaseCursor !== "string"
     ) {
@@ -138,7 +138,7 @@ const decodeMarketplaceVersionCursorEnvelope = (
 
 const decodeMarketplaceVersionCursor = (input: {
   encodedCursor?: string;
-  listingSlug: string;
+  listingId: string;
   kind: MarketplaceVersionCursorKind;
   isExpectedCursor: (cursor: Cursor) => boolean;
 }): Cursor | undefined => {
@@ -147,7 +147,7 @@ const decodeMarketplaceVersionCursor = (input: {
   }
 
   const envelope = decodeMarketplaceVersionCursorEnvelope(input.encodedCursor);
-  if (envelope.kind !== input.kind || envelope.listingSlug !== input.listingSlug) {
+  if (envelope.kind !== input.kind || envelope.listingId !== input.listingId) {
     throw new MarketplaceListingCursorError();
   }
   return decodeMarketplaceCursor(envelope.databaseCursor, input.isExpectedCursor);
@@ -155,18 +155,18 @@ const decodeMarketplaceVersionCursor = (input: {
 
 export const encodeMarketplacePublishedVersionCursor = (
   cursor: Cursor,
-  listingSlug: string,
+  listingId: string,
 ): string =>
   encodeMarketplaceVersionCursorEnvelope({
-    v: 1,
+    v: 2,
     kind: "published",
-    listingSlug,
+    listingId,
     databaseCursor: cursor.encode(),
   });
 
 export const decodeMarketplacePublishedVersionCursor = (input: {
   encodedCursor?: string;
-  listingSlug: string;
+  listingId: string;
 }): Cursor | undefined =>
   decodeMarketplaceVersionCursor({
     ...input,
@@ -176,17 +176,17 @@ export const decodeMarketplacePublishedVersionCursor = (input: {
       cursor.indexValues.status === "published",
   });
 
-export const encodeMarketplaceOwnedVersionCursor = (cursor: Cursor, listingSlug: string): string =>
+export const encodeMarketplaceOwnedVersionCursor = (cursor: Cursor, listingId: string): string =>
   encodeMarketplaceVersionCursorEnvelope({
-    v: 1,
+    v: 2,
     kind: "owned",
-    listingSlug,
+    listingId,
     databaseCursor: cursor.encode(),
   });
 
 export const decodeMarketplaceOwnedVersionCursor = (input: {
   encodedCursor?: string;
-  listingSlug: string;
+  listingId: string;
 }): Cursor | undefined =>
   decodeMarketplaceVersionCursor({
     ...input,

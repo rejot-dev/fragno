@@ -4,9 +4,9 @@ import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import {
   MARKETPLACE_CATEGORIES,
+  marketplaceAddDraftVersionInputSchema,
   marketplaceListingMetadataSchema,
-  marketplaceSlugSchema,
-  marketplaceVersionSchema,
+  marketplacePublishVersionInputSchema,
 } from "@/fragno/marketplace/contracts";
 import {
   decodeMarketplaceOwnedVersionCursor,
@@ -16,6 +16,11 @@ import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/manage";
+import {
+  marketplaceListingManagePath,
+  marketplaceListingPath,
+  marketplaceListingRefSchema,
+} from "./navigation";
 import { marketplaceOwnerForOrganization } from "./publisher.server";
 
 type ManageActionData = { ok: false; message: string };
@@ -30,14 +35,6 @@ const versionDateFormatter = new Intl.DateTimeFormat("en-US", {
   timeZoneName: "short",
 });
 
-const managePath = (slug: string, organizationId: string, result?: Record<string, string>) => {
-  const search = new URLSearchParams({ organizationId });
-  for (const [name, value] of Object.entries(result ?? {})) {
-    search.set(name, value);
-  }
-  return `/backoffice/marketplace/${encodeURIComponent(slug)}/manage?${search.toString()}`;
-};
-
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const me = await getAuthMe(request, context);
   if (!me?.user) {
@@ -47,8 +44,8 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     );
   }
 
-  const slugResult = marketplaceSlugSchema.safeParse(params.slug);
-  if (!slugResult.success) {
+  const listingIdResult = marketplaceListingRefSchema.safeParse(params.listingRef);
+  if (!listingIdResult.success) {
     throw new Response("Not Found", { status: 404 });
   }
 
@@ -66,7 +63,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   try {
     decodeMarketplaceOwnedVersionCursor({
       encodedCursor: versionCursor,
-      listingSlug: slugResult.data,
+      listingId: listingIdResult.data,
     });
   } catch (error) {
     if (error instanceof MarketplaceListingCursorError) {
@@ -77,7 +74,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 
   const marketplace = context.get(BackofficeWorkerContext).runtime.objects.marketplace.singleton();
   const detail = await marketplace.getOwnedListing({
-    slug: slugResult.data,
+    listingId: listingIdResult.data,
     ownerScope: { kind: "org", orgId: organizationId },
     versionCursor,
   });
@@ -89,8 +86,8 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 }
 
 export async function action({ request, params, context, url }: Route.ActionArgs) {
-  const slugResult = marketplaceSlugSchema.safeParse(params.slug);
-  if (!slugResult.success) {
+  const listingIdResult = marketplaceListingRefSchema.safeParse(params.listingRef);
+  if (!listingIdResult.success) {
     throw new Response("Not Found", { status: 404 });
   }
 
@@ -131,52 +128,83 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     }
 
     const operation = await marketplace.updateListing({
-      slug: slugResult.data,
+      listingId: listingIdResult.data,
       owner,
       metadata: metadataResult.data,
     });
     if (!operation.ok) {
       return { ok: false, message: operation.error.message } satisfies ManageActionData;
     }
-    return redirect(managePath(slugResult.data, organizationId, { updated: "1" }));
+    return redirect(
+      marketplaceListingManagePath({
+        listingId: listingIdResult.data,
+        organizationId,
+        result: { updated: "1" },
+      }),
+    );
   }
 
   if (intent === "add-version") {
-    const versionResult = marketplaceVersionSchema.safeParse(formData.get("version"));
-    if (!versionResult.success) {
-      return {
-        ok: false,
-        message: versionResult.error.issues[0]?.message ?? "Version is invalid.",
-      } satisfies ManageActionData;
-    }
-    const operation = await marketplace.addDraftVersion({
-      listingSlug: slugResult.data,
-      version: versionResult.data,
+    const input = marketplaceAddDraftVersionInputSchema.safeParse({
+      listingId: listingIdResult.data,
+      version: formData.get("version"),
       owner,
     });
+    if (!input.success) {
+      return {
+        ok: false,
+        message: input.error.issues[0]?.message ?? "Version is invalid.",
+      } satisfies ManageActionData;
+    }
+    const operation = await marketplace.addDraftVersion(input.data);
     if (!operation.ok) {
       return { ok: false, message: operation.error.message } satisfies ManageActionData;
     }
     const result = operation.value;
     return redirect(
-      managePath(slugResult.data, organizationId, {
-        created: result.version,
-        ...(result.created ? {} : { reused: "1" }),
+      marketplaceListingManagePath({
+        listingId: listingIdResult.data,
+        organizationId,
+        result: {
+          created: result.version,
+          ...(result.created ? {} : { reused: "1" }),
+        },
       }),
     );
   }
 
   if (intent === "publish") {
-    const versionResult = marketplaceVersionSchema.safeParse(formData.get("version"));
-    if (!versionResult.success) {
+    const input = marketplacePublishVersionInputSchema.safeParse({
+      listingId: listingIdResult.data,
+      version: formData.get("version"),
+      owner,
+    });
+    if (!input.success) {
       return {
         ok: false,
-        message: "Select a valid version to publish.",
+        message: input.error.issues[0]?.message ?? "Select a valid version to publish.",
       } satisfies ManageActionData;
     }
-    const operation = await marketplace.publishVersion({
-      slug: slugResult.data,
-      version: versionResult.data,
+    const operation = await marketplace.publishVersion(input.data);
+    if (!operation.ok) {
+      return { ok: false, message: operation.error.message } satisfies ManageActionData;
+    }
+    const result = operation.value;
+    return redirect(
+      marketplaceListingManagePath({
+        listingId: listingIdResult.data,
+        organizationId,
+        result: {
+          published: result.version,
+          ...(result.published ? {} : { reused: "1" }),
+        },
+      }),
+    );
+  }
+
+  if (intent === "archive") {
+    const operation = await marketplace.archiveListing({
+      listingId: listingIdResult.data,
       owner,
     });
     if (!operation.ok) {
@@ -184,23 +212,13 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     }
     const result = operation.value;
     return redirect(
-      managePath(slugResult.data, organizationId, {
-        published: result.version,
-        ...(result.published ? {} : { reused: "1" }),
-      }),
-    );
-  }
-
-  if (intent === "archive") {
-    const operation = await marketplace.archiveListing({ slug: slugResult.data, owner });
-    if (!operation.ok) {
-      return { ok: false, message: operation.error.message } satisfies ManageActionData;
-    }
-    const result = operation.value;
-    return redirect(
-      managePath(slugResult.data, organizationId, {
-        archived: "1",
-        ...(result.archived ? {} : { reused: "1" }),
+      marketplaceListingManagePath({
+        listingId: listingIdResult.data,
+        organizationId,
+        result: {
+          archived: "1",
+          ...(result.archived ? {} : { reused: "1" }),
+        },
       }),
     );
   }
@@ -260,7 +278,7 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
         actions={
           listing.status === "published" ? (
             <Link
-              to={`/backoffice/marketplace/${encodeURIComponent(listing.slug)}`}
+              to={marketplaceListingPath(listing.listingId)}
               className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
             >
               View public page
@@ -429,8 +447,10 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
             </div>
             {hasNextVersionPage && nextVersionCursor ? (
               <Link
-                to={managePath(listing.slug, organizationId, {
-                  versionCursor: nextVersionCursor,
+                to={marketplaceListingManagePath({
+                  listingId: listing.listingId,
+                  organizationId,
+                  result: { versionCursor: nextVersionCursor },
                 })}
                 className="mt-3 block border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-center text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase hover:border-[color:var(--bo-accent)]"
               >

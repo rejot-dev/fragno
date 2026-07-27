@@ -63,7 +63,7 @@ export const marketplaceRoutes = defineRoutes(marketplaceFragmentDefinition).cre
     }),
     defineRoute({
       method: "GET",
-      path: "/listings/:slug",
+      path: "/listings/:listingId",
       queryParameters: ["versionPageSize", "versionCursor"],
       outputSchema: marketplaceListingDetailSchema,
       errorCodes: MARKETPLACE_ROUTE_ERROR_CODES,
@@ -71,7 +71,7 @@ export const marketplaceRoutes = defineRoutes(marketplaceFragmentDefinition).cre
         try {
           const versionPageSizeValue = query.get("versionPageSize")?.trim();
           const input = marketplacePublishedListingInputSchema.parse({
-            slug: pathParams.slug,
+            listingId: pathParams.listingId,
             versionPageSize: versionPageSizeValue ? Number(versionPageSizeValue) : undefined,
             versionCursor: query.get("versionCursor")?.trim() || undefined,
           });

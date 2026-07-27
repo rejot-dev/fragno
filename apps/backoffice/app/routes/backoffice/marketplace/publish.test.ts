@@ -7,6 +7,9 @@ const { getAuthMeMock, createDraftListingMock } = vi.hoisted(() => ({
 
 vi.mock("@/fragno/auth/auth-server", () => ({ getAuthMe: getAuthMeMock }));
 
+import { marketplaceListingId } from "@/fragno/marketplace/owner";
+
+import { marketplaceListingManagePath } from "./navigation";
 import { action } from "./publish";
 
 const authenticatedUser = {
@@ -14,6 +17,11 @@ const authenticatedUser = {
   organizations: [{ organization: { id: "org-1", name: "Acme" } }],
   activeOrganization: { organization: { id: "org-1", name: "Acme" } },
 };
+
+const listingId = marketplaceListingId({
+  ownerScope: { kind: "org", orgId: "org-1" },
+  slug: "daily-operations-brief",
+});
 
 const marketplace = { createDraftListing: createDraftListingMock };
 const context = {
@@ -50,6 +58,7 @@ beforeEach(() => {
   createDraftListingMock.mockResolvedValue({
     ok: true,
     value: {
+      listingId,
       slug: "daily-operations-brief",
       version: "1.0.0",
       created: true,
@@ -69,7 +78,11 @@ describe("marketplace draft creation action", () => {
     assert(response.status === 302);
     assert(
       response.headers.get("location") ===
-        "/backoffice/marketplace/daily-operations-brief/manage?organizationId=org-1&created=1.0.0",
+        marketplaceListingManagePath({
+          listingId,
+          organizationId: "org-1",
+          result: { created: "1.0.0" },
+        }),
     );
     expect(createDraftListingMock).toHaveBeenCalledWith({
       owner: {

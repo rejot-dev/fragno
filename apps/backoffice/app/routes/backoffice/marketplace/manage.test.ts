@@ -16,13 +16,23 @@ const {
 
 vi.mock("@/fragno/auth/auth-server", () => ({ getAuthMe: getAuthMeMock }));
 
+import { marketplaceListingId } from "@/fragno/marketplace/owner";
+
 import { action } from "./manage";
+import { marketplaceListingManagePath, marketplaceListingRef } from "./navigation";
 
 const authenticatedUser = {
   user: { id: "user-1" },
   organizations: [{ organization: { id: "org-1", name: "Acme" } }],
   activeOrganization: { organization: { id: "org-1", name: "Acme" } },
 };
+
+const listingId = marketplaceListingId({
+  ownerScope: { kind: "org", orgId: "org-1" },
+  slug: "daily-operations-brief",
+});
+
+const listingRef = marketplaceListingRef(listingId);
 
 const owner = {
   scope: { kind: "org" as const, orgId: "org-1" },
@@ -45,12 +55,18 @@ const context = {
 const runAction = (formData: FormData) =>
   action({
     request: new Request(
-      "https://example.test/backoffice/marketplace/daily-operations-brief/manage",
+      new URL(
+        marketplaceListingManagePath({ listingId, organizationId: "org-1" }),
+        "https://example.test",
+      ),
       { method: "POST", body: formData },
     ),
-    params: { slug: "daily-operations-brief" },
+    params: { listingRef },
     context,
-    url: new URL("https://example.test/backoffice/marketplace/daily-operations-brief/manage"),
+    url: new URL(
+      marketplaceListingManagePath({ listingId, organizationId: "org-1" }),
+      "https://example.test",
+    ),
   } as never);
 
 beforeEach(() => {
@@ -66,7 +82,7 @@ describe("marketplace listing management action", () => {
   test("validates and updates mutable catalog metadata", async () => {
     updateListingMock.mockResolvedValue({
       ok: true,
-      value: { slug: "daily-operations-brief" },
+      value: { listingId, slug: "daily-operations-brief" },
     });
     const formData = new FormData();
     formData.set("intent", "update");
@@ -85,7 +101,7 @@ describe("marketplace listing management action", () => {
     assert(response instanceof Response);
     assert(response.status === 302);
     expect(updateListingMock).toHaveBeenCalledWith({
-      slug: "daily-operations-brief",
+      listingId,
       owner,
       metadata: {
         name: "Daily operations briefing",
@@ -102,6 +118,7 @@ describe("marketplace listing management action", () => {
     addDraftVersionMock.mockResolvedValue({
       ok: true,
       value: {
+        listingId,
         slug: "daily-operations-brief",
         version: "1.1.0",
         created: true,
@@ -116,7 +133,7 @@ describe("marketplace listing management action", () => {
 
     assert(response instanceof Response);
     expect(addDraftVersionMock).toHaveBeenCalledWith({
-      listingSlug: "daily-operations-brief",
+      listingId,
       version: "1.1.0",
       owner,
     });
@@ -127,6 +144,7 @@ describe("marketplace listing management action", () => {
     publishVersionMock.mockResolvedValue({
       ok: true,
       value: {
+        listingId,
         slug: "daily-operations-brief",
         version: "1.1.0",
         published: true,
@@ -141,7 +159,7 @@ describe("marketplace listing management action", () => {
 
     assert(response instanceof Response);
     expect(publishVersionMock).toHaveBeenCalledWith({
-      slug: "daily-operations-brief",
+      listingId,
       version: "1.1.0",
       owner,
     });
@@ -170,7 +188,7 @@ describe("marketplace listing management action", () => {
   test("archives the listing without touching automation workspaces", async () => {
     archiveListingMock.mockResolvedValue({
       ok: true,
-      value: { slug: "daily-operations-brief", archived: true },
+      value: { listingId, slug: "daily-operations-brief", archived: true },
     });
     const formData = new FormData();
     formData.set("intent", "archive");
@@ -180,7 +198,7 @@ describe("marketplace listing management action", () => {
 
     assert(response instanceof Response);
     expect(archiveListingMock).toHaveBeenCalledWith({
-      slug: "daily-operations-brief",
+      listingId,
       owner,
     });
     expect(addDraftVersionMock).not.toHaveBeenCalled();
