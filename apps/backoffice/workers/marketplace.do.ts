@@ -12,6 +12,8 @@ import {
 import type {
   MarketplaceAddDraftVersionInput,
   MarketplaceArchiveListingInput,
+  MarketplaceArtifactManifest,
+  MarketplaceArtifactManifestInput,
   MarketplaceArchiveResult,
   MarketplaceCreateDraftListingInput,
   MarketplaceDraftResult,
@@ -90,6 +92,13 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
   ): Promise<MarketplaceListingDetail | null> {
     const fragment = this.#getFragment();
     return await fragment.callServices(() => fragment.services.getPublishedListing(input));
+  }
+
+  async getArtifactManifest(
+    input: MarketplaceArtifactManifestInput,
+  ): Promise<MarketplaceArtifactManifest | null> {
+    const fragment = this.#getFragment();
+    return await fragment.callServices(() => fragment.services.getArtifactManifest(input));
   }
 
   async listOwnedListings(
@@ -209,6 +218,12 @@ export class Marketplace extends DurableObject<CloudflareEnv> implements Marketp
     input: MarketplacePublishedListingInput,
   ): Promise<MarketplaceListingDetail | null> {
     return this.#object.getPublishedListing(input);
+  }
+
+  getArtifactManifest(
+    input: MarketplaceArtifactManifestInput,
+  ): Promise<MarketplaceArtifactManifest | null> {
+    return this.#object.getArtifactManifest(input);
   }
 
   listOwnedListings(input: MarketplaceOwnedListingPageInput): Promise<MarketplaceOwnedListingPage> {

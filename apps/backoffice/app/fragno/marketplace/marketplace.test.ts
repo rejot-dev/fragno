@@ -3,6 +3,7 @@ import { afterAll, assert, describe, expect, test } from "vitest";
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
+import { marketplaceArtifactUploadName } from "./artifacts";
 import type {
   MarketplaceCreateDraftListingInput,
   MarketplaceListingMetadata,
@@ -202,6 +203,104 @@ describe("marketplace fragment", async () => {
       },
       versions: [{ version: "1.0.0" }],
     });
+  });
+
+  test("projects published artifact directories and keeps them immutable", async () => {
+    const owner = organizationOwner("org-artifacts");
+    const input = draftInput({
+      owner,
+      slug: "artifact-backed-automation",
+      metadata: { name: "Artifact backed automation" },
+    });
+    const listingId = marketplaceListingId({ ownerScope: owner.scope, slug: input.slug });
+
+    await callServices(() => marketplace.services.createDraftListing(input));
+    await expect(
+      callServices(() =>
+        marketplace.services.publishVersion({
+          listingId,
+          version: input.version,
+          owner,
+          artifactDirectory: "1.0.0",
+        }),
+      ),
+    ).resolves.toMatchObject({ published: true });
+    await expect(
+      callServices(() => marketplace.services.getArtifactManifest({ listingId })),
+    ).resolves.toEqual({
+      listingId,
+      slug: input.slug,
+      listingStatus: "published",
+      uploadName: marketplaceArtifactUploadName(listingId),
+      versions: [{ version: "1.0.0", directory: "1.0.0" }],
+    });
+    await expect(
+      callServices(() =>
+        marketplace.services.publishVersion({
+          listingId,
+          version: input.version,
+          owner,
+          artifactDirectory: "1.0.0",
+        }),
+      ),
+    ).resolves.toMatchObject({ published: false });
+    await expect(
+      callServices(() =>
+        marketplace.services.publishVersion({
+          listingId,
+          version: input.version,
+          owner,
+          artifactDirectory: "different-directory",
+        }),
+      ),
+    ).rejects.toBeInstanceOf(MarketplaceVersionTransitionError);
+
+    await expect(
+      callServices(() => marketplace.services.archiveListing({ listingId, owner })),
+    ).resolves.toMatchObject({ archived: true });
+    await expect(
+      callServices(() => marketplace.services.getArtifactManifest({ listingId })),
+    ).resolves.toMatchObject({
+      listingStatus: "archived",
+      versions: [{ version: "1.0.0", directory: "1.0.0" }],
+    });
+  });
+
+  test("isolates artifact upload names for owners sharing a listing slug", async () => {
+    const slug = "shared-artifact-listing";
+    const listings = [organizationOwner("org-artifact-a"), organizationOwner("org-artifact-b")].map(
+      (owner) => ({
+        owner,
+        listingId: marketplaceListingId({ ownerScope: owner.scope, slug }),
+      }),
+    );
+
+    for (const [index, { owner, listingId }] of listings.entries()) {
+      const input = draftInput({
+        owner,
+        slug,
+        metadata: { name: `Shared artifact listing ${index + 1}` },
+      });
+      await callServices(() => marketplace.services.createDraftListing(input));
+      await callServices(() =>
+        marketplace.services.publishVersion({
+          listingId,
+          version: input.version,
+          owner,
+          artifactDirectory: input.version,
+        }),
+      );
+    }
+
+    const manifests = await Promise.all(
+      listings.map(({ listingId }) =>
+        callServices(() => marketplace.services.getArtifactManifest({ listingId })),
+      ),
+    );
+    expect(manifests.map((manifest) => manifest?.uploadName)).toEqual(
+      listings.map(({ listingId }) => marketplaceArtifactUploadName(listingId)),
+    );
+    expect(manifests[0]?.uploadName).not.toBe(manifests[1]?.uploadName);
   });
 
   test("adds draft versions and promotes one to the latest release", async () => {

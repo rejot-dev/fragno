@@ -1,4 +1,5 @@
 import type { FileContent } from "../interface";
+import { TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE } from "./telegram-test-command";
 
 export const STARTER_AUTOMATION_SCRIPT_PATHS = {
   telegramUserLinking: "automations/telegram-user-linking.workflow.js",
@@ -308,29 +309,5 @@ export const WORKSPACE_STARTER_AUTOMATION_CONTENT: Record<string, FileContent> =
   },
 );
 `,
-  "automations/telegram-test-command.workflow.js": `defineWorkflow(
-  { name: "telegram-test-command" },
-  async (event, step) => {
-    const automationEvent = event.payload.automationEvent;
-    const text = automationEvent.payload.text;
-    const chatId = automationEvent.payload.chatId;
-
-    if (text !== "/test") {
-      return { skipped: true, reason: "not-test-command" };
-    }
-
-    await step.sleep("wait 3 seconds", "3 seconds");
-
-    await step.do("send delayed test reply", async () => {
-      await telegram.sendMessage({
-        chatId,
-        text: "Delayed /test reply after 3 seconds.",
-        parseMode: "Markdown",
-      });
-    });
-
-    return { sent: true };
-  },
-);
-`,
+  "automations/telegram-test-command.workflow.js": TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
 };

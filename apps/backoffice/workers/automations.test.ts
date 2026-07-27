@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { assert, describe, expect, test, vi } from "vitest";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
@@ -7,6 +7,12 @@ import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-regis
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import { loadAutomationCatalog } from "@/fragno/automation/catalog";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
+import {
+  buildMarketplacePublicationWorkflowInstanceId,
+  MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+} from "@/fragno/automation/marketplace-publish-workflow";
+import { createWorkflowsRouteCaller } from "@/fragno/automation/route-callers";
+import { marketplaceListingId } from "@/fragno/marketplace/owner";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -138,6 +144,58 @@ describe("Automations object scope binding", () => {
       await expect(automations.ingestEvent(scopedEvent("org-2"))).rejects.toThrow(
         "Backoffice object method scope does not match object address scope.",
       );
+    } finally {
+      await runtime.cleanup();
+    }
+  });
+
+  test("returns the failure from an existing marketplace publication workflow", async () => {
+    const runtime = await createInMemoryBackofficeRuntime();
+
+    try {
+      const listingId = marketplaceListingId({
+        ownerScope: { kind: "system" },
+        slug: "telegram-test-command",
+      });
+      const workflowInstanceId = buildMarketplacePublicationWorkflowInstanceId({
+        listingId,
+        version: "1.0.0",
+      });
+      const automations = runtime.objects.automations.forOrg("org-1");
+      const workflows = createWorkflowsRouteCaller({
+        object: automations,
+        scope: { kind: "org", orgId: "org-1" },
+      });
+      const created = await workflows("POST", "/:workflowName/instances", {
+        pathParams: { workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME },
+        body: {
+          id: workflowInstanceId,
+          params: {
+            slug: "missing-entry",
+            version: "1.0.0",
+          },
+        },
+      });
+      assert(created.type === "json");
+
+      await runtime.drain();
+
+      await expect(automations.requestStaticMarketplacePublications()).resolves.toEqual({
+        publications: [
+          {
+            listingId,
+            slug: "telegram-test-command",
+            version: "1.0.0",
+            workflowInstanceId,
+            state: "failed",
+            workflowStatus: "errored",
+            error: {
+              name: "NonRetryableError",
+              message: "Static marketplace entry missing-entry@1.0.0 was not found.",
+            },
+          },
+        ],
+      });
     } finally {
       await runtime.cleanup();
     }

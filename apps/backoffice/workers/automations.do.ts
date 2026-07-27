@@ -40,7 +40,19 @@ import type {
   StarterAutomationRoutesSeedResult,
 } from "@/fragno/automation";
 import { createAutomationsRuntime, type AutomationsRuntime } from "@/fragno/automation/automations";
+import {
+  buildMarketplacePublicationWorkflowInstanceId,
+  MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+} from "@/fragno/automation/marketplace-publish-workflow";
 import type { DurableHookQueueOptions, DurableHookQueueResponse } from "@/fragno/durable-hooks";
+import type { MarketplaceStaticArtifactEntry } from "@/fragno/marketplace/artifacts";
+import type {
+  MarketplaceStaticPublicationEntryResult,
+  MarketplaceStaticPublicationResult,
+} from "@/fragno/marketplace/contracts";
+import { MarketplaceListingArchivedError } from "@/fragno/marketplace/definition";
+import { marketplaceListingId } from "@/fragno/marketplace/owner";
+import { STATIC_MARKETPLACE_ENTRIES } from "@/fragno/marketplace/static-entries";
 import { createPiRouteRuntime } from "@/fragno/pi/pi";
 import { createCloudflareSandboxProvider } from "@/sandbox/cloudflare-sandbox-provider";
 import { CLOUDFLARE_SANDBOX_PROVIDER } from "@/sandbox/contracts";
@@ -342,6 +354,133 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     return await runtime.automationFragment.callServices(() =>
       runtime.automationFragment.services.seedStarterAutomationRoutes(),
     );
+  }
+
+  async requestStaticMarketplacePublications(): Promise<MarketplaceStaticPublicationResult> {
+    const scope = this.#requireScope();
+    if (scope.kind !== "org") {
+      throw new Error(
+        "Static marketplace publication requires an organization Automations object.",
+      );
+    }
+
+    await this.#ensureConfigured({ scope });
+
+    return {
+      publications: await Promise.all(
+        STATIC_MARKETPLACE_ENTRIES.map(({ owner, slug, version }) =>
+          this.#requestStaticMarketplaceEntryPublication({ owner, slug, version }),
+        ),
+      ),
+    };
+  }
+
+  async #requestStaticMarketplaceEntryPublication(
+    entry: Pick<MarketplaceStaticArtifactEntry, "owner" | "slug" | "version">,
+  ): Promise<MarketplaceStaticPublicationEntryResult> {
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+    const listingId = marketplaceListingId({ ownerScope: entry.owner.scope, slug: entry.slug });
+    const workflowInstanceId = buildMarketplacePublicationWorkflowInstanceId({
+      listingId,
+      version: entry.version,
+    });
+    const marketplace = this.#runtimeServices.objects.marketplace.singleton();
+    const manifest = await marketplace.getArtifactManifest({ listingId });
+    if (manifest?.listingStatus === "archived") {
+      throw new MarketplaceListingArchivedError(entry.slug);
+    }
+
+    const published =
+      manifest?.versions.some((version) => version.version === entry.version) ?? false;
+
+    if (published) {
+      return {
+        listingId,
+        slug: entry.slug,
+        version: entry.version,
+        workflowInstanceId,
+        state: "published",
+      };
+    }
+
+    const created = await runtime.workflowsFragment.callServices(() =>
+      runtime.workflowsFragment.services.createBatch(MARKETPLACE_PUBLISH_WORKFLOW_NAME, [
+        {
+          id: workflowInstanceId,
+          params: {
+            slug: entry.slug,
+            version: entry.version,
+          },
+        },
+      ]),
+    );
+
+    const identity = {
+      listingId,
+      slug: entry.slug,
+      version: entry.version,
+      workflowInstanceId,
+    };
+    if (created.length === 1) {
+      return {
+        ...identity,
+        state: "requested",
+        workflowStatus: "active",
+      };
+    }
+
+    const workflowStatus = await runtime.workflowsFragment.callServices(() =>
+      runtime.workflowsFragment.services.getInstanceStatus(
+        MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+        workflowInstanceId,
+      ),
+    );
+
+    switch (workflowStatus.status) {
+      case "active":
+      case "waiting":
+      case "paused":
+        return {
+          ...identity,
+          state: "pending",
+          workflowStatus: workflowStatus.status,
+        };
+      case "errored":
+      case "terminated":
+        return {
+          ...identity,
+          state: "failed",
+          workflowStatus: workflowStatus.status,
+          error: workflowStatus.error ?? {
+            name:
+              workflowStatus.status === "terminated"
+                ? "MarketplacePublicationTerminated"
+                : "MarketplacePublicationFailed",
+            message: `Marketplace publication workflow ${workflowInstanceId} ${workflowStatus.status}.`,
+          },
+        };
+      case "complete": {
+        const completedManifest = await marketplace.getArtifactManifest({ listingId });
+        const completedPublication =
+          completedManifest?.listingStatus === "published" &&
+          completedManifest.versions.some((version) => version.version === entry.version);
+        if (completedPublication) {
+          return { ...identity, state: "published" };
+        }
+
+        return {
+          ...identity,
+          state: "failed",
+          workflowStatus: "complete",
+          error: {
+            name: "MarketplacePublicationIncomplete",
+            message: `Marketplace publication workflow ${workflowInstanceId} completed without publishing ${listingId}@${entry.version}.`,
+          },
+        };
+      }
+    }
+
+    throw new Error("Unsupported marketplace workflow status.");
   }
 
   async triggerIngestEvent(

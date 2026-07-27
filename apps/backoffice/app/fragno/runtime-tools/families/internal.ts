@@ -12,10 +12,13 @@ import { createSystemFilesContext } from "@/files/system-context";
 import type { StarterAutomationRoutesSeedResult } from "@/fragno/automation";
 import type { DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import {
-  marketplaceInsertStaticEntriesResultSchema,
-  type MarketplaceInsertStaticEntriesResult,
+  marketplaceStaticPublicationResultSchema,
+  type MarketplaceStaticPublicationResult,
 } from "@/fragno/marketplace/contracts";
-import { STATIC_MARKETPLACE_ENTRIES } from "@/fragno/marketplace/static-entries";
+import type {
+  AutomationCommandExecutionResult,
+  AutomationCommandOutputOptions,
+} from "@/fragno/runtime-tools/automation-types";
 import { defineCliArgsParser, readOutputOptions } from "@/fragno/runtime-tools/bash-cli";
 
 import {
@@ -40,7 +43,7 @@ export type InternalRuntime = {
     projectId: string;
   }): Promise<ProjectDatabaseFileSystemConfigureOutput>;
   seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult>;
-  pushStaticMarketplaceEntries(): Promise<MarketplaceInsertStaticEntriesResult>;
+  pushStaticMarketplaceEntries(): Promise<MarketplaceStaticPublicationResult>;
 };
 
 type InternalToolContext = BackofficeToolContext<{
@@ -133,15 +136,8 @@ export const createInternalRuntime = ({
       await seedWorkspaceStarterFiles({ objects, orgId, force: input?.force }),
     seedStarterAutomationRoutes: async () =>
       await objects.automations.forOrg(orgId).seedStarterAutomationRoutes(),
-    pushStaticMarketplaceEntries: async () => {
-      const result = await objects.marketplace.singleton().insertStaticEntries({
-        entries: [...STATIC_MARKETPLACE_ENTRIES],
-      });
-      if (!result.ok) {
-        throw new Error(`${result.error.code}: ${result.error.message}`);
-      }
-      return result.value;
-    },
+    pushStaticMarketplaceEntries: async () =>
+      await objects.automations.forOrg(orgId).requestStaticMarketplacePublications(),
     configureProjectDatabaseFileSystem: async ({ projectId }) => {
       const uploadObject = objects.upload.forProject({ orgId, projectId });
       const config = await uploadObject.setAdminConfig(
@@ -299,6 +295,40 @@ const automationRoutesSeedStarterTool = defineBackofficeRuntimeTool({
   },
 });
 
+export const formatMarketplacePushOutput = (
+  output: MarketplaceStaticPublicationResult,
+  options: AutomationCommandOutputOptions,
+): AutomationCommandExecutionResult<MarketplaceStaticPublicationResult> => {
+  const failures = output.publications.filter((publication) => publication.state === "failed");
+  if (options.format === "json" || options.print) {
+    return {
+      data: output,
+      ...(failures.length > 0 ? { exitCode: 1 } : {}),
+    };
+  }
+
+  const stdout = `${output.publications
+    .map(
+      (publication) =>
+        `${publication.state}\t${publication.listingId}@${publication.version}\t${publication.workflowInstanceId}`,
+    )
+    .join("\n")}\n`;
+  if (failures.length === 0) {
+    return { stdout };
+  }
+
+  return {
+    stdout,
+    stderr: `${failures
+      .map(
+        (publication) =>
+          `${publication.listingId}@${publication.version}: ${publication.error.name}: ${publication.error.message}`,
+      )
+      .join("\n")}\n`,
+    exitCode: 1,
+  };
+};
+
 const marketplacePushTool = defineBackofficeRuntimeTool({
   id: "internal.marketplace.push",
   namespace: "internal",
@@ -306,7 +336,7 @@ const marketplacePushTool = defineBackofficeRuntimeTool({
   description: "Push the bundled static entries into the marketplace.",
   requiredPermissions: ["manage"],
   inputSchema: z.object({}).optional().default({}),
-  outputSchema: marketplaceInsertStaticEntriesResultSchema,
+  outputSchema: marketplaceStaticPublicationResultSchema,
   execute: async (_input, context: InternalToolContext) =>
     await getRuntime(context).pushStaticMarketplaceEntries(),
   adapters: {
@@ -319,17 +349,7 @@ const marketplacePushTool = defineBackofficeRuntimeTool({
       },
       parse: defineCliArgsParser<Record<string, never>>("internal.marketplace.push", {}),
       outputOptions: (_args, parsed) => readOutputOptions(parsed),
-      format: (output, options) =>
-        options.format === "json" || options.print
-          ? { data: output }
-          : {
-              stdout: `inserted=${output.inserted.length}\nskipped=${output.skipped.length}\n${output.inserted
-                .map((entry) => `inserted\t${entry.listingId}@${entry.version}`)
-                .concat(
-                  output.skipped.map((entry) => `skipped\t${entry.listingId}@${entry.version}`),
-                )
-                .join("\n")}\n`,
-            },
+      format: formatMarketplacePushOutput,
     },
   },
 });

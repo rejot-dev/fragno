@@ -1,9 +1,11 @@
 import { defineFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 
+import { marketplaceArtifactUploadName } from "./artifacts";
 import {
   marketplaceAddDraftVersionInputSchema,
   marketplaceArchiveListingInputSchema,
+  marketplaceArtifactManifestInputSchema,
   marketplaceCreateDraftListingInputSchema,
   marketplaceInsertStaticEntriesInputSchema,
   marketplaceListingPageInputSchema,
@@ -13,6 +15,7 @@ import {
   marketplacePublishVersionInputSchema,
   marketplaceUpdateListingInputSchema,
   type MarketplaceArchiveResult,
+  type MarketplaceArtifactManifest,
   type MarketplaceDraftResult,
   type MarketplaceInsertStaticEntriesResult,
   type MarketplaceListingDetail,
@@ -69,6 +72,13 @@ export class MarketplaceListingConflictError extends MarketplaceDomainError {
   constructor(slug: string) {
     super("MARKETPLACE_LISTING_CONFLICT", `Marketplace listing ${slug} already exists.`);
     this.name = "MarketplaceListingConflictError";
+  }
+}
+
+export class MarketplaceListingArchivedError extends MarketplaceDomainError {
+  constructor(slug: string) {
+    super("MARKETPLACE_LISTING_ARCHIVED", `Marketplace listing ${slug} is archived.`);
+    this.name = "MarketplaceListingArchivedError";
   }
 }
 
@@ -233,6 +243,43 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
                   }
                 : {}),
               hasNextVersionPage: versionPage.hasNextPage,
+            };
+          })
+          .build();
+      },
+
+      getArtifactManifest: function (rawInput: unknown) {
+        const input = marketplaceArtifactManifestInputSchema.parse(rawInput);
+
+        return this.serviceTx(marketplaceFragmentSchema)
+          .retrieve((uow) =>
+            uow
+              .findFirst("marketplace_listing", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", input.listingId)),
+              )
+              .find("marketplace_version", (b) =>
+                b
+                  .whereIndex(MARKETPLACE_PUBLISHED_VERSION_INDEX, (eb) =>
+                    eb.and(eb("listingId", "=", input.listingId), eb("status", "=", "published")),
+                  )
+                  .orderByIndex(MARKETPLACE_PUBLISHED_VERSION_INDEX, "desc"),
+              ),
+          )
+          .transformRetrieve(([listing, versions]): MarketplaceArtifactManifest | null => {
+            if (!listing) {
+              return null;
+            }
+
+            return {
+              listingId: listing.id.externalId,
+              slug: marketplaceListingSlug(listing.id.externalId),
+              listingStatus: listing.status,
+              uploadName: marketplaceArtifactUploadName(listing.id.externalId),
+              versions: versions.flatMap((version) =>
+                version.artifactDirectory
+                  ? [{ version: version.version, directory: version.artifactDirectory }]
+                  : [],
+              ),
             };
           })
           .build();
@@ -723,7 +770,17 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
               if (listing.latestPublishedVersion !== input.version) {
                 throw new MarketplaceVersionTransitionError(slug, input.version);
               }
-              if (listing.status === "published") {
+              if (
+                input.artifactDirectory &&
+                version.artifactDirectory &&
+                version.artifactDirectory !== input.artifactDirectory
+              ) {
+                throw new MarketplaceVersionTransitionError(slug, input.version);
+              }
+
+              const attachesArtifact =
+                Boolean(input.artifactDirectory) && version.artifactDirectory === null;
+              if (listing.status === "published" && !attachesArtifact) {
                 return {
                   listingId: input.listingId,
                   slug,
@@ -733,6 +790,11 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
               }
 
               const now = uow.now();
+              if (attachesArtifact) {
+                uow.update("marketplace_version", version.id, (b) =>
+                  b.set({ artifactDirectory: input.artifactDirectory ?? null }).check(),
+                );
+              }
               uow.update("marketplace_listing", listing.id, (b) =>
                 b
                   .set({
@@ -757,7 +819,13 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
 
             const now = uow.now();
             uow.update("marketplace_version", version.id, (b) =>
-              b.set({ status: "published", publishedAt: now }).check(),
+              b
+                .set({
+                  status: "published",
+                  publishedAt: now,
+                  artifactDirectory: input.artifactDirectory ?? version.artifactDirectory,
+                })
+                .check(),
             );
             uow.update("marketplace_listing", listing.id, (b) =>
               b
