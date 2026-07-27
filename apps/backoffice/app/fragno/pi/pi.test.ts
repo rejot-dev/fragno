@@ -2,7 +2,8 @@ import { describe, expect, test, vi, assert } from "vitest";
 
 import { InMemoryAdapter } from "@fragno-dev/db";
 
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
+import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import * as files from "@/files";
 import { EMPTY_BASH_HOST_CONTEXT } from "@/fragno/runtime-tools/bash-host.test-utils";
@@ -655,7 +656,10 @@ const createContext = (
   return {
     scope: { kind: "org", orgId: "acme-org" },
     objects,
-    kernel: new BackofficeKernel({ objects }),
+    kernel: new BackofficeKernel({
+      authorityResolver: unavailableBackofficeAuthorityResolver,
+      kernelObserver: noopBackofficeKernelObserver,
+    }),
     runtimeConfig: testRuntimeConfig,
     execution: {
       actor: {

@@ -301,7 +301,7 @@ export class InMemoryPiObject implements PiObject {
               : {}),
           };
 
-    const kernel = new BackofficeKernel({ objects: this.#runtimeServices.objects });
+    const kernel = new BackofficeKernel(this.#runtimeServices);
     const execution = { actor, scope };
     const sessionFileSystemContext: PiSessionFileSystemContext = {
       scope,

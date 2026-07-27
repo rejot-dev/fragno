@@ -117,9 +117,10 @@ The original Telegram identity and linked user are therefore unavailable to perm
 
 These are acceptance constraints, not implementation details that may be deferred:
 
-1. **Missing authority cannot allow.** An absent or failing authority resolver denies every
-   sensitive principal/delegate/assistant action. Production runtime wiring proves the resolver is
-   installed and current membership revocation is observed.
+1. **Unavailable authority cannot allow.** Every kernel requires an authority resolver. A resolver
+   that fails or cannot reach its authority source denies every sensitive
+   principal/delegate/assistant action, and production wiring proves current membership revocation
+   is observed.
 2. **Pi provenance cannot use a public header.** Production and fake Pi objects consume execution
    context through the same trusted internal RPC. Public `fetch()` neither trusts nor forwards
    `x-backoffice-execution-context` or an equivalent actor header.
@@ -257,7 +258,7 @@ await kernel.invoke({
   execution,
   operation: {
     namespace: "telegram",
-    permission: "sendChatAction",
+    permission: "send",
   },
   resource: { chatId },
   execute: () => telegram.sendChatAction(input),
@@ -275,7 +276,8 @@ await kernel.invoke({
 7. action tracing/instrumentation;
 8. propagation-context installation;
 9. invocation of `execute()` exactly once;
-10. preservation of its result or error.
+10. backpressure on the exact promise returned by `execute()`;
+11. preservation of its result or error even when an observer detaches or catches it.
 
 ### Fail-closed authority contract
 
@@ -283,22 +285,21 @@ Authority resolution is a required production dependency, not optional best-effo
 sensitive invocation resolves current principal permissions and every delegate/assistant capability
 grant before evaluating resource policy.
 
-The kernel denies with stable reasons when:
+The kernel requires a resolver at construction and denies with stable reasons when:
 
-- no resolver is configured (`authority-unavailable`);
 - a resolver throws or cannot reach its authority source (`authority-unavailable`);
 - a principal has no current permission (`principal-permission-denied`);
 - a delegate or assistant has no current grant (`actor-capability-denied`).
 
 Explicit bootstrap policy for an unlinked external initiator is the only path that may operate
 without a principal. It still uses a configured resolver and a narrowly defined resource policy.
-Production runtime construction must fail startup or kernel construction when the authority resolver
-is absent. Test runtimes must install either a concrete test resolver or an explicitly named
-unrestricted resolver; omission must never mean allow.
+Kernel and production runtime construction require an authority resolver. Constrained runtimes that
+lack an authority source install the explicitly named fail-closed resolver; trusted test/system
+contexts may instead install the explicitly named unrestricted resolver.
 
 A production-wiring test must construct the Cloudflare runtime, revoke organization membership in
-the Auth object, and prove that the next sensitive invocation is denied. Observer-only wiring is not
-a valid runtime configuration.
+the Auth object, and prove that the next sensitive invocation is denied. An observer paired only
+with the explicit unavailable resolver cannot authorize an action.
 
 [`executeBackofficeRuntimeTool()`](../apps/backoffice/app/fragno/runtime-tools/runtime-tools.ts)
 should become a thin adapter that parses tool input and delegates the trusted action boundary to the
@@ -780,9 +781,14 @@ Introduce a small kernel observer contract:
 
 ```ts
 export type BackofficeKernelObserver = {
-  runAction<T>(action: BackofficeKernelAction, execute: () => Promise<T>): Promise<T>;
+  runAction<T>(action: BackofficeKernelAction, execute: () => Promise<T>): Promise<void>;
 };
 ```
+
+The observer controls the instrumentation context in which `execute()` starts, but it does not own
+the action result. The kernel captures and awaits the exact execution promise, ignores any observer
+return value, preserves action failures even if the observer catches them, and prevents delayed
+execution after observation has completed.
 
 Production uses a Cloudflare tracing observer. Scenario runtime uses an in-memory observer that
 records:
@@ -861,10 +867,12 @@ Scenario failure snapshots should include:
 
 ## Implementation status
 
-**Status as of July 24, 2026:** plan only. A previous all-at-once implementation was removed from
-the active branch after review exposed trust-boundary and asynchronous-authorization mistakes. Its
-code may be consulted as a prototype, but slices must be implemented independently from this plan
-and must not be replayed wholesale.
+**Status as of July 27, 2026:** Slice 1 is complete. Slice 2 is implemented, and its review fix now
+keeps action completion, results, and errors authoritative when a kernel observer detaches or
+catches the execution promise; the slice remains pending its review gate. A previous all-at-once
+implementation was removed after review exposed trust-boundary and asynchronous-authorization
+mistakes. Its code may be consulted as a prototype, but remaining slices must be implemented
+independently from this plan and must not be replayed wholesale.
 
 No checklist item below is complete until its production path, negative tests, typecheck, and
 focused scenario have landed together. Validation results from the removed prototype do not count as
@@ -903,20 +911,33 @@ identity storage.
 
 **Production behavior**
 
-- [ ] Define `kernel.invoke()` around typed execution, operation, resource, and exact-once execute.
-- [ ] Make the production authority resolver a required kernel/runtime dependency.
-- [ ] Deny absent, throwing, or unavailable resolution with `authority-unavailable`.
-- [ ] Resolve principal permissions and delegate/assistant grants for every sensitive invocation.
-- [ ] Install the concrete resolver in every Cloudflare and in-memory production-style runtime.
-- [ ] Keep explicit bootstrap policy narrow and independent from missing-resolver fallback.
+- [x] Define `kernel.invoke()` around typed execution, operation, resource, and exact-once execute.
+- [x] Make the production authority resolver a required kernel/runtime dependency.
+- [x] Deny absent, throwing, or unavailable resolution with `authority-unavailable`.
+- [x] Resolve principal permissions and delegate/assistant grants for every sensitive invocation.
+- [x] Install the concrete resolver in every Cloudflare and in-memory production-style runtime.
+- [x] Remove the separate `authorizationPolicy`/`assertAllowed()` path; retain only structural
+      context access checks until each sensitive action moves into `kernel.invoke()`.
+- [x] Define one exhaustive namespace-permission catalog and reject wildcard or unknown grants.
+- [x] Resolve identities to explicit Backoffice roles whose grants reference canonical permission
+      constants; catalog additions grant nothing until each intended role is updated.
+- [x] Require a concrete kernel observer and install an explicit no-op observer where observation is
+      intentionally disabled.
+- [x] Keep explicit bootstrap policy narrow and independent from missing-resolver fallback.
 
 **Required tests**
 
-- [ ] Construct a kernel without a resolver and prove a sensitive action is denied.
-- [ ] Make the resolver throw and prove `execute()` is not called.
-- [ ] Revoke organization membership in the real Auth object and deny the next action.
-- [ ] Prove observer-only Cloudflare wiring cannot authorize anything.
-- [ ] Prove `execute()` runs exactly once only after authorization succeeds.
+- [x] Require a resolver at kernel construction and prove the explicit unavailable resolver denies.
+- [x] Make the resolver throw and prove `execute()` is not called.
+- [x] Revoke organization membership in the real Auth object and deny the next action.
+- [x] Prove an observer cannot substitute for an unavailable authority source.
+- [x] Prove permission grants are concrete catalog entries without wildcard matching.
+- [x] Prove role grants do not automatically inherit newly cataloged permissions.
+- [x] Prove the no-op observer executes an authorized callback exactly once.
+- [x] Prove `execute()` runs exactly once only after authorization succeeds.
+- [x] Prove the kernel waits for an execution promise that an observer starts without awaiting.
+- [x] Prove an observer cannot suppress the execution promise's original error.
+- [x] Prove an observer cannot start the action after its observation has completed.
 
 **Review gate:** no sensitive store, identity, Telegram, or Pi action may adopt the kernel until
 this slice proves fail-closed production wiring.

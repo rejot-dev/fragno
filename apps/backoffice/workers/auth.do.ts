@@ -314,6 +314,17 @@ export class InMemoryAuthObject implements AuthObject {
     return { status: "rejected", reason: result.code };
   }
 
+  async hasOrganizationMembership(input: {
+    organizationId: string;
+    userId: string;
+  }): Promise<boolean> {
+    const fragment = this.#ensureFragment();
+    const member = await fragment.callServices(() =>
+      fragment.services.getOrganizationMemberByUser(input),
+    );
+    return member !== null;
+  }
+
   async getAllOrganizations(): Promise<Organization[]> {
     const fragment = this.#ensureFragment();
     return await fragment.inContext(function () {
@@ -387,6 +398,13 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
 
   async issueVerifiedEmailCredential(input: { userId: string }) {
     return await this.#object.issueVerifiedEmailCredential(input);
+  }
+
+  async hasOrganizationMembership(input: {
+    organizationId: string;
+    userId: string;
+  }): Promise<boolean> {
+    return await this.#object.hasOrganizationMembership(input);
   }
 
   async getAllOrganizations(): Promise<Organization[]> {

@@ -7,7 +7,8 @@ import { InMemoryFs } from "just-bash";
 
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
+import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import { MasterFileSystem } from "@/files/master-file-system";
@@ -71,7 +72,10 @@ const LEFTPAD_ESM = {
 const createPiSessionFileSystemContext = () => ({
   scope: { kind: "org" as const, orgId: "org-1" },
   objects: unusedObjects,
-  kernel: new BackofficeKernel({ objects: unusedObjects }),
+  kernel: new BackofficeKernel({
+    authorityResolver: unavailableBackofficeAuthorityResolver,
+    kernelObserver: noopBackofficeKernelObserver,
+  }),
   runtimeConfig: testRuntimeConfig,
   execution: {
     actor: {

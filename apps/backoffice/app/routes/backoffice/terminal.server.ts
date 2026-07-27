@@ -105,7 +105,7 @@ export const runBackofficeTerminalAction = async ({
   const cwd = cwdInput || DEFAULT_CWD;
 
   const { runtime } = context.get(BackofficeWorkerContext);
-  const kernel = new BackofficeKernel({ objects: runtime.objects });
+  const kernel = new BackofficeKernel(runtime);
   const execution = await requireBackofficeContext(request, context, scope);
 
   if (intent === "autocomplete-path") {

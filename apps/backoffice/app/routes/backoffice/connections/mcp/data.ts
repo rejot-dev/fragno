@@ -111,7 +111,7 @@ export const getMcpObjectForScope = (
   scope: BackofficeContextScope,
 ) => {
   const { runtime } = context.get(BackofficeWorkerContext);
-  const kernel = new BackofficeKernel({ objects: runtime.objects });
+  const kernel = new BackofficeKernel(runtime);
   return kernel.scoped("MCP", requireMcpOwnerScope(scope), runtime.objects.mcp);
 };
 

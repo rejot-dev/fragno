@@ -1411,7 +1411,7 @@ const createScenarioAutomationTanStackFetch = (
     forwardedUrl.search = requestUrl.search;
     applyAutomationScopeQuery(forwardedUrl, scope);
 
-    const kernel = new BackofficeKernel({ objects: runtime.objects });
+    const kernel = new BackofficeKernel(runtime.services);
     const automations = kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
     return await automations.fetch(new Request(forwardedUrl.toString(), request));
   };
@@ -1428,7 +1428,7 @@ const createScenarioPiTanStackFetch = (
     forwardedUrl.search = requestUrl.search;
     appendBackofficeScopeQuery(forwardedUrl, scope);
 
-    const kernel = new BackofficeKernel({ objects: runtime.objects });
+    const kernel = new BackofficeKernel(runtime.services);
     const pi = kernel.scoped("PI", scope, runtime.objects.pi);
     return await pi.fetch(new Request(forwardedUrl.toString(), request));
   };
@@ -1534,7 +1534,7 @@ const getReadableScenarioFileSystem = async (
   const execution = { actor: createScenarioActor(orgId), scope: { kind: "org" as const, orgId } };
   const orgFs = await createBackofficeFileSystem({
     objects: ctx.runtime.objects,
-    kernel: new BackofficeKernel({ objects: ctx.runtime.objects }),
+    kernel: new BackofficeKernel(ctx.runtime.services),
     execution,
     config: ctx.runtime.config,
   });
@@ -1556,7 +1556,7 @@ const getConnectionRuntime = (ctx: BackofficeScenarioContext, orgId: string) =>
   createBackofficeToolContext(
     createRouteBackedRuntimeContext({
       runtime: ctx.runtime.services,
-      kernel: new BackofficeKernel({ objects: ctx.runtime.services.objects }),
+      kernel: new BackofficeKernel(ctx.runtime.services),
       execution: { actor: createScenarioActor(orgId), scope: { kind: "org", orgId } },
     }),
   ).runtimes.backoffice;
@@ -1644,7 +1644,7 @@ const runScenarioCodemode = async (
 
   const runtimeContext = createRouteBackedRuntimeContext({
     runtime: ctx.runtime.services,
-    kernel: new BackofficeKernel({ objects: ctx.runtime.services.objects }),
+    kernel: new BackofficeKernel(ctx.runtime.services),
     execution: {
       actor: createScenarioActor(input.orgId),
       scope: { kind: "org", orgId: input.orgId },
@@ -3558,7 +3558,7 @@ const collectDiagnostics = async (ctx: BackofficeScenarioContext): Promise<unkno
       };
       const orgFs = await createBackofficeFileSystem({
         objects: ctx.runtime.objects,
-        kernel: new BackofficeKernel({ objects: ctx.runtime.objects }),
+        kernel: new BackofficeKernel(ctx.runtime.services),
         execution,
         config: ctx.runtime.config,
       });

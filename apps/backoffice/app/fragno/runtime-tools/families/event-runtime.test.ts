@@ -2,12 +2,22 @@ import { describe, expect, it, vi } from "vitest";
 
 import { InMemoryAdapter } from "@fragno-dev/db";
 
-import { BackofficeForbiddenError, BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
+import {
+  BackofficeForbiddenError,
+  BackofficeKernel,
+  noopBackofficeKernelObserver,
+} from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { createAutomationFragment, type AutomationWorkflowsService } from "@/fragno/automation";
 
 import type { AutomationEvent } from "../../automation/contracts";
 import { createEventRuntime } from "./event-runtime";
+
+const TEST_KERNEL_RUNTIME = {
+  authorityResolver: unavailableBackofficeAuthorityResolver,
+  kernelObserver: noopBackofficeKernelObserver,
+};
 
 const createEvent = (overrides: Partial<AutomationEvent> = {}): AutomationEvent => ({
   id: "event-1",
@@ -61,7 +71,7 @@ describe("createEventRuntime.emitEvent", () => {
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
       objects,
-      kernel: new BackofficeKernel({ objects }),
+      kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
       execution: {
         actor: {
           type: "user",
@@ -110,7 +120,7 @@ describe("createEventRuntime.emitEvent", () => {
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
       objects,
-      kernel: new BackofficeKernel({ objects }),
+      kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
       execution: {
         actor: { type: "user", id: "user-1", userId: "user-1", organizationIds: ["org-1"] },
         scope: { kind: "org", orgId: "org-1" },
@@ -132,7 +142,7 @@ describe("createEventRuntime.emitEvent", () => {
     const event = createEvent();
     const runtime = createEventRuntime({
       objects,
-      kernel: new BackofficeKernel({ objects }),
+      kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
       execution: {
         actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
         scope: event.scope,
@@ -157,7 +167,7 @@ describe("createEventRuntime.emitEvent", () => {
     const event = createEvent();
     const runtime = createEventRuntime({
       objects,
-      kernel: new BackofficeKernel({ objects }),
+      kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
       execution: {
         actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
         scope: event.scope,
@@ -222,7 +232,7 @@ describe("createEventRuntime.emitEvent", () => {
     });
     const runtime = createEventRuntime({
       objects,
-      kernel: new BackofficeKernel({ objects }),
+      kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
       execution: {
         actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
         scope: parentEvent.scope,
@@ -246,18 +256,7 @@ describe("createEventRuntime.emitEvent", () => {
         forUser: vi.fn(() => ({ triggerIngestEvent: triggerUserIngestEvent })),
       },
     } as unknown as BackofficeObjectRegistry;
-    const kernel = new BackofficeKernel({
-      objects,
-      authorizationPolicy: (request) => {
-        expect(request.scope).toEqual({ kind: "user", userId: "user-1" });
-        expect(request.requiredPermissions).toEqual([{ namespace: "events", permission: "route" }]);
-        expect(request.resource).toEqual({
-          sourceScope: { kind: "org", orgId: "org-1" },
-          targetScope: { kind: "user", userId: "user-1" },
-        });
-        return { allowed: true };
-      },
-    });
+    const kernel = new BackofficeKernel(TEST_KERNEL_RUNTIME);
     const runtime = createEventRuntime({
       objects,
       kernel,
@@ -301,7 +300,7 @@ describe("createEventRuntime.emitEvent", () => {
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
       objects,
-      kernel: new BackofficeKernel({ objects }),
+      kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
       execution: {
         actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
         scope: { kind: "org", orgId: "org-1" },
@@ -338,7 +337,7 @@ describe("createEventRuntime.emitEvent", () => {
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
       objects,
-      kernel: new BackofficeKernel({ objects }),
+      kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
       execution: {
         actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
         scope: { kind: "org", orgId: "org-1" },
@@ -365,7 +364,7 @@ describe("createEventRuntime.emitEvent", () => {
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
       objects,
-      kernel: new BackofficeKernel({ objects }),
+      kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
       execution: {
         actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
         scope: { kind: "org", orgId: "org-1" },
@@ -381,36 +380,6 @@ describe("createEventRuntime.emitEvent", () => {
     ).rejects.toBeInstanceOf(BackofficeForbiddenError);
 
     expect(triggerOrgIngestEvent).not.toHaveBeenCalled();
-  });
-
-  it("does not enqueue denied cross-scope events", async () => {
-    const triggerUserIngestEvent = vi.fn(async () => undefined);
-    const objects = {
-      automations: {
-        forUser: vi.fn(() => ({ triggerIngestEvent: triggerUserIngestEvent })),
-      },
-    } as unknown as BackofficeObjectRegistry;
-    const runtime = createEventRuntime({
-      objects,
-      kernel: new BackofficeKernel({
-        objects,
-        authorizationPolicy: () => ({ allowed: false, message: "route denied" }),
-      }),
-      execution: {
-        actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
-        scope: { kind: "org", orgId: "org-1" },
-      },
-      parentEvent: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
-    });
-
-    await expect(
-      runtime.emitEvent({
-        eventType: "custom.event",
-        targetScope: { kind: "user", userId: "user-1" },
-      }),
-    ).rejects.toBeInstanceOf(BackofficeForbiddenError);
-
-    expect(triggerUserIngestEvent).not.toHaveBeenCalled();
   });
 
   it("validates emitted payloads against dynamic automation event definitions", async () => {
@@ -443,7 +412,7 @@ describe("createEventRuntime.emitEvent", () => {
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
       objects,
-      kernel: new BackofficeKernel({ objects }),
+      kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
       execution: {
         actor: { type: "user", id: "user-1", userId: "user-1", organizationIds: ["org-1"] },
         scope: { kind: "org", orgId: "org-1" },
@@ -486,7 +455,7 @@ describe("createEventRuntime.emitEvent", () => {
     const event = createEvent();
     const runtime = createEventRuntime({
       objects,
-      kernel: new BackofficeKernel({ objects }),
+      kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
       execution: {
         actor: { type: "automation", id: "automation:event-1", organizationIds: ["org-1"] },
         scope: event.scope,

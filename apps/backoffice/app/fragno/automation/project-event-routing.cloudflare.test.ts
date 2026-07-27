@@ -2,11 +2,12 @@ import { afterEach, describe, expect, test, vi, assert } from "vitest";
 
 import { env } from "cloudflare:workers";
 
+import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import {
   createInMemoryBackofficeRuntime,
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import { createMasterFileSystem, createSystemFilesContext } from "@/files";
 import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
 import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
@@ -144,7 +145,10 @@ describe("project automation event routing", () => {
 
     const events = createEventRuntime({
       objects: runtime.objects,
-      kernel: new BackofficeKernel({ objects: runtime.objects }),
+      kernel: new BackofficeKernel({
+        authorityResolver: unavailableBackofficeAuthorityResolver,
+        kernelObserver: noopBackofficeKernelObserver,
+      }),
       execution: {
         actor: { type: "automation", id: "automation:org-event-1", organizationIds: [orgId] },
         scope: event.scope,
@@ -306,7 +310,10 @@ describe("project automation event routing", () => {
     };
     const events = createEventRuntime({
       objects: runtime.objects,
-      kernel: new BackofficeKernel({ objects: runtime.objects }),
+      kernel: new BackofficeKernel({
+        authorityResolver: unavailableBackofficeAuthorityResolver,
+        kernelObserver: noopBackofficeKernelObserver,
+      }),
       execution: {
         actor: {
           type: "automation",

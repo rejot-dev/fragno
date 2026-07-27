@@ -390,7 +390,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
   }
 
   async #createAutomationFileSystem(execution: BackofficeExecutionContext) {
-    const kernel = new BackofficeKernel({ objects: this.#runtimeServices.objects });
+    const kernel = new BackofficeKernel(this.#runtimeServices);
     const automationHookObject = kernel.scoped(
       "AUTOMATIONS",
       execution.scope,

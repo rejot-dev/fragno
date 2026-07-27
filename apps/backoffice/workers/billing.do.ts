@@ -45,7 +45,7 @@ export class InMemoryBillingObject extends RpcTarget implements BillingObject {
   }) {
     super();
     this.#state = state;
-    this.#kernel = new BackofficeKernel({ objects: runtime.objects });
+    this.#kernel = new BackofficeKernel(runtime);
     this.#host = createFragmentDurableObjectHost({
       name: "Billing",
       state,

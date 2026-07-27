@@ -32,8 +32,9 @@ export const requireBackofficeContext = async (
   scope: BackofficeContextScope,
 ): Promise<BackofficeExecutionContext> => {
   const actor = await requireBackofficePrincipal(request, routerContext);
-  new BackofficeKernel({
-    objects: routerContext.get(BackofficeWorkerContext).runtime.objects,
-  }).assertContextAccess({ actor, scope });
+  new BackofficeKernel(routerContext.get(BackofficeWorkerContext).runtime).assertContextAccess({
+    actor,
+    scope,
+  });
   return { actor, scope };
 };

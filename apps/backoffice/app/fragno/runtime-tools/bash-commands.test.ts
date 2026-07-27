@@ -3,8 +3,6 @@ import { describe, expect, test } from "vitest";
 import { Bash, InMemoryFs } from "just-bash";
 import { z } from "zod";
 
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-
 import type { RegisteredAutomationsRuntime } from "./bash-host";
 import { automationStoreRuntimeTools } from "./families/automations-bindings";
 import { createUnavailableAutomationRouterRuntime } from "./families/automations-routing";
@@ -170,68 +168,6 @@ describe("createBackofficeBashCommands", () => {
       exitCode: 1,
       stderr: expect.stringContaining("Missing required option --actor"),
     });
-  });
-
-  test("authorizes bash commands before executing runtime tools", async () => {
-    const calls: unknown[] = [];
-    const actor = { scope: "external", source: "telegram", type: "chat", id: "chat-123" } as const;
-    const automationsRuntime: RegisteredAutomationsRuntime = {
-      ...createUnavailableAutomationRouterRuntime(),
-      get: async (input) => {
-        calls.push(["get", input]);
-        return { key: input.key, value: "value", category: [], actor };
-      },
-      set: async (input) => {
-        calls.push(["set", input]);
-        return {
-          id: input.key,
-          key: input.key,
-          value: input.value,
-          category: [],
-          actor: input.actor,
-        };
-      },
-      delete: async (input) => {
-        calls.push(["delete", input]);
-        return { ok: true, key: input.key };
-      },
-      list: async () => [],
-    };
-
-    const bash = new Bash({
-      fs: new InMemoryFs(),
-      customCommands: createBackofficeBashCommands({
-        tools: automationStoreRuntimeTools,
-        context: {
-          actor: { type: "user", id: "user-1", userId: "user-1", organizationIds: ["org-1"] },
-          scope: { kind: "org", orgId: "org-1" },
-          kernel: new BackofficeKernel({
-            authorizationPolicy: (request) =>
-              request.requiredPermissions.some(
-                (permission) =>
-                  permission.namespace === "store" && permission.permission === "modify",
-              )
-                ? { allowed: false, message: "Denied store.modify" }
-                : { allowed: true },
-          }),
-          createScopedContext: () =>
-            createTrustedSystemBackofficeToolContext({
-              runtimes: { automations: automationsRuntime },
-            }),
-          runtimes: { automations: automationsRuntime },
-        },
-        commandCallsResult: [],
-      }),
-    });
-
-    await expect(bash.exec("store.get --key telegram/chat-123")).resolves.toMatchObject({
-      exitCode: 0,
-    });
-    await expect(bash.exec("store.delete --key telegram/chat-123")).resolves.toMatchObject({
-      exitCode: 1,
-      stderr: "Denied store.modify\n",
-    });
-    expect(calls).toEqual([["get", { key: "telegram/chat-123" }]]);
   });
 
   test("routes generated event bash commands through semantic runtime tools", async () => {

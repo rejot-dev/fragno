@@ -1,8 +1,9 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
+import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import { TELEGRAM_TEST_COMMAND_WORKFLOW_V1_1_SOURCE } from "@/files/content/telegram-test-command";
@@ -64,7 +65,10 @@ const config: BackofficeRuntimeConfig = {
 const createFileSystem = (execution: BackofficeExecutionContext) =>
   createDefaultAutomationFileSystem({
     objects,
-    kernel: new BackofficeKernel({ objects }),
+    kernel: new BackofficeKernel({
+      authorityResolver: unavailableBackofficeAuthorityResolver,
+      kernelObserver: noopBackofficeKernelObserver,
+    }),
     execution,
     config,
   });

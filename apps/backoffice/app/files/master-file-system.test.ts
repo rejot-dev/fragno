@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, test, assert } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
+import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 
 import { getBuiltInFileContributors } from "./contributors";
 import { createReadOnlyFileSystemError } from "./fs-errors";
@@ -329,7 +330,6 @@ describe("createMasterFileSystem", () => {
     });
     registerFileContributor(contributor);
 
-    const checkedPermissions: string[] = [];
     const execution = {
       actor: {
         type: "user" as const,
@@ -340,14 +340,8 @@ describe("createMasterFileSystem", () => {
       scope: { kind: "org" as const, orgId: "org_123" },
     };
     const kernel = new BackofficeKernel({
-      authorizationPolicy(request) {
-        checkedPermissions.push(
-          ...request.requiredPermissions.map(
-            (permission) => `${permission.namespace}.${permission.permission}`,
-          ),
-        );
-        return { allowed: false, message: "semantic authorization should not run" };
-      },
+      authorityResolver: unavailableBackofficeAuthorityResolver,
+      kernelObserver: noopBackofficeKernelObserver,
     });
     const master = await createTestMasterFileSystem({
       backend: "backoffice",
@@ -359,7 +353,6 @@ describe("createMasterFileSystem", () => {
     });
 
     await master.writeFile("/workspace/automations/router.cm.js", "ok");
-    expect(checkedPermissions).toEqual([]);
   });
 
   test("delegates chmod, symlink, link, readlink, realpath, and utimes when supported", async () => {

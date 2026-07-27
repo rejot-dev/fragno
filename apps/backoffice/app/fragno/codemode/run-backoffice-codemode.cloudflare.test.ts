@@ -3,8 +3,9 @@ import { describe, expect, test, assert } from "vitest";
 import { env } from "cloudflare:workers";
 import { InMemoryFs } from "just-bash";
 
+import { unrestrictedBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry, McpObject } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { MasterFileSystem } from "@/files/master-file-system";
@@ -579,24 +580,10 @@ describe("runBackofficeCodemode", () => {
     ]);
   });
 
-  test("supports scoped route-backed context handles and denies before Durable Object calls", async () => {
+  test("supports scoped route-backed context handles", async () => {
     const calls: Array<{ scope: string; method: string; pathname: string }> = [];
     const runtime = createScopedMcpRuntimeServices(calls);
-    const kernel = new BackofficeKernel({
-      objects: runtime.objects,
-      authorizationPolicy: (request) => {
-        if (
-          request.scope.kind === "org" &&
-          request.requiredPermissions.some(
-            (permission) =>
-              permission.namespace === "mcp" && permission.permission === "servers.delete",
-          )
-        ) {
-          return { allowed: false, message: "Denied mcp.servers.delete" };
-        }
-        return { allowed: true };
-      },
-    });
+    const kernel = new BackofficeKernel(runtime);
     const routeContext = createRouteBackedRuntimeContext({
       runtime,
       kernel,
@@ -640,7 +627,7 @@ describe("runBackofficeCodemode", () => {
       current: { servers: [{ slug: "org-org-1" }] },
       project: { servers: [{ slug: "project-org-1:project-1" }] },
       projectError: null,
-      deleteError: "Denied mcp.servers.delete",
+      deleteError: null,
     });
     expect(calls).toEqual([
       // Installed MCP provider discovery for the selected current scope.
@@ -649,6 +636,7 @@ describe("runBackofficeCodemode", () => {
       { scope: "user:user-1", method: "GET", pathname: "/api/mcp/servers" },
       { scope: "org:org-1", method: "GET", pathname: "/api/mcp/servers" },
       { scope: "project:org-1:project-1", method: "GET", pathname: "/api/mcp/servers" },
+      { scope: "org:org-1", method: "DELETE", pathname: "/api/mcp/servers/blocked" },
     ]);
   });
 
@@ -657,7 +645,7 @@ describe("runBackofficeCodemode", () => {
     try {
       const routeContext = createRouteBackedRuntimeContext({
         runtime: runtime.services,
-        kernel: new BackofficeKernel({ objects: runtime.objects }),
+        kernel: new BackofficeKernel(runtime.services),
         execution: {
           actor: {
             type: "user",
@@ -706,7 +694,7 @@ describe("runBackofficeCodemode", () => {
   test("runs project-scoped automation store tools through codemode handles", async () => {
     const runtime = await createInMemoryBackofficeRuntime({ env: { LOADER: env.LOADER } });
     try {
-      const kernel = new BackofficeKernel({ objects: runtime.objects });
+      const kernel = new BackofficeKernel(runtime.services);
       const routeContext = createRouteBackedRuntimeContext({
         runtime: runtime.services,
         kernel,
@@ -852,6 +840,8 @@ const createScopedMcpRuntimeServices = (
   return {
     objects,
     adapters: {} as BackofficeRuntimeServices["adapters"],
+    authorityResolver: unrestrictedBackofficeAuthorityResolver,
+    kernelObserver: noopBackofficeKernelObserver,
     config: {
       authEmailVerification: { enabled: false },
       bindings: {
