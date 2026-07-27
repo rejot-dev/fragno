@@ -1,6 +1,8 @@
 import { assert, describe, test, vi } from "vitest";
 
-import { eq, queryOnce } from "@tanstack/react-db";
+import { isWorkflowStepStartedControlPayload } from "@fragno-dev/workflows/step-emission-control";
+
+import { and, eq, queryOnce } from "@tanstack/react-db";
 
 import type { AutomationEvent } from "./contracts";
 
@@ -22,6 +24,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
 
 const customAutomationEvent = ({
   id,
@@ -44,6 +47,38 @@ const customAutomationEvent = ({
   actors: [{ scope: "internal", type: "system", id: "scenario", role: "system" }],
   subject: { orgId: "org-1" },
 });
+
+const waitForValue = async <T>(read: () => Promise<T | null>): Promise<T> => {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const value = await read();
+    if (value !== null) {
+      return value;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("Timed out waiting for synchronized workflow state.");
+};
+
+const settleTestCleanupWithin = async (
+  operation: () => Promise<unknown>,
+  timeoutMs = 1_000,
+): Promise<void> => {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      Promise.resolve()
+        .then(operation)
+        .catch(() => undefined),
+      new Promise<void>((resolve) => {
+        timeout = setTimeout(resolve, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+};
 
 const telegramMessageEvent = ({
   id,
@@ -112,6 +147,183 @@ describe("starter automation router scenarios", () => {
                 .findOne(),
             );
             assert.deepEqual(event?.payload, { updated: true });
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("scenario TanStack DB exposes workflow state through the automation outbox", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "scenario TanStack DB exposes automation workflow state",
+        files: backofficeFiles.workspaceStarter(),
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ then, when }) => [
+          when.workflow.createInstance({
+            orgId: "org-1",
+            remoteWorkflowName: "telegram-test-command",
+            instanceId: "tanstack-workflow-run",
+            params: {
+              automationEvent: telegramMessageEvent({
+                id: "tanstack-workflow-event",
+                text: "/test",
+              }),
+              workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
+            },
+          }),
+          then.assert("assert workflow instance and waiting step are visible", async (ctx) => {
+            const database = ctx.tanstack.automations.forOrg("org-1");
+            await database.drain();
+
+            const instance = await queryOnce((query) =>
+              query
+                .from({ instance: database.collections.workflowInstances })
+                .where(({ instance }) =>
+                  and(
+                    eq(instance.workflowName, "automation-codemode-script"),
+                    eq(instance.instanceId, "tanstack-workflow-run"),
+                  ),
+                )
+                .findOne(),
+            );
+            assert(instance, "Expected the workflow instance to synchronize through TanStack DB.");
+            assert.equal(instance.remoteWorkflowName, "telegram-test-command");
+            assert.equal(instance.status, "waiting");
+
+            const waitingStep = await queryOnce((query) =>
+              query
+                .from({ step: database.collections.workflowSteps })
+                .where(({ step }) =>
+                  and(eq(step.instanceRef, instance.id), eq(step.name, "wait 3 seconds")),
+                )
+                .findOne(),
+            );
+            assert(waitingStep, "Expected the workflow step to synchronize through TanStack DB.");
+            assert.equal(waitingStep.type, "sleep");
+            assert.equal(waitingStep.status, "waiting");
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("scenario TanStack DB exposes an in-flight step.do lifecycle", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "scenario TanStack DB exposes an in-flight step.do lifecycle",
+        files: backofficeFiles.custom({
+          workspace: {
+            "automations/tanstack-live-step.workflow.js": `defineWorkflow(
+  { name: "tanstack-live-step" },
+  async (_event, step) => {
+    await step.do("blocked operation", async (tx) => {
+      await new Promise((resolve) => {
+        tx.onEvent("release", (event) => {
+          event.consume();
+          resolve();
+        });
+      });
+    });
+  },
+);`,
+          },
+        }),
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ then }) => [
+          then.assert("assert live step controls synchronize", async (ctx) => {
+            const workflow = createRouteBackedAutomationWorkflowRuntime({
+              object: ctx.runtime.objects.automations.forOrg("org-1"),
+              scope: { kind: "org", orgId: "org-1" },
+            });
+            await workflow.createInstance({
+              workflowName: "automation-codemode-script",
+              remoteWorkflowName: "tanstack-live-step",
+              instanceId: "tanstack-live-step-run",
+              params: {
+                automationEvent: customAutomationEvent({ id: "tanstack-live-step-event" }),
+                workflowScriptPath: "/workspace/automations/tanstack-live-step.workflow.js",
+              },
+            });
+
+            const database = ctx.tanstack.automations.forOrg("org-1");
+            const drainPromise = ctx.runtime.drain();
+            let released = false;
+            let drainCompleted = false;
+
+            try {
+              const activeEmission = await waitForValue(async () => {
+                await database.sync();
+                const instance = await queryOnce((query) =>
+                  query
+                    .from({ instance: database.collections.workflowInstances })
+                    .where(({ instance }) =>
+                      and(
+                        eq(instance.workflowName, "automation-codemode-script"),
+                        eq(instance.instanceId, "tanstack-live-step-run"),
+                      ),
+                    )
+                    .findOne(),
+                );
+                if (!instance) {
+                  return null;
+                }
+
+                const emissions = await queryOnce((query) =>
+                  query
+                    .from({ emission: database.collections.workflowStepEmissions })
+                    .where(({ emission }) => eq(emission.instanceRef, instance.id)),
+                );
+                return (
+                  emissions.find(
+                    (emission) =>
+                      emission.actor === "system" &&
+                      emission.stepKey === "do:blocked operation" &&
+                      isWorkflowStepStartedControlPayload(emission.payload),
+                  ) ?? null
+                );
+              });
+
+              assert.equal(activeEmission.stepKey, "do:blocked operation");
+
+              await workflow.sendEvent({
+                workflowName: "automation-codemode-script",
+                instanceId: "tanstack-live-step-run",
+                type: "release",
+                payload: null,
+              });
+              released = true;
+              await drainPromise;
+              drainCompleted = true;
+
+              await database.sync();
+              const completedStep = await queryOnce((query) =>
+                query
+                  .from({ step: database.collections.workflowSteps })
+                  .where(({ step }) => eq(step.stepKey, "do:blocked operation"))
+                  .findOne(),
+              );
+              assert.equal(completedStep?.status, "completed");
+
+              const remainingEmissions = await queryOnce((query) =>
+                query.from({ emission: database.collections.workflowStepEmissions }),
+              );
+              assert.equal(remainingEmissions.length, 0);
+            } finally {
+              if (!released) {
+                await settleTestCleanupWithin(() =>
+                  workflow.sendEvent({
+                    workflowName: "automation-codemode-script",
+                    instanceId: "tanstack-live-step-run",
+                    type: "release",
+                    payload: null,
+                  }),
+                );
+              }
+              if (!drainCompleted) {
+                await settleTestCleanupWithin(() => drainPromise);
+              }
+            }
           }),
         ],
       }),

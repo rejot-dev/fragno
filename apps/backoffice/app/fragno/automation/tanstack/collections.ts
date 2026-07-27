@@ -1,8 +1,17 @@
 import type { FragnoOutboxCoordinator } from "@fragno-dev/tanstack-db-adapter/coordinator";
+import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
 import type { FragnoCollection, FragnoCollectionFactory } from "@fragno-dev/tanstack-db-adapter";
 
 import { automationFragmentSchema } from "../schema";
+
+type AutomationTableName = keyof (typeof automationFragmentSchema)["tables"];
+
+export type AutomationCollectionTarget =
+  | AutomationTableName
+  | "workflows.workflow_instance"
+  | "workflows.workflow_step"
+  | "workflows.workflow_step_emission";
 
 export type AutomationCollections = {
   kvStore: FragnoCollection<typeof automationFragmentSchema, "kv_store">;
@@ -17,16 +26,17 @@ export type AutomationCollections = {
     typeof automationFragmentSchema,
     "automation_event_definition"
   >;
+  workflowInstances: FragnoCollection<typeof workflowsSchema, "workflow_instance">;
+  workflowSteps: FragnoCollection<typeof workflowsSchema, "workflow_step">;
+  workflowStepEmissions: FragnoCollection<typeof workflowsSchema, "workflow_step_emission">;
 };
-
-export type AutomationCollectionTarget = keyof (typeof automationFragmentSchema)["tables"];
 
 export function createAutomationCollections(options: {
   coordinator: FragnoOutboxCoordinator;
-  collectionId(table: AutomationCollectionTarget): string;
+  collectionId(target: AutomationCollectionTarget): string;
   createCollection: FragnoCollectionFactory;
 }): AutomationCollections {
-  const createTableCollection = <TTableName extends AutomationCollectionTarget>(
+  const createAutomationTableCollection = <TTableName extends AutomationTableName>(
     table: TTableName,
   ) =>
     options.createCollection({
@@ -39,11 +49,35 @@ export function createAutomationCollections(options: {
     });
 
   return {
-    kvStore: createTableCollection("kv_store"),
-    sandboxInstances: createTableCollection("sandbox_instance"),
-    routes: createTableCollection("automation_route"),
-    routeScheduleStates: createTableCollection("automation_route_schedule_state"),
-    events: createTableCollection("automation_event"),
-    eventDefinitions: createTableCollection("automation_event_definition"),
+    kvStore: createAutomationTableCollection("kv_store"),
+    sandboxInstances: createAutomationTableCollection("sandbox_instance"),
+    routes: createAutomationTableCollection("automation_route"),
+    routeScheduleStates: createAutomationTableCollection("automation_route_schedule_state"),
+    events: createAutomationTableCollection("automation_event"),
+    eventDefinitions: createAutomationTableCollection("automation_event_definition"),
+    workflowInstances: options.createCollection({
+      id: options.collectionId("workflows.workflow_instance"),
+      coordinator: options.coordinator,
+      target: {
+        schema: workflowsSchema,
+        table: "workflow_instance",
+      },
+    }),
+    workflowSteps: options.createCollection({
+      id: options.collectionId("workflows.workflow_step"),
+      coordinator: options.coordinator,
+      target: {
+        schema: workflowsSchema,
+        table: "workflow_step",
+      },
+    }),
+    workflowStepEmissions: options.createCollection({
+      id: options.collectionId("workflows.workflow_step_emission"),
+      coordinator: options.coordinator,
+      target: {
+        schema: workflowsSchema,
+        table: "workflow_step_emission",
+      },
+    }),
   };
 }

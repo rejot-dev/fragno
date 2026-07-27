@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router";
 
 import { visualizeWorkflowSource, type SourceRange } from "@fragno-dev/workflow-visualizer-tokens";
 
+import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 import {
   resolveWorkflowRuntimeToolCalls,
   type RuntimeToolWorkflowDescriptor,
@@ -13,6 +14,7 @@ import { useLinkedScrollViewports, type LinkedScrollViewport } from "./linked-sc
 import {
   SCRIPT_VIEW_MODE_SEARCH_PARAM,
   WORKFLOW_GRAPH_DETAIL_MODE_SEARCH_PARAM,
+  WORKFLOW_RUN_SEARCH_PARAM,
   scriptViewModeFromSearchParam,
   searchParamsWithScriptViewMode,
   searchParamsWithWorkflowGraphDetailMode,
@@ -20,7 +22,9 @@ import {
   type ScriptViewMode,
   type WorkflowGraphDetailMode,
 } from "./script-view-mode";
+import { useScriptWorkflowRuns } from "./use-script-workflow-runs";
 import { ScriptWorkflowGraph } from "./workflow-graph";
+import type { ScriptWorkflowRun } from "./workflow-run-presentation";
 
 const SCRIPT_VIEW_OPTIONS: Array<{
   mode: ScriptViewMode;
@@ -36,10 +40,15 @@ export function ScriptSourcePanel({
   absolutePath,
   source,
   runtimeToolCatalog,
+  collections,
 }: {
   absolutePath: string;
   source: { script: string | null; scriptError: string | null };
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
+  collections: Pick<
+    AutomationCollections,
+    "workflowInstances" | "workflowSteps" | "workflowStepEmissions"
+  >;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const viewMode = scriptViewModeFromSearchParam(searchParams.get(SCRIPT_VIEW_MODE_SEARCH_PARAM));
@@ -57,6 +66,12 @@ export function ScriptSourcePanel({
     () => resolveWorkflowRuntimeToolCalls({ visualization, catalog: runtimeToolCatalog }),
     [runtimeToolCatalog, visualization],
   );
+  const workflowRuns = useScriptWorkflowRuns({
+    absolutePath,
+    collections,
+    selectedInstanceId: searchParams.get(WORKFLOW_RUN_SEARCH_PARAM),
+    visualization,
+  });
   const { codeViewport, graphViewport, suspendCodeScrollLink } = useLinkedScrollViewports(
     viewMode === "split",
   );
@@ -75,6 +90,24 @@ export function ScriptSourcePanel({
           {absolutePath}
         </p>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {showGraph ? (
+            <WorkflowRunSelector
+              runs={workflowRuns.runs}
+              selectedRun={workflowRuns.selectedRun}
+              isLoading={workflowRuns.isLoading}
+              error={workflowRuns.error}
+              onSelect={(instanceId) => {
+                setSearchParams(
+                  (currentSearchParams) => {
+                    const nextSearchParams = new URLSearchParams(currentSearchParams);
+                    nextSearchParams.set(WORKFLOW_RUN_SEARCH_PARAM, instanceId);
+                    return nextSearchParams;
+                  },
+                  { preventScrollReset: true, replace: true },
+                );
+              }}
+            />
+          ) : null}
           {showGraph ? (
             <WorkflowGraphDetailToggle
               detailMode={graphDetailMode}
@@ -114,6 +147,7 @@ export function ScriptSourcePanel({
             visualization={visualization}
             detailMode={graphDetailMode}
             runtimeToolCallsByStepId={runtimeToolCallsByStepId}
+            selectedRun={workflowRuns.selectedRun}
             scrollViewport={graphViewport}
             onSourceSelect={(selectedRange) => {
               setSelectedSource(selectedRange);
@@ -129,6 +163,65 @@ export function ScriptSourcePanel({
         ) : null}
       </div>
     </div>
+  );
+}
+
+function WorkflowRunSelector({
+  runs,
+  selectedRun,
+  isLoading,
+  error,
+  onSelect,
+}: {
+  runs: readonly ScriptWorkflowRun[];
+  selectedRun: ScriptWorkflowRun | null;
+  isLoading: boolean;
+  error: string | null;
+  onSelect: (instanceId: string) => void;
+}) {
+  if (error) {
+    return (
+      <span
+        title={error}
+        className="border border-red-500/35 bg-red-500/8 px-2.5 py-2 text-[9px] font-semibold tracking-[0.16em] text-red-800 uppercase dark:text-red-200"
+      >
+        Run sync failed
+      </span>
+    );
+  }
+
+  if (isLoading && !selectedRun) {
+    return (
+      <span className="px-2 py-2 text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
+        Syncing runs…
+      </span>
+    );
+  }
+
+  if (!selectedRun) {
+    return null;
+  }
+
+  return (
+    <label className="flex min-h-10 items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2.5">
+      <span className="text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
+        Active run
+      </span>
+      <select
+        aria-label="Active workflow run"
+        value={selectedRun.instanceId}
+        onChange={(event) => {
+          onSelect(event.target.value);
+        }}
+        className="max-w-56 min-w-0 bg-transparent font-mono text-[10px] text-[var(--bo-fg)] outline-none"
+      >
+        {runs.map((run) => (
+          <option key={run.id} value={run.instanceId}>
+            {run.workflowName} · {run.instanceId} · {run.status}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

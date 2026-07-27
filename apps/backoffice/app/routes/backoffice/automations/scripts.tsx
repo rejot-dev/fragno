@@ -106,6 +106,7 @@ export default function BackofficeOrganisationAutomationScripts() {
         selectedScope={context.selectedScope}
         scripts={context.scripts}
         scriptsError={context.scriptsError ?? context.uploadCollectionError}
+        collections={context.collections}
         workspaceScriptsReady
       />
     );
@@ -157,6 +158,7 @@ function SynchronizedAutomationScripts({
       selectedScope={context.selectedScope}
       scripts={scripts}
       scriptsError={scriptsError}
+      collections={context.collections}
       workspaceScriptsReady={filesQuery.isReady}
     />
   );
@@ -166,11 +168,13 @@ function AutomationScriptsView({
   selectedScope,
   scripts,
   scriptsError,
+  collections,
   workspaceScriptsReady,
 }: {
   selectedScope: AutomationLayoutContext["selectedScope"];
   scripts: AutomationScriptRecord[];
   scriptsError: string | null;
+  collections: AutomationLayoutContext["collections"];
   workspaceScriptsReady: boolean;
 }) {
   const loaderData = useLoaderData<typeof loader>();
@@ -336,6 +340,7 @@ function AutomationScriptsView({
                 absolutePath={selectedScript.absolutePath}
                 source={loaderData.selectedScriptSource}
                 runtimeToolCatalog={loaderData.runtimeToolCatalog}
+                collections={collections}
               />
             </div>
           ) : (

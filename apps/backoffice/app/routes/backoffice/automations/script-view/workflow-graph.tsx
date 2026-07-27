@@ -35,18 +35,21 @@ import {
   workflowTerminalDetails,
   type WorkflowEventGuardPresentation,
 } from "./workflow-graph-presentation";
+import type { ScriptWorkflowRun, WorkflowStepRunState } from "./workflow-run-presentation";
 import { WorkflowStepCard } from "./workflow-step-card";
 
 export function ScriptWorkflowGraph({
   visualization,
   detailMode,
   runtimeToolCallsByStepId,
+  selectedRun,
   scrollViewport,
   onSourceSelect,
 }: {
   visualization: WorkflowVisualizationSnapshot;
   detailMode: WorkflowGraphDetailMode;
   runtimeToolCallsByStepId: ReadonlyMap<string, readonly ResolvedWorkflowRuntimeToolCall[]>;
+  selectedRun: ScriptWorkflowRun | null;
   scrollViewport: LinkedScrollViewport;
   onSourceSelect?: (source: SourceRange) => void;
 }) {
@@ -70,6 +73,11 @@ export function ScriptWorkflowGraph({
               workflow.id,
               presentation.childrenByParent,
             );
+            const workflowRun =
+              selectedRun?.workflowName === workflow.name ? selectedRun : undefined;
+            const hasCurrentStep = workflowRun
+              ? [...workflowRun.stepStatesByNodeId.values()].some((state) => state.current)
+              : false;
 
             return (
               <section key={workflow.id} aria-labelledby={`${workflow.id}-title`}>
@@ -86,6 +94,12 @@ export function ScriptWorkflowGraph({
                         {workflow.name}
                       </h3>
                       {workflow.remote ? <GraphBadge label="Remote" /> : null}
+                      {workflowRun ? (
+                        <GraphBadge label={`${workflowRun.status} run`} tone="active" />
+                      ) : null}
+                      {workflowRun?.status === "active" && !hasCurrentStep ? (
+                        <GraphBadge label="Between checkpoints" />
+                      ) : null}
                       <SourceLocationButton source={workflow.source} onSelect={onSourceSelect} />
                       {workflow.construction.status === "partial" ? (
                         <GraphBadge label={workflow.construction.phase} tone="warning" />
@@ -105,6 +119,7 @@ export function ScriptWorkflowGraph({
                   childrenByParent={presentation.childrenByParent}
                   detailMode={detailMode}
                   runtimeToolCallsByStepId={runtimeToolCallsByStepId}
+                  stepStatesByNodeId={workflowRun?.stepStatesByNodeId}
                   onSourceSelect={onSourceSelect}
                 />
               </section>
@@ -148,12 +163,14 @@ function WorkflowChildTree({
   childrenByParent,
   detailMode,
   runtimeToolCallsByStepId,
+  stepStatesByNodeId,
   onSourceSelect,
 }: {
   parentId: string;
   childrenByParent: Map<string, WorkflowChildNode[]>;
   detailMode: WorkflowGraphDetailMode;
   runtimeToolCallsByStepId: ReadonlyMap<string, readonly ResolvedWorkflowRuntimeToolCall[]>;
+  stepStatesByNodeId?: ReadonlyMap<string, WorkflowStepRunState>;
   onSourceSelect?: (source: SourceRange) => void;
 }) {
   const children = childrenByParent.get(parentId) ?? [];
@@ -172,6 +189,7 @@ function WorkflowChildTree({
             child={child}
             detailMode={detailMode}
             runtimeToolCalls={runtimeToolCallsByStepId.get(child.id)}
+            runState={stepStatesByNodeId?.get(child.id)}
             onSourceSelect={onSourceSelect}
           />
           <WorkflowChildTree
@@ -179,6 +197,7 @@ function WorkflowChildTree({
             childrenByParent={childrenByParent}
             detailMode={detailMode}
             runtimeToolCallsByStepId={runtimeToolCallsByStepId}
+            stepStatesByNodeId={stepStatesByNodeId}
             onSourceSelect={onSourceSelect}
           />
         </li>
@@ -191,11 +210,13 @@ function WorkflowChildCard({
   child,
   detailMode,
   runtimeToolCalls,
+  runState,
   onSourceSelect,
 }: {
   child: WorkflowChildNode;
   detailMode: WorkflowGraphDetailMode;
   runtimeToolCalls?: readonly ResolvedWorkflowRuntimeToolCall[];
+  runState?: WorkflowStepRunState;
   onSourceSelect?: (source: SourceRange) => void;
 }) {
   switch (child.kind) {
@@ -204,6 +225,7 @@ function WorkflowChildCard({
         <WorkflowStepCard
           step={child}
           runtimeToolCalls={detailMode === "verbose" ? runtimeToolCalls : undefined}
+          runState={runState}
           onSourceSelect={onSourceSelect}
         />
       );
