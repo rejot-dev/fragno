@@ -136,6 +136,10 @@ class UnavailableInMemoryDurableObject {
     return null;
   }
 
+  async requestStaticMarketplacePublications() {
+    throw new Error("Automations is not configured.");
+  }
+
   async getRuntimeStatus() {
     return { status: "stopped" };
   }

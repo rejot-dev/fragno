@@ -36,6 +36,8 @@ import type { DurableHookQueueOptions, DurableHookRepository } from "@/fragno/du
 import type {
   MarketplaceAddDraftVersionInput,
   MarketplaceArchiveListingInput,
+  MarketplaceArtifactManifest,
+  MarketplaceArtifactManifestInput,
   MarketplaceArchiveResult,
   MarketplaceCreateDraftListingInput,
   MarketplaceDraftResult,
@@ -51,6 +53,7 @@ import type {
   MarketplaceOwnedListingPageInput,
   MarketplaceOperationResult,
   MarketplacePublishedListingInput,
+  MarketplaceStaticPublicationResult,
   MarketplacePublishVersionInput,
   MarketplacePublishVersionResult,
   MarketplaceUpdateListingInput,
@@ -139,6 +142,9 @@ export type MarketplaceObject = FetchObject &
     getPublishedListing(
       input: MarketplacePublishedListingInput,
     ): Promise<MarketplaceListingDetail | null>;
+    getArtifactManifest(
+      input: MarketplaceArtifactManifestInput,
+    ): Promise<MarketplaceArtifactManifest | null>;
     listOwnedListings(
       input: MarketplaceOwnedListingPageInput,
     ): Promise<MarketplaceOwnedListingPage>;
@@ -177,6 +183,7 @@ export type AutomationsObject = FetchObject &
       context?: BackofficeRpcContext,
     ): Promise<AutomationIngestResult>;
     seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult>;
+    requestStaticMarketplacePublications(): Promise<MarketplaceStaticPublicationResult>;
     listEventDefinitions(): Promise<AutomationEventDefinition[]>;
     getEventDefinition(input: {
       source: string;

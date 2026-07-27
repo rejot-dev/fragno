@@ -19,6 +19,19 @@ export const marketplaceVersionSchema = z
   .max(40)
   .regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u, "Use a semantic version such as 1.0.0.");
 
+export const marketplaceArtifactDirectorySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(191)
+  .refine(
+    (value) =>
+      !value.startsWith("/") &&
+      !value.includes("\\") &&
+      value.split("/").every((segment) => segment !== "" && segment !== "." && segment !== ".."),
+    "Use a relative artifact directory without empty, '.' or '..' path segments.",
+  );
+
 export const marketplaceListingIdSchema = z
   .string()
   .trim()
@@ -180,6 +193,7 @@ export const marketplacePublishVersionInputSchema = z
     owner: marketplaceOwnerSchema,
     listingId: marketplaceListingIdSchema,
     version: marketplaceVersionSchema,
+    artifactDirectory: marketplaceArtifactDirectorySchema.optional(),
   })
   .refine(
     marketplaceVersionIdentityFitsDatabase,
@@ -187,6 +201,70 @@ export const marketplacePublishVersionInputSchema = z
   );
 
 export type MarketplacePublishVersionInput = z.infer<typeof marketplacePublishVersionInputSchema>;
+
+export const marketplaceArtifactManifestInputSchema = z.object({
+  listingId: marketplaceListingIdSchema,
+});
+
+export type MarketplaceArtifactManifestInput = z.infer<
+  typeof marketplaceArtifactManifestInputSchema
+>;
+
+export const marketplaceArtifactManifestSchema = z.object({
+  listingId: marketplaceListingIdSchema,
+  slug: marketplaceSlugSchema,
+  listingStatus: marketplaceListingStatusSchema,
+  uploadName: z.string(),
+  versions: z.array(
+    z.object({
+      version: marketplaceVersionSchema,
+      directory: marketplaceArtifactDirectorySchema,
+    }),
+  ),
+});
+
+export type MarketplaceArtifactManifest = z.infer<typeof marketplaceArtifactManifestSchema>;
+
+const marketplaceStaticPublicationIdentitySchema = z.object({
+  listingId: marketplaceListingIdSchema,
+  slug: marketplaceSlugSchema,
+  version: marketplaceVersionSchema,
+  workflowInstanceId: z.string(),
+});
+
+export const marketplaceStaticPublicationEntryResultSchema = z.discriminatedUnion("state", [
+  marketplaceStaticPublicationIdentitySchema.extend({
+    state: z.literal("published"),
+  }),
+  marketplaceStaticPublicationIdentitySchema.extend({
+    state: z.literal("requested"),
+    workflowStatus: z.literal("active"),
+  }),
+  marketplaceStaticPublicationIdentitySchema.extend({
+    state: z.literal("pending"),
+    workflowStatus: z.enum(["active", "waiting", "paused"]),
+  }),
+  marketplaceStaticPublicationIdentitySchema.extend({
+    state: z.literal("failed"),
+    workflowStatus: z.enum(["errored", "terminated", "complete"]),
+    error: z.object({
+      name: z.string(),
+      message: z.string(),
+    }),
+  }),
+]);
+
+export type MarketplaceStaticPublicationEntryResult = z.infer<
+  typeof marketplaceStaticPublicationEntryResultSchema
+>;
+
+export const marketplaceStaticPublicationResultSchema = z.object({
+  publications: z.array(marketplaceStaticPublicationEntryResultSchema),
+});
+
+export type MarketplaceStaticPublicationResult = z.infer<
+  typeof marketplaceStaticPublicationResultSchema
+>;
 
 export const marketplaceArchiveListingInputSchema = z.object({
   owner: marketplaceOwnerSchema,
@@ -362,6 +440,7 @@ export type MarketplaceArchiveResult = z.infer<typeof marketplaceArchiveResultSc
 export const MARKETPLACE_OPERATION_ERROR_CODES = [
   "MARKETPLACE_OWNER_CONFLICT",
   "MARKETPLACE_LISTING_CONFLICT",
+  "MARKETPLACE_LISTING_ARCHIVED",
   "MARKETPLACE_LISTING_NOT_FOUND",
   "MARKETPLACE_VERSION_NOT_FOUND",
   "MARKETPLACE_VERSION_TRANSITION_INVALID",

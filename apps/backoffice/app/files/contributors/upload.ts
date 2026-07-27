@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
 import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
+import type { UploadObject } from "@/backoffice-runtime/object-registry";
 import {
   UPLOAD_PROVIDER_DATABASE,
   UPLOAD_PROVIDER_R2,
@@ -217,6 +218,7 @@ export const uploadR2RemoteFileContributor =
 
 type CreateUploadFileSystemOptions = {
   mountPoint?: string;
+  object?: UploadObject;
   provider: UploadProvider;
 };
 
@@ -257,6 +259,15 @@ const normalizeUploadContentType = (contentType: string | null | undefined): str
 };
 
 export const createUploadFileSystem = (
+  ctx: FilesContext,
+  options: CreateUploadFileSystemOptions,
+): IFileSystem =>
+  createUploadFileSystemForContext(
+    options.object ? { ...ctx, uploadObject: options.object } : ctx,
+    options,
+  );
+
+const createUploadFileSystemForContext = (
   ctx: FilesContext,
   options: CreateUploadFileSystemOptions,
 ): IFileSystem => {
@@ -1465,6 +1476,9 @@ const findEntry = (entries: FileEntryDescriptor[], path: string): FileEntryDescr
 };
 
 const getUploadObject = (ctx: FilesContext) => {
+  if (ctx.uploadObject) {
+    return ctx.uploadObject;
+  }
   if (!ctx.objects) {
     return null;
   }
@@ -1533,7 +1547,7 @@ const readResponseMessage = async (response: Response, fallback: string): Promis
 };
 
 const buildUploadContentUrl = (ctx: FilesContext, file: UploadFileRecord): string | undefined => {
-  if (!ctx.request || ctx.execution.scope.kind !== "org") {
+  if (ctx.uploadObject || !ctx.request || ctx.execution.scope.kind !== "org") {
     return undefined;
   }
 

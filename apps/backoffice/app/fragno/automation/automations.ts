@@ -13,6 +13,7 @@ import {
   definePiCodemodeWorkflow,
 } from "@/fragno/automation/engine/workflow";
 
+import { defineMarketplacePublishWorkflow } from "./marketplace-publish-workflow";
 import { defineSandboxLifecycleWorkflow } from "./sandbox-lifecycle-workflow";
 import { SANDBOX_LIFECYCLE_WORKFLOW_NAME } from "./sandboxes-storage-runtime";
 
@@ -50,6 +51,10 @@ export const createAutomationsRuntime = (
       workflows: {
         AUTOMATION_CODEMODE_SCRIPT: defineAutomationCodemodeWorkflow(config),
         PI_CODEMODE_SCRIPT: definePiCodemodeWorkflow(config),
+        MARKETPLACE_PUBLISH: defineMarketplacePublishWorkflow({
+          ownerScope: config.ownerScope,
+          runtime: config.runtime,
+        }),
         SANDBOX_LIFECYCLE: defineSandboxLifecycleWorkflow({
           ownerScope: config.ownerScope,
           sandboxProviders: config.sandboxProviders,

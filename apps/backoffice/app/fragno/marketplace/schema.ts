@@ -96,5 +96,8 @@ export const marketplaceFragmentSchema = schema("marketplace", (s) =>
           "createdAt",
           "id",
         ]),
+    )
+    .alterTable("marketplace_version", (t) =>
+      t.addColumn("artifactDirectory", column("string").nullable()),
     ),
 );

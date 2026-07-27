@@ -1,4 +1,6 @@
-import type { MarketplaceStaticEntry } from "./contracts";
+import { TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE } from "@/files/content/telegram-test-command";
+
+import type { MarketplaceStaticArtifactEntry } from "./artifacts";
 
 export const STATIC_MARKETPLACE_ENTRIES = [
   {
@@ -16,5 +18,13 @@ export const STATIC_MARKETPLACE_ENTRIES = [
       category: "communication",
       tags: ["telegram", "testing", "workflow"],
     },
+    files: {
+      "automations/telegram-test-command.workflow.js": TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
+    },
   },
-] as const satisfies readonly MarketplaceStaticEntry[];
+] as const satisfies readonly MarketplaceStaticArtifactEntry[];
+
+export const getStaticMarketplaceEntry = (input: { slug: string; version: string }) =>
+  STATIC_MARKETPLACE_ENTRIES.find(
+    (entry) => entry.slug === input.slug && entry.version === input.version,
+  ) ?? null;
