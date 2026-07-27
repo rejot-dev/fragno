@@ -2,6 +2,7 @@ import { createClientBuilder } from "@fragno-dev/core/client";
 import type { FragnoPublicClientConfig } from "@fragno-dev/core/client";
 import { computed } from "nanostores";
 
+import { isWorkflowStepCommittedControlPayload } from "../step-emission-control";
 import { currentStepLabel, isTerminalStatus, isWaitingStatus, statusLabel } from "../workflow";
 import { workflowsFragmentDefinitionClient } from "./definition";
 import { workflowsRoutesFactoryClient } from "./routes";
@@ -12,15 +13,9 @@ type CurrentStepEmission = {
   payload: unknown;
 };
 
-const isStepCommittedEmission = (emission: CurrentStepEmission) => {
-  const payload = emission.payload;
-  return (
-    typeof payload === "object" &&
-    payload !== null &&
-    "control" in payload &&
-    payload.control === "step-committed"
-  );
-};
+const isStepCommittedEmission = (emission: CurrentStepEmission) =>
+  isWorkflowStepCommittedControlPayload(emission.payload) &&
+  emission.payload.epoch === emission.epoch;
 
 const filterCurrentStepEmissions = <TEmission extends CurrentStepEmission>(
   emissions: TEmission[],

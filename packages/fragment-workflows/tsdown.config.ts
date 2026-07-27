@@ -12,6 +12,7 @@ export default defineConfig([
       "./src/debug-log.ts",
       "./src/stream-step-emissions.ts",
       "./src/step-identity.ts",
+      "./src/step-emission-control.ts",
       "./src/remote-workflow.ts",
       "./src/instance-ref.ts",
       "./src/runner/step-live-pump.ts",
@@ -35,6 +36,8 @@ export default defineConfig([
     ignoreWatch: ["./dist"],
     entry: [
       "./src/schema.ts",
+      "./src/step-identity.ts",
+      "./src/step-emission-control.ts",
       "./src/client/clients.ts",
       "./src/client/react.ts",
       "./src/client/svelte.ts",

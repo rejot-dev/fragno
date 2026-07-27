@@ -11,6 +11,7 @@ import type { DatabaseRequestContext } from "@fragno-dev/db";
 
 import { buildScopedInstanceRowId } from "../instance-ref";
 import { workflowsSchema } from "../schema";
+import { createWorkflowStepStartedControlPayload } from "../step-emission-control";
 import {
   isSystemEventActor,
   WORKFLOW_EVENT_ACTOR_SYSTEM,
@@ -21,8 +22,6 @@ import type { WorkflowStepEvent } from "../workflow";
 import type { WorkflowEventRecord } from "./types";
 
 const WORKFLOW_STEP_EMISSION_PUMP_INTERVAL_MS = 100;
-
-const STEP_STARTED_PAYLOAD = { control: "step-started" as const };
 
 type StepEmissionOpenScopeMeta = {
   stepKey: string;
@@ -228,7 +227,7 @@ const writeWorkflowStepEmissionFlush = async <TOutEmission, TInEvent>(options: {
             epoch: step.epoch,
             sequence: nextSequence++,
             actor: WORKFLOW_EVENT_ACTOR_SYSTEM,
-            payload: STEP_STARTED_PAYLOAD,
+            payload: createWorkflowStepStartedControlPayload(),
           });
         }
 

@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 
-import { buildNestedStepKey, buildStepKey, getOutermostStepKey } from "./step-identity";
+import {
+  buildNestedStepKey,
+  buildStepKey,
+  getOutermostStepKey,
+  parseStepKey,
+} from "./step-identity";
 
 describe("workflow step identity", () => {
   test("rejects step names that would collide with key delimiters", () => {
@@ -18,12 +23,26 @@ describe("workflow step identity", () => {
     );
   });
 
-  test("splits only on the reserved nested separator", () => {
+  test("parses nested step keys and their occurrence identities", () => {
     const outer = buildStepKey("do", "outer");
-    const inner = buildStepKey("do", "inner");
+    const inner = buildStepKey("do", "inner:with-colon", 2);
     const nested = buildNestedStepKey(outer, inner);
 
-    expect(nested).toBe("do:outer>do:inner");
+    expect(nested).toBe("do:outer>do:inner:with-colon#2");
     expect(getOutermostStepKey(nested)).toBe(outer);
+    expect(parseStepKey(nested)).toEqual({
+      segments: [
+        { type: "do", name: "outer", occurrence: 0 },
+        { type: "do", name: "inner:with-colon", occurrence: 2 },
+      ],
+      parentStepKey: outer,
+    });
   });
+
+  test.each(["missing-type", ":missing-type", "do:name#invalid", "do:name#1#2"])(
+    "rejects malformed step key %s",
+    (stepKey) => {
+      expect(() => parseStepKey(stepKey)).toThrow("INVALID_WORKFLOW_STEP_KEY");
+    },
+  );
 });
