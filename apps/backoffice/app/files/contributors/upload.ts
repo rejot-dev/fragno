@@ -10,6 +10,7 @@ import {
   type UploadProvider,
 } from "@/fragno/upload";
 import type { UploadFileRecord } from "@/fragno/upload/file-record";
+import { sha256Hex } from "@/lib/crypto";
 
 import { compareFileEntries, sortFileEntryTree } from "../entry-order";
 import {
@@ -111,6 +112,11 @@ const toUint8Array = (content: FileContent, options?: UploadWriteOptions): Uint8
     ? binaryStringToBytes(content)
     : TEXT_ENCODER.encode(content);
 };
+const sha256Checksum = async (content: Uint8Array) => ({
+  algo: "sha256" as const,
+  value: await sha256Hex(content),
+});
+
 const concatBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
   const result = new Uint8Array(left.byteLength + right.byteLength);
   result.set(left);
@@ -415,10 +421,10 @@ export const createUploadFileSystem = (
         await deleteUploadRecord(ctx, existing);
       }
 
+      const bytes = toUint8Array(content, options);
       const blob = toBlob(
-        content,
+        bytes,
         resolveUploadContentType(existing ?? { fileKey, contentType: null }),
-        options,
       );
       const form = new FormData();
       form.set(
@@ -430,6 +436,7 @@ export const createUploadFileSystem = (
       form.set("provider", provider);
       form.set("fileKey", fileKey);
       form.set("filename", getLeafSegment(fileKey));
+      form.set("checksum", JSON.stringify(await sha256Checksum(bytes)));
 
       const preservedMetadata = existing
         ? preserveUploadMetadataForRewrite(existing.metadata)
@@ -1418,6 +1425,7 @@ const toFileDescriptor = (
     uploadId: file.uploadId ?? null,
     uploaderId: file.uploaderId ?? null,
     createdAt: file.createdAt ?? null,
+    checksum: file.checksum ?? null,
     ...(previewUrl ? { previewUrl } : {}),
   },
 });
