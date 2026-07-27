@@ -27,6 +27,7 @@ import type {
 } from "./runner/types";
 import { toError } from "./runner/utils";
 import { workflowsSchema } from "./schema";
+import { createWorkflowStepCommittedControlPayload } from "./step-emission-control";
 import {
   isSystemEventActor,
   WORKFLOW_SYSTEM_PAUSE_CONSUMER_KEY,
@@ -325,7 +326,7 @@ function addStepCommittedEmissions(
       continue;
     }
     const localObservedAt = new Date();
-    const payload = { control: "step-committed" as const, epoch: request.epoch };
+    const payload = createWorkflowStepCommittedControlPayload(request.epoch);
     const id = schemaUow.create("workflow_step_emission", {
       instanceRef: request.instanceRef,
       stepKey: request.stepKey,
