@@ -8,7 +8,11 @@ import type {
   MarketplaceListingMetadata,
   MarketplaceOwner,
 } from "./contracts";
-import { MarketplaceOwnerConflictError, marketplaceFragmentDefinition } from "./definition";
+import {
+  MarketplaceOwnerConflictError,
+  marketplaceFragmentDefinition,
+  MarketplaceVersionTransitionError,
+} from "./definition";
 import { marketplaceListingId } from "./owner";
 import { MarketplaceListingCursorError } from "./pagination";
 
@@ -60,6 +64,70 @@ describe("marketplace fragment", async () => {
 
   afterAll(async () => {
     await testContext.cleanup();
+  });
+
+  test("inserts only missing static marketplace entries", async () => {
+    const owner: MarketplaceOwner = {
+      scope: { kind: "system" },
+      publisherName: "Fragno",
+    };
+    const entry = draftInput({
+      owner,
+      slug: "static-operations-brief",
+      version: "1.0.0",
+    });
+    const listingId = marketplaceListingId({ ownerScope: owner.scope, slug: entry.slug });
+
+    await expect(
+      callServices(() => marketplace.services.insertStaticEntries({ entries: [entry] })),
+    ).resolves.toEqual({
+      inserted: [{ listingId, slug: entry.slug, version: entry.version }],
+      skipped: [],
+    });
+    await expect(
+      callServices(() => marketplace.services.insertStaticEntries({ entries: [entry] })),
+    ).resolves.toEqual({
+      inserted: [],
+      skipped: [{ listingId, slug: entry.slug, version: entry.version }],
+    });
+
+    const newestEntry = { ...entry, version: "2.0.0" };
+    await expect(
+      callServices(() => marketplace.services.insertStaticEntries({ entries: [newestEntry] })),
+    ).resolves.toEqual({
+      inserted: [{ listingId, slug: entry.slug, version: newestEntry.version }],
+      skipped: [],
+    });
+    await expect(
+      callServices(() => marketplace.services.getPublishedListing({ listingId })),
+    ).resolves.toMatchObject({
+      listing: { latestVersion: "2.0.0", status: "published" },
+      versions: [
+        { version: "2.0.0", publishedAt: expect.any(String) },
+        { version: "1.0.0", publishedAt: expect.any(String) },
+      ],
+    });
+  });
+
+  test("rejects static entries that collide with unpublished versions", async () => {
+    const owner: MarketplaceOwner = {
+      scope: { kind: "system" },
+      publisherName: "Fragno",
+    };
+    const entry = draftInput({
+      owner,
+      slug: "draft-static-operations-brief",
+      version: "1.0.0",
+    });
+    const listingId = marketplaceListingId({ ownerScope: owner.scope, slug: entry.slug });
+
+    await callServices(() => marketplace.services.createDraftListing(entry));
+    await expect(
+      callServices(() => marketplace.services.insertStaticEntries({ entries: [entry] })),
+    ).rejects.toBeInstanceOf(MarketplaceVersionTransitionError);
+    await expect(
+      callServices(() => marketplace.services.getPublishedListing({ listingId })),
+    ).resolves.toBeNull();
   });
 
   test("rejects owner-qualified identities that exceed the database id limit", async () => {

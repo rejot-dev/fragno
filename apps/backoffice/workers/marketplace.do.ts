@@ -15,6 +15,8 @@ import type {
   MarketplaceArchiveResult,
   MarketplaceCreateDraftListingInput,
   MarketplaceDraftResult,
+  MarketplaceInsertStaticEntriesInput,
+  MarketplaceInsertStaticEntriesResult,
   MarketplaceListingDetail,
   MarketplaceListingPage,
   MarketplaceListingPageInput,
@@ -123,6 +125,15 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
     }
   }
 
+  async insertStaticEntries(
+    input: MarketplaceInsertStaticEntriesInput,
+  ): Promise<MarketplaceOperationResult<MarketplaceInsertStaticEntriesResult>> {
+    return await this.#runOperation(
+      async (fragment) =>
+        await fragment.callServices(() => fragment.services.insertStaticEntries(input)),
+    );
+  }
+
   async createDraftListing(
     input: MarketplaceCreateDraftListingInput,
   ): Promise<MarketplaceOperationResult<MarketplaceDraftResult>> {
@@ -208,6 +219,12 @@ export class Marketplace extends DurableObject<CloudflareEnv> implements Marketp
     input: MarketplaceOwnedListingInput,
   ): Promise<MarketplaceOwnedListingDetail | null> {
     return this.#object.getOwnedListing(input);
+  }
+
+  insertStaticEntries(
+    input: MarketplaceInsertStaticEntriesInput,
+  ): Promise<MarketplaceOperationResult<MarketplaceInsertStaticEntriesResult>> {
+    return this.#object.insertStaticEntries(input);
   }
 
   createDraftListing(

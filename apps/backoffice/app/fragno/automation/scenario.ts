@@ -32,6 +32,8 @@ import {
   runBackofficeCodemode,
   type BackofficeCodemodeExecuteResult,
 } from "@/fragno/codemode/execute";
+import type { MarketplaceStaticEntry } from "@/fragno/marketplace/contracts";
+import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { createPiCollections, type PiCollections } from "@/fragno/pi/tanstack/collections";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
@@ -601,6 +603,9 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
   given: {
     organization: {
       exists(input: OrganizationExistsInput): BackofficeScenarioStep;
+    };
+    marketplace: {
+      entries(entries: readonly MarketplaceStaticEntry[]): BackofficeScenarioStep;
     };
     telegram: {
       configured(input: TelegramConfiguredInput): BackofficeScenarioStep;
@@ -2030,6 +2035,28 @@ const buildStepBuilders = <
               ownerUserId: input.ownerUserId,
             };
             await ctx.runtime.objects.automations.forOrg(input.id).seedStarterAutomationRoutes();
+          },
+          { drain: false },
+        ),
+    },
+    marketplace: {
+      entries: (entries) =>
+        createStep(
+          "given",
+          "marketplace.entries",
+          `insert marketplace entries ${entries
+            .map(
+              (entry) =>
+                `${marketplaceListingId({ ownerScope: entry.owner.scope, slug: entry.slug })}@${entry.version}`,
+            )
+            .join(", ")}`,
+          async (ctx) => {
+            const result = await ctx.runtime.objects.marketplace.singleton().insertStaticEntries({
+              entries: [...entries],
+            });
+            if (!result.ok) {
+              throw new Error(`${result.error.code}: ${result.error.message}`);
+            }
           },
           { drain: false },
         ),

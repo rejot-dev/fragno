@@ -39,6 +39,8 @@ import type {
   MarketplaceArchiveResult,
   MarketplaceCreateDraftListingInput,
   MarketplaceDraftResult,
+  MarketplaceInsertStaticEntriesInput,
+  MarketplaceInsertStaticEntriesResult,
   MarketplaceListingDetail,
   MarketplaceListingPage,
   MarketplaceListingPageInput,
@@ -143,6 +145,9 @@ export type MarketplaceObject = FetchObject &
     getOwnedListing(
       input: MarketplaceOwnedListingInput,
     ): Promise<MarketplaceOwnedListingDetail | null>;
+    insertStaticEntries(
+      input: MarketplaceInsertStaticEntriesInput,
+    ): Promise<MarketplaceOperationResult<MarketplaceInsertStaticEntriesResult>>;
     createDraftListing(
       input: MarketplaceCreateDraftListingInput,
     ): Promise<MarketplaceOperationResult<MarketplaceDraftResult>>;

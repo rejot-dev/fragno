@@ -11,6 +11,11 @@ import {
 import { createSystemFilesContext } from "@/files/system-context";
 import type { StarterAutomationRoutesSeedResult } from "@/fragno/automation";
 import type { DurableHookQueueResponse } from "@/fragno/durable-hooks";
+import {
+  marketplaceInsertStaticEntriesResultSchema,
+  type MarketplaceInsertStaticEntriesResult,
+} from "@/fragno/marketplace/contracts";
+import { STATIC_MARKETPLACE_ENTRIES } from "@/fragno/marketplace/static-entries";
 import { defineCliArgsParser, readOutputOptions } from "@/fragno/runtime-tools/bash-cli";
 
 import {
@@ -35,6 +40,7 @@ export type InternalRuntime = {
     projectId: string;
   }): Promise<ProjectDatabaseFileSystemConfigureOutput>;
   seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult>;
+  pushStaticMarketplaceEntries(): Promise<MarketplaceInsertStaticEntriesResult>;
 };
 
 type InternalToolContext = BackofficeToolContext<{
@@ -127,6 +133,15 @@ export const createInternalRuntime = ({
       await seedWorkspaceStarterFiles({ objects, orgId, force: input?.force }),
     seedStarterAutomationRoutes: async () =>
       await objects.automations.forOrg(orgId).seedStarterAutomationRoutes(),
+    pushStaticMarketplaceEntries: async () => {
+      const result = await objects.marketplace.singleton().insertStaticEntries({
+        entries: [...STATIC_MARKETPLACE_ENTRIES],
+      });
+      if (!result.ok) {
+        throw new Error(`${result.error.code}: ${result.error.message}`);
+      }
+      return result.value;
+    },
     configureProjectDatabaseFileSystem: async ({ projectId }) => {
       const uploadObject = objects.upload.forProject({ orgId, projectId });
       const config = await uploadObject.setAdminConfig(
@@ -284,6 +299,41 @@ const automationRoutesSeedStarterTool = defineBackofficeRuntimeTool({
   },
 });
 
+const marketplacePushTool = defineBackofficeRuntimeTool({
+  id: "internal.marketplace.push",
+  namespace: "internal",
+  name: "marketplacePush",
+  description: "Push the bundled static entries into the marketplace.",
+  requiredPermissions: ["manage"],
+  inputSchema: z.object({}).optional().default({}),
+  outputSchema: marketplaceInsertStaticEntriesResultSchema,
+  execute: async (_input, context: InternalToolContext) =>
+    await getRuntime(context).pushStaticMarketplaceEntries(),
+  adapters: {
+    bash: {
+      command: "internal.marketplace.push",
+      help: {
+        summary: "internal.marketplace.push publishes the bundled static marketplace entries.",
+        options: [],
+        examples: ["internal.marketplace.push --format json"],
+      },
+      parse: defineCliArgsParser<Record<string, never>>("internal.marketplace.push", {}),
+      outputOptions: (_args, parsed) => readOutputOptions(parsed),
+      format: (output, options) =>
+        options.format === "json" || options.print
+          ? { data: output }
+          : {
+              stdout: `inserted=${output.inserted.length}\nskipped=${output.skipped.length}\n${output.inserted
+                .map((entry) => `inserted\t${entry.listingId}@${entry.version}`)
+                .concat(
+                  output.skipped.map((entry) => `skipped\t${entry.listingId}@${entry.version}`),
+                )
+                .join("\n")}\n`,
+            },
+    },
+  },
+});
+
 const formatDurableHookQueue = (result: DurableHookQueueResponse, options: { format?: string }) => {
   if (options.format === "json") {
     return { data: result };
@@ -413,6 +463,7 @@ const internalRuntimeTools = [
   filesSeedExecuteTool,
   projectFilesConfigureTool,
   automationRoutesSeedStarterTool,
+  marketplacePushTool,
   hooksListTool,
   hooksGetTool,
 ] as const;
