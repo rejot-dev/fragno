@@ -14,6 +14,16 @@ describe("Automation collection sources", () => {
       description.collectionId("automation_event") ===
         JSON.stringify(["backoffice", "automations", "org:org-1", "adapter-1", "automation_event"]),
     );
+    assert(
+      description.collectionId("workflows.workflow_step") ===
+        JSON.stringify([
+          "backoffice",
+          "automations",
+          "org:org-1",
+          "adapter-1",
+          "workflows.workflow_step",
+        ]),
+    );
   });
 
   test("uses the encoded route id for project-scoped outboxes", () => {

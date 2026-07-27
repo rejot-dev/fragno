@@ -60,6 +60,25 @@ describe("WorkflowStepCard", () => {
     assert.include(markup, ">current<");
     assert.notInclude(markup, "Runtime operation");
   });
+
+  it("highlights the current waiting step", () => {
+    const markup = renderToStaticMarkup(
+      createElement(WorkflowStepCard, {
+        step,
+        runState: {
+          status: "waiting",
+          attempts: 2,
+          emissionCount: 0,
+          current: true,
+        },
+      }),
+    );
+
+    assert.include(markup, 'aria-current="step"');
+    assert.include(markup, "Waiting");
+    assert.include(markup, "· 2");
+    assert.include(markup, "border-amber-500/55");
+  });
 });
 
 function runtimeToolCall({

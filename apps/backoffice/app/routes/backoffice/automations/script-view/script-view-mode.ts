@@ -8,6 +8,13 @@ export interface ScriptPresentation {
 
 export const SCRIPT_VIEW_MODE_SEARCH_PARAM = "scriptView";
 export const WORKFLOW_GRAPH_DETAIL_MODE_SEARCH_PARAM = "graphDetail";
+export const WORKFLOW_RUN_SEARCH_PARAM = "run";
+
+const SCRIPT_PRESENTATION_SEARCH_PARAMS = [
+  SCRIPT_VIEW_MODE_SEARCH_PARAM,
+  WORKFLOW_GRAPH_DETAIL_MODE_SEARCH_PARAM,
+  WORKFLOW_RUN_SEARCH_PARAM,
+];
 
 export function scriptViewModeFromSearchParam(value: string | null): ScriptViewMode {
   return value === "graph" || value === "split" ? value : "code";
@@ -64,10 +71,7 @@ function isOnlyScriptPresentationChange(currentUrl: URL, nextUrl: URL): boolean 
     return false;
   }
 
-  const presentationChanged = [
-    SCRIPT_VIEW_MODE_SEARCH_PARAM,
-    WORKFLOW_GRAPH_DETAIL_MODE_SEARCH_PARAM,
-  ].some(
+  const presentationChanged = SCRIPT_PRESENTATION_SEARCH_PARAMS.some(
     (searchParam) =>
       currentUrl.searchParams.get(searchParam) !== nextUrl.searchParams.get(searchParam),
   );
@@ -77,10 +81,7 @@ function isOnlyScriptPresentationChange(currentUrl: URL, nextUrl: URL): boolean 
 
   const currentDataSearch = new URLSearchParams(currentUrl.searchParams);
   const nextDataSearch = new URLSearchParams(nextUrl.searchParams);
-  for (const searchParam of [
-    SCRIPT_VIEW_MODE_SEARCH_PARAM,
-    WORKFLOW_GRAPH_DETAIL_MODE_SEARCH_PARAM,
-  ]) {
+  for (const searchParam of SCRIPT_PRESENTATION_SEARCH_PARAMS) {
     currentDataSearch.delete(searchParam);
     nextDataSearch.delete(searchParam);
   }

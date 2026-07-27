@@ -58,6 +58,14 @@ test("skips source revalidation for presentation-only navigations", () => {
       "https://example.test/scripts?script=starter&scriptView=code&graphDetail=simple",
       "https://example.test/scripts?script=starter&scriptView=split&graphDetail=verbose",
     ],
+    [
+      "https://example.test/scripts?script=starter&run=instance-1",
+      "https://example.test/scripts?script=starter&run=instance-2",
+    ],
+    [
+      "https://example.test/scripts?script=starter&scriptView=graph",
+      "https://example.test/scripts?script=starter&scriptView=graph&run=instance-1",
+    ],
   ]) {
     assert(
       !shouldRevalidateScriptSource({
