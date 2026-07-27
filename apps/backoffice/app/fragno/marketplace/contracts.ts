@@ -114,6 +114,46 @@ export type MarketplaceCreateDraftListingInput = z.infer<
   typeof marketplaceCreateDraftListingInputSchema
 >;
 
+export const marketplaceStaticEntrySchema = marketplaceCreateDraftListingInputSchema;
+export type MarketplaceStaticEntry = z.infer<typeof marketplaceStaticEntrySchema>;
+
+export const marketplaceInsertStaticEntriesInputSchema = z.object({
+  entries: z
+    .array(marketplaceStaticEntrySchema)
+    .min(1)
+    .max(100)
+    .refine(
+      (entries) =>
+        new Set(
+          entries.map((entry) =>
+            marketplaceListingId({ ownerScope: entry.owner.scope, slug: entry.slug }),
+          ),
+        ).size === entries.length,
+      "Static marketplace entries must contain at most one version per owner-scoped listing.",
+    ),
+});
+
+export type MarketplaceInsertStaticEntriesInput = z.infer<
+  typeof marketplaceInsertStaticEntriesInputSchema
+>;
+
+export const marketplaceStaticEntryIdentitySchema = z.object({
+  listingId: marketplaceListingIdSchema,
+  slug: marketplaceSlugSchema,
+  version: marketplaceVersionSchema,
+});
+
+export type MarketplaceStaticEntryIdentity = z.infer<typeof marketplaceStaticEntryIdentitySchema>;
+
+export const marketplaceInsertStaticEntriesResultSchema = z.object({
+  inserted: z.array(marketplaceStaticEntryIdentitySchema),
+  skipped: z.array(marketplaceStaticEntryIdentitySchema),
+});
+
+export type MarketplaceInsertStaticEntriesResult = z.infer<
+  typeof marketplaceInsertStaticEntriesResultSchema
+>;
+
 export const marketplaceAddDraftVersionInputSchema = z
   .object({
     owner: marketplaceOwnerSchema,

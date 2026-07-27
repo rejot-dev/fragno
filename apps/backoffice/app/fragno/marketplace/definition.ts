@@ -5,6 +5,7 @@ import {
   marketplaceAddDraftVersionInputSchema,
   marketplaceArchiveListingInputSchema,
   marketplaceCreateDraftListingInputSchema,
+  marketplaceInsertStaticEntriesInputSchema,
   marketplaceListingPageInputSchema,
   marketplaceOwnedListingInputSchema,
   marketplaceOwnedListingPageInputSchema,
@@ -13,6 +14,7 @@ import {
   marketplaceUpdateListingInputSchema,
   type MarketplaceArchiveResult,
   type MarketplaceDraftResult,
+  type MarketplaceInsertStaticEntriesResult,
   type MarketplaceListingDetail,
   type MarketplaceListingPage,
   type MarketplaceListingPageInput,
@@ -365,6 +367,133 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
               hasNextVersionPage: versionPage.hasNextPage,
             };
           })
+          .build();
+      },
+
+      insertStaticEntries: function (rawInput: unknown) {
+        const input = marketplaceInsertStaticEntriesInputSchema.parse(rawInput);
+        const entries = input.entries.map((entry) => {
+          const listingId = marketplaceListingId({
+            ownerScope: entry.owner.scope,
+            slug: entry.slug,
+          });
+          return {
+            entry,
+            listingId,
+            versionId: marketplaceVersionId({ listingId, version: entry.version }),
+          };
+        });
+        const listingIds = entries.map((entry) => entry.listingId);
+        const versionIds = entries.map((entry) => entry.versionId);
+
+        return this.serviceTx(marketplaceFragmentSchema)
+          .retrieve((uow) =>
+            uow
+              .find("marketplace_listing", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "in", listingIds)),
+              )
+              .find("marketplace_version", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "in", versionIds)),
+              )
+              .find("marketplace_listing_owner", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "in", listingIds)),
+              ),
+          )
+          .mutate(
+            ({
+              uow,
+              retrieveResult: [existingListings, existingVersions, existingOwners],
+            }): MarketplaceInsertStaticEntriesResult => {
+              const listingsById = new Map(
+                existingListings.map((listing) => [listing.id.externalId, listing]),
+              );
+              const versionsById = new Map(
+                existingVersions.map((version) => [version.id.externalId, version]),
+              );
+              const ownersById = new Map(
+                existingOwners.map((owner) => [owner.id.externalId, owner]),
+              );
+              const inserted: MarketplaceInsertStaticEntriesResult["inserted"] = [];
+              const skipped: MarketplaceInsertStaticEntriesResult["skipped"] = [];
+              const now = uow.now();
+
+              for (const { entry, listingId, versionId } of entries) {
+                const identity = { listingId, slug: entry.slug, version: entry.version };
+                const ownerKey = marketplaceOwnerKey(entry.owner.scope);
+                const listing = listingsById.get(listingId);
+                const owner = ownersById.get(listingId);
+                const version = versionsById.get(versionId);
+                const { category, ...metadata } = entry.metadata;
+
+                if (listing) {
+                  if (!owner) {
+                    throw new MarketplaceOwnerConflictError(entry.slug);
+                  }
+                  if (version) {
+                    if (version.status !== "published" || listing.status !== "published") {
+                      throw new MarketplaceVersionTransitionError(entry.slug, entry.version);
+                    }
+                    skipped.push(identity);
+                    continue;
+                  }
+
+                  uow.update("marketplace_listing", listing.id, (b) =>
+                    b
+                      .set({
+                        publisherName: entry.owner.publisherName,
+                        metadata,
+                        category,
+                        status: "published",
+                        latestPublishedVersion: entry.version,
+                        publishedAt: now,
+                        updatedAt: now,
+                      })
+                      .check(),
+                  );
+                  uow.update("marketplace_listing_owner", owner.id, (b) =>
+                    b.set({ listingStatus: "published", listingUpdatedAt: now }).check(),
+                  );
+                } else {
+                  if (version) {
+                    throw new MarketplaceListingConflictError(entry.slug);
+                  }
+
+                  uow.create("marketplace_listing", {
+                    id: listingId,
+                    publisherName: entry.owner.publisherName,
+                    metadata,
+                    category,
+                    status: "published",
+                    latestPublishedVersion: entry.version,
+                    publishedAt: now,
+                    createdAt: now,
+                    updatedAt: now,
+                  });
+                  uow.create("marketplace_listing_owner", {
+                    id: listingId,
+                    listingId,
+                    ownerKey,
+                    ownerScope: entry.owner.scope,
+                    listingStatus: "published",
+                    listingUpdatedAt: now,
+                    createdAt: now,
+                  });
+                }
+
+                uow.create("marketplace_version", {
+                  id: versionId,
+                  listingId,
+                  version: entry.version,
+                  status: "published",
+                  publishedAt: now,
+                  createdAt: now,
+                });
+                inserted.push(identity);
+              }
+
+              return { inserted, skipped };
+            },
+          )
           .build();
       },
 
