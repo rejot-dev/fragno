@@ -1,7 +1,10 @@
 import { z } from "zod";
 
+import { marketplaceListingId, marketplaceVersionId } from "./owner";
+
 export const MARKETPLACE_DEFAULT_PAGE_SIZE = 18;
 export const MARKETPLACE_MAX_PAGE_SIZE = 60;
+const MARKETPLACE_DATABASE_ID_MAX_LENGTH = 128;
 
 export const marketplaceSlugSchema = z
   .string()
@@ -15,6 +18,16 @@ export const marketplaceVersionSchema = z
   .trim()
   .max(40)
   .regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u, "Use a semantic version such as 1.0.0.");
+
+export const marketplaceListingIdSchema = z
+  .string()
+  .trim()
+  .min(5)
+  .max(MARKETPLACE_DATABASE_ID_MAX_LENGTH)
+  .regex(
+    /^(?:system|org:[^#]+|user:[^#]+|project:[^#:]+:[^#]+)#[a-z0-9]+(?:-[a-z0-9]+)*$/u,
+    "Use an owner-qualified marketplace listing id.",
+  );
 
 export const MARKETPLACE_CATEGORIES = [
   "communication",
@@ -77,44 +90,67 @@ export type MarketplaceListingStatus = z.infer<typeof marketplaceListingStatusSc
 export const marketplaceVersionStatusSchema = z.enum(["draft", "published"]);
 export type MarketplaceVersionStatus = z.infer<typeof marketplaceVersionStatusSchema>;
 
-export const marketplaceCreateDraftListingInputSchema = z.object({
-  owner: marketplaceOwnerSchema,
-  slug: marketplaceSlugSchema,
-  version: marketplaceVersionSchema,
-  metadata: marketplaceListingMetadataSchema,
-});
+const marketplaceVersionIdentityFitsDatabase = (input: {
+  listingId: string;
+  version: string;
+}): boolean => marketplaceVersionId(input).length <= MARKETPLACE_DATABASE_ID_MAX_LENGTH;
+
+export const marketplaceCreateDraftListingInputSchema = z
+  .object({
+    owner: marketplaceOwnerSchema,
+    slug: marketplaceSlugSchema,
+    version: marketplaceVersionSchema,
+    metadata: marketplaceListingMetadataSchema,
+  })
+  .refine((input) => {
+    const listingId = marketplaceListingId({
+      ownerScope: input.owner.scope,
+      slug: input.slug,
+    });
+    return marketplaceVersionIdentityFitsDatabase({ listingId, version: input.version });
+  }, "The owner, slug, and version produce a marketplace id longer than 128 characters.");
 
 export type MarketplaceCreateDraftListingInput = z.infer<
   typeof marketplaceCreateDraftListingInputSchema
 >;
 
-export const marketplaceAddDraftVersionInputSchema = z.object({
-  owner: marketplaceOwnerSchema,
-  listingSlug: marketplaceSlugSchema,
-  version: marketplaceVersionSchema,
-});
+export const marketplaceAddDraftVersionInputSchema = z
+  .object({
+    owner: marketplaceOwnerSchema,
+    listingId: marketplaceListingIdSchema,
+    version: marketplaceVersionSchema,
+  })
+  .refine(
+    marketplaceVersionIdentityFitsDatabase,
+    "The listing and version produce a marketplace id longer than 128 characters.",
+  );
 
 export type MarketplaceAddDraftVersionInput = z.infer<typeof marketplaceAddDraftVersionInputSchema>;
 
 export const marketplaceUpdateListingInputSchema = z.object({
   owner: marketplaceOwnerSchema,
-  slug: marketplaceSlugSchema,
+  listingId: marketplaceListingIdSchema,
   metadata: marketplaceListingMetadataSchema,
 });
 
 export type MarketplaceUpdateListingInput = z.infer<typeof marketplaceUpdateListingInputSchema>;
 
-export const marketplacePublishVersionInputSchema = z.object({
-  owner: marketplaceOwnerSchema,
-  slug: marketplaceSlugSchema,
-  version: marketplaceVersionSchema,
-});
+export const marketplacePublishVersionInputSchema = z
+  .object({
+    owner: marketplaceOwnerSchema,
+    listingId: marketplaceListingIdSchema,
+    version: marketplaceVersionSchema,
+  })
+  .refine(
+    marketplaceVersionIdentityFitsDatabase,
+    "The listing and version produce a marketplace id longer than 128 characters.",
+  );
 
 export type MarketplacePublishVersionInput = z.infer<typeof marketplacePublishVersionInputSchema>;
 
 export const marketplaceArchiveListingInputSchema = z.object({
   owner: marketplaceOwnerSchema,
-  slug: marketplaceSlugSchema,
+  listingId: marketplaceListingIdSchema,
 });
 
 export type MarketplaceArchiveListingInput = z.infer<typeof marketplaceArchiveListingInputSchema>;
@@ -159,7 +195,7 @@ const marketplaceVersionPageFields = {
 };
 
 export const marketplacePublishedListingInputSchema = z.object({
-  slug: marketplaceSlugSchema,
+  listingId: marketplaceListingIdSchema,
   ...marketplaceVersionPageFields,
 });
 
@@ -168,23 +204,15 @@ export type MarketplacePublishedListingInput = z.input<
 >;
 
 export const marketplaceOwnedListingInputSchema = z.object({
-  slug: marketplaceSlugSchema,
+  listingId: marketplaceListingIdSchema,
   ownerScope: marketplaceOwnerScopeSchema,
   ...marketplaceVersionPageFields,
 });
 
 export type MarketplaceOwnedListingInput = z.input<typeof marketplaceOwnedListingInputSchema>;
 
-export const marketplaceFindListingOwnerInputSchema = z.object({
-  slug: marketplaceSlugSchema,
-  candidateScopes: z.array(marketplaceOwnerScopeSchema).min(1),
-});
-
-export type MarketplaceFindListingOwnerInput = z.infer<
-  typeof marketplaceFindListingOwnerInputSchema
->;
-
 export const marketplacePublicListingSchema = marketplaceListingMetadataSchema.extend({
+  listingId: marketplaceListingIdSchema,
   slug: marketplaceSlugSchema,
   publisherName: z.string(),
   status: z.literal("published"),
@@ -196,6 +224,7 @@ export const marketplacePublicListingSchema = marketplaceListingMetadataSchema.e
 export type MarketplaceListing = z.infer<typeof marketplacePublicListingSchema>;
 
 export const marketplaceOwnedListingSchema = marketplaceListingMetadataSchema.extend({
+  listingId: marketplaceListingIdSchema,
   slug: marketplaceSlugSchema,
   publisherName: z.string(),
   status: marketplaceListingStatusSchema,
@@ -258,6 +287,7 @@ export const marketplaceOwnedListingPageSchema = z.object({
 export type MarketplaceOwnedListingPage = z.infer<typeof marketplaceOwnedListingPageSchema>;
 
 export const marketplaceDraftResultSchema = z.object({
+  listingId: marketplaceListingIdSchema,
   slug: marketplaceSlugSchema,
   version: marketplaceVersionSchema,
   created: z.boolean(),
@@ -266,12 +296,14 @@ export const marketplaceDraftResultSchema = z.object({
 export type MarketplaceDraftResult = z.infer<typeof marketplaceDraftResultSchema>;
 
 export const marketplaceListingUpdateResultSchema = marketplaceListingMetadataSchema.extend({
+  listingId: marketplaceListingIdSchema,
   slug: marketplaceSlugSchema,
 });
 
 export type MarketplaceListingUpdateResult = z.infer<typeof marketplaceListingUpdateResultSchema>;
 
 export const marketplacePublishVersionResultSchema = z.object({
+  listingId: marketplaceListingIdSchema,
   slug: marketplaceSlugSchema,
   version: marketplaceVersionSchema,
   published: z.boolean(),
@@ -280,6 +312,7 @@ export const marketplacePublishVersionResultSchema = z.object({
 export type MarketplacePublishVersionResult = z.infer<typeof marketplacePublishVersionResultSchema>;
 
 export const marketplaceArchiveResultSchema = z.object({
+  listingId: marketplaceListingIdSchema,
   slug: marketplaceSlugSchema,
   archived: z.boolean(),
 });

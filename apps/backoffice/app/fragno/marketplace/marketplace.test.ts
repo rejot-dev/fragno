@@ -9,6 +9,7 @@ import type {
   MarketplaceOwner,
 } from "./contracts";
 import { MarketplaceOwnerConflictError, marketplaceFragmentDefinition } from "./definition";
+import { marketplaceListingId } from "./owner";
 import { MarketplaceListingCursorError } from "./pagination";
 
 const organizationOwner = (orgId: string): MarketplaceOwner => ({
@@ -26,6 +27,11 @@ const listingMetadata = (
   category: "operations",
   tags: ["reporting", "scheduled"],
   ...overrides,
+});
+
+const dailyOperationsListingId = marketplaceListingId({
+  ownerScope: { kind: "org", orgId: "org-acme" },
+  slug: "daily-operations-brief",
 });
 
 const draftInput = (input: {
@@ -56,23 +62,38 @@ describe("marketplace fragment", async () => {
     await testContext.cleanup();
   });
 
+  test("rejects owner-qualified identities that exceed the database id limit", async () => {
+    const owner = organizationOwner("x".repeat(100));
+    const input = draftInput({ owner, slug: "long-owner-listing" });
+
+    await expect(
+      callServices(() => marketplace.services.createDraftListing(input)),
+    ).rejects.toThrow("longer than 128 characters");
+  });
+
   test("keeps drafts private until an explicit version publication", async () => {
     const acme = organizationOwner("org-acme");
     const input = draftInput({ owner: acme });
 
     await expect(
       callServices(() => marketplace.services.createDraftListing(input)),
-    ).resolves.toEqual({ slug: input.slug, version: input.version, created: true });
+    ).resolves.toEqual({
+      listingId: dailyOperationsListingId,
+      slug: input.slug,
+      version: input.version,
+      created: true,
+    });
     await expect(
       callServices(() => marketplace.services.createDraftListing(input)),
     ).resolves.toMatchObject({ created: false });
-    await expect(callServices(() => marketplace.services.listPublishedListings())).resolves.toEqual(
-      expect.objectContaining({ listings: [] }),
+    const publishedBeforeRelease = await callServices(() =>
+      marketplace.services.listPublishedListings(),
     );
+    assert(!publishedBeforeRelease.listings.some((listing) => listing.slug === input.slug));
 
     const owned = await callServices(() =>
       marketplace.services.getOwnedListing({
-        slug: input.slug,
+        listingId: dailyOperationsListingId,
         ownerScope: acme.scope,
       }),
     );
@@ -88,15 +109,22 @@ describe("marketplace fragment", async () => {
     await expect(
       callServices(() =>
         marketplace.services.publishVersion({
-          slug: input.slug,
+          listingId: dailyOperationsListingId,
           version: input.version,
           owner: acme,
         }),
       ),
-    ).resolves.toEqual({ slug: input.slug, version: input.version, published: true });
+    ).resolves.toEqual({
+      listingId: dailyOperationsListingId,
+      slug: input.slug,
+      version: input.version,
+      published: true,
+    });
 
     await expect(
-      callServices(() => marketplace.services.getPublishedListing({ slug: input.slug })),
+      callServices(() =>
+        marketplace.services.getPublishedListing({ listingId: dailyOperationsListingId }),
+      ),
     ).resolves.toMatchObject({
       listing: {
         status: "published",
@@ -114,16 +142,21 @@ describe("marketplace fragment", async () => {
     await expect(
       callServices(() =>
         marketplace.services.addDraftVersion({
-          listingSlug: "daily-operations-brief",
+          listingId: dailyOperationsListingId,
           version: "1.1.0",
           owner: acme,
         }),
       ),
-    ).resolves.toEqual({ slug: "daily-operations-brief", version: "1.1.0", created: true });
+    ).resolves.toEqual({
+      listingId: dailyOperationsListingId,
+      slug: "daily-operations-brief",
+      version: "1.1.0",
+      created: true,
+    });
     await expect(
       callServices(() =>
         marketplace.services.addDraftVersion({
-          listingSlug: "daily-operations-brief",
+          listingId: dailyOperationsListingId,
           version: "1.1.0",
           owner: acme,
         }),
@@ -132,14 +165,14 @@ describe("marketplace fragment", async () => {
 
     await callServices(() =>
       marketplace.services.publishVersion({
-        slug: "daily-operations-brief",
+        listingId: dailyOperationsListingId,
         version: "1.1.0",
         owner: acme,
       }),
     );
 
     const detail = await callServices(() =>
-      marketplace.services.getPublishedListing({ slug: "daily-operations-brief" }),
+      marketplace.services.getPublishedListing({ listingId: dailyOperationsListingId }),
     );
     assert(detail?.listing.latestVersion === "1.1.0");
     expect(detail.versions.map(({ version }) => version)).toEqual(["1.1.0", "1.0.0"]);
@@ -149,7 +182,7 @@ describe("marketplace fragment", async () => {
     const acme = organizationOwner("org-acme");
     await callServices(() =>
       marketplace.services.updateListing({
-        slug: "daily-operations-brief",
+        listingId: dailyOperationsListingId,
         owner: acme,
         metadata: listingMetadata({
           name: "Operations briefing",
@@ -161,19 +194,26 @@ describe("marketplace fragment", async () => {
     );
     await expect(
       callServices(() =>
-        marketplace.services.archiveListing({ slug: "daily-operations-brief", owner: acme }),
+        marketplace.services.archiveListing({
+          listingId: dailyOperationsListingId,
+          owner: acme,
+        }),
       ),
-    ).resolves.toEqual({ slug: "daily-operations-brief", archived: true });
+    ).resolves.toEqual({
+      listingId: dailyOperationsListingId,
+      slug: "daily-operations-brief",
+      archived: true,
+    });
     await expect(
       callServices(() =>
-        marketplace.services.getPublishedListing({ slug: "daily-operations-brief" }),
+        marketplace.services.getPublishedListing({ listingId: dailyOperationsListingId }),
       ),
     ).resolves.toBeNull();
 
     await expect(
       callServices(() =>
         marketplace.services.publishVersion({
-          slug: "daily-operations-brief",
+          listingId: dailyOperationsListingId,
           version: "1.1.0",
           owner: acme,
         }),
@@ -181,37 +221,52 @@ describe("marketplace fragment", async () => {
     ).resolves.toMatchObject({ published: true });
   });
 
-  test("supports arbitrary owner scopes and rejects non-owners", async () => {
+  test("scopes listing identities to owners and rejects non-owners", async () => {
+    const organization = organizationOwner("org-identity");
     const projectOwner: MarketplaceOwner = {
-      scope: { kind: "project", orgId: "org-acme", projectId: "project-1" },
-      publisherName: "Acme project",
+      scope: { kind: "project", orgId: "org-identity", projectId: "project-1" },
+      publisherName: "Identity project",
     };
-    const input = draftInput({
+    const slug = "owner-scoped-automation";
+    const organizationInput = draftInput({
+      owner: organization,
+      slug,
+      metadata: { name: "Organization automation" },
+    });
+    const projectInput = draftInput({
       owner: projectOwner,
-      slug: "project-owned-automation",
-      metadata: { name: "Project owned automation" },
+      slug,
+      metadata: { name: "Project automation" },
+    });
+    const organizationListingId = marketplaceListingId({
+      ownerScope: organization.scope,
+      slug,
+    });
+    const projectListingId = marketplaceListingId({
+      ownerScope: projectOwner.scope,
+      slug,
     });
 
-    await callServices(() => marketplace.services.createDraftListing(input));
+    await expect(
+      callServices(() => marketplace.services.createDraftListing(organizationInput)),
+    ).resolves.toMatchObject({ listingId: organizationListingId, created: true });
+    await expect(
+      callServices(() => marketplace.services.createDraftListing(projectInput)),
+    ).resolves.toMatchObject({ listingId: projectListingId, created: true });
     await expect(
       callServices(() =>
-        marketplace.services.getOwnedListing({ slug: input.slug, ownerScope: projectOwner.scope }),
-      ),
-    ).resolves.toMatchObject({ listing: { slug: input.slug } });
-    await expect(
-      callServices(() =>
-        marketplace.services.findListingOwner({
-          slug: input.slug,
-          candidateScopes: [{ kind: "org", orgId: "org-acme" }, projectOwner.scope],
+        marketplace.services.getOwnedListing({
+          listingId: projectListingId,
+          ownerScope: projectOwner.scope,
         }),
       ),
-    ).resolves.toEqual(projectOwner.scope);
+    ).resolves.toMatchObject({ listing: { listingId: projectListingId, slug } });
     await expect(
       callServices(() =>
         marketplace.services.addDraftVersion({
-          listingSlug: input.slug,
+          listingId: projectListingId,
           version: "2.0.0",
-          owner: organizationOwner("org-acme"),
+          owner: organization,
         }),
       ),
     ).rejects.toBeInstanceOf(MarketplaceOwnerConflictError);
@@ -224,27 +279,28 @@ describe("marketplace fragment", async () => {
       slug: "version-history-example",
       metadata: { name: "Version history example" },
     });
+    const listingId = marketplaceListingId({ ownerScope: owner.scope, slug: input.slug });
     await callServices(() => marketplace.services.createDraftListing(input));
     await callServices(() =>
       marketplace.services.publishVersion({
-        slug: input.slug,
+        listingId,
         version: input.version,
         owner,
       }),
     );
     await callServices(() =>
       marketplace.services.addDraftVersion({
-        listingSlug: input.slug,
+        listingId,
         version: "1.1.0",
         owner,
       }),
     );
     await callServices(() =>
-      marketplace.services.publishVersion({ slug: input.slug, version: "1.1.0", owner }),
+      marketplace.services.publishVersion({ listingId, version: "1.1.0", owner }),
     );
 
     const firstPublicPage = await callServices(() =>
-      marketplace.services.getPublishedListing({ slug: input.slug, versionPageSize: 1 }),
+      marketplace.services.getPublishedListing({ listingId, versionPageSize: 1 }),
     );
     expect(firstPublicPage).toMatchObject({
       hasNextVersionPage: true,
@@ -253,7 +309,7 @@ describe("marketplace fragment", async () => {
     assert(firstPublicPage?.nextVersionCursor);
     const secondPublicPage = await callServices(() =>
       marketplace.services.getPublishedListing({
-        slug: input.slug,
+        listingId,
         versionCursor: firstPublicPage.nextVersionCursor,
       }),
     );
@@ -261,7 +317,7 @@ describe("marketplace fragment", async () => {
     await expect(
       callServices(() =>
         marketplace.services.getPublishedListing({
-          slug: "daily-operations-brief",
+          listingId: dailyOperationsListingId,
           versionCursor: firstPublicPage.nextVersionCursor,
         }),
       ),
@@ -269,7 +325,7 @@ describe("marketplace fragment", async () => {
 
     const firstOwnedPage = await callServices(() =>
       marketplace.services.getOwnedListing({
-        slug: input.slug,
+        listingId,
         ownerScope: owner.scope,
         versionPageSize: 1,
       }),
@@ -278,23 +334,6 @@ describe("marketplace fragment", async () => {
       hasNextVersionPage: true,
       nextVersionCursor: expect.any(String),
     });
-  });
-
-  test("accepts ownership checks across more than one hundred candidate scopes", async () => {
-    const candidateScopes = Array.from({ length: 100 }, (_, index) => ({
-      kind: "org" as const,
-      orgId: `org-candidate-${index}`,
-    }));
-    candidateScopes.push({ kind: "org", orgId: "org-acme" });
-
-    await expect(
-      callServices(() =>
-        marketplace.services.findListingOwner({
-          slug: "daily-operations-brief",
-          candidateScopes,
-        }),
-      ),
-    ).resolves.toEqual({ kind: "org", orgId: "org-acme" });
   });
 
   test("filters and cursor-paginates public and owner listing views", async () => {
@@ -316,9 +355,10 @@ describe("marketplace fragment", async () => {
           category,
         },
       });
+      const listingId = marketplaceListingId({ ownerScope: beta.scope, slug });
       await callServices(() => marketplace.services.createDraftListing(input));
       await callServices(() =>
-        marketplace.services.publishVersion({ slug, version: input.version, owner: beta }),
+        marketplace.services.publishVersion({ listingId, version: input.version, owner: beta }),
       );
     }
 

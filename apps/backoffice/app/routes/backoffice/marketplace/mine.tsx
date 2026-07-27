@@ -14,6 +14,7 @@ import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/mine";
+import { marketplaceListingManagePath } from "./navigation";
 
 const updatedAtFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -180,39 +181,37 @@ export default function BackofficeMarketplaceMine({ loaderData }: Route.Componen
         </section>
       ) : (
         <section className="space-y-3">
-          {listings.map((listing) => {
-            const search = new URLSearchParams({ organizationId });
-            return (
-              <Link
-                key={listing.slug}
-                to={`/backoffice/marketplace/${encodeURIComponent(listing.slug)}/manage?${search.toString()}`}
-                className="grid gap-4 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-5 transition-colors hover:border-[color:var(--bo-accent)] hover:bg-[var(--bo-panel-2)] md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
-              >
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <StatusBadge status={listing.status} />
-                    <span className="font-mono text-[10px] text-[var(--bo-muted-2)]">
-                      {listing.latestPublishedVersion
-                        ? `latest v${listing.latestPublishedVersion}`
-                        : "not published"}
-                    </span>
-                  </div>
-                  <h2 className="mt-3 text-xl font-semibold text-[var(--bo-fg)]">{listing.name}</h2>
-                  <p className="mt-1 font-mono text-xs text-[var(--bo-muted)]">
-                    {listing.category}
-                  </p>
+          {listings.map((listing) => (
+            <Link
+              key={listing.listingId}
+              to={marketplaceListingManagePath({
+                listingId: listing.listingId,
+                organizationId,
+              })}
+              className="grid gap-4 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-5 transition-colors hover:border-[color:var(--bo-accent)] hover:bg-[var(--bo-panel-2)] md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+            >
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge status={listing.status} />
+                  <span className="font-mono text-[10px] text-[var(--bo-muted-2)]">
+                    {listing.latestPublishedVersion
+                      ? `latest v${listing.latestPublishedVersion}`
+                      : "not published"}
+                  </span>
                 </div>
-                <div className="text-left md:text-right">
-                  <p className="text-[10px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
-                    Updated
-                  </p>
-                  <p className="mt-1 text-sm text-[var(--bo-fg)]">
-                    {updatedAtFormatter.format(new Date(listing.updatedAt))}
-                  </p>
-                </div>
-              </Link>
-            );
-          })}
+                <h2 className="mt-3 text-xl font-semibold text-[var(--bo-fg)]">{listing.name}</h2>
+                <p className="mt-1 font-mono text-xs text-[var(--bo-muted)]">{listing.category}</p>
+              </div>
+              <div className="text-left md:text-right">
+                <p className="text-[10px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
+                  Updated
+                </p>
+                <p className="mt-1 text-sm text-[var(--bo-fg)]">
+                  {updatedAtFormatter.format(new Date(listing.updatedAt))}
+                </p>
+              </div>
+            </Link>
+          ))}
         </section>
       )}
 

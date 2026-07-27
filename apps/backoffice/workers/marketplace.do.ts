@@ -15,7 +15,6 @@ import type {
   MarketplaceArchiveResult,
   MarketplaceCreateDraftListingInput,
   MarketplaceDraftResult,
-  MarketplaceFindListingOwnerInput,
   MarketplaceListingDetail,
   MarketplaceListingPage,
   MarketplaceListingPageInput,
@@ -25,7 +24,6 @@ import type {
   MarketplaceOwnedListingPage,
   MarketplaceOwnedListingPageInput,
   MarketplaceOperationResult,
-  MarketplaceOwnerScope,
   MarketplacePublishedListingInput,
   MarketplacePublishVersionInput,
   MarketplacePublishVersionResult,
@@ -97,13 +95,6 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
   ): Promise<MarketplaceOwnedListingPage> {
     const fragment = this.#getFragment();
     return await fragment.callServices(() => fragment.services.listOwnedListings(input));
-  }
-
-  async findListingOwner(
-    input: MarketplaceFindListingOwnerInput,
-  ): Promise<MarketplaceOwnerScope | null> {
-    const fragment = this.#getFragment();
-    return await fragment.callServices(() => fragment.services.findListingOwner(input));
   }
 
   async getOwnedListing(
@@ -211,10 +202,6 @@ export class Marketplace extends DurableObject<CloudflareEnv> implements Marketp
 
   listOwnedListings(input: MarketplaceOwnedListingPageInput): Promise<MarketplaceOwnedListingPage> {
     return this.#object.listOwnedListings(input);
-  }
-
-  findListingOwner(input: MarketplaceFindListingOwnerInput): Promise<MarketplaceOwnerScope | null> {
-    return this.#object.findListingOwner(input);
   }
 
   getOwnedListing(

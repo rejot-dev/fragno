@@ -2,7 +2,7 @@ import { Link, useLocation } from "react-router";
 
 import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
 import { getAuthMe } from "@/fragno/auth/auth-server";
-import { marketplaceSlugSchema } from "@/fragno/marketplace/contracts";
+import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import {
   decodeMarketplacePublishedVersionCursor,
   MarketplaceListingCursorError,
@@ -11,6 +11,11 @@ import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/detail";
+import {
+  marketplaceListingManagePath,
+  marketplaceListingPath,
+  marketplaceListingRefSchema,
+} from "./navigation";
 
 const dateTimeFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -33,8 +38,8 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     );
   }
 
-  const slugResult = marketplaceSlugSchema.safeParse(params.slug);
-  if (!slugResult.success) {
+  const listingIdResult = marketplaceListingRefSchema.safeParse(params.listingRef);
+  if (!listingIdResult.success) {
     throw new Response("Not Found", { status: 404 });
   }
 
@@ -42,7 +47,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   try {
     decodeMarketplacePublishedVersionCursor({
       encodedCursor: versionCursor,
-      listingSlug: slugResult.data,
+      listingId: listingIdResult.data,
     });
   } catch (error) {
     if (error instanceof MarketplaceListingCursorError) {
@@ -53,26 +58,23 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 
   const marketplace = context.get(BackofficeWorkerContext).runtime.objects.marketplace.singleton();
   const detail = await marketplace.getPublishedListing({
-    slug: slugResult.data,
+    listingId: listingIdResult.data,
     versionCursor,
   });
   if (!detail) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const organizationScopes = me.organizations.map(({ organization }) => ({
-    kind: "org" as const,
-    orgId: organization.id,
-  }));
-  const manageableOwner = organizationScopes.length
-    ? await marketplace.findListingOwner({
-        slug: slugResult.data,
-        candidateScopes: organizationScopes,
-      })
-    : null;
+  const manageableOrganization = me.organizations.find(
+    ({ organization }) =>
+      marketplaceListingId({
+        ownerScope: { kind: "org", orgId: organization.id },
+        slug: detail.listing.slug,
+      }) === detail.listing.listingId,
+  );
   return {
     ...detail,
-    manageOrganizationId: manageableOwner?.kind === "org" ? manageableOwner.orgId : null,
+    manageOrganizationId: manageableOrganization?.organization.id ?? null,
   };
 }
 
@@ -105,7 +107,10 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
         actions={
           manageOrganizationId ? (
             <Link
-              to={`/backoffice/marketplace/${encodeURIComponent(listing.slug)}/manage?organizationId=${encodeURIComponent(manageOrganizationId)}`}
+              to={marketplaceListingManagePath({
+                listingId: listing.listingId,
+                organizationId: manageOrganizationId,
+              })}
               className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
             >
               Manage
@@ -178,7 +183,7 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
             </div>
             {hasNextVersionPage && nextVersionCursor ? (
               <Link
-                to={`/backoffice/marketplace/${encodeURIComponent(listing.slug)}?versionCursor=${encodeURIComponent(nextVersionCursor)}`}
+                to={`${marketplaceListingPath(listing.listingId)}?versionCursor=${encodeURIComponent(nextVersionCursor)}`}
                 className="mt-3 block border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-center text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase hover:border-[color:var(--bo-accent)]"
               >
                 Older versions →

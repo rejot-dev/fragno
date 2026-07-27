@@ -17,5 +17,26 @@ export const marketplaceOwnerKey = (scope: MarketplaceOwnerScope): string => {
   throw new Error("Unsupported marketplace owner scope kind.");
 };
 
-export const marketplaceListingOwnerId = (listingSlug: string, ownerKey: string): string =>
-  `${listingSlug}#${ownerKey}`;
+export const marketplaceListingId = ({
+  ownerScope,
+  slug,
+}: {
+  ownerScope: MarketplaceOwnerScope;
+  slug: string;
+}): string => `${marketplaceOwnerKey(ownerScope)}#${slug}`;
+
+export const marketplaceListingSlug = (listingId: string): string => {
+  const separatorIndex = listingId.lastIndexOf("#");
+  if (separatorIndex < 0 || separatorIndex === listingId.length - 1) {
+    throw new Error(`Marketplace listing id ${listingId} is invalid.`);
+  }
+  return listingId.slice(separatorIndex + 1);
+};
+
+export const marketplaceVersionId = ({
+  listingId,
+  version,
+}: {
+  listingId: string;
+  version: string;
+}): string => `${listingId}@${version}`;

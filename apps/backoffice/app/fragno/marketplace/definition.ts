@@ -5,7 +5,6 @@ import {
   marketplaceAddDraftVersionInputSchema,
   marketplaceArchiveListingInputSchema,
   marketplaceCreateDraftListingInputSchema,
-  marketplaceFindListingOwnerInputSchema,
   marketplaceListingPageInputSchema,
   marketplaceOwnedListingInputSchema,
   marketplaceOwnedListingPageInputSchema,
@@ -26,7 +25,12 @@ import {
   type MarketplacePublishedListingInput,
   type MarketplacePublishVersionResult,
 } from "./contracts";
-import { marketplaceListingOwnerId, marketplaceOwnerKey } from "./owner";
+import {
+  marketplaceListingId,
+  marketplaceListingSlug,
+  marketplaceOwnerKey,
+  marketplaceVersionId,
+} from "./owner";
 import {
   decodeMarketplaceListingCursor,
   decodeMarketplaceOwnedListingCursor,
@@ -90,8 +94,6 @@ export class MarketplaceVersionTransitionError extends MarketplaceDomainError {
   }
 }
 
-const marketplaceVersionId = (slug: string, version: string) => `${slug}@${version}`;
-
 const assertOwnerOwnsListing = (
   owners: readonly { ownerKey: string }[],
   owner: MarketplaceOwner,
@@ -146,7 +148,8 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
                   }
 
                   return {
-                    slug: listing.id.externalId,
+                    listingId: listing.id.externalId,
+                    slug: marketplaceListingSlug(listing.id.externalId),
                     publisherName: listing.publisherName,
                     ...listing.metadata,
                     category: listing.category,
@@ -167,7 +170,7 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
         const input = marketplacePublishedListingInputSchema.parse(rawInput);
         const versionCursor = decodeMarketplacePublishedVersionCursor({
           encodedCursor: input.versionCursor,
-          listingSlug: input.slug,
+          listingId: input.listingId,
         });
         const effectiveVersionPageSize = versionCursor?.pageSize ?? input.versionPageSize;
 
@@ -175,12 +178,12 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
           .retrieve((uow) =>
             uow
               .findFirst("marketplace_listing", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "=", input.slug)),
+                b.whereIndex("primary", (eb) => eb("id", "=", input.listingId)),
               )
               .findWithCursor("marketplace_version", (b) => {
                 const versionQuery = b
                   .whereIndex(MARKETPLACE_PUBLISHED_VERSION_INDEX, (eb) =>
-                    eb.and(eb("listingId", "=", input.slug), eb("status", "=", "published")),
+                    eb.and(eb("listingId", "=", input.listingId), eb("status", "=", "published")),
                   )
                   .orderByIndex(MARKETPLACE_PUBLISHED_VERSION_INDEX, "desc")
                   .pageSize(effectiveVersionPageSize);
@@ -198,7 +201,8 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
 
             return {
               listing: {
-                slug: listing.id.externalId,
+                listingId: listing.id.externalId,
+                slug: marketplaceListingSlug(listing.id.externalId),
                 publisherName: listing.publisherName,
                 ...listing.metadata,
                 category: listing.category,
@@ -222,7 +226,7 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
                 ? {
                     nextVersionCursor: encodeMarketplacePublishedVersionCursor(
                       versionPage.cursor,
-                      input.slug,
+                      input.listingId,
                     ),
                   }
                 : {}),
@@ -275,7 +279,8 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
                     throw new Error(`Marketplace owner ${ownership.id.externalId} has no listing.`);
                   }
                   return {
-                    slug: listing.id.externalId,
+                    listingId: listing.id.externalId,
+                    slug: marketplaceListingSlug(listing.id.externalId),
                     publisherName: listing.publisherName,
                     ...listing.metadata,
                     category: listing.category,
@@ -293,34 +298,12 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
           .build();
       },
 
-      findListingOwner: function (rawInput: unknown) {
-        const input = marketplaceFindListingOwnerInputSchema.parse(rawInput);
-        const candidateScopes = input.candidateScopes.map((scope) => ({
-          key: marketplaceOwnerKey(scope),
-          scope,
-        }));
-
-        return this.serviceTx(marketplaceFragmentSchema)
-          .retrieve((uow) =>
-            uow.find("marketplace_listing_owner", (b) =>
-              b.whereIndex("idx_marketplace_listing_owner_listingId_ownerKey", (eb) =>
-                eb("listingId", "=", input.slug),
-              ),
-            ),
-          )
-          .transformRetrieve(([owners]) => {
-            const ownerKeys = new Set(owners.map((owner) => owner.ownerKey));
-            return candidateScopes.find((candidate) => ownerKeys.has(candidate.key))?.scope ?? null;
-          })
-          .build();
-      },
-
       getOwnedListing: function (rawInput: unknown) {
         const input = marketplaceOwnedListingInputSchema.parse(rawInput);
         const ownerKey = marketplaceOwnerKey(input.ownerScope);
         const versionCursor = decodeMarketplaceOwnedVersionCursor({
           encodedCursor: input.versionCursor,
-          listingSlug: input.slug,
+          listingId: input.listingId,
         });
         const effectiveVersionPageSize = versionCursor?.pageSize ?? input.versionPageSize;
 
@@ -330,7 +313,7 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
               .findFirst("marketplace_listing_owner", (b) =>
                 b
                   .whereIndex("idx_marketplace_listing_owner_listingId_ownerKey", (eb) =>
-                    eb.and(eb("listingId", "=", input.slug), eb("ownerKey", "=", ownerKey)),
+                    eb.and(eb("listingId", "=", input.listingId), eb("ownerKey", "=", ownerKey)),
                   )
                   .joinOne("listing", "marketplace_listing", (listing) =>
                     listing.onIndex("primary", (eb) => eb("id", "=", eb.parent("listingId"))),
@@ -339,7 +322,7 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
               .findWithCursor("marketplace_version", (b) => {
                 const versionQuery = b
                   .whereIndex(MARKETPLACE_OWNED_VERSION_INDEX, (eb) =>
-                    eb("listingId", "=", input.slug),
+                    eb("listingId", "=", input.listingId),
                   )
                   .orderByIndex(MARKETPLACE_OWNED_VERSION_INDEX, "desc")
                   .pageSize(effectiveVersionPageSize);
@@ -354,7 +337,8 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
 
             return {
               listing: {
-                slug: listing.id.externalId,
+                listingId: listing.id.externalId,
+                slug: marketplaceListingSlug(listing.id.externalId),
                 publisherName: listing.publisherName,
                 ...listing.metadata,
                 category: listing.category,
@@ -374,7 +358,7 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
                 ? {
                     nextVersionCursor: encodeMarketplaceOwnedVersionCursor(
                       versionPage.cursor,
-                      input.slug,
+                      input.listingId,
                     ),
                   }
                 : {}),
@@ -387,20 +371,24 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
       createDraftListing: function (rawInput: unknown) {
         const input = marketplaceCreateDraftListingInputSchema.parse(rawInput);
         const ownerKey = marketplaceOwnerKey(input.owner.scope);
-        const versionId = marketplaceVersionId(input.slug, input.version);
+        const listingId = marketplaceListingId({
+          ownerScope: input.owner.scope,
+          slug: input.slug,
+        });
+        const versionId = marketplaceVersionId({ listingId, version: input.version });
 
         return this.serviceTx(marketplaceFragmentSchema)
           .retrieve((uow) =>
             uow
               .findFirst("marketplace_listing", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "=", input.slug)),
+                b.whereIndex("primary", (eb) => eb("id", "=", listingId)),
               )
               .findFirst("marketplace_version", (b) =>
                 b.whereIndex("primary", (eb) => eb("id", "=", versionId)),
               )
               .find("marketplace_listing_owner", (b) =>
                 b.whereIndex("idx_marketplace_listing_owner_listingId_ownerKey", (eb) =>
-                  eb("listingId", "=", input.slug),
+                  eb("listingId", "=", listingId),
                 ),
               ),
           )
@@ -409,6 +397,7 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
               assertOwnerOwnsListing(owners, input.owner, input.slug);
               if (existingVersion) {
                 return {
+                  listingId,
                   slug: input.slug,
                   version: input.version,
                   created: false,
@@ -420,7 +409,7 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
             const { category, ...metadata } = input.metadata;
             const now = uow.now();
             uow.create("marketplace_listing", {
-              id: input.slug,
+              id: listingId,
               publisherName: input.owner.publisherName,
               metadata,
               category,
@@ -431,8 +420,8 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
               updatedAt: now,
             });
             uow.create("marketplace_listing_owner", {
-              id: marketplaceListingOwnerId(input.slug, ownerKey),
-              listingId: input.slug,
+              id: listingId,
+              listingId,
               ownerKey,
               ownerScope: input.owner.scope,
               listingStatus: "draft",
@@ -441,7 +430,7 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
             });
             uow.create("marketplace_version", {
               id: versionId,
-              listingId: input.slug,
+              listingId,
               version: input.version,
               status: "draft",
               publishedAt: null,
@@ -449,6 +438,7 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
             });
 
             return {
+              listingId,
               slug: input.slug,
               version: input.version,
               created: true,
@@ -459,32 +449,37 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
 
       addDraftVersion: function (rawInput: unknown) {
         const input = marketplaceAddDraftVersionInputSchema.parse(rawInput);
-        const versionId = marketplaceVersionId(input.listingSlug, input.version);
+        const slug = marketplaceListingSlug(input.listingId);
+        const versionId = marketplaceVersionId({
+          listingId: input.listingId,
+          version: input.version,
+        });
 
         return this.serviceTx(marketplaceFragmentSchema)
           .retrieve((uow) =>
             uow
               .findFirst("marketplace_listing", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "=", input.listingSlug)),
+                b.whereIndex("primary", (eb) => eb("id", "=", input.listingId)),
               )
               .findFirst("marketplace_version", (b) =>
                 b.whereIndex("primary", (eb) => eb("id", "=", versionId)),
               )
               .find("marketplace_listing_owner", (b) =>
                 b.whereIndex("idx_marketplace_listing_owner_listingId_ownerKey", (eb) =>
-                  eb("listingId", "=", input.listingSlug),
+                  eb("listingId", "=", input.listingId),
                 ),
               ),
           )
           .mutate(({ uow, retrieveResult: [listing, existingVersion, owners] }) => {
             if (!listing) {
-              throw new MarketplaceListingNotFoundError(input.listingSlug);
+              throw new MarketplaceListingNotFoundError(slug);
             }
-            assertOwnerOwnsListing(owners, input.owner, input.listingSlug);
+            assertOwnerOwnsListing(owners, input.owner, slug);
 
             if (existingVersion) {
               return {
-                slug: input.listingSlug,
+                listingId: input.listingId,
+                slug,
                 version: input.version,
                 created: false,
               } satisfies MarketplaceDraftResult;
@@ -493,7 +488,7 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
             const now = uow.now();
             uow.create("marketplace_version", {
               id: versionId,
-              listingId: input.listingSlug,
+              listingId: input.listingId,
               version: input.version,
               status: "draft",
               publishedAt: null,
@@ -509,7 +504,8 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
             }
 
             return {
-              slug: input.listingSlug,
+              listingId: input.listingId,
+              slug,
               version: input.version,
               created: true,
             } satisfies MarketplaceDraftResult;
@@ -519,24 +515,25 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
 
       updateListing: function (rawInput: unknown) {
         const input = marketplaceUpdateListingInputSchema.parse(rawInput);
+        const slug = marketplaceListingSlug(input.listingId);
 
         return this.serviceTx(marketplaceFragmentSchema)
           .retrieve((uow) =>
             uow
               .findFirst("marketplace_listing", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "=", input.slug)),
+                b.whereIndex("primary", (eb) => eb("id", "=", input.listingId)),
               )
               .find("marketplace_listing_owner", (b) =>
                 b.whereIndex("idx_marketplace_listing_owner_listingId_ownerKey", (eb) =>
-                  eb("listingId", "=", input.slug),
+                  eb("listingId", "=", input.listingId),
                 ),
               ),
           )
           .mutate(({ uow, retrieveResult: [listing, owners] }): MarketplaceListingUpdateResult => {
             if (!listing) {
-              throw new MarketplaceListingNotFoundError(input.slug);
+              throw new MarketplaceListingNotFoundError(slug);
             }
-            assertOwnerOwnsListing(owners, input.owner, input.slug);
+            assertOwnerOwnsListing(owners, input.owner, slug);
 
             const { category, ...metadata } = input.metadata;
             const now = uow.now();
@@ -556,46 +553,51 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
               );
             }
 
-            return { slug: input.slug, ...input.metadata };
+            return { listingId: input.listingId, slug, ...input.metadata };
           })
           .build();
       },
 
       publishVersion: function (rawInput: unknown) {
         const input = marketplacePublishVersionInputSchema.parse(rawInput);
-        const versionId = marketplaceVersionId(input.slug, input.version);
+        const slug = marketplaceListingSlug(input.listingId);
+        const versionId = marketplaceVersionId({
+          listingId: input.listingId,
+          version: input.version,
+        });
 
         return this.serviceTx(marketplaceFragmentSchema)
           .retrieve((uow) =>
             uow
               .findFirst("marketplace_listing", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "=", input.slug)),
+                b.whereIndex("primary", (eb) => eb("id", "=", input.listingId)),
               )
               .findFirst("marketplace_version", (b) =>
                 b.whereIndex("primary", (eb) => eb("id", "=", versionId)),
               )
               .find("marketplace_listing_owner", (b) =>
                 b.whereIndex("idx_marketplace_listing_owner_listingId_ownerKey", (eb) =>
-                  eb("listingId", "=", input.slug),
+                  eb("listingId", "=", input.listingId),
                 ),
               ),
           )
           .mutate(({ uow, retrieveResult: [listing, version, owners] }) => {
             if (!listing) {
-              throw new MarketplaceListingNotFoundError(input.slug);
+              throw new MarketplaceListingNotFoundError(slug);
             }
-            assertOwnerOwnsListing(owners, input.owner, input.slug);
+            assertOwnerOwnsListing(owners, input.owner, slug);
             if (!version) {
-              throw new MarketplaceVersionNotFoundError(input.slug, input.version);
+              throw new MarketplaceVersionNotFoundError(slug, input.version);
             }
 
             if (version.status === "published") {
               if (listing.latestPublishedVersion !== input.version) {
-                throw new MarketplaceVersionTransitionError(input.slug, input.version);
+                throw new MarketplaceVersionTransitionError(slug, input.version);
               }
               if (listing.status === "published") {
                 return {
-                  slug: input.slug,
+                  listingId: input.listingId,
+                  slug,
                   version: input.version,
                   published: false,
                 } satisfies MarketplacePublishVersionResult;
@@ -617,7 +619,8 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
                 );
               }
               return {
-                slug: input.slug,
+                listingId: input.listingId,
+                slug,
                 version: input.version,
                 published: true,
               } satisfies MarketplacePublishVersionResult;
@@ -645,7 +648,8 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
             }
 
             return {
-              slug: input.slug,
+              listingId: input.listingId,
+              slug,
               version: input.version,
               published: true,
             } satisfies MarketplacePublishVersionResult;
@@ -655,26 +659,31 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
 
       archiveListing: function (rawInput: unknown) {
         const input = marketplaceArchiveListingInputSchema.parse(rawInput);
+        const slug = marketplaceListingSlug(input.listingId);
 
         return this.serviceTx(marketplaceFragmentSchema)
           .retrieve((uow) =>
             uow
               .findFirst("marketplace_listing", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "=", input.slug)),
+                b.whereIndex("primary", (eb) => eb("id", "=", input.listingId)),
               )
               .find("marketplace_listing_owner", (b) =>
                 b.whereIndex("idx_marketplace_listing_owner_listingId_ownerKey", (eb) =>
-                  eb("listingId", "=", input.slug),
+                  eb("listingId", "=", input.listingId),
                 ),
               ),
           )
           .mutate(({ uow, retrieveResult: [listing, owners] }) => {
             if (!listing) {
-              throw new MarketplaceListingNotFoundError(input.slug);
+              throw new MarketplaceListingNotFoundError(slug);
             }
-            assertOwnerOwnsListing(owners, input.owner, input.slug);
+            assertOwnerOwnsListing(owners, input.owner, slug);
             if (listing.status === "archived") {
-              return { slug: input.slug, archived: false } satisfies MarketplaceArchiveResult;
+              return {
+                listingId: input.listingId,
+                slug,
+                archived: false,
+              } satisfies MarketplaceArchiveResult;
             }
 
             const now = uow.now();
@@ -686,7 +695,11 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
                 b.set({ listingStatus: "archived", listingUpdatedAt: now }).check(),
               );
             }
-            return { slug: input.slug, archived: true } satisfies MarketplaceArchiveResult;
+            return {
+              listingId: input.listingId,
+              slug,
+              archived: true,
+            } satisfies MarketplaceArchiveResult;
           })
           .build();
       },

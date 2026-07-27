@@ -39,7 +39,6 @@ import type {
   MarketplaceArchiveResult,
   MarketplaceCreateDraftListingInput,
   MarketplaceDraftResult,
-  MarketplaceFindListingOwnerInput,
   MarketplaceListingDetail,
   MarketplaceListingPage,
   MarketplaceListingPageInput,
@@ -49,7 +48,6 @@ import type {
   MarketplaceOwnedListingPage,
   MarketplaceOwnedListingPageInput,
   MarketplaceOperationResult,
-  MarketplaceOwnerScope,
   MarketplacePublishedListingInput,
   MarketplacePublishVersionInput,
   MarketplacePublishVersionResult,
@@ -142,9 +140,6 @@ export type MarketplaceObject = FetchObject &
     listOwnedListings(
       input: MarketplaceOwnedListingPageInput,
     ): Promise<MarketplaceOwnedListingPage>;
-    findListingOwner(
-      input: MarketplaceFindListingOwnerInput,
-    ): Promise<MarketplaceOwnerScope | null>;
     getOwnedListing(
       input: MarketplaceOwnedListingInput,
     ): Promise<MarketplaceOwnedListingDetail | null>;
