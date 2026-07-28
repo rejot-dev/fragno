@@ -128,10 +128,7 @@ type UploadRuntime = {
 
 export class InMemoryUploadObject implements UploadObject {
   readonly #state: BackofficeObjectState & Pick<DurableObjectState, "id">;
-  readonly #namedScope: Extract<
-    ReturnType<typeof decodeBackofficeObjectScope>,
-    { kind: "named" }
-  > | null;
+  readonly #fixedDatabaseNamespace: string | null;
   readonly #env: Parameters<typeof createUploadServerForProvider>[3];
   readonly #runtimeServices: BackofficeRuntimeServices;
   readonly #host: BackofficeFragmentDurableObject<
@@ -154,7 +151,15 @@ export class InMemoryUploadObject implements UploadObject {
     this.#state = state;
     const durableObjectName = (state.id as DurableObjectId & { name?: string }).name;
     const objectScope = durableObjectName ? decodeBackofficeObjectScope(durableObjectName) : null;
-    this.#namedScope = objectScope?.kind === "named" ? objectScope : null;
+    // Organization uploads remain administratively configurable. Named, user, and project uploads
+    // back isolated workspaces, so they derive a stable namespace from their Durable Object identity
+    // and stay pinned to database storage without requiring per-workspace configuration.
+    this.#fixedDatabaseNamespace =
+      objectScope?.kind === "named"
+        ? objectScope.name
+        : objectScope?.kind === "user" || objectScope?.kind === "project"
+          ? (durableObjectName ?? null)
+          : null;
     this.#env = env;
     this.#runtimeServices = runtime;
     this.#host = createBackofficeFragmentDurableObject({
@@ -218,20 +223,25 @@ export class InMemoryUploadObject implements UploadObject {
 
     void state.blockConcurrencyWhile(async () => {
       const stored = await this.#loadConfig();
-      if (!this.#namedScope) {
+      if (!this.#fixedDatabaseNamespace) {
         await this.#host.initializeFromStored(stored);
         return;
       }
 
       if (stored) {
-        if (stored.namespace.kind !== "named" || stored.namespace.name !== this.#namedScope.name) {
-          throw new Error("Named Upload Durable Object is bound to a different namespace.");
+        if (
+          stored.namespace.kind !== "named" ||
+          stored.namespace.name !== this.#fixedDatabaseNamespace
+        ) {
+          throw new Error("Fixed Upload Durable Object is bound to a different namespace.");
         }
         await this.#host.initializeFromStored(stored);
         return;
       }
 
-      await this.#host.storeAndInitialize(createNamedDatabaseUploadConfig(this.#namedScope.name));
+      await this.#host.storeAndInitialize(
+        createNamedDatabaseUploadConfig(this.#fixedDatabaseNamespace),
+      );
     });
   }
 
@@ -360,8 +370,8 @@ export class InMemoryUploadObject implements UploadObject {
   }
 
   async resetAdminConfig(): Promise<UploadAdminConfigResponse> {
-    if (this.#namedScope) {
-      throw new Error("Named upload instances use fixed database storage.");
+    if (this.#fixedDatabaseNamespace) {
+      throw new Error("This upload instance uses fixed database storage.");
     }
 
     await this.#state.blockConcurrencyWhile(async () => {
@@ -375,15 +385,19 @@ export class InMemoryUploadObject implements UploadObject {
     orgId: string,
     _origin?: string,
   ): Promise<UploadAdminConfigResponse> {
-    if (this.#namedScope) {
-      throw new Error("Named upload instances use fixed database storage.");
-    }
-
-    const args = setAdminConfigArgsSchema.parse({ orgId });
     const parsedPayload = uploadConfigureInputSchema.safeParse(payload);
     if (!parsedPayload.success) {
       throw new Error("Only providers 'database', 'r2', and 'r2-binding' are supported.");
     }
+    if (this.#fixedDatabaseNamespace) {
+      if (parsedPayload.data.provider !== UPLOAD_PROVIDER_DATABASE) {
+        throw new Error("This upload instance uses fixed database storage.");
+      }
+      await this.#refreshConfigured();
+      return buildUploadAdminConfigResponse(await this.#loadConfig());
+    }
+
+    const args = setAdminConfigArgsSchema.parse({ orgId });
     const existing = await this.#loadConfig();
     const resolved = resolveUploadAdminConfigInput({
       payload: parsedPayload.data,
