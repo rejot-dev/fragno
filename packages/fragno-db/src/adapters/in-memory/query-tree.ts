@@ -12,6 +12,7 @@ import {
 import { resolveFragnoIdValue } from "../../query/value-encoding";
 import type { AnyColumn, AnyTable } from "../../schema/create";
 import { Column, FragnoId, FragnoReference } from "../../schema/create";
+import { snapshotInMemoryColumnValue } from "./column-value";
 import type { InMemoryNamespaceStore, InMemoryRow, InMemoryTableStore } from "./store";
 import { normalizeIndexValue } from "./store";
 import { compareNormalizedValues } from "./value-comparison";
@@ -47,7 +48,11 @@ const selectNodeRow = (
   for (const columnName of getQueryTreeSelectedColumnNames(table, select, extraColumnNames)) {
     const physical = getPhysicalColumnName(table, columnName, resolver);
     if (Object.prototype.hasOwnProperty.call(row, physical)) {
-      selected[columnName] = row[physical];
+      const column = table.columns[columnName];
+      if (!column) {
+        throw new Error(`Column "${columnName}" not found on table "${table.name}".`);
+      }
+      selected[columnName] = snapshotInMemoryColumnValue(row[physical], column);
     }
   }
 

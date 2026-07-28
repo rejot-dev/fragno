@@ -26,6 +26,16 @@ const fkSchema = schema("fk", (s) =>
     ),
 );
 
+const mutableValuesSchema = schema("mutable-values", (s) =>
+  s.addTable("records", (t) =>
+    t
+      .addColumn("id", idColumn())
+      .addColumn("payload", column("json"))
+      .addColumn("occurredAt", column("timestamp"))
+      .addColumn("bytes", column("binary")),
+  ),
+);
+
 const createUowFactoryWithOptions = <TSchema extends AnySchema>(
   testSchemaToUse: TSchema,
   optionsOverrides: InMemoryAdapterOptions = {},
@@ -44,6 +54,79 @@ const createUowFactoryWithOptions = <TSchema extends AnySchema>(
 };
 
 describe("in-memory uow mutations", () => {
+  it("snapshots mutable column values on writes and reads", async () => {
+    const { createUow } = createUowFactoryWithOptions(mutableValuesSchema);
+    const payload = { nested: { value: "created" } };
+    const occurredAt = new Date("2026-01-01T00:00:00.000Z");
+    const bytes = new Uint8Array([1, 2, 3]);
+
+    const create = createUow();
+    create.create("records", {
+      id: "record-1",
+      payload,
+      occurredAt,
+      bytes,
+    });
+    const createResult = await create.executeMutations();
+    assert(createResult.success);
+    const recordId = create.getCreatedIds()[0]!;
+
+    payload.nested.value = "mutated after create";
+    occurredAt.setUTCFullYear(2030);
+    bytes[0] = 9;
+
+    const readRecord = async () => {
+      const retrieve = createUow();
+      retrieve.findFirst("records", (b) =>
+        b.whereIndex("primary", (eb) => eb("id", "=", "record-1")),
+      );
+      const [record] = (await retrieve.executeRetrieve()) as unknown as [
+        {
+          payload: { nested: { value: string } };
+          occurredAt: Date;
+          bytes: Uint8Array;
+        } | null,
+      ];
+      assert(record);
+      return record;
+    };
+
+    const created = await readRecord();
+    expect(created.payload).toEqual({ nested: { value: "created" } });
+    expect(created.occurredAt).toEqual(new Date("2026-01-01T00:00:00.000Z"));
+    expect(created.bytes).toEqual(new Uint8Array([1, 2, 3]));
+
+    created.payload.nested.value = "mutated after read";
+    created.occurredAt.setUTCFullYear(2040);
+    created.bytes[1] = 8;
+    const reread = await readRecord();
+    expect(reread.payload).toEqual({ nested: { value: "created" } });
+    expect(reread.occurredAt).toEqual(new Date("2026-01-01T00:00:00.000Z"));
+    expect(reread.bytes).toEqual(new Uint8Array([1, 2, 3]));
+
+    const updatePayload = { nested: { value: "updated" } };
+    const updateOccurredAt = new Date("2026-02-01T00:00:00.000Z");
+    const updateBytes = new Uint8Array([4, 5, 6]);
+    const update = createUow();
+    update.update("records", recordId, (b) =>
+      b.set({
+        payload: updatePayload,
+        occurredAt: updateOccurredAt,
+        bytes: updateBytes,
+      }),
+    );
+    const updateResult = await update.executeMutations();
+    assert(updateResult.success);
+
+    updatePayload.nested.value = "mutated after update";
+    updateOccurredAt.setUTCFullYear(2050);
+    updateBytes[2] = 7;
+    const updated = await readRecord();
+    expect(updated.payload).toEqual({ nested: { value: "updated" } });
+    expect(updated.occurredAt).toEqual(new Date("2026-02-01T00:00:00.000Z"));
+    expect(updated.bytes).toEqual(new Uint8Array([4, 5, 6]));
+  });
+
   it("uses custom internal id generators when provided", async () => {
     let current = 9n;
     const internalIdGenerator = () => {
