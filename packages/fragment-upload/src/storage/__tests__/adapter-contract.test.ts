@@ -84,7 +84,7 @@ export function describeStorageAdapterContract(
 
     test("initUpload appends a trailing object key version segment when provided", async () => {
       const { adapter, provider, fileKey, sizeBytes, contentType } = context;
-      const versionSegment = "20260319T115043123Z";
+      const versionSegment = "f5ad4f84-d68f-438b-97b2-cf61d36f012f";
       const result = await adapter.initUpload({
         provider,
         fileKey,

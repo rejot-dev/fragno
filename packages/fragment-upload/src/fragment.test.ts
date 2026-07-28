@@ -15,6 +15,9 @@ import { uploadSchema } from "./schema";
 import { createFilesystemStorageAdapter } from "./storage/fs";
 import type { StorageAdapter } from "./storage/types";
 
+const STORAGE_OBJECT_UUID_PATTERN_SOURCE =
+  "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+
 const createDirectAdapter = (
   strategy: "direct-single" | "direct-multipart",
   expiresAtOverride?: Date,
@@ -166,7 +169,8 @@ describe("upload fragment direct single flows", () => {
     assert(stored?.status === "ready");
     expect(stored?.objectKey).toMatch(
       new RegExp(
-        `^store/${adapter.name}/${createResponse.data.fileKey}/\\d{8}T\\d{9}Z(?:-\\d{4})?$`,
+        `^store/${adapter.name}/${createResponse.data.fileKey}/${STORAGE_OBJECT_UUID_PATTERN_SOURCE}$`,
+        "i",
       ),
     );
   });
@@ -487,10 +491,9 @@ describe("upload fragment direct single flows", () => {
     });
   });
 
-  it("throws when two overwrites resolve to the same timestamped object key", async () => {
+  it("allocates distinct object keys for overwrites started in the same millisecond", async () => {
     const { fragment } = build.fragments.upload;
-    const now = Date.UTC(2026, 2, 19, 11, 50, 43, 123);
-    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(now);
+    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(1_750_000_000_000);
 
     try {
       const firstCreate = await fragment.callRoute("POST", "/uploads", {
@@ -527,9 +530,12 @@ describe("upload fragment direct single flows", () => {
         body: {},
       });
 
-      assert(secondComplete.type === "error");
-      assert(secondComplete.status === 502);
-      assert(secondComplete.error.code === "STORAGE_ERROR");
+      assert(secondComplete.type === "json");
+      const firstVersion = initUpload.mock.calls[0]?.[0].objectKeyVersionSegment;
+      const secondVersion = initUpload.mock.calls[1]?.[0].objectKeyVersionSegment;
+      expect(firstVersion).toMatch(new RegExp(`^${STORAGE_OBJECT_UUID_PATTERN_SOURCE}$`, "i"));
+      expect(secondVersion).toMatch(new RegExp(`^${STORAGE_OBJECT_UUID_PATTERN_SOURCE}$`, "i"));
+      expect(secondVersion).not.toBe(firstVersion);
     } finally {
       dateNowSpy.mockRestore();
     }
@@ -1557,7 +1563,10 @@ describe("upload fragment direct multipart flows", () => {
     assert(completeResponse.data.status === "ready");
     expect(completeMultipartUpload).toHaveBeenCalledWith({
       storageKey: expect.stringMatching(
-        new RegExp(`^store/${adapter.name}/${createResponse.data.fileKey}/\\d{8}T\\d{9}Z$`),
+        new RegExp(
+          `^store/${adapter.name}/${createResponse.data.fileKey}/${STORAGE_OBJECT_UUID_PATTERN_SOURCE}$`,
+          "i",
+        ),
       ),
       storageUploadId: "upload-123",
       parts: [

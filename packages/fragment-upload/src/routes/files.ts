@@ -6,6 +6,7 @@ import type { FragnoRouteConfig } from "@fragno-dev/core";
 import { resolveUploadFragmentConfig } from "../config";
 import { uploadFragmentDefinition } from "../definition";
 import { uploadSchema } from "../schema";
+import { UploadServiceError } from "../services/errors";
 import { resolveFileKeyInput } from "../services/helpers";
 import { buildStorageObjectVersionSegment } from "../storage/object-key";
 import {
@@ -17,6 +18,8 @@ import {
 import {
   checksumSchema,
   fileMetadataSchema,
+  fileSnapshotSchema,
+  fileWritePreconditionSchema,
   providerNamespaceSchema,
   toFileMetadata,
   visibilitySchema,
@@ -95,6 +98,7 @@ const errorCodes = [
   "UPLOAD_NOT_FOUND",
   "UPLOAD_ALREADY_ACTIVE",
   "FILE_ALREADY_EXISTS",
+  "FILE_PRECONDITION_FAILED",
   "FILE_NOT_FOUND",
   "FILE_DELETED",
   "UPLOAD_EXPIRED",
@@ -122,6 +126,19 @@ const handleServiceError = <Code extends FileErrorCode>(
 ): Response => {
   if (!(err instanceof Error)) {
     throw err;
+  }
+
+  if (err instanceof UploadServiceError) {
+    switch (err.code) {
+      case "FILE_PRECONDITION_FAILED":
+        return error(
+          {
+            message: "File changed after it was read",
+            code: err.code as Code,
+          },
+          412,
+        );
+    }
   }
 
   switch (err.message) {
@@ -370,6 +387,17 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
 
           const tags = parseTags(form.get("tags"));
           const metadata = parseMetadata(form.get("metadata"));
+          const preconditionValue = form.get("precondition");
+          let precondition: z.infer<typeof fileWritePreconditionSchema> | undefined;
+          if (preconditionValue !== null) {
+            const preconditionResult = fileWritePreconditionSchema.safeParse(
+              parseJson<unknown>(preconditionValue),
+            );
+            if (!preconditionResult.success) {
+              return error({ message: "Invalid request", code: "INVALID_REQUEST" }, 400);
+            }
+            precondition = preconditionResult.data;
+          }
 
           let resolvedKey;
           try {
@@ -511,6 +539,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
                   ...createInput,
                   storageInit,
                   completedSizeBytes: BigInt(file.size),
+                  precondition,
                 }),
               ])
               .transform(({ serviceResult: [result] }) => result)
@@ -518,6 +547,13 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
 
             return json(toFileMetadata(completed.file));
           } catch (err) {
+            try {
+              await resolvedConfig.storage.deleteObject({
+                storageKey: storageInit.storageKey,
+              });
+            } catch {
+              return error({ message: "Storage error", code: "STORAGE_ERROR" }, 502);
+            }
             return handleServiceError(err, error);
           }
         },
@@ -766,7 +802,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         method: "GET",
         path: "/files/by-key",
         queryParameters: ["provider", "key"],
-        outputSchema: fileMetadataSchema,
+        outputSchema: fileSnapshotSchema,
         errorCodes,
         handler: async function ({ query }, { json, error }) {
           let byKey;
@@ -782,7 +818,10 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
               .transform(({ serviceResult: [result] }) => result)
               .execute();
 
-            return json(toFileMetadata(file));
+            return json({
+              ...toFileMetadata(file),
+              revision: file.id.version,
+            });
           } catch (err) {
             return handleServiceError(err, error);
           }

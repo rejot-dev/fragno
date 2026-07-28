@@ -2,6 +2,10 @@ export type FileVisibility = "private" | "public" | "unlisted";
 
 export type FileStatus = "ready" | "deleted";
 
+export type UploadFileWritePrecondition =
+  | { kind: "absent" }
+  | { kind: "revision"; revision: number };
+
 export type UploadStatus =
   | "created"
   | "in_progress"

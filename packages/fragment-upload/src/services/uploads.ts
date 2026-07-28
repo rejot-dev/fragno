@@ -11,7 +11,14 @@ import type {
 } from "../config";
 import { uploadSchema } from "../schema";
 import type { UploadChecksum } from "../storage/types";
-import type { FileStatus, FileVisibility, UploadStatus, UploadStrategy } from "../types";
+import type {
+  FileStatus,
+  FileVisibility,
+  UploadFileWritePrecondition,
+  UploadStatus,
+  UploadStrategy,
+} from "../types";
+import { UploadServiceError } from "./errors";
 import { resolveFileKeyInput } from "./helpers";
 
 export type CreateUploadInput = {
@@ -302,6 +309,32 @@ const shouldCleanupSupersededObject = (
   nextObjectKey: string,
 ) => file.status !== "deleted" && file.objectKey !== nextObjectKey;
 
+const assertFileWritePrecondition = (
+  file: FileRow | null,
+  precondition: UploadFileWritePrecondition | undefined,
+) => {
+  if (!precondition) {
+    return;
+  }
+
+  if (precondition.kind === "absent") {
+    if (file?.status === "ready") {
+      throw new UploadServiceError(
+        "FILE_PRECONDITION_FAILED",
+        "A ready file already exists for the expected-absence write.",
+      );
+    }
+    return;
+  }
+
+  if (file?.status !== "ready" || file.id.version !== precondition.revision) {
+    throw new UploadServiceError(
+      "FILE_PRECONDITION_FAILED",
+      "The ready file revision does not match the write precondition.",
+    );
+  }
+};
+
 export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
   const storage = config.storage;
 
@@ -452,6 +485,7 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
       input: CreateUploadInput & {
         storageInit: Awaited<ReturnType<typeof storage.initUpload>>;
         completedSizeBytes: bigint;
+        precondition?: UploadFileWritePrecondition;
       },
     ) {
       const resolved = resolveFileKeyInput(input);
@@ -468,6 +502,8 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
           ),
         )
         .mutate(({ uow, retrieveResult: [existingFile] }) => {
+          assertFileWritePrecondition(existingFile, input.precondition);
+
           if (existingFile) {
             ensureReplacementUsesDistinctObjectKey(existingFile, storageInit.storageKey);
           }
@@ -560,7 +596,12 @@ export const createUploadServices = (config: UploadFragmentResolvedConfig) => {
                 };
               })()
             : (() => {
-                const fileId = uow.create("file", fileRecord);
+                const fileId = uow.create("file", fileRecord, {
+                  // This decider belongs only to the file create operation. Some adapters cannot
+                  // report which unique constraint failed, so the retry must accept any unique
+                  // conflict and let the retrieval phase re-evaluate the original precondition.
+                  retryOnUniqueConflict: ({ error }) => error.kind === "unique",
+                });
                 return {
                   id: fileId,
                   ...fileRecord,

@@ -5,32 +5,24 @@ import {
   buildStorageObjectVersionSegment,
 } from "./object-key";
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 describe("storage object key versioning", () => {
   it("appends the version as a trailing path segment", () => {
+    const versionSegment = "f5ad4f84-d68f-438b-97b2-cf61d36f012f";
     assert(
-      appendStorageObjectKeyVersionSegment(
-        "uploads/filesystem/users/1/avatar",
-        "20260319T115043123Z",
-      ) === "uploads/filesystem/users/1/avatar/20260319T115043123Z",
+      appendStorageObjectKeyVersionSegment("uploads/filesystem/users/1/avatar", versionSegment) ===
+        `uploads/filesystem/users/1/avatar/${versionSegment}`,
     );
   });
 
-  it("builds lexicographically sortable UTC basic timestamps", () => {
-    assert(
-      buildStorageObjectVersionSegment(Date.UTC(2026, 2, 19, 11, 50, 43, 123)) ===
-        "20260319T115043123Z",
-    );
-    assert(
-      buildStorageObjectVersionSegment(Date.UTC(2026, 2, 19, 11, 50, 43, 124)) ===
-        "20260319T115043124Z",
-    );
-  });
+  it("builds a unique UUID for each physical object", () => {
+    const first = buildStorageObjectVersionSegment();
+    const second = buildStorageObjectVersionSegment();
 
-  it("returns the same timestamp segment for the same millisecond", () => {
-    const now = Date.UTC(2026, 2, 19, 11, 50, 43, 200);
-    assert(buildStorageObjectVersionSegment(now) === "20260319T115043200Z");
-    assert(buildStorageObjectVersionSegment(now) === "20260319T115043200Z");
-    assert(buildStorageObjectVersionSegment(now) === "20260319T115043200Z");
+    expect(first).toMatch(UUID_PATTERN);
+    expect(second).toMatch(UUID_PATTERN);
+    expect(second).not.toBe(first);
   });
 
   it("rejects invalid version segments", () => {
