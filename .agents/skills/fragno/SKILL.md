@@ -268,7 +268,11 @@ Docs: `curl -L "https://fragno.dev/docs/upload/quickstart" -H "accept: text/mark
 Definition: Durable, long-running workflows with steps, timers, retries, and event waits backed by
 your database.
 
-Use when: you need reliable multi-step processes and an HTTP API/CLI to manage instances.
+Use when: you need reliable multi-step processes and an HTTP API to manage instances.
+
+Use the `fragno-workflows` skill for workflow definitions, replay-safe step design,
+runner/dispatcher setup, events, emissions, and workflow tests. Use this skill for the surrounding
+application integration.
 
 Reference: `./references/first-party-fragments/workflows.md`.
 
@@ -334,4 +338,4 @@ relative to this skill file.
 | `first-party-fragments/stripe.md`            | Stripe fragment one-pager (subscriptions, webhooks, admin hooks)                                |
 | `first-party-fragments/telegram.md`          | Telegram fragment one-pager (webhook, commands, chats/messages, hooks, migrations)              |
 | `first-party-fragments/upload.md`            | Upload fragment one-pager (storage adapters, helpers, routes)                                   |
-| `first-party-fragments/workflows.md`         | Workflows fragment one-pager (runner/dispatcher, routes, CLI)                                   |
+| `first-party-fragments/workflows.md`         | Workflows fragment integration boundary and current docs                                        |
