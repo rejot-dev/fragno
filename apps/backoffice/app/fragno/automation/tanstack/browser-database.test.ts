@@ -15,6 +15,16 @@ describe("Automation collection sources", () => {
         JSON.stringify(["backoffice", "automations", "org:org-1", "adapter-1", "automation_event"]),
     );
     assert(
+      description.collectionId("marketplace_ingestion") ===
+        JSON.stringify([
+          "backoffice",
+          "automations",
+          "org:org-1",
+          "adapter-1",
+          "marketplace_ingestion",
+        ]),
+    );
+    assert(
       description.collectionId("workflows.workflow_step") ===
         JSON.stringify([
           "backoffice",
