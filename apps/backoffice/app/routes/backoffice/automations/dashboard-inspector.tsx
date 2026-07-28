@@ -1,6 +1,5 @@
 import { Braces, CalendarClock, CircleDot, X } from "lucide-react";
 import { useMemo } from "react";
-import { Link } from "react-router";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
 
@@ -11,11 +10,11 @@ import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workf
 import { resolveWorkflowRuntimeToolCalls } from "@/fragno/runtime-tools/workflow-catalog";
 
 import type { AutomationScriptSourceRecord } from "./data";
-import { automationRouteActionLabel } from "./route-action";
+import { AutomationDetailRows } from "./detail-rows";
+import { automationRouteActionDetailRows, automationRouteActionLabel } from "./route-action";
 import { AutomationEventMatcherDetail, AutomationRouteTargetDetail } from "./route-configuration";
 import { AutomationRouteDetail } from "./route-detail";
 import { automationRouteScriptLink } from "./route-links";
-import { automationRouteWorkflowName } from "./route-workflow";
 import { useLinkedScrollViewports } from "./script-view/linked-scroll";
 import { useScriptWorkflowRuns } from "./script-view/use-script-workflow-runs";
 import { ScriptWorkflowGraph } from "./script-view/workflow-graph";
@@ -168,36 +167,6 @@ function SourceInspector({
   );
 }
 
-type ActionDetailRow = { label: string; value: string; to?: string };
-
-function ActionDetailRows({ rows }: { rows: ActionDetailRow[] }) {
-  return (
-    <section className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-      <dl className="divide-y divide-[color:var(--bo-border)]">
-        {rows.map((row) => (
-          <div key={row.label} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2 px-3 py-2.5">
-            <dt className="text-[9px] tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">
-              {row.label}
-            </dt>
-            <dd className="min-w-0 font-mono text-[11px] break-all text-[var(--bo-fg)]">
-              {row.to ? (
-                <Link
-                  to={row.to}
-                  className="inline-flex min-h-10 items-center text-sky-700 transition-colors hover:text-sky-900 hover:underline dark:text-sky-300 dark:hover:text-sky-100"
-                >
-                  {row.value}
-                </Link>
-              ) : (
-                row.value
-              )}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </section>
-  );
-}
-
 function ActionPayloadDetail({ payload }: { payload: unknown }) {
   const forwardsTriggerEvent = typeof payload === "undefined" || payload === "$event";
 
@@ -244,33 +213,13 @@ function ActionInspector({
   scriptsPath: string;
 }) {
   const scriptLink = automationRouteScriptLink(route, scriptsPath);
-  const workflowName = automationRouteWorkflowName(route);
   const scriptPath =
     route.action.kind === "start_workflow" ? route.action.workflowScriptPath : null;
-  const detailRows: ActionDetailRow[] = (() => {
-    switch (route.action.kind) {
-      case "start_workflow":
-        return [
-          { label: "Workflow", value: workflowName ?? "Unknown saved workflow" },
-          { label: "Script", value: route.action.workflowScriptPath, to: scriptLink ?? undefined },
-          { label: "Instance ID", value: route.action.instanceIdTemplate },
-        ];
-      case "send_workflow_event":
-        return [
-          { label: "Workflow", value: route.action.workflowName },
-          { label: "Event", value: route.action.eventType },
-        ];
-      case "forward_event":
-        return [
-          {
-            label: "Event ID",
-            value: route.action.idTemplate ?? "Preserve the incoming event ID",
-          },
-        ];
-    }
-
-    throw new Error("Unsupported automation route action kind.");
-  })();
+  const detailRows = automationRouteActionDetailRows(route, {
+    scriptLink,
+    labelSet: "inspector",
+    missingForwardEventId: "Preserve the incoming event ID",
+  });
 
   return (
     <div className="space-y-3 p-3">
@@ -286,7 +235,9 @@ function ActionInspector({
         </p>
       </div>
 
-      <ActionDetailRows rows={detailRows} />
+      <section className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
+        <AutomationDetailRows layout="inspector" rows={detailRows} />
+      </section>
 
       {route.action.kind === "send_workflow_event" ? (
         <>

@@ -1,72 +1,10 @@
-import { Link } from "react-router";
-
 import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
 
+import { AutomationDetailRows } from "./detail-rows";
 import { formatTimestamp, formatTimestampInTimeZone } from "./formatting";
-import { automationRouteActionLabel } from "./route-action";
+import { automationRouteActionDetailRows, automationRouteActionLabel } from "./route-action";
 import { AutomationEventMatcherDetail, AutomationRouteTargetDetail } from "./route-configuration";
 import { automationEventCatalogLink, automationRouteScriptLink } from "./route-links";
-import { automationRouteWorkflowName } from "./route-workflow";
-
-type DetailRow = { label: string; value: string; to?: string };
-
-const routeActionDetail = (
-  route: AutomationRouteDefinition,
-  scriptLink: string | null,
-): DetailRow[] => {
-  const action = route.action;
-  switch (action.kind) {
-    case "start_workflow":
-      return [
-        {
-          label: "workflow",
-          value: automationRouteWorkflowName(route) ?? "Unknown saved workflow",
-        },
-        { label: "script", value: action.workflowScriptPath, to: scriptLink ?? undefined },
-        { label: "instance", value: action.instanceIdTemplate },
-      ];
-
-    case "send_workflow_event":
-      return [
-        { label: "workflow", value: action.workflowName },
-        { label: "event", value: action.eventType },
-      ];
-
-    case "forward_event":
-      return action.idTemplate ? [{ label: "event id", value: action.idTemplate }] : [];
-  }
-
-  throw new Error("Unsupported automation route action kind.");
-};
-
-function DetailRows({ rows, compact }: { rows: DetailRow[]; compact: boolean }) {
-  return (
-    <dl className="divide-y divide-[color:var(--bo-border)]">
-      {rows.map((row) => (
-        <div
-          key={row.label}
-          className={`grid gap-1.5 px-3 py-2.5 ${compact ? "grid-cols-[6rem_minmax(0,1fr)]" : "md:grid-cols-[9rem_1fr] md:px-4 md:py-3"}`}
-        >
-          <dt className="text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
-            {row.label}
-          </dt>
-          <dd className="min-w-0 font-mono text-[11px] break-all text-[var(--bo-fg)]">
-            {row.to ? (
-              <Link
-                to={row.to}
-                className="inline-flex min-h-10 items-center text-sky-700 transition-colors hover:text-sky-900 hover:underline dark:text-sky-300 dark:hover:text-sky-100"
-              >
-                {row.value}
-              </Link>
-            ) : (
-              row.value
-            )}
-          </dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
 
 export function AutomationRouteDetail({
   route,
@@ -114,8 +52,9 @@ export function AutomationRouteDetail({
         <div className="border-b border-[color:var(--bo-border)] px-3 py-2.5">
           <p className="text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">Route</p>
         </div>
-        <DetailRows
+        <AutomationDetailRows
           compact={compact}
+          layout="route"
           rows={
             route.trigger.kind === "event"
               ? [
@@ -144,7 +83,11 @@ export function AutomationRouteDetail({
             {automationRouteActionLabel(route)}
           </p>
         </div>
-        <DetailRows compact={compact} rows={routeActionDetail(route, scriptLink)} />
+        <AutomationDetailRows
+          compact={compact}
+          layout="route"
+          rows={automationRouteActionDetailRows(route, { scriptLink, labelSet: "route" })}
+        />
       </div>
 
       {route.action.kind === "send_workflow_event" ? (

@@ -26,7 +26,6 @@ import {
 
 import { eq, or, useLiveQuery } from "@tanstack/react-db";
 
-import { AUTOMATION_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/workflow-start";
 import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
 import {
   backofficeCapabilities,
@@ -43,7 +42,10 @@ import {
 import { loadAutomationScriptSource } from "./data.server";
 import { formatTimestamp } from "./formatting";
 import type { AutomationLayoutContext } from "./layout-context";
-import { automationRouteWorkflowName } from "./route-workflow";
+import {
+  automationRouteMatchesWorkflowInstance,
+  automationRouteWorkflowName,
+} from "./route-workflow";
 import { automationScopeFromRouteParams, automationScopeTabPath } from "./scope";
 import { toAutomationScriptIdFromAbsolutePath } from "./script-records";
 import { AutomationNotice } from "./shared";
@@ -70,6 +72,7 @@ type DashboardWorkflowInstance = {
   createdAt: Date;
   updatedAt: Date;
   completedAt: Date | null;
+  params: unknown;
 };
 
 type DashboardRoute = AutomationRouteDefinition;
@@ -213,37 +216,12 @@ const dashboardGridRows = (
   });
 };
 
-const routeWorkflowIdentity = (route: DashboardRoute) => {
-  switch (route.action.kind) {
-    case "start_workflow":
-      return {
-        workflowName: AUTOMATION_CODEMODE_WORKFLOW,
-        remoteWorkflowName: route.action.remoteWorkflowName ?? null,
-      };
-    case "send_workflow_event":
-      return { workflowName: route.action.workflowName, remoteWorkflowName: null };
-    case "forward_event":
-      return null;
-  }
-
-  throw new Error("Unsupported automation route action kind.");
-};
-
 const latestWorkflowRunForRoute = (
   route: DashboardRoute,
   instances: DashboardWorkflowInstance[],
 ) => {
-  const identity = routeWorkflowIdentity(route);
-  if (!identity) {
-    return null;
-  }
-
   return (
-    instances.find(
-      (instance) =>
-        instance.workflowName === identity.workflowName &&
-        instance.remoteWorkflowName === identity.remoteWorkflowName,
-    ) ?? null
+    instances.find((instance) => automationRouteMatchesWorkflowInstance(route, instance)) ?? null
   );
 };
 
@@ -252,7 +230,7 @@ const routeDestinationLabel = (route: DashboardRoute) => {
     return automationRouteWorkflowName(route) ?? "Unknown saved workflow";
   }
   if (route.action.kind === "send_workflow_event") {
-    return route.action.workflowName;
+    return route.action.remoteWorkflowName;
   }
 
   switch (route.action.targetScope.kind) {
@@ -604,13 +582,7 @@ function DashboardRouteGrid({
         const sourceMuted = Boolean(
           highlightedSourceId && source && source.id !== highlightedSourceId,
         );
-        const triggerMuted = Boolean(
-          route &&
-          (selectedRoute
-            ? route.id !== selectedRoute.id
-            : activeSource && routeSourceId(route) !== activeSource.id),
-        );
-        const actionMuted = Boolean(
+        const rowMuted = Boolean(
           route &&
           (selectedRoute
             ? route.id !== selectedRoute.id
@@ -643,7 +615,7 @@ function DashboardRouteGrid({
                 <div
                   className={`min-w-0 py-2.5 transition-opacity ${dividerClassName} ${
                     route.enabled ? "" : "bg-[var(--bo-panel)]/45"
-                  } ${triggerMuted ? "opacity-35" : ""}`}
+                  } ${rowMuted ? "opacity-35" : ""}`}
                 >
                   <TriggerCard
                     route={route}
@@ -656,7 +628,7 @@ function DashboardRouteGrid({
                 <div
                   className={`min-w-0 py-2.5 transition-opacity ${dividerClassName} ${
                     route.enabled ? "" : "bg-[var(--bo-panel)]/45"
-                  } ${actionMuted ? "opacity-35" : ""}`}
+                  } ${rowMuted ? "opacity-35" : ""}`}
                 >
                   <ActionCard
                     route={route}
@@ -750,6 +722,7 @@ export default function BackofficeAutomationDashboard() {
           createdAt: instance.createdAt,
           updatedAt: instance.updatedAt,
           completedAt: instance.completedAt,
+          params: instance.params,
         })),
     [collections.workflowInstances],
   );
