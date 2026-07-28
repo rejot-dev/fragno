@@ -23,6 +23,7 @@ export interface ReadFileOptions {
  */
 export interface WriteFileOptions {
   encoding?: BufferEncoding;
+  contentType?: string;
 }
 
 /**

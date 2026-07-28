@@ -8,6 +8,7 @@ import {
   getBuiltInFileContributors,
   ROOT_FILE_PRINCIPAL,
   resolveUploadFileMount,
+  UploadFileWriteConflictError,
   uploadFileContributor,
   type FilePrincipal,
 } from "@/files";
@@ -392,6 +393,48 @@ describe("upload file contributor", () => {
 
     await fs.rm?.("/workspace/notes/todo.md", { force: true });
     await expect(fs.readdir?.("/workspace/notes")).resolves.toEqual([]);
+  });
+
+  test("conditionally writes upload-backed files without a delete request", async () => {
+    const { fs, runtime } = createUploadFs({
+      "reports/q1.txt": { content: "ready" },
+    });
+    const fileKey = composeStorageKey(UPLOAD_PROVIDER_DATABASE, "reports/q1.txt");
+    const initialRevision = runtime.files.get(fileKey)?.revision;
+    assert(initialRevision === 0);
+
+    runtime.requests.length = 0;
+    await fs.writeFileConditional("/workspace/reports/q1.txt", "updated", {
+      contentType: "text/plain",
+      precondition: { kind: "revision", revision: initialRevision },
+    });
+
+    assert(!runtime.requests.some((request) => request.startsWith("DELETE ")));
+    await expect(fs.readFile("/workspace/reports/q1.txt")).resolves.toBe("updated");
+
+    await expect(
+      fs.writeFileConditional("/workspace/reports/q1.txt", "stale", {
+        contentType: "text/plain",
+        precondition: { kind: "revision", revision: initialRevision },
+      }),
+    ).rejects.toBeInstanceOf(UploadFileWriteConflictError);
+    await expect(fs.readFile("/workspace/reports/q1.txt")).resolves.toBe("updated");
+  });
+
+  test("conditionally recreates deleted upload records as absent", async () => {
+    const { fs } = createUploadFs({
+      "reports/q1.txt": {
+        content: "stale",
+        status: "deleted",
+      },
+    });
+
+    await fs.writeFileConditional("/workspace/reports/q1.txt", "replacement", {
+      contentType: "text/plain",
+      precondition: { kind: "absent" },
+    });
+
+    await expect(fs.readFile("/workspace/reports/q1.txt")).resolves.toBe("replacement");
   });
 
   test("treats deleted upload records as missing for exact-path lookups", async () => {
@@ -905,14 +948,17 @@ const createUploadRuntime = (
     },
   ) => {
     const provider = input.provider ?? uploadConfig.defaultProvider ?? UPLOAD_PROVIDER_DATABASE;
+    const storageKey = composeStorageKey(provider, fileKey);
+    const current = files.get(storageKey);
     const bytes =
       input.content instanceof Uint8Array ? input.content : new TextEncoder().encode(input.content);
     const contentType = input.contentType ?? guessContentType(fileKey);
 
-    contents.set(composeStorageKey(provider, fileKey), bytes);
-    files.set(composeStorageKey(provider, fileKey), {
+    contents.set(storageKey, bytes);
+    files.set(storageKey, {
       provider,
       fileKey,
+      revision: (current?.revision ?? -1) + 1,
       status: input.status ?? "ready",
       sizeBytes: bytes.byteLength,
       filename: fileKey.split("/").at(-1) ?? fileKey,
@@ -1038,6 +1084,7 @@ const createUploadRuntime = (
         };
         const nextFile = {
           ...file,
+          revision: (file.revision ?? 0) + 1,
           ...(payload.filename ? { filename: payload.filename } : {}),
           ...(payload.visibility !== undefined ? { visibility: payload.visibility } : {}),
           ...(payload.tags !== undefined ? { tags: payload.tags ?? [] } : {}),
@@ -1051,8 +1098,17 @@ const createUploadRuntime = (
       if (request.method === "DELETE" && url.pathname === "/api/upload/files/by-key") {
         const provider = url.searchParams.get("provider") ?? "";
         const key = url.searchParams.get("key") ?? "";
-        files.delete(composeStorageKey(provider, key));
-        contents.delete(composeStorageKey(provider, key));
+        const storageKey = composeStorageKey(provider, key);
+        const file = files.get(storageKey);
+        if (file) {
+          files.set(storageKey, {
+            ...file,
+            revision: (file.revision ?? 0) + 1,
+            status: "deleted",
+            updatedAt: now,
+            deletedAt: now,
+          });
+        }
         return Response.json({ ok: true });
       }
 
@@ -1065,6 +1121,28 @@ const createUploadRuntime = (
           typeof metadataValue === "string" && metadataValue
             ? ((JSON.parse(metadataValue) as Record<string, unknown>) ?? null)
             : null;
+        const storageKey = composeStorageKey(provider, fileKey);
+        const current = files.get(storageKey);
+        const preconditionValue = formData.get("precondition");
+        const precondition =
+          typeof preconditionValue === "string" && preconditionValue
+            ? (JSON.parse(preconditionValue) as
+                | { kind: "absent" }
+                | { kind: "revision"; revision: number })
+            : undefined;
+        const preconditionFailed =
+          (precondition?.kind === "absent" && current?.status === "ready") ||
+          (precondition?.kind === "revision" &&
+            (current?.status !== "ready" || current.revision !== precondition.revision));
+        if (preconditionFailed) {
+          return Response.json(
+            {
+              message: "File changed after it was read",
+              code: "FILE_PRECONDITION_FAILED",
+            },
+            { status: 412 },
+          );
+        }
         const blob = formData.get("file");
         if (!(blob instanceof Blob)) {
           return Response.json({ message: "File is required." }, { status: 400 });

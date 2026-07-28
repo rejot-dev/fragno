@@ -189,9 +189,33 @@ describe("Upload Durable Object", () => {
     const response = await upload.fetch(new Request("https://example.com/api/upload/files"));
     await expect(response.text()).resolves.toBe("fragment-database");
     await expect(upload.setAdminConfig(VALID_R2_PAYLOAD, "acme")).rejects.toThrow(
-      "Named upload instances use fixed database storage.",
+      "This upload instance uses fixed database storage.",
     );
   });
+
+  test.each([
+    ["user", "v1:user:user-1", "named/v1-user-user-1"],
+    ["project", "v1:project:org-1:project-1", "named/v1-project-org-1-project-1"],
+  ])(
+    "automatically configures %s workspace instances with fixed database storage",
+    async (_kind, name, storageKeyPrefix) => {
+      const state = createState(name);
+      const upload = new Upload(state, {} as CloudflareEnv);
+
+      await vi.waitFor(async () => {
+        await expect(upload.getAdminConfig()).resolves.toMatchObject({
+          configured: true,
+          defaultProvider: "database",
+          providers: {
+            database: { configured: true, config: { storageKeyPrefix } },
+          },
+        });
+      });
+      await expect(upload.resetAdminConfig()).rejects.toThrow(
+        "This upload instance uses fixed database storage.",
+      );
+    },
+  );
 
   test("stores multi-provider config and routes requests by provider", async () => {
     const state = createState();

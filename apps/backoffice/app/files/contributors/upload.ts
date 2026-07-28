@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import type { UploadFileWritePrecondition as FragmentUploadFileWritePrecondition } from "@fragno-dev/upload";
+
 import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
 import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
 import type { UploadObject } from "@/backoffice-runtime/object-registry";
@@ -222,6 +224,25 @@ type CreateUploadFileSystemOptions = {
   provider: UploadProvider;
 };
 
+export type UploadFileWritePrecondition = FragmentUploadFileWritePrecondition;
+
+export interface UploadFileSystem extends IFileSystem {
+  writeFileConditional(
+    path: string,
+    content: FileContent,
+    options: WriteFileOptions & {
+      precondition: UploadFileWritePrecondition;
+    },
+  ): Promise<void>;
+}
+
+export class UploadFileWriteConflictError extends Error {
+  constructor(readonly path: string) {
+    super(`Upload-backed file changed after it was read: '${path}'.`);
+    this.name = "UploadFileWriteConflictError";
+  }
+}
+
 const readUploadFileContentResponse = async ({
   ctx,
   provider,
@@ -261,7 +282,7 @@ const normalizeUploadContentType = (contentType: string | null | undefined): str
 export const createUploadFileSystem = (
   ctx: FilesContext,
   options: CreateUploadFileSystemOptions,
-): IFileSystem =>
+): UploadFileSystem =>
   createUploadFileSystemForContext(
     options.object ? { ...ctx, uploadObject: options.object } : ctx,
     options,
@@ -270,7 +291,7 @@ export const createUploadFileSystem = (
 const createUploadFileSystemForContext = (
   ctx: FilesContext,
   options: CreateUploadFileSystemOptions,
-): IFileSystem => {
+): UploadFileSystem => {
   const mountPoint = normalizeAbsolutePath(options.mountPoint ?? UPLOAD_FILE_MOUNT_POINT);
   const { provider } = options;
 
@@ -305,7 +326,94 @@ const createUploadFileSystemForContext = (
     return null;
   };
 
-  const fs: IFileSystem = {
+  const writeUploadFile = async (
+    path: string,
+    content: FileContent,
+    options: UploadWriteOptions,
+    precondition?: UploadFileWritePrecondition,
+  ) => {
+    const { fileKey, isRoot } = toRelativeUploadPath(mountPoint, path);
+    if (isRoot || !fileKey) {
+      throw new Error(`Cannot write to the mounted upload root '${mountPoint}'.`);
+    }
+
+    const principal = ctx.filePrincipal ?? ROOT_FILE_PRINCIPAL;
+    const existing = await fetchUploadFileFromRuntime(ctx, provider, fileKey);
+    if (existing && !isUploadDirectoryMarker(existing)) {
+      const fsMetadata = readUploadFsMetadata(existing.metadata);
+      assertFileWritable({
+        principal,
+        node: {
+          owner: fsMetadata.owner ?? ROOT_FILE_NODE_PERMISSIONS.owner,
+          group: fsMetadata.group ?? ROOT_FILE_NODE_PERMISSIONS.group,
+          mode: normalizeUploadMode(fsMetadata.mode ?? DEFAULT_FILE_MODE),
+        },
+        operation: "write",
+        path,
+      });
+    }
+
+    if (!existing) {
+      await assertUploadContainingDirectoryWritable(
+        ctx,
+        provider,
+        mountPoint,
+        getParentUploadFileKey(fileKey),
+        principal,
+        "write",
+        path,
+      );
+    }
+
+    for (const folderKey of getAncestorFolderKeys(getParentUploadFileKey(fileKey))) {
+      await ensureUploadDirectoryMarker(ctx, provider, folderKey, principal);
+    }
+
+    const bytes = toUint8Array(content, options);
+    const blob = toBlob(
+      bytes,
+      typeof options === "object" && options.contentType
+        ? options.contentType
+        : resolveUploadContentType(existing ?? { fileKey, contentType: null }),
+    );
+    const form = new FormData();
+    form.set(
+      "file",
+      new File([blob], getLeafSegment(fileKey), {
+        type: blob.type || undefined,
+      }),
+    );
+    form.set("provider", provider);
+    form.set("fileKey", fileKey);
+    form.set("filename", getLeafSegment(fileKey));
+    form.set("checksum", JSON.stringify(await sha256Checksum(bytes)));
+    if (precondition) {
+      form.set("precondition", JSON.stringify(precondition));
+    }
+
+    const preservedMetadata = existing
+      ? preserveUploadMetadataForRewrite(existing.metadata)
+      : mergeUploadFsMetadata(null, {
+          owner: principal.subject,
+          group: principal.primaryGroup,
+          mode: DEFAULT_FILE_MODE,
+        });
+    if (preservedMetadata) {
+      form.set("metadata", JSON.stringify(preservedMetadata));
+    }
+
+    const response = await requestUpload(ctx, "POST", "/files", {
+      body: form,
+    });
+    if (response.status === 412) {
+      throw new UploadFileWriteConflictError(path);
+    }
+    if (!response.ok) {
+      throw new Error(await readResponseMessage(response, "Unable to write upload-backed file."));
+    }
+  };
+
+  const fs: UploadFileSystem = {
     async exists(path) {
       if (stripTrailingSlash(path) === mountPoint) {
         return true;
@@ -391,81 +499,10 @@ const createUploadFileSystemForContext = (
       return response.body;
     },
     async writeFile(path, content, options) {
-      const { fileKey, isRoot } = toRelativeUploadPath(mountPoint, path);
-      if (isRoot || !fileKey) {
-        throw new Error(`Cannot write to the mounted upload root '${mountPoint}'.`);
-      }
-
-      const principal = ctx.filePrincipal ?? ROOT_FILE_PRINCIPAL;
-      const existing = await fetchUploadFileFromRuntime(ctx, provider, fileKey);
-      if (existing && !isUploadDirectoryMarker(existing)) {
-        const fsMetadata = readUploadFsMetadata(existing.metadata);
-        assertFileWritable({
-          principal,
-          node: {
-            owner: fsMetadata.owner ?? ROOT_FILE_NODE_PERMISSIONS.owner,
-            group: fsMetadata.group ?? ROOT_FILE_NODE_PERMISSIONS.group,
-            mode: normalizeUploadMode(fsMetadata.mode ?? DEFAULT_FILE_MODE),
-          },
-          operation: "write",
-          path,
-        });
-      }
-
-      if (!existing) {
-        await assertUploadContainingDirectoryWritable(
-          ctx,
-          provider,
-          mountPoint,
-          getParentUploadFileKey(fileKey),
-          principal,
-          "write",
-          path,
-        );
-      }
-
-      for (const folderKey of getAncestorFolderKeys(getParentUploadFileKey(fileKey))) {
-        await ensureUploadDirectoryMarker(ctx, provider, folderKey, principal);
-      }
-
-      if (existing) {
-        await deleteUploadRecord(ctx, existing);
-      }
-
-      const bytes = toUint8Array(content, options);
-      const blob = toBlob(
-        bytes,
-        resolveUploadContentType(existing ?? { fileKey, contentType: null }),
-      );
-      const form = new FormData();
-      form.set(
-        "file",
-        new File([blob], getLeafSegment(fileKey), {
-          type: blob.type || undefined,
-        }),
-      );
-      form.set("provider", provider);
-      form.set("fileKey", fileKey);
-      form.set("filename", getLeafSegment(fileKey));
-      form.set("checksum", JSON.stringify(await sha256Checksum(bytes)));
-
-      const preservedMetadata = existing
-        ? preserveUploadMetadataForRewrite(existing.metadata)
-        : mergeUploadFsMetadata(null, {
-            owner: principal.subject,
-            group: principal.primaryGroup,
-            mode: DEFAULT_FILE_MODE,
-          });
-      if (preservedMetadata) {
-        form.set("metadata", JSON.stringify(preservedMetadata));
-      }
-
-      const response = await requestUpload(ctx, "POST", "/files", {
-        body: form,
-      });
-      if (!response.ok) {
-        throw new Error(await readResponseMessage(response, "Unable to write upload-backed file."));
-      }
+      await writeUploadFile(path, content, options);
+    },
+    async writeFileConditional(path, content, options) {
+      await writeUploadFile(path, content, options, options.precondition);
     },
     async mkdir(path, options) {
       const { fileKey, isRoot } = toRelativeUploadPath(mountPoint, path);

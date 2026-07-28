@@ -99,7 +99,11 @@ export const createDefaultAutomationFileSystem = async ({
   automationHookQueue?: (opts?: DurableHookQueueOptions) => Promise<DurableHookQueueResponse>;
   config: BackofficeRuntimeServices["config"];
 }): Promise<MasterFileSystem> => {
-  if (execution.scope.kind === "org" || execution.scope.kind === "project") {
+  if (
+    execution.scope.kind === "org" ||
+    execution.scope.kind === "project" ||
+    (execution.scope.kind === "user" && config.bindings.upload)
+  ) {
     return createBackofficeFileSystem({
       objects,
       kernel,
