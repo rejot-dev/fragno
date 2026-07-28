@@ -46,12 +46,14 @@ describe("automation routing schemas", () => {
     expect(
       automationRouteActionSchema.parse({
         kind: "send_workflow_event",
+        remoteWorkflowName: "message-handler",
         target: { kind: "instance_id", template: "route/${event.id}" },
         eventType: "message.received",
       }),
     ).toMatchObject({
       kind: "send_workflow_event",
       workflowName: "automation-codemode-script",
+      remoteWorkflowName: "message-handler",
       target: { kind: "instance_id", template: "route/${event.id}" },
       eventType: "message.received",
     });
@@ -59,12 +61,14 @@ describe("automation routing schemas", () => {
     expect(
       automationRouteActionSchema.parse({
         kind: "send_workflow_event",
+        remoteWorkflowName: "reply-handler",
         target: { kind: "stored_instance_id", keyTemplate: "route/${event.payload.threadId}" },
         eventType: "reply.received",
       }),
     ).toMatchObject({
       kind: "send_workflow_event",
       workflowName: "automation-codemode-script",
+      remoteWorkflowName: "reply-handler",
       target: { kind: "stored_instance_id", keyTemplate: "route/${event.payload.threadId}" },
       eventType: "reply.received",
     });
@@ -72,13 +76,30 @@ describe("automation routing schemas", () => {
     expect(() =>
       automationRouteActionSchema.parse({
         kind: "send_workflow_event",
+        remoteWorkflowName: "reply-handler",
         eventType: "reply.received",
       }),
     ).toThrow();
     expect(() =>
       automationRouteActionSchema.parse({
         kind: "send_workflow_event",
+        remoteWorkflowName: "reply-handler",
         target: { kind: "stored_instance_id", keyTemplate: "" },
+        eventType: "reply.received",
+      }),
+    ).toThrow();
+    expect(() =>
+      automationRouteActionSchema.parse({
+        kind: "send_workflow_event",
+        target: { kind: "instance_id", template: "route/${event.id}" },
+        eventType: "reply.received",
+      }),
+    ).toThrow();
+    expect(() =>
+      automationRouteActionSchema.parse({
+        kind: "send_workflow_event",
+        remoteWorkflowName: "   ",
+        target: { kind: "instance_id", template: "route/${event.id}" },
         eventType: "reply.received",
       }),
     ).toThrow();
@@ -95,6 +116,7 @@ describe("automation routing schemas", () => {
       "type AutomationSendWorkflowEventActionInput = {
         kind: "send_workflow_event";
         workflowName?: string;
+        remoteWorkflowName: string;
         target: AutomationWorkflowEventTarget;
         eventType: string;
         payload?: unknown;

@@ -22,16 +22,19 @@ const startWorkflowAction = ({
 });
 
 const sendWorkflowEventAction = ({
+  remoteWorkflowName,
   storedInstanceIdKeyTemplate,
   eventType,
   payload,
 }: {
+  remoteWorkflowName: string;
   storedInstanceIdKeyTemplate: string;
   eventType: string;
   payload?: unknown;
 }): AutomationSendWorkflowEventAction => ({
   kind: "send_workflow_event",
   workflowName: AUTOMATION_CODEMODE_WORKFLOW,
+  remoteWorkflowName,
   target: { kind: "stored_instance_id", keyTemplate: storedInstanceIdKeyTemplate },
   eventType,
   payload: payload ?? "$event",
@@ -191,6 +194,7 @@ export const STARTER_AUTOMATION_ROUTES: readonly AutomationRouteCreateInput[] = 
     },
     priority: 90,
     action: sendWorkflowEventAction({
+      remoteWorkflowName: "telegram-user-linking",
       storedInstanceIdKeyTemplate: "telegram/claim-workflow/${event.payload.otpId}",
       eventType: "identity-claim-completed",
     }),
