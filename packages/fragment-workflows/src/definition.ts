@@ -951,6 +951,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
        *
        * @param options.type - Event type (must match waitForEvent filter).
        * @param options.payload - Optional payload attached to the event.
+       * @param options.expectedRemoteWorkflowName - Validates that the persisted instance belongs to the expected remote workflow.
        * @param options.createdAt - Internal: when to backdate the event. Used by scenario tests for deterministic ordering. Not exposed to users.
        */
       sendEvent: function (
@@ -960,6 +961,7 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           id?: string;
           type: string;
           payload?: unknown;
+          expectedRemoteWorkflowName?: string;
           createdAt?: Date;
           ignoreTerminal?: boolean;
         },
@@ -991,6 +993,13 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
           .mutate(({ uow, retrieveResult: [instance, existingEvent, steps] }) => {
             if (!instance) {
               throw new Error("INSTANCE_NOT_FOUND");
+            }
+
+            if (
+              options.expectedRemoteWorkflowName !== undefined &&
+              instance.remoteWorkflowName !== options.expectedRemoteWorkflowName
+            ) {
+              throw new Error("INSTANCE_REMOTE_WORKFLOW_MISMATCH");
             }
 
             if (existingEvent) {

@@ -210,12 +210,22 @@ export type WorkflowsTestHarness<
     <K extends keyof TRegistry & string>(
       workflowNameOrKey: K,
       instanceId: string,
-      options: { type: string; payload?: unknown; createdAt?: Date },
+      options: {
+        type: string;
+        payload?: unknown;
+        expectedRemoteWorkflowName?: string;
+        createdAt?: Date;
+      },
     ): Promise<InstanceStatusWithOutput<WorkflowOutputFromEntry<TRegistry[K]>>>;
     (
       workflowNameOrKey: string,
       instanceId: string,
-      options: { type: string; payload?: unknown; createdAt?: Date },
+      options: {
+        type: string;
+        payload?: unknown;
+        expectedRemoteWorkflowName?: string;
+        createdAt?: Date;
+      },
     ): Promise<InstanceStatus>;
   };
   getStatus: {
@@ -879,7 +889,12 @@ export async function createWorkflowsTestHarness<
     sendEvent: (async (
       workflowNameOrKey: (keyof TRegistry & string) | string,
       instanceId: string,
-      eventOptions: { type: string; payload?: unknown; createdAt?: Date },
+      eventOptions: {
+        type: string;
+        payload?: unknown;
+        expectedRemoteWorkflowName?: string;
+        createdAt?: Date;
+      },
     ) => {
       const workflowName = resolveWorkflowName(workflows, workflowNameOrKey);
       return await runWorkflowService<InstanceStatus>(() =>
