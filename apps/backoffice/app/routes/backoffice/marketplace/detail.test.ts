@@ -20,7 +20,11 @@ vi.mock("../automations/data.server", () => ({
   toExternalId: (id: { valueOf(): string }) => id.valueOf(),
 }));
 
-import { backofficeScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
+import {
+  backofficeScopeRouteId,
+  backofficeScopeSinglePathSegment,
+  type BackofficeRoutableScope,
+} from "@/backoffice-runtime/scope-codec";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 
 import { action, loader } from "./detail";
@@ -54,15 +58,23 @@ const context = {
   }),
 };
 
-const detailUrl = `https://example.test/backoffice/marketplace/${listingRef}`;
+const detailUrl = `https://example.test/backoffice/marketplace/org/org-1/marketplace/${listingRef}`;
 
-const runLoader = () =>
-  loader({
-    request: new Request(detailUrl),
-    params: { listingRef },
+const runLoader = (scope: BackofficeRoutableScope = { kind: "org", orgId: "org-1" }) => {
+  const url = new URL(
+    `https://example.test/backoffice/marketplace/${scope.kind}/${backofficeScopeRouteId(scope)}/marketplace/${listingRef}`,
+  );
+  return loader({
+    request: new Request(url),
+    params: {
+      listingRef,
+      scopeKind: scope.kind,
+      scopeId: backofficeScopeRouteId(scope),
+    },
     context,
-    url: new URL(detailUrl),
+    url,
   } as never);
+};
 
 const runAction = (input: { organizationId: string; targetScope: string; version?: string }) => {
   const formData = new FormData();
@@ -110,6 +122,63 @@ beforeEach(() => {
 });
 
 describe("marketplace detail loader", () => {
+  test("defaults ingestion to the organization selected in the route", async () => {
+    getAuthMeMock.mockResolvedValueOnce({
+      ...authenticatedUser,
+      organizations: [
+        authenticatedUser.organizations[0],
+        { organization: { id: "org-2", name: "Second Labs" } },
+      ],
+    });
+
+    const result = await runLoader({ kind: "org", orgId: "org-2" });
+
+    assert(!(result instanceof Response));
+    expect(result.defaultTargetOption).toEqual({
+      organizationId: "org-2",
+      value: backofficeScopeSinglePathSegment({ kind: "org", orgId: "org-2" }),
+      label: "Second Labs organization workspace",
+    });
+  });
+
+  test("defaults ingestion to the project selected in the route", async () => {
+    fetchAutomationProjectsMock.mockImplementation(async (_request, _context, organizationId) => ({
+      projects:
+        organizationId === "org-1"
+          ? [{ id: "project-1", name: "Primary project", archivedAt: null }]
+          : [],
+      projectsError: null,
+    }));
+
+    const result = await runLoader({
+      kind: "project",
+      orgId: "org-1",
+      projectId: "project-1",
+    });
+
+    assert(!(result instanceof Response));
+    expect(result.defaultTargetOption).toEqual({
+      organizationId: "org-1",
+      value: backofficeScopeSinglePathSegment({
+        kind: "project",
+        orgId: "org-1",
+        projectId: "project-1",
+      }),
+      label: "Ada Labs · Primary project project workspace",
+    });
+  });
+
+  test("defaults personal ingestion through the active organization", async () => {
+    const result = await runLoader({ kind: "user", userId: "user-1" });
+
+    assert(!(result instanceof Response));
+    expect(result.defaultTargetOption).toEqual({
+      organizationId: "org-1",
+      value: backofficeScopeSinglePathSegment({ kind: "user", userId: "user-1" }),
+      label: "Ada Labs · personal workspace",
+    });
+  });
+
   test("fails when organization projects cannot be loaded", async () => {
     fetchAutomationProjectsMock.mockResolvedValueOnce({
       projects: [],
