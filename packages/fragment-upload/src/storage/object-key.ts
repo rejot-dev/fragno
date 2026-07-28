@@ -1,21 +1,5 @@
-const OBJECT_KEY_VERSION_SEGMENT_PATTERN = /^[0-9TZ-]+$/;
-
-const padNumber = (value: number, width: number) => value.toString().padStart(width, "0");
-
-const formatUtcBasicTimestamp = (value: number) => {
-  const date = new Date(value);
-  return [
-    padNumber(date.getUTCFullYear(), 4),
-    padNumber(date.getUTCMonth() + 1, 2),
-    padNumber(date.getUTCDate(), 2),
-    "T",
-    padNumber(date.getUTCHours(), 2),
-    padNumber(date.getUTCMinutes(), 2),
-    padNumber(date.getUTCSeconds(), 2),
-    padNumber(date.getUTCMilliseconds(), 3),
-    "Z",
-  ].join("");
-};
+const OBJECT_KEY_VERSION_SEGMENT_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const normalizeObjectKeyVersionSegment = (value: string) => {
   const normalized = value.trim();
@@ -25,13 +9,7 @@ const normalizeObjectKeyVersionSegment = (value: string) => {
   return normalized;
 };
 
-export const buildStorageObjectVersionSegment = (now = Date.now()) => {
-  if (!Number.isFinite(now)) {
-    throw new Error("Invalid storage object key version timestamp");
-  }
-
-  return formatUtcBasicTimestamp(Math.trunc(now));
-};
+export const buildStorageObjectVersionSegment = () => crypto.randomUUID();
 
 export const appendStorageObjectKeyVersionSegment = (
   storageKey: string,

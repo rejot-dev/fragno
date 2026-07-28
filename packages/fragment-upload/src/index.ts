@@ -23,6 +23,7 @@ export type {
 } from "./text-index";
 export type { FileKey, FileKeyValidationResult, ValidateFileKeyOptions } from "./file-key";
 export { assertFileKey, splitFileKey, validateFileKey } from "./file-key";
+export type { UploadFileWritePrecondition } from "./types";
 export type {
   StorageAdapter,
   StorageAdapterCapabilities,

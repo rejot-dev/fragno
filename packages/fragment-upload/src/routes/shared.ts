@@ -28,6 +28,14 @@ export const providerNamespaceSchema = z
 
 export const visibilitySchema = z.enum(["private", "public", "unlisted"]);
 
+export const fileWritePreconditionSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("absent") }),
+  z.object({
+    kind: z.literal("revision"),
+    revision: z.number().int().nonnegative(),
+  }),
+]);
+
 export const fileMetadataSchema = z.object({
   fileKey: z.string(),
   uploaderId: z.string().nullable(),
@@ -51,6 +59,10 @@ export const fileMetadataSchema = z.object({
   deletedAt: z.string().nullable(),
   errorCode: z.string().nullable(),
   errorMessage: z.string().nullable(),
+});
+
+export const fileSnapshotSchema = fileMetadataSchema.extend({
+  revision: z.number().int().nonnegative(),
 });
 
 export const toFileMetadata = (file: FileMetadataSource): FileMetadata => {

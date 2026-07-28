@@ -12,6 +12,7 @@ import { uploadRoutes } from "../index";
 import { uploadSchema } from "../schema";
 import { createFilesystemStorageAdapter } from "../storage/fs";
 import type { StorageAdapter } from "../storage/types";
+import type { UploadFileWritePrecondition } from "../types";
 
 describe("upload file routes", async () => {
   const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "fragno-upload-routes-"));
@@ -43,6 +44,25 @@ describe("upload file routes", async () => {
     await fs.rm(rootDir, { recursive: true, force: true });
   });
 
+  const createFileForm = (input: {
+    content: string;
+    filename: string;
+    fileKey: string;
+    precondition?: UploadFileWritePrecondition;
+  }) => {
+    const form = new FormData();
+    form.set(
+      "file",
+      new File([Buffer.from(input.content)], input.filename, { type: "text/plain" }),
+    );
+    form.set("provider", provider);
+    form.set("fileKey", input.fileKey);
+    if (input.precondition) {
+      form.set("precondition", JSON.stringify(input.precondition));
+    }
+    return form;
+  };
+
   it("POST /files uploads and allows reading back content", async () => {
     const form = new FormData();
     const file = new File([Buffer.from("hello")], "hello.txt", {
@@ -66,6 +86,7 @@ describe("upload file routes", async () => {
     assert(getResponse.type === "json");
     expect(getResponse.data.fileKey).toBe(fileKey);
     assert(getResponse.data.filename === "hello.txt");
+    assert(getResponse.data.revision === 0);
 
     const contentResponse = await fragment.callRouteRaw("GET", "/files/by-key/content", {
       query: { provider, key: fileKey },
@@ -123,6 +144,113 @@ describe("upload file routes", async () => {
     expect(deleteResponse.data).toEqual({ ok: true });
   });
 
+  it("enforces absent and revision preconditions and cleans up rejected objects", async () => {
+    const fileKey = "workspace/conditional.txt";
+    const initialResponse = await fragment.callRoute("POST", "/files", {
+      body: createFileForm({
+        content: "initial",
+        filename: "conditional.txt",
+        fileKey,
+        precondition: { kind: "absent" },
+      }),
+    });
+    assert(initialResponse.type === "json");
+
+    const initialSnapshot = await fragment.callRoute("GET", "/files/by-key", {
+      query: { provider, key: fileKey },
+    });
+    assert(initialSnapshot.type === "json");
+    assert(initialSnapshot.data.revision === 0);
+
+    const replacementResponse = await fragment.callRoute("POST", "/files", {
+      body: createFileForm({
+        content: "replacement",
+        filename: "conditional.txt",
+        fileKey,
+        precondition: { kind: "revision", revision: initialSnapshot.data.revision },
+      }),
+    });
+    assert(replacementResponse.type === "json");
+
+    const replacementSnapshot = await fragment.callRoute("GET", "/files/by-key", {
+      query: { provider, key: fileKey },
+    });
+    assert(replacementSnapshot.type === "json");
+    assert(replacementSnapshot.data.revision === 1);
+
+    const deleteObject = vi.spyOn(storage, "deleteObject");
+    try {
+      const staleResponse = await fragment.callRoute("POST", "/files", {
+        body: createFileForm({
+          content: "stale overwrite",
+          filename: "conditional.txt",
+          fileKey,
+          precondition: { kind: "revision", revision: initialSnapshot.data.revision },
+        }),
+      });
+      assert(staleResponse.type === "error");
+      assert(staleResponse.status === 412);
+      assert(staleResponse.error.code === "FILE_PRECONDITION_FAILED");
+      expect(deleteObject).toHaveBeenCalledOnce();
+    } finally {
+      deleteObject.mockRestore();
+    }
+
+    const contentResponse = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+      query: { provider, key: fileKey },
+    });
+    assert(contentResponse.status === 200);
+    assert((await contentResponse.text()) === "replacement");
+  });
+
+  it("keeps the successful object when concurrent writes begin in the same millisecond", async () => {
+    const fileKey = "workspace/concurrent.txt";
+    const attempts = [
+      { content: "first", filename: "concurrent.txt" },
+      { content: "second", filename: "concurrent.txt" },
+    ];
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_750_000_000_000);
+    const deleteObject = vi.spyOn(storage, "deleteObject");
+
+    try {
+      const responses = await Promise.all(
+        attempts.map((attempt) =>
+          fragment.callRoute("POST", "/files", {
+            body: createFileForm({
+              ...attempt,
+              fileKey,
+              precondition: { kind: "absent" },
+            }),
+          }),
+        ),
+      );
+
+      const successfulIndex = responses.findIndex((response) => response.type === "json");
+      const rejected = responses.filter((response) => response.type === "error");
+      assert(successfulIndex !== -1);
+      assert(rejected.length === 1);
+      assert(rejected[0]?.type === "error");
+      assert(rejected[0].status === 412);
+      assert(rejected[0].error.code === "FILE_PRECONDITION_FAILED");
+      expect(deleteObject).toHaveBeenCalledOnce();
+
+      const contentResponse = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+        query: { provider, key: fileKey },
+      });
+      assert(contentResponse.status === 200);
+      assert((await contentResponse.text()) === attempts[successfulIndex]?.content);
+
+      const physicalVersions = await fs.readdir(path.join(rootDir, provider, fileKey));
+      expect(physicalVersions).toHaveLength(1);
+      expect(physicalVersions[0]).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      );
+    } finally {
+      deleteObject.mockRestore();
+      now.mockRestore();
+    }
+  });
+
   it("rejects malformed provider namespaces in POST /files", async () => {
     const form = new FormData();
     const file = new File([Buffer.from("hello")], "hello.txt", {
@@ -131,6 +259,20 @@ describe("upload file routes", async () => {
     form.set("file", file);
     form.set("provider", "bad/provider");
     form.set("keyParts", JSON.stringify(["users", 11, "avatar"]));
+
+    const response = await fragment.callRoute("POST", "/files", { body: form });
+    assert(response.type === "error");
+    assert(response.status === 400);
+    assert(response.error.code === "INVALID_REQUEST");
+  });
+
+  it("rejects malformed file write preconditions", async () => {
+    const form = createFileForm({
+      content: "unsafe",
+      filename: "unsafe.txt",
+      fileKey: "workspace/unsafe.txt",
+    });
+    form.set("precondition", "not-json");
 
     const response = await fragment.callRoute("POST", "/files", { body: form });
     assert(response.type === "error");
@@ -237,6 +379,7 @@ describe("upload file routes", async () => {
     secondForm.set("file", new File([Buffer.from("second")], "second.txt", { type: "text/plain" }));
     secondForm.set("provider", provider);
     secondForm.set("fileKey", firstCreate.data.fileKey);
+    secondForm.set("precondition", JSON.stringify({ kind: "absent" }));
 
     const secondCreate = await fragment.callRoute("POST", "/files", {
       body: secondForm,
