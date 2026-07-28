@@ -14,6 +14,7 @@ export type AutomationLayoutContext = {
 };
 
 export type AutomationTab =
+  | "dashboard"
   | "terminal"
   | "scripts"
   | "router"

@@ -4,6 +4,7 @@ import {
   AUTOMATION_STATIC_ROOT,
   AUTOMATION_SYSTEM_ROOT,
   AUTOMATION_WORKSPACE_ROOT,
+  getAutomationLayerForPath,
   inferWorkspaceScriptEngine,
   type AutomationWorkspaceScriptEntry,
 } from "@/fragno/automation/catalog";
@@ -51,6 +52,12 @@ const toAutomationScriptId = (
   script: Pick<AutomationWorkspaceScriptEntry, "layer" | "path">,
 ): string =>
   `${AUTOMATION_SCRIPT_ID_PREFIX}${script.layer}:${normalizeAutomationScriptPath(script.path)}`;
+
+export const toAutomationScriptIdFromAbsolutePath = (absolutePath: string): string =>
+  toAutomationScriptId({
+    layer: getAutomationLayerForPath(absolutePath),
+    path: absolutePath,
+  });
 
 export const fromAutomationScriptId = (value: string): string => {
   const normalized = value.startsWith(AUTOMATION_SCRIPT_ID_PREFIX)

@@ -1,9 +1,12 @@
-import { describe, expect, test } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 
 import { createUploadDirectoryMarkerMetadata } from "@/files/contributors/upload-markers";
 import type { UploadFileRecord } from "@/fragno/upload/file-record";
 
-import { buildUploadWorkspaceScriptRecords } from "./script-records";
+import {
+  buildUploadWorkspaceScriptRecords,
+  toAutomationScriptIdFromAbsolutePath,
+} from "./script-records";
 
 const file = (input: Partial<UploadFileRecord> & Pick<UploadFileRecord, "fileKey">) =>
   ({
@@ -16,6 +19,13 @@ const file = (input: Partial<UploadFileRecord> & Pick<UploadFileRecord, "fileKey
   }) satisfies UploadFileRecord;
 
 describe("automation script records", () => {
+  test("creates a safe script id from an absolute automation path", () => {
+    assert(
+      toAutomationScriptIdFromAbsolutePath("/workspace/automations/reminder.workflow.js") ===
+        "automation-script:workspace:reminder.workflow.js",
+    );
+  });
+
   test("derives workspace scripts from synchronized Upload file metadata", () => {
     const scripts = buildUploadWorkspaceScriptRecords([
       file({ fileKey: "automations/nested/cleanup.cm.js" }),

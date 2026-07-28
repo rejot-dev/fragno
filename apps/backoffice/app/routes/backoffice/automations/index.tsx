@@ -21,7 +21,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  return redirect(`/backoffice/automations/org/${orgId}/terminal`);
+  return redirect(`/backoffice/automations/org/${orgId}/dashboard`);
 }
 
 export default function BackofficeAutomationsIndex() {

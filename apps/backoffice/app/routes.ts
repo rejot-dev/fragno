@@ -174,6 +174,7 @@ export default [
       ),
       route("automations/:scopeKind/:scopeId", "routes/backoffice/automations/scope-layout.tsx", [
         index("routes/backoffice/automations/scope-index.tsx"),
+        route("dashboard", "routes/backoffice/automations/dashboard.tsx"),
         route("terminal", "routes/backoffice/automations/terminal.tsx"),
         route("scripts", "routes/backoffice/automations/scripts.tsx"),
         route("router", "routes/backoffice/automations/router.tsx"),
