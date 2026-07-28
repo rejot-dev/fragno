@@ -2,18 +2,25 @@
 import { beforeAll, beforeEach, describe, expect, test, assert } from "vitest";
 
 import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
-import type { Cursor, TxResult } from "@fragno-dev/db";
+import { getDurableHooksService, type Cursor, type TxResult } from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
 import { workflowsFragmentDefinition } from "./definition";
 import { buildScopedInstanceRowId } from "./instance-ref";
 import { workflowsSchema } from "./schema";
-import { defineWorkflow } from "./workflow";
+import { defineRemoteWorkflow, defineWorkflow } from "./workflow";
 import type { WorkflowInstanceCurrentStep, WorkflowInstanceMetadata } from "./workflow";
 
 const demoWorkflow = defineWorkflow({ name: "demo-workflow" }, async (_event, step) => {
   await step.do("noop", () => ({}));
 });
+
+const remoteDemoWorkflow = defineRemoteWorkflow(
+  { name: "remote-demo-workflow" },
+  async (_event, step) => {
+    await step.do(null, "noop", undefined, () => ({}));
+  },
+);
 
 describe("Workflows Fragment Services", () => {
   const setup = async () => {
@@ -24,7 +31,7 @@ describe("Workflows Fragment Services", () => {
         instantiate(workflowsFragmentDefinition).withConfig({
           autoTickHooks: false,
           runtime: defaultFragnoRuntime,
-          workflows: { demo: demoWorkflow },
+          workflows: { demo: demoWorkflow, remoteDemo: remoteDemoWorkflow },
         }),
       )
       .build();
@@ -596,6 +603,101 @@ describe("Workflows Fragment Services", () => {
     });
 
     await drainDurableHooks(fragment);
+  });
+
+  test("sendEvent accepts the expected remote workflow and enqueues delivery", async () => {
+    const created = await runService<{ id: string }>(() =>
+      fragment.services.createInstance("remote-demo-workflow", {
+        id: "expected-remote-event-1",
+        remoteWorkflowName: "saved-demo",
+      }),
+    );
+    await drainDurableHooks(fragment);
+
+    const status = await runService<{ status: string }>(() =>
+      fragment.services.sendEvent("remote-demo-workflow", created.id, {
+        id: "expected-remote-event-id-1",
+        type: "approval",
+        payload: { approved: true },
+        expectedRemoteWorkflowName: "saved-demo",
+      }),
+    );
+
+    assert(status.status === "active");
+    const [events] = await db
+      .createUnitOfWork("read-expected-remote-event")
+      .forSchema(workflowsSchema)
+      .find("workflow_event", (b) => b.whereIndex("primary"))
+      .executeRetrieve();
+    expect(events).toEqual([
+      expect.objectContaining({
+        id: expect.objectContaining({ externalId: "expected-remote-event-id-1" }),
+        type: "approval",
+        payload: { approved: true },
+      }),
+    ]);
+
+    const { hookService, namespace } = getDurableHooksService(fragment);
+    const hooks = await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(() => [hookService.getHooksByNamespace(namespace)] as const)
+        .transform(({ serviceResult: [records] }) => records)
+        .execute();
+    });
+    expect(hooks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          hookName: "onWorkflowEnqueued",
+          payload: expect.objectContaining({
+            workflowName: "remote-demo-workflow",
+            instanceId: created.id,
+            reason: "event",
+          }),
+        }),
+      ]),
+    );
+  });
+
+  test("sendEvent rejects a remote workflow mismatch without creating work", async () => {
+    const created = await runService<{ id: string }>(() =>
+      fragment.services.createInstance("remote-demo-workflow", {
+        id: "mismatched-remote-event-1",
+        remoteWorkflowName: "saved-demo",
+      }),
+    );
+    await drainDurableHooks(fragment);
+
+    await expect(
+      runService(() =>
+        fragment.services.sendEvent("remote-demo-workflow", created.id, {
+          id: "mismatched-remote-event-id-1",
+          type: "approval",
+          expectedRemoteWorkflowName: "different-saved-workflow",
+        }),
+      ),
+    ).rejects.toThrow("INSTANCE_REMOTE_WORKFLOW_MISMATCH");
+
+    const [events] = await db
+      .createUnitOfWork("read-mismatched-remote-event")
+      .forSchema(workflowsSchema)
+      .find("workflow_event", (b) => b.whereIndex("primary"))
+      .executeRetrieve();
+    expect(events).toHaveLength(0);
+
+    const { hookService, namespace } = getDurableHooksService(fragment);
+    const hooks = await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(() => [hookService.getHooksByNamespace(namespace)] as const)
+        .transform(({ serviceResult: [records] }) => records)
+        .execute();
+    });
+    expect(
+      hooks.filter(
+        (hook) =>
+          hook.hookName === "onWorkflowEnqueued" &&
+          (hook.payload as { reason?: string }).reason === "event",
+      ),
+    ).toHaveLength(0);
   });
 
   test("sendEvent should be idempotent when an event id is provided", async () => {
