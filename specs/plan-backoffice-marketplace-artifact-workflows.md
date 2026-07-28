@@ -124,22 +124,18 @@ Object. It does need the destination scope because one organization can ingest t
 its organization workspace, project workspaces, and authorized user workspaces independently.
 
 ```ts
-type MarketplaceIngestionTargetScope =
-  | { kind: "org"; orgId: string }
-  | { kind: "project"; orgId: string; projectId: string }
-  | { kind: "user"; userId: string };
-
 {
-  id: string; // deterministic targetKey + listingSlug
-  targetKey: string;
-  targetScope: MarketplaceIngestionTargetScope;
-  listingSlug: string;
+  id: string; // deterministic targetScopeKey + owner-qualified listingId
+  targetScopeKey: string;
+  listingId: string;
   version: string;
 }
 ```
 
-Use one ingestion per listing and destination scope within the organization. The fixed destination
-root is `/workspace`, so no arbitrary destination field is needed initially.
+Callers retain the requested target scope and can derive a display slug from `listingId`; ingestion
+records keep only canonical persisted values. Use one ingestion per listing and destination scope
+within the organization. The fixed destination root is `/workspace`, so no arbitrary destination
+field is needed initially.
 
 The row represents only the last successfully ingested version. The workflow fragment already owns
 execution status, errors, retries, start/completion times, and history; duplicating those fields in
@@ -154,7 +150,7 @@ version. This keeps workflow lookup and idempotency in Workflows without adding 
 
 Suggested index:
 
-- `targetKey, id` for listing a destination's ingestions.
+- `targetScopeKey, id` for listing a destination's ingestions.
 
 The deterministic primary ID already enforces one row per target and listing.
 
@@ -230,6 +226,17 @@ Use existing Upload behavior for:
 
 If an existing Backoffice projection drops checksum information, fix that projection instead of
 creating another storage API.
+
+Destination writes use Upload's optimistic concurrency boundary rather than relying only on the
+workflow's earlier planning read:
+
+- `GET /files/by-key` exposes the existing Fragno row revision;
+- `POST /files` accepts expected absence or an expected revision;
+- the Upload transaction rechecks that precondition and uses the retrieved row ID with `.check()`;
+- a concurrent first create is retried through the unique `(provider, key)` conflict and then fails
+  the original absence precondition;
+- rejected writes delete their unreferenced storage object;
+- the Upload filesystem does not delete an existing file before replacing it.
 
 No new Upload RPC is required. The Marketplace publication transaction is the commit operation:
 
@@ -321,8 +328,8 @@ required for the first vertical slice.
 
 ```ts
 {
-  targetScope: MarketplaceIngestionTargetScope;
-  listingSlug: string;
+  targetScope: BackofficeRoutableScope;
+  listingId: string; // owner-qualified catalog identity
   version?: string; // defaults to latest published version
 }
 ```
@@ -334,13 +341,17 @@ The workflow treats this validated scope as an immutable input snapshot.
 
 Workflow steps:
 
-1. **Resolve published artifact**
-   - Read the requested or latest published Marketplace version.
-   - Require its `artifactDirectory`.
-   - Derive the named Upload object as `marketplace/${listingSlug}`.
+1. **Resolve installed and published artifacts**
+   - Snapshot the destination's currently ingested version from Automations.
+   - Read the requested or latest published Marketplace version by owner-qualified `listingId`.
+   - Require the requested version's `artifactDirectory` and, for updates, resolve the previously
+     ingested version's directory.
+   - Derive the named Upload object from that owner-qualified listing identity.
 
 2. **List source files**
-   - List every ready Upload file beneath `artifactDirectory`.
+   - List every ready Upload file beneath `artifactDirectory` through a typed Upload route caller.
+   - Make each pagination request its own durable workflow step.
+   - Bound artifact listing to five pages of 500 files each.
    - Require at least one file.
    - Derive workspace-relative paths by stripping the directory prefix.
    - Validate every derived path before any target write.
@@ -348,14 +359,23 @@ Workflow steps:
 3. **Plan target writes**
    - Resolve the target scope's `/workspace` filesystem through the organization Automations
      runtime.
-   - For an absent target file, plan a create.
-   - For a target file with the same checksum as the source Upload record, plan a no-op.
-   - For a different existing file, fail with a conflict in the initial implementation.
+   - Treat deleted Upload records as absent.
+   - For an absent target file, plan a create with an expected-absence precondition.
+   - For a target file with the same checksum as the requested source Upload record, plan a no-op.
+   - For an update target that still matches the previously ingested source file, plan a
+     revision-conditional replacement.
+   - Reject a target that differs from both the old and requested Marketplace files as a local
+     modification conflict.
 
 4. **Copy files**
    - Read bytes from the named source Upload object.
-   - Write to `/workspace/<relative source path>`.
-   - Preserve content type and applicable filesystem mode metadata.
+   - Verify the downloaded size and SHA-256 checksum against the durable listing-page result before
+     writing.
+   - Conditionally write to `/workspace/<relative source path>` using the planning precondition.
+   - If a repeated attempt loses its precondition but the destination already matches the requested
+     source, treat the write as completed; otherwise report a non-retryable workspace conflict.
+   - Preserve content type and apply source mode metadata to newly created files while retaining
+     existing workspace mode metadata during updates.
    - Copy in stable path order with idempotent workflow step names.
 
 5. **Verify target Upload metadata**
@@ -363,7 +383,9 @@ Workflow steps:
    - Compare target checksums and sizes with the source Upload records.
 
 6. **Record successful ingestion**
-   - Upsert `{ targetKey, targetScope, listingSlug, version }` in one Automations transaction.
+   - Upsert `{ targetScopeKey, listingId, version }` in one Automations transaction.
+   - Require the persisted ingestion version to still match the version snapshotted at workflow
+     planning time so stale workflows cannot overwrite a newer result.
    - Do this only after target verification succeeds.
 
 If the workflow fails, the ingestion row is not changed. Workflow status, error details, timestamps,
@@ -376,7 +398,7 @@ state is required.
 
 Out-of-date status does not require a file scan.
 
-1. List organization-local `marketplace_ingestion` rows, optionally filtered by `targetKey`.
+1. List organization-local `marketplace_ingestion` rows, optionally filtered by `targetScopeKey`.
 2. Batch-fetch latest published versions for those slugs from Marketplace.
 3. Compare:
 
@@ -474,35 +496,37 @@ Acceptance:
 
 Add the first complete consumer path.
 
-- [ ] Add the lean `marketplace_ingestion` table to Automations.
-- [ ] Add successful-ingestion upsert, list, and get services.
-- [ ] Add `marketplace-ingest` to the built-in Automations workflow registry.
-- [ ] Add an organization-scoped Automations RPC to request ingestion.
-- [ ] Add an authenticated Backoffice action on Marketplace detail.
-- [ ] Read `artifactDirectory` from the selected published Marketplace version.
-- [ ] Derive the source Upload object from the owner-qualified listing ID.
-- [ ] List and copy every source-directory file into the organization `/workspace`.
-- [ ] Reject conflicting existing files.
-- [ ] Verify destination Upload metadata before upserting the ingestion version.
-- [ ] Show ingestion version from Automations and process status from Workflows.
+- [x] Add the lean `marketplace_ingestion` table to Automations.
+- [x] Add successful-ingestion upsert, list, and get services.
+- [x] Add `marketplace-ingest` to the built-in Automations workflow registry.
+- [x] Add an organization-scoped Automations RPC to request ingestion.
+- [x] Add an authenticated Backoffice action on Marketplace detail.
+- [x] Read `artifactDirectory` from the selected published Marketplace version.
+- [x] Derive the source Upload object from the owner-qualified listing ID.
+- [x] List and copy every source-directory file into the organization `/workspace`.
+- [x] Reject conflicting existing files.
+- [x] Treat deleted Upload records as absent.
+- [x] Enforce expected absence/revision atomically at the Upload write boundary.
+- [x] Verify destination Upload metadata before upserting the ingestion version.
+- [x] Show ingestion version from Automations and process status from Workflows.
 
 Acceptance:
 
 - One click ingests the Telegram workflow into an organization workspace.
-- Automations records only the successful `{ target, listingSlug, version }` state.
+- Automations records only the successful `{ targetScopeKey, listingId, version }` state.
 - Marketplace stores no ingestion or per-file state.
 
 ### Slice 3: Support project and user destination scopes
 
 Generalize destination routing while retaining organization workflow ownership.
 
-- [ ] Extend ingestion input with authorized project and user target scopes.
-- [ ] Resolve project and user `/workspace` filesystems from the organization workflow.
-- [ ] Generalize fixed database-backed Upload namespace initialization where required.
-- [ ] Key ingestion rows by `targetKey + listingSlug`.
-- [ ] Reject project targets from another organization.
-- [ ] Verify user targets are manageable by the owning organization.
-- [ ] Add organization, project, and user destination scenarios.
+- [x] Extend ingestion input with authorized project and user target scopes.
+- [x] Resolve project and user `/workspace` filesystems from the organization workflow.
+- [x] Generalize fixed database-backed Upload namespace initialization where required.
+- [x] Key ingestion rows by `targetScopeKey + listingId`; derive display values at the caller.
+- [x] Reject project targets from another organization.
+- [x] Verify user targets are manageable by the owning organization.
+- [x] Add organization, project, and user destination scenarios.
 
 Acceptance:
 
@@ -528,12 +552,12 @@ Acceptance:
 
 Use Upload metadata from the old source, new source, and destination.
 
-- [ ] Extend ingestion requests to update an existing ingestion.
-- [ ] Read old and new `artifactDirectory` values from Marketplace.
-- [ ] List old and new source directories from Upload.
+- [x] Extend ingestion requests to update an existing ingestion.
+- [x] Read old and new `artifactDirectory` values from Marketplace.
+- [x] List old and new source directories from Upload.
 - [ ] Plan creates, replacements, no-ops, and removals by checksum.
-- [ ] Reject locally modified files.
-- [ ] Leave the previous ingestion version unchanged if the workflow fails.
+- [x] Reject locally modified files.
+- [x] Leave the previous ingestion version unchanged if the workflow fails.
 - [ ] Add clean-update, removed-file, local-conflict, and retry scenarios.
 
 Acceptance:

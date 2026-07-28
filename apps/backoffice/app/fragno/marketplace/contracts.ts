@@ -11,13 +11,15 @@ export const marketplaceSlugSchema = z
   .trim()
   .min(3)
   .max(80)
-  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u, "Use lowercase words separated by hyphens.");
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u, "Use lowercase words separated by hyphens.")
+  .meta({ examples: ["telegram-test-command"] });
 
 export const marketplaceVersionSchema = z
   .string()
   .trim()
   .max(40)
-  .regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u, "Use a semantic version such as 1.0.0.");
+  .regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u, "Use a semantic version such as 1.0.0.")
+  .meta({ examples: ["1.0.0", "2.1.0-beta.1"] });
 
 export const marketplaceArtifactDirectorySchema = z
   .string()
@@ -30,7 +32,8 @@ export const marketplaceArtifactDirectorySchema = z
       !value.includes("\\") &&
       value.split("/").every((segment) => segment !== "" && segment !== "." && segment !== ".."),
     "Use a relative artifact directory without empty, '.' or '..' path segments.",
-  );
+  )
+  .meta({ examples: ["1.0.0"] });
 
 export const marketplaceListingIdSchema = z
   .string()
@@ -40,7 +43,10 @@ export const marketplaceListingIdSchema = z
   .regex(
     /^(?:system|org:[^#]+|user:[^#]+|project:[^#:]+:[^#]+)#[a-z0-9]+(?:-[a-z0-9]+)*$/u,
     "Use an owner-qualified marketplace listing id.",
-  );
+  )
+  .meta({
+    examples: ["system#telegram-test-command", "org:org-123#deployment-notifier"],
+  });
 
 export const MARKETPLACE_CATEGORIES = [
   "communication",

@@ -107,6 +107,10 @@ class UnavailableInMemoryDurableObject {
     return [];
   }
 
+  async hasOrganizationMember() {
+    return false;
+  }
+
   async getDevOrganizations() {
     return [];
   }
@@ -139,6 +143,18 @@ class UnavailableInMemoryDurableObject {
 
   async requestStaticMarketplacePublications() {
     throw new Error("Automations is not configured.");
+  }
+
+  async requestMarketplaceIngestion() {
+    throw new Error("Automations is not configured.");
+  }
+
+  async getMarketplaceIngestion() {
+    return null;
+  }
+
+  async listMarketplaceIngestions() {
+    return [];
   }
 
   async getRuntimeStatus() {
@@ -263,6 +279,16 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
     assertBackofficeObjectAddressAllowed(address);
     const namespace = this.#namespaces[address.binding];
     return namespace?.has(namespace.idFromName(encodeBackofficeObjectAddress(address))) ?? false;
+  }
+
+  async restart(address: BackofficeObjectAddress): Promise<void> {
+    assertBackofficeObjectAddressAllowed(address);
+    const namespace = this.#namespaces[address.binding];
+    if (!namespace) {
+      throw new Error(`In-memory Backoffice object binding ${address.binding} is not registered.`);
+    }
+    const id = namespace.idFromName(encodeBackofficeObjectAddress(address));
+    await namespace.restart(id);
   }
 
   get<TObject, TRawObject = TObject>(

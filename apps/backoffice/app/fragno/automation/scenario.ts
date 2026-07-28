@@ -302,6 +302,7 @@ export type BackofficeScenarioDefinitionInput<TVars extends ScenarioVars = Scena
   files?: BackofficeScenarioFilePreset;
   vars?: () => TVars;
   fakes?: (ctx: { fake: ScenarioFakeFactory }) => ScenarioFakes;
+  objectFactories?: InMemoryObjectFactoryOverrides;
   setup?: (builders: BackofficeScenarioStepBuilders<TVars>) => BackofficeScenarioStep[];
   steps: (builders: BackofficeScenarioStepBuilders<TVars>) => BackofficeScenarioStep[];
   options?: {
@@ -738,6 +739,7 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
   };
   runner: {
     drain(): BackofficeScenarioStep;
+    restartObject(address: BackofficeObjectAddress): BackofficeScenarioStep;
   };
 };
 
@@ -3366,6 +3368,14 @@ const buildStepBuilders = <
   runner: {
     drain: () =>
       createStep("runner", "runner.drain", "drain Backoffice runtime", (ctx) => ctx.drain()),
+    restartObject: (address) =>
+      createStep(
+        "runner",
+        "runner.restartObject",
+        `restart ${address.binding} Backoffice object`,
+        (ctx) => ctx.runtime.restartObject(address),
+        { drain: false },
+      ),
   },
 });
 
@@ -3648,7 +3658,10 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
       execution.scope.kind === "project"
         ? files.forProject(execution.scope.projectId)
         : files.forOrg(execution.scope.kind === "org" ? execution.scope.orgId : undefined),
-    objectFactories: createObjectFactories(fakes),
+    objectFactories: {
+      ...createObjectFactories(fakes),
+      ...scenario.objectFactories,
+    },
   });
   const journal: ScenarioJournal = { entries: [] };
   const vars = scenario.vars?.() ?? ({} as TVars);

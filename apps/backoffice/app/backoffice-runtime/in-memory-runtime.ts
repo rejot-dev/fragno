@@ -26,6 +26,7 @@ export type InMemoryBackofficeRuntime = {
   drainAlarms(): Promise<void>;
   drainWaitUntil(): Promise<void>;
   hasObjectInstance(address: BackofficeObjectAddress): boolean;
+  restartObject(address: BackofficeObjectAddress): Promise<void>;
   cleanup(): Promise<void>;
 };
 
@@ -136,6 +137,7 @@ export const createInMemoryBackofficeRuntime = async (
     drainAlarms: () => objectFactory.drainAlarms(),
     drainWaitUntil: () => objectFactory.drainWaitUntil(),
     hasObjectInstance: (address) => objectFactory.hasInstance(address),
+    restartObject: (address) => objectFactory.restart(address),
     async cleanup() {
       await objectFactory.drainWaitUntil();
       await adapters.cleanup();

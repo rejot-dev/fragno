@@ -153,5 +153,14 @@ export const automationFragmentSchema = schema("automations", (s) => {
         .createIndex("idx_automation_event_definition_source_type", ["source", "eventType"], {
           unique: true,
         });
+    })
+    .addTable("marketplace_ingestion", (t) => {
+      // `targetScopeKey` is the indexable encoding of the org, project, or user destination scope.
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("targetScopeKey", column("string"))
+        .addColumn("listingId", column("string"))
+        .addColumn("version", column("string"))
+        .createIndex("idx_marketplace_ingestion_targetScopeKey_id", ["targetScopeKey", "id"]);
     });
 });

@@ -5,8 +5,13 @@ import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
+import { TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE } from "@/files/content/telegram-test-command";
 import { loadAutomationCatalog } from "@/fragno/automation/catalog";
 import type { AutomationEvent } from "@/fragno/automation/contracts";
+import {
+  buildMarketplaceIngestionWorkflowInstanceId,
+  MARKETPLACE_INGEST_WORKFLOW_NAME,
+} from "@/fragno/automation/marketplace-ingest-workflow";
 import {
   buildMarketplacePublicationWorkflowInstanceId,
   MARKETPLACE_PUBLISH_WORKFLOW_NAME,
@@ -144,6 +149,144 @@ describe("Automations object scope binding", () => {
       await expect(automations.ingestEvent(scopedEvent("org-2"))).rejects.toThrow(
         "Backoffice object method scope does not match object address scope.",
       );
+    } finally {
+      await runtime.cleanup();
+    }
+  });
+
+  test("ingests marketplace artifacts into an organization member's user workspace", async () => {
+    const runtime = await createInMemoryBackofficeRuntime({
+      objectFactories: {
+        AUTH: () =>
+          ({
+            hasOrganizationMember: async ({
+              organizationId,
+              userId,
+            }: {
+              organizationId: string;
+              userId: string;
+            }) => organizationId === "org-1" && userId === "user-1",
+          }) as never,
+      },
+    });
+
+    try {
+      const automations = runtime.objects.automations.forOrg("org-1");
+      await automations.requestStaticMarketplacePublications();
+      await runtime.drain();
+
+      const listingId = marketplaceListingId({
+        ownerScope: { kind: "system" },
+        slug: "telegram-test-command",
+      });
+      await expect(
+        automations.requestMarketplaceIngestion({
+          listingId,
+          targetScope: { kind: "user", userId: "user-1" },
+        }),
+      ).resolves.toMatchObject({ state: "requested", version: "1.0.0" });
+      await runtime.drain();
+
+      await expect(
+        automations.getMarketplaceIngestion({
+          targetScope: { kind: "user", userId: "user-1" },
+          listingId,
+        }),
+      ).resolves.toMatchObject({ version: "1.0.0" });
+
+      const contentUrl = new URL("https://upload.test/api/upload/files/by-key/content");
+      contentUrl.searchParams.set("provider", "database");
+      contentUrl.searchParams.set("key", "automations/telegram-test-command.workflow.js");
+      const content = await runtime.objects.upload
+        .forUser({ userId: "user-1" })
+        .fetch(new Request(contentUrl));
+      assert(content.ok);
+      await expect(content.text()).resolves.toBe(TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE);
+    } finally {
+      await runtime.cleanup();
+    }
+  });
+
+  test("revalidates user workspace membership inside the ingestion workflow", async () => {
+    let membershipChecks = 0;
+    const runtime = await createInMemoryBackofficeRuntime({
+      objectFactories: {
+        AUTH: () =>
+          ({
+            hasOrganizationMember: async () => {
+              membershipChecks += 1;
+              return membershipChecks === 1;
+            },
+          }) as never,
+      },
+    });
+
+    try {
+      const automations = runtime.objects.automations.forOrg("org-1");
+      await automations.requestStaticMarketplacePublications();
+      await runtime.drain();
+
+      const listingId = marketplaceListingId({
+        ownerScope: { kind: "system" },
+        slug: "telegram-test-command",
+      });
+      const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+        targetScope: { kind: "user", userId: "user-1" },
+        listingId,
+        version: "1.0.0",
+      });
+      await expect(
+        automations.requestMarketplaceIngestion({
+          listingId,
+          targetScope: { kind: "user", userId: "user-1" },
+        }),
+      ).resolves.toMatchObject({ state: "requested", workflowInstanceId });
+
+      await runtime.drain();
+
+      const workflows = createWorkflowsRouteCaller({
+        object: automations,
+        scope: { kind: "org", orgId: "org-1" },
+      });
+      const instance = await workflows("GET", "/:workflowName/instances/:instanceId", {
+        pathParams: {
+          workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+          instanceId: workflowInstanceId,
+        },
+      });
+      assert(instance.type === "json");
+      expect(instance.data.details).toMatchObject({
+        status: "errored",
+        error: {
+          name: "NonRetryableError",
+          message: "Marketplace ingestion user target is not a member of the organization.",
+        },
+      });
+      await expect(
+        automations.getMarketplaceIngestion({
+          targetScope: { kind: "user", userId: "user-1" },
+          listingId,
+        }),
+      ).resolves.toBeNull();
+      expect(membershipChecks).toBe(2);
+    } finally {
+      await runtime.cleanup();
+    }
+  });
+
+  test("rejects marketplace project targets from another organization", async () => {
+    const runtime = await createInMemoryBackofficeRuntime();
+
+    try {
+      await expect(
+        runtime.objects.automations.forOrg("org-1").requestMarketplaceIngestion({
+          listingId: marketplaceListingId({
+            ownerScope: { kind: "system" },
+            slug: "telegram-test-command",
+          }),
+          targetScope: { kind: "project", orgId: "org-2", projectId: "project-1" },
+        }),
+      ).rejects.toThrow("Marketplace ingestion target belongs to another organization.");
     } finally {
       await runtime.cleanup();
     }

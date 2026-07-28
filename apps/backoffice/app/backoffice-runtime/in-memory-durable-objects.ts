@@ -216,6 +216,30 @@ export class InMemoryDurableObjectNamespace<TObject> {
     return this.#instances.has(String(id));
   }
 
+  async restart(id: DurableObjectId): Promise<TObject> {
+    const key = String(id);
+    const existing = this.#instances.get(key);
+    if (!existing) {
+      return this.get(id);
+    }
+
+    await existing.state.drainBlocking();
+    const object = this.#createObject({
+      id: existing.id,
+      name: existing.name,
+      state: existing.state,
+    });
+    const stub = this.#createStub(object, existing.state);
+    this.#instances.set(key, {
+      id: existing.id,
+      name: existing.name,
+      state: existing.state,
+      object,
+      stub,
+    });
+    return stub;
+  }
+
   instances(): InMemoryDurableObjectInstance<TObject>[] {
     return [...this.#instances.values()];
   }

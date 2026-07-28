@@ -54,6 +54,13 @@ export {
 export type { AutomationScriptLayer, AutomationWorkspaceScriptEntry } from "./catalog";
 export type { AutomationEventRecord } from "./events";
 export type {
+  MarketplaceIngestionListInput,
+  MarketplaceIngestionLookupInput,
+  MarketplaceIngestionRecord,
+  MarketplaceIngestionRequestInput,
+  MarketplaceIngestionRequestResult,
+} from "./marketplace-ingestions";
+export type {
   AutomationEventDefinition,
   AutomationEventDefinitionCreateInput,
   AutomationEventDefinitionUpdateInput,
