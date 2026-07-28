@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useOutletContext } from "react-router";
+import { useOutletContext, useSearchParams } from "react-router";
 
 import { useLiveQuery } from "@tanstack/react-db";
 
@@ -38,6 +38,7 @@ const searchableText = (event: {
 
 export default function BackofficeAutomationEventsCatalog() {
   const { collections } = useOutletContext<AutomationLayoutContext>();
+  const [searchParams] = useSearchParams();
   const staticEvents = useMemo(
     () =>
       listAutomationEventDescriptors().sort(
@@ -79,7 +80,7 @@ export default function BackofficeAutomationEventsCatalog() {
       : "Automation event definition synchronization failed."
     : null;
   const [payloadFormat, setPayloadFormat] = useState<"typescript" | "jsonschema">("typescript");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => searchParams.get("search")?.trim() ?? "");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(25);
   const events = useMemo(
