@@ -321,6 +321,14 @@ export class InMemoryAuthObject implements AuthObject {
     });
   }
 
+  async hasOrganizationMember(input: { organizationId: string; userId: string }): Promise<boolean> {
+    const fragment = this.#ensureFragment();
+    const member = await fragment.callServices(() =>
+      fragment.services.getOrganizationMemberByUser(input),
+    );
+    return member !== null;
+  }
+
   async getDevOrganizations(): Promise<
     Array<{
       id: string;
@@ -380,6 +388,10 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
 
   async getAllOrganizations(): Promise<Organization[]> {
     return await this.#object.getAllOrganizations();
+  }
+
+  async hasOrganizationMember(input: { organizationId: string; userId: string }): Promise<boolean> {
+    return await this.#object.hasOrganizationMember(input);
   }
 
   async getDevOrganizations(): Promise<

@@ -25,6 +25,7 @@ import {
 import { createAutomationEventDefinitionServices } from "./event-definitions-storage-runtime";
 import { createAutomationEventServices } from "./events-storage-runtime";
 import type { AutomationEventIngestionPayload, AutomationHookUnitOfWork } from "./internal-hooks";
+import { createAutomationMarketplaceIngestionServices } from "./marketplace-ingestions";
 import { createAutomationProjectServices } from "./projects-storage-runtime";
 import { dispatchAutomationRouteSchedule } from "./route-scheduling-runtime";
 import {
@@ -373,6 +374,8 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
     const routeServices = createAutomationRouteServices(defineService);
     const eventServices = createAutomationEventServices(defineService);
     const eventDefinitionServices = createAutomationEventDefinitionServices(defineService);
+    const marketplaceIngestionServices =
+      createAutomationMarketplaceIngestionServices(defineService);
 
     return defineService({
       ...storeServices,
@@ -381,6 +384,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       ...routeServices,
       ...eventServices,
       ...eventDefinitionServices,
+      ...marketplaceIngestionServices,
       seedStarterAutomationRoutes: function () {
         return this.serviceTx(automationFragmentSchema)
           .retrieve((uow) => uow.find("automation_route", (b) => b.whereIndex("primary")))

@@ -21,6 +21,11 @@ import type {
   AutomationEventDefinitionUpdateInput,
   AutomationIngestResult,
   AutomationProjectExecutionTarget,
+  MarketplaceIngestionListInput,
+  MarketplaceIngestionLookupInput,
+  MarketplaceIngestionRecord,
+  MarketplaceIngestionRequestInput,
+  MarketplaceIngestionRequestResult,
   SandboxInstanceRecord,
   SandboxInstanceRequestInput,
   SandboxProvider,
@@ -112,6 +117,7 @@ export type AuthObject = FetchObject &
       | { status: "rejected"; reason: "user_not_found" | "user_banned" }
     >;
     getAllOrganizations(): Promise<Organization[]>;
+    hasOrganizationMember(input: { organizationId: string; userId: string }): Promise<boolean>;
     getDevOrganizations(): Promise<
       Array<
         Pick<Organization, "id" | "name" | "slug" | "createdBy"> & {
@@ -184,6 +190,15 @@ export type AutomationsObject = FetchObject &
     ): Promise<AutomationIngestResult>;
     seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult>;
     requestStaticMarketplacePublications(): Promise<MarketplaceStaticPublicationResult>;
+    requestMarketplaceIngestion(
+      input: MarketplaceIngestionRequestInput,
+    ): Promise<MarketplaceIngestionRequestResult>;
+    getMarketplaceIngestion(
+      input: MarketplaceIngestionLookupInput,
+    ): Promise<MarketplaceIngestionRecord | null>;
+    listMarketplaceIngestions(
+      input?: MarketplaceIngestionListInput,
+    ): Promise<MarketplaceIngestionRecord[]>;
     listEventDefinitions(): Promise<AutomationEventDefinition[]>;
     getEventDefinition(input: {
       source: string;

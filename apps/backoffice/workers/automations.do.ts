@@ -1,3 +1,4 @@
+import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
 import {
@@ -34,12 +35,27 @@ import type {
   AutomationFragmentConfig,
   AutomationIngestResult,
   AutomationProjectExecutionTarget,
+  MarketplaceIngestionListInput,
+  MarketplaceIngestionLookupInput,
+  MarketplaceIngestionRecord,
+  MarketplaceIngestionRequestInput,
+  MarketplaceIngestionRequestResult,
   SandboxInstanceRecord,
   SandboxInstanceRequestInput,
   SandboxProvider,
   StarterAutomationRoutesSeedResult,
 } from "@/fragno/automation";
 import { createAutomationsRuntime, type AutomationsRuntime } from "@/fragno/automation/automations";
+import {
+  buildMarketplaceIngestionWorkflowInstanceId,
+  MARKETPLACE_INGEST_WORKFLOW_NAME,
+} from "@/fragno/automation/marketplace-ingest-workflow";
+import {
+  assertMarketplaceIngestionTargetAccessible,
+  assertMarketplaceIngestionTargetBelongsToOrganization,
+  marketplaceIngestionRequestInputSchema,
+  resolveMarketplaceIngestionArtifactVersion,
+} from "@/fragno/automation/marketplace-ingestions";
 import {
   buildMarketplacePublicationWorkflowInstanceId,
   MARKETPLACE_PUBLISH_WORKFLOW_NAME,
@@ -84,6 +100,57 @@ const assertAutomationObjectScope = (
   if (!backofficeContextScopesEqual(expected, actual)) {
     throw new Error("Backoffice object method scope does not match object address scope.");
   }
+};
+
+type MarketplaceWorkflowOperation = {
+  label: "publication" | "ingestion";
+  failedErrorName: "MarketplacePublicationFailed" | "MarketplaceIngestionFailed";
+  terminatedErrorName: "MarketplacePublicationTerminated" | "MarketplaceIngestionTerminated";
+};
+
+type ExistingMarketplaceWorkflowState =
+  | {
+      state: "pending";
+      workflowStatus: "active" | "waiting" | "paused";
+    }
+  | {
+      state: "failed";
+      workflowStatus: "errored" | "terminated";
+      error: { name: string; message: string };
+    }
+  | { state: "complete" };
+
+const describeExistingMarketplaceWorkflow = (input: {
+  operation: MarketplaceWorkflowOperation;
+  status: InstanceStatus;
+  workflowInstanceId: string;
+}): ExistingMarketplaceWorkflowState => {
+  switch (input.status.status) {
+    case "active":
+    case "waiting":
+    case "paused":
+      return {
+        state: "pending",
+        workflowStatus: input.status.status,
+      };
+    case "errored":
+    case "terminated":
+      return {
+        state: "failed",
+        workflowStatus: input.status.status,
+        error: input.status.error ?? {
+          name:
+            input.status.status === "terminated"
+              ? input.operation.terminatedErrorName
+              : input.operation.failedErrorName,
+          message: `Marketplace ${input.operation.label} workflow ${input.workflowInstanceId} ${input.status.status}.`,
+        },
+      };
+    case "complete":
+      return { state: "complete" };
+  }
+
+  throw new Error("Unsupported marketplace workflow status.");
 };
 
 export const createDefaultAutomationFileSystem = async ({
@@ -433,58 +500,180 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       };
     }
 
-    const workflowStatus = await runtime.workflowsFragment.callServices(() =>
-      runtime.workflowsFragment.services.getInstanceStatus(
-        MARKETPLACE_PUBLISH_WORKFLOW_NAME,
-        workflowInstanceId,
+    const workflowStatus = describeExistingMarketplaceWorkflow({
+      operation: {
+        label: "publication",
+        failedErrorName: "MarketplacePublicationFailed",
+        terminatedErrorName: "MarketplacePublicationTerminated",
+      },
+      status: await runtime.workflowsFragment.callServices(() =>
+        runtime.workflowsFragment.services.getInstanceStatus(
+          MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+          workflowInstanceId,
+        ),
       ),
-    );
-
-    switch (workflowStatus.status) {
-      case "active":
-      case "waiting":
-      case "paused":
-        return {
-          ...identity,
-          state: "pending",
-          workflowStatus: workflowStatus.status,
-        };
-      case "errored":
-      case "terminated":
-        return {
-          ...identity,
-          state: "failed",
-          workflowStatus: workflowStatus.status,
-          error: workflowStatus.error ?? {
-            name:
-              workflowStatus.status === "terminated"
-                ? "MarketplacePublicationTerminated"
-                : "MarketplacePublicationFailed",
-            message: `Marketplace publication workflow ${workflowInstanceId} ${workflowStatus.status}.`,
-          },
-        };
-      case "complete": {
-        const completedManifest = await marketplace.getArtifactManifest({ listingId });
-        const completedPublication =
-          completedManifest?.listingStatus === "published" &&
-          completedManifest.versions.some((version) => version.version === entry.version);
-        if (completedPublication) {
-          return { ...identity, state: "published" };
-        }
-
-        return {
-          ...identity,
-          state: "failed",
-          workflowStatus: "complete",
-          error: {
-            name: "MarketplacePublicationIncomplete",
-            message: `Marketplace publication workflow ${workflowInstanceId} completed without publishing ${listingId}@${entry.version}.`,
-          },
-        };
-      }
+      workflowInstanceId,
+    });
+    if (workflowStatus.state !== "complete") {
+      return { ...identity, ...workflowStatus };
     }
 
-    throw new Error("Unsupported marketplace workflow status.");
+    const completedManifest = await marketplace.getArtifactManifest({ listingId });
+    const completedPublication =
+      completedManifest?.listingStatus === "published" &&
+      completedManifest.versions.some((version) => version.version === entry.version);
+    if (completedPublication) {
+      return { ...identity, state: "published" };
+    }
+
+    return {
+      ...identity,
+      state: "failed",
+      workflowStatus: "complete",
+      error: {
+        name: "MarketplacePublicationIncomplete",
+        message: `Marketplace publication workflow ${workflowInstanceId} completed without publishing ${listingId}@${entry.version}.`,
+      },
+    };
+  }
+
+  async requestMarketplaceIngestion(
+    rawInput: MarketplaceIngestionRequestInput,
+  ): Promise<MarketplaceIngestionRequestResult> {
+    const scope = this.#requireScope();
+    if (scope.kind !== "org") {
+      throw new Error("Marketplace ingestion requires an organization Automations object.");
+    }
+
+    const input = marketplaceIngestionRequestInputSchema.parse(rawInput);
+    assertMarketplaceIngestionTargetBelongsToOrganization({
+      organizationId: scope.orgId,
+      targetScope: input.targetScope,
+    });
+
+    await this.#ensureConfigured({ scope });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+    await assertMarketplaceIngestionTargetAccessible({
+      organizationId: scope.orgId,
+      targetScope: input.targetScope,
+      projectExists: async (projectId) =>
+        Boolean(
+          await runtime.automationFragment.callServices(() =>
+            runtime.automationFragment.services.resolveProjectForExecution({ projectId }),
+          ),
+        ),
+      organizationHasMember: async (userId) =>
+        await this.#runtimeServices.objects.auth.singleton().hasOrganizationMember({
+          organizationId: scope.orgId,
+          userId,
+        }),
+    });
+
+    const resolvedArtifact = resolveMarketplaceIngestionArtifactVersion(
+      await this.#runtimeServices.objects.marketplace
+        .singleton()
+        .getArtifactManifest({ listingId: input.listingId }),
+      input.version,
+    );
+    const version = resolvedArtifact.version.version;
+    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      targetScope: input.targetScope,
+      listingId: input.listingId,
+      version,
+    });
+    const identity = {
+      listingId: input.listingId,
+      version,
+      workflowInstanceId,
+    };
+
+    const existing = await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.getMarketplaceIngestion({
+        targetScope: input.targetScope,
+        listingId: input.listingId,
+      }),
+    );
+    if (existing?.version === version) {
+      return { ...identity, state: "ingested" };
+    }
+
+    const created = await runtime.workflowsFragment.callServices(() =>
+      runtime.workflowsFragment.services.createBatch(MARKETPLACE_INGEST_WORKFLOW_NAME, [
+        {
+          id: workflowInstanceId,
+          params: { ...input, version },
+        },
+      ]),
+    );
+    if (created.length === 1) {
+      return { ...identity, state: "requested", workflowStatus: "active" };
+    }
+
+    const workflowStatus = describeExistingMarketplaceWorkflow({
+      operation: {
+        label: "ingestion",
+        failedErrorName: "MarketplaceIngestionFailed",
+        terminatedErrorName: "MarketplaceIngestionTerminated",
+      },
+      status: await runtime.workflowsFragment.callServices(() =>
+        runtime.workflowsFragment.services.getInstanceStatus(
+          MARKETPLACE_INGEST_WORKFLOW_NAME,
+          workflowInstanceId,
+        ),
+      ),
+      workflowInstanceId,
+    });
+    if (workflowStatus.state !== "complete") {
+      return { ...identity, ...workflowStatus };
+    }
+
+    const completed = await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.getMarketplaceIngestion({
+        targetScope: input.targetScope,
+        listingId: input.listingId,
+      }),
+    );
+    if (completed?.version === version) {
+      return { ...identity, state: "ingested" };
+    }
+
+    return {
+      ...identity,
+      state: "failed",
+      workflowStatus: "complete",
+      error: {
+        name: "MarketplaceIngestionIncomplete",
+        message: `Marketplace ingestion workflow ${workflowInstanceId} completed without recording ${resolvedArtifact.manifest.slug}@${version}.`,
+      },
+    };
+  }
+
+  async getMarketplaceIngestion(
+    input: MarketplaceIngestionLookupInput,
+  ): Promise<MarketplaceIngestionRecord | null> {
+    const scope = this.#requireScope();
+    if (scope.kind !== "org") {
+      throw new Error("Marketplace ingestion requires an organization Automations object.");
+    }
+    await this.#ensureConfigured({ scope });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.getMarketplaceIngestion(input),
+    );
+  }
+
+  async listMarketplaceIngestions(
+    input?: MarketplaceIngestionListInput,
+  ): Promise<MarketplaceIngestionRecord[]> {
+    const scope = this.#requireScope();
+    if (scope.kind !== "org") {
+      throw new Error("Marketplace ingestion requires an organization Automations object.");
+    }
+    await this.#ensureConfigured({ scope });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.listMarketplaceIngestions(input),
+    );
   }
 
   async triggerIngestEvent(
