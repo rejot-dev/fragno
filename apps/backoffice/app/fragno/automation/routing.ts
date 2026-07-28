@@ -34,6 +34,7 @@ export type AutomationWorkflowEventTarget =
 export type AutomationSendWorkflowEventAction = {
   kind: "send_workflow_event";
   workflowName: string;
+  remoteWorkflowName: string;
   target: AutomationWorkflowEventTarget;
   eventType: string;
   payload?: unknown;

@@ -77,6 +77,7 @@ const automationSendWorkflowEventActionSchema: z.ZodType<AutomationSendWorkflowE
   .object({
     kind: z.literal("send_workflow_event"),
     workflowName: z.string().trim().min(1).default(AUTOMATION_CODEMODE_WORKFLOW),
+    remoteWorkflowName: z.string().trim().min(1),
     target: automationWorkflowEventTargetSchema,
     eventType: z.string().trim().min(1),
     payload: z.unknown().optional(),

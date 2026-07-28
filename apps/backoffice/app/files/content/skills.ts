@@ -138,7 +138,7 @@ export const GENERAL_SKILL_CONTENT: Record<string, FileContent> = {
    };
    \`\`\`
 
-   For \`send_workflow_event\`, use \`{ kind: "instance_id", template }\` when the event can render the workflow instance id directly. Use \`{ kind: "stored_instance_id", keyTemplate }\` when a prior run stored the instance id under a rendered store key. **Complete when** every required artifact has been created or updated successfully.
+   For \`send_workflow_event\`, omit \`workflowName\` because the fixed automation workflow host handles it, and set \`remoteWorkflowName\` to the saved \`defineWorkflow\` name that owns the target instance. Use \`{ kind: "instance_id", template }\` when the event can render the workflow instance id directly. Use \`{ kind: "stored_instance_id", keyTemplate }\` when a prior run stored the instance id under a rendered store key. **Complete when** every required artifact has been created or updated successfully.
 
 5. Use the automation store only for small durable coordination values. Values are strings, structured values use \`JSON.stringify\`, and keys are stable and namespaced. When writing from a saved workflow, supply \`event.actor\` to \`store.set\`. Reserve the \`system\` category for protected entries that users must not delete. Use \`verification\` for JSON text that must satisfy a schema.
 

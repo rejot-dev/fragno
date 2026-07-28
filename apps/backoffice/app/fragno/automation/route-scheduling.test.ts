@@ -160,6 +160,7 @@ describe("scheduled automation route triggers", () => {
         action: {
           kind: "send_workflow_event",
           workflowName: "automation-codemode-script",
+          remoteWorkflowName: "scheduled-handler",
           target: { kind: "stored_instance_id", keyTemplate: "missing-instance" },
           eventType: "scheduled",
         },
@@ -290,6 +291,7 @@ describe("scheduled automation route triggers", () => {
         action: {
           kind: "send_workflow_event",
           workflowName: "automation-codemode-script",
+          remoteWorkflowName: "scheduled-handler",
           target: { kind: "stored_instance_id", keyTemplate: "missing-instance" },
           eventType: "scheduled",
         },

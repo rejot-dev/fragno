@@ -39,6 +39,7 @@ describe("automation route links", () => {
     const route = routeWithAction({
       kind: "send_workflow_event",
       workflowName: "automation-codemode",
+      remoteWorkflowName: "telegram-linking",
       eventType: "continue",
       target: { kind: "instance_id", template: "instance-${event}" },
     });

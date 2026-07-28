@@ -363,6 +363,7 @@ describe("starter automation router scenarios", () => {
                 id: "telegram-identity-claim-completed",
                 action: {
                   kind: "send_workflow_event",
+                  remoteWorkflowName: "telegram-user-linking",
                   target: {
                     kind: "stored_instance_id",
                     keyTemplate: "telegram/claim-workflow/${event.payload.otpId}",
@@ -698,6 +699,7 @@ describe("starter automation router scenarios", () => {
             action: {
               kind: "send_workflow_event",
               workflowName: "automation-codemode-script",
+              remoteWorkflowName: "custom-waiter",
               target: { kind: "stored_instance_id", keyTemplate: "waiter/${event.payload.key}" },
               eventType: "custom-signal",
               payload: "$event",

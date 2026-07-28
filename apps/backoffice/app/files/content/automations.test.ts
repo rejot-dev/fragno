@@ -120,6 +120,7 @@ describe("automation content", () => {
           }),
           action: expect.objectContaining({
             kind: "send_workflow_event",
+            remoteWorkflowName: "telegram-user-linking",
             target: {
               kind: "stored_instance_id",
               keyTemplate: "telegram/claim-workflow/${event.payload.otpId}",

@@ -262,6 +262,7 @@ const handleSendWorkflowEventRouteAction = async ({
     () =>
       [
         workflows.sendEvent(action.workflowName, instanceId, {
+          expectedRemoteWorkflowName: action.remoteWorkflowName,
           id: `${route.id}:${event.id}`,
           type: action.eventType,
           payload: buildWorkflowEventPayload({ action, event }),

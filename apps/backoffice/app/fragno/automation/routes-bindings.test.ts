@@ -107,7 +107,10 @@ describe("automation routes /routes", () => {
         expect.arrayContaining([
           expect.objectContaining({
             id: "telegram-identity-claim-completed",
-            action: expect.objectContaining({ kind: "send_workflow_event" }),
+            action: expect.objectContaining({
+              kind: "send_workflow_event",
+              remoteWorkflowName: "telegram-user-linking",
+            }),
           }),
           expect.objectContaining({
             id: "telegram-test-command",
@@ -474,14 +477,21 @@ describe("automation routes /routes", () => {
     ]);
   });
 
-  test("send workflow event routes use deterministic event ids", async () => {
-    const sendEvents: Array<{ workflowName: string; instanceId: string; event: { id?: string } }> =
-      [];
+  test("send workflow event routes validate the configured remote workflow", async () => {
+    const sendEvents: Array<{
+      workflowName: string;
+      instanceId: string;
+      event: { id?: string; expectedRemoteWorkflowName?: string };
+    }> = [];
     fragment = await createAutomation({
       workflows: {
         createInstance: async () => ({}),
         getInstanceStatus: async () => [],
-        sendEvent: async (workflowName: string, instanceId: string, event: { id?: string }) => {
+        sendEvent: async (
+          workflowName: string,
+          instanceId: string,
+          event: { id?: string; expectedRemoteWorkflowName?: string },
+        ) => {
           sendEvents.push({ workflowName, instanceId, event });
           return {};
         },
@@ -510,6 +520,7 @@ describe("automation routes /routes", () => {
         action: {
           kind: "send_workflow_event",
           workflowName: "automation-codemode-script",
+          remoteWorkflowName: "custom-waiter",
           target: { kind: "stored_instance_id", keyTemplate: "waiter/${event.payload.key}" },
           eventType: "custom-signal",
           payload: "$event",
@@ -536,7 +547,10 @@ describe("automation routes /routes", () => {
       {
         workflowName: "automation-codemode-script",
         instanceId: "waiter-1",
-        event: expect.objectContaining({ id: "custom-signal-forwarder:signal-1" }),
+        event: expect.objectContaining({
+          expectedRemoteWorkflowName: "custom-waiter",
+          id: "custom-signal-forwarder:signal-1",
+        }),
       },
     ]);
   });
