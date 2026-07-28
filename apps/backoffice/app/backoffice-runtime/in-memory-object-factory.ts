@@ -15,6 +15,7 @@ import { InMemoryResendObject } from "../../workers/resend.do";
 import { InMemoryReson8Object } from "../../workers/reson8.do";
 import { InMemoryTelegramObject } from "../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../workers/upload.do";
+import { createDurableObjectDatabaseAdapterScope } from "./database-adapters";
 import {
   InMemoryDurableObjectNamespace,
   type InMemoryDurableObjectFactory,
@@ -376,13 +377,20 @@ export class InMemoryObjectFactory implements BackofficeObjectFactory {
 
     this.#namespaces[binding.name] = new InMemoryDurableObjectNamespace({
       name: binding.name,
-      createObject: (input) =>
-        factory({
+      createObject: (input) => {
+        const runtime = this.#getRuntimeServices();
+        return factory({
           ...input,
           env: this.env,
-          runtime: this.#getRuntimeServices(),
+          runtime: {
+            ...runtime,
+            adapters: runtime.adapters.forScope(
+              createDurableObjectDatabaseAdapterScope(input.state as unknown as DurableObjectState),
+            ),
+          },
           getAutomationFileSystem: this.#getAutomationFileSystem,
-        }),
+        });
+      },
     }) as InMemoryDurableObjectNamespace<unknown>;
   }
 

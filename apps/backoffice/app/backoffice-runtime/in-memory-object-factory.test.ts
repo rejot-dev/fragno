@@ -17,6 +17,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import type { BackofficeDatabaseAdapterFactory } from "./database-adapters";
 import { InMemoryObjectFactory } from "./in-memory-object-factory";
 import { createBackofficeObjectRegistry } from "./object-registry";
 import type { BackofficeRuntimeServices } from "./runtime-services";
@@ -25,13 +26,21 @@ type NamedObjectStub = {
   name: string;
 };
 
-const createFactory = () =>
-  new InMemoryObjectFactory({
-    getRuntimeServices: () => ({}) as BackofficeRuntimeServices,
+const createFactory = () => {
+  const adapters: BackofficeDatabaseAdapterFactory = {
+    createAdapter: () => {
+      throw new Error("Database adapter is not used by this object-factory test.");
+    },
+    forScope: () => adapters,
+  };
+
+  return new InMemoryObjectFactory({
+    getRuntimeServices: () => ({ adapters }) as BackofficeRuntimeServices,
     objectFactories: {
       UPLOAD: ({ name }) => ({ name }),
     },
   });
+};
 
 describe("InMemoryObjectFactory", () => {
   it("uses canonical user scope names and reuses the same instance for the same address", () => {
