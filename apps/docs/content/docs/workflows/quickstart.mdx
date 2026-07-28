@@ -20,12 +20,30 @@ Install the fragment and database packages:
 npm install @fragno-dev/workflows @fragno-dev/db
 ```
 
+For the test harness example, also install the Fragno test package:
+
+```npm
+npm install --save-dev @fragno-dev/test
+```
+
+Install the Workflows Agent Skill:
+
+```bash
+npx skills add https://github.com/rejot-dev/fragno --skill fragno-workflows
+```
+
+Then ask: "Use fragno-workflows to define and test a replay-safe workflow."
+
 ## Define a Workflow
 
 Create a workflow definition and a registry of workflows:
 
 ```ts title="lib/workflows.ts"
-import { defineWorkflow, type WorkflowEvent, type WorkflowStep } from "@fragno-dev/workflows";
+import {
+  defineWorkflow,
+  type WorkflowEvent,
+  type WorkflowStep,
+} from "@fragno-dev/workflows/workflow";
 
 type ApprovalParams = {
   requestId: string;
@@ -80,21 +98,20 @@ export const ApprovalWorkflow = defineWorkflow(
 Wire the durable hooks dispatcher and fragment definition:
 
 ```ts title="lib/workflows-fragment.ts"
-import { defaultFragnoRuntime, instantiate } from "@fragno-dev/core";
+import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { type DatabaseAdapter } from "@fragno-dev/db";
 import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
-import { workflowsFragmentDefinition, workflowsRoutesFactory } from "@fragno-dev/workflows";
+import { createWorkflowsFragment } from "@fragno-dev/workflows";
 import { workflows } from "./workflows";
 
 export function createWorkflowsFragmentServer(adapter: DatabaseAdapter<any>) {
-  const runtime = defaultFragnoRuntime;
-
-  const config = { workflows, runtime };
-  const fragment = instantiate(workflowsFragmentDefinition)
-    .withConfig(config)
-    .withRoutes([workflowsRoutesFactory])
-    .withOptions({ databaseAdapter: adapter })
-    .build();
+  const fragment = createWorkflowsFragment(
+    {
+      workflows,
+      runtime: defaultFragnoRuntime,
+    },
+    { databaseAdapter: adapter },
+  );
 
   const dispatcher = createDurableHooksProcessor([fragment], {
     pollIntervalMs: 2000,
@@ -120,60 +137,73 @@ examples.
 
 ## Run Database Migrations
 
-Generate a schema and run migrations with the Fragno CLI:
+Generate SQL migrations and apply them with the Fragno CLI:
 
 ```npm
-npx fragno-cli db generate lib/workflows-fragment.ts --format drizzle -o db/workflows.schema.ts
+npx fragno-cli db generate lib/workflows-fragment.ts
 npx fragno-cli db migrate lib/workflows-fragment.ts
 ```
+
+For Drizzle or Prisma, generate the schema output and apply it with that ORM's tooling instead.
 
 ## Test Workflows
 
 Use the test harness to drive workflow ticks with a controllable clock and deterministic runtime:
 
 ```ts title="lib/workflows.test.ts"
+import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 import { createWorkflowsTestHarness, createWorkflowsTestRuntime } from "@fragno-dev/workflows/test";
 import { workflows } from "./workflows";
 
 const runtime = createWorkflowsTestRuntime({ startAt: 0, seed: 123 });
 const harness = await createWorkflowsTestHarness({
   workflows,
-  adapter: { type: "drizzle-pglite" },
+  adapter: { type: "in-memory" },
+  testBuilder: buildDatabaseFragmentsTest(),
   runtime,
+  autoTickHooks: false,
 });
 
 const instanceId = await harness.createInstance("approval", {
   params: { requestId: "req_1", amount: 125 },
 });
 
-await harness.runUntilIdle();
+await harness.runUntilIdle({
+  workflowName: "approval-workflow",
+  instanceId,
+  reason: "create",
+});
 await harness.sendEvent("approval", instanceId, {
   type: "approval",
   payload: { approved: true },
 });
+await harness.runUntilIdle({
+  workflowName: "approval-workflow",
+  instanceId,
+  reason: "event",
+});
 
 harness.clock.advanceBy("2 s");
-await harness.runUntilIdle();
+await harness.runUntilIdle({
+  workflowName: "approval-workflow",
+  instanceId,
+  reason: "wake",
+});
+
+await harness.test.cleanup();
 ```
 
-For higher-level scripting, see the [Scenario DSL](/docs/workflows/scenario-dsl) guide.
+For focused harness tests and end-to-end scenarios, see [Workflow Testing](/docs/workflows/testing).
 
 ## Drive the Runner
 
 For external schedulers, run a durable hooks dispatcher (Node or Cloudflare DO) so hooks are
 processed when work is enqueued.
 
-## Use the CLI
-
-The `fragno-wf` CLI uses the HTTP API to list workflows, inspect instances, and send events:
-
-```bash
-fragno-wf workflows list -b https://your-app.example.com/api/workflows
-
-fragno-wf instances get -b https://your-app.example.com/api/workflows -w approval -i inst_123
-```
-
 ## Next Steps
 
-- Build a client or CLI on top of the HTTP API in the fragment.
-- Review workflow history and logs using the `/history` routes.
+- Review the replay and idempotency guidance in
+  [Rules of Workflows](/docs/workflows/rules-of-workflows).
+- Publish progress and receive active-step events with
+  [Step Events & Emissions](/docs/workflows/step-events-emissions).
+- Review workflow steps, events, and currently persisted emissions using the `/history` route.

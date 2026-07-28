@@ -5,7 +5,7 @@ icon: FileBraces
 ---
 
 The Workflows fragment exposes HTTP routes for workflow management. Mount the fragment under a base
-path (for example `/api/workflows`) and use that base URL in clients and the CLI.
+path (for example `/api/workflows`) and use that base URL in clients.
 
 ## Base URL
 
@@ -19,15 +19,15 @@ https://your-app.example.com/api/workflows
 
 ### List workflows
 
-`GET /workflows`
+`GET /`
 
-Returns the registered workflow names.
+Returns the registered workflow definition names.
 
 ## Instances
 
 ### List instances
 
-`GET /workflows/:workflowName/instances`
+`GET /:workflowName/instances`
 
 Query parameters:
 
@@ -37,7 +37,7 @@ Query parameters:
 
 ### Create an instance
 
-`POST /workflows/:workflowName/instances`
+`POST /:workflowName/instances`
 
 Body:
 
@@ -49,60 +49,84 @@ If the workflow defines a schema, invalid params return `WORKFLOW_PARAMS_INVALID
 
 ### Create a batch of instances
 
-`POST /workflows/:workflowName/instances/batch`
+`POST /:workflowName/instances/batch`
 
 Body:
 
 ```json
-{ "instances": [{ "id": "required-id", "params": { "...": "..." } }] }
+{
+  "instances": [{ "id": "required-id", "params": { "...": "..." } }]
+}
 ```
 
-If the workflow defines a schema, invalid params return `WORKFLOW_PARAMS_INVALID`.
+A batch accepts at most 100 instances. Existing and duplicate instance IDs are skipped. If the
+workflow defines a schema, invalid params return `WORKFLOW_PARAMS_INVALID`.
 
 ### Get instance details
 
-`GET /workflows/:workflowName/instances/:instanceId`
+`GET /:workflowName/instances/:instanceId`
 
-Returns status plus metadata including `runNumber`, `params`, and current step summary.
+Returns the instance ID, status details, workflow params, timestamps, and the current step summary.
+
+### Get current-step emissions
+
+`GET /:workflowName/instances/:instanceId/current-step/emissions`
+
+This is a JSON stream of persisted and live step emissions. Pass `once=true` to return the current
+snapshot and close the stream.
 
 ### Get history
 
-`GET /workflows/:workflowName/instances/:instanceId/history`
+`GET /:workflowName/instances/:instanceId/history`
 
-Query parameters:
+Returns persisted steps and events plus step emissions that are still present when the route is
+read:
 
-- `runNumber` (optional; defaults to latest run)
-- `pageSize` (optional, default 25, max 100)
-- `stepsCursor`, `eventsCursor`, `logsCursor` (optional)
-- `includeLogs` (optional, `true | false`)
-- `logLevel` (optional, `debug | info | warn | error`)
-- `logCategory` (optional)
-- `order` (optional, `asc | desc`)
+```ts
+{
+  steps: WorkflowsHistoryStep[];
+  events: WorkflowsHistoryEvent[];
+  emissions: WorkflowsHistoryEmission[];
+}
+```
 
-Logs are only returned when `includeLogs=true`.
+System management events are not included in the returned `events` array. Completed step-emission
+attempts are removed asynchronously by a durable cleanup hook, so `emissions` is not a permanent
+audit archive.
 
-### Pause / resume / restart / terminate
+### Pause / resume / retry / terminate
 
-`POST /workflows/:workflowName/instances/:instanceId/pause`
+`POST /:workflowName/instances/:instanceId/pause`
 
-`POST /workflows/:workflowName/instances/:instanceId/resume`
+`POST /:workflowName/instances/:instanceId/resume`
 
-`POST /workflows/:workflowName/instances/:instanceId/restart`
+`POST /:workflowName/instances/:instanceId/retry`
 
-`POST /workflows/:workflowName/instances/:instanceId/terminate`
+`POST /:workflowName/instances/:instanceId/terminate`
+
+The retry route accepts an optional body:
+
+```json
+{ "stepKey": "optional-step-key", "delayMs": 0, "reason": "optional-reason" }
+```
+
+`stepKey` defaults to the latest persisted step. `delayMs` is limited to 30 days. `reason` is
+accepted by the request schema but is currently ignored.
 
 ### Send an event
 
-`POST /workflows/:workflowName/instances/:instanceId/events`
+`POST /:workflowName/instances/:instanceId/events`
 
 Body:
 
 ```json
-{ "type": "event-type", "payload": { "...": "..." } }
+{ "id": "optional-event-id", "type": "event-type", "payload": { "...": "..." } }
 ```
 
-## Authorization hooks
+Providing an event ID makes repeated delivery idempotent for the same workflow instance.
 
-All routes go through `authorizeRequest`. Dedicated hooks are also available for instance creation,
-management actions, and send-event. If you need per-route policies, use those hooks in the fragment
-config.
+## Authorization
+
+The Workflows fragment does not add route-specific authorization hooks. Protect the mounted route
+with your application's framework middleware or request handler before forwarding requests to the
+fragment.

@@ -6,10 +6,11 @@
   "pages": [
     "index",
     "quickstart",
-    "scenario-dsl",
     "fragment",
+    "rules-of-workflows",
+    "step-events-emissions",
+    "testing",
     "routes",
-    "cli",
     "runner-dispatcher",
     "debugging"
   ]
