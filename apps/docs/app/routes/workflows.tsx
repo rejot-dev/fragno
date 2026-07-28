@@ -1,4 +1,4 @@
-import { Activity, ArrowRight, Route as RouteIcon, RotateCcw, Terminal, Timer } from "lucide-react";
+import { Activity, ArrowRight, Route as RouteIcon, RotateCcw, Timer } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import {
@@ -39,8 +39,8 @@ const features: Feature[] = [
     icon: <Activity className="size-5" />,
   },
   {
-    title: "HTTP API + CLI",
-    description: "Create, inspect, and control workflows via HTTP routes and the fragno-wf CLI.",
+    title: "HTTP API",
+    description: "Create, inspect, and control workflows through the fragment's HTTP routes.",
     icon: <RouteIcon className="size-5" />,
   },
 ];
@@ -56,7 +56,7 @@ const setupSteps: Step[] = [
     title: "2. Define a workflow",
     description: "Create a workflow with events, timers, and durable steps.",
     lang: "ts",
-    code: `import { defineWorkflow } from "@fragno-dev/workflows";
+    code: `import { defineWorkflow } from "@fragno-dev/workflows/workflow";
 
 export const ApprovalWorkflow = defineWorkflow(
   { name: "approval-workflow" },
@@ -143,26 +143,18 @@ const workflowExamples: WorkflowExample[] = [
   },
 ];
 
-const cliSnippet = `fragno-wf workflows list -b https://host.example.com/api/workflows
-
-fragno-wf instances create -b https://host.example.com/api/workflows -w approvals \\
-  --params '{"requestId":"req_1","amount":125}'
-
-fragno-wf instances send-event -b https://host.example.com/api/workflows -w approvals \\
-  -i inst_123 -t approval --payload '{"approved":true}'`;
-
 const usageSnippet = `const baseUrl = "/api/workflows";
 
-await fetch(\`\${baseUrl}/workflows/approval/instances\`, {
+await fetch(\`\${baseUrl}/approval-workflow/instances\`, {
   method: "POST",
   headers: { "content-type": "application/json" },
-  body: JSON.stringify({ requestId: "req_123", amount: 200 }),
+  body: JSON.stringify({ params: { requestId: "req_123", amount: 200 } }),
 });
 
-await fetch(\`\${baseUrl}/workflows/approval/instances/inst_123/events\`, {
+await fetch(\`\${baseUrl}/approval-workflow/instances/inst_123/events\`, {
   method: "POST",
   headers: { "content-type": "application/json" },
-  body: JSON.stringify({ type: "approval", approved: true }),
+  body: JSON.stringify({ type: "approval", payload: { approved: true } }),
 });`;
 
 const useCases = [
@@ -312,20 +304,7 @@ export default function WorkflowsPage() {
       </FragmentSection>
 
       <FragmentSection eyebrow={<FragmentEyebrow>Use it</FragmentEyebrow>}>
-        <div className="grid gap-5 lg:grid-cols-2">
-          <FragmentPanel className="space-y-3">
-            <div className="flex items-center gap-2 text-[var(--editorial-muted)]">
-              <Terminal className="size-4" />
-              <p className="text-sm font-bold tracking-[0.14em] uppercase">CLI</p>
-            </div>
-            <FragnoCodeBlock
-              lang="bash"
-              code={cliSnippet}
-              allowCopy
-              syntaxTheme="editorial-triad"
-              className="bg-[var(--editorial-surface-low)]! shadow-[inset_0_0_0_1px_var(--editorial-ghost-border)]"
-            />
-          </FragmentPanel>
+        <div className="grid gap-5">
           <FragmentPanel className="space-y-3">
             <div className="flex items-center gap-2 text-[var(--editorial-muted)]">
               <Timer className="size-4" />
