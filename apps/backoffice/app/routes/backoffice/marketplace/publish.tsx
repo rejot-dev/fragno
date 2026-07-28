@@ -12,6 +12,7 @@ import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/publish";
 import { marketplaceListingManagePath } from "./navigation";
 import { marketplaceOwnerForOrganization } from "./publisher.server";
+import { marketplaceScopeTabPath } from "./scope";
 
 type PublishActionData = { ok: false; message: string };
 
@@ -24,14 +25,24 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     );
   }
 
-  return {
-    organizations: me.organizations.map(({ organization }) => ({
-      id: organization.id,
-      name: organization.name,
-    })),
-    activeOrganizationId:
-      me.activeOrganization?.organization.id ?? me.organizations[0]?.organization.id ?? null,
-  };
+  const organizations = me.organizations.map(({ organization }) => ({
+    id: organization.id,
+    name: organization.name,
+  }));
+  const requestedOrganizationId = url.searchParams.get("ownerOrgId")?.trim() || null;
+  const requestedOrganization = requestedOrganizationId
+    ? organizations.find(({ id }) => id === requestedOrganizationId)
+    : null;
+  if (requestedOrganizationId && !requestedOrganization) {
+    throw new Response("Publisher organisation was not found.", { status: 404 });
+  }
+  const activeOrganizationId =
+    requestedOrganization?.id ??
+    me.activeOrganization?.organization.id ??
+    organizations[0]?.id ??
+    null;
+
+  return { organizations, activeOrganizationId };
 }
 
 export async function action({ request, context, url }: Route.ActionArgs) {
@@ -115,7 +126,21 @@ export default function BackofficeMarketplacePublish({ loaderData }: Route.Compo
         description="Record the catalog metadata now. A named upload can be attached to a version later."
         actions={
           <Link
-            to="/backoffice/marketplace/mine"
+            to={
+              loaderData.activeOrganizationId
+                ? marketplaceScopeTabPath(
+                    {
+                      kind: "org",
+                      orgId: loaderData.activeOrganizationId,
+                      label:
+                        loaderData.organizations.find(
+                          ({ id }) => id === loaderData.activeOrganizationId,
+                        )?.name ?? loaderData.activeOrganizationId,
+                    },
+                    "my-listings",
+                  )
+                : "/backoffice/marketplace"
+            }
             className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
           >
             My listings

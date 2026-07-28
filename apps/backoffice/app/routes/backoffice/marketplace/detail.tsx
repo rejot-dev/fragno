@@ -1,10 +1,18 @@
-import { Form, Link, redirect, useActionData, useLocation, useNavigation } from "react-router";
+import {
+  Form,
+  Link,
+  redirect,
+  useActionData,
+  useLocation,
+  useNavigation,
+  useOutletContext,
+} from "react-router";
 
 import {
   backofficeScopeFromSinglePathSegment,
   backofficeScopeSinglePathSegment,
 } from "@/backoffice-runtime/scope-codec";
-import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
+import { FormContainer } from "@/components/backoffice";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import type { MarketplaceIngestionRequestResult } from "@/fragno/automation";
 import { marketplaceListingId, marketplaceListingSlug } from "@/fragno/marketplace/owner";
@@ -17,11 +25,13 @@ import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import { fetchAutomationProjects, toExternalId } from "../automations/data.server";
 import type { Route } from "./+types/detail";
+import type { MarketplaceLayoutContext } from "./layout-context";
 import {
   marketplaceListingManagePath,
   marketplaceListingPath,
   marketplaceListingRefSchema,
 } from "./navigation";
+import { marketplaceScopeFromRouteParams } from "./scope";
 
 const dateTimeFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -51,6 +61,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     );
   }
 
+  const selectedScope = marketplaceScopeFromRouteParams(params);
   const listingIdResult = marketplaceListingRefSchema.safeParse(params.listingRef);
   if (!listingIdResult.success) {
     throw new Response("Not Found", { status: 404 });
@@ -125,11 +136,27 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
       label: `${organization.name} · personal workspace`,
     },
   ]);
+  const defaultTargetOrganizationId =
+    selectedScope.kind === "user"
+      ? (me.activeOrganization?.organization.id ?? me.organizations[0]?.organization.id ?? null)
+      : selectedScope.orgId;
+  const defaultTargetScopeValue = backofficeScopeSinglePathSegment(selectedScope);
+  const defaultTargetOption = defaultTargetOrganizationId
+    ? (targetOptions.find(
+        (option) =>
+          option.organizationId === defaultTargetOrganizationId &&
+          option.value === defaultTargetScopeValue,
+      ) ?? null)
+    : null;
+  if (defaultTargetOrganizationId && !defaultTargetOption) {
+    throw new Response("Marketplace ingestion target was not found.", { status: 404 });
+  }
 
   return {
     ...detail,
     manageOrganizationId: manageableOrganization?.organization.id ?? null,
     targetOptions,
+    defaultTargetOption,
     ingestions: organizationTargets.flatMap(({ organization, ingestions }) =>
       ingestions.map((ingestion) => ({ ...ingestion, organizationName: organization.name })),
     ),
@@ -199,6 +226,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
 }
 
 export default function BackofficeMarketplaceDetail({ loaderData }: Route.ComponentProps) {
+  const { selectedScope } = useOutletContext<MarketplaceLayoutContext>();
   const {
     listing,
     versions,
@@ -206,6 +234,7 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
     nextVersionCursor,
     hasNextVersionPage,
     targetOptions,
+    defaultTargetOption,
     ingestions,
   } = loaderData;
   const actionData = useActionData<IngestionActionData>();
@@ -219,30 +248,33 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
   const reusedPublication = publishedVersion !== null && search.get("reused") === "1";
 
   return (
-    <div className="space-y-4">
-      <BackofficePageHeader
-        breadcrumbs={[
-          { label: "Backoffice", to: "/backoffice" },
-          { label: "Marketplace", to: "/backoffice/marketplace" },
-          { label: listing.name },
-        ]}
-        eyebrow={listing.category}
-        title={listing.name}
-        description={listing.summary}
-        actions={
-          manageOrganizationId ? (
+    <div className="max-w-7xl space-y-4">
+      <header className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-5">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0">
+            <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+              {listing.category}
+            </p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--bo-fg)]">
+              {listing.name}
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--bo-muted)]">
+              {listing.summary}
+            </p>
+          </div>
+          {manageOrganizationId ? (
             <Link
               to={marketplaceListingManagePath({
                 listingId: listing.listingId,
                 organizationId: manageOrganizationId,
               })}
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+              className="shrink-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
             >
               Manage
             </Link>
-          ) : null
-        }
-      />
+          ) : null}
+        </div>
+      </header>
 
       {publishedVersion ? (
         <div className="border border-emerald-400/40 bg-emerald-500/12 p-4 text-sm text-emerald-700 dark:text-emerald-200">
@@ -252,31 +284,33 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
         </div>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <FormContainer
-          eyebrow="About"
-          title="Automation description"
-          description="Review the published automation before adding it to a workspace."
-        >
-          <p className="max-w-3xl text-sm leading-7 whitespace-pre-wrap text-[var(--bo-muted)]">
-            {listing.description}
-          </p>
-          {listing.tags.length ? (
-            <div className="mt-5 flex flex-wrap gap-2">
-              {listing.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 font-mono text-[10px] text-[var(--bo-muted)]"
-                >
-                  #{tag}
-                </span>
-              ))}
-            </div>
-          ) : null}
-        </FormContainer>
+      <div className="grid gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">
+        <div className="space-y-4 xl:col-start-2 xl:row-start-1">
+          <FormContainer
+            eyebrow="About"
+            title="Automation description"
+            description="Review the published automation before adding it to a workspace."
+          >
+            <p className="max-w-3xl text-sm leading-7 whitespace-pre-wrap text-[var(--bo-muted)]">
+              {listing.description}
+            </p>
+            {listing.tags.length ? (
+              <div className="mt-5 flex flex-wrap gap-2">
+                {listing.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 font-mono text-[10px] text-[var(--bo-muted)]"
+                  >
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </FormContainer>
+        </div>
 
-        <aside className="space-y-4">
-          <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+        <aside className="flex flex-col gap-4 xl:col-start-1 xl:row-start-1">
+          <section className="order-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
             <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
               Add to workspace
             </p>
@@ -286,6 +320,7 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
                   <span className="text-xs text-[var(--bo-muted)]">Destination</span>
                   <select
                     name="targetSelection"
+                    defaultValue={defaultTargetOption?.value}
                     className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)]"
                     onChange={(event) => {
                       const option = event.currentTarget.selectedOptions[0];
@@ -312,9 +347,9 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
                 <input
                   type="hidden"
                   name="organizationId"
-                  defaultValue={targetOptions[0]?.organizationId}
+                  defaultValue={defaultTargetOption?.organizationId}
                 />
-                <input type="hidden" name="targetScope" defaultValue={targetOptions[0]?.value} />
+                <input type="hidden" name="targetScope" defaultValue={defaultTargetOption?.value} />
                 <label className="block space-y-1">
                   <span className="text-xs text-[var(--bo-muted)]">Version</span>
                   <select
@@ -354,7 +389,7 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
           </section>
 
           {ingestions.length ? (
-            <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+            <section className="order-4 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
               <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                 Installed copies
               </p>
@@ -374,7 +409,7 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
             </section>
           ) : null}
 
-          <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+          <section className="order-1 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
             <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
               Latest release
             </p>
@@ -385,7 +420,7 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
             </dl>
           </section>
 
-          <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+          <section className="order-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
             <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
               Version history
             </p>
@@ -406,7 +441,7 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
             </div>
             {hasNextVersionPage && nextVersionCursor ? (
               <Link
-                to={`${marketplaceListingPath(listing.listingId)}?versionCursor=${encodeURIComponent(nextVersionCursor)}`}
+                to={`${marketplaceListingPath(listing.listingId, selectedScope)}?versionCursor=${encodeURIComponent(nextVersionCursor)}`}
                 className="mt-3 block border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-center text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase hover:border-[color:var(--bo-accent)]"
               >
                 Older versions →

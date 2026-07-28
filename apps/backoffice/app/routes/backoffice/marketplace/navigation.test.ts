@@ -17,12 +17,34 @@ describe("marketplace listing navigation", () => {
       ownerScope: { kind: "org", orgId: "engineering/platform" },
       slug: "daily-operations-brief",
     });
-    const path = marketplaceListingPath(listingId);
-    const matches = matchRoutes([{ path: "/backoffice/marketplace/:listingRef" }], path);
+    const path = marketplaceListingPath(listingId, {
+      kind: "org",
+      orgId: "org-1",
+      label: "Ada Labs",
+    });
+    const matches = matchRoutes(
+      [{ path: "/backoffice/marketplace/:scopeKind/:scopeId/marketplace/:listingRef" }],
+      path,
+    );
     const routeParam = matches?.[0]?.params.listingRef;
 
     assert(routeParam);
     expect(marketplaceListingRefSchema.parse(routeParam)).toBe(listingId);
+  });
+
+  test("builds listing paths inside the selected Marketplace scope", () => {
+    const listingId = marketplaceListingId({
+      ownerScope: { kind: "system" },
+      slug: "daily-operations-brief",
+    });
+
+    expect(
+      marketplaceListingPath(listingId, {
+        kind: "org",
+        orgId: "org-1",
+        label: "Ada Labs",
+      }),
+    ).toBe(`/backoffice/marketplace/org/org-1/marketplace/${marketplaceListingRef(listingId)}`);
   });
 
   test("rejects malformed and non-listing references at the route boundary", () => {
@@ -44,6 +66,8 @@ describe("marketplace listing navigation", () => {
         organizationId: "org-1",
         result: { created: "1.0.0" },
       }),
-    ).toBe(`${marketplaceListingPath(listingId)}/manage?organizationId=org-1&created=1.0.0`);
+    ).toBe(
+      `/backoffice/marketplace/${marketplaceListingRef(listingId)}/manage?organizationId=org-1&created=1.0.0`,
+    );
   });
 });

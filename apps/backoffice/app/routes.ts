@@ -43,8 +43,16 @@ export default [
       route("marketplace", "routes/backoffice/marketplace/index.tsx"),
       route("marketplace/publish", "routes/backoffice/marketplace/publish.tsx"),
       route("marketplace/mine", "routes/backoffice/marketplace/mine.tsx"),
+      route("marketplace/:scopeKind/:scopeId", "routes/backoffice/marketplace/scope-layout.tsx", [
+        index("routes/backoffice/marketplace/scope-index.tsx"),
+        route("marketplace", "routes/backoffice/marketplace/marketplace-view.tsx", [
+          index("routes/backoffice/marketplace/browse.tsx"),
+          route(":listingRef", "routes/backoffice/marketplace/detail.tsx"),
+        ]),
+        route("installed", "routes/backoffice/marketplace/installed.tsx"),
+        route("my-listings", "routes/backoffice/marketplace/my-listings.tsx"),
+      ]),
       route("marketplace/:listingRef/manage", "routes/backoffice/marketplace/manage.tsx"),
-      route("marketplace/:listingRef", "routes/backoffice/marketplace/detail.tsx"),
       route("automations", "routes/backoffice/automations/index.tsx"),
       route(
         "automations/:orgId/claims/complete",

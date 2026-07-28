@@ -10,7 +10,7 @@ vi.mock("@/fragno/auth/auth-server", () => ({ getAuthMe: getAuthMeMock }));
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 
 import { marketplaceListingManagePath } from "./navigation";
-import { action } from "./publish";
+import { action, loader } from "./publish";
 
 const authenticatedUser = {
   user: { id: "user-1" },
@@ -63,6 +63,37 @@ beforeEach(() => {
       version: "1.0.0",
       created: true,
     },
+  });
+});
+
+describe("marketplace draft loader", () => {
+  test("rejects a requested organization outside the authenticated memberships", async () => {
+    const url = new URL("https://example.test/backoffice/marketplace/publish?ownerOrgId=org-other");
+
+    const response = await loader({
+      request: new Request(url),
+      context,
+      url,
+    } as never).catch((error: unknown) => error);
+
+    expect(response).toBeInstanceOf(Response);
+    assert((response as Response).status === 404);
+    await expect((response as Response).text()).resolves.toBe(
+      "Publisher organisation was not found.",
+    );
+  });
+
+  test("uses the active organization when no owner is requested", async () => {
+    const url = new URL("https://example.test/backoffice/marketplace/publish");
+
+    const result = await loader({
+      request: new Request(url),
+      context,
+      url,
+    } as never);
+
+    assert(!(result instanceof Response));
+    assert(result.activeOrganizationId === "org-1");
   });
 });
 

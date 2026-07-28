@@ -22,6 +22,7 @@ import {
   marketplaceListingRefSchema,
 } from "./navigation";
 import { marketplaceOwnerForOrganization } from "./publisher.server";
+import { marketplaceScopeTabPath } from "./scope";
 
 type ManageActionData = { ok: false; message: string };
 
@@ -268,7 +269,10 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
           { label: "Marketplace", to: "/backoffice/marketplace" },
           {
             label: "My listings",
-            to: `/backoffice/marketplace/mine?organizationId=${encodeURIComponent(organizationId)}`,
+            to: marketplaceScopeTabPath(
+              { kind: "org", orgId: organizationId, label: organizationId },
+              "my-listings",
+            ),
           },
           { label: listing.name },
         ]}
@@ -278,7 +282,11 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
         actions={
           listing.status === "published" ? (
             <Link
-              to={marketplaceListingPath(listing.listingId)}
+              to={marketplaceListingPath(listing.listingId, {
+                kind: "org",
+                orgId: organizationId,
+                label: organizationId,
+              })}
               className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
             >
               View public page

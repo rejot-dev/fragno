@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import { marketplaceListingIdSchema } from "@/fragno/marketplace/contracts";
 
+import { marketplaceScopeTabPath, type MarketplaceUiScope } from "./scope";
+
 const decodeMarketplaceListingRef = (listingRef: string): string => {
   if (!/^[0-9A-Za-z_-]+$/u.test(listingRef) || listingRef.length % 4 === 1) {
     throw new Error("Marketplace listing reference is invalid.");
@@ -39,8 +41,8 @@ export const marketplaceListingRef = (listingId: string): string => {
   return base64.replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/u, "");
 };
 
-export const marketplaceListingPath = (listingId: string): string =>
-  `/backoffice/marketplace/${marketplaceListingRef(listingId)}`;
+export const marketplaceListingPath = (listingId: string, scope: MarketplaceUiScope): string =>
+  `${marketplaceScopeTabPath(scope, "marketplace")}/${marketplaceListingRef(listingId)}`;
 
 export const marketplaceListingManagePath = ({
   listingId,
@@ -55,5 +57,5 @@ export const marketplaceListingManagePath = ({
   for (const [name, value] of Object.entries(result ?? {})) {
     search.set(name, value);
   }
-  return `${marketplaceListingPath(listingId)}/manage?${search.toString()}`;
+  return `/backoffice/marketplace/${marketplaceListingRef(listingId)}/manage?${search.toString()}`;
 };
