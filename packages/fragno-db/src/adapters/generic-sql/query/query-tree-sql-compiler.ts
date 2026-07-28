@@ -13,7 +13,7 @@ import type { DriverConfig } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";
 import { buildCursorCondition } from "./cursor-utils";
 import { buildQueryTreeWhere } from "./query-tree-where-builder";
-import { projectSelectedColumn, projectSelectedColumnValue } from "./select-builder";
+import { projectJsonSelectedColumnValue, projectSelectedColumn } from "./select-builder";
 import { buildWhere } from "./where-builder";
 
 // oxlint-disable-next-line no-explicit-any
@@ -219,7 +219,12 @@ export class QueryTreeSQLCompiler {
       const physicalName = this.#getColumnName(node.table, column.name);
       items.push({
         key: columnName,
-        expr: projectSelectedColumnValue(column, `${rowAlias}.${physicalName}`, this.#driverConfig),
+        expr: projectJsonSelectedColumnValue(
+          column,
+          `${rowAlias}.${physicalName}`,
+          this.#driverConfig,
+          this.#sqliteStorageMode,
+        ),
       });
     }
 

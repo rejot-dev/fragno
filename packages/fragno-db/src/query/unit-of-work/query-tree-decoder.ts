@@ -1,7 +1,12 @@
 import type { DriverConfig } from "../../adapters/generic-sql/driver-config";
-import type { SQLiteStorageMode } from "../../adapters/generic-sql/sqlite-storage";
+import {
+  decodeSQLiteJsonBlobValue,
+  isSQLiteBlobStoredColumn,
+  SQLITE_JSON_BLOB_HEX_PREFIX,
+  type SQLiteStorageMode,
+} from "../../adapters/generic-sql/sqlite-storage";
 import type { NamingResolver } from "../../naming/sql-naming";
-import type { AnyTable } from "../../schema/create";
+import type { AnyColumn, AnyTable } from "../../schema/create";
 import { decodeResult } from "../value-decoding";
 import type { CompiledQueryTreeChildNode, CompiledQueryTreeRootNode } from "./query-tree";
 
@@ -22,6 +27,23 @@ const parseJsonValue = (value: unknown): unknown => {
   }
 };
 
+const decodeJsonProjectedColumnValue = (
+  value: unknown,
+  column: AnyColumn,
+  driverConfig: DriverConfig,
+  sqliteStorageMode?: SQLiteStorageMode,
+): unknown => {
+  if (
+    driverConfig.databaseType === "sqlite" &&
+    isSQLiteBlobStoredColumn(column, sqliteStorageMode) &&
+    typeof value === "string" &&
+    value.startsWith(SQLITE_JSON_BLOB_HEX_PREFIX)
+  ) {
+    return decodeSQLiteJsonBlobValue(value);
+  }
+  return value;
+};
+
 const decodeNodeColumns = (
   row: Record<string, unknown>,
   table: AnyTable,
@@ -32,16 +54,28 @@ const decodeNodeColumns = (
   const columnOnlyRow: Record<string, unknown> = {};
 
   for (const key in row) {
-    if (table.columns[key] || key in table.columns) {
-      columnOnlyRow[key] = row[key];
+    const directColumn = table.columns[key];
+    if (directColumn) {
+      columnOnlyRow[key] = decodeJsonProjectedColumnValue(
+        row[key],
+        directColumn,
+        driverConfig,
+        sqliteStorageMode,
+      );
       continue;
     }
 
     if (resolver) {
       const columnMap = resolver.getColumnNameMap(table);
       const logicalName = columnMap[key];
-      if (logicalName && table.columns[logicalName]) {
-        columnOnlyRow[key] = row[key];
+      const mappedColumn = logicalName ? table.columns[logicalName] : undefined;
+      if (mappedColumn) {
+        columnOnlyRow[key] = decodeJsonProjectedColumnValue(
+          row[key],
+          mappedColumn,
+          driverConfig,
+          sqliteStorageMode,
+        );
       }
     }
   }

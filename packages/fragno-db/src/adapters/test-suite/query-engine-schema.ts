@@ -65,6 +65,7 @@ export const queryEngineSuiteSchema = schema("query_engine_suite", (s) =>
     .addTable("events", (t) =>
       t
         .addColumn("id", idColumn())
+        .addColumn("user_id", referenceColumn({ table: "users" }).nullable())
         .addColumn("name", column("string"))
         .addColumn(
           "created_at",
@@ -73,7 +74,9 @@ export const queryEngineSuiteSchema = schema("query_engine_suite", (s) =>
         .addColumn("happened_on", column("date"))
         .addColumn("payload", column("json"))
         .addColumn("big_score", column("bigint"))
-        .createIndex("events_name_idx", ["name"]),
+        .addColumn("binary_payload", column("binary").nullable())
+        .createIndex("events_name_idx", ["name"])
+        .createIndex("events_user_idx", ["user_id"]),
     )
     .addTable("memberships", (t) =>
       t
