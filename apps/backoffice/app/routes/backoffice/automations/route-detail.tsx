@@ -32,7 +32,7 @@ const routeActionDetail = (route: AutomationRouteDefinition) => {
   switch (action.kind) {
     case "start_workflow":
       return [
-        ["workflow", automationRouteWorkflowName(route) ?? action.workflowName],
+        ["workflow", automationRouteWorkflowName(route) ?? "Unknown saved workflow"],
         ["script", action.workflowScriptPath],
         ["instance", action.instanceIdTemplate],
       ];

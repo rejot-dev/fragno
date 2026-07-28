@@ -5,6 +5,43 @@ import { zodSchemaToTypeScriptRender } from "@/lib/zod/zod-formatter";
 import { automationRouteActionSchema, automationRouteCreateInputSchema } from "./routing-schemas";
 
 describe("automation routing schemas", () => {
+  test("start_workflow actions discard caller-supplied workflow hosts", () => {
+    const action = automationRouteActionSchema.parse({
+      kind: "start_workflow",
+      workflowName: "wrong-workflow-host",
+      remoteWorkflowName: "daily-digest",
+      workflowScriptPath: "/workspace/automations/daily-digest.workflow.js",
+      instanceIdTemplate: "daily-digest-${event.id}",
+    });
+
+    expect(action).toEqual({
+      kind: "start_workflow",
+      remoteWorkflowName: "daily-digest",
+      workflowScriptPath: "/workspace/automations/daily-digest.workflow.js",
+      instanceIdTemplate: "daily-digest-${event.id}",
+    });
+    expect(action).not.toHaveProperty("workflowName");
+  });
+
+  test("renders start_workflow action inputs without a configurable workflow host", () => {
+    const declaration = zodSchemaToTypeScriptRender(automationRouteCreateInputSchema, "input", {
+      rootTypeName: "RouterCreateInput",
+    }).declarations.find((candidate) =>
+      candidate.startsWith("type AutomationStartWorkflowActionInput ="),
+    );
+
+    expect(declaration).toBe(
+      [
+        "type AutomationStartWorkflowActionInput = {",
+        '  kind: "start_workflow";',
+        "  remoteWorkflowName?: string;",
+        "  workflowScriptPath: string;",
+        "  instanceIdTemplate: string;",
+        "};",
+      ].join("\n"),
+    );
+  });
+
   test("send_workflow_event actions target an instance id directly or through the store", () => {
     expect(
       automationRouteActionSchema.parse({

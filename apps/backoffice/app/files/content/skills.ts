@@ -65,7 +65,7 @@ export const GENERAL_SKILL_CONTENT: Record<string, FileContent> = {
    - Resume waiting work: \`send_workflow_event\`.
    - Cross-scope delivery: \`forward_event\`.
 
-   Use stable, namespaced ids. For \`start_workflow\`, make \`remoteWorkflowName\` equal the saved \`defineWorkflow\` name and make \`workflowScriptPath\` point to that file. **Complete when** every trigger, action, workflow name, file path, and instance-id template has one unambiguous value.
+   Use stable, namespaced ids. For \`start_workflow\`, make \`remoteWorkflowName\` equal the saved \`defineWorkflow\` name and make \`workflowScriptPath\` point to that file. Do not supply \`workflowName\`; Backoffice always runs saved scripts through its fixed automation workflow host. **Complete when** every trigger, action, saved workflow name, file path, and instance-id template has one unambiguous value.
 
 3. Check prerequisites. When an external capability is involved, inspect it with \`connections.get({ id })\`. If configuration is incomplete, use the Configuring Connections skill and collect the missing values from the user. **Complete when** every provider the automation will call is configured or the user has been told exactly what remains missing.
 

@@ -13,7 +13,7 @@ export const automationRouteWorkflowName = (route: AutomationRouteDefinition) =>
   }
 
   const scriptName = action.workflowScriptPath.split("/").pop();
-  return scriptName?.replace(/\.workflow\.js$/u, "") || action.workflowName;
+  return scriptName?.replace(/\.workflow\.js$/u, "") || null;
 };
 
 export const automationRouteWorkflowLink = (route: AutomationRouteDefinition) => {

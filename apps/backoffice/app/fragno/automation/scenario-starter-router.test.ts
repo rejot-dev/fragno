@@ -522,7 +522,6 @@ describe("starter automation router scenarios", () => {
             priority: 50,
             action: {
               kind: "start_workflow",
-              workflowName: "automation-codemode-script",
               remoteWorkflowName: "custom-alpha",
               workflowScriptPath: "/workspace/automations/custom-alpha.workflow.js",
               instanceIdTemplate: "custom-alpha-${event.id}",
@@ -622,7 +621,6 @@ describe("starter automation router scenarios", () => {
             priority: 50,
             action: {
               kind: "start_workflow",
-              workflowName: "automation-codemode-script",
               remoteWorkflowName: "missing-workflow-file",
               workflowScriptPath: "/workspace/automations/missing-workflow-file.workflow.js",
               instanceIdTemplate: "missing-workflow-file-${event.id}",
