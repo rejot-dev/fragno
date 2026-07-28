@@ -4,6 +4,11 @@ import type { NamingResolver } from "../../../naming/sql-naming";
 import type { AnySelectClause } from "../../../query/mod";
 import type { AnyColumn, AnyTable } from "../../../schema/create";
 import type { DriverConfig } from "../driver-config";
+import {
+  isSQLiteBlobStoredColumn,
+  SQLITE_JSON_BLOB_HEX_PREFIX,
+  type SQLiteStorageMode,
+} from "../sqlite-storage";
 
 export type MappedSelectColumn = {
   column: AnyColumn;
@@ -71,6 +76,24 @@ export function projectSelectedColumnValue(
     return sql<string>`cast(${columnReference} as char)`;
   }
   return columnReference;
+}
+
+export function projectJsonSelectedColumnValue(
+  column: AnyColumn,
+  reference: string,
+  driverConfig: DriverConfig,
+  sqliteStorageMode?: SQLiteStorageMode,
+): RawBuilder<unknown> {
+  const columnReference = sql.ref(reference);
+  if (
+    driverConfig.databaseType === "sqlite" &&
+    isSQLiteBlobStoredColumn(column, sqliteStorageMode)
+  ) {
+    return sql<string>`case when ${columnReference} is null then null else ${sql.lit(
+      SQLITE_JSON_BLOB_HEX_PREFIX,
+    )} || hex(${columnReference}) end`;
+  }
+  return projectSelectedColumnValue(column, reference, driverConfig);
 }
 
 export function projectSelectedColumn(
