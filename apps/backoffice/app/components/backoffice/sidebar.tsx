@@ -62,6 +62,14 @@ function createNavItems(
   const automationChildren = activeOrganizationId
     ? [
         {
+          label: "Dashboard",
+          to: `${automationBasePath}/dashboard`,
+          isActive: isAutomationTabPath("dashboard", {
+            automationBasePath,
+            includeProjectScope: true,
+          }),
+        },
+        {
           label: "Terminal",
           to: `${automationBasePath}/terminal`,
           isActive: isAutomationTabPath("terminal", {

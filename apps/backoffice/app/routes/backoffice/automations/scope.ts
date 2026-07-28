@@ -57,6 +57,7 @@ export const automationScopeBasePath = (scope: AutomationUiScope) =>
   `/backoffice/automations/${scope.kind}/${automationScopeRouteId(scope)}`;
 
 export type AutomationScopeTab =
+  | "dashboard"
   | "terminal"
   | "scripts"
   | "router"
@@ -70,7 +71,7 @@ export type AutomationScopeTab =
 
 export const automationScopeTabPath = (
   scope: AutomationUiScope,
-  tab: AutomationScopeTab = "terminal",
+  tab: AutomationScopeTab = "dashboard",
 ) => `${automationScopeBasePath(scope)}/${tab}`;
 
 export const createAutomationScopeOptions = ({

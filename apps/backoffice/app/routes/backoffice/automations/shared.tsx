@@ -42,7 +42,7 @@ export function AutomationHeader({ selectedScope }: { selectedScope: AutomationU
       ]}
       eyebrow="Automations"
       title={`Automations for ${scopeLabel}`}
-      description="Inspect the scoped terminal, automation scripts, API connections, events, MCP servers, sandboxes, and store bindings for the selected scope."
+      description="See the live system map, then inspect the scoped terminal, scripts, routes, events, integrations, sandboxes, and store bindings."
       actions={
         orgId ? (
           <Link
@@ -155,6 +155,11 @@ export function AutomationTabs({
   const scriptPresentation = useScriptPresentation();
   const tabs = [
     {
+      id: "dashboard" as const,
+      label: "Dashboard",
+      to: automationScopeTabPath(selectedScope, "dashboard"),
+    },
+    {
       id: "terminal" as const,
       label: "Terminal",
       to: automationScopeTabPath(selectedScope, "terminal"),
@@ -226,7 +231,8 @@ export function AutomationTabs({
 
         return (
           <Fragment key={tab.id}>
-            {tab.id === "scripts" ||
+            {tab.id === "terminal" ||
+            tab.id === "scripts" ||
             tab.id === "store" ||
             tab.id === "api" ||
             tab.id === "sandboxes" ? (
