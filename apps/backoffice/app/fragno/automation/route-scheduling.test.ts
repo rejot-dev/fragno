@@ -11,7 +11,6 @@ import { automationFragmentSchema } from "./schema";
 
 const scheduledAction = {
   kind: "start_workflow" as const,
-  workflowName: "automation-codemode-script",
   remoteWorkflowName: "scheduled-route",
   workflowScriptPath: "/workspace/automations/scheduled-route.workflow.js",
   instanceIdTemplate: "scheduled-${event.id}",

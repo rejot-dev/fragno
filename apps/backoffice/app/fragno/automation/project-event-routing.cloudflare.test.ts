@@ -78,7 +78,6 @@ describe("project automation event routing", () => {
         priority: 15,
         action: {
           kind: "start_workflow",
-          workflowName: "automation-codemode-script",
           remoteWorkflowName: "project-files-configure",
           workflowScriptPath: "/static/automations/project-files-configure.workflow.js",
           instanceIdTemplate: "project-files-configure-${event.id}",
@@ -118,7 +117,6 @@ describe("project automation event routing", () => {
             priority: 50,
             action: {
               kind: "start_workflow",
-              workflowName: "automation-codemode-script",
               remoteWorkflowName: "project-store",
               workflowScriptPath: "/workspace/automations/project-store.workflow.js",
               instanceIdTemplate: "project-store-${event.id}",

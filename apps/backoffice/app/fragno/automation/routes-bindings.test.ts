@@ -156,7 +156,6 @@ describe("automation routes /routes", () => {
         priority: 1000,
         action: {
           kind: "start_workflow",
-          workflowName: "automation-codemode-script",
           remoteWorkflowName: "telegram-hello",
           workflowScriptPath: "/workspace/automations/telegram-hello.workflow.js",
           instanceIdTemplate: "telegram-hello-${event}",
@@ -172,8 +171,8 @@ describe("automation routes /routes", () => {
       id: "telegram-hello",
       enabled: true,
       priority: 1000,
-      action: expect.objectContaining({ workflowName: "automation-codemode-script" }),
     });
+    expect(createResponse.data.action).not.toHaveProperty("workflowName");
 
     const updateResponse = await fragment.callRoute("PATCH", "/routes/:routeId", {
       pathParams: { routeId: "telegram-hello" },
@@ -407,6 +406,72 @@ describe("automation routes /routes", () => {
         }),
       ]),
     );
+  });
+
+  test("start workflow routes use the fixed automation workflow host", async () => {
+    const starts: Array<{
+      workflowName: string;
+      input: { id: string; remoteWorkflowName?: string };
+    }> = [];
+    fragment = await createAutomation({
+      workflows: {
+        createInstance: async (
+          workflowName: string,
+          input: { id: string; remoteWorkflowName?: string },
+        ) => {
+          starts.push({ workflowName, input });
+          return {};
+        },
+        getInstanceStatus: async () => [],
+        sendEvent: async () => ({}),
+      } as unknown as AutomationWorkflowsService,
+    });
+
+    await fragment.callRoute("POST", "/routes", {
+      body: {
+        id: "custom-start",
+        name: "Custom start",
+        enabled: true,
+        trigger: {
+          kind: "event",
+          source: "custom",
+          eventType: "thing.happened",
+          matcher: null,
+        },
+        priority: 50,
+        action: {
+          kind: "start_workflow",
+          remoteWorkflowName: "custom-start",
+          workflowScriptPath: "/workspace/automations/custom-start.workflow.js",
+          instanceIdTemplate: "custom-start-${event.id}",
+        },
+      },
+    });
+
+    const event: AutomationEvent = {
+      id: "thing-1",
+      scope: { kind: "org", orgId: "org_123" },
+      source: "custom",
+      eventType: "thing.happened",
+      occurredAt: "2026-01-01T00:00:00.000Z",
+      payload: {},
+      actor,
+      actors: [actor],
+      subject: { orgId: "org_123" },
+    };
+
+    await fragment.callServices(() => fragment.services.ingestEvent(event));
+    await drainDurableHooks(fragment);
+
+    expect(starts).toEqual([
+      {
+        workflowName: "automation-codemode-script",
+        input: expect.objectContaining({
+          id: "custom-start-thing-1",
+          remoteWorkflowName: "custom-start",
+        }),
+      },
+    ]);
   });
 
   test("send workflow event routes use deterministic event ids", async () => {

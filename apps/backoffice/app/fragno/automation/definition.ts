@@ -165,7 +165,7 @@ const handleStartWorkflowRouteAction = async ({
   await runWorkflowServiceCall(
     () =>
       [
-        workflows.createInstance(action.workflowName, {
+        workflows.createInstance(workflowInput.workflowName, {
           id: workflowInput.instanceId,
           params: workflowInput.params,
           remoteWorkflowName: workflowInput.remoteWorkflowName,

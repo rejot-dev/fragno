@@ -22,7 +22,6 @@ type AutomationRouteScope =
 
 export type AutomationStartWorkflowAction = {
   kind: "start_workflow";
-  workflowName: string;
   remoteWorkflowName?: string;
   workflowScriptPath: string;
   instanceIdTemplate: string;

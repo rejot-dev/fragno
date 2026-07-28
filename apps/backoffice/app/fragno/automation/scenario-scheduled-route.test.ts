@@ -60,7 +60,6 @@ describe("scheduled automation route scenario", () => {
   },
   action: {
     kind: "start_workflow",
-    workflowName: "automation-codemode-script",
     remoteWorkflowName: "scheduled-digest",
     workflowScriptPath: "/workspace/automations/scheduled-digest.workflow.js",
     instanceIdTemplate: "scheduled-\${event.payload.id}",

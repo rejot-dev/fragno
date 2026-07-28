@@ -683,6 +683,9 @@ describe("runtime tool reference generation", () => {
     );
     expect(types).toContain("type AutomationStartWorkflowAction = {");
     expect(types).toContain("type AutomationStartWorkflowActionInput = {");
+    expect(types).not.toMatch(
+      /type AutomationStartWorkflowAction(?:Input)? = \{[^}]*workflowName:/su,
+    );
     expect(types).toContain("workflowName: string;");
     expect(types).toContain("workflowName?: string;");
     expect(types.match(/type AutomationRoute =/g)).toHaveLength(1);

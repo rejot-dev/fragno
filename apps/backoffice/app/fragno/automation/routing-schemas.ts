@@ -51,7 +51,6 @@ const automationRouteScopeTemplateSchema: z.ZodType<AutomationRouteScopeTemplate
 const automationStartWorkflowActionSchema: z.ZodType<AutomationStartWorkflowAction> = z
   .object({
     kind: z.literal("start_workflow"),
-    workflowName: z.string().trim().min(1).default(AUTOMATION_CODEMODE_WORKFLOW),
     remoteWorkflowName: z.string().trim().min(1).optional(),
     workflowScriptPath: z.string().trim().min(1),
     instanceIdTemplate: z.string().trim().min(1),

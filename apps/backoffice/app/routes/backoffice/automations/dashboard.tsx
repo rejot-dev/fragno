@@ -26,6 +26,7 @@ import {
 
 import { eq, useLiveQuery } from "@tanstack/react-db";
 
+import { AUTOMATION_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/workflow-start";
 import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
 import {
   backofficeCapabilities,
@@ -176,7 +177,7 @@ const routeWorkflowIdentity = (route: DashboardRoute) => {
   switch (route.action.kind) {
     case "start_workflow":
       return {
-        workflowName: route.action.workflowName,
+        workflowName: AUTOMATION_CODEMODE_WORKFLOW,
         remoteWorkflowName: route.action.remoteWorkflowName ?? null,
       };
     case "send_workflow_event":
@@ -207,8 +208,11 @@ const latestWorkflowRunForRoute = (
 };
 
 const routeDestinationLabel = (route: DashboardRoute) => {
-  if (route.action.kind !== "forward_event") {
-    return automationRouteWorkflowName(route) ?? route.action.workflowName;
+  if (route.action.kind === "start_workflow") {
+    return automationRouteWorkflowName(route) ?? "Unknown saved workflow";
+  }
+  if (route.action.kind === "send_workflow_event") {
+    return route.action.workflowName;
   }
 
   switch (route.action.targetScope.kind) {
