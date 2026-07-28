@@ -78,6 +78,8 @@ export default function BackofficeAutomationRouter() {
   const selectedRouteId = searchParams.get("route")?.trim() ?? "";
   const selectedRoute = routes.find((route) => route.id === selectedRouteId) ?? null;
   const basePath = automationScopeTabPath(selectedScope, "router");
+  const scriptsPath = automationScopeTabPath(selectedScope, "scripts");
+  const eventsCatalogPath = automationScopeTabPath(selectedScope, "events-catalog");
   const isDetailVisible = Boolean(selectedRoute);
   const enabledRoutes = routes.filter((route) => route.enabled).length;
   const sections = routeSections(routes).filter((section) => section.routes.length > 0);
@@ -205,7 +207,11 @@ export default function BackofficeAutomationRouter() {
                   Back to list
                 </Link>
               </div>
-              <AutomationRouteDetail route={selectedRoute} />
+              <AutomationRouteDetail
+                route={selectedRoute}
+                scriptsPath={scriptsPath}
+                eventsCatalogPath={eventsCatalogPath}
+              />
             </div>
           ) : (
             <div className="space-y-4">

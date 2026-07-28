@@ -16,7 +16,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import {
   useLoaderData,
   useOutletContext,
@@ -24,7 +24,7 @@ import {
   type ShouldRevalidateFunctionArgs,
 } from "react-router";
 
-import { eq, useLiveQuery } from "@tanstack/react-db";
+import { eq, or, useLiveQuery } from "@tanstack/react-db";
 
 import { AUTOMATION_CODEMODE_WORKFLOW } from "@/fragno/automation/engine/workflow-start";
 import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
@@ -44,7 +44,7 @@ import { loadAutomationScriptSource } from "./data.server";
 import { formatTimestamp } from "./formatting";
 import type { AutomationLayoutContext } from "./layout-context";
 import { automationRouteWorkflowName } from "./route-workflow";
-import { automationScopeFromRouteParams } from "./scope";
+import { automationScopeFromRouteParams, automationScopeTabPath } from "./scope";
 import { toAutomationScriptIdFromAbsolutePath } from "./script-records";
 import { AutomationNotice } from "./shared";
 
@@ -52,7 +52,7 @@ const SOURCE_FILTER_PARAM = "source";
 const SELECTION_KIND_PARAM = "selection";
 const SELECTION_ID_PARAM = "selected";
 const WORKFLOW_SCRIPT_ID_PARAM = "workflowScript";
-const RECENT_WORKFLOW_LIMIT = 40;
+const ACTIVE_WORKFLOW_LIMIT = 40;
 const DASHBOARD_SEARCH_NAVIGATION_OPTIONS = {
   defaultShouldRevalidate: false,
   preventScrollReset: true,
@@ -73,7 +73,7 @@ type DashboardWorkflowInstance = {
 };
 
 type DashboardRoute = AutomationRouteDefinition;
-type DashboardSelectionKind = "source" | "trigger" | "workflow";
+type DashboardSelectionKind = "source" | "trigger" | "action";
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const workflowScriptId = url.searchParams.get(WORKFLOW_SCRIPT_ID_PARAM)?.trim() ?? "";
@@ -170,6 +170,46 @@ const dashboardSources = (routes: readonly DashboardRoute[]): DashboardSource[] 
       return rightHasTriggers ? 1 : -1;
     }
     return left.label.localeCompare(right.label);
+  });
+};
+
+type DashboardGridRow = {
+  sourceId: string;
+  source: DashboardSource | null;
+  route: DashboardRoute | null;
+  dividerAfterSource: boolean;
+};
+
+const dashboardRoutesBySourceId = (routes: readonly DashboardRoute[]) => {
+  const routesBySourceId = new Map<string, DashboardRoute[]>();
+  for (const route of routes) {
+    const sourceId = routeSourceId(route);
+    const sourceRoutes = routesBySourceId.get(sourceId) ?? [];
+    sourceRoutes.push(route);
+    routesBySourceId.set(sourceId, sourceRoutes);
+  }
+  return routesBySourceId;
+};
+
+const dashboardGridRows = (
+  sources: readonly DashboardSource[],
+  routes: readonly DashboardRoute[],
+): DashboardGridRow[] => {
+  const routesBySourceId = dashboardRoutesBySourceId(routes);
+
+  return sources.flatMap<DashboardGridRow>((source, sourceIndex) => {
+    const sourceRoutes = routesBySourceId.get(source.id) ?? [];
+    const hasFollowingSource = sourceIndex < sources.length - 1;
+    if (sourceRoutes.length === 0) {
+      return [{ sourceId: source.id, source, route: null, dividerAfterSource: hasFollowingSource }];
+    }
+
+    return sourceRoutes.map((route, routeIndex) => ({
+      sourceId: source.id,
+      source: routeIndex === 0 ? source : null,
+      route,
+      dividerAfterSource: hasFollowingSource && routeIndex === sourceRoutes.length - 1,
+    }));
   });
 };
 
@@ -328,15 +368,13 @@ function LaneHeader({
 
 function SourceCard({
   source,
-  triggerCount,
-  enabledTriggerCount,
   selected,
+  muted,
   onSelect,
 }: {
   source: DashboardSource;
-  triggerCount: number;
-  enabledTriggerCount: number;
   selected: boolean;
+  muted: boolean;
   onSelect: () => void;
 }) {
   return (
@@ -344,9 +382,9 @@ function SourceCard({
       type="button"
       aria-pressed={selected}
       onClick={onSelect}
-      className={`flex min-h-14 w-full min-w-0 items-center gap-2.5 rounded-md border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[box-shadow,transform] hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)] active:scale-[0.96] ${
+      className={`flex h-full w-full min-w-0 items-center gap-2.5 rounded-md border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[box-shadow,opacity,transform] hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)] active:scale-[0.96] ${
         selected ? "ring-2 ring-lime-600/35" : ""
-      }`}
+      } ${muted ? "opacity-35" : ""}`}
     >
       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-lime-500/10 text-lime-700 dark:text-lime-300">
         <SourceIcon source={source.id} />
@@ -358,17 +396,6 @@ function SourceCard({
         <span className="mt-0.5 block truncate text-[8px] tracking-[0.12em] text-[var(--bo-muted-2)] uppercase">
           {source.kind} capability
         </span>
-      </span>
-      <span className="shrink-0 text-right text-[8px] leading-4 text-[var(--bo-muted-2)] tabular-nums">
-        {triggerCount === 0 ? (
-          "No triggers"
-        ) : (
-          <>
-            {triggerCount} trigger{triggerCount === 1 ? "" : "s"}
-            <br />
-            {enabledTriggerCount} enabled
-          </>
-        )}
       </span>
     </button>
   );
@@ -399,7 +426,7 @@ function TriggerCard({
       type="button"
       aria-pressed={selected}
       onClick={onSelect}
-      className={`group min-h-16 w-full min-w-0 rounded-md border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2.5 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[box-shadow,transform] hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)] active:scale-[0.96] ${
+      className={`group h-full w-full min-w-0 rounded-md border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2.5 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[box-shadow,transform] hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)] active:scale-[0.96] ${
         selected ? "ring-2 ring-orange-600/30" : ""
       }`}
     >
@@ -458,7 +485,35 @@ function WorkflowStatus({ status }: { status: string }) {
   );
 }
 
-function WorkflowCard({
+const routeActionAppearance = (kind: DashboardRoute["action"]["kind"]) => {
+  switch (kind) {
+    case "start_workflow":
+      return {
+        icon: <Workflow className="h-3.5 w-3.5" strokeWidth={1.8} />,
+        iconClassName: "bg-rose-950/8 text-rose-950 dark:bg-rose-300/10 dark:text-rose-200",
+        labelClassName: "text-rose-800 dark:text-rose-300",
+        selectedClassName: "ring-2 ring-rose-900/25 dark:ring-rose-300/25",
+      };
+    case "send_workflow_event":
+      return {
+        icon: <Send className="h-3.5 w-3.5" strokeWidth={1.8} />,
+        iconClassName: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
+        labelClassName: "text-sky-700 dark:text-sky-300",
+        selectedClassName: "ring-2 ring-sky-600/30 dark:ring-sky-300/25",
+      };
+    case "forward_event":
+      return {
+        icon: <GitBranch className="h-3.5 w-3.5" strokeWidth={1.8} />,
+        iconClassName: "bg-violet-500/10 text-violet-700 dark:text-violet-300",
+        labelClassName: "text-violet-700 dark:text-violet-300",
+        selectedClassName: "ring-2 ring-violet-600/30 dark:ring-violet-300/25",
+      };
+  }
+
+  throw new Error("Unsupported automation route action kind.");
+};
+
+function ActionCard({
   route,
   instance,
   selected,
@@ -470,23 +525,22 @@ function WorkflowCard({
   onSelect: () => void;
 }) {
   const destination = routeDestinationLabel(route);
+  const appearance = routeActionAppearance(route.action.kind);
 
   return (
     <button
       type="button"
       aria-pressed={selected}
       onClick={onSelect}
-      className={`group min-h-16 w-full min-w-0 rounded-md border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2.5 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[box-shadow,transform] hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)] active:scale-[0.96] ${
-        selected ? "ring-2 ring-rose-900/25 dark:ring-rose-300/25" : ""
+      className={`group h-full w-full min-w-0 rounded-md border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2.5 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[box-shadow,transform] hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)] active:scale-[0.96] ${
+        selected ? appearance.selectedClassName : ""
       }`}
     >
       <div className="flex items-start gap-2.5">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-rose-950/8 text-rose-950 dark:bg-rose-300/10 dark:text-rose-200">
-          {route.action.kind === "forward_event" ? (
-            <GitBranch className="h-3.5 w-3.5" strokeWidth={1.8} />
-          ) : (
-            <Workflow className="h-3.5 w-3.5" strokeWidth={1.8} />
-          )}
+        <span
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded ${appearance.iconClassName}`}
+        >
+          {appearance.icon}
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
@@ -494,30 +548,161 @@ function WorkflowCard({
               <p className="truncate text-[11px] font-semibold text-[var(--bo-fg)]">
                 {destination}
               </p>
-              <p className="mt-0.5 truncate text-[9px] text-[var(--bo-muted-2)]">
+              <p className={`mt-0.5 truncate text-[9px] font-medium ${appearance.labelClassName}`}>
                 {routeActionLabel(route)}
               </p>
             </div>
             {instance ? <WorkflowStatus status={instance.status} /> : null}
           </div>
-          <p className="mt-1 truncate font-mono text-[9px] text-[var(--bo-muted-2)] tabular-nums">
-            {instance
-              ? `${instance.instanceId} · ${formatTimestamp(instance.updatedAt)}`
-              : route.action.kind === "forward_event"
-                ? "Continues in the target scope"
-                : "No recent instance"}
-          </p>
+          {instance ? (
+            <p className="mt-1 truncate font-mono text-[9px] text-[var(--bo-muted-2)] tabular-nums">
+              {instance.instanceId} · {formatTimestamp(instance.updatedAt)}
+            </p>
+          ) : null}
         </div>
       </div>
     </button>
   );
 }
 
-const isSelectionKind = (value: string | null): value is DashboardSelectionKind =>
-  value === "source" || value === "trigger" || value === "workflow";
+function DashboardRouteGrid({
+  sources,
+  routes,
+  workflowInstances,
+  activeSource,
+  selectionKind,
+  selectionId,
+  routesLoading,
+  onSelectSource,
+  onSelectTrigger,
+  onSelectAction,
+}: {
+  sources: readonly DashboardSource[];
+  routes: readonly DashboardRoute[];
+  workflowInstances: DashboardWorkflowInstance[];
+  activeSource: DashboardSource | null;
+  selectionKind: DashboardSelectionKind | null;
+  selectionId: string;
+  routesLoading: boolean;
+  onSelectSource: (source: DashboardSource) => void;
+  onSelectTrigger: (route: DashboardRoute) => void;
+  onSelectAction: (route: DashboardRoute) => void;
+}) {
+  const gridRows = dashboardGridRows(sources, routes);
+  const loadingRowSourceId = gridRows[0]?.sourceId ?? null;
+  const selectedRoute =
+    selectionKind === "trigger" || selectionKind === "action"
+      ? (routes.find((route) => route.id === selectionId) ?? null)
+      : null;
+  const highlightedSourceId = selectedRoute ? routeSourceId(selectedRoute) : activeSource?.id;
+
+  return (
+    <div className="grid auto-rows-[5.25rem] grid-cols-[18rem_minmax(20rem,1fr)_minmax(22rem,1.1fr)] items-stretch gap-x-3 px-3">
+      {gridRows.map((row) => {
+        const { source, route } = row;
+        const latestInstance = route ? latestWorkflowRunForRoute(route, workflowInstances) : null;
+        const sourceMuted = Boolean(
+          highlightedSourceId && source && source.id !== highlightedSourceId,
+        );
+        const triggerMuted = Boolean(
+          route &&
+          (selectedRoute
+            ? route.id !== selectedRoute.id
+            : activeSource && routeSourceId(route) !== activeSource.id),
+        );
+        const actionMuted = Boolean(
+          route &&
+          (selectedRoute
+            ? route.id !== selectedRoute.id
+            : activeSource && routeSourceId(route) !== activeSource.id),
+        );
+        const emptyTriggerMuted = Boolean(
+          highlightedSourceId && row.sourceId !== highlightedSourceId,
+        );
+        const dividerClassName = row.dividerAfterSource
+          ? "border-b border-[color:var(--bo-border)]"
+          : "";
+
+        return (
+          <Fragment key={route?.id ?? `${row.sourceId}:empty`}>
+            <div className={`min-w-0 py-2.5 ${dividerClassName}`}>
+              {source ? (
+                <SourceCard
+                  source={source}
+                  selected={!selectedRoute && activeSource?.id === source.id}
+                  muted={sourceMuted}
+                  onSelect={() => {
+                    onSelectSource(source);
+                  }}
+                />
+              ) : null}
+            </div>
+
+            {route ? (
+              <>
+                <div
+                  className={`min-w-0 py-2.5 transition-opacity ${dividerClassName} ${
+                    route.enabled ? "" : "bg-[var(--bo-panel)]/45"
+                  } ${triggerMuted ? "opacity-35" : ""}`}
+                >
+                  <TriggerCard
+                    route={route}
+                    selected={selectionKind === "trigger" && selectionId === route.id}
+                    onSelect={() => {
+                      onSelectTrigger(route);
+                    }}
+                  />
+                </div>
+                <div
+                  className={`min-w-0 py-2.5 transition-opacity ${dividerClassName} ${
+                    route.enabled ? "" : "bg-[var(--bo-panel)]/45"
+                  } ${actionMuted ? "opacity-35" : ""}`}
+                >
+                  <ActionCard
+                    route={route}
+                    instance={latestInstance}
+                    selected={selectionKind === "action" && selectionId === route.id}
+                    onSelect={() => {
+                      onSelectAction(route);
+                    }}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div
+                  className={`min-w-0 py-2.5 transition-opacity ${dividerClassName} ${emptyTriggerMuted ? "opacity-35" : ""}`}
+                >
+                  <div className="flex h-full items-center px-3 text-[10px] text-[var(--bo-muted-2)]">
+                    {routesLoading
+                      ? row.sourceId === loadingRowSourceId
+                        ? "Synchronizing automation routes…"
+                        : null
+                      : "No triggers"}
+                  </div>
+                </div>
+                <div className={`min-w-0 py-2.5 ${dividerClassName}`} />
+              </>
+            )}
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+const parseSelectionKind = (value: string | null): DashboardSelectionKind | null => {
+  if (value === "workflow") {
+    return "action";
+  }
+  if (value === "source" || value === "trigger" || value === "action") {
+    return value;
+  }
+  return null;
+};
 
 export default function BackofficeAutomationDashboard() {
-  const { collections } = useOutletContext<AutomationLayoutContext>();
+  const { collections, selectedScope } = useOutletContext<AutomationLayoutContext>();
   const loaderData = useLoaderData<typeof loader>();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -546,9 +731,16 @@ export default function BackofficeAutomationDashboard() {
     (query) =>
       query
         .from({ instance: collections.workflowInstances })
+        .where(({ instance }) =>
+          or(
+            eq(instance.status, "active"),
+            eq(instance.status, "waiting"),
+            eq(instance.status, "paused"),
+          ),
+        )
         .orderBy(({ instance }) => instance.updatedAt, "desc")
         .orderBy(({ instance }) => instance.id, "desc")
-        .limit(RECENT_WORKFLOW_LIMIT)
+        .limit(ACTIVE_WORKFLOW_LIMIT)
         .select(({ instance }) => ({
           id: instance.id,
           workflowName: instance.workflowName,
@@ -570,15 +762,14 @@ export default function BackofficeAutomationDashboard() {
   const sources = dashboardSources(routes);
   const requestedSourceId = normalizedSourceId(searchParams.get(SOURCE_FILTER_PARAM) ?? "");
   const activeSource = sources.find((source) => source.id === requestedSourceId) ?? null;
-  const visibleRoutes = activeSource
-    ? routes.filter((route) => routeSourceId(route) === activeSource.id)
-    : routes;
-  const selectionKind = isSelectionKind(searchParams.get(SELECTION_KIND_PARAM))
-    ? searchParams.get(SELECTION_KIND_PARAM)
-    : null;
+  const selectionKind = parseSelectionKind(searchParams.get(SELECTION_KIND_PARAM));
   const selectionId = searchParams.get(SELECTION_ID_PARAM)?.trim() ?? "";
   const selectedRoute = routes.find((route) => route.id === selectionId) ?? null;
   const selectedSource = sources.find((source) => source.id === selectionId) ?? null;
+  const selectedRouteSource =
+    (selectionKind === "trigger" || selectionKind === "action") && selectedRoute
+      ? (sources.find((source) => source.id === routeSourceId(selectedRoute)) ?? null)
+      : null;
   const inspectorSelection: DashboardInspectorSelection =
     selectionKind === "source" && selectedSource
       ? {
@@ -588,8 +779,8 @@ export default function BackofficeAutomationDashboard() {
         }
       : selectionKind === "trigger" && selectedRoute
         ? { kind: "trigger", route: selectedRoute }
-        : selectionKind === "workflow" && selectedRoute
-          ? { kind: "workflow", route: selectedRoute }
+        : selectionKind === "action" && selectedRoute
+          ? { kind: "action", route: selectedRoute }
           : null;
   const errors = [
     routesQuery.isError
@@ -611,13 +802,31 @@ export default function BackofficeAutomationDashboard() {
     kind,
     id,
     workflowScriptId,
+    clearSourceFilter = false,
   }: {
     kind: DashboardSelectionKind;
     id: string;
     workflowScriptId?: string;
+    clearSourceFilter?: boolean;
   }) => {
     setSearchParams((currentSearchParams) => {
       const nextSearchParams = new URLSearchParams(currentSearchParams);
+      const currentSelectionKind = parseSelectionKind(
+        currentSearchParams.get(SELECTION_KIND_PARAM),
+      );
+      const isTogglingSelection =
+        currentSelectionKind === kind && currentSearchParams.get(SELECTION_ID_PARAM) === id;
+
+      if (clearSourceFilter) {
+        nextSearchParams.delete(SOURCE_FILTER_PARAM);
+      }
+      if (isTogglingSelection) {
+        nextSearchParams.delete(SELECTION_KIND_PARAM);
+        nextSearchParams.delete(SELECTION_ID_PARAM);
+        nextSearchParams.delete(WORKFLOW_SCRIPT_ID_PARAM);
+        return nextSearchParams;
+      }
+
       nextSearchParams.set(SELECTION_KIND_PARAM, kind);
       nextSearchParams.set(SELECTION_ID_PARAM, id);
       if (workflowScriptId) {
@@ -645,6 +854,9 @@ export default function BackofficeAutomationDashboard() {
           selection={inspectorSelection}
           workflowSource={loaderData.workflowSource}
           runtimeToolCatalog={loaderData.runtimeToolCatalog}
+          collections={collections}
+          scriptsPath={automationScopeTabPath(selectedScope, "scripts")}
+          eventsCatalogPath={automationScopeTabPath(selectedScope, "events-catalog")}
           onClear={() => {
             setSearchParams((currentSearchParams) => {
               const nextSearchParams = new URLSearchParams(currentSearchParams);
@@ -666,33 +878,39 @@ export default function BackofficeAutomationDashboard() {
                   icon={<CircleDot className="h-3 w-3" strokeWidth={1.8} />}
                   title="Sources"
                   description={
-                    activeSource
-                      ? `Showing routes from ${activeSource.label}`
-                      : "All capabilities are always visible"
+                    selectedRouteSource
+                      ? `Related source for ${selectedRoute?.name ?? "selected route"}`
+                      : activeSource
+                        ? `Highlighting routes from ${activeSource.label}`
+                        : "All capabilities are always visible"
                   }
                   action={
-                    activeSource ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSearchParams((currentSearchParams) => {
-                            const nextSearchParams = new URLSearchParams(currentSearchParams);
-                            nextSearchParams.delete(SOURCE_FILTER_PARAM);
-                            if (
-                              nextSearchParams.get(SELECTION_KIND_PARAM) === "source" &&
-                              nextSearchParams.get(SELECTION_ID_PARAM) === activeSource.id
-                            ) {
-                              nextSearchParams.delete(SELECTION_KIND_PARAM);
-                              nextSearchParams.delete(SELECTION_ID_PARAM);
-                            }
-                            return nextSearchParams;
-                          }, DASHBOARD_SEARCH_NAVIGATION_OPTIONS);
-                        }}
-                        className="min-h-10 px-2 text-[8px] font-semibold tracking-[0.12em] text-[var(--bo-muted)] uppercase transition-[color,transform] hover:text-[var(--bo-fg)] active:scale-[0.96]"
-                      >
-                        Clear
-                      </button>
-                    ) : null
+                    <button
+                      type="button"
+                      disabled={!activeSource}
+                      onClick={() => {
+                        if (!activeSource) {
+                          return;
+                        }
+                        setSearchParams((currentSearchParams) => {
+                          const nextSearchParams = new URLSearchParams(currentSearchParams);
+                          nextSearchParams.delete(SOURCE_FILTER_PARAM);
+                          if (
+                            nextSearchParams.get(SELECTION_KIND_PARAM) === "source" &&
+                            nextSearchParams.get(SELECTION_ID_PARAM) === activeSource.id
+                          ) {
+                            nextSearchParams.delete(SELECTION_KIND_PARAM);
+                            nextSearchParams.delete(SELECTION_ID_PARAM);
+                          }
+                          return nextSearchParams;
+                        }, DASHBOARD_SEARCH_NAVIGATION_OPTIONS);
+                      }}
+                      className={`min-h-10 px-2 text-[8px] font-semibold tracking-[0.12em] text-[var(--bo-muted)] uppercase transition-[color,transform] hover:text-[var(--bo-fg)] active:scale-[0.96] ${
+                        activeSource ? "" : "invisible"
+                      }`}
+                    >
+                      Clear
+                    </button>
                   }
                 />
                 <LaneHeader
@@ -702,104 +920,53 @@ export default function BackofficeAutomationDashboard() {
                   description="Events, schedules, matchers, and priority"
                 />
                 <LaneHeader
-                  dotClassName="bg-[#581022]"
-                  icon={<Workflow className="h-3 w-3" strokeWidth={1.8} />}
-                  title="Workflows"
-                  description="Destinations and their latest run state"
+                  dotClassName="bg-[#6b5f73]"
+                  icon={<Braces className="h-3 w-3" strokeWidth={1.8} />}
+                  title="Actions"
+                  description="Workflow starts, events, and forwarding"
                 />
               </div>
 
-              <div className="grid grid-cols-[18rem_minmax(20rem,1fr)_minmax(22rem,1.1fr)] items-stretch gap-3 px-3">
-                <div className="space-y-1.5 py-3">
-                  {sources.map((source) => {
-                    const sourceRoutes = routes.filter(
-                      (route) => routeSourceId(route) === source.id,
-                    );
-                    return (
-                      <SourceCard
-                        key={source.id}
-                        source={source}
-                        triggerCount={sourceRoutes.length}
-                        enabledTriggerCount={sourceRoutes.filter((route) => route.enabled).length}
-                        selected={activeSource?.id === source.id}
-                        onSelect={() => {
-                          const isClearing = activeSource?.id === source.id;
-                          setSearchParams((currentSearchParams) => {
-                            const nextSearchParams = new URLSearchParams(currentSearchParams);
-                            if (isClearing) {
-                              nextSearchParams.delete(SOURCE_FILTER_PARAM);
-                              nextSearchParams.delete(SELECTION_KIND_PARAM);
-                              nextSearchParams.delete(SELECTION_ID_PARAM);
-                            } else {
-                              nextSearchParams.set(SOURCE_FILTER_PARAM, source.id);
-                              nextSearchParams.set(SELECTION_KIND_PARAM, "source");
-                              nextSearchParams.set(SELECTION_ID_PARAM, source.id);
-                            }
-                            nextSearchParams.delete(WORKFLOW_SCRIPT_ID_PARAM);
-                            return nextSearchParams;
-                          }, DASHBOARD_SEARCH_NAVIGATION_OPTIONS);
-                        }}
-                      />
-                    );
-                  })}
-                </div>
-
-                <div className="col-span-2 divide-y divide-[color:var(--bo-border)]">
-                  {routesQuery.isLoading && routes.length === 0 ? (
-                    <div className="px-3 py-5 text-xs text-[var(--bo-muted)]">
-                      Synchronizing automation routes…
-                    </div>
-                  ) : visibleRoutes.length === 0 ? (
-                    <div className="px-3 py-5">
-                      <p className="text-xs font-semibold text-[var(--bo-fg)]">
-                        No triggers configured
-                      </p>
-                      <p className="mt-1 text-[10px] text-[var(--bo-muted)]">
-                        {activeSource
-                          ? `${activeSource.label} is available, but no route currently uses it.`
-                          : "No automation routes are defined for this scope."}
-                      </p>
-                    </div>
-                  ) : (
-                    visibleRoutes.map((route) => {
-                      const latestInstance = latestWorkflowRunForRoute(route, workflowInstances);
-                      return (
-                        <article
-                          key={route.id}
-                          className={`grid grid-cols-[minmax(20rem,1fr)_minmax(22rem,1.1fr)] gap-3 py-2.5 ${
-                            route.enabled ? "" : "bg-[var(--bo-panel)]/45"
-                          }`}
-                        >
-                          <TriggerCard
-                            route={route}
-                            selected={selectionKind === "trigger" && selectionId === route.id}
-                            onSelect={() => {
-                              updateSelection({ kind: "trigger", id: route.id });
-                            }}
-                          />
-                          <WorkflowCard
-                            route={route}
-                            instance={latestInstance}
-                            selected={selectionKind === "workflow" && selectionId === route.id}
-                            onSelect={() => {
-                              updateSelection({
-                                kind: "workflow",
-                                id: route.id,
-                                workflowScriptId:
-                                  route.action.kind === "start_workflow"
-                                    ? toAutomationScriptIdFromAbsolutePath(
-                                        route.action.workflowScriptPath,
-                                      )
-                                    : undefined,
-                              });
-                            }}
-                          />
-                        </article>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
+              <DashboardRouteGrid
+                sources={sources}
+                routes={routes}
+                workflowInstances={workflowInstances}
+                activeSource={activeSource}
+                selectionKind={selectionKind}
+                selectionId={selectionId}
+                routesLoading={routesQuery.isLoading && routes.length === 0}
+                onSelectSource={(source) => {
+                  const isClearing = activeSource?.id === source.id;
+                  setSearchParams((currentSearchParams) => {
+                    const nextSearchParams = new URLSearchParams(currentSearchParams);
+                    if (isClearing) {
+                      nextSearchParams.delete(SOURCE_FILTER_PARAM);
+                      nextSearchParams.delete(SELECTION_KIND_PARAM);
+                      nextSearchParams.delete(SELECTION_ID_PARAM);
+                    } else {
+                      nextSearchParams.set(SOURCE_FILTER_PARAM, source.id);
+                      nextSearchParams.set(SELECTION_KIND_PARAM, "source");
+                      nextSearchParams.set(SELECTION_ID_PARAM, source.id);
+                    }
+                    nextSearchParams.delete(WORKFLOW_SCRIPT_ID_PARAM);
+                    return nextSearchParams;
+                  }, DASHBOARD_SEARCH_NAVIGATION_OPTIONS);
+                }}
+                onSelectTrigger={(route) => {
+                  updateSelection({ kind: "trigger", id: route.id, clearSourceFilter: true });
+                }}
+                onSelectAction={(route) => {
+                  updateSelection({
+                    kind: "action",
+                    id: route.id,
+                    clearSourceFilter: true,
+                    workflowScriptId:
+                      route.action.kind === "start_workflow"
+                        ? toAutomationScriptIdFromAbsolutePath(route.action.workflowScriptPath)
+                        : undefined,
+                  });
+                }}
+              />
             </div>
           </div>
         </div>

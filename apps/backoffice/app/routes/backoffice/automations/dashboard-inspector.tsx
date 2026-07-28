@@ -1,18 +1,23 @@
-import { CalendarClock, CircleDot, Workflow as WorkflowIcon, X } from "lucide-react";
+import { Braces, CalendarClock, CircleDot, X } from "lucide-react";
 import { useMemo } from "react";
 import { Link } from "react-router";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
 
 import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
+import type { AutomationCollections } from "@/fragno/automation/tanstack/collections";
 import type { BackofficeCapabilityKind } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workflow-catalog";
 import { resolveWorkflowRuntimeToolCalls } from "@/fragno/runtime-tools/workflow-catalog";
 
 import type { AutomationScriptSourceRecord } from "./data";
+import { automationRouteActionLabel } from "./route-action";
+import { AutomationEventMatcherDetail, AutomationRouteTargetDetail } from "./route-configuration";
 import { AutomationRouteDetail } from "./route-detail";
-import { automationRouteWorkflowLink, automationRouteWorkflowName } from "./route-workflow";
+import { automationRouteScriptLink } from "./route-links";
+import { automationRouteWorkflowName } from "./route-workflow";
 import { useLinkedScrollViewports } from "./script-view/linked-scroll";
+import { useScriptWorkflowRuns } from "./script-view/use-script-workflow-runs";
 import { ScriptWorkflowGraph } from "./script-view/workflow-graph";
 
 export type DashboardSource = {
@@ -29,18 +34,27 @@ export type DashboardInspectorSelection =
       routes: readonly AutomationRouteDefinition[];
     }
   | { kind: "trigger"; route: AutomationRouteDefinition }
-  | { kind: "workflow"; route: AutomationRouteDefinition }
+  | { kind: "action"; route: AutomationRouteDefinition }
   | null;
 
 export function DashboardInspector({
   selection,
   workflowSource,
   runtimeToolCatalog,
+  collections,
+  scriptsPath,
+  eventsCatalogPath,
   onClear,
 }: {
   selection: DashboardInspectorSelection;
   workflowSource: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
+  collections: Pick<
+    AutomationCollections,
+    "workflowInstances" | "workflowSteps" | "workflowStepEmissions"
+  >;
+  scriptsPath: string;
+  eventsCatalogPath: string;
   onClear: () => void;
 }) {
   return (
@@ -70,14 +84,21 @@ export function DashboardInspector({
         {selection?.kind === "source" ? <SourceInspector selection={selection} /> : null}
         {selection?.kind === "trigger" ? (
           <div className="p-3">
-            <AutomationRouteDetail route={selection.route} compact />
+            <AutomationRouteDetail
+              route={selection.route}
+              scriptsPath={scriptsPath}
+              eventsCatalogPath={eventsCatalogPath}
+              compact
+            />
           </div>
         ) : null}
-        {selection?.kind === "workflow" ? (
-          <WorkflowInspector
+        {selection?.kind === "action" ? (
+          <ActionInspector
             route={selection.route}
             source={workflowSource}
             runtimeToolCatalog={runtimeToolCatalog}
+            collections={collections}
+            scriptsPath={scriptsPath}
           />
         ) : null}
         {!selection ? (
@@ -85,8 +106,7 @@ export function DashboardInspector({
             <CircleDot className="h-4 w-4 text-[var(--bo-muted-2)]" />
             <p className="mt-3 text-sm font-semibold text-[var(--bo-fg)]">Select an item</p>
             <p className="mt-1 text-xs leading-5 text-[var(--bo-muted)]">
-              Choose a capability, trigger, or workflow to inspect it without leaving the system
-              map.
+              Choose a capability, trigger, or action to inspect it without leaving the system map.
             </p>
           </div>
         ) : null}
@@ -148,61 +168,150 @@ function SourceInspector({
   );
 }
 
-function WorkflowInspector({
+type ActionDetailRow = { label: string; value: string; to?: string };
+
+function ActionDetailRows({ rows }: { rows: ActionDetailRow[] }) {
+  return (
+    <section className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
+      <dl className="divide-y divide-[color:var(--bo-border)]">
+        {rows.map((row) => (
+          <div key={row.label} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2 px-3 py-2.5">
+            <dt className="text-[9px] tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">
+              {row.label}
+            </dt>
+            <dd className="min-w-0 font-mono text-[11px] break-all text-[var(--bo-fg)]">
+              {row.to ? (
+                <Link
+                  to={row.to}
+                  className="inline-flex min-h-10 items-center text-sky-700 transition-colors hover:text-sky-900 hover:underline dark:text-sky-300 dark:hover:text-sky-100"
+                >
+                  {row.value}
+                </Link>
+              ) : (
+                row.value
+              )}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function ActionPayloadDetail({ payload }: { payload: unknown }) {
+  const forwardsTriggerEvent = typeof payload === "undefined" || payload === "$event";
+
+  return (
+    <section className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
+      <div className="flex items-start gap-2.5 border-b border-[color:var(--bo-border)] px-3 py-2.5">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center bg-sky-500/10 text-sky-700 dark:text-sky-300">
+          <Braces className="h-3.5 w-3.5" strokeWidth={1.8} />
+        </span>
+        <div>
+          <p className="text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">Payload</p>
+          <p className="mt-1 text-xs font-medium text-[var(--bo-fg)]">
+            {forwardsTriggerEvent ? "Original triggering event" : "Static event payload"}
+          </p>
+        </div>
+      </div>
+      {forwardsTriggerEvent ? (
+        <p className="px-3 py-3 text-[11px] leading-5 text-[var(--bo-muted)]">
+          The complete event that activated this route is sent to the workflow instance.
+        </p>
+      ) : (
+        <pre className="backoffice-scroll max-h-48 overflow-auto bg-[var(--bo-panel-2)] px-3 py-3 font-mono text-[10px] leading-5 break-words whitespace-pre-wrap text-[var(--bo-fg)]">
+          {JSON.stringify(payload, null, 2)}
+        </pre>
+      )}
+    </section>
+  );
+}
+
+function ActionInspector({
   route,
   source,
   runtimeToolCatalog,
+  collections,
+  scriptsPath,
 }: {
   route: AutomationRouteDefinition;
   source: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
+  collections: Pick<
+    AutomationCollections,
+    "workflowInstances" | "workflowSteps" | "workflowStepEmissions"
+  >;
+  scriptsPath: string;
 }) {
-  const workflowLink = automationRouteWorkflowLink(route);
-  const workflowName = automationRouteWorkflowName(route) ?? "Forwarded event";
+  const scriptLink = automationRouteScriptLink(route, scriptsPath);
+  const workflowName = automationRouteWorkflowName(route);
   const scriptPath =
     route.action.kind === "start_workflow" ? route.action.workflowScriptPath : null;
+  const detailRows: ActionDetailRow[] = (() => {
+    switch (route.action.kind) {
+      case "start_workflow":
+        return [
+          { label: "Workflow", value: workflowName ?? "Unknown saved workflow" },
+          { label: "Script", value: route.action.workflowScriptPath, to: scriptLink ?? undefined },
+          { label: "Instance ID", value: route.action.instanceIdTemplate },
+        ];
+      case "send_workflow_event":
+        return [
+          { label: "Workflow", value: route.action.workflowName },
+          { label: "Event", value: route.action.eventType },
+        ];
+      case "forward_event":
+        return [
+          {
+            label: "Event ID",
+            value: route.action.idTemplate ?? "Preserve the incoming event ID",
+          },
+        ];
+    }
+
+    throw new Error("Unsupported automation route action kind.");
+  })();
 
   return (
-    <div className="p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[8px] font-semibold tracking-[0.18em] text-rose-800 uppercase dark:text-rose-200">
-            Workflow
-          </p>
-          <h2 className="mt-1 truncate text-lg font-semibold text-[var(--bo-fg)]">
-            {workflowName}
-          </h2>
-          <p className="mt-1 font-mono text-[10px] break-all text-[var(--bo-muted-2)]">
-            {scriptPath ?? route.action.kind}
-          </p>
-        </div>
-        {workflowLink ? (
-          <Link
-            to={workflowLink}
-            className="inline-flex min-h-10 shrink-0 items-center border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2.5 text-[8px] font-semibold tracking-[0.14em] text-[var(--bo-muted)] uppercase transition-[border-color,color,transform] hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] active:scale-[0.96]"
-          >
-            Open ↗
-          </Link>
-        ) : null}
+    <div className="space-y-3 p-3">
+      <div className="min-w-0">
+        <p className="text-[8px] font-semibold tracking-[0.18em] text-violet-700 uppercase dark:text-violet-300">
+          Action · {route.action.kind}
+        </p>
+        <h2 className="mt-1 truncate text-lg font-semibold text-[var(--bo-fg)]">
+          {automationRouteActionLabel(route)}
+        </h2>
+        <p className="mt-1 font-mono text-[10px] break-all text-[var(--bo-muted-2)]">
+          {route.name}
+        </p>
       </div>
+
+      <ActionDetailRows rows={detailRows} />
+
+      {route.action.kind === "send_workflow_event" ? (
+        <>
+          <AutomationRouteTargetDetail target={route.action.target} />
+          <ActionPayloadDetail payload={route.action.payload} />
+        </>
+      ) : null}
+
+      {route.action.kind === "forward_event" ? (
+        <>
+          <AutomationRouteTargetDetail target={route.action.targetScope} />
+          {route.trigger.kind === "event" ? (
+            <AutomationEventMatcherDetail matcher={route.trigger.matcher} />
+          ) : null}
+        </>
+      ) : null}
 
       {scriptPath ? (
         <WorkflowGraph
           absolutePath={scriptPath}
           source={source}
           runtimeToolCatalog={runtimeToolCatalog}
+          collections={collections}
         />
-      ) : (
-        <div className="mt-3 border border-dashed border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
-          <WorkflowIcon className="h-4 w-4 text-[var(--bo-muted-2)]" />
-          <p className="mt-2 text-xs font-semibold text-[var(--bo-fg)]">
-            No script graph available
-          </p>
-          <p className="mt-1 text-[11px] leading-5 text-[var(--bo-muted)]">
-            This route sends or forwards an event rather than starting a workflow script directly.
-          </p>
-        </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -211,10 +320,15 @@ function WorkflowGraph({
   absolutePath,
   source,
   runtimeToolCatalog,
+  collections,
 }: {
   absolutePath: string;
   source: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
+  collections: Pick<
+    AutomationCollections,
+    "workflowInstances" | "workflowSteps" | "workflowStepEmissions"
+  >;
 }) {
   const visualization = useMemo(
     () => visualizeWorkflowSource(absolutePath, source.script ?? ""),
@@ -224,6 +338,12 @@ function WorkflowGraph({
     () => resolveWorkflowRuntimeToolCalls({ visualization, catalog: runtimeToolCatalog }),
     [runtimeToolCatalog, visualization],
   );
+  const workflowRuns = useScriptWorkflowRuns({
+    absolutePath,
+    collections,
+    selectedInstanceId: null,
+    visualization,
+  });
   const { graphViewport } = useLinkedScrollViewports(false);
 
   if (source.scriptError) {
@@ -244,11 +364,36 @@ function WorkflowGraph({
 
   return (
     <div className="mt-3 overflow-hidden border border-[color:var(--bo-border)]">
+      <div className="flex min-h-9 items-center justify-between gap-3 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className={`h-1.5 w-1.5 shrink-0 rounded-full ${workflowRuns.selectedRun ? "bg-emerald-500" : "bg-[var(--bo-muted-2)]"}`}
+            aria-hidden="true"
+          />
+          <p className="text-[8px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
+            Live execution
+          </p>
+        </div>
+        <p className="truncate font-mono text-[9px] text-[var(--bo-muted)]">
+          {workflowRuns.error
+            ? "Run synchronization failed"
+            : workflowRuns.isLoading
+              ? "Synchronizing runs…"
+              : workflowRuns.selectedRun
+                ? `${workflowRuns.selectedRun.instanceId} · ${workflowRuns.selectedRun.status}`
+                : "No active run"}
+        </p>
+      </div>
+      {workflowRuns.error ? (
+        <div className="border-b border-red-500/25 bg-red-500/8 px-3 py-2 text-[10px] leading-4 text-red-800 dark:text-red-200">
+          {workflowRuns.error}
+        </div>
+      ) : null}
       <ScriptWorkflowGraph
         visualization={visualization}
         detailMode="simple"
         runtimeToolCallsByStepId={runtimeToolCallsByStepId}
-        selectedRun={null}
+        selectedRun={workflowRuns.selectedRun}
         scrollViewport={graphViewport}
       />
     </div>
