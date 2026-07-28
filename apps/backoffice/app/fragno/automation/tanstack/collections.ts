@@ -22,6 +22,7 @@ export type AutomationCollections = {
     "automation_route_schedule_state"
   >;
   events: FragnoCollection<typeof automationFragmentSchema, "automation_event">;
+  marketplaceIngestions: FragnoCollection<typeof automationFragmentSchema, "marketplace_ingestion">;
   eventDefinitions: FragnoCollection<
     typeof automationFragmentSchema,
     "automation_event_definition"
@@ -54,6 +55,7 @@ export function createAutomationCollections(options: {
     routes: createAutomationTableCollection("automation_route"),
     routeScheduleStates: createAutomationTableCollection("automation_route_schedule_state"),
     events: createAutomationTableCollection("automation_event"),
+    marketplaceIngestions: createAutomationTableCollection("marketplace_ingestion"),
     eventDefinitions: createAutomationTableCollection("automation_event_definition"),
     workflowInstances: options.createCollection({
       id: options.collectionId("workflows.workflow_instance"),
