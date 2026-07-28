@@ -1,0 +1,86 @@
+# Dispatcher & Hooks
+
+Workflows execute when durable hooks are processed. Request paths enqueue and notify; the dispatcher
+is responsible for running the workflow hooks when work is available.
+
+## In-process dispatcher (Node)
+
+Use the in-process dispatcher for local development or small deployments:
+
+```ts
+import { createDurableHooksProcessor } from "@fragno-dev/db/dispatchers/node";
+
+const dispatcher = createDurableHooksProcessor([fragment], {
+  pollIntervalMs: 2000,
+});
+
+dispatcher.startPolling();
+```
+
+Call `dispatcher.stopPolling()` during application shutdown.
+
+## Terminal callback
+
+The fragment config accepts `onWorkflowTerminal`, which runs through a durable hook after an
+instance commits a `complete`, `errored`, or `terminated` status. The dispatcher must process that
+hook before the callback runs. Make callback side effects idempotent because hook delivery can be
+retried.
+
+See [Terminal workflow callback](workflow-fragment.md#terminal-workflow-callback) for the
+configuration and payload shape.
+
+## Cloudflare Durable Object dispatcher
+
+For Cloudflare, use the Fragment Durable Object host. It migrates the fragment, creates the durable
+hooks dispatcher, forwards requests, and runs the alarm handler:
+
+```ts
+import {
+  createFragmentDurableObjectHost,
+  type FragmentDurableObjectHost,
+} from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
+import { createMyWorkflowFragment, type MyWorkflowFragment } from "@/fragno/workflows-fragment";
+
+export class WorkflowsDispatcher {
+  fragment!: MyWorkflowFragment;
+  host: FragmentDurableObjectHost<undefined, MyWorkflowFragment>;
+
+  constructor(state: DurableObjectState, env: Env) {
+    this.host = createFragmentDurableObjectHost({
+      state,
+      env,
+      createRuntime: () => createMyWorkflowFragment({ env, state }),
+    });
+
+    state.blockConcurrencyWhile(async () => {
+      this.fragment = await this.host.initialize(undefined);
+    });
+  }
+
+  fetch(request: Request) {
+    return this.host.fetch(this.fragment, request);
+  }
+
+  alarm() {
+    return this.host.alarm();
+  }
+}
+```
+
+If request processing needs a `waitUntil` callback, pass it as the third argument to
+`this.host.fetch(...)`.
+
+## Notes
+
+- Protect dispatcher workers and mounted workflow routes with application and network-level
+  controls.
+- Use a durable hook processor/dispatcher to run workflows when enqueued.
+- Multiple Node dispatcher instances can safely poll concurrently.
+
+## Full documentation
+
+For the full, up-to-date documentation, retrieve the hosted Markdown:
+
+```sh
+curl -fL "https://fragno.dev/docs/workflows/runner-dispatcher" -H "accept: text/markdown"
+```

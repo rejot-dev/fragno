@@ -1,0 +1,136 @@
+# API Routes
+
+The Workflows fragment exposes HTTP routes for workflow management. Mount the fragment under a base
+path (for example `/api/workflows`) and use that base URL in clients.
+
+## Base URL
+
+All paths below are relative to the fragment base URL, for example:
+
+```
+https://your-app.example.com/api/workflows
+```
+
+## Workflows
+
+### List workflows
+
+`GET /`
+
+Returns the registered workflow definition names.
+
+## Instances
+
+### List instances
+
+`GET /:workflowName/instances`
+
+Query parameters:
+
+- `status` (optional): `active | paused | errored | terminated | complete | waiting`
+- `pageSize` (optional, default 25, max 100)
+- `cursor` (optional)
+
+### Create an instance
+
+`POST /:workflowName/instances`
+
+Body:
+
+```json
+{ "id": "optional-id", "params": { "...": "..." } }
+```
+
+If the workflow defines a schema, invalid params return `WORKFLOW_PARAMS_INVALID`.
+
+### Create a batch of instances
+
+`POST /:workflowName/instances/batch`
+
+Body:
+
+```json
+{
+  "instances": [{ "id": "required-id", "params": { "...": "..." } }]
+}
+```
+
+A batch accepts at most 100 instances. Existing and duplicate instance IDs are skipped. If the
+workflow defines a schema, invalid params return `WORKFLOW_PARAMS_INVALID`.
+
+### Get instance details
+
+`GET /:workflowName/instances/:instanceId`
+
+Returns the instance ID, status details, workflow params, timestamps, and the current step summary.
+
+### Get current-step emissions
+
+`GET /:workflowName/instances/:instanceId/current-step/emissions`
+
+This is a JSON stream of persisted and live step emissions. Pass `once=true` to return the current
+snapshot and close the stream.
+
+### Get history
+
+`GET /:workflowName/instances/:instanceId/history`
+
+Returns persisted steps and events plus step emissions that are still present when the route is
+read:
+
+```ts
+{
+  steps: WorkflowsHistoryStep[];
+  events: WorkflowsHistoryEvent[];
+  emissions: WorkflowsHistoryEmission[];
+}
+```
+
+System management events are not included in the returned `events` array. Completed step-emission
+attempts are removed asynchronously by a durable cleanup hook, so `emissions` is not a permanent
+audit archive.
+
+### Pause / resume / retry / terminate
+
+`POST /:workflowName/instances/:instanceId/pause`
+
+`POST /:workflowName/instances/:instanceId/resume`
+
+`POST /:workflowName/instances/:instanceId/retry`
+
+`POST /:workflowName/instances/:instanceId/terminate`
+
+The retry route accepts an optional body:
+
+```json
+{ "stepKey": "optional-step-key", "delayMs": 0, "reason": "optional-reason" }
+```
+
+`stepKey` defaults to the latest persisted step. `delayMs` is limited to 30 days. `reason` is
+accepted by the request schema but is currently ignored.
+
+### Send an event
+
+`POST /:workflowName/instances/:instanceId/events`
+
+Body:
+
+```json
+{ "id": "optional-event-id", "type": "event-type", "payload": { "...": "..." } }
+```
+
+Providing an event ID makes repeated delivery idempotent for the same workflow instance.
+
+## Authorization
+
+The Workflows fragment does not add route-specific authorization hooks. Protect the mounted route
+with your application's framework middleware or request handler before forwarding requests to the
+fragment.
+
+## Full documentation
+
+For the full, up-to-date documentation, retrieve the hosted Markdown:
+
+```sh
+curl -fL "https://fragno.dev/docs/workflows/routes" -H "accept: text/markdown"
+```
