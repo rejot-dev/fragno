@@ -44,6 +44,7 @@ import {
 import type { AnySchema, AnyTable } from "../../schema/create";
 import { FragnoId, FragnoReference, getTableRelations } from "../../schema/create";
 import { SQLocalDriverConfig } from "../generic-sql/driver-config";
+import { snapshotInMemoryColumnValue } from "./column-value";
 import { evaluateCondition } from "./condition-evaluator";
 import type { ResolvedInMemoryAdapterOptions } from "./options";
 import { buildQueryTreeRowRaw } from "./query-tree";
@@ -144,7 +145,11 @@ const selectRow = (
   for (const columnName of selection) {
     const physicalColumnName = getPhysicalColumnName(table, columnName, resolver);
     if (Object.prototype.hasOwnProperty.call(row, physicalColumnName)) {
-      selected[columnName] = row[physicalColumnName];
+      const column = table.columns[columnName];
+      if (!column) {
+        throw new Error(`Column "${columnName}" not found on table "${table.name}".`);
+      }
+      selected[columnName] = snapshotInMemoryColumnValue(row[physicalColumnName], column);
     }
   }
   return selected;
@@ -871,7 +876,10 @@ const createRow = (
       throw new Error(`Missing required value for column "${column.name}".`);
     }
 
-    row[physicalColumnName] = resolveDbNowValue(value, options);
+    row[physicalColumnName] = snapshotInMemoryColumnValue(
+      resolveDbNowValue(value, options),
+      column,
+    );
   }
 
   const previousInternalId = tableStore.nextInternalId;
@@ -948,8 +956,17 @@ const updateRow = (
     : resolveReferenceSubqueries(namespaceStore, encoded, resolver);
 
   const resolvedUpdateValues: InMemoryRow = {};
+  const columnMap = resolver ? resolver.getColumnNameMap(table) : undefined;
   for (const [columnName, value] of Object.entries(resolvedValues)) {
-    resolvedUpdateValues[columnName] = resolveDbNowValue(value, options);
+    const logicalColumnName = columnMap?.[columnName] ?? columnName;
+    const column = table.columns[logicalColumnName];
+    if (!column) {
+      throw new Error(`Column "${logicalColumnName}" not found on table "${table.name}".`);
+    }
+    resolvedUpdateValues[columnName] = snapshotInMemoryColumnValue(
+      resolveDbNowValue(value, options),
+      column,
+    );
   }
 
   const updatedRow: InMemoryRow = { ...existing.row, ...resolvedUpdateValues };
