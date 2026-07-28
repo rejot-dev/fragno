@@ -149,6 +149,18 @@ function MatcherBranch({
   );
 }
 
+const matcherRenderEntries = (matchers: AutomationEventMatcher[]) => {
+  const occurrenceByMatcher = new Map<string, number>();
+
+  return matchers.map((matcher) => {
+    const matcherIdentity = matcherValueLabel(matcher);
+    const occurrence = occurrenceByMatcher.get(matcherIdentity) ?? 0;
+    occurrenceByMatcher.set(matcherIdentity, occurrence + 1);
+
+    return { key: `${matcherIdentity}:${occurrence}`, matcher };
+  });
+};
+
 function MatcherGroup({
   operator,
   matchers,
@@ -166,8 +178,8 @@ function MatcherGroup({
     >
       {matchers.length > 0 ? (
         <div className="space-y-0.5">
-          {matchers.map((matcher, index) => (
-            <MatcherNode key={`${operator}:${index}`} matcher={matcher} />
+          {matcherRenderEntries(matchers).map(({ key, matcher }) => (
+            <MatcherNode key={key} matcher={matcher} />
           ))}
         </div>
       ) : (
