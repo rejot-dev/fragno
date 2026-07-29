@@ -1,6 +1,9 @@
+import type {
+  PreparedFileWrite,
+  UploadFileMutationSnapshot,
+  UploadFileWritePrecondition as FragmentUploadFileWritePrecondition,
+} from "@fragno-dev/upload/types";
 import { z } from "zod";
-
-import type { UploadFileWritePrecondition as FragmentUploadFileWritePrecondition } from "@fragno-dev/upload";
 
 import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
 import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
@@ -71,6 +74,7 @@ const UNKNOWN_MTIME = new Date(0);
 const TEXT_ENCODER = new TextEncoder();
 
 type UploadWriteOptions = WriteFileOptions | BufferEncoding | undefined;
+type UploadFileInputOptions = (WriteFileOptions & { mode?: number }) | BufferEncoding | undefined;
 
 const getWriteEncoding = (options: UploadWriteOptions): BufferEncoding | undefined =>
   typeof options === "string" ? options : options?.encoding;
@@ -226,6 +230,29 @@ type CreateUploadFileSystemOptions = {
 
 export type UploadFileWritePrecondition = FragmentUploadFileWritePrecondition;
 
+export type PreparedUploadFileWrite = PreparedFileWrite & {
+  precondition: UploadFileWritePrecondition;
+};
+
+type UploadFileWriteUploadRequest = {
+  body: {
+    provider: string;
+    fileKey: string;
+    filename: string;
+    sizeBytes: number;
+    contentType: string;
+    checksum: { algo: "sha256"; value: string };
+    metadata?: Record<string, unknown>;
+    publicationMode: "batch";
+  };
+  precondition: UploadFileWritePrecondition;
+};
+
+export type UploadFileAssertion = {
+  path: string;
+  precondition: UploadFileWritePrecondition;
+};
+
 export interface UploadFileSystem extends IFileSystem {
   writeFileConditional(
     path: string,
@@ -234,12 +261,35 @@ export interface UploadFileSystem extends IFileSystem {
       precondition: UploadFileWritePrecondition;
     },
   ): Promise<void>;
+  resolveFileWriteUploadRequest(
+    path: string,
+    content: FileContent,
+    options: WriteFileOptions & {
+      precondition: UploadFileWritePrecondition;
+      mode?: number;
+    },
+  ): Promise<UploadFileWriteUploadRequest>;
+  commitPreparedFileWrites(input: {
+    writes: PreparedUploadFileWrite[];
+    assertions?: UploadFileAssertion[];
+  }): Promise<UploadFileMutationSnapshot[]>;
 }
 
 export class UploadFileWriteConflictError extends Error {
   constructor(readonly path: string) {
     super(`Upload-backed file changed after it was read: '${path}'.`);
     this.name = "UploadFileWriteConflictError";
+  }
+}
+
+export class UploadFileSystemRequestError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string | null,
+    message: string,
+  ) {
+    super(message);
+    this.name = "UploadFileSystemRequestError";
   }
 }
 
@@ -326,11 +376,10 @@ const createUploadFileSystemForContext = (
     return null;
   };
 
-  const writeUploadFile = async (
+  const resolveUploadFileWriteInput = async (
     path: string,
     content: FileContent,
-    options: UploadWriteOptions,
-    precondition?: UploadFileWritePrecondition,
+    options: UploadFileInputOptions,
   ) => {
     const { fileKey, isRoot } = toRelativeUploadPath(mountPoint, path);
     if (isRoot || !fileKey) {
@@ -370,36 +419,55 @@ const createUploadFileSystemForContext = (
     }
 
     const bytes = toUint8Array(content, options);
-    const blob = toBlob(
-      bytes,
+    const contentType =
       typeof options === "object" && options.contentType
         ? options.contentType
-        : resolveUploadContentType(existing ?? { fileKey, contentType: null }),
-    );
-    const form = new FormData();
-    form.set(
-      "file",
-      new File([blob], getLeafSegment(fileKey), {
-        type: blob.type || undefined,
-      }),
-    );
-    form.set("provider", provider);
-    form.set("fileKey", fileKey);
-    form.set("filename", getLeafSegment(fileKey));
-    form.set("checksum", JSON.stringify(await sha256Checksum(bytes)));
-    if (precondition) {
-      form.set("precondition", JSON.stringify(precondition));
-    }
-
-    const preservedMetadata = existing
+        : resolveUploadContentType(existing ?? { fileKey, contentType: null });
+    const metadata = existing
       ? preserveUploadMetadataForRewrite(existing.metadata)
       : mergeUploadFsMetadata(null, {
           owner: principal.subject,
           group: principal.primaryGroup,
-          mode: DEFAULT_FILE_MODE,
+          mode: normalizeUploadMode(
+            typeof options === "object" && options.mode !== undefined
+              ? options.mode
+              : DEFAULT_FILE_MODE,
+          ),
         });
-    if (preservedMetadata) {
-      form.set("metadata", JSON.stringify(preservedMetadata));
+
+    return {
+      fileKey,
+      filename: getLeafSegment(fileKey),
+      bytes,
+      blob: toBlob(bytes, contentType),
+      checksum: await sha256Checksum(bytes),
+      metadata,
+    };
+  };
+
+  const writeUploadFile = async (
+    path: string,
+    content: FileContent,
+    options: UploadWriteOptions,
+    precondition?: UploadFileWritePrecondition,
+  ) => {
+    const prepared = await resolveUploadFileWriteInput(path, content, options);
+    const form = new FormData();
+    form.set(
+      "file",
+      new File([prepared.blob], prepared.filename, {
+        type: prepared.blob.type || undefined,
+      }),
+    );
+    form.set("provider", provider);
+    form.set("fileKey", prepared.fileKey);
+    form.set("filename", prepared.filename);
+    form.set("checksum", JSON.stringify(prepared.checksum));
+    if (precondition) {
+      form.set("precondition", JSON.stringify(precondition));
+    }
+    if (prepared.metadata) {
+      form.set("metadata", JSON.stringify(prepared.metadata));
     }
 
     const response = await requestUpload(ctx, "POST", "/files", {
@@ -409,7 +477,10 @@ const createUploadFileSystemForContext = (
       throw new UploadFileWriteConflictError(path);
     }
     if (!response.ok) {
-      throw new Error(await readResponseMessage(response, "Unable to write upload-backed file."));
+      throw await createUploadFileSystemRequestError(
+        response,
+        "Unable to write upload-backed file.",
+      );
     }
   };
 
@@ -503,6 +574,72 @@ const createUploadFileSystemForContext = (
     },
     async writeFileConditional(path, content, options) {
       await writeUploadFile(path, content, options, options.precondition);
+    },
+    async resolveFileWriteUploadRequest(path, content, options) {
+      const prepared = await resolveUploadFileWriteInput(path, content, options);
+      return {
+        body: {
+          provider,
+          fileKey: prepared.fileKey,
+          filename: prepared.filename,
+          sizeBytes: prepared.bytes.byteLength,
+          contentType: prepared.blob.type || "application/octet-stream",
+          checksum: prepared.checksum,
+          ...(prepared.metadata ? { metadata: prepared.metadata } : {}),
+          publicationMode: "batch",
+        },
+        precondition: options.precondition,
+      };
+    },
+    async commitPreparedFileWrites(input) {
+      for (const write of input.writes) {
+        if (write.provider !== provider) {
+          throw new Error(
+            `Prepared upload provider '${write.provider}' does not match mounted provider '${provider}'.`,
+          );
+        }
+      }
+
+      const assertions = (input.assertions ?? []).map((assertion) => {
+        const { fileKey, isRoot } = toRelativeUploadPath(mountPoint, assertion.path);
+        if (isRoot || !fileKey) {
+          throw new Error(`Cannot assert the mounted upload root '${mountPoint}'.`);
+        }
+        return {
+          kind: "assert" as const,
+          provider,
+          fileKey,
+          precondition: assertion.precondition,
+        };
+      });
+      const response = await requestUpload(ctx, "POST", "/files/commit-prepared", {
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          entries: [
+            ...input.writes.map((write) => ({
+              kind: "write" as const,
+              uploadId: write.uploadId,
+              precondition: write.precondition,
+            })),
+            ...assertions,
+          ],
+        }),
+      });
+      if (response.status === 412) {
+        const conflictPath =
+          input.assertions?.[0]?.path ??
+          (input.writes[0] ? `${mountPoint}/${input.writes[0].fileKey}` : mountPoint);
+        throw new UploadFileWriteConflictError(conflictPath);
+      }
+      if (!response.ok) {
+        throw await createUploadFileSystemRequestError(
+          response,
+          "Unable to commit prepared upload-backed files.",
+        );
+      }
+
+      const result = (await response.json()) as { files: UploadFileMutationSnapshot[] };
+      return result.files;
     },
     async mkdir(path, options) {
       const { fileKey, isRoot } = toRelativeUploadPath(mountPoint, path);
@@ -861,7 +998,7 @@ const deleteUploadRecord = async (ctx: FilesContext, file: UploadFileRecord) => 
   });
 
   if (!response.ok) {
-    throw new Error(await readResponseMessage(response, "Unable to delete file."));
+    throw await createUploadFileSystemRequestError(response, "Unable to delete file.");
   }
 };
 
@@ -887,7 +1024,7 @@ const updateUploadRecord = async (
   });
 
   if (!response.ok) {
-    throw new Error(await readResponseMessage(response, "Unable to update file metadata."));
+    throw await createUploadFileSystemRequestError(response, "Unable to update file metadata.");
   }
 
   return (await response.json()) as UploadFileRecord;
@@ -910,7 +1047,7 @@ const fetchUploadFileFromRuntime = async (
   }
 
   if (!response.ok) {
-    throw new Error(await readResponseMessage(response, "Failed to load file."));
+    throw await createUploadFileSystemRequestError(response, "Failed to load file.");
   }
 
   const file = (await response.json()) as UploadFileRecord;
@@ -939,7 +1076,7 @@ const listAllUploadFiles = async (
     });
 
     if (!response.ok) {
-      throw new Error(await readResponseMessage(response, "Failed to list files."));
+      throw await createUploadFileSystemRequestError(response, "Failed to list files.");
     }
 
     const payload = (await response.json()) as {
@@ -976,7 +1113,7 @@ const uploadDirectoryExists = async (
   });
 
   if (!response.ok) {
-    throw new Error(await readResponseMessage(response, "Failed to resolve folder."));
+    throw await createUploadFileSystemRequestError(response, "Failed to resolve folder.");
   }
 
   const payload = (await response.json()) as {
@@ -1011,7 +1148,7 @@ const listUploadDirectoryEntries = async (
     });
 
     if (!response.ok) {
-      throw new Error(await readResponseMessage(response, "Failed to list files."));
+      throw await createUploadFileSystemRequestError(response, "Failed to list files.");
     }
 
     const payload = (await response.json()) as {
@@ -1359,7 +1496,10 @@ const ensureUploadDirectoryMarker = async (
 
   const response = await requestUpload(ctx, "POST", "/files", { body: form });
   if (!response.ok) {
-    throw new Error(await readResponseMessage(response, "Unable to create upload-backed folder."));
+    throw await createUploadFileSystemRequestError(
+      response,
+      "Unable to create upload-backed folder.",
+    );
   }
 };
 
@@ -1570,17 +1710,29 @@ const requestUpload = async (
   );
 };
 
-const readResponseMessage = async (response: Response, fallback: string): Promise<string> => {
+const createUploadFileSystemRequestError = async (
+  response: Response,
+  fallback: string,
+): Promise<UploadFileSystemRequestError> => {
+  let code: string | null = null;
+  let message = fallback;
+
   try {
-    const payload = (await response.clone().json()) as { message?: unknown };
+    const payload = (await response.clone().json()) as {
+      code?: unknown;
+      message?: unknown;
+    };
+    if (typeof payload.code === "string" && payload.code.trim()) {
+      code = payload.code;
+    }
     if (typeof payload.message === "string" && payload.message.trim()) {
-      return payload.message;
+      message = payload.message;
     }
   } catch {
-    // ignore JSON parsing failures
+    // The HTTP status and fallback still preserve a typed request failure.
   }
 
-  return fallback;
+  return new UploadFileSystemRequestError(response.status, code, message);
 };
 
 const buildUploadContentUrl = (ctx: FilesContext, file: UploadFileRecord): string | undefined => {

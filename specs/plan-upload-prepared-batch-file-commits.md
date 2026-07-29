@@ -115,9 +115,9 @@ created/in_progress
 A prepared upload has complete physical bytes but is not yet authoritative for its logical file key.
 A completed upload has been published through a `file` row.
 
-The database schema already stores upload status as a string, so adding `"prepared"` does not
-require a new column or table migration. Runtime schemas and TypeScript unions still need to be
-updated.
+The database schema stores upload status as a string, so adding `"prepared"` does not require a
+status-column change. Upload sessions also persist their publication intent in a required
+`publicationMode` string column so retries cannot select a different completion behavior.
 
 ## Public contracts
 
@@ -190,33 +190,37 @@ The route should use the same serializer and revision meaning as `GET /files/by-
 
 ## Route changes
 
-### Reuse the upload-session routes
+### Persist publication intent on the upload session
 
-Do not create a parallel storage-upload protocol. Extend the existing completion routes so callers
-can request prepared completion.
+Do not create a parallel storage-upload protocol. `POST /uploads` accepts an optional publication
+mode with immediate publication as the default:
 
-Affected routes:
+```ts
+type UploadPublicationMode = "immediate" | "batch";
+```
+
+The chosen value is persisted on the upload row and returned by upload creation and status routes.
+Storage still independently selects `direct-single`, `direct-multipart`, or `proxy` as the upload
+strategy.
+
+The existing completion routes require no mode input:
 
 - `POST /uploads/:uploadId/complete`
 - `PUT /uploads/:uploadId/content`
 
-Add an explicit completion mode with immediate completion as the default:
+Both return an explicitly discriminated result:
 
 ```ts
-type UploadCompletionMode = "immediate" | "prepared";
+type UploadCompletionResult =
+  | { kind: "published"; file: FileMetadata }
+  | { kind: "prepared"; write: PreparedFileWrite };
 ```
 
-Suggested request shapes:
+Immediate sessions publish the logical file during completion. Batch sessions finalize the physical
+object and transition the upload to `prepared`. Persisting the mode makes retries deterministic and
+prevents the same session from being completed with a different publication intent.
 
-- `POST /uploads/:uploadId/complete`: optional `completionMode` in the existing JSON body;
-- `PUT /uploads/:uploadId/content`: optional `completionMode` query parameter.
-
-Omitting the value preserves current behavior and response handling. Prepared completion returns a
-`PreparedFileWrite` instead of file metadata. The route output schema may be a union while retaining
-the existing immediate response unchanged.
-
-The existing `POST /files` route remains an immediate one-request convenience API. It does not need
-to support batching in the first implementation.
+The existing `POST /files` route remains an immediate one-request convenience API.
 
 ### Add one batch commit route
 
@@ -386,42 +390,31 @@ physical object after a transient or lost-response failure.
 
 ## Backoffice Upload filesystem integration
 
-The Marketplace workflows should not know about upload-session route details. Extend the
-Upload-backed filesystem with a narrow prepared-write API while retaining `writeFile` and
-`writeFileConditional` unchanged.
+Marketplace ingestion uses the Upload-backed filesystem only for workspace-owned policy. Durable
+upload creation and transfer remain explicit workflow steps so their upload IDs and transfer results
+are persisted independently.
 
-Suggested contract:
+Implemented contract:
 
 ```ts
 interface UploadFileSystem extends IFileSystem {
   writeFileConditional(...): Promise<void>;
-  prepareFileWriteConditional(
+  resolveFileWriteUploadRequest(
     path: string,
     content: FileContent,
     options: WriteFileOptions & {
       precondition: UploadFileWritePrecondition;
+      mode?: number;
     },
-  ): Promise<PreparedFileWrite>;
+  ): Promise<UploadFileWriteUploadRequest>;
   commitPreparedFileWrites(input: {
-    writes: Array<{
-      prepared: PreparedFileWrite;
-      precondition: UploadFileWritePrecondition;
-    }>;
-    assertions?: Array<{
-      path: string;
-      precondition: UploadFileWritePrecondition;
-    }>;
-  }): Promise<Array<UploadFileSnapshot>>;
-  abortPreparedFileWrite(prepared: PreparedFileWrite): Promise<void>;
+    writes: PreparedUploadFileWrite[];
+    assertions?: UploadFileAssertion[];
+  }): Promise<UploadFileMutationSnapshot[]>;
 }
 ```
 
-The concrete names may be shortened during implementation, but the responsibilities should remain
-separate and explicit.
-
-### Reuse existing filesystem behavior
-
-`prepareFileWriteConditional` should reuse the existing Upload filesystem logic for:
+`resolveFileWriteUploadRequest` reuses the existing Upload filesystem logic for:
 
 - mount-point and file-key resolution;
 - permission checks;
@@ -431,11 +424,12 @@ separate and explicit.
 - checksum generation;
 - content type resolution;
 - filesystem metadata preservation;
-- provider binding;
-- Upload object routing.
+- provider binding.
 
-The only behavioral difference is that it uses the existing upload-session protocol and requests
-prepared completion instead of immediately changing the logical file row.
+The workflow calls the Upload routes to create and transfer each prepared upload in separate durable
+steps, then passes their persisted results to `commitPreparedFileWrites`. Marketplace artifact
+source bytes are read directly from the source Upload object because they do not require workspace
+filesystem policy.
 
 ### Metadata and mode
 
@@ -513,6 +507,7 @@ Add focused service tests for:
 - asserting unchanged files alongside writes;
 - one failed precondition leaving every file row unchanged;
 - a unique create race retrying and then failing the original absence precondition;
+- a missing-file assertion detecting a concurrent create through its deterministic logical-file ID;
 - replacing several files and queuing cleanup for every superseded object;
 - idempotent replay after a successful commit;
 - rejecting duplicate upload IDs and duplicate destinations;
@@ -558,7 +553,34 @@ Use two prepared batches based on the same file revisions:
 3. assert the second batch fails completely;
 4. assert no file points to an object from the rejected batch.
 
-Also test a lost batch-commit response followed by an identical retry.
+Also test a missing-file assertion racing a concurrent create, and a lost batch-commit response
+followed by an identical retry.
+
+## Implementation progress
+
+- [x] 1. Add `prepared` to Upload status types and route schemas.
+- [x] 2. Extract shared file publication semantics without changing immediate completion behavior.
+- [x] 3. Add prepared completion to existing upload-session routes.
+- [x] 4. Add prepared upload timeout and abort cleanup.
+- [x] 5. Add atomic write/assert batch schemas and service.
+- [x] 6. Add `POST /files/commit-prepared`.
+- [x] 7. Add Upload service, route, expiration, abort, and replay tests.
+- [x] 8. Add workspace upload-request resolution and prepared-batch commit methods to the Backoffice
+     Upload filesystem.
+- [x] 9. Add Backoffice filesystem tests.
+- [x] 10. Rewrite Marketplace publish and ingest workflows.
+- [x] 11. Run focused and repository validation.
+
+_Implementation complete. The Backoffice Upload filesystem now resolves workspace-aware upload
+requests and atomically commits prepared writes and assertions while preserving its existing
+immediate APIs. Marketplace publication and ingestion use separate durable per-file upload creation
+and transfer steps followed by one atomic Upload batch commit. Ingestion planning is a separately
+tested domain operation that returns writes and assertions directly, including final modes for new
+files. Upload and Backoffice focused test/build/typecheck tasks pass. Logical files now use compact
+deterministic IDs derived from their provider/key address, allowing expected-absence assertions to
+participate in mutation-time OCC checks. Marketplace replay and concurrent-assertion scenarios pass,
+and the full repository `build`, `types:check`, and `test` pipeline passes with concurrency limited
+to avoid unrelated local performance-test timeouts._
 
 ## Implementation sequence
 
@@ -570,8 +592,8 @@ Also test a lost batch-commit response followed by an identical retry.
 5. Add write/assert batch input schemas and the atomic batch commit service.
 6. Add `POST /files/commit-prepared`.
 7. Add Upload service, route, expiration, abort, and replay tests.
-8. Add prepared-write methods to the Backoffice Upload filesystem by reusing its existing path,
-   permission, metadata, checksum, and route-calling logic.
+8. Add workspace upload-request resolution and prepared-batch commit methods to the Backoffice
+   Upload filesystem by reusing its existing path, permission, metadata, and checksum logic.
 9. Add Backoffice filesystem tests.
 10. Rewrite the two Marketplace workflows to use prepared uploads and atomic batch commit.
 

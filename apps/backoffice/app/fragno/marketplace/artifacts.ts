@@ -11,16 +11,13 @@ export type MarketplaceStaticArtifactEntry = MarketplaceStaticEntry & {
 
 export type MarketplaceArtifactFile = {
   relativePath: string;
-  content: Uint8Array;
+  content: string;
 };
 
 export const marketplaceArtifactUploadName = (listingId: string) =>
   `marketplace/listings/${bytesToHex(
     TEXT_ENCODER.encode(marketplaceListingIdSchema.parse(listingId)),
   )}`;
-
-export const marketplaceArtifactDirectory = (version: string) =>
-  marketplaceVersionSchema.parse(version);
 
 export const normalizeMarketplaceArtifactPath = (path: string): string => {
   const trimmed = path.trim();
@@ -37,7 +34,7 @@ export const normalizeMarketplaceArtifactPath = (path: string): string => {
 };
 
 export const marketplaceArtifactFilePath = (directory: string, relativePath: string) =>
-  `${marketplaceArtifactDirectory(directory)}/${normalizeMarketplaceArtifactPath(relativePath)}`;
+  `${marketplaceVersionSchema.parse(directory)}/${normalizeMarketplaceArtifactPath(relativePath)}`;
 
 export const prepareMarketplaceArtifactFiles = (
   files: Readonly<Record<string, string>>,
@@ -52,7 +49,7 @@ export const prepareMarketplaceArtifactFiles = (
 
     return {
       relativePath,
-      content: TEXT_ENCODER.encode(source),
+      content: source,
     };
   });
 

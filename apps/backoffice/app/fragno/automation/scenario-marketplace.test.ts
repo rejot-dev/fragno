@@ -50,7 +50,12 @@ const MARKETPLACE_LISTING_ID = marketplaceListingId({
   ownerScope: { kind: "system" },
   slug: "telegram-test-command",
 });
+const MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME = `v1:named:${encodeURIComponent(
+  marketplaceArtifactUploadName(MARKETPLACE_LISTING_ID),
+)}`;
 const MARKETPLACE_ARTIFACT_FILE_KEY = "automations/telegram-test-command.workflow.js";
+const MARKETPLACE_UNCHANGED_FILE_KEY = "prompts/marketplace.md";
+const MARKETPLACE_UNCHANGED_FILE_SOURCE = "# Marketplace\n";
 const UPDATED_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE = `${TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE}\n// Marketplace version 1.1.0`;
 const UPDATED_STATIC_MARKETPLACE_ENTRY: MarketplaceStaticArtifactEntry = {
   ...STATIC_MARKETPLACE_ENTRIES[0],
@@ -75,6 +80,30 @@ const withUpdatedStaticMarketplaceEntry = async (run: () => Promise<void>) => {
     const index = mutableStaticMarketplaceEntries.indexOf(UPDATED_STATIC_MARKETPLACE_ENTRY);
     if (index >= 0) {
       mutableStaticMarketplaceEntries.splice(index, 1);
+    }
+  }
+};
+
+const withTwoFileMarketplaceVersions = async (run: () => Promise<void>) => {
+  const baseFiles = STATIC_MARKETPLACE_ENTRIES[0].files as Record<string, string>;
+  const updatedFiles = UPDATED_STATIC_MARKETPLACE_ENTRY.files as Record<string, string>;
+  const originalBaseFile = baseFiles[MARKETPLACE_UNCHANGED_FILE_KEY];
+  const originalUpdatedFile = updatedFiles[MARKETPLACE_UNCHANGED_FILE_KEY];
+  baseFiles[MARKETPLACE_UNCHANGED_FILE_KEY] = MARKETPLACE_UNCHANGED_FILE_SOURCE;
+  updatedFiles[MARKETPLACE_UNCHANGED_FILE_KEY] = MARKETPLACE_UNCHANGED_FILE_SOURCE;
+
+  try {
+    await withUpdatedStaticMarketplaceEntry(run);
+  } finally {
+    if (originalBaseFile === undefined) {
+      delete baseFiles[MARKETPLACE_UNCHANGED_FILE_KEY];
+    } else {
+      baseFiles[MARKETPLACE_UNCHANGED_FILE_KEY] = originalBaseFile;
+    }
+    if (originalUpdatedFile === undefined) {
+      delete updatedFiles[MARKETPLACE_UNCHANGED_FILE_KEY];
+    } else {
+      updatedFiles[MARKETPLACE_UNCHANGED_FILE_KEY] = originalUpdatedFile;
     }
   }
 };
@@ -389,6 +418,301 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     );
   });
 
+  test("retries a lost ingestion transfer response without creating another upload session", async () => {
+    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      targetScope: { kind: "org", orgId: "org-1" },
+      listingId: MARKETPLACE_LISTING_ID,
+      version: "1.0.0",
+    });
+    let createUploadAttempts = 0;
+    let transferUploadAttempts = 0;
+    let loseFirstTransferResponse = true;
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "replay marketplace ingestion transfer without recreating its upload",
+        objectFactories: {
+          UPLOAD: ({ name, state, env, runtime }) => {
+            const destinationObject = name.endsWith("v1:org:org-1");
+            return new (class extends InMemoryUploadObject {
+              async fetch(request: Request): Promise<Response> {
+                const url = new URL(request.url);
+                if (
+                  destinationObject &&
+                  request.method === "POST" &&
+                  url.pathname.endsWith("/uploads")
+                ) {
+                  createUploadAttempts += 1;
+                }
+                if (
+                  destinationObject &&
+                  request.method === "PUT" &&
+                  /\/uploads\/[^/]+\/content$/u.test(url.pathname)
+                ) {
+                  transferUploadAttempts += 1;
+                  const response = await super.fetch(request);
+                  if (response.ok && loseFirstTransferResponse) {
+                    loseFirstTransferResponse = false;
+                    throw new Error("Marketplace ingestion transfer response was lost.");
+                  }
+                  return response;
+                }
+                return await super.fetch(request);
+              }
+            })({ state, env: env as never, runtime });
+          },
+        },
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ then, runner, when }) => [
+          then.assert("the Marketplace artifact is published", async (ctx) => {
+            await createMarketplacePublicationWorkflow(ctx, "1.0.0");
+          }),
+          runner.drain(),
+          then.assert("ingestion is requested", async (ctx) => {
+            await ctx.runtime.objects.automations.forOrg("org-1").requestMarketplaceIngestion({
+              listingId: MARKETPLACE_LISTING_ID,
+              targetScope: { kind: "org", orgId: "org-1" },
+            });
+          }),
+          runner.drain(),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            instanceId: workflowInstanceId,
+            status: "waiting",
+          }),
+          then.assert("the completed create step is not repeated", () => {
+            expect(createUploadAttempts).toBe(1);
+            expect(transferUploadAttempts).toBe(1);
+          }),
+          runner.restartObject({
+            binding: "AUTOMATIONS",
+            scope: { kind: "org", orgId: "org-1" },
+          }),
+          when.time.advance("1 s"),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            instanceId: workflowInstanceId,
+            status: "complete",
+          }),
+          then.assert("only the ingestion transfer step is replayed", async (ctx) => {
+            expect(createUploadAttempts).toBe(1);
+            expect(transferUploadAttempts).toBe(2);
+
+            const url = new URL("https://upload.test/api/upload/files/by-key/content");
+            url.searchParams.set("provider", "database");
+            url.searchParams.set("key", MARKETPLACE_ARTIFACT_FILE_KEY);
+            const response = await ctx.runtime.objects.upload
+              .forOrg("org-1")
+              .fetch(new Request(url));
+            assert(response.ok);
+            await expect(response.text()).resolves.toBe(TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE);
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("rebuilds a multi-write ingestion batch after a runner restart", async () => {
+    await withTwoFileMarketplaceVersions(async () => {
+      const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+        targetScope: { kind: "org", orgId: "org-1" },
+        listingId: MARKETPLACE_LISTING_ID,
+        version: "1.0.0",
+      });
+      const createAttempts = new Map<string, number>();
+      const transferAttempts = new Map<string, number>();
+      const uploadFileKeys = new Map<string, string>();
+      let loseSecondFileTransferResponse = true;
+
+      await runBackofficeScenario(
+        defineBackofficeScenario({
+          name: "rebuild a multi-write Marketplace ingestion batch",
+          objectFactories: {
+            UPLOAD: ({ name, state, env, runtime }) => {
+              const destinationObject = name.endsWith("v1:org:org-1");
+              return new (class extends InMemoryUploadObject {
+                async fetch(request: Request): Promise<Response> {
+                  const url = new URL(request.url);
+                  if (
+                    destinationObject &&
+                    request.method === "POST" &&
+                    url.pathname.endsWith("/uploads")
+                  ) {
+                    const payload = (await request.clone().json()) as { fileKey: string };
+                    createAttempts.set(
+                      payload.fileKey,
+                      (createAttempts.get(payload.fileKey) ?? 0) + 1,
+                    );
+                    const response = await super.fetch(request);
+                    if (response.ok) {
+                      const created = (await response.clone().json()) as { uploadId: string };
+                      uploadFileKeys.set(created.uploadId, payload.fileKey);
+                    }
+                    return response;
+                  }
+                  const transferMatch = /\/uploads\/([^/]+)\/content$/u.exec(url.pathname);
+                  if (destinationObject && request.method === "PUT" && transferMatch?.[1]) {
+                    const uploadId = decodeURIComponent(transferMatch[1]);
+                    const fileKey = uploadFileKeys.get(uploadId);
+                    assert(fileKey);
+                    transferAttempts.set(fileKey, (transferAttempts.get(fileKey) ?? 0) + 1);
+                    const response = await super.fetch(request);
+                    if (
+                      response.ok &&
+                      fileKey === MARKETPLACE_UNCHANGED_FILE_KEY &&
+                      loseSecondFileTransferResponse
+                    ) {
+                      loseSecondFileTransferResponse = false;
+                      throw new Error("Second Marketplace ingestion transfer response was lost.");
+                    }
+                    return response;
+                  }
+                  return await super.fetch(request);
+                }
+              })({ state, env: env as never, runtime });
+            },
+          },
+          setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+          steps: ({ then, runner, when }) => [
+            then.assert("the two-file Marketplace artifact is published", async (ctx) => {
+              await createMarketplacePublicationWorkflow(ctx, "1.0.0");
+            }),
+            runner.drain(),
+            then.assert("the two-file ingestion is requested", async (ctx) => {
+              await ctx.runtime.objects.automations.forOrg("org-1").requestMarketplaceIngestion({
+                listingId: MARKETPLACE_LISTING_ID,
+                targetScope: { kind: "org", orgId: "org-1" },
+              });
+            }),
+            runner.drain(),
+            then.workflow.instance({
+              workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+              instanceId: workflowInstanceId,
+              status: "waiting",
+            }),
+            then.assert("both upload sessions were created exactly once", () => {
+              expect(createAttempts).toEqual(
+                new Map([
+                  [MARKETPLACE_ARTIFACT_FILE_KEY, 1],
+                  [MARKETPLACE_UNCHANGED_FILE_KEY, 1],
+                ]),
+              );
+              expect(transferAttempts).toEqual(
+                new Map([
+                  [MARKETPLACE_ARTIFACT_FILE_KEY, 1],
+                  [MARKETPLACE_UNCHANGED_FILE_KEY, 1],
+                ]),
+              );
+            }),
+            runner.restartObject({
+              binding: "AUTOMATIONS",
+              scope: { kind: "org", orgId: "org-1" },
+            }),
+            when.time.advance("1 s"),
+            then.workflow.instance({
+              workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+              instanceId: workflowInstanceId,
+              status: "complete",
+            }),
+            then.assert(
+              "replay transfers only the incomplete step and commits every write",
+              async (ctx) => {
+                expect(createAttempts).toEqual(
+                  new Map([
+                    [MARKETPLACE_ARTIFACT_FILE_KEY, 1],
+                    [MARKETPLACE_UNCHANGED_FILE_KEY, 1],
+                  ]),
+                );
+                expect(transferAttempts).toEqual(
+                  new Map([
+                    [MARKETPLACE_ARTIFACT_FILE_KEY, 1],
+                    [MARKETPLACE_UNCHANGED_FILE_KEY, 2],
+                  ]),
+                );
+
+                const upload = ctx.runtime.objects.upload.forOrg("org-1");
+                for (const [fileKey, expectedContent] of [
+                  [MARKETPLACE_ARTIFACT_FILE_KEY, TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE],
+                  [MARKETPLACE_UNCHANGED_FILE_KEY, MARKETPLACE_UNCHANGED_FILE_SOURCE],
+                ] as const) {
+                  const url = new URL("https://upload.test/api/upload/files/by-key/content");
+                  url.searchParams.set("provider", "database");
+                  url.searchParams.set("key", fileKey);
+                  const response = await upload.fetch(new Request(url));
+                  assert(response.ok);
+                  await expect(response.text()).resolves.toBe(expectedContent);
+                }
+              },
+            ),
+          ],
+        }),
+      );
+    });
+  });
+
+  test("does not retry permanent typed Upload errors during ingestion", async () => {
+    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      targetScope: { kind: "org", orgId: "org-1" },
+      listingId: MARKETPLACE_LISTING_ID,
+      version: "1.0.0",
+    });
+    let createUploadAttempts = 0;
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "reject permanent marketplace ingestion Upload errors",
+        objectFactories: {
+          UPLOAD: ({ name, state, env, runtime }) => {
+            const destinationObject = name.endsWith("v1:org:org-1");
+            return new (class extends InMemoryUploadObject {
+              async fetch(request: Request): Promise<Response> {
+                const url = new URL(request.url);
+                if (
+                  destinationObject &&
+                  request.method === "POST" &&
+                  url.pathname.endsWith("/uploads")
+                ) {
+                  createUploadAttempts += 1;
+                  return Response.json(
+                    {
+                      code: "INVALID_CHECKSUM",
+                      message: "Synthetic permanent ingestion checksum failure.",
+                    },
+                    { status: 400 },
+                  );
+                }
+                return await super.fetch(request);
+              }
+            })({ state, env: env as never, runtime });
+          },
+        },
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ then, runner }) => [
+          then.assert("the Marketplace artifact is published", async (ctx) => {
+            await createMarketplacePublicationWorkflow(ctx, "1.0.0");
+          }),
+          runner.drain(),
+          then.assert("ingestion is requested", async (ctx) => {
+            await ctx.runtime.objects.automations.forOrg("org-1").requestMarketplaceIngestion({
+              listingId: MARKETPLACE_LISTING_ID,
+              targetScope: { kind: "org", orgId: "org-1" },
+            });
+          }),
+          runner.drain(),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            instanceId: workflowInstanceId,
+            status: "errored",
+          }),
+          then.assert("the permanent Upload code bypasses ingestion retries", () => {
+            expect(createUploadAttempts).toBe(1);
+          }),
+        ],
+        options: { allowErroredWorkflows: true },
+      }),
+    );
+  });
+
   test("rejects conflicting organization workspace files without recording ingestion", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
@@ -519,6 +843,474 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     }
   });
 
+  test("reuses an upload session after its creation response is lost", async () => {
+    const uploadIds: string[] = [];
+    let createUploadAttempts = 0;
+    let transferUploadAttempts = 0;
+    let loseFirstCreateResponse = true;
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "replay Marketplace upload creation with its existing session",
+        objectFactories: {
+          UPLOAD: ({ name, state, env, runtime }) => {
+            const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
+            return new (class extends InMemoryUploadObject {
+              async fetch(request: Request): Promise<Response> {
+                const url = new URL(request.url);
+                if (
+                  artifactUploadObject &&
+                  request.method === "POST" &&
+                  url.pathname.endsWith("/uploads")
+                ) {
+                  createUploadAttempts += 1;
+                  const response = await super.fetch(request);
+                  if (response.ok) {
+                    const created = (await response.clone().json()) as { uploadId: string };
+                    uploadIds.push(created.uploadId);
+                  }
+                  if (response.ok && loseFirstCreateResponse) {
+                    loseFirstCreateResponse = false;
+                    throw new Error("Marketplace upload creation response was lost.");
+                  }
+                  return response;
+                }
+                if (
+                  artifactUploadObject &&
+                  request.method === "PUT" &&
+                  /\/uploads\/[^/]+\/content$/u.test(url.pathname)
+                ) {
+                  transferUploadAttempts += 1;
+                }
+                return await super.fetch(request);
+              }
+            })({ state, env: env as never, runtime });
+          },
+        },
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ then, runner, when }) => [
+          then.assert("publication is requested", async (ctx) => {
+            await createMarketplacePublicationWorkflow(ctx, "1.0.0");
+          }),
+          runner.drain(),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+            instanceId: buildMarketplacePublicationWorkflowInstanceId({
+              listingId: MARKETPLACE_LISTING_ID,
+              version: "1.0.0",
+            }),
+            status: "waiting",
+          }),
+          then.assert("the lost response leaves one reusable upload", () => {
+            expect(createUploadAttempts).toBe(1);
+            expect(transferUploadAttempts).toBe(0);
+            expect(uploadIds).toHaveLength(1);
+          }),
+          runner.restartObject({
+            binding: "AUTOMATIONS",
+            scope: { kind: "org", orgId: "org-1" },
+          }),
+          when.time.advance("1 s"),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+            instanceId: buildMarketplacePublicationWorkflowInstanceId({
+              listingId: MARKETPLACE_LISTING_ID,
+              version: "1.0.0",
+            }),
+            status: "complete",
+          }),
+          then.assert("creation replay reuses the upload before transferring once", () => {
+            expect(createUploadAttempts).toBe(2);
+            expect(transferUploadAttempts).toBe(1);
+            assert(new Set(uploadIds).size === 1);
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("retries a lost artifact transfer response without creating another upload session", async () => {
+    let createUploadAttempts = 0;
+    let transferUploadAttempts = 0;
+    let loseFirstTransferResponse = true;
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "replay marketplace artifact transfer without recreating its upload",
+        objectFactories: {
+          UPLOAD: ({ name, state, env, runtime }) => {
+            const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
+            return new (class extends InMemoryUploadObject {
+              async fetch(request: Request): Promise<Response> {
+                const url = new URL(request.url);
+                if (
+                  artifactUploadObject &&
+                  request.method === "POST" &&
+                  url.pathname.endsWith("/uploads")
+                ) {
+                  createUploadAttempts += 1;
+                }
+                if (
+                  artifactUploadObject &&
+                  request.method === "PUT" &&
+                  /\/uploads\/[^/]+\/content$/u.test(url.pathname)
+                ) {
+                  transferUploadAttempts += 1;
+                  const response = await super.fetch(request);
+                  if (response.ok && loseFirstTransferResponse) {
+                    loseFirstTransferResponse = false;
+                    throw new Error("Marketplace artifact transfer response was lost.");
+                  }
+                  return response;
+                }
+                return await super.fetch(request);
+              }
+            })({ state, env: env as never, runtime });
+          },
+        },
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ then, runner, when }) => [
+          then.assert("publication is requested", async (ctx) => {
+            await createMarketplacePublicationWorkflow(ctx, "1.0.0");
+          }),
+          runner.drain(),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+            instanceId: buildMarketplacePublicationWorkflowInstanceId({
+              listingId: MARKETPLACE_LISTING_ID,
+              version: "1.0.0",
+            }),
+            status: "waiting",
+          }),
+          then.assert("the completed create step is not repeated", () => {
+            expect(createUploadAttempts).toBe(1);
+            expect(transferUploadAttempts).toBe(1);
+          }),
+          runner.restartObject({
+            binding: "AUTOMATIONS",
+            scope: { kind: "org", orgId: "org-1" },
+          }),
+          when.time.advance("1 s"),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+            instanceId: buildMarketplacePublicationWorkflowInstanceId({
+              listingId: MARKETPLACE_LISTING_ID,
+              version: "1.0.0",
+            }),
+            status: "complete",
+          }),
+          then.assert("only the transfer step is replayed", async (ctx) => {
+            expect(createUploadAttempts).toBe(1);
+            expect(transferUploadAttempts).toBe(2);
+
+            const upload = ctx.runtime.objects.upload.forName(
+              marketplaceArtifactUploadName(MARKETPLACE_LISTING_ID),
+            );
+            const url = new URL("https://upload.test/api/upload/files/by-key/content");
+            url.searchParams.set("provider", "database");
+            url.searchParams.set("key", `1.0.0/${MARKETPLACE_ARTIFACT_FILE_KEY}`);
+            const response = await upload.fetch(new Request(url));
+            assert(response.ok);
+            await expect(response.text()).resolves.toBe(TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE);
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("does not retry permanent typed Upload errors", async () => {
+    let createUploadAttempts = 0;
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "reject permanent marketplace artifact upload errors",
+        objectFactories: {
+          UPLOAD: ({ name, state, env, runtime }) => {
+            const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
+            return new (class extends InMemoryUploadObject {
+              async fetch(request: Request): Promise<Response> {
+                const url = new URL(request.url);
+                if (
+                  artifactUploadObject &&
+                  request.method === "POST" &&
+                  url.pathname.endsWith("/uploads")
+                ) {
+                  createUploadAttempts += 1;
+                  return Response.json(
+                    {
+                      code: "INVALID_CHECKSUM",
+                      message: "Synthetic permanent checksum failure.",
+                    },
+                    { status: 400 },
+                  );
+                }
+                return await super.fetch(request);
+              }
+            })({ state, env: env as never, runtime });
+          },
+        },
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ then, runner }) => [
+          then.assert("publication is requested", async (ctx) => {
+            await createMarketplacePublicationWorkflow(ctx, "1.0.0");
+          }),
+          runner.drain(),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+            instanceId: buildMarketplacePublicationWorkflowInstanceId({
+              listingId: MARKETPLACE_LISTING_ID,
+              version: "1.0.0",
+            }),
+            status: "errored",
+          }),
+          then.assert("the non-retryable Upload code bypasses the retry policy", () => {
+            expect(createUploadAttempts).toBe(1);
+          }),
+        ],
+        options: { allowErroredWorkflows: true },
+      }),
+    );
+  });
+
+  test("retries typed transient Upload errors before publishing", async () => {
+    let createUploadAttempts = 0;
+    let returnStorageError = true;
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "retry typed transient Marketplace Upload errors",
+        objectFactories: {
+          UPLOAD: ({ name, state, env, runtime }) => {
+            const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
+            return new (class extends InMemoryUploadObject {
+              async fetch(request: Request): Promise<Response> {
+                const url = new URL(request.url);
+                if (
+                  artifactUploadObject &&
+                  request.method === "POST" &&
+                  url.pathname.endsWith("/uploads")
+                ) {
+                  createUploadAttempts += 1;
+                  if (returnStorageError) {
+                    returnStorageError = false;
+                    return Response.json(
+                      {
+                        code: "STORAGE_ERROR",
+                        message: "Synthetic transient storage failure.",
+                      },
+                      { status: 400 },
+                    );
+                  }
+                }
+                return await super.fetch(request);
+              }
+            })({ state, env: env as never, runtime });
+          },
+        },
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ then, runner, when }) => [
+          then.assert("publication is requested", async (ctx) => {
+            await createMarketplacePublicationWorkflow(ctx, "1.0.0");
+          }),
+          runner.drain(),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+            instanceId: buildMarketplacePublicationWorkflowInstanceId({
+              listingId: MARKETPLACE_LISTING_ID,
+              version: "1.0.0",
+            }),
+            status: "waiting",
+          }),
+          runner.restartObject({
+            binding: "AUTOMATIONS",
+            scope: { kind: "org", orgId: "org-1" },
+          }),
+          when.time.advance("1 s"),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+            instanceId: buildMarketplacePublicationWorkflowInstanceId({
+              listingId: MARKETPLACE_LISTING_ID,
+              version: "1.0.0",
+            }),
+            status: "complete",
+          }),
+          then.assert("the typed storage failure was retried once", () => {
+            expect(createUploadAttempts).toBe(2);
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("replays publication after its prepared batch commits but the response is lost", async () => {
+    let batchCommitAttempts = 0;
+    let loseFirstBatchCommitResponse = true;
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "replay a committed Marketplace publication batch",
+        objectFactories: {
+          UPLOAD: ({ name, state, env, runtime }) => {
+            const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
+            return new (class extends InMemoryUploadObject {
+              async fetch(request: Request): Promise<Response> {
+                const url = new URL(request.url);
+                if (
+                  artifactUploadObject &&
+                  request.method === "POST" &&
+                  url.pathname.endsWith("/files/commit-prepared")
+                ) {
+                  batchCommitAttempts += 1;
+                  const response = await super.fetch(request);
+                  if (response.ok && loseFirstBatchCommitResponse) {
+                    loseFirstBatchCommitResponse = false;
+                    throw new Error("Marketplace publication batch response was lost.");
+                  }
+                  return response;
+                }
+                return await super.fetch(request);
+              }
+            })({ state, env: env as never, runtime });
+          },
+        },
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ then, runner, when }) => [
+          then.assert("publication is requested", async (ctx) => {
+            await createMarketplacePublicationWorkflow(ctx, "1.0.0");
+          }),
+          runner.drain(),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+            instanceId: buildMarketplacePublicationWorkflowInstanceId({
+              listingId: MARKETPLACE_LISTING_ID,
+              version: "1.0.0",
+            }),
+            status: "waiting",
+          }),
+          then.assert(
+            "the committed artifact is ready before Marketplace publication",
+            async (ctx) => {
+              const upload = ctx.runtime.objects.upload.forName(
+                marketplaceArtifactUploadName(MARKETPLACE_LISTING_ID),
+              );
+              const url = new URL("https://upload.test/api/upload/files/by-key/content");
+              url.searchParams.set("provider", "database");
+              url.searchParams.set("key", `1.0.0/${MARKETPLACE_ARTIFACT_FILE_KEY}`);
+              const response = await upload.fetch(new Request(url));
+              assert(response.ok);
+              await expect(response.text()).resolves.toBe(TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE);
+              await expect(
+                ctx.runtime.objects.marketplace.singleton().getPublishedListing({
+                  listingId: MARKETPLACE_LISTING_ID,
+                }),
+              ).resolves.toBeNull();
+            },
+          ),
+          runner.restartObject({
+            binding: "AUTOMATIONS",
+            scope: { kind: "org", orgId: "org-1" },
+          }),
+          when.time.advance("1 s"),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+            instanceId: buildMarketplacePublicationWorkflowInstanceId({
+              listingId: MARKETPLACE_LISTING_ID,
+              version: "1.0.0",
+            }),
+            status: "complete",
+          }),
+          then.assert("the committed batch is reused before publishing the version", () => {
+            expect(batchCommitAttempts).toBe(2);
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("keeps publication unpublished after its prepared upload expires", async () => {
+    let batchCommitAttempts = 0;
+    let interruptFirstBatchCommit = true;
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "expire a prepared Marketplace publication upload",
+        objectFactories: {
+          UPLOAD: ({ name, state, env, runtime }) => {
+            const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
+            return new (class extends InMemoryUploadObject {
+              async fetch(request: Request): Promise<Response> {
+                const url = new URL(request.url);
+                if (
+                  artifactUploadObject &&
+                  request.method === "POST" &&
+                  url.pathname.endsWith("/files/commit-prepared")
+                ) {
+                  batchCommitAttempts += 1;
+                  if (interruptFirstBatchCommit) {
+                    interruptFirstBatchCommit = false;
+                    throw new Error("Marketplace publication paused before batch commit.");
+                  }
+                }
+                return await super.fetch(request);
+              }
+            })({ state, env: env as never, runtime });
+          },
+        },
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ then, runner, when }) => [
+          then.assert("publication is requested", async (ctx) => {
+            await createMarketplacePublicationWorkflow(ctx, "1.0.0");
+          }),
+          runner.drain(),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+            instanceId: buildMarketplacePublicationWorkflowInstanceId({
+              listingId: MARKETPLACE_LISTING_ID,
+              version: "1.0.0",
+            }),
+            status: "waiting",
+          }),
+          when.time.advance("2 hours"),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+            instanceId: buildMarketplacePublicationWorkflowInstanceId({
+              listingId: MARKETPLACE_LISTING_ID,
+              version: "1.0.0",
+            }),
+            status: "waiting",
+          }),
+          when.time.advance("2 hours"),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+            instanceId: buildMarketplacePublicationWorkflowInstanceId({
+              listingId: MARKETPLACE_LISTING_ID,
+              version: "1.0.0",
+            }),
+            status: "waiting",
+          }),
+          then.assert("the expired upload is never published", async (ctx) => {
+            expect(batchCommitAttempts).toBe(2);
+            await expect(
+              ctx.runtime.objects.marketplace.singleton().getPublishedListing({
+                listingId: MARKETPLACE_LISTING_ID,
+              }),
+            ).resolves.toBeNull();
+
+            const upload = ctx.runtime.objects.upload.forName(
+              marketplaceArtifactUploadName(MARKETPLACE_LISTING_ID),
+            );
+            const url = new URL("https://upload.test/api/upload/files/by-key/content");
+            url.searchParams.set("provider", "database");
+            url.searchParams.set("key", `1.0.0/${MARKETPLACE_ARTIFACT_FILE_KEY}`);
+            const response = await upload.fetch(new Request(url));
+            assert(response.status === 404);
+          }),
+        ],
+        options: { allowErroredWorkflows: true },
+      }),
+    );
+  });
+
   test("replays a successful publication after its response is lost and a newer version publishes", async () => {
     await withUpdatedStaticMarketplaceEntry(async () => {
       let loseFirstPublicationResponse = true;
@@ -598,18 +1390,18 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     });
   });
 
-  test("replays ingestion after the file write commits but chmod fails", async () => {
+  test("replays ingestion after the prepared batch commits but its response is lost", async () => {
     const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.0.0",
     });
-    let rejectFirstChmod = true;
-    let targetWriteAttempts = 0;
+    let loseFirstBatchCommitResponse = true;
+    let batchCommitAttempts = 0;
 
     await runBackofficeScenario(
       defineBackofficeScenario({
-        name: "replay a committed marketplace ingestion file write",
+        name: "replay a committed marketplace ingestion batch",
         objectFactories: {
           UPLOAD: ({ name, state, env, runtime }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
@@ -619,22 +1411,15 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 if (
                   destinationObject &&
                   request.method === "POST" &&
-                  url.pathname.endsWith("/files")
+                  url.pathname.endsWith("/files/commit-prepared")
                 ) {
-                  const form = await request.clone().formData();
-                  if (form.get("fileKey") === MARKETPLACE_ARTIFACT_FILE_KEY) {
-                    targetWriteAttempts += 1;
+                  batchCommitAttempts += 1;
+                  const response = await super.fetch(request);
+                  if (response.ok && loseFirstBatchCommitResponse) {
+                    loseFirstBatchCommitResponse = false;
+                    throw new Error("Prepared batch commit response was lost.");
                   }
-                }
-                if (
-                  destinationObject &&
-                  request.method === "PATCH" &&
-                  url.pathname.endsWith("/files/by-key") &&
-                  url.searchParams.get("key") === MARKETPLACE_ARTIFACT_FILE_KEY &&
-                  rejectFirstChmod
-                ) {
-                  rejectFirstChmod = false;
-                  return Response.json({ message: "Temporary chmod failure." }, { status: 503 });
+                  return response;
                 }
                 return await super.fetch(request);
               }
@@ -663,7 +1448,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             instanceId: workflowInstanceId,
             status: "waiting",
           }),
-          then.assert("the successful file write remains readable", async (ctx) => {
+          then.assert("the committed batch remains readable", async (ctx) => {
             const url = new URL("https://upload.test/api/upload/files/by-key/content");
             url.searchParams.set("provider", "database");
             url.searchParams.set("key", MARKETPLACE_ARTIFACT_FILE_KEY);
@@ -684,9 +1469,9 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             status: "complete",
           }),
           then.assert(
-            "the replay recognizes its previous write and records ingestion",
+            "the replay reuses the committed batch and records ingestion",
             async (ctx) => {
-              expect(targetWriteAttempts).toBe(2);
+              expect(batchCommitAttempts).toBe(2);
               await expect(
                 ctx.runtime.objects.automations.forOrg("org-1").getMarketplaceIngestion({
                   targetScope: { kind: "org", orgId: "org-1" },
@@ -751,6 +1536,112 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               );
             }),
           ],
+        }),
+      );
+    });
+  });
+
+  test("rejects an upgrade atomically when an unchanged asserted file changes after planning", async () => {
+    await withTwoFileMarketplaceVersions(async () => {
+      const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+        targetScope: { kind: "org", orgId: "org-1" },
+        listingId: MARKETPLACE_LISTING_ID,
+        version: "1.1.0",
+      });
+      let changeAssertedFileDuringPreparation = false;
+
+      await runBackofficeScenario(
+        defineBackofficeScenario({
+          name: "reject a marketplace batch after an asserted file changes",
+          objectFactories: {
+            UPLOAD: ({ name, state, env, runtime }) => {
+              const destinationObject = name.endsWith("v1:org:org-1");
+              return new (class extends InMemoryUploadObject {
+                async fetch(request: Request): Promise<Response> {
+                  const url = new URL(request.url);
+                  if (
+                    destinationObject &&
+                    changeAssertedFileDuringPreparation &&
+                    request.method === "POST" &&
+                    url.pathname.endsWith("/uploads")
+                  ) {
+                    const payload = (await request.clone().json()) as { fileKey?: string };
+                    if (payload.fileKey === MARKETPLACE_ARTIFACT_FILE_KEY) {
+                      changeAssertedFileDuringPreparation = false;
+                      await writeUploadFile({
+                        upload: { fetch: (nextRequest) => super.fetch(nextRequest) },
+                        fileKey: MARKETPLACE_UNCHANGED_FILE_KEY,
+                        content: "locally changed after planning",
+                      });
+                    }
+                  }
+                  return await super.fetch(request);
+                }
+              })({ state, env: env as never, runtime });
+            },
+          },
+          setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+          steps: ({ then, runner }) => [
+            then.assert("both marketplace versions are published", async (ctx) => {
+              await createMarketplacePublicationWorkflow(ctx, "1.0.0");
+            }),
+            runner.drain(),
+            then.assert("the updated marketplace version is published", async (ctx) => {
+              await createMarketplacePublicationWorkflow(ctx, "1.1.0");
+            }),
+            runner.drain(),
+            then.assert("version 1.0.0 is ingested", async (ctx) => {
+              await ctx.runtime.objects.automations.forOrg("org-1").requestMarketplaceIngestion({
+                listingId: MARKETPLACE_LISTING_ID,
+                version: "1.0.0",
+                targetScope: { kind: "org", orgId: "org-1" },
+              });
+            }),
+            runner.drain(),
+            then.assert(
+              "version 1.1.0 is requested before the asserted file changes",
+              async (ctx) => {
+                changeAssertedFileDuringPreparation = true;
+                await ctx.runtime.objects.automations.forOrg("org-1").requestMarketplaceIngestion({
+                  listingId: MARKETPLACE_LISTING_ID,
+                  version: "1.1.0",
+                  targetScope: { kind: "org", orgId: "org-1" },
+                });
+              },
+            ),
+            runner.drain(),
+            then.workflow.instance({
+              workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+              instanceId: workflowInstanceId,
+              status: "errored",
+            }),
+            then.assert("the rejected batch publishes none of its prepared writes", async (ctx) => {
+              const upload = ctx.runtime.objects.upload.forOrg("org-1");
+              const mainUrl = new URL("https://upload.test/api/upload/files/by-key/content");
+              mainUrl.searchParams.set("provider", "database");
+              mainUrl.searchParams.set("key", MARKETPLACE_ARTIFACT_FILE_KEY);
+              const mainResponse = await upload.fetch(new Request(mainUrl));
+              assert(mainResponse.ok);
+              await expect(mainResponse.text()).resolves.toBe(
+                TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
+              );
+
+              const assertedUrl = new URL("https://upload.test/api/upload/files/by-key/content");
+              assertedUrl.searchParams.set("provider", "database");
+              assertedUrl.searchParams.set("key", MARKETPLACE_UNCHANGED_FILE_KEY);
+              const assertedResponse = await upload.fetch(new Request(assertedUrl));
+              assert(assertedResponse.ok);
+              await expect(assertedResponse.text()).resolves.toBe("locally changed after planning");
+
+              await expect(
+                ctx.runtime.objects.automations.forOrg("org-1").getMarketplaceIngestion({
+                  targetScope: { kind: "org", orgId: "org-1" },
+                  listingId: MARKETPLACE_LISTING_ID,
+                }),
+              ).resolves.toMatchObject({ version: "1.0.0" });
+            }),
+          ],
+          options: { allowErroredWorkflows: true },
         }),
       );
     });
@@ -829,6 +1720,94 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         }),
       );
     });
+  });
+
+  test("rejects source bytes changed between upload creation and transfer", async () => {
+    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      targetScope: { kind: "org", orgId: "org-1" },
+      listingId: MARKETPLACE_LISTING_ID,
+      version: "1.0.0",
+    });
+    let mutateSourceAfterUploadCreation = true;
+    let destinationTransferAttempts = 0;
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "reject Marketplace source changed before transfer",
+        objectFactories: {
+          UPLOAD: ({ name, state, env, runtime }) => {
+            const destinationObject = name.endsWith("v1:org:org-1");
+            return new (class extends InMemoryUploadObject {
+              async fetch(request: Request): Promise<Response> {
+                const url = new URL(request.url);
+                if (
+                  destinationObject &&
+                  request.method === "POST" &&
+                  url.pathname.endsWith("/uploads")
+                ) {
+                  const response = await super.fetch(request);
+                  if (response.ok && mutateSourceAfterUploadCreation) {
+                    mutateSourceAfterUploadCreation = false;
+                    await writeUploadFile({
+                      upload: runtime.objects.upload.forName(
+                        marketplaceArtifactUploadName(MARKETPLACE_LISTING_ID),
+                      ),
+                      fileKey: `1.0.0/${MARKETPLACE_ARTIFACT_FILE_KEY}`,
+                      content: "source changed after destination upload creation",
+                    });
+                  }
+                  return response;
+                }
+                if (
+                  destinationObject &&
+                  request.method === "PUT" &&
+                  /\/uploads\/[^/]+\/content$/u.test(url.pathname)
+                ) {
+                  destinationTransferAttempts += 1;
+                }
+                return await super.fetch(request);
+              }
+            })({ state, env: env as never, runtime });
+          },
+        },
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ then, runner }) => [
+          then.assert("the Marketplace artifact is published", async (ctx) => {
+            await createMarketplacePublicationWorkflow(ctx, "1.0.0");
+          }),
+          runner.drain(),
+          then.assert("ingestion is requested", async (ctx) => {
+            await ctx.runtime.objects.automations.forOrg("org-1").requestMarketplaceIngestion({
+              listingId: MARKETPLACE_LISTING_ID,
+              targetScope: { kind: "org", orgId: "org-1" },
+            });
+          }),
+          runner.drain(),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            instanceId: workflowInstanceId,
+            status: "errored",
+          }),
+          then.assert("the changed source is rejected before destination transfer", async (ctx) => {
+            expect(destinationTransferAttempts).toBe(0);
+            const url = new URL("https://upload.test/api/upload/files/by-key/content");
+            url.searchParams.set("provider", "database");
+            url.searchParams.set("key", MARKETPLACE_ARTIFACT_FILE_KEY);
+            const response = await ctx.runtime.objects.upload
+              .forOrg("org-1")
+              .fetch(new Request(url));
+            assert(response.status === 404);
+            await expect(
+              ctx.runtime.objects.automations.forOrg("org-1").getMarketplaceIngestion({
+                targetScope: { kind: "org", orgId: "org-1" },
+                listingId: MARKETPLACE_LISTING_ID,
+              }),
+            ).resolves.toBeNull();
+          }),
+        ],
+        options: { allowErroredWorkflows: true },
+      }),
+    );
   });
 
   test("rejects source bytes changed after listing without poisoning the destination", async () => {

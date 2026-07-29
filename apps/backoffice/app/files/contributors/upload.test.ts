@@ -421,6 +421,176 @@ describe("upload file contributor", () => {
     await expect(fs.readFile("/workspace/reports/q1.txt")).resolves.toBe("updated");
   });
 
+  test("resolves batch upload requests with their final file metadata", async () => {
+    const { fs } = createUploadFs({
+      "reports/current.txt": {
+        content: "old current",
+        metadata: { __docsFs: { mode: 0o600 } },
+      },
+    });
+
+    const replacement = await fs.resolveFileWriteUploadRequest(
+      "/workspace/reports/current.txt",
+      "new current",
+      {
+        contentType: "text/plain",
+        mode: 0o777,
+        precondition: { kind: "revision", revision: 0 },
+      },
+    );
+    const created = await fs.resolveFileWriteUploadRequest(
+      "/workspace/reports/new.sh",
+      "echo ready",
+      {
+        contentType: "text/x-shellscript",
+        mode: 0o755,
+        precondition: { kind: "absent" },
+      },
+    );
+
+    expect(replacement).toMatchObject({
+      body: {
+        provider: UPLOAD_PROVIDER_DATABASE,
+        fileKey: "reports/current.txt",
+        filename: "current.txt",
+        sizeBytes: 11,
+        contentType: "text/plain",
+        metadata: { __docsFs: { mode: 0o600 } },
+        publicationMode: "batch",
+      },
+      precondition: { kind: "revision", revision: 0 },
+    });
+    expect(created).toMatchObject({
+      body: {
+        provider: UPLOAD_PROVIDER_DATABASE,
+        fileKey: "reports/new.sh",
+        filename: "new.sh",
+        sizeBytes: 10,
+        contentType: "text/x-shellscript",
+        metadata: { __docsFs: { mode: 0o755 } },
+        publicationMode: "batch",
+      },
+      precondition: { kind: "absent" },
+    });
+  });
+
+  test("commits several prepared writes with final filesystem metadata", async () => {
+    const { fs, runtime } = createUploadFs({
+      "reports/current.txt": {
+        content: "old current",
+        metadata: { __docsFs: { mode: 0o600 } },
+      },
+      "reports/guard.txt": { content: "guard" },
+    });
+
+    const current = runtime.files.get(
+      composeStorageKey(UPLOAD_PROVIDER_DATABASE, "reports/current.txt"),
+    );
+    const guard = runtime.files.get(
+      composeStorageKey(UPLOAD_PROVIDER_DATABASE, "reports/guard.txt"),
+    );
+    assert(current?.revision === 0);
+    assert(guard?.revision === 0);
+
+    const replacementRequest = await fs.resolveFileWriteUploadRequest(
+      "/workspace/reports/current.txt",
+      "new current",
+      {
+        contentType: "text/plain",
+        mode: 0o777,
+        precondition: { kind: "revision", revision: current.revision },
+      },
+    );
+    const createdRequest = await fs.resolveFileWriteUploadRequest(
+      "/workspace/reports/new.sh",
+      "echo ready",
+      {
+        contentType: "text/x-shellscript",
+        mode: 0o755,
+        precondition: { kind: "absent" },
+      },
+    );
+    const replacement = runtime.stagePreparedUpload(replacementRequest, "new current");
+    const created = runtime.stagePreparedUpload(createdRequest, "echo ready");
+
+    await expect(fs.readFile("/workspace/reports/current.txt")).resolves.toBe("old current");
+    await expect(fs.exists("/workspace/reports/new.sh")).resolves.toBe(false);
+
+    await fs.commitPreparedFileWrites({
+      writes: [replacement, created],
+      assertions: [
+        {
+          path: "/workspace/reports/guard.txt",
+          precondition: { kind: "revision", revision: guard.revision },
+        },
+      ],
+    });
+
+    await expect(fs.readFile("/workspace/reports/current.txt")).resolves.toBe("new current");
+    await expect(fs.readFile("/workspace/reports/new.sh")).resolves.toBe("echo ready");
+    expect(
+      runtime.files.get(composeStorageKey(UPLOAD_PROVIDER_DATABASE, "reports/current.txt"))
+        ?.metadata,
+    ).toMatchObject({ __docsFs: { mode: 0o600 } });
+    expect(
+      runtime.files.get(composeStorageKey(UPLOAD_PROVIDER_DATABASE, "reports/new.sh"))?.metadata,
+    ).toMatchObject({ __docsFs: { mode: 0o755 } });
+  });
+
+  test("leaves every prepared destination unchanged when a batch assertion fails", async () => {
+    const { fs, runtime } = createUploadFs({
+      "reports/first.txt": { content: "first old" },
+      "reports/second.txt": { content: "second old" },
+      "reports/guard.txt": { content: "guard old" },
+    });
+
+    const firstRequest = await fs.resolveFileWriteUploadRequest(
+      "/workspace/reports/first.txt",
+      "first new",
+      { precondition: { kind: "revision", revision: 0 } },
+    );
+    const secondRequest = await fs.resolveFileWriteUploadRequest(
+      "/workspace/reports/second.txt",
+      "second new",
+      { precondition: { kind: "revision", revision: 0 } },
+    );
+    const first = runtime.stagePreparedUpload(firstRequest, "first new");
+    const second = runtime.stagePreparedUpload(secondRequest, "second new");
+    await fs.writeFile("/workspace/reports/guard.txt", "guard changed");
+
+    await expect(
+      fs.commitPreparedFileWrites({
+        writes: [first, second],
+        assertions: [
+          {
+            path: "/workspace/reports/guard.txt",
+            precondition: { kind: "revision", revision: 0 },
+          },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(UploadFileWriteConflictError);
+
+    await expect(fs.readFile("/workspace/reports/first.txt")).resolves.toBe("first old");
+    await expect(fs.readFile("/workspace/reports/second.txt")).resolves.toBe("second old");
+  });
+
+  test("applies filesystem permission checks when resolving prepared upload requests", async () => {
+    const created = createUploadFs({}, { filePrincipal: USER_ONE_ORG_PRINCIPAL });
+    await created.fs.mkdir("/workspace/private", { recursive: true });
+    await created.fs.chmod("/workspace/private", 0o700);
+
+    const sameOrg = createUploadFileSystem(
+      { ...created.context, filePrincipal: USER_TWO_ORG_PRINCIPAL },
+      { mountPoint: "/workspace", provider: UPLOAD_PROVIDER_DATABASE },
+    );
+
+    await expect(
+      sameOrg.resolveFileWriteUploadRequest("/workspace/private/intruder.txt", "nope", {
+        precondition: { kind: "absent" },
+      }),
+    ).rejects.toThrow("EACCES");
+  });
+
   test("conditionally recreates deleted upload records as absent", async () => {
     const { fs } = createUploadFs({
       "reports/q1.txt": {
@@ -936,6 +1106,18 @@ const createUploadRuntime = (
   const now = new Date("2026-03-18T12:00:00.000Z").toISOString();
   const files = new Map<string, UploadFileRecord>();
   const contents = new Map<string, Uint8Array>();
+  const preparedUploads = new Map<
+    string,
+    {
+      provider: string;
+      fileKey: string;
+      contentType: string;
+      metadata: Record<string, unknown> | null;
+      content: Uint8Array;
+      status: "prepared" | "completed";
+    }
+  >();
+  let uploadSequence = 0;
 
   const setFile = (
     fileKey: string,
@@ -973,6 +1155,47 @@ const createUploadRuntime = (
     setFile(fileKey, input);
   }
 
+  const stagePreparedUpload = (
+    request: {
+      body: {
+        provider: string;
+        fileKey: string;
+        filename: string;
+        sizeBytes: number;
+        contentType: string;
+        checksum: { algo: "sha256"; value: string };
+        metadata?: Record<string, unknown>;
+      };
+      precondition: { kind: "absent" } | { kind: "revision"; revision: number };
+    },
+    content: string | Uint8Array,
+  ) => {
+    const bytes = content instanceof Uint8Array ? content : new TextEncoder().encode(content);
+    assert(bytes.byteLength === request.body.sizeBytes);
+    const uploadId = `upload-${++uploadSequence}`;
+    const expiresAt = "2027-03-18T12:00:00.000Z";
+    const objectKey = `objects/${uploadId}`;
+    preparedUploads.set(uploadId, {
+      provider: request.body.provider,
+      fileKey: request.body.fileKey,
+      contentType: request.body.contentType,
+      metadata: request.body.metadata ?? null,
+      content: bytes,
+      status: "prepared",
+    });
+    return {
+      uploadId,
+      provider: request.body.provider,
+      fileKey: request.body.fileKey,
+      objectKey,
+      sizeBytes: bytes.byteLength,
+      contentType: request.body.contentType,
+      checksum: request.body.checksum,
+      expiresAt,
+      precondition: request.precondition,
+    };
+  };
+
   const requests: string[] = [];
 
   return {
@@ -981,9 +1204,92 @@ const createUploadRuntime = (
     files,
     contents,
     requests,
+    stagePreparedUpload,
     async fetch(request: Request) {
       const url = new URL(request.url);
       requests.push(`${request.method} ${url.pathname}${url.search}`);
+
+      if (request.method === "POST" && url.pathname === "/api/upload/files/commit-prepared") {
+        const payload = (await request.json()) as {
+          entries: Array<
+            | {
+                kind: "write";
+                uploadId: string;
+                precondition: { kind: "absent" } | { kind: "revision"; revision: number };
+              }
+            | {
+                kind: "assert";
+                provider: string;
+                fileKey: string;
+                precondition: { kind: "absent" } | { kind: "revision"; revision: number };
+              }
+          >;
+        };
+        const resolvedWrites = payload.entries
+          .filter(
+            (entry): entry is Extract<(typeof payload.entries)[number], { kind: "write" }> =>
+              entry.kind === "write",
+          )
+          .map((entry) => ({ entry, upload: preparedUploads.get(entry.uploadId) }));
+        const preconditionMatches = (
+          file: UploadFileRecord | undefined,
+          precondition: { kind: "absent" } | { kind: "revision"; revision: number },
+        ) =>
+          precondition.kind === "absent"
+            ? file?.status !== "ready"
+            : file?.status === "ready" && file.revision === precondition.revision;
+
+        const invalidWrite = resolvedWrites.find(({ entry, upload }) => {
+          if (!upload || (upload.status !== "prepared" && upload.status !== "completed")) {
+            return true;
+          }
+          const file = files.get(composeStorageKey(upload.provider, upload.fileKey));
+          if (upload.status === "completed") {
+            return file?.status !== "ready";
+          }
+          return !preconditionMatches(file, entry.precondition);
+        });
+        const invalidAssertion = payload.entries
+          .filter(
+            (entry): entry is Extract<(typeof payload.entries)[number], { kind: "assert" }> =>
+              entry.kind === "assert",
+          )
+          .find(
+            (entry) =>
+              !preconditionMatches(
+                files.get(composeStorageKey(entry.provider, entry.fileKey)),
+                entry.precondition,
+              ),
+          );
+        if (invalidWrite || invalidAssertion) {
+          return Response.json(
+            { message: "File changed after it was read", code: "FILE_PRECONDITION_FAILED" },
+            { status: 412 },
+          );
+        }
+
+        const committedFiles: UploadFileRecord[] = [];
+        for (const { upload } of resolvedWrites) {
+          assert(upload?.content);
+          if (upload.status === "completed") {
+            const existing = files.get(composeStorageKey(upload.provider, upload.fileKey));
+            assert(existing);
+            committedFiles.push(existing);
+            continue;
+          }
+          setFile(upload.fileKey, {
+            provider: upload.provider,
+            content: upload.content,
+            contentType: upload.contentType,
+            metadata: upload.metadata,
+          });
+          upload.status = "completed";
+          const committed = files.get(composeStorageKey(upload.provider, upload.fileKey));
+          assert(committed);
+          committedFiles.push(committed);
+        }
+        return Response.json({ files: committedFiles });
+      }
 
       if (request.method === "GET" && url.pathname === "/api/upload/files") {
         const provider = url.searchParams.get("provider");
