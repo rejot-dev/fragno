@@ -121,7 +121,7 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
             }
 
             const uow = forSchema(uploadSchema);
-            const now = new Date();
+            const now = uow.now();
             const documentId = document
               ? document.id
               : uow.create("file_text_document", {
@@ -272,19 +272,23 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
         );
       }),
       onUploadTimeout: defineHook(async function (payload: UploadTimeoutPayload) {
-        const now = new Date();
-
         if (!payload.uploadId) {
           return;
         }
 
         const result = await this.handlerTx()
           .retrieve(({ forSchema }) =>
-            forSchema(uploadSchema).findFirst("upload", (b) =>
-              b.whereIndex("primary", (eb) => eb("id", "=", payload.uploadId)),
-            ),
+            forSchema(uploadSchema)
+              .findFirst("upload", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", payload.uploadId)),
+              )
+              .findFirst("upload", (b) =>
+                b.whereIndex("idx_upload_id_expiresAt", (eb) =>
+                  eb.and(eb("id", "=", payload.uploadId), eb("expiresAt", "<=", eb.now())),
+                ),
+              ),
           )
-          .mutate(({ forSchema, retrieveResult: [upload] }) => {
+          .mutate(({ forSchema, retrieveResult: [upload, expiredUpload] }) => {
             if (!upload) {
               return { shouldNotify: false as const };
             }
@@ -299,19 +303,32 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
               return { shouldNotify: false as const };
             }
 
-            if (upload.expiresAt.getTime() > now.getTime()) {
+            if (!expiredUpload) {
               return { shouldNotify: false as const };
             }
 
             const uow = forSchema(uploadSchema);
             uow.update("upload", upload.id, (b) =>
-              b.set({
-                status: "expired",
-                updatedAt: now,
-                errorCode: "UPLOAD_EXPIRED",
-                errorMessage: "Upload expired",
-              }),
+              b
+                .set({
+                  status: "expired",
+                  updatedAt: uow.now(),
+                  errorCode: "UPLOAD_EXPIRED",
+                  errorMessage: "Upload expired",
+                })
+                .check(),
             );
+            if (status === "prepared") {
+              uow.triggerHook("cleanupStorageObject", {
+                provider: upload.provider,
+                fileKey: upload.key,
+                objectKey: upload.objectKey,
+                uploadId: payload.uploadId,
+                uploaderId: upload.uploaderId,
+                sizeBytes: Number(upload.bytesUploaded),
+                contentType: upload.contentType,
+              });
+            }
 
             return {
               shouldNotify: true as const,
@@ -337,7 +354,7 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
   })
   .providesBaseService(({ defineService, deps }) => {
     return defineService({
-      ...createUploadServices(deps.resolvedConfig),
+      ...createUploadServices(),
       ...createFileServices(deps.resolvedConfig),
     });
   })

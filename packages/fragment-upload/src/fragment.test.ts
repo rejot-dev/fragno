@@ -12,6 +12,7 @@ import type { UploadFragmentConfig } from "./config";
 import { uploadFragmentDefinition } from "./definition";
 import { uploadRoutes } from "./index";
 import { uploadSchema } from "./schema";
+import { UploadStorageError } from "./storage/errors";
 import { createFilesystemStorageAdapter } from "./storage/fs";
 import type { StorageAdapter } from "./storage/types";
 
@@ -143,6 +144,7 @@ describe("upload fragment direct single flows", () => {
 
     assert(createResponse.type === "json");
     assert(createResponse.data.strategy === "direct-single");
+    assert(createResponse.data.publicationMode === "immediate");
 
     const completeResponse = await fragment.callRoute("POST", "/uploads/:uploadId/complete", {
       pathParams: { uploadId: createResponse.data.uploadId },
@@ -150,7 +152,8 @@ describe("upload fragment direct single flows", () => {
     });
 
     assert(completeResponse.type === "json");
-    assert(completeResponse.data.status === "ready");
+    assert(completeResponse.data.kind === "published");
+    assert(completeResponse.data.file.status === "ready");
     expect(finalizeUpload).toHaveBeenCalled();
 
     const stored = await (async () => {
@@ -175,7 +178,184 @@ describe("upload fragment direct single flows", () => {
     );
   });
 
-  it("reuses an upload when checksum and metadata match", async () => {
+  it("rejects legacy completion-time publication mode selection", async () => {
+    const { fragment } = build.fragments.upload;
+    const created = await fragment.callRoute("POST", "/uploads", {
+      body: {
+        fileKey: "files/direct/legacy-completion-mode.txt",
+        filename: "legacy-completion-mode.txt",
+        sizeBytes: 8,
+        contentType: "text/plain",
+      },
+    });
+    assert(created.type === "json");
+
+    const completed = await fragment.callRoute("POST", "/uploads/:uploadId/complete", {
+      pathParams: { uploadId: created.data.uploadId },
+      body: { completionMode: "prepared" } as never,
+    });
+
+    assert(completed.type === "error");
+    assert(completed.status === 400);
+  });
+
+  it("prepares and atomically publishes a direct single upload", async () => {
+    const { fragment } = build.fragments.upload;
+    const created = await fragment.callRoute("POST", "/uploads", {
+      body: {
+        fileKey: "files/direct/prepared.txt",
+        filename: "prepared.txt",
+        sizeBytes: 8,
+        contentType: "text/plain",
+        publicationMode: "batch",
+      },
+    });
+    assert(created.type === "json");
+    assert(created.data.publicationMode === "batch");
+
+    const prepared = await fragment.callRoute("POST", "/uploads/:uploadId/complete", {
+      pathParams: { uploadId: created.data.uploadId },
+      body: {},
+    });
+    assert(prepared.type === "json");
+    assert(prepared.data.kind === "prepared");
+    expect(prepared.data.write).toMatchObject({
+      uploadId: created.data.uploadId,
+      provider: adapter.name,
+      fileKey: created.data.fileKey,
+      sizeBytes: 8,
+      contentType: "text/plain",
+    });
+
+    const invisible = await fragment.callRoute("GET", "/files/by-key", {
+      query: { provider: adapter.name, key: created.data.fileKey },
+    });
+    assert(invisible.type === "error");
+    assert(invisible.error.code === "FILE_NOT_FOUND");
+
+    const committed = await fragment.callRoute("POST", "/files/commit-prepared", {
+      body: {
+        entries: [
+          {
+            kind: "write",
+            uploadId: prepared.data.write.uploadId,
+            precondition: { kind: "absent" },
+          },
+        ],
+      },
+    });
+    assert(committed.type === "json");
+    expect(committed.data.files).toHaveLength(1);
+    expect(committed.data.files[0]).toMatchObject({
+      fileKey: created.data.fileKey,
+      revision: 0,
+      status: "ready",
+    });
+  });
+
+  it("aborts a prepared upload and queues physical object cleanup", async () => {
+    const { fragment } = build.fragments.upload;
+    const created = await fragment.callRoute("POST", "/uploads", {
+      body: {
+        fileKey: "files/direct/abort-prepared.txt",
+        filename: "abort-prepared.txt",
+        sizeBytes: 8,
+        contentType: "text/plain",
+        publicationMode: "batch",
+      },
+    });
+    assert(created.type === "json");
+    const prepared = await fragment.callRoute("POST", "/uploads/:uploadId/complete", {
+      pathParams: { uploadId: created.data.uploadId },
+      body: {},
+    });
+    assert(prepared.type === "json");
+    assert(prepared.data.kind === "prepared");
+
+    const aborted = await fragment.callRoute("POST", "/uploads/:uploadId/abort", {
+      pathParams: { uploadId: created.data.uploadId },
+    });
+    assert(aborted.type === "json");
+    await drainDurableHooks(fragment);
+
+    expect(deleteObject).toHaveBeenCalledWith({ storageKey: prepared.data.write.objectKey });
+    const status = await fragment.callRoute("GET", "/uploads/:uploadId", {
+      pathParams: { uploadId: created.data.uploadId },
+    });
+    assert(status.type === "json");
+    assert(status.data.status === "aborted");
+  });
+
+  it("expires a prepared upload before queueing physical object cleanup", async () => {
+    const { adapter: expiringAdapter, deleteObject: deleteExpiredObject } = createDirectAdapter(
+      "direct-single",
+      new Date(Date.now() + 60_000),
+    );
+
+    await withUploadBuild({ storage: expiringAdapter }, async ({ fragments, test }) => {
+      const { fragment, db } = fragments.upload;
+      const created = await fragment.callRoute("POST", "/uploads", {
+        body: {
+          fileKey: "files/direct/expire-prepared.txt",
+          filename: "expire-prepared.txt",
+          sizeBytes: 8,
+          contentType: "text/plain",
+          publicationMode: "batch",
+        },
+      });
+      assert(created.type === "json");
+      const prepared = await fragment.callRoute("POST", "/uploads/:uploadId/complete", {
+        pathParams: { uploadId: created.data.uploadId },
+        body: {},
+      });
+      assert(prepared.type === "json");
+      assert(prepared.data.kind === "prepared");
+
+      const uploadUow = db.createUnitOfWork("write").forSchema(uploadSchema);
+      uploadUow.update("upload", created.data.uploadId, (b) =>
+        b.set({ expiresAt: new Date(Date.now() - 1_000) }),
+      );
+      assert((await uploadUow.executeMutations()).success);
+
+      const internalFragment = getInternalFragment(test.adapter);
+      const hooks = await internalFragment.inContext(async function () {
+        return await this.handlerTx()
+          .withServiceCalls(
+            () => [internalFragment.services.hookService.getHooksByNamespace("upload")] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+      });
+      const timeoutHook = hooks.find((hook) => {
+        const payload = hook.payload as { uploadId?: string } | null;
+        return hook.hookName === "onUploadTimeout" && payload?.uploadId === created.data.uploadId;
+      });
+      assert(timeoutHook);
+      await internalFragment.inContext(async function () {
+        await this.handlerTx()
+          .mutate(({ forSchema }) => {
+            forSchema(internalFragment.$internal.deps.schema).update(
+              "fragno_hooks",
+              timeoutHook.id,
+              (b) => b.set({ nextRetryAt: new Date(Date.now() - 1_000) }),
+            );
+          })
+          .execute();
+      });
+
+      await drainDurableHooks(fragment);
+      expect(deleteExpiredObject).toHaveBeenCalledWith({
+        storageKey: prepared.data.write.objectKey,
+      });
+      const status = await fragment.callRoute("GET", "/uploads/:uploadId", {
+        pathParams: { uploadId: created.data.uploadId },
+      });
+      assert(status.type === "json");
+      assert(status.data.status === "expired");
+    });
+  });
+
+  it("reuses an upload when metadata objects differ only in key order", async () => {
     const { fragment } = build.fragments.upload;
     const payload = {
       keyParts: ["files", "direct", 10],
@@ -183,6 +363,7 @@ describe("upload fragment direct single flows", () => {
       sizeBytes: 5,
       contentType: "text/plain",
       checksum: { algo: "sha256" as const, value: "deadbeef" },
+      metadata: { source: "test", dimensions: { width: 10, height: 20 } },
     };
 
     const first = await fragment.callRoute("POST", "/uploads", {
@@ -192,12 +373,40 @@ describe("upload fragment direct single flows", () => {
     assert(first.type === "json");
 
     const second = await fragment.callRoute("POST", "/uploads", {
-      body: payload,
+      body: {
+        ...payload,
+        metadata: { dimensions: { height: 20, width: 10 }, source: "test" },
+      },
     });
 
     assert(second.type === "json");
     expect(second.data.uploadId).toBe(first.data.uploadId);
     expect(second.data.fileKey).toBe(first.data.fileKey);
+    expect(initUpload).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not reuse an active upload with a different publication mode", async () => {
+    const { fragment } = build.fragments.upload;
+    const payload = {
+      keyParts: ["files", "direct", "publication-mode"],
+      filename: "hello.txt",
+      sizeBytes: 5,
+      contentType: "text/plain",
+      checksum: { algo: "sha256" as const, value: "deadbeef" },
+    };
+
+    const first = await fragment.callRoute("POST", "/uploads", {
+      body: { ...payload, publicationMode: "immediate" },
+    });
+    assert(first.type === "json");
+
+    const second = await fragment.callRoute("POST", "/uploads", {
+      body: { ...payload, publicationMode: "batch" },
+    });
+
+    assert(second.type === "error");
+    assert(second.status === 409);
+    assert(second.error.code === "UPLOAD_ALREADY_ACTIVE");
     expect(initUpload).toHaveBeenCalledTimes(2);
   });
 
@@ -257,6 +466,38 @@ describe("upload fragment direct single flows", () => {
     assert(second.status === 409);
     assert(second.error.code === "UPLOAD_ALREADY_ACTIVE");
     expect(initUpload).toHaveBeenCalledTimes(2);
+  });
+
+  it("omits lifecycle timestamps from publication mutation results", async () => {
+    const { fragment } = build.fragments.upload;
+    const created = await fragment.callRoute("POST", "/uploads", {
+      body: {
+        fileKey: "files/direct/no-mutation-timestamps.txt",
+        filename: "no-mutation-timestamps.txt",
+        sizeBytes: 2,
+        contentType: "text/plain",
+      },
+    });
+    assert(created.type === "json");
+
+    const completed = await fragment.callRoute("POST", "/uploads/:uploadId/complete", {
+      pathParams: { uploadId: created.data.uploadId },
+      body: {},
+    });
+    assert(completed.type === "json");
+    assert(completed.data.kind === "published");
+    expect(completed.data.file).not.toHaveProperty("createdAt");
+    expect(completed.data.file).not.toHaveProperty("updatedAt");
+    expect(completed.data.file).not.toHaveProperty("completedAt");
+    expect(completed.data.file).not.toHaveProperty("deletedAt");
+
+    const file = await fragment.callRoute("GET", "/files/by-key", {
+      query: { provider: adapter.name, key: created.data.fileKey },
+    });
+    assert(file.type === "json");
+    expect(file.data.createdAt).toEqual(expect.any(String));
+    expect(file.data.updatedAt).toEqual(expect.any(String));
+    expect(file.data.completedAt).toEqual(expect.any(String));
   });
 
   it("rejects completing an upload twice", async () => {
@@ -388,7 +629,8 @@ describe("upload fragment direct single flows", () => {
     });
 
     assert(completeResponse.type === "json");
-    assert(completeResponse.data.status === "ready");
+    assert(completeResponse.data.kind === "published");
+    assert(completeResponse.data.file.status === "ready");
 
     const currentFile = await (async () => {
       const uow = db
@@ -467,7 +709,8 @@ describe("upload fragment direct single flows", () => {
     });
 
     assert(secondComplete.type === "json");
-    assert(secondComplete.data.filename === "second.txt");
+    assert(secondComplete.data.kind === "published");
+    assert(secondComplete.data.file.filename === "second.txt");
 
     const currentFile = await (async () => {
       const uow = db
@@ -545,7 +788,7 @@ describe("upload fragment direct single flows", () => {
     const checksumAdapter = {
       ...adapter,
       finalizeUpload: async () => {
-        throw new Error("INVALID_CHECKSUM");
+        throw new UploadStorageError("INVALID_CHECKSUM", "The checksum does not match.");
       },
     } satisfies StorageAdapter;
 
@@ -1428,7 +1671,8 @@ describe("upload fragment direct single flows", () => {
     });
 
     assert(completedRetry.type === "json");
-    assert(completedRetry.data.status === "ready");
+    assert(completedRetry.data.kind === "published");
+    assert(completedRetry.data.file.status === "ready");
 
     const internalFragment = getInternalFragment(build.test.adapter);
     const hooks = await internalFragment.inContext(async function () {
@@ -1560,7 +1804,8 @@ describe("upload fragment direct multipart flows", () => {
     });
 
     assert(completeResponse.type === "json");
-    assert(completeResponse.data.status === "ready");
+    assert(completeResponse.data.kind === "published");
+    assert(completeResponse.data.file.status === "ready");
     expect(completeMultipartUpload).toHaveBeenCalledWith({
       storageKey: expect.stringMatching(
         new RegExp(
@@ -1643,7 +1888,8 @@ describe("upload fragment direct multipart flows", () => {
     });
 
     assert(secondComplete.type === "json");
-    assert(secondComplete.data.filename === "movie-v2.mp4");
+    assert(secondComplete.data.kind === "published");
+    assert(secondComplete.data.file.filename === "movie-v2.mp4");
 
     const currentFile = await (async () => {
       const uow = db
@@ -1691,6 +1937,28 @@ describe("upload fragment proxy streaming", () => {
     await fs.rm(rootDir, { recursive: true, force: true });
   });
 
+  it("rejects legacy proxy completion-mode query parameters", async () => {
+    const { fragment } = build.fragments.upload;
+    const created = await fragment.callRoute("POST", "/uploads", {
+      body: {
+        fileKey: "files/proxy/legacy-completion-mode.txt",
+        filename: "legacy-completion-mode.txt",
+        sizeBytes: 5,
+        contentType: "text/plain",
+      },
+    });
+    assert(created.type === "json");
+
+    const response = await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
+      pathParams: { uploadId: created.data.uploadId },
+      query: { completionMode: "prepared" } as never,
+      body: new Blob(["hello"]),
+    });
+
+    assert(response.type === "error");
+    assert(response.status === 400);
+  });
+
   it("streams proxy uploads to storage", async () => {
     const { fragment } = build.fragments.upload;
     const createResponse = await fragment.callRoute("POST", "/uploads", {
@@ -1717,6 +1985,7 @@ describe("upload fragment proxy streaming", () => {
     });
 
     assert(uploadResponse.type === "json");
-    assert(uploadResponse.data.status === "ready");
+    assert(uploadResponse.data.kind === "published");
+    assert(uploadResponse.data.file.status === "ready");
   });
 });

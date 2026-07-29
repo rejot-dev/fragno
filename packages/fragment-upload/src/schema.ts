@@ -1,4 +1,8 @@
-import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
+import { column, idColumn, referenceColumn, schema, type Column } from "@fragno-dev/db/schema";
+
+import type { UploadChecksum } from "./storage/types";
+
+const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
 
 export const uploadSchema = schema("upload", (s) => {
   return s
@@ -12,11 +16,11 @@ export const uploadSchema = schema("upload", (s) => {
           .addColumn("filename", column("string"))
           .addColumn("sizeBytes", column("bigint"))
           .addColumn("contentType", column("string"))
-          .addColumn("checksum", column("json").nullable())
+          .addColumn("checksum", jsonColumn<UploadChecksum>().nullable())
           // "private" | "public" | "unlisted"
           .addColumn("visibility", column("string"))
-          .addColumn("tags", column("json").nullable())
-          .addColumn("metadata", column("json").nullable())
+          .addColumn("tags", jsonColumn<string[]>().nullable())
+          .addColumn("metadata", jsonColumn<Record<string, unknown>>().nullable())
           // "ready" | "deleted"
           .addColumn("status", column("string"))
           .addColumn("objectKey", column("string"))
@@ -58,19 +62,19 @@ export const uploadSchema = schema("upload", (s) => {
           .addColumn("filename", column("string"))
           .addColumn("expectedSizeBytes", column("bigint"))
           .addColumn("contentType", column("string"))
-          .addColumn("checksum", column("json").nullable())
+          .addColumn("checksum", jsonColumn<UploadChecksum>().nullable())
           // "private" | "public" | "unlisted"
           .addColumn("visibility", column("string"))
-          .addColumn("tags", column("json").nullable())
-          .addColumn("metadata", column("json").nullable())
-          // "created" | "in_progress" | "completed" | "aborted" | "failed" | "expired"
+          .addColumn("tags", jsonColumn<string[]>().nullable())
+          .addColumn("metadata", jsonColumn<Record<string, unknown>>().nullable())
+          // "created" | "in_progress" | "prepared" | "completed" | "aborted" | "failed" | "expired"
           .addColumn("status", column("string"))
           // "direct-single" | "direct-multipart" | "proxy"
           .addColumn("strategy", column("string"))
           .addColumn("objectKey", column("string"))
           .addColumn("storageUploadId", column("string").nullable())
           .addColumn("uploadUrl", column("string").nullable())
-          .addColumn("uploadHeaders", column("json").nullable())
+          .addColumn("uploadHeaders", jsonColumn<Record<string, string>>().nullable())
           .addColumn("bytesUploaded", column("bigint").defaultTo(0n))
           .addColumn("partsUploaded", column("integer").defaultTo(0))
           .addColumn("partSizeBytes", column("integer").nullable())
@@ -87,6 +91,13 @@ export const uploadSchema = schema("upload", (s) => {
           .addColumn("errorCode", column("string").nullable())
           .addColumn("errorMessage", column("string").nullable())
           .createIndex("idx_upload_provider_key", ["provider", "key"])
+          .createIndex("idx_upload_provider_key_status_expiresAt", [
+            "provider",
+            "key",
+            "status",
+            "expiresAt",
+          ])
+          .createIndex("idx_upload_id_expiresAt", ["id", "expiresAt"])
           .createIndex("idx_upload_status", ["status"])
           .createIndex("idx_upload_expiresAt", ["expiresAt"])
       );
@@ -154,10 +165,14 @@ export const uploadSchema = schema("upload", (s) => {
         .addColumn("provider", column("string"))
         .addColumn("key", column("string"))
         .addColumn("term", column("string"))
-        .addColumn("positions", column("json"))
+        .addColumn("positions", jsonColumn<number[]>())
         .addColumn("count", column("integer"))
         .createIndex("idx_file_text_term_provider_term", ["provider", "term"])
         .createIndex("idx_file_text_term_provider_term_key", ["provider", "term", "key"])
         .createIndex("idx_file_text_term_document", ["documentId"]);
+    })
+    .alterTable("upload", (t) => {
+      // "immediate" | "batch"
+      return t.addColumn("publicationMode", column("string").defaultTo("immediate"));
     });
 });

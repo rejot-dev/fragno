@@ -1,6 +1,11 @@
 import type { UploadChecksum } from "../storage/types";
 import type { StateSearchOptions, StateTextMatch } from "../text-index";
-import type { FileMetadata, FileVisibility, UploadStrategy } from "../types";
+import type {
+  FileVisibility,
+  UploadCompletionResult,
+  UploadPublicationMode,
+  UploadStrategy,
+} from "../types";
 
 export type UploadProgress = {
   bytesUploaded: number;
@@ -19,6 +24,7 @@ export type CreateUploadAndTransferOptions = {
   visibility?: FileVisibility;
   uploaderId?: string;
   metadata?: Record<string, unknown>;
+  publicationMode?: UploadPublicationMode;
   onProgress?: (progress: UploadProgress) => void;
 };
 
@@ -62,6 +68,7 @@ export type UploadCreateResponse = {
   provider: string;
   status: "created" | "in_progress";
   strategy: UploadStrategy;
+  publicationMode: UploadPublicationMode;
   expiresAt: string;
   upload: {
     mode: "single" | "multipart";
@@ -80,11 +87,13 @@ export type UploadCreateResponse = {
   };
 };
 
+export type UploadTransferResult = { upload: UploadCreateResponse } & UploadCompletionResult;
+
 export type UploadHelpers = {
   createUploadAndTransfer: (
     file: Blob,
     options: CreateUploadAndTransferOptions,
-  ) => Promise<{ upload: UploadCreateResponse; file: FileMetadata }>;
+  ) => Promise<UploadTransferResult>;
   downloadFile: (fileKey: string, options: DownloadFileOptions) => Promise<Response>;
   searchFileCandidates: (
     glob: string,
@@ -379,6 +388,7 @@ export const createUploadHelpers = (input: {
         visibility: options.visibility,
         uploaderId: options.uploaderId,
         metadata: options.metadata,
+        publicationMode: options.publicationMode,
       }),
     });
 
@@ -415,13 +425,13 @@ export const createUploadHelpers = (input: {
         options.onProgress,
       );
 
-      const fileMetadata = await fetchJson<FileMetadata>(upload.upload.completeEndpoint, {
+      const completion = await fetchJson<UploadCompletionResult>(upload.upload.completeEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
 
-      return { upload, file: fileMetadata };
+      return { upload, ...completion };
     }
 
     if (upload.strategy === "direct-multipart") {
@@ -508,13 +518,13 @@ export const createUploadHelpers = (input: {
         body: JSON.stringify({ parts: completedParts }),
       });
 
-      const fileMetadata = await fetchJson<FileMetadata>(upload.upload.completeEndpoint, {
+      const completion = await fetchJson<UploadCompletionResult>(upload.upload.completeEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ parts: completionParts }),
       });
 
-      return { upload, file: fileMetadata };
+      return { upload, ...completion };
     }
 
     if (!upload.upload.contentEndpoint) {
@@ -609,8 +619,8 @@ export const createUploadHelpers = (input: {
         partsUploaded: 0,
       });
 
-      const fallbackMetadata = (await fallbackResponse.json()) as FileMetadata;
-      return { upload, file: fallbackMetadata };
+      const completion = (await fallbackResponse.json()) as UploadCompletionResult;
+      return { upload, ...completion };
     }
 
     if (!proxyResponse.ok) {
@@ -622,9 +632,9 @@ export const createUploadHelpers = (input: {
       );
     }
 
-    const proxyMetadata = (await proxyResponse.json()) as FileMetadata;
+    const completion = (await proxyResponse.json()) as UploadCompletionResult;
 
-    return { upload, file: proxyMetadata };
+    return { upload, ...completion };
   };
 
   const buildSearchPayload = (glob: string, query: string, options: SearchFilesOptions) => {

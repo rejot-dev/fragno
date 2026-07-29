@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { instantiate } from "@fragno-dev/core";
+import { getInternalFragment } from "@fragno-dev/db";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
 import { uploadFragmentDefinition } from "../definition";
@@ -20,7 +21,7 @@ describe("upload file routes", async () => {
   const provider = storage.name;
 
   const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
-    .withTestAdapter({ type: "drizzle-pglite" })
+    .withTestAdapter({ type: "kysely-sqlite" })
     .withDbRoundtripGuard({ maxRoundtrips: 2 })
     .withFragment(
       "upload",
@@ -63,6 +64,488 @@ describe("upload file routes", async () => {
     return form;
   };
 
+  const expectMutationResultWithoutTimestamps = (result: object) => {
+    expect(result).not.toHaveProperty("createdAt");
+    expect(result).not.toHaveProperty("updatedAt");
+    expect(result).not.toHaveProperty("completedAt");
+    expect(result).not.toHaveProperty("deletedAt");
+  };
+
+  const listUploadHooks = async () => {
+    const internalFragment = getInternalFragment(testContext.adapter);
+    return await internalFragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () => [internalFragment.services.hookService.getHooksByNamespace("upload")] as const,
+        )
+        .transform(({ serviceResult: [result] }) => result)
+        .execute();
+    });
+  };
+
+  const prepareProxyFile = async (fileKey: string, content: string) => {
+    const created = await fragment.callRoute("POST", "/uploads", {
+      body: {
+        provider,
+        fileKey,
+        filename: path.basename(fileKey),
+        sizeBytes: Buffer.byteLength(content),
+        contentType: "text/plain",
+        publicationMode: "batch",
+      },
+    });
+    assert(created.type === "json");
+
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(content));
+        controller.close();
+      },
+    });
+    const prepared = await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
+      pathParams: { uploadId: created.data.uploadId },
+      body: stream,
+    });
+    assert(prepared.type === "json");
+    assert(prepared.data.kind === "prepared");
+    return prepared.data.write;
+  };
+
+  it("publishes prepared proxy uploads atomically and replays the committed batch", async () => {
+    const first = await prepareProxyFile("prepared/first.txt", "first-v1");
+    const second = await prepareProxyFile("prepared/second.txt", "second-v1");
+
+    for (const fileKey of [first.fileKey, second.fileKey]) {
+      const invisible = await fragment.callRoute("GET", "/files/by-key", {
+        query: { provider, key: fileKey },
+      });
+      assert(invisible.type === "error");
+      assert(invisible.error.code === "FILE_NOT_FOUND");
+    }
+
+    const entries = [first, second].map((prepared) => ({
+      kind: "write" as const,
+      uploadId: prepared.uploadId,
+      precondition: { kind: "absent" as const },
+    }));
+    const committed = await fragment.callRoute("POST", "/files/commit-prepared", {
+      body: { entries },
+    });
+    assert(committed.type === "json");
+    expect(committed.data.files.map((file) => [file.fileKey, file.revision])).toEqual([
+      [first.fileKey, 0],
+      [second.fileKey, 0],
+    ]);
+    committed.data.files.forEach(expectMutationResultWithoutTimestamps);
+
+    const replayed = await fragment.callRoute("POST", "/files/commit-prepared", {
+      body: { entries },
+    });
+    assert(replayed.type === "json");
+    expect(replayed.data.files.map((file) => [file.fileKey, file.revision])).toEqual([
+      [first.fileKey, 0],
+      [second.fileKey, 0],
+    ]);
+    replayed.data.files.forEach(expectMutationResultWithoutTimestamps);
+
+    const firstContent = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+      query: { provider, key: first.fileKey },
+    });
+    const secondContent = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+      query: { provider, key: second.fileKey },
+    });
+    assert((await firstContent.text()) === "first-v1");
+    assert((await secondContent.text()) === "second-v1");
+  });
+
+  it("leaves every file unchanged when a prepared batch assertion fails", async () => {
+    const stableKey = "prepared/stable.txt";
+    const changedKey = "prepared/changed.txt";
+    for (const [fileKey, content] of [
+      [stableKey, "stable-v1"],
+      [changedKey, "changed-v1"],
+    ] as const) {
+      const created = await fragment.callRoute("POST", "/files", {
+        body: createFileForm({ content, filename: path.basename(fileKey), fileKey }),
+      });
+      assert(created.type === "json");
+    }
+
+    const stable = await fragment.callRoute("GET", "/files/by-key", {
+      query: { provider, key: stableKey },
+    });
+    const changed = await fragment.callRoute("GET", "/files/by-key", {
+      query: { provider, key: changedKey },
+    });
+    assert(stable.type === "json");
+    assert(changed.type === "json");
+
+    const prepared = await prepareProxyFile(changedKey, "changed-v2");
+    const rejected = await fragment.callRoute("POST", "/files/commit-prepared", {
+      body: {
+        entries: [
+          {
+            kind: "write",
+            uploadId: prepared.uploadId,
+            precondition: { kind: "revision", revision: changed.data.revision },
+          },
+          {
+            kind: "assert",
+            provider,
+            fileKey: stableKey,
+            precondition: { kind: "revision", revision: stable.data.revision + 1 },
+          },
+        ],
+      },
+    });
+    assert(rejected.type === "error");
+    assert(rejected.status === 412);
+    assert(rejected.error.code === "FILE_PRECONDITION_FAILED");
+
+    for (const [fileKey, content] of [
+      [stableKey, "stable-v1"],
+      [changedKey, "changed-v1"],
+    ] as const) {
+      const response = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+        query: { provider, key: fileKey },
+      });
+      expect(await response.text()).toBe(content);
+    }
+  });
+
+  it("commits a prepared write with a matching read-only assertion", async () => {
+    const observedKey = "prepared/observed.txt";
+    const observed = await fragment.callRoute("POST", "/files", {
+      body: createFileForm({
+        content: "observed",
+        filename: "observed.txt",
+        fileKey: observedKey,
+      }),
+    });
+    assert(observed.type === "json");
+    const observedSnapshot = await fragment.callRoute("GET", "/files/by-key", {
+      query: { provider, key: observedKey },
+    });
+    assert(observedSnapshot.type === "json");
+    const prepared = await prepareProxyFile("prepared/asserted-write.txt", "new");
+
+    const committed = await fragment.callRoute("POST", "/files/commit-prepared", {
+      body: {
+        entries: [
+          {
+            kind: "write",
+            uploadId: prepared.uploadId,
+            precondition: { kind: "absent" },
+          },
+          {
+            kind: "assert",
+            provider,
+            fileKey: observedKey,
+            precondition: { kind: "revision", revision: observedSnapshot.data.revision },
+          },
+        ],
+      },
+    });
+    assert(committed.type === "json");
+    expect(committed.data.files.map((file) => file.fileKey)).toEqual([prepared.fileKey]);
+  });
+
+  it("accepts a mixture of exactly published and still-prepared writes", async () => {
+    const alreadyCommitted = await prepareProxyFile("prepared/mixed-a.txt", "a");
+    const stillPrepared = await prepareProxyFile("prepared/mixed-b.txt", "b");
+    const firstCommit = await fragment.callRoute("POST", "/files/commit-prepared", {
+      body: {
+        entries: [
+          {
+            kind: "write",
+            uploadId: alreadyCommitted.uploadId,
+            precondition: { kind: "absent" },
+          },
+        ],
+      },
+    });
+    assert(firstCommit.type === "json");
+
+    const mixedCommit = await fragment.callRoute("POST", "/files/commit-prepared", {
+      body: {
+        entries: [
+          {
+            kind: "write",
+            uploadId: alreadyCommitted.uploadId,
+            precondition: { kind: "absent" },
+          },
+          {
+            kind: "write",
+            uploadId: stillPrepared.uploadId,
+            precondition: { kind: "absent" },
+          },
+        ],
+      },
+    });
+    assert(mixedCommit.type === "json");
+    expect(mixedCommit.data.files.map((file) => [file.fileKey, file.revision])).toEqual([
+      [alreadyCommitted.fileKey, 0],
+      [stillPrepared.fileKey, 0],
+    ]);
+  });
+
+  it("keeps the published object visible when an unpublished replacement is aborted", async () => {
+    const fileKey = "prepared/abort-replacement.txt";
+    const created = await fragment.callRoute("POST", "/files", {
+      body: createFileForm({ content: "published", filename: "current.txt", fileKey }),
+    });
+    assert(created.type === "json");
+    const prepared = await prepareProxyFile(fileKey, "unpublished");
+
+    const aborted = await fragment.callRoute("POST", "/uploads/:uploadId/abort", {
+      pathParams: { uploadId: prepared.uploadId },
+    });
+    assert(aborted.type === "json");
+    await drainDurableHooks(fragment);
+
+    const content = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+      query: { provider, key: fileKey },
+    });
+    assert((await content.text()) === "published");
+  });
+
+  it("rejects aborting a prepared upload after its batch commit wins", async () => {
+    const prepared = await prepareProxyFile("prepared/committed-before-abort.txt", "committed");
+    const committed = await fragment.callRoute("POST", "/files/commit-prepared", {
+      body: {
+        entries: [
+          {
+            kind: "write",
+            uploadId: prepared.uploadId,
+            precondition: { kind: "absent" },
+          },
+        ],
+      },
+    });
+    assert(committed.type === "json");
+
+    const aborted = await fragment.callRoute("POST", "/uploads/:uploadId/abort", {
+      pathParams: { uploadId: prepared.uploadId },
+    });
+    assert(aborted.type === "error");
+    assert(aborted.status === 409);
+    assert(aborted.error.code === "UPLOAD_INVALID_STATE");
+
+    const content = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+      query: { provider, key: prepared.fileKey },
+    });
+    assert(content.status === 200);
+    assert((await content.text()) === "committed");
+  });
+
+  it("queues cleanup and ready effects only when prepared replacements commit", async () => {
+    const fileKeys = ["prepared/hooks-a.txt", "prepared/hooks-b.txt"];
+    for (const fileKey of fileKeys) {
+      const created = await fragment.callRoute("POST", "/files", {
+        body: createFileForm({ content: "old", filename: path.basename(fileKey), fileKey }),
+      });
+      assert(created.type === "json");
+    }
+    const snapshots = await Promise.all(
+      fileKeys.map(async (fileKey) => {
+        const response = await fragment.callRoute("GET", "/files/by-key", {
+          query: { provider, key: fileKey },
+        });
+        assert(response.type === "json");
+        return response.data;
+      }),
+    );
+    const baselineHooks = await listUploadHooks();
+    const baselineEffectCount = baselineHooks.filter((hook) =>
+      ["cleanupStorageObject", "onFileReady", "onFileTextIndexRequested"].includes(hook.hookName),
+    ).length;
+
+    const prepared = await Promise.all(
+      fileKeys.map((fileKey, index) => prepareProxyFile(fileKey, `new-${index}`)),
+    );
+    const afterPrepareHooks = await listUploadHooks();
+    expect(
+      afterPrepareHooks.filter((hook) =>
+        ["cleanupStorageObject", "onFileReady", "onFileTextIndexRequested"].includes(hook.hookName),
+      ),
+    ).toHaveLength(baselineEffectCount);
+
+    const committed = await fragment.callRoute("POST", "/files/commit-prepared", {
+      body: {
+        entries: prepared.map((upload, index) => ({
+          kind: "write" as const,
+          uploadId: upload.uploadId,
+          precondition: {
+            kind: "revision" as const,
+            revision: snapshots[index]?.revision ?? -1,
+          },
+        })),
+      },
+    });
+    assert(committed.type === "json");
+
+    const committedHooks = await listUploadHooks();
+    const newlyQueuedHooks = committedHooks.slice(baselineHooks.length);
+    expect(
+      newlyQueuedHooks.filter((hook) => hook.hookName === "cleanupStorageObject"),
+    ).toHaveLength(2);
+    expect(newlyQueuedHooks.filter((hook) => hook.hookName === "onFileReady")).toHaveLength(2);
+    expect(
+      newlyQueuedHooks.filter((hook) => hook.hookName === "onFileTextIndexRequested"),
+    ).toHaveLength(2);
+  });
+
+  it("rejects duplicate prepared upload identities and destinations", async () => {
+    const first = await prepareProxyFile("prepared/duplicate.txt", "first");
+    const duplicateUploadId = await fragment.callRoute("POST", "/files/commit-prepared", {
+      body: {
+        entries: [
+          { kind: "write", uploadId: first.uploadId, precondition: { kind: "absent" } },
+          { kind: "write", uploadId: first.uploadId, precondition: { kind: "absent" } },
+        ],
+      },
+    });
+    assert(duplicateUploadId.type === "error");
+    assert(duplicateUploadId.status === 400);
+    assert(duplicateUploadId.error.code === "INVALID_REQUEST");
+
+    const second = await prepareProxyFile("prepared/duplicate.txt", "second");
+    const duplicateDestination = await fragment.callRoute("POST", "/files/commit-prepared", {
+      body: {
+        entries: [
+          { kind: "write", uploadId: first.uploadId, precondition: { kind: "absent" } },
+          { kind: "write", uploadId: second.uploadId, precondition: { kind: "absent" } },
+        ],
+      },
+    });
+    assert(duplicateDestination.type === "error");
+    assert(duplicateDestination.status === 400);
+    assert(duplicateDestination.error.code === "INVALID_REQUEST");
+  });
+
+  it("rejects the losing prepared batch without publishing any of its objects", async () => {
+    const firstBatch = [
+      await prepareProxyFile("prepared/concurrent-a.txt", "first-a"),
+      await prepareProxyFile("prepared/concurrent-b.txt", "first-b"),
+    ];
+    const secondBatch = [
+      await prepareProxyFile("prepared/concurrent-a.txt", "second-a"),
+      await prepareProxyFile("prepared/concurrent-b.txt", "second-b"),
+    ];
+    const toEntries = (batch: typeof firstBatch) =>
+      batch.map((prepared) => ({
+        kind: "write" as const,
+        uploadId: prepared.uploadId,
+        precondition: { kind: "absent" as const },
+      }));
+
+    const winner = await fragment.callRoute("POST", "/files/commit-prepared", {
+      body: { entries: toEntries(firstBatch) },
+    });
+    assert(winner.type === "json");
+    const loser = await fragment.callRoute("POST", "/files/commit-prepared", {
+      body: { entries: toEntries(secondBatch) },
+    });
+    assert(loser.type === "error");
+    assert(loser.status === 412);
+    assert(loser.error.code === "FILE_PRECONDITION_FAILED");
+
+    for (const [fileKey, content] of [
+      ["prepared/concurrent-a.txt", "first-a"],
+      ["prepared/concurrent-b.txt", "first-b"],
+    ] as const) {
+      const response = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+        query: { provider, key: fileKey },
+      });
+      expect(await response.text()).toBe(content);
+    }
+  });
+
+  it("retries a unique create race and re-evaluates the original absence precondition", async () => {
+    const attempts = [
+      await prepareProxyFile("prepared/unique-race.txt", "first"),
+      await prepareProxyFile("prepared/unique-race.txt", "second"),
+    ];
+    const responses = await Promise.all(
+      attempts.map((prepared) =>
+        fragment.callRoute("POST", "/files/commit-prepared", {
+          body: {
+            entries: [
+              {
+                kind: "write",
+                uploadId: prepared.uploadId,
+                precondition: { kind: "absent" },
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    const successfulIndex = responses.findIndex((response) => response.type === "json");
+    const failures = responses.filter((response) => response.type === "error");
+    expect(successfulIndex).not.toBe(-1);
+    expect(failures).toHaveLength(1);
+    const failure = failures[0];
+    assert(failure?.type === "error");
+    assert(failure.status === 412);
+    assert(failure.error.code === "FILE_PRECONDITION_FAILED");
+
+    const content = await fragment.callRouteRaw("GET", "/files/by-key/content", {
+      query: { provider, key: "prepared/unique-race.txt" },
+    });
+    expect(await content.text()).toBe(successfulIndex === 0 ? "first" : "second");
+  });
+
+  it("rejects unknown, active, failed, aborted, and expired uploads", async () => {
+    const active = await fragment.callRoute("POST", "/uploads", {
+      body: {
+        provider,
+        fileKey: "prepared/active.txt",
+        filename: "active.txt",
+        sizeBytes: 1,
+        contentType: "text/plain",
+      },
+    });
+    assert(active.type === "json");
+    const failed = await prepareProxyFile("prepared/failed.txt", "failed");
+    const aborted = await prepareProxyFile("prepared/aborted.txt", "aborted");
+    const expired = await prepareProxyFile("prepared/expired.txt", "expired");
+
+    for (const [uploadId, status, expiresAt] of [
+      [failed.uploadId, "failed", undefined],
+      [aborted.uploadId, "aborted", undefined],
+      [expired.uploadId, "prepared", new Date(Date.now() - 1_000)],
+    ] as const) {
+      const uow = db.createUnitOfWork("write").forSchema(uploadSchema);
+      uow.update("upload", uploadId, (b) => b.set({ status, ...(expiresAt ? { expiresAt } : {}) }));
+      assert((await uow.executeMutations()).success);
+    }
+
+    const cases = [
+      { uploadId: "missing-upload", code: "UPLOAD_NOT_FOUND", status: 404 },
+      { uploadId: active.data.uploadId, code: "UPLOAD_INVALID_STATE", status: 409 },
+      { uploadId: failed.uploadId, code: "UPLOAD_INVALID_STATE", status: 409 },
+      { uploadId: aborted.uploadId, code: "UPLOAD_INVALID_STATE", status: 409 },
+      { uploadId: expired.uploadId, code: "UPLOAD_EXPIRED", status: 410 },
+    ];
+    for (const expected of cases) {
+      const response = await fragment.callRoute("POST", "/files/commit-prepared", {
+        body: {
+          entries: [
+            {
+              kind: "write",
+              uploadId: expected.uploadId,
+              precondition: { kind: "absent" },
+            },
+          ],
+        },
+      });
+      assert(response.type === "error");
+      expect(response.status).toBe(expected.status);
+      expect(response.error.code).toBe(expected.code);
+    }
+  });
+
   it("POST /files uploads and allows reading back content", async () => {
     const form = new FormData();
     const file = new File([Buffer.from("hello")], "hello.txt", {
@@ -78,6 +561,7 @@ describe("upload file routes", async () => {
     assert(response.type === "json");
     assert(response.status === 200);
     assert(response.data.status === "ready");
+    expectMutationResultWithoutTimestamps(response.data);
     const { fileKey } = response.data;
 
     const getResponse = await fragment.callRoute("GET", "/files/by-key", {
@@ -124,6 +608,7 @@ describe("upload file routes", async () => {
     });
     assert(updateResponse.type === "json");
     assert(updateResponse.data.filename === "renamed.txt");
+    expectMutationResultWithoutTimestamps(updateResponse.data);
 
     const downloadResponse = await fragment.callRoute("GET", "/files/by-key/download-url", {
       query: { provider: providerAlias, key: fileKey },
@@ -542,15 +1027,8 @@ describe("upload file routes", async () => {
       deleteObject: async () => undefined,
       getDownloadUrl,
     } satisfies StorageAdapter;
-    const dateNowSpy = vi.spyOn(Date, "now").mockImplementation(
-      (
-        (now) => () =>
-          now++
-      )(Date.UTC(2026, 2, 19, 12, 0, 0, 0)),
-    );
-
     const build = await buildDatabaseFragmentsTest()
-      .withTestAdapter({ type: "drizzle-pglite" })
+      .withTestAdapter({ type: "kysely-sqlite" })
       .withDbRoundtripGuard({ maxRoundtrips: 2 })
       .withFragment(
         "upload",
@@ -638,7 +1116,6 @@ describe("upload file routes", async () => {
         }),
       );
     } finally {
-      dateNowSpy.mockRestore();
       await build.test.cleanup();
     }
   });

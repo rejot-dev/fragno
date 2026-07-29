@@ -123,7 +123,10 @@ describe("upload client helpers", () => {
           { partNumber: 2, etag: "etag-2" },
           { partNumber: 3, etag: "etag-3" },
         ]);
-        return jsonResponse({ fileKey: "files.users.1.avatar", status: "ready" });
+        return jsonResponse({
+          kind: "published",
+          file: { fileKey: "files.users.1.avatar", status: "ready" },
+        });
       }
 
       if (url.startsWith("https://storage.local/part-")) {
@@ -150,6 +153,7 @@ describe("upload client helpers", () => {
       onProgress: (value) => progress.push(value.bytesUploaded),
     });
 
+    assert(result.kind === "published");
     assert(result.file.fileKey === "files.users.1.avatar");
     expect(progress).toEqual([4, 8, 10]);
     expect(calls).toContain(`POST http://local${uploadRoutePath("123", "/progress")}`);
@@ -194,7 +198,10 @@ describe("upload client helpers", () => {
         assert(getHeaderValue(init?.headers, "content-type") === "application/octet-stream");
         const totalBytes = await readStream(_init?.body as ReadableStream<Uint8Array>);
         expect(totalBytes).toBe(5);
-        return jsonResponse({ fileKey: "files.assets.banner", status: "ready" });
+        return jsonResponse({
+          kind: "published",
+          file: { fileKey: "files.assets.banner", status: "ready" },
+        });
       }
 
       return new Response(null, { status: 404 });
@@ -213,12 +220,78 @@ describe("upload client helpers", () => {
       onProgress: (value) => progress.push(value.bytesUploaded),
     });
 
+    assert(result.kind === "published");
     assert(result.file.fileKey === "files.assets.banner");
     assert(progress[progress.length - 1] === 5);
   });
 
-  it("returns file metadata date fields as strings", async () => {
-    const now = new Date("2024-01-01T12:00:00.000Z").toISOString();
+  it("persists batch publication intent and returns a prepared write", async () => {
+    const expiresAt = new Date("2027-01-01T00:00:00.000Z").toISOString();
+
+    const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+
+      if (url.endsWith("/uploads")) {
+        const body = JSON.parse(init?.body as string);
+        assert(body.publicationMode === "batch");
+        return jsonResponse({
+          uploadId: "prepared-proxy",
+          fileKey: "files/prepared.txt",
+          provider: TEST_PROVIDER,
+          status: "created",
+          strategy: "proxy",
+          publicationMode: "batch",
+          expiresAt,
+          upload: {
+            mode: "single",
+            transport: "proxy",
+            statusEndpoint: uploadRoutePath("prepared-proxy"),
+            progressEndpoint: uploadRoutePath("prepared-proxy", "/progress"),
+            completeEndpoint: uploadRoutePath("prepared-proxy", "/complete"),
+            abortEndpoint: uploadRoutePath("prepared-proxy", "/abort"),
+            contentEndpoint: uploadRoutePath("prepared-proxy", "/content"),
+          },
+        });
+      }
+
+      if (url.endsWith(uploadRoutePath("prepared-proxy", "/content"))) {
+        return jsonResponse({
+          kind: "prepared",
+          write: {
+            uploadId: "prepared-proxy",
+            provider: TEST_PROVIDER,
+            fileKey: "files/prepared.txt",
+            objectKey: "objects/files/prepared.txt/version-1",
+            sizeBytes: 8,
+            contentType: "text/plain",
+            checksum: null,
+            expiresAt,
+          },
+        });
+      }
+
+      return new Response(null, { status: 404 });
+    };
+
+    const helpers = createUploadHelpers({
+      buildUrl: (path) => `http://local${path}`,
+      fetcher: fetcher as typeof fetch,
+    });
+
+    const result = await helpers.createUploadAndTransfer(new Blob(["prepared"]), {
+      provider: TEST_PROVIDER,
+      fileKey: "files/prepared.txt",
+      publicationMode: "batch",
+    });
+
+    assert(result.kind === "prepared");
+    expect(result.write).toMatchObject({
+      uploadId: "prepared-proxy",
+      fileKey: "files/prepared.txt",
+    });
+  });
+
+  it("omits lifecycle timestamps from upload mutation results", async () => {
     const calls: string[] = [];
 
     const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
@@ -258,24 +331,22 @@ describe("upload client helpers", () => {
 
       if (url.endsWith(uploadRoutePath("single-1", "/complete"))) {
         return jsonResponse({
-          fileKey: "files.sample.date",
-          fileKeyParts: ["files", "sample", "date"],
-          uploaderId: null,
-          filename: "sample.txt",
-          sizeBytes: 3,
-          contentType: "text/plain",
-          checksum: null,
-          visibility: "private",
-          tags: null,
-          metadata: null,
-          status: "ready",
-          storageProvider: "filesystem",
-          createdAt: now,
-          updatedAt: now,
-          completedAt: now,
-          deletedAt: null,
-          errorCode: null,
-          errorMessage: null,
+          kind: "published",
+          file: {
+            fileKey: "files.sample.date",
+            uploaderId: null,
+            filename: "sample.txt",
+            sizeBytes: 3,
+            contentType: "text/plain",
+            checksum: null,
+            visibility: "private",
+            tags: null,
+            metadata: null,
+            status: "ready",
+            provider: TEST_PROVIDER,
+            errorCode: null,
+            errorMessage: null,
+          },
         });
       }
 
@@ -294,10 +365,11 @@ describe("upload client helpers", () => {
       fileKey: "files.sample.date",
     });
 
-    assert(typeof result.file.createdAt === "string");
-    expect(result.file.createdAt).toBe(now);
-    expect(result.file.completedAt).toBe(now);
-    expect(result.file.deletedAt).toBeNull();
+    assert(result.kind === "published");
+    expect(result.file).not.toHaveProperty("createdAt");
+    expect(result.file).not.toHaveProperty("updatedAt");
+    expect(result.file).not.toHaveProperty("completedAt");
+    expect(result.file).not.toHaveProperty("deletedAt");
     expect(calls).toContain(`POST http://local${uploadRoutePath("single-1", "/progress")}`);
     expect(calls).toContain(`POST http://local${uploadRoutePath("single-1", "/complete")}`);
   });
@@ -340,7 +412,10 @@ describe("upload client helpers", () => {
         const init = _init as RequestInit & { duplex?: string };
         expect(init.duplex).toBeUndefined();
         expect(init.body).toBeInstanceOf(Blob);
-        return jsonResponse({ fileKey: "files.assets.logo", status: "ready" });
+        return jsonResponse({
+          kind: "published",
+          file: { fileKey: "files.assets.logo", status: "ready" },
+        });
       }
 
       return new Response(null, { status: 404 });
@@ -359,6 +434,7 @@ describe("upload client helpers", () => {
       onProgress: (value) => progress.push(value.bytesUploaded),
     });
 
+    assert(result.kind === "published");
     assert(result.file.fileKey === "files.assets.logo");
     assert(progress[progress.length - 1] === 5);
   });

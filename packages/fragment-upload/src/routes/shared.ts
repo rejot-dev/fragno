@@ -2,18 +2,33 @@ import type { TableToColumnValues } from "@fragno-dev/db/query";
 import { z } from "zod";
 
 import { uploadSchema } from "../schema";
-import type { FileMetadata } from "../types";
+import type { FileMetadata, FileMutationResult } from "../types";
 
 type FileRow = TableToColumnValues<typeof uploadSchema.tables.file>;
 type FileMetadataSource = Omit<FileRow, "id"> & { id?: unknown };
+type FileMutationResultSource = Pick<
+  FileRow,
+  | "key"
+  | "uploaderId"
+  | "filename"
+  | "sizeBytes"
+  | "contentType"
+  | "checksum"
+  | "visibility"
+  | "tags"
+  | "metadata"
+  | "status"
+  | "provider"
+  | "errorCode"
+  | "errorMessage"
+>;
 
-export const checksumSchema = z
-  .object({
-    algo: z.enum(["sha256", "md5"]),
-    value: z.string(),
-  })
-  .nullable()
-  .optional();
+const checksumValueSchema = z.object({
+  algo: z.enum(["sha256", "md5"]),
+  value: z.string(),
+});
+
+export const checksumSchema = checksumValueSchema.nullable().optional();
 
 export const providerNamespaceSchema = z
   .string()
@@ -61,8 +76,57 @@ export const fileMetadataSchema = z.object({
   errorMessage: z.string().nullable(),
 });
 
+export const fileMutationResultSchema = fileMetadataSchema.omit({
+  createdAt: true,
+  updatedAt: true,
+  completedAt: true,
+  deletedAt: true,
+});
+
 export const fileSnapshotSchema = fileMetadataSchema.extend({
   revision: z.number().int().nonnegative(),
+});
+
+export const fileMutationSnapshotSchema = fileMutationResultSchema.extend({
+  revision: z.number().int().nonnegative(),
+});
+
+export const preparedFileWriteSchema = z.object({
+  uploadId: z.string(),
+  provider: providerNamespaceSchema,
+  fileKey: z.string(),
+  objectKey: z.string(),
+  sizeBytes: z.number().int().nonnegative(),
+  contentType: z.string(),
+  checksum: checksumValueSchema.nullable(),
+  expiresAt: z.iso.datetime(),
+});
+
+export const uploadCompletionResultSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("published"),
+    file: fileMutationResultSchema,
+  }),
+  z.object({
+    kind: z.literal("prepared"),
+    write: preparedFileWriteSchema,
+  }),
+]);
+
+export const toFileMutationResult = (file: FileMutationResultSource): FileMutationResult => ({
+  fileKey: file.key,
+  uploaderId: file.uploaderId,
+  filename: file.filename,
+  sizeBytes: Number(file.sizeBytes),
+  contentType: file.contentType,
+  checksum: file.checksum,
+  visibility: file.visibility as FileMutationResult["visibility"],
+  tags: file.tags,
+  metadata: file.metadata,
+  status: file.status as FileMutationResult["status"],
+  provider: file.provider,
+  errorCode: file.errorCode,
+  errorMessage: file.errorMessage,
 });
 
 export const toFileMetadata = (file: FileMetadataSource): FileMetadata => {
@@ -74,10 +138,10 @@ export const toFileMetadata = (file: FileMetadataSource): FileMetadata => {
     filename: file.filename,
     sizeBytes: Number(file.sizeBytes),
     contentType: file.contentType,
-    checksum: file.checksum as FileMetadata["checksum"],
+    checksum: file.checksum,
     visibility: file.visibility as FileMetadata["visibility"],
-    tags: file.tags as FileMetadata["tags"],
-    metadata: file.metadata as FileMetadata["metadata"],
+    tags: file.tags,
+    metadata: file.metadata,
     status: file.status as FileMetadata["status"],
     provider: file.provider,
     createdAt: file.createdAt.toISOString(),

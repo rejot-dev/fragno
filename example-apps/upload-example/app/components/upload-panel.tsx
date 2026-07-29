@@ -113,6 +113,9 @@ export function UploadPanel({
         },
       });
 
+      if (result.kind !== "published") {
+        throw new Error("Interactive uploads must publish immediately.");
+      }
       setSuccess(`Uploaded ${result.file.fileKey}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { assertFileKey } from "../file-key";
+import { UploadStorageError } from "./errors";
 import { appendStorageObjectKeyVersionSegment } from "./object-key";
 import type { StorageAdapter, UploadChecksum } from "./types";
 
@@ -122,7 +123,7 @@ const normalizeChecksum = (checksum?: UploadChecksum | null) => {
   const raw = checksum.value ?? "";
   const buf = parseHex(raw, expectedBytes) ?? parseBase64(raw, expectedBytes);
   if (!buf) {
-    throw new Error("INVALID_CHECKSUM");
+    throw new UploadStorageError("INVALID_CHECKSUM", "The checksum encoding is invalid.");
   }
 
   return {
@@ -611,7 +612,10 @@ export function createS3CompatibleStorageAdapter(
         throw new Error("STORAGE_ERROR");
       }
       if (sizeBytes !== expectedSizeBytes) {
-        throw new Error("INVALID_CHECKSUM");
+        throw new UploadStorageError(
+          "INVALID_CHECKSUM",
+          "The uploaded object size does not match the expected size.",
+        );
       }
 
       const normalized = normalizeChecksum(checksum);
@@ -620,7 +624,10 @@ export function createS3CompatibleStorageAdapter(
           const etag = normalizeEtag(getHeaderValue(response.headers, "etag"));
           if (etag) {
             if (etag !== normalized.hex) {
-              throw new Error("INVALID_CHECKSUM");
+              throw new UploadStorageError(
+                "INVALID_CHECKSUM",
+                "The uploaded object checksum does not match the expected MD5 checksum.",
+              );
             }
           } else {
             const signedGet = await options.signer.sign({
@@ -636,7 +643,10 @@ export function createS3CompatibleStorageAdapter(
             }
             const computed = await computeChecksumFromResponse(getResponse, "md5");
             if (computed !== normalized.hex) {
-              throw new Error("INVALID_CHECKSUM");
+              throw new UploadStorageError(
+                "INVALID_CHECKSUM",
+                "The uploaded object checksum does not match the expected MD5 checksum.",
+              );
             }
           }
         } else {
@@ -644,7 +654,10 @@ export function createS3CompatibleStorageAdapter(
           if (checksumHeader) {
             const remote = parseBase64(checksumHeader, 32);
             if (!remote || remote.toString("base64") !== normalized.base64) {
-              throw new Error("INVALID_CHECKSUM");
+              throw new UploadStorageError(
+                "INVALID_CHECKSUM",
+                "The uploaded object checksum does not match the expected SHA-256 checksum.",
+              );
             }
           } else {
             const signedGet = await options.signer.sign({
@@ -660,7 +673,10 @@ export function createS3CompatibleStorageAdapter(
             }
             const computed = await computeChecksumFromResponse(getResponse, "sha256");
             if (computed !== normalized.hex) {
-              throw new Error("INVALID_CHECKSUM");
+              throw new UploadStorageError(
+                "INVALID_CHECKSUM",
+                "The uploaded object checksum does not match the expected SHA-256 checksum.",
+              );
             }
           }
         }

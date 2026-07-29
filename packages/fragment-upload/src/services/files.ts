@@ -7,6 +7,7 @@ import type {
 } from "../config";
 import { uploadSchema } from "../schema";
 import type { FileStatus } from "../types";
+import { UploadServiceError } from "./errors";
 
 export type FileByKeyInput = {
   provider: string;
@@ -84,7 +85,7 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
         )
         .transformRetrieve(([file]) => {
           if (!file) {
-            throw new Error("FILE_NOT_FOUND");
+            throw new UploadServiceError("FILE_NOT_FOUND", "The file does not exist.");
           }
           return file;
         })
@@ -173,7 +174,6 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
       fileByKey: FileByKeyInput,
       input: UpdateFileInput,
     ) {
-      const now = new Date();
       return this.serviceTx(uploadSchema)
         .retrieve((uow) =>
           uow.findFirst("file", (b) =>
@@ -184,20 +184,30 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
         )
         .mutate(({ uow, retrieveResult: [file] }) => {
           if (!file) {
-            throw new Error("FILE_NOT_FOUND");
+            throw new UploadServiceError("FILE_NOT_FOUND", "The file does not exist.");
           }
 
           if (file.status === "deleted") {
-            throw new Error("UPLOAD_INVALID_STATE");
+            throw new UploadServiceError(
+              "UPLOAD_INVALID_STATE",
+              "Deleted file metadata cannot be updated.",
+            );
           }
 
           const updatedFile = {
-            ...file,
+            key: file.key,
+            provider: file.provider,
+            uploaderId: file.uploaderId,
             filename: input.filename ?? file.filename,
+            sizeBytes: file.sizeBytes,
+            contentType: file.contentType,
+            checksum: file.checksum,
             visibility: input.visibility ?? file.visibility,
             tags: input.tags ?? file.tags,
             metadata: input.metadata ?? file.metadata,
-            updatedAt: now,
+            status: file.status,
+            errorCode: file.errorCode,
+            errorMessage: file.errorMessage,
           };
 
           uow.update("file", file.id, (b) =>
@@ -207,7 +217,7 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
                 visibility: updatedFile.visibility,
                 tags: updatedFile.tags,
                 metadata: updatedFile.metadata,
-                updatedAt: updatedFile.updatedAt,
+                updatedAt: uow.now(),
               })
               .check(),
           );
@@ -222,7 +232,6 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
       fileByKey: FileByKeyInput,
       uploadId?: string,
     ) {
-      const now = new Date();
       return this.serviceTx(uploadSchema)
         .retrieve((uow) =>
           uow.findFirst("file", (b) =>
@@ -233,26 +242,20 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
         )
         .mutate(({ uow, retrieveResult: [file] }) => {
           if (!file) {
-            throw new Error("FILE_NOT_FOUND");
+            throw new UploadServiceError("FILE_NOT_FOUND", "The file does not exist.");
           }
 
           if (file.status === "deleted") {
-            return file;
+            return { status: "deleted" as FileStatus };
           }
 
-          const updatedFile = {
-            ...file,
-            status: "deleted" as FileStatus,
-            updatedAt: now,
-            deletedAt: now,
-          };
-
+          const databaseNow = uow.now();
           uow.update("file", file.id, (b) =>
             b
               .set({
-                status: updatedFile.status,
-                updatedAt: updatedFile.updatedAt,
-                deletedAt: updatedFile.deletedAt,
+                status: "deleted",
+                updatedAt: databaseNow,
+                deletedAt: databaseNow,
               })
               .check(),
           );
@@ -261,7 +264,7 @@ export const createFileServices = (_config: UploadFragmentResolvedConfig) => {
             ...buildFileHookPayload(file, uploadId),
           });
 
-          return updatedFile;
+          return { status: "deleted" as FileStatus };
         })
         .build();
     },

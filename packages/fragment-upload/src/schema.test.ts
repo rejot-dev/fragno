@@ -63,6 +63,7 @@ describe("uploadSchema", async () => {
             tags: ["profile"],
             metadata: { purpose: "test" },
             status: "created",
+            publicationMode: "immediate",
             strategy: "proxy",
             objectKey,
             storageUploadId: null,

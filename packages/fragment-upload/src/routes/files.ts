@@ -1,13 +1,13 @@
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
-import type { FragnoRouteConfig } from "@fragno-dev/core";
 
 import { resolveUploadFragmentConfig } from "../config";
 import { uploadFragmentDefinition } from "../definition";
 import { uploadSchema } from "../schema";
 import { UploadServiceError } from "../services/errors";
 import { resolveFileKeyInput } from "../services/helpers";
+import { MAX_PREPARED_FILE_BATCH_ENTRIES } from "../services/uploads";
 import { buildStorageObjectVersionSegment } from "../storage/object-key";
 import {
   extractTextIndexTerms,
@@ -18,12 +18,17 @@ import {
 import {
   checksumSchema,
   fileMetadataSchema,
+  fileMutationResultSchema,
+  fileMutationSnapshotSchema,
   fileSnapshotSchema,
   fileWritePreconditionSchema,
   providerNamespaceSchema,
   toFileMetadata,
+  toFileMutationResult,
   visibilitySchema,
 } from "./shared";
+import { handleUploadServiceError as handleServiceError } from "./uploads-errors";
+import { mapStorageOperationError } from "./uploads-storage";
 
 const legacyFileKeyPartsSchema = z.array(z.union([z.string(), z.number().int()]));
 
@@ -48,6 +53,24 @@ const directoryMetadataSchema = z.object({
 const byKeyQuerySchema = z.object({
   provider: providerNamespaceSchema,
   key: z.string().min(1),
+});
+
+const preparedFileBatchEntrySchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("write"),
+    uploadId: z.string().min(1),
+    precondition: fileWritePreconditionSchema,
+  }),
+  z.object({
+    kind: z.literal("assert"),
+    provider: providerNamespaceSchema,
+    fileKey: z.string().min(1),
+    precondition: fileWritePreconditionSchema,
+  }),
+]);
+
+const commitPreparedFilesSchema = z.object({
+  entries: z.array(preparedFileBatchEntrySchema).min(1).max(MAX_PREPARED_FILE_BATCH_ENTRIES),
 });
 
 const updateFileSchema = z.object({
@@ -108,93 +131,11 @@ const errorCodes = [
   "INVALID_FILE_KEY",
   "INVALID_CHECKSUM",
   "INVALID_REQUEST",
+  "PROVIDER_MISMATCH",
   "TEXT_INDEX_DISABLED",
   "TEXT_SEARCH_REGEX_UNSUPPORTED",
   "TEXT_SEARCH_INVALID_QUERY",
 ] as const;
-
-type FileErrorCode = (typeof errorCodes)[number];
-
-type ErrorFn<Code extends string> = Parameters<
-  FragnoRouteConfig<"GET", "/__error", undefined, undefined, Code>["handler"]
->[1]["error"];
-
-// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- Each route supplies a narrower error callback, and Code keeps the shared mapper within that route's declared error union.
-const handleServiceError = <Code extends FileErrorCode>(
-  err: unknown,
-  error: ErrorFn<Code>,
-): Response => {
-  if (!(err instanceof Error)) {
-    throw err;
-  }
-
-  if (err instanceof UploadServiceError) {
-    switch (err.code) {
-      case "FILE_PRECONDITION_FAILED":
-        return error(
-          {
-            message: "File changed after it was read",
-            code: err.code as Code,
-          },
-          412,
-        );
-    }
-  }
-
-  switch (err.message) {
-    case "FILE_NOT_FOUND":
-      return error({ message: "File not found", code: "FILE_NOT_FOUND" as Code }, 404);
-    case "FILE_DELETED":
-      return error({ message: "File deleted", code: "FILE_DELETED" as Code }, 410);
-    case "UPLOAD_NOT_FOUND":
-      return error({ message: "Upload not found", code: "UPLOAD_NOT_FOUND" as Code }, 404);
-    case "FILE_ALREADY_EXISTS":
-      return error({ message: "File already exists", code: "FILE_ALREADY_EXISTS" as Code }, 409);
-    case "UPLOAD_ALREADY_ACTIVE":
-      return error(
-        {
-          message: "Upload already active",
-          code: "UPLOAD_ALREADY_ACTIVE" as Code,
-        },
-        409,
-      );
-    case "UPLOAD_EXPIRED":
-      return error({ message: "Upload expired", code: "UPLOAD_EXPIRED" as Code }, 410);
-    case "UPLOAD_INVALID_STATE":
-      return error(
-        {
-          message: "Upload invalid state",
-          code: "UPLOAD_INVALID_STATE" as Code,
-        },
-        409,
-      );
-    case "INVALID_FILE_KEY":
-      return error({ message: "Invalid file key", code: "INVALID_FILE_KEY" as Code }, 400);
-    case "INVALID_CHECKSUM":
-      return error({ message: "Invalid checksum", code: "INVALID_CHECKSUM" as Code }, 400);
-    case "INVALID_REQUEST":
-      return error({ message: "Invalid request", code: "INVALID_REQUEST" as Code }, 400);
-    case "STORAGE_ERROR":
-      return error({ message: "Storage error", code: "STORAGE_ERROR" as Code }, 502);
-    case "TEXT_INDEX_DISABLED":
-      return error({ message: "Text index is disabled", code: "TEXT_INDEX_DISABLED" as Code }, 400);
-    case "TEXT_SEARCH_REGEX_UNSUPPORTED":
-      return error(
-        {
-          message: "Regex search is not supported by the text index",
-          code: "TEXT_SEARCH_REGEX_UNSUPPORTED" as Code,
-        },
-        400,
-      );
-    case "TEXT_SEARCH_INVALID_QUERY":
-      return error(
-        { message: "Invalid text search query", code: "TEXT_SEARCH_INVALID_QUERY" as Code },
-        400,
-      );
-    default:
-      throw err;
-  }
-};
 
 // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- Callers project parsed form JSON to a boundary type before validating its shape.
 const parseJson = <T>(value: FormDataEntryValue | null): T | undefined => {
@@ -235,7 +176,7 @@ const parseMetadata = (value: FormDataEntryValue | null): Record<string, unknown
 
 const assertFileAvailable = <T extends { status: string }>(file: T) => {
   if (file.status === "deleted") {
-    throw new Error("FILE_DELETED");
+    throw new UploadServiceError("FILE_DELETED", "The file has been deleted.");
   }
   return file;
 };
@@ -318,7 +259,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         delimiter: query.get("delimiter") || undefined,
       });
       if (!result.success) {
-        throw new Error("INVALID_REQUEST");
+        throw new UploadServiceError("INVALID_REQUEST", "The file list query is invalid.");
       }
       return result.data;
     };
@@ -329,7 +270,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         key: query.get("key"),
       });
       if (!result.success) {
-        throw new Error("INVALID_REQUEST");
+        throw new UploadServiceError("INVALID_REQUEST", "The file query is invalid.");
       }
 
       try {
@@ -338,8 +279,13 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
           provider: result.data.provider,
           fileKey: resolvedKey.fileKey,
         };
-      } catch {
-        throw new Error("INVALID_FILE_KEY");
+      } catch (cause) {
+        if (cause instanceof UploadServiceError) {
+          throw cause;
+        }
+        throw new UploadServiceError("INVALID_FILE_KEY", "The file key is invalid.", undefined, {
+          cause,
+        });
       }
     };
 
@@ -348,7 +294,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         method: "POST",
         path: "/files",
         contentType: "multipart/form-data",
-        outputSchema: fileMetadataSchema,
+        outputSchema: fileMutationResultSchema,
         errorCodes,
         handler: async function (context, { json, error }) {
           const resolvedConfig = getResolvedConfig();
@@ -459,8 +405,8 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
               metadata: metadata ?? null,
               objectKeyVersionSegment,
             });
-          } catch {
-            return error({ message: "Storage error", code: "STORAGE_ERROR" }, 502);
+          } catch (cause) {
+            return handleServiceError(mapStorageOperationError(cause), error);
           }
 
           if (storageInit.strategy === "direct-multipart") {
@@ -481,7 +427,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
           try {
             if (storageInit.strategy === "proxy") {
               if (!resolvedConfig.storage.writeStream) {
-                throw new Error("STORAGE_ERROR");
+                throw new UploadServiceError("STORAGE_ERROR", "Proxy uploads are not supported.");
               }
               await resolvedConfig.storage.writeStream({
                 storageKey: storageInit.storageKey,
@@ -491,7 +437,10 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
               });
             } else if (storageInit.strategy === "direct-single") {
               if (!storageInit.uploadUrl) {
-                throw new Error("STORAGE_ERROR");
+                throw new UploadServiceError(
+                  "STORAGE_ERROR",
+                  "The storage adapter did not provide an upload URL.",
+                );
               }
               const response = await fetch(storageInit.uploadUrl, {
                 method: "PUT",
@@ -499,7 +448,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
                 body: file,
               });
               if (!response.ok) {
-                throw new Error("STORAGE_ERROR");
+                throw new UploadServiceError("STORAGE_ERROR", "The direct upload request failed.");
               }
             } else {
               return error(
@@ -518,18 +467,20 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
                 checksum: checksumResult.data ?? null,
               });
             }
-          } catch {
+          } catch (cause) {
+            const storageError =
+              cause instanceof UploadServiceError ? cause : mapStorageOperationError(cause);
             await this.handlerTx()
               .withServiceCalls(() => [
                 services.createFailedUpload({
                   ...createInput,
                   storageInit,
-                  errorCode: "STORAGE_ERROR",
-                  errorMessage: "Storage upload failed",
+                  errorCode: storageError.code,
+                  errorMessage: storageError.message,
                 }),
               ])
               .execute();
-            return error({ message: "Storage error", code: "STORAGE_ERROR" }, 502);
+            return handleServiceError(storageError, error);
           }
 
           try {
@@ -545,15 +496,52 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
               .transform(({ serviceResult: [result] }) => result)
               .execute();
 
-            return json(toFileMetadata(completed.file));
+            return json(toFileMutationResult(completed.file));
           } catch (err) {
             try {
               await resolvedConfig.storage.deleteObject({
                 storageKey: storageInit.storageKey,
               });
-            } catch {
-              return error({ message: "Storage error", code: "STORAGE_ERROR" }, 502);
+            } catch (cause) {
+              return handleServiceError(mapStorageOperationError(cause), error);
             }
+            return handleServiceError(err, error);
+          }
+        },
+      }),
+
+      defineRoute({
+        method: "POST",
+        path: "/files/commit-prepared",
+        inputSchema: commitPreparedFilesSchema,
+        outputSchema: z.object({ files: z.array(fileMutationSnapshotSchema) }),
+        errorCodes,
+        handler: async function ({ input }, { json, error }) {
+          const payload = await input.valid();
+          const activeProvider = getResolvedConfig().storage.name;
+          try {
+            const entries = payload.entries.map((entry) =>
+              entry.kind === "assert"
+                ? {
+                    ...entry,
+                    fileKey: resolveFileKeyInput({ fileKey: entry.fileKey }).fileKey,
+                  }
+                : entry,
+            );
+            const result = await this.handlerTx()
+              .withServiceCalls(() => [
+                services.commitPreparedFileWrites({ entries, activeProvider }),
+              ])
+              .transform(({ serviceResult: [committed] }) => committed)
+              .execute();
+
+            return json({
+              files: result.files.map((file) => ({
+                ...toFileMutationResult(file),
+                revision: file.revision,
+              })),
+            });
+          } catch (err) {
             return handleServiceError(err, error);
           }
         },
@@ -639,17 +627,32 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
           const options = payload.options ?? {};
 
           if (!resolvedConfig.textIndex?.enabled) {
-            return handleServiceError(new Error("TEXT_INDEX_DISABLED"), error);
+            return handleServiceError(
+              new UploadServiceError("TEXT_INDEX_DISABLED", "The text index is disabled."),
+              error,
+            );
           }
 
           if (options.regex) {
-            return handleServiceError(new Error("TEXT_SEARCH_REGEX_UNSUPPORTED"), error);
+            return handleServiceError(
+              new UploadServiceError(
+                "TEXT_SEARCH_REGEX_UNSUPPORTED",
+                "Regex search is not supported by the text index.",
+              ),
+              error,
+            );
           }
 
           const searchTerms = extractTextIndexTerms(payload.query, resolvedConfig.textIndex);
           const searchTerm = searchTerms[0];
           if (!searchTerm) {
-            return handleServiceError(new Error("TEXT_SEARCH_INVALID_QUERY"), error);
+            return handleServiceError(
+              new UploadServiceError(
+                "TEXT_SEARCH_INVALID_QUERY",
+                "The text search query is invalid.",
+              ),
+              error,
+            );
           }
 
           const globPrefix = getStaticGlobPrefix(payload.glob);
@@ -721,21 +724,39 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
           const maxMatches = options.maxMatches ?? 50;
 
           if (!resolvedConfig.textIndex?.enabled) {
-            return handleServiceError(new Error("TEXT_INDEX_DISABLED"), error);
+            return handleServiceError(
+              new UploadServiceError("TEXT_INDEX_DISABLED", "The text index is disabled."),
+              error,
+            );
           }
 
           if (options.regex) {
-            return handleServiceError(new Error("TEXT_SEARCH_REGEX_UNSUPPORTED"), error);
+            return handleServiceError(
+              new UploadServiceError(
+                "TEXT_SEARCH_REGEX_UNSUPPORTED",
+                "Regex search is not supported by the text index.",
+              ),
+              error,
+            );
           }
 
           if (!resolvedConfig.storage.getDownloadStream) {
-            return handleServiceError(new Error("STORAGE_ERROR"), error);
+            return handleServiceError(
+              new UploadServiceError("STORAGE_ERROR", "File downloads are not supported."),
+              error,
+            );
           }
 
           const searchTerms = extractTextIndexTerms(payload.query, resolvedConfig.textIndex);
           const searchTerm = searchTerms[0];
           if (!searchTerm) {
-            return handleServiceError(new Error("TEXT_SEARCH_INVALID_QUERY"), error);
+            return handleServiceError(
+              new UploadServiceError(
+                "TEXT_SEARCH_INVALID_QUERY",
+                "The text search query is invalid.",
+              ),
+              error,
+            );
           }
 
           const globPrefix = getStaticGlobPrefix(payload.glob);
@@ -781,7 +802,10 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
               storageKey: document.objectKey,
             });
             if (!response.ok) {
-              return handleServiceError(new Error("STORAGE_ERROR"), error);
+              return handleServiceError(
+                new UploadServiceError("STORAGE_ERROR", "The file download failed."),
+                error,
+              );
             }
 
             scannedFiles += 1;
@@ -833,7 +857,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         path: "/files/by-key",
         queryParameters: ["provider", "key"],
         inputSchema: updateFileSchema,
-        outputSchema: fileMetadataSchema,
+        outputSchema: fileMutationResultSchema,
         errorCodes,
         handler: async function ({ query, input }, { json, error }) {
           const payload = await input.valid();
@@ -850,7 +874,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
               .transform(({ serviceResult: [result] }) => result)
               .execute();
 
-            return json(toFileMetadata(file));
+            return json(toFileMutationResult(file));
           } catch (err) {
             return handleServiceError(err, error);
           }

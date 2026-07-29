@@ -29,6 +29,7 @@ const schemaExtractionStorage: StorageAdapter = {
 const createDatabaseStorageTestBuild = (setStorage: (storage: StorageAdapter) => void) => {
   return buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "drizzle-pglite" })
+    .withDbRoundtripGuard({ maxRoundtrips: 2 })
     .withFragmentFactory(
       "upload",
       uploadFragmentDefinition,
@@ -61,6 +62,54 @@ describe("database storage adapter", () => {
   afterAll(async () => {
     await build.test.cleanup();
   });
+
+  const prepareBatchTextUpload = async (input: {
+    fileKey: string;
+    content: string;
+    contentType?: string;
+  }) => {
+    const { fragment } = build.fragments.upload;
+    const contentType = input.contentType ?? "text/plain";
+    const created = await fragment.callRoute("POST", "/uploads", {
+      body: {
+        provider: storage.name,
+        fileKey: input.fileKey,
+        filename: input.fileKey.split("/").at(-1) ?? "file.txt",
+        sizeBytes: Buffer.byteLength(input.content),
+        contentType,
+        publicationMode: "batch",
+      },
+    });
+    assert(created.type === "json");
+    assert(created.data.publicationMode === "batch");
+
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(input.content));
+        controller.close();
+      },
+    });
+    const prepared = await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
+      pathParams: { uploadId: created.data.uploadId },
+      body: stream,
+    });
+    assert(prepared.type === "json");
+    assert(prepared.data.kind === "prepared");
+
+    return { created: created.data, write: prepared.data.write };
+  };
+
+  const searchCandidateKeys = async (input: { glob: string; query: string }) => {
+    const response = await build.fragments.upload.fragment.callRoute("POST", "/files/search", {
+      body: {
+        provider: storage.name,
+        glob: input.glob,
+        query: input.query,
+      },
+    });
+    assert(response.type === "json");
+    return response.data.candidates.map((candidate) => candidate.key);
+  };
 
   it("stores POST /files content in the upload database", async () => {
     const { fragment, db } = build.fragments.upload;
@@ -224,6 +273,121 @@ describe("database storage adapter", () => {
         "scannedFiles": 1,
       }
     `);
+  });
+
+  it("indexes a batch upload only after atomic publication", async () => {
+    const { fragment } = build.fragments.upload;
+    const prepared = await prepareBatchTextUpload({
+      fileKey: "batch/search/new-document.txt",
+      content: "batchPublicationToken appears only after commit",
+    });
+
+    const preparedStatus = await fragment.callRoute("GET", "/uploads/:uploadId", {
+      pathParams: { uploadId: prepared.created.uploadId },
+    });
+    assert(preparedStatus.type === "json");
+    expect(preparedStatus.data).toMatchObject({
+      publicationMode: "batch",
+      status: "prepared",
+    });
+
+    await drainDurableHooks(fragment);
+    expect(
+      await searchCandidateKeys({
+        glob: "batch/**/*.txt",
+        query: "batchPublicationToken",
+      }),
+    ).toEqual([]);
+
+    const committed = await fragment.callRoute("POST", "/files/commit-prepared", {
+      body: {
+        entries: [
+          {
+            kind: "write",
+            uploadId: prepared.write.uploadId,
+            precondition: { kind: "absent" },
+          },
+        ],
+      },
+    });
+    assert(committed.type === "json");
+
+    expect(
+      await searchCandidateKeys({
+        glob: "batch/**/*.txt",
+        query: "batchPublicationToken",
+      }),
+    ).toEqual([]);
+
+    await drainDurableHooks(fragment);
+    expect(
+      await searchCandidateKeys({
+        glob: "batch/**/*.txt",
+        query: "batchPublicationToken",
+      }),
+    ).toEqual([prepared.write.fileKey]);
+
+    const completedStatus = await fragment.callRoute("GET", "/uploads/:uploadId", {
+      pathParams: { uploadId: prepared.created.uploadId },
+    });
+    assert(completedStatus.type === "json");
+    expect(completedStatus.data).toMatchObject({
+      publicationMode: "batch",
+      status: "completed",
+    });
+  });
+
+  it("keeps the published search index until a batch replacement commits", async () => {
+    const { fragment } = build.fragments.upload;
+    const fileKey = "batch/search/replaced-document.txt";
+    const form = new FormData();
+    form.set("provider", storage.name);
+    form.set("fileKey", fileKey);
+    form.set(
+      "file",
+      new File(["stableSearchToken"], "replaced-document.txt", { type: "text/plain" }),
+    );
+    const initial = await fragment.callRoute("POST", "/files", { body: form });
+    assert(initial.type === "json");
+    const initialSnapshot = await fragment.callRoute("GET", "/files/by-key", {
+      query: { provider: storage.name, key: fileKey },
+    });
+    assert(initialSnapshot.type === "json");
+    await drainDurableHooks(fragment);
+
+    const replacement = await prepareBatchTextUpload({
+      fileKey,
+      content: "replacementSearchToken",
+    });
+    await drainDurableHooks(fragment);
+
+    expect(
+      await searchCandidateKeys({ glob: "batch/**/*.txt", query: "stableSearchToken" }),
+    ).toEqual([fileKey]);
+    expect(
+      await searchCandidateKeys({ glob: "batch/**/*.txt", query: "replacementSearchToken" }),
+    ).toEqual([]);
+
+    const committed = await fragment.callRoute("POST", "/files/commit-prepared", {
+      body: {
+        entries: [
+          {
+            kind: "write",
+            uploadId: replacement.write.uploadId,
+            precondition: { kind: "revision", revision: initialSnapshot.data.revision },
+          },
+        ],
+      },
+    });
+    assert(committed.type === "json");
+    await drainDurableHooks(fragment);
+
+    expect(
+      await searchCandidateKeys({ glob: "batch/**/*.txt", query: "stableSearchToken" }),
+    ).toEqual([]);
+    expect(
+      await searchCandidateKeys({ glob: "batch/**/*.txt", query: "replacementSearchToken" }),
+    ).toEqual([fileKey]);
   });
 
   it("limits text search candidate files before downloading file contents", async () => {
