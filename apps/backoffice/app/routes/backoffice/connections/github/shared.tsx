@@ -1,11 +1,11 @@
 import type { Dispatch, SetStateAction } from "react";
-import { Link, isRouteErrorResponse } from "react-router";
+import { isRouteErrorResponse } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
 import type { AuthMeData } from "@/fragno/auth/auth-client";
 
+import { AutomationSubpageTabs } from "../../automations/shared";
 import type { IntegrationScopeSwitchOption } from "../../integrations/scope";
-import { IntegrationScopeBreadcrumbSelector } from "../../integrations/scope-selector";
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "../../route-errors";
 
 type BackofficeOrganisation = AuthMeData["organizations"][number]["organization"];
@@ -40,54 +40,6 @@ export type GitHubLayoutContext = {
 
 export type GitHubTab = "repositories" | "configuration";
 
-export const formatTimestamp = (value?: string | Date | null) => {
-  if (!value) {
-    return "";
-  }
-  const date = value instanceof Date ? value : new Date(value);
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-};
-
-export function GitHubHeader({
-  organisationName,
-  integrationsPath,
-  scopeOptions,
-}: {
-  organisationName?: string | null;
-  integrationsPath: string;
-  scopeOptions: IntegrationScopeSwitchOption[];
-}) {
-  const scopeLabel = organisationName ?? "Organisation";
-
-  return (
-    <BackofficePageHeader
-      breadcrumbs={[
-        { label: "Backoffice", to: "/backoffice" },
-        { label: "Automations", to: "/backoffice/automations" },
-        {
-          label: <IntegrationScopeBreadcrumbSelector label={scopeLabel} options={scopeOptions} />,
-        },
-        { label: "Integrations", to: integrationsPath },
-        { label: "GitHub" },
-      ]}
-      eyebrow="Integrations"
-      title={`GitHub for ${scopeLabel}`}
-      description="Connect your GitHub App installation, link repositories, and inspect pull requests."
-      actions={
-        <Link
-          to={integrationsPath}
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-        >
-          Back to integrations
-        </Link>
-      }
-    />
-  );
-}
-
 export function GitHubTabs({
   basePath,
   activeTab,
@@ -113,40 +65,11 @@ export function GitHubTabs({
   ];
 
   return (
-    <div
-      role="tablist"
-      aria-label="GitHub backoffice tabs"
-      className="flex flex-wrap items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2"
-    >
-      {tabs.map((tab) => {
-        const isActive = activeTab === tab.id;
-        const className = isActive
-          ? "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)]"
-          : tab.disabled
-            ? "cursor-not-allowed border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted-2)] opacity-60"
-            : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]";
-
-        if (tab.disabled) {
-          return (
-            <span
-              key={tab.id}
-              role="tab"
-              aria-selected={isActive}
-              aria-disabled="true"
-              className={className}
-            >
-              {tab.label}
-            </span>
-          );
-        }
-
-        return (
-          <Link key={tab.id} to={tab.to} role="tab" aria-selected={isActive} className={className}>
-            {tab.label}
-          </Link>
-        );
-      })}
-    </div>
+    <AutomationSubpageTabs
+      tabs={tabs}
+      activeTab={activeTab}
+      ariaLabel="GitHub integration sections"
+    />
   );
 }
 
@@ -173,10 +96,15 @@ export function GitHubErrorBoundary({
 
   return (
     <div className="space-y-4">
-      <GitHubHeader
-        integrationsPath="/backoffice/automations"
-        organisationName="Error"
-        scopeOptions={[]}
+      <BackofficePageHeader
+        breadcrumbs={[
+          { label: "Backoffice", to: "/backoffice" },
+          { label: "Automations", to: "/backoffice/automations" },
+          { label: "GitHub" },
+        ]}
+        eyebrow="Integrations"
+        title="GitHub integration unavailable"
+        description="The GitHub automation integration could not be loaded."
       />
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
         <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">

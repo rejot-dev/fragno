@@ -4,8 +4,10 @@ import { Outlet } from "react-router";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
+import { AutomationWorkspaceHeader } from "../../automations/shared";
 import {
   createIntegrationScopeSwitchOptions,
+  integrationBasePath,
   organizationIdFromScope,
   resolveIntegrationContext,
 } from "../../integrations/scope";
@@ -17,7 +19,6 @@ import {
 } from "./data";
 import {
   GitHubErrorBoundary,
-  GitHubHeader,
   GitHubTabs,
   type GitHubAdminConfigState,
   type GitHubTab,
@@ -100,7 +101,7 @@ export default function BackofficeOrganisationGitHubLayout({
     organizationId,
     origin,
     organisation,
-    label,
+    uiScope,
     basePath,
     integrationsPath,
     scopeSegment,
@@ -129,15 +130,25 @@ export default function BackofficeOrganisationGitHubLayout({
 
   return (
     <div className="space-y-4">
-      <GitHubHeader
-        organisationName={organisation?.name ?? label}
-        integrationsPath={integrationsPath}
+      <AutomationWorkspaceHeader
+        selectedScope={uiScope}
         scopeOptions={scopeOptions}
-      />
-      <GitHubTabs
-        basePath={basePath}
-        activeTab={activeTab}
-        repositoriesEnabled={repositoriesEnabled}
+        projectsError={null}
+        activeTab="integrations"
+        breadcrumbTail={[{ label: "GitHub" }]}
+        subpage={{
+          title: "GitHub",
+          description: "App installation and linked repositories.",
+          pathForScope: (scope) =>
+            scope.kind === "org" ? integrationBasePath(scope, "github") : null,
+          navigation: (
+            <GitHubTabs
+              basePath={basePath}
+              activeTab={activeTab}
+              repositoriesEnabled={repositoriesEnabled}
+            />
+          ),
+        }}
       />
       <Outlet
         context={{

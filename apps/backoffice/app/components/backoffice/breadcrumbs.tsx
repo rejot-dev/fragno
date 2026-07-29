@@ -32,8 +32,12 @@ export function BackofficeBreadcrumbs({
         ) : null}
         {items.map((item, index) => {
           const isLast = index === items.length - 1;
+          const isBackofficeRoot = index === 0 && item.label === "Backoffice";
           return (
-            <li key={`${String(item.label)}-${index}`} className="flex items-center gap-2">
+            <li
+              key={`${item.to ?? "current"}:${String(item.label)}`}
+              className={`${isBackofficeRoot ? "hidden lg:flex" : "flex"} items-center gap-2`}
+            >
               {item.to && !isLast ? (
                 <Link to={item.to} className="transition-colors hover:text-[var(--bo-fg)]">
                   {item.label}
