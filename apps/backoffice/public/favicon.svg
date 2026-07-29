@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
+  <style>
+    .blue-1 { fill: #1f4ecc; }
+    .blue-2 { fill: #2b5ce6; }
+    .blue-3 { fill: #6f91ed; }
+    .blue-4 { fill: #adc2fb; }
+
+    @media (prefers-color-scheme: dark) {
+      .blue-1 { fill: #6e9cff; }
+      .blue-2 { fill: #8eb2ff; }
+      .blue-3 { fill: #abc7ff; }
+      .blue-4 { fill: #d0deff; }
+    }
+  </style>
+  <rect class="blue-1" x="1" y="1" width="6" height="6" />
+  <rect class="blue-2" x="9" y="1" width="6" height="6" />
+  <rect class="blue-3" x="1" y="9" width="6" height="6" />
+  <rect class="blue-4" x="9" y="9" width="6" height="6" />
+</svg>
