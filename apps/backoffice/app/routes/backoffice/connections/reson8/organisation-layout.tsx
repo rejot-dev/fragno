@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Outlet, redirect } from "react-router";
 
 import { getAuthMe } from "@/fragno/auth/auth-server";
@@ -72,6 +72,22 @@ export default function BackofficeOrganisationReson8Layout({
   loaderData,
   matches,
 }: Route.ComponentProps) {
+  const stateKey = JSON.stringify({
+    scopeSegment: loaderData.scopeSegment,
+    configState: loaderData.configState,
+    configError: loaderData.configError,
+  });
+
+  return <Reson8LayoutContent key={stateKey} loaderData={loaderData} matches={matches} />;
+}
+
+function Reson8LayoutContent({
+  loaderData,
+  matches,
+}: {
+  loaderData: Route.ComponentProps["loaderData"];
+  matches: Route.ComponentProps["matches"];
+}) {
   const {
     orgId,
     organisation,
@@ -88,11 +104,6 @@ export default function BackofficeOrganisationReson8Layout({
   const [configState, setConfigState] = useState<Reson8ConfigState | null>(initialConfigState);
   const [configError, setConfigError] = useState<string | null>(initialConfigError);
   const configLoading = false;
-
-  useEffect(() => {
-    setConfigState(initialConfigState);
-    setConfigError(initialConfigError);
-  }, [initialConfigError, initialConfigState, scopeSegment]);
 
   const currentPath = (matches[matches.length - 1]?.pathname || "").replace(/\/+$/, "");
   const pathSegments = currentPath.split("/").filter(Boolean);
