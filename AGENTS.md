@@ -122,6 +122,8 @@ E.g.
 Oxlint: `pnpm run lint:type-aware-fix`
 Oxfmt: `pnpm run format:changed`
 
+DO NOT USE React Doctor, unless asked.
+
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Other rules

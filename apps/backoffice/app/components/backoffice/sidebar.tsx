@@ -17,120 +17,15 @@ type NavItem = {
   children?: NavItem[];
 };
 
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-
-const projectAutomationBasePathPattern = (automationBasePath: string) => {
-  const match = /^\/backoffice\/automations\/org\/([^/]+)$/u.exec(automationBasePath);
-  const organizationId = match?.[1];
-  return organizationId
-    ? `/backoffice/automations/project/${escapeRegExp(encodeURIComponent(organizationId))}:[^/]+`
-    : null;
-};
-
-const isAutomationTabPath = (
-  tab: string,
-  options: { automationBasePath?: string; includeProjectScope?: boolean } = {},
-) => {
-  const escapedTab = escapeRegExp(tab);
-  const scopeTabPattern = new RegExp(
-    `^/backoffice/automations/(?:system|org|user)/[^/]+/${escapedTab}(?:/|$)`,
-  );
-  const projectBasePattern = options.automationBasePath
-    ? projectAutomationBasePathPattern(options.automationBasePath)
-    : null;
-  const projectTabPattern =
-    options.includeProjectScope && projectBasePattern
-      ? new RegExp(`^${projectBasePattern}/${escapedTab}(?:/|$)`)
-      : null;
-
-  return (pathname: string) => {
-    const normalizedPathname = pathname.replace(/\/+$/u, "");
-    return (
-      scopeTabPattern.test(normalizedPathname) ||
-      Boolean(projectTabPattern?.test(normalizedPathname))
-    );
-  };
-};
-
 function createNavItems(
   activeOrganizationId: string | null | undefined,
   isAdmin: boolean,
 ): NavItem[] {
-  const automationBasePath = activeOrganizationId
-    ? `/backoffice/automations/org/${activeOrganizationId}`
-    : "/backoffice/automations";
-  const automationChildren = activeOrganizationId
-    ? [
-        {
-          label: "Dashboard",
-          to: `${automationBasePath}/dashboard`,
-          isActive: isAutomationTabPath("dashboard", {
-            automationBasePath,
-            includeProjectScope: true,
-          }),
-        },
-        {
-          label: "Terminal",
-          to: `${automationBasePath}/terminal`,
-          isActive: isAutomationTabPath("terminal", {
-            automationBasePath,
-            includeProjectScope: true,
-          }),
-        },
-        {
-          label: "Scripts",
-          to: `${automationBasePath}/scripts`,
-          isActive: isAutomationTabPath("scripts", {
-            automationBasePath,
-            includeProjectScope: true,
-          }),
-        },
-        {
-          label: "Router",
-          to: `${automationBasePath}/router`,
-          isActive: isAutomationTabPath("router", {
-            automationBasePath,
-            includeProjectScope: true,
-          }),
-        },
-        {
-          label: "Store",
-          to: `${automationBasePath}/store`,
-          isActive: isAutomationTabPath("store"),
-        },
-        {
-          label: "Events",
-          to: `${automationBasePath}/events`,
-          isActive: isAutomationTabPath("events"),
-        },
-        {
-          label: "Events Catalog",
-          to: `${automationBasePath}/events-catalog`,
-          isActive: isAutomationTabPath("events-catalog"),
-        },
-        { label: "API", to: `${automationBasePath}/api`, isActive: isAutomationTabPath("api") },
-        {
-          label: "Integrations",
-          to: `${automationBasePath}/integrations`,
-          isActive: isAutomationTabPath("integrations", {
-            automationBasePath,
-            includeProjectScope: true,
-          }),
-        },
-        { label: "MCP", to: `${automationBasePath}/mcp`, isActive: isAutomationTabPath("mcp") },
-        {
-          label: "Sandboxes",
-          to: `${automationBasePath}/sandboxes`,
-          isActive: isAutomationTabPath("sandboxes"),
-        },
-      ]
-    : undefined;
   return [
     {
       label: "Automations",
       to: "/backoffice/automations",
       isActive: (pathname) => pathname.startsWith("/backoffice/automations"),
-      children: automationChildren,
     },
     { label: "Sessions", to: "/backoffice/sessions" },
     { label: "Files", to: "/backoffice/files" },
@@ -284,21 +179,6 @@ function BackofficeSidebarContent({
                   ))}
                 </ul>
               </nav>
-            </BackofficeSidebarSection>
-
-            <BackofficeSidebarSection title="Shortcuts">
-              <div className="flex flex-wrap gap-2">
-                {["Draft releases", "Staging", "Audit logs", "Role map", "Help queue"].map(
-                  (label) => (
-                    <span
-                      key={label}
-                      className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase"
-                    >
-                      {label}
-                    </span>
-                  ),
-                )}
-              </div>
             </BackofficeSidebarSection>
 
             <div className="mt-auto space-y-4">

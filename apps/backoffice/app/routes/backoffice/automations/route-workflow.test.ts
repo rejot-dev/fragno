@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
 
@@ -35,19 +35,19 @@ describe("automation route workflow presentation", () => {
       eventType: "identity-claim-completed",
     });
 
-    expect(automationRouteWorkflowName(route)).toBe("telegram-user-linking");
+    assert(automationRouteWorkflowName(route) === "telegram-user-linking");
     expect(automationRouteWorkflowIdentity(route)).toEqual({
       workflowName: "automation-codemode-script",
       remoteWorkflowName: "telegram-user-linking",
       workflowScriptPath: null,
     });
-    expect(
+    assert(
       automationRouteMatchesWorkflowInstance(route, {
         workflowName: "automation-codemode-script",
         remoteWorkflowName: "telegram-user-linking",
         params: { workflowScriptPath: "/workspace/automations/unrelated.workflow.js" },
       }),
-    ).toBe(true);
+    );
   });
 
   test("start routes only match runs created from the same workflow script", () => {
@@ -64,12 +64,12 @@ describe("automation route workflow presentation", () => {
       },
     };
 
-    expect(automationRouteMatchesWorkflowInstance(route, instance)).toBe(true);
-    expect(
-      automationRouteMatchesWorkflowInstance(route, {
+    assert(automationRouteMatchesWorkflowInstance(route, instance));
+    assert(
+      !automationRouteMatchesWorkflowInstance(route, {
         ...instance,
         params: { workflowScriptPath: "/workspace/automations/other.workflow.js" },
       }),
-    ).toBe(false);
+    );
   });
 });

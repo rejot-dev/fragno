@@ -321,23 +321,18 @@ function LaneHeader({
   icon,
   title,
   description,
-  action,
 }: {
   dotClassName: string;
   icon: ReactNode;
   title: string;
   description: string;
-  action?: ReactNode;
 }) {
   return (
     <div className="min-w-0 px-3 py-2.5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className={`h-1.5 w-1.5 rounded-full ${dotClassName}`} aria-hidden="true" />
-          <span className="text-[var(--bo-muted)]">{icon}</span>
-          <h2 className="text-xs font-semibold text-[var(--bo-fg)]">{title}</h2>
-        </div>
-        {action}
+      <div className="flex min-w-0 items-center gap-2">
+        <span className={`h-1.5 w-1.5 rounded-full ${dotClassName}`} aria-hidden="true" />
+        <span className="text-[var(--bo-muted)]">{icon}</span>
+        <h2 className="text-xs font-semibold text-[var(--bo-fg)]">{title}</h2>
       </div>
       <p className="mt-1 pl-6 text-[9px] text-[var(--bo-muted-2)]">{description}</p>
     </div>
@@ -360,11 +355,11 @@ function SourceCard({
       type="button"
       aria-pressed={selected}
       onClick={onSelect}
-      className={`flex h-full w-full min-w-0 items-center gap-2.5 rounded-md border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[box-shadow,opacity,transform] hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)] active:scale-[0.96] ${
+      className={`flex h-full w-full min-w-0 items-center gap-2.5 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[box-shadow,opacity,transform] hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)] active:scale-[0.96] ${
         selected ? "ring-2 ring-lime-600/35" : ""
       } ${muted ? "opacity-35" : ""}`}
     >
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-lime-500/10 text-lime-700 dark:text-lime-300">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center bg-lime-500/10 text-lime-700 dark:text-lime-300">
         <SourceIcon source={source.id} />
       </span>
       <span className="min-w-0 flex-1">
@@ -404,12 +399,12 @@ function TriggerCard({
       type="button"
       aria-pressed={selected}
       onClick={onSelect}
-      className={`group h-full w-full min-w-0 rounded-md border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2.5 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[box-shadow,transform] hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)] active:scale-[0.96] ${
+      className={`group h-full w-full min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2.5 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[box-shadow,transform] hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)] active:scale-[0.96] ${
         selected ? "ring-2 ring-orange-600/30" : ""
       }`}
     >
       <div className="flex items-start gap-2.5">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-orange-500/10 text-orange-700 dark:text-orange-300">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center bg-orange-500/10 text-orange-700 dark:text-orange-300">
           {route.trigger.kind === "schedule" ? (
             <CalendarClock className="h-3.5 w-3.5" strokeWidth={1.8} />
           ) : (
@@ -449,7 +444,7 @@ function WorkflowStatus({ status }: { status: string }) {
 
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[7px] font-semibold tracking-[0.1em] uppercase ${className}`}
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[7px] font-semibold tracking-[0.1em] uppercase ${className}`}
     >
       {tone === "success" ? (
         <Check className="h-2 w-2" />
@@ -510,13 +505,13 @@ function ActionCard({
       type="button"
       aria-pressed={selected}
       onClick={onSelect}
-      className={`group h-full w-full min-w-0 rounded-md border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2.5 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[box-shadow,transform] hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)] active:scale-[0.96] ${
+      className={`group h-full w-full min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2.5 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[box-shadow,transform] hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)] active:scale-[0.96] ${
         selected ? appearance.selectedClassName : ""
       }`}
     >
       <div className="flex items-start gap-2.5">
         <span
-          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded ${appearance.iconClassName}`}
+          className={`flex h-7 w-7 shrink-0 items-center justify-center ${appearance.iconClassName}`}
         >
           {appearance.icon}
         </span>
@@ -739,10 +734,6 @@ export default function BackofficeAutomationDashboard() {
   const selectionId = searchParams.get(SELECTION_ID_PARAM)?.trim() ?? "";
   const selectedRoute = routes.find((route) => route.id === selectionId) ?? null;
   const selectedSource = sources.find((source) => source.id === selectionId) ?? null;
-  const selectedRouteSource =
-    (selectionKind === "trigger" || selectionKind === "action") && selectedRoute
-      ? (sources.find((source) => source.id === routeSourceId(selectedRoute)) ?? null)
-      : null;
   const inspectorSelection: DashboardInspectorSelection =
     selectionKind === "source" && selectedSource
       ? {
@@ -851,39 +842,9 @@ export default function BackofficeAutomationDashboard() {
                   icon={<CircleDot className="h-3 w-3" strokeWidth={1.8} />}
                   title="Sources"
                   description={
-                    selectedRouteSource
-                      ? `Related source for ${selectedRoute?.name ?? "selected route"}`
-                      : activeSource
-                        ? `Highlighting routes from ${activeSource.label}`
-                        : "All capabilities are always visible"
-                  }
-                  action={
-                    <button
-                      type="button"
-                      disabled={!activeSource}
-                      onClick={() => {
-                        if (!activeSource) {
-                          return;
-                        }
-                        setSearchParams((currentSearchParams) => {
-                          const nextSearchParams = new URLSearchParams(currentSearchParams);
-                          nextSearchParams.delete(SOURCE_FILTER_PARAM);
-                          if (
-                            nextSearchParams.get(SELECTION_KIND_PARAM) === "source" &&
-                            nextSearchParams.get(SELECTION_ID_PARAM) === activeSource.id
-                          ) {
-                            nextSearchParams.delete(SELECTION_KIND_PARAM);
-                            nextSearchParams.delete(SELECTION_ID_PARAM);
-                          }
-                          return nextSearchParams;
-                        }, DASHBOARD_SEARCH_NAVIGATION_OPTIONS);
-                      }}
-                      className={`min-h-10 px-2 text-[8px] font-semibold tracking-[0.12em] text-[var(--bo-muted)] uppercase transition-[color,transform] hover:text-[var(--bo-fg)] active:scale-[0.96] ${
-                        activeSource ? "" : "invisible"
-                      }`}
-                    >
-                      Clear
-                    </button>
+                    activeSource
+                      ? `Highlighting routes from ${activeSource.label}`
+                      : "All capabilities are always visible"
                   }
                 />
                 <LaneHeader

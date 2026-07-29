@@ -36,12 +36,7 @@ import {
   resolveAutomationUiScope,
   toBackofficeScope,
 } from "./scope";
-import {
-  AutomationErrorBoundary,
-  AutomationHeader,
-  AutomationScopePicker,
-  AutomationTabs,
-} from "./shared";
+import { AutomationErrorBoundary, AutomationWorkspaceHeader } from "./shared";
 
 type ProjectActionData = { ok: false; message: string };
 
@@ -387,18 +382,13 @@ export default function BackofficeAutomationScopeLayout({
 
   return (
     <div className="space-y-4">
-      <AutomationHeader selectedScope={loaderData.selectedScope} />
-      <AutomationScopePicker
+      <AutomationWorkspaceHeader
         selectedScope={loaderData.selectedScope}
         scopeOptions={loaderData.scopeOptions}
         projectsError={loaderData.projectsError}
         createProjectPath={`${currentPath}?createProject=1`}
         isCreatingProject={isCreatingProject}
-      />
-      <AutomationTabs
-        selectedScope={loaderData.selectedScope}
         activeTab={activeTab}
-        disabled={isCreatingProject}
       />
       {isCreatingProject ? (
         <CreateProjectPanel actionPath={scopeBasePath} cancelPath={currentPath} />
