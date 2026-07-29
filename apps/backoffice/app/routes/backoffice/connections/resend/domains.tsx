@@ -3,15 +3,15 @@ import { Link, Outlet, redirect, useLoaderData, useOutletContext, useParams } fr
 import type { ResendDomain } from "@fragno-dev/resend-fragment";
 
 import { resolveScopeFromRouteParams } from "../../integrations/scope";
+import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/domains";
 import { fetchResendConfig, fetchResendDomains } from "./data";
 import {
   formatResendCapability,
   formatResendDomainStatus,
-  formatTimestamp,
   getResendDomainStatusTone,
-  type ResendLayoutContext,
-} from "./shared";
+} from "./formatting";
+import type { ResendLayoutContext } from "./shared";
 
 type ResendDomainsLoaderData = {
   configError: string | null;

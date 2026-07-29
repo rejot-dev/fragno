@@ -6,13 +6,10 @@ import { FormContainer, FormField, WizardStepper } from "@/components/backoffice
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope";
+import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/configuration";
-import {
-  formatTimestamp,
-  generateSecretToken,
-  type TelegramConfigState,
-  type TelegramLayoutContext,
-} from "./shared";
+import { generateSecretToken } from "./secret-token";
+import type { TelegramConfigState, TelegramLayoutContext } from "./shared";
 
 const SETUP_STEPS = [
   {

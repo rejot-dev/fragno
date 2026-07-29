@@ -10,9 +10,9 @@ import {
   resolveAuthenticatedIntegrationContext,
   resolveScopeFromRouteParams,
 } from "../../integrations/scope";
+import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/thread-detail";
 import { fetchResendThreadDetail, replyToResendThread } from "./data";
-import { formatTimestamp } from "./shared";
 import type { ResendThreadsOutletContext } from "./threads";
 
 type ResendThreadDetailLoaderData = {

@@ -16,6 +16,7 @@ import {
   resolveAuthenticatedIntegrationContext,
   resolveScopeFromRouteParams,
 } from "../../integrations/scope";
+import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/message-thread";
 import {
   buildTelegramAttachmentDownloadPath,
@@ -24,7 +25,6 @@ import {
 } from "./attachment-paths";
 import { fetchTelegramChatMessages, sendTelegramChatMessage } from "./data";
 import type { TelegramMessagesOutletContext } from "./messages";
-import { formatTimestamp } from "./shared";
 
 type TelegramMessagesThreadData = {
   messages: TelegramMessageSummary[];

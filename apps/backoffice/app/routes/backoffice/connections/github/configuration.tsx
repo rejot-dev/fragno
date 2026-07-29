@@ -21,6 +21,7 @@ import {
   resolveAuthenticatedIntegrationContext,
   resolveOrganizationScopeFromRouteParams,
 } from "../../integrations/scope";
+import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/configuration";
 import {
   fetchGitHubAdminConfig,
@@ -33,7 +34,7 @@ import {
   type GitHubInstallationSummary,
   type GitHubRepositorySummary,
 } from "./data";
-import { formatTimestamp, type GitHubLayoutContext } from "./shared";
+import type { GitHubLayoutContext } from "./shared";
 
 const INSTALL_FLOW_QUERY = "installFlow";
 

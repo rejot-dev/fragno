@@ -3,9 +3,10 @@ import { Link, Outlet, redirect, useLoaderData, useOutletContext, useParams } fr
 import type { ResendReceivedEmailSummary } from "@fragno-dev/resend-fragment";
 
 import { resolveScopeFromRouteParams } from "../../integrations/scope";
+import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/incoming";
 import { fetchResendConfig, fetchResendReceivedEmails } from "./data";
-import { formatTimestamp, type ResendLayoutContext } from "./shared";
+import type { ResendLayoutContext } from "./shared";
 
 type ResendIncomingLoaderData = {
   configError: string | null;

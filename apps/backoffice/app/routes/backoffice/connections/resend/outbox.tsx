@@ -11,9 +11,10 @@ import {
 import type { ResendEmailSummary } from "@fragno-dev/resend-fragment";
 
 import { resolveScopeFromRouteParams } from "../../integrations/scope";
+import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/outbox";
 import { fetchResendConfig, fetchResendOutbox } from "./data";
-import { formatTimestamp, type ResendConfigState, type ResendLayoutContext } from "./shared";
+import type { ResendConfigState, ResendLayoutContext } from "./shared";
 
 type ResendOutboxLoaderData = {
   configError: string | null;

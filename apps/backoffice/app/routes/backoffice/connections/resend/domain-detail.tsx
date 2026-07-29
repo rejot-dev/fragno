@@ -3,15 +3,15 @@ import { Link, useLoaderData, useOutletContext, useParams } from "react-router";
 import type { ResendDomainRecord } from "@fragno-dev/resend-fragment";
 
 import { resolveScopeFromRouteParams } from "../../integrations/scope";
+import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/domain-detail";
 import { fetchResendDomainDetail } from "./data";
 import type { ResendDomainsOutletContext } from "./domains";
 import {
   formatResendCapability,
   formatResendDomainStatus,
-  formatTimestamp,
   getResendDomainStatusTone,
-} from "./shared";
+} from "./formatting";
 
 type ResendDomainDetailLoaderData = {
   domain: Awaited<ReturnType<typeof fetchResendDomainDetail>>["domain"];

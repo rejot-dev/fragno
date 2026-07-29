@@ -85,6 +85,12 @@ export const integrationBasePath = (scope: AutomationUiScope, integration: strin
 export const organizationIdFromScope = (scope: BackofficeContextScope): string | null =>
   scope.kind === "org" || scope.kind === "project" ? scope.orgId : null;
 
+export const createOrganisationScopeOptions = (organizations: AuthMeData["organizations"]) =>
+  organizations.map(({ organization }) => ({
+    id: organization.id,
+    label: organization.name ?? organization.id,
+  }));
+
 export const createIntegrationScopeSwitchOptions = ({
   me,
   projects,
@@ -182,6 +188,34 @@ export const resolveAuthenticatedIntegrationContext = async ({
   return {
     ...resolveIntegrationContext({ params, me, integration, allowedScopes }),
     me,
+  };
+};
+
+export const resolveAuthenticatedOrgIntegrationContext = async ({
+  request,
+  context,
+  params,
+  integration,
+}: {
+  request: Request;
+  context: Readonly<RouterContextProvider>;
+  params: IntegrationRouteParams;
+  integration: string;
+}) => {
+  const integrationContext = await resolveAuthenticatedIntegrationContext({
+    request,
+    context,
+    params,
+    integration,
+    allowedScopes: ["org"],
+  });
+  if (integrationContext.scope.kind !== "org") {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  return {
+    integration: integrationContext,
+    orgId: integrationContext.scope.orgId,
   };
 };
 
