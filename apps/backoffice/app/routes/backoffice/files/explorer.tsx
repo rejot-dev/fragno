@@ -1,12 +1,12 @@
-import { Download, File as FileIcon, Folder, HardDrive, RefreshCcw } from "lucide-react";
+import { Download, File as FileIcon, Folder, HardDrive } from "lucide-react";
 import { Suspense, use, useMemo, type ReactNode } from "react";
-import { Link, useLoaderData, useOutletContext, useRevalidator } from "react-router";
+import { Link, useLoaderData, useOutletContext } from "react-router";
 
 import { eq, useLiveQuery } from "@tanstack/react-db";
 
-import { BackofficeSystemState, formatBytes } from "@/components/backoffice";
+import { BackofficeSystemState } from "@/components/backoffice";
 import { ClientOnly } from "@/components/client-only";
-import type { FilesExplorerTreeNode } from "@/files";
+import type { FilesExplorerTreeNode, FilesNodeDetail } from "@/files";
 import { toUploadFileRecord, type UploadFileRecord } from "@/fragno/upload/file-record";
 import {
   describeUploadCollectionSource,
@@ -17,11 +17,6 @@ import {
 import type { Route } from "./+types/explorer";
 import { resolveFilesContentRenderer } from "./content-renderers";
 import { handleFilesExplorerAction, loadFilesExplorerData } from "./data";
-import {
-  formatFileRootKind,
-  formatFileRootMutability,
-  formatFileRootPersistence,
-} from "./formatting";
 import type { FilesLayoutContext } from "./layout-context";
 import {
   buildLocalUploadExplorer,
@@ -151,7 +146,6 @@ function FilesExplorerView({
     loadError: serverLoadError,
   } = useLoaderData<typeof loader>();
   const { orgId, mounts } = useOutletContext<FilesLayoutContext>();
-  const revalidator = useRevalidator();
   const uploadMounts = useMemo(() => mounts.filter(isUploadExplorerMount), [mounts]);
   const localUploadExplorer = useMemo(
     () => buildLocalUploadExplorer(uploadMounts, uploadFiles, orgId),
@@ -183,26 +177,13 @@ function FilesExplorerView({
       ? `Path '${selectedPath}' could not be found.`
       : null);
 
-  const stats = useMemo(
-    () => ({
-      total: tree.length,
-      writable: tree.filter((root) => !root.readOnly).length,
-      persistent: tree.filter((root) => root.persistence === "persistent").length,
-    }),
-    [tree],
-  );
   const selectedContentRenderer = selectedDetail
     ? resolveFilesContentRenderer(selectedDetail)
     : null;
+  const selectedMount = selectedDetail?.node.kind === "root" ? selectedDetail : null;
 
   return (
     <div className="space-y-4">
-      <section className="grid gap-3 md:grid-cols-3">
-        <StatCard label="Registered roots" value={String(stats.total)} />
-        <StatCard label="Writable roots" value={String(stats.writable)} />
-        <StatCard label="Persistent roots" value={String(stats.persistent)} />
-      </section>
-
       {loadError ? <MessageTone tone="error">{loadError}</MessageTone> : null}
 
       {tree.length === 0 ? (
@@ -215,25 +196,9 @@ function FilesExplorerView({
       ) : (
         <section className="grid gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">
           <aside className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                  File tree
-                </p>
-                <p className="mt-2 text-sm text-[var(--bo-muted)]">
-                  Browse the combined filesystem directly. Upload-backed metadata updates
-                  automatically.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => void revalidator.revalidate()}
-                className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-              >
-                <RefreshCcw className="h-3.5 w-3.5" />
-                Refresh other mounts
-              </button>
-            </div>
+            <p className="px-1 text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+              File tree
+            </p>
 
             <nav aria-label="Files explorer" className="mt-3 space-y-0.5">
               {tree.map((node) => (
@@ -249,53 +214,28 @@ function FilesExplorerView({
           </aside>
 
           <div className="space-y-4">
-            {selectedDetail ? (
+            {selectedMount ? (
+              <MountSelectionState detail={selectedMount} />
+            ) : selectedDetail ? (
               <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                       Selection
                     </p>
-                    <h2 className="mt-2 text-2xl font-semibold text-[var(--bo-fg)]">
+                    <h2 className="mt-2 text-2xl font-semibold text-balance text-[var(--bo-fg)]">
                       {selectedDetail.node.title}
                     </h2>
-                    <p className="mt-2 text-sm text-[var(--bo-muted)]">
-                      {selectedDetail.description ?? "Filesystem metadata for the selected node."}
-                    </p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {selectedDetail.node.kind === "file" ? (
-                      <a
-                        href={buildDownloadHref(orgId, selectedDetail.node.path)}
-                        className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        Download
-                      </a>
-                    ) : null}
-                    <Link
-                      to={{ search: buildExplorerSearch(selectedDetail.node.mountPoint) }}
-                      preventScrollReset
-                      className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                  {selectedDetail.node.kind === "file" ? (
+                    <a
+                      href={buildDownloadHref(orgId, selectedDetail.node.path)}
+                      className="inline-flex min-h-10 items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-[scale,background-color,border-color,color] duration-150 ease-out hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96]"
                     >
-                      Jump to root
-                    </Link>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <InlineMetaPill
-                    label="Mount"
-                    value={formatFileRootKind(selectedDetail.node.mountKind)}
-                  />
-                  <InlineMetaPill
-                    label="Access"
-                    value={formatFileRootMutability(selectedDetail.node.readOnly)}
-                  />
-                  <InlineMetaPill
-                    label="Persistence"
-                    value={formatFileRootPersistence(selectedDetail.node.persistence)}
-                  />
+                      <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                      Download
+                    </a>
+                  ) : null}
                 </div>
 
                 {selectedContentRenderer ? (
@@ -346,6 +286,31 @@ function FilesExplorerView({
   );
 }
 
+function MountSelectionState({ detail }: { detail: FilesNodeDetail }) {
+  const isEmpty = (detail.node.fileCount ?? 0) + (detail.node.folderCount ?? 0) === 0;
+
+  return (
+    <section className="bo-fragment-surface bo-panel-surface flex min-h-80 items-center justify-center bg-[var(--bo-panel)] p-6">
+      <div className="max-w-sm text-center">
+        <div className="mx-auto flex size-12 items-center justify-center bg-[var(--bo-panel-2)] shadow-[0_1px_2px_rgba(15,23,42,0.08),0_8px_24px_rgba(15,23,42,0.06)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.35),0_8px_24px_rgba(0,0,0,0.2)]">
+          <HardDrive className="size-5 text-[var(--bo-muted)]" aria-hidden="true" />
+        </div>
+        <p className="mt-4 font-mono text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
+          Mount selected
+        </p>
+        <h2 className="mt-2 text-xl font-semibold tracking-tight text-balance text-[var(--bo-fg)]">
+          {detail.node.title}
+        </h2>
+        <p className="mt-2 text-sm text-pretty text-[var(--bo-muted)]">
+          {isEmpty
+            ? "This mount is empty. Files and folders will appear here when they become available."
+            : "Choose a file or folder in the sidebar to inspect its contents."}
+        </p>
+      </div>
+    </section>
+  );
+}
+
 function TreeNodeRow({
   node,
   selectedPath,
@@ -368,18 +333,13 @@ function TreeNodeRow({
         aria-current={isSelected ? "page" : undefined}
         className={
           isSelected
-            ? "flex items-center gap-1.5 rounded-sm border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] px-1.5 py-1 text-[13px] text-[var(--bo-fg)]"
-            : "flex items-center gap-1.5 rounded-sm border border-transparent px-1.5 py-1 text-[13px] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border)] hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)]"
+            ? "flex min-h-10 items-center gap-1.5 rounded-sm border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] px-1.5 py-1 text-[13px] text-[var(--bo-fg)] transition-[scale] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]"
+            : "flex min-h-10 items-center gap-1.5 rounded-sm border border-transparent px-1.5 py-1 text-[13px] text-[var(--bo-muted)] transition-[scale,background-color,border-color,color] duration-150 ease-out outline-none hover:border-[color:var(--bo-border)] hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]"
         }
         style={{ paddingLeft: `${0.25 + depth * 0.75}rem` }}
       >
         <Icon className="h-4 w-4 shrink-0" />
         <span className="min-w-0 truncate">{node.title}</span>
-        {typeof node.sizeBytes === "number" && node.kind === "file" ? (
-          <span className="ml-auto text-[10px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
-            {formatBytes(node.sizeBytes)}
-          </span>
-        ) : null}
       </Link>
 
       {node.children?.length ? (
@@ -395,26 +355,6 @@ function TreeNodeRow({
           ))}
         </div>
       ) : null}
-    </div>
-  );
-}
-
-function InlineMetaPill({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1">
-      <span className="text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
-        {label}
-      </span>
-      <span className="ml-2 text-xs text-[var(--bo-muted)]">{value}</span>
-    </div>
-  );
-}
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
-      <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-[var(--bo-fg)]">{value}</p>
     </div>
   );
 }

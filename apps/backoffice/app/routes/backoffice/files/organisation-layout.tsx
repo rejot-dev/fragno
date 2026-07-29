@@ -5,10 +5,11 @@ import { getAuthMe } from "@/fragno/auth/auth-server";
 import { fetchUploadAdapterIdentity } from "@/fragno/upload/tanstack/server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
+import { createOrganisationScopeOptions } from "../integrations/scope";
 import type { Route } from "./+types/organisation-layout";
 import { createBackofficeFilesFileSystem } from "./data";
 import type { FilesLayoutContext } from "./layout-context";
-import { FilesErrorBoundary, FilesHeader } from "./shared";
+import { FilesErrorBoundary, FilesWorkspaceHeader } from "./shared";
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   if (!params.orgId) {
@@ -52,6 +53,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     orgId: params.orgId,
     origin: url.origin,
     organisation,
+    organisationOptions: createOrganisationScopeOptions(me.organizations),
     mounts,
     uploadCollectionSource,
     uploadCollectionError,
@@ -82,7 +84,11 @@ export default function BackofficeFilesOrganisationLayout({ loaderData }: Route.
 
   return (
     <div className="space-y-4">
-      <FilesHeader orgId={orgId} organisationName={organisation.name} mountCount={mounts.length} />
+      <FilesWorkspaceHeader
+        orgId={orgId}
+        organisationName={organisation.name}
+        organisationOptions={loaderData.organisationOptions}
+      />
       <Outlet context={outletContext} />
     </div>
   );
