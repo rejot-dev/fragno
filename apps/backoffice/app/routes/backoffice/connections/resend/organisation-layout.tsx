@@ -4,20 +4,16 @@ import { Outlet, redirect } from "react-router";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
+import { AutomationWorkspaceHeader } from "../../automations/shared";
 import {
   createIntegrationScopeSwitchOptions,
+  integrationBasePath,
   organizationIdFromScope,
   resolveIntegrationContext,
 } from "../../integrations/scope";
 import type { Route } from "./+types/organisation-layout";
 import { fetchResendConfig } from "./data";
-import {
-  ResendErrorBoundary,
-  ResendHeader,
-  ResendTabs,
-  type ResendConfigState,
-  type ResendTab,
-} from "./shared";
+import { ResendErrorBoundary, ResendTabs, type ResendConfigState, type ResendTab } from "./shared";
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const me = await getAuthMe(request, context);
@@ -87,6 +83,7 @@ export default function BackofficeOrganisationResendLayout({
     origin,
     organisation,
     scope,
+    uiScope,
     label,
     basePath,
     integrationsPath,
@@ -124,15 +121,27 @@ export default function BackofficeOrganisationResendLayout({
 
   return (
     <div className="space-y-4">
-      <ResendHeader
-        organisationName={organisation?.name ?? label}
-        integrationsPath={integrationsPath}
+      <AutomationWorkspaceHeader
+        selectedScope={uiScope}
         scopeOptions={scopeOptions}
-      />
-      <ResendTabs
-        basePath={basePath}
-        activeTab={activeTab}
-        isConfigured={Boolean(configState?.configured)}
+        projectsError={null}
+        activeTab="integrations"
+        breadcrumbTail={[{ label: "Resend" }]}
+        subpage={{
+          title: "Resend",
+          description: "Email delivery, domains, and message threads.",
+          pathForScope: (scope) =>
+            scope.kind === "org" || scope.kind === "system"
+              ? integrationBasePath(scope, "resend")
+              : null,
+          navigation: (
+            <ResendTabs
+              basePath={basePath}
+              activeTab={activeTab}
+              isConfigured={Boolean(configState?.configured)}
+            />
+          ),
+        }}
       />
       <Outlet
         context={{

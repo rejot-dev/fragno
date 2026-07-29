@@ -3,7 +3,8 @@ import { Fragment, type ReactNode } from "react";
 import { Link, isRouteErrorResponse, useSearchParams } from "react-router";
 
 import { BackofficePageHeader } from "@/components/backoffice";
-import { BackofficeBreadcrumbs } from "@/components/backoffice/breadcrumbs";
+import { BackofficeBreadcrumbs, type BreadcrumbItem } from "@/components/backoffice/breadcrumbs";
+import { OverflowTabRow } from "@/components/backoffice/overflow-tab-row";
 
 import { getRouteErrorMessage, isOrganisationNotFoundError } from "../route-errors";
 import type { AutomationTab } from "./layout-context";
@@ -60,6 +61,21 @@ const AUTOMATION_TAB_GROUPS = [
   [{ id: "sandboxes", label: "Sandboxes" }],
 ] as const satisfies readonly (readonly { id: AutomationTab; label: string }[])[];
 
+const AUTOMATION_TABS = AUTOMATION_TAB_GROUPS.flatMap((group, groupIndex) =>
+  group.map((tab) => ({ ...tab, groupIndex })),
+);
+
+const automationTabLabel = (activeTab: AutomationTab) => {
+  for (const group of AUTOMATION_TAB_GROUPS) {
+    const tab = group.find((candidate) => candidate.id === activeTab);
+    if (tab) {
+      return tab.label;
+    }
+  }
+
+  throw new Error("Unsupported automation tab.");
+};
+
 const automationScopeKindLabel = (kind: AutomationUiScope["kind"]) => {
   switch (kind) {
     case "system":
@@ -99,6 +115,7 @@ function AutomationScopeMenu({
   isCreatingProject,
   scriptPresentation,
   activeTab,
+  previousScopePathFor,
   triggerKindLabel,
   triggerLabel,
 }: {
@@ -109,13 +126,16 @@ function AutomationScopeMenu({
   isCreatingProject: boolean;
   scriptPresentation: ReturnType<typeof useScriptPresentation>;
   activeTab: AutomationTab;
+  previousScopePathFor?: (scope: AutomationUiScope) => string | null;
   triggerKindLabel: string;
   triggerLabel: string;
 }) {
   const selectedId = automationUiScopeId(selectedScope);
   const previousScope = usePreviousAutomationScope(selectedScope);
   const previousScopePath = previousScope
-    ? automationScopeTabPath(previousScope, resolveAutomationScopeTab(previousScope, activeTab))
+    ? previousScopePathFor
+      ? previousScopePathFor(previousScope)
+      : automationScopeTabPath(previousScope, resolveAutomationScopeTab(previousScope, activeTab))
     : null;
 
   return (
@@ -150,10 +170,13 @@ function AutomationScopeMenu({
           aria-label={`Switch automation scope. Current context: ${triggerLabel}`}
           className="group flex min-h-10 min-w-0 flex-1 items-center gap-2.5 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] py-2 pr-2.5 pl-3 text-left transition-[scale,background-color,border-color,color] duration-150 ease-out outline-none hover:border-[color:var(--bo-border-strong)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96] data-[popup-open]:border-[color:var(--bo-accent)] data-[popup-open]:bg-[var(--bo-accent-bg)] sm:flex-none"
         >
-          <span className="shrink-0 text-[8px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase group-data-[popup-open]:text-[var(--bo-accent-fg)]">
+          <span className="hidden shrink-0 text-[8px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase group-data-[popup-open]:text-[var(--bo-accent-fg)] lg:inline">
             Automation scope
           </span>
-          <span className="h-4 w-px shrink-0 bg-[var(--bo-border-strong)]" aria-hidden="true" />
+          <span
+            className="hidden h-4 w-px shrink-0 bg-[var(--bo-border-strong)] lg:block"
+            aria-hidden="true"
+          />
           <span className="flex min-w-0 flex-1 items-center gap-1.5">
             <span className="shrink-0 text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
               {triggerKindLabel}
@@ -279,54 +302,68 @@ function AutomationTabRail({
   disabled: boolean;
   scriptPresentation: ReturnType<typeof useScriptPresentation>;
 }) {
+  const items = AUTOMATION_TABS.map((tab) => ({
+    id: tab.id,
+    label: tab.label,
+    groupId: String(tab.groupIndex),
+    to: pathWithScriptPresentation(
+      automationScopeTabPath(selectedScope, tab.id),
+      scriptPresentation,
+    ),
+    disabled: disabled || resolveAutomationScopeTab(selectedScope, tab.id) !== tab.id,
+    active: activeTab === tab.id,
+  }));
+
   return (
     <div className="border-t border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2">
-      <nav aria-label="Automation workspace sections" className="backoffice-scroll overflow-x-auto">
-        <div role="tablist" className="flex min-w-max items-center gap-2">
-          {AUTOMATION_TAB_GROUPS.map((group, groupIndex) => (
-            <Fragment key={group[0].id}>
-              {groupIndex > 0 ? (
-                <span className="h-6 w-px shrink-0 bg-[var(--bo-border)]" aria-hidden="true" />
-              ) : null}
-              {group.map((tab) => {
-                const tabDisabled =
-                  disabled || resolveAutomationScopeTab(selectedScope, tab.id) !== tab.id;
-                const isActive = !tabDisabled && activeTab === tab.id;
-                const className = tabDisabled
-                  ? "inline-flex min-h-10 shrink-0 cursor-not-allowed items-center border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase opacity-50"
-                  : isActive
-                    ? "inline-flex min-h-10 shrink-0 items-center border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase outline-none transition-[scale] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]"
-                    : "inline-flex min-h-10 shrink-0 items-center border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase outline-none transition-[scale,background-color,border-color,color] duration-150 ease-out hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]";
+      <OverflowTabRow items={items} ariaLabel="Automation workspace sections" />
+    </div>
+  );
+}
 
-                return tabDisabled ? (
-                  <span
-                    key={tab.id}
-                    role="tab"
-                    aria-selected="false"
-                    aria-disabled="true"
-                    className={className}
-                  >
-                    {tab.label}
-                  </span>
-                ) : (
-                  <Link
-                    key={tab.id}
-                    to={pathWithScriptPresentation(
-                      automationScopeTabPath(selectedScope, tab.id),
-                      scriptPresentation,
-                    )}
-                    role="tab"
-                    aria-selected={isActive}
-                    className={className}
-                  >
-                    {tab.label}
-                  </Link>
-                );
-              })}
-            </Fragment>
-          ))}
-        </div>
-      </nav>
+export type AutomationSubpageTab = {
+  id: string;
+  label: string;
+  to: string;
+  disabled?: boolean;
+};
+
+export function AutomationSubpageTabs({
+  tabs,
+  activeTab,
+  ariaLabel,
+}: {
+  tabs: readonly AutomationSubpageTab[];
+  activeTab: string;
+  ariaLabel: string;
+}) {
+  const items = tabs.map((tab) => ({
+    ...tab,
+    active: activeTab === tab.id,
+  }));
+
+  return <OverflowTabRow items={items} ariaLabel={ariaLabel} variant="underline" />;
+}
+
+type AutomationWorkspaceSubpage = {
+  title: string;
+  description?: string;
+  navigation?: ReactNode;
+  pathForScope?: (scope: AutomationUiScope) => string | null;
+};
+
+function AutomationSubpageHeader({ title, description, navigation }: AutomationWorkspaceSubpage) {
+  return (
+    <div className="border-t border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 pt-3 md:px-4">
+      <div className="min-w-0 space-y-1">
+        <h2 className="text-xl font-semibold tracking-tight text-balance text-[var(--bo-fg)]">
+          {title}
+        </h2>
+        {description ? (
+          <p className="max-w-2xl text-sm text-pretty text-[var(--bo-muted)]">{description}</p>
+        ) : null}
+      </div>
+      {navigation ? <div className="mt-3">{navigation}</div> : <div className="h-3" />}
     </div>
   );
 }
@@ -338,6 +375,8 @@ export function AutomationWorkspaceHeader({
   createProjectPath,
   isCreatingProject = false,
   activeTab,
+  breadcrumbTail,
+  subpage,
 }: {
   selectedScope: AutomationUiScope;
   scopeOptions: AutomationScopeOption[];
@@ -345,21 +384,45 @@ export function AutomationWorkspaceHeader({
   createProjectPath?: string;
   isCreatingProject?: boolean;
   activeTab: AutomationTab;
+  breadcrumbTail?: BreadcrumbItem[];
+  subpage?: AutomationWorkspaceSubpage;
 }) {
   const scriptPresentation = useScriptPresentation();
   const workspaceKindLabel = isCreatingProject
     ? "Project"
     : automationScopeKindLabel(selectedScope.kind);
   const workspaceLabel = isCreatingProject ? "New project" : selectedScope.label;
+  const activeTabBreadcrumbs: BreadcrumbItem[] =
+    activeTab === "dashboard"
+      ? []
+      : [
+          {
+            label: automationTabLabel(activeTab),
+            to: breadcrumbTail?.length
+              ? pathWithScriptPresentation(
+                  automationScopeTabPath(selectedScope, activeTab),
+                  scriptPresentation,
+                )
+              : undefined,
+          },
+        ];
+  const hasBreadcrumbTail = activeTabBreadcrumbs.length > 0 || Boolean(breadcrumbTail?.length);
+  const breadcrumbs: BreadcrumbItem[] = [
+    { label: "Backoffice", to: "/backoffice" },
+    {
+      label: "Automations",
+      to: hasBreadcrumbTail ? "/backoffice/automations" : undefined,
+    },
+    ...activeTabBreadcrumbs,
+    ...(breadcrumbTail ?? []),
+  ];
 
   return (
     <section className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)] shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-none">
       <div className="p-3 md:px-4">
         <h1 className="sr-only">Automations for {workspaceLabel}</h1>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <BackofficeBreadcrumbs
-            items={[{ label: "Backoffice", to: "/backoffice" }, { label: "Automations" }]}
-          />
+          <BackofficeBreadcrumbs items={breadcrumbs} />
           <div className="w-full min-w-0 sm:w-auto sm:max-w-md">
             <AutomationScopeMenu
               selectedScope={selectedScope}
@@ -369,6 +432,7 @@ export function AutomationWorkspaceHeader({
               isCreatingProject={isCreatingProject}
               scriptPresentation={scriptPresentation}
               activeTab={activeTab}
+              previousScopePathFor={subpage?.pathForScope}
               triggerKindLabel={workspaceKindLabel}
               triggerLabel={workspaceLabel}
             />
@@ -382,6 +446,7 @@ export function AutomationWorkspaceHeader({
         disabled={isCreatingProject}
         scriptPresentation={scriptPresentation}
       />
+      {subpage ? <AutomationSubpageHeader {...subpage} /> : null}
     </section>
   );
 }

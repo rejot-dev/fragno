@@ -86,18 +86,19 @@ export function createWorkflowGraphPresentation(
       continue;
     }
 
+    const guardCondition = guard.condition;
     eventGuardByWorkflowId.set(workflow.id, {
       workflowId: workflow.id,
-      conditionId: guard.condition.id,
+      conditionId: guardCondition.id,
       eventSource: guard.annotation.eventSource,
       eventType: guard.annotation.eventType,
       subject: guard.annotation.subject,
-      source: guard.condition.source,
+      source: guardCondition.source,
     });
-    hiddenNodeIds.add(guard.condition.id);
+    hiddenNodeIds.add(guardCondition.id);
 
-    const guardDescendantIds = descendantIds(guard.condition.id, originalChildrenByParent);
-    const acceptedBranch = acceptedBranchForGuard(guard.condition, guard.annotation, childNodes);
+    const guardDescendantIds = descendantIds(guardCondition.id, originalChildrenByParent);
+    const acceptedBranch = acceptedBranchForGuard(guardCondition, guard.annotation, childNodes);
     if (!acceptedBranch) {
       for (const descendantId of guardDescendantIds) {
         hiddenNodeIds.add(descendantId);
