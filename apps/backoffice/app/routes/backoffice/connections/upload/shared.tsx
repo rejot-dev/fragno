@@ -18,7 +18,7 @@ export function UploadHeader({
     <BackofficePageHeader
       breadcrumbs={[
         { label: "Backoffice", to: "/backoffice" },
-        { label: "Connections", to: "/backoffice/connections" },
+        { label: "Internals", to: "/backoffice/internals" },
         { label: "Upload", to: "/backoffice/connections/upload" },
         { label: organisationName ?? orgId },
       ]}

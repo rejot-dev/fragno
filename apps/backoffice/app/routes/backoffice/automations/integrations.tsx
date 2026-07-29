@@ -1,13 +1,21 @@
 import { Link, useOutletContext } from "react-router";
 
+import { eq, useLiveQuery } from "@tanstack/react-db";
+
+import { BackofficeStatusLight } from "@/components/backoffice";
 import { backofficeConnectionCatalog } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 
 import { integrationBasePath } from "../integrations/scope";
 import type { AutomationLayoutContext } from "./layout-context";
 
-const SCOPED_INTEGRATION_IDS = ["telegram", "resend", "github"] as const;
+const SCOPED_INTEGRATION_IDS = ["telegram", "resend", "reson8", "github"] as const;
 
 type ScopedIntegrationId = (typeof SCOPED_INTEGRATION_IDS)[number];
+
+type IntegrationStatus = {
+  label: string;
+  tone: "info" | "live" | "waiting" | "failed" | "muted";
+};
 
 const SCOPE_SUPPORT: Record<
   ScopedIntegrationId,
@@ -15,6 +23,7 @@ const SCOPE_SUPPORT: Record<
 > = {
   telegram: ["system", "org", "project", "user"],
   resend: ["system", "org"],
+  reson8: ["org"],
   github: ["org"],
 };
 
@@ -26,14 +35,26 @@ export function meta() {
 }
 
 export default function BackofficeAutomationIntegrations() {
-  const { selectedScope } = useOutletContext<AutomationLayoutContext>();
+  const { selectedScope, collections } = useOutletContext<AutomationLayoutContext>();
+  const configuredSourcesQuery = useLiveQuery(
+    (query) =>
+      query
+        .from({ event: collections.events })
+        .where(({ event }) => eq(event.eventType, "capability.configured"))
+        .select(({ event }) => ({ source: event.source }))
+        .distinct(),
+    [collections.events],
+  );
+  const configuredSources = new Set(
+    (configuredSourcesQuery.data ?? []).map((event) => event.source),
+  );
   const integrations = backofficeConnectionCatalog.filter((connection) =>
     SCOPED_INTEGRATION_IDS.includes(connection.id as ScopedIntegrationId),
   );
 
   return (
     <div className="space-y-4">
-      <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+      <section className="bo-fragment-surface bo-panel-surface bg-[var(--bo-panel)] p-4">
         <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
           Integrations
         </p>
@@ -42,8 +63,8 @@ export default function BackofficeAutomationIntegrations() {
         </h2>
         <p className="mt-2 max-w-3xl text-sm text-[var(--bo-muted)]">
           Configure the channels available to this scope. GitHub is intentionally limited to
-          organisation scopes; Resend is available for organisations and the admin singleton;
-          Telegram can be configured on any scope.
+          organisation scopes; Reson8 is organisation-scoped; Resend is available for organisations
+          and the admin singleton; Telegram can be configured on any scope.
         </p>
       </section>
 
@@ -54,11 +75,22 @@ export default function BackofficeAutomationIntegrations() {
           const managePath = supported
             ? integrationBasePath(selectedScope, integration.routeSegment ?? id)
             : null;
+          const status: IntegrationStatus | null = !supported
+            ? { label: "Unavailable", tone: "muted" }
+            : !integration.configurable
+              ? null
+              : configuredSourcesQuery.isError
+                ? { label: "Status unavailable", tone: "failed" }
+                : !configuredSourcesQuery.isReady
+                  ? { label: "Checking", tone: "info" }
+                  : configuredSources.has(id)
+                    ? { label: "Connected", tone: "live" }
+                    : { label: "Setup required", tone: "waiting" };
 
           return (
             <div
               key={integration.id}
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4"
+              className="bo-fragment-surface bo-panel-surface bg-[var(--bo-panel)] p-4"
             >
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -69,25 +101,21 @@ export default function BackofficeAutomationIntegrations() {
                     {integration.label}
                   </h3>
                 </div>
-                <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase">
-                  {supported ? "Available" : "Unavailable"}
-                </span>
+                {status ? (
+                  <BackofficeStatusLight tone={status.tone}>{status.label}</BackofficeStatusLight>
+                ) : null}
               </div>
               <p className="mt-4 text-sm text-[var(--bo-muted)]">{integration.description}</p>
-              <div className="mt-4">
-                {managePath ? (
+              {managePath ? (
+                <div className="mt-4">
                   <Link
                     to={managePath}
                     className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
                   >
                     Manage
                   </Link>
-                ) : (
-                  <span className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                    Not on this scope
-                  </span>
-                )}
-              </div>
+                </div>
+              ) : null}
             </div>
           );
         })}

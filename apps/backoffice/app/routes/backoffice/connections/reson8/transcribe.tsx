@@ -27,6 +27,7 @@ import type {
 import { FormContainer, FormField } from "@/components/backoffice";
 import { createReson8Client } from "@/fragno/reson8-client";
 
+import { resolveAuthenticatedOrgIntegrationContext } from "../../integrations/scope";
 import {
   fetchReson8Config,
   fetchReson8CustomModels,
@@ -124,10 +125,12 @@ const getErrorMessage = (value: unknown) => {
 };
 
 export async function loader({ request, context, params }: LoaderFunctionArgs) {
-  const orgId = params.orgId;
-  if (!orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const { integration, orgId } = await resolveAuthenticatedOrgIntegrationContext({
+    request,
+    context,
+    params,
+    integration: "reson8",
+  });
 
   const { configState, configError } = await fetchReson8Config(context, orgId);
   if (configError) {
@@ -141,7 +144,7 @@ export async function loader({ request, context, params }: LoaderFunctionArgs) {
   }
 
   if (!configState?.configured) {
-    return redirect(`/backoffice/connections/reson8/${orgId}/configuration`);
+    return redirect(`${integration.basePath}/configuration`);
   }
 
   const { models, modelsError } = await fetchReson8CustomModels(request, context, orgId);
@@ -162,10 +165,12 @@ export async function loader({ request, context, params }: LoaderFunctionArgs) {
 }
 
 export async function action({ request, context, params }: ActionFunctionArgs) {
-  const orgId = params.orgId;
-  if (!orgId) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const { orgId } = await resolveAuthenticatedOrgIntegrationContext({
+    request,
+    context,
+    params,
+    integration: "reson8",
+  });
 
   const formData = await request.formData();
   const audioFile = formData.get("audioFile");

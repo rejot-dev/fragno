@@ -1,5 +1,14 @@
 import { Menu } from "@base-ui/react/menu";
-import { ChevronDown, Settings, Shield, Users } from "lucide-react";
+import {
+  Building2,
+  ChevronDown,
+  CreditCard,
+  Mail,
+  Settings,
+  Shield,
+  UserRound,
+  Users,
+} from "lucide-react";
 import { useMemo } from "react";
 import { Link, useNavigate } from "react-router";
 
@@ -36,6 +45,9 @@ export function BackofficeAccountMenu({ me, isLoading }: BackofficeAccountMenuPr
   const navigate = useNavigate();
   const user = me?.user ?? null;
   const activeOrganization = me?.activeOrganization?.organization ?? null;
+  const activeOrganizationPath = activeOrganization
+    ? `/backoffice/organisations/${activeOrganization.id}`
+    : null;
   const displayName = useMemo(() => (user ? userDisplayName(user.email) : null), [user]);
   const initials = useMemo(() => (user ? userInitials(user.email) : "--"), [user]);
 
@@ -89,15 +101,57 @@ export function BackofficeAccountMenu({ me, isLoading }: BackofficeAccountMenuPr
         <Menu.Positioner side="bottom" align="end" sideOffset={8} className="z-50">
           <Menu.Popup
             data-backoffice-root
-            className="bo-popover-surface w-[min(18rem,calc(100vw-1rem))] origin-top-right bg-[var(--bo-panel)] p-2 text-[var(--bo-fg)] transition-[opacity,transform] duration-150 ease-out outline-none data-[ending-style]:-translate-y-1 data-[ending-style]:opacity-0 data-[starting-style]:-translate-y-1 data-[starting-style]:opacity-0"
+            className="bo-popover-surface max-h-[min(36rem,var(--available-height))] w-[min(18rem,calc(100vw-1rem))] origin-top-right overflow-y-auto bg-[var(--bo-panel)] p-2 text-[var(--bo-fg)] transition-[opacity,transform] duration-150 ease-out outline-none data-[ending-style]:-translate-y-1 data-[ending-style]:opacity-0 data-[starting-style]:-translate-y-1 data-[starting-style]:opacity-0"
           >
             <div className="px-2 py-2">
               <p className="truncate text-sm font-semibold text-[var(--bo-fg)]">{displayName}</p>
               <p className="mt-0.5 truncate text-xs text-[var(--bo-muted-2)]">{user.email}</p>
-              <p className="mt-2 text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
-                {activeOrganization?.name ?? "No active organisation"}
-              </p>
             </div>
+
+            {activeOrganization && activeOrganizationPath ? (
+              <>
+                <Menu.Separator className="my-1 h-px bg-[var(--bo-border)]" />
+                <Menu.Group
+                  aria-label={`Current organisation: ${activeOrganization.name}`}
+                  className="space-y-1"
+                >
+                  <p
+                    aria-hidden="true"
+                    className="truncate px-2 py-1 text-xs font-semibold text-[var(--bo-muted-2)]"
+                  >
+                    {activeOrganization.name}
+                  </p>
+                  <Menu.Item
+                    render={<Link to={activeOrganizationPath} />}
+                    className={menuItemClassName}
+                  >
+                    <Building2 className="size-4 shrink-0" aria-hidden="true" />
+                    Overview
+                  </Menu.Item>
+                  <Menu.Item
+                    render={<Link to={`${activeOrganizationPath}/members`} />}
+                    className={menuItemClassName}
+                  >
+                    <UserRound className="size-4 shrink-0" aria-hidden="true" />
+                    Members
+                  </Menu.Item>
+                  <Menu.Item
+                    render={<Link to={`${activeOrganizationPath}/invites`} />}
+                    className={menuItemClassName}
+                  >
+                    <Mail className="size-4 shrink-0" aria-hidden="true" />
+                    Invites
+                  </Menu.Item>
+                  <Menu.Item
+                    render={<Link to={`${activeOrganizationPath}/billing`} />}
+                    className={menuItemClassName}
+                  >
+                    <CreditCard className="size-4 shrink-0" aria-hidden="true" />
+                    Billing
+                  </Menu.Item>
+                </Menu.Group>
+              </>
+            ) : null}
 
             <Menu.Separator className="my-1 h-px bg-[var(--bo-border)]" />
             <Menu.Group aria-label="Workspace" className="space-y-1">
@@ -151,7 +205,9 @@ export function BackofficeAccountMenu({ me, isLoading }: BackofficeAccountMenuPr
                   } finally {
                     await navigate("/backoffice/login", { replace: true });
                   }
-                })();
+                })().catch((error: unknown) => {
+                  console.error("Backoffice sign-out flow failed", error);
+                });
               }}
               className={`${menuItemClassName} disabled:opacity-60`}
             >

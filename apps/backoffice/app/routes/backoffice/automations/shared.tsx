@@ -418,11 +418,14 @@ export function AutomationWorkspaceHeader({
   ];
 
   return (
-    <section className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)] shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-none">
+    <section className="bo-fragment-surface bo-panel-surface overflow-hidden bg-[var(--bo-panel)]">
       <div className="p-3 md:px-4">
         <h1 className="sr-only">Automations for {workspaceLabel}</h1>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <BackofficeBreadcrumbs items={breadcrumbs} />
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="bo-product-code">AUT</span>
+            <BackofficeBreadcrumbs items={breadcrumbs} />
+          </div>
           <div className="w-full min-w-0 sm:w-auto sm:max-w-md">
             <AutomationScopeMenu
               selectedScope={selectedScope}

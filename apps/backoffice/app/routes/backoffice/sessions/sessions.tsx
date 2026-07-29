@@ -13,6 +13,7 @@ import {
   useSearchParams,
 } from "react-router";
 
+import { BackofficeSystemState } from "@/components/backoffice";
 import { ClientOnly } from "@/components/client-only";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import {
@@ -190,14 +191,16 @@ export default function BackofficeOrganisationPiSessionsLayout() {
 
 function PiSessionsLoading() {
   return (
-    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-      Loading local Pi sessions…
+    <BackofficeSystemState
+      tone="loading"
+      label="Opening session index"
+      title="Synchronizing Pi sessions…"
+      description="Loading local session projections, harnesses, and agent activity."
+    >
       <noscript>
-        <span className="mt-2 block text-red-700 dark:text-red-200">
-          JavaScript is required to open Pi sessions.
-        </span>
+        <span className="text-[var(--bo-failed)]">JavaScript is required to open Pi sessions.</span>
       </noscript>
-    </div>
+    </BackofficeSystemState>
   );
 }
 
@@ -210,9 +213,12 @@ function PiSessionsUnavailable({ layoutContext }: { layoutContext: PiLayoutConte
       : "Configure Pi before opening sessions.");
 
   return (
-    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-      {message}
-    </div>
+    <BackofficeSystemState
+      tone="empty"
+      label="Session index unavailable"
+      title="Pi sessions are not connected."
+      description={message}
+    />
   );
 }
 

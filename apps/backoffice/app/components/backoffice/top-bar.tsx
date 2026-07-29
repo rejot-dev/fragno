@@ -5,6 +5,7 @@ import { authClient } from "@/fragno/auth/auth-client";
 import { cn } from "@/lib/utils";
 
 import { BackofficeAccountMenu } from "./account-menu";
+import { BackofficeFragmentMark } from "./fragment-mark";
 import { BackofficeThemeMenu } from "./theme-menu";
 
 type BackofficeTopBarProps = {
@@ -13,6 +14,7 @@ type BackofficeTopBarProps = {
 };
 
 type PrimaryNavigationItem = {
+  index: string;
   label: string;
   to: string;
   isActive: (pathname: string) => boolean;
@@ -20,16 +22,19 @@ type PrimaryNavigationItem = {
 
 const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
   {
+    index: "01",
     label: "Automations",
     to: "/backoffice/automations",
     isActive: (pathname) => pathname.startsWith("/backoffice/automations"),
   },
   {
+    index: "02",
     label: "Sessions",
     to: "/backoffice/sessions",
     isActive: (pathname) => pathname.startsWith("/backoffice/sessions"),
   },
   {
+    index: "03",
     label: "Files",
     to: "/backoffice/files",
     isActive: (pathname) => pathname.startsWith("/backoffice/files"),
@@ -58,6 +63,9 @@ function PrimaryNavigation({ mobile = false }: { mobile?: boolean }) {
             );
           }}
         >
+          <span className="hidden font-mono text-[8px] tracking-normal text-[var(--bo-muted-2)] lg:mr-2 lg:inline">
+            {item.index}
+          </span>
           {item.label}
         </NavLink>
       ))}
@@ -67,7 +75,7 @@ function PrimaryNavigation({ mobile = false }: { mobile?: boolean }) {
 
 export function BackofficeTopBar({ me, isLoading }: BackofficeTopBarProps) {
   const { data: meData, loading: meLoading } = authClient.useMe();
-  const effectiveMe = meData ?? me ?? null;
+  const effectiveMe = meData === undefined ? me : meData;
   const sessionLoading = isLoading || (!effectiveMe && meLoading);
 
   return (
@@ -77,7 +85,7 @@ export function BackofficeTopBar({ me, isLoading }: BackofficeTopBarProps) {
           to="/backoffice"
           className="flex min-h-10 shrink-0 items-center gap-2 px-1 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-fg)] uppercase transition-[scale,color] duration-150 ease-out outline-none hover:text-[var(--bo-accent-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96] sm:px-2"
         >
-          <span className="size-1.5 bg-[var(--bo-accent)]" aria-hidden="true" />
+          <BackofficeFragmentMark palette="blue" />
           Backoffice
         </Link>
 

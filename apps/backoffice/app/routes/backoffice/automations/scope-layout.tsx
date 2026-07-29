@@ -9,6 +9,7 @@ import {
   useSearchParams,
 } from "react-router";
 
+import { BackofficeSystemState } from "@/components/backoffice";
 import { ClientOnly } from "@/components/client-only";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import {
@@ -335,14 +336,18 @@ function CreateProjectPanel({
 
 function AutomationClientLoading() {
   return (
-    <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-muted)]">
-      Loading local automation data…
+    <BackofficeSystemState
+      tone="loading"
+      label="Mounting workspace"
+      title="Synchronizing automation data…"
+      description="Connecting routes, workflows, scripts, and runtime state for this scope."
+    >
       <noscript>
-        <span className="mt-2 block text-red-700 dark:text-red-200">
+        <span className="text-[var(--bo-failed)]">
           JavaScript is required to open scoped automations.
         </span>
       </noscript>
-    </div>
+    </BackofficeSystemState>
   );
 }
 

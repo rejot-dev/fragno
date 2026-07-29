@@ -30,17 +30,6 @@ export type McpLayoutContext = {
 
 export type McpTab = "configuration";
 
-export const formatTimestamp = (value?: string | Date | null) => {
-  if (!value) {
-    return "";
-  }
-  const date = value instanceof Date ? value : new Date(value);
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-};
-
 export function McpHeader({
   orgId,
   organisationName,
@@ -52,7 +41,7 @@ export function McpHeader({
     <BackofficePageHeader
       breadcrumbs={[
         { label: "Backoffice", to: "/backoffice" },
-        { label: "Connections", to: "/backoffice/connections" },
+        { label: "Automations", to: "/backoffice/automations" },
         { label: "MCP", to: "/backoffice/connections/mcp" },
         { label: organisationName ?? orgId },
       ]}
