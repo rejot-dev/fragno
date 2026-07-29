@@ -1,39 +1,19 @@
-import type { IdColumn, AnyTable } from "../schema/create";
+import type { AnyTable } from "../schema/create";
 import type { Prettify } from "../util/types";
 import type { Condition, ConditionBuilder } from "./condition-builder";
+import type { TableToColumnValues } from "./table-values";
 import type { FindBuilder } from "./unit-of-work/unit-of-work";
+
+export type {
+  RawColumnValues,
+  TableToColumnValues,
+  TableToInsertValues,
+  TableToUpdateValues,
+} from "./table-values";
 
 export type AnySelectClause = SelectClause<AnyTable>;
 
 export type SelectClause<T extends AnyTable> = true | readonly (keyof T["columns"])[];
-
-export type RawColumnValues<T extends AnyTable> = {
-  [K in keyof T["columns"] as string extends K ? never : K]: T["columns"][K]["$out"];
-};
-
-export type TableToColumnValues<T extends AnyTable> = Prettify<RawColumnValues<T>>;
-
-type PickNullable<T> = {
-  [P in keyof T as null extends T[P] ? P : never]: T[P];
-};
-
-type PickNotNullable<T> = {
-  [P in keyof T as null extends T[P] ? never : P]: T[P];
-};
-
-type RawInsertValues<T extends AnyTable> = {
-  [K in keyof T["columns"] as string extends K ? never : K]: T["columns"][K]["$in"];
-};
-
-export type TableToInsertValues<T extends AnyTable> = Prettify<
-  Partial<PickNullable<RawInsertValues<T>>> & PickNotNullable<RawInsertValues<T>>
->;
-
-export type TableToUpdateValues<T extends AnyTable> = {
-  [K in keyof T["columns"] as string extends K ? never : K]?: T["columns"][K] extends IdColumn
-    ? never
-    : T["columns"][K]["$in"];
-};
 
 type MainSelectResult<S extends SelectClause<T>, T extends AnyTable> = S extends true
   ? TableToColumnValues<T>

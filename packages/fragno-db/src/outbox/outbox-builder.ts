@@ -1,6 +1,6 @@
 import { internalSchema } from "../fragments/internal-fragment.schema";
 import { dbNow, getDbNowOffsetMs, isDbNow } from "../query/db-now";
-import type { MutationOperation } from "../query/unit-of-work/unit-of-work";
+import type { MutationOperation } from "../query/unit-of-work/mutation-recorder";
 import type { AnySchema, AnyTable } from "../schema/create";
 import { FragnoId, FragnoReference, getTableForeignKey } from "../schema/create";
 import type { OutboxRefLookup, OutboxPayload, OutboxMutation } from "./outbox";

@@ -3,11 +3,12 @@ import { buildCondition } from "../query/condition-builder";
 import type { CursorResult } from "../query/cursor";
 import type { CompiledJoin } from "../query/find-options";
 import type { AnySelectClause } from "../query/mod";
+import type { MutationOperation } from "../query/unit-of-work/mutation-recorder";
 import type {
   CompiledQueryTreeChildNode,
   CompiledQueryTreeRootNode,
 } from "../query/unit-of-work/query-tree";
-import type { MutationOperation, RetrievalOperation } from "../query/unit-of-work/unit-of-work";
+import type { RetrievalOperation } from "../query/unit-of-work/unit-of-work";
 import type { AnySchema, AnyTable } from "../schema/create";
 import { FragnoId } from "../schema/create";
 

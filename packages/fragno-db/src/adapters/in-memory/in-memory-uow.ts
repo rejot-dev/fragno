@@ -27,9 +27,9 @@ import { getDbNowOffsetMs, isDbNow } from "../../query/db-now";
 import type { CompiledJoin } from "../../query/find-options";
 import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
 import { buildCheckAbsentCondition } from "../../query/unit-of-work/check-absent";
+import type { MutationOperation } from "../../query/unit-of-work/mutation-recorder";
 import type {
   CompiledMutation,
-  MutationOperation,
   MutationResult,
   RetrievalOperation,
   UOWCompiler,

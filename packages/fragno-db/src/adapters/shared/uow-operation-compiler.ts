@@ -1,10 +1,10 @@
 import { createNamingResolver, type NamingResolver } from "../../naming/sql-naming";
 import type { Condition } from "../../query/condition-builder";
 import { Cursor } from "../../query/cursor";
+import type { MutationOperation } from "../../query/unit-of-work/mutation-recorder";
 import type {
   CompiledMutation,
   RetrievalOperation,
-  MutationOperation,
   UOWCompiler,
 } from "../../query/unit-of-work/unit-of-work";
 import type { AnyColumn, AnySchema, AnyTable, FragnoId } from "../../schema/create";

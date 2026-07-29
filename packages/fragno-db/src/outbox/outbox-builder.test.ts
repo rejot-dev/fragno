@@ -1,6 +1,6 @@
 import { describe, expect, it, assert } from "vitest";
 
-import type { MutationOperation } from "../query/unit-of-work/unit-of-work";
+import type { MutationOperation } from "../query/unit-of-work/mutation-recorder";
 import { materializeRuntimeCreateValues } from "../query/value-encoding";
 import type { AnySchema } from "../schema/create";
 import { column, idColumn, schema } from "../schema/create";
