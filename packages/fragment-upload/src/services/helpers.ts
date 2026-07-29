@@ -1,10 +1,14 @@
 import { assertFileKey, splitFileKey, type FileKey } from "../file-key";
 import type { FileKeyParts } from "../keys";
+import { UploadServiceError } from "./errors";
 
 export type FileKeyInput = {
   keyParts?: FileKeyParts;
   fileKey?: FileKey;
 };
+
+const invalidFileKey = (options?: ErrorOptions) =>
+  new UploadServiceError("INVALID_FILE_KEY", "The file key is invalid.", undefined, options);
 
 const normalizeKeyParts = (keyParts: FileKeyParts): readonly string[] => {
   const normalized: string[] = [];
@@ -20,7 +24,7 @@ const normalizeKeyParts = (keyParts: FileKeyParts): readonly string[] => {
       continue;
     }
 
-    throw new Error("INVALID_FILE_KEY");
+    throw invalidFileKey();
   }
 
   return normalized;
@@ -35,7 +39,7 @@ export const resolveFileKeyInput = (
   const { keyParts, fileKey } = input;
 
   if ((!keyParts || keyParts.length === 0) && (!fileKey || fileKey.length === 0)) {
-    throw new Error("INVALID_FILE_KEY");
+    throw invalidFileKey();
   }
 
   if (keyParts && fileKey) {
@@ -44,11 +48,11 @@ export const resolveFileKeyInput = (
       const fromParts = normalizeKeyParts(keyParts).join("/");
       assertFileKey(fromParts);
       if (fromParts !== fileKey) {
-        throw new Error("INVALID_FILE_KEY");
+        throw invalidFileKey();
       }
       return { fileKey, fileKeyParts: splitFileKey(fileKey) };
-    } catch {
-      throw new Error("INVALID_FILE_KEY");
+    } catch (cause) {
+      throw invalidFileKey({ cause });
     }
   }
 
@@ -58,15 +62,15 @@ export const resolveFileKeyInput = (
       const normalizedFileKey = normalized.join("/");
       assertFileKey(normalizedFileKey);
       return { fileKey: normalizedFileKey, fileKeyParts: normalized };
-    } catch {
-      throw new Error("INVALID_FILE_KEY");
+    } catch (cause) {
+      throw invalidFileKey({ cause });
     }
   }
 
   try {
     assertFileKey(fileKey!);
     return { fileKey: fileKey!, fileKeyParts: splitFileKey(fileKey!) };
-  } catch {
-    throw new Error("INVALID_FILE_KEY");
+  } catch (cause) {
+    throw invalidFileKey({ cause });
   }
 };

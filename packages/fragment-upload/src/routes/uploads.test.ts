@@ -10,6 +10,7 @@ import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test"
 
 import { uploadFragmentDefinition } from "../definition";
 import { uploadRoutes } from "../index";
+import { UploadStorageError } from "../storage/errors";
 import { createFilesystemStorageAdapter } from "../storage/fs";
 import type { StorageAdapter } from "../storage/types";
 
@@ -253,9 +254,8 @@ describe("upload routes", () => {
     });
 
     const uploadResponse = asJsonResponse<{
-      fileKey: string;
-      status: string;
-      sizeBytes: number;
+      kind: "published";
+      file: { fileKey: string; status: string; sizeBytes: number };
     }>(
       await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
         pathParams: { uploadId },
@@ -264,9 +264,9 @@ describe("upload routes", () => {
     );
 
     assert(uploadResponse.type === "json");
-    expect(uploadResponse.data.fileKey).toBe(fileKey);
-    assert(uploadResponse.data.status === "ready");
-    assert(uploadResponse.data.sizeBytes === 5);
+    expect(uploadResponse.data.file.fileKey).toBe(fileKey);
+    assert(uploadResponse.data.file.status === "ready");
+    assert(uploadResponse.data.file.sizeBytes === 5);
 
     const statusResponse = asJsonResponse<{
       status: string;
@@ -328,15 +328,18 @@ describe("upload routes", () => {
       },
     });
 
-    const secondResponse = asJsonResponse<{ status: string; filename: string }>(
+    const secondResponse = asJsonResponse<{
+      kind: "published";
+      file: { status: string; filename: string };
+    }>(
       await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
         pathParams: { uploadId: secondUpload.data.uploadId },
         body: secondStream,
       }),
     );
 
-    assert(secondResponse.data.status === "ready");
-    assert(secondResponse.data.filename === "second.txt");
+    assert(secondResponse.data.file.status === "ready");
+    assert(secondResponse.data.file.filename === "second.txt");
 
     const beforeDrain = await fragment.callRouteRaw("GET", "/files/by-key/content", {
       query: { provider, key: firstUpload.data.fileKey },
@@ -418,6 +421,53 @@ describe("upload routes", () => {
       assert(fileResponse.type === "error");
       assert(fileResponse.status === 404);
       assert(fileResponse.error.code === "FILE_NOT_FOUND");
+    } finally {
+      storage.writeStream = originalWriteStream;
+    }
+  });
+
+  it("preserves typed checksum failures from proxy storage", async () => {
+    const originalWriteStream = storage.writeStream;
+    storage.writeStream = async () => {
+      throw new UploadStorageError("INVALID_CHECKSUM", "Checksum mismatch.");
+    };
+
+    try {
+      const createResponse = asJsonResponse<{ uploadId: string }>(
+        await fragment.callRoute("POST", "/uploads", {
+          body: {
+            provider,
+            fileKey: "proxy/checksum.txt",
+            filename: "checksum.txt",
+            sizeBytes: 4,
+            contentType: "text/plain",
+          },
+        }),
+      );
+
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("test"));
+          controller.close();
+        },
+      });
+      const uploadResponse = asErrorResponse(
+        await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
+          pathParams: { uploadId: createResponse.data.uploadId },
+          body: stream,
+        }),
+      );
+
+      assert(uploadResponse.status === 400);
+      assert(uploadResponse.error.code === "INVALID_CHECKSUM");
+
+      const statusResponse = asJsonResponse<{ status: string; errorCode: string }>(
+        await fragment.callRoute("GET", "/uploads/:uploadId", {
+          pathParams: { uploadId: createResponse.data.uploadId },
+        }),
+      );
+      assert(statusResponse.data.status === "failed");
+      assert(statusResponse.data.errorCode === "INVALID_CHECKSUM");
     } finally {
       storage.writeStream = originalWriteStream;
     }
@@ -595,7 +645,10 @@ describe("upload routes", () => {
       },
     });
 
-    const retryUpload = asJsonResponse<{ status: string }>(
+    const retryUpload = asJsonResponse<{
+      kind: "published";
+      file: { status: string };
+    }>(
       await fragment.callRoute("PUT", "/uploads/:uploadId/content", {
         pathParams: { uploadId: retryResponse.data.uploadId },
         body: retryStream,
@@ -603,7 +656,7 @@ describe("upload routes", () => {
     );
 
     assert(retryUpload.type === "json");
-    assert(retryUpload.data.status === "ready");
+    assert(retryUpload.data.file.status === "ready");
   });
 });
 
@@ -899,5 +952,61 @@ describe("upload route provider mismatch guards", () => {
     assert(response.status === 409);
     assert(response.error.code === "PROVIDER_MISMATCH");
     expect(secondaryStorage.finalizeUpload).not.toHaveBeenCalled();
+  });
+
+  it("rejects wrong-provider prepared batch commits", async () => {
+    const fileKey = "files.proxy.prepared-commit-guard";
+    const created = asJsonResponse<{ uploadId: string }>(
+      await primaryFragment.callRoute("POST", "/uploads", {
+        body: {
+          provider: primaryStorage.adapter.name,
+          fileKey,
+          filename: "hello.txt",
+          sizeBytes: 5,
+          contentType: "text/plain",
+          publicationMode: "batch",
+        },
+      }),
+    );
+
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("hello"));
+        controller.close();
+      },
+    });
+    const prepared = asJsonResponse<{ kind: string; write: { uploadId: string } }>(
+      await primaryFragment.callRoute("PUT", "/uploads/:uploadId/content", {
+        pathParams: { uploadId: created.data.uploadId },
+        body: stream,
+      }),
+    );
+    assert(prepared.data.kind === "prepared");
+
+    const response = asErrorResponse(
+      await secondaryFragment.callRoute("POST", "/files/commit-prepared", {
+        body: {
+          entries: [
+            {
+              kind: "write",
+              uploadId: prepared.data.write.uploadId,
+              precondition: { kind: "absent" },
+            },
+          ],
+        },
+      }),
+    );
+
+    assert(response.status === 409);
+    assert(response.error.code === "PROVIDER_MISMATCH");
+
+    const missing = asErrorResponse(
+      await primaryFragment.callRoute("GET", "/files/by-key", {
+        query: { provider: primaryStorage.adapter.name, key: fileKey },
+      }),
+    );
+    assert(missing.status === 404);
+    assert(missing.error.code === "FILE_NOT_FOUND");
+    expect(secondaryStorage.writeStream).not.toHaveBeenCalled();
   });
 });

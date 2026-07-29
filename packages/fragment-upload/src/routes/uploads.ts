@@ -1,225 +1,48 @@
-import { z } from "zod";
-
 import { defineRoutes } from "@fragno-dev/core";
-import type { FragnoRouteConfig } from "@fragno-dev/core";
 
 import { resolveUploadFragmentConfig } from "../config";
 import { uploadFragmentDefinition } from "../definition";
+import { UploadServiceError } from "../services/errors";
+import { toPreparedFileWrite } from "../services/file-publication";
 import { resolveFileKeyInput } from "../services/helpers";
-import { buildUploadSessionRouteData } from "../services/uploads";
 import { buildStorageObjectVersionSegment } from "../storage/object-key";
-import type { UploadChecksum } from "../storage/types";
-import type { UploadStatus, UploadStrategy } from "../types";
+import type { UploadPublicationMode, UploadStatus } from "../types";
+import { toFileMutationResult, uploadCompletionResultSchema } from "./shared";
 import {
-  checksumSchema,
-  fileMetadataSchema,
-  providerNamespaceSchema,
-  toFileMetadata,
-} from "./shared";
+  abortUploadOutputSchema,
+  completedUploadPartsInputSchema,
+  completeUploadInputSchema,
+  createUploadInputSchema,
+  createUploadOutputSchema,
+  uploadPartNumbersInputSchema,
+  uploadPartsOutputSchema,
+  uploadPartUrlsOutputSchema,
+  uploadProgressInputSchema,
+  uploadProgressOutputSchema,
+  uploadStatusOutputSchema,
+} from "./uploads-contracts";
+import {
+  handleUploadServiceError,
+  rejectInactiveUpload,
+  rejectProviderMismatch,
+  uploadErrorCodes,
+} from "./uploads-errors";
+import { buildUploadSessionRouteData, toCreateUploadResult } from "./uploads-results";
+import {
+  abortMultipartUploadObject,
+  discardUnusedMultipartUpload,
+  finalizeDirectUploadObject,
+  issueMultipartPartUploadUrls,
+  mapStorageOperationError,
+  storeProxyUploadObject,
+} from "./uploads-storage";
 
-const createUploadInputSchema = z.object({
-  provider: providerNamespaceSchema.optional(),
-  keyParts: z.array(z.union([z.string(), z.number().int()])).optional(),
-  fileKey: z.string().optional(),
-  filename: z.string().min(1),
-  sizeBytes: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-  contentType: z.string().min(1),
-  checksum: checksumSchema.optional(),
-  tags: z.array(z.string()).optional(),
-  visibility: z.enum(["private", "public", "unlisted"]).optional(),
-  uploaderId: z.string().optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-});
-
-const progressSchema = z.object({
-  bytesUploaded: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
-  partsUploaded: z.number().int().min(0).optional(),
-});
-
-const partNumbersSchema = z.object({
-  partNumbers: z.array(z.number().int().min(1)).min(1),
-});
-
-const completePartsSchema = z.object({
-  parts: z
-    .array(
-      z.object({
-        partNumber: z.number().int().min(1),
-        etag: z.string().min(1),
-        sizeBytes: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-      }),
-    )
-    .min(1),
-});
-
-const completeUploadSchema = z.object({
-  parts: z
-    .array(
-      z.object({
-        partNumber: z.number().int().min(1),
-        etag: z.string().min(1),
-      }),
-    )
-    .optional(),
-});
-
-const uploadRouteDataSchema = z.object({
-  provider: z.string(),
-  upload: z.object({
-    mode: z.enum(["single", "multipart"]),
-    transport: z.enum(["direct", "proxy"]),
-    uploadUrl: z.string().optional(),
-    uploadHeaders: z.record(z.string(), z.string()).optional(),
-    partSizeBytes: z.number().optional(),
-    maxParts: z.number().optional(),
-    statusEndpoint: z.string(),
-    progressEndpoint: z.string(),
-    partsEndpoint: z.string().optional(),
-    partsCompleteEndpoint: z.string().optional(),
-    completeEndpoint: z.string(),
-    abortEndpoint: z.string(),
-    contentEndpoint: z.string().optional(),
-  }),
-});
-
-const createUploadOutputSchema = uploadRouteDataSchema.extend({
-  uploadId: z.string(),
-  fileKey: z.string(),
-  status: z.enum(["created", "in_progress"]),
-  strategy: z.enum(["direct-single", "direct-multipart", "proxy"]),
-  expiresAt: z.date(),
-});
-
-const uploadStatusSchema = uploadRouteDataSchema.extend({
-  uploadId: z.string(),
-  fileKey: z.string(),
-  status: z.enum(["created", "in_progress", "completed", "aborted", "failed", "expired"]),
-  strategy: z.enum(["direct-single", "direct-multipart", "proxy"]),
-  expectedSizeBytes: z.number(),
-  bytesUploaded: z.number(),
-  partsUploaded: z.number(),
-  partSizeBytes: z.number().nullable(),
-  expiresAt: z.date(),
-  createdAt: z.date(),
-  updatedAt: z.date(),
-  completedAt: z.date().nullable(),
-  errorCode: z.string().nullable(),
-  errorMessage: z.string().nullable(),
-});
-
-const errorCodes = [
-  "UPLOAD_NOT_FOUND",
-  "UPLOAD_ALREADY_ACTIVE",
-  "UPLOAD_METADATA_MISMATCH",
-  "FILE_ALREADY_EXISTS",
-  "UPLOAD_EXPIRED",
-  "UPLOAD_INVALID_STATE",
-  "PROVIDER_MISMATCH",
-  "INVALID_FILE_KEY",
-  "INVALID_CHECKSUM",
-  "INVALID_REQUEST",
-  "STORAGE_ERROR",
-] as const;
-
-type UploadErrorCode = (typeof errorCodes)[number];
-
-type ErrorFn<Code extends string> = Parameters<
-  FragnoRouteConfig<"GET", "/__error", undefined, undefined, Code>["handler"]
->[1]["error"];
-
-const rejectInactiveUpload = (
-  upload: { status: UploadStatus; expiresAt: Date },
-  error: ErrorFn<UploadErrorCode>,
-): Response | null => {
-  const now = Date.now();
-
-  if (upload.status === "completed") {
-    return error({ message: "File already exists", code: "FILE_ALREADY_EXISTS" }, 409);
-  }
-
-  if (upload.status === "expired" || upload.expiresAt.getTime() <= now) {
-    return error({ message: "Upload expired", code: "UPLOAD_EXPIRED" }, 410);
-  }
-
-  if (upload.status === "aborted" || upload.status === "failed") {
-    return error({ message: "Upload invalid state", code: "UPLOAD_INVALID_STATE" }, 409);
-  }
-
-  return null;
-};
-
-const rejectProviderMismatch = (
-  upload: { provider: string },
-  activeProvider: string,
-  error: ErrorFn<UploadErrorCode>,
-): Response | null => {
-  if (upload.provider === activeProvider) {
-    return null;
-  }
-
-  return error({ message: "Upload provider mismatch", code: "PROVIDER_MISMATCH" }, 409);
-};
-
-// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- Each route supplies a narrower error callback, and Code keeps the shared mapper within that route's declared error union.
-const handleServiceError = <Code extends UploadErrorCode>(
-  err: unknown,
-  error: ErrorFn<Code>,
-): Response => {
-  if (!(err instanceof Error)) {
-    throw err;
-  }
-
-  switch (err.message) {
-    case "UPLOAD_NOT_FOUND":
-      return error({ message: "Upload not found", code: "UPLOAD_NOT_FOUND" as Code }, 404);
-    case "FILE_ALREADY_EXISTS":
-      return error({ message: "File already exists", code: "FILE_ALREADY_EXISTS" as Code }, 409);
-    case "UPLOAD_ALREADY_ACTIVE":
-      return error(
-        {
-          message: "Upload already active",
-          code: "UPLOAD_ALREADY_ACTIVE" as Code,
-        },
-        409,
-      );
-    case "UPLOAD_METADATA_MISMATCH":
-      return error(
-        {
-          message: "Upload metadata mismatch",
-          code: "UPLOAD_METADATA_MISMATCH" as Code,
-        },
-        409,
-      );
-    case "UPLOAD_EXPIRED":
-      return error({ message: "Upload expired", code: "UPLOAD_EXPIRED" as Code }, 410);
-    case "UPLOAD_INVALID_STATE":
-      return error(
-        {
-          message: "Upload invalid state",
-          code: "UPLOAD_INVALID_STATE" as Code,
-        },
-        409,
-      );
-    case "PROVIDER_MISMATCH":
-      return error(
-        {
-          message: "Upload provider mismatch",
-          code: "PROVIDER_MISMATCH" as Code,
-        },
-        409,
-      );
-    case "INVALID_FILE_KEY":
-      return error({ message: "Invalid file key", code: "INVALID_FILE_KEY" as Code }, 400);
-    case "INVALID_CHECKSUM":
-      return error({ message: "Invalid checksum", code: "INVALID_CHECKSUM" as Code }, 400);
-    case "INVALID_REQUEST":
-      return error({ message: "Invalid request", code: "INVALID_REQUEST" as Code }, 400);
-    case "STORAGE_ERROR":
-      return error({ message: "Storage error", code: "STORAGE_ERROR" as Code }, 502);
-    default:
-      throw err;
-  }
-};
+function isPreparedBatchUpload(upload: {
+  status: UploadStatus;
+  publicationMode: UploadPublicationMode;
+}): boolean {
+  return upload.status === "prepared" && upload.publicationMode === "batch";
+}
 
 export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
   ({ services, defineRoute, config }) => {
@@ -231,8 +54,8 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
         path: "/uploads",
         inputSchema: createUploadInputSchema,
         outputSchema: createUploadOutputSchema,
-        errorCodes,
-        handler: async function ({ input }, { json, error }) {
+        errorCodes: uploadErrorCodes,
+        handler: async function createUploadSession({ input }, { json, error }) {
           const payload = await input.valid();
           const resolvedConfig = getResolvedConfig();
           const provider = payload.provider ?? resolvedConfig.storage.name;
@@ -244,7 +67,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               fileKey: payload.fileKey,
             });
           } catch (err) {
-            return handleServiceError(err, error);
+            return handleUploadServiceError(err, error);
           }
 
           const objectKeyVersionSegment = buildStorageObjectVersionSegment();
@@ -260,11 +83,8 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               metadata: payload.metadata ?? null,
               objectKeyVersionSegment,
             });
-          } catch (err) {
-            if (err instanceof Error && err.message === "INVALID_CHECKSUM") {
-              return error({ message: "Invalid checksum", code: "INVALID_CHECKSUM" }, 400);
-            }
-            return error({ message: "Storage error", code: "STORAGE_ERROR" }, 502);
+          } catch (cause) {
+            return handleUploadServiceError(mapStorageOperationError(cause), error);
           }
 
           try {
@@ -280,39 +100,14 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               .transform(({ serviceResult: [created] }) => created)
               .execute();
 
-            if (
-              result.reused &&
-              storageInit.strategy === "direct-multipart" &&
-              resolvedConfig.storage.abortMultipartUpload &&
-              storageInit.storageUploadId
-            ) {
-              try {
-                await resolvedConfig.storage.abortMultipartUpload({
-                  storageKey: storageInit.storageKey,
-                  storageUploadId: storageInit.storageUploadId,
-                });
-              } catch {
-                // Ignore abort failures for races.
-              }
+            if (result.reused) {
+              await discardUnusedMultipartUpload(resolvedConfig.storage, storageInit);
             }
 
-            return json(result.result);
+            return json(toCreateUploadResult(resolvedConfig.storage, result.upload));
           } catch (err) {
-            if (
-              storageInit.strategy === "direct-multipart" &&
-              resolvedConfig.storage.abortMultipartUpload &&
-              storageInit.storageUploadId
-            ) {
-              try {
-                await resolvedConfig.storage.abortMultipartUpload({
-                  storageKey: storageInit.storageKey,
-                  storageUploadId: storageInit.storageUploadId,
-                });
-              } catch {
-                // Ignore abort failures for races.
-              }
-            }
-            return handleServiceError(err, error);
+            await discardUnusedMultipartUpload(resolvedConfig.storage, storageInit);
+            return handleUploadServiceError(err, error);
           }
         },
       }),
@@ -320,17 +115,15 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
       defineRoute({
         method: "GET",
         path: "/uploads/:uploadId",
-        outputSchema: uploadStatusSchema,
-        errorCodes,
-        handler: async function ({ pathParams }, { json, error }) {
+        outputSchema: uploadStatusOutputSchema,
+        errorCodes: uploadErrorCodes,
+        handler: async function getUploadSessionStatus({ pathParams }, { json, error }) {
           const resolvedConfig = getResolvedConfig();
           try {
             const upload = await this.handlerTx()
-              .withServiceCalls(() => [services.getUploadStatus(pathParams.uploadId)])
+              .withServiceCalls(() => [services.getUpload(pathParams.uploadId)])
               .transform(({ serviceResult: [result] }) => result)
               .execute();
-
-            const uploadHeaders = upload.uploadHeaders as Record<string, string> | null;
 
             return json({
               uploadId: upload.id.toString(),
@@ -338,13 +131,14 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               ...buildUploadSessionRouteData(resolvedConfig.storage, {
                 uploadId: upload.id.toString(),
                 provider: upload.provider,
-                strategy: upload.strategy as UploadStrategy,
+                strategy: upload.strategy,
                 uploadUrl: upload.uploadUrl ?? undefined,
-                uploadHeaders: uploadHeaders ?? undefined,
+                uploadHeaders: upload.uploadHeaders ?? undefined,
                 partSizeBytes: upload.partSizeBytes ?? undefined,
               }),
-              status: upload.status as UploadStatus,
-              strategy: upload.strategy as UploadStrategy,
+              status: upload.status,
+              strategy: upload.strategy,
+              publicationMode: upload.publicationMode,
               expectedSizeBytes: Number(upload.expectedSizeBytes),
               bytesUploaded: Number(upload.bytesUploaded),
               partsUploaded: upload.partsUploaded,
@@ -357,7 +151,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               errorMessage: upload.errorMessage,
             });
           } catch (err) {
-            return handleServiceError(err, error);
+            return handleUploadServiceError(err, error);
           }
         },
       }),
@@ -365,13 +159,10 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
       defineRoute({
         method: "POST",
         path: "/uploads/:uploadId/progress",
-        inputSchema: progressSchema,
-        outputSchema: z.object({
-          bytesUploaded: z.number(),
-          partsUploaded: z.number(),
-        }),
-        errorCodes,
-        handler: async function ({ pathParams, input }, { json, error }) {
+        inputSchema: uploadProgressInputSchema,
+        outputSchema: uploadProgressOutputSchema,
+        errorCodes: uploadErrorCodes,
+        handler: async function recordUploadProgress({ pathParams, input }, { json, error }) {
           const payload = await input.valid();
           try {
             const result = await this.handlerTx()
@@ -384,7 +175,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               partsUploaded: result.partsUploaded,
             });
           } catch (err) {
-            return handleServiceError(err, error);
+            return handleUploadServiceError(err, error);
           }
         },
       }),
@@ -392,24 +183,16 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
       defineRoute({
         method: "POST",
         path: "/uploads/:uploadId/parts",
-        inputSchema: partNumbersSchema,
-        outputSchema: z.object({
-          parts: z.array(
-            z.object({
-              partNumber: z.number(),
-              url: z.string(),
-              headers: z.record(z.string(), z.string()).optional(),
-            }),
-          ),
-        }),
-        errorCodes,
-        handler: async function ({ pathParams, input }, { json, error }) {
+        inputSchema: uploadPartNumbersInputSchema,
+        outputSchema: uploadPartUrlsOutputSchema,
+        errorCodes: uploadErrorCodes,
+        handler: async function createUploadPartUrls({ pathParams, input }, { json, error }) {
           const payload = await input.valid();
           const resolvedConfig = getResolvedConfig();
           try {
             // Rule of Fragno exception: read -> storage I/O -> mutate.
             const upload = await this.handlerTx()
-              .withServiceCalls(() => [services.getUploadStorageInfo(pathParams.uploadId)])
+              .withServiceCalls(() => [services.getUpload(pathParams.uploadId)])
               .transform(({ serviceResult: [result] }) => result)
               .execute();
 
@@ -426,20 +209,15 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               return error({ message: "Upload invalid state", code: "UPLOAD_INVALID_STATE" }, 409);
             }
 
-            if (!resolvedConfig.storage.getPartUploadUrls) {
-              return error({ message: "Storage error", code: "STORAGE_ERROR" }, 502);
-            }
-
-            const parts = await resolvedConfig.storage.getPartUploadUrls({
-              storageKey: upload.objectKey,
-              storageUploadId: upload.storageUploadId ?? "",
-              partNumbers: payload.partNumbers,
-              partSizeBytes: upload.partSizeBytes ?? 0,
-            });
+            const parts = await issueMultipartPartUploadUrls(
+              resolvedConfig.storage,
+              upload,
+              payload.partNumbers,
+            );
 
             return json({ parts });
           } catch (err) {
-            return handleServiceError(err, error);
+            return handleUploadServiceError(err, error);
           }
         },
       }),
@@ -447,18 +225,9 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
       defineRoute({
         method: "GET",
         path: "/uploads/:uploadId/parts",
-        outputSchema: z.object({
-          parts: z.array(
-            z.object({
-              partNumber: z.number(),
-              etag: z.string(),
-              sizeBytes: z.number(),
-              createdAt: z.date(),
-            }),
-          ),
-        }),
-        errorCodes,
-        handler: async function ({ pathParams }, { json, error }) {
+        outputSchema: uploadPartsOutputSchema,
+        errorCodes: uploadErrorCodes,
+        handler: async function listUploadParts({ pathParams }, { json, error }) {
           try {
             const parts = await this.handlerTx()
               .withServiceCalls(() => [services.getUploadParts(pathParams.uploadId)])
@@ -481,7 +250,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               })),
             });
           } catch (err) {
-            return handleServiceError(err, error);
+            return handleUploadServiceError(err, error);
           }
         },
       }),
@@ -489,13 +258,10 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
       defineRoute({
         method: "POST",
         path: "/uploads/:uploadId/parts/complete",
-        inputSchema: completePartsSchema,
-        outputSchema: z.object({
-          bytesUploaded: z.number(),
-          partsUploaded: z.number(),
-        }),
-        errorCodes,
-        handler: async function ({ pathParams, input }, { json, error }) {
+        inputSchema: completedUploadPartsInputSchema,
+        outputSchema: uploadProgressOutputSchema,
+        errorCodes: uploadErrorCodes,
+        handler: async function recordCompletedUploadParts({ pathParams, input }, { json, error }) {
           const payload = await input.valid();
           try {
             const result = await this.handlerTx()
@@ -508,7 +274,7 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               partsUploaded: result.partsUploaded,
             });
           } catch (err) {
-            return handleServiceError(err, error);
+            return handleUploadServiceError(err, error);
           }
         },
       }),
@@ -516,16 +282,16 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
       defineRoute({
         method: "POST",
         path: "/uploads/:uploadId/complete",
-        inputSchema: completeUploadSchema,
-        outputSchema: fileMetadataSchema,
-        errorCodes,
-        handler: async function ({ pathParams, input }, { json, error }) {
+        inputSchema: completeUploadInputSchema,
+        outputSchema: uploadCompletionResultSchema,
+        errorCodes: uploadErrorCodes,
+        handler: async function completeDirectUpload({ pathParams, input }, { json, error }) {
           const payload = await input.valid();
           const resolvedConfig = getResolvedConfig();
           try {
             // Rule of Fragno exception: read -> storage I/O -> mutate.
             const upload = await this.handlerTx()
-              .withServiceCalls(() => [services.getUploadStorageInfo(pathParams.uploadId)])
+              .withServiceCalls(() => [services.getUpload(pathParams.uploadId)])
               .transform(({ serviceResult: [result] }) => result)
               .execute();
 
@@ -537,10 +303,13 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
             if (providerMismatch) {
               return providerMismatch;
             }
+            if (isPreparedBatchUpload(upload)) {
+              return json({ kind: "prepared", write: toPreparedFileWrite(upload) });
+            }
 
             const inactiveResponse = rejectInactiveUpload(
               {
-                status: upload.status as UploadStatus,
+                status: upload.status,
                 expiresAt: upload.expiresAt,
               },
               error,
@@ -549,49 +318,27 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               return inactiveResponse;
             }
 
-            let finalizeResult: { sizeBytes?: bigint } | undefined;
+            const finalizedSizeBytes = await finalizeDirectUploadObject(
+              resolvedConfig.storage,
+              upload,
+              payload.parts,
+            );
+            const completionOptions =
+              finalizedSizeBytes === undefined ? undefined : { sizeBytes: finalizedSizeBytes };
 
-            if (upload.strategy === "direct-multipart") {
-              if (!resolvedConfig.storage.completeMultipartUpload) {
-                return error({ message: "Storage error", code: "STORAGE_ERROR" }, 502);
-              }
-
-              if (!payload.parts || payload.parts.length === 0) {
-                return error(
-                  {
-                    message: "Upload invalid state",
-                    code: "UPLOAD_INVALID_STATE",
-                  },
-                  409,
-                );
-              }
-
-              await resolvedConfig.storage.completeMultipartUpload({
-                storageKey: upload.objectKey,
-                storageUploadId: upload.storageUploadId ?? "",
-                parts: payload.parts,
-              });
-            } else if (resolvedConfig.storage.finalizeUpload) {
-              finalizeResult = await resolvedConfig.storage.finalizeUpload({
-                storageKey: upload.objectKey,
-                expectedSizeBytes: upload.expectedSizeBytes,
-                checksum: upload.checksum as UploadChecksum | null,
-              });
-            }
-
-            const completed = await this.handlerTx()
+            const completion = await this.handlerTx()
               .withServiceCalls(() => [
-                services.markUploadCompleteFromSnapshot(
-                  upload,
-                  finalizeResult?.sizeBytes ? { sizeBytes: finalizeResult.sizeBytes } : undefined,
-                ),
+                services.completeUploadPublicationFromSnapshot(upload, completionOptions),
               ])
               .transform(({ serviceResult: [result] }) => result)
               .execute();
 
-            return json(toFileMetadata(completed.file));
+            if (completion.kind === "prepared") {
+              return json(completion);
+            }
+            return json({ kind: "published", file: toFileMutationResult(completion.file) });
           } catch (err) {
-            return handleServiceError(err, error);
+            return handleUploadServiceError(err, error);
           }
         },
       }),
@@ -599,14 +346,14 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
       defineRoute({
         method: "POST",
         path: "/uploads/:uploadId/abort",
-        outputSchema: z.object({ ok: z.literal(true) }),
-        errorCodes,
-        handler: async function ({ pathParams }, { json, error }) {
+        outputSchema: abortUploadOutputSchema,
+        errorCodes: uploadErrorCodes,
+        handler: async function abortUploadSession({ pathParams }, { json, error }) {
           const resolvedConfig = getResolvedConfig();
           try {
             // Rule of Fragno exception: read -> storage I/O -> mutate.
             const upload = await this.handlerTx()
-              .withServiceCalls(() => [services.getUploadStorageInfo(pathParams.uploadId)])
+              .withServiceCalls(() => [services.getUpload(pathParams.uploadId)])
               .transform(({ serviceResult: [result] }) => result)
               .execute();
 
@@ -619,23 +366,17 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               return providerMismatch;
             }
 
-            if (
-              upload.strategy === "direct-multipart" &&
-              resolvedConfig.storage.abortMultipartUpload
-            ) {
-              await resolvedConfig.storage.abortMultipartUpload({
-                storageKey: upload.objectKey,
-                storageUploadId: upload.storageUploadId ?? "",
-              });
+            if (upload.status !== "prepared" && upload.strategy === "direct-multipart") {
+              await abortMultipartUploadObject(resolvedConfig.storage, upload);
             }
 
             await this.handlerTx()
-              .withServiceCalls(() => [services.markUploadAbortedFromSnapshot(upload)])
+              .withServiceCalls(() => [services.markUploadAborted(upload.id.toString())])
               .execute();
 
             return json({ ok: true });
           } catch (err) {
-            return handleServiceError(err, error);
+            return handleUploadServiceError(err, error);
           }
         },
       }),
@@ -644,15 +385,18 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
         method: "PUT",
         path: "/uploads/:uploadId/content",
         contentType: "application/octet-stream",
-        outputSchema: fileMetadataSchema,
-        errorCodes,
-        handler: async function (context, { json, error }) {
+        outputSchema: uploadCompletionResultSchema,
+        errorCodes: uploadErrorCodes,
+        handler: async function uploadProxyContent(context, { json, error }) {
           const { pathParams } = context;
+          if (context.query.has("completionMode")) {
+            return error({ message: "Invalid request", code: "INVALID_REQUEST" }, 400);
+          }
           const resolvedConfig = getResolvedConfig();
           try {
             // Rule of Fragno exception: read -> storage I/O -> mutate.
             const upload = await this.handlerTx()
-              .withServiceCalls(() => [services.getUploadStorageInfo(pathParams.uploadId)])
+              .withServiceCalls(() => [services.getUpload(pathParams.uploadId)])
               .transform(({ serviceResult: [result] }) => result)
               .execute();
 
@@ -668,10 +412,13 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
             if (upload.strategy !== "proxy") {
               return error({ message: "Upload invalid state", code: "UPLOAD_INVALID_STATE" }, 409);
             }
+            if (isPreparedBatchUpload(upload)) {
+              return json({ kind: "prepared", write: toPreparedFileWrite(upload) });
+            }
 
             const inactiveResponse = rejectInactiveUpload(
               {
-                status: upload.status as UploadStatus,
+                status: upload.status,
                 expiresAt: upload.expiresAt,
               },
               error,
@@ -680,44 +427,46 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
               return inactiveResponse;
             }
 
-            if (!resolvedConfig.storage.writeStream) {
-              return error({ message: "Storage error", code: "STORAGE_ERROR" }, 502);
-            }
-
-            let result: Awaited<ReturnType<NonNullable<typeof resolvedConfig.storage.writeStream>>>;
+            let storedObject: { etag?: string; sizeBytes?: bigint };
             try {
-              result = await resolvedConfig.storage.writeStream({
-                storageKey: upload.objectKey,
-                body: context.bodyStream(),
-                contentType: upload.contentType,
-                sizeBytes: upload.expectedSizeBytes,
-              });
-            } catch {
+              storedObject = await storeProxyUploadObject(
+                resolvedConfig.storage,
+                upload,
+                context.bodyStream(),
+              );
+            } catch (cause) {
+              const storageError =
+                cause instanceof UploadServiceError ? cause : mapStorageOperationError(cause);
               await this.handlerTx()
                 .withServiceCalls(() => [
-                  services.markUploadFailedFromSnapshot(
-                    upload,
-                    "STORAGE_ERROR",
-                    "Storage upload failed",
+                  services.markUploadFailed(
+                    upload.id.toString(),
+                    storageError.code,
+                    storageError.message,
                   ),
                 ])
                 .execute();
-              return error({ message: "Storage error", code: "STORAGE_ERROR" }, 502);
+              return handleUploadServiceError(storageError, error);
             }
 
-            const completed = await this.handlerTx()
+            const completionOptions =
+              storedObject.sizeBytes === undefined
+                ? undefined
+                : { sizeBytes: storedObject.sizeBytes };
+
+            const completion = await this.handlerTx()
               .withServiceCalls(() => [
-                services.markUploadCompleteFromSnapshot(
-                  upload,
-                  result?.sizeBytes ? { sizeBytes: result.sizeBytes } : undefined,
-                ),
+                services.completeUploadPublicationFromSnapshot(upload, completionOptions),
               ])
-              .transform(({ serviceResult: [done] }) => done)
+              .transform(({ serviceResult: [result] }) => result)
               .execute();
 
-            return json(toFileMetadata(completed.file));
+            if (completion.kind === "prepared") {
+              return json(completion);
+            }
+            return json({ kind: "published", file: toFileMutationResult(completion.file) });
           } catch (err) {
-            return handleServiceError(err, error);
+            return handleUploadServiceError(err, error);
           }
         },
       }),

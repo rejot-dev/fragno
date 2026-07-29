@@ -253,7 +253,7 @@ describe("s3 storage adapter", () => {
         expectedSizeBytes: BigInt(payload.length),
         checksum: { algo: "sha256", value: wrongSha },
       }),
-    ).rejects.toThrow("INVALID_CHECKSUM");
+    ).rejects.toMatchObject({ code: "INVALID_CHECKSUM" });
   });
 
   test("finalizeUpload rejects size mismatches", async () => {
@@ -278,7 +278,7 @@ describe("s3 storage adapter", () => {
         expectedSizeBytes: 5n,
         checksum: null,
       }),
-    ).rejects.toThrow("INVALID_CHECKSUM");
+    ).rejects.toMatchObject({ code: "INVALID_CHECKSUM" });
   });
 
   test("rejects presigned expirations beyond seven days", async () => {

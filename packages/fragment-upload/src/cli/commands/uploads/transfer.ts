@@ -60,6 +60,10 @@ export const uploadsTransferCommand = define({
       type: "string",
       description: "Metadata JSON object",
     },
+    "publication-mode": {
+      type: "string",
+      description: "Publication mode (immediate, batch)",
+    },
   },
   run: async (ctx) => {
     const filePath = ctx.values.file;
@@ -80,6 +84,14 @@ export const uploadsTransferCommand = define({
     const checksum = parseJsonValue("checksum", ctx.values.checksum);
     const tags = parseJsonValue("tags", ctx.values.tags);
     const metadata = parseJsonValue("metadata", ctx.values.metadata);
+    const publicationMode = ctx.values["publication-mode"];
+    if (
+      publicationMode !== undefined &&
+      publicationMode !== "immediate" &&
+      publicationMode !== "batch"
+    ) {
+      throw new Error("Invalid --publication-mode; expected immediate or batch");
+    }
 
     const client = createClientFromContext(ctx);
     const upload = (await client.createUpload({
@@ -93,6 +105,7 @@ export const uploadsTransferCommand = define({
       visibility: ctx.values.visibility,
       uploaderId: ctx.values["uploader-id"],
       metadata,
+      publicationMode,
     })) as {
       uploadId: string;
       strategy: "direct-single" | "direct-multipart" | "proxy";

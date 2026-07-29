@@ -39,6 +39,14 @@
       "types": "./dist/node/storage/db.d.ts",
       "default": "./dist/node/storage/db.js"
     },
+    "./storage/errors": {
+      "types": "./dist/node/storage/errors.d.ts",
+      "default": "./dist/node/storage/errors.js"
+    },
+    "./types": {
+      "types": "./dist/node/types.d.ts",
+      "default": "./dist/node/types.js"
+    },
     "./schema": {
       "types": "./dist/node/schema.d.ts",
       "default": "./dist/node/schema.js"

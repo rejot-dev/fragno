@@ -53,6 +53,10 @@ export const uploadsCreateCommand = define({
       type: "string",
       description: "Metadata JSON object",
     },
+    "publication-mode": {
+      type: "string",
+      description: "Publication mode (immediate, batch)",
+    },
   },
   run: async (ctx) => {
     const filename = ctx.values.filename;
@@ -77,6 +81,14 @@ export const uploadsCreateCommand = define({
     const checksum = parseJsonValue("checksum", ctx.values.checksum);
     const tags = parseJsonValue("tags", ctx.values.tags);
     const metadata = parseJsonValue("metadata", ctx.values.metadata);
+    const publicationMode = ctx.values["publication-mode"];
+    if (
+      publicationMode !== undefined &&
+      publicationMode !== "immediate" &&
+      publicationMode !== "batch"
+    ) {
+      throw new Error("Invalid --publication-mode; expected immediate or batch");
+    }
 
     const client = createClientFromContext(ctx);
     const response = await client.createUpload({
@@ -90,6 +102,7 @@ export const uploadsCreateCommand = define({
       visibility: ctx.values.visibility,
       uploaderId: ctx.values["uploader-id"],
       metadata,
+      publicationMode,
     });
 
     console.log(JSON.stringify(response, null, 2));
