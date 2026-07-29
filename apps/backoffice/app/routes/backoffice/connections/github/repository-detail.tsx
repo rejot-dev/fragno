@@ -1,6 +1,7 @@
 import { Link, useLoaderData, useOutletContext, useParams } from "react-router";
 
 import { resolveOrganizationScopeFromRouteParams } from "../../integrations/scope";
+import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/repository-detail";
 import {
   fetchGitHubLinkedRepositories,
@@ -8,7 +9,6 @@ import {
   type GitHubRepositorySummary,
 } from "./data";
 import type { GitHubRepositoriesOutletContext } from "./repositories";
-import { formatTimestamp } from "./shared";
 
 type GitHubRepositoryDetailLoaderData = {
   repo: GitHubRepositorySummary | null;

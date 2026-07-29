@@ -3,10 +3,10 @@ import { Link, useLoaderData, useOutletContext, useParams } from "react-router";
 import type { ResendEmailInput } from "@fragno-dev/resend-fragment";
 
 import { resolveScopeFromRouteParams } from "../../integrations/scope";
+import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/outbox-detail";
 import { fetchResendEmailDetail } from "./data";
 import type { ResendOutgoingOutletContext } from "./outbox";
-import { formatTimestamp } from "./shared";
 
 type ResendOutboxDetailLoaderData = {
   email: Awaited<ReturnType<typeof fetchResendEmailDetail>>["email"];

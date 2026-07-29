@@ -1,10 +1,10 @@
 import { Link, useLoaderData, useOutletContext, useParams } from "react-router";
 
 import { resolveScopeFromRouteParams } from "../../integrations/scope";
+import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/incoming-detail";
 import { fetchResendReceivedEmailDetail } from "./data";
 import type { ResendIncomingOutletContext } from "./incoming";
-import { formatTimestamp } from "./shared";
 
 type ResendIncomingDetailLoaderData = {
   email: Awaited<ReturnType<typeof fetchResendReceivedEmailDetail>>["email"];

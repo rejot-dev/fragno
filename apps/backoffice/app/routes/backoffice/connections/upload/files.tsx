@@ -905,8 +905,18 @@ function UploadFilesView({
   const allFolderPrefixes = providerTrees.flatMap((tree) =>
     tree.allFolderPrefixes.map((prefix) => composeVirtualFolderKey(tree.provider, prefix)),
   );
-  const [openFolders, setOpenFolders] = useState<Set<string>>(() => new Set(allFolderPrefixes));
-  const knownFolderPrefixesRef = useRef<Set<string>>(new Set(allFolderPrefixes));
+  const [closedFolders, setClosedFolders] = useState<Set<string>>(() => new Set());
+  const openFolders = useMemo(() => {
+    const openPrefixes = new Set(allFolderPrefixes.filter((prefix) => !closedFolders.has(prefix)));
+
+    if (selectedProvider) {
+      for (const prefix of getAncestorPrefixes(selectedPrefix)) {
+        openPrefixes.add(composeVirtualFolderKey(selectedProvider, prefix));
+      }
+    }
+
+    return openPrefixes;
+  }, [allFolderPrefixes, closedFolders, selectedPrefix, selectedProvider]);
   const selectedNodeKey =
     selectedNodeKind === "file" && selectedFileKey
       ? `file:${selectedProvider ?? "unknown"}:${selectedFileKey}`
@@ -1068,37 +1078,6 @@ function UploadFilesView({
   );
 
   useEffect(() => {
-    setOpenFolders((previous) => {
-      const next = new Set(previous);
-
-      if (selectedProvider) {
-        for (const prefix of getAncestorPrefixes(selectedPrefix)) {
-          next.add(composeVirtualFolderKey(selectedProvider, prefix));
-        }
-      }
-
-      return next;
-    });
-  }, [selectedPrefix, selectedProvider]);
-
-  useEffect(() => {
-    setOpenFolders((previous) => {
-      const next = new Set(previous);
-      let changed = false;
-
-      for (const prefix of allFolderPrefixes) {
-        if (!knownFolderPrefixesRef.current.has(prefix)) {
-          next.add(prefix);
-          changed = true;
-        }
-      }
-
-      return changed ? next : previous;
-    });
-    knownFolderPrefixesRef.current = new Set(allFolderPrefixes);
-  }, [allFolderPrefixes]);
-
-  useEffect(() => {
     setDragDepth(0);
   }, [selectedNodeKind, selectedPrefix, selectedFileKey, selectedFileProvider]);
 
@@ -1242,14 +1221,14 @@ function UploadFilesView({
   };
 
   const setFolderOpen = (provider: string, prefix: string, open: boolean) => {
-    setOpenFolders((previous) => {
+    setClosedFolders((previous) => {
       const next = new Set(previous);
       const key = composeVirtualFolderKey(provider, prefix);
 
       if (open) {
-        next.add(key);
-      } else {
         next.delete(key);
+      } else {
+        next.add(key);
       }
 
       return next;
