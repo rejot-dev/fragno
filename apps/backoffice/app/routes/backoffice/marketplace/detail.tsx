@@ -9,10 +9,11 @@ import {
 } from "react-router";
 
 import {
-  backofficeScopeFromSinglePathSegment,
   backofficeScopeSinglePathSegment,
+  type BackofficeRoutableScope,
 } from "@/backoffice-runtime/scope-codec";
 import { FormContainer } from "@/components/backoffice";
+import type { AuthMeData } from "@/fragno/auth/auth-client";
 import { getAuthMe } from "@/fragno/auth/auth-server";
 import type { MarketplaceIngestionRequestResult } from "@/fragno/automation";
 import { marketplaceListingId, marketplaceListingSlug } from "@/fragno/marketplace/owner";
@@ -23,7 +24,6 @@ import {
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
-import { fetchAutomationProjects, toExternalId } from "../automations/data.server";
 import type { Route } from "./+types/detail";
 import type { MarketplaceLayoutContext } from "./layout-context";
 import {
@@ -52,6 +52,53 @@ type IngestionActionData =
       result: Exclude<MarketplaceIngestionRequestResult, { state: "failed" }>;
     };
 
+type MarketplaceInstallationTarget =
+  | {
+      state: "ready";
+      organizationId: string;
+      targetScope: BackofficeRoutableScope;
+    }
+  | { state: "unavailable" | "forbidden"; message: string };
+
+const resolveMarketplaceInstallationTarget = (
+  me: AuthMeData,
+  targetScope: BackofficeRoutableScope,
+): MarketplaceInstallationTarget => {
+  if (targetScope.kind === "user") {
+    if (targetScope.userId !== me.user.id) {
+      return {
+        state: "forbidden",
+        message: "You can only install into your personal workspace.",
+      };
+    }
+
+    const activeOrganizationId = me.activeOrganization?.organization.id;
+    const installationOrganization =
+      me.organizations.find(({ organization }) => organization.id === activeOrganizationId) ??
+      me.organizations[0];
+    return installationOrganization
+      ? {
+          state: "ready",
+          organizationId: installationOrganization.organization.id,
+          targetScope,
+        }
+      : {
+          state: "unavailable",
+          message: "Join an organization to install this automation.",
+        };
+  }
+
+  const organizationId = targetScope.orgId;
+  if (!me.organizations.some(({ organization }) => organization.id === organizationId)) {
+    return {
+      state: "forbidden",
+      message: "The selected Marketplace scope is not available.",
+    };
+  }
+
+  return { state: "ready", organizationId, targetScope };
+};
+
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const me = await getAuthMe(request, context);
   if (!me?.user) {
@@ -62,6 +109,11 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   }
 
   const selectedScope = marketplaceScopeFromRouteParams(params);
+  const installationTarget = resolveMarketplaceInstallationTarget(me, selectedScope);
+  if (installationTarget.state === "forbidden") {
+    throw new Response("Not Found", { status: 404 });
+  }
+
   const listingIdResult = marketplaceListingRefSchema.safeParse(params.listingRef);
   if (!listingIdResult.success) {
     throw new Response("Not Found", { status: 404 });
@@ -96,70 +148,34 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
         slug: detail.listing.slug,
       }) === detail.listing.listingId,
   );
-  const runtime = context.get(BackofficeWorkerContext).runtime;
-  const organizationTargets = await Promise.all(
-    me.organizations.map(async ({ organization }) => {
-      const [projectsResult, ingestions] = await Promise.all([
-        fetchAutomationProjects(request, context, organization.id),
-        runtime.objects.automations.forOrg(organization.id).listMarketplaceIngestions(),
-      ]);
-      if (projectsResult.projectsError) {
-        throw new Response(projectsResult.projectsError, { status: 502 });
-      }
-      return {
-        organization,
-        projects: projectsResult.projects.filter((project) => !project.archivedAt),
-        ingestions: ingestions.filter(
-          (ingestion) => ingestion.listingId === detail.listing.listingId,
-        ),
-      };
-    }),
-  );
-  const targetOptions = organizationTargets.flatMap(({ organization, projects }) => [
-    {
-      organizationId: organization.id,
-      value: backofficeScopeSinglePathSegment({ kind: "org", orgId: organization.id }),
-      label: `${organization.name} organization workspace`,
-    },
-    ...projects.map((project) => ({
-      organizationId: organization.id,
-      value: backofficeScopeSinglePathSegment({
-        kind: "project" as const,
-        orgId: organization.id,
-        projectId: toExternalId(project.id),
-      }),
-      label: `${organization.name} · ${project.name} project workspace`,
-    })),
-    {
-      organizationId: organization.id,
-      value: backofficeScopeSinglePathSegment({ kind: "user", userId: me.user.id }),
-      label: `${organization.name} · personal workspace`,
-    },
-  ]);
-  const defaultTargetOrganizationId =
-    selectedScope.kind === "user"
-      ? (me.activeOrganization?.organization.id ?? me.organizations[0]?.organization.id ?? null)
-      : selectedScope.orgId;
-  const defaultTargetScopeValue = backofficeScopeSinglePathSegment(selectedScope);
-  const defaultTargetOption = defaultTargetOrganizationId
-    ? (targetOptions.find(
-        (option) =>
-          option.organizationId === defaultTargetOrganizationId &&
-          option.value === defaultTargetScopeValue,
-      ) ?? null)
-    : null;
-  if (defaultTargetOrganizationId && !defaultTargetOption) {
-    throw new Response("Marketplace ingestion target was not found.", { status: 404 });
-  }
+  const installationOrganization =
+    installationTarget.state === "ready"
+      ? me.organizations.find(
+          ({ organization }) => organization.id === installationTarget.organizationId,
+        )?.organization
+      : null;
+  const selectedTargetScopeKey = backofficeScopeSinglePathSegment(selectedScope);
+  const ingestions = installationOrganization
+    ? (
+        await context
+          .get(BackofficeWorkerContext)
+          .runtime.objects.automations.forOrg(installationOrganization.id)
+          .listMarketplaceIngestions()
+      ).filter(
+        (ingestion) =>
+          ingestion.listingId === detail.listing.listingId &&
+          ingestion.targetScopeKey === selectedTargetScopeKey,
+      )
+    : [];
 
   return {
     ...detail,
     manageOrganizationId: manageableOrganization?.organization.id ?? null,
-    targetOptions,
-    defaultTargetOption,
-    ingestions: organizationTargets.flatMap(({ organization, ingestions }) =>
-      ingestions.map((ingestion) => ({ ...ingestion, organizationName: organization.name })),
-    ),
+    installationOrganizationId: installationOrganization?.id ?? null,
+    ingestions: ingestions.map((ingestion) => ({
+      ...ingestion,
+      organizationName: installationOrganization?.name ?? installationOrganization?.id ?? "",
+    })),
   };
 }
 
@@ -174,39 +190,24 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     throw new Response("Not Found", { status: 404 });
   }
 
+  const targetScope = marketplaceScopeFromRouteParams(params);
+  const installationTarget = resolveMarketplaceInstallationTarget(me, targetScope);
+  if (installationTarget.state !== "ready") {
+    return {
+      ok: false,
+      message: installationTarget.message,
+    } satisfies IngestionActionData;
+  }
+
   const formData = await request.formData();
-  const organizationId = String(formData.get("organizationId") ?? "").trim();
-  if (!me.organizations.some(({ organization }) => organization.id === organizationId)) {
-    return {
-      ok: false,
-      message: "Select an organization you can manage.",
-    } satisfies IngestionActionData;
-  }
-
-  let targetScope;
-  try {
-    targetScope = backofficeScopeFromSinglePathSegment(String(formData.get("targetScope") ?? ""));
-  } catch {
-    return {
-      ok: false,
-      message: "Select a valid ingestion destination.",
-    } satisfies IngestionActionData;
-  }
-  if (targetScope.kind === "user" && targetScope.userId !== me.user.id) {
-    return {
-      ok: false,
-      message: "You can only select your personal workspace.",
-    } satisfies IngestionActionData;
-  }
-
   const automations = context
     .get(BackofficeWorkerContext)
-    .runtime.objects.automations.forOrg(organizationId);
+    .runtime.objects.automations.forOrg(installationTarget.organizationId);
 
   try {
     const result = await automations.requestMarketplaceIngestion({
       listingId: listingIdResult.data,
-      targetScope,
+      targetScope: installationTarget.targetScope,
       version: String(formData.get("version") ?? "").trim() || undefined,
     });
     if (result.state === "failed") {
@@ -233,8 +234,7 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
     manageOrganizationId,
     nextVersionCursor,
     hasNextVersionPage,
-    targetOptions,
-    defaultTargetOption,
+    installationOrganizationId,
     ingestions,
   } = loaderData;
   const actionData = useActionData<IngestionActionData>();
@@ -314,42 +314,23 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
             <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
               Add to workspace
             </p>
-            {targetOptions.length ? (
+            {installationOrganizationId ? (
               <Form method="post" className="mt-4 space-y-3">
-                <label className="block space-y-1">
-                  <span className="text-xs text-[var(--bo-muted)]">Destination</span>
-                  <select
-                    name="targetSelection"
-                    defaultValue={defaultTargetOption?.value}
-                    className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)]"
-                    onChange={(event) => {
-                      const option = event.currentTarget.selectedOptions[0];
-                      const form = event.currentTarget.form;
-                      if (form && option) {
-                        (form.elements.namedItem("organizationId") as HTMLInputElement).value =
-                          option.dataset.organizationId ?? "";
-                        (form.elements.namedItem("targetScope") as HTMLInputElement).value =
-                          option.value;
-                      }
-                    }}
-                  >
-                    {targetOptions.map((option) => (
-                      <option
-                        key={`${option.organizationId}:${option.value}`}
-                        value={option.value}
-                        data-organization-id={option.organizationId}
-                      >
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <input
-                  type="hidden"
-                  name="organizationId"
-                  defaultValue={defaultTargetOption?.organizationId}
-                />
-                <input type="hidden" name="targetScope" defaultValue={defaultTargetOption?.value} />
+                <div className="space-y-1">
+                  <p className="text-xs text-[var(--bo-muted)]">Destination</p>
+                  <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2">
+                    <p className="text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
+                      {selectedScope.kind === "org"
+                        ? "Organisation"
+                        : selectedScope.kind === "project"
+                          ? "Project"
+                          : "Personal"}
+                    </p>
+                    <p className="mt-1 truncate text-sm font-medium text-[var(--bo-fg)]">
+                      {selectedScope.label}
+                    </p>
+                  </div>
+                </div>
                 <label className="block space-y-1">
                   <span className="text-xs text-[var(--bo-muted)]">Version</span>
                   <select
@@ -369,12 +350,12 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
                   disabled={navigation.state !== "idle"}
                   className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent)] px-3 py-2 text-xs font-semibold tracking-[0.12em] text-white uppercase disabled:opacity-50"
                 >
-                  {navigation.state === "submitting" ? "Requesting…" : "Add to workspace"}
+                  {navigation.state === "submitting" ? "Requesting…" : "Add to selected scope"}
                 </button>
               </Form>
             ) : (
               <p className="mt-3 text-sm text-[var(--bo-muted)]">
-                Join an organization to ingest this artifact.
+                Join an organization to install this automation into the selected scope.
               </p>
             )}
             {actionData ? (

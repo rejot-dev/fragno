@@ -29,21 +29,21 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
   },
   {
     index: "02",
-    label: "Marketplace",
-    to: "/backoffice/marketplace",
-    isActive: (pathname) => pathname.startsWith("/backoffice/marketplace"),
-  },
-  {
-    index: "03",
     label: "Sessions",
     to: "/backoffice/sessions",
     isActive: (pathname) => pathname.startsWith("/backoffice/sessions"),
   },
   {
-    index: "04",
+    index: "03",
     label: "Files",
     to: "/backoffice/files",
     isActive: (pathname) => pathname.startsWith("/backoffice/files"),
+  },
+  {
+    index: "04",
+    label: "Marketplace",
+    to: "/backoffice/marketplace",
+    isActive: (pathname) => pathname.startsWith("/backoffice/marketplace"),
   },
 ];
 

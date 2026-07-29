@@ -53,6 +53,25 @@ export const marketplaceScopeTabPath = (
   tab: MarketplaceTab = "marketplace",
 ) => `${marketplaceScopeBasePath(scope)}/${tab}`;
 
+const marketplaceScopeSwitchPath = ({
+  destinationScope,
+  selectedScope,
+  pathname,
+  search,
+}: {
+  destinationScope: MarketplaceUiScope;
+  selectedScope: MarketplaceUiScope;
+  pathname: string;
+  search: string;
+}) => {
+  const selectedScopeBasePath = marketplaceScopeBasePath(selectedScope);
+  const nestedPath = pathname.startsWith(`${selectedScopeBasePath}/`)
+    ? pathname.slice(selectedScopeBasePath.length)
+    : "/marketplace";
+
+  return `${marketplaceScopeBasePath(destinationScope)}${nestedPath}${search}`;
+};
+
 export const marketplaceScopeFromRouteParams = (params: {
   scopeKind?: string;
   scopeId?: string;
@@ -116,13 +135,15 @@ export const createMarketplaceScopeOptions = ({
   organisations,
   projects,
   user,
-  currentTab,
+  selectedScope,
+  currentLocation,
   projectOrgId,
 }: {
   organisations: Organisation[];
   projects: AutomationProjectRecord[];
   user: AuthMeData["user"];
-  currentTab: MarketplaceTab;
+  selectedScope: MarketplaceUiScope;
+  currentLocation: { pathname: string; search: string };
   projectOrgId: string | null;
 }): MarketplaceScopeOption[] => {
   const organizationOptions = organisations.map((organisation) => {
@@ -136,7 +157,11 @@ export const createMarketplaceScopeOptions = ({
       kind: "org" as const,
       label: scope.label,
       description: "Organisation workspace",
-      to: marketplaceScopeTabPath(scope, currentTab),
+      to: marketplaceScopeSwitchPath({
+        destinationScope: scope,
+        selectedScope,
+        ...currentLocation,
+      }),
     };
   });
 
@@ -158,7 +183,11 @@ export const createMarketplaceScopeOptions = ({
             kind: "project" as const,
             label: scope.label,
             description: project.slug?.trim() ? `Project · ${project.slug}` : "Project workspace",
-            to: marketplaceScopeTabPath(scope, currentTab),
+            to: marketplaceScopeSwitchPath({
+              destinationScope: scope,
+              selectedScope,
+              ...currentLocation,
+            }),
           },
         ];
       })
@@ -178,7 +207,11 @@ export const createMarketplaceScopeOptions = ({
       kind: "user",
       label: userScope.label,
       description: "Personal workspace",
-      to: marketplaceScopeTabPath(userScope, currentTab),
+      to: marketplaceScopeSwitchPath({
+        destinationScope: userScope,
+        selectedScope,
+        ...currentLocation,
+      }),
     },
   ];
 };
